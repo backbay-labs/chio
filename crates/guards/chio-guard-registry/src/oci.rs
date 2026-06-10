@@ -389,7 +389,7 @@ pub(crate) fn has_explicit_tag(reference: &str) -> bool {
     name.contains(':')
 }
 
-/// Concrete credentials supported by this scaffold.
+/// Registry credentials supported by the OCI client.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegistryCredentials {
     /// Anonymous registry access.

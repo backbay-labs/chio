@@ -355,8 +355,7 @@ def build_alias_map(
         if sig_name in sig_to_canonical:
             continue
         if not swap_detected:
-            # No swap: index-based routing (backward compat with the
-            # v0.2 behaviour). If the same-index table slot is
+            # No swap: index-based routing. If the same-index table slot is
             # protected and unclaimed, route the wrapper-name onto it
             # (so ``def my_writer(p, b)`` for chio_file_write maps b
             # at idx 1 to ``content``). Otherwise leave the

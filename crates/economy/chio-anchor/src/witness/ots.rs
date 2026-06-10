@@ -71,8 +71,8 @@ impl OtsClient {
             ));
         }
         // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: OpenTimestamps calendar
-        // witness lane; threading an HttpEgressContract through OtsClient::new
-        // is a dedicated refactor, not yet wired here.
+        // witness lane; HttpEgressContract is not yet threaded through
+        // OtsClient::new.
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(20))
             .https_only(false)

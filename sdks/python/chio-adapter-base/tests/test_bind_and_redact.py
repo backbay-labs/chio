@@ -1099,13 +1099,12 @@ def test_typeerror_fallback_two_kwargs_same_canonical_both_redact() -> None:
     must redact independently and round-trip under their original
     wrapper-name keys; neither value may be silently dropped.
 
-    Before the C1 fix, the TypeError-fallback alias-map path collapsed
-    both values into a single ``canonical_view[canonical]`` entry, so
-    the second kwarg overwrote the first and only one bucket survived
-    in the rebuilt ``redacted_kwargs``. The fix mirrors the
-    merge-conflict semantics from the variadic / overflow paths:
-    redact each kwarg independently, keyed by its ORIGINAL wrapper
-    name.
+    The TypeError-fallback alias-map path must not collapse both
+    values into a single ``canonical_view[canonical]`` entry, which
+    would let the second kwarg overwrite the first so only one bucket
+    survives in the rebuilt ``redacted_kwargs``. It mirrors the
+    merge-conflict semantics of the variadic / overflow paths: redact
+    each kwarg independently, keyed by its ORIGINAL wrapper name.
     """
 
     def write(body: str, path: str) -> None:

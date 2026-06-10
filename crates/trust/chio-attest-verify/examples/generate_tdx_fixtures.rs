@@ -1,5 +1,5 @@
 //! Deterministically regenerate the pinned TDX fixture corpus under
-//! `crates/chio-attest-verify/fixtures/quotes/tdx/`.
+//! `crates/trust/chio-attest-verify/fixtures/quotes/tdx/`.
 //!
 //! Run with:
 //!

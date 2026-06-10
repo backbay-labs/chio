@@ -181,11 +181,11 @@ can copy that evidence into audit entries or signed receipts.
 
 ### Pain Point
 
-The proxy previously checked only that allowed verdict evidence existed. Padded
-or control-bearing capability and receipt identifiers could therefore cross the
-checker boundary and be stored as authorization metadata. The kernel-backed
-checker emits normalized values, but the trait is public and other
-implementations can be injected.
+Checking only that allowed verdict evidence exists lets padded or
+control-bearing capability and receipt identifiers cross the checker boundary
+and be stored as authorization metadata. The kernel-backed checker emits
+normalized values, but the trait is public and other implementations can be
+injected.
 
 ### Security and API Constraints
 

@@ -82,7 +82,7 @@ const NITRO_CABUNDLE_MAX_ENTRIES: usize = 16;
 pub struct NitroCollateral {
     /// AWS Nitro root certificate (DER) embedded by the verifier.
     /// Source bytes are pinned in
-    /// `crates/chio-attest-verify/fixtures/nitro/aws-nitro-root.pem`
+    /// `crates/trust/chio-attest-verify/fixtures/nitro/aws-nitro-root.pem`
     /// in the same crate; integrators that consume this struct
     /// directly load that file or supply their own byte-equal
     /// snapshot.

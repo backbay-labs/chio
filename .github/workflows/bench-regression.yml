@@ -71,13 +71,8 @@ jobs:
         run: |
           set -euo pipefail
           benches_file="$(mktemp)"
-          # The worktree may predate the crate-folder move, so the chio-kernel
-          # manifest can be at the grouped or the old flat path. Skip gracefully
-          # if neither exists.
+          # Skip gracefully if the worktree has no chio-kernel manifest.
           manifest="crates/kernel/chio-kernel/Cargo.toml"
-          if [ ! -f "${manifest}" ]; then
-            manifest="crates/chio-kernel/Cargo.toml"
-          fi
           if [ ! -f "${manifest}" ]; then
             echo "::notice::worktree has no chio-kernel manifest; comparison will be skipped"
             exit 0
@@ -132,13 +127,8 @@ jobs:
         run: |
           set -euo pipefail
           benches_file="$(mktemp)"
-          # The worktree may predate the crate-folder move, so the chio-kernel
-          # manifest can be at the grouped or the old flat path. Skip gracefully
-          # if neither exists.
+          # Skip gracefully if the worktree has no chio-kernel manifest.
           manifest="crates/kernel/chio-kernel/Cargo.toml"
-          if [ ! -f "${manifest}" ]; then
-            manifest="crates/chio-kernel/Cargo.toml"
-          fi
           if [ ! -f "${manifest}" ]; then
             echo "::notice::worktree has no chio-kernel manifest; comparison will be skipped"
             exit 0

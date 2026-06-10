@@ -6,14 +6,12 @@
 //! HTTP surface after a human responds. The design follows
 //! `docs/protocols/HUMAN-IN-THE-LOOP-PROTOCOL.md`.
 //!
-//! Design note: the existing
-//! `crate::runtime::Verdict` is `Copy` and threaded through 5,000+ lines
-//! of kernel code. Rather than ripple a breaking change through every
-//! call site, this module exposes a richer [`HitlVerdict`] that carries
-//! the pending approval request when one is needed. The public
-//! `Verdict` enum still gains a `PendingApproval` marker variant so
-//! external callers can pattern-match on the three-way decision; the
-//! payload is returned separately via [`ApprovalGuard::evaluate`] and
+//! `crate::runtime::Verdict` is `Copy`. This module exposes a richer
+//! [`HitlVerdict`] that carries the pending approval request when one is
+//! needed, keeping `Verdict` itself `Copy`. The public `Verdict` enum gains a
+//! `PendingApproval` marker variant so external callers can pattern-match on
+//! the three-way decision; the payload is returned separately via
+//! [`ApprovalGuard::evaluate`] and
 //! [`ChioKernel::evaluate_tool_call_with_hitl`](crate::ChioKernel).
 
 use std::collections::HashMap;

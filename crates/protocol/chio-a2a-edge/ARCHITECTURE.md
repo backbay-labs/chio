@@ -12,19 +12,18 @@
 
 ## Pain Points
 
-- `edge.rs` still owns multiple trust-boundary responsibilities: manifest-to-skill publication, JSON-RPC dispatch, target-skill routing, kernel execution, and deferred task lifecycle.
-- JSON-RPC request-boundary parsing now lives in `jsonrpc.rs`, including
-  non-empty and unpadded `metadata.chio.targetSkillId` and `params.taskId`
-  checks before skill resolution or task lookup.
-- `ChioA2aEdge::new` now validates every manifest with
+- `edge.rs` owns multiple trust-boundary responsibilities: manifest-to-skill publication, JSON-RPC dispatch, target-skill routing, kernel execution, and deferred task lifecycle.
+- `jsonrpc.rs` owns JSON-RPC request-boundary parsing, including non-empty and
+  unpadded `metadata.chio.targetSkillId` and `params.taskId` checks before skill
+  resolution or task lookup.
+- `ChioA2aEdge::new` validates every manifest with
   `chio_manifest::validate_manifest` before Agent Card skill publication,
   bridge-fidelity classification, or authoritative skill binding construction.
-- `jsonrpc.rs` now owns a centralized known-method params-object gate used by
-  both authoritative and compatibility dispatch. Missing params remain
-  compatible as `{}`, unknown methods still return method-not-found, and
-  non-object params for known A2A methods fail with `-32602` before message
-  parsing, task lookup, or deferred lifecycle mutation can observe malformed
-  params.
+- `jsonrpc.rs` owns a centralized known-method params-object gate used by both
+  authoritative and compatibility dispatch. Missing params remain compatible as
+  `{}`, unknown methods return method-not-found, and non-object params for known
+  A2A methods fail with `-32602` before message parsing, task lookup, or
+  deferred lifecycle mutation can observe malformed params.
 
 ## Security And API Constraints
 
@@ -137,9 +136,9 @@ A2A Agent Card before any request-boundary or kernel guard can reject it.
 
 ### Affected Dependents
 
-- Downstream A2A clients no longer see malformed Agent Cards from blank edge
-  config.
-- Existing callers with valid config are unchanged.
+- Blank edge config is rejected before publication, so downstream A2A clients
+  never receive a malformed Agent Card from it.
+- Callers with valid config are unaffected.
 
 ### Completed Material Improvement
 

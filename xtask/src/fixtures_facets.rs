@@ -1,7 +1,6 @@
-// Per-facet imperative handlers, pre-schema guards, and the metadata
-// assertions ported from each script's embedded python block. Included into
-// `fixtures.rs` via `include!` so the handlers share the module's private
-// helpers while keeping each file under the 2000-line hygiene cap.
+// Per-facet imperative handlers, pre-schema guards, and metadata assertions.
+// `include!`d into `fixtures.rs` so the handlers share that module's private
+// helpers.
 
 /// A unique temp directory cleaned up on drop. `unwrap`/`expect` are denied, so
 /// cleanup is best-effort and ignores errors in `Drop`.
@@ -72,8 +71,7 @@ fn retired_marker() -> String {
     marker
 }
 
-/// Fail if a case-insensitive marker appears in a file (matches the scripts'
-/// `rg -n -i "$retired_marker"` guard).
+/// Fail if a case-insensitive marker appears in a file.
 fn guard_no_marker_in_file(
     path: &Path,
     marker: &str,
@@ -86,8 +84,8 @@ fn guard_no_marker_in_file(
     Ok(())
 }
 
-/// Fail if any of the Chio/CHIO/chio spellings appears in a file (matches the
-/// relay runbook guard, which is intentionally case-sensitive across spellings).
+/// Fail if any of the Chio/CHIO/chio spellings appears in a file. The check is
+/// deliberately case-sensitive across those three exact spellings.
 fn guard_no_chio_in_file(path: &Path, message: &str) -> Result<(), XtaskError> {
     let text = fs::read_to_string(path).map_err(|err| XtaskError::Io(display(path), err))?;
     if text.contains("Chio") || text.contains("CHIO") || text.contains("chio") {
@@ -803,9 +801,8 @@ struct AuditorInputs {
 }
 
 /// Build the auditor catchup batch, the bad-action-class variant, the empty
-/// variant, and the signed auditor transit policy. The batch/policy mutations
-/// mirror the embedded python in the relay script; the policy is then signed by
-/// the generator.
+/// variant, and the signed auditor transit policy. The policy body is then
+/// signed by the generator.
 fn relay_build_auditor_inputs(
     root: &Path,
     scratch: &ScratchDir,
@@ -921,8 +918,8 @@ const AUDITOR_LADDER_REF: &str = r#"{
 }"#;
 
 /// Build the auditor transit-policy body, recomputing the runtime and scarcity
-/// policy hashes exactly as the embedded python did (drop the hash fields,
-/// canonicalize with sorted keys and tight separators, sha256).
+/// policy hashes: drop the hash fields, canonicalize with sorted keys and tight
+/// separators, then sha256.
 fn build_auditor_policy_body(source_policy: &Path, out_path: &Path) -> Result<(), XtaskError> {
     let envelope = load_json(source_policy)?;
     let mut body = envelope
@@ -1219,8 +1216,8 @@ fn dashboard_test_args(facet_name: &str) -> &'static [&'static str] {
     }
 }
 
-/// The assurance facet runs cargo tests then its dashboard build after
-/// recursion (the script order). npm test args are the assurance-specific set.
+/// The assurance facet runs cargo tests, then recurses, then runs its dashboard
+/// build. npm test args are the assurance-specific set.
 fn handle_alert_assurance(
     root: &Path,
     manifest: &Manifest,

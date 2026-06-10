@@ -17,7 +17,7 @@
 //!    `chio replay --bless` consumer reads back.
 //!
 //! The output format is pinned by the existing consumer
-//! (`crates/chio-cli/src/cli/replay/ndjson.rs`): one `serde_json` frame per
+//! (`crates/products/chio-cli/src/cli/replay/ndjson.rs`): one `serde_json` frame per
 //! line, blank lines tolerated, every non-blank line a valid frame.
 
 use std::fs::{self, File, OpenOptions};

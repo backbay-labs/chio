@@ -43,11 +43,3 @@ settings, calls `/chio/evaluate`, verifies the returned receipt through
   receipts.
 - Route tests must be able to run with Chio middleware disabled so Django
   payload behavior is tested without a live sidecar.
-
-## Current Improvement Target
-
-The example currently mixes untyped JSON extraction into the view, accepts
-coerced or partial `/echo` payloads that the sidecar contract does not describe,
-and uses an outdated smoke capability grant. The package needs a stricter
-Django route boundary plus an end-to-end smoke flow that matches the current
-HTTP authority contract and sidecar receipt store.

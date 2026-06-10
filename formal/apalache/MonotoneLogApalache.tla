@@ -3,7 +3,7 @@
 (* Apalache-shaped port of RevocationPropagation.tla MonotoneLog.          *)
 (* Receipt timestamps must strictly increase for each authority.            *)
 (*                                                                          *)
-(* Known modeling bound (trj3.2 review, 2026-05-03):                        *)
+(* Known modeling bound:                                                    *)
 (*   `Evaluate` is the only writer of `receipt_log` and increments the      *)
 (*   shared `clock` on every step, so monotonicity holds by construction in *)
 (*   this bounded port. The `clock < EpochMax` guard caps real activity at  *)

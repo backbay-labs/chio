@@ -30,8 +30,4 @@
 
 ## Affected Dependents
 
-SDKs and FFI layers depend on the stable helper shape and vector corpus. This slice keeps the ABI surface unchanged and adds a Rust facade helper that accepts trusted signer hex strings, matching the shape already used by Python and TypeScript SDK invariants. FFI exposure can be added in a separate ABI slice if C/C++ callers need it.
-
-## Planned Improvement
-
-Add a binding-friendly trusted-signer receipt verification path that accepts JSON receipt input plus signer public-key hex strings. This closes the gap between the crate's bindings contract and its Rust-only `PublicKey` trusted-signer helper while preserving the existing API.
+SDKs and FFI layers depend on the stable helper shape and vector corpus. The facade exposes a Rust helper that accepts trusted signer hex strings, matching the shape used by the Python and TypeScript SDK invariants.

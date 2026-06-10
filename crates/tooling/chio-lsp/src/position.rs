@@ -42,8 +42,7 @@ pub fn utf16_to_byte_offset(line: &str, character: u32) -> usize {
 
 /// Convert a byte offset inside `line` into the UTF-16 column LSP
 /// expects in `Position.character`. Saturates to the line's full UTF-16
-/// length when `byte_offset` overshoots, which keeps the helper total
-/// for the slicing patterns we have today.
+/// length when `byte_offset` overshoots, keeping the helper total.
 #[must_use]
 pub fn byte_to_utf16_column(line: &str, byte_offset: usize) -> u32 {
     let mut utf16_units: usize = 0;

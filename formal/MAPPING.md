@@ -68,15 +68,15 @@ Lean cross-references (informational; the script does not enforce these):
   `Chio.Spec.capability_monotonicity` in
   `formal/lean4/Chio/Chio/Spec/Properties.lean`.
 
-## Apalache named invariants (M06 kernel-state subset)
+## Apalache named invariants (kernel-state subset)
 
-Source directory: `formal/apalache/`. These rows are the M06 D04 focused
+Source directory: `formal/apalache/`. These rows are the focused kernel-state
 invariant set. They are checked by `.github/workflows/apalache-nightly.yml`
 against the `MC*.cfg` files in the same directory.
 
 | Property | Source | Rust path constrained | Assumption discharge | One-line description |
 | --- | --- | --- | --- | --- |
-| `MonotoneLogApalache` | `formal/apalache/MonotoneLogApalache.tla` | `crates/kernel/chio-kernel/src/receipt_store.rs` | `formal/assumptions.toml` ASSUME-SQLITE-ATOMICITY; M06 single-invariant evidence for `RETIRED-SQLITE-CROSS-ROW` pairing | Per-authority receipt timestamps are strictly increasing in the Apalache-bounded kernel-state subset. |
+| `MonotoneLogApalache` | `formal/apalache/MonotoneLogApalache.tla` | `crates/kernel/chio-kernel/src/receipt_store.rs` | `formal/assumptions.toml` ASSUME-SQLITE-ATOMICITY; single-invariant evidence for `RETIRED-SQLITE-CROSS-ROW` pairing | Per-authority receipt timestamps are strictly increasing in the Apalache-bounded kernel-state subset. |
 | `RevocationCutCompleteness` | `formal/apalache/RevocationCutCompleteness.tla` | `crates/kernel/chio-kernel/src/lib.rs::ChioKernel::check_revocation`, `crates/kernel/chio-kernel-core/src/revocation_view.rs` | `formal/proof-manifest.toml` covered_rust_symbols `formal_core::revocation_snapshot_denies`; Lean theorem `revocation_is_cut` | A revoked capability removes dispatch eligibility for every transitive descendant in each authority view. |
 | `ReceiptBeforeAllow` | `formal/apalache/ReceiptBeforeAllow.tla` | `crates/kernel/chio-kernel/src/receipt_store.rs`, `crates/kernel/chio-kernel-core/src/evaluate.rs::evaluate` | Replaces the prior joint discharge of `RETIRED-SQLITE-CROSS-ROW` with a named Apalache invariant | An allow decision can be published only after a prior allow receipt for the same authority and capability exists in the log. |
 | `KernelTransitionCancelSafe` | `formal/apalache/KernelTransitionCancelSafe.tla` | `crates/kernel/chio-kernel/src/budget_store.rs`, `crates/kernel/chio-kernel-core/src/evaluate.rs::evaluate` | `formal/proof-manifest.toml` covered_rust_symbols `formal_core::*`; Kani `verify_budget_checked_add_no_overflow` | A canceled in-flight kernel transition preserves the pre-transition budget and receipt state snapshots. |

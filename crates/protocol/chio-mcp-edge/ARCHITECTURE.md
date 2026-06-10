@@ -72,11 +72,11 @@ dispatcher so the edge can return the task view or a JSON-RPC error.
 
 ### Pain Point
 
-Before this slice, `pump_client_messages`, `pump_channel_messages`, and
-`task_cancel_matches_related_task` classified `tasks/cancel` by method alone. A
-notification-shaped `tasks/cancel` with no `id` could therefore enter the
-cancellation side channel even though the main dispatcher would treat it as a
-notification and ignore it.
+Classifying `tasks/cancel` by method alone in `pump_client_messages`,
+`pump_channel_messages`, and `task_cancel_matches_related_task` lets a
+notification-shaped `tasks/cancel` with no `id` enter the cancellation side
+channel even though the main dispatcher treats it as a notification and ignores
+it.
 
 ### Security And API Constraints
 

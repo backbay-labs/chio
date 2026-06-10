@@ -46,8 +46,9 @@ git config user.email "guard-test@chio.local"
 git config user.name "guard-test"
 git config commit.gpgsign false
 
-# Seed: one regression test under crates/<owner>/tests, one under
-# legacy tests/regression_*.rs, plus an unrelated file.
+# Seed one regression test under each path shape the guard matches:
+# crates/<owner>/tests/regression_*.rs and tests/regression_*.rs, plus
+# an unrelated file.
 mkdir -p crates/kernel/chio-kernel-core/tests
 mkdir -p tests
 cat > crates/kernel/chio-kernel-core/tests/regression_deadbeef.rs <<'EOF'
@@ -56,7 +57,7 @@ cat > crates/kernel/chio-kernel-core/tests/regression_deadbeef.rs <<'EOF'
 fn regression_deadbeef() {}
 EOF
 cat > tests/regression_cafef00d.rs <<'EOF'
-// legacy fuzz-promoted regression test
+// fuzz-promoted regression test at the top-level tests/ path
 #[test]
 fn regression_cafef00d() {}
 EOF

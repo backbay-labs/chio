@@ -15,7 +15,7 @@ pub mod query;
 pub mod schema;
 
 /// JSON Schema name reserved for the lineage DAG. Schema artifact lives at
-/// `crates/chio-lineage/schemas/lineage-graph.v1.json`.
+/// `crates/observability/chio-lineage/schemas/lineage-graph.v1.json`.
 pub const LINEAGE_GRAPH_SCHEMA: &str = "chio.lineage.graph/v1";
 
 /// Errors surfaced by the lineage indexer.

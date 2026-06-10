@@ -43,5 +43,5 @@ use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_d
 ```
 
 The crate is `publish = false`, has no dependencies, and carries no runtime
-code; it exists purely to deduplicate the assertion helpers that previously
-lived as copy-pasted traits across the workspace's test suites.
+code; it centralizes the assertion helpers shared across the workspace's test
+suites.

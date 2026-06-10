@@ -364,8 +364,7 @@ SafetyInv ==
 (* RevocationEventuallySeen would not hold.                                 *)
 (*                                                                          *)
 (* The a = b case is trivially satisfied (rev_epoch[a][c] >=               *)
-(* rev_epoch[a][c]) and is left in the quantifier rather than excluded so *)
-(* the statement matches the phase doc verbatim.                            *)
+(* rev_epoch[a][c]) and is left in the quantifier rather than excluded.    *)
 (***************************************************************************)
 AnyRevocationObserved ==
     \E a \in ProcSet, c \in CapSet :

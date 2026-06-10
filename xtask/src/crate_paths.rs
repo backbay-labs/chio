@@ -3,13 +3,13 @@
 //! Scans config files that embed literal `crates/<group>/chio-*` path references
 //! (CI path filters, CODEOWNERS, mutation/kani/threat configs, formal manifests,
 //! qualification matrices) and asserts every reference resolves to an existing
-//! file or directory. A reference that no longer resolves is an error: after a
-//! crate move such a reference would silently match nothing, and the gate or
-//! required-reviewer rule it encodes would go dark while CI stayed green.
+//! file or directory. A reference that does not resolve is an error: it would
+//! silently match nothing, and the gate or required-reviewer rule it encodes
+//! would go dark while CI stayed green.
 //!
 //! Crates live under one of 11 functional group folders
 //! (`crates/<group>/chio-*`); the extractor anchors on `crates/<group>/chio-`
-//! for each known group so a literal that lost its group segment (or names an
+//! for each known group so a literal that omits its group segment (or names an
 //! unknown group) is not silently skipped.
 
 use std::fs;
@@ -19,9 +19,9 @@ use crate::{workspace_root, XtaskError};
 
 /// The 11 functional crate-group folders under `crates/`. A path literal that
 /// names a crate is `crates/<group>/chio-...`. The extractor matches these
-/// group prefixes AND the bare `crates/chio-...` shape (a literal that lost its
-/// group segment after the Phase 6 move): the bare form never resolves, so it
-/// is reported as a violation rather than silently skipped (fail-closed).
+/// group prefixes AND the bare `crates/chio-...` shape (a literal with no group
+/// segment): the bare form never resolves, so it is reported as a violation
+/// rather than silently skipped (fail-closed).
 const CRATE_GROUPS: [&str; 11] = [
     "core",
     "kernel",
@@ -85,11 +85,10 @@ fn group_prefix_len(bytes: &[u8]) -> Option<usize> {
     None
 }
 
-/// If `bytes` begins with the stale group-less `crates/chio-` prefix, return
-/// its length so the literal is extracted and checked. Every crate now lives
-/// under `crates/<group>/`, so a group-less path never resolves after the move;
-/// extracting it lets `find_violations` report it (fail-closed) instead of
-/// silently skipping a missed migration.
+/// If `bytes` begins with the group-less `crates/chio-` prefix, return its
+/// length so the literal is extracted and checked. Every crate lives under
+/// `crates/<group>/`, so a group-less path never resolves; extracting it lets
+/// `find_violations` report it (fail-closed) instead of silently skipping it.
 fn bare_crate_prefix_len(bytes: &[u8]) -> Option<usize> {
     const BARE: &[u8] = b"crates/chio-";
     bytes.starts_with(BARE).then_some(BARE.len())
@@ -172,9 +171,9 @@ pub fn normalize_for_resolution(raw: &str) -> Option<Resolution> {
 /// Join `segments` into a `crates/.../chio-<name>/...` prefix, returning `None`
 /// when nothing more specific than a truncated `chio-` remains. The
 /// `chio-<name>` segment is the third in the grouped layout
-/// (`crates` / `<group>` / `chio-<name>`) or the second in a stale group-less
-/// path (`crates` / `chio-<name>`); either is resolved so a group-less literal
-/// is reported as a missing path rather than silently skipped. Trims a trailing
+/// (`crates` / `<group>` / `chio-<name>`) or the second in a group-less path
+/// (`crates` / `chio-<name>`); either is resolved so a group-less literal is
+/// reported as a missing path rather than silently skipped. Trims a trailing
 /// sentence period.
 fn concrete_prefix(segments: &[&str]) -> Option<String> {
     if segments.first() != Some(&"crates") {
@@ -409,11 +408,10 @@ mod tests {
 
     #[test]
     fn extract_catches_group_less_literal() {
-        // A `crates/chio-...` literal that lost its `<group>/` segment after the
-        // move IS extracted so `find_violations` reports it. Every crate now
-        // lives under `crates/<group>/`, so a group-less path never resolves;
-        // skipping it would let a missed migration in the curated scan targets
-        // pass CI silently instead of failing closed.
+        // A group-less `crates/chio-...` literal IS extracted so `find_violations`
+        // reports it. Every crate lives under `crates/<group>/`, so a group-less
+        // path never resolves; skipping it would let an unresolved reference in
+        // the curated scan targets pass CI silently instead of failing closed.
         let got = extract_crate_paths("x: crates/chio-kernel/src/lib.rs\n");
         assert_eq!(got, vec!["crates/chio-kernel/src/lib.rs".to_string()]);
         // ...and it resolves to a concrete path check, so the missing file is a

@@ -13,20 +13,6 @@
 - `smoke.sh` owns the live trust service, app process, sidecar, capability,
   receipt-store, and content-hash proof loop.
 
-## Pain Points
-
-- The previous single `main.cpp` mixed environment parsing, Chio middleware
-  configuration, Drogon route registration, JSON payload parsing, response
-  construction, and validation.
-- Echo accepted missing, empty, non-string, or non-positive payload fields even
-  though the OpenAPI contract described a structured JSON body.
-- The smoke script still used an older demo capability tool name and CLI receipt
-  listing path instead of the current HTTP authority capability and direct
-  receipt-store evidence used by the hardened HTTP examples.
-- Local contract behavior had no focused test target; only the live smoke could
-  notice a route-contract regression, and that smoke may skip on machines
-  without Drogon.
-
 ## Security And API Constraints
 
 - `GET /hello` and `POST /echo` must remain protected by
@@ -48,10 +34,3 @@
 - `sdks/cpp/chio-drogon` stays the dependency. Its own package tests prove the
   middleware type and configuration surface; this example proves route contracts
   and live receipt flow.
-
-## Planned Improvement
-
-Split route-contract ownership out of `main.cpp`, add focused C++ contract
-tests for readiness, hello, and echo validation, tighten the OpenAPI schema, and
-update the live smoke to use current HTTP authority capability issuance plus
-direct SQLite receipt verification.

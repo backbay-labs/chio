@@ -7,7 +7,7 @@ use chio_core::LoadedWeightsUnavailable;
 use chio_tool_call_fabric::{DenyReason, ProviderError, ProviderId, ToolInvocation, VerdictResult};
 pub use sse::{parse_sse_frames, SseFrame, SseParseOptions, UnknownSseFieldPolicy};
 
-/// Common adapter identity surface used by conformance and refactor helpers.
+/// Common adapter identity surface shared across provider adapters.
 pub trait Provider {
     fn provider_id(&self) -> ProviderId;
 

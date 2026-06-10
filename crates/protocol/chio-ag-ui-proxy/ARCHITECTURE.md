@@ -10,16 +10,15 @@ payload hashing plus AG-UI receipt signing and verification. `transport.rs`
 owns connection metadata and forwarded or blocked counters. `lib.rs` exposes
 the public facade without hiding those modules.
 
-## Completed Event Identity Boundary Slice
+## Event Identity Boundary
 
 `proxy.rs` is the dominant file and combines boundary validation, policy
 derivation, capability scope matching, budget accounting, and tests. The
-highest-risk issue is not line count alone: `AgUiProxy::evaluate` currently
-used to trust caller-supplied event identifiers before using them in receipt
-ids, payload-scope arguments, audit metadata, and transport decisions. Empty
-`event_id`, `agent_id`, session ids, or target component fields could therefore
-reach receipt construction or scope comparison as if they were meaningful
-protocol identities.
+highest-risk surface is not line count alone: `AgUiProxy::evaluate` consumes
+caller-supplied event identifiers in receipt ids, payload-scope arguments,
+audit metadata, and transport decisions. Empty `event_id`, `agent_id`, session
+ids, or target component fields must not reach receipt construction or scope
+comparison as if they were meaningful protocol identities.
 
 ## Security and API Constraints
 

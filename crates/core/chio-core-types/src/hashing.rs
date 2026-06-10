@@ -1,8 +1,7 @@
 //! Cryptographic hashing (SHA-256).
 //!
-//! Provides a typed 32-byte `Hash` value and SHA-256 convenience functions.
-//! Ported from hush-core's `hashing` module for use in Merkle trees and
-//! receipt log integrity proofs.
+//! Provides a typed 32-byte `Hash` value and SHA-256 convenience functions
+//! for use in Merkle trees and receipt log integrity proofs.
 
 use alloc::format;
 use alloc::string::{String, ToString};

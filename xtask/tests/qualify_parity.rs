@@ -1,16 +1,10 @@
 // Retirement guard for the bounded-chio qualification gate.
 //
-// `scripts/qualify-bounded-chio.sh` was a doc-grep tautology: it copied docs
-// into target/, generated a checklist, and emitted a SHA256SUMS manifest whose
-// only inputs were files it had just copied. It additionally had drifted red
-// (its hard-coded README reference list named release docs the README no longer
-// links). The single load-bearing contract it guarded - the structural shape of
-// the bounded qualification matrix - was ported to `cargo xtask qualify
-// bounded-chio` (see xtask/src/qualify.rs) and proved equivalent via a dual-run
-// parity sweep before the script was deleted. This test enforces that the
-// script stays retired: a re-added script would resurrect the tautology and
-// would not be exercised by any workflow (the matrix entrypoint and the release
-// docs now point at the xtask leaf).
+// The bounded-chio qualification contract lives in `cargo xtask qualify
+// bounded-chio` (see xtask/src/qualify.rs). The `scripts/qualify-bounded-chio.sh`
+// path must stay absent: the matrix entrypoint and the release docs point at the
+// xtask leaf, so a re-added script would not be exercised by any workflow. This
+// test fails if that script path reappears.
 
 use std::path::PathBuf;
 

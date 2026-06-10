@@ -29,8 +29,8 @@
 //! Rekor/OTS clients all transit cryptographic verification (ECDSA
 //! P-256, X.509 chain, COSE/CBOR) and async network I/O; both are
 //! out of scope for symbolic execution. Their fail-closed properties
-//! are pinned by the existing integration tests under
-//! `crates/chio-anchor/tests/` and by the conformance lane.
+//! are pinned by the integration tests under
+//! `crates/economy/chio-anchor/tests/` and by the conformance lane.
 //!
 //! # Bound parameters
 //!
@@ -42,7 +42,7 @@
 //!   subtraction in the function body absorbs the underflow case
 //!   without further bounds.
 //! - Per-harness `#[kani::unwind(8)]` matches the workspace default
-//!   established by `crates/chio-kernel-core/src/kani_public_harnesses.rs`.
+//!   established by `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`.
 //!
 //! # Anti-pattern guard
 //!
@@ -71,14 +71,13 @@
 //!   A regression in the production function that left the model
 //!   unchanged would NOT trip Kani; the runtime regression is caught
 //!   instead by:
-//!     - `crates/chio-anchor/tests/witness_policy.rs` (pinned by
-//!       the existing integration tests for advisory-path
-//!       fail-closed semantics, including
+//!     - the advisory-path fail-closed tests in
+//!       `crates/economy/chio-anchor/src/witness.rs`, covering
 //!       `WitnessPolicyError::PendingNotAllowed`,
 //!       `WitnessPolicyError::SelfAssertedWitnessed`, and
-//!       `WitnessPolicyError::StaleNotPreviouslyVerified`).
-//!     - The negative conformance regression tests under
-//!       `crates/chio-conformance/tests/`.
+//!       `WitnessPolicyError::StaleNotPreviouslyVerified`.
+//!     - the negative conformance regression tests under
+//!       `crates/tooling/chio-conformance/tests/`.
 
 extern crate alloc;
 
@@ -143,7 +142,7 @@ fn pick_lane_kind(pick: u8) -> AnchorLaneKind {
 /// emergency.
 ///
 /// Production entry: `chio_anchor::ops::AnchorEmergencyControls::allows`
-/// (`pub fn` at `crates/chio-anchor/src/ops.rs:86`).
+/// (`pub fn` at `crates/economy/chio-anchor/src/ops.rs:86`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_anchor_emergency_controls_allows_truth_table() {
@@ -197,7 +196,7 @@ pub fn public_anchor_emergency_controls_allows_truth_table() {
 /// `Err(_)` would be a fail-open bug.
 ///
 /// Production entry: `chio_anchor::ops::ensure_anchor_operation_allowed`
-/// (`pub fn` at `crates/chio-anchor/src/ops.rs:383`).
+/// (`pub fn` at `crates/economy/chio-anchor/src/ops.rs:383`).
 ///
 /// Bounds: the production function constructs an `AnchorError::InvalidInput`
 /// payload via `format!()` on the fail-closed arm. The `format!()`
@@ -212,7 +211,7 @@ pub fn public_anchor_emergency_controls_allows_truth_table() {
 ///     truth-table harness above, which calls `controls.allows()`
 ///     directly and finishes in ~0.1s).
 ///   - The runtime negative tests under
-///     `crates/chio-anchor/tests/` that exercise the
+///     `crates/economy/chio-anchor/tests/` that exercise the
 ///     `format!()`-based error path.
 #[kani::proof]
 #[kani::unwind(4)]
@@ -260,7 +259,7 @@ pub fn public_ensure_anchor_operation_allowed_fail_closed() {
 ///   the lane MUST classify as `Healthy`.
 ///
 /// Production entry: `chio_anchor::ops::classify_anchor_lane`
-/// (`pub fn` at `crates/chio-anchor/src/ops.rs:346`).
+/// (`pub fn` at `crates/economy/chio-anchor/src/ops.rs:346`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_classify_anchor_lane_invariants() {
@@ -348,7 +347,7 @@ pub fn public_classify_anchor_lane_invariants() {
 /// behind incident.
 ///
 /// Production entry: `chio_anchor::ops::AnchorIndexerCursor::from_sequences`
-/// (`pub fn` at `crates/chio-anchor/src/ops.rs:167`).
+/// (`pub fn` at `crates/economy/chio-anchor/src/ops.rs:167`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_anchor_indexer_cursor_lag_classification() {
@@ -504,7 +503,7 @@ fn model_evaluate_witness_policy(
 /// client.
 ///
 /// Production entry: `chio_anchor::witness::evaluate_witness_policy`
-/// (`pub fn` at `crates/chio-anchor/src/witness.rs:312`). The full
+/// (`pub fn` at `crates/economy/chio-anchor/src/witness.rs:312`). The full
 /// `evaluate_witness_policy_with_verifier` async path is intractable
 /// here (it transits canonical JSON + SHA-256 + an async client).
 #[kani::proof]

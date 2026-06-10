@@ -144,7 +144,7 @@ fn oid4vp_request_fixture() -> &'static Oid4vpRequestObject {
 ///
 /// Bytes are interpreted as a UTF-8 compact-JWT string carrying a
 /// `direct_post.jwt` OID4VP response (see
-/// `crates/chio-credentials/src/oid4vp.rs::verify_oid4vp_direct_post_response`).
+/// `crates/trust/chio-credentials/src/oid4vp.rs::verify_oid4vp_direct_post_response`).
 /// The verifier parses three base64url segments, decodes the header and
 /// payload as JSON, decodes the embedded `vp_token` as an SD-JWT VC, and
 /// verifies the holder-binding signature against the credential's `cnf.jwk`.

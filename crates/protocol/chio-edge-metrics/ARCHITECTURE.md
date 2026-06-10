@@ -21,11 +21,10 @@ constants, rendering logic, and counter handling, which made it easy for an
 edge to drift from the workspace registry or accidentally lose per-edge
 isolation.
 
-Before this slice, the counter API exposed typed outcomes and snapshots, but
-snapshot consumers still needed to re-create outcome ordering or query totals
-one label at a time. That kept the Prometheus renderer correct but left
-downstream tests and future non-Prometheus exporters closer to stringly typed
-access than they needed to be.
+A counter API that exposes typed outcomes and snapshots but forces snapshot
+consumers to re-create outcome ordering or query totals one label at a time
+keeps the Prometheus renderer correct while leaving downstream tests and
+non-Prometheus exporters closer to stringly typed access than they need to be.
 
 ## Security And API Constraints
 
@@ -42,8 +41,8 @@ access than they needed to be.
 
 `chio-mcp-edge`, `chio-acp-edge`, and `chio-a2a-edge` depend on the public
 counter and rendering APIs. `chio-conformance` verifies that those edge crates
-emit the registry-backed metric and keep per-edge counters isolated. This slice
-did not require transitive code changes because the improvement is additive.
+emit the registry-backed metric and keep per-edge counters isolated. The public
+API is additive, so dependents need no transitive code changes.
 
 ## Material Improvement
 

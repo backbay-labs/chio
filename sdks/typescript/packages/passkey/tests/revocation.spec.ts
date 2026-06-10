@@ -159,9 +159,8 @@ describe('@chio-protocol/passkey revocation cascade', () => {
   test('mint after revoke returns a fresh capability the kernel still denies', async () => {
     // Browser-side mint succeeds (the test-double doesn't gate mint on
     // revocation; that policy lives at the issuer in the kernel-side
-    // implementation). Even so, the kernel verdict denies the capability
-    // because the credential id is in the revocation set, so the cascade
-    // closes the loop.
+    // implementation). The kernel verdict still denies the capability
+    // because the credential id is in the revocation set.
     const cap = await requestCapability({
       rpId: 'localhost',
       audience: AUDIENCE,

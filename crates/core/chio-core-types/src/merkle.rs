@@ -7,8 +7,6 @@
 //! This implementation does **not** "duplicate last" when a level has an odd
 //! number of nodes; it carries the last node upward unchanged (left-balanced /
 //! append-only semantics).
-//!
-//! Ported from hush-core's `merkle` module.
 
 use alloc::vec::Vec;
 

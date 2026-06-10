@@ -71,14 +71,12 @@ std = [
 # `aws-lc-rs` itself is std-only.
 fips = ["dep:aws-lc-rs", "std"]
 pq = ["dep:fips204"]
-# Recursive-delegation primitive retained as a compatibility feature name.
-# The recursive-delegation wire primitive is now always available, including no-default
-# builds; this feature is a no-op for downstream manifests that still enable it.
+# The recursive-delegation wire primitive is always compiled in, including
+# no-default builds, so this feature is a no-op kept for downstream manifests
+# that enable it by name.
 delegation = []
-# Backward-compatibility alias for the legacy `delegation_v2` feature name.
-# External path/git consumers that still depend on
-# `features = ["delegation_v2"]` continue to resolve. Both spellings are
-# no-ops today; new code should use `delegation`.
+# Alias of `delegation` so consumers pinning `features = ["delegation_v2"]`
+# continue to resolve. Both spellings are no-ops; new code should use `delegation`.
 delegation_v2 = ["delegation"]
 
 [dev-dependencies]

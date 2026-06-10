@@ -511,7 +511,7 @@ pub fn promote_to_fixtures(
 /// Auto-promote failing scenarios to the chio-adversarial-suite
 /// per-class corpus.
 ///
-/// When `crates/chio-adversarial-suite/cases/` is absent, the writer
+/// When `crates/core/chio-adversarial-suite/cases/` is absent, the writer
 /// falls back to `target/arena/promote-pending/`. The returned summary
 /// records which target was chosen.
 pub fn promote_to_adversarial_suite(
@@ -531,6 +531,7 @@ pub fn promote_to_adversarial_suite(
     let family = adversarial_class_dirname(class);
     let live_root = workspace_root
         .join("crates")
+        .join("core")
         .join("chio-adversarial-suite")
         .join("cases");
     let live_target = live_root.is_dir();

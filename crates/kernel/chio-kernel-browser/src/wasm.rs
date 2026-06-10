@@ -3,8 +3,8 @@
 //! wasm toolchain.
 
 use alloc::collections::BTreeMap;
-use alloc::string::String;
 use alloc::format;
+use alloc::string::String;
 use alloc::vec::Vec;
 
 use chio_core_types::capability::{features::CapabilityNegotiation, token::CapabilityToken};

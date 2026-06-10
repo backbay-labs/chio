@@ -2,7 +2,7 @@
 
 ## Bilateral verifier schema completion
 
-The federation crate now keeps two separate verifier profiles:
+The federation crate keeps two separate verifier profiles:
 
 - `chio.bilateral-signature-slice.v1` remains the compatibility profile for
   legacy local receipt binding.

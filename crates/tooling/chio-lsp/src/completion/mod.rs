@@ -7,8 +7,7 @@
 //! - guard identifiers (the `guards` key, native and WASM),
 //! - policy keys (top-level keys in `chio.yaml`).
 //!
-//! The catalog stays intentionally small; additional entries can be
-//! contributed over time.
+//! The catalog is intentionally small and curated rather than exhaustive.
 
 pub mod guards;
 pub mod scopes;

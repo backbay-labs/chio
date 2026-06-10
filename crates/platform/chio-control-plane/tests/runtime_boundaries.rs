@@ -132,19 +132,19 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
 
     assert!(
         line_count("crates/protocol/chio-mcp-remote/src/remote_mcp/http_service.rs") <= 2600,
-        "remote_mcp http_service.rs regrew past the phase-180 ceiling",
+        "remote_mcp http_service.rs exceeded its 2600-line ceiling",
     );
     assert!(
         line_count("crates/platform/chio-control-plane/src/trust_control.rs") <= 21500,
-        "trust_control.rs regrew past the phase-180 ceiling",
+        "trust_control.rs exceeded its 21500-line ceiling",
     );
     assert!(
         line_count("crates/protocol/chio-mcp-edge/src/runtime.rs") <= 6600,
-        "chio-mcp-edge runtime.rs regrew past the phase-180 ceiling",
+        "chio-mcp-edge runtime.rs exceeded its 6600-line ceiling",
     );
     assert!(
         line_count("crates/kernel/chio-kernel/src/lib.rs") <= 11800,
-        "chio-kernel lib.rs regrew past the phase-180 ceiling",
+        "chio-kernel lib.rs exceeded its 11800-line ceiling",
     );
 }
 

@@ -181,8 +181,8 @@ jobs:
           # the workflow fails closed and the PR is never opened.
           mkdir -p "${GITHUB_WORKSPACE}/gitleaks-out"
           report="${GITHUB_WORKSPACE}/gitleaks-out/report.json"
-          # gitleaks protect --staged scans staged changes (the seeds
-          # we just copied) without depending on the upstream history.
+          # gitleaks protect --staged scans staged changes (the copied
+          # seeds) without depending on the upstream history.
           gitleaks protect --staged \
             --redact \
             --report-format=json \

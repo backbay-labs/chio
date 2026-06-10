@@ -714,7 +714,7 @@ class TestForwardingTablePassthroughHelper:
 
 
 class TestFixedPositionalWithVarPositional:
-    """Coverage for ``def fn(path, *args)`` shape (closes 3228423995)."""
+    """Coverage for ``def fn(path, *args)`` shape."""
 
     def test_var_positional_secret_is_redacted_via_tool_arity_table(
         self,
@@ -785,7 +785,7 @@ class TestFixedPositionalWithVarPositional:
 
 
 class TestPositionalOnlyVarKeywordSpillover:
-    """Coverage for ``def fn(path, /, **kw)`` spillover (closes 3228423999)."""
+    """Coverage for ``def fn(path, /, **kw)`` spillover."""
 
     def test_positional_only_with_same_named_var_keyword_spillover(
         self,

@@ -16,7 +16,7 @@
 //! fitness, an action that escapes (the guards return Allow when the
 //! adversary expected Deny) raises it. The fitness function consumes
 //! the verdict-matrix oracle shape from
-//! `crates/chio-conformance/verdict_matrix/`; the matrix crate lives in
+//! `crates/tooling/chio-conformance/verdict_matrix/`; the matrix crate lives in
 //! its own workspace, so we mirror the `(Verdict, reason_code,
 //! scope_set)` tuple here and document the soft-coupling. The diff
 //! implementation is the cross-provider verdict equality oracle; the
@@ -64,7 +64,7 @@ use crate::adversary::{
 use crate::scenario::{ScenarioStep, ScenarioVerdict};
 
 /// Verdict tuple mirroring the verdict-matrix oracle
-/// (`crates/chio-conformance/verdict_matrix/`). The matrix crate lives in
+/// (`crates/tooling/chio-conformance/verdict_matrix/`). The matrix crate lives in
 /// its own Cargo workspace, so the arena re-declares the tuple shape and
 /// keeps the soft-coupling in commentary. The variants and reason-code
 /// string layout match the matrix exactly.

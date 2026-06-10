@@ -1,5 +1,5 @@
 /-
-  Chio capability properties proven in the bounded phase-300 proof lane.
+  Chio capability properties proven over the bounded capability model.
 
   P1: Capability monotonicity (delegation can only attenuate)
   P1a: Empty scope monotonicity

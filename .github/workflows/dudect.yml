@@ -253,8 +253,8 @@ jobs:
           set -euo pipefail
           mkdir -p prior-run
           # `gh run download` exits non-zero if the prior run has no
-          # artifacts (rare but possible if it was cancelled before
-          # upload). Soft-fail so we just treat that as "no baseline".
+          # artifacts (possible if it was cancelled before upload).
+          # Soft-fail and treat that as "no baseline".
           gh run download "${{ steps.prior.outputs.prior_id }}" \
             --pattern 'dudect-nightly-*' \
             --dir prior-run \

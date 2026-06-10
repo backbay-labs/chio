@@ -27,10 +27,10 @@
 //! `contains`: even with a fixed two-element set, the symbolic
 //! `BTreeSet<String>` lookup path exceeds the workspace
 //! `#[kani::unwind(8)]` envelope. Per the convention in
-//! `crates/chio-kernel-core/src/kani_public_harnesses.rs`, those
+//! `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`, those
 //! surfaces are pinned by the runtime tests in `src/card.rs::tests`,
 //! `src/lineage.rs::tests`, and the integration tests under
-//! `crates/chio-weights/tests/`. The harnesses below cover the
+//! `crates/trust/chio-weights/tests/`. The harnesses below cover the
 //! algebraic core that fits within the unwind envelope:
 //! `require_live`, the schema-version pin in `ModelCard::new`, the
 //! `WeightsError::urn` mapping, and the `weights_hash_of` byte
@@ -50,7 +50,7 @@
 //!   from constants because `ModelCard::new` calls into `chrono` and
 //!   `serde` paths that are intractable for symbolic execution.
 //! - Per-harness `#[kani::unwind(8)]` matches the workspace default
-//!   established by `crates/chio-kernel-core/src/kani_public_harnesses.rs`.
+//!   established by `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`.
 //!
 //! # Anti-pattern guard
 //!
@@ -106,8 +106,8 @@ fn fixture_card(issued_at: DateTime<Utc>, expires_at: DateTime<Utc>) -> ModelCar
 /// `weights_hash`.
 ///
 /// Production entry: `chio_weights::card::weights_hash_of`
-/// (`pub fn` at `crates/chio-weights/src/card.rs:274`,
-/// re-exported via `crates/chio-weights/src/lib.rs:44`).
+/// (`pub fn` at `crates/trust/chio-weights/src/card.rs:274`,
+/// re-exported via `crates/trust/chio-weights/src/lib.rs:44`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_weights_hash_of_determinism_and_tampering() {
@@ -155,7 +155,7 @@ pub fn public_weights_hash_of_determinism_and_tampering() {
 /// itself remains valid.
 ///
 /// Production entry: `chio_weights::card::ModelCard::require_live`
-/// (`pub fn` at `crates/chio-weights/src/card.rs:236`).
+/// (`pub fn` at `crates/trust/chio-weights/src/card.rs:236`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_model_card_require_live_fail_closed() {
@@ -218,7 +218,7 @@ pub fn public_model_card_require_live_fail_closed() {
 /// two distinct refusal classes in the audit trail.
 ///
 /// Production entry: `chio_weights::error::WeightsError::urn`
-/// (`pub fn` at `crates/chio-weights/src/error.rs:75`).
+/// (`pub fn` at `crates/trust/chio-weights/src/error.rs:75`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_weights_error_urn_is_stable() {
@@ -296,7 +296,7 @@ pub fn public_weights_error_urn_is_stable() {
 ///
 /// Production entries:
 /// - `chio_weights::card::ModelCard::new`
-///   (`pub fn` at `crates/chio-weights/src/card.rs:172`).
+///   (`pub fn` at `crates/trust/chio-weights/src/card.rs:172`).
 /// - `chio_weights::card::CARD_VERSION_V1` constant.
 #[kani::proof]
 #[kani::unwind(8)]

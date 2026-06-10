@@ -195,8 +195,8 @@ mod replay_policy_ref_tests {
 
     #[test]
     fn bare_at_token_falls_through_to_path_when_semver_invalid() {
-        // `policy@latest` is not the previously advertised package-version
-        // coordinate, so it remains available as an ordinary path-like token.
+        // `policy@latest` is not a valid package-version coordinate, so it
+        // parses as an ordinary path-like token rather than erroring.
         let parsed = PolicyRef::parse("policy@latest").unwrap();
         assert!(matches!(parsed, PolicyRef::WorkspacePath(_)));
     }

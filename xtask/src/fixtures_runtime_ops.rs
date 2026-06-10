@@ -1,16 +1,12 @@
-// Ops-hardening and orchestration runtime handlers, ported from
-// `scripts/check-chio-runtime-ops-hardening.sh` and
-// `scripts/check-chio-runtime-orchestration.sh`. Split out of
-// `fixtures_runtime.rs` to keep each include file under the 2000-line cap;
-// included transitively into `fixtures.rs`.
+// Ops-hardening and orchestration runtime handlers. Split out of
+// `fixtures_runtime.rs` and `include!`d transitively into `fixtures.rs`.
 
 // -- runtime-ops-hardening -------------------------------------------------
 
-/// `check-chio-runtime-ops-hardening.sh`. The script's `full` mode runs the
-/// runtime-core/CLI surface tests, the schema flow, and the tick / status /
-/// recovery / evidence / provider / retention / negative / failure-code flows.
-/// `schema-only` runs the schema flow; `negative-only` runs the negative flow.
-/// The script's narrower single-flow modes are covered by the `all` path.
+/// `all` runs the runtime-core/CLI surface tests, the schema flow, and the
+/// tick / status / recovery / evidence / provider / retention / negative /
+/// failure-code flows. `schema-only` runs the schema flow; `negative-only` runs
+/// the negative flow.
 fn handle_ops_hardening(
     root: &Path,
     _manifest: &RuntimeManifest,
@@ -39,7 +35,7 @@ fn handle_ops_hardening(
     ops_failure_code_flow(root, &common)
 }
 
-/// The common fixtures the ops script materializes once and reuses across flows.
+/// The common fixtures materialized once and reused across the ops flows.
 struct OpsFixtures {
     supervisor_profile: PathBuf,
     provider_bindings: PathBuf,
@@ -455,7 +451,7 @@ fn ops_failure_code_flow(root: &Path, fx: &OpsFixtures) -> Result<(), XtaskError
     Ok(())
 }
 
-/// True if any file under `dir` contains `needle` (the script's `grep -rq`).
+/// True if any file under `dir` contains `needle`.
 fn tree_contains(dir: &Path, needle: &str) -> Result<bool, XtaskError> {
     for path in walk_files(dir)? {
         let text = fs::read_to_string(&path).map_err(|err| XtaskError::Io(display(&path), err))?;
@@ -468,11 +464,10 @@ fn tree_contains(dir: &Path, needle: &str) -> Result<bool, XtaskError> {
 
 // -- runtime-orchestration -------------------------------------------------
 
-/// `check-chio-runtime-orchestration.sh`. `all` runs the runtime-core /
-/// orchestration / drift / CLI surface tests, the schema checks, the positive
-/// lint/plan/run/status flow, the resume flow, the drift flow, and the negative
-/// flow. `schema-only` runs the schema checks; `negative-only` runs the negative
-/// flow. The script's narrower single-flow modes are covered by the `all` path.
+/// `all` runs the runtime-core / orchestration / drift / CLI surface tests, the
+/// schema checks, the positive lint/plan/run/status flow, the resume flow, the
+/// drift flow, and the negative flow. `schema-only` runs the schema checks;
+/// `negative-only` runs the negative flow.
 fn handle_orchestration(
     root: &Path,
     _manifest: &RuntimeManifest,
@@ -566,8 +561,7 @@ fn orch_schema_checks(root: &Path, fx: &OrchFixtures) -> Result<(), XtaskError> 
 }
 
 /// Build an evidence directory with a self-consistent hash chain (workflow run
-/// report -> proof regeneration report -> verifier report -> evidence manifest),
-/// mirroring the script's `make_evidence_dir` + its python recompute.
+/// report -> proof regeneration report -> verifier report -> evidence manifest).
 fn orch_make_evidence_dir(
     dir: &Path,
     run_id: &str,
@@ -928,7 +922,7 @@ fn orch_negative_flow(
 }
 
 /// Corrupt the verifier report's `packageSha256` and re-chain the proof,
-/// workflow, and manifest hashes (mirrors the script's mismatch python).
+/// workflow, and manifest hashes.
 fn orch_corrupt_verifier_package_sha(dir: &Path) -> Result<(), XtaskError> {
     let verifier_path = dir.join("verifier-report.json");
     let mut verifier = load_json(&verifier_path)?;

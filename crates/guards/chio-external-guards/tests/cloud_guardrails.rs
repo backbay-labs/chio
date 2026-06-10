@@ -158,13 +158,11 @@ async fn cloud_guardrails_recheck_runtime_endpoints_before_send() {
 
 #[test]
 fn bedrock_default_hostname_constructs_with_connect_time_egress() {
-    // Egress enforcement for the default Bedrock hostname moved from
-    // construction to connect (the same relocation applied to chio-anchor and
-    // chio-link): https-only, the IP denylist, and DNS resolution are checked
-    // inside eval, not in the constructor. The connect-time denial path is
-    // exercised by cloud_guardrails_recheck_runtime_endpoints_before_send. This
-    // test guards the relocation by asserting a default config (no pre-resolved
-    // endpoint) builds successfully.
+    // Egress enforcement for the default Bedrock hostname runs at connect, not
+    // construction: https-only, the IP denylist, and DNS resolution are checked
+    // inside eval. The connect-time denial path is exercised by
+    // cloud_guardrails_recheck_runtime_endpoints_before_send. A default config
+    // with no pre-resolved endpoint builds successfully.
     BedrockGuardrailGuard::new(BedrockGuardrailConfig::new(
         "test-token",
         "us-east-1",

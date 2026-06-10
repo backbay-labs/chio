@@ -4,7 +4,7 @@ chio-replay-gate test signing seed
 WARNING: NON-PRODUCTION TEST KEY MATERIAL.
 
 This file (`test-key.seed`) holds the 32 raw bytes of an Ed25519 signing
-seed used exclusively by the M04 deterministic-replay gate. It is NOT a
+seed used exclusively by the deterministic-replay gate. It is NOT a
 secret and MUST NOT be reused for any production credential, capability
 issuer, or signing role.
 

@@ -190,7 +190,7 @@ fn arb_lifecycle_state() -> impl Strategy<Value = PassportLifecycleState> {
 /// Build a well-formed `PassportLifecycleResolution` for an arbitrary
 /// passport with the requested lifecycle state. State-specific fields are
 /// populated to satisfy `validate_passport_lifecycle_state_fields` in
-/// `crates/chio-credentials/src/passport.rs`. Uses the public surface
+/// `crates/trust/chio-credentials/src/passport.rs`. Uses the public surface
 /// only.
 fn build_lifecycle_resolution(
     passport: &chio_credentials::AgentPassport,
@@ -271,7 +271,7 @@ fn build_lifecycle_resolution(
 }
 
 /// Mirror of the production cross-issuer policy gate from
-/// `crates/chio-credentials/src/cross_issuer.rs::evaluate_cross_issuer_portfolio`,
+/// `crates/trust/chio-credentials/src/cross_issuer.rs::evaluate_cross_issuer_portfolio`,
 /// reduced to the single load-bearing line: when
 /// `require_active_lifecycle` is set, only `Some(Active)` admits an entry.
 /// Encoded here as a deterministic predicate against
@@ -336,7 +336,7 @@ proptest! {
 //
 // NOTE: `verify_agent_passport` itself does not consume a lifecycle record;
 // the lifecycle gate lives in the cross-issuer policy
-// (`crates/chio-credentials/src/cross_issuer.rs`, the `require_active_lifecycle`
+// (`crates/trust/chio-credentials/src/cross_issuer.rs`, the `require_active_lifecycle`
 // branch of `evaluate_cross_issuer_portfolio`), which admits an entry only
 // when `state == Active`. Rather than asserting the same field value that
 // was stuffed into the resolution (a tautology), this test parameterizes

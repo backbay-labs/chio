@@ -39,7 +39,7 @@
 //! 4. Cross-receipt chain invariants are then checked over the verified
 //!    sequence: timestamp monotonicity (non-decreasing) and `kernel_key`
 //!    consistency (every receipt in a single log shares one signer). These
-//!    catch the reorder / chain-tamper class the Round-2 rationale calls out.
+//!    catch the reorder and chain-tamper class.
 //!
 //! As a fall-back interpretation, the entire input is also fed once through
 //! `serde_json::from_slice::<ChioReceipt>` so libFuzzer can reach the

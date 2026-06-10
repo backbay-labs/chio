@@ -6,7 +6,7 @@
 //! 1. The kernel comes up with its classical Ed25519 keypair already
 //!    materialized. No PQ key has been touched.
 //! 2. The kernel requests its own TEE quote from the surrounding
-//!    [`chio-tee`](../../../chio-tee) container and feeds the bytes into a
+//!    `chio-tee` container and feeds the bytes into a
 //!    verifier-side [`KernelSelfQuoteVerifier`]. The quote
 //!    MUST commit to `expect_report_data(kernel_classical_pk,
 //!    receipt_root_genesis)` where `receipt_root_genesis` is the all-zero
@@ -26,7 +26,7 @@
 //! preserves that boundary. The verifier crate today carries TDX/SEV-SNP/
 //! Nitro backends each pulled in behind a cargo feature; the kernel does
 //! not need any of them at boot time. The port trait below is small enough
-//! to implement against [`QuoteVerifier`](../../../chio-attest-verify) by a
+//! to implement against `chio-attest-verify`'s `QuoteVerifier` by a
 //! one-line shim in the operator binary that wires the two crates together,
 //! and small enough to implement against an in-memory mock for the
 //! integration test.
@@ -105,7 +105,7 @@ impl KernelSelfQuoteOutcome {
 /// Port the kernel boot path consults to verify its own TEE quote.
 ///
 /// Implementations live in operator binaries (which compose
-/// [`chio-attest-verify`](../../../chio-attest-verify) backends) or in
+/// `chio-attest-verify` backends) or in
 /// integration tests (which inject a mock with a captured expected
 /// `report_data`). The port trait deliberately does not return the full
 /// `VerifiedQuote` shape: the kernel boot path only needs a yes/no

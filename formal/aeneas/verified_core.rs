@@ -4,8 +4,7 @@
 //
 // This file intentionally avoids external crates, async code, unsafe code,
 // heap allocation, and IO so Charon/Aeneas can extract a Lean model. It mirrors
-// the proof-facing shape of chio-kernel-core decisions and is used as the first
-// extraction lane before promoting Aeneas to production crate modules.
+// the proof-facing shape of chio-kernel-core decisions.
 
 pub enum Decision {
     Allow,

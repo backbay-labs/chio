@@ -9,7 +9,7 @@
 //! Companion fuzz target: `fuzz/fuzz_targets/wasm_guard_escape.rs`.
 //!
 //! The frozen runtime-limit snapshot at
-//! `crates/chio-wasm-guards/tests/escape/config.frozen.toml` guards
+//! `crates/guards/chio-wasm-guards/tests/escape/config.frozen.toml` guards
 //! against silent config drift: if the live `MAX_MEMORY_BYTES`,
 //! `DEFAULT_MAX_MODULE_SIZE`, or escape fuel ceiling change, every
 //! fixture in this harness fails until the snapshot and the live

@@ -1390,8 +1390,7 @@ mod tests {
 
     #[test]
     fn ed25519_hex_is_bare_64_chars() {
-        // Backward-compat: Ed25519 keys/signatures must serialize as plain hex
-        // with no prefix, so tokens produced before this phase verify unchanged.
+        // Ed25519 keys and signatures serialize as plain hex with no algorithm prefix.
         let kp = Keypair::generate();
         let pk_hex = kp.public_key().to_hex();
         assert_eq!(pk_hex.len(), 64);

@@ -9,17 +9,18 @@ signed manifests against Chio public keys. It should not own adapter-specific
 tool synthesis, kernel admission state, capability issuance, guard execution,
 or billing enforcement.
 
-## Current Pain Point
+## Pricing Metadata
 
 The manifest carries advisory pricing metadata that operators and authorities
-can use before issuing budgeted capabilities. `validate_manifest` already
-rejects malformed identity, schema, server-tool, and sandbox-permission
-metadata before a manifest is signed, but it does not validate pricing shape.
-That allows a signed manifest to advertise `per_invocation`, `per_unit`, or
-`hybrid` pricing without the required unit price or billing unit, or with a
-malformed currency code. The kernel still enforces issued capability budgets,
-but the signed discovery artifact should not contain ambiguous quote inputs
-that can mislead authority-side planning.
+can use before issuing budgeted capabilities. `validate_manifest` rejects
+malformed identity, schema, server-tool, sandbox-permission, and pricing
+metadata before a manifest is signed. Flat pricing requires a base price;
+per-invocation and per-unit pricing require a unit price plus billing unit;
+hybrid pricing requires both base and unit prices plus a billing unit. Any
+present price amount must carry a three-letter uppercase currency code, and
+billing units must be non-empty and unpadded. The kernel enforces issued
+capability budgets; the signed discovery artifact must not carry ambiguous
+quote inputs that mislead authority-side planning.
 
 ## Security And API Constraints
 
@@ -45,18 +46,8 @@ that can mislead authority-side planning.
 
 ## Affected Dependents
 
-Potential dependents are adapter tests and examples that synthesize manifests
-before calling `validate_manifest`. Structural validation should keep rejecting
-malformed tool schemas for those dependents, while unsigned/demo manifests with
-placeholder public keys remain usable until a caller explicitly signs or
-verifies the manifest. Maintained `NativeTool` pricing builders already emit
-the required fields, so dependent source changes should not be required.
-
-## Implemented Improvement
-
-Structural validation now checks optional per-tool pricing metadata before a
-manifest can be signed. Flat pricing requires a base price; per-invocation and
-per-unit pricing require a unit price plus billing unit; hybrid pricing requires
-both base and unit prices plus a billing unit. Any present price amount must
-carry a three-letter uppercase currency code, and billing units must be
-non-empty and unpadded.
+Dependents are adapter tests and examples that synthesize manifests before
+calling `validate_manifest`. Structural validation rejects malformed tool
+schemas for those dependents, while unsigned manifests with placeholder public
+keys remain usable until a caller explicitly signs or verifies the manifest.
+`NativeTool` pricing builders emit the required fields.

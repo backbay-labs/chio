@@ -1,6 +1,4 @@
-// Narrative beat storyboard (12 beats).
-//
-// Hardcoded narrative beats. Future versions may source this from artifacts.
+// Narrative beat storyboard (12 beats). Hardcoded.
 
 import type { Beat } from "./types";
 

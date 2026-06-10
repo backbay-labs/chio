@@ -1,6 +1,6 @@
 // `chio doctor` clap subcommand glue.
 //
-// Included from `crates/chio-cli/src/main.rs`. Owns the `DoctorArgs`
+// Included from `crates/products/chio-cli/src/main.rs`. Owns the `DoctorArgs`
 // type, the rendering of probe reports, and the entry point
 // `cmd_doctor` invoked from `dispatch.rs`.
 //

@@ -70,10 +70,8 @@ done
 #
 # The parser tolerates blank lines, comments (`//`, `/* */`), and stacked
 # attributes (e.g. `#[kani::unwind(N)]`) between the `#[kani::proof]`
-# attribute and the `fn` declaration. A previous version unconditionally
-# consumed the very next line and reset `want = 0`, which silently
-# dropped harnesses whose declaration was preceded by such intervening
-# lines and fail-opened the gate.
+# attribute and the `fn` declaration, so a harness whose declaration is
+# preceded by such intervening lines is not dropped from the gate.
 #
 # Portability: this script targets bash 3.2 (default macOS) and BSD awk.
 # That rules out `mapfile` and the gawk-only 3-arg `match()`. We use a

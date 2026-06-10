@@ -3,8 +3,7 @@
 // The replay engine retains a number of helper/API-completeness items
 // (renderers, schema accessors, receipt-id helpers) that are exercised by
 // integration tests and the broader replay surface rather than by the CLI
-// dispatch path. They are re-exported through this parent module so the
-// crate-internal `use` graph matches the prior flat `include!` layout.
+// dispatch path.
 #![allow(dead_code)]
 
 use super::*;

@@ -7,10 +7,9 @@ set -euo pipefail
 #   language := cpp | go | py | ts
 #
 # Each branch performs the language-specific smoke build and consumer
-# verification. The three legacy per-language entrypoints
-# (check-chio-go-release.sh, check-chio-py-release.sh,
-# check-chio-ts-release.sh) are thin wrappers around this script so that CI
-# invocations and release runbooks stay source-compatible.
+# verification. The per-language entrypoints (check-chio-go-release.sh,
+# check-chio-py-release.sh, check-chio-ts-release.sh, and the cpp variants)
+# are thin wrappers that dispatch here.
 
 if [[ $# -lt 1 ]]; then
   echo "usage: $(basename "$0") <cpp|cpp-kernel|guard-cpp|drogon|go|py|ts> [extra args]" >&2

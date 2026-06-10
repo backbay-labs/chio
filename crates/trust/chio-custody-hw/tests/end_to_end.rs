@@ -55,7 +55,7 @@ fn request(nonce: &str) -> MintRequest {
 /// Standalone re-implementation of the kernel verifier so the e2e test
 /// can live in chio-custody-hw without taking a circular dep on
 /// chio-kernel. This mirrors the four-gate behaviour exercised by
-/// crates/chio-kernel/tests/passkey_capability_dispatch.rs:
+/// crates/kernel/chio-kernel/tests/passkey_capability_dispatch.rs:
 ///
 /// - empty signatures NEVER verify,
 /// - audience must match,

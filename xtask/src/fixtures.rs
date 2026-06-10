@@ -1,13 +1,11 @@
 //! Pheromone fixture-and-schema gate (`cargo xtask check fixtures <facet>`).
 //!
-//! This is the consolidated replacement for the 15
-//! `scripts/check-chio-pheromone-*.sh` gates. The genuinely tabular per-facet
-//! data (schema-id/file maps, fixture dirs, schema-validate document lists,
-//! `cargo test` invocations, recursion edges, node-dashboard / sre-metrics
-//! flags) lives in `ci-gates/pheromone.toml`. The imperative per-facet steps
-//! that the manifest cannot express (CLI orchestration, fixture regeneration,
-//! retired-marker guards, npm dashboard checks) live in typed handlers keyed by
-//! [`Facet::kind`].
+//! The tabular per-facet data (schema-id/file maps, fixture dirs,
+//! schema-validate document lists, `cargo test` invocations, recursion edges,
+//! node-dashboard / sre-metrics flags) lives in `ci-gates/pheromone.toml`. The
+//! imperative per-facet steps the manifest cannot express (CLI orchestration,
+//! fixture regeneration, retired-marker guards, npm dashboard checks) live in
+//! typed handlers keyed by [`Facet::kind`].
 //!
 //! Fail-closed contract:
 //! - [`KNOWN_FACETS`] enumerates all 15 facets at compile time; the manifest
@@ -29,9 +27,9 @@ pub(crate) const MANIFEST_PATH: &str = "ci-gates/pheromone.toml";
 /// Relative path (from the workspace root) of the chio-runtime gate manifest.
 pub(crate) const RUNTIME_MANIFEST_PATH: &str = "ci-gates/runtime.toml";
 
-/// The six chio-runtime facets, consolidated from `scripts/check-chio-runtime-*.sh`.
-/// Compile-time fail-closed enumeration: the runtime manifest must list exactly
-/// these names, and the CLI rejects anything else.
+/// The six chio-runtime facets. Compile-time fail-closed enumeration: the
+/// runtime manifest must list exactly these names, and the CLI rejects anything
+/// else.
 pub(crate) const RUNTIME_KNOWN_FACETS: [&str; 6] = [
     "runtime-spine-fixtures",
     "runtime-spine",
@@ -163,9 +161,9 @@ impl RecurseEdge {
     }
 }
 
-/// Required schema shape per facet. `StrictObject` matches the scripts that
-/// assert `type=="object"` and `additionalProperties==false`; `FrozenObject`
-/// matches the scripts that assert `type=="object"` and a present `$id`.
+/// Required schema shape per facet. `StrictObject` requires `type=="object"`
+/// and `additionalProperties==false`; `FrozenObject` requires `type=="object"`
+/// and a present `$id`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SchemaCheck {
     StrictObject,
@@ -298,14 +296,12 @@ fn run_with(
         .ok_or_else(|| XtaskError::Usage(format!("unknown pheromone facet: {facet_name}")))?;
 
     // Pre-schema imperative guards (retired-marker / runbook / fixture-name
-    // scans) run first, exactly as the scripts do.
+    // scans) run first.
     pre_schema_guard(root, facet)?;
 
-    // The cargo-test placement differs per facet. `relay` and the two
-    // env-branch facets run cargo tests BEFORE the schema block; everything
-    // else runs the schema block first. We always run the schema/metadata
-    // block (it is in every mode), so order only matters for side-effect-free
-    // assertions, which these are.
+    // The schema/metadata block runs in every mode. Its assertions are
+    // side-effect-free, so the per-facet difference in cargo-test placement
+    // does not affect the outcome.
     run_schema_block(root, manifest, facet)?;
     run_metadata_block(root, facet)?;
 
@@ -357,8 +353,7 @@ fn run_runtime_validate_pairs(
     Ok(())
 }
 
-/// Run a runtime facet's manifest `cargo_tests` argv tails in order, each gated
-/// to a non-zero passed count (matching the scripts' `run_cargo_test_filter`).
+/// Run a runtime facet's manifest `cargo_tests` argv tails in order.
 fn run_runtime_cargo_tests(root: &Path, facet: &RuntimeFacet) -> Result<(), XtaskError> {
     for tail in &facet.cargo_tests {
         run_cargo_test(root, tail)?;
@@ -472,9 +467,8 @@ fn assert_schema_shape(file: &str, schema: &Value, check: SchemaCheck) -> Result
     Ok(())
 }
 
-/// Build a `schema-id -> schemaFile` map from the schema registry. Also rejects
-/// any artifact pointing at the retired `spec/schemas/chio/` schema root, which
-/// several scripts guarded against.
+/// Build a `schema-id -> schemaFile` map from the schema registry. Rejects any
+/// artifact pointing at the retired `spec/schemas/chio/` schema root.
 fn load_registry(
     root: &Path,
     manifest: &Manifest,
@@ -513,9 +507,9 @@ fn load_registry(
 
 // -- Per-facet metadata assertions ----------------------------------------
 
-/// Per-facet metadata assertions ported from each script's embedded python
-/// block. These confirm fixture invariants beyond pure schema validation
-/// (negative-corpus required codes, bounded metric labels, binding fields).
+/// Per-facet metadata assertions that confirm fixture invariants beyond pure
+/// schema validation (negative-corpus required codes, bounded metric labels,
+/// binding fields).
 fn run_metadata_block(root: &Path, facet: &Facet) -> Result<(), XtaskError> {
     let fixture_dir = root.join(&facet.fixture_dir);
     match facet.kind.as_str() {
@@ -682,7 +676,7 @@ const ARCHIVE_HARDENING_REQUIRED_CASES: [&str; 6] = [
 
 /// The two generic-kind facets (`relay-alert-assurance-archive-hardening`,
 /// `relay-alert-assurance-external-retention`) have only a negative-corpus
-/// assertion in their python block; dispatch by name.
+/// assertion; dispatch by name.
 fn metadata_generic(facet: &Facet, fixture_dir: &Path) -> Result<(), XtaskError> {
     match facet.name.as_str() {
         "relay-alert-assurance-archive-hardening" => metadata_negative_case_ids(
@@ -704,8 +698,8 @@ fn metadata_generic(facet: &Facet, fixture_dir: &Path) -> Result<(), XtaskError>
 // -- Imperative handler dispatch ------------------------------------------
 
 /// Run the non-schema-only body of a facet: cargo tests, imperative CLI
-/// orchestration, npm / sre-metrics calls, then recursion. Handlers honor
-/// `NegativeOnly` early-exit points exactly where the scripts did.
+/// orchestration, npm / sre-metrics calls, then recursion. Each handler honors
+/// its own `NegativeOnly` early-exit point.
 fn dispatch_handler(
     root: &Path,
     manifest: &Manifest,
@@ -1144,12 +1138,11 @@ mod tests {
 
     #[test]
     fn relay_schema_block_and_metadata_pass_against_committed_fixtures() {
-        // The relay runbook guard intentionally fires on the current branch
-        // (the runbook is the Chio runbook and cites the name), exactly as
-        // `check-chio-pheromone-relay.sh` does, so this test exercises only the
-        // schema + metadata block, which must pass against the committed
-        // fixtures. The guard's fail-closed behavior is covered separately by
-        // `relay_runbook_guard_reproduces_script_rejection`.
+        // The relay runbook guard intentionally fires (the runbook is the Chio
+        // runbook and cites the name), so this test exercises only the schema +
+        // metadata block, which must pass against the committed fixtures. The
+        // guard's fail-closed behavior is covered separately by
+        // `relay_runbook_guard_rejects_chio_named_runbook`.
         let root = crate::workspace_root().unwrap_or_else(|err| panic!("workspace root: {err}"));
         let manifest = load();
         let facet = manifest
@@ -1161,9 +1154,8 @@ mod tests {
     }
 
     #[test]
-    fn relay_runbook_guard_reproduces_script_rejection() {
-        // Parity: the consolidated relay guard must reject the same runbook the
-        // original `rg "Chio|CHIO|chio"` guard rejected (fail-closed).
+    fn relay_runbook_guard_rejects_chio_named_runbook() {
+        // Fail-closed: the relay guard rejects a runbook that cites the Chio name.
         let root = crate::workspace_root().unwrap_or_else(|err| panic!("workspace root: {err}"));
         let manifest = load();
         let facet = manifest
@@ -1283,8 +1275,8 @@ mod tests {
     fn runtime_spine_fixtures_validate_pairs_use_root_relative_docs() {
         // The runtime-spine-fixtures static validate pairs reference documents
         // by root-relative paths (they live under examples/...), and one schema
-        // is the cross-directory pheromone query-report schema. Confirm the
-        // manifest carries that shape so the slash-bearing resolver applies.
+        // is the cross-directory pheromone query-report schema. The manifest
+        // must carry that shape so the slash-bearing resolver applies.
         let manifest = load_runtime();
         let facet = manifest
             .facet_by_name("runtime-spine-fixtures")
@@ -1304,8 +1296,8 @@ mod tests {
 
     #[test]
     fn runtime_cargo_test_tails_are_present_where_expected() {
-        // Arg handling: the proof-parity facet's cargo_tests must include the
-        // chio-cli runtime filter the script ran, encoded as an argv tail.
+        // The proof-parity facet's cargo_tests must include the chio-cli runtime
+        // filter, encoded as an argv tail.
         let manifest = load_runtime();
         let facet = manifest
             .facet_by_name("runtime-proof-parity")

@@ -17,20 +17,6 @@ There is no package manager manifest in this example. It intentionally uses
 only the Python standard library so the first web-backend smoke path has no app
 SDK, middleware, or dependency installation step.
 
-## Current Pain Points
-
-- `app.py` mixes HTTP method dispatch, JSON serialization, content-length
-  parsing, request-body reading, JSON decoding, and echo payload validation in
-  one handler class.
-- The smoke script proves sidecar allow, deny, and receipt persistence, but the
-  upstream app has no local tests for malformed direct requests.
-- The current `content-length` path coerces invalid values to zero and does not
-  reject negative or oversized bodies before reading from the request stream.
-  That is a poor teaching boundary for an upstream app sitting behind a
-  fail-closed sidecar.
-- `openapi.yaml` describes `message` and `count`, but the app-level validation
-  contract is not independently testable.
-
 ## Security And API Constraints
 
 - Preserve the plain-upstream contract: `app.py` must not import Chio modules,
@@ -59,12 +45,3 @@ The direct dependents are:
 No Chio crate should require code changes. Any transitive edits should be
 limited to package-local docs or smoke expectations if a validated response
 shape changes.
-
-## Planned Improvement
-
-Move request-body and echo-payload validation into explicit app-level
-boundaries, reject negative and oversized `Content-Length` values before body
-reads, and add standard-library unit tests for valid echo payloads, malformed
-JSON, invalid content lengths, oversized bodies, and plain-app responses. This
-is architectural because it separates upstream HTTP parsing from sidecar
-governance and makes the no-Chio plain-app contract independently testable.

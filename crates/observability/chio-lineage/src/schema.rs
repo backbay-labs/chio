@@ -3,7 +3,7 @@
 //! Defines the node and edge types projected from the receipt store,
 //! capability lineage, and signed receipt-lineage statements. The schema
 //! is the source of truth for the JSON artifact at
-//! `crates/chio-lineage/schemas/lineage-graph.v1.json`.
+//! `crates/observability/chio-lineage/schemas/lineage-graph.v1.json`.
 //!
 //! Evidence-class preservation rules:
 //!

@@ -1,11 +1,10 @@
 //! `clap` derive surface for `cargo xtask`.
 //!
-//! Mirrors the six historical subcommands as aliased leaf variants and
-//! introduces the noun-group parents (gen/check/qualify/verify/fuzz/mutants/
-//! release/supply-chain/tools) as parents whose children are unimplemented for
-//! now. Every historical invocation string keeps working through
-//! `#[command(alias = "...")]`; the dispatch in `main.rs` routes each leaf to the
-//! handler that already exists.
+//! Noun-group parents (gen/check/qualify/verify/fuzz/mutants/release/
+//! supply-chain/tools) carry the leaf subcommands. The flat leaf spellings
+//! (validate-scenarios, freeze-vectors, codegen, errors, snippets,
+//! eval-receipt-regen) remain as top-level aliases; the dispatch in `main.rs`
+//! routes each leaf to its handler.
 
 use clap::{Parser, Subcommand, ValueEnum};
 
@@ -44,39 +43,39 @@ pub enum Command {
         #[command(subcommand)]
         command: QualifyCommand,
     },
-    /// Formal-method / coverage gates (parents only for now).
+    /// Formal-method / coverage gates.
     Verify {
         #[command(subcommand)]
         command: VerifyCommand,
     },
-    /// Fuzzing orchestration (parents only for now).
+    /// Fuzzing orchestration.
     Fuzz {
         #[command(subcommand)]
         command: FuzzCommand,
     },
-    /// Mutation-testing gates (parents only for now).
+    /// Mutation-testing gates.
     Mutants {
         #[command(subcommand)]
         command: MutantsCommand,
     },
-    /// Release steps (parents only for now).
+    /// Release steps.
     Release {
         #[command(subcommand)]
         command: ReleaseCommand,
     },
-    /// Supply-chain checks (parents only for now).
+    /// Supply-chain checks.
     #[command(name = "supply-chain")]
     SupplyChain {
         #[command(subcommand)]
         command: SupplyChainCommand,
     },
-    /// Tool-version management (parents only for now).
+    /// Tool-version management.
     Tools {
         #[command(subcommand)]
         command: ToolsCommand,
     },
 
-    // -- Back-compat leaf aliases for the six historical subcommands. --
+    // -- Flat leaf aliases that forward to the noun-group handlers. --
     /// (alias) Validate conformance scenarios against their `$schema`.
     #[command(name = "validate-scenarios")]
     ValidateScenarios,
@@ -186,13 +185,11 @@ pub enum SnippetsCompat {
     },
 }
 
-// Noun-group children: parents introduced now, leaves land in Phase 3. Each
-// enum carries a single hidden reserved variant so the derive compiles and the
-// parent shows in `--help`; invoking a reserved leaf is a fail-closed error
-// handled in `main.rs`.
-/// Reserved leaf for a noun group whose real leaves land in Phase 3.
-/// Hidden from `--help` so the tree advertises only implemented surface, but
-/// present so the `Subcommand` derive has a variant to generate.
+// A noun group with no implemented leaves yet. Each enum carries a single
+// hidden reserved variant so the `Subcommand` derive has a variant to generate
+// and the parent shows in `--help`; invoking a reserved leaf is a fail-closed
+// error handled in `main.rs`. The reserved variant is hidden from `--help` so
+// the tree advertises only implemented surface.
 macro_rules! pending_group {
     ($name:ident) => {
         #[derive(Subcommand, Debug)]
@@ -204,7 +201,7 @@ macro_rules! pending_group {
 }
 
 /// Qualification leaves. `bounded-chio` asserts the bounded release matrix
-/// contract; it replaces the retired `scripts/qualify-bounded-chio.sh`.
+/// contract.
 #[derive(Subcommand, Debug)]
 pub enum QualifyCommand {
     /// Assert the bounded Chio release qualification matrix contract.
@@ -239,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn historical_validate_scenarios_parses() {
+    fn flat_alias_validate_scenarios_parses() {
         assert!(matches!(
             parse(&["xtask", "validate-scenarios"]),
             Command::ValidateScenarios
@@ -247,7 +244,7 @@ mod tests {
     }
 
     #[test]
-    fn historical_freeze_vectors_check_parses() {
+    fn flat_alias_freeze_vectors_check_parses() {
         assert!(matches!(
             parse(&["xtask", "freeze-vectors", "--check"]),
             Command::FreezeVectors { check: true }
@@ -259,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    fn historical_eval_receipt_regen_check_parses() {
+    fn flat_alias_eval_receipt_regen_check_parses() {
         assert!(matches!(
             parse(&["xtask", "eval-receipt-regen", "--check"]),
             Command::EvalReceiptRegen { check: true }
@@ -267,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn historical_codegen_positional_and_flag_parse() {
+    fn flat_alias_codegen_positional_and_flag_parse() {
         match parse(&["xtask", "codegen", "rust", "--check"]) {
             Command::Codegen(args) => {
                 assert_eq!(args.lang_positional, Some(Lang::Rust));
@@ -287,7 +284,7 @@ mod tests {
     }
 
     #[test]
-    fn historical_errors_and_snippets_regen_parse() {
+    fn flat_alias_errors_and_snippets_regen_parse() {
         assert!(matches!(
             parse(&["xtask", "errors", "regen", "--check"]),
             Command::Errors {
@@ -431,7 +428,7 @@ mod tests {
     #[test]
     fn no_subcommand_parses_to_none() {
         // Bare `cargo xtask` parses with no subcommand; `main.rs` then prints
-        // the help tree and exits 0, matching the historical hand-rolled CLI.
+        // the help tree and exits 0.
         match Cli::try_parse_from(["xtask"]) {
             Ok(cli) => assert!(cli.command.is_none(), "got: {:?}", cli.command),
             Err(err) => panic!("bare invocation must parse, got: {err}"),

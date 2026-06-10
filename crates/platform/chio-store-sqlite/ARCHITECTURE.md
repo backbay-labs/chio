@@ -10,97 +10,37 @@ approval state, batch approval state, revocations, execution nonces,
 encrypted blobs, IOU envelopes, dead letters, memory provenance, and evidence
 export.
 
-`budget_store.rs` is now the API root for `SqliteBudgetStore` and module
-wiring only. `budget_store/store.rs` contains concrete store methods,
-`trait_impl.rs` implements `BudgetStore`, `model.rs` defines the internal hold
-model, `rows.rs` owns fail-closed row decoding and error mapping, `schema.rs`
-owns migration helpers, `replication.rs` owns sequence allocation, and
-`tests.rs` keeps the budget-store unit coverage.
-
-## Pain Points
-
-`budget_store` is a high-authority persistence boundary. Several SQLite row
-decoders read persisted integer fields with `.max(0)` and then cast them into
-unsigned Rust counters. That masks corrupt or manually edited negative
-`invocation_count`, cost, sequence, hold, or mutation fields as zero. A bad row
-can therefore continue through budget decisions, replication snapshots, and
-idempotent retry checks as if it were a valid empty budget state.
-
-The budget decoder cleanup does not cover the capability-lineage table.
-`capability_lineage.rs` still normalizes negative persisted `issued_at`,
-`expires_at`, `delegation_depth`, and replication sequence values to zero.
-Those snapshots feed audit queries, call-chain validation, and cluster
-lineage replication, so a corrupt row must fail closed instead of becoming a
-synthetic root or epoch-zero capability.
+`budget_store.rs` is the API root for `SqliteBudgetStore` and module wiring.
+`budget_store/store.rs` contains concrete store methods, `trait_impl.rs`
+implements `BudgetStore`, `model.rs` defines the internal hold model, `rows.rs`
+owns fail-closed row decoding and error mapping, `schema.rs` owns migration
+helpers, `replication.rs` owns sequence allocation, and `tests.rs` keeps the
+budget-store unit coverage.
 
 ## Security and API Constraints
 
-Budget state must fail closed. Negative persisted values for unsigned budget
-fields are storage corruption, not recoverable business data. Existing public
-types and traits should remain source-compatible. Valid rows must keep the same
-query and mutation behavior, mutation event ids must remain idempotent, and
-replication sequence ordering must stay stable.
+Budget state fails closed. Negative persisted values for unsigned budget fields
+are storage corruption, not recoverable business data: the row decoders in
+`rows.rs` reject negative `invocation_count`, cost, sequence, hold, and
+mutation fields and surface the existing store error types instead of
+normalizing them. Valid rows keep the same query and mutation behavior,
+mutation event ids stay idempotent, and replication sequence ordering stays
+stable.
 
-Capability lineage has the same rule: timestamps, delegation depth, and local
-replication sequence are unsigned domain values. Public lineage APIs and
-serialized snapshot shapes stay source-compatible, but corrupt rows must return
-the existing storage error path before they can affect audit, call-chain, or
-replication decisions.
+Capability lineage follows the same rule: timestamps, delegation depth, and
+local replication sequence are unsigned domain values. `capability_lineage.rs`
+decodes them through a shared non-negative SQLite integer decoder, so a corrupt
+row returns the storage error path before it can become a synthetic root or
+epoch-zero capability in audit, call-chain, or replication decisions.
 
-## Affected Dependents
-
-No transitive crate edits are expected. Callers still use `SqliteBudgetStore`
-through the existing concrete methods and `BudgetStore` trait, and capability
-lineage callers still use the existing `SqliteReceiptStore` concrete methods.
-The behavioral change is limited to corrupt negative SQLite rows, which now
-surface as the existing store error types instead of being normalized into
-unsigned values.
-
-## Planned Material Improvement
-
-Introduce budget-store row decoding helpers that reject negative integers for
-unsigned budget fields. Use them in the central usage, hold, mutation-event,
-and hot-path budget state decoders so corrupted durable counters fail closed
-before they can influence authorization or replication.
-
-Extend the same storage invariant to capability lineage by using a shared
-non-negative SQLite integer decoder for lineage snapshots, parent-depth lookup,
-and replication rows. This keeps valid lineage byte-stable while rejecting
-corrupt rows before audit or replication code can consume them.
-
-## Encrypted Blob Tenant Boundary Slice
-
-### Current Boundary
-
-`encrypted_blob.rs` stores tenant-scoped encrypted payloads. The tenant id is
-used as the SQLite lookup scope and is also bound into the ChaCha20-Poly1305
-associated data with the blob id and creation timestamp.
-
-### Pain Point
-
-The encrypted blob store rejects whitespace-only tenant ids, but it accepts
-padded or control-bearing tenant ids. Those values become durable tenant scope
-keys and AEAD metadata. A caller can therefore persist a blob under
-` tenant-a ` or `tenant-a\n`, creating ambiguous storage scope strings that
-look like tenant `tenant-a` to humans but decrypt only under a different AAD.
-
-### Security and API Constraints
-
-Preserve valid tenant ids, generated blob ids, ciphertext format, nonce
-format, and AAD layout for accepted writes. Reject malformed tenant ids before
-encryption and before SQLite insertion. Public type names remain compatible.
-
-### Affected Dependents
-
-No transitive source changes are expected. Existing callers using exact tenant
-ids keep the same behavior. Callers passing padded or control-bearing tenant
-ids now receive `BlobStoreError` before any encrypted row is written.
-
-### Completed Material Improvement
-
-Strengthen encrypted blob tenant validation from whitespace-only rejection to
-non-empty, unpadded, control-free validation, with a regression proving
-malformed tenant ids fail before persistence.
+Encrypted blobs in `encrypted_blob.rs` bind the tenant id into the
+ChaCha20-Poly1305 associated data alongside the blob id and creation timestamp,
+and use it as the SQLite lookup scope. Tenant ids are validated as non-empty,
+unpadded, and control-free before encryption and SQLite insertion, so an
+ambiguous scope string such as ` tenant-a ` or `tenant-a\n` is rejected with
+`BlobStoreError` rather than persisted. Valid tenant ids, generated blob ids,
+ciphertext format, nonce format, and AAD layout are preserved for accepted
+writes.
 
 ## Verification Focus
 

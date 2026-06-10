@@ -33,7 +33,7 @@ fn doctor_emits_toolchain_probe_and_attaches_msrv_context() {
 #[test]
 fn toolchain_probe_uses_doctor_toolchain_mismatch_code_on_failure() {
     // Smoke-test the negative path through the public unit tests in
-    // `crates/chio-cli/src/doctor/toolchain.rs`. The integration here
+    // `crates/products/chio-cli/src/doctor/toolchain.rs`. The integration here
     // simply asserts the probe URN is present in the binary so the
     // registry lookup never silently drifts.
     let path = std::path::Path::new(env!("CARGO_BIN_EXE_chio"));

@@ -607,7 +607,6 @@ mod tests {
 
     #[test]
     fn clean_quote_is_less_than_denial_heavy_quote() {
-        // Roadmap acceptance: clean-history quote < denial-heavy quote.
         let clean = price_premium("clean", "scope", window(), &inputs(Some(980), None));
         let denied = price_premium("denials", "scope", window(), &inputs(Some(560), None));
         let clean_cents = clean.quoted_cents().unwrap();

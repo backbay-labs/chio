@@ -871,13 +871,11 @@ fn kernel_receipt_signer_preserves_acp_content_hash_with_canonical_parameter_has
 
 /// Regression: a tool call that emits both a `running` ToolCall event and
 /// a terminal `completed` (or `failed`) ToolCallUpdate event must mint
-/// two distinct receipt ids. The earlier receipt id form
-/// `acp-{tool_call_id}` produced a visual collision; while
-/// `ChioReceipt::sign` content-addresses receipt ids via
-/// `chio_receipt_id`, the per-event discriminator (status, content_hash,
-/// title, kind) must flow into the canonical receipt body for the
-/// content hash to actually diverge. Without it, the store would reject
-/// the terminal update as a duplicate.
+/// two distinct receipt ids. `ChioReceipt::sign` content-addresses receipt
+/// ids via `chio_receipt_id`, so the per-event discriminator (status,
+/// content_hash, title, kind) must flow into the canonical receipt body for
+/// the content hash to diverge. Without it, the store would reject the
+/// terminal update as a duplicate.
 #[test]
 fn tool_call_running_and_terminal_update_produce_distinct_receipt_ids() {
     let keypair = Keypair::generate();

@@ -17,7 +17,7 @@ fn proptest_config() -> Config {
     Config {
         cases: 64,
         failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
-            "crates/chio-tee/proptest-regressions/redact_determinism.txt",
+            "crates/trust/chio-tee/proptest-regressions/redact_determinism.txt",
         ))),
         timeout: 30_000,
         max_shrink_time: 5_000,

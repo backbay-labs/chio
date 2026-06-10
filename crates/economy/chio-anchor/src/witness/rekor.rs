@@ -28,7 +28,7 @@
 //!
 //! This module makes a real HTTP call (via `reqwest`). The negative
 //! conformance test
-//! `crates/chio-conformance/tests/anchor_batch_witness_impersonation_rejected.rs`
+//! `crates/tooling/chio-conformance/tests/anchor_batch_witness_impersonation_rejected.rs`
 //! exercises the full surface against a `tiny_http` mock server.
 
 use std::time::Duration;
@@ -94,8 +94,7 @@ impl RekorClient {
             ));
         }
         // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: Sigstore Rekor witness lane;
-        // threading an HttpEgressContract through RekorClient::new is a
-        // dedicated refactor, not yet wired here.
+        // HttpEgressContract is not yet threaded through RekorClient::new.
         let http = reqwest::Client::builder()
             .timeout(Duration::from_secs(15))
             .https_only(false)

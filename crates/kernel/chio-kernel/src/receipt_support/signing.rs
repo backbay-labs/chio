@@ -313,7 +313,7 @@ pub enum KernelSigningBackendError {
 ///
 /// Returns a boxed [`SigningBackend`] that the kernel calls through for
 /// every receipt. Under [`KernelCryptoFloor::AllowClassical`] this is an
-/// [`Ed25519Backend`] wrapping the historical [`Keypair`]; under
+/// [`Ed25519Backend`] wrapping the classical [`Keypair`]; under
 /// [`KernelCryptoFloor::AllowHybrid`] or [`KernelCryptoFloor::PqRequired`]
 /// it is a [`HybridBackend`] composed of the same Ed25519 backend and an
 /// [`MlDsa65Backend`] derived from `pq_seed`.

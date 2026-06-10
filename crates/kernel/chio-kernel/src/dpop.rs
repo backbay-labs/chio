@@ -109,7 +109,7 @@ impl DpopProof {
     ///
     /// The backend's public key must equal `body.agent_key`. Use this entry
     /// point when the agent's signing identity is served by a FIPS backend
-    /// (P-256 / P-384) rather than a historical Ed25519 keypair.
+    /// (P-256 / P-384) rather than a direct Ed25519 keypair.
     pub fn sign_with_backend(
         body: DpopProofBody,
         backend: &dyn SigningBackend,
@@ -365,7 +365,7 @@ mod backend_tests {
     #[test]
     fn ed25519_backend_produces_equivalent_dpop_proof() {
         // Signing via `DpopProof::sign_with_backend(..., &Ed25519Backend)` must
-        // be verifier-equivalent to the historical `DpopProof::sign(..., &Keypair)`
+        // be verifier-equivalent to the `DpopProof::sign(..., &Keypair)`
         // path. The stored `agent_key.verify(...)` pathway already dispatches
         // on algorithm tag, so either signing entry point must produce a proof
         // whose verification succeeds.

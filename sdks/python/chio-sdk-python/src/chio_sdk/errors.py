@@ -162,8 +162,7 @@ class ChioDeniedError(ChioError):
             sections.append(("Docs", self.docs_url))
 
         if not sections:
-            # Back-compat path: no enriched fields present, keep the
-            # single-line str(err) that older callers rely on.
+            # No enriched fields present: str(err) stays a single line.
             return self.message
 
         for label, value in sections:

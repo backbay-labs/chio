@@ -1148,9 +1148,9 @@ fn manifest_vector_fixture() -> Value {
     })
 }
 
-// On-disk JSON is the source of truth; the in-Rust generators remain at the
-// original 5-case bootstrap. The #[ignore] tests below regenerate the checked-in
-// files when run manually (`cargo test -- --ignored`).
+// On-disk JSON is the source of truth; the in-Rust generators cover a subset
+// of cases. The #[ignore] tests below regenerate the checked-in files when run
+// manually (`cargo test -- --ignored`).
 
 #[test]
 #[ignore = "on-disk canonical corpus is the source of truth; run to regenerate after editing the fixture builder"]
@@ -1183,18 +1183,17 @@ fn capability_vector_fixture_matches_checked_in_json() {
 }
 
 #[test]
-#[ignore = "on-disk JSON is the source of truth; manifest_vector_fixture() is a regenerator helper for the original 5 cases"]
+#[ignore = "on-disk JSON is the source of truth; manifest_vector_fixture() is a regenerator helper for a subset of cases"]
 fn manifest_vector_fixture_matches_checked_in_json() {
     assert_fixture_matches(&manifest_fixture_path(), &manifest_vector_fixture());
 }
 
 // Re-sign the checked-in capability corpus in place after a capability
-// signing-schema change (the signed body carries the schema string, which
-// renamed from `arc.capability.v1` to `chio.capability.v1`, so every stored
-// signature over the old schema no longer verifies). Only capabilities whose
+// signing-schema change. The signed body carries the schema string, so a
+// schema change invalidates every stored signature. Only capabilities whose
 // own signature is meant to verify are re-signed; the intentionally tampered
 // cases keep their invalid signatures (a corrupted signature stays invalid
-// under the renamed schema). Run with `--ignored`, then refreeze the manifest
+// under any schema). Run with `--ignored`, then refreeze the manifest
 // with `cargo xtask freeze-vectors`.
 #[test]
 #[ignore = "regenerator: re-sign capability vectors after a signing-schema change; run with --ignored"]

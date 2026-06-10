@@ -14,7 +14,7 @@
 //! | `replay::redaction_mismatch_exits_fifty`       | 50   |
 //!
 //! Each test loads a fixture from
-//! `crates/chio-cli/tests/fixtures/replay/<family>/receipts.ndjson`,
+//! `crates/products/chio-cli/tests/fixtures/replay/<family>/receipts.ndjson`,
 //! spawns `chio replay <path> --json`, and asserts the process exit code
 //! and the `exit_code` field in the JSON report.
 //!
@@ -189,7 +189,7 @@ mod replay {
     ///
     /// The fixture stores a `deny` receipt body that the current evaluator
     /// would render as `allow` (via the per-receipt drift hook in
-    /// `crates/chio-cli/src/cli/replay/verdict.rs`).
+    /// `crates/products/chio-cli/src/cli/replay/verdict.rs`).
     #[test]
     fn verdict_drift_exits_ten() {
         let fixture = fixture_path("10-verdict-drift");

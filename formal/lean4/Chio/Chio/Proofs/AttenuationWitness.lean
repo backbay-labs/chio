@@ -93,7 +93,7 @@ theorem chain_binding_admits_honest_direct_issue
   unfold chainBindingCheck
   simp
 
-/-- The W1.1 P0 attack scenario: an issuer with true authority
+/-- Attack scenario: an issuer with true authority
     `scopeX` mints a token whose `parentScopeHash` points at
     `scopeBigger != scopeX`. The verifier rejects it with
     `rejectChainBinding`, even if the witness body internally proves

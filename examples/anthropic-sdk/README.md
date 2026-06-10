@@ -15,7 +15,7 @@ Anthropic SDK while the hosted session itself is managed by
 ## Prerequisites
 
 - Node.js 22+
-- the phase `309` demo stack running locally, or equivalent direct
+- the Docker quickstart demo stack running locally, or equivalent direct
   `chio trust serve` plus `chio mcp serve-http` processes
 - optional: `ANTHROPIC_API_KEY` for a live Claude call
 

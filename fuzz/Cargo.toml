@@ -208,10 +208,8 @@ test = false
 doc = false
 bench = false
 
-# Main-branch fuzz targets preserved while resolving the roadmap merge.
-# These keep the existing `fuzz_*` binary names so their seed corpus
-# directories under `fuzz/corpus/fuzz_*` continue to line up with
-# cargo-fuzz defaults.
+# These keep a `fuzz_*` binary name so their seed-corpus directories
+# under `fuzz/corpus/fuzz_*` line up with cargo-fuzz defaults.
 [[bin]]
 name = "fuzz_policy_parse_compile"
 path = "fuzz_targets/policy_parse_compile.rs"

@@ -195,10 +195,10 @@ jobs:
           done < <(printf '%s\n' "${STATUS_RECORDS}")
 
           echo "breaking_count=${breaking_count}" >> "${GITHUB_OUTPUT}"
-          # Emit the markdown summary with a unique heredoc delimiter so
-          # any literal `EOF` (or our previous `CHIO_DIFF_EOF`) inside
-          # JSON report excerpts cannot terminate the multiline value
-          # early and leak subsequent content as new output keys.
+          # Emit the markdown summary with a randomized heredoc delimiter so
+          # any literal delimiter string inside JSON report excerpts cannot
+          # terminate the multiline value early and leak subsequent content
+          # as new output keys.
           delim="CHIO_$(openssl rand -hex 8)"
           {
             echo "summary<<${delim}"

@@ -154,14 +154,12 @@ from chio_adapter_base import (
 )
 ```
 
-## Migration story
+## Floor-pin matrix
 
-The "Where to redact" comparison table, the decision tree, and the
-helper selection above subsume the original step-by-step migration
-plan. The current floor-pin matrix is:
+Choose a `chio-adapter-base` floor pin by which helpers an adapter calls:
 
 - Adapters that already adopted `bind_and_redact` and want the v0.2.0
-  helper hardening (today: `chio-prefect 0.1.2` per PR #679) pin
+  helper hardening (currently `chio-prefect 0.1.2`) pin
   `chio-adapter-base>=0.2.0,<0.3` once the 0.2.0 package is
   published, or when their workspace resolver maps that pin to the
   in-repo package path.

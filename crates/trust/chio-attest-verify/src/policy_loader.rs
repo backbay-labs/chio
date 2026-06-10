@@ -29,7 +29,7 @@
 //! for signed binary releases). Operators inherit the
 //! [`crate::BOOTSTRAP_TENANT_ID`] policy and override per tenant from there.
 //! The bootstrap policy file ships at
-//! `crates/chio-attest-verify/tests/fixtures/policies/bootstrap.toml`; its
+//! `crates/trust/chio-attest-verify/tests/fixtures/policies/bootstrap.toml`; its
 //! signing identity is documented at
 //! `docs/security/expected-identity-migration.md`.
 

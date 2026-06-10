@@ -10,10 +10,6 @@
 //!   an in-toto Statement carrying the local bilateral predicate. The resulting
 //!   `(ChioReceipt, DsseEnvelope)` pair is what a signature-slice verifier
 //!   consumes.
-//!
-//! ## What is **not** claimed
-//!
-//! ## Lane primitives consumed
 
 use std::error::Error as StdError;
 use std::path::PathBuf;

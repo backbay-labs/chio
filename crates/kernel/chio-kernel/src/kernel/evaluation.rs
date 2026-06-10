@@ -172,10 +172,9 @@ impl ChioKernel {
     /// invoked against the synthesised pre-flight request, matching the
     /// set of guards that run in `evaluate_tool_call` before dispatch.
     ///
-    /// Receipt emission is deferred to a future phase. The kernel emits
-    /// structured trace spans for the plan and every per-step verdict
-    /// so operators can correlate plan evaluations with subsequent
-    /// tool-call receipts.
+    /// Plan evaluation does not emit receipts. The kernel emits structured
+    /// trace spans for the plan and every per-step verdict so operators can
+    /// correlate plan evaluations with subsequent tool-call receipts.
     pub async fn evaluate_plan(
         &self,
         req: chio_core_types::PlanEvaluationRequest,

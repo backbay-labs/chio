@@ -29,8 +29,9 @@ use serde_json::Value;
 
 /// Repository root, computed from the crate manifest dir.
 ///
-/// The crate lives at `<repo>/crates/chio-conformance`, so two `parent()` hops
-/// land on the repo root that holds `tests/bindings/vectors/` and `spec/`.
+/// The crate lives at `<repo>/crates/<group>/chio-conformance`, so three
+/// `parent()` hops land on the repo root that holds `tests/bindings/vectors/`
+/// and `spec/`.
 fn repo_root() -> PathBuf {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let Some(group_dir) = manifest_dir.parent() else {

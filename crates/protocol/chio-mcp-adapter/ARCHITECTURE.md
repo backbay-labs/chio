@@ -2,9 +2,9 @@
 
 ## Boundaries
 
-- `lib.rs` declares the public adapter modules and keeps existing edge, native,
-  transport, framing, manifest, loaded-weights, and fuzz boundaries intact. It
-  does not flatten the moved APIs at the crate root.
+- `lib.rs` declares the public adapter modules and keeps the edge, native,
+  transport, framing, manifest, loaded-weights, and fuzz boundaries distinct.
+  It does not flatten those APIs at the crate root.
 - `adapter.rs` owns `McpAdapterConfig`, `McpAdapter`, and
   `SerializedMcpTransport`.
 - `server.rs` owns `AdaptedMcpServer` and its kernel `ToolServerConnection`

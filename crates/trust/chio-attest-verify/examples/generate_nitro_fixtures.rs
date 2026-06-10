@@ -1,5 +1,5 @@
 //! Deterministically regenerate the pinned AWS Nitro NSM fixture
-//! corpus under `crates/chio-attest-verify/fixtures/quotes/nitro/`.
+//! corpus under `crates/trust/chio-attest-verify/fixtures/quotes/nitro/`.
 //!
 //! Run with:
 //!

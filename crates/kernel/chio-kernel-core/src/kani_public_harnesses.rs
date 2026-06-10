@@ -1128,9 +1128,10 @@ pub fn verify_delegation_receipt_canonical() {
     let signed_at = u8::from(kani::any::<u8>());
     let nonce_byte = kani::any::<u8>();
 
-    // The production RFC 8785 encoder is covered by runtime migration tests.
-    // Kani only needs the algebraic contract here: identical receipt fields
-    // map to the same canonical class, and changing a signed field changes it.
+    // The production RFC 8785 encoder is covered by the runtime integration
+    // tests. Kani only needs the algebraic contract here: identical receipt
+    // fields map to the same canonical class, and changing a signed field
+    // changes it.
     let receipt_like =
         model_delegation_receipt(parent_chain_len, attenuation_axis, signed_at, nonce_byte);
     let bytes_a = receipt_like.canonical_class();

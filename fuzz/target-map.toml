@@ -19,10 +19,10 @@
 #   notes    = optional human-readable rationale
 
 [targets.canonical_json]
-crate    = "chio-canonical-json"
+crate    = "chio-core-types"
 path     = "fuzz/fuzz_targets/canonical_json.rs"
 triggers = [
-    "crates/chio-canonical-json/**",
+    "crates/core/chio-core-types/src/canonical.rs",
     "spec/schemas/canonical/**",
     "tests/bindings/vectors/canonical/**",
 ]

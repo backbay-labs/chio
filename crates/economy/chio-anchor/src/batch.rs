@@ -194,7 +194,7 @@ pub fn verify_anchor_batch_with_witness_policy(
     // the per-state table inside `evaluate_witness_policy` to fail
     // closed by happenstance. Reverting this early-return is what
     // the negative conformance fixture
-    // `crates/chio-conformance/tests/b3_anchor_batch_sync_path_rejected_under_public_witness.rs`
+    // `crates/tooling/chio-conformance/tests/b3_anchor_batch_sync_path_rejected_under_public_witness.rs`
     // detects.
     if policy.require_public_witness {
         return Err(AnchorError::SyncRouteRequiresAdvisoryPolicy);

@@ -35,5 +35,5 @@ apalache-mc check --length=6 --config=formal/apalache/MCReceiptBeforeAllow.cfg f
 apalache-mc check --length=6 --config=formal/apalache/MCKernelTransitionCancelSafe.cfg formal/apalache/KernelTransitionCancelSafe.tla
 ```
 
-The nightly workflow also runs the existing `RevocationEventuallySeen`
+The nightly workflow also runs the `RevocationEventuallySeen`
 liveness check via `--temporal=` against `formal/tla/RevocationPropagation.tla`.

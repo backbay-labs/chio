@@ -69,7 +69,7 @@ pub const MAX_POLICY_SIGNATURE_BYTES: usize = 16 * 1024;
 pub const MAX_PQ_IDENTITY_REGEXPS: usize = 32;
 
 /// Canonical bootstrap tenant identifier shipped under
-/// `crates/chio-attest-verify/tests/fixtures/policies/bootstrap.toml`. The
+/// `crates/trust/chio-attest-verify/tests/fixtures/policies/bootstrap.toml`. The
 /// bootstrap policy is signed by the workspace release identity (the same
 /// identity used for signed binary releases) and is the chicken-and-egg seed
 /// every operator inherits before authoring a tenant-specific override.

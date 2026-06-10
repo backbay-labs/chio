@@ -1,5 +1,5 @@
 //! Deterministically regenerate the pinned AMD SEV-SNP fixture corpus
-//! under `crates/chio-attest-verify/fixtures/quotes/sev_snp/`.
+//! under `crates/trust/chio-attest-verify/fixtures/quotes/sev_snp/`.
 //!
 //! Run with:
 //!

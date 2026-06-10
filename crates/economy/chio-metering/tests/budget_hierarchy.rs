@@ -175,9 +175,9 @@ fn single_node_evaluate_allows_within_cap_denies_over() {
 
 #[test]
 fn parent_cap_denies_even_when_child_has_room() {
-    // Roadmap acceptance: a team policy with a daily cap of 10k tokens
-    // rejects the 11th 1k-token request of the day, even if the per-agent
-    // policy would allow it.
+    // A team policy with a daily cap of 10k tokens rejects the 11th
+    // 1k-token request of the day, even if the per-agent policy would
+    // allow it.
     let mut tree = BudgetTree::new();
     tree.insert(org("org/acme", tokens(100_000), BudgetWindow::Monthly))
         .expect("org");

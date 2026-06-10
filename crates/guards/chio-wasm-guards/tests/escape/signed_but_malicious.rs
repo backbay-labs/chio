@@ -16,7 +16,7 @@
 //! ModuleTooLarge, FuelExhausted, Trap...).
 //!
 //! Cross-link: chio-guard-registry cosign-verified fixtures live in
-//! `crates/chio-guard-registry/tests/`. The sigstore-bundle path is
+//! `crates/guards/chio-guard-registry/tests/`. The sigstore-bundle path is
 //! content-agnostic in exactly the same way as the ed25519 sidecar
 //! path; using ed25519 here keeps the harness self-contained and avoids
 //! pulling sigstore into the unit-test dependency closure.

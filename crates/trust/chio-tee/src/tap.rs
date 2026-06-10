@@ -5,7 +5,7 @@
 //! capture both halves for replay attestation.
 //!
 //! The trait shape mirrors the [`Exporter`] trait in `chio-siem`
-//! (`crates/chio-siem/src/exporter.rs:35`): methods take `&self` so taps
+//! (`crates/observability/chio-siem/src/exporter.rs:35`): methods take `&self` so taps
 //! can be held as `Box<dyn TrafficTap>` and fan out, and errors are
 //! returned as a boxed `Send + Sync` error so backend implementations
 //! can choose their own error types without polluting the trait.

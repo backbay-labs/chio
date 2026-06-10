@@ -1,15 +1,10 @@
-"""Migration tests for the chio-hermes 0.1.1 chio-adapter-base swap.
-
-These tests assert the migration mechanics that the legacy
-``test_security_fixes.py`` / ``test_receipts.py`` / ``test_hooks.py``
-suites do not cover:
+"""Tests that chio-hermes delegates redaction to chio-adapter-base.
 
 1. The chio-hermes shim functions (``_redact_args``, ``_sanitised_env``,
-   etc.) actually delegate to ``chio_adapter_base`` instead of running
-   their own copy of the logic.
+   etc.) delegate to ``chio_adapter_base`` rather than running their own
+   copy of the logic.
 2. The deprecated chio-hermes module-level names emit a
-   :class:`DeprecationWarning` so external consumers see the migration
-   notice exactly once per call.
+   :class:`DeprecationWarning` exactly once per call.
 3. The chio-adapter-base canonical imports work from inside the
    chio-hermes virtualenv (i.e. the dependency is wired correctly).
 """
@@ -333,12 +328,7 @@ def test_body_redact_fields_shim_warns_on_lookup() -> None:
 def test_filter_directory_entries_delegates_to_adapter_base(
     tmp_path: Any,
 ) -> None:
-    """The handler-side dir filter must route through chio-adapter-base.
-
-    Mirrors the existing ``test_security_fixes`` coverage but anchors on
-    the new chio-adapter-base import to prove the migration shim, not
-    the in-tree implementation, is what runs.
-    """
+    """The handler-side dir filter must route through chio-adapter-base."""
     from chio_adapter_base.filters import filter_directory_entries
 
     from chio_hermes import handlers as _handlers

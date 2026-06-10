@@ -2,10 +2,9 @@
 # scripts/check-regression-tests.sh
 #
 # Regression-test deletion guard. Detects deletion of fuzz-promoted regression
-# tests under either tests/regression_*.rs (legacy layout) or
-# crates/*/tests/regression_*.rs (current layout). Fails CI when any such
-# file disappears between BASE..HEAD without a paired issue link in the PR
-# body or merge commit message.
+# tests under tests/regression_*.rs or crates/*/tests/regression_*.rs. Fails CI
+# when any such file disappears between BASE..HEAD without a paired issue link
+# in the PR body or merge commit message.
 #
 # Mechanism:
 #   1. git diff --diff-filter=D --name-only $BASE..$HEAD

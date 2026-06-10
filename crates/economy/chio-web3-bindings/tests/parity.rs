@@ -230,7 +230,10 @@ fn standards_and_runtime_constants_remain_in_sync() {
         .iter()
         .find(|binding| binding.language == Web3BindingLanguage::Rust)
         .unwrap_or_else(|| panic!("web3 contract package must include a Rust binding target"));
-    assert_eq!(binding.crate_path, "crates/chio-web3-bindings/src/lib.rs");
+    assert_eq!(
+        binding.crate_path,
+        "crates/economy/chio-web3-bindings/src/lib.rs"
+    );
     assert_eq!(binding.module_name, "chio_web3_bindings");
     assert_eq!(
         binding.contract_ids,

@@ -131,8 +131,7 @@ allowed_axioms = [
   # ChioReceiptIdInput canonical-bytes set. Declared as a Lean axiom because
   # the bounded ReceiptBody model has no modeled JCS canonicalizer or hash;
   # see assume.receipt.id_collision_resistant in theorem-inventory.json and
-  # ASSUME-SHA256 in formal/assumptions.toml. Replaces the prior
-  # id_input_set_pinned reflexivity tautology.
+  # ASSUME-SHA256 in formal/assumptions.toml.
   "Chio.Proofs.receipt_id_collision_resistant",
 ]
 
@@ -172,12 +171,11 @@ discharged_assumptions = [
   "RETIRED-SQLITE-CROSS-ROW|MonotoneLog (formal/tla/RevocationPropagation.tla),budget_per_row_invariant (crates/kernel/chio-kernel/src/budget_store.rs::BudgetUsageRecord)|crates/kernel/chio-kernel/src/receipt_store.rs,crates/kernel/chio-kernel/src/budget_store.rs,crates/kernel/chio-kernel-core/src/evaluate.rs::evaluate|Cross-row SQLite atomicity for the audit-log append plus budget-state update is no longer assumed. The MonotoneLog TLA invariant proves the per-authority receipt log is append-only and strictly time-monotone, and the per single-row write budget invariant proves BudgetUsageRecord updates are individually atomic and monotone in seq/total_cost. Their conjunction means a partial-pair crash is observable: the next evaluate either sees no receipt (deny) or sees an inconsistent budget row that the per-row invariant rejects (deny). Therefore no allow can outrun its log entry without violating one of two named properties, and the prior cross-row assumption is retired.",
 ]
 
-# ASSUME-NETWORK-TRANSPORT ledger row (kept unchanged; rationale below).
+# ASSUME-NETWORK-TRANSPORT remains an audited assumption in
+# `formal/assumptions.toml` `required_assumption_ids` rather than a
+# discharged one.
 #
-# Decision: ASSUME-NETWORK-TRANSPORT remains in
-# `formal/assumptions.toml` `required_assumption_ids` unchanged.
-#
-# Rationale: the `RevocationFreshness` invariant in
+# The `RevocationFreshness` invariant in
 # `formal/tla/RevocationPropagation.tla` (~L321) constrains every
 # recorded local revocation epoch to be strictly less than the global
 # clock value, which discharges only the LOCAL freshness gate

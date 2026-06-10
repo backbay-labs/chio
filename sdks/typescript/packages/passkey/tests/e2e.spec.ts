@@ -109,8 +109,7 @@ describe('@chio-protocol/passkey demo e2e', () => {
     expect(html).toContain('engineering-output-banner');
     expect(html).toContain('zero key material');
     // The banner must be the first body child so it cannot scroll off
-    // before the demo content. Cheap structural assertion: banner appears
-    // before <main> in source order.
+    // before the demo content: banner appears before <main> in source order.
     const bannerIdx = html.indexOf('engineering-output-banner');
     const mainIdx = html.indexOf('<main');
     expect(bannerIdx).toBeGreaterThan(0);

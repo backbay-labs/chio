@@ -678,9 +678,9 @@ describe("receipt authority verification", () => {
  * Mirror the canonical Rust `EvaluateResponse` wire shape: the top-level
  * `verdict` is a tagged-enum object (`{verdict:"allow"}`) and the inner
  * `HttpReceipt` carries `verdict: {verdict:"allow"}` with NO sibling
- * `decision` field. The legacy fixture in `evaluateResponseBody` injected
- * a top-level `decision: "allow"` string that masked the lifting bug, so
- * these tests deliberately omit it.
+ * `decision` field. These tests deliberately omit any top-level
+ * `decision` string so the verdict must be lifted from the tagged-enum
+ * shape alone.
  */
 function httpReceiptOnlyAllowResponse(receiptId = "r-canonical"): Record<string, unknown> {
   return {

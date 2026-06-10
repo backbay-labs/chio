@@ -13,5 +13,5 @@ Planned challenge record:
 - Subject: `dev.chio`
 - Contact: `security@chio.world`
 
-This record is prepared before submission so M10.P5 can submit the registry
-entry without changing the namespace proof shape.
+The registry entry can be submitted against this record without changing the
+namespace proof shape.

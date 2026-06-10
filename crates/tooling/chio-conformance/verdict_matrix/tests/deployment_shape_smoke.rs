@@ -210,8 +210,3 @@ fn rust_kernel_remains_active_alongside_deployment_shapes() {
         rust.status,
     );
 }
-
-// Removed: `audit_doc_records_d07_closure_marker` and its `repo_root()` helper.
-// They asserted an internal planning-doc marker that is no longer tracked.
-// That gating machinery was retired; this smoke test now covers only the
-// deployment-shape driver registration and verdict-tuple contract above.

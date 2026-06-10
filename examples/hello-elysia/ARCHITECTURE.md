@@ -44,11 +44,3 @@ inside handler return bodies.
   verified without a live sidecar.
 - The Node HTTP bridge must preserve request headers and raw body bytes so the
   Elysia plugin can hash bodies and read `X-Chio-Capability`.
-
-## Current Improvement Target
-
-The example currently starts from a top-level script, so route behavior cannot
-be tested without booting a sidecar. It also echoes arbitrary request body
-fields despite declaring only `message` and `count` in OpenAPI, and its smoke
-flow uses an outdated capability grant plus a receipt-list path that does not
-match the sidecar HTTP receipt store.

@@ -20,7 +20,7 @@
 //!
 //! Test-injection helpers (`with_root`, `with_endpoint`, ...) are
 //! exercised by the per-probe integration tests under
-//! `crates/chio-cli/tests/doctor_*`. The binary path itself drives the
+//! `crates/products/chio-cli/tests/doctor_*`. The binary path itself drives the
 //! public `Probe` trait, so the helpers can look unused under
 //! `--bin chio`; the per-module dead-code allow is the targeted fix.
 #![allow(dead_code)]

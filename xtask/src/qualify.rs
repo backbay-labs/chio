@@ -1,9 +1,6 @@
 //! Release / profile qualification gates (`cargo xtask qualify <profile>`).
 //!
-//! This is the typed, fail-closed replacement for the doc-and-matrix
-//! qualification scripts under `scripts/qualify-*.sh`. Each profile is a leaf
-//! that asserts a machine-readable contract rather than regenerating a
-//! self-referential "evidence bundle" the way the legacy shell gates did.
+//! Each profile is a leaf that asserts a machine-readable contract.
 //!
 //! Fail-closed contract:
 //! - [`KNOWN_PROFILES`] enumerates every implemented profile at compile time;
@@ -11,17 +8,11 @@
 //! - A profile whose contract document is missing, malformed, or drifted from
 //!   the asserted shape fails the gate. Nothing is silently tolerated.
 //!
-//! `bounded-chio` is the ship-facing bounded release boundary. It replaces
-//! `scripts/qualify-bounded-chio.sh`. The legacy script copied docs into
-//! `target/`, generated a checklist, and emitted a SHA256SUMS manifest whose
-//! only inputs were files it had just copied - a tautology that proved nothing
-//! testable and which had additionally drifted red (its hard-coded README
-//! reference list named release docs the README no longer links). The genuine,
-//! load-bearing contract the script guarded is the structural shape of
-//! `docs/standards/CHIO_BOUNDED_QUALIFICATION_MATRIX.json`: it must be valid
-//! JSON, declare the bounded scope, carry a non-empty set of gate conditions,
-//! point its `entrypoint` at the live gate, and reference its operational
-//! profile document, which must exist on disk. That contract is enforced here.
+//! `bounded-chio` is the ship-facing bounded release boundary. It asserts the
+//! structural shape of `docs/standards/CHIO_BOUNDED_QUALIFICATION_MATRIX.json`:
+//! it must be valid JSON, declare the bounded scope, carry a non-empty set of
+//! gate conditions, point its `entrypoint` at the live gate, and reference its
+//! operational profile document, which must exist on disk.
 
 use std::fs;
 use std::path::Path;
@@ -34,9 +25,8 @@ use crate::XtaskError;
 pub(crate) const BOUNDED_MATRIX_PATH: &str =
     "docs/standards/CHIO_BOUNDED_QUALIFICATION_MATRIX.json";
 
-/// The canonical entrypoint string the bounded matrix must advertise. Updated
-/// from the retired `./scripts/qualify-bounded-chio.sh` to the xtask leaf that
-/// replaces it; the gate asserts the matrix stays pointed at the live gate.
+/// The canonical entrypoint string the bounded matrix must advertise. The gate
+/// asserts the matrix stays pointed at this live gate.
 pub(crate) const BOUNDED_ENTRYPOINT: &str = "cargo xtask qualify bounded-chio";
 
 /// The bounded matrix scope discriminator. A drift here means the matrix no
@@ -61,7 +51,7 @@ pub(crate) fn run(profile: &str) -> Result<(), XtaskError> {
 }
 
 /// Assert the bounded qualification matrix contract. See the module docs for
-/// why this is the only load-bearing check ported from the legacy script.
+/// the shape this enforces.
 fn bounded_chio(root: &Path) -> Result<(), XtaskError> {
     let matrix_path = root.join(BOUNDED_MATRIX_PATH);
     let raw = fs::read_to_string(&matrix_path)
@@ -72,8 +62,8 @@ fn bounded_chio(root: &Path) -> Result<(), XtaskError> {
     assert_bounded_matrix(&matrix)?;
 
     // The matrix names its operational profile document; the bounded release
-    // boundary is incoherent if that document is absent. The legacy script
-    // copied it into the evidence bundle; here we assert it exists on disk.
+    // boundary is incoherent if that document is absent, so assert it exists on
+    // disk.
     let profile_doc = matrix
         .get("profile")
         .and_then(|p| p.get("document"))
@@ -179,9 +169,7 @@ mod tests {
     #[test]
     fn committed_bounded_gate_passes_end_to_end() {
         // The full leaf (matrix contract + profile-document existence) must pass
-        // against the committed tree, so the live gate is green on this branch -
-        // unlike the legacy script, which had drifted red on a stale README
-        // reference list.
+        // against the committed tree.
         let root = crate::workspace_root().unwrap_or_else(|err| panic!("workspace root: {err}"));
         bounded_chio(&root).unwrap_or_else(|err| panic!("bounded-chio gate must pass: {err}"));
     }

@@ -195,9 +195,8 @@ pub fn fetch_blob(handle: u32, offset: u64, len: u32) -> Result<Vec<u8>, String>
 
 /// Guest-side handle for the `policy-context.bundle-handle` resource.
 ///
-/// The host owns the underlying bundle resource. This wrapper keeps the
-/// handle id visible to existing Rust guard code and routes reads through the
-/// `host.fetch-blob` import added in `chio:guard@0.2.0`.
+/// The host owns the underlying bundle resource. This wrapper exposes the
+/// numeric handle id and routes reads through the `host.fetch-blob` import.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PolicyContext {
     handle: u32,
@@ -216,11 +215,8 @@ impl PolicyContext {
         self.handle
     }
 
-    /// Read a byte range from this bundle handle.
-    ///
-    /// This preserves existing call sites by keeping blob reads separate from
-    /// request/verdict evaluation while exposing the 0.2.0 policy-context
-    /// resource.
+    /// Read a byte range from this bundle handle via the `host.fetch-blob`
+    /// import.
     pub fn read(&self, offset: u64, len: u32) -> Result<Vec<u8>, String> {
         fetch_blob(self.handle, offset, len)
     }

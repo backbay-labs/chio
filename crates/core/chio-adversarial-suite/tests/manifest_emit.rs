@@ -1,6 +1,6 @@
 //! Integration test for the cross-SDK verdict-matrix manifest producer.
 //!
-//! The on-disk manifest at `crates/chio-adversarial-suite/manifest.json`
+//! The on-disk manifest at `crates/core/chio-adversarial-suite/manifest.json`
 //! is consumed by cross-language verdict differential drivers. This test
 //! asserts that:
 //!

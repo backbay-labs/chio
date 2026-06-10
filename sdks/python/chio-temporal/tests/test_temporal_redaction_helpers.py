@@ -1,4 +1,4 @@
-"""Unit tests for Temporal-sidecar redaction helpers introduced in #794."""
+"""Unit tests for the Temporal-sidecar redaction helpers."""
 
 from __future__ import annotations
 

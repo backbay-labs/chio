@@ -1,6 +1,6 @@
 # Chio Conformance Fixtures
 
-This directory holds the E8 Slice A interoperability and conformance assets.
+This directory holds the interoperability and conformance assets.
 
 Structure:
 

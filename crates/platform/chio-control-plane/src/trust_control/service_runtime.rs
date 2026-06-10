@@ -568,7 +568,7 @@ pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliErr
     } else {
         warn!(
             "dashboard/dist/index.html not found -- dashboard UI will not be served. \
-             Run 'npm run build' in crates/chio-cli/dashboard/ to enable."
+             Run 'npm run build' in crates/products/chio-cli/dashboard/ to enable."
         );
         router
     };

@@ -1,7 +1,7 @@
 //! OTEL receipt-stream ingest.
 //!
 //! Folds NDJSON frames produced by the OTEL receipt exporter
-//! (`crates/chio-otel-receipt-exporter/src/sink.rs`) into the lineage
+//! (`crates/observability/chio-otel-receipt-exporter/src/sink.rs`) into the lineage
 //! DAG. Idempotent on re-ingest: edges and nodes carry stable natural
 //! keys derived from the source receipt id and OTEL trace/span ids.
 //!

@@ -38,14 +38,3 @@ code does not issue, parse, or validate Chio capabilities directly.
 - The `/echo` request schema in `app.py` and `openapi.yaml` must remain aligned.
 - Smoke evidence must prove all three HTTP decisions and persisted sidecar
   receipts.
-
-## Current Improvement Target
-
-The example previously coupled route tests to a live sidecar and used an
-outdated capability grant in smoke. The package boundary now needs two separate
-checks:
-
-1. Unit-level FastAPI route tests that run with Chio middleware disabled and
-   prove the app schema is strict.
-2. End-to-end smoke evidence that uses the current HTTP authority grant and
-   verifies sidecar receipt persistence.

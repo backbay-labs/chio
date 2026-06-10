@@ -12,8 +12,8 @@ tests/replay/proptest-regressions/replay_proptest.txt
 
 The `chio-replay-gate` workflow uploads this directory as the
 `proptest-regressions` artifact whenever the `proptest` job fails. The CI
-job compiles the release test target first, then enforces the Phase 5
-runtime budget with `timeout 30s` around the
+job compiles the release test target first, then enforces a `timeout 30s`
+runtime budget around the
 `cargo test -p chio-kernel --test replay_proptest --release -- --nocapture`
 harness invocation.
 
@@ -26,6 +26,6 @@ To promote a real regression into the archive:
 3. Commit the minimized `replay_proptest.txt` alongside the fix or the
    intentional behavior-change review.
 
-Do not add M02 libfuzzer seed glue here. `crates/kernel/chio-kernel/fuzz/seeds/`
-is owned by the M02 fuzzing lane; this directory is only the replay
-proptest failure archive consumed by M04 CI.
+Do not add libfuzzer seed glue here. `crates/kernel/chio-kernel/fuzz/seeds/`
+is owned by the fuzzing lane; this directory is only the replay
+proptest failure archive.

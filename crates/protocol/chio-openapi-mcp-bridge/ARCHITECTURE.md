@@ -155,9 +155,9 @@ content to MCP callers.
 
 ### Pain Point
 
-When `observed_body_bytes` is absent, the bridge previously measured the
-reserialized JSON body. That can be smaller than the upstream byte stream after
-the dispatcher parses or normalizes a response, weakening the response-size
+When `observed_body_bytes` is absent, measuring the reserialized JSON body
+instead of the upstream byte stream can undercount: reserialization is smaller
+than the bytes the dispatcher parsed or normalized, weakening the response-size
 egress contract.
 
 ### Security and API Constraints

@@ -37,7 +37,3 @@ This crate does not sign receipts, mutate revocation state, issue capabilities, 
 Tests should prove the read boundary rejects tenant-scoped contexts, event mapping does not overstate authorization, exporter adapters serialize their protocol payloads deterministically, retry and rate-limit behavior is bounded, and dead-letter records retain sanitized failure evidence.
 
 The integration tests in this crate intentionally use local mock HTTP servers for exporter paths. In sandboxes that deny local TCP bind, those tests must be treated as environment-blocked rather than silently skipped.
-
-## Improvement Target
-
-The next useful modularization step is to keep exporter endpoint validation centralized so Splunk, Elasticsearch, Datadog, Sumo Logic, and webhook exporters share the same egress-contract enforcement instead of drifting independently.

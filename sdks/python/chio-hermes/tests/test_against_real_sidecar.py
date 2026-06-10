@@ -170,11 +170,7 @@ def test_health_round_trips(live_sidecar: str) -> None:
 
 
 def test_mint_capability_via_sdk_path(live_sidecar: str) -> None:
-    """The SDK's `/v1/capabilities` POST mints a real signed token.
-
-    Pre-Phase A this would 404 on the sidecar; with the path alias
-    the SDK works as-shipped.
-    """
+    """The SDK's `/v1/capabilities` POST mints a real signed token."""
     from chio_sdk.client import ChioClient
     from chio_sdk.models import ChioScope
 

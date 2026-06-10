@@ -48,10 +48,9 @@ policy engine.
   shape. Valid requests are unchanged.
 - `chio-kernel-core` remains the semantic verifier; this crate only rejects
   malformed FFI configuration before calling into it.
-- The generated C header is unaffected by this validation-only slice.
 
-## Planned Improvement
+## Trust-Root Validation
 
-Validate `capability_trust_roots` before portable evaluation or contextual
+`capability_trust_roots` is validated before portable evaluation or contextual
 capability verification. Every trust-root map key must decode as a public key,
 and every root scope hash must be non-empty, unpadded, and control-free.

@@ -3,7 +3,7 @@
 //!
 //! This exercises the HushSpec YAML -> `CompiledPolicy` path rather than
 //! the Rust-struct path; the rust-struct path is covered by the module
-//! tests in `crates/chio-policy/src/compiler.rs`.
+//! tests in `crates/guards/chio-policy/src/compiler.rs`.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 

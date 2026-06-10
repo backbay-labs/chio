@@ -209,7 +209,7 @@ proptest! {
     ///
     /// NOTE: the live `merge` function performs a child-overrides-base
     /// composition where a child `tool_access` rule wholesale replaces the
-    /// base's (see `merge_rules` in `crates/chio-policy/src/merge.rs`).
+    /// base's (see `merge_rules` in `crates/guards/chio-policy/src/merge.rs`).
     /// Deny-absorption at the merge level therefore only follows when the
     /// chain is *itself* deny-preserving (every composed child carries the
     /// ancestor's block forward). The doc-named invariant is encoded in

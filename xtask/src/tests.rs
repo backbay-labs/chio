@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn resolve_schema_path_rejects_legacy_prefix_traversal() {
+fn resolve_schema_path_rejects_prefix_traversal() {
     let temp = match TempDir::new("xtask-schema-resolve") {
         Ok(temp) => temp,
         Err(err) => panic!("failed to create temp dir: {err}"),
@@ -68,7 +68,7 @@ fn normalize_ts_chunk_strips_trailing_newlines() {
 
 #[test]
 fn codegen_argv_round_trips_positional_and_flag() {
-    // The clap dispatch rebuilds the exact argv the legacy run_codegen parses.
+    // The clap dispatch builds the exact argv `run_codegen` parses.
     use crate::cli::{CodegenArgs, Lang};
     use crate::dispatch::codegen_argv;
     let pos = CodegenArgs {
@@ -93,9 +93,9 @@ fn codegen_argv_round_trips_positional_and_flag() {
 
 #[test]
 fn codegen_argv_rejects_language_given_twice() {
-    // `codegen rust --lang python` supplies the language twice; the old
-    // hand-rolled parser rejected this and so must the clap dispatch, rather
-    // than silently keeping the positional and dropping the flag.
+    // `codegen rust --lang python` supplies the language twice; the dispatch
+    // rejects this rather than silently keeping the positional and dropping the
+    // flag.
     use crate::cli::{CodegenArgs, Lang};
     use crate::dispatch::codegen_argv;
     use crate::XtaskError;

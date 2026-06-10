@@ -12,16 +12,6 @@
 - `smoke.sh` owns the live trust service, app, sidecar, capability, receipt,
   and artifact proof loop.
 
-## Pain Points
-
-- The previous top-level `Program.cs` mixed bootstrap, middleware wiring,
-  route registration, request payloads, and response construction in one file.
-- `/healthz` was inside the same middleware path as governed routes, which made
-  a liveness endpoint depend on a sidecar that the smoke flow starts later.
-- The OpenAPI echo schema did not describe the runtime contract tightly enough.
-- The smoke script used an older demo capability target and CLI receipt listing
-  path that no longer matches the hardened HTTP sidecar examples.
-
 ## Security And API Constraints
 
 - `GET /hello` and `POST /echo` must stay governed by `ChioMiddleware`.
@@ -42,10 +32,3 @@
 - `sdks/dotnet/ChioMiddleware` stays the referenced adapter package. Its tests
   prove middleware fail-closed behavior and receipt verification, while this
   example proves app-specific contracts and sidecar integration.
-
-## Planned Improvement
-
-Split bootstrap from the app contract, make `/healthz` sidecar-independent while
-leaving `/hello` and `/echo` governed, add focused .NET tests for route contract
-validation, tighten the OpenAPI echo schema, and update the smoke script to use
-the current HTTP authority capability plus direct receipt-store evidence.

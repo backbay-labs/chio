@@ -24,22 +24,21 @@ without reaching into kernel or transport internals.
 The crate is currently a compact single-file crate. Splitting files is not
 useful until additional journal backends or persistence boundaries exist.
 
-## Pain Points
+## Guard Boundary
 
-- Guard-facing state was previously exposed through several independent
-  getters: `data_flow()`, `tool_sequence()`, and `tool_counts()`. The
-  `SessionJournalSnapshot` boundary now captures those views under one lock and
-  `chio-guards` uses it for session-aware evaluations.
-- Record admission still accepts embedded control characters in `tool_name`,
+- Guard-facing state is exposed through the `SessionJournalSnapshot` boundary,
+  which captures the data-flow, tool-sequence, and tool-count views under one
+  lock. `chio-guards` uses it for session-aware evaluations.
+- Record admission rejects embedded control characters in `tool_name`,
   `server_id`, and `agent_id`. Those fields are copied into guard-facing
   sequences, counts, serialized journal entries, and hash-chain input, so
-  accepting log-breaking or header-breaking bytes weakens the audit boundary.
+  log-breaking or header-breaking bytes are refused to keep the audit boundary
+  on a printable identifier surface.
 
 ## Security And API Constraints
 
 - The journal must remain append-only.
-- Hash-chain semantics and the documented entry hash field order must not
-  change in this slice.
+- Hash-chain semantics and the documented entry hash field order are fixed.
 - Denied invocations must continue contributing to invocation totals and tool
   sequences.
 - Cumulative byte counters must keep saturating arithmetic.
@@ -52,24 +51,6 @@ useful until additional journal backends or persistence boundaries exist.
 
 Direct dependents include `chio-guards` and conformance tests that seed
 session journals for cumulative exfiltration and behavioral sequence coverage.
-This slice keeps the existing public API and tightens `record` validation.
-Dependent guard behavior does not need call-site changes because valid existing
-test fixtures use printable identifiers.
-
-## Completed Snapshot Boundary
-
-Add `SessionJournalSnapshot`, an immutable guard-read model captured under one
-journal lock. Use it in `chio-guards` session-aware guards so each evaluation
-observes one coherent view of cumulative data flow, tool sequence, tool counts,
-entry count, and journal head hash.
-
-The change is architectural because it introduces a real read boundary for
-session guard state. It reduces downstream coupling to individual journal
-indexes while preserving the existing append and hash-chain contracts.
-
-## Completed Record Identity Validation
-
-Reject control characters in every `RecordParams` identity field before
-appending an entry. This keeps journal serialization, guard-facing tool
-sequences, per-tool count keys, and hash-chain input on a printable identifier
-boundary while preserving the append-only and snapshot APIs.
+Guard call sites consume `SessionJournalSnapshot` so each evaluation observes
+one coherent view of cumulative data flow, tool sequence, tool counts, entry
+count, and journal head hash.

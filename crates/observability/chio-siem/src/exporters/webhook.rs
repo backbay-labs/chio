@@ -11,8 +11,8 @@
 //! - Optional severity / guard allow-lists so noisy or low-signal events can
 //!   be dropped before hitting the wire.
 //!
-//! This is the generic webhook path. Slack and Teams block-kit payload
-//! variants can be added later as thin adapters on top of this exporter.
+//! This is the generic webhook path: backend-specific payload variants (Slack,
+//! Teams block-kit) layer on top as thin adapters.
 
 use std::collections::HashMap;
 use std::time::Duration;

@@ -11,9 +11,8 @@
 //! Metadata headers (`X-Sumo-Category`, `X-Sumo-Name`, `X-Sumo-Host`) attach
 //! Sumo Logic metadata for routing and parser selection.
 //!
-//! Optional gzip compression is intentionally omitted here to avoid adding a
-//! `flate2` dependency to `chio-siem`. Compression can be added later without
-//! breaking the exporter's public surface.
+//! Gzip compression is intentionally omitted to avoid adding a `flate2`
+//! dependency to `chio-siem`.
 
 use std::time::Duration;
 

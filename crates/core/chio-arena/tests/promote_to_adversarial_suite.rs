@@ -1,5 +1,5 @@
 //! Auto-promotion to the chio-adversarial-suite per-class JSON files.
-//! Until the suite lands, the writer falls back to a
+//! When the suite directory is absent the writer falls back to a
 //! `target/arena/promote-pending/` holding directory.
 
 use chio_arena::{
@@ -118,10 +118,10 @@ fn writes_to_live_suite_when_present() -> Result<(), Box<dyn std::error::Error>>
         receipts: vec![arena_receipt()?],
     };
     let tmp = tempfile::tempdir()?;
-    // Pre-create the suite scaffold.
     let suite_root = tmp
         .path()
         .join("crates")
+        .join("core")
         .join("chio-adversarial-suite")
         .join("cases");
     std::fs::create_dir_all(&suite_root)?;

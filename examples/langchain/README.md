@@ -28,7 +28,7 @@ pip install -e ../../sdks/python/chio-py -e .
 python run.py
 ```
 
-The script defaults to the phase `309` Docker quickstart endpoints:
+The script defaults to the Docker quickstart endpoints:
 
 - `CHIO_BASE_URL=http://127.0.0.1:8931`
 - `CHIO_CONTROL_URL=http://127.0.0.1:8940`

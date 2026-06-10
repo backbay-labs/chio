@@ -21,18 +21,14 @@ inner Chio receipt schema.
 - `xtask/src/eval_receipt_regen.rs` is a dependent generator for the golden
   eval binding vector.
 
-## Pain Points
+## Schema Admission
 
-- `spec/eval/receipt-format.v1.json` is a closed schema at the root and nested
-  object levels, but the current verifier checks only the fields needed by
-  corpus, receipt hash, partner-review, and signature verification.
-- The local `test-sha256` fixture signature covers canonicalized bundle bytes.
-  If the verifier does not reject schema-forbidden fields before trusting that
-  signature, a recomputed local fixture signature can bless fields that the
-  schema explicitly forbids.
-- The exporter constructors reject empty and padded typed inputs, while verifier
-  admission accepts some invalid inbound bundle fields because there is no
-  schema-envelope boundary before deeper checks.
+`spec/eval/receipt-format.v1.json` is a closed schema at the root and nested
+object levels. `verify` runs a schema-envelope admission pass before corpus,
+receipt, and signature checks: it rejects unknown object fields, missing
+required sections, empty required strings, and invalid closed-enum values. This
+admission boundary runs before the `test-sha256` fixture signature is trusted,
+so a recomputed local fixture signature cannot bless fields the schema forbids.
 
 ## Security And API Constraints
 
@@ -50,19 +46,5 @@ inner Chio receipt schema.
 
 The only Rust workspace dependent is `xtask`, which uses the exporter and local
 test signature helper to regenerate `tests/bindings/vectors/eval/v1.json`.
-The planned verifier-only change should not require vector or generator edits,
-but `cargo run -p xtask -- eval-receipt-regen --check` will prove generator
+`cargo run -p xtask -- eval-receipt-regen --check` proves generator
 compatibility.
-
-## Planned Improvement
-
-Add a schema-envelope admission pass in `verify` before corpus, receipt, and
-signature checks. It should reject unknown object fields, missing required
-sections, empty required strings, and invalid closed enum values that are
-already specified by `receipt-format.v1.json`, while leaving signature
-cryptography and inner receipt validation in their existing boundaries.
-
-This is architectural because it creates an explicit admission boundary between
-raw JSON parsing and cryptographic verification. The verifier will no longer
-trust a recomputed local fixture signature over a bundle shape the schema would
-reject.

@@ -1,19 +1,16 @@
-// Typed handlers for the six chio-runtime facets, ported from
-// `scripts/check-chio-runtime-*.sh`. Included into `fixtures.rs` via `include!`
-// so the handlers share that module's private helpers (ScratchDir, require_cli,
-// run_cargo_test, validate_document, the JSON mutators, canonical_sha256) while
-// keeping each file under the 2000-line hygiene cap.
+// Typed handlers for the six chio-runtime facets. `include!`d into
+// `fixtures.rs` so the handlers share that module's private helpers (ScratchDir,
+// require_cli, run_cargo_test, validate_document, the JSON mutators,
+// canonical_sha256).
 //
-// The runtime scripts are far more imperative than the pheromone gates: each
-// drives a multi-step `chio runtime ...` CLI pipeline, materializes derived
-// fixtures, and asserts on report contents. Those steps live here as typed
-// Rust; the manifest carries only the static validate pairs and cargo-test
-// tails.
+// Each runtime facet drives a multi-step `chio runtime ...` CLI pipeline,
+// materializes derived fixtures, and asserts on report contents. Those steps
+// live here as typed Rust; the manifest carries only the static validate pairs
+// and cargo-test tails.
 
 // -- Runtime CLI / fs helpers ----------------------------------------------
 
-/// The CHIO_RUNTIME schema directory the scripts referenced as
-/// `spec/schemas/chio-runtime/v1`.
+/// The chio-runtime schema directory (`spec/schemas/chio-runtime/v1`).
 fn runtime_schema_dir(root: &Path) -> PathBuf {
     root.join("spec/schemas/chio-runtime/v1")
 }
@@ -37,9 +34,7 @@ fn file_sha256(path: &Path) -> Result<String, XtaskError> {
 }
 
 /// Run a `chio` CLI invocation through `cargo run -p chio-cli --bin chio --`,
-/// returning whether it succeeded. The runtime scripts call the `chio` binary
-/// either with or without the explicit `--bin chio`; the binary is unambiguous,
-/// so this always pins it.
+/// returning whether it succeeded. `--bin chio` is always pinned.
 fn run_chio(root: &Path, chio_args: &[&str]) -> Result<bool, XtaskError> {
     let mut args = vec!["-p", "chio-cli", "--bin", "chio", "--"];
     args.extend_from_slice(chio_args);
@@ -66,9 +61,7 @@ fn reject_chio(root: &Path, chio_args: &[&str], detail: &str) -> Result<(), Xtas
     }
 }
 
-/// Confirm `report[field] == expected` (string), failing closed otherwise. This
-/// is the Rust equivalent of the scripts' `grep -q '"field": "expected"'` and
-/// the python `report.get(field)` assertions.
+/// Confirm `report[field] == expected` (string), failing closed otherwise.
 fn assert_report_str(report: &Path, field: &str, expected: &str) -> Result<(), XtaskError> {
     let value = load_json(report)?;
     if str_field(&value, field) == Some(expected) {
@@ -98,10 +91,9 @@ fn assert_report_bool(report: &Path, field: &str, expected: bool) -> Result<(), 
 
 // -- runtime-spine-fixtures ------------------------------------------------
 
-/// `check-chio-runtime-spine-fixtures.sh`: a retired-schema-ID scan over the
-/// fixture tree, the runtime-derived signed bodies validated against their
-/// schemas, the scenario admission-profile/bundle native-schema assertion, and
-/// the static validate block (in the manifest).
+/// A retired-schema-ID scan over the fixture tree, the runtime-derived signed
+/// bodies validated against their schemas, the scenario admission-profile/bundle
+/// native-schema assertion, and the static validate block (in the manifest).
 fn handle_spine_fixtures(
     root: &Path,
     manifest: &RuntimeManifest,
@@ -109,14 +101,14 @@ fn handle_spine_fixtures(
 ) -> Result<(), XtaskError> {
     let fixture_dir = root.join(&facet.fixture_dir);
 
-    // The script's `rg "chio\.chio"` guard: active fixtures must not embed the
-    // retired doubled-schema prefix. The marker is assembled at runtime so this
-    // gate file never embeds the literal it screens for.
+    // Active fixtures must not embed the retired doubled-schema prefix. The
+    // marker is assembled at runtime so this gate file never embeds the literal
+    // it screens for.
     guard_no_retired_schema_prefix(&fixture_dir)?;
 
     // Build and validate the three signed bodies (trust / peer-weights / policy)
-    // the script derives from their unsigned fixtures, and assert the scenario
-    // steps carry Chio-native admission profiles and bundles.
+    // derived from their unsigned fixtures, and assert the scenario steps carry
+    // Chio-native admission profiles and bundles.
     let scratch = ScratchDir::new("spine-fixtures")?;
     spine_build_and_validate_signed_bodies(root, &fixture_dir, &scratch)?;
     spine_assert_scenario_native(&fixture_dir)?;
@@ -148,9 +140,8 @@ fn guard_no_retired_schema_prefix(dir: &Path) -> Result<(), XtaskError> {
 }
 
 /// Wrap an unsigned body in a signed envelope with filler signer/signature
-/// bytes (matching the script's `signed_body` python) and validate it against
-/// the named schema. The peer-weights body's `PEER_WEIGHTS_SHA256` token is
-/// substituted with a 64-char filler, exactly as the script does.
+/// bytes and validate it against the named schema. The peer-weights body's
+/// `PEER_WEIGHTS_SHA256` token is substituted with a 64-char filler.
 fn spine_build_and_validate_signed_bodies(
     root: &Path,
     fixture_dir: &Path,
@@ -204,11 +195,11 @@ fn spine_assert_scenario_native(fixture_dir: &Path) -> Result<(), XtaskError> {
 
 // -- runtime-spine ---------------------------------------------------------
 
-/// `check-chio-runtime-spine.sh`. Schema-only runs the spine-fixtures facet plus
-/// the two attest validations (manifest). `all` adds the runtime-core test
-/// suite, the chio-kernel runtime filter, the positive admission pipeline, and
-/// the negative replay/mismatch assertions. `negative-only` runs the positive
-/// pipeline (its prerequisite) then the negatives.
+/// Schema-only runs the spine-fixtures facet plus the two attest validations
+/// (manifest). `all` adds the runtime-core test suite, the chio-kernel runtime
+/// filter, the positive admission pipeline, and the negative replay/mismatch
+/// assertions. `negative-only` runs the positive pipeline (its prerequisite)
+/// then the negatives.
 fn handle_spine(
     root: &Path,
     manifest: &RuntimeManifest,
@@ -477,9 +468,8 @@ fn spine_run_negative(
     spine_assert_no_legacy_runtime_key(&mismatch_report)
 }
 
-/// Build the trusted-verifiers document from a signed trust input, mirroring the
-/// script's embedded python (active-status verifier key derived from the signed
-/// body and signer key).
+/// Build the trusted-verifiers document from a signed trust input: an
+/// active-status verifier key derived from the signed body and signer key.
 fn spine_build_trusted_verifiers(signed: &Path, out: &Path) -> Result<(), XtaskError> {
     let value = load_json(signed)?;
     let body = value
@@ -507,8 +497,8 @@ fn spine_build_trusted_verifiers(signed: &Path, out: &Path) -> Result<(), XtaskE
     write_json(out, &trusted)
 }
 
-/// Substitute the `PEER_WEIGHTS_SHA256` token in the policy body with the hash
-/// the CLI emitted, in place (mirrors the script's python text replace).
+/// Substitute the `PEER_WEIGHTS_SHA256` token in the policy body, in place, with
+/// the hash the CLI emitted.
 fn spine_patch_policy_peer_weights(policy_body: &Path, hash_file: &Path) -> Result<(), XtaskError> {
     let hash = fs::read_to_string(hash_file)
         .map_err(|err| XtaskError::Io(display(hash_file), err))?
@@ -520,8 +510,7 @@ fn spine_patch_policy_peer_weights(policy_body: &Path, hash_file: &Path) -> Resu
     fs::write(policy_body, body).map_err(|err| XtaskError::Io(display(policy_body), err))
 }
 
-/// Assert the positive admission report, store, and trust-floor invariants the
-/// script's python checked.
+/// Assert the positive admission report, store, and trust-floor invariants.
 fn spine_assert_admission(
     report: &Path,
     store: &Path,
@@ -634,12 +623,9 @@ fn run_bash_with_arg(root: &Path, script: &str, arg: &str) -> Result<(), XtaskEr
 
 // -- runtime-proof-parity --------------------------------------------------
 
-/// `check-chio-runtime-proof-parity.sh`. `all` runs the three runtime-core proof
-/// filters, the fixture-generation + verify-proof flow, the chio-cli runtime
-/// test, then the full spine. `schema-only` / `negative-only` delegate to spine;
-/// the script's `--regenerate-only`/`--parity-only`/`--fixtures-only` modes are
-/// captured by the `all` path here (the consolidated CLI exposes the three
-/// canonical modes).
+/// `all` runs the three runtime-core proof filters, the fixture-generation +
+/// verify-proof flow, the chio-cli runtime test, then the full spine.
+/// `schema-only` / `negative-only` delegate to spine.
 fn handle_proof_parity(
     root: &Path,
     manifest: &RuntimeManifest,
@@ -720,9 +706,8 @@ fn proof_parity_fixture_tests(root: &Path) -> Result<(), XtaskError> {
 
 // -- runtime-policy --------------------------------------------------------
 
-/// `check-chio-runtime-policy.sh`. `schema-only` validates the four inline
-/// policy fixtures; `negative-only` runs the runtime-core/CLI policy tests;
-/// `all` does both plus the full spine.
+/// `schema-only` validates the four inline policy fixtures; `negative-only`
+/// runs the runtime-core/CLI policy tests; `all` does both plus the full spine.
 fn handle_policy(
     root: &Path,
     manifest: &RuntimeManifest,
@@ -744,8 +729,8 @@ fn handle_policy(
     Ok(())
 }
 
-/// Materialize and validate the four inline policy fixtures the script wrote
-/// (peer-weights envelope, policy envelope, policy decision, trust-floor state).
+/// Materialize and validate the four inline policy fixtures (peer-weights
+/// envelope, policy envelope, policy decision, trust-floor state).
 fn policy_schema_checks(root: &Path) -> Result<(), XtaskError> {
     let scratch = ScratchDir::new("runtime-policy")?;
     let cases: [(&str, &str, Value); 4] = [

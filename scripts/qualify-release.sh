@@ -13,7 +13,7 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-# ci-workspace remains the fast regression gate.
+# ci-workspace is the fast regression gate.
 ./scripts/ci-workspace.sh
 cargo test -p chio-provider-conformance \
   --features fixtures-gemini,fixtures-mistral,fixtures-groq,fixtures-ollama,fixtures-cohere \

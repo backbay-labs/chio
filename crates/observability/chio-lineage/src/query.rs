@@ -6,7 +6,7 @@
 //! and receipt that transitively depended on it.
 //!
 //! The persistent backing is `chio-store-sqlite` via the `lineage` cargo
-//! feature (see `crates/chio-store-sqlite/src/lineage_cte.rs`); this module
+//! feature (see `crates/platform/chio-store-sqlite/src/lineage_cte.rs`); this module
 //! provides the in-memory graph window used during a single query, with
 //! depth and row caps that emit the canonical truncation marker on
 //! overflow.
@@ -15,10 +15,9 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::schema::{LineageEdge, LineageGraph, LineageNode, NodeKind, TruncationMarker};
 
-/// Default recursion depth bound. Mirrors the bound used by the existing
-/// `capability_lineage::get_delegation_chain` recursive CTE; the lineage
-/// query layer documents the same default so operators get a single cap
-/// to reason about.
+/// Default recursion depth bound. Matches the bound used by the
+/// `capability_lineage::get_delegation_chain` recursive CTE so operators
+/// reason about a single cap across the in-memory and SQLite query paths.
 pub const DEFAULT_DEPTH_LIMIT: u32 = 20;
 
 /// Query bounds.

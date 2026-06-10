@@ -50,12 +50,12 @@
 //! Negative-conformance regression coverage for the three modelled
 //! verify_quote impls (live runtime, not model):
 //!
-//! - Nitro: `crates/chio-attest-verify/tests/nitro_unit.rs`
+//! - Nitro: `crates/trust/chio-attest-verify/tests/nitro_unit.rs`
 //!   (asserts `AttestError::ReportDataMismatch` on tampered fixtures).
-//! - SEV-SNP: `crates/chio-attest-verify/tests/expect_report_data.rs`
+//! - SEV-SNP: `crates/trust/chio-attest-verify/tests/expect_report_data.rs`
 //!   and the per-backend unit tests asserting `QuoteRejected` for
 //!   non-acceptable TCB.
-//! - TDX: `crates/chio-attest-verify/tests/tdx_integration.rs`
+//! - TDX: `crates/trust/chio-attest-verify/tests/tdx_integration.rs`
 //!   (asserts `ReportDataMismatch` on `intel-tdx-report-data-mismatch`
 //!   and `intel-tdx-upper-half-tamper` fixtures).
 //!
@@ -73,7 +73,7 @@ use crate::AttestError;
 /// Build a deterministic uncompressed-SEC1 P-256 public key fixture.
 ///
 /// Matches the same fixture pattern used in
-/// `crates/chio-kernel-core/src/kani_public_harnesses.rs` so the two
+/// `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs` so the two
 /// crates' Kani modules share key construction conventions. The fixture
 /// is a pure constructor over a u8 seed and contains no
 /// nondeterministic clocks or system calls; safe to drive symbolically.
@@ -92,8 +92,8 @@ fn public_key(seed: u8) -> PublicKey {
 /// the observed `report_data` against `expected_report_data`.
 ///
 /// Production entry: `chio_attest_verify::expect_report_data`
-/// (`pub fn` at `crates/chio-attest-verify/src/quote.rs:163`,
-/// re-exported via `crates/chio-attest-verify/src/lib.rs:50`).
+/// (`pub fn` at `crates/trust/chio-attest-verify/src/quote.rs:163`,
+/// re-exported via `crates/trust/chio-attest-verify/src/lib.rs:50`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_expect_report_data_determinism_under_input_change() {
@@ -150,9 +150,9 @@ pub fn public_expect_report_data_determinism_under_input_change() {
 // path is required to preserve and is the same kind of model the
 // `chio-kernel-core` harness uses for its `verify_receipt_roundtrip`
 // block (see the comment block at lines 752-870 of
-// `crates/chio-kernel-core/src/kani_public_harnesses.rs`). The runtime
-// tests at `crates/chio-attest-verify/tests/migration.rs` and
-// `crates/chio-attest-verify/tests/v318_migration.rs`, together with
+// `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`). The runtime
+// tests at `crates/trust/chio-attest-verify/tests/migration.rs` and
+// `crates/trust/chio-attest-verify/tests/v318_migration.rs`, together with
 // the per-backend unit tests, pin the concrete impl behaviour
 // against fixed fixtures.
 // ---------------------------------------------------------------------
@@ -183,13 +183,13 @@ struct ModelQuoteOutcome {
 ///
 /// The arm priority below mirrors the production order observed in all
 /// three TEE backends:
-///   - TDX (`crates/chio-attest-verify/src/tdx.rs:164-191`): TCB
+///   - TDX (`crates/trust/chio-attest-verify/src/tdx.rs:164-191`): TCB
 ///     collateral verification -> parse -> algorithm dispatch ->
 ///     report_data comparison.
-///   - Nitro (`crates/chio-attest-verify/src/nitro.rs:237-254`): COSE
+///   - Nitro (`crates/trust/chio-attest-verify/src/nitro.rs:237-254`): COSE
 ///     algorithm tag check -> parse -> TCB collateral -> signature ->
 ///     report_data comparison.
-///   - SEV-SNP (`crates/chio-attest-verify/src/sev_snp.rs:252-268`):
+///   - SEV-SNP (`crates/trust/chio-attest-verify/src/sev_snp.rs:252-268`):
 ///     TCB collateral -> signature dispatch -> measurement ->
 ///     report_data comparison.
 ///
@@ -227,7 +227,7 @@ fn model_verify_quote(outcome: ModelQuoteOutcome) -> Result<(), AttestError> {
 /// to satisfy.
 ///
 /// Production entry: `<NitroVerifier as QuoteVerifier>::verify_quote`
-/// (impl at `crates/chio-attest-verify/src/nitro.rs:200`). The
+/// (impl at `crates/trust/chio-attest-verify/src/nitro.rs:200`). The
 /// real entry is reachable only with the `tee-quotes` Cargo feature
 /// active; this harness pins the algebra independently of that
 /// feature gate so default `cargo build` paths stay green.
@@ -297,7 +297,7 @@ pub fn public_nitro_verify_quote_rejects_report_data_mismatch() {
 /// signature validity.
 ///
 /// Production entry: `<SevSnpVerifier as QuoteVerifier>::verify_quote`
-/// (impl at `crates/chio-attest-verify/src/sev_snp.rs:246`).
+/// (impl at `crates/trust/chio-attest-verify/src/sev_snp.rs:246`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_sev_snp_verify_quote_rejects_unacceptable_tcb() {
@@ -360,7 +360,7 @@ pub fn public_sev_snp_verify_quote_rejects_unacceptable_tcb() {
 /// verification arm (or vice versa) yields a non-`Ok` result.
 ///
 /// Production entry: `<TdxDcapVerifier as QuoteVerifier>::verify_quote`
-/// (impl at `crates/chio-attest-verify/src/tdx.rs:159`). The
+/// (impl at `crates/trust/chio-attest-verify/src/tdx.rs:159`). The
 /// crate-private dispatchers
 /// `verify_p256_signature_with_attestation_key` and
 /// `verify_p384_signature_with_attestation_key`
@@ -390,7 +390,7 @@ pub fn public_tdx_verify_quote_rejects_algorithm_mismatch() {
 
     // (3) Pin the dispatch order against accidental flips: in the
     // production TDX path
-    // (`crates/chio-attest-verify/src/tdx.rs:171-191`), the
+    // (`crates/trust/chio-attest-verify/src/tdx.rs:171-191`), the
     // algorithm dispatch (`ATT_KEY_TYPE_ECDSA_P256` /
     // `ATT_KEY_TYPE_ECDSA_P384` arms returning
     // `AttestError::Malformed`) runs BEFORE the `report_data`

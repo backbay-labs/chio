@@ -255,9 +255,9 @@ pub fn evaluate(input: EvaluateInput<'_>) -> EvaluationVerdict {
 
 /// Evaluate with a configured capability crypto floor.
 ///
-/// Legacy callers use [`evaluate`], which preserves the historical
-/// allow-classical posture. Kernels that load `policy.crypto_floor` must call
-/// this entry point so capability tokens cannot bypass the PQ floor.
+/// [`evaluate`] defaults to the allow-classical posture. Kernels that load
+/// `policy.crypto_floor` must call this entry point so capability tokens cannot
+/// bypass the PQ floor.
 ///
 /// This entry point uses a [`NoopBudgetRegistry`]; the full
 /// [`evaluate_with_crypto_floor_and_budgets`] entry point lets a hosted

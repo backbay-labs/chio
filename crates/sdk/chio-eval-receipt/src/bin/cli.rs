@@ -10,8 +10,8 @@ use sha2::{Digest, Sha256};
 /// This is intentionally NOT `sigstore-cosign` or any other real-cryptography
 /// label. The memo signature in this repository is a self-generated SHA-256
 /// receipt; rendering it as `sigstore-cosign` would misrepresent it as a
-/// vendor-issued cosign attestation. Real partner cryptographic attestation is
-/// deferred to follow-on work.
+/// vendor-issued cosign attestation. The verifier does not perform real partner
+/// cryptographic attestation.
 const SYNTHETIC_TEST_SAMPLE: &str = "synthetic-test-sample";
 
 /// Closed set of fields permitted in a `chio-memo-signature.v1` sig file.

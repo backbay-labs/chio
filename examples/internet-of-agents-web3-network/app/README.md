@@ -84,7 +84,7 @@ Health probe: `curl http://localhost:3000/api/health` returns
 
 - `CHIO_BUNDLE_DIR` (required). Absolute path to the artifact-dir.
 - `CHIO_BUNDLE_MODE` (optional). `server` (default) streams files from the
-  server. `static` is reserved for a future wave.
+  server. `static` is reserved and not yet implemented.
 - `NEXT_PUBLIC_CHIO_DEV` (optional). Set to `1` to show the minimal tweaks panel.
 
 ## Graph layout

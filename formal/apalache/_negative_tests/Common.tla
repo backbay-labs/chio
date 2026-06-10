@@ -1,8 +1,8 @@
 ----------------------------- MODULE Common -----------------------------
 (***************************************************************************)
-(* Shared finite domains for the M06 Apalache kernel-state subset.          *)
+(* Shared finite domains for the Apalache kernel-state subset.              *)
 (*                                                                          *)
-(* The constants are supplied by each MC*.cfg file. The M06 reference       *)
+(* The constants are supplied by each MC*.cfg file. The reference           *)
 (* bounds are Authorities = 1..3, CapSet = 1..6, and EpochMax = 4.          *)
 (***************************************************************************)
 

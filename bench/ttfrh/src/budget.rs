@@ -49,8 +49,7 @@ impl Budget {
     }
 
     pub fn default_60s() -> Self {
-        // Hard-coded constants are within the accepted envelope, so the
-        // struct is constructed directly without the fallible validator.
+        // Defaults are within the accepted envelope, so no validation is needed.
         Self {
             budget_ms: DEFAULT_BUDGET_MS,
             buffer_pct: DEFAULT_BUFFER_PCT,

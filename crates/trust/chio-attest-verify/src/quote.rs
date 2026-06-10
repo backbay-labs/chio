@@ -3,10 +3,10 @@
 //! This module defines the trait surface every TEE quote backend ships
 //! against. It is the single import point for downstream consumers:
 //!
-//! - The revocation oracle (`crates/chio-revocation/`) consumes
+//! - The revocation oracle (`crates/trust/chio-revocation-oracle/`) consumes
 //!   [`VerifiedQuote`] when a revocation root is signed by a kernel that
 //!   ran inside an attested TEE.
-//! - Hardware custody envelopes (`crates/chio-tee/`) consume
+//! - Hardware custody envelopes (`crates/trust/chio-tee/`) consume
 //!   [`expect_report_data`] before declaring a custody handoff valid.
 //!
 //! All shapes here are intentionally minimal: a TEE family discriminator,

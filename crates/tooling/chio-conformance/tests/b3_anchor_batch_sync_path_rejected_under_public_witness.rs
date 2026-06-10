@@ -33,7 +33,7 @@
 //!   per-state table inside `evaluate_witness_policy`; a future state
 //!   addition or per-state rule change could re-open the bypass. PROTOCOL.md
 //!
-//! Why this passes Artifact D: this test imports
+//! Provenance: this test imports
 //!   `chio_anchor::verify_anchor_batch_with_witness_policy` directly from
 //!   the production crate (no mock, no near-copy), constructs a real
 //!   `AnchorBatch` via the production `chio_anchor::build_anchor_batch`

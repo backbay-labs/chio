@@ -46,14 +46,3 @@ requests return the structured Chio denial body before the controller runs.
 - Route tests must exercise controller behavior without a live sidecar.
 - The Gradle composite must continue resolving `world.chio:chio-spring-boot`
   through `../../sdks/jvm`.
-
-## Current Improvement Target
-
-The example currently keeps application wiring, filter registration, route
-handlers, and payload types in one source file. The filter protects every path,
-including `/healthz`, even though readiness should not depend on sidecar
-availability. The echo route accepts only a typed Kotlin DTO but does not
-enforce the stricter OpenAPI contract around unknown fields, nonempty
-messages, and positive counts. The smoke flow also uses an outdated capability
-grant and a receipt-list path that does not match the sidecar HTTP receipt
-store.

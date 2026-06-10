@@ -607,10 +607,9 @@ def _prefect_envelope(
     new_kwargs: dict[str, Any] = {}
     for k, v in redacted_kwargs.items():
         if k in spillover_keys:
-            # Compatibility note: remove the synthetic-key re-emission
-            # with the v0.4 wire-shape change documented in the CHANGELOG.
-            # Callers will read the redacted spillover from
-            # ``kwargs[<original_name>]`` directly after that change.
+            # Positional-only params that also appear in **kwargs spill over
+            # under a synthetic key so the wire payload keeps the redacted
+            # value distinct from the positional slot.
             new_kwargs[f"{k}__var_kw_spillover__"] = v
         else:
             new_kwargs[k] = v
