@@ -300,7 +300,7 @@ mod tests {
             panic
                 .location_file
                 .as_deref()
-                .is_some_and(|file| file.ends_with("crates/chio-test-support/src/lib.rs")),
+                .is_some_and(|file| file.ends_with("chio-test-support/src/lib.rs")),
             "unexpected panic location file: {:?}",
             panic.location_file
         );
@@ -319,7 +319,7 @@ mod tests {
             panic
                 .location_file
                 .as_deref()
-                .is_some_and(|file| file.ends_with("crates/chio-test-support/src/lib.rs")),
+                .is_some_and(|file| file.ends_with("chio-test-support/src/lib.rs")),
             "unexpected panic location file: {:?}",
             panic.location_file
         );

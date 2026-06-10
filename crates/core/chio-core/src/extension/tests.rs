@@ -10,7 +10,7 @@ fn sample_inventory() -> ChioExtensionInventory {
         canonical_truth: vec![CanonicalTruthSurface {
             id: "chio.canonical.receipt".to_string(),
             name: "Signed receipts and checkpoints".to_string(),
-            crate_path: "crates/chio-core/src/receipt.rs".to_string(),
+            crate_path: "crates/core/chio-core/src/receipt.rs".to_string(),
             contract_kind: CanonicalContractKind::Receipt,
             artifact_schemas: vec!["chio.receipt.v1".to_string(), "chio.checkpoint.v1".to_string()],
             notes: "Extensions may project evidence around receipts, but they must not mutate signed receipt or checkpoint truth."
@@ -23,7 +23,7 @@ fn sample_inventory() -> ChioExtensionInventory {
                 name: "Receipt store backend".to_string(),
                 point_kind: ExtensionPointKind::Store,
                 owner: "kernel".to_string(),
-                contract_path: "crates/chio-kernel/src/receipt_store.rs::ReceiptStore".to_string(),
+                contract_path: "crates/kernel/chio-kernel/src/receipt_store.rs::ReceiptStore".to_string(),
                 stability: ExtensionStability::Supported,
                 allowed_isolations: vec![
                     ExtensionIsolation::InProcess,
@@ -47,7 +47,7 @@ fn sample_inventory() -> ChioExtensionInventory {
                 name: "Tool server connection".to_string(),
                 point_kind: ExtensionPointKind::ToolServerConnection,
                 owner: "kernel".to_string(),
-                contract_path: "crates/chio-kernel/src/runtime.rs::ToolServerConnection".to_string(),
+                contract_path: "crates/kernel/chio-kernel/src/runtime.rs::ToolServerConnection".to_string(),
                 stability: ExtensionStability::Supported,
                 allowed_isolations: vec![
                     ExtensionIsolation::InProcess,
@@ -85,23 +85,26 @@ fn sample_official_stack() -> OfficialStackPackage {
                 id: "chio.sqlite-receipt-store".to_string(),
                 name: "SQLite receipt store".to_string(),
                 extension_point_ids: vec!["chio.kernel.receipt_store".to_string()],
-                crate_path: "crates/chio-store-sqlite/src/receipt_store.rs::SqliteReceiptStore"
-                    .to_string(),
+                crate_path:
+                    "crates/platform/chio-store-sqlite/src/receipt_store.rs::SqliteReceiptStore"
+                        .to_string(),
                 implementation_source: OfficialImplementationSource::FirstParty,
             },
             OfficialStackComponent {
                 id: "chio.remote-receipt-store".to_string(),
                 name: "Remote receipt store".to_string(),
                 extension_point_ids: vec!["chio.kernel.receipt_store".to_string()],
-                crate_path: "crates/chio-control-plane/src/trust_control.rs::RemoteReceiptStore"
-                    .to_string(),
+                crate_path:
+                    "crates/platform/chio-control-plane/src/trust_control.rs::RemoteReceiptStore"
+                        .to_string(),
                 implementation_source: OfficialImplementationSource::FirstParty,
             },
             OfficialStackComponent {
                 id: "chio.native-chio-service".to_string(),
                 name: "Native Chio service".to_string(),
                 extension_point_ids: vec!["chio.kernel.tool_server_connection".to_string()],
-                crate_path: "crates/chio-mcp-adapter/src/native.rs::NativeChioService".to_string(),
+                crate_path: "crates/protocol/chio-mcp-adapter/src/native.rs::NativeChioService"
+                    .to_string(),
                 implementation_source: OfficialImplementationSource::FirstParty,
             },
         ],
