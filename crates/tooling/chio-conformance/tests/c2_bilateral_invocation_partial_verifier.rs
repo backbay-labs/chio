@@ -303,8 +303,8 @@ fn full_fixture_statement_validates_against_signature_slice_schema() {
 
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(2)
-        .expect("crate lives under <repo>/crates/chio-conformance");
+        .nth(3)
+        .expect("crate lives under <repo>/crates/tooling/chio-conformance");
     let schema_path = repo_root
         .join("spec/schemas/chio-wire/v1/federation/bilateral-signature-slice.schema.json");
     let schema_text = std::fs::read_to_string(&schema_path).expect("read profile schema");

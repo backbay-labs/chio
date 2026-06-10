@@ -49,7 +49,7 @@ use chio_test_support::prelude::*;
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .canonicalize()
         .test_expect("repo root")
 }

@@ -102,7 +102,7 @@ fn try_load_rust_guard() -> Option<GuardEntry> {
 
 fn try_load_ts_guard() -> Option<GuardEntry> {
     let path = format!(
-        "{}/../../sdks/guard/chio-guard-ts/dist/tool-gate.wasm",
+        "{}/../../../sdks/guard/chio-guard-ts/dist/tool-gate.wasm",
         env!("CARGO_MANIFEST_DIR"),
     );
     match std::fs::read(&path) {
@@ -117,7 +117,7 @@ fn try_load_ts_guard() -> Option<GuardEntry> {
 
 fn try_load_py_guard() -> Option<GuardEntry> {
     let path = format!(
-        "{}/../../sdks/guard/chio-guard-py/dist/tool-gate.wasm",
+        "{}/../../../sdks/guard/chio-guard-py/dist/tool-gate.wasm",
         env!("CARGO_MANIFEST_DIR"),
     );
     match std::fs::read(&path) {
@@ -132,7 +132,7 @@ fn try_load_py_guard() -> Option<GuardEntry> {
 
 fn try_load_go_guard() -> Option<GuardEntry> {
     let path = format!(
-        "{}/../../sdks/guard/chio-guard-go/dist/tool-gate.wasm",
+        "{}/../../../sdks/guard/chio-guard-go/dist/tool-gate.wasm",
         env!("CARGO_MANIFEST_DIR"),
     );
     match std::fs::read(&path) {
@@ -151,7 +151,7 @@ fn try_load_go_guard() -> Option<GuardEntry> {
 
 fn load_fixtures(relative_path: &str) -> Vec<TestFixture> {
     let path = format!(
-        "{}/../../tests/conformance/fixtures/guard/{relative_path}",
+        "{}/../../../tests/conformance/fixtures/guard/{relative_path}",
         env!("CARGO_MANIFEST_DIR"),
     );
     let content = std::fs::read_to_string(&path)

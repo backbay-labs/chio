@@ -47,38 +47,38 @@ use chio_tee_frame::schema::{
 
 const VALIDATOR_EVIDENCE_FILES: &[(&str, Option<&str>)] = &[
     (
-        "crates/chio-attest-verify/tests/cross_backend_conformance.rs",
+        "crates/trust/chio-attest-verify/tests/cross_backend_conformance.rs",
         Some("nitro_backend_rejects_tdx_and_sev_snp_fixtures"),
     ),
     (
-        "crates/chio-attest-verify/tests/expect_report_data.rs",
+        "crates/trust/chio-attest-verify/tests/expect_report_data.rs",
         Some("tdx_verifier_rejects_when_only_upper_half_of_report_data_is_tampered"),
     ),
     (
-        "crates/chio-attest-verify/tests/tdx_integration.rs",
+        "crates/trust/chio-attest-verify/tests/tdx_integration.rs",
         Some("negative_fixtures_reject_with_expected_reason"),
     ),
     (
-        "crates/chio-attest-verify/tests/sev_snp_integration.rs",
+        "crates/trust/chio-attest-verify/tests/sev_snp_integration.rs",
         Some("negative_fixtures_reject_with_expected_reason"),
     ),
     (
-        "crates/chio-attest-verify/tests/nitro_unit.rs",
+        "crates/trust/chio-attest-verify/tests/nitro_unit.rs",
         Some("nitro_verifier_rejects_signature_mismatch"),
     ),
     (
-        "crates/chio-attest-verify/tests/nitro_root_rotation.rs",
+        "crates/trust/chio-attest-verify/tests/nitro_root_rotation.rs",
         Some("root_rotation_rejects_fixtures_anchored_at_old_root"),
     ),
     (
-        "crates/chio-kernel/tests/pq_key_load_after_self_quote.rs",
+        "crates/kernel/chio-kernel/tests/pq_key_load_after_self_quote.rs",
         Some("allow_hybrid_loads_pq_only_after_verified_self_quote"),
     ),
 ];
 
 fn repo_path(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .join(relative)
 }
 

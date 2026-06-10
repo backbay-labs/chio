@@ -35,7 +35,7 @@ use chio_pheromone_runtime::{
 
 fn fixture(path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .join("examples/chio-3vendor/fixtures")
         .join(path)
 }

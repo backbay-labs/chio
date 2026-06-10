@@ -518,7 +518,7 @@ mod replay_report_tests {
         // here rather than in a downstream consumer.
         let schema_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .ancestors()
-            .nth(2)
+            .nth(3)
             .unwrap()
             .join("spec/schemas/chio-replay-report/v1.schema.json");
         let bytes = std::fs::read(&schema_path).unwrap_or_else(|e| {

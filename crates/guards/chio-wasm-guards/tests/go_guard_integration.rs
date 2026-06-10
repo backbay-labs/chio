@@ -58,7 +58,7 @@ const GO_MAX_MEMORY: usize = 16 * 1024 * 1024;
 /// Path to the Go-compiled tool-gate guard WASM binary.
 fn go_guard_wasm_path() -> String {
     format!(
-        "{}/../../sdks/guard/chio-guard-go/dist/tool-gate.wasm",
+        "{}/../../../sdks/guard/chio-guard-go/dist/tool-gate.wasm",
         env!("CARGO_MANIFEST_DIR"),
     )
 }

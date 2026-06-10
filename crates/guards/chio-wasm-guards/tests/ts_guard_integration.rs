@@ -47,7 +47,7 @@ const TS_MAX_MEMORY: usize = 16 * 1024 * 1024;
 /// Load the TypeScript-compiled tool-gate guard WASM binary.
 fn load_ts_guard_wasm() -> Vec<u8> {
     let path = format!(
-        "{}/../../sdks/guard/chio-guard-ts/dist/tool-gate.wasm",
+        "{}/../../../sdks/guard/chio-guard-ts/dist/tool-gate.wasm",
         env!("CARGO_MANIFEST_DIR"),
     );
     std::fs::read(&path).unwrap_or_else(|e| {

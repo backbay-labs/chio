@@ -352,9 +352,10 @@ fn try_anchor_root(receipts: &[ChioReceipt]) -> AnchorOutcome {
 /// replay-test artefacts.
 fn regression_persistence() -> Box<FileFailurePersistence> {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // CARGO_MANIFEST_DIR is `crates/chio-kernel`; the archive lives at the
-    // repo root under `tests/replay/proptest-regressions/`.
-    path.pop(); // crates/
+    // CARGO_MANIFEST_DIR is `crates/kernel/chio-kernel`; the archive lives at
+    // the repo root under `tests/replay/proptest-regressions/`.
+    path.pop(); // crates/kernel
+    path.pop(); // crates
     path.pop(); // repo root
     path.push("tests");
     path.push("replay");

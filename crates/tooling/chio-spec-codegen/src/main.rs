@@ -196,6 +196,7 @@ fn workspace_root() -> Result<PathBuf, String> {
     manifest_dir
         .parent()
         .and_then(Path::parent)
+        .and_then(Path::parent)
         .map(Path::to_path_buf)
         .ok_or_else(|| {
             format!(

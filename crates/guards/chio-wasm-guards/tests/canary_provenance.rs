@@ -4,7 +4,7 @@ type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 fn corpora_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .join("tests/corpora")
 }
 

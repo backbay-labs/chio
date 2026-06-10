@@ -1629,7 +1629,7 @@ mod cli_entrypoint_tests {
         ];
         let retired_fixture_root = ["examples/", &retired_surface_name(), "-3vendor"].concat();
         let chio_fixture_root = ["examples/", "chio", "-3vendor/fixtures"].concat();
-        let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
 
         assert!(repo_root.join(chio_fixture_root).is_dir());
         for script in scripts {
@@ -1643,7 +1643,7 @@ mod cli_entrypoint_tests {
     #[test]
     fn chio_authority_gate_validates_local_signing_keys_schema() {
         let script = include_str!("../../../../scripts/check-chio-authority-issuance.sh");
-        let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
         let schema_path =
             repo_root.join("spec/schemas/chio-federation/v1/local-signing-keys.schema.json");
 
@@ -1705,7 +1705,7 @@ mod cli_entrypoint_tests {
 
     fn fixture_path(relative: &str) -> std::path::PathBuf {
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
+            .join("../../..")
             .join("examples/chio-3vendor/fixtures")
             .join(relative)
     }

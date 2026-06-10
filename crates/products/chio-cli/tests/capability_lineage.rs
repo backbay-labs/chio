@@ -76,7 +76,7 @@ fn unique_dir(prefix: &str) -> PathBuf {
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(2)
+        .nth(3)
         .expect("workspace root")
         .to_path_buf()
 }

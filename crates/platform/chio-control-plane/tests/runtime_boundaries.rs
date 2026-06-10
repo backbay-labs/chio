@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .canonicalize()
         .unwrap_or_else(|error| panic!("repo root should resolve: {error}"))
 }

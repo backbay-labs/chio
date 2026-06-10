@@ -24,7 +24,7 @@ use serde_json::json;
 async fn walking_skeleton_loads_runs_and_writes_fixture_shape(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let scenario_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .join("arena/scenarios/walking_skeleton.toml");
     let scenario = load_scenario(scenario_path)?;
     let subject = Keypair::generate();

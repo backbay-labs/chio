@@ -271,7 +271,7 @@ fn load_json(path: &Path) -> Result<Value, Box<dyn Error>> {
 }
 
 fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
 }
 
 fn fixture_dir() -> PathBuf {

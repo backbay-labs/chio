@@ -99,12 +99,20 @@ fn manifest_path() -> PathBuf {
         Ok(p) => PathBuf::from(p),
         Err(_) => panic!("CARGO_MANIFEST_DIR must be set during cargo test"),
     };
-    // chio-weights manifest dir: walk to crates/, then into chio-provider-conformance.
-    let crates_dir = match manifest_dir.parent() {
+    // chio-weights manifest dir is `crates/trust/chio-weights`; walk to the
+    // repo root, then into the chio-provider-conformance crate under
+    // `crates/protocol`.
+    let repo_root = match manifest_dir
+        .parent()
+        .and_then(std::path::Path::parent)
+        .and_then(std::path::Path::parent)
+    {
         Some(p) => p.to_path_buf(),
-        None => panic!("crates directory must exist above CARGO_MANIFEST_DIR"),
+        None => panic!("repo root must exist above CARGO_MANIFEST_DIR"),
     };
-    crates_dir
+    repo_root
+        .join("crates")
+        .join("protocol")
         .join("chio-provider-conformance")
         .join("fixtures")
         .join("cross_provider")

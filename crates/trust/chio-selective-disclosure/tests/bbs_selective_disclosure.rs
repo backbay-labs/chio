@@ -141,7 +141,7 @@ fn registry_for_key(keypair: &chio_selective_disclosure::BbsKeyPair) -> InMemory
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .canonicalize()
         .expect("repo root")
 }

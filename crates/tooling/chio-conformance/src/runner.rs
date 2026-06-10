@@ -97,7 +97,7 @@ pub enum RunnerError {
 fn conformance_fixture_root_from_manifest_dir(manifest_dir: &Path) -> PathBuf {
     let workspace_root = manifest_dir
         .ancestors()
-        .nth(2)
+        .nth(3)
         .map(Path::to_path_buf)
         .unwrap_or_else(|| manifest_dir.to_path_buf());
     if workspace_root

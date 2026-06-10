@@ -41,6 +41,7 @@ fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
+        .and_then(Path::parent)
         .test_unwrap("crate is nested under repo root")
         .to_path_buf()
 }

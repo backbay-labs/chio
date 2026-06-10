@@ -25,11 +25,14 @@ use serde_json::Value;
 /// land on the repo root that holds `tests/bindings/vectors/`.
 fn repo_root() -> PathBuf {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let Some(crates_dir) = manifest_dir.parent() else {
+    let Some(group_dir) = manifest_dir.parent() else {
         panic!(
             "CARGO_MANIFEST_DIR has no parent: {}",
             manifest_dir.display()
         );
+    };
+    let Some(crates_dir) = group_dir.parent() else {
+        panic!("crate group dir has no parent: {}", group_dir.display());
     };
     let Some(root) = crates_dir.parent() else {
         panic!("crates dir has no parent: {}", crates_dir.display());

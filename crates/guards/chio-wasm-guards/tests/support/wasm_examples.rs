@@ -3,7 +3,7 @@ use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
 fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
 }
 
 fn build_lock() -> &'static Mutex<()> {

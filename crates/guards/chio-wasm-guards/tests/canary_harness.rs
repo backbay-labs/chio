@@ -93,7 +93,7 @@ fn make_guard() -> Result<WasmGuard, WasmGuardError> {
 
 fn canary_dir() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .join("tests/corpora/example-guard/canary")
 }
 

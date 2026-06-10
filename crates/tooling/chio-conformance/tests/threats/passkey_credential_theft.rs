@@ -136,25 +136,28 @@ fn threat_passkey_credential_theft_distinct_credentials_are_independent() {
 /// the file must contain that string; this detects if the cited implementation has been removed.
 const EVIDENCE_FILES: &[(&str, Option<&str>)] = &[
     (
-        "crates/chio-custody-hw/src/verifier.rs",
+        "crates/trust/chio-custody-hw/src/verifier.rs",
         Some("PasskeyVerifier"),
     ),
-    ("crates/chio-custody-hw/src/nonce_store.rs", None),
-    ("crates/chio-custody-hw/src/revocation.rs", None),
+    ("crates/trust/chio-custody-hw/src/nonce_store.rs", None),
+    ("crates/trust/chio-custody-hw/src/revocation.rs", None),
     (
-        "crates/chio-custody-hw/tests/replay_resistance.rs",
+        "crates/trust/chio-custody-hw/tests/replay_resistance.rs",
         Some("first_mint_fresh_second_mint_replay_in_memory"),
     ),
-    ("crates/chio-custody-hw/tests/revocation_cascade.rs", None),
     (
-        "crates/chio-custody-hw/tests/end_to_end.rs",
+        "crates/trust/chio-custody-hw/tests/revocation_cascade.rs",
+        None,
+    ),
+    (
+        "crates/trust/chio-custody-hw/tests/end_to_end.rs",
         Some("replay_of_minted_capability_is_blocked_by_nonce_store"),
     ),
 ];
 
 fn repo_path(relative: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
+        .join("../../..")
         .join(relative)
 }
 
