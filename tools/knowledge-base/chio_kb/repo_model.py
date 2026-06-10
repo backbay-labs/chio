@@ -430,12 +430,15 @@ def kind_for_path(path: str) -> str:
 
 
 def crate_for_path(path: str) -> str:
-    parts = pathlib.PurePath(path).parts
-    if len(parts) >= 2 and parts[0] == "crates":
-        return parts[1]
-    if len(parts) >= 3 and parts[0] in {"examples", "bench", "integrations"}:
-        return parts[1]
-    return ""
+    manifest = nearest_manifest_for_path(path)
+    if not manifest.endswith("Cargo.toml"):
+        return ""
+    manifest_dir = pathlib.PurePath(manifest).parent
+    name = cargo_package_name_from_manifest(manifest)
+    if name:
+        return name
+    parts = manifest_dir.parts
+    return parts[-1] if parts else ""
 
 
 def package_for_path(path: str) -> str:
@@ -446,6 +449,23 @@ def package_for_path(path: str) -> str:
 
 
 CARGO_MANIFEST_ROOTS = ("crates", "tests", "examples", "bench", "integrations", "formal")
+
+
+def cargo_package_name_from_manifest(manifest: str) -> str:
+    root = repo_root_from_env()
+    manifest_path = root / manifest
+    if not manifest_path.is_file():
+        return ""
+    try:
+        text = manifest_path.read_text(errors="replace")
+    except OSError:
+        return ""
+    package = load_cargo_manifest(text).get("package")
+    if isinstance(package, dict):
+        name = package.get("name")
+        if isinstance(name, str):
+            return name
+    return ""
 
 
 def nearest_manifest_for_path(path: str) -> str:
@@ -521,8 +541,15 @@ def validation_command_for_path(path: str) -> str:
     crate = crate_for_path(norm)
     if crate and parts and parts[0] == "crates":
         return f"cargo test -p {crate}"
-    if len(parts) >= 2 and parts[0] == "tests" and (pathlib.PurePath(norm).suffix == ".rs" or "Cargo.toml" in norm):
-        return f"cargo test --manifest-path tests/{parts[1]}/Cargo.toml"
+    manifest = nearest_manifest_for_path(norm)
+    if manifest.endswith("Cargo.toml") and parts and parts[0] in {
+        "tests",
+        "examples",
+        "integrations",
+        "formal",
+        "bench",
+    }:
+        return f"cargo test --manifest-path {manifest}"
     if norm.startswith("spec/") or norm.startswith("docs/conformance/"):
         return "cargo test -p chio-conformance"
     if norm.startswith("docs/"):

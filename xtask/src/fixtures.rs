@@ -1,11 +1,13 @@
 //! Pheromone fixture-and-schema gate (`cargo xtask check fixtures <facet>`).
 //!
-//! The tabular per-facet data (schema-id/file maps, fixture dirs,
-//! schema-validate document lists, `cargo test` invocations, recursion edges,
-//! node-dashboard / sre-metrics flags) lives in `ci-gates/pheromone.toml`. The
-//! imperative per-facet steps the manifest cannot express (CLI orchestration,
-//! fixture regeneration, retired-marker guards, npm dashboard checks) live in
-//! typed handlers keyed by [`Facet::kind`].
+//! This is the consolidated replacement for the 15
+//! `scripts/check-chio-pheromone-*.sh` gates. The genuinely tabular per-facet
+//! data (schema-id/file maps, fixture dirs, schema-validate document lists,
+//! `cargo test` invocations, recursion edges, node-dashboard / sre-metrics
+//! flags) lives in `ci-gates/pheromone.toml`. The imperative per-facet steps
+//! that the manifest cannot express (CLI orchestration, fixture regeneration,
+//! retired-marker guards, npm dashboard checks) live in typed handlers keyed by
+//! [`Facet::kind`].
 //!
 //! Fail-closed contract:
 //! - [`KNOWN_FACETS`] enumerates all 15 facets at compile time; the manifest
@@ -27,9 +29,9 @@ pub(crate) const MANIFEST_PATH: &str = "ci-gates/pheromone.toml";
 /// Relative path (from the workspace root) of the chio-runtime gate manifest.
 pub(crate) const RUNTIME_MANIFEST_PATH: &str = "ci-gates/runtime.toml";
 
-/// The six chio-runtime facets. Compile-time fail-closed enumeration: the
-/// runtime manifest must list exactly these names, and the CLI rejects anything
-/// else.
+/// The six chio-runtime facets, consolidated from `scripts/check-chio-runtime-*.sh`.
+/// Compile-time fail-closed enumeration: the runtime manifest must list exactly
+/// these names, and the CLI rejects anything else.
 pub(crate) const RUNTIME_KNOWN_FACETS: [&str; 6] = [
     "runtime-spine-fixtures",
     "runtime-spine",
@@ -161,9 +163,9 @@ impl RecurseEdge {
     }
 }
 
-/// Required schema shape per facet. `StrictObject` requires `type=="object"`
-/// and `additionalProperties==false`; `FrozenObject` requires `type=="object"`
-/// and a present `$id`.
+/// Required schema shape per facet. `StrictObject` matches the scripts that
+/// assert `type=="object"` and `additionalProperties==false`; `FrozenObject`
+/// matches the scripts that assert `type=="object"` and a present `$id`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SchemaCheck {
     StrictObject,
@@ -296,12 +298,14 @@ fn run_with(
         .ok_or_else(|| XtaskError::Usage(format!("unknown pheromone facet: {facet_name}")))?;
 
     // Pre-schema imperative guards (retired-marker / runbook / fixture-name
-    // scans) run first.
+    // scans) run first, exactly as the scripts do.
     pre_schema_guard(root, facet)?;
 
-    // The schema/metadata block runs in every mode. Its assertions are
-    // side-effect-free, so the per-facet difference in cargo-test placement
-    // does not affect the outcome.
+    // The cargo-test placement differs per facet. `relay` and the two
+    // env-branch facets run cargo tests BEFORE the schema block; everything
+    // else runs the schema block first. We always run the schema/metadata
+    // block (it is in every mode), so order only matters for side-effect-free
+    // assertions, which these are.
     run_schema_block(root, manifest, facet)?;
     run_metadata_block(root, facet)?;
 
@@ -353,10 +357,13 @@ fn run_runtime_validate_pairs(
     Ok(())
 }
 
-/// Run a runtime facet's manifest `cargo_tests` argv tails in order.
+/// Run a runtime facet's manifest `cargo_tests` argv tails in order, each gated
+/// to a non-zero passed count (matching the scripts' `run_cargo_test_filter`).
+/// A named-filter tail that matches zero tests fails closed even though `cargo
+/// test` exits 0; whole-suite tails run as-is.
 fn run_runtime_cargo_tests(root: &Path, facet: &RuntimeFacet) -> Result<(), XtaskError> {
     for tail in &facet.cargo_tests {
-        run_cargo_test(root, tail)?;
+        run_cargo_test_filtered(root, tail)?;
     }
     Ok(())
 }
@@ -419,7 +426,20 @@ fn run_validate_pairs(root: &Path, manifest: &Manifest, facet: &Facet) -> Result
     for glob in &facet.validate_glob {
         let dir = fixture_dir.join(&glob.dir);
         let schema_path = schema_dir.join(&glob.schema);
-        for doc in glob_documents(&dir, glob.pattern.as_deref())? {
+        let docs = glob_documents(&dir, glob.pattern.as_deref())?;
+        // Fail closed on an empty match set: the original scripts iterated a
+        // shell glob over real fixtures, so a missing directory or a typoed
+        // pattern that matched nothing would have either errored (nullglob off)
+        // or silently validated zero documents. Treat zero matches as a gate
+        // failure rather than a vacuous pass.
+        if docs.is_empty() {
+            return Err(XtaskError::Validation(format!(
+                "validate_glob matched no documents in {} (pattern {:?})",
+                display(&dir),
+                glob.pattern.as_deref().unwrap_or("*.json")
+            )));
+        }
+        for doc in docs {
             validate_document(&schema_path, &doc)?;
         }
     }
@@ -467,8 +487,9 @@ fn assert_schema_shape(file: &str, schema: &Value, check: SchemaCheck) -> Result
     Ok(())
 }
 
-/// Build a `schema-id -> schemaFile` map from the schema registry. Rejects any
-/// artifact pointing at the retired `spec/schemas/chio/` schema root.
+/// Build a `schema-id -> schemaFile` map from the schema registry. Also rejects
+/// any artifact pointing at the retired `spec/schemas/chio/` schema root, which
+/// several scripts guarded against.
 fn load_registry(
     root: &Path,
     manifest: &Manifest,
@@ -507,9 +528,9 @@ fn load_registry(
 
 // -- Per-facet metadata assertions ----------------------------------------
 
-/// Per-facet metadata assertions that confirm fixture invariants beyond pure
-/// schema validation (negative-corpus required codes, bounded metric labels,
-/// binding fields).
+/// Per-facet metadata assertions ported from each script's embedded python
+/// block. These confirm fixture invariants beyond pure schema validation
+/// (negative-corpus required codes, bounded metric labels, binding fields).
 fn run_metadata_block(root: &Path, facet: &Facet) -> Result<(), XtaskError> {
     let fixture_dir = root.join(&facet.fixture_dir);
     match facet.kind.as_str() {
@@ -535,31 +556,10 @@ fn run_metadata_block(root: &Path, facet: &Facet) -> Result<(), XtaskError> {
         "directory_lifecycle" => metadata_directory_lifecycle(&fixture_dir),
         "relay_observability" => metadata_relay_observability(&fixture_dir),
         "relay_alert_routing" => metadata_relay_alert_routing(&fixture_dir),
-        "relay_alert_handoff" => metadata_negative_ids(
-            &fixture_dir,
-            "relay-alert-handoff-negative-cases.json",
-            &HANDOFF_REQUIRED_CASES,
-        ),
-        "relay_alert_delivery" => metadata_negative_ids(
-            &fixture_dir,
-            "relay-alert-delivery-negative-cases.json",
-            &DELIVERY_REQUIRED_CASES,
-        ),
-        "relay_alert_assurance" => metadata_negative_case_ids(
-            &fixture_dir,
-            "relay-alert-assurance-negative-cases.json",
-            &ASSURANCE_REQUIRED_CASES,
-        ),
-        "relay_alert_assurance_export" => metadata_negative_case_ids(
-            &fixture_dir,
-            "relay-alert-assurance-export-negative-cases.json",
-            &[
-                "invalid_signature",
-                "source_hash_mismatch",
-                "path_traversal",
-                "wrong_expected_code",
-            ],
-        ),
+        "relay_alert_handoff" => metadata_relay_alert_handoff(&fixture_dir),
+        "relay_alert_delivery" => metadata_relay_alert_delivery(&fixture_dir),
+        "relay_alert_assurance" => metadata_relay_alert_assurance(&fixture_dir),
+        "relay_alert_assurance_export" => metadata_relay_alert_assurance_export(&fixture_dir),
         "relay_alert_assurance_archive" => metadata_negative_case_ids(
             &fixture_dir,
             "relay-alert-assurance-archive-negative-cases.json",
@@ -646,24 +646,89 @@ const ARCHIVE_PACKAGE_REQUIRED_CASES: [&str; 14] = [
     "wrong_expected_code",
 ];
 
-const EXTERNAL_RETENTION_REQUIRED_CASES: [&str; 16] = [
-    "untrusted_packager",
-    "untrusted_exporter",
-    "source_report_mismatch",
-    "stale_profile",
-    "stale_evidence",
-    "local_kernel_mismatch",
-    "generation_gap",
-    "previous_manifest_mismatch",
-    "missing_restore_drill",
-    "rejected_restore_drill",
-    "missing_physical_readback",
-    "insufficient_sample",
-    "missing_retention_handoff",
-    "unknown_retention_alias",
-    "alias_drift",
-    "wrong_expected_code",
+/// The external-retention negative corpus is asserted by `expectedCode` (not
+/// merely by required caseId presence): every case must map to exactly this
+/// code, unexpected cases are rejected, and any mismatch fails closed. Mirrors
+/// the script's `expected_codes` python block.
+const EXTERNAL_RETENTION_EXPECTED_CODES: [(&str, &str); 16] = [
+    ("untrusted_packager", "external_retention_blocked"),
+    ("untrusted_exporter", "external_retention_blocked"),
+    ("source_report_mismatch", "external_retention_blocked"),
+    ("stale_profile", "archive_package_invalid"),
+    ("stale_evidence", "external_retention_blocked"),
+    ("local_kernel_mismatch", "external_retention_blocked"),
+    ("generation_gap", "external_retention_blocked"),
+    ("previous_manifest_mismatch", "external_retention_blocked"),
+    ("missing_restore_drill", "external_retention_blocked"),
+    ("rejected_restore_drill", "external_retention_blocked"),
+    ("missing_physical_readback", "external_retention_blocked"),
+    ("insufficient_sample", "external_retention_blocked"),
+    ("missing_retention_handoff", "external_retention_blocked"),
+    ("unknown_retention_alias", "external_retention_blocked"),
+    ("alias_drift", "external_retention_blocked"),
+    ("wrong_expected_code", "negative_corpus_mismatch"),
 ];
+
+/// Assert the external-retention negative corpus carries exactly the expected
+/// `(caseId, expectedCode)` mapping: no missing cases, no unexpected cases, and
+/// every `expectedCode` matching. Restores the per-case expectedCode check the
+/// script ran (the consolidated handler previously only checked caseId presence).
+fn metadata_external_retention_expected_codes(fixture_dir: &Path) -> Result<(), XtaskError> {
+    let path = fixture_dir.join("relay-alert-assurance-external-retention-negative-cases.json");
+    let value = load_json(&path)?;
+    let cases = value
+        .get("cases")
+        .and_then(Value::as_array)
+        .ok_or_else(|| XtaskError::Validation(format!("{} has no cases array", display(&path))))?;
+    let mut actual: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    for case in cases {
+        if let Some(case_id) = case.get("caseId").and_then(Value::as_str) {
+            let code = case
+                .get("expectedCode")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            actual.insert(case_id.to_string(), code);
+        }
+    }
+    let expected: std::collections::BTreeMap<&str, &str> =
+        EXTERNAL_RETENTION_EXPECTED_CODES.iter().copied().collect();
+
+    let missing: Vec<&str> = expected
+        .keys()
+        .copied()
+        .filter(|case_id| !actual.contains_key(*case_id))
+        .collect();
+    if !missing.is_empty() {
+        return Err(XtaskError::Validation(format!(
+            "external retention negative corpus {} missing cases: {missing:?}",
+            display(&path)
+        )));
+    }
+    let unexpected: Vec<&str> = actual
+        .keys()
+        .map(String::as_str)
+        .filter(|case_id| !expected.contains_key(*case_id))
+        .collect();
+    if !unexpected.is_empty() {
+        return Err(XtaskError::Validation(format!(
+            "external retention negative corpus {} has unexpected cases: {unexpected:?}",
+            display(&path)
+        )));
+    }
+    for (case_id, want) in &expected {
+        match actual.get(*case_id) {
+            Some(got) if got == want => {}
+            other => {
+                return Err(XtaskError::Validation(format!(
+                    "external retention negative corpus {} expectedCode mismatch for {case_id}: want {want}, got {other:?}",
+                    display(&path)
+                )));
+            }
+        }
+    }
+    Ok(())
+}
 
 const ARCHIVE_HARDENING_REQUIRED_CASES: [&str; 6] = [
     "generation_gap",
@@ -676,7 +741,7 @@ const ARCHIVE_HARDENING_REQUIRED_CASES: [&str; 6] = [
 
 /// The two generic-kind facets (`relay-alert-assurance-archive-hardening`,
 /// `relay-alert-assurance-external-retention`) have only a negative-corpus
-/// assertion; dispatch by name.
+/// assertion in their python block; dispatch by name.
 fn metadata_generic(facet: &Facet, fixture_dir: &Path) -> Result<(), XtaskError> {
     match facet.name.as_str() {
         "relay-alert-assurance-archive-hardening" => metadata_negative_case_ids(
@@ -684,11 +749,9 @@ fn metadata_generic(facet: &Facet, fixture_dir: &Path) -> Result<(), XtaskError>
             "relay-alert-assurance-archive-restore-negative-cases.json",
             &ARCHIVE_HARDENING_REQUIRED_CASES,
         ),
-        "relay-alert-assurance-external-retention" => metadata_negative_case_ids(
-            fixture_dir,
-            "relay-alert-assurance-external-retention-negative-cases.json",
-            &EXTERNAL_RETENTION_REQUIRED_CASES,
-        ),
+        "relay-alert-assurance-external-retention" => {
+            metadata_external_retention_expected_codes(fixture_dir)
+        }
         other => Err(XtaskError::Manifest(format!(
             "generic facet {other} has no metadata assertions registered"
         ))),
@@ -698,8 +761,8 @@ fn metadata_generic(facet: &Facet, fixture_dir: &Path) -> Result<(), XtaskError>
 // -- Imperative handler dispatch ------------------------------------------
 
 /// Run the non-schema-only body of a facet: cargo tests, imperative CLI
-/// orchestration, npm / sre-metrics calls, then recursion. Each handler honors
-/// its own `NegativeOnly` early-exit point.
+/// orchestration, npm / sre-metrics calls, then recursion. Handlers honor
+/// `NegativeOnly` early-exit points exactly where the scripts did.
 fn dispatch_handler(
     root: &Path,
     manifest: &Manifest,
@@ -760,6 +823,94 @@ fn run_cargo_test(root: &Path, tail: &[String]) -> Result<(), XtaskError> {
     Ok(())
 }
 
+/// Run `cargo test` with the named filter the gate scripts ran through their
+/// `run_cargo_test_filter` helper, then fail closed if the filter matched zero
+/// tests. `cargo test` exits 0 even when a named filter selects nothing, so the
+/// scripts asserted `test result: ok. [1-9][0-9]* passed;` over the captured
+/// output; this reproduces that zero-run detector. Tails that carry no named
+/// filter (a whole-suite run such as `-p <pkg> --tests`) are run as-is, since a
+/// suite legitimately splits its output across several `test result` lines.
+fn run_cargo_test_filtered(root: &Path, tail: &[String]) -> Result<(), XtaskError> {
+    if !tail_has_named_filter(tail) {
+        return run_cargo_test(root, tail);
+    }
+    let output = Command::new("cargo")
+        .arg("test")
+        .args(tail)
+        .current_dir(root)
+        .output()
+        .map_err(|err| XtaskError::Io("cargo test".into(), err))?;
+    if !output.status.success() {
+        return Err(XtaskError::Process(format!(
+            "cargo test {tail:?} exited {}",
+            output.status.code().unwrap_or(-1)
+        )));
+    }
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    if !output_reports_passed_tests(&combined) {
+        return Err(XtaskError::Process(format!(
+            "cargo test {tail:?} matched zero tests"
+        )));
+    }
+    Ok(())
+}
+
+/// Whether a `cargo test` argv tail carries a named test filter. The filter is a
+/// bare positional argument (not a flag, not the package name that follows
+/// `-p`/`--package`, not the value that follows `--bin`/`--test`/`--example`).
+/// Anything after a `--` separator is passed to the test harness and is ignored
+/// here.
+fn tail_has_named_filter(tail: &[String]) -> bool {
+    const VALUE_FLAGS: [&str; 6] = [
+        "-p",
+        "--package",
+        "--bin",
+        "--test",
+        "--example",
+        "--features",
+    ];
+    let mut index = 0;
+    while index < tail.len() {
+        let arg = tail[index].as_str();
+        if arg == "--" {
+            return false;
+        }
+        if VALUE_FLAGS.contains(&arg) {
+            index += 2;
+            continue;
+        }
+        if arg.starts_with('-') {
+            index += 1;
+            continue;
+        }
+        return true;
+    }
+    false
+}
+
+/// Match the scripts' `grep -Eq 'test result: ok\. [1-9][0-9]* passed;'`: a run
+/// that passed at least one test.
+fn output_reports_passed_tests(output: &str) -> bool {
+    for line in output.lines() {
+        let Some(rest) = line.trim_start().strip_prefix("test result: ok. ") else {
+            continue;
+        };
+        let Some(count) = rest.split_whitespace().next() else {
+            continue;
+        };
+        if let Ok(passed) = count.parse::<u64>() {
+            if passed >= 1 {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Run a `chio` CLI invocation, returning whether it succeeded. Used both for
 /// positive steps (where a failure is an error) and for the deliberate negative
 /// assertions (where success is the error).
@@ -793,6 +944,40 @@ fn reject_cli(root: &Path, args: &[&str], detail: &str) -> Result<(), XtaskError
     }
 }
 
+/// Run a `chio` CLI invocation expected to fail, then confirm its combined
+/// stdout/stderr contains an expected failure-code marker. Reproduces the gate
+/// scripts' `! cargo run ... 2>err; grep -q "<code>" err` negatives, which both
+/// require the non-zero exit AND pin the specific failure code.
+fn reject_cli_with_marker(
+    root: &Path,
+    args: &[&str],
+    marker: &str,
+    detail: &str,
+) -> Result<(), XtaskError> {
+    let output = Command::new("cargo")
+        .arg("run")
+        .args(args)
+        .current_dir(root)
+        .output()
+        .map_err(|err| XtaskError::Io("cargo run".into(), err))?;
+    if output.status.success() {
+        return Err(XtaskError::Process(format!(
+            "negative assertion failed: {detail}"
+        )));
+    }
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    if !combined.contains(marker) {
+        return Err(XtaskError::Process(format!(
+            "negative assertion failed: {detail} (expected marker {marker:?} in output)"
+        )));
+    }
+    Ok(())
+}
+
 fn run_bash(root: &Path, script: &str) -> Result<(), XtaskError> {
     let status = Command::new("bash")
         .arg(script)
@@ -815,9 +1000,9 @@ fn run_sre_metrics(root: &Path) -> Result<(), XtaskError> {
     run_bash(root, "scripts/check-sre-metrics-registry.sh")
 }
 
-/// `pushd crates/products/chio-cli/dashboard && npm <args>` for the dashboard facets.
+/// `pushd crates/chio-cli/dashboard && npm <args>` for the dashboard facets.
 fn run_npm(root: &Path, args: &[&str]) -> Result<(), XtaskError> {
-    let dashboard = root.join("crates/products/chio-cli/dashboard");
+    let dashboard = root.join("crates/chio-cli/dashboard");
     let status = Command::new("npm")
         .args(args)
         .current_dir(&dashboard)
@@ -946,6 +1131,9 @@ fn metadata_negative_case_ids(
 }
 
 include!("fixtures_facets.rs");
+include!("fixtures_facets_meta.rs");
+include!("fixtures_facets_alert.rs");
+include!("fixtures_facets_assurance.rs");
 include!("fixtures_runtime.rs");
 
 #[cfg(test)]
@@ -1098,6 +1286,76 @@ mod tests {
     }
 
     #[test]
+    fn tail_named_filter_detection() {
+        // A bare positional after the package name is a named filter.
+        assert!(tail_has_named_filter(&[
+            "-p".into(),
+            "chio-runtime-core".into(),
+            "runtime_workflow_report".into(),
+        ]));
+        // A whole-suite run carries no named filter.
+        assert!(!tail_has_named_filter(&[
+            "-p".into(),
+            "chio-runtime-core".into(),
+            "--tests".into(),
+        ]));
+        // `--bin <name>` is a value flag, not a named filter; the filter here is
+        // the positional `chio_runtime`.
+        assert!(tail_has_named_filter(&[
+            "-p".into(),
+            "chio-cli".into(),
+            "chio_runtime".into(),
+            "--bin".into(),
+            "chio".into(),
+        ]));
+        // Harness args after `--` are ignored.
+        assert!(!tail_has_named_filter(&[
+            "-p".into(),
+            "chio-pheromone-relay".into(),
+            "--".into(),
+            "--test-threads=1".into(),
+        ]));
+    }
+
+    #[test]
+    fn passed_test_detector_requires_nonzero() {
+        assert!(output_reports_passed_tests(
+            "test result: ok. 3 passed; 0 failed; 0 ignored"
+        ));
+        // Zero-run named filter: cargo exits 0 but no test passed.
+        assert!(!output_reports_passed_tests(
+            "test result: ok. 0 passed; 0 failed; 0 ignored; 0 filtered out"
+        ));
+        assert!(!output_reports_passed_tests("no test result line here"));
+    }
+
+    #[test]
+    fn empty_glob_match_set_fails_closed() {
+        // A glob over a non-existent / empty directory must fail closed rather
+        // than vacuously validating zero documents. `glob_documents` errors on a
+        // missing dir; an existing-but-non-matching dir yields an empty vec,
+        // which run_validate_pairs treats as a failure.
+        let scratch =
+            ScratchDir::new("empty-glob-test").unwrap_or_else(|err| panic!("scratch: {err}"));
+        let dir = scratch.join("present-but-empty");
+        std::fs::create_dir_all(&dir).unwrap_or_else(|err| panic!("mkdir: {err}"));
+        let matched =
+            glob_documents(&dir, Some("relay-*.json")).unwrap_or_else(|err| panic!("glob: {err}"));
+        assert!(
+            matched.is_empty(),
+            "no fixture should match in an empty dir"
+        );
+    }
+
+    #[test]
+    fn external_retention_expected_codes_pass_against_committed_fixture() {
+        let root = crate::workspace_root().unwrap_or_else(|err| panic!("workspace root: {err}"));
+        let dir = root.join("examples/chio-3vendor/fixtures/pheromone/relay/alert-assurance");
+        metadata_external_retention_expected_codes(&dir)
+            .unwrap_or_else(|err| panic!("external retention expected codes: {err}"));
+    }
+
+    #[test]
     fn assert_schema_shape_strict_rejects_open_object() {
         let open = serde_json::json!({ "type": "object" });
         match assert_schema_shape("open.schema.json", &open, SchemaCheck::StrictObject) {
@@ -1138,34 +1396,15 @@ mod tests {
 
     #[test]
     fn relay_schema_block_and_metadata_pass_against_committed_fixtures() {
-        // The relay runbook guard intentionally fires (the runbook is the Chio
-        // runbook and cites the name), so this test exercises only the schema +
-        // metadata block, which must pass against the committed fixtures. The
-        // guard's fail-closed behavior is covered separately by
-        // `relay_runbook_guard_rejects_chio_named_runbook`.
         let root = crate::workspace_root().unwrap_or_else(|err| panic!("workspace root: {err}"));
         let manifest = load();
         let facet = manifest
             .facet_by_name("relay")
             .unwrap_or_else(|| panic!("relay facet missing"));
+        pre_schema_guard(&root, facet).unwrap_or_else(|err| panic!("relay guard: {err}"));
         run_schema_block(&root, &manifest, facet)
             .unwrap_or_else(|err| panic!("relay schema block: {err}"));
         run_metadata_block(&root, facet).unwrap_or_else(|err| panic!("relay metadata: {err}"));
-    }
-
-    #[test]
-    fn relay_runbook_guard_rejects_chio_named_runbook() {
-        // Fail-closed: the relay guard rejects a runbook that cites the Chio name.
-        let root = crate::workspace_root().unwrap_or_else(|err| panic!("workspace root: {err}"));
-        let manifest = load();
-        let facet = manifest
-            .facet_by_name("relay")
-            .unwrap_or_else(|| panic!("relay facet missing"));
-        match pre_schema_guard(&root, facet) {
-            Ok(()) => panic!("relay runbook guard unexpectedly passed"),
-            Err(XtaskError::Validation(_)) => {}
-            Err(other) => panic!("expected Validation rejection, got {other}"),
-        }
     }
 
     #[test]
@@ -1275,8 +1514,8 @@ mod tests {
     fn runtime_spine_fixtures_validate_pairs_use_root_relative_docs() {
         // The runtime-spine-fixtures static validate pairs reference documents
         // by root-relative paths (they live under examples/...), and one schema
-        // is the cross-directory pheromone query-report schema. The manifest
-        // must carry that shape so the slash-bearing resolver applies.
+        // is the cross-directory pheromone query-report schema. Confirm the
+        // manifest carries that shape so the slash-bearing resolver applies.
         let manifest = load_runtime();
         let facet = manifest
             .facet_by_name("runtime-spine-fixtures")
@@ -1296,8 +1535,8 @@ mod tests {
 
     #[test]
     fn runtime_cargo_test_tails_are_present_where_expected() {
-        // The proof-parity facet's cargo_tests must include the chio-cli runtime
-        // filter, encoded as an argv tail.
+        // Arg handling: the proof-parity facet's cargo_tests must include the
+        // chio-cli runtime filter the script ran, encoded as an argv tail.
         let manifest = load_runtime();
         let facet = manifest
             .facet_by_name("runtime-proof-parity")

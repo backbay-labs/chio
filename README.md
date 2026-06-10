@@ -207,9 +207,12 @@ TypeScript, Python, and Go SDKs all exist as code. The current Chio-owned
 protocol, schema, SDK, and runtime surfaces are v1-only; older `v2.x` and `v3.x`
 labels in planning and research docs are internal milestone labels, not protocol
 or wire compatibility versions. Nothing is tagged or published yet. See
-[CHANGELOG.md](CHANGELOG.md) for the in-progress baseline and
-[docs/release/QUALIFICATION.md](docs/release/QUALIFICATION.md) for what the
-project will and will not claim.
+[CHANGELOG.md](CHANGELOG.md) for the in-progress baseline, and
+[docs/release/QUALIFICATION.md](docs/release/QUALIFICATION.md),
+[docs/release/RELEASE_CANDIDATE.md](docs/release/RELEASE_CANDIDATE.md), and
+[docs/release/RELEASE_AUDIT.md](docs/release/RELEASE_AUDIT.md) for what the
+project will and will not claim, the release-candidate status, and the release
+qualification audit.
 
 ## Contributing
 

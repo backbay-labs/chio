@@ -1,5 +1,5 @@
 name: setup-rust
-description: Checkout, install the pinned Rust toolchain, install protoc, and prime the Rust cache.
+description: Install the pinned Rust toolchain, install protoc, and prime the Rust cache. The repository must already be checked out by the calling job.
 inputs:
   toolchain:
     description: Toolchain spec passed to rustup. Empty string uses rust-toolchain.toml.
@@ -13,10 +13,6 @@ inputs:
     description: Space-separated rustup targets (e.g. "wasm32-unknown-unknown").
     required: false
     default: ""
-  fetch-depth:
-    description: actions/checkout fetch-depth. Use 0 for git-diff gates.
-    required: false
-    default: "1"
   cache:
     description: Set to "false" to skip Swatinem/rust-cache.
     required: false
@@ -32,9 +28,6 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-      with:
-        fetch-depth: ${{ inputs.fetch-depth }}
     - name: Install Rust toolchain
       shell: bash
       run: |
@@ -53,7 +46,19 @@ runs:
     - name: Install protobuf compiler
       if: inputs.protoc == 'true' && runner.os == 'Linux'
       shell: bash
-      run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      run: |
+        set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
+        for attempt in 1 2 3; do
+          if timeout 180s sudo apt-get update \
+              && timeout 180s sudo apt-get install -y protobuf-compiler; then
+            exit 0
+          fi
+          echo "protobuf compiler install attempt ${attempt} failed; retrying" >&2
+          sleep $((attempt * 10))
+        done
+        echo "protobuf compiler install failed after retries" >&2
+        exit 1
     - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
       if: inputs.cache == 'true'
       with:

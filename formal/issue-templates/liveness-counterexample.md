@@ -110,7 +110,7 @@ formal/tla/counterexamples/RevocationEventuallySeen-<UTC-date>-<short-sha>.txt
 
 Pick exactly one and replace the `severity-needs-triage` label with the
 matching label from the list. Severity drives release-gate posture in
-`platform/release-gates/RELEASE_AUDIT.md`.
+`docs/release/RELEASE_AUDIT.md`.
 
 - `severity-blocker` -- the trace exhibits a behavior that the kernel
   can produce in production (no out-of-model assumption is required to
