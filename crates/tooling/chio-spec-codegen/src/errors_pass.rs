@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 use crate::{write_if_changed, CodegenError, Result};
 
 pub const ERROR_REGISTRY_INPUT: &str = "spec/errors/registry.yaml";
-pub const ERRORS_GENERATED_DIR: &str = "crates/chio-errors/src/_generated";
+pub const ERRORS_GENERATED_DIR: &str = "crates/core/chio-errors/src/_generated";
 pub const ERROR_CODES_OUTPUT: &str = "error_codes.rs";
 
 const ERRORS_MOD_FILE: &str = "mod.rs";

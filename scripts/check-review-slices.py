@@ -59,7 +59,6 @@ SLICES: tuple[ReviewSlice, ...] = (
         (
             "crates/kernel/chio-kernel/**",
             "crates/kernel/chio-kernel-core/**",
-            "crates/chio-kernel-core/**",
             "crates/kernel/chio-kernel-browser/**",
             "crates/kernel/chio-kernel-mobile/**",
             "crates/kernel/chio-runtime/**",
@@ -74,7 +73,6 @@ SLICES: tuple[ReviewSlice, ...] = (
         "guards, policy evaluation, guard SDKs, and guard registries",
         (
             "crates/guards/chio-guards/**",
-            "crates/chio-guards/**",
             "crates/guards/chio-data-guards/**",
             "crates/guards/chio-external-guards/**",
             "crates/guards/chio-wasm-guards/**",

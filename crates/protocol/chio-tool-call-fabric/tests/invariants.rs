@@ -16,8 +16,8 @@
 //!
 //! Per-property budget: 64 cases (matches the doc's "8 proptest invariants"
 //! sizing and keeps the suite under ~1s on CI). Failed shrinks persist under
-//! `crates/chio-tool-call-fabric/proptest-regressions/` so future runs replay
-//! the seed.
+//! `crates/protocol/chio-tool-call-fabric/proptest-regressions/` so future runs
+//! replay the seed.
 //!
 //! House rules:
 //! - No em dashes (U+2014) anywhere in code, comments, or rendered output.
@@ -440,7 +440,7 @@ proptest! {
     #![proptest_config(ProptestConfig {
         cases: PROPTEST_BUDGET_CASES,
         failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
-            "crates/chio-tool-call-fabric/proptest-regressions/invariants.txt",
+            "crates/protocol/chio-tool-call-fabric/proptest-regressions/invariants.txt",
         ))),
         ..ProptestConfig::default()
     })]

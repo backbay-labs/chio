@@ -680,7 +680,7 @@ mod tests {
     #[test]
     fn fixture_root_prefers_workspace_tree_when_present() {
         let root = unique_test_dir("workspace");
-        let manifest_dir = root.join("crates/chio-conformance");
+        let manifest_dir = root.join("crates/tooling/chio-conformance");
         create_default_fixture_tree(&root);
         if let Err(error) = fs::create_dir_all(&manifest_dir) {
             panic!("failed to create {}: {error}", manifest_dir.display());

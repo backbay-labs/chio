@@ -1,7 +1,7 @@
 //! Lambda deployment-shape verdict-matrix driver.
 //!
 //! The driver loads the canonical scenario corpus from
-//! `crates/chio-conformance/verdict_matrix/scenarios/` and emits a
+//! `crates/tooling/chio-conformance/verdict_matrix/scenarios/` and emits a
 //! `(verdict, reason_code, scope_set)` tuple per scenario by forwarding each
 //! scenario to a Chio sidecar over the same `POST /chio/evaluate` wire surface
 //! the `sdks/lambda/chio-lambda-extension` runtime speaks in production. The
@@ -111,14 +111,14 @@ pub struct DriverReport {
 }
 
 /// Locate the scenario root by walking upward from the current working
-/// directory until a `Cargo.toml` and a `crates/chio-conformance/verdict_matrix`
+/// directory until a `Cargo.toml` and a `crates/tooling/chio-conformance/verdict_matrix`
 /// directory are both present.
 pub fn resolve_scenario_root() -> Result<PathBuf, String> {
     let cwd = std::env::current_dir().map_err(|err| format!("cannot read cwd: {err}"))?;
     let mut candidate: Option<&Path> = Some(cwd.as_path());
     while let Some(dir) = candidate {
         let cargo = dir.join("Cargo.toml");
-        let matrix = dir.join("crates/chio-conformance/verdict_matrix");
+        let matrix = dir.join("crates/tooling/chio-conformance/verdict_matrix");
         if cargo.exists() && matrix.exists() {
             return Ok(matrix.join("scenarios"));
         }

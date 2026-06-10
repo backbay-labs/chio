@@ -349,7 +349,7 @@ pub(crate) enum ConformanceCommands {
     },
 
     /// Download pre-built peer-language adapter binaries pinned in
-    /// `crates/chio-conformance/peers.lock.toml`.
+    /// `crates/tooling/chio-conformance/peers.lock.toml`.
     FetchPeers {
         /// Verify the lockfile shape only; do not download anything.
         #[arg(long)]

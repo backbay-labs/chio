@@ -1,7 +1,7 @@
 // dotnet SDK verdict-matrix driver entry point.
 //
 // Loads the canonical scenario corpus from
-// crates/chio-conformance/verdict_matrix/scenarios/ and emits a JSON report
+// crates/tooling/chio-conformance/verdict_matrix/scenarios/ and emits a JSON report
 // on stdout shaped as (verdict, reason_code, scope_set) per scenario. The
 // deployment-shape driver does not embed kernel evaluation; it mirrors the
 // TypeScript node-http and dotnet ChioMiddleware client contract by forwarding
@@ -83,14 +83,14 @@ public static class Driver
         while (dir is not null)
         {
             var cargo = Path.Combine(dir.FullName, "Cargo.toml");
-            var matrix = Path.Combine(dir.FullName, "crates", "chio-conformance", "verdict_matrix");
+            var matrix = Path.Combine(dir.FullName, "crates", "tooling", "chio-conformance", "verdict_matrix");
             if (File.Exists(cargo) && Directory.Exists(matrix))
             {
                 return Path.Combine(matrix, "scenarios");
             }
             dir = dir.Parent;
         }
-        return Path.Combine(current, "crates", "chio-conformance", "verdict_matrix", "scenarios");
+        return Path.Combine(current, "crates", "tooling", "chio-conformance", "verdict_matrix", "scenarios");
     }
 
     public static IReadOnlyList<JsonElement> LoadScenarios(string root)

@@ -1,7 +1,7 @@
 // JVM SDK verdict-matrix driver entry point.
 //
 // Loads the canonical scenario corpus from
-// `crates/chio-conformance/verdict_matrix/scenarios/` and emits the
+// `crates/tooling/chio-conformance/verdict_matrix/scenarios/` and emits the
 // (verdict, reason_code, scope_set) tuple per scenario as JSON on stdout.
 //
 // The deployment-shape driver does not embed kernel evaluation. It mirrors
@@ -89,13 +89,13 @@ fun resolveScenarioRoot(args: Array<String>): Path {
     var candidate: Path? = cwd
     while (candidate != null) {
         val cargo = candidate.resolve("Cargo.toml").toFile()
-        val matrix = candidate.resolve("crates/chio-conformance/verdict_matrix").toFile()
+        val matrix = candidate.resolve("crates/tooling/chio-conformance/verdict_matrix").toFile()
         if (cargo.exists() && matrix.exists()) {
             return matrix.toPath().resolve("scenarios")
         }
         candidate = candidate.parent
     }
-    return cwd.resolve("crates/chio-conformance/verdict_matrix/scenarios")
+    return cwd.resolve("crates/tooling/chio-conformance/verdict_matrix/scenarios")
 }
 
 fun loadScenarios(root: Path): List<Map<String, Any?>> {
