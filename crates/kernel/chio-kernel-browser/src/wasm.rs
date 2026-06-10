@@ -3,6 +3,7 @@
 //! wasm toolchain.
 
 use alloc::collections::BTreeMap;
+use alloc::string::String;
 use alloc::format;
 use alloc::vec::Vec;
 
