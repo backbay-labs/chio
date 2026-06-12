@@ -33,6 +33,7 @@ notes    = "Round-trips canonical JSON; catches sort drift and float canonicaliz
 crate    = "chio-core-types"
 path     = "fuzz/fuzz_targets/capability_receipt.rs"
 triggers = [
+    "crates/core/chio-core-types/src/_generated/**",
     "crates/core/chio-core-types/src/capability*.rs",
     "crates/core/chio-core-types/src/receipt*.rs",
     "spec/schemas/capability/**",
