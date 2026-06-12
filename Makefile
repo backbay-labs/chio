@@ -95,8 +95,8 @@ clippy:
 clean:
 	$(CARGO) clean
 
-gate: build test clippy fmt-check
-	@echo "gate: build, test, clippy, and fmt-check passed"
+gate: build test-all clippy fmt-check
+	@echo "gate: build, test-all, clippy, and fmt-check passed"
 
 chio:
 	$(CARGO) build --release -p chio-cli

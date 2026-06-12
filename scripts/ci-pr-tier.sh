@@ -6,6 +6,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+export PROPTEST_CASES="${PROPTEST_CASES:-256}"
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
+CHIO_CI_RUSTFLAGS="${CHIO_CI_RUSTFLAGS:--D warnings -C link-arg=-Wl,--threads=1}"
+export RUSTFLAGS="${RUSTFLAGS:-${CHIO_CI_RUSTFLAGS} -C debuginfo=0}"
+
 ./scripts/check-proptest-coverage.sh
 
 ./scripts/check-release-inputs.sh
