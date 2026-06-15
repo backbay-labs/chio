@@ -316,6 +316,25 @@ describe("ChioSidecarClient.evaluate", () => {
     }
   });
 
+  it("rejects inconsistent deny verdict with allow-shaped receipt", async () => {
+    const result: EvaluateResponse = {
+      verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      receipt: authoritativeAllowReceipt(),
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_invalid_receipt",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
   it("does not verify non-allow responses", async () => {
     let verifyCalls = 0;
     const result: EvaluateResponse = {
