@@ -8,16 +8,7 @@ export type JsonRpcMessage = Record<string, unknown> & {
 export type RpcMessageHandler = (message: JsonRpcMessage) => void | Promise<void>;
 
 function rpcIdsEqual(left: JsonRpcId | undefined, right: JsonRpcId | undefined): boolean {
-  if (left === right) {
-    return true;
-  }
-  if (
-    (typeof left === "string" || typeof left === "number")
-    && (typeof right === "string" || typeof right === "number")
-  ) {
-    return String(left) === String(right);
-  }
-  return false;
+  return left === right;
 }
 
 function parseJsonRpcMessage(input: string): JsonRpcMessage {
@@ -115,6 +106,9 @@ export async function readRpcMessagesUntilTerminal(
   if (eventData.length > 0) {
     const message = parseJsonRpcMessage(eventData.join("\n"));
     messages.push(message);
+    if (expectedId !== undefined && rpcIdsEqual(message.id, expectedId) && !message.method) {
+      return messages;
+    }
     await onMessage(message);
   }
   if (messages.length === 0) {

@@ -227,8 +227,17 @@ export function canonicalizeJson(value: unknown): string {
         return `[${value.map((item) => canonicalizeJson(item)).join(",")}]`;
       }
 
-      return `{${Object.entries(value as Record<string, unknown>)
-        .filter(([, entryValue]) => entryValue !== undefined)
+      const entries = Object.entries(value as Record<string, unknown>);
+      for (const [, entryValue] of entries) {
+        if (entryValue === undefined) {
+          throw new ChioInvariantError(
+            "canonical_json",
+            "canonical JSON does not support undefined object fields",
+          );
+        }
+      }
+
+      return `{${entries
         .sort(([left], [right]) => compareUtf16(left, right))
         .map(([key, entryValue]) => `${JSON.stringify(key)}:${canonicalizeJson(entryValue)}`)
         .join(",")}}`;
