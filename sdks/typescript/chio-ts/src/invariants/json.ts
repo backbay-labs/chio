@@ -228,6 +228,7 @@ export function canonicalizeJson(value: unknown): string {
       }
 
       return `{${Object.entries(value as Record<string, unknown>)
+        .filter(([, entryValue]) => entryValue !== undefined)
         .sort(([left], [right]) => compareUtf16(left, right))
         .map(([key, entryValue]) => `${JSON.stringify(key)}:${canonicalizeJson(entryValue)}`)
         .join(",")}}`;

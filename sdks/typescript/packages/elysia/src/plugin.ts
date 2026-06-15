@@ -25,6 +25,7 @@ import {
   isAllowed,
   resolveConfig,
   buildChioHttpRequest,
+  extractRequestPath,
   VALID_METHODS,
   verdictStatus,
   verdictReason,

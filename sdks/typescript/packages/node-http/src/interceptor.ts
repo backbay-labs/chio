@@ -84,6 +84,21 @@ function extractPath(url: string): string {
   return qIndex === -1 ? url : url.slice(0, qIndex);
 }
 
+/** Preserve percent-encoding in absolute Request URLs. */
+export function extractRequestPath(url: string): string {
+  const withoutQuery = extractPath(url);
+  try {
+    const parsed = new URL(withoutQuery);
+    const prefix = parsed.origin;
+    if (withoutQuery.startsWith(prefix)) {
+      return withoutQuery.slice(prefix.length) || "/";
+    }
+  } catch {
+    // Fall through for relative URLs.
+  }
+  return withoutQuery;
+}
+
 /** Default route pattern resolver -- returns the raw path as pattern. */
 const defaultRoutePatternResolver: RoutePatternResolver = (_method, path) => path;
 

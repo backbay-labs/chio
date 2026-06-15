@@ -7,6 +7,19 @@ export type JsonRpcMessage = Record<string, unknown> & {
 
 export type RpcMessageHandler = (message: JsonRpcMessage) => void | Promise<void>;
 
+function rpcIdsEqual(left: JsonRpcId | undefined, right: JsonRpcId | undefined): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (
+    (typeof left === "string" || typeof left === "number")
+    && (typeof right === "string" || typeof right === "number")
+  ) {
+    return String(left) === String(right);
+  }
+  return false;
+}
+
 function parseJsonRpcMessage(input: string): JsonRpcMessage {
   return JSON.parse(input) as JsonRpcMessage;
 }
@@ -78,7 +91,7 @@ export async function readRpcMessagesUntilTerminal(
         if (eventData.length > 0) {
           const message = parseJsonRpcMessage(eventData.join("\n"));
           messages.push(message);
-          if (expectedId !== undefined && message.id === expectedId && !message.method) {
+          if (expectedId !== undefined && rpcIdsEqual(message.id, expectedId) && !message.method) {
             await reader.cancel();
             return messages;
           }
@@ -111,7 +124,7 @@ export async function readRpcMessagesUntilTerminal(
 }
 
 export function terminalMessage(messages: JsonRpcMessage[], expectedId: JsonRpcId): JsonRpcMessage {
-  const match = messages.find((message) => message.id === expectedId && !message.method);
+  const match = messages.find((message) => rpcIdsEqual(message.id, expectedId) && !message.method);
   if (!match) {
     throw new Error(`no terminal response for JSON-RPC id ${expectedId}`);
   }

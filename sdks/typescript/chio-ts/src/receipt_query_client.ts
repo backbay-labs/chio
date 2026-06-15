@@ -73,6 +73,9 @@ export class ReceiptQueryClient {
       if (response.nextCursor === undefined || response.nextCursor === null) {
         break;
       }
+      if (response.nextCursor === cursor) {
+        break;
+      }
       cursor = response.nextCursor;
     }
   }

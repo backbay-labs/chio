@@ -150,7 +150,7 @@ pub fn validate_federation_quorum_report(
             .freshness
             .validate()
             .map_err(FederationContractError::InvalidQuorum)?;
-        if publisher.freshness.age_secs > report.max_replica_age_secs
+        if publisher.freshness.age_secs >= report.max_replica_age_secs
             || publisher.freshness.state == GenericListingFreshnessState::Stale
         {
             stale_count += 1;

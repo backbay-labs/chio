@@ -339,7 +339,7 @@ fn parse_rfc3339_utc(text: &str) -> Result<SystemTime, AttestError> {
     let minute = parse_u32(&bytes[14..16], text)? as u8;
     let second = parse_u32(&bytes[17..19], text)? as u8;
     let max_day = days_in_month(year, month)?;
-    if day == 0 || day > max_day || hour > 23 || minute > 59 || second > 60 {
+    if day == 0 || day > max_day || hour > 23 || minute > 59 || second > 59 {
         return Err(AttestError::Malformed(format!(
             "signed_at {text:?} has out-of-range fields"
         )));

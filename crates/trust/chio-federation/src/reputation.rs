@@ -225,8 +225,9 @@ pub fn validate_federated_reputation_clearing(
             "each input must be classified as accepted or rejected".to_string(),
         ));
     }
-    if accepted_independence_groups.len()
-        < clearing.sybil_control.minimum_independent_issuers as usize
+    if !clearing.accepted_input_ids.is_empty()
+        && accepted_independence_groups.len()
+            < clearing.sybil_control.minimum_independent_issuers as usize
     {
         return Err(FederationContractError::InvalidClearing(
             "accepted inputs must meet the minimum_independent_issuers threshold".to_string(),

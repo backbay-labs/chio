@@ -178,15 +178,14 @@ fn now_secs() -> i64 {
 impl ExecutionNonceStore for SqliteExecutionNonceStore {
     fn reserve(&self, nonce_id: &str) -> Result<bool, KernelError> {
         // Back-compat path: callers that do not know the nonce's signed
-        // expiry fall through to a 60s retention grace. This branch is
-        // wrong for `nonce_ttl_secs > 60` deployments -- it can prune a
-        // consumed marker while the nonce is still cryptographically
-        // valid and allow replay. New callers use `reserve_until` with
-        // the signed `expires_at` from the presented nonce.
+        // expiry estimate the kernel default TTL and delegate to
+        // `reserve_until` so the consumed marker survives the full
+        // cryptographic validity window.
         let now = now_secs();
-        let expires_at = now.saturating_add(RETENTION_GRACE_SECS);
-        self.try_reserve(nonce_id, now, expires_at)
-            .map_err(|e| KernelError::Internal(format!("sqlite execution nonce store: {e}")))
+        let estimated_nonce_expiry = now.saturating_add(
+            i64::try_from(chio_kernel::DEFAULT_EXECUTION_NONCE_TTL_SECS).unwrap_or(0),
+        );
+        self.reserve_until(nonce_id, estimated_nonce_expiry)
     }
 
     fn reserve_until(&self, nonce_id: &str, nonce_expires_at: i64) -> Result<bool, KernelError> {

@@ -27,6 +27,7 @@ export {
   buildChioHttpRequest,
   preserveReadableBody,
   resolveConfig,
+  extractRequestPath,
   type ResolvedConfig,
   type BuildRequestOptions,
   type NodeInterceptionOutcome,
