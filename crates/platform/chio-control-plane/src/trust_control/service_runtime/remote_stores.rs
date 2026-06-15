@@ -27,7 +27,13 @@ impl RevocationStore for RemoteRevocationStore {
                 capability_id: Some(capability_id.to_string()),
                 limit: Some(1),
             })
-            .map(|response| response.revoked.unwrap_or(false))
+            .and_then(|response| {
+                response.revoked.ok_or_else(|| {
+                    CliError::cli_other_error(format!(
+                        "trust-control revocation response omitted revoked status for {capability_id}"
+                    ))
+                })
+            })
             .map_err(into_revocation_store_error)
     }
 

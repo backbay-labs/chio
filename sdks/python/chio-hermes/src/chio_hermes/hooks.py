@@ -30,6 +30,14 @@ def _is_chio_tool(tool_name: str | None) -> bool:
 
 
 def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
+    def block_policy_error(message: str) -> dict[str, Any]:
+        return {
+            "action": "block",
+            "message": message,
+            "guard": "ChioPolicyGuard",
+            "reason": "policy_error",
+        }
+
     def pre_tool_call(
         tool_name: str | None = None,
         args: dict[str, Any] | None = None,
@@ -45,8 +53,8 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
 
         try:
             from chio_code_agent.errors import ChioCodeAgentDeniedError
-        except Exception:
-            return None
+        except Exception as exc:  # noqa: BLE001 - policy import failure must deny
+            return block_policy_error(f"failed to load Chio policy error type: {exc}")
 
         try:
             if tool_name in {"chio_file_read", "chio_file_list", "chio_file_search"}:
@@ -85,8 +93,8 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
                 "guard": getattr(exc, "guard", None),
                 "reason": getattr(exc, "reason", None),
             }
-        except Exception:  # noqa: BLE001 - never crash Hermes from a hook
-            return None
+        except Exception as exc:  # noqa: BLE001 - never crash Hermes from a hook
+            return block_policy_error(f"Chio policy check failed: {exc}")
         return None
 
     return pre_tool_call

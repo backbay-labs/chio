@@ -8,7 +8,11 @@ from typing import Any, Awaitable, Callable
 from unittest.mock import AsyncMock, patch
 
 from chio_asgi.config import ChioASGIConfig
-from chio_asgi.middleware import ChioASGIMiddleware, _extract_capability_token
+from chio_asgi.middleware import (
+    ChioASGIMiddleware,
+    _extract_capability_token,
+    _query_params,
+)
 from chio_sdk.errors import ChioConnectionError
 from chio_sdk.models import (
     EvaluateResponse,
@@ -429,6 +433,13 @@ class TestCapabilityIdExtraction:
     def test_from_query_string_decodes_url_encoding(self) -> None:
         scope = _make_scope(query_string="chio_capability=cap%2B456%2Fwith%3Dpadding")
         assert _extract_capability_token(scope) == "cap+456/with=padding"
+
+    def test_query_params_decode_keys_and_values(self) -> None:
+        scope = _make_scope(query_string="tag=a+b&scope%2Fname=files%2Fread")
+        assert _query_params(scope) == {
+            "tag": "a b",
+            "scope/name": "files/read",
+        }
 
     def test_none_when_missing(self) -> None:
         scope = _make_scope()
