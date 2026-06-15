@@ -44,6 +44,9 @@ const VALID_METHODS = new Set<string>([
   "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS",
 ]);
 
+/** Per-request Chio evaluation results keyed by Request object. */
+const requestChioResults = new WeakMap<Request, EvaluateResponse>();
+
 function verdictStatus(verdict: Verdict): number {
   return "http_status" in verdict ? verdict.http_status : 403;
 }
@@ -70,10 +73,7 @@ export function chio(config: ChioElysiaConfig = {}) {
   const skipPatterns = config.skip ?? [];
 
   return new Elysia({ name: "@chio-protocol/elysia" })
-    .derive({ as: "scoped" }, () => ({
-      chioResult: undefined as EvaluateResponse | undefined,
-    }))
-    .onBeforeHandle({ as: "scoped" }, async ({ request, set, chioResult }) => {
+    .onBeforeHandle({ as: "global" }, async ({ request, set }) => {
       const path = extractRequestPath(request.url);
       const url = new URL(request.url);
 
@@ -176,7 +176,7 @@ export function chio(config: ChioElysiaConfig = {}) {
 
         // Set receipt header after authorization and receipt verification.
         set.headers["X-Chio-Receipt-Id"] = result.receipt.id;
-        chioResult = result;
+        requestChioResults.set(request, result);
 
         // Allow the request to proceed
         return undefined;
@@ -188,7 +188,10 @@ export function chio(config: ChioElysiaConfig = {}) {
           message,
         };
       }
-    });
+    })
+    .resolve({ as: "scoped" }, ({ request }) => ({
+      chioResult: requestChioResults.get(request),
+    }));
 }
 
 // -- Helpers --
