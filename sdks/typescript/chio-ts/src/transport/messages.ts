@@ -93,6 +93,12 @@ export async function readRpcMessagesUntilTerminal(
     }
   }
 
+  if (buffer.trim()) {
+    if (buffer.startsWith("data:")) {
+      eventData.push(buffer.slice(5).trimStart());
+    }
+  }
+
   if (eventData.length > 0) {
     const message = parseJsonRpcMessage(eventData.join("\n"));
     messages.push(message);

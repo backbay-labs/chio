@@ -70,7 +70,7 @@ for wf in "${WORKFLOWS[@]}"; do
             && [[ "${rate_limit_mode}" == "warn" ]]; then
             err "fuzz-budget: GitHub API rate limited while checking ${wf}; budget usage is unverified"
             err "fuzz-budget: continuing because GH_FUZZ_BUDGET_RATE_LIMIT_MODE=warn"
-            exit 0
+            continue
         fi
         err "fuzz-budget: GitHub API failed for ${wf}: ${error_text}"
         exit 2

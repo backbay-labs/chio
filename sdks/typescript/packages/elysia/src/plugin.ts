@@ -68,13 +68,11 @@ export function chio(config: ChioElysiaConfig = {}) {
   const skipPatterns = config.skip ?? [];
 
   return new Elysia({ name: "@chio-protocol/elysia" })
-    .derive({ as: "global" }, ({ request }) => {
-      // Store the Chio result on the context for downstream handlers
-      return {
-        chioResult: undefined as EvaluateResponse | undefined,
-      };
-    })
-    .onBeforeHandle({ as: "global" }, async ({ request, set }) => {
+    .state("chioResult", undefined as EvaluateResponse | undefined)
+    .derive({ as: "global" }, ({ store }) => ({
+      chioResult: store.chioResult,
+    }))
+    .onBeforeHandle({ as: "global" }, async ({ request, set, store }) => {
       const url = new URL(request.url);
       const path = url.pathname;
 
@@ -177,6 +175,7 @@ export function chio(config: ChioElysiaConfig = {}) {
 
         // Set receipt header after authorization and receipt verification.
         set.headers["X-Chio-Receipt-Id"] = result.receipt.id;
+        store.chioResult = result;
 
         // Allow the request to proceed
         return undefined;

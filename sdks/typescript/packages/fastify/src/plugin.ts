@@ -38,6 +38,14 @@ import {
 import { createHash } from "node:crypto";
 import { PassThrough } from "node:stream";
 
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 /** Fastify-specific Chio config. */
 export interface ChioFastifyConfig extends ChioConfig {
   /**
@@ -128,10 +136,10 @@ const chioPlugin: FastifyPluginAsync<ChioFastifyConfig> = async (
       for (const pair of qs.split("&")) {
         const eqIndex = pair.indexOf("=");
         if (eqIndex === -1) {
-          query[decodeURIComponent(pair)] = "";
+          query[safeDecodeURIComponent(pair)] = "";
         } else {
-          query[decodeURIComponent(pair.slice(0, eqIndex))] =
-            decodeURIComponent(pair.slice(eqIndex + 1));
+          query[safeDecodeURIComponent(pair.slice(0, eqIndex))] =
+            safeDecodeURIComponent(pair.slice(eqIndex + 1));
         }
       }
     }

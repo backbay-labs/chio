@@ -28,6 +28,7 @@ use chio_federation::pheromone_gossip::PheromoneGossipBatch;
 use chio_pheromone_runtime::PheromoneReceiveReport;
 use serde::Deserialize;
 use serde::Serialize;
+use subtle::ConstantTimeEq;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -603,7 +604,8 @@ pub(crate) fn authorize_operator(
     let authorized = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value == format!("Bearer {token}"));
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .is_some_and(|provided| provided.as_bytes().ct_eq(token.as_bytes()).into());
     if authorized {
         Ok(())
     } else {

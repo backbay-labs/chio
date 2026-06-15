@@ -53,6 +53,14 @@ function headersToRecord(headers: Record<string, string | string[] | undefined>)
   return result;
 }
 
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function parseQueryString(url: string): Record<string, string> {
   const query: Record<string, string> = {};
   const qIndex = url.indexOf("?");
@@ -61,10 +69,10 @@ function parseQueryString(url: string): Record<string, string> {
   for (const pair of qs.split("&")) {
     const eqIndex = pair.indexOf("=");
     if (eqIndex === -1) {
-      query[decodeURIComponent(pair)] = "";
+      query[safeDecodeURIComponent(pair)] = "";
     } else {
-      const key = decodeURIComponent(pair.slice(0, eqIndex));
-      const value = decodeURIComponent(pair.slice(eqIndex + 1));
+      const key = safeDecodeURIComponent(pair.slice(0, eqIndex));
+      const value = safeDecodeURIComponent(pair.slice(eqIndex + 1));
       query[key] = value;
     }
   }

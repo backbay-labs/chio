@@ -21,7 +21,11 @@ fn compute_history_depth(
         .map(|receipt| receipt.timestamp / SECONDS_PER_DAY)
         .collect();
     let span_days = match (first_seen, last_seen) {
-        (Some(first), Some(last)) => ((last.saturating_sub(first)) / SECONDS_PER_DAY).max(1) + 1,
+        (Some(first), Some(last)) => {
+            let first_day = first / SECONDS_PER_DAY;
+            let last_day = last / SECONDS_PER_DAY;
+            last_day.saturating_sub(first_day) + 1
+        }
         _ => 0,
     };
     let activity_ratio = if span_days > 0 {

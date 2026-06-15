@@ -96,7 +96,7 @@ export class ChioSidecarClient {
       }
 
       const result = (await response.json()) as EvaluateResponse;
-      if (isAllowShapedResult(result)) {
+      if (isAllowed(result.verdict)) {
         await this.assertAuthorizedAllowResult(result);
       }
       return result;
@@ -218,10 +218,6 @@ export class ChioSidecarClient {
       clearTimeout(timer);
     }
   }
-}
-
-function isAllowShapedResult(result: EvaluateResponse): boolean {
-  return isAllowed(result.verdict) || isAllowed(result.receipt.verdict);
 }
 
 function isSidecarTransportFailure(statusCode: number): boolean {
