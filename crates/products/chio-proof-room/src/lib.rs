@@ -3702,6 +3702,8 @@ fn source_verifier_context(
     let passport: chio_transaction_passport::TransactionPassport =
         serde_json::from_slice(&passport_bytes)
             .map_err(|error| format!("proof-room.passport.invalid-json: {error}"))?;
+    chio_transaction_passport::verify_minimal_passport_schema(&passport)
+        .map_err(|error| format!("proof-room.passport.invalid: {error}"))?;
     let passport_dir = path
         .parent()
         .ok_or_else(|| "proof-room.passport.path-invalid".to_string())?;
@@ -3713,6 +3715,8 @@ fn source_verifier_context(
         .map_err(|error| format!("proof-room.evidence-graph.unreadable: {error}"))?;
     let verifier_policy_bytes = fs::read(&verifier_policy_path)
         .map_err(|error| format!("proof-room.verifier-policy.unreadable: {error}"))?;
+    chio_transaction_passport::validate_verifier_policy_artifact(&verifier_policy_bytes)
+        .map_err(|error| format!("proof-room.verifier-policy.invalid: {error}"))?;
     let artifacts =
         load_standalone_evidence_graph_artifacts(bundle_root, passport_dir, &evidence_graph_bytes)?;
     let passport_report_path = path
@@ -5371,6 +5375,30 @@ mod tests {
         assert!(has_guard_deny_negative);
         verify_proof_room_bundle(&bundle)?;
 
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_source_family_verifier_policy_missing_schema_field() -> Result<(), Box<dyn Error>> {
+        let root = repo_root()?;
+        let source = root.join(
+            "fixtures/proof-room/public-stages/commerce-transaction-passport/proof-room-bundle",
+        );
+        let work = tempfile::tempdir()?;
+        copy_dir_all(&source, work.path())?;
+        remove_verifier_policy_field_and_rehash(work.path(), "omitted_claims")?;
+        let manifest_path = work.path().join("manifest.json");
+
+        let error = verify_proof_room_bundle(&manifest_path).err().ok_or(
+            "proof room bundle with malformed source verifier policy unexpectedly verified",
+        )?;
+
+        assert!(
+            error
+                .to_string()
+                .contains("proof-room.verifier-policy.invalid"),
+            "{error}"
+        );
         Ok(())
     }
 
@@ -8358,6 +8386,117 @@ mod tests {
                 }
                 Some("ui/proof-room-static/load-report.json") => {
                     artifact["sha256"] = serde_json::Value::String(ui_report_sha256.clone());
+                }
+                _ => {}
+            }
+        }
+        fs::write(&manifest_path, json_bytes(&manifest)?)?;
+        refresh_bundle_signature(bundle)?;
+        Ok(())
+    }
+
+    fn remove_verifier_policy_field_and_rehash(
+        bundle: &Path,
+        field: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let verifier_policy_path = bundle.join("roots/verifier-policy.json");
+        let mut verifier_policy: serde_json::Value =
+            serde_json::from_slice(&fs::read(&verifier_policy_path)?)?;
+        verifier_policy
+            .as_object_mut()
+            .ok_or("verifier policy object missing")?
+            .remove(field);
+        fs::write(&verifier_policy_path, json_bytes(&verifier_policy)?)?;
+        let verifier_policy_sha256 = sha256_file(&verifier_policy_path)?;
+
+        let evidence_graph_path = bundle.join("roots/evidence-graph.json");
+        let mut evidence_graph: serde_json::Value =
+            serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
+        for node in evidence_graph["nodes"]
+            .as_array_mut()
+            .ok_or("evidence graph nodes missing")?
+        {
+            if node.get("path").and_then(serde_json::Value::as_str) == Some("verifier-policy.json")
+            {
+                node["sha256"] = serde_json::Value::String(verifier_policy_sha256.clone());
+            }
+        }
+        fs::write(&evidence_graph_path, json_bytes(&evidence_graph)?)?;
+        let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
+
+        let passport_path = bundle.join("roots/transaction-passport.json");
+        let mut passport: serde_json::Value = serde_json::from_slice(&fs::read(&passport_path)?)?;
+        passport["evidence_graph_sha256"] =
+            serde_json::Value::String(evidence_graph_sha256.clone());
+        passport["verifier_policy_sha256"] =
+            serde_json::Value::String(verifier_policy_sha256.clone());
+        fs::write(&passport_path, json_bytes(&passport)?)?;
+        let passport_sha256 = sha256_file(&passport_path)?;
+
+        let verifier_report_path = bundle.join("verifier/report.json");
+        let mut verifier_report: serde_json::Value =
+            serde_json::from_slice(&fs::read(&verifier_report_path)?)?;
+        verifier_report["evidence_graph_sha256"] =
+            serde_json::Value::String(evidence_graph_sha256.clone());
+        verifier_report["verifier_policy_sha256"] =
+            serde_json::Value::String(verifier_policy_sha256.clone());
+        fs::write(&verifier_report_path, json_bytes(&verifier_report)?)?;
+        let verifier_report_sha256 = sha256_file(&verifier_report_path)?;
+
+        let ui_report_path = bundle.join("ui/proof-room-static/load-report.json");
+        let mut ui_report: serde_json::Value = serde_json::from_slice(&fs::read(&ui_report_path)?)?;
+        ui_report["source_verifier_report_ref"]["sha256"] =
+            serde_json::Value::String(verifier_report_sha256.clone());
+        fs::write(&ui_report_path, json_bytes(&ui_report)?)?;
+        let ui_report_sha256 = sha256_file(&ui_report_path)?;
+
+        let test_key_id = Keypair::from_seed(&TEST_SIGNATURE_SEED)
+            .public_key()
+            .to_hex();
+        let trust_roots_path = bundle.join("artifacts/authority/trust-roots.json");
+        let mut trust_roots: serde_json::Value =
+            serde_json::from_slice(&fs::read(&trust_roots_path)?)?;
+        let root = trust_roots["roots"]
+            .as_array_mut()
+            .and_then(|roots| roots.first_mut())
+            .ok_or("trust roots missing")?;
+        root["key_id"] = serde_json::Value::String(test_key_id.clone());
+        root["key_digest"] = serde_json::Value::String(super::sha256_hex(test_key_id.as_bytes()));
+        fs::write(&trust_roots_path, json_bytes(&trust_roots)?)?;
+        let trust_roots_sha256 = sha256_file(&trust_roots_path)?;
+
+        let manifest_path = bundle.join("manifest.json");
+        let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;
+        manifest["transaction_passport_ref"]["sha256"] =
+            serde_json::Value::String(passport_sha256.clone());
+        manifest["evidence_graph_ref"]["sha256"] =
+            serde_json::Value::String(evidence_graph_sha256.clone());
+        manifest["verifier_report_ref"]["sha256"] =
+            serde_json::Value::String(verifier_report_sha256.clone());
+        manifest["proof_room_verifier_report_ref"]["sha256"] =
+            serde_json::Value::String(ui_report_sha256.clone());
+        for artifact in manifest["artifacts"]
+            .as_array_mut()
+            .ok_or("manifest artifacts missing")?
+        {
+            match artifact.get("path").and_then(serde_json::Value::as_str) {
+                Some("roots/transaction-passport.json") => {
+                    artifact["sha256"] = serde_json::Value::String(passport_sha256.clone());
+                }
+                Some("roots/evidence-graph.json") => {
+                    artifact["sha256"] = serde_json::Value::String(evidence_graph_sha256.clone());
+                }
+                Some("roots/verifier-policy.json") => {
+                    artifact["sha256"] = serde_json::Value::String(verifier_policy_sha256.clone());
+                }
+                Some("verifier/report.json") => {
+                    artifact["sha256"] = serde_json::Value::String(verifier_report_sha256.clone());
+                }
+                Some("ui/proof-room-static/load-report.json") => {
+                    artifact["sha256"] = serde_json::Value::String(ui_report_sha256.clone());
+                }
+                Some("artifacts/authority/trust-roots.json") => {
+                    artifact["sha256"] = serde_json::Value::String(trust_roots_sha256.clone());
                 }
                 _ => {}
             }
