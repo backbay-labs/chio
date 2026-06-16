@@ -504,6 +504,8 @@ fn replay_window_expires_at_exact_boundary() {
     let deposit = sign_deposit(deposit_body.clone(), &passport_key).expect("sign deposit");
     let mut context = live_context(&passport_key, &kernel_key);
     context.now_unix_ms = deposit_body.timestamp_unix_ms + context.replay_window_ms;
+    context.scarcity_policies[0].window_end_unix_ms = context.now_unix_ms + 1;
+    refresh_policy_window_id(&mut context.scarcity_policies[0]);
 
     let substrate = InMemoryPheromoneSubstrate::new();
     let err = substrate
