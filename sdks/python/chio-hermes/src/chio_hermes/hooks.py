@@ -29,6 +29,20 @@ def _is_chio_tool(tool_name: str | None) -> bool:
     return isinstance(tool_name, str) and tool_name.startswith("chio_")
 
 
+def _block_pre_tool_call(
+    message: str,
+    *,
+    guard: str | None = None,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "action": "block",
+        "message": message,
+        "guard": guard,
+        "reason": reason,
+    }
+
+
 def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
     def pre_tool_call(
         tool_name: str | None = None,
@@ -45,8 +59,12 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
 
         try:
             from chio_code_agent.errors import ChioCodeAgentDeniedError
-        except Exception:
-            return None
+        except Exception as exc:
+            return _block_pre_tool_call(
+                f"Chio local policy unavailable: {exc}",
+                guard="chio_policy_error",
+                reason="policy_unavailable",
+            )
 
         try:
             if tool_name in {"chio_file_read", "chio_file_list", "chio_file_search"}:
@@ -75,18 +93,32 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
                 handle.policy.check_git(shell_form)
                 handle.policy.check_shell(shell_form)
             elif tool_name == "chio_git_add":
-                for path in params.get("paths", []) or []:
+                paths = params.get("paths", []) or []
+                if isinstance(paths, str):
+                    paths = [paths]
+                if not isinstance(paths, list) or not all(
+                    isinstance(path, str) for path in paths
+                ):
+                    return _block_pre_tool_call(
+                        "chio_git_add requires paths to be an array of strings",
+                        guard="chio_policy_error",
+                        reason="invalid_paths",
+                    )
+                for path in paths:
                     handle.policy.check_write(path, cwd=handle.cwd)
         except ChioCodeAgentDeniedError as exc:
-            _ = task_id
-            return {
-                "action": "block",
-                "message": str(exc),
-                "guard": getattr(exc, "guard", None),
-                "reason": getattr(exc, "reason", None),
-            }
-        except Exception:  # noqa: BLE001 - never crash Hermes from a hook
-            return None
+            _ = task_id  # reserved for future telemetry
+            return _block_pre_tool_call(
+                str(exc),
+                guard=getattr(exc, "guard", None),
+                reason=getattr(exc, "reason", None),
+            )
+        except Exception as exc:  # noqa: BLE001 - never crash Hermes from a hook
+            return _block_pre_tool_call(
+                f"Chio local policy check failed: {exc}",
+                guard="chio_policy_error",
+                reason="policy_error",
+            )
         return None
 
     return pre_tool_call

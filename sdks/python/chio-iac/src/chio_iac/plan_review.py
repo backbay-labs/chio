@@ -221,6 +221,19 @@ class PlanReviewGuard:
         resources = _extract_resources(plan)
         violations: list[dict[str, Any]] = []
 
+        if not resources and not _has_recognized_plan_shape(plan):
+            violations.append(
+                {
+                    "resource_type": "unknown",
+                    "address": "<plan>",
+                    "action": "unknown",
+                    "reason": (
+                        "plan JSON did not match Terraform resource_changes "
+                        "or Pulumi steps/resources shape"
+                    ),
+                }
+            )
+
         for resource in resources:
             if not resource.is_mutating:
                 # ``no-op`` / ``read`` / ``same`` -- nothing to review.
@@ -343,10 +356,9 @@ def _extract_resources(plan: dict[str, Any]) -> list[PlanResource]:
     * Pulumi preview (simple variant): top-level ``resources`` list with
       ``type`` and ``action``.
 
-    Unknown shapes yield an empty list; the review verdict will then be
-    allowed (no resources to deny). Callers who need strict parsing can
-    consult :attr:`PlanReviewVerdict.resources` and raise a
-    :class:`ChioIACConfigError` when the list is empty.
+    Unknown shapes yield an empty list; :meth:`PlanReviewGuard.review`
+    converts that into a deny verdict unless the payload is a recognized
+    empty Terraform / Pulumi plan.
     """
     # Terraform format
     resource_changes = plan.get("resource_changes")
@@ -364,6 +376,10 @@ def _extract_resources(plan: dict[str, Any]) -> list[PlanResource]:
         return [_from_pulumi_resource(r) for r in resources if isinstance(r, dict)]
 
     return []
+
+
+def _has_recognized_plan_shape(plan: dict[str, Any]) -> bool:
+    return any(isinstance(plan.get(key), list) for key in ("resource_changes", "steps", "resources"))
 
 
 def _from_terraform_change(change: dict[str, Any]) -> PlanResource:

@@ -258,8 +258,13 @@ impl MemoryGovernanceGuard {
 
         // 3. Content size.
         if let Some(max_bytes) = self.max_content_size_bytes {
-            if let Some(size) = extract_content_size_bytes(&ctx.request.arguments) {
-                if size > max_bytes {
+            match extract_content_size_bytes(&ctx.request.arguments) {
+                Some(size) => {
+                    if size > max_bytes {
+                        return Ok(GuardDecision::deny(Vec::new()));
+                    }
+                }
+                None => {
                     return Ok(GuardDecision::deny(Vec::new()));
                 }
             }
