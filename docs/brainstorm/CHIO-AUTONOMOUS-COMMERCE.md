@@ -23,7 +23,7 @@ The move is to sell the brake and the audit trail into a market that is buying c
 
 **We fork:** Orca (github.com/stablyai/orca, Lovecast Inc., MIT). An Electron 42 + React 19 + TypeScript cockpit (~5,120 files) that runs any CLI coding agent in its own git worktree, with parallel fan-out, Ghostty-class terminals, an embedded-Chromium Design Mode, and an Expo mobile companion. Four clean process seams make it an ideal host: the main/renderer IPC hub (`src/main/ipc/register-core-handlers.ts`), the token-authed Unix-socket terminal daemon (the precedent for a Rust sidecar), the public `orca` CLI JSON-RPC transport, and the agent-hooks bus (`src/main/agent-hooks/`) that fires on every agent tool call.
 
-**We add (all verified in-tree), and we route through ONE new `commerce:*` IPC namespace plus `orca commerce ...` CLI verbs:**
+**We add, and we route through ONE new `commerce:*` IPC namespace plus `orca commerce ...` CLI verbs:**
 
 - **The enforcement spine:** `chio-metering` (`BudgetEnforcer`, `BudgetTree` for org -> dept -> team -> agent caps), `chio-credit` (`CreditBondedExecutionControlPolicy` kill switch; `CreditEvaluatorHook` minting signed IOUs), `chio-workflow-preflight` (`WorkflowBudgetPool` for fan-out), `chio-core-types` (`ChioReceipt`, `FinancialReceiptMetadata`).
 - **The transport:** `chio-api-protect` (the finished axum control plane: `/chio/evaluate`, `/v1/capabilities/mint` and `/release`, `/approvals/*`) spawned as a bundled, token-authed sidecar exactly like Orca's terminal daemon. `chio-bindings-ffi` (pinned ABI v1, JSON in/out) via koffi for offline signature and hash checks on the read path only.

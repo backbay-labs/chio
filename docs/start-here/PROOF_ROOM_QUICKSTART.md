@@ -12,7 +12,10 @@ From the repository root:
 ```bash
 cargo run -p chio-cli -- proof doctor --scenario single-call-authority --root . --json
 cargo run -p chio-cli -- proof serve fixtures/proof-room/first-run/single-call-authority/proof-room-bundle --listen 127.0.0.1:7391
-cargo run -p chio-proof-room -- --bundle fixtures/proof-room/first-run/single-call-authority/proof-room-bundle --verify-only --doctor-report /tmp/chio-proof-room-doctor.json
+cargo run -p chio-proof-room -- \
+  --bundle fixtures/proof-room/first-run/single-call-authority/proof-room-bundle \
+  --verify-only \
+  --doctor-report /tmp/chio-proof-room-doctor.json
 ```
 
 Open `http://127.0.0.1:7391/?view=proof-room`. The page reads
