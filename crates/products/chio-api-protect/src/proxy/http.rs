@@ -169,3 +169,19 @@ pub(crate) fn extract_transport_capability(
         .map(ToOwned::to_owned)
         .or_else(|| query.get("chio_capability").cloned())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn duplicate_query_key_detects_decoded_duplicates() {
+        let query = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("role", "user")
+            .append_pair("mode", "full")
+            .append_pair("role", "admin")
+            .finish();
+
+        assert_eq!(duplicate_query_key(Some(&query)).as_deref(), Some("role"));
+    }
+}

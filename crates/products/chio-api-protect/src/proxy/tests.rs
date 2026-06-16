@@ -495,17 +495,6 @@ fn forwarded_query_string_strips_chio_capability() {
 }
 
 #[test]
-fn duplicate_query_key_detects_decoded_duplicates() {
-    let query = url::form_urlencoded::Serializer::new(String::new())
-        .append_pair("role", "user")
-        .append_pair("mode", "full")
-        .append_pair("role", "admin")
-        .finish();
-
-    assert_eq!(duplicate_query_key(Some(&query)).as_deref(), Some("role"));
-}
-
-#[test]
 fn extract_caller_identity_rejects_blank_or_padded_credentials() {
     for (header_name, header_value) in [
         ("authorization", "Bearer "),
