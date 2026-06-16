@@ -644,10 +644,14 @@ mod tests {
         assert_eq!(canonical, expected);
         let supplementary = canonical
             .find('\u{10437}')
-            .ok_or(BundleError::Canonicalization("missing supplementary key".to_owned()))?;
+            .ok_or(BundleError::Canonicalization(
+                "missing supplementary key".to_owned(),
+            ))?;
         let private_use = canonical
             .find('\u{e000}')
-            .ok_or(BundleError::Canonicalization("missing private-use key".to_owned()))?;
+            .ok_or(BundleError::Canonicalization(
+                "missing private-use key".to_owned(),
+            ))?;
         assert!(supplementary < private_use);
         Ok(())
     }
