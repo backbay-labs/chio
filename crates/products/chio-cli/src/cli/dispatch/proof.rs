@@ -522,11 +522,16 @@ pub(super) fn verify_transaction_passport_file(
         )?);
     }
     if claim_requirements.requires(CLAIM_PREFIX_TRUST_MARKET) || risk_route.through_trust_market {
-        let artifacts = load_trust_market_artifacts_from_graph(bundle_dir, &evidence_graph_bytes)?;
+        let trust_market_evidence_graph_bytes =
+            scoped_evidence_graph_bytes(&evidence_graph_bytes, is_trust_market_evidence_graph_node)?;
+        let artifacts =
+            load_trust_market_artifacts_from_graph(bundle_dir, &trust_market_evidence_graph_bytes)?;
+        let trust_market_passport =
+            passport_for_evidence_graph(&passport, &trust_market_evidence_graph_bytes);
         let report = chio_control_plane::trust_market::verify_trust_market_context(
             &chio_control_plane::trust_market::TrustMarketBundle {
-                passport: passport.clone(),
-                evidence_graph_bytes: evidence_graph_bytes.clone(),
+                passport: trust_market_passport,
+                evidence_graph_bytes: trust_market_evidence_graph_bytes,
                 verifier_policy_bytes: verifier_policy_bytes.clone(),
                 artifacts,
             },
@@ -554,11 +559,16 @@ pub(super) fn verify_transaction_passport_file(
         push_family_report(&mut family_reports, report)?;
     }
     if claim_requirements.requires(CLAIM_PREFIX_ENTERPRISE) || risk_route.through_enterprise {
-        let artifacts = load_enterprise_artifacts_from_graph(bundle_dir, &evidence_graph_bytes)?;
+        let enterprise_evidence_graph_bytes =
+            scoped_evidence_graph_bytes(&evidence_graph_bytes, is_enterprise_evidence_graph_node)?;
+        let artifacts =
+            load_enterprise_artifacts_from_graph(bundle_dir, &enterprise_evidence_graph_bytes)?;
+        let enterprise_passport =
+            passport_for_evidence_graph(&passport, &enterprise_evidence_graph_bytes);
         let report = chio_control_plane::enterprise_export::verify_enterprise_export(
             &chio_control_plane::enterprise_export::EnterpriseExportBundle {
-                passport: passport.clone(),
-                evidence_graph_bytes: evidence_graph_bytes.clone(),
+                passport: enterprise_passport,
+                evidence_graph_bytes: enterprise_evidence_graph_bytes,
                 verifier_policy_bytes: verifier_policy_bytes.clone(),
                 artifacts,
             },
@@ -1574,6 +1584,20 @@ fn is_enterprise_artifact_role(role: &str) -> bool {
     )
 }
 
+fn is_enterprise_evidence_graph_node(node: &serde_json::Value) -> bool {
+    let Some(role) = node.get("role").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    is_enterprise_evidence_graph_role(role)
+}
+
+fn is_enterprise_evidence_graph_role(role: &str) -> bool {
+    matches!(
+        role,
+        "adjudication-jurisdiction-receipt" | "verifier-policy" | "report"
+    ) || is_enterprise_artifact_role(role)
+}
+
 fn load_agent_web_artifacts_from_graph(
     bundle_dir: &Path,
     evidence_graph_bytes: &[u8],
@@ -1692,6 +1716,17 @@ fn is_trust_market_artifact_role(role: &str) -> bool {
             | "guarantee-decision"
             | "adjudication-jurisdiction-receipt"
     )
+}
+
+fn is_trust_market_evidence_graph_node(node: &serde_json::Value) -> bool {
+    let Some(role) = node.get("role").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    is_trust_market_evidence_graph_role(role)
+}
+
+fn is_trust_market_evidence_graph_role(role: &str) -> bool {
+    matches!(role, "receipt" | "verifier-policy" | "report") || is_trust_market_artifact_role(role)
 }
 
 fn map_proof_error(

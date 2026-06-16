@@ -1113,6 +1113,33 @@ fn build_standalone_risk_only_policy_bundle() -> (tempfile::TempDir, PathBuf) {
     (tempdir, bundle)
 }
 
+fn build_enterprise_bundle_with_unrelated_runtime_evidence() -> (tempfile::TempDir, PathBuf) {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let enterprise_source =
+        workspace_root().join("fixtures/proof-room/enterprise-export/valid-autonomous-commerce");
+    let runtime_source =
+        workspace_root().join("fixtures/proof-room/runtime-security/valid-side-effecting-call");
+    let bundle = tempdir.path().join("enterprise-with-runtime-evidence");
+    copy_dir_all(&enterprise_source, &bundle).test_expect("copy enterprise proof bundle");
+
+    let evidence_graph_path = bundle.join("evidence-graph.json");
+    let mut evidence_graph: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
+            .test_expect("graph parses");
+    append_graph_artifacts_from_fixture(&bundle, &runtime_source, &mut evidence_graph, &[]);
+    write_json(&evidence_graph_path, &evidence_graph);
+    let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
+
+    let passport_path = bundle.join("transaction-passport.json");
+    let mut passport: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+            .test_expect("passport parses");
+    passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
+    write_json(&passport_path, &passport);
+
+    (tempdir, bundle)
+}
+
 fn remove_standalone_risk_graph_node(bundle: &Path, removed_node_id: &str) {
     let evidence_graph_path = bundle.join("evidence-graph.json");
     let mut evidence_graph: serde_json::Value =
@@ -4715,6 +4742,24 @@ fn proof_verify_routes_standalone_risk_policy_through_risk_comptroller() {
     assert!(
         stdout.contains("\"risk_comptroller_report_ref\":\"risk-comptroller-enterprise-valid\"")
     );
+}
+
+#[test]
+fn proof_verify_scopes_enterprise_verifier_to_enterprise_evidence() {
+    let (_tempdir, bundle) = build_enterprise_bundle_with_unrelated_runtime_evidence();
+    let bundle = utf8_path(&bundle);
+
+    let output = chio(&[
+        "proof",
+        "verify",
+        bundle.as_str(),
+        "--require",
+        "enterprise",
+    ]);
+
+    assert_success(&output);
+    let stdout = stdout(output);
+    assert!(stdout.contains("\"claim.enterprise.control_map_bound\""));
 }
 
 #[test]
