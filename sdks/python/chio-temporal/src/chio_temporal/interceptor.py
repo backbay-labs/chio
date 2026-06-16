@@ -53,7 +53,8 @@ ActivityGrantOverride = Callable[[activity.Info], "WorkflowGrant | None"]
 
 
 def _is_sha256_hex(value: str) -> bool:
-    return len(value) == 64 and all(char in "0123456789abcdef" for char in value)
+    text = value.lower()
+    return len(text) == 64 and all(char in "0123456789abcdef" for char in text)
 
 
 @dataclass
@@ -520,7 +521,7 @@ def _deny_receipt_from_error(
     )
     receipt_id_source = exc.receipt_id or fallback_receipt_id
     if exc.receipt_id and _is_sha256_hex(exc.receipt_id):
-        receipt_id = exc.receipt_id
+        receipt_id = exc.receipt_id.lower()
     else:
         receipt_id = hashlib.sha256(receipt_id_source.encode("utf-8")).hexdigest()
     synthetic_hash = hashlib.sha256(

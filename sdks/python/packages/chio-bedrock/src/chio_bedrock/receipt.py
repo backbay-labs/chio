@@ -127,10 +127,12 @@ def _sign_body(body: Mapping[str, Any], signing_key: str) -> str:
 
 
 def _is_sha256_hex(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    text = value.lower()
     return (
-        isinstance(value, str)
-        and len(value) == 64
-        and all(character in "0123456789abcdef" for character in value)
+        len(text) == 64
+        and all(character in "0123456789abcdef" for character in text)
     )
 
 
@@ -417,7 +419,7 @@ def verify_trusted_receipt(
         receipt_id_ok = (
             isinstance(receipt_id, str)
             and _is_sha256_hex(receipt_id)
-            and receipt_id == expected_id
+            and receipt_id.lower() == expected_id
         )
         if not receipt_id_ok:
             reasons.append("receipt id is not the content-addressed v1 hash")
@@ -497,7 +499,7 @@ def verify_receipt(receipt: Mapping[str, Any], signing_key: str = DEFAULT_SIGNIN
             return False
         if not _validate_trace_receipt(body):
             return False
-        if _content_addressed_receipt_id(body) != body["id"]:
+        if _content_addressed_receipt_id(body) != body["id"].lower():
             return False
         expected_signature = _sign_body(body, signing_key)
         return hmac.compare_digest(expected_signature, signature)

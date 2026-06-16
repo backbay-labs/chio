@@ -371,9 +371,9 @@ class TestDenyVerdict:
         assert receipt.metadata["sidecar_receipt_id"] == opaque_receipt_id
         assert receipt.is_denied
 
-    def test_is_sha256_hex_accepts_lowercase_digest_only(self) -> None:
+    def test_is_sha256_hex_accepts_mixed_case_digest(self) -> None:
         assert _is_sha256_hex("a" * 64)
-        assert not _is_sha256_hex("A" * 64)
+        assert _is_sha256_hex("A" * 64)
         assert not _is_sha256_hex("not-a-digest")
         assert not _is_sha256_hex("a" * 63)
 

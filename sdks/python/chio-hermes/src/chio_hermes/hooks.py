@@ -29,6 +29,15 @@ def _is_chio_tool(tool_name: str | None) -> bool:
     return isinstance(tool_name, str) and tool_name.startswith("chio_")
 
 
+def _policy_error_block(exc: Exception) -> dict[str, Any]:
+    return {
+        "action": "block",
+        "message": f"Chio policy check failed: {exc}",
+        "guard": "chio_policy_error",
+        "reason": "policy_error",
+    }
+
+
 def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
     def pre_tool_call(
         tool_name: str | None = None,
@@ -45,8 +54,8 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
 
         try:
             from chio_code_agent.errors import ChioCodeAgentDeniedError
-        except Exception:
-            return None
+        except Exception as exc:
+            return _policy_error_block(exc)
 
         try:
             if tool_name in {"chio_file_read", "chio_file_list", "chio_file_search"}:
@@ -85,8 +94,8 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
                 "guard": getattr(exc, "guard", None),
                 "reason": getattr(exc, "reason", None),
             }
-        except Exception:  # noqa: BLE001 - never crash Hermes from a hook
-            return None
+        except Exception as exc:  # noqa: BLE001 - never crash Hermes from a hook
+            return _policy_error_block(exc)
         return None
 
     return pre_tool_call

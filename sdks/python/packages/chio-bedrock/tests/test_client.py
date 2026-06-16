@@ -211,6 +211,14 @@ def test_receipt_id_and_signature_use_v1_content_addressing() -> None:
     assert "decision" not in receipt
 
 
+def test_receipt_verifier_accepts_uppercase_content_addressed_id() -> None:
+    receipt = _sample_receipt()
+    receipt["id"] = receipt["id"].upper()
+    receipt["signature"] = _v1_signature(receipt)
+
+    assert verify_receipt(receipt)
+
+
 def test_receipt_verifier_rejects_symbolic_ids_even_when_legacy_signed() -> None:
     receipt = {
         "id": "rcpt-bedrock-symbolic",
@@ -477,6 +485,18 @@ def test_verify_trusted_receipt_returns_structured_outcome() -> None:
     assert happy.signer_trusted
     assert happy.reasons == ()
     assert happy.ok is True
+
+    uppercase_id = dict(receipt)
+    uppercase_id["id"] = receipt["id"].upper()
+    uppercase_id["signature"] = sign_trusted_receipt_body(uppercase_id, _TRUSTED_SEED)
+    uppercase = verify_trusted_receipt(
+        uppercase_id,
+        trusted_kernel_keys=[_TRUSTED_PUB_HEX],
+        invocation_parameters=params,
+    )
+    assert uppercase.ok is True
+    assert uppercase.receipt_id_ok is True
+    assert uppercase.signature_ok is True
 
     untrusted = verify_trusted_receipt(
         receipt,

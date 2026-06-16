@@ -51,6 +51,7 @@ def canonical_dumps(record: Mapping[str, Any]) -> bytes:
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,
+        allow_nan=False,
     ).encode("utf-8")
 
 
@@ -176,7 +177,7 @@ class ReceiptBuffer:
             if self._log_path_factory is not None:
                 try:
                     append_jsonl(self._log_path_factory(), record_copy)
-                except OSError as exc:
+                except (OSError, ValueError) as exc:
                     _logger.warning("receipt JSONL write failed: %s", exc)
 
     def recent(self, n: int = 5) -> list[dict[str, Any]]:

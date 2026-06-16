@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -26,6 +27,11 @@ def test_canonical_dumps_is_ascii_safe() -> None:
     assert b"\\u" in out
     # Round-trip preserves the original string.
     assert json.loads(out.decode("utf-8"))["k"] == "café"
+
+
+def test_canonical_dumps_rejects_non_finite_float() -> None:
+    with pytest.raises(ValueError):
+        canonical_dumps({"cost": math.nan})
 
 
 def test_append_jsonl_writes_canonical_line(tmp_path: Path) -> None:
@@ -158,6 +164,18 @@ def test_receipt_buffer_record_swallows_jsonl_failure(
     buf = ReceiptBuffer(log_path_factory=lambda: bad)
     # Must not raise.
     buf.record({"status": "allowed"})
+    captured = capsys.readouterr()
+    assert "[chio-adapter-base]" in captured.err
+
+
+def test_receipt_buffer_record_swallows_json_serialization_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    log = tmp_path / "receipts.jsonl"
+    buf = ReceiptBuffer(log_path_factory=lambda: log)
+    buf.record({"status": "allowed", "cost": math.inf})
+    assert buf.recent(1)[0]["cost"] == math.inf
+    assert not log.exists()
     captured = capsys.readouterr()
     assert "[chio-adapter-base]" in captured.err
 

@@ -249,11 +249,16 @@ def reject_shell_argv_escape(
         segments = normalised.split("/")
         if any(seg == ".." for seg in segments):
             raise ChioPathEscapeError(token, "dotdot_segment")
-        if root_path is not None and normalised.startswith("/"):
+        is_absolute_token = (
+            normalised.startswith("/")
+            or normalised.startswith("//")
+            or (len(normalised) >= 2 and normalised[1] == ":")
+        )
+        if root_path is not None and is_absolute_token:
             try:
                 resolved = pathlib.Path(token).resolve()
-            except OSError:
-                continue
+            except OSError as exc:
+                raise ChioPathEscapeError(token, "outside_workspace") from exc
             try:
                 resolved.relative_to(root_path)
             except ValueError as exc:

@@ -143,5 +143,28 @@ class ReceiptQueryClientTests(unittest.TestCase):
         self.assertEqual(collected, [["r1"], ["r2"], ["r3"]])
 
 
+    def test_paginate_rejects_repeated_next_cursor(self) -> None:
+        pages = iter(
+            [
+                {"totalCount": 2, "nextCursor": 2, "receipts": [{**FAKE_RECEIPT, "id": "r1"}]},
+                {"totalCount": 2, "nextCursor": 2, "receipts": [{**FAKE_RECEIPT, "id": "r2"}]},
+            ]
+        )
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=next(pages))
+
+        client = ReceiptQueryClient(
+            "http://localhost:8080",
+            "tok",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+
+        iterator = client.paginate()
+        self.assertEqual([receipt["id"] for receipt in next(iterator)], ["r1"])
+        with self.assertRaises(ChioQueryError):
+            next(iterator)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -11,6 +11,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -184,6 +185,24 @@ def test_reject_shell_argv_escape_rejects_outside_workspace(
     other = tmp_path.parent / "other-tree"
     with pytest.raises(ChioPathEscapeError) as excinfo:
         reject_shell_argv_escape(f"cat {other}/secret.txt", root=tmp_path)
+    assert excinfo.value.reason == "outside_workspace"
+
+
+def test_reject_shell_argv_escape_rejects_unresolvable_absolute_path(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path.parent / "outside" / "secret.txt"
+    with patch.object(Path, "resolve", side_effect=[tmp_path, OSError("missing")]):
+        with pytest.raises(ChioPathEscapeError) as excinfo:
+            reject_shell_argv_escape(f"cat {outside}", root=tmp_path)
+    assert excinfo.value.reason == "outside_workspace"
+
+
+def test_reject_shell_argv_escape_rejects_windows_absolute_path(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ChioPathEscapeError) as excinfo:
+        reject_shell_argv_escape("cat C:\\outside\\secret.txt", root=tmp_path)
     assert excinfo.value.reason == "outside_workspace"
 
 

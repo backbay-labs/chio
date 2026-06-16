@@ -72,8 +72,14 @@ class ReceiptQueryClient:
     def paginate(self, params: ReceiptQueryParams | None = None) -> Iterator[list[dict[str, Any]]]:
         query_params = dict(params or {})
         cursor = cast(int | None, query_params.get("cursor"))
+        seen_cursors: set[int] = set()
         while True:
             if cursor is not None:
+                if cursor in seen_cursors:
+                    raise ChioQueryError(
+                        "receipt query pagination stalled: repeated cursor"
+                    )
+                seen_cursors.add(cursor)
                 query_params["cursor"] = cursor
             response = self.query(cast(ReceiptQueryParams, query_params))
             receipts = response.get("receipts", [])
@@ -82,6 +88,10 @@ class ReceiptQueryClient:
             next_cursor = response.get("nextCursor")
             if next_cursor is None:
                 break
+            if next_cursor in seen_cursors:
+                raise ChioQueryError(
+                    "receipt query pagination stalled: repeated nextCursor"
+                )
             cursor = next_cursor
 
     def _build_url(self, params: ReceiptQueryParams) -> str:

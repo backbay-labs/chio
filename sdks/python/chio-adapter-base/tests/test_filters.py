@@ -120,6 +120,21 @@ def test_filter_diff_output_no_op_on_clean_diff() -> None:
     assert out is raw
 
 
+def test_filter_diff_output_drops_malformed_diff_header() -> None:
+    raw = {
+        "stdout": (
+            "diff --git a/.env\n"
+            "--- a/.env\n"
+            "+++ b/.env\n"
+            "+SECRET=topsecret\n"
+        ),
+        "returncode": 0,
+    }
+    filtered = filter_diff_output(raw, is_forbidden=lambda _p: False)
+    assert "SECRET=topsecret" not in filtered["stdout"]
+    assert filtered["forbidden_paths_filtered"] == ["<malformed-diff-header>"]
+
+
 def test_filter_diff_output_handles_empty_stdout() -> None:
     raw = {"stdout": "", "returncode": 0}
     out = filter_diff_output(raw, is_forbidden=lambda _p: True)

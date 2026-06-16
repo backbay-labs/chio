@@ -80,6 +80,30 @@ def test_pre_tool_call_returns_none_for_allowed_call(
     assert result is None
 
 
+def test_pre_tool_call_blocks_on_unexpected_policy_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_workspace: Path
+) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+
+    def _raise(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("policy backend unavailable")
+
+    monkeypatch.setattr(runtime.policy, "check_read", _raise)
+
+    hook = make_pre_tool_call(runtime)
+    result = hook(
+        tool_name="chio_file_read",
+        args={"path": "README.md"},
+        task_id="task-1",
+    )
+    assert not inspect.iscoroutine(result)
+    assert isinstance(result, dict)
+    assert result["action"] == "block"
+    assert result["guard"] == "chio_policy_error"
+    assert result["reason"] == "policy_error"
+    assert "policy backend unavailable" in result["message"]
+
+
 def test_pre_tool_call_ignores_non_chio_tool(
     tmp_workspace: Path,
 ) -> None:

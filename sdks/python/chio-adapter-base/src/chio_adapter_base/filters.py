@@ -189,6 +189,9 @@ def filter_diff_output(
     kept: list[str] = []
     dropped: list[str] = []
     for path, body in hunks:
+        if path is None:
+            dropped.append("<malformed-diff-header>")
+            continue
         if path is not None and _is_forbidden_safe(is_forbidden, path):
             dropped.append(path)
             continue

@@ -156,33 +156,9 @@ describe("@chio-protocol/next streaming and denial response", () => {
     expect(invoked).toBe(false);
   });
 
-  it("authorizes only the canonical \"allow\" result and denies legacy variants", async () => {
-    // The shared Rust VerifyReceiptResponse encodes Verdict::Allow as the
-    // canonical lowercase "allow" (see crates/platform/chio-http-core/src/evaluation.rs
-    // verdict_result()); it never emits "Allow"/"authorized"/"Authorized", so
-    // the gate authorizes only the canonical value and denies the rest.
-    const allowed = withChio(async () => new Response("ok"), {
-      evaluate: () => ({
-        verdict: "allow" as const,
-        decision: "allow" as const,
-        receipt_kind: "mediated_decision" as const,
-        boundary_class: "prevent" as const,
-        trust_level: "mediated" as const,
-        result: "allow",
-        authorized: true,
-        ok: true,
-        signer_trusted: true,
-        signature_valid: true,
-        receipt_id_valid: true,
-        parameter_hash_valid: true,
-      }),
-    });
-    const response = await allowed(new Request("https://app.test/api/chat"));
-    expect(response.status).toBe(200);
-    expect(await response.text()).toBe("ok");
-
-    for (const result of ["Allow", "authorized", "Authorized"]) {
-      const denied = withChio(async () => new Response("ok"), {
+  it("authorizes SDK allow result variants and denies unknown variants", async () => {
+    for (const result of ["allow", "authorized", "Authorized"]) {
+      const allowed = withChio(async () => new Response(result), {
         evaluate: () => ({
           verdict: "allow" as const,
           decision: "allow" as const,
@@ -198,11 +174,33 @@ describe("@chio-protocol/next streaming and denial response", () => {
           parameter_hash_valid: true,
         }),
       });
-      const deniedResponse = await denied(
+      const response = await allowed(
         new Request("https://app.test/api/chat"),
       );
-      expect(deniedResponse.status).toBe(403);
-      expect(deniedResponse.headers.get("x-chio-verdict")).toBe("deny");
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe(result);
     }
+
+    const denied = withChio(async () => new Response("ok"), {
+      evaluate: () => ({
+        verdict: "allow" as const,
+        decision: "allow" as const,
+        receipt_kind: "mediated_decision" as const,
+        boundary_class: "prevent" as const,
+        trust_level: "mediated" as const,
+        result: "Allow",
+        authorized: true,
+        ok: true,
+        signer_trusted: true,
+        signature_valid: true,
+        receipt_id_valid: true,
+        parameter_hash_valid: true,
+      }),
+    });
+    const deniedResponse = await denied(
+      new Request("https://app.test/api/chat"),
+    );
+    expect(deniedResponse.status).toBe(403);
+    expect(deniedResponse.headers.get("x-chio-verdict")).toBe("deny");
   });
 });
