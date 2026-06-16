@@ -4,10 +4,28 @@ from typing import Any, Callable
 
 from .models import SessionHandshake
 from .session import ChioSession
-from .transport import post_rpc, terminal_message
+from .transport import delete_session, post_rpc, terminal_message
 from .version import default_client_info
 
 ChioMessageHandler = Callable[[dict[str, Any], ChioSession], None]
+
+
+def _cleanup_session_after_failed_handshake(
+    *,
+    client: Any | None,
+    base_url: str,
+    auth_token: str,
+    session_id: str,
+) -> None:
+    try:
+        delete_session(
+            client=client,
+            base_url=base_url,
+            auth_token=auth_token,
+            session_id=session_id,
+        )
+    except Exception:
+        pass
 
 
 class ChioClient:
@@ -74,12 +92,21 @@ class ChioClient:
         callback = None
         if on_message is not None:
             callback = lambda message: on_message(message, session)
-        initialized_response = session.notification(
-            "notifications/initialized",
-            on_message=callback,
-        )
-        if initialized_response.status not in (200, 202):
-            raise RuntimeError("notifications/initialized did not succeed")
+        try:
+            initialized_response = session.notification(
+                "notifications/initialized",
+                on_message=callback,
+            )
+            if initialized_response.status not in (200, 202):
+                raise RuntimeError("notifications/initialized did not succeed")
+        except Exception:
+            _cleanup_session_after_failed_handshake(
+                client=self._client,
+                base_url=self.base_url,
+                auth_token=self.auth_token,
+                session_id=session_id,
+            )
+            raise
 
         session.handshake = SessionHandshake(
             initialize_response=initialize_response,

@@ -566,6 +566,10 @@ async function getNodeRequestBody(req: IncomingMessage): Promise<Buffer> {
 }
 
 function readBody(req: IncomingMessage): Promise<Buffer> {
+  if (req.readableEnded || req.complete) {
+    return Promise.resolve(Buffer.alloc(0));
+  }
+
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));

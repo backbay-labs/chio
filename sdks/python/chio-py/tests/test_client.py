@@ -55,6 +55,51 @@ class ClientTests(unittest.TestCase):
         self.assertIsNotNone(session.handshake)
         self.assertEqual(callback_sessions, ["sess-client-123"])
 
+    def test_initialize_failure_after_session_id_cleans_up_server_session(self) -> None:
+        calls: list[tuple[str, dict[str, str], dict[str, object] | None]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            headers = {key.lower(): value for key, value in request.headers.items()}
+            body = json.loads(request.content.decode("utf-8")) if request.content else None
+            calls.append((request.method, headers, body))
+            if request.method == "POST" and body and body.get("method") == "initialize":
+                return httpx.Response(
+                    200,
+                    headers={
+                        "content-type": "application/json",
+                        "mcp-session-id": "sess-client-orphan",
+                    },
+                    text=json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": 0,
+                            "result": {
+                                "protocolVersion": "2025-11-25",
+                                "capabilities": {},
+                                "serverInfo": {"name": "chio-test", "version": "0.1.0"},
+                            },
+                        }
+                    ),
+                )
+            if request.method == "POST" and body and body.get("method") == "notifications/initialized":
+                self.assertEqual(headers["mcp-session-id"], "sess-client-orphan")
+                return httpx.Response(204, headers={"content-type": "application/json"}, text="")
+            if request.method == "DELETE":
+                self.assertEqual(headers["mcp-session-id"], "sess-client-orphan")
+                return httpx.Response(204)
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        client = ChioClient.with_static_bearer(
+            "http://testserver",
+            "token",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+
+        with self.assertRaises(RuntimeError):
+            client.initialize(client_info={"name": "chio-sdk-tests", "version": "1.0.0"})
+
+        self.assertEqual([call[0] for call in calls], ["POST", "POST", "DELETE"])
+
 
 if __name__ == "__main__":
     unittest.main()

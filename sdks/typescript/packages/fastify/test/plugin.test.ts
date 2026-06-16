@@ -288,6 +288,32 @@ describe("chio fastify plugin", () => {
       "x-tenant-id": "tenant-1",
     });
     expect(observedHeaders).not.toHaveProperty("x-secret");
+
+    sidecar.server.close();
+    await fastify.close();
+  });
+
+  it("decodes plus signs in query parameters like URLSearchParams", async () => {
+    let observedQuery: Record<string, string> | undefined;
+    const sidecar = await startMockSidecar((requestBody) => {
+      const parsed = JSON.parse(requestBody) as { query?: Record<string, string> };
+      observedQuery = parsed.query;
+    });
+
+    const fastify = Fastify();
+    await fastify.register(chio, {
+      sidecarUrl: sidecar.url,
+    });
+
+    fastify.get("/search", async () => ({ ok: true }));
+
+    const response = await fastify.inject({
+      method: "GET",
+      url: "/search?q=hello+world&flag",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(observedQuery).toEqual({ q: "hello world", flag: "" });
     sidecar.server.close();
     await fastify.close();
   });

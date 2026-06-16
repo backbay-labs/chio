@@ -271,6 +271,33 @@ describe("resolveConfig", () => {
 });
 
 describe("request body preservation", () => {
+  it("decodes plus signs in query parameters like URLSearchParams", async () => {
+    let observedQuery: Record<string, string> | undefined;
+    const sidecar = await startMockSidecar((body) => {
+      observedQuery = JSON.parse(body).query as Record<string, string>;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    const server = http.createServer(async (req, res) => {
+      const outcome = await interceptNodeRequest(req, res, resolved);
+      if (outcome.responseSent) {
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(server, "GET", "/search?q=hello+world&flag");
+      expect(response.status).toBe(200);
+      expect(observedQuery).toEqual({ q: "hello world", flag: "" });
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
   it("preserves IncomingMessage bodies for downstream consumers", async () => {
     const sidecar = await startMockSidecar();
     const resolved = resolveConfig({ sidecarUrl: sidecar.url });
@@ -302,6 +329,44 @@ describe("request body preservation", () => {
       );
       expect(response.status).toBe(200);
       expect(response.body).toBe("hello world");
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
+  it("does not hang when the request stream was already consumed", async () => {
+    const sidecar = await startMockSidecar();
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    const server = http.createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        void (async () => {
+          const outcome = await interceptNodeRequest(req, res, resolved);
+          if (outcome.responseSent) {
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "text/plain" });
+          res.end("ok");
+        })().catch((error: unknown) => {
+          res.writeHead(500, { "Content-Type": "text/plain" });
+          res.end(error instanceof Error ? error.message : String(error));
+        });
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(
+        server,
+        "POST",
+        "/upload",
+        "already consumed",
+        { "content-type": "text/plain" },
+      );
+      expect(response.status).toBe(200);
+      expect(response.body).toBe("ok");
     } finally {
       server.close();
       sidecar.server.close();

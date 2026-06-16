@@ -562,55 +562,8 @@ fn canonical_payload_without_signatures(value: &Value) -> Result<String, BundleE
         .as_object_mut()
         .ok_or(BundleError::WrongType("bundle root"))?;
     object.remove("signatures");
-    canonicalize_json(&payload)
-}
-
-fn canonicalize_json(value: &Value) -> Result<String, BundleError> {
-    match value {
-        Value::Null => Ok("null".to_owned()),
-        Value::Bool(v) => Ok(if *v { "true" } else { "false" }.to_owned()),
-        Value::Number(v) => Ok(v.to_string()),
-        Value::String(v) => {
-            serde_json::to_string(v).map_err(|err| BundleError::Canonicalization(err.to_string()))
-        }
-        Value::Array(values) => {
-            let mut output = String::from("[");
-            let mut first = true;
-            for item in values {
-                if first {
-                    first = false;
-                } else {
-                    output.push(',');
-                }
-                output.push_str(&canonicalize_json(item)?);
-            }
-            output.push(']');
-            Ok(output)
-        }
-        Value::Object(values) => {
-            let mut keys: Vec<&String> = values.keys().collect();
-            keys.sort();
-            let mut output = String::from("{");
-            let mut first = true;
-            for key in keys {
-                if first {
-                    first = false;
-                } else {
-                    output.push(',');
-                }
-                let key_json = serde_json::to_string(key)
-                    .map_err(|err| BundleError::Canonicalization(err.to_string()))?;
-                output.push_str(&key_json);
-                output.push(':');
-                let value = values.get(key).ok_or(BundleError::Canonicalization(
-                    "missing sorted key".to_owned(),
-                ))?;
-                output.push_str(&canonicalize_json(value)?);
-            }
-            output.push('}');
-            Ok(output)
-        }
-    }
+    chio_core_types::canonicalize(&payload)
+        .map_err(|err| BundleError::Canonicalization(err.to_string()))
 }
 
 fn object_field<'a>(
@@ -657,7 +610,8 @@ fn number_field(object: &Map<String, Value>, field: &'static str) -> Result<u64,
 #[cfg(test)]
 mod tests {
     use super::{
-        test_signature_for_bundle_json, verify_bundle, verify_fixture_bundle, BundleError,
+        canonical_payload_without_signatures, test_signature_for_bundle_json, verify_bundle,
+        verify_fixture_bundle, BundleError,
     };
     use crate::export::{
         export_scenario_run, EvalRunMeta, EvalRunMetaParts, Receipt, ReceiptParts,
@@ -668,6 +622,35 @@ mod tests {
         kinds::TrustLevel,
     };
     use serde_json::{json, Value};
+
+    #[test]
+    fn bundle_signature_payload_uses_core_rfc8785_canonicalization() -> Result<(), BundleError> {
+        let bundle = json!({
+            "signatures": [{"signature": "ignored"}],
+            "bundle_id": "urn:chio:eval-bundle:unicode-order",
+            "\u{e000}": 1,
+            "\u{10437}": 2,
+        });
+        let mut expected = bundle.clone();
+        expected
+            .as_object_mut()
+            .ok_or(BundleError::WrongType("bundle root"))?
+            .remove("signatures");
+
+        let canonical = canonical_payload_without_signatures(&bundle)?;
+        let expected = chio_core_types::canonicalize(&expected)
+            .map_err(|err| BundleError::Canonicalization(err.to_string()))?;
+
+        assert_eq!(canonical, expected);
+        let supplementary = canonical
+            .find('\u{10437}')
+            .ok_or(BundleError::Canonicalization("missing supplementary key".to_owned()))?;
+        let private_use = canonical
+            .find('\u{e000}')
+            .ok_or(BundleError::Canonicalization("missing private-use key".to_owned()))?;
+        assert!(supplementary < private_use);
+        Ok(())
+    }
 
     #[test]
     fn verifies_local_test_signature_and_receipt_hash() -> Result<(), BundleError> {

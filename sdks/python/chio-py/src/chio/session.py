@@ -9,6 +9,24 @@ from .transport import delete_session, post_notification, post_rpc, terminal_mes
 from .version import default_client_info
 
 
+def _cleanup_session_after_failed_handshake(
+    *,
+    client: Any | None,
+    base_url: str,
+    auth_token: str,
+    session_id: str,
+) -> None:
+    try:
+        delete_session(
+            client=client,
+            base_url=base_url,
+            auth_token=auth_token,
+            session_id=session_id,
+        )
+    except Exception:
+        pass
+
+
 class ChioSession:
     def __init__(
         self,
@@ -180,17 +198,30 @@ def initialize_session(
         if not isinstance(negotiated_protocol_version, str):
             raise ChioTransportError("initialize did not negotiate a protocol version")
 
+        normalized_base_url = base_url.rstrip("/")
         session = ChioSession(
             auth_token=auth_token,
-            base_url=base_url,
+            base_url=normalized_base_url,
             session_id=session_id,
             protocol_version=negotiated_protocol_version,
             client=client,
             handshake=None,
         )
-        initialized_response = session.notification("notifications/initialized", on_message=on_message)
-        if initialized_response.status not in (200, 202):
-            raise ChioTransportError("notifications/initialized did not succeed")
+        try:
+            initialized_response = session.notification(
+                "notifications/initialized",
+                on_message=on_message,
+            )
+            if initialized_response.status not in (200, 202):
+                raise ChioTransportError("notifications/initialized did not succeed")
+        except Exception:
+            _cleanup_session_after_failed_handshake(
+                client=client,
+                base_url=normalized_base_url,
+                auth_token=auth_token,
+                session_id=session_id,
+            )
+            raise
         session.handshake = SessionHandshake(
             initialize_response=initialize_response,
             initialized_response=initialized_response,

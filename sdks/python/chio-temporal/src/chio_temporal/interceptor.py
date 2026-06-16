@@ -435,7 +435,14 @@ def _activity_parameters(
 
     # Shape 1: single dict.
     if len(args_list) == 1 and isinstance(args_list[0], dict):
-        args_list[0] = redact_args(tool_name, args_list[0], policy=policy)
+        _, redacted_kwargs = bind_and_redact(
+            input.fn,
+            (),
+            args_list[0],
+            tool_name=tool_name or "",
+            policy=policy,
+        )
+        args_list[0] = redacted_kwargs
         return {"args": args_list}
 
     effective_tool_name = tool_name or ""

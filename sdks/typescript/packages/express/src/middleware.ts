@@ -20,7 +20,6 @@ import {
   CHIO_ERROR_CODES,
   isDenied,
   resolveConfig,
-  type ResolvedConfig,
   interceptNodeRequest,
   preserveReadableBody,
   shouldSkip,

@@ -78,6 +78,56 @@ class TestDefaultPolicyRedacts:
             "byte_count": len(b"--- a\n+++ b\n@@ secret @@"),
         }
 
+    async def test_chio_file_write_positional_args_are_redacted(self) -> None:
+        def write_file(path: str, content: str) -> str:
+            return f"wrote {len(content)} bytes to {path}"
+
+        async with allow_all() as chio:
+            tool = ChioFunctionTool(
+                fn=write_file,
+                name="chio_file_write",
+                description="write a file",
+                server_id="fs",
+                capability_id="cap-1",
+                chio_client=chio,
+            )
+            await tool.acall("/tmp/x", "PROD_SECRET=abc123")
+
+        eval_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        recorded = eval_calls[0]
+        assert recorded.parameters == {
+            "_args": [
+                "/tmp/x",
+                {
+                    "omitted": True,
+                    "byte_count": len(b"PROD_SECRET=abc123"),
+                },
+            ]
+        }
+
+    async def test_chio_file_write_body_alias_is_redacted(self) -> None:
+        def write_file(path: str, body: str) -> str:
+            return f"wrote {len(body)} bytes to {path}"
+
+        async with allow_all() as chio:
+            tool = ChioFunctionTool(
+                fn=write_file,
+                name="chio_file_write",
+                description="write a file",
+                server_id="fs",
+                capability_id="cap-1",
+                chio_client=chio,
+            )
+            await tool.acall(path="/tmp/x", body="PROD_SECRET=abc123")
+
+        eval_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        recorded = eval_calls[0]
+        assert recorded.parameters["path"] == "/tmp/x"
+        assert recorded.parameters["body"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+
     async def test_unrelated_tool_passes_args_through(self) -> None:
         async with allow_all() as chio:
             tool = ChioFunctionTool(
