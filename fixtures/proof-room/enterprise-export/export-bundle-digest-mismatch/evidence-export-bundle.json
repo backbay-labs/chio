@@ -1,0 +1,36 @@
+{
+  "schema": "chio.enterprise.evidence-export-bundle.v1",
+  "id": "evidence-export-enterprise-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "passport_id": "passport-enterprise-valid",
+  "risk_comptroller_report_ref": "risk-comptroller-enterprise-valid",
+  "approval_case_ref": "approval-case-enterprise-valid",
+  "bundle_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "artifacts": [
+    {
+      "role": "transaction_passport",
+      "path": "transaction-passport-export.json",
+      "sha256": "4946ad8e5db82236a5c3c6a372340c786db1b78b0d590a45c7632469101528e7"
+    },
+    {
+      "role": "risk_comptroller_report",
+      "path": "risk-comptroller-report.json",
+      "sha256": "86dda4b6911be649cd92236abc5baab024c4de4af98b54270606bcec315cdf17"
+    },
+    {
+      "role": "disclosure_capsule",
+      "path": "disclosure-capsule.json",
+      "sha256": "3e32ea94e177bfbe2bdc51a132db96269579de7a2029dd50d7795679dc72a90e"
+    },
+    {
+      "role": "leakage_ledger",
+      "path": "leakage-ledger.json",
+      "sha256": "7da92bf6db72f24d34db906053c3c8c23db4b8d513472ce8479b198b1ee78d5e"
+    },
+    {
+      "role": "data_governance_report",
+      "path": "data-governance-report.json",
+      "sha256": "c2f94c5995b13409b3712e9ab62b53decef273324a244c4e3d3efaa66e751ef5"
+    }
+  ]
+}

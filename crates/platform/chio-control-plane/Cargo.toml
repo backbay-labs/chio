@@ -20,11 +20,14 @@ default = []
 pq = ["chio-core/pq", "chio-kernel/pq", "chio-store-sqlite/pq"]
 
 [dependencies]
+chio-agent-web-interop = { workspace = true }
 chio-appraisal = { workspace = true }
+chio-commerce-order = { workspace = true }
 chio-core = { workspace = true }
 chio-credentials = { workspace = true }
 chio-data-guards = { workspace = true }
 chio-errors = { workspace = true }
+chio-enterprise-export = { workspace = true }
 chio-did = { workspace = true }
 chio-external-guards = { workspace = true }
 chio-kernel = { workspace = true }
@@ -34,6 +37,9 @@ chio-reputation = { workspace = true }
 chio-conformance = { workspace = true }
 chio-mcp-adapter = { workspace = true }
 chio-store-sqlite = { workspace = true }
+chio-risk-comptroller = { workspace = true }
+chio-transaction-passport = { workspace = true }
+chio-trust-market-context = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-lineage/v1/signed-subgraph.schema.json",
+  "title": "Chio Signed Lineage Subgraph",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "transaction_passport_ref",
+    "root_receipt_ids",
+    "nodes",
+    "edges",
+    "redactions",
+    "subgraph_sha256",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.lineage.signed-subgraph.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "transaction_passport_ref": { "type": "string", "minLength": 1 },
+    "root_receipt_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "receipt_ref", "disclosure_state"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "receipt_ref": { "type": "string", "minLength": 1 },
+          "disclosure_state": { "enum": ["disclosed", "redacted"] }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to", "relation"],
+        "properties": {
+          "from": { "type": "string", "minLength": 1 },
+          "to": { "type": "string", "minLength": 1 },
+          "relation": { "enum": ["continued", "derived", "delegated"] }
+        }
+      }
+    },
+    "redactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["node_id", "reason"],
+        "properties": {
+          "node_id": { "type": "string", "minLength": 1 },
+          "reason": { "enum": ["privacy_profile", "data_minimization", "legal_hold"] }
+        }
+      }
+    },
+    "subgraph_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+    "signature": { "type": "string", "minLength": 1 }
+  }
+}

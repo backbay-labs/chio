@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-enterprise/v1/control-evidence-map.schema.json",
+  "title": "Chio Enterprise Control Evidence Map",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "passport_id",
+    "risk_comptroller_report_ref",
+    "controls"
+  ],
+  "properties": {
+    "schema": { "const": "chio.enterprise.control-evidence-map.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "passport_id": { "type": "string", "minLength": 1 },
+    "risk_comptroller_report_ref": { "type": "string", "minLength": 1 },
+    "controls": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/control" },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["control_id", "control_family", "claim_ref", "gate_ref"],
+      "properties": {
+        "control_id": { "type": "string", "minLength": 1 },
+        "control_family": { "type": "string", "minLength": 1 },
+        "claim_ref": { "type": "string", "minLength": 1 },
+        "gate_ref": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

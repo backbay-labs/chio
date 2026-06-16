@@ -1,0 +1,17 @@
+{
+  "schema": "chio.commerce.mandate-allowance-ledger.v1",
+  "id": "mandate-commerce-001",
+  "issued_at": "2026-06-10T00:02:00Z",
+  "order_id": "order-commerce-001",
+  "merchant_subject": "merchant:stripe:coffee-shop",
+  "max_amount_minor": 4200,
+  "currency": "USD",
+  "valid_from": "2026-06-10T00:00:00Z",
+  "expires_at": "2026-06-10T01:00:00Z",
+  "single_use": true,
+  "used_occurrences": 2,
+  "max_occurrences": 1,
+  "ap2_checkout_mandate_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "ap2_payment_mandate_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "acp_delegated_payment_token_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+}

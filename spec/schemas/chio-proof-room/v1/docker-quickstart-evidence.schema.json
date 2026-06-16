@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-proof-room/v1/docker-quickstart-evidence.schema.json",
+  "title": "Chio Proof Room Docker Quickstart Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "verdict",
+    "target",
+    "dockerfile",
+    "image_ref",
+    "server_binary",
+    "bundle_path",
+    "fixture_root",
+    "doctor_report_path",
+    "evidence_source",
+    "endpoints"
+  ],
+  "properties": {
+    "schema": { "const": "chio.proof.docker-quickstart-evidence.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "verdict": { "const": "verified" },
+    "target": { "const": "chio-proof-room-quickstart" },
+    "dockerfile": { "$ref": "#/$defs/repoRelativePath" },
+    "image_ref": { "type": "string", "minLength": 1 },
+    "server_binary": { "type": "string", "minLength": 1 },
+    "bundle_path": { "type": "string", "minLength": 1 },
+    "fixture_root": { "type": "string", "minLength": 1 },
+    "doctor_report_path": { "type": "string", "minLength": 1 },
+    "evidence_source": { "$ref": "#/$defs/repoRelativePath" },
+    "endpoints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/endpointObservation" },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "repoRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "\\\\" },
+          { "pattern": "(^|/)\\.\\.(/|$)" }
+        ]
+      }
+    },
+    "endpointObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "expected"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "expected": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

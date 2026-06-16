@@ -2595,6 +2595,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-agent-web-interop"
+version = "0.1.0"
+dependencies = [
+ "chio-commerce-order",
+ "chio-core-types",
+ "chio-test-support",
+ "chio-transaction-passport",
+ "jsonschema",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "chio-anchor"
 version = "0.1.0"
 dependencies = [
@@ -2853,6 +2866,7 @@ dependencies = [
  "chio-attest-buyer-core",
  "chio-attest-loopback",
  "chio-attest-verify",
+ "chio-commerce-order",
  "chio-conformance",
  "chio-control-plane",
  "chio-core",
@@ -2879,26 +2893,32 @@ dependencies = [
  "chio-pheromone-relay",
  "chio-pheromone-runtime",
  "chio-policy",
+ "chio-proof-room",
  "chio-replay-corpus",
  "chio-reputation",
  "chio-runtime",
  "chio-runtime-core",
  "chio-runtime-harness",
+ "chio-selective-disclosure",
  "chio-settle",
  "chio-siem",
  "chio-store-sqlite",
+ "chio-swarm-authority",
  "chio-tee-frame",
  "chio-test-support",
  "chio-tool-call-fabric",
  "chio-underwriting",
  "chio-wasm-guards",
+ "chio-web3",
  "chio-weights",
+ "chio-workflow",
  "chrono",
  "clap 4.6.0",
  "ed25519-dalek",
  "flate2",
  "hex",
  "insta",
+ "jsonschema",
  "libc",
  "p256 0.13.2",
  "p384",
@@ -2927,6 +2947,7 @@ dependencies = [
  "uuid",
  "wasmparser 0.221.3",
  "wiremock",
+ "zstd",
 ]
 
 [[package]]
@@ -2942,6 +2963,19 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "wiremock",
+]
+
+[[package]]
+name = "chio-commerce-order"
+version = "0.1.0"
+dependencies = [
+ "chio-test-support",
+ "chrono",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3021,13 +3055,16 @@ version = "0.1.0"
 dependencies = [
  "axum 0.8.8",
  "base64 0.22.1",
+ "chio-agent-web-interop",
  "chio-anchor",
  "chio-appraisal",
+ "chio-commerce-order",
  "chio-conformance",
  "chio-core",
  "chio-credentials",
  "chio-data-guards",
  "chio-did",
+ "chio-enterprise-export",
  "chio-errors",
  "chio-external-guards",
  "chio-guards",
@@ -3036,9 +3073,12 @@ dependencies = [
  "chio-mcp-adapter",
  "chio-policy",
  "chio-reputation",
+ "chio-risk-comptroller",
  "chio-settle",
  "chio-store-sqlite",
  "chio-test-support",
+ "chio-transaction-passport",
+ "chio-trust-market-context",
  "chrono",
  "ciborium",
  "clap 4.6.0",
@@ -3238,6 +3278,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-disclosure-lineage"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-e2e"
 version = "0.1.0"
 dependencies = [
@@ -3268,6 +3317,19 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "chio-enterprise-export"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-risk-comptroller",
+ "chio-test-support",
+ "chio-transaction-passport",
+ "chrono",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4032,6 +4094,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-proof-room"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.8",
+ "chio-agent-web-interop",
+ "chio-commerce-order",
+ "chio-core-types",
+ "chio-disclosure-lineage",
+ "chio-enterprise-export",
+ "chio-risk-comptroller",
+ "chio-runtime-proof-parity",
+ "chio-swarm-authority",
+ "chio-transaction-passport",
+ "chio-trust-market-context",
+ "chio-web3",
+ "chio-workflow-preflight",
+ "hex",
+ "jsonschema",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tower 0.5.3",
+ "tower-http",
+]
+
+[[package]]
 name = "chio-provider-adapter-core"
 version = "0.1.0"
 dependencies = [
@@ -4133,6 +4224,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-risk-comptroller"
+version = "0.1.0"
+dependencies = [
+ "chio-test-support",
+ "chio-transaction-passport",
+ "jsonschema",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "chio-runtime"
 version = "0.1.0"
 dependencies = [
@@ -4154,6 +4256,7 @@ dependencies = [
  "chio-core-types",
  "chio-federation",
  "chio-kernel",
+ "chio-runtime-proof-parity",
  "chio-weights",
  "chrono",
  "rusqlite",
@@ -4183,11 +4286,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-runtime-proof-parity"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-selective-disclosure"
 version = "0.1.0"
 dependencies = [
  "affinidi-bbs",
  "chio-core-types",
+ "chio-disclosure-lineage",
  "chio-workflow",
  "hex",
  "jsonschema",
@@ -4286,6 +4400,17 @@ dependencies = [
  "tracing",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "chio-swarm-authority"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-test-support",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -4388,6 +4513,32 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "chio-transaction-passport"
+version = "0.1.0"
+dependencies = [
+ "chio-test-support",
+ "chrono",
+ "hex",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "chio-trust-market-context"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-risk-comptroller",
+ "chio-test-support",
+ "chio-transaction-passport",
+ "chrono",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4515,10 +4666,20 @@ name = "chio-workflow"
 version = "0.1.0"
 dependencies = [
  "chio-core",
+ "chio-workflow-preflight",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tracing",
+]
+
+[[package]]
+name = "chio-workflow-preflight"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

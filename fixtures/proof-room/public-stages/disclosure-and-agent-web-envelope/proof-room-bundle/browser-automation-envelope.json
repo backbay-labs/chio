@@ -1,0 +1,28 @@
+{
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "envelope_id": "agent-web-envelope-browser-automation-valid",
+  "transaction_passport_ref": "passport-agent-web-valid",
+  "source_protocol": "browser-automation",
+  "source_protocol_version": "webdriver-bidi-2026-06",
+  "external_subject": "browser-command-agent-web-valid",
+  "external_subject_path": "external/browser-command.json",
+  "external_subject_digest": "6565d9904ab7716a06ac227123f9b4293b07268767d0f87820528205a85aa0b1",
+  "external_subject_signature_ref": "",
+  "projection_manifest_ref": "projection-browser-automation-valid",
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "receipt_refs": [
+    "receipt-agent-web-browser-command-allow"
+  ],
+  "disclosure_capsule_refs": [],
+  "settlement_refs": [],
+  "risk_refs": [],
+  "limitations": [
+    "Browser automation projection does not make browser command evidence equivalent to Chio authority."
+  ],
+  "signature": "sig-agent-web-browser-automation-envelope"
+}

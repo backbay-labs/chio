@@ -1,0 +1,18 @@
+{
+  "schema": "chio.proof.release-truth.v1",
+  "id": "first-run-single-call-release-truth",
+  "truth": {
+    "public_release": false,
+    "package_published": false,
+    "docker_quickstart": true,
+    "hosted_demo": false,
+    "chain_evidence": false,
+    "transparency_log": false
+  },
+  "allowed_copy": [
+    "local fixture proof",
+    "Transaction Passport verifier",
+    "first-run evidence bundle",
+    "Docker quickstart runtime smoke"
+  ]
+}

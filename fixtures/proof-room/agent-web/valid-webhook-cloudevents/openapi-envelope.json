@@ -1,0 +1,28 @@
+{
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "disclosure_capsule_refs": [],
+  "envelope_id": "agent-web-envelope-openapi-valid",
+  "external_subject": "openapi-operation-agent-web-valid",
+  "external_subject_digest": "78f68ea2ab164a09d4d63fa1045a549343a9e4cc59670972754418f8d695ef40",
+  "external_subject_path": "external/openapi-operation.json",
+  "external_subject_signature_ref": "",
+  "limitations": [
+    "OpenAPI projection does not make the HTTP operation equivalent to Chio authority."
+  ],
+  "projection_manifest_ref": "projection-openapi-valid",
+  "receipt_refs": [
+    "receipt-agent-web-openapi-operation-allow"
+  ],
+  "risk_refs": [],
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "settlement_refs": [],
+  "signature": "sig-agent-web-openapi-envelope",
+  "source_protocol": "openapi",
+  "source_protocol_version": "3.1.0",
+  "transaction_passport_ref": "passport-agent-web-valid"
+}

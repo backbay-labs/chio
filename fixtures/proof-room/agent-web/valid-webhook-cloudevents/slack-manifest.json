@@ -1,0 +1,54 @@
+{
+  "schema": "chio.agent-web.external-projection-manifest.v1",
+  "projection_id": "projection-slack-valid",
+  "source_protocol": "slack",
+  "source_version": "web-api-2026-06",
+  "external_fields_used": [
+    "workspace_id_digest",
+    "channel_id_digest",
+    "method_name",
+    "message_id",
+    "request_body_digest",
+    "response_ok",
+    "response_error_digest",
+    "oauth_scope_set_digest",
+    "event_id",
+    "receipt_refs",
+    "mediated_by_chio_receipt"
+  ],
+  "external_fields_not_used": [
+    "slack_action_as_chio_authority"
+  ],
+  "sidecar_fields": [
+    "transaction_passport_ref",
+    "receipt_refs",
+    "chio_claim_refs"
+  ],
+  "digest_algorithm": "sha256",
+  "signature_algorithm": "none",
+  "requires_external_signature": false,
+  "claim_mapping": [
+    {
+      "claim_ref": "claim.agent_web.external_subject_digest_bound",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "claim_ref": "claim.agent_web.projection_manifest_bound",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.unsupported_claims_limited",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.sidecar_not_native_authority",
+      "evidence_class": "chio-sidecar-proof"
+    }
+  ],
+  "unsupported_claims": [
+    "claim.external.slack_action_is_chio_authority"
+  ],
+  "copy_limitations": [
+    "Slack connector evidence is digest-bound provider action evidence, not Chio capability authority."
+  ]
+}

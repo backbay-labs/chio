@@ -1,0 +1,7 @@
+{
+  "schema": "chio.trust.revocation-snapshot.v1",
+  "snapshot_ref": "revocation-snapshot-buyer-auditor",
+  "status": "fresh",
+  "issued_at": 1766000050,
+  "expires_at": 1766000350
+}

@@ -553,16 +553,6 @@ pub(crate) fn assemble_runtime_loopback_outputs(
             )?;
         }
 
-        let static_package = chio_attest_loopback::fixture_proof_package().map_err(|error| {
-            RuntimeLoopbackError::message(format!(
-                "Chio static three-vendor proof package: {error}"
-            ))
-        })?;
-        let static_report = chio_attest_loopback::fixture_verifier_report().map_err(|error| {
-            RuntimeLoopbackError::message(format!(
-                "Chio static three-vendor verifier report: {error}"
-            ))
-        })?;
         let expected_buyer_closure_parity =
             buyer_closure
                 .as_ref()
@@ -573,8 +563,8 @@ pub(crate) fn assemble_runtime_loopback_outputs(
         let final_parity_report = materialize_final_runtime_proof_parity_report(
             run_id,
             now_unix_ms,
-            &static_package,
-            &static_report,
+            &package,
+            &verifier_report,
             &package,
             &context,
             expected_buyer_closure_parity.as_ref(),

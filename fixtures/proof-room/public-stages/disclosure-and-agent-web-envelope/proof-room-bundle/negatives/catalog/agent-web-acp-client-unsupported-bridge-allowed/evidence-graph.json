@@ -1,0 +1,55 @@
+{
+  "edges": [
+    {
+      "evidence_class": "chio-sidecar-proof",
+      "from": "acp-client-envelope",
+      "predicate": "projects-to",
+      "to": "acp-client-manifest"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "acp-client-envelope",
+      "predicate": "binds",
+      "to": "receipt-agent-web-acp-client-permission-allow"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "acp-client-envelope",
+      "predicate": "binds",
+      "to": "acp-client-permission"
+    }
+  ],
+  "id": "agent-web-evidence-graph-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "nodes": [
+    {
+      "id": "receipt-agent-web-acp-client-permission-allow",
+      "path": "receipts/receipt-agent-web-acp-client-permission-allow.json",
+      "role": "receipt",
+      "schema": "chio.receipt.v1",
+      "sha256": "81a2009e45b090e0077541440d88f017a0d9ee092a34dc2d9c99653cef7f4e41"
+    },
+    {
+      "id": "acp-client-envelope",
+      "path": "acp-client-envelope.json",
+      "role": "agent-web-proof-envelope",
+      "schema": "chio.agent-web-proof-envelope.v1",
+      "sha256": "61e950bebe1027c34431d8c6d1ff5fa016b5ff45c9401239fc6d08ff1fb9ef35"
+    },
+    {
+      "id": "acp-client-manifest",
+      "path": "acp-client-manifest.json",
+      "role": "external-projection-manifest",
+      "schema": "chio.agent-web.external-projection-manifest.v1",
+      "sha256": "4c8b8de2481d2b393d91ffb73ea45aaf802313dab54d45908c76db53e774e10b"
+    },
+    {
+      "id": "acp-client-permission",
+      "path": "external/acp-client-permission.json",
+      "role": "external-subject",
+      "schema": "external.acp-client.permission.v1",
+      "sha256": "1ec5083f71d7d85649138100ca0eb96043e2ad64bc690e4b030848eb7885ac29"
+    }
+  ],
+  "schema": "chio.transaction.evidence-graph.v1"
+}

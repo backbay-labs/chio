@@ -1,0 +1,28 @@
+{
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "disclosure_capsule_refs": [],
+  "envelope_id": "agent-web-envelope-bbs-valid",
+  "external_subject": "bbs-receipt-disclosure-agent-web-valid",
+  "external_subject_digest": "932e45b5c62912dabb8553cc8e01fb377ca5f851f87e9cfb41280cb880ef1388",
+  "external_subject_path": "external/bbs-receipt-disclosure.json",
+  "external_subject_signature_ref": "",
+  "limitations": [
+    "BBS projection does not make disclosure proof evidence equivalent to Chio authority or generic VC-DI-BBS interoperability."
+  ],
+  "projection_manifest_ref": "projection-bbs-valid",
+  "receipt_refs": [
+    "receipt-agent-web-bbs-disclosure-allow"
+  ],
+  "risk_refs": [],
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "settlement_refs": [],
+  "signature": "sig-agent-web-bbs-envelope",
+  "source_protocol": "bbs",
+  "source_protocol_version": "chio-receipt-bbs-v1",
+  "transaction_passport_ref": "passport-agent-web-valid"
+}

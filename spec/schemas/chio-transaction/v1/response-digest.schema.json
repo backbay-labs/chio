@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-transaction/v1/response-digest.schema.json",
+  "title": "Chio Response Digest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "method", "sha256"],
+  "properties": {
+    "schema": { "const": "chio.response.digest.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "method": { "type": "string", "minLength": 1 },
+    "sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

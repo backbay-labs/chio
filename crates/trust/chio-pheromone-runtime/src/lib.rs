@@ -32,9 +32,9 @@ pub const PHEROMONE_RECEIVE_REPORT_SCHEMA: &str = "chio.pheromone.receive-report
 pub const PHEROMONE_QUERY_REPORT_SCHEMA: &str = "chio.pheromone.query-report.v1";
 pub const PHEROMONE_PEER_WEIGHTS_SCHEMA: &str = "chio.pheromone.peer-weights.v1";
 const PHEROMONE_TRANSIT_POLICY_SCHEMA_JSON: &str =
-    include_str!("../../../../spec/schemas/chio-pheromone/v1/transit-policy.schema.json");
+    include_str!("../schemas/transit-policy.schema.json");
 const PHEROMONE_PEER_WEIGHTS_SCHEMA_JSON: &str =
-    include_str!("../../../../spec/schemas/chio-pheromone/v1/peer-weights.schema.json");
+    include_str!("../schemas/peer-weights.schema.json");
 
 #[derive(Debug, thiserror::Error)]
 pub enum PheromoneRuntimeError {

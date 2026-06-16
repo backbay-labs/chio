@@ -1,0 +1,327 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-pheromone/v1/transit-policy.schema.json",
+  "title": "Chio Pheromone Runtime Transit Policy Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": { "$ref": "#/$defs/policyBody" },
+    "signerKey": { "$ref": "#/$defs/publicKey" },
+    "signature": { "$ref": "#/$defs/signature" }
+  },
+  "$defs": {
+    "policyBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "accepted_hubs",
+        "allowed_ingress_treaties",
+        "allowed_egress_treaties",
+        "allowed_subject_class_namespaces",
+        "valid_from_unix_ms",
+        "valid_until_unix_ms",
+        "max_hops",
+        "required_action_class_id",
+        "pinned_ladder_refs",
+        "admission"
+      ],
+      "properties": {
+        "schema": { "const": "chio.pheromone-transit-policy.v1" },
+        "accepted_hubs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "allowed_ingress_treaties": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "allowed_egress_treaties": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "allowed_subject_class_namespaces": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "valid_from_unix_ms": { "type": "integer", "minimum": 0 },
+        "valid_until_unix_ms": { "type": "integer", "minimum": 0 },
+        "max_hops": { "type": "integer", "minimum": 1 },
+        "required_action_class_id": { "type": "string", "minLength": 1 },
+        "pinned_ladder_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pinnedLadderRef" },
+          "uniqueItems": true
+        },
+        "admission": { "$ref": "#/$defs/admission" }
+      }
+    },
+    "pinnedLadderRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ladder_manifest_id",
+        "ladder_manifest_sha256",
+        "ladder_manifest_expires_at_unix_ms",
+        "ladder_intersection_id",
+        "ladder_intersection_sha256"
+      ],
+      "properties": {
+        "ladder_manifest_id": { "type": "string", "minLength": 1 },
+        "ladder_manifest_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "ladder_manifest_expires_at_unix_ms": { "type": "integer", "minimum": 0 },
+        "ladder_intersection_id": { "type": "string", "minLength": 1 },
+        "ladder_intersection_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "admission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "replayWindowMs",
+        "recipientKernelId",
+        "authenticatedSenderKernelId",
+        "activePeersInTreaty",
+        "activeReputationEpoch",
+        "knownReputationEpochs",
+        "passports",
+        "kernelPublicKeys",
+        "subjectClasses",
+        "maxDepositsPerPair",
+        "scarcityPolicies",
+        "runtimePolicyIssuerPublicKeys",
+        "observationCostVerifierRoots",
+        "runtimeTrustFloorState"
+      ],
+      "properties": {
+        "recipientKernelId": { "type": "string", "minLength": 1 },
+        "authenticatedSenderKernelId": { "type": "string", "minLength": 1 },
+        "replayWindowMs": { "type": "integer", "minimum": 1 },
+        "activePeersInTreaty": { "type": "integer", "minimum": 1 },
+        "activeReputationEpoch": { "type": "integer", "minimum": 0 },
+        "knownReputationEpochs": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "uniqueItems": true
+        },
+        "passports": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/passport" }
+        },
+        "kernelPublicKeys": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/publicKey" },
+          "uniqueItems": true
+        },
+        "subjectClasses": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/subjectClass" }
+        },
+        "maxDepositsPerPair": { "type": "integer", "minimum": 1 },
+        "scarcityPolicies": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/scarcityPolicy" },
+          "uniqueItems": true
+        },
+        "runtimePolicyIssuerPublicKeys": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/publicKey" },
+          "uniqueItems": true
+        },
+        "observationCostVerifierRoots": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/observationCostVerifierRoot" },
+          "uniqueItems": true
+        },
+        "runtimeTrustFloorState": { "$ref": "#/$defs/runtimeTrustFloorState" }
+      }
+    },
+    "scarcityPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "policyId",
+        "reputationEpoch",
+        "windowId",
+        "windowStartUnixMs",
+        "windowEndUnixMs",
+        "tokenCapacity",
+        "newcomerHorizonEpochs",
+        "treatyScope",
+        "subjectClassNamespace",
+        "subjectClass",
+        "observationCostVerification",
+        "verifierId",
+        "runtimePolicySha256",
+        "policySha256",
+        "activePeersEpoch"
+      ],
+      "properties": {
+        "schema": { "const": "chio.pheromone-scarcity-policy.v1" },
+        "policyId": { "type": "string", "minLength": 1 },
+        "reputationEpoch": { "type": "integer", "minimum": 0 },
+        "windowId": { "type": "string", "minLength": 1 },
+        "windowStartUnixMs": { "type": "integer", "minimum": 0 },
+        "windowEndUnixMs": { "type": "integer", "minimum": 0 },
+        "tokenCapacity": { "type": "integer", "minimum": 1 },
+        "newcomerHorizonEpochs": { "type": "integer", "minimum": 1 },
+        "treatyScope": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "subjectClassNamespace": { "type": "string", "minLength": 1 },
+        "subjectClass": { "type": "string", "minLength": 1 },
+        "observationCostVerification": { "enum": ["not_required", "required"] },
+        "verifierId": { "type": "string", "minLength": 1 },
+        "runtimePolicySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "policySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "activePeersEpoch": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "passport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kernelId",
+        "publicKey",
+        "validFromUnixMs",
+        "validUntilUnixMs",
+        "firstSeenEpoch",
+        "revoked"
+      ],
+      "properties": {
+        "kernelId": { "type": "string", "minLength": 1 },
+        "publicKey": { "$ref": "#/$defs/publicKey" },
+        "validFromUnixMs": { "type": "integer", "minimum": 0 },
+        "validUntilUnixMs": { "type": "integer", "minimum": 0 },
+        "firstSeenEpoch": { "type": "integer", "minimum": 0 },
+        "revoked": { "type": "boolean" }
+      }
+    },
+    "subjectClass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subjectClass",
+        "subjectClassNamespace",
+        "allowedTreaties",
+        "costCommitment",
+        "destructive"
+      ],
+      "properties": {
+        "subjectClass": { "type": "string", "minLength": 1 },
+        "subjectClassNamespace": { "type": "string", "minLength": 1 },
+        "allowedTreaties": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "costCommitment": { "enum": ["not_required", "required"] },
+        "destructive": { "type": "boolean" }
+      }
+    },
+    "publicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]+$",
+      "minLength": 64
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:.+)$"
+    },
+    "observationCostVerifierRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "verifierId",
+        "verifierKeyId",
+        "publicKey",
+        "signatureAlgorithm",
+        "validFromUnixMs",
+        "validUntilUnixMs",
+        "allowedTreaties",
+        "allowedSubjectClassNamespaces",
+        "allowedSubjectClasses",
+        "runtimePolicySha256",
+        "issuerKernelId",
+        "issuerSignature"
+      ],
+      "properties": {
+        "schema": { "const": "chio.pheromone-observation-cost-verifier-root.v1" },
+        "verifierId": { "type": "string", "minLength": 1 },
+        "verifierKeyId": { "type": "string", "minLength": 1 },
+        "publicKey": { "$ref": "#/$defs/publicKey" },
+        "signatureAlgorithm": { "enum": ["ed25519", "p256", "p384", "hybrid"] },
+        "validFromUnixMs": { "type": "integer", "minimum": 0 },
+        "validUntilUnixMs": { "type": "integer", "minimum": 0 },
+        "allowedTreaties": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "allowedSubjectClassNamespaces": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "allowedSubjectClasses": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "runtimePolicySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "issuerKernelId": { "type": "string", "minLength": 1 },
+        "issuerSignature": { "$ref": "#/$defs/signature" }
+      }
+    },
+    "runtimeTrustFloorState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "entries"],
+      "properties": {
+        "schema": { "const": "chio.runtime.trust-floor-state.v1" },
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/runtimeTrustFloorEntry" },
+          "uniqueItems": true
+        }
+      }
+    },
+    "runtimeTrustFloorEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verifierId",
+        "keyId",
+        "highestVersion",
+        "latestBundleSha256",
+        "latestRevocationCheckpointSha256"
+      ],
+      "properties": {
+        "verifierId": { "type": "string", "minLength": 1 },
+        "keyId": { "type": "string", "minLength": 1 },
+        "highestVersion": { "type": "integer", "minimum": 1 },
+        "latestBundleSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "latestRevocationCheckpointSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

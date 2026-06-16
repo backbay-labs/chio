@@ -1,0 +1,55 @@
+{
+  "schema": "chio.transaction.evidence-graph.v1",
+  "id": "evidence-graph-commerce-offline-psp-valid",
+  "issued_at": "2026-06-10T00:08:00Z",
+  "nodes": [
+    {
+      "id": "order-context",
+      "schema": "chio.commerce.order-context.v1",
+      "path": "order-context.json",
+      "sha256": "ce4821960b5ee3b6e900468d78432296c6db4d4de4f6c5cb47f56bcbc13d1b47",
+      "role": "commerce-order-context"
+    },
+    {
+      "id": "event-log",
+      "schema": "chio.commerce.event-log.v1",
+      "path": "event-log.json",
+      "sha256": "5b6fe6ea587ebf81c98ff602ba93b9dbc1f53b21262244580bcada7a3290e385",
+      "role": "commerce-event-log"
+    },
+    {
+      "id": "payment-lifecycle",
+      "schema": "chio.commerce.payment-lifecycle.v1",
+      "path": "payment-lifecycle.json",
+      "sha256": "4fa23c1184d67bea093cc62d549bea5cb02d9d246bd03f754f20d088ac5e8b35",
+      "role": "commerce-payment-lifecycle"
+    },
+    {
+      "id": "mandate-allowance-ledger",
+      "schema": "chio.commerce.mandate-allowance-ledger.v1",
+      "path": "mandate-allowance-ledger.json",
+      "sha256": "0d27312f1eeaf2f627dea12e5cc6bdc92cb6b5db80a073a5f97ab4c0326b6ad3",
+      "role": "commerce-mandate-allowance-ledger"
+    }
+  ],
+  "edges": [
+    {
+      "from": "order-context",
+      "to": "event-log",
+      "predicate": "binds",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "from": "order-context",
+      "to": "payment-lifecycle",
+      "predicate": "binds",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "from": "order-context",
+      "to": "mandate-allowance-ledger",
+      "predicate": "binds",
+      "evidence_class": "digest-bound-reference"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-enterprise/v1/evidence-export-bundle.schema.json",
+  "title": "Chio Enterprise Evidence Export Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "passport_id",
+    "risk_comptroller_report_ref",
+    "approval_case_ref",
+    "bundle_digest",
+    "artifacts"
+  ],
+  "properties": {
+    "schema": { "const": "chio.enterprise.evidence-export-bundle.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "passport_id": { "type": "string", "minLength": 1 },
+    "risk_comptroller_report_ref": { "type": "string", "minLength": 1 },
+    "approval_case_ref": { "type": "string", "minLength": 1 },
+    "bundle_digest": { "$ref": "#/$defs/sha256" },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifactRef" },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "bundleRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "\\\\" },
+          { "pattern": "(^|/)\\.\\.(/|$)" }
+        ]
+      }
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "path", "sha256"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/bundleRelativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

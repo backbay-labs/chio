@@ -1,0 +1,28 @@
+{
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "envelope_id": "agent-web-envelope-acp-client-valid",
+  "transaction_passport_ref": "passport-agent-web-valid",
+  "source_protocol": "acp-client",
+  "source_protocol_version": "v1",
+  "external_subject": "acp-client-permission-agent-web-valid",
+  "external_subject_path": "external/acp-client-permission.json",
+  "external_subject_digest": "96d9e25b78f32075d8479b27c7d9c57b59f8851bb87a5445b7f90280e17049df",
+  "external_subject_signature_ref": "",
+  "projection_manifest_ref": "projection-acp-client-valid",
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "receipt_refs": [
+    "receipt-agent-web-acp-client-permission-allow"
+  ],
+  "disclosure_capsule_refs": [],
+  "settlement_refs": [],
+  "risk_refs": [],
+  "limitations": [
+    "ACP-Client projection does not make client permission prompts equivalent to Chio authority."
+  ],
+  "signature": "sig-agent-web-acp-client-envelope"
+}

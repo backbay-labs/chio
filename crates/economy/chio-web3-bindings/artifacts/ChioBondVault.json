@@ -1,0 +1,637 @@
+{
+  "contractName": "ChioBondVault",
+  "sourceName": "src/ChioBondVault.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "rootRegistry_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "identityRegistry_",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "AlreadyClosed",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "BondAlreadyExists",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "BondNotExpired",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "BondNotFound",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidEvidence",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidSlashDistribution",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidTerms",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ProofMetadataRequired",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "TransferFailed",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "UnauthorizedCaller",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "vaultId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "bondId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "returnedAmount",
+          "type": "uint256"
+        }
+      ],
+      "name": "BondExpired",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "vaultId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "bondId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "slashedAmount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "returnedAmount",
+          "type": "uint256"
+        }
+      ],
+      "name": "BondImpaired",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "vaultId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "bondId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "facilityId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "principal",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "token",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "collateralAmount",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "expiresAt",
+          "type": "uint256"
+        }
+      ],
+      "name": "BondLocked",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "vaultId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "bondId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "returnedAmount",
+          "type": "uint256"
+        }
+      ],
+      "name": "BondReleased",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "bondId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "facilityId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "address",
+              "name": "principal",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "collateralAmount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "reserveRequirementAmount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "expiresAt",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint16",
+              "name": "reserveRequirementRatioBps",
+              "type": "uint16"
+            },
+            {
+              "internalType": "address",
+              "name": "operator",
+              "type": "address"
+            }
+          ],
+          "internalType": "struct IChioBondVault.BondTerms",
+          "name": "terms",
+          "type": "tuple"
+        }
+      ],
+      "name": "deriveVaultId",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "vaultId",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "vaultId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "expireRelease",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "vaultId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "getBond",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "bondId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "facilityId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "address",
+              "name": "principal",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "collateralAmount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "reserveRequirementAmount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "expiresAt",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint16",
+              "name": "reserveRequirementRatioBps",
+              "type": "uint16"
+            },
+            {
+              "internalType": "address",
+              "name": "operator",
+              "type": "address"
+            }
+          ],
+          "internalType": "struct IChioBondVault.BondTerms",
+          "name": "terms",
+          "type": "tuple"
+        },
+        {
+          "internalType": "uint256",
+          "name": "lockedAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "slashedAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bool",
+          "name": "released",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "expired",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "identityRegistry",
+      "outputs": [
+        {
+          "internalType": "contract IChioIdentityRegistry",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address[]",
+          "name": "",
+          "type": "address[]"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "",
+          "type": "uint256[]"
+        },
+        {
+          "internalType": "bytes32[]",
+          "name": "",
+          "type": "bytes32[]"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "name": "impairBond",
+      "outputs": [],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "vaultId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "slashAmount",
+          "type": "uint256"
+        },
+        {
+          "internalType": "address[]",
+          "name": "beneficiaries",
+          "type": "address[]"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "shares",
+          "type": "uint256[]"
+        },
+        {
+          "components": [
+            {
+              "internalType": "bytes32[]",
+              "name": "auditPath",
+              "type": "bytes32[]"
+            },
+            {
+              "internalType": "uint256",
+              "name": "leafIndex",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "treeSize",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct ChioMerkle.Proof",
+          "name": "proof",
+          "type": "tuple"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "root",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "evidenceHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "impairBondDetailed",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "bondId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "facilityId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "address",
+              "name": "principal",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "token",
+              "type": "address"
+            },
+            {
+              "internalType": "uint256",
+              "name": "collateralAmount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "reserveRequirementAmount",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "expiresAt",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint16",
+              "name": "reserveRequirementRatioBps",
+              "type": "uint16"
+            },
+            {
+              "internalType": "address",
+              "name": "operator",
+              "type": "address"
+            }
+          ],
+          "internalType": "struct IChioBondVault.BondTerms",
+          "name": "terms",
+          "type": "tuple"
+        }
+      ],
+      "name": "lockBond",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "vaultId",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32[]",
+          "name": "",
+          "type": "bytes32[]"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "name": "releaseBond",
+      "outputs": [],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "vaultId",
+          "type": "bytes32"
+        },
+        {
+          "components": [
+            {
+              "internalType": "bytes32[]",
+              "name": "auditPath",
+              "type": "bytes32[]"
+            },
+            {
+              "internalType": "uint256",
+              "name": "leafIndex",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "treeSize",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct ChioMerkle.Proof",
+          "name": "proof",
+          "type": "tuple"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "root",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "evidenceHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "releaseBondDetailed",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "rootRegistry",
+      "outputs": [
+        {
+          "internalType": "contract ChioRootRegistry",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "60c060405234801561001057600080fd5b5060405161161138038061161183398101604081905261002f91610062565b6001600160a01b039182166080521660a052610095565b80516001600160a01b038116811461005d57600080fd5b919050565b6000806040838503121561007557600080fd5b61007e83610046565b915061008c60208401610046565b90509250929050565b60805160a0516115436100ce6000396000818160a801526108430152600081816102600152818161037a0152610c3701526115436000f3fe608060405234801561001057600080fd5b506004361061009e5760003560e01c8063b8c3cc6111610066578063b8c3cc6114610248578063b96b161c1461025b578063baec15c314610282578063e036ec7414610290578063e5b67250146102a357600080fd5b8063134e18f4146100a35780631f76c5b9146100e757806326d6c97b14610108578063275ebc131461022057806373e264f814610235575b600080fd5b6100ca7f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020015b60405180910390f35b6100fa6100f5366004610f03565b6102b6565b6040519081526020016100de565b61020f610116366004610f1f565b6040805161012081018252600080825260208201819052918101829052606081018290526080810182905260a0810182905260c0810182905260e08101829052610100810191909152506000908152602081815260409182902060088101546009820154600a8301548551610120810187528454815260018501549581019590955260028401546001600160a01b039081169686019690965260038401548616606086015260048401546080860152600584015460a0860152600684015460c086015260079093015461ffff811660e086015262010000900490941661010080850191909152929490939260ff80841693919091041690565b6040516100de959493929190610f38565b61023361022e366004611040565b6102c7565b005b6102336102433660046110b6565b6102e3565b610233610256366004610f1f565b610644565b6100ca7f000000000000000000000000000000000000000000000000000000000000000081565b61023361022e36600461117e565b6100fa61029e366004610f03565b6107bf565b6102336102b1366004611249565b610ba0565b60006102c182610dea565b92915050565b6040516001626feff560e01b0319815260040160405180910390fd5b60006102ee8a610ec5565b60078101549091506201000090046001600160a01b0316331461032457604051635c427cd960e01b815260040160405180910390fd5b600a81015460ff16806103405750600a810154610100900460ff165b1561035e57604051634d65bf2960e11b815260040160405180910390fd5b6007810154604051639aaf184f60e01b81526001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000811692639aaf184f926103bf9289928992899262010000909204909116906004016112a0565b602060405180830381865afa1580156103dc573d6000803e3d6000fd5b505050506040513d601f19601f82011682018060405250810190610400919061135e565b61041d5760405163325de78f60e21b815260040160405180910390fd5b86158061042a5750868514155b80610433575088155b8061045057508060090154816008015461044d919061139d565b89115b1561046e57604051637152f73b60e11b815260040160405180910390fd5b6000805b868110156104a85787878281811061048c5761048c6113b0565b905060200201358261049e91906113c6565b9150600101610472565b508981146104c957604051637152f73b60e11b815260040160405180910390fd5b60005b888110156105c45760038301546000906001600160a01b031663a9059cbb8c8c858181106104fc576104fc6113b0565b905060200201602081019061051191906113f0565b8b8b86818110610523576105236113b0565b6040516001600160e01b031960e087901b1681526001600160a01b03909416600485015260200291909101356024830152506044016020604051808303816000875af1158015610577573d6000803e3d6000fd5b505050506040513d601f19601f8201168201806040525081019061059b919061135e565b9050806105bb576040516312171d8360e31b815260040160405180910390fd5b506001016104cc565b50898260090160008282546105d991906113c6565b9091555050600982015460088301546000916105f49161139d565b8354604080518e81526020810184905292935090918e917f4e0694254ba489601a07d4d7a49d561e66666709cd14dcea2dfec68500b7e794910160405180910390a3505050505050505050505050565b600061064f82610ec5565b600a81015490915060ff168061066e5750600a810154610100900460ff165b1561068c57604051634d65bf2960e11b815260040160405180910390fd5b600681015442116106b057604051630bcd110760e11b815260040160405180910390fd5b600a8101805461ff001916610100179055600981015460088201546000916106d79161139d565b90508015610783576003820154600283015460405163a9059cbb60e01b81526001600160a01b03918216600482015260248101849052600092919091169063a9059cbb906044016020604051808303816000875af115801561073d573d6000803e3d6000fd5b505050506040513d601f19601f82011682018060405250810190610761919061135e565b905080610781576040516312171d8360e31b815260040160405180910390fd5b505b815460405182815284907f2ba563c16b97d3d5a2859cf397c1929af9d780a18a1daf13a72d7a9b87af59f59060200160405180910390a3505050565b6000336107d260608401604085016113f0565b6001600160a01b03161415806107e757508135155b806107f457506020820135155b806108175750600061080c60808401606085016113f0565b6001600160a01b0316145b8061082457506080820135155b806108335750428260c0013511155b806108e457506001600160a01b037f000000000000000000000000000000000000000000000000000000000000000016636d70f7ae61087a610120850161010086016113f0565b6040516001600160e01b031960e084901b1681526001600160a01b039091166004820152602401602060405180830381865afa1580156108be573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906108e2919061135e565b155b1561090257604051630256965f60e01b815260040160405180910390fd5b61090b82610dea565b6000818152602081905260409020600201549091506001600160a01b03161561094757604051630f948ba960e41b815260040160405180910390fd5b6040518060a00160405280838036038101906109639190611455565b815260808481018035602080850191909152600060408086018290526060808701839052958501829052878252818352808220875180518255808501516001830155808301516002830180546001600160a01b03199081166001600160a01b0393841617909155828a015160038501805490921690831617905581880151600484015560a0820151600584015560c0820151600684015560e08201516007840180546101009485015161ffff9093166001600160b01b03199091161762010000929093169190910291909117905593880151600882015590870151600982015586860151600a9091018054979095015161ffff1990971690151561ff0019161795151590910294909417909155610a7b9185016113f0565b6040516323b872dd60e01b8152336004820152306024820152608085013560448201526001600160a01b0391909116906323b872dd906064016020604051808303816000875af1158015610ad3573d6000803e3d6000fd5b505050506040513d601f19601f82011682018060405250810190610af7919061135e565b905080610b17576040516312171d8360e31b815260040160405180910390fd5b60208301358335837f2c1546188fdbda87b73349028b97b8d2795bcebc9760fe4cf2548e52a4ba5ca3610b5060608801604089016113f0565b610b606080890160608a016113f0565b604080516001600160a01b0393841681529290911660208301526080808a01359183019190915260c089013560608301520160405180910390a450919050565b6000610bab85610ec5565b60078101549091506201000090046001600160a01b03163314610be157604051635c427cd960e01b815260040160405180910390fd5b600a81015460ff1680610bfd5750600a810154610100900460ff165b15610c1b57604051634d65bf2960e11b815260040160405180910390fd5b6007810154604051639aaf184f60e01b81526001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000811692639aaf184f92610c7c9289928992899262010000909204909116906004016112a0565b602060405180830381865afa158015610c99573d6000803e3d6000fd5b505050506040513d601f19601f82011682018060405250810190610cbd919061135e565b610cda5760405163325de78f60e21b815260040160405180910390fd5b600a8101805460ff1916600117905560098101546008820154600091610cff9161139d565b90508015610dab576003820154600283015460405163a9059cbb60e01b81526001600160a01b03918216600482015260248101849052600092919091169063a9059cbb906044016020604051808303816000875af1158015610d65573d6000803e3d6000fd5b505050506040513d601f19601f82011682018060405250810190610d89919061135e565b905080610da9576040516312171d8360e31b815260040160405180910390fd5b505b815460405182815287907f65852dcd3c8bcc04fe8e2abf5e38b2d323d8659f6549510726ede8e9537be29c9060200160405180910390a3505050505050565b6000463083356020850135610e0560608701604088016113f0565b610e1560808801606089016113f0565b608088013560a089013560c08a0135610e356101008c0160e08d016114f2565b610e476101208d016101008e016113f0565b60408051602081019c909c526001600160a01b039a8b16908c015260608b019890985260808a019690965293871660a089015291861660c088015260e087015261010086015261012085015261ffff166101408401521661016082015261018001604051602081830303815290604052805190602001209050919050565b600081815260208190526040902060028101546001600160a01b0316610efe57604051636626fb6360e01b815260040160405180910390fd5b919050565b6000610120828403128015610f1757600080fd5b509092915050565b600060208284031215610f3157600080fd5b5035919050565b60006101a082019050865182526020870151602083015260018060a01b03604088015116604083015260018060a01b0360608801511660608301526080870151608083015260a087015160a083015260c087015160c083015260e0870151610fa660e084018261ffff169052565b50610100870151610fc36101008401826001600160a01b03169052565b508561012083015284610140830152610fe161016083018515159052565b8215156101808301529695505050505050565b60008083601f84011261100657600080fd5b50813567ffffffffffffffff81111561101e57600080fd5b6020830191508360208260051b850101111561103957600080fd5b9250929050565b60008060008060006080868803121561105857600080fd5b85359450602086013567ffffffffffffffff81111561107657600080fd5b61108288828901610ff4565b9699909850959660408101359660609091013595509350505050565b6000606082840312156110b057600080fd5b50919050565b600080600080600080600080600060e08a8c0312156110d457600080fd5b8935985060208a0135975060408a013567ffffffffffffffff8111156110f957600080fd5b6111058c828d01610ff4565b90985096505060608a013567ffffffffffffffff81111561112557600080fd5b6111318c828d01610ff4565b90965094505060808a013567ffffffffffffffff81111561115157600080fd5b61115d8c828d0161109e565b999c989b50969995989497939650939460a0810135945060c0013592915050565b60008060008060008060008060008060e08b8d03121561119d57600080fd5b8a35995060208b0135985060408b013567ffffffffffffffff8111156111c257600080fd5b6111ce8d828e01610ff4565b90995097505060608b013567ffffffffffffffff8111156111ee57600080fd5b6111fa8d828e01610ff4565b90975095505060808b013567ffffffffffffffff81111561121a57600080fd5b6112268d828e01610ff4565b9b9e9a9d50989b979a969995989760a08101359660c09091013595509350505050565b6000806000806080858703121561125f57600080fd5b84359350602085013567ffffffffffffffff81111561127d57600080fd5b6112898782880161109e565b949794965050505060408301359260600135919050565b6080815260008535601e198736030181126112ba57600080fd5b860160208101903567ffffffffffffffff8111156112d757600080fd5b8060051b8036038313156112ea57600080fd5b6060608086015260e085018290526001600160fb1b0382111561130c57600080fd5b808361010087013760208981013560a08701526040808b013560c08801529086018990528501879052840161010001925061135591505060608301846001600160a01b03169052565b95945050505050565b60006020828403121561137057600080fd5b8151801515811461138057600080fd5b9392505050565b634e487b7160e01b600052601160045260246000fd5b818103818111156102c1576102c1611387565b634e487b7160e01b600052603260045260246000fd5b808201808211156102c1576102c1611387565b80356001600160a01b0381168114610efe57600080fd5b60006020828403121561140257600080fd5b611380826113d9565b604051610120810167ffffffffffffffff8111828210171561143d57634e487b7160e01b600052604160045260246000fd5b60405290565b803561ffff81168114610efe57600080fd5b600061012082840312801561146957600080fd5b50600061147461140b565b833581526020808501359082015261148e604085016113d9565b604082015261149f606085016113d9565b60608201526080848101359082015260a0808501359082015260c08085013590820181905291506114d260e08501611443565b60e08201526114e461010085016113d9565b610100820152949350505050565b60006020828403121561150457600080fd5b6113808261144356fea264697066735822122052718fd02f6c760a9f3f3db47d16ca3b7e15fc096b3857d4524b809fe66e363f64736f6c634300081e0033",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.30+commit.73712a01\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"rootRegistry_\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"identityRegistry_\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"AlreadyClosed\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"BondAlreadyExists\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"BondNotExpired\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"BondNotFound\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidEvidence\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidSlashDistribution\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidTerms\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProofMetadataRequired\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"TransferFailed\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"UnauthorizedCaller\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"vaultId\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"bondId\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"returnedAmount\",\"type\":\"uint256\"}],\"name\":\"BondExpired\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"vaultId\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"bondId\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"slashedAmount\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"returnedAmount\",\"type\":\"uint256\"}],\"name\":\"BondImpaired\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"vaultId\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"bondId\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"facilityId\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"principal\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"token\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"collateralAmount\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"expiresAt\",\"type\":\"uint256\"}],\"name\":\"BondLocked\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"vaultId\",\"type\":\"bytes32\"},{\"indexed\":true,\"internalType\":\"bytes32\",\"name\":\"bondId\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"returnedAmount\",\"type\":\"uint256\"}],\"name\":\"BondReleased\",\"type\":\"event\"},{\"inputs\":[{\"components\":[{\"internalType\":\"bytes32\",\"name\":\"bondId\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"facilityId\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"principal\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"token\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"collateralAmount\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"reserveRequirementAmount\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"expiresAt\",\"type\":\"uint256\"},{\"internalType\":\"uint16\",\"name\":\"reserveRequirementRatioBps\",\"type\":\"uint16\"},{\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"}],\"internalType\":\"struct IChioBondVault.BondTerms\",\"name\":\"terms\",\"type\":\"tuple\"}],\"name\":\"deriveVaultId\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"vaultId\",\"type\":\"bytes32\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"vaultId\",\"type\":\"bytes32\"}],\"name\":\"expireRelease\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"vaultId\",\"type\":\"bytes32\"}],\"name\":\"getBond\",\"outputs\":[{\"components\":[{\"internalType\":\"bytes32\",\"name\":\"bondId\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"facilityId\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"principal\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"token\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"collateralAmount\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"reserveRequirementAmount\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"expiresAt\",\"type\":\"uint256\"},{\"internalType\":\"uint16\",\"name\":\"reserveRequirementRatioBps\",\"type\":\"uint16\"},{\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"}],\"internalType\":\"struct IChioBondVault.BondTerms\",\"name\":\"terms\",\"type\":\"tuple\"},{\"internalType\":\"uint256\",\"name\":\"lockedAmount\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"slashedAmount\",\"type\":\"uint256\"},{\"internalType\":\"bool\",\"name\":\"released\",\"type\":\"bool\"},{\"internalType\":\"bool\",\"name\":\"expired\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"identityRegistry\",\"outputs\":[{\"internalType\":\"contract IChioIdentityRegistry\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"address[]\",\"name\":\"\",\"type\":\"address[]\"},{\"internalType\":\"uint256[]\",\"name\":\"\",\"type\":\"uint256[]\"},{\"internalType\":\"bytes32[]\",\"name\":\"\",\"type\":\"bytes32[]\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"name\":\"impairBond\",\"outputs\":[],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"vaultId\",\"type\":\"bytes32\"},{\"internalType\":\"uint256\",\"name\":\"slashAmount\",\"type\":\"uint256\"},{\"internalType\":\"address[]\",\"name\":\"beneficiaries\",\"type\":\"address[]\"},{\"internalType\":\"uint256[]\",\"name\":\"shares\",\"type\":\"uint256[]\"},{\"components\":[{\"internalType\":\"bytes32[]\",\"name\":\"auditPath\",\"type\":\"bytes32[]\"},{\"internalType\":\"uint256\",\"name\":\"leafIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"treeSize\",\"type\":\"uint256\"}],\"internalType\":\"struct ChioMerkle.Proof\",\"name\":\"proof\",\"type\":\"tuple\"},{\"internalType\":\"bytes32\",\"name\":\"root\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"evidenceHash\",\"type\":\"bytes32\"}],\"name\":\"impairBondDetailed\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"internalType\":\"bytes32\",\"name\":\"bondId\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"facilityId\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"principal\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"token\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"collateralAmount\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"reserveRequirementAmount\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"expiresAt\",\"type\":\"uint256\"},{\"internalType\":\"uint16\",\"name\":\"reserveRequirementRatioBps\",\"type\":\"uint16\"},{\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"}],\"internalType\":\"struct IChioBondVault.BondTerms\",\"name\":\"terms\",\"type\":\"tuple\"}],\"name\":\"lockBond\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"vaultId\",\"type\":\"bytes32\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32[]\",\"name\":\"\",\"type\":\"bytes32[]\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"}],\"name\":\"releaseBond\",\"outputs\":[],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32\",\"name\":\"vaultId\",\"type\":\"bytes32\"},{\"components\":[{\"internalType\":\"bytes32[]\",\"name\":\"auditPath\",\"type\":\"bytes32[]\"},{\"internalType\":\"uint256\",\"name\":\"leafIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"treeSize\",\"type\":\"uint256\"}],\"internalType\":\"struct ChioMerkle.Proof\",\"name\":\"proof\",\"type\":\"tuple\"},{\"internalType\":\"bytes32\",\"name\":\"root\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"evidenceHash\",\"type\":\"bytes32\"}],\"name\":\"releaseBondDetailed\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"rootRegistry\",\"outputs\":[{\"internalType\":\"contract ChioRootRegistry\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"src/ChioBondVault.sol\":\"ChioBondVault\"},\"evmVersion\":\"paris\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[]},\"sources\":{\"src/ChioBondVault.sol\":{\"keccak256\":\"0x4715b7a94ee2d458cce1fe264e3e89bd8999bbbedfaf326080a3ac10a236cdd8\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://aa77efdf9301392cbd66d698dd9eed62d24c79b110c9b9adaf76c9543d77badc\",\"dweb:/ipfs/QmTPhu3tz7gfYeLvEYqvz4iPv6DKBpTQ9nUGrBSCkz5JVB\"]},\"src/ChioRootRegistry.sol\":{\"keccak256\":\"0xe097199c57fd2831f41b8928407ec059016f5c3cbfdd1c84e537e687f28b009a\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://003ab360bfbab8ee1202a2b811b941f8ed6fcbf6f6d6f4a6c870adb3b999ef74\",\"dweb:/ipfs/QmNgZdjADDXGnez3qpTz9MnihDN86GkkvBk1hCrpBvnoV5\"]},\"src/interfaces/IChioBondVault.sol\":{\"keccak256\":\"0x0ad1dbf6a9cf7b2856e76bedbdbf04da32d2e370e447affa0b6c2325a8337e9a\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://18972d35985f7c0d184a447bd8a50dad142c369358914cc6df77668e0922d4f0\",\"dweb:/ipfs/QmVjRoT4axcy7TK3oARj4wBvrSCL1UYcRsCvQ5XJGbNZiJ\"]},\"src/interfaces/IChioIdentityRegistry.sol\":{\"keccak256\":\"0x59370a98b3b60af97e603f91539411be9d270c01df8eb9fd3a72a7c44edbede6\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://5ef4f18bd54c92a82701a3bd309bb521be5c3ec203b282eddd95a333b2ca9d8f\",\"dweb:/ipfs/QmbJ5TvBEaLdXYjNWbFzaex2jqF6or2SnEzpwgy2Ka31qc\"]},\"src/interfaces/IChioRootRegistry.sol\":{\"keccak256\":\"0xe8f418a5ac300ce92c986e2882e5d565a076e54972672e9d384383cda0ad983c\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://f16c7959393e12875423d8275ece3e70637e9c212fa1173aeab8c06974152aa7\",\"dweb:/ipfs/QmWrTcdVcZ9cV9V4jDCcHg5Qzi4AzhstHrY8Wn9p42tpf4\"]},\"src/interfaces/IERC20.sol\":{\"keccak256\":\"0x85c65936f7f9980d722bae291d55ee9f50a6d5af324a474eee982bc739facd6c\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://722e718df24b50f6a83f00a382fec4cb907e18961584257add513c43ce4bb097\",\"dweb:/ipfs/QmQZ7qGAgaMwQBByxcGE9zY5kfL1dLBoG1L18icCASMYaP\"]},\"src/lib/ChioMerkle.sol\":{\"keccak256\":\"0xbc7486a0eedec25684fff560fe1349164b83b859e882c3d891e53ffa5ce6a8db\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://b773aa0557b00455b28c6ba6e4b841fbf82645f3f1bbfbb51379aaa0703c8edf\",\"dweb:/ipfs/QmSCdZQ4SHFEh8tfCVHGv8pDXobx7zDQfcY7B9hzLrrA83\"]}},\"version\":1}"
+}

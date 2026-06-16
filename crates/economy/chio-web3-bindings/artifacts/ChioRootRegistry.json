@@ -1,0 +1,552 @@
+{
+  "contractName": "ChioRootRegistry",
+  "sourceName": "src/ChioRootRegistry.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "identityRegistry_",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "DelegateLimitReached",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidBatchRange",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidCheckpointSequence",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidDelegate",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvalidMerkleRoot",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "OperatorKeyHashMismatch",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "OperatorNotAuthorized",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ProofMetadataRequired",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "delegate",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "expiresAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "DelegateRegistered",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "delegate",
+          "type": "address"
+        }
+      ],
+      "name": "DelegateRevoked",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "publisher",
+          "type": "address"
+        },
+        {
+          "indexed": true,
+          "internalType": "uint64",
+          "name": "checkpointSeq",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "merkleRoot",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "batchStartSeq",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "batchEndSeq",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "treeSize",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "publishedAt",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "operatorKeyHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "RootPublished",
+      "type": "event"
+    },
+    {
+      "inputs": [],
+      "name": "MAX_ACTIVE_DELEGATES",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        }
+      ],
+      "name": "getLatestRoot",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "merkleRoot",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "checkpointSeq",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "batchStartSeq",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "batchEndSeq",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "treeSize",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "publishedAt",
+              "type": "uint64"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "operatorKeyHash",
+              "type": "bytes32"
+            }
+          ],
+          "internalType": "struct IChioRootRegistry.RootEntry",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        }
+      ],
+      "name": "getLatestSeq",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        },
+        {
+          "internalType": "uint64",
+          "name": "checkpointSeq",
+          "type": "uint64"
+        }
+      ],
+      "name": "getRoot",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "merkleRoot",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "checkpointSeq",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "batchStartSeq",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "batchEndSeq",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "treeSize",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "publishedAt",
+              "type": "uint64"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "operatorKeyHash",
+              "type": "bytes32"
+            }
+          ],
+          "internalType": "struct IChioRootRegistry.RootEntry",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "identityRegistry",
+      "outputs": [
+        {
+          "internalType": "contract IChioIdentityRegistry",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "publisher",
+          "type": "address"
+        }
+      ],
+      "name": "isAuthorizedPublisher",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "merkleRoot",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint64",
+          "name": "checkpointSeq",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "batchStartSeq",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "batchEndSeq",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "treeSize",
+          "type": "uint64"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "operatorKeyHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "publishRoot",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32[]",
+          "name": "merkleRoots",
+          "type": "bytes32[]"
+        },
+        {
+          "internalType": "uint64[]",
+          "name": "checkpointSeqs",
+          "type": "uint64[]"
+        },
+        {
+          "internalType": "uint64[]",
+          "name": "batchStartSeqs",
+          "type": "uint64[]"
+        },
+        {
+          "internalType": "uint64[]",
+          "name": "batchEndSeqs",
+          "type": "uint64[]"
+        },
+        {
+          "internalType": "uint64[]",
+          "name": "treeSizes",
+          "type": "uint64[]"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "operatorKeyHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "publishRootBatch",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "delegate",
+          "type": "address"
+        },
+        {
+          "internalType": "uint64",
+          "name": "expiresAt",
+          "type": "uint64"
+        }
+      ],
+      "name": "registerDelegate",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "delegate",
+          "type": "address"
+        }
+      ],
+      "name": "revokeDelegate",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32[]",
+          "name": "",
+          "type": "bytes32[]"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "name": "verifyInclusion",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32[]",
+              "name": "auditPath",
+              "type": "bytes32[]"
+            },
+            {
+              "internalType": "uint256",
+              "name": "leafIndex",
+              "type": "uint256"
+            },
+            {
+              "internalType": "uint256",
+              "name": "treeSize",
+              "type": "uint256"
+            }
+          ],
+          "internalType": "struct ChioMerkle.Proof",
+          "name": "proof",
+          "type": "tuple"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "root",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "leafHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        }
+      ],
+      "name": "verifyInclusionDetailed",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "bytecode": "60a060405234801561001057600080fd5b5060405161174e38038061174e83398101604081905261002f91610040565b6001600160a01b0316608052610070565b60006020828403121561005257600080fd5b81516001600160a01b038116811461006957600080fd5b9392505050565b6080516116a86100a66000396000818160e601528181610467015281816104f8015281816105bd0152610b2201526116a86000f3fe608060405234801561001057600080fd5b50600436106100b45760003560e01c80638ba6d255116100715780638ba6d255146101715780639aaf184f146102d1578063bfb700ac146102e4578063d2aa1c74146102f7578063eb81736e146103d0578063fa352c001461041a57600080fd5b80630e3f5818146100b9578063134e18f4146100e1578063300bfd3c14610120578063330010f71461013557806338334b701461014b57806384dcfe171461015e575b600080fd5b6100cc6100c736600461110f565b61042d565b60405190151581526020015b60405180910390f35b6101087f000000000000000000000000000000000000000000000000000000000000000081565b6040516001600160a01b0390911681526020016100d8565b61013361012e36600461115d565b6105a8565b005b61013d600381565b6040519081526020016100d8565b6100cc6101593660046111d6565b61079f565b61013361016c366004611240565b6107bd565b61024e61017f366004611369565b6040805160e081018252600080825260208201819052918101829052606081018290526080810182905260a0810182905260c0810191909152506001600160a01b03166000908152602081815260408083206002808452828520546001600160401b03908116865291845293829020825160e08101845281548152600182015480841695820195909552600160401b8504831693810193909352600160801b840482166060840152600160c01b909304811660808301529282015490921660a08301526003015460c082015290565b6040516100d89190600060e082019050825182526001600160401b0360208401511660208301526001600160401b0360408401511660408301526001600160401b0360608401511660608301526001600160401b0360808401511660808301526001600160401b0360a08401511660a083015260c083015160c083015292915050565b6100cc6102df366004611386565b6108ed565b6101336102f23660046113ed565b610936565b61024e61030536600461115d565b6040805160e081018252600080825260208201819052918101829052606081018290526080810182905260a0810182905260c0810191909152506001600160a01b0382166000908152602081815260408083206001600160401b03808616855290835292819020815160e08101835281548152600182015480861694820194909452600160401b8404851692810192909252600160801b830484166060830152600160c01b90920483166080820152600282015490921660a08301526003015460c082015292915050565b6104026103de366004611369565b6001600160a01b03166000908152600260205260409020546001600160401b031690565b6040516001600160401b0390911681526020016100d8565b610133610428366004611369565b61094f565b6000826001600160a01b0316826001600160a01b0316036104d9576040516336b87bd760e11b81526001600160a01b0384811660048301527f00000000000000000000000000000000000000000000000000000000000000001690636d70f7ae90602401602060405180830381865afa1580156104ae573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906104d29190611482565b90506105a2565b6040516336b87bd760e11b81526001600160a01b0384811660048301527f00000000000000000000000000000000000000000000000000000000000000001690636d70f7ae90602401602060405180830381865afa15801561053f573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906105639190611482565b801561059f57506001600160a01b03808416600090815260036020908152604080832093861683529290522054426001600160401b0390911610155b90505b92915050565b6040516336b87bd760e11b81523360048201527f00000000000000000000000000000000000000000000000000000000000000006001600160a01b031690636d70f7ae90602401602060405180830381865afa15801561060c573d6000803e3d6000fd5b505050506040513d601f19601f820116820180604052508101906106309190611482565b61064d57604051632e43095360e01b815260040160405180910390fd5b6001600160a01b038216158061066b57506001600160a01b03821633145b8061067f575042816001600160401b031611155b1561069d57604051632d618d8160e21b815260040160405180910390fd5b3360009081526003602090815260408083206001600160a01b03861684529091529020546001600160401b0316428110158061072357336000908152600460205260408120546106ee9060016114b3565b90506003811115610712576040516303e240fb60e41b815260040160405180910390fd5b336000908152600460205260409020555b3360008181526003602090815260408083206001600160a01b03891680855290835292819020805467ffffffffffffffff19166001600160401b03891690811790915590519081529192917fb4c62b0bbb7faf08a5a63a4cfc204a4f7f869790a2f672bc8c90b01e062ae8d7910160405180910390a350505050565b60006040516001626feff560e01b0319815260040160405180910390fd5b898015806107cb5750888114155b806107d65750868114155b806107e15750848114155b806107ec5750828114155b1561080a57604051631d29d80d60e31b815260040160405180910390fd5b60005b818110156108dd576108d58e338f8f8581811061082c5761082c6114c6565b905060200201358e8e86818110610845576108456114c6565b905060200201602081019061085a91906114dc565b8d8d8781811061086c5761086c6114c6565b905060200201602081019061088191906114dc565b8c8c88818110610893576108936114c6565b90506020020160208101906108a891906114dc565b8b8b898181106108ba576108ba6114c6565b90506020020160208101906108cf91906114dc565b8a610a31565b60010161080d565b5050505050505050505050505050565b6001600160a01b038116600090815260016020908152604080832086845290915281205460ff166109205750600061092e565b61092b858585610e8f565b90505b949350505050565b6109468733888888888888610a31565b50505050505050565b3360009081526003602090815260408083206001600160a01b03851684529091528120546001600160401b03169081900361099d57604051632d618d8160e21b815260040160405180910390fd5b42816001600160401b0316106109d3573360009081526004602052604081208054600192906109cd9084906114f9565b90915550505b3360008181526003602090815260408083206001600160a01b0387168085529252808320805467ffffffffffffffff19169055519092917f76e6646868d096078ac7f3f1401c3aaa55dc84890ec74b99c699e4754714b18e91a35050565b610a3b888861042d565b610a5857604051632e43095360e01b815260040160405180910390fd5b85610a7657604051639dd854d360e01b815260040160405180910390fd5b826001600160401b0316846001600160401b03161180610a9d57506001600160401b038216155b15610abb57604051631d29d80d60e31b815260040160405180910390fd5b6001600160a01b0388166000908152600260205260409020546001600160401b0390811690861611610b005760405163a5f7673d60e01b815260040160405180910390fd5b604051631619718360e21b81526001600160a01b0389811660048301526000917f000000000000000000000000000000000000000000000000000000000000000090911690635865c60c90602401608060405180830381865afa158015610b6b573d6000803e3d6000fd5b505050506040513d601f19601f82011682018060405250810190610b8f9190611517565b80519091508214610bb3576040516344fa06f760e01b815260040160405180910390fd5b60006040518060e00160405280898152602001886001600160401b03168152602001876001600160401b03168152602001866001600160401b03168152602001856001600160401b03168152602001426001600160401b03168152602001848152509050806000808c6001600160a01b03166001600160a01b031681526020019081526020016000206000896001600160401b03166001600160401b031681526020019081526020016000206000820151816000015560208201518160010160006101000a8154816001600160401b0302191690836001600160401b0316021790555060408201518160010160086101000a8154816001600160401b0302191690836001600160401b0316021790555060608201518160010160106101000a8154816001600160401b0302191690836001600160401b0316021790555060808201518160010160186101000a8154816001600160401b0302191690836001600160401b0316021790555060a08201518160020160006101000a8154816001600160401b0302191690836001600160401b0316021790555060c0820151816003015590505086600260008c6001600160a01b03166001600160a01b0316815260200190815260200160002060006101000a8154816001600160401b0302191690836001600160401b0316021790555060018060008c6001600160a01b03166001600160a01b0316815260200190815260200160002060008a815260200190815260200160002060006101000a81548160ff021916908315150217905550866001600160401b0316896001600160a01b03168b6001600160a01b03167f3542b66d1d0af326572700594387dc8ec107fd953cf1f042bdd38e9a8d80e1b78b8a8a8a8860a001518b604051610e7b969594939291909586526001600160401b03948516602087015292841660408601529083166060850152909116608083015260a082015260c00190565b60405180910390a450505050505050505050565b600060408401351580610eaa57508360400135846020013510155b15610eb7575060006110e0565b816020850135604086013560005b60018211156110c057610ed96002846115b9565b600003610fc75781610eec8460016114b3565b1015610fc257610efc88806115cd565b90508110610f115760009450505050506110e0565b6002600160f81b85610f238b806115cd565b85818110610f3357610f336114c6565b6040516001600160f81b0319909516602086810191909152602186019490945292909202013560418301525060610160408051601f1981840301815290829052610f7c91611616565b602060405180830381855afa158015610f99573d6000803e3d6000fd5b5050506040513d601f19601f82011682018060405250810190610fbc9190611645565b93506001015b611095565b610fd188806115cd565b90508110610fe65760009450505050506110e0565b6002600160f81b610ff78a806115cd565b84818110611007576110076114c6565b6040516001600160f81b03199094166020858101919091520291909101356021830152506041810186905260610160408051601f198184030181529082905261104f91611616565b602060405180830381855afa15801561106c573d6000803e3d6000fd5b5050506040513d601f19601f8201168201806040525081019061108f9190611645565b93506001015b6110a060028461165e565b925060026110af8360016114b3565b6110b9919061165e565b9150610ec5565b6110ca88806115cd565b9050811480156110d957508684145b9450505050505b9392505050565b6001600160a01b03811681146110fc57600080fd5b50565b803561110a816110e7565b919050565b6000806040838503121561112257600080fd5b823561112d816110e7565b9150602083013561113d816110e7565b809150509250929050565b6001600160401b03811681146110fc57600080fd5b6000806040838503121561117057600080fd5b823561117b816110e7565b9150602083013561113d81611148565b60008083601f84011261119d57600080fd5b5081356001600160401b038111156111b457600080fd5b6020830191508360208260051b85010111156111cf57600080fd5b9250929050565b6000806000806000608086880312156111ee57600080fd5b85356001600160401b0381111561120457600080fd5b6112108882890161118b565b90965094505060208601359250604086013591506060860135611232816110e7565b809150509295509295909350565b60008060008060008060008060008060008060e08d8f03121561126257600080fd5b61126b8d6110ff565b9b506001600160401b0360208e0135111561128557600080fd5b6112958e60208f01358f0161118b565b909b5099506001600160401b0360408e013511156112b257600080fd5b6112c28e60408f01358f0161118b565b90995097506001600160401b0360608e013511156112df57600080fd5b6112ef8e60608f01358f0161118b565b90975095506001600160401b0360808e0135111561130c57600080fd5b61131c8e60808f01358f0161118b565b90955093506001600160401b0360a08e0135111561133957600080fd5b6113498e60a08f01358f0161118b565b9c9f9b9e50999c989b979a9699959894979396939460c001359392505050565b60006020828403121561137b57600080fd5b81356110e0816110e7565b6000806000806080858703121561139c57600080fd5b84356001600160401b038111156113b257600080fd5b8501606081880312156113c457600080fd5b9350602085013592506040850135915060608501356113e2816110e7565b939692955090935050565b600080600080600080600060e0888a03121561140857600080fd5b8735611413816110e7565b965060208801359550604088013561142a81611148565b9450606088013561143a81611148565b9350608088013561144a81611148565b925060a088013561145a81611148565b96999598509396929591949193505060c09091013590565b8051801515811461110a57600080fd5b60006020828403121561149457600080fd5b61059f82611472565b634e487b7160e01b600052601160045260246000fd5b808201808211156105a2576105a261149d565b634e487b7160e01b600052603260045260246000fd5b6000602082840312156114ee57600080fd5b81356110e081611148565b818103818111156105a2576105a261149d565b805161110a81611148565b6000608082840312801561152a57600080fd5b60009050604051608081018181106001600160401b038211171561155c57634e487b7160e01b83526041600452602483fd5b6040528351815260208401519150611573826110e7565b8160208201526115856040850161150c565b604082015261159660608501611472565b6060820152949350505050565b634e487b7160e01b600052601260045260246000fd5b6000826115c8576115c86115a3565b500690565b6000808335601e198436030181126115e457600080fd5b8301803591506001600160401b038211156115fe57600080fd5b6020019150600581901b36038213156111cf57600080fd5b6000825160005b81811015611637576020818601810151858301520161161d565b506000920191825250919050565b60006020828403121561165757600080fd5b5051919050565b60008261166d5761166d6115a3565b50049056fea2646970667358221220f24a408ea7f0b11ec818a7f3e10992b365a89bd70086ebcb4cd4f941ff90600e64736f6c634300081e0033",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.30+commit.73712a01\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"identityRegistry_\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"DelegateLimitReached\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidBatchRange\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidCheckpointSequence\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidDelegate\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"InvalidMerkleRoot\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"OperatorKeyHashMismatch\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"OperatorNotAuthorized\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProofMetadataRequired\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"delegate\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"expiresAt\",\"type\":\"uint64\"}],\"name\":\"DelegateRegistered\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"delegate\",\"type\":\"address\"}],\"name\":\"DelegateRevoked\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"publisher\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"uint64\",\"name\":\"checkpointSeq\",\"type\":\"uint64\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"merkleRoot\",\"type\":\"bytes32\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"batchStartSeq\",\"type\":\"uint64\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"batchEndSeq\",\"type\":\"uint64\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"treeSize\",\"type\":\"uint64\"},{\"indexed\":false,\"internalType\":\"uint64\",\"name\":\"publishedAt\",\"type\":\"uint64\"},{\"indexed\":false,\"internalType\":\"bytes32\",\"name\":\"operatorKeyHash\",\"type\":\"bytes32\"}],\"name\":\"RootPublished\",\"type\":\"event\"},{\"inputs\":[],\"name\":\"MAX_ACTIVE_DELEGATES\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"}],\"name\":\"getLatestRoot\",\"outputs\":[{\"components\":[{\"internalType\":\"bytes32\",\"name\":\"merkleRoot\",\"type\":\"bytes32\"},{\"internalType\":\"uint64\",\"name\":\"checkpointSeq\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"batchStartSeq\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"batchEndSeq\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"treeSize\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"publishedAt\",\"type\":\"uint64\"},{\"internalType\":\"bytes32\",\"name\":\"operatorKeyHash\",\"type\":\"bytes32\"}],\"internalType\":\"struct IChioRootRegistry.RootEntry\",\"name\":\"\",\"type\":\"tuple\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"}],\"name\":\"getLatestSeq\",\"outputs\":[{\"internalType\":\"uint64\",\"name\":\"\",\"type\":\"uint64\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"},{\"internalType\":\"uint64\",\"name\":\"checkpointSeq\",\"type\":\"uint64\"}],\"name\":\"getRoot\",\"outputs\":[{\"components\":[{\"internalType\":\"bytes32\",\"name\":\"merkleRoot\",\"type\":\"bytes32\"},{\"internalType\":\"uint64\",\"name\":\"checkpointSeq\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"batchStartSeq\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"batchEndSeq\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"treeSize\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"publishedAt\",\"type\":\"uint64\"},{\"internalType\":\"bytes32\",\"name\":\"operatorKeyHash\",\"type\":\"bytes32\"}],\"internalType\":\"struct IChioRootRegistry.RootEntry\",\"name\":\"\",\"type\":\"tuple\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"identityRegistry\",\"outputs\":[{\"internalType\":\"contract IChioIdentityRegistry\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"publisher\",\"type\":\"address\"}],\"name\":\"isAuthorizedPublisher\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"},{\"internalType\":\"bytes32\",\"name\":\"merkleRoot\",\"type\":\"bytes32\"},{\"internalType\":\"uint64\",\"name\":\"checkpointSeq\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"batchStartSeq\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"batchEndSeq\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"treeSize\",\"type\":\"uint64\"},{\"internalType\":\"bytes32\",\"name\":\"operatorKeyHash\",\"type\":\"bytes32\"}],\"name\":\"publishRoot\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"},{\"internalType\":\"bytes32[]\",\"name\":\"merkleRoots\",\"type\":\"bytes32[]\"},{\"internalType\":\"uint64[]\",\"name\":\"checkpointSeqs\",\"type\":\"uint64[]\"},{\"internalType\":\"uint64[]\",\"name\":\"batchStartSeqs\",\"type\":\"uint64[]\"},{\"internalType\":\"uint64[]\",\"name\":\"batchEndSeqs\",\"type\":\"uint64[]\"},{\"internalType\":\"uint64[]\",\"name\":\"treeSizes\",\"type\":\"uint64[]\"},{\"internalType\":\"bytes32\",\"name\":\"operatorKeyHash\",\"type\":\"bytes32\"}],\"name\":\"publishRootBatch\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"delegate\",\"type\":\"address\"},{\"internalType\":\"uint64\",\"name\":\"expiresAt\",\"type\":\"uint64\"}],\"name\":\"registerDelegate\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"delegate\",\"type\":\"address\"}],\"name\":\"revokeDelegate\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"bytes32[]\",\"name\":\"\",\"type\":\"bytes32[]\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"name\":\"verifyInclusion\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"components\":[{\"internalType\":\"bytes32[]\",\"name\":\"auditPath\",\"type\":\"bytes32[]\"},{\"internalType\":\"uint256\",\"name\":\"leafIndex\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"treeSize\",\"type\":\"uint256\"}],\"internalType\":\"struct ChioMerkle.Proof\",\"name\":\"proof\",\"type\":\"tuple\"},{\"internalType\":\"bytes32\",\"name\":\"root\",\"type\":\"bytes32\"},{\"internalType\":\"bytes32\",\"name\":\"leafHash\",\"type\":\"bytes32\"},{\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"}],\"name\":\"verifyInclusionDetailed\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"src/ChioRootRegistry.sol\":\"ChioRootRegistry\"},\"evmVersion\":\"paris\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[]},\"sources\":{\"src/ChioRootRegistry.sol\":{\"keccak256\":\"0xe097199c57fd2831f41b8928407ec059016f5c3cbfdd1c84e537e687f28b009a\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://003ab360bfbab8ee1202a2b811b941f8ed6fcbf6f6d6f4a6c870adb3b999ef74\",\"dweb:/ipfs/QmNgZdjADDXGnez3qpTz9MnihDN86GkkvBk1hCrpBvnoV5\"]},\"src/interfaces/IChioIdentityRegistry.sol\":{\"keccak256\":\"0x59370a98b3b60af97e603f91539411be9d270c01df8eb9fd3a72a7c44edbede6\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://5ef4f18bd54c92a82701a3bd309bb521be5c3ec203b282eddd95a333b2ca9d8f\",\"dweb:/ipfs/QmbJ5TvBEaLdXYjNWbFzaex2jqF6or2SnEzpwgy2Ka31qc\"]},\"src/interfaces/IChioRootRegistry.sol\":{\"keccak256\":\"0xe8f418a5ac300ce92c986e2882e5d565a076e54972672e9d384383cda0ad983c\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://f16c7959393e12875423d8275ece3e70637e9c212fa1173aeab8c06974152aa7\",\"dweb:/ipfs/QmWrTcdVcZ9cV9V4jDCcHg5Qzi4AzhstHrY8Wn9p42tpf4\"]},\"src/lib/ChioMerkle.sol\":{\"keccak256\":\"0xbc7486a0eedec25684fff560fe1349164b83b859e882c3d891e53ffa5ce6a8db\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://b773aa0557b00455b28c6ba6e4b841fbf82645f3f1bbfbb51379aaa0703c8edf\",\"dweb:/ipfs/QmSCdZQ4SHFEh8tfCVHGv8pDXobx7zDQfcY7B9hzLrrA83\"]}},\"version\":1}"
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "chio.runtime.terminal-receipt.v1",
+  "receipt_id": "receipt-runtime-missing-lease",
+  "terminal_status": "allowed_executed",
+  "policy_digest": "e11a5ed0b53c7f77171213c4cb1673edcc3ebb38bd7dd55498ea38dc6309db97",
+  "execution_lease_ref": "lease-runtime-valid"
+}

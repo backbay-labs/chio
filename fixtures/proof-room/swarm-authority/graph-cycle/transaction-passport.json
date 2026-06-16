@@ -1,0 +1,1 @@
+{"schema":"chio.transaction-passport.v1","id":"passport-swarm-valid","issued_at":"2026-06-10T00:00:00Z","evidence_graph_sha256":"624b12662714927412f58b1522879d4b926258535f2316061775307d3711b398","evidence_graph_path":"evidence-graph.json","verifier_policy_sha256":"74ce4b853696b6228ac5c494d4c1ef56f3255e58419c3fd9a78c59331af89901","verifier_policy_path":"verifier-policy.json"}

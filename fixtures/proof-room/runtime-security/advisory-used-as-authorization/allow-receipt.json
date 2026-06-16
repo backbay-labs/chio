@@ -1,0 +1,7 @@
+{
+  "schema": "chio.runtime.terminal-receipt.v1",
+  "receipt_id": "receipt-runtime-advisory",
+  "terminal_status": "allowed_executed",
+  "policy_digest": "b55397a22ec28eca1c1b561c550a887ef10f07dfe1d95ec38a7318322163b9fb",
+  "execution_lease_ref": "lease-runtime-valid"
+}

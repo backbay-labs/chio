@@ -1,0 +1,28 @@
+{
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "envelope_id": "agent-web-envelope-slsa-valid",
+  "transaction_passport_ref": "passport-agent-web-valid",
+  "source_protocol": "slsa-provenance",
+  "source_protocol_version": "v1",
+  "external_subject": "slsa-provenance-agent-web-valid",
+  "external_subject_path": "external/slsa-provenance.json",
+  "external_subject_digest": "ad582be49f021ba12d60f1882c2b213994a2e4eaff2770745fbbbfc71b5924f1",
+  "external_subject_signature_ref": "",
+  "projection_manifest_ref": "projection-slsa-valid",
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "receipt_refs": [
+    "receipt-agent-web-slsa-provenance-allow"
+  ],
+  "disclosure_capsule_refs": [],
+  "settlement_refs": [],
+  "risk_refs": [],
+  "limitations": [
+    "SLSA provenance projection does not make build provenance evidence equivalent to Chio authority."
+  ],
+  "signature": "sig-agent-web-slsa-envelope"
+}

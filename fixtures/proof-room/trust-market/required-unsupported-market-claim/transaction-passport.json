@@ -1,0 +1,9 @@
+{
+  "schema": "chio.transaction-passport.v1",
+  "id": "passport-trust-market-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "evidence_graph_sha256": "8b28939060de765f020c3554299a5a90aabb4edfccbb0635af9750accadcc57b",
+  "evidence_graph_path": "evidence-graph.json",
+  "verifier_policy_sha256": "4fea8e7277fadb07d5b82c78b6e557202f9c52d4c4a73e8345984d32933dd450",
+  "verifier_policy_path": "verifier-policy.json"
+}

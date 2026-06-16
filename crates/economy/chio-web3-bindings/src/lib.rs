@@ -17,31 +17,26 @@ pub use interfaces::{
 };
 
 pub const CHIO_ROOT_REGISTRY_INTERFACE_ARTIFACT: &str =
-    include_str!("../../../../contracts/artifacts/interfaces/IChioRootRegistry.json");
+    include_str!("../artifacts/interfaces/IChioRootRegistry.json");
 pub const CHIO_IDENTITY_REGISTRY_INTERFACE_ARTIFACT: &str =
-    include_str!("../../../../contracts/artifacts/interfaces/IChioIdentityRegistry.json");
+    include_str!("../artifacts/interfaces/IChioIdentityRegistry.json");
 pub const CHIO_ESCROW_INTERFACE_ARTIFACT: &str =
-    include_str!("../../../../contracts/artifacts/interfaces/IChioEscrow.json");
+    include_str!("../artifacts/interfaces/IChioEscrow.json");
 pub const CHIO_BOND_VAULT_INTERFACE_ARTIFACT: &str =
-    include_str!("../../../../contracts/artifacts/interfaces/IChioBondVault.json");
+    include_str!("../artifacts/interfaces/IChioBondVault.json");
 pub const CHIO_PRICE_RESOLVER_INTERFACE_ARTIFACT: &str =
-    include_str!("../../../../contracts/artifacts/interfaces/IChioPriceResolver.json");
+    include_str!("../artifacts/interfaces/IChioPriceResolver.json");
 
-pub const CHIO_ROOT_REGISTRY_ARTIFACT: &str =
-    include_str!("../../../../contracts/artifacts/ChioRootRegistry.json");
+pub const CHIO_ROOT_REGISTRY_ARTIFACT: &str = include_str!("../artifacts/ChioRootRegistry.json");
 pub const CHIO_IDENTITY_REGISTRY_ARTIFACT: &str =
-    include_str!("../../../../contracts/artifacts/ChioIdentityRegistry.json");
-pub const CHIO_ESCROW_ARTIFACT: &str =
-    include_str!("../../../../contracts/artifacts/ChioEscrow.json");
-pub const CHIO_BOND_VAULT_ARTIFACT: &str =
-    include_str!("../../../../contracts/artifacts/ChioBondVault.json");
-pub const CHIO_PRICE_RESOLVER_ARTIFACT: &str =
-    include_str!("../../../../contracts/artifacts/ChioPriceResolver.json");
+    include_str!("../artifacts/ChioIdentityRegistry.json");
+pub const CHIO_ESCROW_ARTIFACT: &str = include_str!("../artifacts/ChioEscrow.json");
+pub const CHIO_BOND_VAULT_ARTIFACT: &str = include_str!("../artifacts/ChioBondVault.json");
+pub const CHIO_PRICE_RESOLVER_ARTIFACT: &str = include_str!("../artifacts/ChioPriceResolver.json");
 
-pub const CHIO_LOCAL_DEVNET_DEPLOYMENT: &str =
-    include_str!("../../../../contracts/deployments/local-devnet.json");
+pub const CHIO_LOCAL_DEVNET_DEPLOYMENT: &str = include_str!("../deployments/local-devnet.json");
 pub const CHIO_LOCAL_DEVNET_QUALIFICATION_REPORT: &str =
-    include_str!("../../../../contracts/reports/local-devnet-qualification.json");
+    include_str!("../reports/local-devnet-qualification.json");
 
 #[cfg(test)]
 mod tests {

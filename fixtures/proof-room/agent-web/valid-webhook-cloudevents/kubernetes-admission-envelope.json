@@ -1,0 +1,28 @@
+{
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "envelope_id": "agent-web-envelope-kubernetes-admission-valid",
+  "transaction_passport_ref": "passport-agent-web-valid",
+  "source_protocol": "kubernetes-admission",
+  "source_protocol_version": "admissionreview-v1",
+  "external_subject": "kubernetes-admission-agent-web-valid",
+  "external_subject_path": "external/kubernetes-admission-review.json",
+  "external_subject_digest": "31b9b0eaea59ee2a27b78cbe397db12471086e48bc4907694942db6057010827",
+  "external_subject_signature_ref": "",
+  "projection_manifest_ref": "projection-kubernetes-admission-valid",
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "receipt_refs": [
+    "receipt-agent-web-kubernetes-admission-allow"
+  ],
+  "disclosure_capsule_refs": [],
+  "settlement_refs": [],
+  "risk_refs": [],
+  "limitations": [
+    "Kubernetes admission projection does not make cluster admission evidence equivalent to Chio authority."
+  ],
+  "signature": "sig-agent-web-kubernetes-admission-envelope"
+}

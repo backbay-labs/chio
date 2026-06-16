@@ -1,0 +1,20 @@
+{
+  "authorization_context_digest": "a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7",
+  "builder_identity_digest": "a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4",
+  "dsse_envelope_digest": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+  "id": "in-toto-statement-agent-web-valid",
+  "mediated_by_chio_receipt": true,
+  "object_kind": "in_toto_statement",
+  "payload_digest": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "payload_type": "application/vnd.in-toto+json",
+  "predicate_digest": "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+  "predicate_type": "https://chio.dev/predicates/agent-web-invocation/v1",
+  "receipt_refs": [
+    "receipt-agent-web-in-toto-statement-allow"
+  ],
+  "signature_count": 1,
+  "signer_identity_digest": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+  "statement_type": "https://in-toto.io/Statement/v1",
+  "subject_digest": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+  "verification_material_digest": "a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6"
+}

@@ -1,0 +1,101 @@
+{
+  "schema": "chio.risk.comptroller-report.v1",
+  "id": "risk-comptroller-enterprise-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "passport_id": "passport-enterprise-valid",
+  "order_id": "order-commerce-001",
+  "subject": "did:chio:buyer-enterprise",
+  "verdict": "verified",
+  "risk_state": "reconciled",
+  "facility": {
+    "facility_id": "facility-enterprise-valid",
+    "state": "settlement_matched",
+    "capital_currency": "USD",
+    "capital_units": 10000,
+    "reserve_currency": "USD",
+    "reserve_units": 1200,
+    "reserve_ref": "reserve-enterprise-valid"
+  },
+  "coverage": {
+    "coverage_id": "coverage-enterprise-valid",
+    "order_id": "order-commerce-001",
+    "subject": "did:chio:buyer-enterprise",
+    "currency": "USD",
+    "exposure_units": 5000,
+    "reserve_ref": "reserve-enterprise-valid",
+    "status": "bound"
+  },
+  "reconciliation": {
+    "order_id": "order-commerce-001",
+    "currency": "USD",
+    "exposure_units": 5000,
+    "reserve_units": 1200,
+    "consumed_reserve_units": 0,
+    "payout_units": 0,
+    "settlement_units": 0,
+    "status": "balanced"
+  },
+  "verified_claims": [
+    "claim.risk.comptroller_report_bound"
+  ],
+  "facility_lifecycle": [
+    {
+      "transition_id": "facility-transition-underwriting-ready",
+      "from_state": "evidence_cold",
+      "to_state": "underwriting_ready",
+      "authority_receipt_ref": "approval-case",
+      "evidence_ref": "data-governance-report"
+    },
+    {
+      "transition_id": "facility-transition-facility-granted",
+      "from_state": "underwriting_ready",
+      "to_state": "facility_granted",
+      "authority_receipt_ref": "approval-case",
+      "evidence_ref": "data-governance-report"
+    },
+    {
+      "transition_id": "facility-transition-reserve-held",
+      "from_state": "facility_granted",
+      "to_state": "reserve_held",
+      "authority_receipt_ref": "approval-case",
+      "evidence_ref": "data-governance-report"
+    },
+    {
+      "transition_id": "facility-transition-coverage-bound",
+      "from_state": "reserve_held",
+      "to_state": "coverage_bound",
+      "authority_receipt_ref": "approval-case",
+      "evidence_ref": "data-governance-report"
+    },
+    {
+      "transition_id": "facility-transition-settlement-matched",
+      "from_state": "coverage_bound",
+      "to_state": "settlement_matched",
+      "authority_receipt_ref": "approval-case",
+      "evidence_ref": "evidence-export-bundle"
+    }
+  ],
+  "actuarial_evidence": {
+    "model_ref": "actuarial-model-enterprise-valid",
+    "evidence_ref": "data-governance-report",
+    "currency": "USD",
+    "supported_exposure_units": 6000,
+    "confidence_level_bps": 9500,
+    "backtest": {
+      "backtest_id": "actuarial-backtest-enterprise-valid",
+      "window_start": "2026-03-10T00:00:00Z",
+      "window_end": "2026-06-10T00:00:00Z",
+      "sample_size": 120,
+      "observed_loss_ratio_bps": 1800,
+      "maximum_loss_ratio_bps": 2500,
+      "status": "passed"
+    }
+  },
+  "insurance_copy": {
+    "copy_id": "insurance-copy-enterprise-valid",
+    "actuarial_evidence_ref": "actuarial-model-enterprise-valid",
+    "currency": "USD",
+    "maximum_coverage_units": 7000,
+    "coverage_statement": "coverage limited to supported exposure"
+  }
+}

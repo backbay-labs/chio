@@ -1,0 +1,64 @@
+{
+  "schema": "chio.risk.comptroller-report.v1",
+  "id": "risk-comptroller-enterprise-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "passport_id": "passport-enterprise-valid",
+  "order_id": "order-commerce-001",
+  "subject": "did:chio:buyer-enterprise",
+  "verdict": "verified",
+  "risk_state": "reconciled",
+  "facility": {
+    "facility_id": "facility-enterprise-valid",
+    "state": "reserve_held",
+    "capital_currency": "USD",
+    "capital_units": 10000,
+    "reserve_currency": "USD",
+    "reserve_units": 1200,
+    "reserve_ref": "reserve-enterprise-valid"
+  },
+  "coverage": {
+    "coverage_id": "coverage-enterprise-valid",
+    "order_id": "order-commerce-001",
+    "subject": "did:chio:buyer-other",
+    "currency": "USD",
+    "exposure_units": 5000,
+    "reserve_ref": "reserve-enterprise-valid",
+    "status": "bound"
+  },
+  "reconciliation": {
+    "order_id": "order-commerce-001",
+    "currency": "USD",
+    "exposure_units": 5000,
+    "reserve_units": 1200,
+    "consumed_reserve_units": 0,
+    "payout_units": 0,
+    "settlement_units": 0,
+    "status": "balanced"
+  },
+  "verified_claims": [
+    "claim.risk.comptroller_report_bound"
+  ],
+  "actuarial_evidence": {
+    "model_ref": "actuarial-model-enterprise-valid",
+    "evidence_ref": "data-governance-report",
+    "currency": "USD",
+    "supported_exposure_units": 5000,
+    "confidence_level_bps": 9500,
+    "backtest": {
+      "backtest_id": "actuarial-backtest-enterprise-valid",
+      "window_start": "2026-03-10T00:00:00Z",
+      "window_end": "2026-06-10T00:00:00Z",
+      "sample_size": 120,
+      "observed_loss_ratio_bps": 1800,
+      "maximum_loss_ratio_bps": 2500,
+      "status": "passed"
+    }
+  },
+  "insurance_copy": {
+    "copy_id": "insurance-copy-enterprise-valid",
+    "actuarial_evidence_ref": "actuarial-model-enterprise-valid",
+    "currency": "USD",
+    "maximum_coverage_units": 5000,
+    "coverage_statement": "coverage limited to supported exposure"
+  }
+}

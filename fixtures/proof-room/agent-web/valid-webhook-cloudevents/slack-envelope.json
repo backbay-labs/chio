@@ -1,0 +1,28 @@
+{
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "envelope_id": "agent-web-envelope-slack-valid",
+  "transaction_passport_ref": "passport-agent-web-valid",
+  "source_protocol": "slack",
+  "source_protocol_version": "web-api-2026-06",
+  "external_subject": "slack-message-agent-web-valid",
+  "external_subject_path": "external/slack-message.json",
+  "external_subject_digest": "1f517bad188d88fa4f5b0c232de6d9d36563ba3043844e30a283dadcd1a20c9c",
+  "external_subject_signature_ref": "",
+  "projection_manifest_ref": "projection-slack-valid",
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "receipt_refs": [
+    "receipt-agent-web-slack-message-allow"
+  ],
+  "disclosure_capsule_refs": [],
+  "settlement_refs": [],
+  "risk_refs": [],
+  "limitations": [
+    "Slack projection does not make provider action evidence equivalent to Chio authority."
+  ],
+  "signature": "sig-agent-web-slack-envelope"
+}

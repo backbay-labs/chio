@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-swarm/v1/budget-pool.schema.json",
+  "title": "Chio Swarm Budget Pool",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "poolId",
+    "graphId",
+    "currency",
+    "totalUnits",
+    "allocations"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.swarm.budget-pool.v1"
+    },
+    "poolId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "graphId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "currency": {
+      "type": "string",
+      "minLength": 1
+    },
+    "totalUnits": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "allocations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/allocation"
+      }
+    }
+  },
+  "$defs": {
+    "allocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allocationId",
+        "taskId",
+        "maxUnits"
+      ],
+      "properties": {
+        "allocationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maxUnits": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

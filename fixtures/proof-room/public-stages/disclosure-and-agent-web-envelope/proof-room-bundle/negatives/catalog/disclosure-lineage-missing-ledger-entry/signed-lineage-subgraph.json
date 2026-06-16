@@ -1,0 +1,35 @@
+{
+  "schema": "chio.lineage.signed-subgraph.v1",
+  "id": "lineage-subgraph-valid",
+  "transaction_passport_ref": "passport-disclosure-lineage-missing-ledger",
+  "root_receipt_ids": [
+    "receipt-root"
+  ],
+  "nodes": [
+    {
+      "id": "receipt-root",
+      "receipt_ref": "receipt-root",
+      "disclosure_state": "disclosed"
+    },
+    {
+      "id": "receipt-child",
+      "receipt_ref": "receipt-child",
+      "disclosure_state": "redacted"
+    }
+  ],
+  "edges": [
+    {
+      "from": "receipt-root",
+      "to": "receipt-child",
+      "relation": "continued"
+    }
+  ],
+  "redactions": [
+    {
+      "node_id": "receipt-child",
+      "reason": "privacy_profile"
+    }
+  ],
+  "subgraph_sha256": "9a4e1e9c597d81db9044fd88d5ffa8cac8572feb9e34994366f3355cfa9289bd",
+  "signature": "sig-sha256:9a4e1e9c597d81db9044fd88d5ffa8cac8572feb9e34994366f3355cfa9289bd"
+}

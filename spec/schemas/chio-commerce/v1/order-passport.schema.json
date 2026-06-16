@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-commerce/v1/order-passport.schema.json",
+  "title": "Chio Commerce Order Passport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "verdict",
+    "order_id",
+    "current_state",
+    "verified_claims"
+  ],
+  "properties": {
+    "schema": { "const": "chio.commerce.order-passport.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "verdict": { "type": "string", "enum": ["verified", "failed"] },
+    "order_id": { "type": "string", "minLength": 1 },
+    "current_state": { "type": "string", "minLength": 1 },
+    "verified_claims": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}

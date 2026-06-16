@@ -12,6 +12,12 @@ pub(crate) use receipt::*;
 #[path = "types/passport.rs"]
 mod passport_types;
 pub(crate) use passport_types::*;
+#[path = "types/proof.rs"]
+mod proof;
+pub(crate) use proof::*;
+#[path = "types/workflow.rs"]
+mod workflow;
+pub(crate) use workflow::*;
 #[path = "types/replay.rs"]
 mod replay;
 pub(crate) use replay::*;
@@ -356,6 +362,18 @@ pub(crate) enum Commands {
     Passport {
         #[command(subcommand)]
         command: PassportCommands,
+    },
+
+    /// Verify proof bundles and Transaction Passport artifacts.
+    Proof {
+        #[command(subcommand)]
+        command: ProofCommands,
+    },
+
+    /// Validate read-only workflow planning evidence before dispatch.
+    Workflow {
+        #[command(subcommand)]
+        command: WorkflowCommands,
     },
 
     /// Inspect local reputation scorecards from persisted receipts and lineage state.

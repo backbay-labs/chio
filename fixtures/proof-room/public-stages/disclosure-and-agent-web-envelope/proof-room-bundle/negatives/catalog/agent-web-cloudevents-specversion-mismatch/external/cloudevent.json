@@ -1,0 +1,1 @@
+{"specversion":"0.3","id":"event-agent-web-001","source":"urn:chio:test:agent-web","type":"dev.chio.agent.allowed","subject":"order-commerce-001","time":"2026-06-10T00:00:00Z","datacontenttype":"application/json","data_digest":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}

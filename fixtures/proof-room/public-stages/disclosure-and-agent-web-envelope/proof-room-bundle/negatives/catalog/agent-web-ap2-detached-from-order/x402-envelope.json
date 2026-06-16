@@ -1,0 +1,28 @@
+{
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "disclosure_capsule_refs": [],
+  "envelope_id": "agent-web-envelope-x402-valid",
+  "external_subject": "x402-payment-agent-web-valid",
+  "external_subject_digest": "e7d75d2805116356c8dfdcd6aa89de6ae1f6104d571943e174551549669c7a0c",
+  "external_subject_path": "external/x402-payment.json",
+  "external_subject_signature_ref": "",
+  "limitations": [
+    "x402 projection does not make payment protocol evidence equivalent to Chio authority."
+  ],
+  "projection_manifest_ref": "projection-x402-valid",
+  "receipt_refs": [
+    "receipt-agent-web-x402-payment-allow"
+  ],
+  "risk_refs": [],
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "settlement_refs": [],
+  "signature": "sig-agent-web-x402-envelope",
+  "source_protocol": "x402",
+  "source_protocol_version": "0.5",
+  "transaction_passport_ref": "passport-agent-web-valid"
+}

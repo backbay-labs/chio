@@ -1,0 +1,9 @@
+{
+  "schema": "chio.transaction-passport.v1",
+  "id": "passport-commerce-offline-psp-valid",
+  "issued_at": "2026-06-10T00:08:00Z",
+  "evidence_graph_sha256": "bf252d5abcf344b8220cc84d7e35f5afdd2120b0dc93d576956b2462ca7f3846",
+  "evidence_graph_path": "evidence-graph.json",
+  "verifier_policy_sha256": "06253b9686c75fb44dd36d818e0e04530dfe96f92acc29fbe2cc91d90c08c5af",
+  "verifier_policy_path": "verifier-policy.json"
+}

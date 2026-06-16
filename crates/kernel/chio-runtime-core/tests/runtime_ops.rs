@@ -34,10 +34,19 @@ fn loaded_weights_evidence(hash: &str) -> RuntimeProviderLoadedWeightsEvidence {
     }
 }
 
-fn model_card(weights_hash: &str, expires_at_unix_ms: i64) -> ModelCard {
-    let issued = Utc.with_ymd_and_hms(2026, 4, 30, 12, 0, 0).unwrap();
-    let expires = Utc.timestamp_millis_opt(expires_at_unix_ms).unwrap();
-    ModelCard::new(
+fn model_card(
+    weights_hash: &str,
+    expires_at_unix_ms: i64,
+) -> Result<ModelCard, Box<dyn std::error::Error>> {
+    let issued = Utc
+        .with_ymd_and_hms(2026, 4, 30, 12, 0, 0)
+        .single()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid issued timestamp"))?;
+    let expires = Utc
+        .timestamp_millis_opt(expires_at_unix_ms)
+        .single()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid expiry timestamp"))?;
+    Ok(ModelCard::new(
         weights_hash,
         StringSet::new(["tool:close_account", "tool:delete_account"]),
         StringSet::new(["tool:delete_account"]),
@@ -45,8 +54,7 @@ fn model_card(weights_hash: &str, expires_at_unix_ms: i64) -> ModelCard {
         "https://example.com/issuer",
         issued,
         expires,
-    )
-    .unwrap()
+    )?)
 }
 
 fn model_card_digest(card: &ModelCard) -> Result<String, Box<dyn std::error::Error>> {
@@ -1521,7 +1529,14 @@ fn runtime_ops_provider_binding_rejects_missing_model_card_when_required(
     binding.model_card_id = None;
     let document = provider_bindings_document(binding);
 
-    let error = validate_runtime_provider_bindings(&document).unwrap_err();
+    let error = match validate_runtime_provider_bindings(&document) {
+        Ok(()) => {
+            return Err(
+                io::Error::other("provider bindings validation unexpectedly passed").into(),
+            );
+        }
+        Err(error) => error,
+    };
 
     assert!(error
         .to_string()
@@ -1535,7 +1550,7 @@ fn runtime_ops_provider_health_accepts_required_model_card_with_loaded_hash(
     let card = model_card(
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         1_800_003_600_000,
-    );
+    )?;
     let mut binding = provider_binding(Some(WeightsBindingMode::Required));
     binding.model_card_digest = Some(model_card_digest(&card)?);
     let bindings = provider_bindings_document(binding);
@@ -1567,7 +1582,7 @@ fn runtime_ops_provider_health_accepts_prefixed_model_card_tool_binding(
     let card = model_card(
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         1_800_003_600_000,
-    );
+    )?;
     let mut binding = provider_binding(Some(WeightsBindingMode::Required));
     binding.tool_name = "tool:close_account".to_string();
     binding.model_card_digest = Some(model_card_digest(&card)?);
@@ -1599,7 +1614,7 @@ fn runtime_ops_provider_health_rejects_banned_model_card_tool_binding(
     let card = model_card(
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         1_800_003_600_000,
-    );
+    )?;
     let mut binding = provider_binding(Some(WeightsBindingMode::Required));
     binding.tool_name = "delete_account".to_string();
     binding.model_card_digest = Some(model_card_digest(&card)?);
@@ -1633,7 +1648,7 @@ fn runtime_ops_provider_health_rejects_model_card_without_observed_loaded_hash(
     let card = model_card(
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         1_800_003_600_000,
-    );
+    )?;
     let mut binding = provider_binding(Some(WeightsBindingMode::Required));
     binding.model_card_digest = Some(model_card_digest(&card)?);
     let bindings = provider_bindings_document(binding);
@@ -1662,7 +1677,7 @@ fn runtime_ops_provider_health_rejects_loaded_hash_mismatch(
     let card = model_card(
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         1_800_003_600_000,
-    );
+    )?;
     let mut binding = provider_binding(Some(WeightsBindingMode::Required));
     binding.model_card_digest = Some(model_card_digest(&card)?);
     let bindings = provider_bindings_document(binding);
@@ -1713,7 +1728,12 @@ fn runtime_ops_provider_health_report_rejects_accepted_failed_provider_check(
         checks: vec!["runtime_ops.provider_bindings_health".to_string()],
     };
 
-    let error = validate_runtime_provider_health_report(&report).unwrap_err();
+    let error = match validate_runtime_provider_health_report(&report) {
+        Ok(()) => {
+            return Err(io::Error::other("provider health validation unexpectedly passed").into());
+        }
+        Err(error) => error,
+    };
 
     assert!(error
         .to_string()
@@ -1748,7 +1768,12 @@ fn runtime_ops_provider_health_report_rejects_inconsistent_provider_counts(
         checks: vec!["runtime_ops.provider_bindings_health".to_string()],
     };
 
-    let error = validate_runtime_provider_health_report(&report).unwrap_err();
+    let error = match validate_runtime_provider_health_report(&report) {
+        Ok(()) => {
+            return Err(io::Error::other("provider health validation unexpectedly passed").into());
+        }
+        Err(error) => error,
+    };
 
     assert!(error
         .to_string()
@@ -1780,7 +1805,12 @@ fn runtime_ops_provider_health_report_rejects_inconsistent_degraded_ids(
         checks: vec!["runtime_ops.provider_bindings_health".to_string()],
     };
 
-    let error = validate_runtime_provider_health_report(&report).unwrap_err();
+    let error = match validate_runtime_provider_health_report(&report) {
+        Ok(()) => {
+            return Err(io::Error::other("provider health validation unexpectedly passed").into());
+        }
+        Err(error) => error,
+    };
 
     assert!(error
         .to_string()
@@ -1822,7 +1852,7 @@ fn runtime_ops_provider_health_rejects_model_card_digest_mismatch(
     let card = model_card(
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         1_800_003_600_000,
-    );
+    )?;
     let bindings = provider_bindings_document(provider_binding(Some(WeightsBindingMode::Required)));
     let cards = [("model-card-vendor-b".to_string(), card)]
         .into_iter()
@@ -1849,7 +1879,7 @@ fn runtime_ops_provider_health_rejects_stale_model_card() -> Result<(), Box<dyn 
     let card = model_card(
         "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         1_799_999_999_000,
-    );
+    )?;
     let mut binding = provider_binding(Some(WeightsBindingMode::Required));
     binding.model_card_digest = Some(model_card_digest(&card)?);
     let bindings = provider_bindings_document(binding);

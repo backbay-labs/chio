@@ -1,0 +1,19 @@
+{
+  "schema": "chio.commerce.order-context.v1",
+  "id": "order-context-commerce-001",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "order_id": "order-commerce-001",
+  "buyer_subject": "did:chio:buyer-acme",
+  "agent_subject": "did:chio:agent-shopping",
+  "merchant_subject": "did:chio:merchant-store",
+  "quote_id": "quote-commerce-001",
+  "quote_amount_minor": 1250,
+  "quote_currency": "USD",
+  "event_log_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "event_log_path": "commerce/event-log.json",
+  "payment_lifecycle_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "payment_lifecycle_path": "commerce/payment-lifecycle.json",
+  "mandate_ledger_sha256": "0101010101010101010101010101010101010101010101010101010101010101",
+  "mandate_ledger_path": "commerce/mandate-allowance-ledger.json",
+  "current_state": "settled"
+}

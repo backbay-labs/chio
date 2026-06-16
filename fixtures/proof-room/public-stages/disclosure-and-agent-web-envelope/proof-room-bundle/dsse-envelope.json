@@ -1,0 +1,28 @@
+{
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "envelope_id": "agent-web-envelope-dsse-valid",
+  "transaction_passport_ref": "passport-agent-web-valid",
+  "source_protocol": "dsse",
+  "source_protocol_version": "v1",
+  "external_subject": "dsse-envelope-agent-web-valid",
+  "external_subject_path": "external/dsse-envelope.json",
+  "external_subject_digest": "f1fc5e04f162509f76fe876ab656e0ce44c5103d568f048d9f84a096d09e283b",
+  "external_subject_signature_ref": "",
+  "projection_manifest_ref": "projection-dsse-valid",
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "receipt_refs": [
+    "receipt-agent-web-dsse-envelope-allow"
+  ],
+  "disclosure_capsule_refs": [],
+  "settlement_refs": [],
+  "risk_refs": [],
+  "limitations": [
+    "DSSE envelope projection does not make supply-chain envelope evidence equivalent to Chio authority."
+  ],
+  "signature": "sig-agent-web-dsse-envelope"
+}

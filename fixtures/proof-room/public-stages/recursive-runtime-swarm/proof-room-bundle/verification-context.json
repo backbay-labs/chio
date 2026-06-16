@@ -1,0 +1,8 @@
+{
+  "schema": "chio.federation.verification-context.v1",
+  "audience": "buyer-auditor-offline-verifier",
+  "challenge": "refund-workflow-001-audit",
+  "proofPurpose": "buyer-auditor-workflow-disclosure",
+  "issuedAtUnixMs": 1765999995000,
+  "expiresAtUnixMs": 1766000060000
+}

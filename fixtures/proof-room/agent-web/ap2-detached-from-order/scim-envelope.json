@@ -1,0 +1,28 @@
+{
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "envelope_id": "agent-web-envelope-scim-valid",
+  "transaction_passport_ref": "passport-agent-web-valid",
+  "source_protocol": "scim",
+  "source_protocol_version": "rfc7644",
+  "external_subject": "scim-lifecycle-agent-web-valid",
+  "external_subject_path": "external/scim-lifecycle.json",
+  "external_subject_digest": "504a236ff43e1587770f2fab631c88ecbe3656bc2a2ac9181da45757eb7399b5",
+  "external_subject_signature_ref": "",
+  "projection_manifest_ref": "projection-scim-valid",
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "receipt_refs": [
+    "receipt-agent-web-scim-lifecycle-allow"
+  ],
+  "disclosure_capsule_refs": [],
+  "settlement_refs": [],
+  "risk_refs": [],
+  "limitations": [
+    "SCIM projection does not make lifecycle evidence equivalent to Chio authority."
+  ],
+  "signature": "sig-agent-web-scim-envelope"
+}

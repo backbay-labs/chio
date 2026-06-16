@@ -1,0 +1,12 @@
+{
+  "schema": "chio.runtime.tool-server-ack.v1",
+  "ack_id": "ack-runtime-valid",
+  "lease_id": "lease-runtime-valid",
+  "tool_server_id": "tool-server-payments",
+  "tool_instance_id": "tool-instance-001",
+  "sandbox_attestation_ref": "sandbox-runtime-valid",
+  "nonce": "nonce-runtime-valid",
+  "terminal_status": "allowed_executed",
+  "issued_at": "2026-06-10T00:00:02Z",
+  "signature": "sig-ack-runtime-valid"
+}

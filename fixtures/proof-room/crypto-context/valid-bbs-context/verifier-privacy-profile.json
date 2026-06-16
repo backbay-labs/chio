@@ -1,0 +1,18 @@
+{
+  "schema": "chio.disclosure.verifier-privacy-profile.v1",
+  "profile_id": "profile-buyer-auditor-context",
+  "allowed_proof_mechanisms": ["bbs"],
+  "required_holder_binding": "holder:buyer-agent",
+  "allowed_issuer_keys": [
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  ],
+  "required_key_epoch_min": 7,
+  "forbidden_key_epochs": [9],
+  "required_status_freshness_seconds": 300,
+  "required_audience": "https://auditor.example/chio",
+  "nonce_policy": "no_replay",
+  "allowed_algorithms": ["bbs-bls12381-sha256"],
+  "forbidden_algorithms": ["rsa-pkcs1v15-sha1"],
+  "required_transparency_state": "anchored",
+  "max_presentation_age_seconds": 600
+}

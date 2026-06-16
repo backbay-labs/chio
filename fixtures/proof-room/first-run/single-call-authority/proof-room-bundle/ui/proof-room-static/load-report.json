@@ -1,0 +1,41 @@
+{
+  "bundle_id": "proof-room-single-call-authority",
+  "fixture_id": "single-call-authority",
+  "id": "proof-room-verifier-report-single-call-authority",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "rendered_claims": [
+    {
+      "claim_id": "claim.transaction.passport_root_verified",
+      "source": "verifier/report.json",
+      "verdict": "verified"
+    },
+    {
+      "claim_id": "claim.proof_room.verifier_report_bound",
+      "source": "verifier/report.json",
+      "verdict": "verified"
+    },
+    {
+      "claim_id": "claim.proof_room.allow_and_deny_visible",
+      "source": "artifacts/receipts/allow-receipt.json",
+      "verdict": "verified"
+    },
+    {
+      "claim_id": "claim.proof_room.receipt_coverage_matrix_bound",
+      "source": "artifacts/receipts/denial-receipt.json",
+      "verdict": "verified"
+    },
+    {
+      "claim_id": "claim.proof_room.authority_evidence_bound",
+      "source": "artifacts/authority/capability-proof.json",
+      "verdict": "verified"
+    }
+  ],
+  "schema": "chio.proof-room.verifier-report.v1",
+  "source_verifier_report_ref": {
+    "path": "verifier/report.json",
+    "schema": "chio.transaction.verifier-report.v1",
+    "sha256": "78f0578f5aed744a1ea38d92b91cea5648e033b571120f668fc4fa30c60c1b41"
+  },
+  "ui_verdict_source": "verifier_report_ref",
+  "verdict": "verified"
+}

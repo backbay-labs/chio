@@ -1,0 +1,30 @@
+{
+  "id": "b7c864b50ee0de717b04d700ef4d96da3566fcbbb61595f3dc305fd05783b5ba",
+  "timestamp": 1770508800,
+  "capability_id": "cap-agent-web-fixture",
+  "tool_server": "agent-web-sidecar",
+  "tool_name": "project-external-evidence",
+  "action": {
+    "parameters": {
+      "agent_web_receipt_ref": "receipt-agent-web-webhook-allow",
+      "content_hash": "0cee872f0435ed63db5f54256fdbeef885effba8dd43e5f82bb0ab870e2f8c71"
+    },
+    "parameter_hash": "43213f3938c13c83cc547f14202a6971f56a3b5c7629842714baaa37bcb454f4"
+  },
+  "decision": {
+    "verdict": "allow"
+  },
+  "receipt_kind": "mediated_decision",
+  "boundary_class": "prevent",
+  "tool_origin": "caller_executed",
+  "redaction_mode": "summary",
+  "content_hash": "0cee872f0435ed63db5f54256fdbeef885effba8dd43e5f82bb0ab870e2f8c71",
+  "policy_hash": "1a267f15367cb2e191ad9bb7e2c89d3ef154eb8e6978676f9df5566e4d836bdb",
+  "metadata": {
+    "agent_web_receipt_ref": "receipt-agent-web-webhook-allow",
+    "chio_receipt_signing_nonce": "receipt-agent-web-webhook-allow"
+  },
+  "trust_level": "mediated",
+  "kernel_key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "signature": "d51018b016e89be271ada0f3a1b1c457d3616d98eb5046abd8b1ee3c9ae1c1b0113ca325bcdbfcf825ce69811359381ea32e3973c65c992677f2459888002008"
+}

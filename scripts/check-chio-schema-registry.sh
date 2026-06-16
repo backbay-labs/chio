@@ -27,10 +27,25 @@ registered_paths = {
     if entry.get("schemaFile")
 }
 checked_chio_schema_roots = (
+    "spec/schemas/chio-agent-web/",
     "spec/schemas/chio-attest/",
+    "spec/schemas/chio-commerce/",
+    "spec/schemas/chio-crypto/",
+    "spec/schemas/chio-disclosure/",
+    "spec/schemas/chio-enterprise/",
     "spec/schemas/chio-federation/",
+    "spec/schemas/chio-lineage/",
+    "spec/schemas/chio-oracle/",
     "spec/schemas/chio-pheromone/",
+    "spec/schemas/chio-proof-room/",
+    "spec/schemas/chio-risk/",
     "spec/schemas/chio-runtime/",
+    "spec/schemas/chio-swarm/",
+    "spec/schemas/chio-transparency/",
+    "spec/schemas/chio-transaction/",
+    "spec/schemas/chio-trust/",
+    "spec/schemas/chio-web3/",
+    "spec/schemas/chio-workflow/",
 )
 checked_active_chio_schema_text_roots = checked_chio_schema_roots + (
     "spec/schemas/chio-wire/",

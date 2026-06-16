@@ -1,0 +1,28 @@
+{
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "disclosure_capsule_refs": [],
+  "envelope_id": "agent-web-envelope-spiffe-valid",
+  "external_subject": "spiffe-workload-agent-web-valid",
+  "external_subject_digest": "7fa88d636a16646eee3b686cf4e24647a517b5ebcf7011fdd6af5dd09648825b",
+  "external_subject_path": "external/spiffe-workload-identity.json",
+  "external_subject_signature_ref": "",
+  "limitations": [
+    "SPIFFE projection does not make workload identity evidence equivalent to Chio authority."
+  ],
+  "projection_manifest_ref": "projection-spiffe-valid",
+  "receipt_refs": [
+    "receipt-agent-web-spiffe-workload-allow"
+  ],
+  "risk_refs": [],
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "settlement_refs": [],
+  "signature": "sig-agent-web-spiffe-envelope",
+  "source_protocol": "spiffe",
+  "source_protocol_version": "workload-api-v1",
+  "transaction_passport_ref": "passport-agent-web-valid"
+}

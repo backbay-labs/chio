@@ -1,0 +1,16 @@
+{
+  "schema": "chio.disclosure.capsule.v1",
+  "id": "disclosure-capsule-valid",
+  "transaction_passport_ref": "passport-disclosure-lineage-valid",
+  "crypto_context_report_ref": "crypto-context-report-valid",
+  "privacy_profile_ref": "privacy-profile-valid",
+  "lineage_subgraph_ref": "lineage-subgraph-valid",
+  "leakage_ledger_ref": "leakage-ledger-valid",
+  "disclosed_fields": [
+    "capability_id",
+    "tool_name"
+  ],
+  "hidden_predicates": [
+    "amount_lte_100"
+  ]
+}

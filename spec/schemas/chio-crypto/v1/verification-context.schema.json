@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-crypto/v1/verification-context.schema.json",
+  "title": "Chio Crypto Verification Context",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "context_id",
+    "artifact_ref",
+    "proof_mechanism",
+    "issuer",
+    "issuer_key_ref",
+    "key_state",
+    "algorithm",
+    "suite",
+    "hash_algorithm",
+    "canonicalization",
+    "signature_ref",
+    "verification_time",
+    "audience",
+    "nonce_hex",
+    "nonce_replay_status",
+    "holder_binding_status",
+    "transparency_state",
+    "presentation_created_at"
+  ],
+  "properties": {
+    "schema": { "const": "chio.crypto.verification-context.v1" },
+    "context_id": { "type": "string", "minLength": 1 },
+    "artifact_ref": { "$ref": "#/$defs/sha256" },
+    "proof_mechanism": { "type": "string", "enum": ["bbs"] },
+    "issuer": { "type": "string", "minLength": 1 },
+    "issuer_key_ref": { "type": "string", "minLength": 1 },
+    "key_state": { "$ref": "#/$defs/keyState" },
+    "algorithm": { "type": "string", "minLength": 1 },
+    "suite": { "type": "string", "minLength": 1 },
+    "hash_algorithm": { "type": "string", "minLength": 1 },
+    "canonicalization": { "type": "string", "minLength": 1 },
+    "signature_ref": { "type": "string", "minLength": 1 },
+    "verification_time": { "type": "integer", "minimum": 1 },
+    "revocation_snapshot": { "$ref": "#/$defs/revocationSnapshot" },
+    "audience": { "type": "string", "minLength": 1 },
+    "nonce_hex": { "$ref": "#/$defs/hex" },
+    "nonce_replay_status": { "enum": ["fresh", "replayed"] },
+    "holder_binding_ref": { "type": "string", "minLength": 1 },
+    "holder_binding_status": { "enum": ["bound", "missing", "mismatch"] },
+    "transparency_state": { "enum": ["none", "preview", "anchored"] },
+    "presentation_created_at": { "type": "integer", "minimum": 1 }
+  },
+  "$defs": {
+    "hex": { "type": "string", "pattern": "^[0-9a-f]+$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "keyState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "key_ref", "status", "epoch", "valid_from", "valid_until"],
+      "properties": {
+        "schema": { "const": "chio.trust.key-state.v1" },
+        "key_ref": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["active", "stale", "revoked"] },
+        "epoch": { "type": "integer", "minimum": 0 },
+        "valid_from": { "type": "integer", "minimum": 1 },
+        "valid_until": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "revocationSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "snapshot_ref", "status", "issued_at", "expires_at"],
+      "properties": {
+        "schema": { "const": "chio.trust.revocation-snapshot.v1" },
+        "snapshot_ref": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["fresh", "stale", "revoked"] },
+        "issued_at": { "type": "integer", "minimum": 1 },
+        "expires_at": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

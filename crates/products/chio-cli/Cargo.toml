@@ -28,6 +28,7 @@ chio-federation-authority = { workspace = true }
 chio-attest-loopback = { workspace = true }
 chio-runtime-core = { workspace = true }
 chio-runtime-harness = { workspace = true }
+chio-commerce-order = { workspace = true }
 chio-control-plane = { workspace = true }
 chio-acp-proxy = { workspace = true }
 chio-core = { workspace = true }
@@ -44,9 +45,11 @@ chio-kernel = { workspace = true }
 chio-guards = { workspace = true }
 chio-guard-registry = { workspace = true, features = ["marketplace"] }
 chio-underwriting = { workspace = true }
+chio-web3 = { workspace = true }
 chio-lineage = { workspace = true }
 chio-listing = { workspace = true }
 chio-policy = { workspace = true }
+chio-proof-room = { workspace = true }
 chio-mcp-adapter = { workspace = true }
 chio-mcp-remote = { workspace = true }
 chio-attest-buyer = { workspace = true }
@@ -59,12 +62,16 @@ chio-pheromone-runtime = { workspace = true }
 chio-replay-corpus = { workspace = true }
 chio-reputation = { workspace = true }
 chio-runtime = { workspace = true }
+chio-swarm-authority = { workspace = true }
+chio-selective-disclosure = { workspace = true }
 chio-store-sqlite = { workspace = true }
 chio-tee-frame = { workspace = true }
 chio-tool-call-fabric = { workspace = true }
+chio-workflow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }
+jsonschema = { workspace = true }
 thiserror = { workspace = true }
 clap = { version = "4", features = ["derive", "env"] }
 tracing = { workspace = true }
@@ -94,6 +101,7 @@ ed25519-dalek = { workspace = true }
 wasmparser = "0.221"
 flate2 = "1"
 tar = "0.4"
+zstd = "0.13"
 libc = "0.2"
 rand_core = { workspace = true }
 semver = "1"

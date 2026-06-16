@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-proof-room/v1/first-run-capability-proof.schema.json",
+  "title": "Chio Proof Room First Run Capability Proof",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "capability_id",
+    "issuer",
+    "subject",
+    "scope",
+    "policy_digest",
+    "not_before",
+    "expires_at",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.proof.first-run.capability-proof.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "capability_id": { "type": "string", "minLength": 1 },
+    "issuer": { "type": "string", "minLength": 1 },
+    "subject": { "type": "string", "minLength": 1 },
+    "scope": { "type": "string", "minLength": 1 },
+    "policy_digest": { "$ref": "#/$defs/sha256" },
+    "not_before": { "type": "string", "minLength": 1 },
+    "expires_at": { "type": "string", "minLength": 1 },
+    "nonce": { "type": "string", "minLength": 1 },
+    "trust_root_ref": { "type": "string", "minLength": 1 },
+    "signature": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

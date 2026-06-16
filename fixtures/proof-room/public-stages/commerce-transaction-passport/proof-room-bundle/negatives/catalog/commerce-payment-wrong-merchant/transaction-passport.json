@@ -1,0 +1,9 @@
+{
+  "schema": "chio.transaction-passport.v1",
+  "id": "passport-commerce-payment-wrong-merchant",
+  "issued_at": "2026-06-10T00:08:00Z",
+  "evidence_graph_sha256": "227ecf2dd4fe3d0e7aa69b9c2ee454c101065f2893ef4623e21b7afa54fa113b",
+  "evidence_graph_path": "evidence-graph.json",
+  "verifier_policy_sha256": "da5d8b5901ec78ebab4065e7e55adc7733b74b3a1ac5c3af52143edfbd0208b3",
+  "verifier_policy_path": "verifier-policy.json"
+}

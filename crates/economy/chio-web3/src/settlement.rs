@@ -202,6 +202,14 @@ pub fn validate_web3_settlement_execution_receipt(
         &receipt.observed_execution.amount,
         "web3_settlement_receipt.observed_amount",
     )?;
+    ensure_non_empty(
+        &receipt.observed_execution.external_reference_id,
+        "web3_settlement_receipt.observed_execution.external_reference_id",
+    )?;
+    validate_observed_execution_reference(
+        &receipt.dispatch.chain_id,
+        &receipt.observed_execution.external_reference_id,
+    )?;
     ensure_money(
         &receipt.settled_amount,
         "web3_settlement_receipt.settled_amount",
@@ -219,6 +227,14 @@ pub fn validate_web3_settlement_execution_receipt(
     if receipt.observed_execution.amount != receipt.settled_amount {
         return Err(Web3ContractError::invalid_settlement(
             "observed execution amount must equal settled_amount",
+        ));
+    }
+    let execution_window = &receipt.dispatch.capital_instruction.body.execution_window;
+    if receipt.observed_execution.observed_at < execution_window.not_before
+        || receipt.observed_execution.observed_at > execution_window.not_after
+    {
+        return Err(Web3ContractError::invalid_settlement(
+            "observed execution timestamp falls outside dispatch execution window",
         ));
     }
     if let Some(anchor_proof) = receipt.reconciled_anchor_proof.as_ref() {
@@ -308,6 +324,29 @@ pub fn validate_web3_settlement_execution_receipt(
 
     Ok(())
 }
+
+fn validate_observed_execution_reference(
+    chain_id: &str,
+    reference_id: &str,
+) -> Result<(), Web3ContractError> {
+    if chain_id.starts_with("eip155:") && !is_eip155_transaction_hash(reference_id) {
+        return Err(Web3ContractError::invalid_settlement(
+            "observed execution reference must be an eip155 transaction hash",
+        ));
+    }
+    Ok(())
+}
+
+fn is_eip155_transaction_hash(value: &str) -> bool {
+    let Some(hex) = value.strip_prefix("0x") else {
+        return false;
+    };
+    hex.len() == 64
+        && hex
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 fn validate_transfer_completion_flow_binding(
     instruction: &crate::credit::CapitalExecutionInstructionArtifact,
 ) -> Result<(), Web3ContractError> {

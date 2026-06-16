@@ -1,0 +1,15 @@
+{
+  "schema": "chio.runtime.execution-lease.v1",
+  "lease_id": "lease-runtime-valid",
+  "tool_server_id": "tool-server-payments",
+  "tool_instance_id": "tool-instance-001",
+  "tool_manifest_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+  "sandbox_attestation_ref": "sandbox-runtime-valid",
+  "request_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+  "revocation_freshness_ref": "revocation-runtime-valid",
+  "policy_digest": "b55397a22ec28eca1c1b561c550a887ef10f07dfe1d95ec38a7318322163b9fb",
+  "nonce": "nonce-runtime-valid",
+  "side_effect_class": "network-write",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "expires_at": "2026-06-10T00:05:00Z"
+}

@@ -127,6 +127,11 @@ pub fn validate_oracle_conversion_evidence(
             "oracle conversion evidence max_age_seconds must be non-zero".to_string(),
         ));
     }
+    if evidence.cache_age_seconds > evidence.max_age_seconds {
+        return Err(Web3ContractError::InvalidProof(
+            "oracle conversion evidence is stale".to_string(),
+        ));
+    }
     if evidence.original_cost_units == 0 || evidence.converted_cost_units == 0 {
         return Err(Web3ContractError::InvalidProof(
             "oracle conversion evidence cost units must be non-zero".to_string(),

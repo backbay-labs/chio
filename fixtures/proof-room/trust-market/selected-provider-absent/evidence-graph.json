@@ -1,0 +1,115 @@
+{
+  "schema": "chio.transaction.evidence-graph.v1",
+  "id": "evidence-graph-trust-market-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "nodes": [
+    {
+      "id": "provider-discovery-snapshot",
+      "schema": "chio.commerce.provider-discovery-snapshot.v1",
+      "path": "provider-discovery-snapshot.json",
+      "sha256": "15dccba6f142e66106b714c0401916dc25eacbdc7d46be4eed714152dfa5c05e",
+      "role": "provider-discovery-snapshot"
+    },
+    {
+      "id": "trust-scorecard-snapshot",
+      "schema": "chio.trust.scorecard-snapshot.v1",
+      "path": "trust-scorecard-snapshot.json",
+      "sha256": "32245825d2733f2817859467b99a7e6d9d1b71fb1a1cb91785d13cbbd562a086",
+      "role": "trust-scorecard-snapshot"
+    },
+    {
+      "id": "reputation-import-report",
+      "schema": "chio.trust.reputation-import-report.v1",
+      "path": "reputation-import-report.json",
+      "sha256": "968e545db195501441024c8c02252890bada8957738f1568d9a3b79b27d3abae",
+      "role": "reputation-import-report"
+    },
+    {
+      "id": "sla-commitment",
+      "schema": "chio.commerce.sla-commitment.v1",
+      "path": "sla-commitment.json",
+      "sha256": "b4a85d1aa966b1dd7e51ce8b2c0d5d2693039a0c3e3d8b390762739fc47d35a1",
+      "role": "sla-commitment"
+    },
+    {
+      "id": "sla-performance-report",
+      "schema": "chio.commerce.sla-performance-report.v1",
+      "path": "sla-performance-report.json",
+      "sha256": "3f3d8b162df46d8ea103e21782f710a86423b6e8870417e3b2d0e692d4e8cd07",
+      "role": "sla-performance-report"
+    },
+    {
+      "id": "risk-comptroller-report",
+      "schema": "chio.risk.comptroller-report.v1",
+      "path": "risk-comptroller-report.json",
+      "sha256": "438f7ace62fdd053655b708c095264ef2f8918784b144e58325a24386daa5e13",
+      "role": "risk-comptroller-report"
+    },
+    {
+      "id": "collateral-position-report",
+      "schema": "chio.risk.collateral-position-report.v1",
+      "path": "collateral-position-report.json",
+      "sha256": "979b9c92a626706537a0ce66addd2dc5075c090f0b9f874f69eb6730ea54d4ff",
+      "role": "collateral-position-report"
+    },
+    {
+      "id": "guarantee-decision",
+      "schema": "chio.risk.guarantee-decision.v1",
+      "path": "guarantee-decision.json",
+      "sha256": "bc2d9d9bdc8f660afc0eb89063e32f62ce11cbeb229ada46446b3578179fb8c1",
+      "role": "guarantee-decision"
+    },
+    {
+      "id": "adjudication-jurisdiction-receipt",
+      "schema": "chio.risk.adjudication-jurisdiction-receipt.v1",
+      "path": "adjudication-jurisdiction-receipt.json",
+      "sha256": "e73fef441f38b507f22a0209b4d8159ffd8ded23bed792a051f6f3a0c355042d",
+      "role": "adjudication-jurisdiction-receipt"
+    },
+    {
+      "id": "provider-selection-report",
+      "schema": "chio.commerce.provider-selection-report.v1",
+      "path": "provider-selection-report.json",
+      "sha256": "a891f72b0c545650d2551a218078f024c5f44dcb1306d2c604790f122c94f0f4",
+      "role": "provider-selection-report"
+    }
+  ],
+  "edges": [
+    {
+      "from": "provider-discovery-snapshot",
+      "to": "provider-selection-report",
+      "predicate": "binds",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "from": "provider-selection-report",
+      "to": "sla-commitment",
+      "predicate": "binds",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "from": "provider-selection-report",
+      "to": "risk-comptroller-report",
+      "predicate": "binds",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "from": "trust-scorecard-snapshot",
+      "to": "reputation-import-report",
+      "predicate": "derives",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "from": "guarantee-decision",
+      "to": "collateral-position-report",
+      "predicate": "binds",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "from": "guarantee-decision",
+      "to": "adjudication-jurisdiction-receipt",
+      "predicate": "binds",
+      "evidence_class": "chio-sidecar-proof"
+    }
+  ]
+}

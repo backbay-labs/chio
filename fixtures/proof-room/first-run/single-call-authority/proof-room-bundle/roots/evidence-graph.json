@@ -1,0 +1,132 @@
+{
+  "edges": [
+    {
+      "evidence_class": "chio-sidecar-proof",
+      "from": "trust-roots",
+      "predicate": "authorizes",
+      "to": "capability-proof"
+    },
+    {
+      "evidence_class": "chio-sidecar-proof",
+      "from": "capability-proof",
+      "predicate": "authorizes",
+      "to": "guard-report"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "guard-report",
+      "predicate": "authorizes",
+      "to": "allow-receipt"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "guard-report",
+      "predicate": "denies",
+      "to": "denial-receipt"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "verifier-policy",
+      "predicate": "binds",
+      "to": "guard-report"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "capability-proof",
+      "predicate": "authorizes",
+      "to": "allow-receipt"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "policy",
+      "predicate": "binds",
+      "to": "guard-report"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "request-digest",
+      "predicate": "binds",
+      "to": "allow-receipt"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "response-digest",
+      "predicate": "binds",
+      "to": "allow-receipt"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "verifier-policy",
+      "predicate": "binds",
+      "to": "allow-receipt"
+    }
+  ],
+  "id": "evidence-graph-minimal-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "nodes": [
+    {
+      "id": "verifier-policy",
+      "path": "roots/verifier-policy.json",
+      "role": "verifier-policy",
+      "schema": "chio.transaction.verifier-policy.v1",
+      "sha256": "3f562106e60d01c801571ab725ce3d9c8f5cf35451ae9e5d08c1fff1bf005bfe"
+    },
+    {
+      "id": "capability-proof",
+      "path": "artifacts/authority/capability-proof.json",
+      "role": "capability",
+      "schema": "chio.proof.first-run.capability-proof.v1",
+      "sha256": "23575edd5e9af4a2ecbbb51726f5ff6260fc0bdb70a043a1d638c39524ebc1d5"
+    },
+    {
+      "id": "guard-report",
+      "path": "artifacts/authority/guard-report.json",
+      "role": "guard-decision",
+      "schema": "chio.proof.first-run.guard-report.v1",
+      "sha256": "1d97ebf2724fe1a76b346b5e51df9081b4848c163ef9d2c47a6b4785dcc58d3a"
+    },
+    {
+      "id": "trust-roots",
+      "path": "artifacts/authority/trust-roots.json",
+      "role": "trust-root",
+      "schema": "chio.proof.first-run.trust-roots.v1",
+      "sha256": "e0aa67f2fb78d2a6e1e11141c81881c34c337f16f17d521140b9519ffc6848f4"
+    },
+    {
+      "id": "allow-receipt",
+      "path": "artifacts/receipts/allow-receipt.json",
+      "role": "receipt",
+      "schema": "chio.proof-room.receipt-evidence.v1",
+      "sha256": "60cb061bc226c4c46887e5f86783fc9a17d8453dc07104c6714be2c1b6e511e2"
+    },
+    {
+      "id": "denial-receipt",
+      "path": "artifacts/receipts/denial-receipt.json",
+      "role": "receipt",
+      "schema": "chio.proof-room.receipt-evidence.v1",
+      "sha256": "5952cb758b2d3564bcbde849ff7433dceaf6222dea937214590ebd3740825580"
+    },
+    {
+      "id": "policy",
+      "path": "roots/verifier-policy.json",
+      "role": "policy",
+      "schema": "chio.transaction.verifier-policy.v1",
+      "sha256": "3f562106e60d01c801571ab725ce3d9c8f5cf35451ae9e5d08c1fff1bf005bfe"
+    },
+    {
+      "id": "request-digest",
+      "path": "roots/request-digest.json",
+      "role": "request",
+      "schema": "chio.request.digest.v1",
+      "sha256": "259f1b7f139b7541b5f0c79d46344b43db90070e8f7a785cbf66a35d915190a9"
+    },
+    {
+      "id": "response-digest",
+      "path": "roots/response-digest.json",
+      "role": "response",
+      "schema": "chio.response.digest.v1",
+      "sha256": "6125f4552d9689d705cc020e04688440c9be513df82bc2bbd916039076cb5da7"
+    }
+  ],
+  "schema": "chio.transaction.evidence-graph.v1"
+}

@@ -1,0 +1,28 @@
+{
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "disclosure_capsule_refs": [],
+  "envelope_id": "agent-web-envelope-ap2-valid",
+  "external_subject": "ap2-mandate-chain-agent-web-valid",
+  "external_subject_digest": "dd9d15c60453a83a9d8d7ab6007f7afd1a29b7724d5681107c4fa169cfe1d0ca",
+  "external_subject_path": "external/ap2-mandate-chain.json",
+  "external_subject_signature_ref": "",
+  "limitations": [
+    "AP2 projection does not make mandate evidence equivalent to Chio authority."
+  ],
+  "projection_manifest_ref": "projection-ap2-valid",
+  "receipt_refs": [
+    "receipt-agent-web-ap2-mandate-allow"
+  ],
+  "risk_refs": [],
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "settlement_refs": [],
+  "signature": "sig-agent-web-ap2-envelope",
+  "source_protocol": "ap2",
+  "source_protocol_version": "0.2",
+  "transaction_passport_ref": "passport-agent-web-valid"
+}

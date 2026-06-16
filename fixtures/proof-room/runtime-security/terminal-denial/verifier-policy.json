@@ -1,0 +1,9 @@
+{
+  "schema": "chio.transaction.verifier-policy.v1",
+  "id": "runtime-policy-denial",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "required_claims": [
+    "claim.runtime.receipt_totality_complete"
+  ],
+  "omitted_claims": []
+}

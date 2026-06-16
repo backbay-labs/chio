@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-proof-room/v1/fixture-root-catalog.schema.json",
+  "title": "Chio Proof Room Fixture Root Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "fixtures"],
+  "properties": {
+    "schema": { "const": "chio.proof-room.fixture-root-catalog.v1" },
+    "fixtures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fixture" }
+    }
+  },
+  "$defs": {
+    "fixturePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": ":" },
+          { "pattern": "\\\\" },
+          { "pattern": "%2[fF]" },
+          { "pattern": "%5[cC]" },
+          { "pattern": "//" },
+          { "pattern": "\\s" },
+          { "pattern": "/$" },
+          { "pattern": "(^|/)\\.(/|$)" },
+          { "pattern": "(^|/)\\.\\.(/|$)" },
+          { "pattern": "(^|/)(%2[eE]|\\.){1,2}(/|$)" }
+        ]
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "path", "description"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "proof-room",
+            "transaction-passport",
+            "negative-transaction-passport",
+            "workflow-preflight",
+            "disclosure-crypto-context",
+            "negative-disclosure-crypto-context"
+          ]
+        },
+        "path": { "$ref": "#/$defs/fixturePath" },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "disclosure_capsule_refs": [],
+  "envelope_id": "agent-web-envelope-acp-commerce-valid",
+  "external_subject": "acp-commerce-checkout-agent-web-valid",
+  "external_subject_digest": "dd475795d64322ca85c1d45627a6b7c2e307f048c6241fd0ba962e0245c2baa7",
+  "external_subject_path": "external/acp-commerce-checkout.json",
+  "external_subject_signature_ref": "",
+  "limitations": [
+    "ACP-Commerce projection does not make payment protocol evidence equivalent to Chio authority."
+  ],
+  "projection_manifest_ref": "projection-acp-commerce-valid",
+  "receipt_refs": [
+    "receipt-agent-web-acp-commerce-checkout-allow"
+  ],
+  "risk_refs": [],
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "settlement_refs": [],
+  "signature": "sig-agent-web-acp-commerce-envelope",
+  "source_protocol": "acp-commerce",
+  "source_protocol_version": "2026-06",
+  "transaction_passport_ref": "passport-agent-web-valid"
+}

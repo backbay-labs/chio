@@ -642,6 +642,13 @@ mod tests {
         result.unwrap_or_else(|error| panic!("{context}: {error:?}"))
     }
 
+    fn require_err<T, E>(result: Result<T, E>, context: &'static str) -> E {
+        match result {
+            Ok(_) => panic!("{context}"),
+            Err(error) => error,
+        }
+    }
+
     fn require_some<T>(value: Option<T>, context: &'static str) -> T {
         value.unwrap_or_else(|| panic!("{context}"))
     }
@@ -776,10 +783,10 @@ mod tests {
         );
         hint.body.price_per_call.currency = "usd".to_string();
 
-        let error = hint
-            .body
-            .validate()
-            .expect_err("lowercase pricing currency must fail closed");
+        let error = require_err(
+            hint.body.validate(),
+            "lowercase pricing currency must fail closed",
+        );
         assert!(error.contains("currency"));
     }
 

@@ -80,13 +80,16 @@ members = [
     # Identity, credentials, federation
     "crates/trust/chio-credentials",
     "crates/trust/chio-did",
+    "crates/trust/chio-disclosure-lineage",
     "crates/trust/chio-federation",
     "crates/trust/chio-governance",
     "crates/trust/chio-attest-buyer-core",
     "crates/trust/chio-federation-authority",
     "crates/trust/chio-attest-loopback",
     "crates/kernel/chio-runtime-harness",
+    "crates/kernel/chio-swarm-authority",
     "crates/kernel/chio-runtime-core",
+    "crates/kernel/chio-runtime-proof-parity",
     "crates/kernel/chio-runtime",
     "crates/trust/chio-pheromone",
     "crates/trust/chio-pheromone-relay",
@@ -104,11 +107,18 @@ members = [
     "crates/observability/chio-siem",
     #
     # Control plane & storage
+    "crates/platform/chio-agent-web-interop",
+    "crates/platform/chio-commerce-order",
     "crates/platform/chio-config",
     "crates/platform/chio-control-plane",
+    "crates/platform/chio-enterprise-export",
     "crates/platform/chio-manifest",
+    "crates/platform/chio-risk-comptroller",
     "crates/platform/chio-store-sqlite",
+    "crates/platform/chio-transaction-passport",
+    "crates/platform/chio-trust-market-context",
     "crates/platform/chio-workflow",
+    "crates/platform/chio-workflow-preflight",
     "integrations/aws-bedrock/control-plane",
     "integrations/mcp-adapter",
     #
@@ -122,6 +132,7 @@ members = [
     "crates/products/chio-cli",
     "crates/products/chio-mercury",
     "crates/products/chio-mercury-core",
+    "crates/products/chio-proof-room",
     "crates/products/chio-wall",
     "crates/products/chio-wall-core",
     #
@@ -189,6 +200,7 @@ rust_public_entrypoints = [
     "chio-mcp-edge",
     "chio-mcp-remote",
     "chio-policy",
+    "chio-proof-room",
     "chio-wall",
 ]
 rust_registry_public_crates = []
@@ -225,6 +237,11 @@ codegen-units = 1
 lto = "fat"
 strip = "symbols"
 panic = "abort"
+
+[profile.docker-release]
+inherits = "release"
+codegen-units = 16
+lto = "thin"
 
 # Dev/test debuginfo is disabled to keep `target/` from exploding. With ~130+
 # workspace members, the default `debug = 2` made a full `cargo test --workspace`
@@ -335,6 +352,7 @@ chio-anchor = { path = "crates/economy/chio-anchor" }
 chio-anthropic-tools-adapter = { path = "crates/protocol/chio-anthropic-tools-adapter" }
 chio-api-protect = { path = "crates/products/chio-api-protect" }
 chio-appraisal = { path = "crates/economy/chio-appraisal" }
+chio-agent-web-interop = { path = "crates/platform/chio-agent-web-interop" }
 chio-arena = { path = "crates/core/chio-arena" }
 chio-attest-buyer = { path = "crates/trust/chio-attest-buyer" }
 chio-attest-buyer-core = { path = "crates/trust/chio-attest-buyer-core" }
@@ -346,6 +364,7 @@ chio-binding-helpers = { path = "crates/sdk/chio-binding-helpers" }
 chio-cohere-tools-adapter = { path = "crates/protocol/chio-cohere-tools-adapter" }
 chio-config = { path = "crates/platform/chio-config" }
 chio-conformance = { path = "crates/tooling/chio-conformance" }
+chio-commerce-order = { path = "crates/platform/chio-commerce-order" }
 chio-control-plane = { path = "crates/platform/chio-control-plane" }
 chio-core = { path = "crates/core/chio-core" }
 chio-core-types = { path = "crates/core/chio-core-types" }
@@ -356,9 +375,11 @@ chio-custody-hw = { path = "crates/trust/chio-custody-hw" }
 chio-data-guards = { path = "crates/guards/chio-data-guards" }
 chio-data-guards-redactors-default = { path = "crates/guards/chio-data-guards/redactors/default" }
 chio-did = { path = "crates/trust/chio-did" }
+chio-disclosure-lineage = { path = "crates/trust/chio-disclosure-lineage" }
 chio-edge-metrics = { path = "crates/protocol/chio-edge-metrics" }
 chio-egress-contract = { path = "crates/protocol/chio-egress-contract" }
 chio-errors = { path = "crates/core/chio-errors" }
+chio-enterprise-export = { path = "crates/platform/chio-enterprise-export" }
 chio-eval-receipt = { path = "crates/sdk/chio-eval-receipt" }
 chio-external-guards = { path = "crates/guards/chio-external-guards" }
 chio-federation = { path = "crates/trust/chio-federation" }
@@ -398,20 +419,26 @@ chio-pheromone = { path = "crates/trust/chio-pheromone" }
 chio-pheromone-relay = { path = "crates/trust/chio-pheromone-relay" }
 chio-pheromone-runtime = { path = "crates/trust/chio-pheromone-runtime" }
 chio-policy = { path = "crates/guards/chio-policy" }
+chio-proof-room = { path = "crates/products/chio-proof-room" }
 chio-provider-adapter-core = { path = "crates/protocol/chio-provider-adapter-core" }
 chio-provider-conformance = { path = "crates/protocol/chio-provider-conformance" }
 chio-replay-corpus = { path = "crates/trust/chio-replay-corpus" }
 chio-reputation = { path = "crates/trust/chio-reputation" }
 chio-revocation-oracle = { path = "crates/trust/chio-revocation-oracle" }
+chio-risk-comptroller = { path = "crates/platform/chio-risk-comptroller" }
 chio-runtime = { path = "crates/kernel/chio-runtime" }
 chio-runtime-core = { path = "crates/kernel/chio-runtime-core" }
 chio-runtime-harness = { path = "crates/kernel/chio-runtime-harness" }
+chio-runtime-proof-parity = { path = "crates/kernel/chio-runtime-proof-parity" }
 chio-selective-disclosure = { path = "crates/trust/chio-selective-disclosure" }
 chio-settle = { path = "crates/economy/chio-settle" }
 chio-siem = { path = "crates/observability/chio-siem" }
 chio-spec-codegen = { path = "crates/tooling/chio-spec-codegen" }
 chio-spec-validate = { path = "crates/tooling/chio-spec-validate" }
 chio-store-sqlite = { path = "crates/platform/chio-store-sqlite" }
+chio-swarm-authority = { path = "crates/kernel/chio-swarm-authority" }
+chio-transaction-passport = { path = "crates/platform/chio-transaction-passport" }
+chio-trust-market-context = { path = "crates/platform/chio-trust-market-context" }
 chio-tee = { path = "crates/trust/chio-tee" }
 chio-tee-frame = { path = "crates/trust/chio-tee-frame" }
 chio-test-support = { path = "crates/tooling/chio-test-support" }
@@ -423,3 +450,4 @@ chio-web3 = { path = "crates/economy/chio-web3" }
 chio-web3-bindings = { path = "crates/economy/chio-web3-bindings" }
 chio-weights = { path = "crates/trust/chio-weights" }
 chio-workflow = { path = "crates/platform/chio-workflow" }
+chio-workflow-preflight = { path = "crates/platform/chio-workflow-preflight" }

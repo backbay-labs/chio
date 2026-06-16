@@ -1,0 +1,28 @@
+{
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "disclosure_capsule_refs": [],
+  "envelope_id": "agent-web-envelope-asyncapi-valid",
+  "external_subject": "asyncapi-message-agent-web-valid",
+  "external_subject_digest": "77f96c0d07be8641387ab22033437cd466ffbca8f99433aa34d3d84c702f347c",
+  "external_subject_path": "external/asyncapi-message.json",
+  "external_subject_signature_ref": "",
+  "limitations": [
+    "AsyncAPI projection does not make message broker evidence equivalent to Chio authority."
+  ],
+  "projection_manifest_ref": "projection-asyncapi-valid",
+  "receipt_refs": [
+    "receipt-agent-web-asyncapi-message-allow"
+  ],
+  "risk_refs": [],
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "settlement_refs": [],
+  "signature": "sig-agent-web-asyncapi-envelope",
+  "source_protocol": "asyncapi",
+  "source_protocol_version": "3.0.0",
+  "transaction_passport_ref": "passport-agent-web-valid"
+}

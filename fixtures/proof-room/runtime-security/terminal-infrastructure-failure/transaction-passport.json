@@ -1,0 +1,1 @@
+{"schema":"chio.transaction-passport.v1","id":"runtime-passport-failure","issued_at":"2026-06-10T00:00:00Z","evidence_graph_sha256":"df850ecc809da948fa79c1bfceab3b3fd786e72256ed0a56c6412171567cddd6","evidence_graph_path":"evidence-graph.json","verifier_policy_sha256":"687126355154079b3ab9c62e3eb18e5d285e435c9321720bae34a343877d0cd9","verifier_policy_path":"verifier-policy.json"}

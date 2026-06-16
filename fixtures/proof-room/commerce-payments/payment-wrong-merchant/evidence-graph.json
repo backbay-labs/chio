@@ -1,0 +1,55 @@
+{
+  "schema": "chio.transaction.evidence-graph.v1",
+  "id": "evidence-graph-commerce-payment-wrong-merchant",
+  "issued_at": "2026-06-10T00:08:00Z",
+  "nodes": [
+    {
+      "id": "order-context",
+      "schema": "chio.commerce.order-context.v1",
+      "path": "order-context.json",
+      "sha256": "ac6f06fecf2755b6bb843cbc55ce022d17e6501e5d39d7b03cf0878eba2e1392",
+      "role": "commerce-order-context"
+    },
+    {
+      "id": "event-log",
+      "schema": "chio.commerce.event-log.v1",
+      "path": "event-log.json",
+      "sha256": "6b636983f491863cbce135c788ee45d4e87a34733f35b51ba3ae686b42b1ac74",
+      "role": "commerce-event-log"
+    },
+    {
+      "id": "payment-lifecycle",
+      "schema": "chio.commerce.payment-lifecycle.v1",
+      "path": "payment-lifecycle.json",
+      "sha256": "19bbec59593d98debd85ce285a2419f0ab5f1388316de61323b14f4b4e39c2eb",
+      "role": "commerce-payment-lifecycle"
+    },
+    {
+      "id": "mandate-allowance-ledger",
+      "schema": "chio.commerce.mandate-allowance-ledger.v1",
+      "path": "mandate-allowance-ledger.json",
+      "sha256": "0d27312f1eeaf2f627dea12e5cc6bdc92cb6b5db80a073a5f97ab4c0326b6ad3",
+      "role": "commerce-mandate-allowance-ledger"
+    }
+  ],
+  "edges": [
+    {
+      "from": "order-context",
+      "to": "event-log",
+      "predicate": "binds",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "from": "order-context",
+      "to": "payment-lifecycle",
+      "predicate": "binds",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "from": "order-context",
+      "to": "mandate-allowance-ledger",
+      "predicate": "binds",
+      "evidence_class": "digest-bound-reference"
+    }
+  ]
+}

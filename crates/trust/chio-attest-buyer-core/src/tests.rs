@@ -1,5 +1,3 @@
-#![allow(clippy::expect_used, clippy::unwrap_used)]
-
 use crate::context::*;
 use crate::disclosure::*;
 use crate::error::*;

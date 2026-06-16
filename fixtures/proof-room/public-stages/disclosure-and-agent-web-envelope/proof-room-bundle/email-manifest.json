@@ -1,0 +1,56 @@
+{
+  "schema": "chio.agent-web.external-projection-manifest.v1",
+  "projection_id": "projection-gmail-api-valid",
+  "source_protocol": "gmail-api",
+  "source_version": "v1",
+  "external_fields_used": [
+    "provider_protocol",
+    "mailbox_account_digest",
+    "message_id",
+    "rfc5322_message_digest",
+    "thread_id",
+    "recipient_digest_list",
+    "subject_digest",
+    "attachment_digest_list",
+    "method",
+    "oauth_scope_set_digest",
+    "provider_response_digest",
+    "receipt_refs",
+    "mediated_by_chio_receipt"
+  ],
+  "external_fields_not_used": [
+    "email_action_as_chio_authority"
+  ],
+  "sidecar_fields": [
+    "transaction_passport_ref",
+    "receipt_refs",
+    "chio_claim_refs"
+  ],
+  "digest_algorithm": "sha256",
+  "signature_algorithm": "none",
+  "requires_external_signature": false,
+  "claim_mapping": [
+    {
+      "claim_ref": "claim.agent_web.external_subject_digest_bound",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "claim_ref": "claim.agent_web.projection_manifest_bound",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.unsupported_claims_limited",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.sidecar_not_native_authority",
+      "evidence_class": "chio-sidecar-proof"
+    }
+  ],
+  "unsupported_claims": [
+    "claim.external.email_action_is_chio_authority"
+  ],
+  "copy_limitations": [
+    "Email connector evidence is digest-bound provider action evidence, not Chio capability authority."
+  ]
+}

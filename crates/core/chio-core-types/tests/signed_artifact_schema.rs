@@ -16,6 +16,40 @@ use chio_core_types::{
 };
 
 const UNSUPPORTED_SCHEMA: &str = "chio.unsupported_future_schema.v999";
+const PROOF_ROOM_FIXTURE_CATALOG_SCHEMA: &str = "chio.proof-room.fixture-catalog.v1";
+const PROOF_ROOM_FIXTURE_ROOT_CATALOG_SCHEMA: &str = "chio.proof-room.fixture-root-catalog.v1";
+
+#[test]
+fn known_signed_artifact_schemas_are_supported() {
+    for schema in chio_core_types::KNOWN_SIGNED_ARTIFACT_SCHEMAS {
+        assert!(
+            chio_core_types::is_supported_signed_artifact_schema(schema),
+            "schema should be supported: {schema}"
+        );
+    }
+}
+
+#[test]
+fn proof_room_fixture_catalog_schema_is_registered() {
+    assert!(chio_core_types::is_supported_signed_artifact_schema(
+        PROOF_ROOM_FIXTURE_CATALOG_SCHEMA
+    ));
+    assert!(chio_core_types::built_in_signed_artifact_registry()
+        .iter()
+        .any(|entry| entry.schema == PROOF_ROOM_FIXTURE_CATALOG_SCHEMA
+            && entry.artifact_kind == "proof_room_fixture_catalog"
+            && entry.introduced_by == "proof-room-v1"));
+    assert!(chio_core_types::is_supported_signed_artifact_schema(
+        PROOF_ROOM_FIXTURE_ROOT_CATALOG_SCHEMA
+    ));
+    assert!(chio_core_types::built_in_signed_artifact_registry()
+        .iter()
+        .any(
+            |entry| entry.schema == PROOF_ROOM_FIXTURE_ROOT_CATALOG_SCHEMA
+                && entry.artifact_kind == "proof_room_fixture_root_catalog"
+                && entry.introduced_by == "proof-room-v1"
+        ));
+}
 
 fn session_anchor_body(kernel: &Keypair) -> SessionAnchorBody {
     let auth = SessionAuthContext::streamable_http_static_bearer(

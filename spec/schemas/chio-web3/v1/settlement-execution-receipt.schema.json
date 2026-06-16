@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-web3/v1/settlement-execution-receipt.schema.json",
+  "title": "Chio Web3 Settlement Execution Receipt",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "execution_receipt_id",
+    "issued_at",
+    "dispatch",
+    "observed_execution",
+    "lifecycle_state",
+    "settlement_reference",
+    "settled_amount"
+  ],
+  "properties": {
+    "schema": { "const": "chio.web3-settlement-execution-receipt.v1" },
+    "execution_receipt_id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "integer", "minimum": 0 },
+    "dispatch": { "$ref": "settlement-dispatch.schema.json" },
+    "observed_execution": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["observed_at", "external_reference_id", "amount"],
+      "properties": {
+        "observed_at": { "type": "integer", "minimum": 0 },
+        "external_reference_id": { "type": "string", "minLength": 1 },
+        "amount": { "$ref": "#/$defs/money" }
+      }
+    },
+    "lifecycle_state": {
+      "enum": [
+        "pending_dispatch",
+        "escrow_locked",
+        "partially_settled",
+        "settled",
+        "reversed",
+        "charged_back",
+        "timed_out",
+        "failed",
+        "reorged"
+      ]
+    },
+    "settlement_reference": { "type": "string", "minLength": 1 },
+    "reconciled_anchor_proof": { "type": "object" },
+    "oracle_evidence": { "$ref": "../../chio-oracle/v1/conversion-evidence.schema.json" },
+    "settled_amount": { "$ref": "#/$defs/money" },
+    "reversal_of": { "type": "string" },
+    "failure_reason": { "type": "string" },
+    "note": { "type": "string" }
+  },
+  "$defs": {
+    "money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "type": "integer", "minimum": 1 },
+        "currency": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

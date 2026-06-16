@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-transaction/v1/transaction-passport.schema.json",
+  "title": "Chio Transaction Passport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "evidence_graph_sha256",
+    "evidence_graph_path",
+    "verifier_policy_sha256",
+    "verifier_policy_path"
+  ],
+  "properties": {
+    "schema": { "const": "chio.transaction-passport.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "evidence_graph_sha256": { "$ref": "#/$defs/sha256" },
+    "evidence_graph_path": { "$ref": "#/$defs/bundleRelativePath" },
+    "verifier_policy_sha256": { "$ref": "#/$defs/sha256" },
+    "verifier_policy_path": { "$ref": "#/$defs/bundleRelativePath" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "bundleRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "\\\\" },
+          { "pattern": "(^|/)\\.\\.(/|$)" }
+        ]
+      }
+    }
+  }
+}

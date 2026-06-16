@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-web3/v1/settlement-proof-bundle.schema.json",
+  "title": "Chio Web3 Settlement Proof Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "bundle_id",
+    "transaction_passport_id",
+    "commerce_order_id",
+    "chain_id",
+    "settlement_receipt",
+    "chain_snapshot",
+    "dispute_snapshot",
+    "required_confirmations",
+    "observed_confirmations",
+    "dispute_posture"
+  ],
+  "properties": {
+    "schema": { "const": "chio.web3-settlement-proof-bundle.v1" },
+    "bundle_id": { "type": "string", "minLength": 1 },
+    "transaction_passport_id": { "type": "string", "minLength": 1 },
+    "commerce_order_id": { "type": "string", "minLength": 1 },
+    "chain_id": { "$ref": "#/$defs/chainId" },
+    "settlement_receipt": { "$ref": "#/$defs/settlementReceipt" },
+    "chain_snapshot": { "$ref": "#/$defs/chainSnapshot" },
+    "dispute_snapshot": { "$ref": "#/$defs/disputeSnapshot" },
+    "required_confirmations": { "type": "integer", "minimum": 1 },
+    "observed_confirmations": { "type": "integer", "minimum": 0 },
+    "dispute_posture": {
+      "enum": [
+        "undisputed",
+        "challenged",
+        "bonded",
+        "slashed",
+        "refunded",
+        "appealed",
+        "closed"
+      ]
+    }
+  },
+  "$defs": {
+    "chainId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+:[A-Za-z0-9._-]+$"
+    },
+    "money": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "type": "integer", "minimum": 1 },
+        "currency": { "type": "string", "minLength": 1 }
+      }
+    },
+    "chainSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chain_id",
+        "observed_block_number",
+        "latest_block_number",
+        "max_block_lag",
+        "root_registry_address",
+        "registry_root",
+        "escrow",
+        "bond",
+        "block",
+        "beneficiary_identity_binding"
+      ],
+      "properties": {
+        "chain_id": { "$ref": "#/$defs/chainId" },
+        "observed_block_number": { "type": "integer", "minimum": 0 },
+        "latest_block_number": { "type": "integer", "minimum": 0 },
+        "max_block_lag": { "type": "integer", "minimum": 1 },
+        "root_registry_address": { "type": "string", "minLength": 1 },
+        "registry_root": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "escrow": { "$ref": "#/$defs/escrowSnapshot" },
+        "bond": { "$ref": "#/$defs/bondSnapshot" },
+        "block": { "$ref": "#/$defs/blockSnapshot" },
+        "beneficiary_identity_binding": {
+          "$ref": "#/$defs/identityBinding"
+        }
+      }
+    },
+    "identityBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["certificate", "signature"],
+      "properties": {
+        "certificate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema",
+            "chio_identity",
+            "chio_public_key",
+            "chain_scope",
+            "purpose",
+            "settlement_address",
+            "issued_at",
+            "expires_at",
+            "nonce"
+          ],
+          "properties": {
+            "schema": { "const": "chio.key-binding-certificate.v1" },
+            "chio_identity": {
+              "type": "string",
+              "pattern": "^did:chio:[0-9a-fA-F]{64}$"
+            },
+            "chio_public_key": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{64}$"
+            },
+            "chain_scope": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/chainId" },
+              "uniqueItems": true
+            },
+            "purpose": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "enum": ["anchor", "settle"] },
+              "uniqueItems": true
+            },
+            "settlement_address": { "type": "string", "minLength": 1 },
+            "issued_at": { "type": "integer", "minimum": 0 },
+            "expires_at": { "type": "integer", "minimum": 0 },
+            "nonce": { "type": "string", "minLength": 1 }
+          }
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{128}$"
+        }
+      }
+    },
+    "escrowSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "escrow_id",
+        "escrow_contract",
+        "beneficiary_address",
+        "locked_amount",
+        "released_amount"
+      ],
+      "properties": {
+        "escrow_id": { "type": "string", "minLength": 1 },
+        "escrow_contract": { "type": "string", "minLength": 1 },
+        "beneficiary_address": { "type": "string", "minLength": 1 },
+        "locked_amount": { "$ref": "#/$defs/money" },
+        "released_amount": { "$ref": "#/$defs/money" }
+      }
+    },
+    "bondSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bond_vault_contract",
+        "posted_amount",
+        "minimum_required_amount"
+      ],
+      "properties": {
+        "bond_vault_contract": { "type": "string", "minLength": 1 },
+        "posted_amount": { "$ref": "#/$defs/money" },
+        "minimum_required_amount": { "$ref": "#/$defs/money" }
+      }
+    },
+    "blockSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["block_number", "block_hash", "transaction_hashes"],
+      "properties": {
+        "block_number": { "type": "integer", "minimum": 0 },
+        "block_hash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "transaction_hashes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{64}$"
+          }
+        }
+      }
+    },
+    "disputeSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "dispute_id",
+        "posture",
+        "observed_at",
+        "challenge_window_secs",
+        "window_closed_at",
+        "open_dispute_count",
+        "linked_receipt_ids",
+        "chain_event_tx_hashes"
+      ],
+      "properties": {
+        "schema": { "const": "chio.web3-settlement-dispute.v1" },
+        "dispute_id": { "type": "string", "minLength": 1 },
+        "posture": {
+          "enum": [
+            "undisputed",
+            "challenged",
+            "bonded",
+            "slashed",
+            "refunded",
+            "appealed",
+            "closed"
+          ]
+        },
+        "observed_at": { "type": "integer", "minimum": 0 },
+        "challenge_window_secs": { "type": "integer", "minimum": 1 },
+        "window_closed_at": { "type": "integer", "minimum": 0 },
+        "open_dispute_count": { "type": "integer", "minimum": 0 },
+        "linked_receipt_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "chain_event_tx_hashes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^0x[0-9a-fA-F]{64}$"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "settlementReceipt": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "schema",
+        "execution_receipt_id",
+        "dispatch",
+        "lifecycle_state",
+        "settlement_reference",
+        "settled_amount"
+      ],
+      "properties": {
+        "schema": { "const": "chio.web3-settlement-execution-receipt.v1" },
+        "execution_receipt_id": { "type": "string", "minLength": 1 },
+        "dispatch": { "$ref": "#/$defs/settlementDispatch" },
+        "lifecycle_state": {
+          "enum": [
+            "pending_dispatch",
+            "escrow_locked",
+            "partially_settled",
+            "settled",
+            "reversed",
+            "charged_back",
+            "timed_out",
+            "failed",
+            "reorged"
+          ]
+        },
+        "settlement_reference": { "type": "string", "minLength": 1 },
+        "settled_amount": { "$ref": "#/$defs/money" }
+      }
+    },
+    "settlementDispatch": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["schema", "dispatch_id", "chain_id", "settlement_amount"],
+      "properties": {
+        "schema": { "const": "chio.web3-settlement-dispatch.v1" },
+        "dispatch_id": { "type": "string", "minLength": 1 },
+        "chain_id": { "$ref": "#/$defs/chainId" },
+        "settlement_amount": { "$ref": "#/$defs/money" }
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "envelope_id": "agent-web-envelope-gmail-api-valid",
+  "transaction_passport_ref": "passport-agent-web-valid",
+  "source_protocol": "gmail-api",
+  "source_protocol_version": "v1",
+  "external_subject": "email-message-agent-web-valid",
+  "external_subject_path": "external/email-message.json",
+  "external_subject_digest": "ec494bf562a18b9eae8cbc520f34c3f566de452e08e03317545a08c8573a7400",
+  "external_subject_signature_ref": "",
+  "projection_manifest_ref": "projection-gmail-api-valid",
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "receipt_refs": [
+    "receipt-agent-web-email-message-allow"
+  ],
+  "disclosure_capsule_refs": [],
+  "settlement_refs": [],
+  "risk_refs": [],
+  "limitations": [
+    "Gmail projection does not make provider email evidence equivalent to Chio authority."
+  ],
+  "signature": "sig-agent-web-gmail-api-envelope"
+}

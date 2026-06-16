@@ -1,0 +1,14 @@
+{
+  "agent_mode": "human-not-present",
+  "checkout_mandate_digest": "acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac",
+  "chio_mandate_receipt_ref": "receipt-agent-web-ap2-mandate-allow",
+  "credential_format": "vdc",
+  "id": "ap2-mandate-chain-agent-web-valid",
+  "object_kind": "ap2_mandate_chain",
+  "order_id": "order-commerce-001",
+  "payment_instrument_digest": "cececececececececececececececececececececececececececececececece",
+  "payment_mandate_digest": "bdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbd",
+  "status": "authorized",
+  "transaction_context_digest": "293d7f5ea66ceda4b6976218d3d1a8bb3718f9cc565f7504e47dcde62c84b747",
+  "transaction_passport_ref": "passport-agent-web-valid"
+}

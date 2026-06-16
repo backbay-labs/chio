@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-proof-room/v1/release-truth.schema.json",
+  "title": "Chio Proof Room Release Truth",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "truth", "allowed_copy"],
+  "properties": {
+    "schema": { "const": "chio.proof.release-truth.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "truth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "public_release",
+        "package_published",
+        "docker_quickstart",
+        "hosted_demo",
+        "chain_evidence",
+        "transparency_log"
+      ],
+      "properties": {
+        "public_release": { "type": "boolean" },
+        "package_published": { "type": "boolean" },
+        "docker_quickstart": { "type": "boolean" },
+        "hosted_demo": { "type": "boolean" },
+        "chain_evidence": { "type": "boolean" },
+        "transparency_log": { "type": "boolean" }
+      }
+    },
+    "allowed_copy": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    }
+  }
+}

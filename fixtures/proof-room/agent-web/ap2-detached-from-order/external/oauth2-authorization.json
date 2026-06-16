@@ -1,0 +1,20 @@
+{
+  "audience_digest": "9191919191919191919191919191919191919191919191919191919191919191",
+  "authorization_details_digest": "9494949494949494949494949494949494949494949494949494949494949494",
+  "authorized_scope_subset": true,
+  "chio_authorization_receipt_ref": "receipt-agent-web-oauth2-authorization-allow",
+  "chio_caller_identity_digest": "9797979797979797979797979797979797979797979797979797979797979797",
+  "client_id_digest": "9292929292929292929292929292929292929292929292929292929292929292",
+  "grant_type": "token_exchange",
+  "id": "oauth2-authorization-agent-web-valid",
+  "issuer": "https://issuer.enterprise.example",
+  "mediated_by_chio_receipt": true,
+  "object_kind": "oauth2_authorization",
+  "resource": "https://api.enterprise.example/mcp",
+  "scope_set_digest": "9393939393939393939393939393939393939393939393939393939393939393",
+  "sender_constraint": "dpop",
+  "sender_constraint_digest": "9595959595959595959595959595959595959595959595959595959595959595",
+  "subject_digest": "9090909090909090909090909090909090909090909090909090909090909090",
+  "token_status": "active",
+  "token_verification_report_digest": "9696969696969696969696969696969696969696969696969696969696969696"
+}

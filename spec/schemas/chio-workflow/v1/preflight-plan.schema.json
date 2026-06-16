@@ -1,0 +1,260 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-workflow/v1/preflight-plan.schema.json",
+  "title": "Chio Workflow Preflight Plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "parent_task",
+    "child_tasks",
+    "route_plans",
+    "approvals",
+    "registry_support",
+    "budget_pool",
+    "revocation",
+    "planning_artifacts"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.workflow.preflight-plan.v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issued_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parent_task": {
+      "$ref": "#/$defs/parent_task"
+    },
+    "child_tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/child_task"
+      }
+    },
+    "route_plans": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/route_plan"
+      }
+    },
+    "approvals": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/approval"
+      }
+    },
+    "registry_support": {
+      "$ref": "#/$defs/registry_support"
+    },
+    "budget_pool": {
+      "$ref": "#/$defs/budget_pool"
+    },
+    "revocation": {
+      "$ref": "#/$defs/revocation"
+    },
+    "planning_artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/planning_artifact"
+      }
+    }
+  },
+  "$defs": {
+    "parent_task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "scope"],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "$ref": "#/$defs/scope"
+        }
+      }
+    },
+    "child_task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "parent_task_id", "requested_scope"],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parent_task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "requested_scope": {
+          "$ref": "#/$defs/scope"
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actions",
+        "resources",
+        "route_refs",
+        "approval_refs",
+        "required_schemas",
+        "budget_minor",
+        "currency"
+      ],
+      "properties": {
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "resources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "route_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "approval_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_schemas": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "budget_minor": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "route_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route_ref", "supported"],
+      "properties": {
+        "route_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supported": {
+          "type": "boolean"
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approval_ref", "status"],
+      "properties": {
+        "approval_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": ["approved", "pending", "denied", "expired"]
+        }
+      }
+    },
+    "registry_support": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported_schemas"],
+      "properties": {
+        "supported_schemas": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "budget_pool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currency", "total_minor"],
+      "properties": {
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "total_minor": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "revocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["epoch_id", "root_sha256", "status"],
+      "properties": {
+        "epoch_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "root_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "status": {
+          "enum": ["fresh", "stale", "revoked"]
+        }
+      }
+    },
+    "planning_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_ref", "artifact_class", "satisfies_claims"],
+      "properties": {
+        "artifact_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_class": {
+          "enum": ["planning", "simulation", "rehearsal", "live_authority"]
+        },
+        "satisfies_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

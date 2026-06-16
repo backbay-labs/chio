@@ -1,0 +1,28 @@
+{
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "disclosure_capsule_refs": [],
+  "envelope_id": "agent-web-envelope-in-toto-valid",
+  "external_subject": "in-toto-statement-agent-web-valid",
+  "external_subject_digest": "d976f03efa2977eecde1648ea69b93814301f8026c24ee424db151338b9d60ce",
+  "external_subject_path": "external/in-toto-statement.json",
+  "external_subject_signature_ref": "",
+  "limitations": [
+    "in-toto and DSSE projection does not make supply-chain statement evidence equivalent to Chio authority."
+  ],
+  "projection_manifest_ref": "projection-in-toto-valid",
+  "receipt_refs": [
+    "receipt-agent-web-in-toto-statement-allow"
+  ],
+  "risk_refs": [],
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "settlement_refs": [],
+  "signature": "sig-agent-web-in-toto-envelope",
+  "source_protocol": "in-toto",
+  "source_protocol_version": "statement-v1-dsse",
+  "transaction_passport_ref": "passport-agent-web-valid"
+}

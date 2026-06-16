@@ -1,0 +1,7 @@
+{
+  "id": "missing-authority-graph-node",
+  "expected_failure_code": "proof-room.evidence-graph.authority-node-missing",
+  "mutation": {
+    "artifact_path": "artifacts/authority/capability-proof.json"
+  }
+}

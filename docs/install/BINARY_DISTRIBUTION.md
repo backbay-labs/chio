@@ -1,7 +1,9 @@
 # Chio Binary Distribution
 
-Pre-built `chio` sidecar binaries are published with every tagged release so
-developers can run Chio without installing a Rust toolchain.
+This page defines the release distribution contract for future tagged releases.
+The current repository state is pre-release: no GitHub Release binaries,
+Homebrew formula, or registry-published container image are available yet. Build
+from source unless release truth evidence for a tagged version is present.
 
 ## Supported Platforms
 
@@ -13,9 +15,10 @@ developers can run Chio without installing a Rust toolchain.
 | macOS   | aarch64 (Apple)      | `aarch64-apple-darwin`         | `.tar.gz`         |
 | Windows | x86_64               | `x86_64-pc-windows-msvc`       | `.zip`            |
 
-Container images are published for `linux/amd64` and `linux/arm64`.
+Container images are expected for `linux/amd64` and `linux/arm64` after the
+release workflow publishes them.
 
-## Install via Homebrew
+## Install via Homebrew After A Tagged Release
 
 ```bash
 curl -fsSL -o /tmp/chio.rb https://github.com/backbay-labs/chio/releases/latest/download/chio.rb
@@ -24,10 +27,11 @@ chio --version
 ```
 
 The release workflow renders the installable formula from
-`packaging/homebrew/chio.rb.tmpl` and publishes it as the `chio.rb` release asset.
-See [`docs/install/homebrew.md`](./homebrew.md) for details.
+`packaging/homebrew/chio.rb.tmpl` and publishes it as the `chio.rb` release
+asset when a release is cut. See [`docs/install/homebrew.md`](./homebrew.md) for
+details.
 
-## Install via Docker
+## Install via Docker After A Tagged Release
 
 ```bash
 # Pull the latest published image
@@ -40,7 +44,7 @@ docker pull ghcr.io/backbay-labs/chio-sidecar:0.1.0
 docker run --rm ghcr.io/backbay-labs/chio-sidecar:latest --help
 ```
 
-The image:
+The published image must satisfy this contract:
 
 - is built from `deploy/docker/Dockerfile.sidecar` (Alpine base, non-root user `chio`, UID
   `10001`);
@@ -49,7 +53,7 @@ The image:
 - uses `tini` as PID 1 for correct signal handling;
 - stores sidecar state under `/var/lib/chio` (mount a volume to persist it).
 
-## Install via `curl | sh` (archive download)
+## Install via `curl | sh` After A Tagged Release
 
 ```bash
 VERSION=0.1.0
@@ -74,7 +78,7 @@ chio --version
 
 ## Signature and Checksum Verification
 
-Every release publishes:
+Every tagged release must publish:
 
 - Per-archive `.sha256` files (one line each: `<hash>  <archive>`).
 - A combined `SHA256SUMS` file covering every archive in the release.
@@ -90,9 +94,9 @@ curl -fsSL https://github.com/backbay-labs/chio/releases/download/v0.1.0/SHA256S
 shasum -a 256 -c SHA256SUMS
 ```
 
-Container image provenance is attested by the build workflow
+Container image provenance must be attested by the build workflow
 (`.github/workflows/sidecar-image.yml`). Confirm the digest matches what the
-workflow logged:
+workflow logs:
 
 ```bash
 docker buildx imagetools inspect ghcr.io/backbay-labs/chio-sidecar:0.1.0
@@ -111,7 +115,7 @@ docker buildx imagetools inspect ghcr.io/backbay-labs/chio-sidecar:0.1.0
   `linux-gnu` builds target a recent glibc. Use the Docker image instead,
   or build from source.
 
-## Where binaries come from
+## Where Binaries Come From
 
 | Asset                                          | Built by                                              |
 | ---------------------------------------------- | ----------------------------------------------------- |

@@ -1,0 +1,28 @@
+{
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "envelope_id": "agent-web-envelope-google-calendar-api-valid",
+  "transaction_passport_ref": "passport-agent-web-valid",
+  "source_protocol": "google-calendar-api",
+  "source_protocol_version": "v1",
+  "external_subject": "calendar-event-agent-web-valid",
+  "external_subject_path": "external/calendar-event.json",
+  "external_subject_digest": "38f2c4d1511ed8bb65ae35bb564e0fce4c8151c65abf59809ddfcd2cb651d8ac",
+  "external_subject_signature_ref": "",
+  "projection_manifest_ref": "projection-google-calendar-api-valid",
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "receipt_refs": [
+    "receipt-agent-web-calendar-event-allow"
+  ],
+  "disclosure_capsule_refs": [],
+  "settlement_refs": [],
+  "risk_refs": [],
+  "limitations": [
+    "Google Calendar projection does not make provider calendar evidence equivalent to Chio authority."
+  ],
+  "signature": "sig-agent-web-google-calendar-api-envelope"
+}

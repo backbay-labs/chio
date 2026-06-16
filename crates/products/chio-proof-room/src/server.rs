@@ -1,0 +1,641 @@
+use std::{
+    collections::BTreeSet,
+    fs,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+};
+
+use axum::{
+    extract::{OriginalUri, Path as AxumPath, State},
+    http::{header::CONTENT_TYPE, StatusCode},
+    response::{IntoResponse, Redirect, Response},
+    routing::get,
+    Json, Router,
+};
+use tower_http::services::{ServeDir, ServeFile};
+
+use super::{
+    build_proof_room_fixture_catalog, proof_room_fixture_asset, proof_room_fixture_asset_with_root,
+    proof_room_fixture_failure_code, proof_room_fixture_report_status,
+    verify_proof_room_quickstart, ProofRoomError, ProofRoomFixtureCatalog,
+};
+
+#[derive(Debug, Clone)]
+pub struct ProofRoomServeConfig {
+    pub bundle: PathBuf,
+    pub ui_dir: PathBuf,
+    pub listen: SocketAddr,
+    pub doctor_report: Option<PathBuf>,
+    pub fixture_root: Option<PathBuf>,
+}
+
+#[derive(Clone)]
+struct ProofRoomServeState {
+    bundle: PathBuf,
+    ui_dir: Option<PathBuf>,
+    allowed_bundle_paths: BTreeSet<String>,
+    fixture_root: Option<PathBuf>,
+}
+
+pub async fn serve_proof_room(config: ProofRoomServeConfig) -> Result<(), ProofRoomError> {
+    verify_proof_room_ui_dir(&config.ui_dir)?;
+    verify_proof_room_quickstart(&config.bundle, config.doctor_report.as_deref())?;
+
+    let listener = tokio::net::TcpListener::bind(config.listen)
+        .await
+        .map_err(|source| ProofRoomError::Io {
+            context: "proof-room.listen",
+            source,
+        })?;
+    let router =
+        proof_room_router_with_fixture_root(config.bundle, config.ui_dir, config.fixture_root)?;
+    axum::serve(listener, router)
+        .await
+        .map_err(ProofRoomError::Serve)
+}
+
+fn verify_proof_room_ui_dir(ui_dir: &Path) -> Result<(), ProofRoomError> {
+    let index = ui_dir.join("index.html");
+    let metadata = fs::metadata(&index).map_err(|source| {
+        if source.kind() == std::io::ErrorKind::NotFound {
+            ProofRoomError::Validation(format!("proof-room.ui.index-missing: {}", index.display()))
+        } else {
+            ProofRoomError::Io {
+                context: "proof-room.ui.index",
+                source,
+            }
+        }
+    })?;
+    if !metadata.is_file() {
+        return Err(ProofRoomError::Validation(format!(
+            "proof-room.ui.index-missing: {}",
+            index.display()
+        )));
+    }
+    Ok(())
+}
+
+pub fn proof_room_router(bundle: PathBuf, ui_dir: PathBuf) -> Result<Router, ProofRoomError> {
+    proof_room_router_with_fixture_root(bundle, ui_dir, None)
+}
+
+pub fn proof_room_router_with_fixture_root(
+    bundle: PathBuf,
+    ui_dir: PathBuf,
+    fixture_root: Option<PathBuf>,
+) -> Result<Router, ProofRoomError> {
+    proof_room_router_with_optional_ui_root(bundle, Some(ui_dir), fixture_root)
+}
+
+pub fn proof_room_router_with_optional_ui_root(
+    bundle: PathBuf,
+    ui_dir: Option<PathBuf>,
+    fixture_root: Option<PathBuf>,
+) -> Result<Router, ProofRoomError> {
+    let allowed_bundle_paths = if bundle.join("manifest.json").exists() {
+        proof_room_served_bundle_paths(&bundle).map_err(ProofRoomError::Validation)?
+    } else {
+        BTreeSet::new()
+    };
+    let state = ProofRoomServeState {
+        bundle,
+        ui_dir: ui_dir.clone(),
+        allowed_bundle_paths,
+        fixture_root,
+    };
+    let router = Router::new()
+        .route("/", get(proof_room_view_redirect))
+        .route(
+            "/proof-room-fixture-catalog.json",
+            get(proof_room_fixture_catalog_response),
+        )
+        .route(
+            "/proof-room-fixtures/{fixture_id}/{*asset_path}",
+            get(proof_room_fixture_asset_with_state_response),
+        )
+        .route("/manifest.json", get(proof_room_manifest_asset))
+        .route("/artifacts/{*asset_path}", get(proof_room_artifacts_asset))
+        .route("/negatives/{*asset_path}", get(proof_room_negatives_asset))
+        .route("/roots/{*asset_path}", get(proof_room_roots_asset))
+        .route("/ui/{*asset_path}", get(proof_room_bundle_ui_asset))
+        .route("/verifier/{*asset_path}", get(proof_room_verifier_asset))
+        .fallback(get(proof_room_fallback_asset))
+        .with_state(state);
+
+    if let Some(ui_dir) = ui_dir {
+        Ok(router
+            .nest_service("/assets", ServeDir::new(ui_dir.join("assets")))
+            .route_service("/proof-room", ServeFile::new(ui_dir.join("index.html"))))
+    } else {
+        Ok(router)
+    }
+}
+
+async fn proof_room_view_redirect() -> Redirect {
+    Redirect::temporary("/proof-room?view=proof-room")
+}
+
+async fn proof_room_manifest_asset(State(state): State<ProofRoomServeState>) -> Response {
+    proof_room_bundle_asset_response(&state, "manifest.json").await
+}
+
+async fn proof_room_artifacts_asset(
+    State(state): State<ProofRoomServeState>,
+    AxumPath(asset_path): AxumPath<String>,
+) -> Response {
+    proof_room_prefixed_bundle_asset_response(&state, "artifacts", &asset_path).await
+}
+
+async fn proof_room_negatives_asset(
+    State(state): State<ProofRoomServeState>,
+    AxumPath(asset_path): AxumPath<String>,
+) -> Response {
+    proof_room_prefixed_bundle_asset_response(&state, "negatives", &asset_path).await
+}
+
+async fn proof_room_roots_asset(
+    State(state): State<ProofRoomServeState>,
+    AxumPath(asset_path): AxumPath<String>,
+) -> Response {
+    proof_room_prefixed_bundle_asset_response(&state, "roots", &asset_path).await
+}
+
+async fn proof_room_bundle_ui_asset(
+    State(state): State<ProofRoomServeState>,
+    AxumPath(asset_path): AxumPath<String>,
+) -> Response {
+    proof_room_prefixed_bundle_asset_response(&state, "ui", &asset_path).await
+}
+
+async fn proof_room_verifier_asset(
+    State(state): State<ProofRoomServeState>,
+    AxumPath(asset_path): AxumPath<String>,
+) -> Response {
+    proof_room_prefixed_bundle_asset_response(&state, "verifier", &asset_path).await
+}
+
+async fn proof_room_fallback_asset(
+    State(state): State<ProofRoomServeState>,
+    OriginalUri(uri): OriginalUri,
+) -> Response {
+    let asset_path = uri.path().trim_start_matches('/');
+    if asset_path.is_empty() {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    if state.allowed_bundle_paths.contains(asset_path) {
+        return proof_room_bundle_asset_response(&state, asset_path).await;
+    }
+    if is_proof_room_bundle_namespace(asset_path) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    if let Some(ui_dir) = &state.ui_dir {
+        proof_room_ui_asset_response(ui_dir, asset_path).await
+    } else {
+        StatusCode::NOT_FOUND.into_response()
+    }
+}
+
+async fn proof_room_prefixed_bundle_asset_response(
+    state: &ProofRoomServeState,
+    prefix: &str,
+    asset_path: &str,
+) -> Response {
+    proof_room_bundle_asset_response(state, &format!("{prefix}/{asset_path}")).await
+}
+
+async fn proof_room_bundle_asset_response(
+    state: &ProofRoomServeState,
+    asset_path: &str,
+) -> Response {
+    let Ok(asset_path) = safe_served_bundle_path(asset_path, "proof-room.serve") else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    if !state.allowed_bundle_paths.contains(&asset_path) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let path = match resolve_proof_room_served_asset_path(&state.bundle, &asset_path) {
+        Ok(path) => path,
+        Err(error) => return (StatusCode::NOT_FOUND, error).into_response(),
+    };
+    let bytes = match tokio::fs::read(path).await {
+        Ok(bytes) => bytes,
+        Err(error) => return (StatusCode::NOT_FOUND, error.to_string()).into_response(),
+    };
+    (
+        StatusCode::OK,
+        [(CONTENT_TYPE, proof_room_content_type(&asset_path))],
+        bytes,
+    )
+        .into_response()
+}
+
+async fn proof_room_ui_asset_response(ui_dir: &Path, asset_path: &str) -> Response {
+    let Ok(asset_path) = safe_served_bundle_path(asset_path, "proof-room.ui") else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    if let Ok(path) = resolve_proof_room_served_asset_path(ui_dir, &asset_path) {
+        if path.is_file() {
+            if let Ok(bytes) = tokio::fs::read(path).await {
+                return (
+                    StatusCode::OK,
+                    [(CONTENT_TYPE, proof_room_content_type(&asset_path))],
+                    bytes,
+                )
+                    .into_response();
+            }
+        }
+    }
+    let index = ui_dir.join("index.html");
+    match tokio::fs::read(index).await {
+        Ok(bytes) => (
+            StatusCode::OK,
+            [(CONTENT_TYPE, "text/html; charset=utf-8")],
+            bytes,
+        )
+            .into_response(),
+        Err(error) => (StatusCode::NOT_FOUND, error.to_string()).into_response(),
+    }
+}
+
+pub fn build_proof_room_fixture_catalog_json(bundle: &Path) -> Result<serde_json::Value, String> {
+    build_proof_room_fixture_catalog_json_with_fixture_root(bundle, None)
+}
+
+pub fn build_proof_room_fixture_catalog_json_with_fixture_root(
+    bundle: &Path,
+    fixture_root: Option<&Path>,
+) -> Result<serde_json::Value, String> {
+    serde_json::to_value(build_proof_room_fixture_catalog(bundle, fixture_root)?)
+        .map_err(|error| format!("proof-room.catalog.serialize: {error}"))
+}
+
+async fn proof_room_fixture_catalog_response(
+    State(state): State<ProofRoomServeState>,
+) -> Result<Json<ProofRoomFixtureCatalog>, (StatusCode, String)> {
+    build_proof_room_fixture_catalog(&state.bundle, state.fixture_root.as_deref())
+        .map(Json)
+        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))
+}
+
+async fn proof_room_fixture_asset_with_state_response(
+    State(state): State<ProofRoomServeState>,
+    AxumPath((fixture_id, asset_path)): AxumPath<(String, String)>,
+) -> Response {
+    proof_room_fixture_asset_response_from_result(
+        &fixture_id,
+        &asset_path,
+        proof_room_fixture_asset_with_root(&fixture_id, &asset_path, state.fixture_root.as_deref()),
+    )
+}
+
+pub async fn proof_room_fixture_asset_response(
+    AxumPath((fixture_id, asset_path)): AxumPath<(String, String)>,
+) -> Response {
+    proof_room_fixture_asset_response_from_result(
+        &fixture_id,
+        &asset_path,
+        proof_room_fixture_asset(&fixture_id, &asset_path),
+    )
+}
+
+fn proof_room_fixture_asset_response_from_result(
+    fixture_id: &str,
+    asset_path: &str,
+    result: Result<(Vec<u8>, &'static str), (StatusCode, String)>,
+) -> Response {
+    match result {
+        Ok((contents, content_type)) => {
+            let status = if asset_path == "verifier-report.json" {
+                proof_room_fixture_report_status(&contents)
+            } else {
+                StatusCode::OK
+            };
+            (status, [(CONTENT_TYPE, content_type)], contents).into_response()
+        }
+        Err((status, error)) if asset_path == "verifier-report.json" => {
+            proof_room_fixture_error_response(fixture_id, asset_path, status, &error)
+        }
+        Err((status, error)) => (status, error).into_response(),
+    }
+}
+
+fn proof_room_fixture_error_response(
+    fixture_id: &str,
+    asset_path: &str,
+    status: StatusCode,
+    error: &str,
+) -> Response {
+    let failure_code = proof_room_fixture_failure_code(error);
+    let report = serde_json::json!({
+        "schema": "chio.proof-room.fixture-error.v1",
+        "fixture_id": fixture_id,
+        "asset_path": asset_path,
+        "verdict": "failed",
+        "status": status.as_u16(),
+        "failure_code": failure_code,
+        "error": error,
+    });
+    match serde_json::to_vec(&report) {
+        Ok(contents) => (status, [(CONTENT_TYPE, "application/json")], contents).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("proof-room.fixture.error-encode: {fixture_id}: {error}"),
+        )
+            .into_response(),
+    }
+}
+
+pub fn parse_listen_addr(value: &str) -> Result<SocketAddr, ProofRoomError> {
+    value.parse().map_err(ProofRoomError::ListenAddress)
+}
+
+pub fn proof_room_served_bundle_paths(static_root: &Path) -> Result<BTreeSet<String>, String> {
+    let manifest_path = static_root.join("manifest.json");
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &fs::read(&manifest_path)
+            .map_err(|error| format!("proof-room.serve.manifest-read: {error}"))?,
+    )
+    .map_err(|error| format!("proof-room.serve.manifest-json: {error}"))?;
+    let mut paths = BTreeSet::new();
+    insert_served_bundle_path(&mut paths, "manifest.json")?;
+    if static_root.join("README.md").is_file() {
+        insert_served_bundle_path(&mut paths, "README.md")?;
+    }
+    if let Some(path) = manifest
+        .get("signature")
+        .and_then(|signature| signature.get("signature_ref"))
+        .and_then(serde_json::Value::as_str)
+    {
+        insert_served_bundle_path(&mut paths, path)?;
+    } else if static_root.join("bundle-signature.dsse.json").is_file() {
+        insert_served_bundle_path(&mut paths, "bundle-signature.dsse.json")?;
+    }
+    for field in [
+        "transaction_passport_ref",
+        "evidence_graph_ref",
+        "verifier_report_ref",
+        "proof_room_verifier_report_ref",
+    ] {
+        insert_manifest_reference_path(&mut paths, &manifest, field)?;
+    }
+    if let Some(artifacts) = manifest
+        .get("artifacts")
+        .and_then(serde_json::Value::as_array)
+    {
+        for artifact in artifacts {
+            insert_value_path(&mut paths, artifact, "path")?;
+        }
+    }
+    if let Some(claims) = manifest.get("claims").and_then(serde_json::Value::as_array) {
+        for claim in claims {
+            for field in ["required_artifacts", "source_refs"] {
+                if let Some(references) = claim.get(field).and_then(serde_json::Value::as_array) {
+                    for reference in references {
+                        if let Some(path) = reference.as_str() {
+                            insert_served_bundle_path(&mut paths, path)?;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if let Some(receipt_coverage) = manifest
+        .get("receipt_coverage")
+        .and_then(serde_json::Value::as_array)
+    {
+        for row in receipt_coverage {
+            insert_value_path(&mut paths, row, "artifact_path")?;
+        }
+    }
+    if let Some(negative_cases) = manifest
+        .get("negative_cases")
+        .and_then(serde_json::Value::as_array)
+    {
+        for negative_case in negative_cases {
+            let Some(path) = negative_case
+                .get("path")
+                .and_then(serde_json::Value::as_str)
+            else {
+                continue;
+            };
+            insert_served_bundle_path(&mut paths, path)?;
+            insert_negative_case_directory_paths(static_root, &mut paths, path)?;
+        }
+    }
+    Ok(paths)
+}
+
+fn insert_manifest_reference_path(
+    paths: &mut BTreeSet<String>,
+    manifest: &serde_json::Value,
+    field: &str,
+) -> Result<(), String> {
+    if let Some(path) = manifest
+        .get(field)
+        .and_then(|reference| reference.get("path"))
+        .and_then(serde_json::Value::as_str)
+    {
+        insert_served_bundle_path(paths, path)?;
+    }
+    Ok(())
+}
+
+fn insert_value_path(
+    paths: &mut BTreeSet<String>,
+    value: &serde_json::Value,
+    field: &str,
+) -> Result<(), String> {
+    if let Some(path) = value.get(field).and_then(serde_json::Value::as_str) {
+        insert_served_bundle_path(paths, path)?;
+    }
+    Ok(())
+}
+
+fn insert_negative_case_directory_paths(
+    static_root: &Path,
+    paths: &mut BTreeSet<String>,
+    negative_path: &str,
+) -> Result<(), String> {
+    let negative_path = safe_served_bundle_path(negative_path, "proof-room.serve")?;
+    let Some(parent) = Path::new(&negative_path).parent() else {
+        return Ok(());
+    };
+    if parent.as_os_str().is_empty() {
+        return Ok(());
+    }
+    let directory = static_root.join(parent);
+    if directory.is_dir() {
+        insert_served_bundle_paths_under(static_root, &directory, paths)?;
+    }
+    Ok(())
+}
+
+fn insert_served_bundle_paths_under(
+    static_root: &Path,
+    directory: &Path,
+    paths: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    let mut children = fs::read_dir(directory)
+        .map_err(|error| {
+            format!(
+                "proof-room.serve.read-dir: {}: {error}",
+                directory.display()
+            )
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            format!(
+                "proof-room.serve.read-dir: {}: {error}",
+                directory.display()
+            )
+        })?;
+    children.sort_by_key(|child| child.file_name());
+    for child in children {
+        let path = child.path();
+        let file_type = fs::symlink_metadata(&path)
+            .map_err(|error| format!("proof-room.serve.metadata: {}: {error}", path.display()))?
+            .file_type();
+        if file_type.is_dir() {
+            insert_served_bundle_paths_under(static_root, &path, paths)?;
+        } else if file_type.is_file() {
+            let relative = served_relative_path(static_root, &path)?;
+            insert_served_bundle_path(paths, &relative)?;
+        } else {
+            return Err(format!(
+                "proof-room.serve.unsupported-file-type: {}",
+                path.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn insert_served_bundle_path(paths: &mut BTreeSet<String>, path: &str) -> Result<(), String> {
+    let path = safe_served_bundle_path(path, "proof-room.serve")?;
+    paths.insert(path);
+    Ok(())
+}
+
+fn served_relative_path(static_root: &Path, path: &Path) -> Result<String, String> {
+    let static_root = fs::canonicalize(static_root)
+        .map_err(|error| format!("proof-room.serve.root-unreadable: {error}"))?;
+    let resolved = fs::canonicalize(path).map_err(|error| {
+        format!(
+            "proof-room.serve.path-unreadable: {}: {error}",
+            path.display()
+        )
+    })?;
+    if !resolved.starts_with(&static_root) {
+        return Err(format!("proof-room.serve.path-escape: {}", path.display()));
+    }
+    let relative = resolved
+        .strip_prefix(&static_root)
+        .map_err(|error| format!("proof-room.serve.relative-path: {error}"))?;
+    let relative = relative
+        .iter()
+        .map(|part| part.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/");
+    safe_served_bundle_path(&relative, "proof-room.serve")
+}
+
+pub fn resolve_proof_room_served_asset_path(
+    root: &Path,
+    relative_path: &str,
+) -> Result<PathBuf, String> {
+    let relative_path = safe_served_bundle_path(relative_path, "proof-room.serve")?;
+    let root = fs::canonicalize(root)
+        .map_err(|error| format!("proof-room.serve.root-unreadable: {error}"))?;
+    let resolved = fs::canonicalize(root.join(relative_path))
+        .map_err(|error| format!("proof-room.serve.path-unreadable: {error}"))?;
+    if resolved.starts_with(root) {
+        Ok(resolved)
+    } else {
+        Err("proof-room.serve.path-escape".to_string())
+    }
+}
+
+pub fn is_proof_room_bundle_namespace(asset_path: &str) -> bool {
+    matches!(
+        asset_path,
+        "manifest.json" | "bundle-signature.dsse.json" | "README.md"
+    ) || asset_path.starts_with("artifacts/")
+        || asset_path.starts_with("negatives/")
+        || asset_path.starts_with("roots/")
+        || asset_path.starts_with("ui/")
+        || asset_path.starts_with("verifier/")
+}
+
+pub fn proof_room_content_type(asset_path: &str) -> &'static str {
+    if asset_path.ends_with(".json") {
+        "application/json"
+    } else if asset_path.ends_with(".html") {
+        "text/html; charset=utf-8"
+    } else if asset_path.ends_with(".js") {
+        "application/javascript"
+    } else if asset_path.ends_with(".css") {
+        "text/css; charset=utf-8"
+    } else if asset_path.ends_with(".md") {
+        "text/markdown; charset=utf-8"
+    } else if asset_path.ends_with(".svg") {
+        "image/svg+xml"
+    } else {
+        "application/octet-stream"
+    }
+}
+
+fn safe_served_bundle_path(relative: &str, label: &str) -> Result<String, String> {
+    if relative.trim() != relative
+        || relative.is_empty()
+        || relative.contains('\\')
+        || relative.contains(':')
+        || relative.contains("//")
+        || !relative.is_ascii()
+        || relative.chars().any(char::is_whitespace)
+        || relative.chars().any(char::is_control)
+        || Path::new(relative).is_absolute()
+    {
+        return Err(format!("{label} member path {relative} is not portable"));
+    }
+    for segment in relative.split('/') {
+        if segment.is_empty() || segment == "." || segment == ".." {
+            return Err(format!("{label} member path {relative} is unsafe"));
+        }
+    }
+    Ok(relative.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::error::Error;
+
+    #[tokio::test]
+    async fn serve_rejects_configured_ui_dir_before_bundle_verification(
+    ) -> Result<(), Box<dyn Error>> {
+        let tempdir = tempfile::tempdir()?;
+        let ui_dir = tempdir.path().join("empty-ui");
+        fs::create_dir_all(&ui_dir)?;
+        let bundle = tempdir.path().join("missing-bundle");
+        let listen = "127.0.0.1:0".parse()?;
+
+        let error = match serve_proof_room(ProofRoomServeConfig {
+            bundle,
+            ui_dir,
+            listen,
+            doctor_report: None,
+            fixture_root: None,
+        })
+        .await
+        {
+            Ok(()) => return Err("server accepted empty ui dir".into()),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("proof-room.ui.index-missing"),
+            "{error}"
+        );
+        Ok(())
+    }
+}

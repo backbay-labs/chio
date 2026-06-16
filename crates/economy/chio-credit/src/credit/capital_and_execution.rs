@@ -36,6 +36,7 @@ pub enum CapitalBookEvidenceKind {
     CreditFacility,
     CreditBond,
     CreditLossLifecycle,
+    CommerceOrder,
     Receipt,
     SettlementReconciliation,
 }
@@ -818,6 +819,13 @@ mod tests {
     use super::*;
     use crate::crypto::Keypair;
 
+    fn validation_error(result: Result<(), String>, message: &str) -> String {
+        match result {
+            Ok(()) => panic!("{message}"),
+            Err(error) => error,
+        }
+    }
+
     fn signed_authority_step(
         role: CapitalExecutionRole,
         principal: &Keypair,
@@ -947,9 +955,10 @@ mod tests {
             .authority_chain
             .retain(|step| step.role != owner_role);
 
-        let error = artifact
-            .validate()
-            .expect_err("missing source-owner authority must reject");
+        let error = validation_error(
+            artifact.validate(),
+            "missing source-owner authority must reject",
+        );
         assert!(error.contains("source-owner approval"));
     }
 
@@ -958,9 +967,10 @@ mod tests {
         let mut artifact = valid_capital_instruction_artifact();
         artifact.authority_chain[0].principal_id = "treasury-self-asserted".to_string();
 
-        let error = artifact
-            .validate()
-            .expect_err("self-asserted authority principal must reject");
+        let error = validation_error(
+            artifact.validate(),
+            "self-asserted authority principal must reject",
+        );
         assert!(error.contains("authority proof signer must match principalId"));
     }
 
@@ -970,9 +980,10 @@ mod tests {
         artifact.authority_chain[0].authority_proof.body.role =
             CapitalExecutionRole::FacilityProvider;
 
-        let error = artifact
-            .validate()
-            .expect_err("tampered authority proof body must reject");
+        let error = validation_error(
+            artifact.validate(),
+            "tampered authority proof body must reject",
+        );
         assert!(error.contains("authority proof signature verification failed"));
     }
 

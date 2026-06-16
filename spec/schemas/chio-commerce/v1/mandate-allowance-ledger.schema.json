@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-commerce/v1/mandate-allowance-ledger.schema.json",
+  "title": "Chio Commerce Mandate Allowance Ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "order_id",
+    "merchant_subject",
+    "max_amount_minor",
+    "currency",
+    "valid_from",
+    "expires_at",
+    "single_use",
+    "used_occurrences",
+    "max_occurrences",
+    "ap2_checkout_mandate_hash",
+    "ap2_payment_mandate_hash",
+    "acp_delegated_payment_token_hash"
+  ],
+  "properties": {
+    "schema": { "const": "chio.commerce.mandate-allowance-ledger.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "order_id": { "type": "string", "minLength": 1 },
+    "merchant_subject": { "type": "string", "minLength": 1 },
+    "max_amount_minor": { "type": "integer", "minimum": 1 },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "valid_from": { "type": "string", "minLength": 1 },
+    "expires_at": { "type": "string", "minLength": 1 },
+    "single_use": { "type": "boolean" },
+    "used_occurrences": { "type": "integer", "minimum": 0 },
+    "max_occurrences": { "type": "integer", "minimum": 1 },
+    "ap2_checkout_mandate_hash": { "$ref": "#/$defs/sha256" },
+    "ap2_payment_mandate_hash": { "$ref": "#/$defs/sha256" },
+    "acp_delegated_payment_token_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

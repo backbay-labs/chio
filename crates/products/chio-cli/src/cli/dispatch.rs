@@ -10,6 +10,10 @@ mod receipt_evidence;
 mod certify_cert;
 #[path = "dispatch/did_passport.rs"]
 mod did_passport;
+#[path = "dispatch/proof.rs"]
+mod proof;
+#[path = "dispatch/workflow.rs"]
+mod workflow;
 #[path = "dispatch/reputation_guard.rs"]
 mod reputation_guard;
 #[path = "dispatch/settle_arena.rs"]
@@ -18,10 +22,12 @@ mod settle_arena;
 use api_mcp::{dispatch_api, dispatch_mcp};
 use certify_cert::{dispatch_cert, dispatch_certify};
 use did_passport::{dispatch_did, dispatch_passport};
+use proof::dispatch_proof;
 use receipt_evidence::{dispatch_evidence, dispatch_receipt};
 use reputation_guard::{dispatch_conformance, dispatch_guard, dispatch_reputation};
 use settle_arena::{dispatch_arena, dispatch_settle};
 use trust_cmd::dispatch_trust;
+use workflow::dispatch_workflow;
 
 pub(crate) fn run() {
     let cli = Cli::parse();
@@ -91,6 +97,8 @@ pub(crate) fn run() {
         Commands::Certify { command } => dispatch_certify(command, json_output, control_url, control_token),
         Commands::Did { command } => dispatch_did(command, json_output),
         Commands::Passport { command } => dispatch_passport(command, json_output, receipt_db, budget_db, control_url, control_token),
+        Commands::Proof { command } => dispatch_proof(command, json_output),
+        Commands::Workflow { command } => dispatch_workflow(command, json_output),
         Commands::Cert { command } => dispatch_cert(command, json_output, authority_seed_file),
         Commands::Reputation { command } => dispatch_reputation(command, json_output, receipt_db, budget_db, authority_seed_file, control_url, control_token),
         Commands::Guard { command } => dispatch_guard(command, json_output),

@@ -578,30 +578,7 @@ pub struct RuntimeProofRegenerationReport {
     pub checks: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct RuntimeProofParityMismatch {
-    pub field: String,
-    pub static_value_sha256: String,
-    pub runtime_value_sha256: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct RuntimeProofParityReport {
-    pub schema: String,
-    pub run_id: String,
-    pub accepted: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub failure_code: Option<String>,
-    pub generated_at_unix_ms: u64,
-    pub static_proof_package_sha256: String,
-    pub runtime_proof_package_sha256: String,
-    pub static_verifier_report_sha256: String,
-    pub runtime_verifier_report_sha256: String,
-    pub compared_fields: Vec<String>,
-    pub mismatches: Vec<RuntimeProofParityMismatch>,
-}
+pub use chio_runtime_proof_parity::{RuntimeProofParityMismatch, RuntimeProofParityReport};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

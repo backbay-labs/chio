@@ -1,0 +1,28 @@
+{
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "disclosure_capsule_refs": [],
+  "envelope_id": "agent-web-envelope-sigstore-valid",
+  "external_subject": "sigstore-bundle-agent-web-valid",
+  "external_subject_digest": "e4861ad724fd0287c46ddb24935de5645767766ba1824f6bcf478fdf78a18cd7",
+  "external_subject_path": "external/sigstore-bundle.json",
+  "external_subject_signature_ref": "",
+  "limitations": [
+    "Sigstore projection does not make supply-chain signature evidence equivalent to Chio authority."
+  ],
+  "projection_manifest_ref": "projection-sigstore-valid",
+  "receipt_refs": [
+    "receipt-agent-web-sigstore-bundle-allow"
+  ],
+  "risk_refs": [],
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "settlement_refs": [],
+  "signature": "sig-agent-web-sigstore-envelope",
+  "source_protocol": "sigstore",
+  "source_protocol_version": "bundle-v1",
+  "transaction_passport_ref": "passport-agent-web-valid"
+}

@@ -1,0 +1,55 @@
+{
+  "edges": [
+    {
+      "evidence_class": "chio-sidecar-proof",
+      "from": "email-envelope",
+      "predicate": "projects-to",
+      "to": "email-manifest"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "email-envelope",
+      "predicate": "binds",
+      "to": "email-message"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "email-envelope",
+      "predicate": "binds",
+      "to": "receipt-agent-web-email-message-allow"
+    }
+  ],
+  "id": "agent-web-evidence-graph-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "nodes": [
+    {
+      "id": "receipt-agent-web-email-message-allow",
+      "path": "receipts/receipt-agent-web-email-message-allow.json",
+      "role": "receipt",
+      "schema": "chio.receipt.v1",
+      "sha256": "2266a8ed9aa5da5a48d5686b66e7a989c00709e97ce7e5b45eed5ffa4d813e11"
+    },
+    {
+      "id": "email-envelope",
+      "path": "email-envelope.json",
+      "role": "agent-web-proof-envelope",
+      "schema": "chio.agent-web-proof-envelope.v1",
+      "sha256": "578d57b98b5ad1ecd904ebfe6aee213a389200b038313a85b86574cb9496c995"
+    },
+    {
+      "id": "email-manifest",
+      "path": "email-manifest.json",
+      "role": "external-projection-manifest",
+      "schema": "chio.agent-web.external-projection-manifest.v1",
+      "sha256": "cfb24f4e88059c234a859103d80218a2545c4dfee6fd5f89b5c1678869afc00a"
+    },
+    {
+      "id": "email-message",
+      "path": "external/email-message.json",
+      "role": "external-subject",
+      "schema": "external.email.connector-action.v1",
+      "sha256": "69ede1af7e55703b877cc1fde7e6633a503eca53d48e0c6b56f9e505b6efa024"
+    }
+  ],
+  "schema": "chio.transaction.evidence-graph.v1"
+}

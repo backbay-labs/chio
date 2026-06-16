@@ -1,0 +1,7 @@
+{
+  "schema": "chio.runtime.terminal-receipt.v1",
+  "receipt_id": "receipt-runtime-failure",
+  "terminal_status": "failed_tool_unreachable",
+  "policy_digest": "687126355154079b3ab9c62e3eb18e5d285e435c9321720bae34a343877d0cd9",
+  "incident_ref": "incident-tool-unreachable"
+}

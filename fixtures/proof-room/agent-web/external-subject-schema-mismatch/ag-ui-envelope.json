@@ -1,0 +1,28 @@
+{
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "envelope_id": "agent-web-envelope-ag-ui-valid",
+  "transaction_passport_ref": "passport-agent-web-valid",
+  "source_protocol": "ag-ui",
+  "source_protocol_version": "events-v1",
+  "external_subject": "ag-ui-event-agent-web-valid",
+  "external_subject_path": "external/ag-ui-event.json",
+  "external_subject_digest": "34bb0add4a485babc5c4be0f2061dc3d6f507de93cf86d0d73db46a40479565a",
+  "external_subject_signature_ref": "",
+  "projection_manifest_ref": "projection-ag-ui-valid",
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "receipt_refs": [
+    "receipt-agent-web-ag-ui-event-allow"
+  ],
+  "disclosure_capsule_refs": [],
+  "settlement_refs": [],
+  "risk_refs": [],
+  "limitations": [
+    "AG-UI projection does not make UI event evidence equivalent to Chio authority."
+  ],
+  "signature": "sig-agent-web-ag-ui-envelope"
+}

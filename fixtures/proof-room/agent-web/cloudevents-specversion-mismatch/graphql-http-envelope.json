@@ -1,0 +1,28 @@
+{
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "envelope_id": "agent-web-envelope-graphql-http-valid",
+  "transaction_passport_ref": "passport-agent-web-valid",
+  "source_protocol": "graphql-http",
+  "source_protocol_version": "draft-2026-06-04",
+  "external_subject": "graphql-operation-agent-web-valid",
+  "external_subject_path": "external/graphql-operation.json",
+  "external_subject_digest": "d7414c726c2dbe57d924830f051acafb66e93ed306a303973881933a88f4b3ea",
+  "external_subject_signature_ref": "",
+  "projection_manifest_ref": "projection-graphql-http-valid",
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "receipt_refs": [
+    "receipt-agent-web-graphql-mutation-allow"
+  ],
+  "disclosure_capsule_refs": [],
+  "settlement_refs": [],
+  "risk_refs": [],
+  "limitations": [
+    "GraphQL over HTTP projection is digest-bound HTTP evidence, not Chio capability authority."
+  ],
+  "signature": "sig-agent-web-graphql-http-envelope"
+}

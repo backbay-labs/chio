@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-runtime/v1/execution-lease.schema.json",
+  "title": "Chio Runtime Execution Lease",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "lease_id",
+    "tool_server_id",
+    "tool_instance_id",
+    "tool_manifest_digest",
+    "sandbox_attestation_ref",
+    "request_digest",
+    "revocation_freshness_ref",
+    "policy_digest",
+    "nonce",
+    "side_effect_class",
+    "issued_at",
+    "expires_at"
+  ],
+  "properties": {
+    "schema": { "const": "chio.runtime.execution-lease.v1" },
+    "lease_id": { "type": "string", "minLength": 1 },
+    "tool_server_id": { "type": "string", "minLength": 1 },
+    "tool_instance_id": { "type": "string", "minLength": 1 },
+    "tool_manifest_digest": { "$ref": "#/$defs/sha256" },
+    "sandbox_attestation_ref": { "type": "string", "minLength": 1 },
+    "request_digest": { "$ref": "#/$defs/sha256" },
+    "revocation_freshness_ref": { "type": "string", "minLength": 1 },
+    "policy_digest": { "$ref": "#/$defs/sha256" },
+    "nonce": { "type": "string", "minLength": 1 },
+    "side_effect_class": {
+      "type": "string",
+      "enum": [
+        "network-write",
+        "filesystem-write",
+        "process-spawn",
+        "state-write"
+      ]
+    },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "expires_at": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

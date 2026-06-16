@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-runtime/v1/terminal-receipt.schema.json",
+  "title": "Chio Runtime Terminal Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "receipt_id",
+    "terminal_status",
+    "policy_digest"
+  ],
+  "properties": {
+    "schema": { "const": "chio.runtime.terminal-receipt.v1" },
+    "receipt_id": { "type": "string", "minLength": 1 },
+    "terminal_status": {
+      "type": "string",
+      "enum": [
+        "allowed_executed",
+        "denied_guard_request",
+        "failed_tool_unreachable",
+        "failed_infrastructure"
+      ]
+    },
+    "policy_digest": { "$ref": "#/$defs/sha256" },
+    "execution_lease_ref": { "type": "string", "minLength": 1 },
+    "incident_ref": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

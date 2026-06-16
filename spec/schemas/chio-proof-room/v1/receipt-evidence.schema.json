@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-proof-room/v1/receipt-evidence.schema.json",
+  "title": "Chio Proof Room Receipt Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "receipt_id",
+    "terminal_status",
+    "policy_digest",
+    "request_digest",
+    "response_digest",
+    "kernel_key",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.proof-room.receipt-evidence.v1" },
+    "receipt_id": { "type": "string", "minLength": 1 },
+    "terminal_status": { "type": "string", "minLength": 1 },
+    "policy_digest": { "$ref": "#/$defs/sha256" },
+    "request_digest": { "$ref": "#/$defs/sha256" },
+    "response_digest": { "$ref": "#/$defs/sha256" },
+    "execution_lease_ref": { "type": "string", "minLength": 1 },
+    "kernel_key": { "$ref": "#/$defs/ed25519_public_key" },
+    "signature": { "$ref": "#/$defs/ed25519_signature" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ed25519_public_key": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ed25519_signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  }
+}

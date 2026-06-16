@@ -1,0 +1,28 @@
+{
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "envelope_id": "agent-web-envelope-rpa-valid",
+  "transaction_passport_ref": "passport-agent-web-valid",
+  "source_protocol": "rpa",
+  "source_protocol_version": "uia-2026-06",
+  "external_subject": "rpa-transcript-agent-web-valid",
+  "external_subject_path": "external/rpa-transcript.json",
+  "external_subject_digest": "77eb238ad5c35b0e2992abb325ce68fe3a2bcf95e8a70a2621051cb0d439668f",
+  "external_subject_signature_ref": "",
+  "projection_manifest_ref": "projection-rpa-valid",
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "receipt_refs": [
+    "receipt-agent-web-rpa-transcript-allow"
+  ],
+  "disclosure_capsule_refs": [],
+  "settlement_refs": [],
+  "risk_refs": [],
+  "limitations": [
+    "RPA projection does not make desktop automation evidence equivalent to Chio authority."
+  ],
+  "signature": "sig-agent-web-rpa-envelope"
+}

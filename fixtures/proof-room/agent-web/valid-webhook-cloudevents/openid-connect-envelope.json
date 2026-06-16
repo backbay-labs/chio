@@ -1,0 +1,28 @@
+{
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "disclosure_capsule_refs": [],
+  "envelope_id": "agent-web-envelope-openid-connect-valid",
+  "external_subject": "openid-connect-identity-agent-web-valid",
+  "external_subject_digest": "cfc7b99d169fc78c79e184136f916d94cb933eeda3b47b06f500b4a3e3d1b959",
+  "external_subject_path": "external/openid-connect-identity.json",
+  "external_subject_signature_ref": "",
+  "limitations": [
+    "OpenID Connect projection does not make identity evidence equivalent to Chio authority."
+  ],
+  "projection_manifest_ref": "projection-openid-connect-valid",
+  "receipt_refs": [
+    "receipt-agent-web-openid-connect-identity-allow"
+  ],
+  "risk_refs": [],
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "settlement_refs": [],
+  "signature": "sig-agent-web-openid-connect-envelope",
+  "source_protocol": "openid-connect",
+  "source_protocol_version": "core-1.0",
+  "transaction_passport_ref": "passport-agent-web-valid"
+}

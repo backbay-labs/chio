@@ -9,7 +9,7 @@ pub(crate) mod root_registry_bindings {
         IChioRootRegistry,
         concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../contracts/artifacts/interfaces/IChioRootRegistry.json"
+            "/artifacts/interfaces/IChioRootRegistry.json"
         )
     );
 }
@@ -21,7 +21,7 @@ pub(crate) mod identity_registry_bindings {
         IChioIdentityRegistry,
         concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../contracts/artifacts/interfaces/IChioIdentityRegistry.json"
+            "/artifacts/interfaces/IChioIdentityRegistry.json"
         )
     );
 }
@@ -33,7 +33,7 @@ pub(crate) mod escrow_bindings {
         IChioEscrow,
         concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../contracts/artifacts/interfaces/IChioEscrow.json"
+            "/artifacts/interfaces/IChioEscrow.json"
         )
     );
 }
@@ -45,7 +45,7 @@ pub(crate) mod bond_vault_bindings {
         IChioBondVault,
         concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../contracts/artifacts/interfaces/IChioBondVault.json"
+            "/artifacts/interfaces/IChioBondVault.json"
         )
     );
 }
@@ -57,7 +57,7 @@ pub(crate) mod price_resolver_bindings {
         IChioPriceResolver,
         concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../../contracts/artifacts/interfaces/IChioPriceResolver.json"
+            "/artifacts/interfaces/IChioPriceResolver.json"
         )
     );
 }

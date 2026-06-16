@@ -269,6 +269,241 @@ html, body, #root {
   background: #fff7f7;
 }
 
+.proof-room-main {
+  gap: 16px;
+  overflow: auto;
+  padding: 16px;
+}
+
+.proof-room-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 16px;
+}
+
+.proof-room-summary h2 {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.proof-room-summary p,
+.proof-room-muted {
+  margin-top: 6px;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.proof-room-upload {
+  display: flex;
+  min-height: 40px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 10px 12px;
+}
+
+.proof-room-file-button {
+  display: inline-flex;
+  min-height: 32px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  padding: 0 12px;
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.proof-room-file-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.proof-room-source,
+.proof-room-upload-error {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.proof-room-upload-error {
+  color: var(--color-deny);
+}
+
+.proof-room-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.proof-room-panel,
+.proof-room-section {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  padding: 14px;
+}
+
+.proof-room-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.proof-room-panel code {
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: normal;
+  word-break: break-all;
+}
+
+.proof-room-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.proof-room-section h3 {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.proof-room-verdict,
+.proof-room-verdict-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.proof-room-verdict {
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.proof-room-verdict-chip {
+  padding: 3px 8px;
+}
+
+.proof-room-verdict-verified {
+  color: var(--color-allow);
+  background: var(--color-allow-bg);
+}
+
+.proof-room-verdict-failed {
+  color: var(--color-deny);
+  background: var(--color-deny-bg);
+}
+
+.proof-room-verdict-excluded {
+  color: var(--color-incomplete);
+  background: var(--color-incomplete-bg);
+}
+
+.proof-room-table-wrap {
+  overflow-x: auto;
+}
+
+.proof-room-table td:first-child {
+  min-width: 280px;
+}
+
+.proof-room-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proof-room-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 8px;
+}
+
+.proof-room-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.proof-room-row div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.proof-room-row span {
+  color: var(--color-text-muted);
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.proof-room-negative-codes {
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.proof-room-row code,
+.proof-room-artifacts code {
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-bg);
+  padding: 4px 6px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.proof-room-fixture-link {
+  width: fit-content;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.proof-room-fixture-button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.proof-room-fixture-link:hover,
+.proof-room-fixture-link:focus {
+  text-decoration: underline;
+}
+
+.proof-room-selected-fixture {
+  margin-top: 12px;
+}
+
+.proof-room-artifacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .portable-reputation-panel {
   display: flex;
   flex-direction: column;

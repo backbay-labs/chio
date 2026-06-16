@@ -1,0 +1,40 @@
+{
+  "schema": "chio.runtime.proof-regeneration-report.v1",
+  "runId": "runtime-loopback-1",
+  "accepted": true,
+  "generatedAtUnixMs": 1800000001000,
+  "proofPackageSha256": "dfd07e6f382f2a6627e62794921a5805cdddd92920c318deb2036d84fd503405",
+  "verifierReportSha256": "9354644aedfb54e84aa4fe4d8e8032c94720c0674405159688180e8d6b854b49",
+  "workflowReceiptSha256": "19d93737bad58149f8ad13c7158631f951b0692415d733d5bfd7d21701f0b63b",
+  "sourceRecords": [
+    {
+      "stepIndex": 0,
+      "admissionReportSha256": "15b6814b2fd721ee3e3ffcd4dbf4c116666b494afdc9d0dbec925162c4b2c266",
+      "toolReceiptSha256": "1fe500d7ee85b56ec58a2a40b1383c51481eba060c1736bc2dc391441b003c14",
+      "bilateralDsseSha256": "974b27428f58d8a265441a12dcdf4bdda73a2d578c8906d6a6c2f3c5c202cfee",
+      "workflowStepSha256": "f553d352a6001aae9a2ea23147c930acd8a88345e3a2fd21da7eb744420a5838"
+    },
+    {
+      "stepIndex": 1,
+      "admissionReportSha256": "99c18bed827350310fe2cfc9ff7486c31a1235b026eefc4f0d7c592ba4bb50b6",
+      "toolReceiptSha256": "fe0c2fa46f0f16aad7a3a916d095d20b5bc44304055bbf85965f837e739b0e45",
+      "bilateralDsseSha256": "f43bef5c80e3cf3d501f356e83d6eee642c0a98a2a769f8c0f85b6c65af325c8",
+      "workflowStepSha256": "092bc27126801f257aa90f76a42993965ccea939fa86f17a68ca312be3949192"
+    },
+    {
+      "stepIndex": 2,
+      "admissionReportSha256": "67a439a35f37fce4532415dd7b2a766848eef234dc0d1fe8893abdfaf46aa470",
+      "toolReceiptSha256": "3d4033418889f4d05ca1948e85e2dfcb5732cb34640c58a8aaea73a082ef7bff",
+      "bilateralDsseSha256": "0b06dd405073d4313410ca1ab563ceb97b8c3a781f43f351281b5eb6b8e5ec83",
+      "workflowStepSha256": "797fa5e459043ebf0af095992a6e49500c4edd5d19c6aa338fc42e45c40a0ca6"
+    }
+  ],
+  "checks": [
+    "runtime_source_records.bound",
+    "runtime_kernel_receipts.captured",
+    "runtime_live_receipts.bound_to_proof_package",
+    "runtime_treaty_buyer_closure.bound",
+    "runtime_verifier_report.canonical_hash_recorded",
+    "runtime_semantic_proof_regeneration.verified"
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "schema": "chio.commerce.event-log.v1",
+  "id": "event-log-commerce-001",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "order_id": "order-commerce-001",
+  "events": [
+    {
+      "event_id": "event-commerce-001-intent",
+      "order_id": "order-commerce-001",
+      "prior_state": "none",
+      "next_state": "intent_recorded",
+      "transition": "record_intent",
+      "occurred_at": "2026-06-10T00:00:00Z",
+      "authority_receipt_ref": "receipt-intent-commerce-001",
+      "evidence_refs": ["intent-commerce-001"]
+    },
+    {
+      "event_id": "event-commerce-001-provider",
+      "order_id": "order-commerce-001",
+      "prior_state": "intent_recorded",
+      "next_state": "provider_admitted",
+      "transition": "admit_provider",
+      "occurred_at": "2026-06-10T00:00:10Z",
+      "authority_receipt_ref": "receipt-provider-commerce-001",
+      "evidence_refs": ["provider-admission-commerce-001"]
+    },
+    {
+      "event_id": "event-commerce-001-quote",
+      "order_id": "order-commerce-001",
+      "prior_state": "provider_admitted",
+      "next_state": "quote_bound",
+      "transition": "bind_quote",
+      "occurred_at": "2026-06-10T00:01:00Z",
+      "authority_receipt_ref": "receipt-quote-commerce-001",
+      "evidence_refs": ["quote-commerce-001"]
+    },
+    {
+      "event_id": "event-commerce-001-mandate",
+      "order_id": "order-commerce-001",
+      "prior_state": "quote_bound",
+      "next_state": "mandate_bound",
+      "transition": "bind_mandate",
+      "occurred_at": "2026-06-10T00:02:00Z",
+      "authority_receipt_ref": "receipt-mandate-commerce-001",
+      "evidence_refs": ["mandate-commerce-001"]
+    },
+    {
+      "event_id": "event-commerce-001-budget",
+      "order_id": "order-commerce-001",
+      "prior_state": "mandate_bound",
+      "next_state": "budget_reserved",
+      "transition": "reserve_budget",
+      "occurred_at": "2026-06-10T00:03:00Z",
+      "authority_receipt_ref": "receipt-budget-commerce-001",
+      "evidence_refs": ["budget-reservation-commerce-001"]
+    },
+    {
+      "event_id": "event-commerce-001-payment",
+      "order_id": "order-commerce-001",
+      "prior_state": "budget_reserved",
+      "next_state": "payment_verified",
+      "transition": "verify_payment",
+      "occurred_at": "2026-06-10T00:04:00Z",
+      "authority_receipt_ref": "receipt-payment-commerce-001",
+      "evidence_refs": ["payment-lifecycle-commerce-001"]
+    },
+    {
+      "event_id": "event-commerce-001-fulfillment",
+      "order_id": "order-commerce-001",
+      "prior_state": "payment_verified",
+      "next_state": "fulfillment_attested",
+      "transition": "attest_fulfillment",
+      "occurred_at": "2026-06-10T00:05:00Z",
+      "authority_receipt_ref": "receipt-fulfillment-commerce-001",
+      "evidence_refs": ["fulfillment-commerce-001"]
+    },
+    {
+      "event_id": "event-commerce-001-dispatch",
+      "order_id": "order-commerce-001",
+      "prior_state": "fulfillment_attested",
+      "next_state": "settlement_dispatched",
+      "transition": "dispatch_settlement",
+      "occurred_at": "2026-06-10T00:06:00Z",
+      "authority_receipt_ref": "receipt-settlement-dispatch-commerce-001",
+      "evidence_refs": ["settlement-packet-commerce-001"]
+    },
+    {
+      "event_id": "event-commerce-001-reconcile",
+      "order_id": "order-commerce-001",
+      "prior_state": "settlement_dispatched",
+      "next_state": "settlement_reconciled",
+      "transition": "reconcile_settlement",
+      "occurred_at": "2026-06-10T00:07:00Z",
+      "authority_receipt_ref": "receipt-reconciliation-commerce-001",
+      "evidence_refs": ["reconciliation-commerce-001"]
+    },
+    {
+      "event_id": "event-commerce-001-complete",
+      "order_id": "order-commerce-001",
+      "prior_state": "settlement_reconciled",
+      "next_state": "completed",
+      "transition": "complete_order",
+      "occurred_at": "2026-06-10T00:08:00Z",
+      "authority_receipt_ref": "receipt-complete-commerce-001",
+      "evidence_refs": ["order-context-commerce-001"]
+    }
+  ]
+}

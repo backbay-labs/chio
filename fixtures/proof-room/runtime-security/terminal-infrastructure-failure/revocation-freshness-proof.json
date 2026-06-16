@@ -1,0 +1,12 @@
+{
+  "schema": "chio.runtime.revocation-freshness-proof.v1",
+  "proof_id": "revocation-runtime-valid",
+  "oracle_id": "revocation-oracle-main",
+  "epoch_id": "revocation-epoch-42",
+  "epoch_root": "3333333333333333333333333333333333333333333333333333333333333333",
+  "sequence": 42,
+  "fetched_at": "2026-06-10T00:00:00Z",
+  "max_staleness_ms": 5000,
+  "revoked_leaf_result": false,
+  "signature": "sig-revocation-runtime-valid"
+}

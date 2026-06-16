@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-commerce/v1/order-context.schema.json",
+  "title": "Chio Commerce Order Context",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "order_id",
+    "buyer_subject",
+    "agent_subject",
+    "merchant_subject",
+    "quote_id",
+    "quote_amount_minor",
+    "quote_currency",
+    "event_log_sha256",
+    "event_log_path",
+    "payment_lifecycle_sha256",
+    "payment_lifecycle_path",
+    "mandate_ledger_sha256",
+    "mandate_ledger_path",
+    "current_state"
+  ],
+  "properties": {
+    "schema": { "const": "chio.commerce.order-context.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "order_id": { "type": "string", "minLength": 1 },
+    "buyer_subject": { "type": "string", "minLength": 1 },
+    "agent_subject": { "type": "string", "minLength": 1 },
+    "merchant_subject": { "type": "string", "minLength": 1 },
+    "quote_id": { "type": "string", "minLength": 1 },
+    "quote_amount_minor": { "type": "integer", "minimum": 1 },
+    "quote_currency": { "$ref": "#/$defs/currency" },
+    "event_log_sha256": { "$ref": "#/$defs/sha256" },
+    "event_log_path": { "$ref": "#/$defs/bundleRelativePath" },
+    "payment_lifecycle_sha256": { "$ref": "#/$defs/sha256" },
+    "payment_lifecycle_path": { "$ref": "#/$defs/bundleRelativePath" },
+    "mandate_ledger_sha256": { "$ref": "#/$defs/sha256" },
+    "mandate_ledger_path": { "$ref": "#/$defs/bundleRelativePath" },
+    "current_state": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "bundleRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "\\\\" },
+          { "pattern": "(^|/)\\.\\.(/|$)" }
+        ]
+      }
+    }
+  }
+}

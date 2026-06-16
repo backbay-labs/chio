@@ -1,0 +1,1 @@
+{"schema":"chio.transaction-passport.v1","id":"runtime-passport-valid","issued_at":"2026-06-10T00:00:00Z","evidence_graph_sha256":"7c755f015db3a02a3bcc92b55f2e775c0eed8fa7e36b74f379740b15b605ab16","evidence_graph_path":"evidence-graph.json","verifier_policy_sha256":"3ef61f665f58362585af0237105bac37a93554952f010664f31468c3ca94f7b6","verifier_policy_path":"verifier-policy.json"}

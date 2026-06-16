@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-swarm/v1/authority-verifier-report.schema.json",
+  "title": "Chio Swarm Authority Verifier Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "verdict",
+    "graphId",
+    "taskCount",
+    "continuationCount",
+    "joinCount",
+    "routeCount",
+    "verifiedClaims"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.swarm.authority-verifier-report.v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verdict": {
+      "const": "verified"
+    },
+    "graphId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "taskCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "continuationCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "joinCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "routeCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "verifiedClaims": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

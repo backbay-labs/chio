@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   fetchAgentCostSeries,
   fetchOperatorReport,
+  fetchProofRoomFixtureBundle,
+  fetchProofRoomFixtureCatalog,
+  fetchProofRoomStaticBundle,
   fetchRelayAlertAssuranceArchiveExtractionReport,
   fetchRelayAlertAssuranceArchivePackageReport,
   fetchRelayAlertAssuranceArchiveReport,
@@ -24,6 +27,7 @@ import {
   fetchReceiptAnalytics,
   getToken,
 } from './api'
+import { sha256Hex } from './proofRoomArtifactEvidence'
 import { decisionKind, receiptSubjectKey, type Receipt } from './types'
 
 describe('dashboard api helpers', () => {
@@ -624,6 +628,448 @@ describe('dashboard api helpers', () => {
           'Content-Type': 'application/json',
         }),
       }),
+    )
+  })
+
+  it('rejects served Proof Room manifests with unsafe excluded artifact paths', async () => {
+    const routes: Record<string, unknown> = {
+      '/manifest.json': {
+        schema: 'chio.proof-room.bundle.v1',
+        bundle_id: 'served-proof-room',
+        fixture_id: 'single-call-authority',
+        verifier_report_ref: {
+          path: 'verifier/report.json',
+          sha256: '1'.repeat(64),
+          schema: 'chio.transaction.verifier-report.v1',
+        },
+        proof_room_verifier_report_ref: {
+          path: 'ui/proof-room-static/load-report.json',
+          sha256: '2'.repeat(64),
+          schema: 'chio.proof-room.verifier-report.v1',
+        },
+        claims: [],
+        negative_cases: [],
+        excluded_artifacts: [
+          {
+            path: '../outside.json',
+            reason: 'outside bundle',
+          },
+        ],
+      },
+      '/ui/proof-room-static/load-report.json': {
+        schema: 'chio.proof-room.verifier-report.v1',
+        verdict: 'verified',
+        bundle_id: 'served-proof-room',
+        fixture_id: 'single-call-authority',
+        source_verifier_report_ref: {
+          path: 'verifier/report.json',
+          sha256: '1'.repeat(64),
+          schema: 'chio.transaction.verifier-report.v1',
+        },
+        ui_verdict_source: 'verifier_report_ref',
+        rendered_claims: [],
+      },
+      '/verifier/report.json': {
+        schema: 'chio.transaction.verifier-report.v1',
+        verdict: 'verified',
+        verified_claims: [],
+      },
+    }
+    vi.stubGlobal('fetch', vi.fn((path: string) => Promise.resolve({
+      ok: true,
+      json: async () => routes[path],
+    })))
+
+    await expect(fetchProofRoomStaticBundle()).rejects.toThrow(
+      'served excluded artifact path is unsafe',
+    )
+  })
+
+  it('rejects served Proof Room manifests with dot segments in artifact paths', async () => {
+    const routes: Record<string, unknown> = {
+      '/manifest.json': {
+        schema: 'chio.proof-room.bundle.v1',
+        bundle_id: 'served-proof-room',
+        fixture_id: 'single-call-authority',
+        verifier_report_ref: {
+          path: 'verifier/./report.json',
+          sha256: '1'.repeat(64),
+          schema: 'chio.transaction.verifier-report.v1',
+        },
+        proof_room_verifier_report_ref: {
+          path: 'ui/proof-room-static/load-report.json',
+          sha256: '2'.repeat(64),
+          schema: 'chio.proof-room.verifier-report.v1',
+        },
+        claims: [],
+        negative_cases: [],
+      },
+      '/ui/proof-room-static/load-report.json': {
+        schema: 'chio.proof-room.verifier-report.v1',
+        verdict: 'verified',
+        bundle_id: 'served-proof-room',
+        fixture_id: 'single-call-authority',
+        source_verifier_report_ref: {
+          path: 'verifier/./report.json',
+          sha256: '1'.repeat(64),
+          schema: 'chio.transaction.verifier-report.v1',
+        },
+        ui_verdict_source: 'verifier_report_ref',
+        rendered_claims: [],
+      },
+      '/verifier/./report.json': {
+        schema: 'chio.transaction.verifier-report.v1',
+        verdict: 'verified',
+        verified_claims: [],
+      },
+    }
+    vi.stubGlobal('fetch', vi.fn((path: string) => Promise.resolve({
+      ok: true,
+      json: async () => routes[path],
+    })))
+
+    await expect(fetchProofRoomStaticBundle()).rejects.toThrow(
+      'served verifier report path is unsafe',
+    )
+  })
+
+  it('rejects served Proof Room manifests with whitespace in artifact paths', async () => {
+    const routes: Record<string, unknown> = {
+      '/manifest.json': {
+        schema: 'chio.proof-room.bundle.v1',
+        bundle_id: 'served-proof-room',
+        fixture_id: 'single-call-authority',
+        verifier_report_ref: {
+          path: 'verifier/report json',
+          sha256: '1'.repeat(64),
+          schema: 'chio.transaction.verifier-report.v1',
+        },
+        proof_room_verifier_report_ref: {
+          path: 'ui/proof-room-static/load-report.json',
+          sha256: '2'.repeat(64),
+          schema: 'chio.proof-room.verifier-report.v1',
+        },
+        claims: [],
+        negative_cases: [],
+      },
+      '/ui/proof-room-static/load-report.json': {
+        schema: 'chio.proof-room.verifier-report.v1',
+        verdict: 'verified',
+        bundle_id: 'served-proof-room',
+        fixture_id: 'single-call-authority',
+        source_verifier_report_ref: {
+          path: 'verifier/report json',
+          sha256: '1'.repeat(64),
+          schema: 'chio.transaction.verifier-report.v1',
+        },
+        ui_verdict_source: 'verifier_report_ref',
+        rendered_claims: [],
+      },
+      '/verifier/report json': {
+        schema: 'chio.transaction.verifier-report.v1',
+        verdict: 'verified',
+        verified_claims: [],
+      },
+    }
+    vi.stubGlobal('fetch', vi.fn((path: string) => Promise.resolve({
+      ok: true,
+      json: async () => routes[path],
+    })))
+
+    await expect(fetchProofRoomStaticBundle()).rejects.toThrow(
+      'served verifier report path is unsafe',
+    )
+  })
+
+  it('rejects served Proof Room bundles with forged detached signatures', async () => {
+    const verifierReportJson = JSON.stringify({
+      schema: 'chio.transaction.verifier-report.v1',
+      verdict: 'verified',
+      verified_claims: [],
+    })
+    const verifierReportDigest = await sha256Hex(verifierReportJson)
+    const loadReportJson = JSON.stringify({
+      schema: 'chio.proof-room.verifier-report.v1',
+      verdict: 'verified',
+      bundle_id: 'served-proof-room',
+      fixture_id: 'single-call-authority',
+      source_verifier_report_ref: {
+        path: 'verifier/report.json',
+        sha256: verifierReportDigest,
+        schema: 'chio.transaction.verifier-report.v1',
+      },
+      ui_verdict_source: 'verifier_report_ref',
+      rendered_claims: [],
+    })
+    const loadReportDigest = await sha256Hex(loadReportJson)
+    const manifestJson = JSON.stringify({
+      schema: 'chio.proof-room.bundle.v1',
+      bundle_id: 'served-proof-room',
+      fixture_id: 'single-call-authority',
+      verifier_report_ref: {
+        path: 'verifier/report.json',
+        sha256: verifierReportDigest,
+        schema: 'chio.transaction.verifier-report.v1',
+      },
+      proof_room_verifier_report_ref: {
+        path: 'ui/proof-room-static/load-report.json',
+        sha256: loadReportDigest,
+        schema: 'chio.proof-room.verifier-report.v1',
+      },
+      signature: {
+        kind: 'detached-dsse',
+        signature_ref: 'bundle-signature.dsse.json',
+      },
+      claims: [],
+      negative_cases: [],
+    })
+    const manifestDigest = await sha256Hex(manifestJson)
+    const signatureJson = JSON.stringify({
+      payloadType: 'application/vnd.chio.proof-room.bundle.v1+json',
+      payloadRef: {
+        path: 'manifest.json',
+        schema: 'chio.proof-room.bundle.v1',
+        sha256: manifestDigest,
+      },
+      signatures: [{ keyid: '1'.repeat(64), sig: '0'.repeat(128) }],
+    })
+    const routes: Record<string, string> = {
+      '/manifest.json': manifestJson,
+      '/ui/proof-room-static/load-report.json': loadReportJson,
+      '/verifier/report.json': verifierReportJson,
+      '/bundle-signature.dsse.json': signatureJson,
+    }
+    vi.stubGlobal('fetch', vi.fn((path: string) => Promise.resolve({
+      ok: true,
+      json: async () => JSON.parse(routes[path]),
+      text: async () => routes[path],
+    })))
+
+    await expect(fetchProofRoomStaticBundle()).rejects.toThrow(
+      'served bundle signature verification failed',
+    )
+  })
+
+  it('rejects served Proof Room bundles without detached signatures', async () => {
+    const verifierReportJson = JSON.stringify({
+      schema: 'chio.transaction.verifier-report.v1',
+      verdict: 'verified',
+      verified_claims: [],
+    })
+    const verifierReportDigest = await sha256Hex(verifierReportJson)
+    const loadReportJson = JSON.stringify({
+      schema: 'chio.proof-room.verifier-report.v1',
+      verdict: 'verified',
+      bundle_id: 'served-proof-room',
+      fixture_id: 'single-call-authority',
+      source_verifier_report_ref: {
+        path: 'verifier/report.json',
+        sha256: verifierReportDigest,
+        schema: 'chio.transaction.verifier-report.v1',
+      },
+      ui_verdict_source: 'verifier_report_ref',
+      rendered_claims: [],
+    })
+    const loadReportDigest = await sha256Hex(loadReportJson)
+    const manifestJson = JSON.stringify({
+      schema: 'chio.proof-room.bundle.v1',
+      bundle_id: 'served-proof-room',
+      fixture_id: 'single-call-authority',
+      verifier_report_ref: {
+        path: 'verifier/report.json',
+        sha256: verifierReportDigest,
+        schema: 'chio.transaction.verifier-report.v1',
+      },
+      proof_room_verifier_report_ref: {
+        path: 'ui/proof-room-static/load-report.json',
+        sha256: loadReportDigest,
+        schema: 'chio.proof-room.verifier-report.v1',
+      },
+      claims: [],
+      negative_cases: [],
+    })
+    const routes: Record<string, string> = {
+      '/manifest.json': manifestJson,
+      '/ui/proof-room-static/load-report.json': loadReportJson,
+      '/verifier/report.json': verifierReportJson,
+    }
+    vi.stubGlobal('fetch', vi.fn((path: string) => Promise.resolve({
+      ok: true,
+      json: async () => JSON.parse(routes[path]),
+      text: async () => routes[path],
+    })))
+
+    await expect(fetchProofRoomStaticBundle()).rejects.toThrow(
+      'served bundle signature missing',
+    )
+  })
+
+  it('rejects fixture catalogs with unsafe fixture ids', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: true,
+      json: async () => ({
+        schema: 'chio.proof-room.fixture-catalog.v1',
+        fixtures: [],
+        available_fixtures: [
+          {
+            id: '../outside',
+            kind: 'minimal-passport',
+            path: 'fixtures/proof-room/minimal-passport/valid',
+            description: 'unsafe fixture id',
+            verifier_report: {
+              path: '/proof-room-fixtures/minimal-passport/verifier-report.json',
+              status: 200,
+              verdict: 'verified',
+            },
+          },
+        ],
+      }),
+    })))
+
+    await expect(fetchProofRoomFixtureCatalog()).rejects.toThrow(
+      'Proof Room fixture catalog has unsafe fixture id',
+    )
+  })
+
+  it('rejects fixture catalogs with available fixtures missing verifier reports', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: true,
+      json: async () => ({
+        schema: 'chio.proof-room.fixture-catalog.v1',
+        fixtures: [],
+        available_fixtures: [
+          {
+            id: 'commerce-transaction-passport',
+            kind: 'generated-proof-room',
+            path: 'generated/commerce-transaction-passport',
+            description: 'uninspectable generated fixture',
+          },
+        ],
+      }),
+    })))
+
+    await expect(fetchProofRoomFixtureCatalog()).rejects.toThrow(
+      'Proof Room fixture catalog available fixture is missing verifier report',
+    )
+  })
+
+  it('rejects fixture catalogs with unsafe verifier report paths', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: true,
+      json: async () => ({
+        schema: 'chio.proof-room.fixture-catalog.v1',
+        fixtures: [],
+        available_fixtures: [
+          {
+            id: 'minimal-passport-valid',
+            kind: 'minimal-passport',
+            path: 'fixtures/proof-room/minimal-passport/valid',
+            description: 'unsafe report path',
+            verifier_report: {
+              path: '/proof-room-fixtures/%2e/verifier-report.json',
+              status: 200,
+              verdict: 'verified',
+            },
+          },
+        ],
+      }),
+    })))
+
+    await expect(fetchProofRoomFixtureCatalog()).rejects.toThrow(
+      'Proof Room fixture catalog has unsafe verifier report path',
+    )
+  })
+
+  it('rejects fixture catalogs with empty verifier report path segments', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+      ok: true,
+      json: async () => ({
+        schema: 'chio.proof-room.fixture-catalog.v1',
+        fixtures: [],
+        available_fixtures: [
+          {
+            id: 'minimal-passport-valid',
+            kind: 'minimal-passport',
+            path: 'fixtures/proof-room/minimal-passport/valid',
+            description: 'unsafe report path',
+            verifier_report: {
+              path: '/proof-room-fixtures//verifier-report.json',
+              status: 200,
+              verdict: 'verified',
+            },
+          },
+        ],
+      }),
+    })))
+
+    await expect(fetchProofRoomFixtureCatalog()).rejects.toThrow(
+      'Proof Room fixture catalog has unsafe verifier report path',
+    )
+  })
+
+  it('rejects direct fixture bundle loads with unsafe fixture ids before fetching', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchProofRoomFixtureBundle('../outside')).rejects.toThrow(
+      'Proof Room fixture id is unsafe',
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps fixture catalog negative case assets bound to their advertised fixture ids', async () => {
+    const evidenceGraphJson = JSON.stringify({
+      schema: 'chio.transaction.evidence-graph.v1',
+      nodes: [],
+    })
+    const evidenceGraphDigest = await sha256Hex(evidenceGraphJson)
+    const verifierPolicyJson = JSON.stringify({
+      schema: 'chio.transaction.verifier-policy.v1',
+      required_claims: ['claim.transaction.passport_root_verified'],
+    })
+    const verifierPolicyDigest = await sha256Hex(verifierPolicyJson)
+    const passportJson = JSON.stringify({
+      schema: 'chio.transaction-passport.v1',
+      id: 'passport-minimal-valid',
+      evidence_graph_path: 'evidence-graph.json',
+      evidence_graph_sha256: evidenceGraphDigest,
+      verifier_policy_path: 'verifier-policy.json',
+      verifier_policy_sha256: verifierPolicyDigest,
+    })
+    const verifierReportJson = JSON.stringify({
+      schema: 'chio.transaction.verifier-report.v1',
+      verdict: 'verified',
+      verified_claims: ['claim.transaction.passport_root_verified'],
+    })
+    const routes: Record<string, string> = {
+      '/proof-room-fixtures/minimal-passport-valid/transaction-passport.json': passportJson,
+      '/proof-room-fixtures/minimal-passport-valid/evidence-graph.json': evidenceGraphJson,
+      '/proof-room-fixtures/minimal-passport-valid/verifier-policy.json': verifierPolicyJson,
+      '/proof-room-fixtures/minimal-passport-valid/verifier-report.json': verifierReportJson,
+    }
+    vi.stubGlobal('fetch', vi.fn((path: string) => Promise.resolve({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => JSON.parse(routes[path]),
+      text: async () => routes[path],
+    })))
+
+    const bundle = await fetchProofRoomFixtureBundle(
+      'minimal-passport-valid',
+      'transaction-passport',
+      [
+        {
+          id: 'minimal-passport-policy-digest-mismatch',
+          path: 'transaction-passport.json',
+          expected_failure_code: 'verifier policy digest mismatch',
+          observed_failure_code: 'verifier policy digest mismatch',
+        },
+      ],
+    )
+
+    expect(bundle.manifest.negative_cases[0].path).toBe(
+      'proof-room-fixtures/minimal-passport-policy-digest-mismatch/transaction-passport.json',
     )
   })
 

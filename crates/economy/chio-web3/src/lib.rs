@@ -18,6 +18,7 @@ pub mod error;
 pub mod identity;
 pub mod qualification;
 pub mod settlement;
+pub mod settlement_proof;
 pub mod trust_profile;
 pub(crate) mod validation;
 

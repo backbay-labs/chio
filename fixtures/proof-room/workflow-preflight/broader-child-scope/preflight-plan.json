@@ -1,0 +1,67 @@
+{
+  "schema": "chio.workflow.preflight-plan.v1",
+  "id": "workflow-preflight-broader-child-scope",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "parent_task": {
+    "task_id": "task-parent-commerce",
+    "scope": {
+      "actions": ["inventory.read", "quote.create"],
+      "resources": ["catalog:us", "quote:cart-001"],
+      "route_refs": ["route-local-market"],
+      "approval_refs": ["approval-commerce-owner"],
+      "required_schemas": ["chio.commerce.order-context.v1"],
+      "budget_minor": 5000,
+      "currency": "USD"
+    }
+  },
+  "child_tasks": [
+    {
+      "task_id": "task-child-payment",
+      "parent_task_id": "task-parent-commerce",
+      "requested_scope": {
+        "actions": ["inventory.read", "quote.create", "payment.capture"],
+        "resources": ["catalog:us", "quote:cart-001", "payment-intent:pi_123"],
+        "route_refs": ["route-local-market"],
+        "approval_refs": ["approval-commerce-owner"],
+        "required_schemas": ["chio.commerce.order-context.v1"],
+        "budget_minor": 3000,
+        "currency": "USD"
+      }
+    }
+  ],
+  "route_plans": [
+    {
+      "route_ref": "route-local-market",
+      "supported": true
+    }
+  ],
+  "approvals": [
+    {
+      "approval_ref": "approval-commerce-owner",
+      "status": "approved"
+    }
+  ],
+  "registry_support": {
+    "supported_schemas": [
+      "chio.commerce.order-context.v1",
+      "chio.workflow.preflight-plan.v1",
+      "chio.workflow.preflight-report.v1"
+    ]
+  },
+  "budget_pool": {
+    "currency": "USD",
+    "total_minor": 5000
+  },
+  "revocation": {
+    "epoch_id": "revocation-epoch-001",
+    "root_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "status": "fresh"
+  },
+  "planning_artifacts": [
+    {
+      "artifact_ref": "simulation-dry-run-001",
+      "artifact_class": "simulation",
+      "satisfies_claims": []
+    }
+  ]
+}

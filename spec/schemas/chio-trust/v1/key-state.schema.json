@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-trust/v1/key-state.schema.json",
+  "title": "Chio Trust Key State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "key_ref", "status", "epoch", "valid_from", "valid_until"],
+  "properties": {
+    "schema": { "const": "chio.trust.key-state.v1" },
+    "key_ref": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["active", "stale", "revoked"] },
+    "epoch": { "type": "integer", "minimum": 0 },
+    "valid_from": { "type": "integer", "minimum": 1 },
+    "valid_until": { "type": "integer", "minimum": 1 }
+  }
+}

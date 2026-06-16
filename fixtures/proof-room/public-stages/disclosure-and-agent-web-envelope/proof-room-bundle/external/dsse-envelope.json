@@ -1,0 +1,17 @@
+{
+  "object_kind": "dsse_envelope",
+  "id": "dsse-envelope-agent-web-valid",
+  "payload_type": "application/vnd.in-toto+json",
+  "payload_digest": "d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0",
+  "subject_digest": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1",
+  "signature_digest": "d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2",
+  "signer_identity_digest": "d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3",
+  "verification_material_digest": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4",
+  "authorization_context_digest": "d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+  "signature_count": 1,
+  "verification_status": "verified",
+  "receipt_refs": [
+    "receipt-agent-web-dsse-envelope-allow"
+  ],
+  "mediated_by_chio_receipt": true
+}

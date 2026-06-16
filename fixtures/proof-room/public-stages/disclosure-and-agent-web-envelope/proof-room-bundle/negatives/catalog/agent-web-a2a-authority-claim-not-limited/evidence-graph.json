@@ -1,0 +1,55 @@
+{
+  "edges": [
+    {
+      "evidence_class": "chio-sidecar-proof",
+      "from": "a2a-envelope",
+      "predicate": "projects-to",
+      "to": "a2a-manifest"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "a2a-envelope",
+      "predicate": "binds",
+      "to": "a2a-task"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "a2a-envelope",
+      "predicate": "binds",
+      "to": "receipt-agent-web-a2a-task-allow"
+    }
+  ],
+  "id": "agent-web-evidence-graph-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "nodes": [
+    {
+      "id": "receipt-agent-web-a2a-task-allow",
+      "path": "receipts/receipt-agent-web-a2a-task-allow.json",
+      "role": "receipt",
+      "schema": "chio.receipt.v1",
+      "sha256": "ae503cbc817084b2c5997abf18375b577aba1bdaeec9e1a124f4dda0fc3477ad"
+    },
+    {
+      "id": "a2a-envelope",
+      "path": "a2a-envelope.json",
+      "role": "agent-web-proof-envelope",
+      "schema": "chio.agent-web-proof-envelope.v1",
+      "sha256": "0787415b790cd2b507e0ea74ef22144bd4d9a6aef6b8438bb02bd6cdd11424c4"
+    },
+    {
+      "id": "a2a-manifest",
+      "path": "a2a-manifest.json",
+      "role": "external-projection-manifest",
+      "schema": "chio.agent-web.external-projection-manifest.v1",
+      "sha256": "2bad9f30f641a7b8bdb5c8b7fd9f558572c3a260852b7d35489881ca7efd888f"
+    },
+    {
+      "id": "a2a-task",
+      "path": "external/a2a-task.json",
+      "role": "external-subject",
+      "schema": "external.a2a.task.v1",
+      "sha256": "5b8c5444e0315f114cec7960b7fd3aa7e8cb6cd895c98bb9a7e355b713bee822"
+    }
+  ],
+  "schema": "chio.transaction.evidence-graph.v1"
+}

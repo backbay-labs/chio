@@ -1,0 +1,9 @@
+{
+  "schema": "chio.transaction-passport.v1",
+  "id": "passport-enterprise-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "evidence_graph_sha256": "62f3c8091327c2be4f511758f6f87851acd13dc14d75f0cfe10a503f53614f02",
+  "evidence_graph_path": "evidence-graph.json",
+  "verifier_policy_sha256": "7c51bd2927842c58755b94310c22390953bbd5cf9e483170b035f76e1ce7695b",
+  "verifier_policy_path": "verifier-policy.json"
+}

@@ -1,0 +1,13 @@
+{
+  "authorization_context_digest": "9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b",
+  "chio_operation_receipt_ref": "receipt-agent-web-openapi-operation-allow",
+  "id": "openapi-operation-agent-web-valid",
+  "method": "POST",
+  "object_kind": "openapi_operation",
+  "operation_id": "createAgentOrder",
+  "path_template": "/orders",
+  "request_digest": "7979797979797979797979797979797979797979797979797979797979797979",
+  "response_digest": "8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a",
+  "spec_digest": "6868686868686868686868686868686868686868686868686868686868686868",
+  "status_code": 201
+}

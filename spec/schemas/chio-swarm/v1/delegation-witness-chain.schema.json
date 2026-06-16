@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-swarm/v1/delegation-witness-chain.schema.json",
+  "title": "Chio Swarm Delegation Witness Chain",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "chainId",
+    "graphId",
+    "parentTaskId",
+    "childTaskId",
+    "hops"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.swarm.delegation-witness-chain.v1"
+    },
+    "chainId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "graphId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parentTaskId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "childTaskId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hops": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/hop"
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "hop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parentCapabilityDigest",
+        "childCapabilityDigest",
+        "parentScopeHash",
+        "childScopeHash",
+        "attenuationRuleId",
+        "scopeSubsetProof",
+        "expiresAtUnixMs",
+        "issuer",
+        "policyDigest",
+        "witnessSignature"
+      ],
+      "properties": {
+        "parentCapabilityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "childCapabilityDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "parentScopeHash": {
+          "$ref": "#/$defs/digest"
+        },
+        "childScopeHash": {
+          "$ref": "#/$defs/digest"
+        },
+        "attenuationRuleId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scopeSubsetProof": {
+          "type": "object"
+        },
+        "expiresAtUnixMs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "issuer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policyDigest": {
+          "$ref": "#/$defs/digest"
+        },
+        "witnessSignature": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

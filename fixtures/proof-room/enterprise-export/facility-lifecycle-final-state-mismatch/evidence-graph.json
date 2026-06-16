@@ -1,0 +1,75 @@
+{
+  "schema": "chio.transaction.evidence-graph.v1",
+  "id": "enterprise-evidence-graph-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "nodes": [
+    {
+      "id": "risk-comptroller-report",
+      "schema": "chio.risk.comptroller-report.v1",
+      "path": "risk-comptroller-report.json",
+      "sha256": "15923306c6f2e954246ec40d91fcab311d55896649c9f71b1d3fa18aeb67c9e7",
+      "role": "risk-comptroller-report"
+    },
+    {
+      "id": "data-governance-report",
+      "schema": "chio.enterprise.data-governance-report.v1",
+      "path": "data-governance-report.json",
+      "sha256": "c2f94c5995b13409b3712e9ab62b53decef273324a244c4e3d3efaa66e751ef5",
+      "role": "data-governance-report"
+    },
+    {
+      "id": "approval-case",
+      "schema": "chio.enterprise.approval-case.v1",
+      "path": "approval-case.json",
+      "sha256": "683d4955a8f1a66b7a99d55603c6ce4f579a91837ffee1c67f8f8723756998f2",
+      "role": "approval-case"
+    },
+    {
+      "id": "evidence-export-bundle",
+      "schema": "chio.enterprise.evidence-export-bundle.v1",
+      "path": "evidence-export-bundle.json",
+      "sha256": "5981e026380e52fd62ddfadca1636f1c823cdcb99b4114a6a0fad042a22c8918",
+      "role": "evidence-export-bundle"
+    },
+    {
+      "id": "telemetry-projection",
+      "schema": "chio.enterprise.telemetry-projection.v1",
+      "path": "telemetry-projection.json",
+      "sha256": "263d2a5732412d4dc640d6c9c677ba8018ebdfebb7c6e7801160d5a6aa4eca8f",
+      "role": "telemetry-projection"
+    },
+    {
+      "id": "control-evidence-map",
+      "schema": "chio.enterprise.control-evidence-map.v1",
+      "path": "control-evidence-map.json",
+      "sha256": "68ff7b8c3c3503c2c2973fe7a6f07b87d507e29c3f3d9fdf8d609bbad7cb04da",
+      "role": "control-evidence-map"
+    }
+  ],
+  "edges": [
+    {
+      "from": "data-governance-report",
+      "to": "risk-comptroller-report",
+      "predicate": "binds",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "from": "telemetry-projection",
+      "to": "risk-comptroller-report",
+      "predicate": "projects-to",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "from": "control-evidence-map",
+      "to": "data-governance-report",
+      "predicate": "reconciles",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "from": "evidence-export-bundle",
+      "to": "approval-case",
+      "predicate": "authorizes",
+      "evidence_class": "chio-sidecar-proof"
+    }
+  ]
+}

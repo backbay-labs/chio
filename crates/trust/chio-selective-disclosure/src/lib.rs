@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 
+mod crypto_context;
 mod encoding;
 
 #[cfg(feature = "bbs")]
@@ -21,6 +22,26 @@ use encoding::decode_message_hex;
 use encoding::{
     bool_byte, canonical_bytes, decode_hx_field, hash_canonical, opt_string_bytes, push_message,
     sha256_hex_bytes, subject_sha256_hex, u64_le,
+};
+
+pub use chio_disclosure_lineage::{
+    compute_signed_lineage_subgraph_digest, verify_disclosure_lineage_bundle, DisclosureCapsule,
+    DisclosureLeakageLedger, DisclosureLeakageLedgerEntry, DisclosureLineageBundle,
+    DisclosureLineageError, DisclosureLineageVerifierReport, DisclosureSignedLineageEdge,
+    DisclosureSignedLineageNode, DisclosureSignedLineageRedaction, SignedLineageSubgraph,
+    DISCLOSURE_CAPSULE_SCHEMA_V1, DISCLOSURE_LEAKAGE_LEDGER_SCHEMA_V1,
+    DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1, LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
+};
+#[cfg(feature = "bbs")]
+pub use crypto_context::verify_selective_disclosure_with_context;
+pub use crypto_context::{
+    CryptoVerificationContext, DisclosureContextCheck, DisclosureContextVerdict,
+    DisclosureCryptoContextError, DisclosureCryptoContextReport, DisclosureKeyState,
+    DisclosureRevocationSnapshot, DisclosureVerifierPrivacyProfile, HolderBindingStatus,
+    KeyStateStatus, NonceReplayStatus, RevocationSnapshotStatus, TransparencyState,
+    CRYPTO_VERIFICATION_CONTEXT_SCHEMA_V1, DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1,
+    DISCLOSURE_VERIFIER_PRIVACY_PROFILE_SCHEMA_V1, TRUST_KEY_STATE_SCHEMA_V1,
+    TRUST_REVOCATION_SNAPSHOT_SCHEMA_V1,
 };
 
 /// Receipt-body projection version used for BBS message vectors.

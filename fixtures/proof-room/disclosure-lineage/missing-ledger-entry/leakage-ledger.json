@@ -1,0 +1,19 @@
+{
+  "schema": "chio.disclosure.leakage-ledger.v1",
+  "id": "leakage-ledger-valid",
+  "transaction_passport_ref": "passport-disclosure-lineage-missing-ledger",
+  "privacy_profile_ref": "privacy-profile-valid",
+  "entries": [
+    {
+      "field": "capability_id",
+      "leakage_kind": "disclosed_field",
+      "allowed_by_profile": true
+    },
+    {
+      "field": "amount_lte_100",
+      "leakage_kind": "hidden_predicate",
+      "allowed_by_profile": true,
+      "residual_inference_note": "predicate reveals capped amount band"
+    }
+  ]
+}

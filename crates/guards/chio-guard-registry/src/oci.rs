@@ -1224,13 +1224,17 @@ mod tests {
                 "size": 17
             }]
         });
-        let err = sigstore_bundle_descriptor_from_manifest(
+        let err = match sigstore_bundle_descriptor_from_manifest(
             serde_json::to_vec(&manifest)
                 .unwrap_or_else(|error| panic!("manifest should serialize: {error}"))
                 .as_slice(),
             DIGEST,
-        )
-        .expect_err("Sigstore artifact manifest without subject must be rejected");
+        ) {
+            Ok(descriptor) => panic!(
+                "Sigstore artifact manifest without subject must be rejected, got {descriptor:?}"
+            ),
+            Err(error) => error,
+        };
 
         assert!(
             matches!(err, GuardRegistryError::ReferrersMalformed { ref message } if message.contains("subject")),

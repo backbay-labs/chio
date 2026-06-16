@@ -1,0 +1,28 @@
+{
+  "schema": "chio.agent-web-proof-envelope.v1",
+  "envelope_id": "agent-web-envelope-oci-ref-valid",
+  "transaction_passport_ref": "passport-agent-web-valid",
+  "source_protocol": "oci",
+  "source_protocol_version": "image-spec-v1",
+  "external_subject": "oci-ref-agent-web-valid",
+  "external_subject_path": "external/oci-ref.json",
+  "external_subject_digest": "7fc28e0f8924d3937cbfa7fb376bce2e9e41ec1a269aac92195dee9f13282086",
+  "external_subject_signature_ref": "",
+  "projection_manifest_ref": "projection-oci-ref-valid",
+  "chio_claim_refs": [
+    "claim.agent_web.external_subject_digest_bound",
+    "claim.agent_web.projection_manifest_bound",
+    "claim.agent_web.unsupported_claims_limited",
+    "claim.agent_web.sidecar_not_native_authority"
+  ],
+  "receipt_refs": [
+    "receipt-agent-web-oci-ref-allow"
+  ],
+  "disclosure_capsule_refs": [],
+  "settlement_refs": [],
+  "risk_refs": [],
+  "limitations": [
+    "OCI projection does not make artifact reference evidence equivalent to Chio authority."
+  ],
+  "signature": "sig-agent-web-oci-ref-envelope"
+}

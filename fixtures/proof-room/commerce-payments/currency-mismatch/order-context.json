@@ -1,0 +1,19 @@
+{
+  "schema": "chio.commerce.order-context.v1",
+  "id": "order-context-commerce-001",
+  "issued_at": "2026-06-10T00:08:00Z",
+  "order_id": "order-commerce-001",
+  "buyer_subject": "buyer:demo-cafe-customer",
+  "agent_subject": "agent:single-call-authority",
+  "merchant_subject": "merchant:stripe:coffee-shop",
+  "quote_id": "quote-commerce-001",
+  "quote_amount_minor": 4200,
+  "quote_currency": "USD",
+  "event_log_sha256": "6b636983f491863cbce135c788ee45d4e87a34733f35b51ba3ae686b42b1ac74",
+  "event_log_path": "event-log.json",
+  "payment_lifecycle_sha256": "d0ec688960b60e4eaff949c2bab1841da4de7128e002eacc5d980df46c10720d",
+  "payment_lifecycle_path": "payment-lifecycle.json",
+  "mandate_ledger_sha256": "0d27312f1eeaf2f627dea12e5cc6bdc92cb6b5db80a073a5f97ab4c0326b6ad3",
+  "mandate_ledger_path": "mandate-allowance-ledger.json",
+  "current_state": "completed"
+}

@@ -1,0 +1,55 @@
+{
+  "edges": [
+    {
+      "evidence_class": "chio-sidecar-proof",
+      "from": "calendar-envelope",
+      "predicate": "projects-to",
+      "to": "calendar-manifest"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "calendar-envelope",
+      "predicate": "binds",
+      "to": "calendar-event"
+    },
+    {
+      "evidence_class": "digest-bound-reference",
+      "from": "calendar-envelope",
+      "predicate": "binds",
+      "to": "receipt-agent-web-calendar-event-allow"
+    }
+  ],
+  "id": "agent-web-evidence-graph-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "nodes": [
+    {
+      "id": "receipt-agent-web-calendar-event-allow",
+      "path": "receipts/receipt-agent-web-calendar-event-allow.json",
+      "role": "receipt",
+      "schema": "chio.receipt.v1",
+      "sha256": "2e473fb7669c72034f45e606504fae534a2cae2ee6f3da5db4de155cd7fbc222"
+    },
+    {
+      "id": "calendar-envelope",
+      "path": "calendar-envelope.json",
+      "role": "agent-web-proof-envelope",
+      "schema": "chio.agent-web-proof-envelope.v1",
+      "sha256": "b7b79d2678fe46d1a5193b05ce425ebfea629a1d44eaab65247e338229b0fb30"
+    },
+    {
+      "id": "calendar-manifest",
+      "path": "calendar-manifest.json",
+      "role": "external-projection-manifest",
+      "schema": "chio.agent-web.external-projection-manifest.v1",
+      "sha256": "452b2f036e31b49b592c54a953ebe8d9ea1c1f057cd3de8eb200733cc55b536a"
+    },
+    {
+      "id": "calendar-event",
+      "path": "external/calendar-event.json",
+      "role": "external-subject",
+      "schema": "external.calendar.connector-action.v1",
+      "sha256": "da79ebeb36547064cfda258c9b4f0fa4c808b24c3a13b1d3f166f98449c119ed"
+    }
+  ],
+  "schema": "chio.transaction.evidence-graph.v1"
+}

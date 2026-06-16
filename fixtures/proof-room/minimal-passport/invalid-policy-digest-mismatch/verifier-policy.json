@@ -1,0 +1,1 @@
+{"schema":"chio.transaction.verifier-policy.v1","id":"verifier-policy-policy-digest-mismatch","issued_at":"2026-06-10T00:00:00Z","required_claims":["claim.transaction.passport_root_verified","claim.transaction.evidence_graph_digest_bound","claim.transaction.policy_digest_bound"],"omitted_claims":[]}
