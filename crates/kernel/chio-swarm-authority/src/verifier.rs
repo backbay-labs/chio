@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use chio_core_types::capability::attenuation::validate_attenuation_proof;
+use chio_core_types::capability::attenuation::{validate_attenuation_proof, AttenuationWitness};
 
 use crate::error::SwarmAuthorityError;
-use chio_core_types::crypto::{canonical_json_bytes, sha256_hex};
+use chio_core_types::crypto::{canonical_json_bytes, sha256_hex, Keypair, PublicKey, Signature};
 use serde::Serialize;
 
 use super::types::{
@@ -18,6 +18,10 @@ use super::types::{
     CLAIM_SWARM_CONTINUATION_FRESH, CLAIM_SWARM_JOIN_RECEIPT_BOUND,
     CLAIM_SWARM_REVOCATION_EPOCH_BOUND, CLAIM_SWARM_ROUTE_PLAN_BOUND, CLAIM_SWARM_TASK_GRAPH_BOUND,
 };
+
+const CHIO_SWARM_DELEGATION_WITNESS_HOP_SIGNATURE_SCHEMA: &str =
+    "chio.swarm.delegation-witness-hop-signature.v1";
+const DID_CHIO_PREFIX: &str = "did:chio:";
 
 pub fn verify_swarm_authority_bundle(
     bundle: &SwarmAuthorityBundle,
@@ -63,6 +67,30 @@ pub fn verify_swarm_authority_bundle(
             CLAIM_SWARM_REVOCATION_EPOCH_BOUND.to_string(),
         ],
     })
+}
+
+pub fn sign_swarm_delegation_witness_hop(
+    chain: &SwarmDelegationWitnessChain,
+    hop: &super::types::SwarmDelegationWitnessHop,
+    keypair: &Keypair,
+) -> Result<String, SwarmAuthorityError> {
+    let issuer_public_key = witness_issuer_public_key(&hop.issuer).map_err(|error| {
+        rejected(format!(
+            "swarm witness issuer public key invalid: {}",
+            error.runtime_detail()
+        ))
+    })?;
+    if issuer_public_key != keypair.public_key() {
+        return Err(rejected(format!(
+            "swarm witness signer does not match issuer: {}",
+            chain.chain_id
+        )));
+    }
+    let body = witness_signature_body(chain, hop);
+    let (signature, _canonical) = keypair
+        .sign_canonical(&body)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    Ok(signature.to_hex())
 }
 
 fn validate_task_graph(
@@ -998,7 +1026,7 @@ fn validate_witness_chain(
     }
     let mut previous_hop: Option<&super::types::SwarmDelegationWitnessHop> = None;
     for hop in &chain.hops {
-        validate_witness_hop(bundle, hop, &chain.chain_id)?;
+        validate_witness_hop(bundle, chain, hop)?;
         if let Some(previous) = previous_hop {
             if previous.child_scope_hash != hop.parent_scope_hash {
                 return Err(rejected(format!(
@@ -1020,8 +1048,8 @@ fn validate_witness_chain(
 
 fn validate_witness_hop(
     bundle: &SwarmAuthorityBundle,
+    chain: &SwarmDelegationWitnessChain,
     hop: &super::types::SwarmDelegationWitnessHop,
-    chain_id: &str,
 ) -> Result<(), SwarmAuthorityError> {
     require_sha256(
         &hop.parent_capability_digest,
@@ -1038,7 +1066,10 @@ fn validate_witness_hop(
     require_sha256(&hop.policy_digest, "swarm witness policy digest")?;
     require_non_empty(&hop.witness_signature, "swarm witness signature")?;
     if hop.expires_at_unix_ms <= bundle.now_unix_ms {
-        return Err(rejected(format!("swarm witness hop is stale: {chain_id}")));
+        return Err(rejected(format!(
+            "swarm witness hop is stale: {}",
+            chain.chain_id
+        )));
     }
     validate_attenuation_proof(
         &hop.parent_scope_hash,
@@ -1046,7 +1077,93 @@ fn validate_witness_hop(
         &hop.scope_subset_proof,
     )
     .map_err(|error| rejected(format!("swarm attenuation witness invalid: {error}")))?;
+    verify_witness_signature(chain, hop)?;
     Ok(())
+}
+
+fn verify_witness_signature(
+    chain: &SwarmDelegationWitnessChain,
+    hop: &super::types::SwarmDelegationWitnessHop,
+) -> Result<(), SwarmAuthorityError> {
+    let public_key = witness_issuer_public_key(&hop.issuer)?;
+    let signature = Signature::from_hex(&hop.witness_signature).map_err(|error| {
+        rejected(format!(
+            "swarm witness signature invalid: {}: {error}",
+            chain.chain_id
+        ))
+    })?;
+    let body = witness_signature_body(chain, hop);
+    let verified = public_key
+        .verify_canonical(&body, &signature)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    if verified {
+        Ok(())
+    } else {
+        Err(rejected(format!(
+            "swarm witness signature invalid: {}",
+            chain.chain_id
+        )))
+    }
+}
+
+fn witness_issuer_public_key(issuer: &str) -> Result<PublicKey, SwarmAuthorityError> {
+    let public_key_hex = if let Some(public_key_hex) = issuer.strip_prefix(DID_CHIO_PREFIX) {
+        if public_key_hex.len() != 64 || !public_key_hex.bytes().all(is_lower_hex_byte) {
+            return Err(rejected(
+                "swarm witness issuer did:chio is not self-certifying",
+            ));
+        }
+        public_key_hex
+    } else {
+        issuer
+    };
+    PublicKey::from_hex(public_key_hex)
+        .map_err(|error| rejected(format!("swarm witness issuer public key invalid: {error}")))
+}
+
+fn is_lower_hex_byte(byte: u8) -> bool {
+    byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SwarmWitnessHopSignatureBody<'a> {
+    schema: &'static str,
+    graph_id: &'a str,
+    chain_id: &'a str,
+    parent_task_id: &'a str,
+    child_task_id: &'a str,
+    parent_capability_digest: &'a str,
+    child_capability_digest: &'a str,
+    parent_scope_hash: &'a str,
+    child_scope_hash: &'a str,
+    attenuation_rule_id: &'a str,
+    scope_subset_proof: &'a AttenuationWitness,
+    expires_at_unix_ms: u64,
+    issuer: &'a str,
+    policy_digest: &'a str,
+}
+
+fn witness_signature_body<'a>(
+    chain: &'a SwarmDelegationWitnessChain,
+    hop: &'a super::types::SwarmDelegationWitnessHop,
+) -> SwarmWitnessHopSignatureBody<'a> {
+    SwarmWitnessHopSignatureBody {
+        schema: CHIO_SWARM_DELEGATION_WITNESS_HOP_SIGNATURE_SCHEMA,
+        graph_id: &chain.graph_id,
+        chain_id: &chain.chain_id,
+        parent_task_id: &chain.parent_task_id,
+        child_task_id: &chain.child_task_id,
+        parent_capability_digest: &hop.parent_capability_digest,
+        child_capability_digest: &hop.child_capability_digest,
+        parent_scope_hash: &hop.parent_scope_hash,
+        child_scope_hash: &hop.child_scope_hash,
+        attenuation_rule_id: &hop.attenuation_rule_id,
+        scope_subset_proof: &hop.scope_subset_proof,
+        expires_at_unix_ms: hop.expires_at_unix_ms,
+        issuer: &hop.issuer,
+        policy_digest: &hop.policy_digest,
+    }
 }
 
 fn require_same_graph(

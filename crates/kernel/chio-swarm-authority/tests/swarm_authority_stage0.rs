@@ -2,12 +2,12 @@ use std::error::Error;
 
 use chio_core_types::capability::attenuation::{compute_attenuation_witness, scope_hash};
 use chio_core_types::capability::scope::{ChioScope, Operation, ToolGrant};
-use chio_core_types::crypto::{canonical_json_bytes, sha256_hex};
+use chio_core_types::crypto::{canonical_json_bytes, sha256_hex, Keypair};
 use chio_swarm_authority::{
-    verify_swarm_authority_bundle, SwarmAuthorityBundle, SwarmBudgetAllocation, SwarmBudgetPool,
-    SwarmContinuationMode, SwarmContinuationToken, SwarmDelegationWitnessChain,
-    SwarmDelegationWitnessHop, SwarmGraphEdge, SwarmGraphJoin, SwarmGraphNode, SwarmJoinReceipt,
-    SwarmRevocationEpoch, SwarmRoutePlanReceipt, SwarmTaskGraph,
+    sign_swarm_delegation_witness_hop, verify_swarm_authority_bundle, SwarmAuthorityBundle,
+    SwarmBudgetAllocation, SwarmBudgetPool, SwarmContinuationMode, SwarmContinuationToken,
+    SwarmDelegationWitnessChain, SwarmDelegationWitnessHop, SwarmGraphEdge, SwarmGraphJoin,
+    SwarmGraphNode, SwarmJoinReceipt, SwarmRevocationEpoch, SwarmRoutePlanReceipt, SwarmTaskGraph,
     CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA, CHIO_SWARM_BUDGET_POOL_SCHEMA,
     CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA, CHIO_SWARM_DELEGATION_WITNESS_CHAIN_SCHEMA,
     CHIO_SWARM_JOIN_RECEIPT_SCHEMA, CHIO_SWARM_REVOCATION_EPOCH_SCHEMA,
@@ -90,7 +90,7 @@ fn swarm_authority_stage0_rejects_edge_depth_bypass() -> Result<(), Box<dyn Erro
         &child_scope_hash,
         &child_scope_hash,
         compute_attenuation_witness(&child_scope, &child_scope)?,
-    );
+    )?;
     refresh_continuation_graph_digests(&mut bundle)?;
 
     let error = match verify_swarm_authority_bundle(&bundle) {
@@ -211,6 +211,21 @@ fn swarm_authority_stage0_rejects_witness_child_scope_mismatch() -> Result<(), B
 }
 
 #[test]
+fn swarm_authority_stage0_rejects_tampered_witness_signature() -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.witness_chains[0].hops[0].witness_signature = "sig-tampered-witness-child-a".to_string();
+
+    let error = match verify_swarm_authority_bundle(&bundle) {
+        Ok(report) => panic!("tampered witness signature verified unexpectedly: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("swarm witness signature invalid"));
+    Ok(())
+}
+
+#[test]
 fn swarm_authority_stage0_rejects_disconnected_witness_hops() -> Result<(), Box<dyn Error>> {
     let mut bundle = sample_swarm_bundle()?;
     let parent_scope = scope_for("commerce", "reserve_budget", 3);
@@ -229,9 +244,9 @@ fn swarm_authority_stage0_rejects_disconnected_witness_hops() -> Result<(), Box<
             attenuation_rule_id: "rule-subset-tool-invocation".to_string(),
             scope_subset_proof: compute_attenuation_witness(&parent_scope, &intermediate_scope)?,
             expires_at_unix_ms: NOW_UNIX_MS + 60_000,
-            issuer: "did:chio:authority".to_string(),
+            issuer: witness_issuer(),
             policy_digest: sha256_hex(b"swarm-policy"),
-            witness_signature: "sig-witness-child-a-hop-1".to_string(),
+            witness_signature: String::new(),
         },
         SwarmDelegationWitnessHop {
             parent_capability_digest: sha256_hex(b"disconnected-parent-capability"),
@@ -241,11 +256,12 @@ fn swarm_authority_stage0_rejects_disconnected_witness_hops() -> Result<(), Box<
             attenuation_rule_id: "rule-subset-tool-invocation".to_string(),
             scope_subset_proof: compute_attenuation_witness(&parent_scope, &child_scope)?,
             expires_at_unix_ms: NOW_UNIX_MS + 60_000,
-            issuer: "did:chio:authority".to_string(),
+            issuer: witness_issuer(),
             policy_digest: sha256_hex(b"swarm-policy"),
-            witness_signature: "sig-witness-child-a-hop-2".to_string(),
+            witness_signature: String::new(),
         },
     ];
+    sign_witness_chain(&mut bundle.witness_chains[0])?;
 
     let error = match verify_swarm_authority_bundle(&bundle) {
         Ok(report) => panic!("disconnected witness hops verified unexpectedly: {report:#?}"),
@@ -549,7 +565,7 @@ fn sample_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
             &parent_scope_hash,
             &child_scope_hash,
             witness.clone(),
-        ),
+        )?,
         witness_chain(
             "witness-child-b",
             "task-root",
@@ -557,7 +573,7 @@ fn sample_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
             &parent_scope_hash,
             &child_scope_hash,
             witness,
-        ),
+        )?,
     ];
 
     Ok(SwarmAuthorityBundle {
@@ -649,8 +665,8 @@ fn witness_chain(
     parent_scope_hash: &str,
     child_scope_hash: &str,
     scope_subset_proof: chio_core_types::capability::attenuation::AttenuationWitness,
-) -> SwarmDelegationWitnessChain {
-    SwarmDelegationWitnessChain {
+) -> Result<SwarmDelegationWitnessChain, Box<dyn Error>> {
+    let mut chain = SwarmDelegationWitnessChain {
         schema: CHIO_SWARM_DELEGATION_WITNESS_CHAIN_SCHEMA.to_string(),
         chain_id: chain_id.to_string(),
         graph_id: "swarm-graph-proof-valid".to_string(),
@@ -664,11 +680,30 @@ fn witness_chain(
             attenuation_rule_id: "rule-subset-tool-invocation".to_string(),
             scope_subset_proof,
             expires_at_unix_ms: NOW_UNIX_MS + 60_000,
-            issuer: "did:chio:authority".to_string(),
+            issuer: witness_issuer(),
             policy_digest: sha256_hex(b"swarm-policy"),
-            witness_signature: format!("sig-{chain_id}"),
+            witness_signature: String::new(),
         }],
+    };
+    sign_witness_chain(&mut chain)?;
+    Ok(chain)
+}
+
+fn sign_witness_chain(chain: &mut SwarmDelegationWitnessChain) -> Result<(), Box<dyn Error>> {
+    let keypair = witness_keypair();
+    for index in 0..chain.hops.len() {
+        let signature = sign_swarm_delegation_witness_hop(chain, &chain.hops[index], &keypair)?;
+        chain.hops[index].witness_signature = signature;
     }
+    Ok(())
+}
+
+fn witness_keypair() -> Keypair {
+    Keypair::from_seed(&[31u8; 32])
+}
+
+fn witness_issuer() -> String {
+    format!("did:chio:{}", witness_keypair().public_key().to_hex())
 }
 
 fn route_plan_receipt(
