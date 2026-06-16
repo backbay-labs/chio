@@ -34,7 +34,7 @@ These sources came from the third-wave interop debate. They widen Agent Web proj
 | Standard Webhooks | https://github.com/standard-webhooks/standard-webhooks/blob/main/spec/standard-webhooks.md | Standard Webhooks defines a webhook signature convention. Chio may bind signed webhook deliveries and replay windows, but a webhook signature is not Chio authorization. |
 | OpenAPI webhooks and callbacks | https://spec.openapis.org/oas/v3.2.0.html | OpenAPI 3.2 can describe webhooks and callbacks. Chio should not claim OpenAPI 3.2 webhook support until fixtures exist. |
 | GraphQL | https://spec.graphql.org/ | Chio may project GraphQL schema digest, operation type, operation name, document digest, variables digest, and response digest. |
-| GraphQL over HTTP | https://graphql.github.io/graphql-over-http/draft/ | Draft-aligned HTTP projection only. Do not claim stable conformance or subscription coverage through this draft. |
+| GraphQL over HTTP | https://graphql.github.io/graphql-over-http/draft/ | Draft-aligned HTTP projection only. Rechecked 2026-06-11; fixture source versions must stay draft-labeled and must not claim subscription coverage through this draft. |
 | AsyncAPI | https://www.asyncapi.com/docs/reference/specification/v3.0.0 | AsyncAPI describes event-driven API applications. Chio may bind event publish or consume evidence when Chio owns the mediation path. |
 | CloudEvents | https://github.com/cloudevents/spec/tree/v1.0.2/cloudevents | CloudEvents provides event identity fields such as id, source, type, and specversion. Chio may bind event envelopes, not treat CloudEvents as authorization. |
 | WebDriver | https://www.w3.org/TR/webdriver2/ | Browser automation projection source. Draft status should stay visible in launch docs. |

@@ -29,7 +29,7 @@ This is not an incremental gap. It is a structural absence.
 
 - **Hundreds of millions in unbudgeted agent spend** have leaked across the Fortune 500 as autonomous workloads scale without governance (Flexera's 2025 State of the Cloud report documents widespread cloud cost overruns, with agent workloads a growing contributor). Agents operate without spending caps, without delegation chains that track cost responsibility, and without budget enforcement at the protocol level.
 
-- **Six competing payment protocols** -- ACP, AP2, x402, MPP, TAP, Agent Pay -- are racing to wire money between agents. None of them solve the prerequisite problem: proving that the agent was authorized to spend, that the action it paid for actually occurred, and that the receipt is cryptographically bound to the authorization chain that permitted it.
+- **Six competing payment protocols** -- ACP-Commerce, AP2, x402, MPP, TAP, Agent Pay -- are racing to wire money between agents. None of them solve the prerequisite problem: proving that the agent was authorized to spend, that the action it paid for actually occurred, and that the receipt is cryptographically bound to the authorization chain that permitted it.
 
 Payment without authorization is just a pipe to a wallet. Authorization without proof is just a policy document nobody can verify after the fact. The agent economy needs both, and it needs them fused at the protocol layer.
 
@@ -317,7 +317,7 @@ older pre-rename quarterly sketch:
   compatibility program, not a cosmetic rebrand
 - **v2.6 Governed Transactions and Payment Rails:** turn the economic-security
   thesis into governed transaction intent, truthful settlement linkage, x402
-  and ACP/SPT bridges, and operator-visible reconciliation
+  and ACP-Commerce/SPT bridges, and operator-visible reconciliation
 - **v2.7 Portable Trust, Certification, and Federation Maturity:** finish
   passport lifecycle, certification discovery, enterprise identity propagation,
   and conservative cross-org trust distribution
@@ -327,7 +327,7 @@ older pre-rename quarterly sketch:
 
 The sequence matters. Chio first becomes one coherent product, then makes
 economic governance real, then makes trust portable, then makes that evidence
-strong enough for underwriting, standards, and launch claims.
+strong enough for underwriting, standards, and public claims.
 
 ---
 

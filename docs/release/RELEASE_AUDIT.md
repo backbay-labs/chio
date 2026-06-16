@@ -297,7 +297,7 @@ Internal evidence inventory (not external closure claims):
 | operator deployment and upgrade tribal knowledge | closed through the runbook and repeatable smoke checks |
 | opaque production diagnostics | closed for the supported surface through trust-control and hosted-edge health/admin contracts plus operator reporting |
 | protocol doc drift | closed by aligning `spec/PROTOCOL.md` and normative companions to the current v1-only pre-release contract |
-| launch/standards ambiguity | closed through standards profiles, GA checklist, and explicit risk register |
+| release/standards ambiguity | closed through standards profiles, GA checklist, and explicit risk register |
 | economic interop legibility for IAM/finance/partner reviewers | closed for the shipped local surface through the authorization-context report, metered-billing reconciliation report, and focused interop guide |
 | enterprise IAM review still depended on Chio-specific explanation rather than machine-readable profile artifacts and end-to-end receipt trace packs | closed for the shipped local surface through authorization-profile metadata, authorization-review-pack exports, fail-closed assurance and call-chain projection validation, and focused qualification coverage |
 | underwriting decisioning legibility and operator what-if inspection | closed for the shipped local surface through deterministic decision reports, signed lifecycle artifacts, appeal handling, and non-mutating simulation |
@@ -325,7 +325,7 @@ Internal evidence inventory (not external closure claims):
 ## Phase 43 Formal/Spec Closure Inventory
 
 This section records the accepted closure boundary for the `v2.8` formal/spec
-slice. It is not the final GA decision artifact; it defines what launch claims
+slice. It is not the final GA decision artifact; it defines what public claims
 phase 44 is allowed to rely on.
 
 | Gap | Launch disposition | Evidence |
@@ -334,9 +334,9 @@ phase 44 is allowed to rely on.
 | protocol lacked an explicit distinction between formal, empirical, and qualification evidence | closed in phase 43 | `spec/PROTOCOL.md`, this audit, `docs/release/QUALIFICATION.md` |
 | Lean root and comments implied stronger proof closure than the repo actually ships | closed in phase 43 | `formal/lean4/Chio/Chio.lean`, `formal/lean4/Chio/Chio/Spec/Properties.lean` |
 | standalone Lean proof completion for every current Chio surface | consciously deferred | `formal/lean4/Chio/Chio/Proofs/Monotonicity.lean` covers the bounded model only and is not a Rust refinement proof |
-| theorem-prover coverage for governed approvals, payment rails, federation maturity, and runtime assurance | consciously deferred | launch claims rely on runtime tests, integration tests, and qualification rather than Lean proofs |
+| theorem-prover coverage for governed approvals, payment rails, federation maturity, and runtime assurance | consciously deferred | public claims rely on runtime tests, integration tests, and qualification rather than Lean proofs |
 
-### Accepted Launch Evidence Boundary
+### Accepted Release Evidence Boundary
 
 For the current v1-only pre-release candidate, Chio has local evidence for:
 
@@ -358,7 +358,7 @@ The current v1-only pre-release decision is explicit rather than implied:
 | Gate class | Requirement | Status |
 | --- | --- | --- |
 | local qualification | `./scripts/ci-workspace.sh`, `./scripts/check-formal-proofs.sh`, `./scripts/check-portable-kernel.sh`, `./scripts/check-sdk-parity.sh`, `./scripts/check-web3-contract-parity.sh`, `./scripts/qualify-release.sh`, `./scripts/qualify-portable-browser.sh`, and `./scripts/qualify-mobile-kernel.sh` green, with the bounded web3 runtime lanes green locally | historical local evidence |
-| launch materials | release, partner, operational, and standards-facing docs updated to the current Chio surface | pre-release evidence |
+| release materials | release, partner, operational, and standards-facing docs updated to the current Chio surface | pre-release evidence |
 | hosted publication | hosted `CI` and `Release Qualification` observed green on the candidate commit, including the staged runtime, `e2e`, `ops`, and promotion bundles under `target/release-qualification/web3-runtime/` | pending external observation |
 
 The resulting decision is:
@@ -393,5 +393,5 @@ This audit was produced from the local development environment.
 
 It does not claim that GitHub Actions has already run on the updated
 workflows. The repository is ready for that hosted verification, and the
-explicit launch decision above keeps external release publication on hold until
+explicit release decision above keeps external release publication on hold until
 those workflow results are observed.
