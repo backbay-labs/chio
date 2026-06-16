@@ -15,18 +15,10 @@ mod tests {
     use chio_manifest::LatencyHint;
 
     static METRICS_TEST_LOCK: Mutex<()> = Mutex::new(());
-
     fn metrics_test_guard() -> MutexGuard<'static, ()> {
         match METRICS_TEST_LOCK.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
-        }
-    }
-
-    fn require_err<T, E>(result: Result<T, E>, context: &'static str) -> E {
-        match result {
-            Ok(_) => panic!("{context}"),
-            Err(error) => error,
         }
     }
 
@@ -739,11 +731,10 @@ mod tests {
         let mut edge = ChioA2aEdge::new(A2aEdgeConfig::default(), vec![test_manifest()]).test_unwrap();
         let server = test_server();
         let request = text_message("test");
-        let err = require_err(
-            edge.compatibility()
-                .handle_send_message_compatibility("nonexistent", &request, &server),
-            "unknown A2A skill must fail",
-        );
+        let err = edge
+            .compatibility()
+            .handle_send_message_compatibility("nonexistent", &request, &server)
+            .test_expect_err("unknown A2A skill must fail");
         assert!(matches!(err, A2aEdgeError::ToolNotFound(_)));
     }
 
@@ -864,10 +855,9 @@ mod tests {
             model_metadata: None,
         };
 
-        let error = require_err(
-            edge.handle_send_message("echo", &text_message("hello"), &kernel, &execution),
-            "blank A2A execution agent_id must fail",
-        );
+        let error = edge
+            .handle_send_message("echo", &text_message("hello"), &kernel, &execution)
+            .test_expect_err("blank A2A execution agent_id must fail");
 
         assert_eq!(
             error.to_string(),
@@ -888,10 +878,8 @@ mod tests {
             model_metadata: None,
         };
 
-        let error = require_err(
-            validate_execution_context(&execution),
-            "control character A2A execution agent_id must fail",
-        );
+        let error = validate_execution_context(&execution)
+            .test_expect_err("control character A2A execution agent_id must fail");
 
         assert_eq!(
             error.to_string(),
@@ -1010,10 +998,9 @@ mod tests {
         };
         let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
 
-        let error = require_err(
-            edge.handle_send_message("echo", &text_message("boom"), &kernel, &execution),
-            "A2A web3 evidence prerequisite failure must reject",
-        );
+        let error = edge
+            .handle_send_message("echo", &text_message("boom"), &kernel, &execution)
+            .test_expect_err("A2A web3 evidence prerequisite failure must reject");
 
         assert!(error
             .to_string()
@@ -1057,10 +1044,9 @@ mod tests {
         }));
         let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
 
-        let error = require_err(
-            edge.handle_send_message("echo", &request, &kernel, &execution),
-            "A2A capability reference mismatch must reject",
-        );
+        let error = edge
+            .handle_send_message("echo", &request, &kernel, &execution)
+            .test_expect_err("A2A capability reference mismatch must reject");
 
         assert!(error.to_string().contains("capability reference mismatch"));
         assert_eq!(
@@ -1161,10 +1147,8 @@ mod tests {
             metadata: None,
         };
 
-        let error = require_err(
-            extract_arguments_from_message(&msg),
-            "scalar data parts must fail before dispatch",
-        );
+        let error = extract_arguments_from_message(&msg)
+            .test_expect_err("scalar data parts must fail before dispatch");
         let A2aEdgeError::InvalidRequest(message) = error else {
             panic!("expected invalid request error");
         };
@@ -1181,10 +1165,8 @@ mod tests {
             metadata: None,
         };
 
-        let error = require_err(
-            extract_arguments_from_message(&msg),
-            "array data parts must fail before dispatch",
-        );
+        let error = extract_arguments_from_message(&msg)
+            .test_expect_err("array data parts must fail before dispatch");
         let A2aEdgeError::InvalidRequest(message) = error else {
             panic!("expected invalid request error");
         };
@@ -1237,11 +1219,10 @@ mod tests {
             metadata: None,
         };
 
-        let error = require_err(
-            edge.compatibility()
-                .handle_send_message_compatibility("echo", &request, &server),
-            "multiple A2A data parts must fail",
-        );
+        let error = edge
+            .compatibility()
+            .handle_send_message_compatibility("echo", &request, &server)
+            .test_expect_err("multiple A2A data parts must fail");
         let A2aEdgeError::InvalidRequest(message) = error else {
             panic!("expected invalid request error");
         };
@@ -2665,14 +2646,10 @@ mod tests {
         let m2 = test_manifest(); // Same tool names
         let mut edge = ChioA2aEdge::new(A2aEdgeConfig::default(), vec![m1, m2]).test_unwrap();
         let server = test_server();
-        let error = require_err(
-            edge.compatibility().handle_send_message_compatibility(
-                "echo",
-                &text_message("hello"),
-                &server,
-            ),
-            "ambiguous unqualified A2A skill id must fail",
-        );
+        let error = edge
+            .compatibility()
+            .handle_send_message_compatibility("echo", &text_message("hello"), &server)
+            .test_expect_err("ambiguous unqualified A2A skill id must fail");
 
         let A2aEdgeError::InvalidRequest(message) = error else {
             panic!("expected invalid request");

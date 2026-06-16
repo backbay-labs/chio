@@ -1,0 +1,628 @@
+use super::support::*;
+use super::*;
+
+#[test]
+fn crypto_context_verified_report_rejects_context_report_drift() -> Result<(), Box<dyn Error>> {
+    let fixture = repo_root()?.join("fixtures/proof-room/crypto-context/valid-bbs-context");
+    let report_bytes = fs::read(fixture.join("crypto-context-report.json"))?;
+    let context_bytes = fs::read(fixture.join("verification-context.json"))?;
+    let mut context: serde_json::Value = serde_json::from_slice(&context_bytes)?;
+    context["audience"] = serde_json::Value::String("https://attacker.example/chio".to_string());
+    let context_bytes = serde_json::to_vec(&context)?;
+
+    let error = crypto_context_verified_report_bytes(
+        &context_bytes,
+        &report_bytes,
+        "crypto-context-valid-bbs",
+    )
+    .err()
+    .ok_or("drifted crypto context report unexpectedly verified")?;
+
+    assert!(error.contains("disclosure_context_audience_mismatch"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn quickstart_router_serves_crypto_context_negative_fixture_report(
+) -> Result<(), Box<dyn Error>> {
+    let bundle =
+        repo_root()?.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let ui = tempfile::tempdir()?;
+    fs::write(
+        ui.path().join("index.html"),
+        "<!doctype html><main>Proof Room</main>",
+    )?;
+    let router = proof_room_router_with_repo_fixture_root(bundle, ui.path().to_path_buf())?;
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/proof-room-fixtures/crypto-context-wrong-audience/verifier-report.json")
+                .body(Body::empty())?,
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024).await?;
+    let report: serde_json::Value = serde_json::from_slice(&body)?;
+    assert_eq!(report["schema"], "chio.disclosure.crypto-context-report.v1");
+    assert_eq!(report["verdict"], "rejected");
+    assert_eq!(report["context_id"], "crypto-context-wrong-audience");
+    assert!(report["rejected_checks"]
+        .as_array()
+        .ok_or("rejected_checks missing")?
+        .iter()
+        .any(|check| check["code"] == "disclosure_context_audience_mismatch"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn quickstart_router_serves_trust_market_fixture_verifier_report(
+) -> Result<(), Box<dyn Error>> {
+    let bundle =
+        repo_root()?.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let ui = tempfile::tempdir()?;
+    fs::write(
+        ui.path().join("index.html"),
+        "<!doctype html><main>Proof Room</main>",
+    )?;
+    let router = proof_room_router_with_repo_fixture_root(bundle, ui.path().to_path_buf())?;
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/proof-room-fixtures/trust-market-context/verifier-report.json")
+                .body(Body::empty())?,
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024).await?;
+    let report: serde_json::Value = serde_json::from_slice(&body)?;
+    assert_eq!(report["schema"], "chio.transaction.verifier-report.v1");
+    assert_eq!(report["verdict"], "verified");
+    assert_eq!(report["passport_id"], "passport-trust-market-valid");
+    assert_eq!(
+        report["trust_market_sections"]["risk_comptroller_report_ref"],
+        "risk-comptroller-market-valid"
+    );
+    assert_eq!(
+        report["trust_market_sections"]["selected_provider_subject"],
+        "did:chio:provider-alpha"
+    );
+    assert!(report["verified_claims"]
+        .as_array()
+        .ok_or("verified_claims missing")?
+        .iter()
+        .any(|claim| claim == "claim.trust_market.provider_selection_bound"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn quickstart_router_serves_enterprise_fixture_verifier_report() -> Result<(), Box<dyn Error>>
+{
+    let bundle =
+        repo_root()?.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let ui = tempfile::tempdir()?;
+    fs::write(
+        ui.path().join("index.html"),
+        "<!doctype html><main>Proof Room</main>",
+    )?;
+    let router = proof_room_router_with_repo_fixture_root(bundle, ui.path().to_path_buf())?;
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/proof-room-fixtures/enterprise-autonomous-commerce/verifier-report.json")
+                .body(Body::empty())?,
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024).await?;
+    let report: serde_json::Value = serde_json::from_slice(&body)?;
+    assert_eq!(report["schema"], "chio.transaction.verifier-report.v1");
+    assert_eq!(report["verdict"], "verified");
+    assert_eq!(report["passport_id"], "passport-enterprise-valid");
+    assert_eq!(
+        report["risk_comptroller_report_ref"],
+        "risk-comptroller-enterprise-valid"
+    );
+    assert_eq!(
+        report["enterprise_sections"]["data_governance_report_ref"],
+        "data-governance-enterprise-valid"
+    );
+    assert_eq!(
+        report["enterprise_sections"]["control_evidence_map_ref"],
+        "control-map-enterprise-valid"
+    );
+    assert!(report["verified_claims"]
+        .as_array()
+        .ok_or("verified_claims missing")?
+        .iter()
+        .any(|claim| claim == "claim.enterprise.control_map_bound"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn quickstart_router_serves_enterprise_risk_only_fixture_verifier_report(
+) -> Result<(), Box<dyn Error>> {
+    let bundle =
+        repo_root()?.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let ui = tempfile::tempdir()?;
+    fs::write(
+        ui.path().join("index.html"),
+        "<!doctype html><main>Proof Room</main>",
+    )?;
+    let router = proof_room_router_with_repo_fixture_root(bundle, ui.path().to_path_buf())?;
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/proof-room-fixtures/enterprise-risk-only-comptroller/verifier-report.json")
+                .body(Body::empty())?,
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024).await?;
+    let report: serde_json::Value = serde_json::from_slice(&body)?;
+    assert_eq!(report["schema"], "chio.transaction.verifier-report.v1");
+    assert_eq!(report["verdict"], "verified");
+    assert_eq!(report["passport_id"], "passport-enterprise-valid");
+    assert_eq!(
+        report["risk_comptroller_report_ref"],
+        "risk-comptroller-enterprise-valid"
+    );
+    assert!(report["verified_claims"]
+        .as_array()
+        .ok_or("verified_claims missing")?
+        .iter()
+        .any(|claim| claim == "claim.risk.comptroller_report_bound"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn quickstart_router_serves_standalone_risk_fixture_verifier_report(
+) -> Result<(), Box<dyn Error>> {
+    let bundle =
+        repo_root()?.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let ui = tempfile::tempdir()?;
+    fs::write(
+        ui.path().join("index.html"),
+        "<!doctype html><main>Proof Room</main>",
+    )?;
+    let router = proof_room_router_with_repo_fixture_root(bundle, ui.path().to_path_buf())?;
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/proof-room-fixtures/risk-standalone-comptroller/verifier-report.json")
+                .body(Body::empty())?,
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024).await?;
+    let report: serde_json::Value = serde_json::from_slice(&body)?;
+    assert_eq!(report["schema"], "chio.transaction.verifier-report.v1");
+    assert_eq!(report["verdict"], "verified");
+    assert_eq!(report["passport_id"], "passport-enterprise-valid");
+    assert_eq!(
+        report["risk_comptroller_report_ref"],
+        "risk-comptroller-enterprise-valid"
+    );
+    assert!(report["verified_claims"]
+        .as_array()
+        .ok_or("verified_claims missing")?
+        .iter()
+        .any(|claim| claim == "claim.risk.comptroller_report_bound"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn quickstart_router_serves_agent_web_fixture_verifier_report() -> Result<(), Box<dyn Error>>
+{
+    let bundle =
+        repo_root()?.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let ui = tempfile::tempdir()?;
+    fs::write(
+        ui.path().join("index.html"),
+        "<!doctype html><main>Proof Room</main>",
+    )?;
+    let router = proof_room_router_with_repo_fixture_root(bundle, ui.path().to_path_buf())?;
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/proof-room-fixtures/agent-web-interop/verifier-report.json")
+                .body(Body::empty())?,
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024).await?;
+    let report: serde_json::Value = serde_json::from_slice(&body)?;
+    assert_eq!(
+        report["schema"],
+        "chio.agent-web.interop-verifier-report.v1"
+    );
+    assert_eq!(report["verdict"], "verified");
+    assert_eq!(report["passport_id"], "passport-agent-web-valid");
+    assert!(report["verified_claims"]
+        .as_array()
+        .ok_or("verified_claims missing")?
+        .iter()
+        .any(|claim| claim == "claim.agent_web.sidecar_not_native_authority"));
+    assert!(report["projections"]
+        .as_array()
+        .ok_or("projections missing")?
+        .iter()
+        .any(|projection| projection["source_protocol"] == "mcp"));
+    assert!(report["unsupported_claims"]
+        .as_array()
+        .ok_or("unsupported_claims missing")?
+        .iter()
+        .any(|claim| claim == "claim.external.mcp_tool_call_is_chio_authority"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn quickstart_router_explains_negative_fixture_verifier_failure() -> Result<(), Box<dyn Error>>
+{
+    let bundle =
+        repo_root()?.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let ui = tempfile::tempdir()?;
+    fs::write(
+        ui.path().join("index.html"),
+        "<!doctype html><main>Proof Room</main>",
+    )?;
+    let router = proof_room_router_with_repo_fixture_root(bundle, ui.path().to_path_buf())?;
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/proof-room-fixtures/agent-web-external-digest-mismatch/verifier-report.json")
+                .body(Body::empty())?,
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok()),
+        Some("application/json")
+    );
+    let body = to_bytes(response.into_body(), 1024 * 1024).await?;
+    let report: serde_json::Value = serde_json::from_slice(&body)?;
+    assert_eq!(report["schema"], "chio.transaction.verifier-report.v1");
+    assert_eq!(report["verdict"], "failed");
+    assert_eq!(report["passport_id"], "passport-agent-web-valid");
+    assert_eq!(report["failure_code"], "proof-room.fixture.verify-failed");
+    assert!(report["error"]
+        .as_str()
+        .ok_or("error missing")?
+        .contains("external subject digest mismatch"));
+    Ok(())
+}
+
+#[test]
+fn rejects_negative_case_expected_failure_mismatch() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+    let manifest_path = work.path().join("manifest.json");
+    let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;
+    manifest["negative_cases"][0]["expected_failure_code"] =
+        serde_json::Value::String("expected failure that does not occur".to_string());
+    fs::write(
+        &manifest_path,
+        [serde_json::to_vec_pretty(&manifest)?.as_slice(), b"\n"].concat(),
+    )?;
+    refresh_bundle_signature(work.path())?;
+
+    let error = verify_proof_room_bundle(&manifest_path)
+        .err()
+        .ok_or("mutated proof room bundle unexpectedly verified")?;
+
+    assert!(
+        error
+            .to_string()
+            .contains("proof-room.negative-case.failure-mismatch"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn rejects_verifier_report_that_does_not_match_passport() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let verifier_report_path = work.path().join("verifier/report.json");
+    let mut verifier_report: serde_json::Value =
+        serde_json::from_slice(&fs::read(&verifier_report_path)?)?;
+    verifier_report["passport_id"] =
+        serde_json::Value::String("passport-minimal-drifted".to_string());
+    let verifier_report_bytes = json_bytes(&verifier_report)?;
+    fs::write(&verifier_report_path, &verifier_report_bytes)?;
+    let verifier_report_sha256 = super::sha256_hex(&verifier_report_bytes);
+
+    let ui_report_path = work.path().join("ui/proof-room-static/load-report.json");
+    let mut ui_report: serde_json::Value = serde_json::from_slice(&fs::read(&ui_report_path)?)?;
+    ui_report["source_verifier_report_ref"]["sha256"] =
+        serde_json::Value::String(verifier_report_sha256.clone());
+    let ui_report_bytes = json_bytes(&ui_report)?;
+    fs::write(&ui_report_path, &ui_report_bytes)?;
+    let ui_report_sha256 = super::sha256_hex(&ui_report_bytes);
+
+    let manifest_path = work.path().join("manifest.json");
+    let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;
+    manifest["verifier_report_ref"]["sha256"] =
+        serde_json::Value::String(verifier_report_sha256.clone());
+    manifest["proof_room_verifier_report_ref"]["sha256"] =
+        serde_json::Value::String(ui_report_sha256.clone());
+    for artifact in manifest["artifacts"]
+        .as_array_mut()
+        .ok_or("manifest artifacts missing")?
+    {
+        match artifact.get("path").and_then(serde_json::Value::as_str) {
+            Some("verifier/report.json") => {
+                artifact["sha256"] = serde_json::Value::String(verifier_report_sha256.clone());
+            }
+            Some("ui/proof-room-static/load-report.json") => {
+                artifact["sha256"] = serde_json::Value::String(ui_report_sha256.clone());
+            }
+            _ => {}
+        }
+    }
+    fs::write(&manifest_path, json_bytes(&manifest)?)?;
+    refresh_bundle_signature(work.path())?;
+
+    let error = verify_proof_room_bundle(&manifest_path)
+        .err()
+        .ok_or("mutated proof room bundle unexpectedly verified")?;
+
+    assert!(
+        error.to_string().contains("proof-room.report.mismatch"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn rejects_source_report_for_non_transaction_required_claim() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    add_required_claim_to_verifier_policy(work.path(), "claim.runtime.execution_lease_valid")?;
+
+    let error = verify_proof_room_bundle(&work.path().join("manifest.json"))
+        .err()
+        .ok_or("mutated proof room bundle unexpectedly verified")?;
+
+    assert!(
+        error
+            .to_string()
+            .contains("standalone transaction verifier cannot satisfy required claim"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn rejects_evidence_graph_that_transaction_verifier_rejects() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let evidence_graph_path = work.path().join("roots/evidence-graph.json");
+    let mut evidence_graph: serde_json::Value =
+        serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
+    evidence_graph["edges"]
+        .as_array_mut()
+        .ok_or("evidence graph edges missing")?
+        .push(serde_json::json!({
+            "from": "allow-receipt",
+            "to": "missing-evidence-node",
+            "predicate": "binds",
+            "evidence_class": "digest-bound-reference"
+        }));
+    let evidence_graph_bytes = json_bytes(&evidence_graph)?;
+    fs::write(&evidence_graph_path, &evidence_graph_bytes)?;
+    let evidence_graph_sha256 = super::sha256_hex(&evidence_graph_bytes);
+
+    let passport_path = work.path().join("roots/transaction-passport.json");
+    let mut passport: serde_json::Value = serde_json::from_slice(&fs::read(&passport_path)?)?;
+    passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256.clone());
+    let passport_bytes = json_bytes(&passport)?;
+    fs::write(&passport_path, &passport_bytes)?;
+    let passport_sha256 = super::sha256_hex(&passport_bytes);
+
+    let verifier_report_path = work.path().join("verifier/report.json");
+    let mut verifier_report: serde_json::Value =
+        serde_json::from_slice(&fs::read(&verifier_report_path)?)?;
+    verifier_report["evidence_graph_sha256"] =
+        serde_json::Value::String(evidence_graph_sha256.clone());
+    let verifier_report_bytes = json_bytes(&verifier_report)?;
+    fs::write(&verifier_report_path, &verifier_report_bytes)?;
+    let verifier_report_sha256 = super::sha256_hex(&verifier_report_bytes);
+
+    let ui_report_path = work.path().join("ui/proof-room-static/load-report.json");
+    let mut ui_report: serde_json::Value = serde_json::from_slice(&fs::read(&ui_report_path)?)?;
+    ui_report["source_verifier_report_ref"]["sha256"] =
+        serde_json::Value::String(verifier_report_sha256.clone());
+    let ui_report_bytes = json_bytes(&ui_report)?;
+    fs::write(&ui_report_path, &ui_report_bytes)?;
+    let ui_report_sha256 = super::sha256_hex(&ui_report_bytes);
+
+    let manifest_path = work.path().join("manifest.json");
+    let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;
+    manifest["transaction_passport_ref"]["sha256"] =
+        serde_json::Value::String(passport_sha256.clone());
+    manifest["evidence_graph_ref"]["sha256"] =
+        serde_json::Value::String(evidence_graph_sha256.clone());
+    manifest["verifier_report_ref"]["sha256"] =
+        serde_json::Value::String(verifier_report_sha256.clone());
+    manifest["proof_room_verifier_report_ref"]["sha256"] =
+        serde_json::Value::String(ui_report_sha256.clone());
+    for artifact in manifest["artifacts"]
+        .as_array_mut()
+        .ok_or("manifest artifacts missing")?
+    {
+        match artifact.get("path").and_then(serde_json::Value::as_str) {
+            Some("roots/transaction-passport.json") => {
+                artifact["sha256"] = serde_json::Value::String(passport_sha256.clone());
+            }
+            Some("roots/evidence-graph.json") => {
+                artifact["sha256"] = serde_json::Value::String(evidence_graph_sha256.clone());
+            }
+            Some("verifier/report.json") => {
+                artifact["sha256"] = serde_json::Value::String(verifier_report_sha256.clone());
+            }
+            Some("ui/proof-room-static/load-report.json") => {
+                artifact["sha256"] = serde_json::Value::String(ui_report_sha256.clone());
+            }
+            _ => {}
+        }
+    }
+    fs::write(&manifest_path, json_bytes(&manifest)?)?;
+    refresh_bundle_signature(work.path())?;
+
+    let error = verify_proof_room_bundle(&manifest_path)
+        .err()
+        .ok_or("mutated proof room bundle unexpectedly verified")?;
+
+    assert!(
+        error.to_string().contains("proof-room.report.mismatch")
+            || error
+                .to_string()
+                .contains("unknown evidence graph edge target"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn rejects_authority_evidence_missing_from_graph() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+    remove_graph_node_and_rehash(work.path(), "artifacts/authority/capability-proof.json")?;
+
+    let error = verify_proof_room_bundle(&work.path().join("manifest.json"))
+        .err()
+        .ok_or("mutated proof room bundle unexpectedly verified")?;
+
+    assert!(
+        error
+            .to_string()
+            .contains("proof-room.evidence-graph.authority-node-missing"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn rejects_authority_guard_report_without_capability_binding() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+    remove_guard_report_capability_binding_and_rehash(work.path())?;
+
+    let error = verify_proof_room_bundle(&work.path().join("manifest.json"))
+        .err()
+        .ok_or("mutated proof room bundle unexpectedly verified")?;
+
+    assert!(
+        error.to_string().contains(
+            "proof-room.authority-evidence.field-missing: artifacts/authority/guard-report.json capability_id"
+        ),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn rejects_authority_guard_report_with_unexpected_field() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let guard_report_path = work.path().join("artifacts/authority/guard-report.json");
+    let mut guard_report: serde_json::Value =
+        serde_json::from_slice(&fs::read(&guard_report_path)?)?;
+    guard_report["ambient_authority"] = serde_json::Value::Bool(true);
+    fs::write(&guard_report_path, json_bytes(&guard_report)?)?;
+    let guard_report_sha256 = sha256_file(&guard_report_path)?;
+
+    let evidence_graph_path = work.path().join("roots/evidence-graph.json");
+    let mut evidence_graph: serde_json::Value =
+        serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
+    for node in evidence_graph["nodes"]
+        .as_array_mut()
+        .ok_or("evidence graph nodes missing")?
+    {
+        if node.get("path").and_then(serde_json::Value::as_str)
+            == Some("artifacts/authority/guard-report.json")
+        {
+            node["sha256"] = serde_json::Value::String(guard_report_sha256.clone());
+        }
+    }
+    fs::write(&evidence_graph_path, json_bytes(&evidence_graph)?)?;
+    refresh_source_roots_and_manifest(
+        work.path(),
+        Some(("artifacts/authority/guard-report.json", guard_report_sha256)),
+    )?;
+
+    let error = verify_proof_room_bundle(&work.path().join("manifest.json"))
+        .err()
+        .ok_or("mutated proof room bundle unexpectedly verified")?;
+
+    assert!(
+        error
+            .to_string()
+            .contains("proof-room.schema-violation: authority_evidence"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn rejects_first_run_public_artifacts_with_unexpected_fields() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+
+    for artifact_path in [
+        "artifacts/release/command-log.json",
+        "roots/request-digest.json",
+        "roots/response-digest.json",
+    ] {
+        let work = tempfile::tempdir()?;
+        copy_dir_all(&source, work.path())?;
+        add_unexpected_field_to_bundle_artifact_and_rehash(work.path(), artifact_path)?;
+
+        let error = verify_proof_room_bundle(&work.path().join("manifest.json"))
+            .err()
+            .ok_or("mutated proof room bundle unexpectedly verified")?;
+
+        assert!(
+            error
+                .to_string()
+                .contains("proof-room.schema-violation: artifact"),
+            "{artifact_path}: {error}"
+        );
+    }
+    Ok(())
+}

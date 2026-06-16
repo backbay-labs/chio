@@ -13,18 +13,10 @@ mod tests {
     use chio_manifest::LatencyHint;
 
     static METRICS_TEST_LOCK: Mutex<()> = Mutex::new(());
-
     fn metrics_test_guard() -> MutexGuard<'static, ()> {
         match METRICS_TEST_LOCK.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
-        }
-    }
-
-    fn require_err<T, E>(result: Result<T, E>, context: &'static str) -> E {
-        match result {
-            Ok(_) => panic!("{context}"),
-            Err(error) => error,
         }
     }
 
@@ -975,11 +967,10 @@ mod tests {
     fn invoke_unknown_tool_errors() {
         let edge = ChioAcpEdge::new(AcpEdgeConfig::default(), vec![test_manifest()]).test_unwrap();
         let server = test_server();
-        let err = require_err(
-            edge.compatibility()
-                .invoke("nonexistent", json!({}), &server),
-            "unknown ACP tool must fail",
-        );
+        let err = edge
+            .compatibility()
+            .invoke("nonexistent", json!({}), &server)
+            .test_expect_err("unknown ACP tool must fail");
         assert!(matches!(err, AcpEdgeError::ToolNotFound(_)));
     }
 
@@ -1083,10 +1074,9 @@ mod tests {
             model_metadata: None,
         };
 
-        let error = require_err(
-            edge.invoke("read_file", json!({"path": "/tmp"}), &kernel, &execution),
-            "blank ACP execution agent_id must fail",
-        );
+        let error = edge
+            .invoke("read_file", json!({"path": "/tmp"}), &kernel, &execution)
+            .test_expect_err("blank ACP execution agent_id must fail");
 
         assert_eq!(
             error.to_string(),
@@ -1113,10 +1103,9 @@ mod tests {
             model_metadata: None,
         };
 
-        let error = require_err(
-            edge.invoke("read_file", json!({"path": "/tmp"}), &kernel, &execution),
-            "control character ACP execution agent_id must fail",
-        );
+        let error = edge
+            .invoke("read_file", json!({"path": "/tmp"}), &kernel, &execution)
+            .test_expect_err("control character ACP execution agent_id must fail");
 
         assert_eq!(
             error.to_string(),
@@ -1230,10 +1219,9 @@ mod tests {
         };
         let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
 
-        let error = require_err(
-            edge.invoke("read_file", json!({"path": "/tmp"}), &kernel, &execution),
-            "ACP web3 evidence prerequisite failure must reject",
-        );
+        let error = edge
+            .invoke("read_file", json!({"path": "/tmp"}), &kernel, &execution)
+            .test_expect_err("ACP web3 evidence prerequisite failure must reject");
 
         assert!(error
             .to_string()
@@ -1287,10 +1275,8 @@ mod tests {
         };
         let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
 
-        let error = require_err(
-            execute_orchestrated_acp_request(&kernel, request),
-            "ACP capability reference mismatch must reject",
-        );
+        let error = execute_orchestrated_acp_request(&kernel, request)
+            .test_expect_err("ACP capability reference mismatch must reject");
 
         assert!(error.to_string().contains("capability reference mismatch"));
         assert_eq!(
