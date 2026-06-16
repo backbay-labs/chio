@@ -82,16 +82,16 @@ class ReceiptQueryClient:
                 seen_cursors.add(cursor)
                 query_params["cursor"] = cursor
             response = self.query(cast(ReceiptQueryParams, query_params))
-            receipts = response.get("receipts", [])
-            if receipts:
-                yield receipts
             next_cursor = response.get("nextCursor")
-            if next_cursor is None:
-                break
-            if next_cursor in seen_cursors:
+            if next_cursor is not None and next_cursor in seen_cursors:
                 raise ChioQueryError(
                     "receipt query pagination stalled: repeated nextCursor"
                 )
+            receipts = response.get("receipts", [])
+            if receipts:
+                yield receipts
+            if next_cursor is None:
+                break
             cursor = next_cursor
 
     def _build_url(self, params: ReceiptQueryParams) -> str:

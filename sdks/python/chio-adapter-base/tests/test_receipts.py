@@ -153,7 +153,7 @@ def test_receipt_buffer_writes_jsonl_when_factory_provided(
 
 
 def test_receipt_buffer_record_swallows_jsonl_failure(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     # Path under a regular file (cannot be a directory). mkdir(parents=True,
     # exist_ok=True) raises NotADirectoryError (subclass of OSError) which
@@ -164,20 +164,18 @@ def test_receipt_buffer_record_swallows_jsonl_failure(
     buf = ReceiptBuffer(log_path_factory=lambda: bad)
     # Must not raise.
     buf.record({"status": "allowed"})
-    captured = capsys.readouterr()
-    assert "[chio-adapter-base]" in captured.err
+    assert "receipt JSONL write failed" in caplog.text
 
 
 def test_receipt_buffer_record_swallows_json_serialization_failure(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     log = tmp_path / "receipts.jsonl"
     buf = ReceiptBuffer(log_path_factory=lambda: log)
     buf.record({"status": "allowed", "cost": math.inf})
     assert buf.recent(1)[0]["cost"] == math.inf
     assert not log.exists()
-    captured = capsys.readouterr()
-    assert "[chio-adapter-base]" in captured.err
+    assert "receipt JSONL write failed" in caplog.text
 
 
 def test_receipt_buffer_pending_total_aggregates() -> None:
