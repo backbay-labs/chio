@@ -207,6 +207,7 @@ enum AgentWebCase {
     Ap2ReceiptRefMismatch,
     X402Projection,
     X402AmountMismatch,
+    X402AssetMismatch,
     X402DetachedOrder,
     X402ReceiptRefMismatch,
 }
@@ -1438,6 +1439,10 @@ fn agent_web_bundle(case: AgentWebCase) -> AgentWebInteropBundle {
         AgentWebCase::X402AmountMismatch => 1300,
         _ => 1250,
     };
+    let x402_asset = match case {
+        AgentWebCase::X402AssetMismatch => "DAI",
+        _ => "USDC",
+    };
     let x402_receipt_ref = match case {
         AgentWebCase::X402ReceiptRefMismatch => "receipt-agent-web-x402-other-allow",
         _ => "receipt-agent-web-x402-payment-allow",
@@ -1452,7 +1457,7 @@ fn agent_web_bundle(case: AgentWebCase) -> AgentWebInteropBundle {
         "payment_proof_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
         "settlement_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "network": "base-sepolia",
-        "asset": "USDC",
+        "asset": x402_asset,
         "amount_units": x402_amount_units,
         "status": "settled",
         "chio_payment_receipt_ref": x402_receipt_ref
@@ -1468,6 +1473,7 @@ fn agent_web_bundle(case: AgentWebCase) -> AgentWebInteropBundle {
             | AgentWebCase::Ap2ReceiptRefMismatch
             | AgentWebCase::X402Projection
             | AgentWebCase::X402AmountMismatch
+            | AgentWebCase::X402AssetMismatch
             | AgentWebCase::X402DetachedOrder
             | AgentWebCase::X402ReceiptRefMismatch
     ) {
@@ -1501,6 +1507,7 @@ fn agent_web_bundle(case: AgentWebCase) -> AgentWebInteropBundle {
         case,
         AgentWebCase::X402Projection
             | AgentWebCase::X402AmountMismatch
+            | AgentWebCase::X402AssetMismatch
             | AgentWebCase::X402DetachedOrder
             | AgentWebCase::X402ReceiptRefMismatch
     ) {
@@ -3624,6 +3631,7 @@ fn agent_web_bundle(case: AgentWebCase) -> AgentWebInteropBundle {
         case,
         AgentWebCase::X402Projection
             | AgentWebCase::X402AmountMismatch
+            | AgentWebCase::X402AssetMismatch
             | AgentWebCase::X402DetachedOrder
             | AgentWebCase::X402ReceiptRefMismatch
     ) {
@@ -5128,6 +5136,7 @@ fn agent_web_bundle(case: AgentWebCase) -> AgentWebInteropBundle {
         case,
         AgentWebCase::X402Projection
             | AgentWebCase::X402AmountMismatch
+            | AgentWebCase::X402AssetMismatch
             | AgentWebCase::X402DetachedOrder
             | AgentWebCase::X402ReceiptRefMismatch
     ) {
@@ -5847,6 +5856,7 @@ fn agent_web_bundle(case: AgentWebCase) -> AgentWebInteropBundle {
         case,
         AgentWebCase::X402Projection
             | AgentWebCase::X402AmountMismatch
+            | AgentWebCase::X402AssetMismatch
             | AgentWebCase::X402DetachedOrder
             | AgentWebCase::X402ReceiptRefMismatch
     ) {
@@ -7060,4 +7070,14 @@ fn agent_web_interop_rejects_x402_payment_amount_mismatch() {
         .test_expect_err("x402 payment amount must match the bound order");
 
     assert!(error.to_string().contains("x402 payment amount mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_x402_payment_asset_mismatch() {
+    let bundle = agent_web_bundle(AgentWebCase::X402AssetMismatch);
+
+    let error =
+        verify_agent_web_interop(&bundle).test_expect_err("x402 payment asset must match order");
+
+    assert!(error.to_string().contains("x402 payment asset mismatch"));
 }

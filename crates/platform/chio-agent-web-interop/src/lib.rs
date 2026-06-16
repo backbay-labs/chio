@@ -411,12 +411,28 @@ fn validate_order_context_binding(
                 return Err(claim_failed("acp-commerce payment currency mismatch"));
             }
         }
+        if source_protocol == "x402" {
+            let payment_asset = payment
+                .get("asset")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| claim_failed("missing x402 asset"))?;
+            if !x402_asset_matches_quote_currency(payment_asset, &order_context.quote_currency) {
+                return Err(claim_failed("x402 payment asset mismatch"));
+            }
+        }
         return Ok(());
     }
 
     Err(claim_failed(format!(
         "missing {source_protocol} order binding"
     )))
+}
+
+fn x402_asset_matches_quote_currency(asset: &str, quote_currency: &str) -> bool {
+    match quote_currency {
+        "USD" => matches!(asset, "USD" | "USDC"),
+        _ => asset == quote_currency,
+    }
 }
 
 fn validate_required_edge(
