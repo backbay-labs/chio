@@ -211,6 +211,27 @@ def test_receipt_id_and_signature_use_v1_content_addressing() -> None:
     assert "decision" not in receipt
 
 
+def test_redacted_trace_receipt_does_not_embed_invocation_parameters() -> None:
+    secret = "customer secret prompt"
+    receipt = _sample_receipt(
+        parameters={
+            "modelId": "model-a",
+            "messages": [{"role": "user", "content": [{"text": secret}]}],
+        }
+    )
+
+    assert receipt["redaction_mode"] == "redacted"
+    assert "parameters" not in receipt["action"]
+    assert receipt["action"]["parameter_hash"] == _hash_value(
+        {
+            "modelId": "model-a",
+            "messages": [{"role": "user", "content": [{"text": secret}]}],
+        }
+    )
+    assert secret not in json.dumps(receipt)
+    assert verify_receipt(receipt)
+
+
 def test_receipt_verifier_rejects_symbolic_ids_even_when_legacy_signed() -> None:
     receipt = {
         "id": "rcpt-bedrock-symbolic",

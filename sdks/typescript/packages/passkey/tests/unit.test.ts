@@ -306,7 +306,12 @@ describe('requestCapability', () => {
       async (req) => {
         captured = (await req.json()) as Record<string, unknown>;
         return new Response(
-          JSON.stringify({ capability: fixtureCapability({ audience: 'urn:chio:audience:control' }) }),
+          JSON.stringify({
+            capability: fixtureCapability({
+              audience: 'urn:chio:audience:control',
+              scope_set: ['admin:read'],
+            }),
+          }),
           { status: 200, headers: { 'content-type': 'application/json' } },
         );
       },
@@ -321,5 +326,57 @@ describe('requestCapability', () => {
     expect(captured).toBeDefined();
     expect((captured as Record<string, unknown>).audience).toBe('urn:chio:audience:control');
     expect((captured as Record<string, unknown>).scope_set).toEqual(['admin:read']);
+  });
+
+  test('issuer mint success with wrong audience rejects fail-closed', async () => {
+    const fetchImpl = makeFetch([
+      async () =>
+        new Response(JSON.stringify({ challenge: 'Y2hhbGxlbmdl' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      async () =>
+        new Response(
+          JSON.stringify({ capability: fixtureCapability({ audience: 'urn:chio:audience:evil' }) }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    ]);
+    let err: unknown;
+    try {
+      await requestCapability(baseOpts({ fetchImpl }));
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(RequestCapabilityError);
+    expect((err as RequestCapabilityError).code).toBe(
+      'urn:chio:error:custody:audience-mismatch',
+    );
+  });
+
+  test('issuer mint success with expanded scope rejects fail-closed', async () => {
+    const fetchImpl = makeFetch([
+      async () =>
+        new Response(JSON.stringify({ challenge: 'Y2hhbGxlbmdl' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      async () =>
+        new Response(
+          JSON.stringify({
+            capability: fixtureCapability({ scope_set: ['tool:read', 'tool:write', 'admin:write'] }),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    ]);
+    let err: unknown;
+    try {
+      await requestCapability(baseOpts({ fetchImpl }));
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(RequestCapabilityError);
+    expect((err as RequestCapabilityError).code).toBe(
+      'urn:chio:error:custody:assertion-rejected',
+    );
   });
 });

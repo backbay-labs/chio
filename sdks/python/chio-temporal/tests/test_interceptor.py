@@ -250,6 +250,24 @@ class TestAllowVerdict:
         assert len(evaluate_calls) == 1
         assert evaluate_calls[0].tool_server == "email-srv"
 
+    async def test_run_scoped_grant_rejects_missing_run_id(self) -> None:
+        async with allow_all() as chio:
+            token = await _mint_token(
+                chio,
+                subject="agent:alice",
+                scope=_scope_for_tools("send_email"),
+            )
+            grant = WorkflowGrant(
+                workflow_id="wf-1",
+                token=token,
+                tool_server="srv",
+                run_id="run-1",
+            )
+
+        assert grant.matches(workflow_id="wf-1", run_id="run-1")
+        assert not grant.matches(workflow_id="wf-1", run_id="run-2")
+        assert not grant.matches(workflow_id="wf-1", run_id=None)
+
 
 # ---------------------------------------------------------------------------
 # (b) Deny verdict raises non-retryable ApplicationError
