@@ -36,6 +36,7 @@ triggers = [
     "crates/core/chio-core-types/src/_generated/**",
     "crates/core/chio-core-types/src/capability*.rs",
     "crates/core/chio-core-types/src/receipt*.rs",
+    "crates/trust/chio-reputation/**",
     "spec/schemas/capability/**",
     "spec/schemas/receipt/**",
     "tests/bindings/vectors/capability/**",
