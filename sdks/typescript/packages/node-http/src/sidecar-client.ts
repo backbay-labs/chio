@@ -255,16 +255,11 @@ function isHttpReceipt(value: unknown): value is HttpReceipt {
     && typeof value["method"] === "string"
     && typeof value["caller_identity_hash"] === "string"
     && isVerdict(value["verdict"])
-    && typeof value["receipt_kind"] === "string"
-    && typeof value["boundary_class"] === "string"
-    && typeof value["tool_origin"] === "string"
-    && typeof value["redaction_mode"] === "string"
     && Array.isArray(value["evidence"])
     && typeof value["response_status"] === "number"
     && typeof value["timestamp"] === "number"
     && typeof value["content_hash"] === "string"
     && typeof value["policy_hash"] === "string"
-    && typeof value["trust_level"] === "string"
     && typeof value["kernel_key"] === "string"
     && typeof value["signature"] === "string";
 }
