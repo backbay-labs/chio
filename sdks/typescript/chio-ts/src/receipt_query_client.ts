@@ -74,7 +74,7 @@ export class ReceiptQueryClient {
         break;
       }
       if (response.nextCursor === cursor) {
-        break;
+        throw new QueryError("receipt query pagination cursor did not advance");
       }
       cursor = response.nextCursor;
     }

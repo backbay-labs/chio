@@ -163,6 +163,7 @@ export interface BuildRequestOptions {
   /** Optional structured arguments forwarded with synthetic tool calls. */
   toolArguments?: unknown;
   modelMetadata?: ChioHttpRequest["model_metadata"] | undefined;
+  forwardHeaders?: string[] | undefined;
 }
 
 export function getBufferedNodeRequestBody(req: IncomingMessage): Buffer | undefined {
@@ -201,7 +202,7 @@ export function buildChioHttpRequest(opts: BuildRequestOptions): ChioHttpRequest
     route_pattern: opts.routePattern,
     path: opts.path,
     query: opts.query,
-    headers: filterHeaders(opts.headers, ["content-type", "content-length"]),
+    headers: filterHeaders(opts.headers, opts.forwardHeaders ?? ["content-type", "content-length"]),
     caller: opts.caller,
     body_hash: opts.bodyHash,
     body_length: opts.bodyLength,
@@ -286,6 +287,7 @@ export async function interceptNodeRequest(
     bodyLength,
     routePattern,
     capabilityId,
+    forwardHeaders: resolved.forwardHeaders,
   });
 
   try {
@@ -385,6 +387,7 @@ export async function interceptWebRequest(
     bodyLength,
     routePattern,
     capabilityId,
+    forwardHeaders: resolved.forwardHeaders,
   });
 
   try {

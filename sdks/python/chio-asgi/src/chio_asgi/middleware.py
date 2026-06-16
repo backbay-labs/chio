@@ -13,6 +13,7 @@ import json
 import time
 import uuid
 from typing import Any, Callable, Awaitable
+from urllib.parse import parse_qsl
 
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioConnectionError, ChioError, ChioTimeoutError
@@ -109,38 +110,36 @@ class ChioASGIMiddleware:
         if "route" in scope and hasattr(scope["route"], "path"):
             route_pattern = scope["route"].path
 
-        # Read the request body for hashing
+        # Read the full request body for hashing before evaluating policy.
         body_chunks: list[bytes] = []
-        body_complete = False
+        buffered_messages: list[dict[str, Any]] = []
 
-        async def receive_wrapper() -> dict[str, Any]:
-            nonlocal body_complete
+        while True:
             message = await receive()
+            buffered_messages.append(message)
             if message.get("type") == "http.request":
                 body = message.get("body", b"")
                 if body:
                     body_chunks.append(body)
                 if not message.get("more_body", False):
-                    body_complete = True
-            return message
-
-        # Buffer the first request message so the body can be hashed before
-        # the inner app consumes it.
-        first_message = await receive_wrapper()
+                    break
+                continue
+            break
 
         body_hash: str | None = None
         if body_chunks:
             raw_body = b"".join(body_chunks)
             body_hash = hashlib.sha256(raw_body).hexdigest()
 
-        # Replay the buffered first message for the inner app
-        first_message_sent = False
+        # Replay the buffered body for the inner app.
+        replay_index = 0
 
         async def replay_receive() -> dict[str, Any]:
-            nonlocal first_message_sent
-            if not first_message_sent:
-                first_message_sent = True
-                return first_message
+            nonlocal replay_index
+            if replay_index < len(buffered_messages):
+                message = buffered_messages[replay_index]
+                replay_index += 1
+                return message
             return await receive()
 
         # Evaluate via sidecar
@@ -231,11 +230,10 @@ def _extract_capability_token(scope: Scope) -> str | None:
     if capability_token:
         return capability_token
 
-    # Try query string
     qs = scope.get("query_string", b"").decode("latin-1")
-    for param in qs.split("&"):
-        if param.startswith("chio_capability="):
-            return param.split("=", 1)[1]
+    for key, value in parse_qsl(qs, keep_blank_values=True):
+        if key == "chio_capability":
+            return value
     return None
 
 
@@ -258,13 +256,7 @@ def _query_params(scope: Scope) -> dict[str, str]:
     if not qs:
         return params
 
-    for param in qs.split("&"):
-        if not param:
-            continue
-        if "=" in param:
-            key, value = param.split("=", 1)
-        else:
-            key, value = param, ""
+    for key, value in parse_qsl(qs, keep_blank_values=True):
         params[key] = value
     return params
 

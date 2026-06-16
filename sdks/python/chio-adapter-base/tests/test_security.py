@@ -104,11 +104,17 @@ def test_harden_git_argv_passes_through_non_commit_subcommands() -> None:
         "--porcelain",
     ]
     assert harden_git_argv(["log", "-n5"]) == ["log", "-n5"]
+    assert harden_git_argv(["add", "commit"]) == ["add", "commit"]
 
 
 def test_harden_git_argv_skips_leading_global_flags() -> None:
     out = harden_git_argv(["-c", "user.name=x", "commit", "-m", "y"])
     assert out == ["-c", "user.name=x", "commit", "--no-verify", "-m", "y"]
+
+
+def test_harden_git_argv_allows_git_binary_prefix() -> None:
+    out = harden_git_argv(["git", "-c", "user.name=x", "commit", "-m", "y"])
+    assert out == ["git", "-c", "user.name=x", "commit", "--no-verify", "-m", "y"]
 
 
 def test_harden_git_argv_does_not_mutate_input() -> None:

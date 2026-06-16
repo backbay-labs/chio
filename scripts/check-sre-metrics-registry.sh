@@ -5,13 +5,20 @@ cd "$(dirname "$0")/.."
 
 registry="$(mktemp)"
 observed="$(mktemp)"
-trap 'rm -f "${registry}" "${observed}"' EXIT
+observed_raw="$(mktemp)"
+trap 'rm -f "${registry}" "${observed}" "${observed_raw}"' EXIT
+
+if ! command -v rg >/dev/null 2>&1; then
+  echo "ripgrep (rg) is required for the SRE metric registry gate" >&2
+  exit 2
+fi
 
 cut -d'|' -f1 crates/observability/chio-metrics-spec/metrics.snapshot | sort -u > "${registry}"
 
 # Scope includes the edge crates that consume the registry plus
 # `chio-wasm-guards`. The grep is anchored at `crates/<name>/src` to avoid
 # pulling matches out of `target/` artifacts.
+rg_status=0
 rg -P --no-filename -o '(?<![A-Za-z0-9_])chio_[a-z0-9_]*(seconds|total|depth|bytes|ready|size)(?![A-Za-z0-9_])' \
   crates/observability/chio-metrics-spec \
   crates/kernel/chio-kernel/src \
@@ -28,7 +35,16 @@ rg -P --no-filename -o '(?<![A-Za-z0-9_])chio_[a-z0-9_]*(seconds|total|depth|byt
   .github/workflows \
   scripts \
   docs/operator-runbook \
-  | sort -u > "${observed}" || true
+  > "${observed_raw}" || rg_status=$?
+
+if [[ "${rg_status}" -eq 0 ]]; then
+  sort -u < "${observed_raw}" > "${observed}"
+elif [[ "${rg_status}" -eq 1 ]]; then
+  : > "${observed}"
+else
+  echo "failed to scan Chio metric names with rg (exit ${rg_status})" >&2
+  exit "${rg_status}"
+fi
 
 failed=0
 while IFS= read -r metric; do

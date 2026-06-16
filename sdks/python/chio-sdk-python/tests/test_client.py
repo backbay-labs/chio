@@ -594,6 +594,18 @@ class TestErrorHandling:
             assert exc_info.value.guard == "TimeGuard"
 
     @respx.mock
+    async def test_denied_error_handles_non_json_body(self) -> None:
+        respx.get(f"{BASE}/chio/health").mock(
+            return_value=httpx.Response(403, text="<html>forbidden</html>")
+        )
+        async with ChioClient(BASE) as client:
+            with pytest.raises(ChioDeniedError) as exc_info:
+                await client.health()
+            assert exc_info.value.message == "denied"
+            assert exc_info.value.reason == "<html>forbidden</html>"
+            assert exc_info.value.reason_code == "HTTP_403"
+
+    @respx.mock
     async def test_server_error(self) -> None:
         respx.get(f"{BASE}/chio/health").mock(
             return_value=httpx.Response(500, json={"error": "internal"})

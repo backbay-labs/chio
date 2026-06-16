@@ -62,7 +62,7 @@ fn scope_reduced(parent: &ChioScope, child: &ChioScope) -> bool {
     child.grants.iter().any(|child_grant| {
         parent_grant_for(child_grant, parent)
             .map(|parent_grant| grant_scope_reduced(parent_grant, child_grant))
-            .unwrap_or(true)
+            .unwrap_or(false)
     })
 }
 
@@ -73,7 +73,7 @@ fn budget_reduced(parent: &ChioScope, child: &ChioScope) -> bool {
                 invocation_limit_reduced(parent_grant, child_grant)
                     || monetary_limit_reduced(parent_grant, child_grant)
             })
-            .unwrap_or(true)
+            .unwrap_or(false)
     })
 }
 

@@ -167,9 +167,8 @@ def harden_git_argv(argv: list[str]) -> list[str]:
 
     Returns a new list; does not mutate ``argv``.
     """
-    try:
-        subcommand_idx = argv.index("commit")
-    except ValueError:
+    subcommand_idx = _git_subcommand_index(argv)
+    if subcommand_idx is None or argv[subcommand_idx] != "commit":
         return list(argv)
     tail = argv[subcommand_idx + 1 :]
     if "--verify" in tail:
@@ -180,6 +179,31 @@ def harden_git_argv(argv: list[str]) -> list[str]:
     if "--no-verify" in tail:
         return list(argv)
     return [*argv[: subcommand_idx + 1], "--no-verify", *tail]
+
+
+def _git_subcommand_index(argv: list[str]) -> int | None:
+    index = 1 if argv and pathlib.PurePath(argv[0]).name == "git" else 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--":
+            return None
+        if arg == "-c":
+            index += 2
+            continue
+        if arg.startswith("-c") and arg != "-c":
+            index += 1
+            continue
+        if arg.startswith("--config-env="):
+            index += 1
+            continue
+        if arg == "--config-env":
+            index += 2
+            continue
+        if arg.startswith("-"):
+            index += 1
+            continue
+        return index
+    return None
 
 
 def reject_shell_argv_escape(
