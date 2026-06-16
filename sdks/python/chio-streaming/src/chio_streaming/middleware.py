@@ -299,6 +299,8 @@ class ChioConsumerMiddleware:
         DLQ produced + offset committed in one transaction. Returns
         ``None`` on poll timeout or broker error.
         """
+        if self._closed:
+            raise ChioStreamingError("cannot poll a closed Chio consumer middleware")
         poll_timeout = self._config.poll_timeout if timeout is None else timeout
         message = self._consumer.poll(poll_timeout)
         if message is None:

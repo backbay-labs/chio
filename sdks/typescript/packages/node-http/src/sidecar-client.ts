@@ -95,7 +95,23 @@ export class ChioSidecarClient {
         );
       }
 
-      const result = (await response.json()) as EvaluateResponse;
+      const responseBody = await response.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(responseBody) as unknown;
+      } catch (error: unknown) {
+        throw new SidecarError(
+          CHIO_ERROR_CODES.EVALUATION_FAILED,
+          `failed to decode evaluate response: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (!isEvaluateResponse(parsed)) {
+        throw new SidecarError(
+          CHIO_ERROR_CODES.EVALUATION_FAILED,
+          "sidecar evaluate response missing structured verdict or receipt fields",
+        );
+      }
+      const result = parsed;
       if (isAllowShapedResult(result)) {
         await this.assertAuthorizedAllowResult(result);
       }
@@ -222,6 +238,56 @@ export class ChioSidecarClient {
 
 function isAllowShapedResult(result: EvaluateResponse): boolean {
   return isAllowed(result.verdict) || isAllowed(result.receipt.verdict);
+}
+
+function isEvaluateResponse(value: unknown): value is EvaluateResponse {
+  if (!isRecord(value)) return false;
+  return isVerdict(value["verdict"])
+    && isHttpReceipt(value["receipt"])
+    && Array.isArray(value["evidence"]);
+}
+
+function isHttpReceipt(value: unknown): value is HttpReceipt {
+  if (!isRecord(value)) return false;
+  return typeof value["id"] === "string"
+    && typeof value["request_id"] === "string"
+    && typeof value["route_pattern"] === "string"
+    && typeof value["method"] === "string"
+    && typeof value["caller_identity_hash"] === "string"
+    && isVerdict(value["verdict"])
+    && typeof value["receipt_kind"] === "string"
+    && typeof value["boundary_class"] === "string"
+    && typeof value["tool_origin"] === "string"
+    && typeof value["redaction_mode"] === "string"
+    && Array.isArray(value["evidence"])
+    && typeof value["response_status"] === "number"
+    && typeof value["timestamp"] === "number"
+    && typeof value["content_hash"] === "string"
+    && typeof value["policy_hash"] === "string"
+    && typeof value["trust_level"] === "string"
+    && typeof value["kernel_key"] === "string"
+    && typeof value["signature"] === "string";
+}
+
+function isVerdict(value: unknown): value is Verdict {
+  if (!isRecord(value) || typeof value["verdict"] !== "string") return false;
+  switch (value["verdict"]) {
+    case "allow":
+      return true;
+    case "deny":
+      return typeof value["reason"] === "string"
+        && typeof value["guard"] === "string"
+        && typeof value["http_status"] === "number";
+    case "cancel":
+    case "incomplete":
+      return typeof value["reason"] === "string";
+    default:
+      return false;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function isSidecarTransportFailure(statusCode: number): boolean {

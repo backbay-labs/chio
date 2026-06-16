@@ -63,19 +63,20 @@ def _make_receive(body: bytes = b"") -> Receive:
 
 
 def _make_chunked_receive(chunks: list[bytes]) -> Receive:
-    """Create an ASGI receive callable that emits multiple body chunks."""
-    index = 0
+    messages = [
+        {
+            "type": "http.request",
+            "body": chunk,
+            "more_body": index < len(chunks) - 1,
+        }
+        for index, chunk in enumerate(chunks)
+    ]
+    if not messages:
+        messages.append({"type": "http.request", "body": b"", "more_body": False})
 
     async def receive() -> dict[str, Any]:
-        nonlocal index
-        if index < len(chunks):
-            body = chunks[index]
-            index += 1
-            return {
-                "type": "http.request",
-                "body": body,
-                "more_body": index < len(chunks),
-            }
+        if messages:
+            return messages.pop(0)
         return {"type": "http.disconnect"}
 
     return receive
@@ -164,25 +165,21 @@ async def _echo_app(scope: Scope, receive: Receive, send: Send) -> None:
 
 
 async def _body_echo_app(scope: Scope, receive: Receive, send: Send) -> None:
-    """ASGI app that echoes the full request body."""
-    body_chunks: list[bytes] = []
+    chunks: list[bytes] = []
     while True:
         message = await receive()
         if message.get("type") != "http.request":
             break
-        body_chunks.append(message.get("body", b""))
+        chunks.append(message.get("body", b""))
         if not message.get("more_body", False):
             break
-    body = b"".join(body_chunks)
+    body = b"".join(chunks)
     await send({
         "type": "http.response.start",
         "status": 200,
-        "headers": [(b"content-type", b"text/plain")],
+        "headers": [(b"content-length", str(len(body)).encode("latin-1"))],
     })
-    await send({
-        "type": "http.response.body",
-        "body": body,
-    })
+    await send({"type": "http.response.body", "body": body})
 
 
 # ---------------------------------------------------------------------------
@@ -310,6 +307,42 @@ class TestAllowedRequest:
             )
             body = json.loads(body_msg["body"])
             assert body["error"] == "RequestBodyTooLarge"
+
+    async def test_rejects_duplicate_policy_headers_before_evaluation(self) -> None:
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            scope = _make_scope()
+            scope["headers"] = [
+                (b"content-type", b"application/json"),
+                (b"Content-Type", b"text/plain"),
+            ]
+            mw = ChioASGIMiddleware(_echo_app)
+            send, messages = _make_send()
+
+            await mw(scope, _make_receive(), send)
+
+            MockClient.return_value.evaluate_http_request.assert_not_called()
+            start_msg = next(
+                m for m in messages if m.get("type") == "http.response.start"
+            )
+            assert start_msg["status"] == 400
+
+    async def test_rejects_duplicate_query_parameters_before_evaluation(self) -> None:
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            scope = _make_scope(query_string="tenant=a&tenant=b")
+            mw = ChioASGIMiddleware(_echo_app)
+            send, messages = _make_send()
+
+            await mw(scope, _make_receive(), send)
+
+            MockClient.return_value.evaluate_http_request.assert_not_called()
+            start_msg = next(
+                m for m in messages if m.get("type") == "http.response.start"
+            )
+            assert start_msg["status"] == 400
 
 
 class TestDeniedRequest:

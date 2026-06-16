@@ -101,7 +101,16 @@ class ChioASGIMiddleware:
             await self._app(scope, receive, send)
             return
 
-        # Extract caller identity
+        try:
+            headers = _headers_by_name(scope)
+            selected_headers = _selected_headers_from(headers)
+            query = _query_params(scope)
+            capability_token = _extract_capability_token_from(headers, query)
+        except ValueError as exc:
+            await _send_error_response(send, 400, str(exc), "MalformedRequest")
+            return
+
+        # Extract caller identity after rejecting ambiguous policy inputs.
         caller = self._extractor.extract(scope)
 
         # Extract route pattern if available (Starlette/FastAPI set this)
@@ -109,13 +118,14 @@ class ChioASGIMiddleware:
         if "route" in scope and hasattr(scope["route"], "path"):
             route_pattern = scope["route"].path
 
-        # Read the request body for hashing before evaluating policy.
-        body_buffer = bytearray()
+        # Read the complete request body for hashing before sidecar evaluation.
+        body_chunks: list[bytes] = []
+        buffered_messages: list[dict[str, Any]] = []
         body_length = 0
-        replay_message: dict[str, Any] | None = None
 
         while True:
             message = await receive()
+            buffered_messages.append(message)
             if message.get("type") == "http.request":
                 body = message.get("body", b"")
                 if body:
@@ -128,31 +138,26 @@ class ChioASGIMiddleware:
                             "RequestBodyTooLarge",
                         )
                         return
-                    body_buffer.extend(body)
+                    body_chunks.append(body)
                 if not message.get("more_body", False):
                     break
                 continue
-            replay_message = message
             break
 
+        raw_body = b"".join(body_chunks)
         body_hash: str | None = None
-        if body_buffer:
-            body_hash = hashlib.sha256(body_buffer).hexdigest()
+        if raw_body:
+            body_hash = hashlib.sha256(raw_body).hexdigest()
 
-        # Replay the buffered body for the inner app.
-        replay_sent = False
+        # Replay the buffered request messages for the inner app.
+        replay_index = 0
 
         async def replay_receive() -> dict[str, Any]:
-            nonlocal replay_sent
-            if not replay_sent:
-                replay_sent = True
-                if replay_message is not None:
-                    return replay_message
-                return {
-                    "type": "http.request",
-                    "body": bytes(body_buffer),
-                    "more_body": False,
-                }
+            nonlocal replay_index
+            if replay_index < len(buffered_messages):
+                message = buffered_messages[replay_index]
+                replay_index += 1
+                return message
             return await receive()
 
         # Evaluate via sidecar
@@ -165,11 +170,11 @@ class ChioASGIMiddleware:
                 route_pattern=route_pattern,
                 path=path,
                 caller=caller,
-                query=_query_params(scope),
-                headers=_selected_headers(scope),
+                query=query,
+                headers=selected_headers,
                 body_hash=body_hash,
                 body_length=body_length,
-                capability_token=_extract_capability_token(scope),
+                capability_token=capability_token,
             )
         except (ChioConnectionError, ChioTimeoutError):
             await _send_error_response(
@@ -233,28 +238,51 @@ class ChioASGIMiddleware:
         await self._app(scope, replay_receive, send_with_receipt)
 
 
+_POLICY_SINGLETON_HEADERS = frozenset({
+    "authorization",
+    "cookie",
+    "content-length",
+    "content-type",
+    "x-api-key",
+    "x-chio-capability",
+})
+
+
+def _headers_by_name(scope: Scope) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    seen: set[str] = set()
+    for raw_name, raw_value in scope.get("headers", []):
+        name = raw_name.decode("latin-1").lower()
+        if name in seen and name in _POLICY_SINGLETON_HEADERS:
+            raise ValueError(f"duplicate policy header: {name}")
+        seen.add(name)
+        headers[name] = raw_value.decode("latin-1")
+    return headers
+
+
 def _extract_capability_token(scope: Scope) -> str | None:
     """Extract the presented Chio capability token from header or query string."""
-    headers = {
-        k.decode("latin-1").lower(): v.decode("latin-1")
-        for k, v in scope.get("headers", [])
-    }
+    headers = _headers_by_name(scope)
+    query = _query_params(scope)
+    return _extract_capability_token_from(headers, query)
+
+
+def _extract_capability_token_from(
+    headers: dict[str, str],
+    query: dict[str, str],
+) -> str | None:
     capability_token = headers.get("x-chio-capability")
     if capability_token:
         return capability_token
 
-    qs = scope.get("query_string", b"").decode("latin-1")
-    for key, value in parse_qsl(qs, keep_blank_values=True):
-        if key == "chio_capability":
-            return value
-    return None
+    return query.get("chio_capability")
 
 
 def _selected_headers(scope: Scope) -> dict[str, str]:
-    headers = {
-        k.decode("latin-1").lower(): v.decode("latin-1")
-        for k, v in scope.get("headers", [])
-    }
+    return _selected_headers_from(_headers_by_name(scope))
+
+
+def _selected_headers_from(headers: dict[str, str]) -> dict[str, str]:
     selected: dict[str, str] = {}
     for key in ("content-type", "content-length"):
         value = headers.get(key)
@@ -270,6 +298,8 @@ def _query_params(scope: Scope) -> dict[str, str]:
         return params
 
     for key, value in parse_qsl(qs, keep_blank_values=True):
+        if key in params:
+            raise ValueError(f"duplicate query parameter: {key}")
         params[key] = value
     return params
 
