@@ -3,15 +3,16 @@
 #
 # Sums the observed run wall time of the cflite_pr.yml, cflite_batch.yml,
 # fuzz.yml, mutants.yml, and mutants-fuzz-cocoverage.yml workflows across the
-# last 30 days and converts to minutes. cap_mode defaults to "warn", so
-# exceeding the cap reports but does not halt; set GH_FUZZ_BUDGET_CAP_MODE=fail
-# to hard-halt at the cap.
+# last 30 days and converts to minutes. cap_mode defaults to "fail" so
+# exceeding the cap hard-halts; set GH_FUZZ_BUDGET_CAP_MODE=warn only for
+# ad hoc budget reports.
 #
 # Usage:
 #   scripts/check-fuzz-budget.sh                      # default repo: backbay-labs/chio
 #   scripts/check-fuzz-budget.sh OWNER/REPO
 #   GH_FUZZ_BUDGET_MINUTES=900 scripts/check-fuzz-budget.sh    # override cap
 #   GH_FUZZ_BUDGET_RATE_LIMIT_MODE=warn scripts/check-fuzz-budget.sh
+#   GH_FUZZ_BUDGET_MISSING_WORKFLOW_MODE=warn scripts/check-fuzz-budget.sh
 #   GH_FUZZ_BUDGET_CAP_MODE=warn scripts/check-fuzz-budget.sh
 #
 # Exit codes:
@@ -51,7 +52,8 @@ esac
 total_seconds=0
 
 rate_limit_mode="${GH_FUZZ_BUDGET_RATE_LIMIT_MODE:-fail}"
-cap_mode="${GH_FUZZ_BUDGET_CAP_MODE:-warn}"
+missing_workflow_mode="${GH_FUZZ_BUDGET_MISSING_WORKFLOW_MODE:-fail}"
+cap_mode="${GH_FUZZ_BUDGET_CAP_MODE:-fail}"
 
 for wf in "${WORKFLOWS[@]}"; do
     runs_path="repos/${REPO}/actions/workflows/${wf}/runs"
@@ -63,8 +65,12 @@ for wf in "${WORKFLOWS[@]}"; do
         error_text="$(cat "${api_error}")"
         rm -f "${api_error}"
         if grep -Eq 'HTTP 404|Not Found' <<<"${error_text}"; then
-            err "fuzz-budget: workflow ${wf} is not registered yet; counting 0 minutes"
-            continue
+            err "fuzz-budget: workflow ${wf} is not registered; budget usage is unverified"
+            if [[ "${missing_workflow_mode}" == "warn" ]]; then
+                err "fuzz-budget: continuing because GH_FUZZ_BUDGET_MISSING_WORKFLOW_MODE=warn"
+                continue
+            fi
+            exit 2
         fi
         if grep -Eiq 'rate limit exceeded|HTTP 403' <<<"${error_text}" \
             && [[ "${rate_limit_mode}" == "warn" ]]; then

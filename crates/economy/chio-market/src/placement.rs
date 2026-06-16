@@ -82,7 +82,7 @@ impl LiabilityPlacementArtifact {
         if self.effective_until <= self.effective_from {
             return Err("placement effective window must have end after start".to_string());
         }
-        if self.issued_at > quoted_terms.expires_at {
+        if self.issued_at >= quoted_terms.expires_at {
             return Err("placement cannot be issued after the quote expires".to_string());
         }
         Ok(())

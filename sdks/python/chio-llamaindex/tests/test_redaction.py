@@ -24,6 +24,36 @@ from chio_llamaindex import ChioFunctionTool
 
 
 class TestDefaultPolicyRedacts:
+    async def test_positional_chio_file_write_content_is_redacted(self) -> None:
+        captured_args: list[dict[str, Any]] = []
+
+        def write_file(path: str, content: str) -> str:
+            captured_args.append({"path": path, "content": content})
+            return f"wrote {len(content)} bytes to {path}"
+
+        async with allow_all() as chio:
+            tool = ChioFunctionTool(
+                fn=write_file,
+                name="chio_file_write",
+                description="write a file",
+                server_id="fs",
+                capability_id="cap-1",
+                chio_client=chio,
+            )
+            await tool.acall("/tmp/x", "PROD_SECRET=abc123")
+
+        eval_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        assert len(eval_calls) == 1
+        recorded = eval_calls[0]
+        assert recorded.parameters["path"] == "/tmp/x"
+        assert recorded.parameters["content"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert captured_args == [
+            {"path": "/tmp/x", "content": "PROD_SECRET=abc123"}
+        ]
+
     async def test_chio_file_write_content_is_redacted_in_recorded_params(
         self,
     ) -> None:
