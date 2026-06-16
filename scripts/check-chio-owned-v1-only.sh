@@ -37,6 +37,8 @@ set +e
 rg -n --hidden \
   --glob '!target/**' \
   --glob '!audits/**' \
+  --glob '!docs/research/protocol-strategy/**' \
+  --glob '!docs/archive/**' \
   --glob '!**/node_modules/**' \
   --glob '!**/.git/**' \
   --glob '!scripts/check-chio-owned-v1-only.sh' \
@@ -44,12 +46,13 @@ rg -n --hidden \
   --glob '!docs/adr/**' \
   --glob '!**/in-toto/**' \
   --glob '!**/runtime-trace/**' \
+  --glob '!docs/superpowers/**' \
   "$pattern" \
   crates spec sdks scripts docs formal xtask >"$tmp"
 rg_status=$?
 set -e
 if ((rg_status > 1)); then
-  echo "ripgrep scan failed while checking Chio-owned v1 remnants" >&2
+  echo "ripgrep failed while scanning Chio-owned version remnants" >&2
   exit "$rg_status"
 fi
 
@@ -60,6 +63,8 @@ if ((${#existing_normative_roots[@]})); then
     --glob '!target/**' \
     --glob '!audits/**' \
     --glob '!docs/research/**' \
+    --glob '!docs/superpowers/**' \
+    --glob '!docs/archive/**' \
     --glob '!**/node_modules/**' \
     --glob '!**/.git/**' \
     "$normative_claim_pattern" \
@@ -67,7 +72,7 @@ if ((${#existing_normative_roots[@]})); then
   rg_status=$?
   set -e
   if ((rg_status > 1)); then
-    echo "ripgrep normative-claims scan failed while checking Chio-owned v1 remnants" >&2
+    echo "ripgrep failed while scanning normative version claims" >&2
     exit "$rg_status"
   fi
 fi
@@ -107,23 +112,6 @@ while IFS= read -r line; do
     continue
   fi
   if [[ "$text" =~ chio\.pheromone\.[A-Za-z0-9_.-]+\.v[2-9][0-9]* ]]; then
-    continue
-  fi
-
-  # The launch disclosure surface intentionally ships a v2 BBS projection
-  # manifest so typed message classes and per-slot sensitivity are explicit.
-  # Keep this exemption limited to that exact manifest schema and its constants.
-  if [[ "$text" =~ chio\.bbs-projection\.manifest\.v2|BBS_PROJECTION_MANIFEST_SCHEMA_V2|BBS_PROJECTION_MANIFEST_V2_SCHEMA ]]; then
-    continue
-  fi
-
-  # Public settlement intentionally publishes v2 dispatch and execution-receipt
-  # artifacts while preserving v1 bundle verification.
-  if [[ "$text" =~ chio\.web3-settlement-(dispatch|execution-receipt)\.v2|CHIO_WEB3_SETTLEMENT_(DISPATCH|RECEIPT|EXECUTION_RECEIPT)_V2_SCHEMA|WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA ]]; then
-    continue
-  fi
-  if [[ "$path" == "crates/economy/chio-web3/src/settlement.rs" ]] && \
-     [[ "$text" =~ (dispatch_v2|receipt_v2) ]]; then
     continue
   fi
 

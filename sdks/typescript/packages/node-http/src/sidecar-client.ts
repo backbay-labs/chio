@@ -221,7 +221,7 @@ export class ChioSidecarClient {
 }
 
 function isAllowShapedResult(result: EvaluateResponse): boolean {
-  return isAllowed(result.verdict) || isAllowed(result.receipt.verdict);
+  return isAllowed(result.verdict) || (result.receipt != null && isAllowed(result.receipt.verdict));
 }
 
 function isSidecarTransportFailure(statusCode: number): boolean {

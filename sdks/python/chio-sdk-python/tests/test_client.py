@@ -190,6 +190,16 @@ class TestHealth:
             data = await client.health()
             assert data["status"] == "healthy"
 
+    @respx.mock
+    async def test_403_with_non_json_body_raises_denied(self) -> None:
+        respx.get(f"{BASE}/chio/health").mock(
+            return_value=httpx.Response(403, text="forbidden")
+        )
+        async with ChioClient(BASE) as client:
+            with pytest.raises(ChioDeniedError) as exc_info:
+                await client.health()
+        assert str(exc_info.value) == "forbidden"
+
 
 # ---------------------------------------------------------------------------
 # Capabilities

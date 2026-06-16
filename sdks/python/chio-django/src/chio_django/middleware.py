@@ -196,6 +196,8 @@ class ChioDjangoMiddleware:
                 timeout=self._timeout,
             )
         except (httpx.ConnectError, httpx.TimeoutException):
+            if self._fail_open:
+                return self.get_response(request)
             return JsonResponse(
                 {
                     "error": {

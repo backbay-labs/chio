@@ -357,6 +357,21 @@ describe("ChioSidecarClient.evaluate", () => {
       await closeServer(server);
     }
   });
+
+  it("does not throw when a deny response omits the receipt field", async () => {
+    const result = {
+      verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      evidence: [],
+    } as unknown as EvaluateResponse;
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expect(client.evaluate(testRequest())).resolves.toEqual(result);
+    } finally {
+      await closeServer(server);
+    }
+  });
 });
 
 describe("ChioSidecarClient.verifyReceipt", () => {

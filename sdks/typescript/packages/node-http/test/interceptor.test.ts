@@ -300,6 +300,17 @@ describe("resolveConfig", () => {
     expect(resolved.onSidecarError).toBe("deny");
   });
 
+  it("returns a fresh default forwarded header list", () => {
+    const first = resolveConfig({});
+    first.forwardHeaders.push("authorization");
+
+    const second = resolveConfig({});
+    expect(second.forwardHeaders).toEqual([
+      "content-type",
+      "content-length",
+    ]);
+  });
+
   it("uses custom timeout", () => {
     const resolved = resolveConfig({ timeoutMs: 10000 });
     expect(resolved.timeoutMs).toBe(10000);

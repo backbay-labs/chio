@@ -36,6 +36,23 @@ test("parseRpcMessages parses a single JSON body", () => {
   ]);
 });
 
+test("parseRpcMessages parses a JSON-RPC batch array body", () => {
+  assert.deepEqual(
+    parseRpcMessages("[{\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"},{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}]"),
+    [
+      {
+        jsonrpc: "2.0",
+        method: "notifications/message",
+      },
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        result: { ok: true },
+      },
+    ],
+  );
+});
+
 test("parseRpcMessages parses text/event-stream bodies", () => {
   const rawBody = [
     "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{\"index\":1}}",

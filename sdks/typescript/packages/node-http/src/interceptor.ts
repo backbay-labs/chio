@@ -31,6 +31,7 @@ import {
 import { VALID_METHODS, verdictReason, verdictStatus } from "./http-helpers.js";
 
 const bufferedNodeBodies = new WeakMap<IncomingMessage, Buffer>();
+const defaultForwardHeaders = ["content-type", "content-length"];
 
 // -- Helpers --
 
@@ -137,7 +138,7 @@ export function resolveConfig(config: ChioConfig): ResolvedConfig {
     routePatternResolver: config.routePatternResolver ?? defaultRoutePatternResolver,
     onSidecarError: "deny",
     timeoutMs: config.timeoutMs ?? 5000,
-    forwardHeaders: config.forwardHeaders ?? ["content-type", "content-length"],
+    forwardHeaders: config.forwardHeaders ?? [...defaultForwardHeaders],
     client,
   };
 }
@@ -214,10 +215,7 @@ export function buildChioHttpRequest(opts: BuildRequestOptions): ChioHttpRequest
     route_pattern: opts.routePattern,
     path: opts.path,
     query: opts.query,
-    headers: filterHeaders(
-      opts.headers,
-      opts.forwardHeaders ?? ["content-type", "content-length"],
-    ),
+    headers: filterHeaders(opts.headers, opts.forwardHeaders ?? defaultForwardHeaders),
     caller: opts.caller,
     body_hash: opts.bodyHash,
     body_length: opts.bodyLength,
@@ -323,11 +321,11 @@ export async function interceptNodeRequest(
   try {
     const result = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
 
-    if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(result.receipt)) {
+    if (!isAllowed(result.verdict) || result.receipt == null || !isAuthorizedHttpReceipt(result.receipt)) {
       sendJsonResponse(res, verdictStatus(result.verdict), {
         error: CHIO_ERROR_CODES.ACCESS_DENIED,
         message: verdictReason(result.verdict),
-        receipt_id: result.receipt.id,
+        receipt_id: result.receipt?.id,
         suggestion: "provide a valid capability token in the X-Chio-Capability header or chio_capability query parameter",
       });
       return { responseSent: true, result, passthrough: null };
@@ -423,11 +421,11 @@ export async function interceptWebRequest(
   try {
     const evalResult = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
 
-    if (!isAllowed(evalResult.verdict) || !isAuthorizedHttpReceipt(evalResult.receipt)) {
+    if (!isAllowed(evalResult.verdict) || evalResult.receipt == null || !isAuthorizedHttpReceipt(evalResult.receipt)) {
       const resp = jsonResponse(verdictStatus(evalResult.verdict), {
         error: CHIO_ERROR_CODES.ACCESS_DENIED,
         message: verdictReason(evalResult.verdict),
-        receipt_id: evalResult.receipt.id,
+        receipt_id: evalResult.receipt?.id,
         suggestion: "provide a valid capability token in the X-Chio-Capability header or chio_capability query parameter",
       });
       return { response: resp, result: evalResult, passthrough: null };

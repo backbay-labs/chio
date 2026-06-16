@@ -210,6 +210,31 @@ test("paginate() stops when nextCursor is undefined", async () => {
   assert.equal(pages.length, 1);
 });
 
+test("paginate() stops when the server repeats the same nextCursor", async () => {
+  let callCount = 0;
+  const mockFetch: typeof fetch = async () => {
+    callCount += 1;
+    return new Response(JSON.stringify({
+      totalCount: 10,
+      nextCursor: 5,
+      receipts: callCount === 1 ? [FAKE_RECEIPT] : [],
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  const client = new ReceiptQueryClient("http://localhost:8080", "tok", mockFetch);
+  const pages: unknown[][] = [];
+
+  for await (const page of client.paginate({ cursor: 5 })) {
+    pages.push(page);
+  }
+
+  assert.equal(callCount, 1);
+  assert.equal(pages.length, 1);
+});
+
 test("paginate() with empty first page yields nothing", async () => {
   const mockFetch = makeMockFetch(200, { totalCount: 0, receipts: [] });
   const client = new ReceiptQueryClient("http://localhost:8080", "tok", mockFetch as typeof fetch);

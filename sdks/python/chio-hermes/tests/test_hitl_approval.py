@@ -87,6 +87,26 @@ async def test_chio_shell_run_allows_when_policy_does_not_require_approval(
 
 
 @pytest.mark.asyncio
+async def test_chio_shell_run_requires_approval_when_policy_check_raises(
+    tmp_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+
+    def raise_policy_error(_cmd: str) -> bool:
+        raise RuntimeError("policy failed")
+
+    monkeypatch.setattr(runtime.policy, "check_shell", raise_policy_error)
+
+    handler = make_handler(runtime, _by_name("chio_shell_run"))
+    payload = json.loads(
+        await handler({"command": "rm -rf old_build/"}, task_id="t-shell-policy-error")
+    )
+
+    assert payload["status"] == "requires_approval"
+    assert payload["error"] == "chio_requires_approval"
+
+
+@pytest.mark.asyncio
 async def test_chio_git_run_returns_requires_approval_envelope(
     tmp_workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -23,6 +23,9 @@ export function parseRpcMessages(rawBody: string): JsonRpcMessage[] {
   if (trimmed.startsWith("{")) {
     return [parseJsonRpcMessage(trimmed)];
   }
+  if (trimmed.startsWith("[")) {
+    return JSON.parse(trimmed) as JsonRpcMessage[];
+  }
 
   const messages: JsonRpcMessage[] = [];
   let buffer: string[] = [];

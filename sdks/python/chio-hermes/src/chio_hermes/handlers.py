@@ -154,9 +154,9 @@ def _shell_requires_approval(handle: RuntimeHandle, command: str) -> bool:
     try:
         return bool(policy.check_shell(command))
     except Exception:  # noqa: BLE001
-        # Conservative: when the policy raises, treat as not requiring
-        # approval and let the downstream call surface the real error.
-        return False
+        # Fail closed for HITL: a broken approval policy must not let the
+        # command bypass the approval queue.
+        return True
 
 
 async def _maybe_submit_for_approval(
