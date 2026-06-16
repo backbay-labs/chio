@@ -4,6 +4,8 @@ use thiserror::Error;
 pub enum TransactionPassportError {
     #[error("unsupported transaction passport schema: {0}")]
     UnsupportedSchema(String),
+    #[error("invalid transaction passport field {field}: {message}")]
+    InvalidPassportField { field: String, message: String },
     #[error("invalid evidence graph digest: {0}")]
     InvalidEvidenceGraphDigest(String),
     #[error("invalid verifier policy digest: {0}")]

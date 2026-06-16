@@ -1140,6 +1140,20 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
     }
 }
 
+fn enterprise_bundle_with_required_claim(claim: &str) -> EnterpriseExportBundle {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    let mut policy: Value =
+        serde_json::from_slice(&bundle.verifier_policy_bytes).test_expect("verifier policy parses");
+    policy["required_claims"]
+        .as_array_mut()
+        .test_expect("required claims are an array")
+        .push(Value::String(claim.to_string()));
+    bundle.verifier_policy_bytes = json_bytes(policy);
+    bundle.passport.verifier_policy_sha256 =
+        chio_core_types::sha256_hex(&bundle.verifier_policy_bytes);
+    bundle
+}
+
 #[test]
 fn enterprise_export_accepts_valid_autonomous_commerce_fixture() {
     let bundle = enterprise_bundle(EnterpriseCase::Valid);
@@ -1169,6 +1183,20 @@ fn enterprise_export_accepts_valid_autonomous_commerce_fixture() {
     assert!(report
         .verified_claims
         .contains(&CLAIM_CONTROL_MAP_BOUND.to_string()));
+}
+
+#[test]
+fn enterprise_export_ignores_non_enterprise_required_claims() {
+    let bundle =
+        enterprise_bundle_with_required_claim("claim.runtime.security_receipt_totality_bound");
+
+    let report = verify_enterprise_export(&bundle)
+        .test_expect("enterprise verifier should leave runtime claims to runtime verifier");
+
+    assert_eq!(report.verdict, "verified");
+    assert!(!report
+        .verified_claims
+        .contains(&"claim.runtime.security_receipt_totality_bound".to_string()));
 }
 
 #[test]

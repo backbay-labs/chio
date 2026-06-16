@@ -73,6 +73,35 @@ fn swarm_authority_stage0_rejects_graph_cycle() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn swarm_authority_stage0_rejects_edge_depth_bypass() -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    let child_scope = scope_for("commerce", "reserve_budget", 1);
+    let child_scope_hash = scope_hash(&child_scope)?;
+
+    bundle.task_graph.max_depth = 1;
+    bundle.task_graph.nodes[2].parent_task_id = Some("task-child-a".to_string());
+    bundle.task_graph.nodes[2].depth = 1;
+    bundle.task_graph.edges[1].from_task_id = "task-child-a".to_string();
+    bundle.continuation_tokens[1].parent_task_id = Some("task-child-a".to_string());
+    bundle.witness_chains[1] = witness_chain(
+        "witness-child-b",
+        "task-child-a",
+        "task-child-b",
+        &child_scope_hash,
+        &child_scope_hash,
+        compute_attenuation_witness(&child_scope, &child_scope)?,
+    );
+    refresh_continuation_graph_digests(&mut bundle)?;
+
+    let error = match verify_swarm_authority_bundle(&bundle) {
+        Ok(report) => panic!("understated swarm graph depth verified unexpectedly: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(error.to_string().contains("swarm task depth mismatch"));
+    Ok(())
+}
+
+#[test]
 fn swarm_authority_stage0_rejects_non_root_task_without_parent() -> Result<(), Box<dyn Error>> {
     let mut bundle = sample_swarm_bundle()?;
     bundle.task_graph.nodes[1].parent_task_id = None;
@@ -178,6 +207,53 @@ fn swarm_authority_stage0_rejects_witness_child_scope_mismatch() -> Result<(), B
     assert!(error
         .to_string()
         .contains("swarm witness child scope mismatch"));
+    Ok(())
+}
+
+#[test]
+fn swarm_authority_stage0_rejects_disconnected_witness_hops() -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    let parent_scope = scope_for("commerce", "reserve_budget", 3);
+    let intermediate_scope = scope_for("commerce", "reserve_budget", 2);
+    let child_scope = scope_for("commerce", "reserve_budget", 1);
+    let parent_scope_hash = scope_hash(&parent_scope)?;
+    let intermediate_scope_hash = scope_hash(&intermediate_scope)?;
+    let child_scope_hash = scope_hash(&child_scope)?;
+
+    bundle.witness_chains[0].hops = vec![
+        SwarmDelegationWitnessHop {
+            parent_capability_digest: sha256_hex(b"parent-capability"),
+            child_capability_digest: sha256_hex(b"intermediate-capability"),
+            parent_scope_hash: parent_scope_hash.clone(),
+            child_scope_hash: intermediate_scope_hash,
+            attenuation_rule_id: "rule-subset-tool-invocation".to_string(),
+            scope_subset_proof: compute_attenuation_witness(&parent_scope, &intermediate_scope)?,
+            expires_at_unix_ms: NOW_UNIX_MS + 60_000,
+            issuer: "did:chio:authority".to_string(),
+            policy_digest: sha256_hex(b"swarm-policy"),
+            witness_signature: "sig-witness-child-a-hop-1".to_string(),
+        },
+        SwarmDelegationWitnessHop {
+            parent_capability_digest: sha256_hex(b"disconnected-parent-capability"),
+            child_capability_digest: sha256_hex(b"task-child-a"),
+            parent_scope_hash,
+            child_scope_hash,
+            attenuation_rule_id: "rule-subset-tool-invocation".to_string(),
+            scope_subset_proof: compute_attenuation_witness(&parent_scope, &child_scope)?,
+            expires_at_unix_ms: NOW_UNIX_MS + 60_000,
+            issuer: "did:chio:authority".to_string(),
+            policy_digest: sha256_hex(b"swarm-policy"),
+            witness_signature: "sig-witness-child-a-hop-2".to_string(),
+        },
+    ];
+
+    let error = match verify_swarm_authority_bundle(&bundle) {
+        Ok(report) => panic!("disconnected witness hops verified unexpectedly: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("swarm witness hop scope discontinuity"));
     Ok(())
 }
 

@@ -3,7 +3,7 @@
 // Source:     spec/schemas/chio-wire/v1/**/*.schema.json
 // Tool:       json-schema-to-typescript 15.0.4 (see xtask/codegen-tools.lock.toml)
 // Pin file:   sdks/typescript/scripts/package.json
-// Schema SHA: 9b11046f6756cf35573997a7175762ad433e658ba3558f9659b10ef10f133da4
+// Schema SHA: 05cbb27bd05053a7bcbebef02954d21aedd9c9e7cdbb798d60894a7daa51b7a8
 //
 // The schema-sha above is sha256 of `<rel-path>\0<bytes>\0` for every
 // schema in lex order. It changes whenever any schema under

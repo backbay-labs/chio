@@ -8,7 +8,7 @@ use super::evidence_graph::{
 };
 use super::ids::TRANSACTION_PASSPORT_SCHEMA_ID;
 use super::types::{TransactionPassport, TransactionVerifierReport};
-use super::validation::{validate_bundle_relative_path, validate_sha256_hex};
+use super::validation::{require_non_empty, validate_bundle_relative_path, validate_sha256_hex};
 use super::verifier_policy::{
     validate_standalone_transaction_claims, validate_verifier_policy, TransactionVerifierPolicy,
 };
@@ -21,6 +21,18 @@ pub fn verify_minimal_passport_schema(
             passport.schema.clone(),
         ));
     }
+    require_non_empty(&passport.id, "passport.id").map_err(|error| {
+        TransactionPassportError::InvalidPassportField {
+            field: "id".to_string(),
+            message: error.to_string(),
+        }
+    })?;
+    require_non_empty(&passport.issued_at, "passport.issued_at").map_err(|error| {
+        TransactionPassportError::InvalidPassportField {
+            field: "issued_at".to_string(),
+            message: error.to_string(),
+        }
+    })?;
 
     validate_sha256_hex(&passport.evidence_graph_sha256).map_err(|_| {
         TransactionPassportError::InvalidEvidenceGraphDigest(passport.evidence_graph_sha256.clone())

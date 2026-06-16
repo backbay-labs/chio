@@ -489,6 +489,10 @@ pub(super) fn verify_transaction_passport_file(
         &evidence_graph_bytes,
         &verifier_policy_bytes,
     )?;
+    chio_control_plane::transaction_passport::validate_verifier_policy_artifact(
+        &verifier_policy_bytes,
+    )
+    .map_err(map_proof_error)?;
 
     let claim_requirements = verifier_policy_claim_requirements(&verifier_policy_bytes)?;
     let risk_route = risk::risk_route(
@@ -1425,7 +1429,7 @@ fn load_swarm_authority_bundle_from_graph(
         )?;
 
     Ok(chio_swarm_authority::SwarmAuthorityBundle {
-        now_unix_ms: task_graph.created_at_unix_ms.saturating_add(1_000),
+        now_unix_ms: current_unix_ms()?,
         task_graph,
         continuation_tokens,
         witness_chains,
@@ -1434,6 +1438,14 @@ fn load_swarm_authority_bundle_from_graph(
         budget_pool,
         revocation_epoch,
     })
+}
+
+fn current_unix_ms() -> Result<u64, CliError> {
+    let duration = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| CliError::cli_other_error(format!("system clock before Unix epoch: {error}")))?;
+    u64::try_from(duration.as_millis())
+        .map_err(|_| CliError::cli_other_error("system clock timestamp overflow"))
 }
 
 fn load_public_settlement_proof_bundle_from_graph(

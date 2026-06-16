@@ -258,6 +258,27 @@ fn transaction_passport_rejects_unknown_schema_id() {
 }
 
 #[test]
+fn transaction_passport_rejects_empty_identity_fields() {
+    let mut passport = valid_minimal_passport();
+    passport.id.clear();
+
+    let error = chio_transaction_passport::verify_minimal_passport_schema(&passport)
+        .test_expect_err("empty passport id must fail closed");
+    assert!(error
+        .to_string()
+        .contains("invalid transaction passport field id"));
+
+    let mut passport = valid_minimal_passport();
+    passport.issued_at.clear();
+
+    let error = chio_transaction_passport::verify_minimal_passport_schema(&passport)
+        .test_expect_err("empty issued_at must fail closed");
+    assert!(error
+        .to_string()
+        .contains("invalid transaction passport field issued_at"));
+}
+
+#[test]
 fn transaction_passport_rejects_bad_digest_shape() {
     let mut passport = valid_minimal_passport();
     passport.evidence_graph_sha256 = "abc".to_string();

@@ -48,6 +48,16 @@ pub(super) fn validate_verifier_policy(
     Ok(())
 }
 
+pub fn validate_verifier_policy_artifact(
+    verifier_policy_bytes: &[u8],
+) -> Result<(), TransactionPassportError> {
+    let verifier_policy: TransactionVerifierPolicy = serde_json::from_slice(verifier_policy_bytes)
+        .map_err(|error| {
+            TransactionPassportError::InvalidVerifierPolicyArtifact(error.to_string())
+        })?;
+    validate_verifier_policy(&verifier_policy)
+}
+
 pub(super) fn validate_standalone_transaction_claims(
     policy: &TransactionVerifierPolicy,
 ) -> Result<(), TransactionPassportError> {

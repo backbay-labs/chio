@@ -5,8 +5,7 @@
     "claim_id": "claim.proof_room.authority_evidence_bound",
     "artifact_paths": [
       "artifacts/authority/capability-proof.json",
-      "artifacts/authority/guard-report.json",
-      "artifacts/authority/trust-roots.json"
+      "artifacts/authority/guard-report.json"
     ]
   }
 }

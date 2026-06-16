@@ -158,11 +158,19 @@ pub fn verify_enterprise_export(
     })
 }
 
+fn enterprise_policy_claim(required_claim: &str) -> bool {
+    required_claim.starts_with("claim.enterprise.")
+        || required_claim == CLAIM_RISK_COMPTROLLER_REPORT_BOUND
+}
+
 fn ensure_required_claims_verified(
     required_claims: &[String],
     verified_claims: &[String],
 ) -> Result<(), TransactionPassportError> {
     for required_claim in required_claims {
+        if !enterprise_policy_claim(required_claim) {
+            continue;
+        }
         if !verified_claims
             .iter()
             .any(|verified_claim| verified_claim == required_claim)

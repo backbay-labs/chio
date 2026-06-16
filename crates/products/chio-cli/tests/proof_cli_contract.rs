@@ -687,6 +687,25 @@ fn sign_bundle_signature_with_seed(
         serde_json::Value::String(keypair.sign(&signed_payload).to_hex());
 }
 
+fn proof_room_trust_roots_for_seed(seed: [u8; 32]) -> serde_json::Value {
+    let keypair = chio_core::Keypair::from_seed(&seed);
+    let key_id = keypair.public_key().to_hex();
+    let key_digest = hex::encode(Sha256::digest(key_id.as_bytes()));
+    serde_json::json!({
+        "schema": "chio.proof.first-run.trust-roots.v1",
+        "id": "trust-roots-test-bundle",
+        "trust_domain": "did:chio:proof-room-test",
+        "roots": [
+            {
+                "subject": "did:chio:test-authority",
+                "key_id": key_id,
+                "key_digest": key_digest
+            }
+        ],
+        "signature": "sig-trust-roots-test-bundle"
+    })
+}
+
 fn build_runtime_commerce_passport_bundle() -> (tempfile::TempDir, PathBuf) {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let runtime_source =
@@ -1542,6 +1561,7 @@ fn build_minimal_passport_proof_room_bundle() -> (tempfile::TempDir, PathBuf) {
     let bundle = tempdir.path().join("minimal-passport-proof-room-bundle");
     std::fs::create_dir_all(bundle.join("roots")).test_expect("create roots dir");
     std::fs::create_dir_all(bundle.join("verifier")).test_expect("create verifier dir");
+    std::fs::create_dir_all(bundle.join("artifacts/authority")).test_expect("create authority dir");
     std::fs::create_dir_all(bundle.join("ui/proof-room-static")).test_expect("create ui dir");
 
     for file in [
@@ -1601,6 +1621,10 @@ fn build_minimal_passport_proof_room_bundle() -> (tempfile::TempDir, PathBuf) {
     });
     let ui_report_path = bundle.join("ui/proof-room-static/load-report.json");
     write_json(&ui_report_path, &ui_report);
+    write_json(
+        &bundle.join("artifacts/authority/trust-roots.json"),
+        &proof_room_trust_roots_for_seed(TEST_SIGNATURE_SEED),
+    );
 
     let manifest = serde_json::json!({
         "schema": "chio.proof-room.bundle.v1",
@@ -1637,7 +1661,8 @@ fn build_minimal_passport_proof_room_bundle() -> (tempfile::TempDir, PathBuf) {
             artifact(&bundle, "policy.json", "chio.policy.bundle.v1", "transaction-policy", "policy"),
             artifact(&bundle, "request-digest.json", "chio.request.digest.v1", "transaction-root", "request-digest"),
             artifact(&bundle, "response-digest.json", "chio.response.digest.v1", "transaction-root", "response-digest"),
-            artifact(&bundle, "trust-root.json", "chio.trust.root.v1", "transaction-root", "trust-root")
+            artifact(&bundle, "trust-root.json", "chio.trust.root.v1", "transaction-root", "trust-root"),
+            artifact(&bundle, "artifacts/authority/trust-roots.json", "chio.proof.first-run.trust-roots.v1", "proof-room-authority", "trust-roots")
         ],
         "claims": [
             {

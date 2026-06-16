@@ -23,6 +23,7 @@ pub use runtime_security::{
     verify_runtime_security_claims, RuntimeSecurityBundle, RuntimeSecurityReport,
 };
 pub use types::{TransactionPassport, TransactionVerifierReport};
+pub use verifier_policy::validate_verifier_policy_artifact;
 
 pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};

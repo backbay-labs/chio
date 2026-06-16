@@ -791,6 +791,20 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
     }
 }
 
+fn trust_market_bundle_with_required_claim(claim: &str) -> TrustMarketBundle {
+    let mut bundle = trust_market_bundle(TrustMarketCase::Valid);
+    let mut policy: Value =
+        serde_json::from_slice(&bundle.verifier_policy_bytes).test_expect("verifier policy parses");
+    policy["required_claims"]
+        .as_array_mut()
+        .test_expect("required claims are an array")
+        .push(Value::String(claim.to_string()));
+    bundle.verifier_policy_bytes = json_bytes(policy);
+    bundle.passport.verifier_policy_sha256 =
+        chio_core_types::sha256_hex(&bundle.verifier_policy_bytes);
+    bundle
+}
+
 #[test]
 fn trust_market_context_accepts_marketplace_fixture() {
     let report = verify_trust_market_context(&trust_market_bundle(TrustMarketCase::Valid))
@@ -811,6 +825,20 @@ fn trust_market_context_accepts_marketplace_fixture() {
         .unsupported_claims
         .iter()
         .any(|claim| claim == "claim.market.global_trust_score_published"));
+}
+
+#[test]
+fn trust_market_context_ignores_non_trust_market_required_claims() {
+    let bundle =
+        trust_market_bundle_with_required_claim("claim.runtime.security_receipt_totality_bound");
+
+    let report = verify_trust_market_context(&bundle)
+        .test_expect("trust-market verifier should leave runtime claims to runtime verifier");
+
+    assert_eq!(report.verdict, "verified");
+    assert!(!report
+        .verified_claims
+        .contains(&"claim.runtime.security_receipt_totality_bound".to_string()));
 }
 
 #[test]

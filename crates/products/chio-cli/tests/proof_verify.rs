@@ -209,6 +209,30 @@ fn set_disclosure_policy_required_claims(bundle_dir: &std::path::Path, required_
     );
 }
 
+fn duplicate_first_verifier_policy_required_claim(bundle_dir: &std::path::Path) {
+    let verifier_policy_path = bundle_dir.join("verifier-policy.json");
+    let mut policy: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&verifier_policy_path).test_expect("read verifier policy"),
+    )
+    .test_expect("parse verifier policy");
+    let first_claim = policy["required_claims"]
+        .as_array()
+        .and_then(|claims| claims.first())
+        .cloned()
+        .test_expect("verifier policy has required claims");
+    policy["required_claims"]
+        .as_array_mut()
+        .test_expect("required claims are an array")
+        .push(first_claim);
+    let policy_bytes = serde_json::to_vec(&policy).test_expect("serialize verifier policy");
+    std::fs::write(&verifier_policy_path, &policy_bytes).test_expect("write verifier policy");
+    set_passport_digest(
+        bundle_dir,
+        "verifier_policy_sha256",
+        chio_core::sha256_hex(&policy_bytes),
+    );
+}
+
 fn set_passport_digest(bundle_dir: &std::path::Path, digest_field: &str, digest: String) {
     let passport_path = bundle_dir.join("transaction-passport.json");
     let mut passport: serde_json::Value =
@@ -259,6 +283,68 @@ fn refresh_minimal_evidence_graph_node_digest(bundle_dir: &std::path::Path, arti
         "evidence_graph_sha256",
         chio_core::sha256_hex(&evidence_graph_bytes),
     );
+}
+
+fn write_swarm_json_artifact(
+    bundle_dir: &std::path::Path,
+    artifact_path: &str,
+    artifact: &serde_json::Value,
+) {
+    let artifact_bytes = serde_json::to_vec(artifact).test_expect("serialize swarm artifact");
+    std::fs::write(bundle_dir.join(artifact_path), artifact_bytes)
+        .test_expect("write swarm artifact");
+    refresh_minimal_evidence_graph_node_digest(bundle_dir, artifact_path);
+}
+
+fn expire_swarm_bundle_before_verification_time(bundle_dir: &std::path::Path) {
+    let created_at_unix_ms = 1_700_000_000_000_u64;
+    let expired_after_created_at_unix_ms = created_at_unix_ms + 600_000;
+
+    let task_graph_path = bundle_dir.join("task-graph.json");
+    let mut task_graph: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&task_graph_path).test_expect("read task graph"))
+            .test_expect("parse task graph");
+    task_graph["createdAtUnixMs"] = serde_json::Value::Number(created_at_unix_ms.into());
+    task_graph["expiresAtUnixMs"] =
+        serde_json::Value::Number(expired_after_created_at_unix_ms.into());
+    write_swarm_json_artifact(bundle_dir, "task-graph.json", &task_graph);
+
+    let typed_task_graph: chio_swarm_authority::SwarmTaskGraph =
+        serde_json::from_value(task_graph).test_expect("parse typed task graph");
+    let task_graph_hash = chio_core::sha256_hex(
+        &chio_core_types::canonical_json_bytes(&typed_task_graph)
+            .test_expect("canonicalize task graph"),
+    );
+
+    for continuation_path in ["continuation-child-a.json", "continuation-child-b.json"] {
+        let path = bundle_dir.join(continuation_path);
+        let mut continuation: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).test_expect("read continuation"))
+                .test_expect("parse continuation");
+        continuation["graphSha256"] = serde_json::Value::String(task_graph_hash.clone());
+        continuation["expiresAtUnixMs"] =
+            serde_json::Value::Number(expired_after_created_at_unix_ms.into());
+        write_swarm_json_artifact(bundle_dir, continuation_path, &continuation);
+    }
+
+    for route_path in ["route-child-a.json", "route-child-b.json"] {
+        let path = bundle_dir.join(route_path);
+        let mut route: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).test_expect("read route plan"))
+                .test_expect("parse route plan");
+        route["expiresAtUnixMs"] =
+            serde_json::Value::Number(expired_after_created_at_unix_ms.into());
+        write_swarm_json_artifact(bundle_dir, route_path, &route);
+    }
+
+    let revocation_path = bundle_dir.join("revocation-epoch.json");
+    let mut revocation: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&revocation_path).test_expect("read revocation epoch"),
+    )
+    .test_expect("parse revocation epoch");
+    revocation["validUntilUnixMs"] =
+        serde_json::Value::Number(expired_after_created_at_unix_ms.into());
+    write_swarm_json_artifact(bundle_dir, "revocation-epoch.json", &revocation);
 }
 
 fn mutate_public_settlement_bundle(
@@ -1312,8 +1398,19 @@ fn proof_verify_accepts_public_settlement_fixture() {
     assert!(
         stdout.contains("\"bond_vault_contract\":\"0x1000000000000000000000000000000000000003\"")
     );
-    assert!(stdout.contains("\"posted_bond_amount\":{\"currency\":\"USD\",\"units\":150}"));
-    assert!(stdout.contains("\"minimum_bond_amount\":{\"currency\":\"USD\",\"units\":150}"));
+    let report: serde_json::Value = serde_json::from_str(&stdout).test_expect("stdout is json");
+    let expected_amount = serde_json::json!({
+        "currency": "USD",
+        "units": 150,
+    });
+    assert_eq!(
+        report.pointer("/chain_context/posted_bond_amount"),
+        Some(&expected_amount)
+    );
+    assert_eq!(
+        report.pointer("/chain_context/minimum_bond_amount"),
+        Some(&expected_amount)
+    );
     assert!(stdout.contains(
         "\"block_hash\":\"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\""
     ));
@@ -1699,6 +1796,51 @@ fn proof_verify_accepts_swarm_authority_fixture() {
     assert!(stdout.contains("\"claim.swarm.join_receipt_bound\""));
     assert!(stdout.contains("\"claim.swarm.budget_pool_bound\""));
     assert!(stdout.contains("\"claim.swarm.revocation_epoch_bound\""));
+}
+
+#[test]
+fn proof_verify_rejects_swarm_authority_expired_at_verification_time() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/swarm-authority/valid-recursive-delegation");
+    let bundle_dir = tempdir.path().join("swarm-authority");
+    copy_dir_all(&source, &bundle_dir);
+    expire_swarm_bundle_before_verification_time(&bundle_dir);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("swarm task graph is expired"), "{stderr}");
+}
+
+#[test]
+fn proof_verify_rejects_local_family_malformed_verifier_policy() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/swarm-authority/valid-recursive-delegation");
+    let bundle_dir = tempdir.path().join("swarm-authority");
+    copy_dir_all(&source, &bundle_dir);
+    duplicate_first_verifier_policy_required_claim(&bundle_dir);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(
+        stderr.contains("duplicate verifier policy claim in required_claims"),
+        "{stderr}"
+    );
 }
 
 #[test]

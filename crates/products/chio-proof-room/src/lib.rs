@@ -3247,10 +3247,7 @@ fn verify_bundle_signature(
         if entry.keyid.is_empty() || entry.sig.is_empty() {
             return Err("proof-room.signature.field-missing".to_string());
         }
-        if trusted_signer_keys
-            .as_ref()
-            .is_some_and(|trusted_keys| !trusted_keys.contains(&entry.keyid))
-        {
+        if !trusted_signer_keys.contains(&entry.keyid) {
             return Err("proof-room.signature.signer-untrusted".to_string());
         }
         let public_key = PublicKey::from_hex(&entry.keyid)
@@ -3268,13 +3265,13 @@ fn verify_bundle_signature(
 fn trusted_bundle_signer_keys(
     bundle_root: &Path,
     manifest: &ProofRoomBundleManifest,
-) -> Result<Option<BTreeSet<String>>, String> {
+) -> Result<BTreeSet<String>, String> {
     let Some(reference) = manifest
         .artifacts
         .iter()
         .find(|artifact| artifact.path == "artifacts/authority/trust-roots.json")
     else {
-        return Ok(None);
+        return Err("proof-room.signature.trust-roots-missing".to_string());
     };
     let artifact = verify_manifest_ref(
         bundle_root,
@@ -3297,7 +3294,7 @@ fn trusted_bundle_signer_keys(
         }
         trusted.insert(root.key_id);
     }
-    Ok(Some(trusted))
+    Ok(trusted)
 }
 
 fn dsse_pre_auth_encoding(payload_type: &str, payload: &[u8]) -> Vec<u8> {
@@ -5986,6 +5983,40 @@ mod tests {
             error
                 .to_string()
                 .contains("proof-room.signature.signer-untrusted"),
+            "{error}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_detached_signature_without_trust_roots() -> Result<(), Box<dyn Error>> {
+        let root = repo_root()?;
+        let source =
+            root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+        let work = tempfile::tempdir()?;
+        copy_dir_all(&source, work.path())?;
+
+        let manifest_path = work.path().join("manifest.json");
+        let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;
+        manifest["artifacts"]
+            .as_array_mut()
+            .ok_or("manifest artifacts missing")?
+            .retain(|artifact| {
+                artifact.get("path").and_then(serde_json::Value::as_str)
+                    != Some("artifacts/authority/trust-roots.json")
+            });
+        fs::write(&manifest_path, json_bytes(&manifest)?)?;
+        let untrusted_keypair = Keypair::from_seed(&[8; 32]);
+        sign_bundle_signature_with_key(work.path(), &untrusted_keypair)?;
+
+        let manifest_bytes = fs::read(&manifest_path)?;
+        let manifest: super::ProofRoomBundleManifest = serde_json::from_slice(&manifest_bytes)?;
+        let error = super::verify_bundle_signature(work.path(), &manifest, &manifest_bytes)
+            .err()
+            .ok_or("proof room bundle signature without trust roots unexpectedly verified")?;
+
+        assert!(
+            error.contains("proof-room.signature.trust-roots-missing"),
             "{error}"
         );
         Ok(())

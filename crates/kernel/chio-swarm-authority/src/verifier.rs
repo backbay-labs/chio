@@ -95,10 +95,11 @@ fn validate_task_graph(
     let edge_set = edge_set(&graph.edges);
     validate_roots(graph)?;
     validate_edges(graph, &task_by_id, &edge_set)?;
-    validate_graph_limits(graph)?;
     validate_joins(graph, &task_by_id)?;
     validate_route_refs(graph)?;
     validate_acyclic(graph, &task_by_id)?;
+    validate_edge_depths(graph, &task_by_id)?;
+    validate_graph_limits(graph)?;
     Ok(())
 }
 
@@ -186,6 +187,37 @@ fn validate_edges(
                     parent_task_id, node.task_id
                 )));
             }
+        }
+    }
+    Ok(())
+}
+
+fn validate_edge_depths(
+    graph: &SwarmTaskGraph,
+    task_by_id: &BTreeMap<&str, &SwarmGraphNode>,
+) -> Result<(), SwarmAuthorityError> {
+    for edge in &graph.edges {
+        let Some(parent) = task_by_id.get(edge.from_task_id.as_str()) else {
+            return Err(rejected(format!(
+                "unknown swarm edge source: {}",
+                edge.from_task_id
+            )));
+        };
+        let Some(child) = task_by_id.get(edge.to_task_id.as_str()) else {
+            return Err(rejected(format!(
+                "unknown swarm edge target: {}",
+                edge.to_task_id
+            )));
+        };
+        let expected_child_depth = parent
+            .depth
+            .checked_add(1)
+            .ok_or_else(|| rejected("swarm task depth overflow"))?;
+        if child.depth != expected_child_depth {
+            return Err(rejected(format!(
+                "swarm task depth mismatch: {} -> {}",
+                edge.from_task_id, edge.to_task_id
+            )));
         }
     }
     Ok(())
@@ -964,8 +996,24 @@ fn validate_witness_chain(
             chain.chain_id
         )));
     }
+    let mut previous_hop: Option<&super::types::SwarmDelegationWitnessHop> = None;
     for hop in &chain.hops {
         validate_witness_hop(bundle, hop, &chain.chain_id)?;
+        if let Some(previous) = previous_hop {
+            if previous.child_scope_hash != hop.parent_scope_hash {
+                return Err(rejected(format!(
+                    "swarm witness hop scope discontinuity: {}",
+                    chain.chain_id
+                )));
+            }
+            if previous.child_capability_digest != hop.parent_capability_digest {
+                return Err(rejected(format!(
+                    "swarm witness hop capability discontinuity: {}",
+                    chain.chain_id
+                )));
+            }
+        }
+        previous_hop = Some(hop);
     }
     Ok(())
 }

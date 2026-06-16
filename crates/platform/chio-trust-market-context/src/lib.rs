@@ -239,6 +239,9 @@ fn ensure_required_claims_verified(
     verified_claims: &[String],
 ) -> Result<(), TransactionPassportError> {
     for required_claim in required_claims {
+        if !trust_market_policy_claim(required_claim) {
+            continue;
+        }
         if !verified_claims
             .iter()
             .any(|verified_claim| verified_claim == required_claim)
@@ -249,6 +252,11 @@ fn ensure_required_claims_verified(
         }
     }
     Ok(())
+}
+
+fn trust_market_policy_claim(required_claim: &str) -> bool {
+    required_claim.starts_with("claim.trust_market.")
+        || required_claim == CLAIM_RISK_COMPTROLLER_REPORT_BOUND
 }
 
 fn claim_failed(message: impl Into<String>) -> TransactionPassportError {

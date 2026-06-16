@@ -12,6 +12,9 @@
     "sdks/typescript/packages/edge",
     "sdks/typescript/packages/deno"
   ],
+  "overrides": {
+    "ws": "8.21.0"
+  },
   "engines": {
     "node": ">=20.0.0"
   },
