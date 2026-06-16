@@ -99,12 +99,12 @@ fn get_config_reports_copied_length_for_truncated_buffer() {
             (module
                 (import "chio" "get_config" (func $get_config (param i32 i32 i32 i32) (result i32)))
                 (memory (export "memory") 1)
-                (data (i32.const 0) "secret")
+                (data (i32.const 8192) "secret")
                 (func (export "evaluate") (param $ptr i32) (param $len i32) (result i32)
                     (local $copied i32)
                     (local.set $copied
                         (call $get_config
-                            (i32.const 0)
+                            (i32.const 8192)
                             (i32.const 6)
                             (i32.const 32)
                             (i32.const 4)))
