@@ -237,6 +237,8 @@ SLICES: tuple[ReviewSlice, ...] = (
             ".clusterfuzzlite/**",
             "Cargo.toml",
             "Cargo.lock",
+            "package.json",
+            "bun.lock",
             "deny.toml",
             "osv-scanner.toml",
             "Makefile",

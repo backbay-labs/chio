@@ -1940,6 +1940,45 @@ fn proof_fixture_generate_reports_verifiable_commerce_transaction_stage_entrypoi
         manifest["source_command"].as_str(),
         Some("chio proof fixture generate commerce-transaction-passport")
     );
+    let receipt_coverage = manifest["receipt_coverage"]
+        .as_array()
+        .test_expect("commerce stage receipt coverage array");
+    for category in ["runtime_terminal_allow", "runtime_terminal_denial"] {
+        assert!(
+            receipt_coverage.iter().any(|entry| {
+                entry["category"] == category
+                    && entry["status"] == "covered"
+                    && entry
+                        .get("artifact_path")
+                        .and_then(serde_json::Value::as_str)
+                        .is_some()
+            }),
+            "{category} should be covered by the generated commerce stage"
+        );
+    }
+    let claims = manifest["claims"]
+        .as_array()
+        .test_expect("commerce stage claims array");
+    assert!(
+        claims
+            .iter()
+            .any(|claim| claim["claim_id"] == "claim.proof_room.allow_and_deny_visible"),
+        "commerce stage should render allow and deny receipt evidence"
+    );
+    let load_report: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(out_path.join("proof-room-bundle/ui/proof-room-static/load-report.json"))
+            .test_expect("read generated Proof Room load report"),
+    )
+    .test_expect("generated Proof Room load report parses");
+    let rendered_claims = load_report["rendered_claims"]
+        .as_array()
+        .test_expect("commerce stage rendered claims array");
+    assert!(
+        rendered_claims
+            .iter()
+            .any(|claim| claim["claim_id"] == "claim.proof_room.allow_and_deny_visible"),
+        "commerce stage load report should render allow and deny receipt evidence"
+    );
 
     let verify_output = chio(&[
         "proof",
@@ -1949,6 +1988,8 @@ fn proof_fixture_generate_reports_verifiable_commerce_transaction_stage_entrypoi
         "commerce",
         "--require",
         "settlement",
+        "--require",
+        "denials",
     ]);
 
     assert_success(&verify_output);

@@ -588,6 +588,7 @@ fn generate_commerce_transaction_passport_fixture(out: &Path) -> Result<(), CliE
     let bundle = out.join("proof-room-bundle");
     copy_dir_contents(&commerce_source, &bundle)?;
     merge_public_settlement_fixture(&bundle, &settlement_source)?;
+    add_commerce_terminal_receipts(&bundle)?;
     collect::seal_collected_public_fixture_bundle(
         ProofCollectKind::IoaWeb3,
         &bundle,
@@ -598,6 +599,68 @@ fn generate_commerce_transaction_passport_fixture(out: &Path) -> Result<(), CliE
         out.join("verifier-report.json"),
     )?;
     Ok(())
+}
+
+fn add_commerce_terminal_receipts(bundle: &Path) -> Result<(), CliError> {
+    let policy_sha256 = sha256_file(&bundle.join("verifier-policy.json"))?;
+    let receipts = [
+        (
+            "commerce-terminal-allow-receipt.json",
+            "commerce-terminal-allow-receipt",
+            "receipt-commerce-terminal-allow",
+            "allowed_executed",
+        ),
+        (
+            "commerce-terminal-denial-receipt.json",
+            "commerce-terminal-denial-receipt",
+            "receipt-commerce-terminal-denial",
+            "denied_guard_request",
+        ),
+    ];
+    let evidence_graph_path = bundle.join("evidence-graph.json");
+    let mut evidence_graph = read_json_value(&evidence_graph_path)?;
+    let nodes = json_array_mut(&mut evidence_graph, "nodes", &evidence_graph_path)?;
+    for (path, node_id, receipt_id, terminal_status) in receipts {
+        let receipt_path = bundle.join(path);
+        write_signed_terminal_receipt(&receipt_path, receipt_id, terminal_status, &policy_sha256)?;
+        upsert_fixture_graph_node(
+            nodes,
+            node_id,
+            path,
+            "chio.receipt.v1",
+            "receipt",
+            &sha256_file(&receipt_path)?,
+        );
+    }
+    write_json_line_file(&evidence_graph_path, &evidence_graph)?;
+    let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
+
+    let passport_path = bundle.join("transaction-passport.json");
+    let mut passport = read_json_value(&passport_path)?;
+    passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
+    write_json_line_file(&passport_path, &passport)?;
+    Ok(())
+}
+
+fn write_signed_terminal_receipt(
+    destination: &Path,
+    receipt_id: &str,
+    terminal_status: &str,
+    policy_sha256: &str,
+) -> Result<(), CliError> {
+    let keypair = Keypair::from_seed(&[29u8; 32]);
+    let mut receipt = serde_json::json!({
+        "schema": "chio.receipt.v1",
+        "receipt_id": receipt_id,
+        "terminal_status": terminal_status,
+        "policy_digest": policy_sha256,
+        "kernel_key": keypair.public_key().to_hex()
+    });
+    let (signature, _) = keypair.sign_canonical(&receipt).map_err(|error| {
+        CliError::cli_other_error(format!("proof fixture receipt signing failed: {error}"))
+    })?;
+    receipt["signature"] = serde_json::Value::String(signature.to_hex());
+    write_json_line_file(destination, &receipt)
 }
 
 fn generate_disclosure_agent_web_fixture(out: &Path) -> Result<(), CliError> {
@@ -838,12 +901,23 @@ fn upsert_runtime_swarm_graph_node(
     role: &str,
     sha256: &str,
 ) {
+    upsert_fixture_graph_node(nodes, role, path, schema, role, sha256);
+}
+
+fn upsert_fixture_graph_node(
+    nodes: &mut Vec<serde_json::Value>,
+    node_id: &str,
+    path: &str,
+    schema: &str,
+    role: &str,
+    sha256: &str,
+) {
     nodes.retain(|node| {
-        node.get("id").and_then(serde_json::Value::as_str) != Some(role)
+        node.get("id").and_then(serde_json::Value::as_str) != Some(node_id)
             && node.get("path").and_then(serde_json::Value::as_str) != Some(path)
     });
     nodes.push(serde_json::json!({
-        "id": role,
+        "id": node_id,
         "schema": schema,
         "path": path,
         "sha256": sha256,

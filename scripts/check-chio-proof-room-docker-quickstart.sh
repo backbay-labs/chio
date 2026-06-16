@@ -127,6 +127,94 @@ for asset_path in assets:
         )
 PY
 
+if [[ "${CHIO_SKIP_PROOF_ROOM_BROWSER_SMOKE:-0}" == "1" ]]; then
+  echo "SKIP Proof Room browser smoke: CHIO_SKIP_PROOF_ROOM_BROWSER_SMOKE=1"
+elif ! command -v node >/dev/null 2>&1; then
+  if [[ "${CHIO_REQUIRE_DOCKER_DAEMON:-0}" == "1" || "${CHIO_REQUIRE_PROOF_ROOM_BROWSER_SMOKE:-0}" == "1" ]]; then
+    echo "proof-room.docker.browser-smoke-unavailable: node is not installed" >&2
+    exit 1
+  fi
+  echo "SKIP Proof Room browser smoke: node is not installed"
+else
+  set +e
+  CHIO_PROOF_ROOM_PORT="$port" node --input-type=module - <<'JS'
+const setupFailure = 78
+
+let chromium
+try {
+  ;({ chromium } = await import('@playwright/test'))
+} catch (error) {
+  console.error(`proof-room.docker.browser-smoke-unavailable: @playwright/test is unavailable: ${error}`)
+  process.exit(setupFailure)
+}
+
+const port = process.env.CHIO_PROOF_ROOM_PORT
+const base = `http://127.0.0.1:${port}`
+const channel = process.env.CHIO_PROOF_ROOM_BROWSER_CHANNEL || 'chrome'
+const launchOptions = {
+  headless: true,
+  args: ['--no-sandbox'],
+}
+if (channel && channel !== 'bundled') {
+  launchOptions.channel = channel
+}
+
+let browser
+try {
+  browser = await chromium.launch(launchOptions)
+} catch (error) {
+  console.error(
+    `proof-room.docker.browser-smoke-unavailable: failed to launch ${channel || 'bundled'} browser: ${error}`,
+  )
+  process.exit(setupFailure)
+}
+
+try {
+  const page = await browser.newPage()
+  await page.goto(`${base}/?view=proof-room`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 30_000,
+  })
+
+  const expectedText = [
+    'proof-room-single-call-authority',
+    'passport-minimal-valid',
+    'claim.transaction.passport_root_verified',
+    'verified',
+  ]
+  const deadline = Date.now() + 30_000
+  let lastText = ''
+  while (Date.now() < deadline) {
+    lastText = await page.locator('body').innerText({ timeout: 2_000 })
+    if (lastText.includes('Proof Room load failed')) {
+      throw new Error('Proof Room load failed')
+    }
+    if (expectedText.every((text) => lastText.includes(text))) {
+      await browser.close()
+      process.exit(0)
+    }
+    await page.waitForTimeout(250)
+  }
+  const missing = expectedText.filter((text) => !lastText.includes(text)).join(', ')
+  throw new Error(`hydrated Proof Room was missing expected text: ${missing}`)
+} catch (error) {
+  console.error(`proof-room.docker.quickstart-browser-smoke-failed: ${error}`)
+  await browser.close()
+  process.exit(1)
+}
+JS
+  browser_status=$?
+  set -e
+  if [[ "$browser_status" -eq 78 ]]; then
+    if [[ "${CHIO_REQUIRE_DOCKER_DAEMON:-0}" == "1" || "${CHIO_REQUIRE_PROOF_ROOM_BROWSER_SMOKE:-0}" == "1" ]]; then
+      exit 1
+    fi
+    echo "SKIP Proof Room browser smoke: browser runtime is unavailable"
+  elif [[ "$browser_status" -ne 0 ]]; then
+    exit "$browser_status"
+  fi
+fi
+
 doctor_report="$(mktemp -t chio-proof-room-doctor-report.XXXXXX.json)"
 docker cp "${container}:/opt/chio/proof-doctor-report.json" "$doctor_report"
 CHIO_PROOF_ROOM_DOCKER_DOCTOR_REPORT="$doctor_report" python3 - <<'PY'
