@@ -238,6 +238,36 @@ describe("buildChioHttpRequest", () => {
     expect(req.headers["x-tenant-id"]).toBe("tenant-a");
     expect(req.headers["authorization"]).toBeUndefined();
   });
+
+  it("honors custom forwarded header allowlists", () => {
+    const opts: BuildRequestOptions = {
+      method: "POST",
+      path: "/pets",
+      query: {},
+      headers: {
+        "content-type": "application/json",
+        authorization: "Bearer policy-token",
+        "x-tenant-id": "tenant-a",
+      },
+      caller: {
+        subject: "anonymous",
+        auth_method: { method: "anonymous" },
+        verified: false,
+      },
+      bodyHash: undefined,
+      bodyLength: 0,
+      routePattern: "/pets",
+      capabilityId: undefined,
+      forwardHeaders: ["authorization", "x-tenant-id"],
+    };
+
+    const req = buildChioHttpRequest(opts);
+
+    expect(req.headers).toEqual({
+      authorization: "Bearer policy-token",
+      "x-tenant-id": "tenant-a",
+    });
+  });
 });
 
 describe("resolveConfig", () => {

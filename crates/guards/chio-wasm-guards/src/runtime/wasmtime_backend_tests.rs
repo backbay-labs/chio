@@ -94,6 +94,43 @@ fn no_chio_alloc_uses_offset_zero() {
 }
 
 #[test]
+fn get_config_reports_copied_length_for_truncated_buffer() {
+    let wat = r#"
+            (module
+                (import "chio" "get_config" (func $get_config (param i32 i32 i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (data (i32.const 0) "secret")
+                (func (export "evaluate") (param $ptr i32) (param $len i32) (result i32)
+                    (local $copied i32)
+                    (local.set $copied
+                        (call $get_config
+                            (i32.const 0)
+                            (i32.const 6)
+                            (i32.const 32)
+                            (i32.const 4)))
+                    (if (result i32) (i32.eq (local.get $copied) (i32.const 4))
+                        (then (i32.const 0))
+                        (else (i32.const 1))
+                    )
+                )
+            )
+        "#;
+
+    let mut config = std::collections::HashMap::new();
+    config.insert("secret".to_string(), "abcdef".to_string());
+    let engine = std::sync::Arc::new(wasmtime::Engine::default());
+    let mut backend = WasmtimeBackend::with_engine_and_config(engine, config);
+    backend.load_module(wat.as_bytes(), 1_000_000).unwrap();
+
+    let req = make_guard_request();
+    let result = backend.evaluate(&req).unwrap();
+    assert!(
+        result.is_allow(),
+        "expected ALLOW when get_config returned the copied byte count, got: {result:?}"
+    );
+}
+
+#[test]
 fn chio_alloc_oob_falls_back() {
     // WAT module with chio_alloc that returns 999_999_999 (out-of-bounds).
     // evaluate checks that ptr == 0 (proving fallback occurred).

@@ -402,7 +402,7 @@ fn core_module_get_config(
         mem_data[val_out_ptr..val_out_ptr + copy_len].copy_from_slice(&value_bytes[..copy_len]);
     }
 
-    let actual_len = i32::try_from(value_bytes.len()).unwrap_or(i32::MAX);
+    let actual_len = i32::try_from(copy_len).unwrap_or(i32::MAX);
     set_i32_result(results, actual_len)
 }
 

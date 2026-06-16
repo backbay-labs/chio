@@ -77,6 +77,19 @@ def test_sanitised_env_drops_exact_names(
     assert env.get("BENIGN_VAR") == "ok"
 
 
+def test_sanitised_env_drops_exact_names_case_insensitively() -> None:
+    env = sanitised_env(
+        base={
+            "database_url": "postgres://...",
+            "git_dir": "/tmp/.git",
+            "BENIGN_VAR": "ok",
+        }
+    )
+    assert "database_url" not in env
+    assert "git_dir" not in env
+    assert env.get("BENIGN_VAR") == "ok"
+
+
 def test_sanitised_env_accepts_explicit_base() -> None:
     env = sanitised_env(base={"OPENAI_API_KEY": "k", "FOO": "bar"})
     assert "OPENAI_API_KEY" not in env

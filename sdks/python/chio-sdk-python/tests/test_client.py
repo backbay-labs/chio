@@ -109,6 +109,20 @@ def _verify_report(authorized: bool) -> dict:
     }
 
 
+def test_handle_response_maps_non_json_403_to_denied_error() -> None:
+    response = httpx.Response(
+        403,
+        content=b"<html>forbidden by proxy</html>",
+        headers={"content-type": "text/html"},
+    )
+
+    with pytest.raises(ChioDeniedError) as exc_info:
+        ChioClient._handle_response(response)
+
+    assert exc_info.value.reason == "<html>forbidden by proxy</html>"
+    assert exc_info.value.reason_code == "HTTP_403"
+
+
 def _advisory_receipt_dict(outcome: str = "evaluated") -> dict:
     advisory = _make_receipt_dict()
     advisory["trust_level"] = "advisory"
