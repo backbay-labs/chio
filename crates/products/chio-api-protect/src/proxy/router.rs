@@ -99,6 +99,16 @@ pub(crate) async fn proxy_handler(
     };
 
     let path = uri.path().to_string();
+    if let Some(key) = duplicate_query_key(uri.query()) {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({
+                "error": "chio_bad_request",
+                "message": format!("duplicate query parameter `{key}`"),
+            })),
+        )
+            .into_response();
+    }
     let query = parse_query_params(uri.query());
     let forwarded_query = forwarded_query_string(uri.query());
 

@@ -73,7 +73,7 @@ class WorkflowStepReceipt:
             "activity_type": self.activity_type,
             "activity_id": self.activity_id,
             "attempt": int(self.attempt),
-            "receipt": self.receipt.model_dump(exclude_none=True),
+            "receipt": self.receipt.model_dump(mode="json", exclude_none=True),
         }
 
 

@@ -25,7 +25,7 @@ export function withChio(
   options: WithChioOptions,
 ): ChioRouteHandler {
   return async (request, context) => {
-    const evaluation = await options.evaluate(request);
+    const evaluation = await options.evaluate(request.clone());
     if (!isAuthorizedEvaluation(evaluation)) {
       return createDenialResponse({
         reason: nonAuthorizingReason(evaluation.reason),

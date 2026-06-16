@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::HashSet;
 
 /// HTTP response header mirroring the signed receipt's advisory trust level.
 /// Gate clients on this value (or on receipt `trust_level`) before treating
@@ -14,6 +15,18 @@ pub(crate) fn parse_query_params(raw_query: Option<&str>) -> HashMap<String, Str
                 .collect()
         })
         .unwrap_or_default()
+}
+
+pub(crate) fn duplicate_query_key(raw_query: Option<&str>) -> Option<String> {
+    let raw_query = raw_query?;
+    let mut seen = HashSet::new();
+    for (key, _) in url::form_urlencoded::parse(raw_query.as_bytes()) {
+        let key = key.into_owned();
+        if !seen.insert(key.clone()) {
+            return Some(key);
+        }
+    }
+    None
 }
 
 pub(crate) fn forwarded_query_string(raw_query: Option<&str>) -> Option<String> {

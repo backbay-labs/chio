@@ -285,6 +285,29 @@ class TestMiddlewareBadSidecarResponse(TestCase):
         body = json.loads(response.content)
         assert body["error"]["code"] == "CHIO_INTERNAL_ERROR"
 
+    @patch("chio_django.middleware.httpx.post")
+    def test_malformed_sidecar_json_fails_closed(self, mock_post: MagicMock) -> None:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.side_effect = ValueError("bad json")
+        mock_post.return_value = mock_resp
+        reached_view = False
+
+        def get_response(request):
+            nonlocal reached_view
+            reached_view = True
+            return JsonResponse({"status": "ok"})
+
+        mw = ChioDjangoMiddleware(get_response)
+        factory = RequestFactory()
+        request = factory.get("/protected")
+        response = mw(request)
+
+        assert response.status_code == 502
+        body = json.loads(response.content)
+        assert body["error"]["code"] == "CHIO_INTERNAL_ERROR"
+        assert reached_view is False
+
 
 class TestErrors:
     def test_all_error_codes(self) -> None:

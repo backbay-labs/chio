@@ -1670,6 +1670,14 @@ mod tests {
                 .expect("portable output bytes"),
             envelope.compact.as_bytes()
         );
+
+        let expired = verify_chio_passport_sd_jwt_vc(
+            &envelope.compact,
+            &issuer.public_key(),
+            1_710_086_400,
+        )
+        .expect_err("portable credential expires at exact exp");
+        assert!(expired.to_string().contains("expired"));
     }
 
     #[test]
@@ -1725,6 +1733,14 @@ mod tests {
             .expect("portable jwt vc response valid");
         assert_eq!(response.subject_hint(), Some(passport.subject.as_str()));
         assert_eq!(response.passport_id_hint(), Some(passport_id.as_str()));
+
+        let expired = verify_chio_passport_jwt_vc_json(
+            &envelope.compact,
+            &issuer.public_key(),
+            1_710_086_400,
+        )
+        .expect_err("portable jwt vc expires at exact exp");
+        assert!(expired.to_string().contains("expired"));
     }
 
     #[test]
@@ -1946,6 +1962,10 @@ mod tests {
             verify_signed_oid4vp_request_object(&request_jwt, &authority.public_key(), 1_710_000_200)
                 .expect("verify request jwt");
         assert_eq!(verified_request, request);
+        let expired_request =
+            verify_signed_oid4vp_request_object(&request_jwt, &authority.public_key(), request.exp)
+                .expect_err("OID4VP request expires at exact exp");
+        assert!(expired_request.to_string().contains("expired"));
         let transport =
             build_oid4vp_request_transport(&request, &authority).expect("request transport");
         let descriptor = build_wallet_exchange_descriptor_for_oid4vp(
@@ -1982,6 +2002,20 @@ mod tests {
         assert_eq!(verification.passport_id, envelope.passport_id);
         assert_eq!(verification.subject_did, passport.subject);
         assert_eq!(verification.disclosure_claims, vec!["chio_issuer_dids"]);
+
+        let mut long_lived_request = request;
+        long_lived_request.exp = 1_710_001_000;
+        let expiring_response_jwt =
+            respond_to_oid4vp_request(&subject, &envelope.compact, &long_lived_request, 1_710_000_200)
+                .expect("respond to long-lived oid4vp request");
+        let expired_response = verify_oid4vp_direct_post_response(
+            &expiring_response_jwt,
+            &long_lived_request,
+            &issuer.public_key(),
+            1_710_000_500,
+        )
+        .expect_err("OID4VP response expires at exact exp");
+        assert!(expired_response.to_string().contains("expired"));
     }
 
     #[test]

@@ -257,6 +257,25 @@ class TestStableSerialisation:
         assert step["receipt"]["id"] == "r-1"
         assert step["receipt"]["decision"]["verdict"] == "allow"
 
+    def test_to_json_serializes_validated_receipt_enums(self) -> None:
+        raw_receipt = _build_receipt(
+            receipt_id="r-validated",
+            tool_name="search",
+        ).model_dump(mode="json")
+        validated = ChioReceipt.model_validate(raw_receipt)
+        receipt = WorkflowReceipt(workflow_id="wf-1", started_at=0)
+        receipt.record_step(
+            activity_type="search",
+            activity_id="act-1",
+            attempt=1,
+            receipt=validated,
+        )
+
+        envelope: dict[str, Any] = json.loads(receipt.to_json())
+
+        assert envelope["steps"][0]["receipt"]["id"] == "r-validated"
+        assert envelope["steps"][0]["receipt"]["decision"]["verdict"] == "allow"
+
     def test_in_progress_envelope_has_null_completed_at(self) -> None:
         receipt = WorkflowReceipt(workflow_id="wf-1", started_at=0)
         envelope = receipt.to_envelope()

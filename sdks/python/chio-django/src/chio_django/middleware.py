@@ -216,7 +216,18 @@ class ChioDjangoMiddleware:
                 status=502,
             )
 
-        evaluation = resp.json()
+        try:
+            evaluation = resp.json()
+        except ValueError:
+            return JsonResponse(
+                {
+                    "error": {
+                        "code": "CHIO_INTERNAL_ERROR",
+                        "message": "Sidecar returned malformed JSON",
+                    }
+                },
+                status=502,
+            )
         verdict = evaluation.get("verdict", {})
         receipt_data = evaluation.get("receipt", {})
 

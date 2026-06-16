@@ -326,6 +326,33 @@ describe("request body preservation", () => {
     }
   });
 
+  it("returns a controlled error for malformed Node query encoding", async () => {
+    const resolved = resolveConfig({
+      sidecarUrl: "http://127.0.0.1:1",
+      timeoutMs: 200,
+    });
+    let handlerReached = false;
+
+    const server = http.createServer(async (req, res) => {
+      const outcome = await interceptNodeRequest(req, res, resolved);
+      if (!outcome.responseSent) {
+        handlerReached = true;
+        res.writeHead(200);
+        res.end("handler");
+      }
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(server, "GET", "/test?bad=%E0%A4%A");
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.body).message).toBe("malformed query parameter encoding");
+      expect(handlerReached).toBe(false);
+    } finally {
+      server.close();
+    }
+  });
+
   it("fails closed for Web sidecar errors even when fail-open is requested", async () => {
     const resolved = resolveConfig({
       sidecarUrl: "http://127.0.0.1:1",

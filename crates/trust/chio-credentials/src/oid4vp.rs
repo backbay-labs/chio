@@ -129,7 +129,7 @@ impl Oid4vpRequestObject {
                 "OID4VP request object iat must be before or equal to exp".to_string(),
             ));
         }
-        if now > self.exp {
+        if now >= self.exp {
             return Err(CredentialError::InvalidOid4vpRequest(
                 "OID4VP request object has expired".to_string(),
             ));
@@ -910,7 +910,7 @@ pub fn verify_oid4vp_direct_post_response(
             "OID4VP response iat must be before or equal to exp".to_string(),
         ));
     }
-    if now > response.exp {
+    if now >= response.exp {
         return Err(CredentialError::InvalidOid4vpResponse(
             "OID4VP response has expired".to_string(),
         ));

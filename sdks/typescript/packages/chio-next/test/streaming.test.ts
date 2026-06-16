@@ -95,6 +95,25 @@ describe("@chio-protocol/next streaming and denial response", () => {
     });
   });
 
+  it("preserves the request body when the evaluator reads it", async () => {
+    const wrapped = withChio(async (request) => {
+      return new Response(await request.text());
+    }, {
+      evaluate: async (request) => {
+        expect(await request.text()).toBe("hello next");
+        return authorizedAllow();
+      },
+    });
+
+    const response = await wrapped(new Request("https://app.test/api/chat", {
+      method: "POST",
+      body: "hello next",
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("hello next");
+  });
+
   it("denies server actions before invoking the action", async () => {
     let invoked = false;
     const action = withChioAction(async () => {
