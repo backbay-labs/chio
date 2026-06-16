@@ -118,7 +118,7 @@ fn get_config_reports_copied_length_for_truncated_buffer() {
 
     let mut config = std::collections::HashMap::new();
     config.insert("secret".to_string(), "abcdef".to_string());
-    let engine = std::sync::Arc::new(wasmtime::Engine::default());
+    let engine = create_shared_engine().unwrap();
     let mut backend = WasmtimeBackend::with_engine_and_config(engine, config);
     backend.load_module(wat.as_bytes(), 1_000_000).unwrap();
 
