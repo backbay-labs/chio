@@ -11,8 +11,8 @@ use super::{
     attach_source_runtime_proof_parity_report, build_proof_room_fixture_catalog,
     crypto_context_verified_report_bytes, proof_room_available_fixture_report_from_contents,
     proof_room_router as build_proof_room_router, sha256_hex, validate_proof_room_schema,
-    verify_bundle_signature, verify_proof_room_bundle, ProofRoomAvailableFixtureReport,
-    ProofRoomBundleManifest,
+    verify_bundle_signature, verify_proof_room_bundle, verify_transaction_passport_family_report,
+    ProofRoomAvailableFixtureReport, ProofRoomBundleManifest,
 };
 
 mod catalog;

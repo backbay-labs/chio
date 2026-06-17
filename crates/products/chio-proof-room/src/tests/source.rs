@@ -98,6 +98,54 @@ async fn quickstart_router_serves_trust_market_fixture_verifier_report(
     Ok(())
 }
 
+#[test]
+fn source_trust_market_report_ignores_unrelated_family_graph_nodes() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/trust-market/valid-marketplace-context");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let unrelated_bytes = fs::read(
+        root.join("fixtures/proof-room/commerce-payments/offline-psp-valid/order-context.json"),
+    )?;
+    fs::write(
+        work.path().join("commerce-order-context.json"),
+        &unrelated_bytes,
+    )?;
+
+    let evidence_graph_path = work.path().join("evidence-graph.json");
+    let mut evidence_graph: serde_json::Value =
+        serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
+    evidence_graph["nodes"]
+        .as_array_mut()
+        .ok_or("evidence graph nodes missing")?
+        .push(serde_json::json!({
+            "id": "commerce-order-context-unrelated",
+            "schema": "chio.commerce.order-context.v1",
+            "path": "commerce-order-context.json",
+            "sha256": sha256_hex(&unrelated_bytes),
+            "role": "commerce-order-context"
+        }));
+    fs::write(&evidence_graph_path, json_bytes(&evidence_graph)?)?;
+
+    let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
+    let passport_path = work.path().join("transaction-passport.json");
+    let mut passport: serde_json::Value = serde_json::from_slice(&fs::read(&passport_path)?)?;
+    passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
+    fs::write(&passport_path, json_bytes(&passport)?)?;
+
+    let report = verify_transaction_passport_family_report(work.path(), &passport_path)?;
+
+    assert_eq!(report["schema"], "chio.transaction.verifier-report.v1");
+    assert_eq!(report["verdict"], "verified");
+    assert!(report["verified_claims"]
+        .as_array()
+        .ok_or("verified_claims missing")?
+        .iter()
+        .any(|claim| claim == "claim.trust_market.provider_selection_bound"));
+    Ok(())
+}
+
 #[tokio::test]
 async fn quickstart_router_serves_enterprise_fixture_verifier_report() -> Result<(), Box<dyn Error>>
 {

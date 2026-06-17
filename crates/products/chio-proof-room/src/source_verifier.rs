@@ -139,10 +139,15 @@ pub(crate) fn verify_transaction_passport_family_report(
         )?);
     }
     if requirements.requires(CLAIM_PREFIX_TRUST_MARKET) || risk_route.through_trust_market {
+        let evidence_graph_bytes = source_scoped_evidence_graph_bytes(
+            &context.evidence_graph_bytes,
+            is_trust_market_evidence_graph_node,
+        )?;
+        let passport = source_passport_for_evidence_graph(&context.passport, &evidence_graph_bytes);
         let report = chio_trust_market_context::verify_trust_market_context(
             &chio_trust_market_context::TrustMarketBundle {
-                passport: context.passport.clone(),
-                evidence_graph_bytes: context.evidence_graph_bytes.clone(),
+                passport,
+                evidence_graph_bytes,
                 verifier_policy_bytes: context.verifier_policy_bytes.clone(),
                 artifacts: context.artifacts.clone(),
             },
@@ -151,10 +156,15 @@ pub(crate) fn verify_transaction_passport_family_report(
         push_source_family_report(&mut family_reports, report)?;
     }
     if requirements.requires(CLAIM_PREFIX_AGENT_WEB) {
+        let evidence_graph_bytes = source_scoped_evidence_graph_bytes(
+            &context.evidence_graph_bytes,
+            is_agent_web_evidence_graph_node,
+        )?;
+        let passport = source_passport_for_evidence_graph(&context.passport, &evidence_graph_bytes);
         let report = chio_agent_web_interop::verify_agent_web_interop(
             &chio_agent_web_interop::AgentWebInteropBundle {
-                passport: context.passport.clone(),
-                evidence_graph_bytes: context.evidence_graph_bytes.clone(),
+                passport,
+                evidence_graph_bytes,
                 verifier_policy_bytes: context.verifier_policy_bytes.clone(),
                 artifacts: context.artifacts.clone(),
             },
@@ -163,10 +173,15 @@ pub(crate) fn verify_transaction_passport_family_report(
         push_source_family_report(&mut family_reports, report)?;
     }
     if requirements.requires(CLAIM_PREFIX_ENTERPRISE) || risk_route.through_enterprise {
+        let evidence_graph_bytes = source_scoped_evidence_graph_bytes(
+            &context.evidence_graph_bytes,
+            is_enterprise_evidence_graph_node,
+        )?;
+        let passport = source_passport_for_evidence_graph(&context.passport, &evidence_graph_bytes);
         let report = chio_enterprise_export::verify_enterprise_export(
             &chio_enterprise_export::EnterpriseExportBundle {
-                passport: context.passport.clone(),
-                evidence_graph_bytes: context.evidence_graph_bytes.clone(),
+                passport,
+                evidence_graph_bytes,
                 verifier_policy_bytes: context.verifier_policy_bytes.clone(),
                 artifacts: context.artifacts.clone(),
             },
@@ -175,13 +190,17 @@ pub(crate) fn verify_transaction_passport_family_report(
         push_source_family_report(&mut family_reports, report)?;
     }
     if requirements.requires(CLAIM_PREFIX_RUNTIME) {
-        let artifacts =
-            embedded_runtime_artifacts(&context.evidence_graph_bytes, &context.artifacts)
-                .map_err(|error| format!("proof-room.runtime-invalid: {error}"))?;
+        let evidence_graph_bytes = source_scoped_evidence_graph_bytes(
+            &context.evidence_graph_bytes,
+            is_runtime_evidence_graph_node,
+        )?;
+        let passport = source_passport_for_evidence_graph(&context.passport, &evidence_graph_bytes);
+        let artifacts = embedded_runtime_artifacts(&evidence_graph_bytes, &context.artifacts)
+            .map_err(|error| format!("proof-room.runtime-invalid: {error}"))?;
         let report = chio_transaction_passport::verify_runtime_security_claims(
             &chio_transaction_passport::RuntimeSecurityBundle {
-                passport: context.passport.clone(),
-                evidence_graph_bytes: context.evidence_graph_bytes.clone(),
+                passport,
+                evidence_graph_bytes,
                 verifier_policy_bytes: context.verifier_policy_bytes.clone(),
                 artifacts,
             },
@@ -422,6 +441,137 @@ pub(crate) fn source_risk_route(
         through_trust_market,
         standalone: !through_enterprise && !through_trust_market,
     })
+}
+
+pub(crate) fn source_scoped_evidence_graph_bytes(
+    evidence_graph_bytes: &[u8],
+    include_node: fn(&serde_json::Value) -> bool,
+) -> Result<Vec<u8>, String> {
+    let mut graph: serde_json::Value = serde_json::from_slice(evidence_graph_bytes)
+        .map_err(|error| format!("proof-room.evidence-graph.invalid-json: {error}"))?;
+    let nodes = graph
+        .get_mut("nodes")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or_else(|| "proof-room.evidence-graph.nodes-invalid".to_string())?;
+
+    let mut retained_ids = BTreeSet::new();
+    nodes.retain(|node| {
+        if !include_node(node) {
+            return false;
+        }
+        let Some(id) = node.get("id").and_then(serde_json::Value::as_str) else {
+            return false;
+        };
+        retained_ids.insert(id.to_string());
+        true
+    });
+
+    if let Some(edges) = graph
+        .get_mut("edges")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        edges.retain(|edge| {
+            let Some(from) = edge.get("from").and_then(serde_json::Value::as_str) else {
+                return false;
+            };
+            let Some(to) = edge.get("to").and_then(serde_json::Value::as_str) else {
+                return false;
+            };
+            retained_ids.contains(from) && retained_ids.contains(to)
+        });
+    }
+
+    serde_json::to_vec(&graph)
+        .map_err(|error| format!("proof-room.evidence-graph.encode-failed: {error}"))
+}
+
+pub(crate) fn source_passport_for_evidence_graph(
+    passport: &chio_transaction_passport::TransactionPassport,
+    evidence_graph_bytes: &[u8],
+) -> chio_transaction_passport::TransactionPassport {
+    let mut passport = passport.clone();
+    passport.evidence_graph_sha256 = sha256_hex(evidence_graph_bytes);
+    passport
+}
+
+pub(crate) fn is_trust_market_evidence_graph_node(node: &serde_json::Value) -> bool {
+    let Some(role) = node.get("role").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    matches!(role, "receipt" | "verifier-policy" | "report") || is_trust_market_artifact_role(role)
+}
+
+pub(crate) fn is_trust_market_artifact_role(role: &str) -> bool {
+    matches!(
+        role,
+        "provider-discovery-snapshot"
+            | "provider-selection-report"
+            | "trust-scorecard-snapshot"
+            | "reputation-import-report"
+            | "sla-commitment"
+            | "sla-performance-report"
+            | "risk-comptroller-report"
+            | "collateral-position-report"
+            | "guarantee-decision"
+            | "adjudication-jurisdiction-receipt"
+    )
+}
+
+pub(crate) fn is_agent_web_evidence_graph_node(node: &serde_json::Value) -> bool {
+    let Some(role) = node.get("role").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    let schema = node.get("schema").and_then(serde_json::Value::as_str);
+    let id = node.get("id").and_then(serde_json::Value::as_str);
+    if role == "receipt" {
+        return schema == Some(CHIO_RECEIPT_SCHEMA)
+            && id.is_some_and(|id| id.starts_with("receipt-agent-web-"));
+    }
+    matches!(
+        role,
+        "agent-web-proof-envelope"
+            | "external-projection-manifest"
+            | "external-subject"
+            | "verifier-policy"
+            | "report"
+    )
+}
+
+pub(crate) fn is_enterprise_evidence_graph_node(node: &serde_json::Value) -> bool {
+    let Some(role) = node.get("role").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    matches!(
+        role,
+        "risk-comptroller-report"
+            | "data-governance-report"
+            | "evidence-export-bundle"
+            | "telemetry-projection"
+            | "approval-case"
+            | "control-evidence-map"
+            | "adjudication-jurisdiction-receipt"
+            | "verifier-policy"
+            | "report"
+    )
+}
+
+pub(crate) fn is_runtime_evidence_graph_node(node: &serde_json::Value) -> bool {
+    let Some(role) = node.get("role").and_then(serde_json::Value::as_str) else {
+        return false;
+    };
+    let schema = node.get("schema").and_then(serde_json::Value::as_str);
+    if role == "receipt" {
+        return schema == Some(RUNTIME_TERMINAL_RECEIPT_SCHEMA);
+    }
+    matches!(
+        role,
+        "advisory-observation"
+            | "verifier-policy"
+            | "execution-lease"
+            | "tool-server-ack"
+            | "revocation-freshness-proof"
+            | "sandbox-attestation"
+    )
 }
 
 pub(crate) fn verify_source_standalone_risk_report(
