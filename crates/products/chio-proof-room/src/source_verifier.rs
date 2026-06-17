@@ -907,13 +907,6 @@ pub(crate) fn validate_source_runtime_proof_regeneration_artifacts(
     let graph: SourceRuntimeParityEvidenceGraph =
         serde_json::from_slice(&context.evidence_graph_bytes)
             .map_err(|error| format!("proof-room.evidence-graph.invalid-json: {error}"))?;
-    if !graph
-        .nodes
-        .iter()
-        .any(source_runtime_proof_regeneration_node_is_present)
-    {
-        return Ok(());
-    }
     let proof_regeneration_report = source_runtime_graph_artifact_bytes(
         context,
         &graph.nodes,
@@ -965,24 +958,6 @@ pub(crate) fn validate_source_runtime_proof_regeneration_artifacts(
         },
     )
     .map_err(|error| format!("proof-room.runtime-regeneration.invalid: {error}"))
-}
-
-pub(crate) fn source_runtime_proof_regeneration_node_is_present(
-    node: &SourceRuntimeParityEvidenceNode,
-) -> bool {
-    matches!(
-        node.role.as_str(),
-        "runtime-proof-regeneration-report"
-            | "runtime-proof-regeneration-input"
-            | "runtime-evidence-manifest"
-            | "runtime-workflow-run-report"
-    ) || matches!(
-        node.schema.as_str(),
-        chio_runtime_proof_parity::CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA
-            | chio_runtime_proof_parity::CHIO_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA
-            | chio_runtime_proof_parity::CHIO_RUNTIME_EVIDENCE_MANIFEST_SCHEMA
-            | chio_runtime_proof_parity::CHIO_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA
-    )
 }
 
 pub(crate) fn source_runtime_graph_artifact_bytes<'a>(

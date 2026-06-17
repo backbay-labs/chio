@@ -71,6 +71,37 @@ fn source_runtime_parity_rejects_failed_parity_report() -> Result<(), Box<dyn Er
 }
 
 #[test]
+fn source_runtime_parity_requires_regeneration_artifacts() -> Result<(), Box<dyn Error>> {
+    let mut context = runtime_regeneration_context(false)?;
+    let mut evidence_graph: serde_json::Value =
+        serde_json::from_slice(&context.evidence_graph_bytes)?;
+    evidence_graph["nodes"]
+        .as_array_mut()
+        .ok_or("evidence graph nodes missing")?
+        .retain(|node| {
+            node.get("role").and_then(serde_json::Value::as_str)
+                == Some("runtime-proof-parity-report")
+        });
+    context.evidence_graph_bytes = json_bytes(&evidence_graph)?;
+    context
+        .artifacts
+        .retain(|path, _| path == "runtime-proof-parity-report.json");
+
+    let mut report = serde_json::json!({});
+    let error = super::attach_source_runtime_proof_parity_report(&context, &mut report)
+        .err()
+        .ok_or(
+            "runtime proof parity report without regeneration artifacts unexpectedly verified",
+        )?;
+
+    assert!(
+        error.contains("proof-room.runtime-regeneration.artifact-missing"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn verifies_single_call_authority_bundle() -> Result<(), Box<dyn Error>> {
     let bundle = repo_root()?.join(
         "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/manifest.json",
