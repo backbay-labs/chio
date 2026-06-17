@@ -215,6 +215,13 @@ pub(crate) fn set_disclosure_policy_required_claims(
     bundle_dir: &std::path::Path,
     required_claims: &[&str],
 ) {
+    set_verifier_policy_required_claims(bundle_dir, required_claims);
+}
+
+pub(crate) fn set_verifier_policy_required_claims(
+    bundle_dir: &std::path::Path,
+    required_claims: &[&str],
+) {
     let verifier_policy_path = bundle_dir.join("verifier-policy.json");
     let mut policy: serde_json::Value = serde_json::from_slice(
         &std::fs::read(&verifier_policy_path).test_expect("read verifier policy"),
@@ -226,13 +233,64 @@ pub(crate) fn set_disclosure_policy_required_claims(
             .map(|claim| serde_json::Value::String((*claim).to_string()))
             .collect(),
     );
+    write_verifier_policy_and_refresh_digests(bundle_dir, policy);
+}
+
+pub(crate) fn add_verifier_policy_required_claim(bundle_dir: &std::path::Path, claim: &str) {
+    let verifier_policy_path = bundle_dir.join("verifier-policy.json");
+    let mut policy: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&verifier_policy_path).test_expect("read verifier policy"),
+    )
+    .test_expect("parse verifier policy");
+    policy["required_claims"]
+        .as_array_mut()
+        .test_expect("required claims are an array")
+        .push(serde_json::Value::String(claim.to_string()));
+    write_verifier_policy_and_refresh_digests(bundle_dir, policy);
+}
+
+fn write_verifier_policy_and_refresh_digests(
+    bundle_dir: &std::path::Path,
+    policy: serde_json::Value,
+) {
+    let verifier_policy_path = bundle_dir.join("verifier-policy.json");
     let policy_bytes = serde_json::to_vec(&policy).test_expect("serialize verifier policy");
     std::fs::write(&verifier_policy_path, &policy_bytes).test_expect("write verifier policy");
-    set_passport_digest(
-        bundle_dir,
-        "verifier_policy_sha256",
-        chio_core::sha256_hex(&policy_bytes),
-    );
+    let policy_digest = chio_core::sha256_hex(&policy_bytes);
+    refresh_evidence_graph_verifier_policy_digest(bundle_dir, &policy_digest);
+    set_passport_digest(bundle_dir, "verifier_policy_sha256", policy_digest);
+}
+
+fn refresh_evidence_graph_verifier_policy_digest(
+    bundle_dir: &std::path::Path,
+    policy_digest: &str,
+) {
+    let evidence_graph_path = bundle_dir.join("evidence-graph.json");
+    if !evidence_graph_path.exists() {
+        return;
+    }
+    let mut evidence_graph: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
+    )
+    .test_expect("parse evidence graph");
+    let mut updated = false;
+    for node in evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("evidence graph nodes")
+    {
+        if node.get("role").and_then(serde_json::Value::as_str) == Some("verifier-policy") {
+            node["sha256"] = serde_json::Value::String(policy_digest.to_string());
+            updated = true;
+        }
+    }
+    if updated {
+        let evidence_graph_bytes =
+            serde_json::to_vec(&evidence_graph).test_expect("serialize evidence graph");
+        std::fs::write(&evidence_graph_path, &evidence_graph_bytes)
+            .test_expect("write evidence graph");
+        let evidence_graph_digest = chio_core::sha256_hex(&evidence_graph_bytes);
+        set_passport_digest(bundle_dir, "evidence_graph_sha256", evidence_graph_digest);
+    }
 }
 
 pub(crate) fn duplicate_first_verifier_policy_required_claim(bundle_dir: &std::path::Path) {

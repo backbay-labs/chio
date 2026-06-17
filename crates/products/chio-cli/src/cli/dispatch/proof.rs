@@ -20,6 +20,11 @@ const CLAIM_PREFIX_DISCLOSURE: &str = "claim.disclosure.";
 const CLAIM_PREFIX_COMMERCE: &str = "claim.commerce.";
 const CLAIM_PREFIX_TRANSACTION: &str = "claim.transaction.";
 const CLAIM_PREFIX_MARKET: &str = "claim.market.";
+const STANDALONE_TRANSACTION_VERIFIED_CLAIMS: [&str; 3] = [
+    "claim.transaction.passport_root_verified",
+    "claim.transaction.evidence_graph_digest_bound",
+    "claim.transaction.policy_digest_bound",
+];
 const AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV: &str = "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET";
 const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS";
 const VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
@@ -676,6 +681,7 @@ pub(super) fn verify_transaction_passport_file(
         ))
     }?;
     attach_runtime_proof_parity_report(bundle_dir, &evidence_graph_bytes, &mut report)?;
+    ensure_policy_required_claims_verified(&claim_requirements, &report)?;
     Ok(report)
 }
 
@@ -1396,6 +1402,47 @@ fn ensure_required_claims_verified(
         }
     }
     Ok(())
+}
+
+fn ensure_policy_required_claims_verified(
+    policy: &VerifierPolicyClaimRequirements,
+    report: &serde_json::Value,
+) -> Result<(), CliError> {
+    for required_claim in &policy.required_claims {
+        let Some(required_claim) = required_claim.as_str() else {
+            return Err(CliError::cli_other_error(
+                "proof verify: required claims must be strings".to_string(),
+            ));
+        };
+        if !report_verifies_required_claim(report, required_claim) {
+            return Err(CliError::cli_other_error(format!(
+                "proof verify: required proof claim not verified: {required_claim}",
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn report_verifies_required_claim(report: &serde_json::Value, required_claim: &str) -> bool {
+    verified_claims_array(report)
+        .is_some_and(|claims| {
+            claims
+                .iter()
+                .any(|verified_claim| verified_claim.as_str() == Some(required_claim))
+        })
+        || transaction_report_verifies_claim(report, required_claim)
+}
+
+fn transaction_report_verifies_claim(report: &serde_json::Value, required_claim: &str) -> bool {
+    STANDALONE_TRANSACTION_VERIFIED_CLAIMS.contains(&required_claim)
+        && report
+            .get("schema")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|schema| schema == "chio.transaction.verifier-report.v1")
+        && report
+            .get("verdict")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|verdict| verdict == "verified")
 }
 
 fn load_disclosure_lineage_bundle_from_graph(
