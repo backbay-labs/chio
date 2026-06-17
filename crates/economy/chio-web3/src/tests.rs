@@ -193,7 +193,7 @@ fn sample_oracle_evidence() -> OracleConversionEvidence {
         max_age_seconds: 3_600,
         cache_age_seconds: 45,
         converted_cost_units: 300,
-        original_cost_units: 100_000_000_000_000,
+        original_cost_units: 1_000_000_000_000_000,
         original_currency: "ETH".to_string(),
         grant_currency: "USD".to_string(),
     }
@@ -487,13 +487,17 @@ fn sample_public_settlement_dispute_snapshot() -> PublicSettlementDisputeSnapsho
 }
 
 fn sample_public_settlement_chain_snapshot_json() -> serde_json::Value {
+    let registry_root = sample_anchor_inclusion_proof()
+        .checkpoint_statement
+        .merkle_root
+        .to_hex_prefixed();
     let mut snapshot = json!({
         "chain_id": "eip155:8453",
         "observed_block_number": 12_345_678,
         "latest_block_number": 12_345_701,
         "max_block_lag": 128,
         "root_registry_address": "0x1000000000000000000000000000000000000001",
-        "registry_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
+        "registry_root": registry_root,
         "block": {
             "block_number": 12_345_678,
             "block_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
@@ -642,6 +646,28 @@ fn oracle_evidence_rejects_stale_cache_age() {
 }
 
 #[test]
+fn oracle_evidence_rejects_converted_amount_mismatch() {
+    let mut evidence = sample_oracle_evidence();
+    evidence.converted_cost_units += 1;
+    assert!(matches!(
+        validate_oracle_conversion_evidence(&evidence),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("oracle conversion evidence converted_cost_units")
+    ));
+}
+
+#[test]
+fn oracle_evidence_rejects_currency_pair_mismatch() {
+    let mut evidence = sample_oracle_evidence();
+    evidence.quote = "EUR".to_string();
+    assert!(matches!(
+        validate_oracle_conversion_evidence(&evidence),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("oracle conversion evidence quote must match grant_currency")
+    ));
+}
+
+#[test]
 fn web3_chain_configuration_rejects_placeholder_addresses() {
     for address in [
         "0x0000000000000000000000000000000000000000",
@@ -748,6 +774,19 @@ fn fx_sensitive_settlement_receipt_requires_oracle_evidence() {
     assert!(matches!(
         validate_web3_settlement_execution_receipt(&receipt),
         Err(Web3ContractError::InvalidSettlement(_))
+    ));
+}
+
+#[test]
+fn settlement_receipt_rejects_oracle_grant_currency_mismatch() {
+    let mut receipt = sample_execution_receipt();
+    let oracle_evidence = receipt.oracle_evidence.as_mut().unwrap();
+    oracle_evidence.quote = "EUR".to_string();
+    oracle_evidence.grant_currency = "EUR".to_string();
+    assert!(matches!(
+        validate_web3_settlement_execution_receipt(&receipt),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("oracle conversion grant_currency must match settlement currency")
     ));
 }
 

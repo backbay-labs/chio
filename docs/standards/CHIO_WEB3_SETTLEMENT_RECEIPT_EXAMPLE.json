@@ -140,7 +140,7 @@
     "feed_address": "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
     "grant_currency": "USD",
     "max_age_seconds": 3600,
-    "original_cost_units": 100000000000000,
+    "original_cost_units": 1000000000000000,
     "original_currency": "ETH",
     "quote": "USD",
     "rate_denominator": 100,

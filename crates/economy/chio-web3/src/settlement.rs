@@ -249,6 +249,11 @@ pub fn validate_web3_settlement_execution_receipt(
     }
     if let Some(oracle_evidence) = receipt.oracle_evidence.as_ref() {
         validate_oracle_conversion_evidence(oracle_evidence)?;
+        if oracle_evidence.grant_currency != receipt.dispatch.settlement_amount.currency {
+            return Err(Web3ContractError::invalid_settlement(
+                "oracle conversion grant_currency must match settlement currency",
+            ));
+        }
     }
     if receipt
         .dispatch

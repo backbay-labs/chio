@@ -137,7 +137,64 @@ pub fn validate_oracle_conversion_evidence(
             "oracle conversion evidence cost units must be non-zero".to_string(),
         ));
     }
+    if evidence.base != evidence.original_currency {
+        return Err(Web3ContractError::InvalidProof(
+            "oracle conversion evidence base must match original_currency".to_string(),
+        ));
+    }
+    if evidence.quote != evidence.grant_currency {
+        return Err(Web3ContractError::InvalidProof(
+            "oracle conversion evidence quote must match grant_currency".to_string(),
+        ));
+    }
+    let expected_converted_cost_units = expected_oracle_converted_cost_units(evidence)?;
+    if evidence.converted_cost_units != expected_converted_cost_units {
+        return Err(Web3ContractError::InvalidProof(format!(
+            "oracle conversion evidence converted_cost_units must equal {expected_converted_cost_units}"
+        )));
+    }
     Ok(())
+}
+
+fn expected_oracle_converted_cost_units(
+    evidence: &OracleConversionEvidence,
+) -> Result<u64, Web3ContractError> {
+    let base_minor_units = oracle_minor_units_per_unit(&evidence.original_currency)?;
+    let quote_minor_units = oracle_minor_units_per_unit(&evidence.grant_currency)?;
+    let numerator = u128::from(evidence.original_cost_units)
+        .checked_mul(u128::from(evidence.rate_numerator))
+        .and_then(|value| value.checked_mul(quote_minor_units))
+        .ok_or_else(|| {
+            Web3ContractError::InvalidProof(
+                "oracle conversion evidence numerator overflowed".to_string(),
+            )
+        })?;
+    let denominator = base_minor_units
+        .checked_mul(u128::from(evidence.rate_denominator))
+        .ok_or_else(|| {
+            Web3ContractError::InvalidProof(
+                "oracle conversion evidence denominator overflowed".to_string(),
+            )
+        })?;
+    let converted = numerator.div_ceil(denominator);
+    u64::try_from(converted).map_err(|_| {
+        Web3ContractError::InvalidProof(
+            "oracle conversion evidence converted_cost_units overflowed".to_string(),
+        )
+    })
+}
+
+fn oracle_minor_units_per_unit(currency: &str) -> Result<u128, Web3ContractError> {
+    match currency {
+        "USD" | "EUR" | "GBP" => Ok(100),
+        "JPY" => Ok(1),
+        "USDC" | "USDT" => Ok(1_000_000),
+        "BTC" => Ok(100_000_000),
+        "ETH" | "LINK" => Ok(1_000_000_000_000_000_000),
+        other => Err(Web3ContractError::InvalidProof(format!(
+            "oracle conversion evidence currency {other} is unsupported"
+        ))),
+    }
 }
 pub fn validate_anchor_inclusion_proof(
     proof: &AnchorInclusionProof,
