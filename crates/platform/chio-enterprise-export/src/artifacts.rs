@@ -276,6 +276,14 @@ pub(super) fn validate_evidence_export_bundle(
             )));
         }
     }
+    ensure_export_role_field_points_to(
+        bundle,
+        &export_bundle.artifacts,
+        "transaction_passport",
+        "passport_id",
+        &passport.id,
+        "passport",
+    )?;
     ensure_export_role_points_to(
         bundle,
         &export_bundle.artifacts,
@@ -489,6 +497,17 @@ fn ensure_export_role_points_to(
     role: &str,
     expected_id: &str,
 ) -> Result<(), TransactionPassportError> {
+    ensure_export_role_field_points_to(bundle, artifacts, role, "id", expected_id, "id")
+}
+
+fn ensure_export_role_field_points_to(
+    bundle: &EnterpriseExportBundle,
+    artifacts: &[ExportArtifactRef],
+    role: &str,
+    field: &str,
+    expected_value: &str,
+    mismatch_label: &str,
+) -> Result<(), TransactionPassportError> {
     let artifact = artifacts
         .iter()
         .find(|artifact| artifact.role == role)
@@ -503,16 +522,16 @@ fn ensure_export_role_points_to(
             message: error.to_string(),
         }
     })?;
-    let actual_id = value
-        .get("id")
+    let actual_value = value
+        .get(field)
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| TransactionPassportError::InvalidEnterpriseArtifact {
             path: artifact.path.clone(),
-            message: "missing id".to_string(),
+            message: format!("missing {field}"),
         })?;
-    if actual_id != expected_id {
+    if actual_value != expected_value {
         return Err(claim_failed(format!(
-            "export artifact id mismatch for role: {role}"
+            "export artifact {mismatch_label} mismatch for role: {role}"
         )));
     }
     Ok(())

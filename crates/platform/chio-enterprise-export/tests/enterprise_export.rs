@@ -18,6 +18,7 @@ enum EnterpriseCase {
     Valid,
     MissingApproval,
     ExportDigestMismatch,
+    PassportExportPassportMismatch,
     OverdisclosedPii,
     TelemetryDigestMismatch,
     ControlMapMissingGate,
@@ -934,11 +935,15 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         );
     }
 
+    let passport_export_passport_id = match case {
+        EnterpriseCase::PassportExportPassportMismatch => "passport-enterprise-other",
+        _ => passport.id.as_str(),
+    };
     let passport_export = json_bytes(json!({
         "id": "transaction-passport-export-enterprise-valid",
         "artifact_kind": "transaction_passport_export",
         "schema_ref": "chio.transaction-passport.v1",
-        "passport_id": passport.id,
+        "passport_id": passport_export_passport_id,
         "evidence_graph_path": passport.evidence_graph_path,
         "verifier_policy_path": passport.verifier_policy_path,
         "redaction_profile_ref": "redaction-profile-enterprise-valid"
@@ -1324,6 +1329,18 @@ fn enterprise_export_rejects_export_bundle_digest_mismatch() {
         .test_expect_err("tampered export bundle digest must fail");
 
     assert!(error.to_string().contains("export bundle digest mismatch"));
+}
+
+#[test]
+fn enterprise_export_rejects_passport_export_bound_to_other_passport() {
+    let bundle = enterprise_bundle(EnterpriseCase::PassportExportPassportMismatch);
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("exported passport artifact must bind to current passport");
+
+    assert!(error
+        .to_string()
+        .contains("export artifact passport mismatch for role: transaction_passport"));
 }
 
 #[test]
