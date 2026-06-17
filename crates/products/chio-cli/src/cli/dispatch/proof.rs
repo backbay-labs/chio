@@ -20,6 +20,7 @@ const CLAIM_PREFIX_DISCLOSURE: &str = "claim.disclosure.";
 const CLAIM_PREFIX_COMMERCE: &str = "claim.commerce.";
 const CLAIM_PREFIX_TRANSACTION: &str = "claim.transaction.";
 const CLAIM_PREFIX_MARKET: &str = "claim.market.";
+const AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV: &str = "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET";
 const VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_RUNTIME,
     CLAIM_PREFIX_RISK,
@@ -33,6 +34,22 @@ const VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_TRANSACTION,
     CLAIM_PREFIX_MARKET,
 ];
+
+fn agent_web_verifier_trust_from_env(
+) -> Result<chio_control_plane::agent_web::AgentWebVerifierTrust, CliError> {
+    match std::env::var(AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV) {
+        Ok(secret) => Ok(
+            chio_control_plane::agent_web::AgentWebVerifierTrust::new()
+                .with_standard_webhooks_secret(secret.into_bytes()),
+        ),
+        Err(std::env::VarError::NotPresent) => {
+            Ok(chio_control_plane::agent_web::AgentWebVerifierTrust::new())
+        }
+        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
+            "{AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV} must be valid UTF-8"
+        ))),
+    }
+}
 
 #[derive(Clone, Copy)]
 enum LocalProofFamilyRoute {
@@ -544,6 +561,7 @@ pub(super) fn verify_transaction_passport_file(
         push_family_report(&mut family_reports, report)?;
     }
     if claim_requirements.requires(CLAIM_PREFIX_AGENT_WEB) {
+        let agent_web_trust = agent_web_verifier_trust_from_env()?;
         let artifacts = load_agent_web_artifacts_from_graph(bundle_dir, &evidence_graph_bytes)?;
         let agent_web_evidence_graph_bytes = scoped_evidence_graph_bytes(
             &evidence_graph_bytes,
@@ -551,13 +569,14 @@ pub(super) fn verify_transaction_passport_file(
         )?;
         let agent_web_passport =
             passport_for_evidence_graph(&passport, &agent_web_evidence_graph_bytes);
-        let report = chio_control_plane::agent_web::verify_agent_web_interop(
+        let report = chio_control_plane::agent_web::verify_agent_web_interop_with_trust(
             &chio_control_plane::agent_web::AgentWebInteropBundle {
                 passport: agent_web_passport,
                 evidence_graph_bytes: agent_web_evidence_graph_bytes,
                 verifier_policy_bytes: verifier_policy_bytes.clone(),
                 artifacts,
             },
+            &agent_web_trust,
         )
         .map_err(map_proof_error)?;
         push_family_report(&mut family_reports, report)?;

@@ -909,14 +909,20 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
         ProofRoomFixtureReportRoute::AgentWeb => proof_room_fixture_verified_report_bytes(
             fixture_id,
             passport,
-            chio_agent_web_interop::verify_agent_web_interop(
-                &chio_agent_web_interop::AgentWebInteropBundle {
-                    passport: passport.clone(),
-                    evidence_graph_bytes: evidence_graph_bytes.to_vec(),
-                    verifier_policy_bytes: verifier_policy_bytes.to_vec(),
-                    artifacts: artifacts.clone(),
-                },
-            ),
+            match agent_web_verifier_trust_from_env() {
+                Ok(agent_web_trust) => chio_agent_web_interop::verify_agent_web_interop_with_trust(
+                    &chio_agent_web_interop::AgentWebInteropBundle {
+                        passport: passport.clone(),
+                        evidence_graph_bytes: evidence_graph_bytes.to_vec(),
+                        verifier_policy_bytes: verifier_policy_bytes.to_vec(),
+                        artifacts: artifacts.clone(),
+                    },
+                    &agent_web_trust,
+                ),
+                Err(error) => Err(
+                    chio_transaction_passport::TransactionPassportError::AgentWebClaimFailed(error),
+                ),
+            },
         ),
         ProofRoomFixtureReportRoute::Runtime => {
             let runtime_artifacts = embedded_runtime_artifacts(evidence_graph_bytes, artifacts)

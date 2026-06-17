@@ -15,6 +15,8 @@ pub(crate) const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str =
     "application/vnd.chio.proof-room.bundle.v1+json";
 pub(crate) const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
 pub(crate) const COLLECT_SIGNATURE_SEED: [u8; 32] = [11; 32];
+pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
+    "chio-agent-web-standard-webhooks-fixture-secret-v1";
 const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 pub(crate) const PROOF_SERVE_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -29,6 +31,10 @@ pub(crate) fn workspace_root() -> PathBuf {
 
 pub(crate) fn chio(args: &[&str]) -> std::process::Output {
     std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+        .env(
+            "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
+            STANDARD_WEBHOOKS_VERIFIER_SECRET,
+        )
         .args(args)
         .output()
         .test_expect("chio command runs")
@@ -164,6 +170,10 @@ pub(crate) fn wait_for_http_response(address: SocketAddr, path: &str) -> String 
 
 pub(crate) fn spawn_proof_serve(bundle: &Path, ui_dir: Option<&Path>) -> RunningProofServe {
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_chio"));
+    command.env(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
+        STANDARD_WEBHOOKS_VERIFIER_SECRET,
+    );
     if let Some(ui_dir) = ui_dir {
         command.env("CHIO_PROOF_ROOM_UI_DIR", ui_dir);
     }

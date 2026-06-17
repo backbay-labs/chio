@@ -1,6 +1,18 @@
 use chio_test_support::prelude::*;
 use std::path::PathBuf;
 
+pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
+    "chio-agent-web-standard-webhooks-fixture-secret-v1";
+
+pub(crate) fn chio_with_agent_web_fixture_secret() -> std::process::Command {
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_chio"));
+    command.env(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
+        STANDARD_WEBHOOKS_VERIFIER_SECRET,
+    );
+    command
+}
+
 pub(crate) fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()

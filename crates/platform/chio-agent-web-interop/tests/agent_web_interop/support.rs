@@ -9,7 +9,7 @@ use hmac::{Hmac, Mac};
 use serde_json::{json, Value};
 use sha2::Sha256;
 
-use chio_agent_web_interop::AgentWebInteropBundle;
+use chio_agent_web_interop::{AgentWebInteropBundle, AgentWebInteropReport, AgentWebVerifierTrust};
 use chio_core_types::{
     receipt::{
         body::{ChioReceipt, ChioReceiptBody},
@@ -100,10 +100,23 @@ pub(crate) const STANDARD_WEBHOOKS_BODY_DIGEST: &str =
 
 type HmacSha256 = Hmac<Sha256>;
 
-const STANDARD_WEBHOOKS_VERIFIER_SECRET: &[u8] =
+pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &[u8] =
     b"chio-agent-web-standard-webhooks-fixture-secret-v1";
 const FORGED_STANDARD_WEBHOOKS_SIGNATURE_REF: &str =
     "v1,Zm9yZ2VkLXN0YW5kYXJkLXdlYmhvb2tzLXNpZ25hdHVyZQ==";
+
+pub(crate) fn agent_web_fixture_trust() -> AgentWebVerifierTrust {
+    AgentWebVerifierTrust::new().with_standard_webhooks_secret_for(
+        STANDARD_WEBHOOKS_WEBHOOK_ID,
+        STANDARD_WEBHOOKS_VERIFIER_SECRET.to_vec(),
+    )
+}
+
+pub(crate) fn verify_agent_web_interop(
+    bundle: &AgentWebInteropBundle,
+) -> Result<AgentWebInteropReport, chio_transaction_passport::TransactionPassportError> {
+    chio_agent_web_interop::verify_agent_web_interop_with_trust(bundle, &agent_web_fixture_trust())
+}
 
 pub(crate) fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

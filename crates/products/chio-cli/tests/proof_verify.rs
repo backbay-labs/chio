@@ -472,8 +472,23 @@ fn proof_verify_rejects_enterprise_export_risk_portfolio_capital_overallocated_f
 }
 
 #[test]
-fn proof_verify_accepts_agent_web_interop_fixture() {
+fn proof_verify_rejects_agent_web_fixture_without_configured_standard_webhooks_secret() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+        .env_remove("CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET")
+        .arg("proof")
+        .arg("verify")
+        .arg(agent_web_fixture_path("valid-webhook-cloudevents"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("missing Standard Webhooks verifier secret"));
+}
+
+#[test]
+fn proof_verify_accepts_agent_web_interop_fixture() {
+    let output = chio_with_agent_web_fixture_secret()
         .arg("proof")
         .arg("verify")
         .arg(agent_web_fixture_path("valid-webhook-cloudevents"))
@@ -561,7 +576,7 @@ fn proof_verify_rejects_agent_web_mcp_manifest_that_omits_authority_limitation()
         serde_json::json!([]),
     );
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_agent_web_fixture_secret()
         .arg("proof")
         .arg("verify")
         .arg(passport_path)
@@ -593,7 +608,7 @@ fn proof_verify_rejects_agent_web_a2a_manifest_that_omits_authority_limitation()
         serde_json::json!([]),
     );
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_agent_web_fixture_secret()
         .arg("proof")
         .arg("verify")
         .arg(passport_path)
@@ -625,7 +640,7 @@ fn proof_verify_rejects_agent_web_oauth2_manifest_that_omits_authority_limitatio
         serde_json::json!([]),
     );
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_agent_web_fixture_secret()
         .arg("proof")
         .arg("verify")
         .arg(passport_path)
@@ -757,7 +772,7 @@ fn proof_verify_rejects_agent_web_external_authority_manifests_without_limitatio
             serde_json::json!([]),
         );
 
-        let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+        let output = chio_with_agent_web_fixture_secret()
             .arg("proof")
             .arg("verify")
             .arg(passport_path)
@@ -803,7 +818,7 @@ fn proof_verify_rejects_agent_web_manifests_that_omit_secondary_authority_limita
             serde_json::json!([retained_claim]),
         );
 
-        let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+        let output = chio_with_agent_web_fixture_secret()
             .arg("proof")
             .arg("verify")
             .arg(passport_path)

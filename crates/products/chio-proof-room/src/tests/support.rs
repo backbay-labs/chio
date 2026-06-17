@@ -10,11 +10,21 @@ use crate::{
 
 pub(crate) const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
 pub(crate) const TEST_RECEIPT_SEED: [u8; 32] = [23; 32];
+pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
+    "chio-agent-web-standard-webhooks-fixture-secret-v1";
+
+pub(crate) fn configure_agent_web_fixture_secret() {
+    std::env::set_var(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
+        STANDARD_WEBHOOKS_VERIFIER_SECRET,
+    );
+}
 
 pub(crate) fn proof_room_router(
     bundle: std::path::PathBuf,
     ui_dir: std::path::PathBuf,
 ) -> axum::Router {
+    configure_agent_web_fixture_secret();
     match build_proof_room_router(bundle, ui_dir) {
         Ok(router) => router,
         Err(error) => panic!("proof room router builds: {error}"),
@@ -26,6 +36,7 @@ pub(crate) fn proof_room_router_with_fixture_root(
     ui_dir: std::path::PathBuf,
     fixture_root: std::path::PathBuf,
 ) -> axum::Router {
+    configure_agent_web_fixture_secret();
     match build_proof_room_router_with_fixture_root(bundle, ui_dir, Some(fixture_root)) {
         Ok(router) => router,
         Err(error) => panic!("proof room router builds: {error}"),

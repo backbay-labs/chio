@@ -5,7 +5,10 @@ use std::{
 };
 
 use chio_control_plane::{
-    agent_web::{verify_agent_web_interop, AgentWebInteropBundle},
+    agent_web::{
+        verify_agent_web_interop_with_trust, AgentWebInteropBundle, AgentWebInteropReport,
+        AgentWebVerifierTrust,
+    },
     transaction_passport::TransactionPassport,
 };
 use chio_core::{
@@ -14,6 +17,10 @@ use chio_core::{
 };
 use chio_test_support::prelude::*;
 use serde_json::Value;
+
+const STANDARD_WEBHOOKS_WEBHOOK_ID: &str = "msg_agent_web_001";
+const STANDARD_WEBHOOKS_VERIFIER_SECRET: &[u8] =
+    b"chio-agent-web-standard-webhooks-fixture-secret-v1";
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -56,6 +63,20 @@ fn agent_web_fixture_bundle() -> AgentWebInteropBundle {
         verifier_policy_bytes,
         artifacts,
     }
+}
+
+fn agent_web_fixture_trust() -> AgentWebVerifierTrust {
+    AgentWebVerifierTrust::new().with_standard_webhooks_secret_for(
+        STANDARD_WEBHOOKS_WEBHOOK_ID,
+        STANDARD_WEBHOOKS_VERIFIER_SECRET.to_vec(),
+    )
+}
+
+fn verify_agent_web_fixture(
+    bundle: &AgentWebInteropBundle,
+) -> Result<AgentWebInteropReport, chio_control_plane::transaction_passport::TransactionPassportError>
+{
+    verify_agent_web_interop_with_trust(bundle, &agent_web_fixture_trust())
 }
 
 fn mutate_agent_web_json_artifact(
@@ -130,7 +151,7 @@ fn resign_agent_web_receipt_for_subject_digest(
 fn control_plane_agent_web_reexport_verifies_product_fixture() {
     let bundle = agent_web_fixture_bundle();
 
-    let report = verify_agent_web_interop(&bundle)
+    let report = verify_agent_web_fixture(&bundle)
         .test_expect("control-plane Agent Web re-export verifies product fixture");
 
     assert_eq!(report.verdict, "verified");
@@ -164,7 +185,7 @@ fn agent_web_rejects_dsse_subject_without_chio_receipt_mediation() {
         &external_subject_digest,
     );
 
-    let error = verify_agent_web_interop(&bundle)
+    let error = verify_agent_web_fixture(&bundle)
         .test_expect_err("DSSE subject without Chio mediation must fail closed");
 
     assert!(error
@@ -199,7 +220,7 @@ fn assert_agent_web_rejects_unsupported_manifest_version(
         envelope["source_protocol_version"] = Value::String(unsupported_version.to_string());
     });
 
-    let error = verify_agent_web_interop(&bundle)
+    let error = verify_agent_web_fixture(&bundle)
         .test_expect_err("unsupported source protocol version must fail closed");
 
     assert!(error.to_string().contains(expected_message));
@@ -240,7 +261,7 @@ fn assert_agent_web_rejects_unsupported_protocol_field_version(
         &external_subject_digest,
     );
 
-    let error = verify_agent_web_interop(&bundle)
+    let error = verify_agent_web_fixture(&bundle)
         .test_expect_err("unsupported source protocol version must fail closed");
 
     assert!(error.to_string().contains(expected_message));
@@ -361,7 +382,7 @@ fn agent_web_rejects_graphql_http_without_authority_limitation() {
         });
     });
 
-    let error = verify_agent_web_interop(&bundle)
+    let error = verify_agent_web_fixture(&bundle)
         .test_expect_err("GraphQL HTTP projection without authority limitation must fail closed");
 
     assert!(error.to_string().contains(
@@ -377,7 +398,7 @@ fn agent_web_rejects_standard_webhooks_manifest_that_disables_required_signature
         manifest["signature_algorithm"] = Value::String("none".to_string());
     });
 
-    let error = verify_agent_web_interop(&bundle)
+    let error = verify_agent_web_fixture(&bundle)
         .test_expect_err("Standard Webhooks manifest must declare its external signature");
 
     assert!(error
@@ -398,7 +419,7 @@ fn agent_web_rejects_unsupported_external_authority_claim_marked_native() {
         }));
     });
 
-    let error = verify_agent_web_interop(&bundle)
+    let error = verify_agent_web_fixture(&bundle)
         .test_expect_err("unsupported external authority claim must not be native proof");
 
     assert!(error.to_string().contains(

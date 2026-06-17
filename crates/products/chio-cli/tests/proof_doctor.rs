@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 
 const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str = "application/vnd.chio.proof-room.bundle.v1+json";
 const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
+const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
+    "chio-agent-web-standard-webhooks-fixture-secret-v1";
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -16,6 +18,10 @@ fn workspace_root() -> PathBuf {
 
 fn run_proof_doctor_scenario(root: &Path, scenario: &str) -> std::process::Output {
     std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+        .env(
+            "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
+            STANDARD_WEBHOOKS_VERIFIER_SECRET,
+        )
         .arg("proof")
         .arg("doctor")
         .arg("--scenario")
@@ -33,6 +39,10 @@ fn run_proof_doctor(root: &Path) -> std::process::Output {
 
 fn run_proof_doctor_default_scenario(root: &Path) -> std::process::Output {
     std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+        .env(
+            "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
+            STANDARD_WEBHOOKS_VERIFIER_SECRET,
+        )
         .arg("proof")
         .arg("doctor")
         .arg("--root")

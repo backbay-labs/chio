@@ -4,7 +4,7 @@ use chio_transaction_passport::{TransactionPassport, TransactionPassportError};
 
 use super::{
     evidence::{validate_bundle_relative_path, validate_sha256_hex},
-    protocols,
+    protocols, AgentWebVerifierTrust,
 };
 
 mod a2a;
@@ -233,6 +233,7 @@ pub(super) fn validate_external_subject(
     envelope: &AgentWebProofEnvelope,
     manifest: &ProjectionManifest,
     bytes: &[u8],
+    trust: &AgentWebVerifierTrust,
 ) -> Result<(), TransactionPassportError> {
     let actual_digest = chio_core_types::sha256_hex(bytes);
     if actual_digest != envelope.external_subject_digest {
@@ -263,9 +264,11 @@ pub(super) fn validate_external_subject(
         .map_err(|_| claim_failed("missing external signature"))?;
     }
     match manifest.source_protocol.as_str() {
-        "standard-webhooks" => {
-            standard_webhooks::validate_subject(&value, &envelope.external_subject_signature_ref)
-        }
+        "standard-webhooks" => standard_webhooks::validate_subject(
+            &value,
+            &envelope.external_subject_signature_ref,
+            trust,
+        ),
         "cloudevents" => cloudevents::validate_subject(&value, manifest),
         "graphql-http" => graphql_http::validate_subject(&value, manifest),
         "mcp" => mcp::validate_subject(&value, envelope, manifest),

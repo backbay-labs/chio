@@ -4,16 +4,15 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
 use super::super::evidence::validate_sha256_hex;
+use super::super::AgentWebVerifierTrust;
 use super::{claim_failed, required_json_str};
 
 type HmacSha256 = Hmac<Sha256>;
 
-const STANDARD_WEBHOOKS_VERIFIER_SECRET: &[u8] =
-    b"chio-agent-web-standard-webhooks-fixture-secret-v1";
-
 pub(super) fn validate_subject(
     value: &serde_json::Value,
     envelope_signature_ref: &str,
+    trust: &AgentWebVerifierTrust,
 ) -> Result<(), TransactionPassportError> {
     let webhook_id = required_json_str(value, "webhook_id", "missing Standard Webhooks id")?;
     let webhook_timestamp = required_json_str(
@@ -45,8 +44,12 @@ pub(super) fn validate_subject(
     if webhook_signature != envelope_signature_ref {
         return Err(claim_failed("external signature mismatch"));
     }
+    let verifier_secret = trust
+        .standard_webhooks_secret(webhook_id)
+        .ok_or_else(|| claim_failed("missing Standard Webhooks verifier secret"))?;
     verify_signature_ref(
         webhook_signature,
+        verifier_secret,
         webhook_id,
         webhook_timestamp,
         body_digest,
@@ -73,13 +76,14 @@ fn validate_signature_ref(signature_ref: &str) -> Result<Vec<u8>, TransactionPas
 
 fn verify_signature_ref(
     signature_ref: &str,
+    verifier_secret: &[u8],
     webhook_id: &str,
     webhook_timestamp: &str,
     body_digest: &str,
     endpoint_url_digest: &str,
 ) -> Result<(), TransactionPassportError> {
     let signature = validate_signature_ref(signature_ref)?;
-    let mut mac = HmacSha256::new_from_slice(STANDARD_WEBHOOKS_VERIFIER_SECRET)
+    let mut mac = HmacSha256::new_from_slice(verifier_secret)
         .map_err(|_| claim_failed("invalid Standard Webhooks signature"))?;
     mac.update(webhook_id.as_bytes());
     mac.update(b".");

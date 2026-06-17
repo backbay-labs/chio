@@ -156,18 +156,21 @@ pub(crate) fn verify_transaction_passport_family_report(
         push_source_family_report(&mut family_reports, report)?;
     }
     if requirements.requires(CLAIM_PREFIX_AGENT_WEB) {
+        let agent_web_trust = agent_web_verifier_trust_from_env()
+            .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
         let evidence_graph_bytes = source_scoped_evidence_graph_bytes(
             &context.evidence_graph_bytes,
             is_agent_web_evidence_graph_node,
         )?;
         let passport = source_passport_for_evidence_graph(&context.passport, &evidence_graph_bytes);
-        let report = chio_agent_web_interop::verify_agent_web_interop(
+        let report = chio_agent_web_interop::verify_agent_web_interop_with_trust(
             &chio_agent_web_interop::AgentWebInteropBundle {
                 passport,
                 evidence_graph_bytes,
                 verifier_policy_bytes: context.verifier_policy_bytes.clone(),
                 artifacts: context.artifacts.clone(),
             },
+            &agent_web_trust,
         )
         .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
         push_source_family_report(&mut family_reports, report)?;

@@ -40,6 +40,45 @@ pub struct AgentWebInteropBundle {
     pub artifacts: BTreeMap<String, Vec<u8>>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct AgentWebVerifierTrust {
+    default_standard_webhooks_secret: Option<Vec<u8>>,
+    standard_webhooks_secrets: BTreeMap<String, Vec<u8>>,
+}
+
+impl AgentWebVerifierTrust {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_standard_webhooks_secret(mut self, secret: impl Into<Vec<u8>>) -> Self {
+        self.default_standard_webhooks_secret = Some(secret.into());
+        self
+    }
+
+    pub fn with_standard_webhooks_secret_for(
+        mut self,
+        webhook_id: impl Into<String>,
+        secret: impl Into<Vec<u8>>,
+    ) -> Self {
+        self.standard_webhooks_secrets
+            .insert(webhook_id.into(), secret.into());
+        self
+    }
+
+    pub(crate) fn standard_webhooks_secret(&self, webhook_id: &str) -> Option<&[u8]> {
+        let secret = self
+            .standard_webhooks_secrets
+            .get(webhook_id)
+            .or(self.default_standard_webhooks_secret.as_ref())?;
+        if secret.is_empty() {
+            None
+        } else {
+            Some(secret.as_slice())
+        }
+    }
+}
+
 struct ProjectionManifestEntry {
     node_id: String,
     manifest: ProjectionManifest,
@@ -79,6 +118,13 @@ pub struct AgentWebClaimEvidence {
 
 pub fn verify_agent_web_interop(
     bundle: &AgentWebInteropBundle,
+) -> Result<AgentWebInteropReport, TransactionPassportError> {
+    verify_agent_web_interop_with_trust(bundle, &AgentWebVerifierTrust::new())
+}
+
+pub fn verify_agent_web_interop_with_trust(
+    bundle: &AgentWebInteropBundle,
+    trust: &AgentWebVerifierTrust,
 ) -> Result<AgentWebInteropReport, TransactionPassportError> {
     verify_minimal_passport_artifacts(
         &bundle.passport,
@@ -154,7 +200,7 @@ pub fn verify_agent_web_interop(
         )?;
         validate_external_subject_schema(external_node, &envelope.source_protocol)?;
         let external_bytes = raw_artifact_bytes(bundle, external_node)?;
-        validate_external_subject(&envelope, &manifest_entry.manifest, external_bytes)?;
+        validate_external_subject(&envelope, &manifest_entry.manifest, external_bytes, trust)?;
         if matches!(
             envelope.source_protocol.as_str(),
             "acp-commerce" | "ap2" | "x402"

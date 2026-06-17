@@ -1,5 +1,4 @@
 use super::support::*;
-use chio_agent_web_interop::verify_agent_web_interop;
 use chio_test_support::prelude::*;
 
 #[test]
@@ -104,6 +103,18 @@ fn agent_web_interop_accepts_webhook_and_cloudevents_fixture() {
     assert!(report
         .unsupported_claims
         .contains(&UNSUPPORTED_A2A_AUTHORITY_CLAIM.to_string()));
+}
+
+#[test]
+fn agent_web_interop_rejects_standard_webhooks_without_configured_secret() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+
+    let error = chio_agent_web_interop::verify_agent_web_interop(&bundle)
+        .test_expect_err("Standard Webhooks verification requires verifier-owned secret config");
+
+    assert!(error
+        .to_string()
+        .contains("missing Standard Webhooks verifier secret"));
 }
 
 #[test]

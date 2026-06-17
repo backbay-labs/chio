@@ -1,5 +1,4 @@
 use super::support::*;
-use chio_agent_web_interop::verify_agent_web_interop;
 use chio_test_support::prelude::*;
 
 #[test]

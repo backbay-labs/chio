@@ -124,6 +124,7 @@ const CLAIM_PREFIX_DISCLOSURE: &str = "claim.disclosure.";
 const CLAIM_PREFIX_COMMERCE: &str = "claim.commerce.";
 const CLAIM_PREFIX_TRANSACTION: &str = "claim.transaction.";
 const CLAIM_PREFIX_MARKET: &str = "claim.market.";
+const AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV: &str = "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET";
 const SOURCE_VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_RUNTIME,
     CLAIM_PREFIX_RISK,
@@ -137,6 +138,18 @@ const SOURCE_VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_TRANSACTION,
     CLAIM_PREFIX_MARKET,
 ];
+
+pub(crate) fn agent_web_verifier_trust_from_env(
+) -> Result<chio_agent_web_interop::AgentWebVerifierTrust, String> {
+    match env::var(AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV) {
+        Ok(secret) => Ok(chio_agent_web_interop::AgentWebVerifierTrust::new()
+            .with_standard_webhooks_secret(secret.into_bytes())),
+        Err(env::VarError::NotPresent) => Ok(chio_agent_web_interop::AgentWebVerifierTrust::new()),
+        Err(env::VarError::NotUnicode(_)) => Err(format!(
+            "{AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV} must be valid UTF-8"
+        )),
+    }
+}
 const ENTERPRISE_APPROVAL_CASE_SCHEMA: &str = "chio.enterprise.approval-case.v1";
 const ENTERPRISE_CONTROL_EVIDENCE_MAP_SCHEMA: &str = "chio.enterprise.control-evidence-map.v1";
 const ENTERPRISE_DATA_GOVERNANCE_REPORT_SCHEMA: &str = "chio.enterprise.data-governance-report.v1";
