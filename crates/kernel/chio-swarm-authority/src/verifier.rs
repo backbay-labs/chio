@@ -772,6 +772,12 @@ fn validate_continuation_token(
                 token.child_task_id
             ))
         })?;
+    if token.issued_at_unix_ms > bundle.now_unix_ms {
+        return Err(rejected(format!(
+            "swarm continuation token is from the future: {}",
+            token.token_id
+        )));
+    }
     if token.expires_at_unix_ms <= bundle.now_unix_ms {
         return Err(rejected(format!(
             "swarm continuation token is stale: {}",

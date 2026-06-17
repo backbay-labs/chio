@@ -133,6 +133,21 @@ fn swarm_authority_stage0_rejects_stale_continuation() -> Result<(), Box<dyn Err
 }
 
 #[test]
+fn swarm_authority_stage0_rejects_future_continuation() -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.continuation_tokens[0].issued_at_unix_ms = NOW_UNIX_MS + 1_000;
+
+    let error = match verify_swarm_authority_bundle(&bundle) {
+        Ok(report) => panic!("future continuation verified unexpectedly: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("swarm continuation token is from the future"));
+    Ok(())
+}
+
+#[test]
 fn swarm_authority_stage0_rejects_replayed_continuation_nonce() -> Result<(), Box<dyn Error>> {
     let mut bundle = sample_swarm_bundle()?;
     bundle.continuation_tokens[1].nonce = bundle.continuation_tokens[0].nonce.clone();
