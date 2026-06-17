@@ -732,6 +732,23 @@ fn side_effecting_runtime_claim_rejects_ack_outside_execution_lease() {
 }
 
 #[test]
+fn side_effecting_runtime_claim_rejects_revocation_stale_at_ack_time() {
+    let ack_key = Keypair::from_seed(&[45u8; 32]);
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    update_artifact(&mut bundle, "tool-server-ack.json", |ack| {
+        ack["issued_at"] = Value::String("2026-06-10T00:00:06Z".to_string());
+        ack["signature"] = Value::String(sign_tool_server_ack(ack, &ack_key));
+    });
+
+    let error = chio_control_plane::transaction_passport::verify_runtime_security_claims(&bundle)
+        .test_expect_err("revocation freshness must cover tool acknowledgement time");
+
+    assert!(error
+        .to_string()
+        .contains("revocation freshness stale at acknowledgement"));
+}
+
+#[test]
 fn side_effecting_runtime_claim_rejects_sandbox_not_valid_for_lease() {
     let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
     update_artifact(&mut bundle, "sandbox-attestation.json", |sandbox| {

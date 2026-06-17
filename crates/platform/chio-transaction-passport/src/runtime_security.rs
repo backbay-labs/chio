@@ -18,9 +18,10 @@ mod policy;
 
 use artifacts::{
     validate_allow_receipt, validate_execution_lease, validate_nonce_uniqueness,
-    validate_revocation_freshness, validate_sandbox_attestation, validate_terminal_receipt,
-    validate_tool_server_ack, RuntimeExecutionLease, RuntimeRevocationFreshnessProof,
-    RuntimeSandboxAttestation, RuntimeTerminalReceipt, RuntimeToolServerAck,
+    validate_revocation_freshness, validate_revocation_freshness_at_ack,
+    validate_sandbox_attestation, validate_terminal_receipt, validate_tool_server_ack,
+    RuntimeExecutionLease, RuntimeRevocationFreshnessProof, RuntimeSandboxAttestation,
+    RuntimeTerminalReceipt, RuntimeToolServerAck,
 };
 use claims::{
     push_claim_once, CLAIM_ADVISORY_NOT_AUTHORIZATION, CLAIM_EXECUTION_LEASE_VALID,
@@ -251,6 +252,7 @@ fn verify_allowed_execution_attempts(
                 )
             })?;
         validate_tool_server_ack(lease, sandbox, ack)?;
+        validate_revocation_freshness_at_ack(revocation, ack)?;
 
         let receipts: Vec<RuntimeTerminalReceipt> = leased_receipt_nodes(graph, lease_node)
             .map(|node| parse_artifact(bundle, node, RUNTIME_TERMINAL_RECEIPT_SCHEMA_ID))

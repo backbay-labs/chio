@@ -183,6 +183,33 @@ pub(super) fn validate_revocation_freshness(
     Ok(())
 }
 
+pub(super) fn validate_revocation_freshness_at_ack(
+    proof: &RuntimeRevocationFreshnessProof,
+    ack: &RuntimeToolServerAck,
+) -> Result<(), TransactionPassportError> {
+    let fetched_at = parse_rfc3339_utc(&proof.fetched_at, "revocation fetched_at")?;
+    let ack_issued_at = parse_rfc3339_utc(&ack.issued_at, "tool-server acknowledgement issued_at")?;
+    if fetched_at > ack_issued_at {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "revocation freshness fetched after acknowledgement".to_string(),
+        ));
+    }
+    let freshness_age_ms = ack_issued_at
+        .signed_duration_since(fetched_at)
+        .num_milliseconds();
+    let freshness_age_ms = u64::try_from(freshness_age_ms).map_err(|_| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(
+            "revocation acknowledgement freshness age overflow".to_string(),
+        )
+    })?;
+    if freshness_age_ms > proof.max_staleness_ms {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "revocation freshness stale at acknowledgement".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn verify_revocation_freshness_signature(
     proof: &RuntimeRevocationFreshnessProof,
 ) -> Result<(), TransactionPassportError> {
