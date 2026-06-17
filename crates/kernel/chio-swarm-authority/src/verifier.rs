@@ -843,6 +843,14 @@ fn validate_continuation_parent(
                     token.token_id
                 )));
             }
+            if sorted_strings(&token.parent_receipt_ids)
+                != sorted_strings(&join.actual_parent_receipt_ids)
+            {
+                return Err(rejected(format!(
+                    "swarm continuation join parent receipts mismatch: {}",
+                    token.token_id
+                )));
+            }
         }
         (Some(_), Some(_)) => {
             return Err(rejected(format!(

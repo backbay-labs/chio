@@ -163,6 +163,54 @@ fn swarm_authority_stage0_rejects_replayed_continuation_nonce() -> Result<(), Bo
 }
 
 #[test]
+fn swarm_authority_stage0_rejects_join_continuation_parent_receipt_mismatch(
+) -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.task_graph.nodes[0].route_plan_ref = Some("route-join-root".to_string());
+    bundle.task_graph.nodes[0].continuation_token_ref = Some("continuation-join-root".to_string());
+    bundle.task_graph.nodes[0].budget_allocation_ref = Some("budget-root".to_string());
+    bundle
+        .task_graph
+        .route_plan_refs
+        .push("route-join-root".to_string());
+    let graph_sha256 = canonical_hash(&bundle.task_graph)?;
+    let mut continuation = continuation_token(
+        "continuation-join-root",
+        "task-root",
+        "route-join-root",
+        &graph_sha256,
+    );
+    continuation.parent_task_id = None;
+    continuation.join_receipt_id = Some("join-child-results".to_string());
+    continuation.parent_receipt_ids = vec!["receipt-unrelated".to_string()];
+    bundle.continuation_tokens.push(continuation);
+    bundle.route_plan_receipts.push(route_plan_receipt(
+        "route-join-root",
+        "task-root",
+        "mcp",
+        "mcp://provider-root",
+    ));
+    bundle.budget_pool.allocations.push(SwarmBudgetAllocation {
+        allocation_id: "budget-root".to_string(),
+        task_id: "task-root".to_string(),
+        max_units: 2_500,
+    });
+    refresh_continuation_graph_digests(&mut bundle)?;
+
+    let error = match verify_swarm_authority_bundle(&bundle) {
+        Ok(report) => panic!("join continuation parent receipt mismatch verified: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("swarm continuation join parent receipts mismatch"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn swarm_authority_stage0_rejects_continuation_route_ref_mismatch() -> Result<(), Box<dyn Error>> {
     let mut bundle = sample_swarm_bundle()?;
     bundle.task_graph.nodes[1].route_plan_ref = Some("route-child-b".to_string());
