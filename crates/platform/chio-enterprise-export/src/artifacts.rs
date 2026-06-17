@@ -137,11 +137,12 @@ struct ControlEvidence {
 pub(super) fn validate_risk_report(
     passport: &TransactionPassport,
     report: &RiskComptrollerReport,
+    bundle: &EnterpriseExportBundle,
     graph: &EnterpriseEvidenceGraph,
 ) -> Result<(), TransactionPassportError> {
     validate_comptroller_report(passport, report)?;
     validate_risk_evidence_refs(report, |evidence_ref, kind| {
-        graph_contains_risk_evidence_kind(graph, evidence_ref, kind)
+        graph_contains_risk_evidence_kind(bundle, graph, evidence_ref, kind)
     })
 }
 
@@ -585,13 +586,32 @@ fn node_schema_proves_claim(schema: &str, claim_ref: &str) -> bool {
 }
 
 fn graph_contains_risk_evidence_kind(
+    bundle: &EnterpriseExportBundle,
     graph: &EnterpriseEvidenceGraph,
     evidence_ref: &str,
     kind: RiskEvidenceRefKind,
 ) -> bool {
     graph.nodes.iter().any(|node| {
-        node.id == evidence_ref && risk_evidence_schema_matches_kind(&node.schema, kind)
+        node.id == evidence_ref
+            && risk_evidence_schema_matches_kind(&node.schema, kind)
+            && graph_node_artifact_matches(bundle, node)
     })
+}
+
+fn graph_node_artifact_matches(
+    bundle: &EnterpriseExportBundle,
+    node: &super::evidence::EnterpriseEvidenceNode,
+) -> bool {
+    let Some(bytes) = bundle.artifacts.get(&node.path) else {
+        return false;
+    };
+    if chio_core_types::sha256_hex(bytes) != node.sha256 {
+        return false;
+    }
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) else {
+        return false;
+    };
+    value.get("schema").and_then(serde_json::Value::as_str) == Some(node.schema.as_str())
 }
 
 fn risk_evidence_schema_matches_kind(schema: &str, kind: RiskEvidenceRefKind) -> bool {

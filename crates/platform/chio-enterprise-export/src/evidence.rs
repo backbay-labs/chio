@@ -20,7 +20,7 @@ pub(super) struct EnterpriseEvidenceNode {
     pub(super) id: String,
     pub(super) schema: String,
     pub(super) path: String,
-    sha256: String,
+    pub(super) sha256: String,
     pub(super) role: EnterpriseEvidenceRole,
 }
 

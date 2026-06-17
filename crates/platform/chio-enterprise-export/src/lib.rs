@@ -112,7 +112,7 @@ pub fn verify_enterprise_export(
 
     let mut verified_claims = Vec::new();
     for risk_report in &risk_reports {
-        validate_risk_report(&bundle.passport, risk_report, &graph)?;
+        validate_risk_report(&bundle.passport, risk_report, bundle, &graph)?;
     }
     validate_risk_portfolio_reports(&risk_reports)?;
     push_claim_once(&mut verified_claims, CLAIM_RISK_COMPTROLLER_REPORT_BOUND);

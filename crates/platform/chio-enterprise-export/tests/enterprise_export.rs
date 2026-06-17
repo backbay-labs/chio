@@ -1434,6 +1434,19 @@ fn enterprise_export_rejects_duplicate_risk_reserve_receipt_id() {
 }
 
 #[test]
+fn enterprise_export_rejects_missing_risk_ref_artifact() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::RiskSettlementCounterpartyBound);
+    bundle.artifacts.remove("settlement-enterprise-valid.json");
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("risk evidence refs must resolve to artifact bytes");
+
+    assert!(error
+        .to_string()
+        .contains("risk reserve ledger settlement missing"));
+}
+
+#[test]
 fn enterprise_export_rejects_market_slash_consuming_facility_reserve() {
     let bundle = enterprise_bundle(EnterpriseCase::RiskMarketSlashFacilityReserve);
 
