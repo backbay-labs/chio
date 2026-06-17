@@ -308,7 +308,7 @@ pub(crate) fn execute_runtime_loopback_step(
     let vendor_key = chio_attest_loopback::runtime_vendor_keypair(step_index).map_err(|error| {
         RuntimeLoopbackError::message(format!("Chio runtime loopback vendor key: {error}"))
     })?;
-    let agent_key = chio_core::Keypair::generate();
+    let agent_key = runtime_loopback_agent_keypair(step_index);
     let capability = runtime_loopback_capability(
         &vendor_key,
         &agent_key,
@@ -355,7 +355,7 @@ pub(crate) fn execute_runtime_loopback_step(
                 "Chio runtime loopback receipt store install: {error}"
             ))
         })?;
-    let peer_pin_now_unix_ms = unix_now_ms();
+    let peer_pin_now_unix_ms = now_unix_ms;
     if let Some(origin_kernel_id) = step.request.origin_kernel_id.as_deref() {
         let origin_key = chio_attest_loopback::runtime_buyer_keypair();
         let now_secs = peer_pin_now_unix_ms / 1000;
@@ -484,6 +484,9 @@ pub(crate) fn execute_runtime_loopback_step(
             RuntimeLoopbackError::message(format!("Chio runtime loopback executor: {error}"))
         })?;
     let receipt_metadata = runtime_loopback_receipt_metadata(step)?;
+    let receipt_id_seed = format!("rcpt-runtime-loopback-{step_index}");
+    let _fixed_runtime_scope =
+        chio_kernel::scope_fixed_runtime_for_current_thread(now_unix_ms / 1000, [receipt_id_seed]);
     let response = runtime
         .block_on(kernel.evaluate_tool_call_with_metadata(&request, Some(receipt_metadata)))
         .map_err(|error| {
@@ -517,6 +520,13 @@ pub(crate) fn execute_runtime_loopback_step(
         receipt: response.receipt,
         treaty: chio_treaty,
     })
+}
+
+fn runtime_loopback_agent_keypair(step_index: usize) -> chio_core::Keypair {
+    let mut seed = [0u8; 32];
+    seed[0] = 73;
+    seed[31] = u8::try_from(step_index).unwrap_or(u8::MAX);
+    chio_core::Keypair::from_seed(&seed)
 }
 
 #[cfg(test)]

@@ -97,7 +97,8 @@ pub(crate) use receipt_support::*;
 // remains byte-identical across classical and hybrid paths under
 // `crypto_floor=allow_classical`.
 pub use receipt_support::{
-    kernel_signing_backend, sign_receipt_body_hybrid_canonical, sign_receipt_body_with_backend,
+    kernel_signing_backend, scope_fixed_runtime_for_current_thread,
+    sign_receipt_body_hybrid_canonical, sign_receipt_body_with_backend, FixedRuntimeScope,
     KernelCryptoFloor, KernelSigningBackendError, SignedHybridReceipt,
 };
 pub(crate) use request_matching::{

@@ -12,6 +12,11 @@ use crate::proof_parity::{
 use crate::scenario::RuntimeLoopbackStep;
 use crate::RuntimeLoopbackError;
 
+pub(crate) struct StaticProofBaseline {
+    pub(crate) package: chio_attest_buyer_core::proof_package::ChioProofPackage,
+    pub(crate) report: chio_attest_buyer_core::report::VerifierReport,
+}
+
 pub(crate) struct StepAdmissionBinding {
     pub(crate) admission_report_sha256: String,
     pub(crate) admission_id: String,
@@ -82,6 +87,7 @@ pub(crate) fn assemble_runtime_loopback_outputs(
     out_dir: &Path,
     now_unix_ms: u64,
     admission: RuntimeLoopbackAdmissionOutput,
+    static_baseline: StaticProofBaseline,
 ) -> Result<(), RuntimeLoopbackError> {
     let RuntimeLoopbackAdmissionOutput {
         mut accepted,
@@ -151,7 +157,7 @@ pub(crate) fn assemble_runtime_loopback_outputs(
                         .is_some()
             })
             .map(|(index, _)| index);
-        let (package, buyer_closure) = if let Some(index) = buyer_closure_index {
+        let (mut package, buyer_closure) = if let Some(index) = buyer_closure_index {
             let treaty_context = live_treaty_contexts
                 .get(index)
                 .and_then(Option::as_ref)
@@ -172,6 +178,15 @@ pub(crate) fn assemble_runtime_loopback_outputs(
         } else {
             (baseline_package, None)
         };
+        if package.selective_disclosure_proof.subject_sha256_hex
+            == static_baseline
+                .package
+                .selective_disclosure_proof
+                .subject_sha256_hex
+        {
+            package.selective_disclosure_proof =
+                static_baseline.package.selective_disclosure_proof.clone();
+        }
         let package_receipt_hashes = package
             .tool_receipts
             .iter()
@@ -563,8 +578,8 @@ pub(crate) fn assemble_runtime_loopback_outputs(
         let final_parity_report = materialize_final_runtime_proof_parity_report(
             run_id,
             now_unix_ms,
-            &package,
-            &verifier_report,
+            &static_baseline.package,
+            &static_baseline.report,
             &package,
             &context,
             expected_buyer_closure_parity.as_ref(),

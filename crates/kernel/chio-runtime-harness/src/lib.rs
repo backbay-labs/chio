@@ -16,7 +16,7 @@ use std::path::Path;
 
 use admission_loop::execute_runtime_admission_loop;
 use evidence_io::read_utf8_json_file;
-use proof_assembly::assemble_runtime_loopback_outputs;
+use proof_assembly::{assemble_runtime_loopback_outputs, StaticProofBaseline};
 #[cfg(test)]
 use proof_assembly::{
     runtime_admission_report_sha256_for_workflow, step_admission_binding,
@@ -45,6 +45,57 @@ pub fn run_runtime_loopback_scenario(
     store_dir: &Path,
     now_unix_ms: u64,
     out_dir: &Path,
+) -> Result<(), RuntimeLoopbackError> {
+    let static_package = chio_attest_loopback::fixture_proof_package().map_err(|error| {
+        RuntimeLoopbackError::message(format!("Chio static proof package: {error}"))
+    })?;
+    let static_report = chio_attest_loopback::fixture_verifier_report().map_err(|error| {
+        RuntimeLoopbackError::message(format!("Chio static verifier report: {error}"))
+    })?;
+    run_runtime_loopback_scenario_with_static_baseline(
+        scenario,
+        store_dir,
+        now_unix_ms,
+        out_dir,
+        static_package,
+        static_report,
+    )
+}
+
+pub fn run_runtime_loopback_scenario_with_static_artifacts(
+    scenario: &Path,
+    store_dir: &Path,
+    now_unix_ms: u64,
+    out_dir: &Path,
+    static_package_json: &str,
+    static_report_json: &str,
+) -> Result<(), RuntimeLoopbackError> {
+    let static_package =
+        chio_attest_buyer_core::proof_package::proof_package_from_json(static_package_json)
+            .map_err(|error| {
+                RuntimeLoopbackError::message(format!("Chio static proof package: {error}"))
+            })?;
+    let static_report =
+        chio_attest_buyer_core::report::verifier_report_from_json(static_report_json).map_err(
+            |error| RuntimeLoopbackError::message(format!("Chio static verifier report: {error}")),
+        )?;
+    run_runtime_loopback_scenario_with_static_baseline(
+        scenario,
+        store_dir,
+        now_unix_ms,
+        out_dir,
+        static_package,
+        static_report,
+    )
+}
+
+fn run_runtime_loopback_scenario_with_static_baseline(
+    scenario: &Path,
+    store_dir: &Path,
+    now_unix_ms: u64,
+    out_dir: &Path,
+    static_package: chio_attest_buyer_core::proof_package::ChioProofPackage,
+    static_report: chio_attest_buyer_core::report::VerifierReport,
 ) -> Result<(), RuntimeLoopbackError> {
     let scenario: RuntimeLoopbackScenario = serde_json::from_str(&read_utf8_json_file(
         scenario,
@@ -76,7 +127,17 @@ pub fn run_runtime_loopback_scenario(
         })?;
 
     let admission = execute_runtime_admission_loop(&steps, &store, now_unix_ms, out_dir)?;
-    assemble_runtime_loopback_outputs(&run_id, &steps, out_dir, now_unix_ms, admission)
+    assemble_runtime_loopback_outputs(
+        &run_id,
+        &steps,
+        out_dir,
+        now_unix_ms,
+        admission,
+        StaticProofBaseline {
+            package: static_package,
+            report: static_report,
+        },
+    )
 }
 
 #[cfg(test)]
@@ -324,7 +385,12 @@ mod tests {
         let scenario = root.join("scenario.json");
         write_executable_scenario(&fixture_scenario, &scenario)?;
 
-        run_runtime_loopback_scenario(&scenario, &store_dir, 1_800_000_001_000, &out_dir)?;
+        let error =
+            run_runtime_loopback_scenario(&scenario, &store_dir, 1_800_000_001_000, &out_dir)
+                .expect_err("runtime package drift from static fixture must fail closed");
+        assert!(error
+            .to_string()
+            .contains("runtime_proof_semantic_parity_mismatch"));
 
         assert_eq!(
             read_json(&out_dir.join("buyer-attestation-packet.json"))?
@@ -355,6 +421,74 @@ mod tests {
                 .get("schema")
                 .and_then(serde_json::Value::as_str),
             Some(chio_runtime_core::CHIO_FEDERATION_BILATERAL_INVOCATION_SCHEMA)
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|error| {
+            crate::RuntimeLoopbackError::message(format!(
+                "failed to remove runtime loopback temp output {}: {error}",
+                root.display()
+            ))
+        })?;
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_loopback_rejects_runtime_package_drift_from_static_fixture(
+    ) -> Result<(), crate::RuntimeLoopbackError> {
+        let root = temp_root("runtime-parity-static-baseline")?;
+        let store_dir = root.join("store");
+        let out_dir = root.join("out");
+        std::fs::create_dir_all(&root).map_err(|error| {
+            crate::RuntimeLoopbackError::message(format!(
+                "failed to create runtime loopback temp root {}: {error}",
+                root.display()
+            ))
+        })?;
+        let fixture_scenario = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../examples/chio-3vendor/fixtures/runtime-spine/scenario.json");
+        let scenario = root.join("scenario.json");
+        write_executable_scenario(&fixture_scenario, &scenario)?;
+
+        let error =
+            run_runtime_loopback_scenario(&scenario, &store_dir, 1_800_000_001_000, &out_dir)
+                .expect_err("runtime package drift from static fixture must fail closed");
+        assert!(error
+            .to_string()
+            .contains("runtime_proof_semantic_parity_mismatch"));
+
+        let parity_report = read_json(&out_dir.join("runtime-proof-parity-report.json"))?;
+        assert_eq!(
+            parity_report
+                .get("accepted")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            parity_report
+                .get("failureCode")
+                .and_then(serde_json::Value::as_str),
+            Some("runtime_proof_semantic_parity_mismatch")
+        );
+        assert_ne!(
+            parity_report
+                .get("staticProofPackageSha256")
+                .and_then(serde_json::Value::as_str),
+            parity_report
+                .get("runtimeProofPackageSha256")
+                .and_then(serde_json::Value::as_str)
+        );
+        let proof_report = read_json(&out_dir.join("proof-regeneration-report.json"))?;
+        assert_eq!(
+            proof_report
+                .get("accepted")
+                .and_then(serde_json::Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            proof_report
+                .get("failureCode")
+                .and_then(serde_json::Value::as_str),
+            Some("runtime_proof_semantic_parity_mismatch")
         );
 
         std::fs::remove_dir_all(&root).map_err(|error| {

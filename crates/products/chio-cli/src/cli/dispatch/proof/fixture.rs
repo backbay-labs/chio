@@ -737,11 +737,15 @@ fn add_runtime_swarm_loopback_evidence(bundle: &Path, temp_root: &Path) -> Resul
     write_executable_runtime_swarm_scenario(&scenario_path)?;
     let store_dir = temp_root.join("store");
     let out_dir = temp_root.join("out");
-    chio_runtime_harness::run_runtime_loopback_scenario(
+    let static_package_json = fs::read_to_string(bundle.join("proof-package.json"))?;
+    let static_report_json = fs::read_to_string(bundle.join("verifier-report.json"))?;
+    chio_runtime_harness::run_runtime_loopback_scenario_with_static_artifacts(
         &scenario_path,
         &store_dir,
         RUNTIME_SWARM_LOOPBACK_NOW_UNIX_MS,
         &out_dir,
+        &static_package_json,
+        &static_report_json,
     )
     .map_err(|error| {
         CliError::cli_other_error(format!("proof fixture runtime loopback failed: {error}"))

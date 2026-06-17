@@ -1528,6 +1528,9 @@ pub(crate) struct ReceiptParams<'a> {
 }
 
 pub(crate) fn current_unix_timestamp() -> u64 {
+    if let Some(now) = fixed_runtime_unix_secs_for_current_thread() {
+        return now;
+    }
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -1535,6 +1538,9 @@ pub(crate) fn current_unix_timestamp() -> u64 {
 }
 
 pub(crate) fn current_unix_timestamp_ms() -> u64 {
+    if let Some(now) = fixed_runtime_unix_secs_for_current_thread() {
+        return now.saturating_mul(1000);
+    }
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
