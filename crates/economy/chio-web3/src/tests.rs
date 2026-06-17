@@ -389,6 +389,14 @@ fn sample_capital_instruction() -> SignedCapitalExecutionInstruction {
     .unwrap()
 }
 
+fn resign_dispatch_capital_instruction(dispatch: &mut Web3SettlementDispatchArtifact) {
+    dispatch.capital_instruction = SignedCapitalExecutionInstruction::sign(
+        dispatch.capital_instruction.body.clone(),
+        &treasury_keypair(),
+    )
+    .unwrap();
+}
+
 fn sample_dispatch() -> Web3SettlementDispatchArtifact {
     Web3SettlementDispatchArtifact {
         schema: CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA.to_string(),
@@ -555,10 +563,10 @@ fn sample_public_settlement_proof_bundle_with_chain_snapshot(
 fn sample_public_settlement_proof_bundle_with_order_ref(
     order_id: &str,
 ) -> PublicSettlementProofBundle {
-    let Ok(mut bundle) = serde_json::to_value(sample_public_settlement_proof_bundle()) else {
+    let Ok(mut bundle_value) = serde_json::to_value(sample_public_settlement_proof_bundle()) else {
         panic!("sample public settlement proof bundle serializes");
     };
-    let Some(evidence_refs) = bundle["settlement_receipt"]["dispatch"]["capital_instruction"]
+    let Some(evidence_refs) = bundle_value["settlement_receipt"]["dispatch"]["capital_instruction"]
         ["body"]["evidenceRefs"]
         .as_array_mut()
     else {
@@ -570,9 +578,10 @@ fn sample_public_settlement_proof_bundle_with_order_ref(
         "observedAt": 1_743_292_800,
         "locator": format!("commerce-order:{order_id}")
     }));
-    let Ok(bundle) = serde_json::from_value(bundle) else {
+    let Ok(mut bundle) = serde_json::from_value::<PublicSettlementProofBundle>(bundle_value) else {
         panic!("sample public settlement proof bundle parses");
     };
+    resign_dispatch_capital_instruction(&mut bundle.settlement_receipt.dispatch);
     bundle
 }
 
@@ -720,6 +729,7 @@ fn web3_dispatch_rejects_lowercase_settlement_currency() {
 fn web3_dispatch_requires_completion_flow_binding_for_transfers() {
     let mut dispatch = sample_dispatch();
     dispatch.capital_instruction.body.completion_flow_row_id = None;
+    resign_dispatch_capital_instruction(&mut dispatch);
     assert!(matches!(
         validate_web3_settlement_dispatch(&dispatch),
         Err(Web3ContractError::MissingField(
@@ -854,6 +864,23 @@ fn public_settlement_proof_rejects_wrong_chain_id() {
         verify_public_settlement_proof(&bundle),
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("settlement chain id mismatch")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_tampered_capital_instruction_signature() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle
+        .settlement_receipt
+        .dispatch
+        .capital_instruction
+        .body
+        .counterparty_id = "subject-tampered".to_string();
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("capital instruction signature verification failed")
     ));
 }
 

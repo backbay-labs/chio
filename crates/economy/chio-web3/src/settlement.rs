@@ -143,6 +143,19 @@ pub fn validate_web3_settlement_dispatch(
             dispatch.capital_instruction.body.schema.clone(),
         ));
     }
+    let signature_valid = dispatch
+        .capital_instruction
+        .verify_signature()
+        .map_err(|error| {
+            Web3ContractError::invalid_settlement(format!(
+                "capital instruction signature verification failed: {error}"
+            ))
+        })?;
+    if !signature_valid {
+        return Err(Web3ContractError::invalid_settlement(
+            "capital instruction signature verification failed",
+        ));
+    }
     if dispatch.capital_instruction.body.action
         == CapitalExecutionInstructionAction::CancelInstruction
     {
@@ -173,6 +186,15 @@ pub fn validate_web3_settlement_dispatch(
         ));
     }
     validate_transfer_completion_flow_binding(&dispatch.capital_instruction.body)?;
+    dispatch
+        .capital_instruction
+        .body
+        .validate()
+        .map_err(|error| {
+            Web3ContractError::invalid_settlement(format!(
+                "capital instruction validation failed: {error}"
+            ))
+        })?;
     if let Some(bond) = dispatch.bond.as_ref() {
         if bond.body.lifecycle_state != CreditBondLifecycleState::Active {
             return Err(Web3ContractError::invalid_settlement(
