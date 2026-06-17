@@ -266,7 +266,27 @@ fn validate_scope(
             "{field}.resources must not be empty"
         )));
     }
+    validate_scope_entries(&scope.actions, field, "actions")?;
+    validate_scope_entries(&scope.resources, field, "resources")?;
+    validate_scope_entries(&scope.route_refs, field, "route_refs")?;
+    validate_scope_entries(&scope.approval_refs, field, "approval_refs")?;
+    validate_scope_entries(&scope.required_schemas, field, "required_schemas")?;
     require_non_empty(&scope.currency, "scope.currency")?;
+    Ok(())
+}
+
+fn validate_scope_entries(
+    entries: &[String],
+    scope_field: &'static str,
+    entry_field: &'static str,
+) -> Result<(), WorkflowPreflightError> {
+    for entry in entries {
+        if entry.trim().is_empty() {
+            return Err(WorkflowPreflightError::InvalidPlan(format!(
+                "{scope_field}.{entry_field} entry must not be empty"
+            )));
+        }
+    }
     Ok(())
 }
 

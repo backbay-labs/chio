@@ -3,7 +3,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use chio_workflow_preflight::{
-    evaluate_workflow_preflight, WorkflowPreflightPlan, WorkflowPreflightVerdict,
+    evaluate_workflow_preflight, WorkflowPreflightError, WorkflowPreflightPlan,
+    WorkflowPreflightVerdict,
 };
 
 fn workspace_root() -> Result<PathBuf, Box<dyn Error>> {
@@ -80,6 +81,38 @@ fn workflow_preflight_rejects_aggregate_child_budget_over_parent() -> Result<(),
                 .contains("child task budget total 8000 exceeds parent budget 5000")
     }));
     assert!(report.live_authority_claims.is_empty());
+    Ok(())
+}
+
+#[test]
+fn workflow_preflight_rejects_blank_child_action() -> Result<(), Box<dyn Error>> {
+    let mut plan = load_plan("valid-child-scope")?;
+    plan.child_tasks[0].requested_scope.actions = vec!["".to_string()];
+
+    let error = evaluate_workflow_preflight(&plan)
+        .expect_err("blank child action must reject preflight shape");
+
+    assert!(matches!(
+        error,
+        WorkflowPreflightError::InvalidPlan(message)
+            if message.contains("child_tasks.requested_scope.actions entry must not be empty")
+    ));
+    Ok(())
+}
+
+#[test]
+fn workflow_preflight_rejects_blank_child_resource() -> Result<(), Box<dyn Error>> {
+    let mut plan = load_plan("valid-child-scope")?;
+    plan.child_tasks[0].requested_scope.resources = vec!["".to_string()];
+
+    let error = evaluate_workflow_preflight(&plan)
+        .expect_err("blank child resource must reject preflight shape");
+
+    assert!(matches!(
+        error,
+        WorkflowPreflightError::InvalidPlan(message)
+            if message.contains("child_tasks.requested_scope.resources entry must not be empty")
+    ));
     Ok(())
 }
 
