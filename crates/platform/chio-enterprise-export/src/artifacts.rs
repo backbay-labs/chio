@@ -441,6 +441,9 @@ pub(super) fn validate_control_map(
         if !graph_contains_node_id(graph, &control.gate_ref) {
             return Err(claim_failed("control gate did not run"));
         }
+        if !graph_contains_claim_gate(graph, &control.gate_ref, &control.claim_ref) {
+            return Err(claim_failed("control gate does not prove cited claim"));
+        }
     }
     Ok(())
 }
@@ -545,6 +548,39 @@ fn is_enterprise_claim(claim: &str) -> bool {
             | "claim.enterprise.telemetry_projection_bound"
             | "claim.enterprise.export_approval_bound"
             | "claim.enterprise.control_map_bound"
+    )
+}
+
+fn graph_contains_claim_gate(
+    graph: &EnterpriseEvidenceGraph,
+    gate_ref: &str,
+    claim_ref: &str,
+) -> bool {
+    graph
+        .nodes
+        .iter()
+        .any(|node| node.id == gate_ref && node_schema_proves_claim(&node.schema, claim_ref))
+}
+
+fn node_schema_proves_claim(schema: &str, claim_ref: &str) -> bool {
+    matches!(
+        (claim_ref, schema),
+        (
+            "claim.enterprise.data_governance_bound",
+            ENTERPRISE_DATA_GOVERNANCE_REPORT_SCHEMA
+        ) | (
+            "claim.enterprise.evidence_export_digest_bound",
+            ENTERPRISE_EVIDENCE_EXPORT_BUNDLE_SCHEMA
+        ) | (
+            "claim.enterprise.telemetry_projection_bound",
+            ENTERPRISE_TELEMETRY_PROJECTION_SCHEMA
+        ) | (
+            "claim.enterprise.export_approval_bound",
+            ENTERPRISE_APPROVAL_CASE_SCHEMA
+        ) | (
+            "claim.enterprise.control_map_bound",
+            ENTERPRISE_CONTROL_EVIDENCE_MAP_SCHEMA
+        )
     )
 }
 

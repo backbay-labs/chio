@@ -22,6 +22,7 @@ enum EnterpriseCase {
     OverdisclosedPii,
     TelemetryDigestMismatch,
     ControlMapMissingGate,
+    ControlMapWrongGateForClaim,
     RiskMissingReserve,
     RiskCoverageSubjectMismatch,
     RiskDuplicateReserveReceiptId,
@@ -1038,6 +1039,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
 
     let gate_ref = match case {
         EnterpriseCase::ControlMapMissingGate => "missing-gate",
+        EnterpriseCase::ControlMapWrongGateForClaim => "approval-case",
         _ => "data-governance-report",
     };
     let control_map = json_bytes(json!({
@@ -1373,6 +1375,18 @@ fn enterprise_export_rejects_control_map_missing_gate() {
         .test_expect_err("control map cannot cite a verifier gate that did not run");
 
     assert!(error.to_string().contains("control gate did not run"));
+}
+
+#[test]
+fn enterprise_export_rejects_control_map_gate_for_wrong_claim() {
+    let bundle = enterprise_bundle(EnterpriseCase::ControlMapWrongGateForClaim);
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("control map gate must prove the cited claim");
+
+    assert!(error
+        .to_string()
+        .contains("control gate does not prove cited claim"));
 }
 
 #[test]
