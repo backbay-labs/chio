@@ -300,6 +300,51 @@ fn proof_verify_accepts_runtime_denial_terminal_receipt_fixture() {
 }
 
 #[test]
+fn proof_verify_accepts_runtime_terminal_receipt_under_common_receipts_dir() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source = workspace_root().join("fixtures/proof-room/runtime-security/terminal-denial");
+    let bundle_dir = tempdir.path().join("runtime-terminal-common-receipts");
+    copy_dir_all(&source, &bundle_dir);
+
+    std::fs::create_dir_all(bundle_dir.join("receipts")).test_expect("create receipts dir");
+    std::fs::rename(
+        bundle_dir.join("denial-receipt.json"),
+        bundle_dir.join("receipts/denial-receipt.json"),
+    )
+    .test_expect("move terminal receipt into common receipts dir");
+
+    let evidence_graph_path = bundle_dir.join("evidence-graph.json");
+    let mut evidence_graph: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
+    )
+    .test_expect("parse evidence graph");
+    for node in evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("evidence graph nodes")
+    {
+        if node.get("id").and_then(serde_json::Value::as_str) == Some("receipt-runtime-denial") {
+            node["path"] = serde_json::Value::String("receipts/denial-receipt.json".to_string());
+        }
+    }
+    write_minimal_evidence_graph(&bundle_dir, evidence_graph);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).test_expect("stdout is utf8");
+    assert!(stdout.contains("\"claim.runtime.receipt_totality_complete\""));
+}
+
+#[test]
 fn proof_verify_accepts_runtime_infrastructure_failure_receipt_fixture() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
         .arg("proof")

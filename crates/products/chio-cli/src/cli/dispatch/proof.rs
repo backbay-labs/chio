@@ -1490,13 +1490,13 @@ fn load_runtime_artifacts_from_graph(
     evidence_graph_bytes: &[u8],
 ) -> Result<BTreeMap<String, Vec<u8>>, CliError> {
     load_graph_artifacts_matching(bundle_dir, evidence_graph_bytes, |node| {
-        is_runtime_artifact_node(&node.role, &node.path, node.id.as_deref().unwrap_or_default())
+        is_runtime_artifact_node(&node.role, node.schema.as_deref())
     })
 }
 
-fn is_runtime_artifact_node(role: &str, path: &str, id: &str) -> bool {
+fn is_runtime_artifact_node(role: &str, schema: Option<&str>) -> bool {
     if role == "receipt" {
-        return !is_agent_web_receipt_node(path, id);
+        return schema == Some("chio.runtime.terminal-receipt.v1");
     }
     is_runtime_artifact_role(role)
 }
@@ -1505,18 +1505,19 @@ fn is_runtime_evidence_graph_node(node: &serde_json::Value) -> bool {
     let Some(role) = node.get("role").and_then(serde_json::Value::as_str) else {
         return false;
     };
-    let Some(path) = node.get("path").and_then(serde_json::Value::as_str) else {
+    if node.get("path").and_then(serde_json::Value::as_str).is_none() {
         return false;
-    };
+    }
     let Some(id) = node.get("id").and_then(serde_json::Value::as_str) else {
         return false;
     };
-    is_runtime_evidence_graph_node_parts(role, path, id)
+    let schema = node.get("schema").and_then(serde_json::Value::as_str);
+    is_runtime_evidence_graph_node_parts(role, id, schema)
 }
 
-fn is_runtime_evidence_graph_node_parts(role: &str, path: &str, id: &str) -> bool {
+fn is_runtime_evidence_graph_node_parts(role: &str, _id: &str, schema: Option<&str>) -> bool {
     if role == "receipt" {
-        return !is_agent_web_receipt_node(path, id);
+        return schema == Some("chio.runtime.terminal-receipt.v1");
     }
     matches!(role, "advisory-observation" | "verifier-policy") || is_runtime_artifact_role(role)
 }
@@ -1618,8 +1619,8 @@ fn load_agent_web_artifacts_from_graph(
     load_graph_artifacts_matching(bundle_dir, evidence_graph_bytes, |node| {
         is_agent_web_evidence_graph_node_parts(
             &node.role,
-            &node.path,
             node.id.as_deref().unwrap_or_default(),
+            node.schema.as_deref(),
         )
     })
 }
@@ -1639,24 +1640,25 @@ fn is_agent_web_evidence_graph_node(node: &serde_json::Value) -> bool {
     let Some(role) = node.get("role").and_then(serde_json::Value::as_str) else {
         return false;
     };
-    let Some(path) = node.get("path").and_then(serde_json::Value::as_str) else {
+    if node.get("path").and_then(serde_json::Value::as_str).is_none() {
         return false;
-    };
+    }
     let Some(id) = node.get("id").and_then(serde_json::Value::as_str) else {
         return false;
     };
-    is_agent_web_evidence_graph_node_parts(role, path, id)
+    let schema = node.get("schema").and_then(serde_json::Value::as_str);
+    is_agent_web_evidence_graph_node_parts(role, id, schema)
 }
 
-fn is_agent_web_evidence_graph_node_parts(role: &str, path: &str, id: &str) -> bool {
+fn is_agent_web_evidence_graph_node_parts(role: &str, id: &str, schema: Option<&str>) -> bool {
     if role == "receipt" {
-        return is_agent_web_receipt_node(path, id);
+        return schema == Some("chio.receipt.v1") && is_agent_web_receipt_node(id);
     }
     is_agent_web_artifact_role(role)
 }
 
-fn is_agent_web_receipt_node(path: &str, id: &str) -> bool {
-    path.starts_with("receipts/") || id.starts_with("receipt-agent-web-")
+fn is_agent_web_receipt_node(id: &str) -> bool {
+    id.starts_with("receipt-agent-web-")
 }
 
 fn scoped_evidence_graph_bytes(
