@@ -56,7 +56,7 @@
       "id": "guarantee-decision",
       "schema": "chio.risk.guarantee-decision.v1",
       "path": "guarantee-decision.json",
-      "sha256": "534945a843725558cc4e2223db427e26e6a384c797d74f84d882ce0b046f6e05",
+      "sha256": "eeb26b723d58f4a4a3205043551ca35706f66ad8964598010638c2a297423090",
       "role": "guarantee-decision"
     },
     {

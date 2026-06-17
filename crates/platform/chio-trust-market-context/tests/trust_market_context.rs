@@ -41,6 +41,7 @@ enum TrustMarketCase {
     GuaranteeWrongBeneficiary,
     GuaranteeUnsupportedType,
     GuaranteeInvertedClaimWindow,
+    GuaranteeEndsAfterSla,
     CollateralLockStartsAfterGuarantee,
     SlashAuthorityOutsideJurisdiction,
     RequiredUnsupportedMarketClaim,
@@ -591,9 +592,13 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             "start": "2026-06-11T00:00:00Z",
             "end": "2026-06-10T00:00:00Z"
         }),
-        _ => json!({
+        TrustMarketCase::GuaranteeEndsAfterSla => json!({
             "start": "2026-06-10T00:00:00Z",
             "end": "2026-06-12T00:00:00Z"
+        }),
+        _ => json!({
+            "start": "2026-06-10T00:00:00Z",
+            "end": "2026-06-11T00:00:00Z"
         }),
     };
     let guarantee = json_bytes(json!({
@@ -1165,6 +1170,17 @@ fn trust_market_rejects_inverted_guarantee_claim_window() {
     .test_expect_err("guarantee claim window must be ordered");
 
     assert!(error.to_string().contains("guarantee claim window invalid"));
+}
+
+#[test]
+fn trust_market_rejects_guarantee_claim_window_after_sla() {
+    let error =
+        verify_trust_market_context(&trust_market_bundle(TrustMarketCase::GuaranteeEndsAfterSla))
+            .test_expect_err("guarantee claim window must end inside the SLA");
+
+    assert!(error
+        .to_string()
+        .contains("guarantee ends outside SLA window"));
 }
 
 #[test]

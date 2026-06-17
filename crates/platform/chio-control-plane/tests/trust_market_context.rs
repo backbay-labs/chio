@@ -552,7 +552,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         "sla_commitment_ref": "sla-commitment-trust-market-valid",
         "claim_window": {
             "start": "2026-06-10T00:00:00Z",
-            "end": "2026-06-12T00:00:00Z"
+            "end": "2026-06-11T00:00:00Z"
         },
         "exclusions_ref": "guarantee-exclusions-market-valid",
         "adjudication_jurisdiction_ref": "jurisdiction-trust-market-valid",

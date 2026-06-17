@@ -865,6 +865,11 @@ fn validate_guarantee(
         &guarantee.claim_window.start,
         "guarantee starts outside SLA window",
     )?;
+    ensure_effective_window_contains(
+        &sla.effective_window,
+        &guarantee.claim_window.end,
+        "guarantee ends outside SLA window",
+    )?;
     ensure_timestamp_at_or_after(
         &guarantee.claim_window.start,
         &collateral.lock_start,
