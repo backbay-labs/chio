@@ -176,6 +176,7 @@ pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> Age
         AgentWebCase::AcpCommerceProjection
             | AgentWebCase::AcpCommerceOrderContextDigestMismatch
             | AgentWebCase::AcpCommerceReceiptRefMismatch
+            | AgentWebCase::AcpCommerceRefunded
     ) {
         graph_edges.push(json!({
             "from": "acp-commerce-envelope",
@@ -202,7 +203,10 @@ pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> Age
             "evidence_class": "digest-bound-reference"
         }));
     }
-    if matches!(case, AgentWebCase::AgUiProjection) {
+    if matches!(
+        case,
+        AgentWebCase::AgUiProjection | AgentWebCase::AgUiDenied
+    ) {
         graph_edges.push(json!({
             "from": "ag-ui-envelope",
             "to": "ag-ui-manifest",
@@ -699,6 +703,7 @@ pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> Age
             | AgentWebCase::X402AssetMismatch
             | AgentWebCase::X402DetachedOrder
             | AgentWebCase::X402ReceiptRefMismatch
+            | AgentWebCase::X402Refunded
     ) {
         graph_edges.push(json!({
             "from": "x402-envelope",

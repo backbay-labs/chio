@@ -565,3 +565,13 @@ fn agent_web_interop_rejects_x402_payment_asset_mismatch() {
 
     assert!(error.to_string().contains("x402 payment asset mismatch"));
 }
+
+#[test]
+fn agent_web_interop_rejects_refunded_x402_payment() {
+    let bundle = agent_web_bundle(AgentWebCase::X402Refunded);
+
+    let error =
+        verify_agent_web_interop(&bundle).test_expect_err("refunded x402 payments must not verify");
+
+    assert!(error.to_string().contains("x402 payment was refunded"));
+}

@@ -58,6 +58,9 @@ pub(super) fn validate_subject(
     if !matches!(status, "authorized" | "captured" | "settled" | "refunded") {
         return Err(claim_failed("unsupported ACP-Commerce status"));
     }
+    if status == "refunded" {
+        return Err(claim_failed("ACP-Commerce payment was refunded"));
+    }
     let checkout_receipt_ref = required_json_str(
         value,
         "chio_checkout_receipt_ref",

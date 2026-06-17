@@ -1089,6 +1089,7 @@ pub(crate) fn add_extended_projection_manifests(builder: &mut AgentWebBundleBuil
             | AgentWebCase::X402AssetMismatch
             | AgentWebCase::X402DetachedOrder
             | AgentWebCase::X402ReceiptRefMismatch
+            | AgentWebCase::X402Refunded
     ) {
         push_artifact(
             &mut builder.artifacts,

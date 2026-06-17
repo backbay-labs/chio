@@ -55,7 +55,10 @@ pub(super) fn validate_subject(
     if !matches!(transport, "sse" | "websocket") {
         return Err(claim_failed("unsupported AG-UI transport"));
     }
-    required_json_bool(value, "allowed", "missing AG-UI allowed decision")?;
+    let allowed = required_json_bool(value, "allowed", "missing AG-UI allowed decision")?;
+    if !allowed {
+        return Err(claim_failed("AG-UI event was not allowed"));
+    }
     for (field, message) in [
         ("agent_id_digest", "missing AG-UI agent id digest"),
         ("session_id_digest", "missing AG-UI session digest"),

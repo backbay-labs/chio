@@ -48,6 +48,9 @@ pub(super) fn validate_subject(
     if !matches!(status, "authorized" | "settled" | "refunded") {
         return Err(claim_failed("unsupported x402 status"));
     }
+    if status == "refunded" {
+        return Err(claim_failed("x402 payment was refunded"));
+    }
     let payment_receipt_ref = required_json_str(
         value,
         "chio_payment_receipt_ref",

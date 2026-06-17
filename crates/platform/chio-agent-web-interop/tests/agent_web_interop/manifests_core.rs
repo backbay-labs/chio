@@ -607,6 +607,7 @@ pub(crate) fn add_core_projection_manifests(builder: &mut AgentWebBundleBuilder)
         AgentWebCase::AcpCommerceProjection
             | AgentWebCase::AcpCommerceOrderContextDigestMismatch
             | AgentWebCase::AcpCommerceReceiptRefMismatch
+            | AgentWebCase::AcpCommerceRefunded
     ) {
         push_artifact(
             &mut builder.artifacts,
@@ -672,7 +673,10 @@ pub(crate) fn add_core_projection_manifests(builder: &mut AgentWebBundleBuilder)
             "AG-UI event evidence is digest-bound UI stream evidence, not Chio capability authority."
         ]
     }));
-    if matches!(case, AgentWebCase::AgUiProjection) {
+    if matches!(
+        case,
+        AgentWebCase::AgUiProjection | AgentWebCase::AgUiDenied
+    ) {
         push_artifact(
             &mut builder.artifacts,
             &mut builder.graph_nodes,

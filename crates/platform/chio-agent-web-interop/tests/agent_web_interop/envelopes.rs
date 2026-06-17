@@ -338,6 +338,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
         AgentWebCase::AcpCommerceProjection
             | AgentWebCase::AcpCommerceOrderContextDigestMismatch
             | AgentWebCase::AcpCommerceReceiptRefMismatch
+            | AgentWebCase::AcpCommerceRefunded
     ) {
         push_artifact(
             &mut builder.artifacts,
@@ -389,7 +390,10 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
         ],
         "signature": "sig-agent-web-ag-ui-envelope"
     }));
-    if matches!(case, AgentWebCase::AgUiProjection) {
+    if matches!(
+        case,
+        AgentWebCase::AgUiProjection | AgentWebCase::AgUiDenied
+    ) {
         push_artifact(
             &mut builder.artifacts,
             &mut builder.graph_nodes,
@@ -1529,6 +1533,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             | AgentWebCase::X402AssetMismatch
             | AgentWebCase::X402DetachedOrder
             | AgentWebCase::X402ReceiptRefMismatch
+            | AgentWebCase::X402Refunded
     ) {
         push_artifact(
             &mut builder.artifacts,

@@ -226,7 +226,9 @@ pub(crate) enum AgentWebCase {
     AcpCommerceProjection,
     AcpCommerceOrderContextDigestMismatch,
     AcpCommerceReceiptRefMismatch,
+    AcpCommerceRefunded,
     AgUiProjection,
+    AgUiDenied,
     BrowserAutomationProjection,
     RpaProjection,
     EmailProjection,
@@ -275,6 +277,7 @@ pub(crate) enum AgentWebCase {
     X402AssetMismatch,
     X402DetachedOrder,
     X402ReceiptRefMismatch,
+    X402Refunded,
 }
 
 pub(crate) fn json_bytes(value: Value) -> Vec<u8> {

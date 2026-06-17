@@ -224,6 +224,10 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         AgentWebCase::AcpCommerceReceiptRefMismatch => "receipt-agent-web-acp-commerce-other-allow",
         _ => "receipt-agent-web-acp-commerce-checkout-allow",
     };
+    let acp_commerce_status = match case {
+        AgentWebCase::AcpCommerceRefunded => "refunded",
+        _ => "authorized",
+    };
 
     let acp_commerce_checkout = json_bytes(json!({
         "object_kind": "acp_commerce_checkout",
@@ -238,10 +242,11 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "buyer_identity_digest": "fdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfdfd",
         "amount_units": 1250,
         "currency": "USD",
-        "status": "authorized",
+        "status": acp_commerce_status,
         "chio_checkout_receipt_ref": acp_commerce_receipt_ref
     }));
 
+    let ag_ui_allowed = !matches!(case, AgentWebCase::AgUiDenied);
     let ag_ui_event = json_bytes(json!({
         "object_kind": "ag_ui_event",
         "id": "ag-ui-event-agent-web-valid",
@@ -255,12 +260,15 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "target_component_id_digest": "3333333333333333333333333333333333333333333333333333333333333333",
         "classification": "mutate",
         "transport": "websocket",
-        "allowed": true,
+        "allowed": ag_ui_allowed,
         "payload_digest": "4444444444444444444444444444444444444444444444444444444444444444",
         "receipt_digest": "5555555555555555555555555555555555555555555555555555555555555555",
         "authorization_context_digest": "6666666666666666666666666666666666666666666666666666666666666666"
     }));
-    if matches!(case, AgentWebCase::AgUiProjection) {
+    if matches!(
+        case,
+        AgentWebCase::AgUiProjection | AgentWebCase::AgUiDenied
+    ) {
         push_artifact(
             &mut builder.artifacts,
             &mut builder.graph_nodes,
@@ -1052,6 +1060,10 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         AgentWebCase::X402ReceiptRefMismatch => "receipt-agent-web-x402-other-allow",
         _ => "receipt-agent-web-x402-payment-allow",
     };
+    let x402_status = match case {
+        AgentWebCase::X402Refunded => "refunded",
+        _ => "settled",
+    };
     let x402_payment = json_bytes(json!({
         "object_kind": "x402_payment",
         "id": "x402-payment-agent-web-valid",
@@ -1064,7 +1076,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "network": "base-sepolia",
         "asset": x402_asset,
         "amount_units": x402_amount_units,
-        "status": "settled",
+        "status": x402_status,
         "chio_payment_receipt_ref": x402_receipt_ref
     }));
     if matches!(
@@ -1072,6 +1084,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         AgentWebCase::AcpCommerceProjection
             | AgentWebCase::AcpCommerceOrderContextDigestMismatch
             | AgentWebCase::AcpCommerceReceiptRefMismatch
+            | AgentWebCase::AcpCommerceRefunded
             | AgentWebCase::Ap2Projection
             | AgentWebCase::Ap2TransactionContextDigestMismatch
             | AgentWebCase::Ap2DetachedOrder
@@ -1081,6 +1094,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
             | AgentWebCase::X402AssetMismatch
             | AgentWebCase::X402DetachedOrder
             | AgentWebCase::X402ReceiptRefMismatch
+            | AgentWebCase::X402Refunded
     ) {
         push_artifact(
             &mut builder.artifacts,
@@ -1097,6 +1111,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         AgentWebCase::AcpCommerceProjection
             | AgentWebCase::AcpCommerceOrderContextDigestMismatch
             | AgentWebCase::AcpCommerceReceiptRefMismatch
+            | AgentWebCase::AcpCommerceRefunded
     ) {
         push_artifact(
             &mut builder.artifacts,
@@ -1115,6 +1130,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
             | AgentWebCase::X402AssetMismatch
             | AgentWebCase::X402DetachedOrder
             | AgentWebCase::X402ReceiptRefMismatch
+            | AgentWebCase::X402Refunded
     ) {
         push_artifact(
             &mut builder.artifacts,

@@ -522,6 +522,18 @@ fn agent_web_interop_rejects_acp_commerce_unbound_checkout_receipt() {
 }
 
 #[test]
+fn agent_web_interop_rejects_refunded_acp_commerce_payment() {
+    let bundle = agent_web_bundle(AgentWebCase::AcpCommerceRefunded);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("refunded ACP-Commerce payments must not verify");
+
+    assert!(error
+        .to_string()
+        .contains("ACP-Commerce payment was refunded"));
+}
+
+#[test]
 fn agent_web_interop_accepts_ag_ui_projection() {
     let bundle = agent_web_bundle(AgentWebCase::AgUiProjection);
 
@@ -534,6 +546,16 @@ fn agent_web_interop_accepts_ag_ui_projection() {
     assert!(report
         .unsupported_claims
         .contains(&UNSUPPORTED_AG_UI_AUTHORITY_CLAIM.to_string()));
+}
+
+#[test]
+fn agent_web_interop_rejects_denied_ag_ui_event() {
+    let bundle = agent_web_bundle(AgentWebCase::AgUiDenied);
+
+    let error =
+        verify_agent_web_interop(&bundle).test_expect_err("denied AG-UI events must not verify");
+
+    assert!(error.to_string().contains("AG-UI event was not allowed"));
 }
 
 #[test]
