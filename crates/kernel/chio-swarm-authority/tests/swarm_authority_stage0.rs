@@ -56,6 +56,36 @@ fn swarm_authority_stage0_verifies_valid_bundle() -> Result<(), Box<dyn Error>> 
 }
 
 #[test]
+fn swarm_authority_stage0_omits_delegation_claims_without_delegation_evidence(
+) -> Result<(), Box<dyn Error>> {
+    let bundle = root_only_swarm_bundle()?;
+    let report = verify_swarm_authority_bundle(&bundle)?;
+
+    assert!(report
+        .verified_claims
+        .contains(&CLAIM_SWARM_TASK_GRAPH_BOUND.to_string()));
+    assert!(report
+        .verified_claims
+        .contains(&CLAIM_SWARM_BUDGET_POOL_BOUND.to_string()));
+    assert!(report
+        .verified_claims
+        .contains(&CLAIM_SWARM_REVOCATION_EPOCH_BOUND.to_string()));
+    assert!(!report
+        .verified_claims
+        .contains(&CLAIM_SWARM_CONTINUATION_FRESH.to_string()));
+    assert!(!report
+        .verified_claims
+        .contains(&CLAIM_SWARM_ATTENUATION_WITNESS_CHAIN_BOUND.to_string()));
+    assert!(!report
+        .verified_claims
+        .contains(&CLAIM_SWARM_ROUTE_PLAN_BOUND.to_string()));
+    assert!(!report
+        .verified_claims
+        .contains(&CLAIM_SWARM_JOIN_RECEIPT_BOUND.to_string()));
+    Ok(())
+}
+
+#[test]
 fn swarm_authority_stage0_rejects_graph_cycle() -> Result<(), Box<dyn Error>> {
     let mut bundle = sample_swarm_bundle()?;
     bundle.task_graph.edges.push(SwarmGraphEdge {
@@ -728,6 +758,59 @@ fn sample_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
             schema: CHIO_SWARM_REVOCATION_EPOCH_SCHEMA.to_string(),
             epoch_id: "revocation-epoch-swarm-valid".to_string(),
             root_hash: sha256_hex(b"revocation-root"),
+            issued_at_unix_ms: NOW_UNIX_MS - 1_000,
+            valid_until_unix_ms: NOW_UNIX_MS + 60_000,
+            revoked_subjects: Vec::new(),
+            revoked_task_ids: Vec::new(),
+        },
+        now_unix_ms: NOW_UNIX_MS,
+    })
+}
+
+fn root_only_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
+    let root_scope_hash = scope_hash(&scope_for("commerce", "reserve_budget", 1))?;
+    Ok(SwarmAuthorityBundle {
+        task_graph: SwarmTaskGraph {
+            schema: CHIO_SWARM_TASK_GRAPH_SCHEMA.to_string(),
+            graph_id: "swarm-graph-root-only".to_string(),
+            root_transaction_ref: "passport-swarm-root-only".to_string(),
+            planner_subject: "did:chio:planner".to_string(),
+            issuer: "did:chio:authority".to_string(),
+            created_at_unix_ms: NOW_UNIX_MS - 1_000,
+            expires_at_unix_ms: NOW_UNIX_MS + 60_000,
+            max_depth: 1,
+            max_fanout: 1,
+            nodes: vec![SwarmGraphNode {
+                task_id: "task-root".to_string(),
+                parent_task_id: None,
+                route_plan_ref: None,
+                continuation_token_ref: None,
+                budget_allocation_ref: None,
+                scope_hash: root_scope_hash,
+                depth: 0,
+            }],
+            edges: Vec::new(),
+            joins: Vec::new(),
+            budget_pool_ref: "budget-pool-swarm-root-only".to_string(),
+            revocation_epoch_ref: "revocation-epoch-swarm-root-only".to_string(),
+            route_plan_refs: Vec::new(),
+        },
+        continuation_tokens: Vec::new(),
+        witness_chains: Vec::new(),
+        join_receipts: Vec::new(),
+        route_plan_receipts: Vec::new(),
+        budget_pool: SwarmBudgetPool {
+            schema: CHIO_SWARM_BUDGET_POOL_SCHEMA.to_string(),
+            pool_id: "budget-pool-swarm-root-only".to_string(),
+            graph_id: "swarm-graph-root-only".to_string(),
+            currency: "USD".to_string(),
+            total_units: 0,
+            allocations: Vec::new(),
+        },
+        revocation_epoch: SwarmRevocationEpoch {
+            schema: CHIO_SWARM_REVOCATION_EPOCH_SCHEMA.to_string(),
+            epoch_id: "revocation-epoch-swarm-root-only".to_string(),
+            root_hash: sha256_hex(b"revocation-root-only"),
             issued_at_unix_ms: NOW_UNIX_MS - 1_000,
             valid_until_unix_ms: NOW_UNIX_MS + 60_000,
             revoked_subjects: Vec::new(),

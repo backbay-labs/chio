@@ -45,6 +45,22 @@ pub fn verify_swarm_authority_bundle(
     )?;
     validate_witness_chains(bundle, &task_by_id, &edge_set)?;
 
+    let mut verified_claims = vec![CLAIM_SWARM_TASK_GRAPH_BOUND.to_string()];
+    if !bundle.continuation_tokens.is_empty() {
+        verified_claims.push(CLAIM_SWARM_CONTINUATION_FRESH.to_string());
+    }
+    if !bundle.witness_chains.is_empty() {
+        verified_claims.push(CLAIM_SWARM_ATTENUATION_WITNESS_CHAIN_BOUND.to_string());
+    }
+    if !bundle.route_plan_receipts.is_empty() {
+        verified_claims.push(CLAIM_SWARM_ROUTE_PLAN_BOUND.to_string());
+    }
+    if !bundle.join_receipts.is_empty() {
+        verified_claims.push(CLAIM_SWARM_JOIN_RECEIPT_BOUND.to_string());
+    }
+    verified_claims.push(CLAIM_SWARM_BUDGET_POOL_BOUND.to_string());
+    verified_claims.push(CLAIM_SWARM_REVOCATION_EPOCH_BOUND.to_string());
+
     Ok(SwarmAuthorityVerifierReport {
         schema: CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA.to_string(),
         id: format!(
@@ -57,15 +73,7 @@ pub fn verify_swarm_authority_bundle(
         continuation_count: bundle.continuation_tokens.len(),
         join_count: bundle.join_receipts.len(),
         route_count: bundle.route_plan_receipts.len(),
-        verified_claims: vec![
-            CLAIM_SWARM_TASK_GRAPH_BOUND.to_string(),
-            CLAIM_SWARM_CONTINUATION_FRESH.to_string(),
-            CLAIM_SWARM_ATTENUATION_WITNESS_CHAIN_BOUND.to_string(),
-            CLAIM_SWARM_ROUTE_PLAN_BOUND.to_string(),
-            CLAIM_SWARM_JOIN_RECEIPT_BOUND.to_string(),
-            CLAIM_SWARM_BUDGET_POOL_BOUND.to_string(),
-            CLAIM_SWARM_REVOCATION_EPOCH_BOUND.to_string(),
-        ],
+        verified_claims,
     })
 }
 
