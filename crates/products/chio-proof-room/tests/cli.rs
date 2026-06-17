@@ -10,6 +10,10 @@ const PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS: &str = concat!(
     "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,",
     "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"
 );
+const PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS: &str = concat!(
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
+    "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a"
+);
 
 #[test]
 fn proof_room_help_succeeds() -> Result<(), Box<dyn Error>> {
@@ -45,6 +49,10 @@ fn proof_room_verify_only_writes_doctor_report() -> Result<(), Box<dyn Error>> {
         .env(
             "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS",
             PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
+        )
+        .env(
+            "CHIO_PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS",
+            PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS,
         )
         .args([
             "--bundle",

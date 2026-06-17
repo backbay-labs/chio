@@ -15,6 +15,9 @@ pub(crate) const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str =
     "application/vnd.chio.proof-room.bundle.v1+json";
 pub(crate) const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
 pub(crate) const COLLECT_SIGNATURE_SEED: [u8; 32] = [11; 32];
+pub(crate) const PUBLIC_EXPORT_SIGNATURE_SEED: [u8; 32] = [13; 32];
+const PUBLIC_EXPORT_SIGNATURE_SEED_HEX: &str =
+    "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d";
 pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
     "chio-agent-web-standard-webhooks-fixture-secret-v1";
 pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
@@ -27,6 +30,10 @@ pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
 pub(crate) const PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS: &str = concat!(
     "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,",
     "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"
+);
+pub(crate) const PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS: &str = concat!(
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
+    "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a"
 );
 const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 pub(crate) const PROOF_SERVE_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
@@ -61,7 +68,30 @@ pub(crate) fn chio_command() -> std::process::Command {
         "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS",
         PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
     );
+    command.env(
+        "CHIO_PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS",
+        proof_room_fixture_trusted_bundle_signer_keys(),
+    );
+    command.env(
+        "CHIO_PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX",
+        PUBLIC_EXPORT_SIGNATURE_SEED_HEX,
+    );
     command
+}
+
+pub(crate) fn proof_room_fixture_trusted_bundle_signer_keys() -> String {
+    let test_bundle_signer = Keypair::from_seed(&TEST_SIGNATURE_SEED)
+        .public_key()
+        .to_hex();
+    let collect_bundle_signer = Keypair::from_seed(&COLLECT_SIGNATURE_SEED)
+        .public_key()
+        .to_hex();
+    let public_export_bundle_signer = Keypair::from_seed(&PUBLIC_EXPORT_SIGNATURE_SEED)
+        .public_key()
+        .to_hex();
+    format!(
+        "{PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS},{test_bundle_signer},{collect_bundle_signer},{public_export_bundle_signer}"
+    )
 }
 
 pub(crate) fn stdout(output: std::process::Output) -> String {

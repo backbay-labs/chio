@@ -745,17 +745,19 @@ pub(crate) fn verify_bundle_signature(
     if detached.signatures.is_empty() {
         return Err("proof-room.signature.signatures-missing".to_string());
     }
-    let trusted_signer_keys = trusted_bundle_signer_keys(bundle_root, manifest)?;
+    let declared_signer_keys = trusted_bundle_signer_keys(bundle_root, manifest)?;
+    let trusted_signer_keys = proof_room_trusted_bundle_signer_keys_from_env()?;
     let signing_payload = dsse_pre_auth_encoding(&detached.payload_type, manifest_bytes);
     for entry in &detached.signatures {
         if entry.keyid.is_empty() || entry.sig.is_empty() {
             return Err("proof-room.signature.field-missing".to_string());
         }
-        if !trusted_signer_keys.contains(&entry.keyid) {
-            return Err("proof-room.signature.signer-untrusted".to_string());
-        }
         let public_key = PublicKey::from_hex(&entry.keyid)
             .map_err(|error| format!("proof-room.signature.key-invalid: {error}"))?;
+        let key_id = public_key.to_hex();
+        if !declared_signer_keys.contains(&key_id) || !trusted_signer_keys.contains(&key_id) {
+            return Err("proof-room.signature.signer-untrusted".to_string());
+        }
         let signature = Signature::from_hex(&entry.sig)
             .map_err(|error| format!("proof-room.signature.signature-invalid: {error}"))?;
         if !public_key.verify(&signing_payload, &signature) {
@@ -796,7 +798,9 @@ pub(crate) fn trusted_bundle_signer_keys(
         if root.key_digest != sha256_hex(root.key_id.as_bytes()) {
             return Err("proof-room.signature.trust-root-digest-mismatch".to_string());
         }
-        trusted.insert(root.key_id);
+        let public_key = PublicKey::from_hex(&root.key_id)
+            .map_err(|error| format!("proof-room.signature.trust-root-key-invalid: {error}"))?;
+        trusted.insert(public_key.to_hex());
     }
     Ok(trusted)
 }

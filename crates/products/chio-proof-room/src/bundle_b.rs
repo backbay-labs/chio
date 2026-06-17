@@ -312,24 +312,37 @@ pub(crate) fn default_base_manifest() -> String {
     "manifest.json".to_string()
 }
 
+static NEGATIVE_CASE_TEMP_COUNTER: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
 pub(crate) fn create_negative_case_work_dir(case_id: &str) -> Result<PathBuf, String> {
+    let case_id = sanitize_temp_path_component(case_id);
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| format!("proof-room.negative-case.clock: {error}"))?
         .as_nanos();
-    let mut path = env::temp_dir();
-    path.push(format!(
-        "chio-proof-room-negative-{}-{timestamp}-{}",
-        process::id(),
-        sanitize_temp_path_component(case_id)
-    ));
-    fs::create_dir(&path).map_err(|error| {
-        format!(
-            "proof-room.negative-case.tempdir: {}: {error}",
-            path.display()
-        )
-    })?;
-    Ok(path)
+    for _ in 0..1024 {
+        let sequence =
+            NEGATIVE_CASE_TEMP_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let mut path = env::temp_dir();
+        path.push(format!(
+            "chio-proof-room-negative-{}-{timestamp}-{sequence}-{case_id}",
+            process::id()
+        ));
+        match fs::create_dir(&path) {
+            Ok(()) => return Ok(path),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "proof-room.negative-case.tempdir: {}: {error}",
+                    path.display()
+                ));
+            }
+        }
+    }
+    Err(format!(
+        "proof-room.negative-case.tempdir: exhausted unique path attempts for {case_id}"
+    ))
 }
 
 pub(crate) fn sanitize_temp_path_component(value: &str) -> String {

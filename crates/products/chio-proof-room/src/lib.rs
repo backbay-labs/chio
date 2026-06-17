@@ -128,6 +128,8 @@ const AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV: &str = "CHIO_AGENT_WEB_STANDARD_WE
 const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS";
 const PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV: &str =
     "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS";
+const PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS_ENV: &str =
+    "CHIO_PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS";
 const SOURCE_VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_RUNTIME,
     CLAIM_PREFIX_RISK,
@@ -193,21 +195,27 @@ fn parse_agent_web_trusted_kernel_keys(
         .collect()
 }
 
+pub(crate) fn proof_room_trusted_bundle_signer_keys_from_env() -> Result<BTreeSet<String>, String> {
+    proof_room_public_key_set_from_env(PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS_ENV)
+}
+
 pub(crate) fn proof_room_trusted_receipt_kernel_keys_from_env() -> Result<BTreeSet<String>, String>
 {
-    match env::var(PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV) {
-        Ok(keys) => parse_proof_room_trusted_receipt_kernel_keys(&keys),
+    proof_room_public_key_set_from_env(PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV)
+}
+
+fn proof_room_public_key_set_from_env(env_name: &str) -> Result<BTreeSet<String>, String> {
+    match env::var(env_name) {
+        Ok(keys) => parse_proof_room_public_key_set(env_name, &keys),
         Err(env::VarError::NotPresent) => Ok(BTreeSet::new()),
-        Err(env::VarError::NotUnicode(_)) => Err(format!(
-            "{PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV} must be valid UTF-8"
-        )),
+        Err(env::VarError::NotUnicode(_)) => Err(format!("{env_name} must be valid UTF-8")),
     }
 }
 
-fn parse_proof_room_trusted_receipt_kernel_keys(keys: &str) -> Result<BTreeSet<String>, String> {
+fn parse_proof_room_public_key_set(env_name: &str, keys: &str) -> Result<BTreeSet<String>, String> {
     if keys.trim().is_empty() {
         return Err(format!(
-            "{PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV} must contain comma-separated public keys"
+            "{env_name} must contain comma-separated public keys"
         ));
     }
 
@@ -215,17 +223,11 @@ fn parse_proof_room_trusted_receipt_kernel_keys(keys: &str) -> Result<BTreeSet<S
         .map(|key| {
             let key = key.trim();
             if key.is_empty() {
-                return Err(format!(
-                    "{PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV} must not contain empty public keys"
-                ));
+                return Err(format!("{env_name} must not contain empty public keys"));
             }
             chio_core_types::PublicKey::from_hex(key)
                 .map(|key| key.to_hex())
-                .map_err(|error| {
-                    format!(
-                        "{PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV} contains invalid public key: {error}"
-                    )
-                })
+                .map_err(|error| format!("{env_name} contains invalid public key: {error}"))
         })
         .collect()
 }

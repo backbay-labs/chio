@@ -800,6 +800,50 @@ fn rejects_detached_signature_from_untrusted_key() -> Result<(), Box<dyn Error>>
 }
 
 #[test]
+fn rejects_detached_signature_trusted_only_by_bundle_supplied_roots() -> Result<(), Box<dyn Error>>
+{
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let attacker_keypair = Keypair::from_seed(&[8; 32]);
+    let attacker_key_id = attacker_keypair.public_key().to_hex();
+    let trust_roots_path = work.path().join("artifacts/authority/trust-roots.json");
+    let mut trust_roots: serde_json::Value = serde_json::from_slice(&fs::read(&trust_roots_path)?)?;
+    let root = trust_roots["roots"]
+        .as_array_mut()
+        .and_then(|roots| roots.first_mut())
+        .ok_or("trust roots missing")?;
+    root["key_id"] = serde_json::Value::String(attacker_key_id.clone());
+    root["key_digest"] = serde_json::Value::String(sha256_hex(attacker_key_id.as_bytes()));
+    fs::write(&trust_roots_path, json_bytes(&trust_roots)?)?;
+    let trust_roots_sha256 = sha256_file(&trust_roots_path)?;
+    update_evidence_graph_node_hash(
+        work.path(),
+        "artifacts/authority/trust-roots.json",
+        &trust_roots_sha256,
+    )?;
+    refresh_source_roots_and_manifest(
+        work.path(),
+        Some(("artifacts/authority/trust-roots.json", trust_roots_sha256)),
+    )?;
+    sign_bundle_signature_with_key(work.path(), &attacker_keypair)?;
+
+    let error = verify_proof_room_bundle(&work.path().join("manifest.json"))
+        .err()
+        .ok_or("bundle-supplied trust root unexpectedly verified")?;
+
+    assert!(
+        error
+            .to_string()
+            .contains("proof-room.signature.signer-untrusted"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn rejects_detached_signature_without_trust_roots() -> Result<(), Box<dyn Error>> {
     let root = repo_root()?;
     let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");

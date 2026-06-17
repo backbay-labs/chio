@@ -7,6 +7,8 @@ const PROOF_ROOM_EVIDENCE_GRAPH_PATH: &str = "roots/evidence-graph.json";
 const PROOF_ROOM_TRANSACTION_PASSPORT_PATH: &str = "roots/transaction-passport.json";
 const PROOF_ROOM_VERIFIER_REPORT_PATH: &str = "verifier/report.json";
 const PROOF_ROOM_UI_REPORT_PATH: &str = "ui/proof-room-static/load-report.json";
+const PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX_ENV: &str =
+    "CHIO_PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX";
 
 pub(super) fn export_proof_bundle(
     bundle: &Path,
@@ -313,7 +315,7 @@ fn prepare_public_bundle_export_signer(
         return Ok(None);
     }
 
-    let keypair = chio_core::Keypair::generate();
+    let keypair = proof_export_bundle_signer_from_env()?;
     if !manifest_artifact_path_exists(manifest, PROOF_ROOM_TRUST_ROOTS_PATH) {
         return Ok(Some(keypair));
     }
@@ -356,6 +358,30 @@ fn prepare_public_bundle_export_signer(
     }
 
     Ok(Some(keypair))
+}
+
+fn proof_export_bundle_signer_from_env() -> Result<chio_core::Keypair, CliError> {
+    match std::env::var(PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX_ENV) {
+        Ok(seed_hex) => {
+            let seed_hex = seed_hex.trim();
+            if seed_hex.is_empty() {
+                return Err(CliError::cli_other_error(format!(
+                    "{PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX_ENV} must contain a 32-byte hex seed"
+                )));
+            }
+            chio_core::Keypair::from_seed_hex(seed_hex).map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "{PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX_ENV} is invalid: {error}"
+                ))
+            })
+        }
+        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
+            "public proof export requires {PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX_ENV} to sign the redacted bundle manifest"
+        ))),
+        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
+            "{PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX_ENV} must be valid UTF-8"
+        ))),
+    }
 }
 
 fn manifest_artifact_path_exists(manifest: &serde_json::Value, path: &str) -> bool {

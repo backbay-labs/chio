@@ -82,6 +82,33 @@ fn proof_export_public_redaction_excludes_unmanifested_internal_files() {
 }
 
 #[test]
+fn proof_export_public_redaction_requires_configured_signer() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let bundle = proof_room_bundle_fixture();
+    let output_file = tempdir.path().join("proof-room-public.tgz");
+    let mut command = chio_command();
+    let output = command
+        .env_remove("CHIO_PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX")
+        .args([
+            "proof",
+            "export",
+            utf8_path(&bundle).as_str(),
+            "--out",
+            utf8_path(&output_file).as_str(),
+            "--redact",
+            "public",
+        ])
+        .output()
+        .test_expect("proof export runs");
+
+    assert_failure(
+        &output,
+        "public proof export requires CHIO_PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX",
+    );
+    assert!(!output_file.exists());
+}
+
+#[test]
 fn proof_export_public_redaction_excludes_manifested_internal_artifacts() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let source = proof_room_bundle_fixture();
