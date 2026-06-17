@@ -426,6 +426,102 @@ fn proof_verify_requires_documented_claim_families_when_requested() {
 }
 
 #[test]
+fn proof_verify_accepts_root_only_swarm_without_optional_evidence() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/swarm-authority/valid-recursive-delegation");
+    let bundle = tempdir.path().join("root-only-swarm");
+    copy_dir_all(&source, &bundle).test_expect("copy swarm bundle");
+
+    let task_graph_path = bundle.join("task-graph.json");
+    let mut task_graph: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&task_graph_path).test_expect("read task graph"))
+            .test_expect("task graph parses");
+    let root_node = task_graph["nodes"][0].clone();
+    task_graph["nodes"] = serde_json::json!([root_node]);
+    task_graph["edges"] = serde_json::json!([]);
+    task_graph["joins"] = serde_json::json!([]);
+    task_graph["routePlanRefs"] = serde_json::json!([]);
+    write_json(&task_graph_path, &task_graph);
+
+    let budget_pool_path = bundle.join("budget-pool.json");
+    let mut budget_pool: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&budget_pool_path).test_expect("read budget pool"))
+            .test_expect("budget pool parses");
+    budget_pool["allocations"] = serde_json::json!([]);
+    write_json(&budget_pool_path, &budget_pool);
+
+    let verifier_policy_path = bundle.join("verifier-policy.json");
+    let mut verifier_policy: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&verifier_policy_path).test_expect("read verifier policy"),
+    )
+    .test_expect("verifier policy parses");
+    verifier_policy["required_claims"] = serde_json::json!([
+        "claim.swarm.task_graph_bound",
+        "claim.swarm.budget_pool_bound",
+        "claim.swarm.revocation_epoch_bound"
+    ]);
+    write_json(&verifier_policy_path, &verifier_policy);
+
+    let evidence_graph_path = bundle.join("evidence-graph.json");
+    let mut evidence_graph: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
+    )
+    .test_expect("evidence graph parses");
+    let nodes = evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("evidence graph nodes array");
+    nodes.retain(|node| {
+        node.get("role")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|role| {
+                matches!(
+                    role,
+                    "swarm-task-graph"
+                        | "swarm-budget-pool"
+                        | "swarm-revocation-epoch"
+                        | "verifier-policy"
+                )
+            })
+    });
+    for node in nodes {
+        let Some(path) = node.get("path").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        node["sha256"] = serde_json::Value::String(sha256_file(&bundle.join(path)));
+    }
+    write_json(&evidence_graph_path, &evidence_graph);
+
+    let passport_path = bundle.join("transaction-passport.json");
+    let mut passport: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+            .test_expect("passport parses");
+    passport["evidence_graph_sha256"] =
+        serde_json::Value::String(sha256_file(&evidence_graph_path));
+    passport["verifier_policy_sha256"] =
+        serde_json::Value::String(sha256_file(&verifier_policy_path));
+    write_json(&passport_path, &passport);
+
+    let output = chio(&[
+        "proof",
+        "verify",
+        utf8_path(&bundle).as_str(),
+        "--require",
+        "delegation",
+    ]);
+
+    assert_success(&output);
+    let stdout = stdout(output);
+    assert!(stdout.contains("\"claim.swarm.task_graph_bound\""));
+    assert!(stdout.contains("\"claim.swarm.budget_pool_bound\""));
+    assert!(stdout.contains("\"claim.swarm.revocation_epoch_bound\""));
+    assert!(!stdout.contains("\"claim.swarm.continuation_fresh\""));
+    assert!(!stdout.contains("\"claim.swarm.attenuation_witness_chain_bound\""));
+    assert!(!stdout.contains("\"claim.swarm.route_plan_bound\""));
+    assert!(!stdout.contains("\"claim.swarm.join_receipt_bound\""));
+}
+
+#[test]
 fn proof_verify_runtime_parity_requires_explicit_parity_evidence() {
     let runtime_bundle =
         workspace_root().join("fixtures/proof-room/runtime-security/valid-side-effecting-call");

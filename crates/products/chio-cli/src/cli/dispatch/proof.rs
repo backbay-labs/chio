@@ -1234,7 +1234,7 @@ fn load_optional_graph_json_artifact<T: for<'de> serde::Deserialize<'de>>(
     }
 }
 
-fn load_required_graph_json_artifacts<T: for<'de> serde::Deserialize<'de>>(
+fn load_optional_graph_json_artifacts<T: for<'de> serde::Deserialize<'de>>(
     bundle_dir: &Path,
     nodes: &[GraphArtifactNode],
     role: &str,
@@ -1249,11 +1249,6 @@ fn load_required_graph_json_artifacts<T: for<'de> serde::Deserialize<'de>>(
             expected_schema,
             label,
         )?);
-    }
-    if artifacts.is_empty() {
-        return Err(CliError::cli_other_error(format!(
-            "proof verify: missing {label} artifact role: {role}",
-        )));
     }
     Ok(artifacts)
 }
@@ -1526,7 +1521,7 @@ fn load_swarm_authority_bundle_from_graph(
             "swarm",
         )?;
     let continuation_tokens: Vec<chio_swarm_authority::SwarmContinuationToken> =
-        load_required_graph_json_artifacts(
+        load_optional_graph_json_artifacts(
             bundle_dir,
             &graph.nodes,
             "swarm-continuation-token",
@@ -1534,7 +1529,7 @@ fn load_swarm_authority_bundle_from_graph(
             "swarm",
         )?;
     let witness_chains: Vec<chio_swarm_authority::SwarmDelegationWitnessChain> =
-        load_required_graph_json_artifacts(
+        load_optional_graph_json_artifacts(
             bundle_dir,
             &graph.nodes,
             "swarm-delegation-witness-chain",
@@ -1542,7 +1537,7 @@ fn load_swarm_authority_bundle_from_graph(
             "swarm",
         )?;
     let join_receipts: Vec<chio_swarm_authority::SwarmJoinReceipt> =
-        load_required_graph_json_artifacts(
+        load_optional_graph_json_artifacts(
             bundle_dir,
             &graph.nodes,
             "swarm-join-receipt",
@@ -1550,7 +1545,7 @@ fn load_swarm_authority_bundle_from_graph(
             "swarm",
         )?;
     let route_plan_receipts: Vec<chio_swarm_authority::SwarmRoutePlanReceipt> =
-        load_required_graph_json_artifacts(
+        load_optional_graph_json_artifacts(
             bundle_dir,
             &graph.nodes,
             "swarm-route-plan-receipt",
