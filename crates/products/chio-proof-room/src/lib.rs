@@ -125,6 +125,7 @@ const CLAIM_PREFIX_COMMERCE: &str = "claim.commerce.";
 const CLAIM_PREFIX_TRANSACTION: &str = "claim.transaction.";
 const CLAIM_PREFIX_MARKET: &str = "claim.market.";
 const AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV: &str = "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET";
+const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS";
 const SOURCE_VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_RUNTIME,
     CLAIM_PREFIX_RISK,
@@ -141,14 +142,53 @@ const SOURCE_VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
 
 pub(crate) fn agent_web_verifier_trust_from_env(
 ) -> Result<chio_agent_web_interop::AgentWebVerifierTrust, String> {
-    match env::var(AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV) {
-        Ok(secret) => Ok(chio_agent_web_interop::AgentWebVerifierTrust::new()
-            .with_standard_webhooks_secret(secret.into_bytes())),
-        Err(env::VarError::NotPresent) => Ok(chio_agent_web_interop::AgentWebVerifierTrust::new()),
-        Err(env::VarError::NotUnicode(_)) => Err(format!(
-            "{AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV} must be valid UTF-8"
-        )),
+    let mut trust = match env::var(AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV) {
+        Ok(secret) => chio_agent_web_interop::AgentWebVerifierTrust::new()
+            .with_standard_webhooks_secret(secret.into_bytes()),
+        Err(env::VarError::NotPresent) => chio_agent_web_interop::AgentWebVerifierTrust::new(),
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err(format!(
+                "{AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV} must be valid UTF-8"
+            ))
+        }
+    };
+    match env::var(AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV) {
+        Ok(keys) => {
+            trust =
+                trust.with_trusted_receipt_kernel_keys(parse_agent_web_trusted_kernel_keys(&keys)?);
+        }
+        Err(env::VarError::NotPresent) => {}
+        Err(env::VarError::NotUnicode(_)) => {
+            return Err(format!(
+                "{AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV} must be valid UTF-8"
+            ))
+        }
     }
+    Ok(trust)
+}
+
+fn parse_agent_web_trusted_kernel_keys(
+    keys: &str,
+) -> Result<Vec<chio_core_types::PublicKey>, String> {
+    if keys.trim().is_empty() {
+        return Err(format!(
+            "{AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV} must contain comma-separated public keys"
+        ));
+    }
+
+    keys.split(',')
+        .map(|key| {
+            let key = key.trim();
+            if key.is_empty() {
+                return Err(format!(
+                    "{AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV} must not contain empty public keys"
+                ));
+            }
+            chio_core_types::PublicKey::from_hex(key).map_err(|error| {
+                format!("{AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV} contains invalid public key: {error}")
+            })
+        })
+        .collect()
 }
 const ENTERPRISE_APPROVAL_CASE_SCHEMA: &str = "chio.enterprise.approval-case.v1";
 const ENTERPRISE_CONTROL_EVIDENCE_MAP_SCHEMA: &str = "chio.enterprise.control-evidence-map.v1";

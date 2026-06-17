@@ -21,6 +21,7 @@ const CLAIM_PREFIX_COMMERCE: &str = "claim.commerce.";
 const CLAIM_PREFIX_TRANSACTION: &str = "claim.transaction.";
 const CLAIM_PREFIX_MARKET: &str = "claim.market.";
 const AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV: &str = "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET";
+const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS";
 const VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_RUNTIME,
     CLAIM_PREFIX_RISK,
@@ -37,18 +38,53 @@ const VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
 
 fn agent_web_verifier_trust_from_env(
 ) -> Result<chio_control_plane::agent_web::AgentWebVerifierTrust, CliError> {
-    match std::env::var(AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV) {
-        Ok(secret) => Ok(
-            chio_control_plane::agent_web::AgentWebVerifierTrust::new()
-                .with_standard_webhooks_secret(secret.into_bytes()),
-        ),
+    let mut trust = match std::env::var(AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV) {
+        Ok(secret) => chio_control_plane::agent_web::AgentWebVerifierTrust::new()
+            .with_standard_webhooks_secret(secret.into_bytes()),
         Err(std::env::VarError::NotPresent) => {
-            Ok(chio_control_plane::agent_web::AgentWebVerifierTrust::new())
+            chio_control_plane::agent_web::AgentWebVerifierTrust::new()
         }
-        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
+        Err(std::env::VarError::NotUnicode(_)) => return Err(CliError::cli_other_error(format!(
             "{AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV} must be valid UTF-8"
         ))),
+    };
+    match std::env::var(AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV) {
+        Ok(keys) => {
+            trust =
+                trust.with_trusted_receipt_kernel_keys(parse_agent_web_trusted_kernel_keys(&keys)?);
+        }
+        Err(std::env::VarError::NotPresent) => {}
+        Err(std::env::VarError::NotUnicode(_)) => return Err(CliError::cli_other_error(format!(
+            "{AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV} must be valid UTF-8"
+        ))),
     }
+    Ok(trust)
+}
+
+fn parse_agent_web_trusted_kernel_keys(
+    keys: &str,
+) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
+    if keys.trim().is_empty() {
+        return Err(CliError::cli_other_error(format!(
+            "{AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV} must contain comma-separated public keys"
+        )));
+    }
+
+    keys.split(',')
+        .map(|key| {
+            let key = key.trim();
+            if key.is_empty() {
+                return Err(CliError::cli_other_error(format!(
+                    "{AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV} must not contain empty public keys"
+                )));
+            }
+            chio_core_types::PublicKey::from_hex(key).map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "{AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV} contains invalid public key: {error}"
+                ))
+            })
+        })
+        .collect()
 }
 
 #[derive(Clone, Copy)]

@@ -17,6 +17,13 @@ pub(crate) const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
 pub(crate) const COLLECT_SIGNATURE_SEED: [u8; 32] = [11; 32];
 pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
     "chio-agent-web-standard-webhooks-fixture-secret-v1";
+pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
+    "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de,",
+    "4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff,",
+    "bed7d2ab668da3efad613998f06f7abf7875f3a6b7677a9f3ce947d77d7760a6,",
+    "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737,",
+    "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565"
+);
 const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 pub(crate) const PROOF_SERVE_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -34,6 +41,10 @@ pub(crate) fn chio(args: &[&str]) -> std::process::Output {
         .env(
             "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
             STANDARD_WEBHOOKS_VERIFIER_SECRET,
+        )
+        .env(
+            "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
+            AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
         )
         .args(args)
         .output()
@@ -173,6 +184,10 @@ pub(crate) fn spawn_proof_serve(bundle: &Path, ui_dir: Option<&Path>) -> Running
     command.env(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
         STANDARD_WEBHOOKS_VERIFIER_SECRET,
+    );
+    command.env(
+        "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
+        AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
     );
     if let Some(ui_dir) = ui_dir {
         command.env("CHIO_PROOF_ROOM_UI_DIR", ui_dir);

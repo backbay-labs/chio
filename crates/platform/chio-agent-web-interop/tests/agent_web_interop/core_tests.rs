@@ -118,6 +118,23 @@ fn agent_web_interop_rejects_standard_webhooks_without_configured_secret() {
 }
 
 #[test]
+fn agent_web_interop_rejects_receipts_without_trusted_kernel_key() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let trust = chio_agent_web_interop::AgentWebVerifierTrust::new()
+        .with_standard_webhooks_secret_for(
+            STANDARD_WEBHOOKS_WEBHOOK_ID,
+            STANDARD_WEBHOOKS_VERIFIER_SECRET.to_vec(),
+        );
+
+    let error = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+        .test_expect_err("Agent Web receipt signer must be verifier-trusted");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web receipt kernel key untrusted"));
+}
+
+#[test]
 fn agent_web_interop_rejects_external_digest_mismatch() {
     let bundle = agent_web_bundle(AgentWebCase::ExternalDigestMismatch);
 

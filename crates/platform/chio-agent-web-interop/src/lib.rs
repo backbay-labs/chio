@@ -3,10 +3,13 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use chio_commerce_order::CommerceOrderContext;
-use chio_core_types::receipt::{
-    body::ChioReceipt,
-    decision::Decision,
-    kinds::{ReceiptKind, TrustLevel},
+use chio_core_types::{
+    receipt::{
+        body::ChioReceipt,
+        decision::Decision,
+        kinds::{ReceiptKind, TrustLevel},
+    },
+    PublicKey,
 };
 use chio_transaction_passport::{
     verify_minimal_passport_artifacts, TransactionPassport, TransactionPassportError,
@@ -44,6 +47,7 @@ pub struct AgentWebInteropBundle {
 pub struct AgentWebVerifierTrust {
     default_standard_webhooks_secret: Option<Vec<u8>>,
     standard_webhooks_secrets: BTreeMap<String, Vec<u8>>,
+    trusted_receipt_kernel_keys: Vec<PublicKey>,
 }
 
 impl AgentWebVerifierTrust {
@@ -66,6 +70,14 @@ impl AgentWebVerifierTrust {
         self
     }
 
+    pub fn with_trusted_receipt_kernel_keys(
+        mut self,
+        keys: impl IntoIterator<Item = PublicKey>,
+    ) -> Self {
+        self.trusted_receipt_kernel_keys.extend(keys);
+        self
+    }
+
     pub(crate) fn standard_webhooks_secret(&self, webhook_id: &str) -> Option<&[u8]> {
         let secret = self
             .standard_webhooks_secrets
@@ -76,6 +88,12 @@ impl AgentWebVerifierTrust {
         } else {
             Some(secret.as_slice())
         }
+    }
+
+    fn trusts_receipt_kernel_key(&self, key: &PublicKey) -> bool {
+        self.trusted_receipt_kernel_keys
+            .iter()
+            .any(|trusted_key| trusted_key == key)
     }
 }
 
@@ -216,6 +234,7 @@ pub fn verify_agent_web_interop_with_trust(
         validate_receipt_refs(
             &graph,
             bundle,
+            trust,
             &envelope_node.id,
             &envelope,
             &bundle.passport.verifier_policy_sha256,
@@ -278,6 +297,7 @@ pub fn verify_agent_web_interop_with_trust(
 fn validate_receipt_refs(
     graph: &evidence::AgentWebEvidenceGraph,
     bundle: &AgentWebInteropBundle,
+    trust: &AgentWebVerifierTrust,
     envelope_node_id: &str,
     envelope: &AgentWebProofEnvelope,
     verifier_policy_sha256: &str,
@@ -294,7 +314,13 @@ fn validate_receipt_refs(
             "missing Agent Web receipt binding edge",
         )?;
         let receipt_bytes = raw_artifact_bytes(bundle, receipt_node)?;
-        validate_agent_web_receipt(receipt_bytes, receipt_ref, envelope, verifier_policy_sha256)?;
+        validate_agent_web_receipt(
+            receipt_bytes,
+            receipt_ref,
+            envelope,
+            verifier_policy_sha256,
+            trust,
+        )?;
     }
     Ok(())
 }
@@ -304,6 +330,7 @@ fn validate_agent_web_receipt(
     receipt_ref: &str,
     envelope: &AgentWebProofEnvelope,
     verifier_policy_sha256: &str,
+    trust: &AgentWebVerifierTrust,
 ) -> Result<(), TransactionPassportError> {
     let receipt: ChioReceipt = serde_json::from_slice(receipt_bytes)
         .map_err(|_| claim_failed("Agent Web receipt signature invalid"))?;
@@ -324,6 +351,9 @@ fn validate_agent_web_receipt(
         || receipt.trust_level != TrustLevel::Mediated
     {
         return Err(claim_failed("Agent Web receipt signature invalid"));
+    }
+    if !trust.trusts_receipt_kernel_key(&receipt.kernel_key) {
+        return Err(claim_failed("Agent Web receipt kernel key untrusted"));
     }
     if receipt.decision.as_ref() != Some(&Decision::Allow) {
         return Err(claim_failed("Agent Web receipt did not execute"));

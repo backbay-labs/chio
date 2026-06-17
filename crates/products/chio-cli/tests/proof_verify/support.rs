@@ -3,12 +3,23 @@ use std::path::PathBuf;
 
 pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
     "chio-agent-web-standard-webhooks-fixture-secret-v1";
+const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
+    "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de,",
+    "4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff,",
+    "bed7d2ab668da3efad613998f06f7abf7875f3a6b7677a9f3ce947d77d7760a6,",
+    "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737,",
+    "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565"
+);
 
 pub(crate) fn chio_with_agent_web_fixture_secret() -> std::process::Command {
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_chio"));
     command.env(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
         STANDARD_WEBHOOKS_VERIFIER_SECRET,
+    );
+    command.env(
+        "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
+        AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
     );
     command
 }
