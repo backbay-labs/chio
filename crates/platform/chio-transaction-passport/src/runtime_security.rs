@@ -144,7 +144,7 @@ fn verify_terminal_receipt_totality(
     graph: &RuntimeEvidenceGraph,
     verified_claims: &mut Vec<String>,
 ) -> Result<(), TransactionPassportError> {
-    let receipts: Vec<RuntimeTerminalReceipt> = parse_available_artifacts_by_role(
+    let receipts: Vec<RuntimeTerminalReceipt> = parse_artifacts_by_role(
         bundle,
         graph,
         RuntimeEvidenceRole::Receipt,
@@ -267,18 +267,6 @@ fn parse_artifacts_by_role<T: for<'de> Deserialize<'de>>(
     schema: &str,
 ) -> Result<Vec<T>, TransactionPassportError> {
     nodes_by_role(graph, role)
-        .map(|node| parse_artifact(bundle, node, schema))
-        .collect()
-}
-
-fn parse_available_artifacts_by_role<T: for<'de> Deserialize<'de>>(
-    bundle: &RuntimeSecurityBundle,
-    graph: &RuntimeEvidenceGraph,
-    role: RuntimeEvidenceRole,
-    schema: &str,
-) -> Result<Vec<T>, TransactionPassportError> {
-    nodes_by_role(graph, role)
-        .filter(|node| bundle.artifacts.contains_key(&node.path))
         .map(|node| parse_artifact(bundle, node, schema))
         .collect()
 }

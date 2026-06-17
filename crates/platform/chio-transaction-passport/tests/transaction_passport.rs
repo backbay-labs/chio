@@ -1,10 +1,95 @@
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use chio_test_support::prelude::*;
+use serde_json::{json, Value};
 use sha2::Digest;
 
 fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(sha2::Sha256::digest(bytes))
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|platform_dir| platform_dir.parent())
+        .and_then(|crates_dir| crates_dir.parent())
+        .test_expect("workspace root is parent of crates/platform/chio-transaction-passport")
+        .to_path_buf()
+}
+
+fn runtime_security_fixture_dir(case_name: &str) -> PathBuf {
+    workspace_root().join(format!("fixtures/proof-room/runtime-security/{case_name}"))
+}
+
+fn read_fixture_file(dir: &Path, relative_path: &str) -> Vec<u8> {
+    std::fs::read(dir.join(relative_path)).test_expect("runtime security fixture file reads")
+}
+
+fn load_runtime_security_fixture(
+    case_name: &str,
+) -> chio_transaction_passport::RuntimeSecurityBundle {
+    let dir = runtime_security_fixture_dir(case_name);
+    let passport = serde_json::from_slice(&read_fixture_file(&dir, "transaction-passport.json"))
+        .test_expect("runtime security passport parses");
+    let evidence_graph_bytes = read_fixture_file(&dir, "evidence-graph.json");
+    let verifier_policy_bytes = read_fixture_file(&dir, "verifier-policy.json");
+    let mut artifacts = BTreeMap::new();
+    for entry in std::fs::read_dir(&dir).test_expect("runtime security fixture dir reads") {
+        let entry = entry.test_expect("runtime security fixture entry reads");
+        let path = entry.path();
+        if !path.is_file() || path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        let relative_path = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .test_expect("runtime security fixture path is utf8");
+        if matches!(
+            relative_path,
+            "transaction-passport.json" | "evidence-graph.json" | "verifier-policy.json"
+        ) {
+            continue;
+        }
+        artifacts.insert(
+            relative_path.to_string(),
+            read_fixture_file(&dir, relative_path),
+        );
+    }
+
+    chio_transaction_passport::RuntimeSecurityBundle {
+        passport,
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        artifacts,
+    }
+}
+
+fn rebind_runtime_graph(
+    bundle: &mut chio_transaction_passport::RuntimeSecurityBundle,
+    graph: Value,
+) {
+    let graph_bytes = serde_json::to_vec(&graph).test_expect("runtime graph serializes");
+    bundle.passport.evidence_graph_sha256 = sha256_hex(&graph_bytes);
+    bundle.evidence_graph_bytes = graph_bytes;
+}
+
+fn add_unavailable_runtime_receipt_node(
+    bundle: &mut chio_transaction_passport::RuntimeSecurityBundle,
+) {
+    let mut graph: Value =
+        serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("runtime graph parses");
+    graph["nodes"]
+        .as_array_mut()
+        .test_expect("runtime graph has nodes")
+        .push(json!({
+            "id": "receipt-runtime-denial-missing",
+            "schema": "chio.runtime.terminal-receipt.v1",
+            "path": "missing-denial-receipt.json",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "role": "receipt"
+        }));
+    rebind_runtime_graph(bundle, graph);
 }
 
 fn valid_minimal_passport() -> chio_transaction_passport::TransactionPassport {
@@ -489,6 +574,21 @@ fn standalone_minimal_passport_accepts_packaged_verifier_policy_node_path() {
         &artifacts,
     )
     .test_expect("standalone minimal passport should accept packaged verifier policy path");
+}
+
+#[test]
+fn runtime_receipt_totality_rejects_graph_receipt_without_artifact() {
+    let mut bundle = load_runtime_security_fixture("terminal-denial");
+    add_unavailable_runtime_receipt_node(&mut bundle);
+
+    let error = chio_transaction_passport::verify_runtime_security_claims(&bundle)
+        .test_expect_err("graph-listed terminal receipt must have artifact bytes");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("missing runtime artifact: missing-denial-receipt.json"),
+        "{error}"
+    );
 }
 
 #[test]
