@@ -29,5 +29,9 @@ fn workflow_preflight_reexport_accepts_planning_fixture() -> Result<(), Box<dyn 
         .verified_claims
         .iter()
         .any(|claim| claim == "claim.workflow.preflight_child_scope_bounded"));
+    assert!(report
+        .verified_claims
+        .iter()
+        .any(|claim| claim == "claim.workflow.preflight_planning_only"));
     Ok(())
 }

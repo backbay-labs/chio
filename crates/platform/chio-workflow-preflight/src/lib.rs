@@ -17,6 +17,7 @@ use scope::collect_child_scope_checks;
 use validation::{collect_plan_gate_checks, validate_plan_shape};
 
 const CLAIM_PREFLIGHT_CHILD_SCOPE_BOUNDED: &str = "claim.workflow.preflight_child_scope_bounded";
+const CLAIM_PREFLIGHT_PLANNING_ONLY: &str = "claim.workflow.preflight_planning_only";
 
 pub fn evaluate_workflow_preflight(
     plan: &WorkflowPreflightPlan,
@@ -33,7 +34,10 @@ pub fn evaluate_workflow_preflight(
         WorkflowPreflightVerdict::Rejected
     };
     let verified_claims = if verdict == WorkflowPreflightVerdict::Accepted {
-        vec![CLAIM_PREFLIGHT_CHILD_SCOPE_BOUNDED.to_string()]
+        vec![
+            CLAIM_PREFLIGHT_CHILD_SCOPE_BOUNDED.to_string(),
+            CLAIM_PREFLIGHT_PLANNING_ONLY.to_string(),
+        ]
     } else {
         Vec::new()
     };

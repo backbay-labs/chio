@@ -796,6 +796,36 @@ fn rejects_ui_report_rendered_claim_result_mismatch() -> Result<(), Box<dyn Erro
     Ok(())
 }
 
+#[test]
+fn rejects_manifest_claim_result_mismatch_with_source_verifier() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let manifest_path = work.path().join("manifest.json");
+    let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;
+    manifest["claims"][0]["result"] = serde_json::Value::String("failed".to_string());
+    fs::write(&manifest_path, json_bytes(&manifest)?)?;
+
+    let ui_report_path = work.path().join("ui/proof-room-static/load-report.json");
+    let mut ui_report: serde_json::Value = serde_json::from_slice(&fs::read(&ui_report_path)?)?;
+    ui_report["rendered_claims"][0]["verdict"] = serde_json::Value::String("failed".to_string());
+    write_ui_report_and_rehash_manifest(work.path(), &ui_report)?;
+
+    let error = verify_proof_room_bundle(&manifest_path)
+        .err()
+        .ok_or("manifest source claim result mismatch unexpectedly verified")?;
+
+    assert!(
+        error
+            .to_string()
+            .contains("proof-room.claim.source-result-mismatch"),
+        "{error}"
+    );
+    Ok(())
+}
+
 #[tokio::test]
 async fn quickstart_router_serves_referenced_bundle_assets() -> Result<(), Box<dyn Error>> {
     let bundle =

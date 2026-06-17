@@ -318,10 +318,15 @@ pub(crate) fn verify_manifest_claims(
         .map(|artifact| artifact.path.as_str())
         .collect::<BTreeSet<_>>();
     for claim in claims {
-        if !ALLOWED_BUNDLE_CLAIMS.contains(&claim.claim_id.as_str())
-            && !source_report_verifies_claim(source_report, &claim.claim_id)
-        {
+        let source_verified = source_report_verifies_claim(source_report, &claim.claim_id);
+        if !ALLOWED_BUNDLE_CLAIMS.contains(&claim.claim_id.as_str()) && !source_verified {
             return Err(format!("proof-room.claim.unregistered: {}", claim.claim_id));
+        }
+        if source_verified && claim.result != "verified" {
+            return Err(format!(
+                "proof-room.claim.source-result-mismatch: {}",
+                claim.claim_id
+            ));
         }
         if claim.required_artifacts.is_empty() {
             return Err(format!(
