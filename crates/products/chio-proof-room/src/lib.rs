@@ -274,6 +274,7 @@ struct ProofRoomClaim {
     claim_id: String,
     #[serde(default)]
     required_artifacts: Vec<String>,
+    result: String,
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]

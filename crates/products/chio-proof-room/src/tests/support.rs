@@ -282,6 +282,34 @@ pub(crate) fn refresh_bundle_signature(bundle: &Path) -> Result<(), Box<dyn Erro
     sign_bundle_signature_with_key(bundle, &keypair)
 }
 
+pub(crate) fn write_ui_report_and_rehash_manifest(
+    bundle: &Path,
+    ui_report: &serde_json::Value,
+) -> Result<(), Box<dyn Error>> {
+    let ui_report_path = bundle.join("ui/proof-room-static/load-report.json");
+    let ui_report_bytes = json_bytes(ui_report)?;
+    fs::write(&ui_report_path, &ui_report_bytes)?;
+    let ui_report_sha256 = crate::sha256_hex(&ui_report_bytes);
+
+    let manifest_path = bundle.join("manifest.json");
+    let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;
+    manifest["proof_room_verifier_report_ref"]["sha256"] =
+        serde_json::Value::String(ui_report_sha256.clone());
+    for artifact in manifest["artifacts"]
+        .as_array_mut()
+        .ok_or("manifest artifacts missing")?
+    {
+        if artifact.get("path").and_then(serde_json::Value::as_str)
+            == Some("ui/proof-room-static/load-report.json")
+        {
+            artifact["sha256"] = serde_json::Value::String(ui_report_sha256.clone());
+        }
+    }
+    fs::write(&manifest_path, json_bytes(&manifest)?)?;
+    refresh_bundle_signature(bundle)?;
+    Ok(())
+}
+
 fn trust_test_bundle_signer(bundle: &Path) -> Result<String, Box<dyn Error>> {
     let test_key_id = Keypair::from_seed(&TEST_SIGNATURE_SEED)
         .public_key()

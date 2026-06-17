@@ -96,6 +96,12 @@ pub(crate) fn verify_rendered_claims(
                 rendered_claim.claim_id
             ));
         }
+        if rendered_claim.verdict != manifest_claim.result {
+            return Err(format!(
+                "proof-room.ui-report.rendered-claim-result-mismatch: {}",
+                rendered_claim.claim_id
+            ));
+        }
         if rendered_claim.verdict == "verified"
             && !manifest_claim
                 .required_artifacts

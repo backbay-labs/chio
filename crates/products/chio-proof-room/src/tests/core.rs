@@ -754,27 +754,9 @@ fn rejects_ui_report_schema_drift() -> Result<(), Box<dyn Error>> {
     let ui_report_path = work.path().join("ui/proof-room-static/load-report.json");
     let mut ui_report: serde_json::Value = serde_json::from_slice(&fs::read(&ui_report_path)?)?;
     ui_report["unshipped_public_field"] = serde_json::Value::String("accepted".to_string());
-    let ui_report_bytes = json_bytes(&ui_report)?;
-    fs::write(&ui_report_path, &ui_report_bytes)?;
-    let ui_report_sha256 = super::sha256_hex(&ui_report_bytes);
+    write_ui_report_and_rehash_manifest(work.path(), &ui_report)?;
 
     let manifest_path = work.path().join("manifest.json");
-    let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;
-    manifest["proof_room_verifier_report_ref"]["sha256"] =
-        serde_json::Value::String(ui_report_sha256.clone());
-    for artifact in manifest["artifacts"]
-        .as_array_mut()
-        .ok_or("manifest artifacts missing")?
-    {
-        if artifact.get("path").and_then(serde_json::Value::as_str)
-            == Some("ui/proof-room-static/load-report.json")
-        {
-            artifact["sha256"] = serde_json::Value::String(ui_report_sha256.clone());
-        }
-    }
-    fs::write(&manifest_path, json_bytes(&manifest)?)?;
-    refresh_bundle_signature(work.path())?;
-
     let error = verify_proof_room_bundle(&manifest_path)
         .err()
         .ok_or("mutated proof room bundle unexpectedly verified")?;
@@ -783,6 +765,32 @@ fn rejects_ui_report_schema_drift() -> Result<(), Box<dyn Error>> {
         error
             .to_string()
             .contains("proof-room.schema-violation: ui-report"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn rejects_ui_report_rendered_claim_result_mismatch() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let ui_report_path = work.path().join("ui/proof-room-static/load-report.json");
+    let mut ui_report: serde_json::Value = serde_json::from_slice(&fs::read(&ui_report_path)?)?;
+    ui_report["rendered_claims"][0]["verdict"] = serde_json::Value::String("failed".to_string());
+    write_ui_report_and_rehash_manifest(work.path(), &ui_report)?;
+
+    let manifest_path = work.path().join("manifest.json");
+    let error = verify_proof_room_bundle(&manifest_path)
+        .err()
+        .ok_or("UI report claim verdict mismatch unexpectedly verified")?;
+
+    assert!(
+        error
+            .to_string()
+            .contains("proof-room.ui-report.rendered-claim-result-mismatch"),
         "{error}"
     );
     Ok(())
