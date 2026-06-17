@@ -122,7 +122,9 @@ const CLAIM_PREFIX_PUBLIC_SETTLEMENT: &str = "claim.public_settlement.";
 const CLAIM_PREFIX_SWARM: &str = "claim.swarm.";
 const CLAIM_PREFIX_DISCLOSURE: &str = "claim.disclosure.";
 const CLAIM_PREFIX_COMMERCE: &str = "claim.commerce.";
-const SOURCE_VERIFIER_CLAIM_PREFIXES: [&str; 9] = [
+const CLAIM_PREFIX_TRANSACTION: &str = "claim.transaction.";
+const CLAIM_PREFIX_MARKET: &str = "claim.market.";
+const SOURCE_VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_RUNTIME,
     CLAIM_PREFIX_RISK,
     CLAIM_PREFIX_ENTERPRISE,
@@ -132,6 +134,8 @@ const SOURCE_VERIFIER_CLAIM_PREFIXES: [&str; 9] = [
     CLAIM_PREFIX_SWARM,
     CLAIM_PREFIX_DISCLOSURE,
     CLAIM_PREFIX_COMMERCE,
+    CLAIM_PREFIX_TRANSACTION,
+    CLAIM_PREFIX_MARKET,
 ];
 const ENTERPRISE_APPROVAL_CASE_SCHEMA: &str = "chio.enterprise.approval-case.v1";
 const ENTERPRISE_CONTROL_EVIDENCE_MAP_SCHEMA: &str = "chio.enterprise.control-evidence-map.v1";

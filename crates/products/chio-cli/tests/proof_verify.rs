@@ -1068,6 +1068,71 @@ fn proof_verify_rejects_public_settlement_unverified_required_claim() {
 }
 
 #[test]
+fn proof_verify_rejects_misspelled_required_claim_prefix() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source = workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
+    let bundle_dir = tempdir.path().join("commerce");
+    copy_dir_all(&source, &bundle_dir);
+
+    let policy_path = bundle_dir.join("verifier-policy.json");
+    let mut policy: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&policy_path).test_expect("read verifier policy"))
+            .test_expect("parse verifier policy");
+    policy["required_claims"]
+        .as_array_mut()
+        .test_expect("required claims array")
+        .push(serde_json::Value::String(
+            "claim.commerc.order_replay_consistent".to_string(),
+        ));
+    let policy_bytes = serde_json::to_vec(&policy).test_expect("serialize verifier policy");
+    std::fs::write(&policy_path, &policy_bytes).test_expect("write verifier policy");
+    let policy_digest = chio_core::sha256_hex(&policy_bytes);
+
+    let evidence_graph_path = bundle_dir.join("evidence-graph.json");
+    let mut evidence_graph: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
+    )
+    .test_expect("parse evidence graph");
+    for node in evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("evidence graph nodes")
+    {
+        if node.get("role").and_then(serde_json::Value::as_str) == Some("verifier-policy") {
+            node["sha256"] = serde_json::Value::String(policy_digest.clone());
+        }
+    }
+    let evidence_graph_bytes =
+        serde_json::to_vec(&evidence_graph).test_expect("serialize evidence graph");
+    std::fs::write(&evidence_graph_path, &evidence_graph_bytes).test_expect("write evidence graph");
+    let evidence_graph_digest = chio_core::sha256_hex(&evidence_graph_bytes);
+
+    let passport_path = bundle_dir.join("transaction-passport.json");
+    let mut passport: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+            .test_expect("parse passport");
+    passport["verifier_policy_sha256"] = serde_json::Value::String(policy_digest);
+    passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_digest);
+    std::fs::write(
+        &passport_path,
+        serde_json::to_vec(&passport).test_expect("serialize passport"),
+    )
+    .test_expect("write passport");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("proof")
+        .arg("verify")
+        .arg(passport_path)
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(
+        stderr.contains("unsupported required proof claim: claim.commerc.order_replay_consistent")
+    );
+}
+
+#[test]
 fn proof_verify_rejects_public_settlement_passport_policy_digest_mismatch() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let source =

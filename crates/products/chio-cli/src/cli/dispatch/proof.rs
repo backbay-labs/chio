@@ -18,7 +18,9 @@ const CLAIM_PREFIX_PUBLIC_SETTLEMENT: &str = "claim.public_settlement.";
 const CLAIM_PREFIX_SWARM: &str = "claim.swarm.";
 const CLAIM_PREFIX_DISCLOSURE: &str = "claim.disclosure.";
 const CLAIM_PREFIX_COMMERCE: &str = "claim.commerce.";
-const VERIFIER_CLAIM_PREFIXES: [&str; 9] = [
+const CLAIM_PREFIX_TRANSACTION: &str = "claim.transaction.";
+const CLAIM_PREFIX_MARKET: &str = "claim.market.";
+const VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_RUNTIME,
     CLAIM_PREFIX_RISK,
     CLAIM_PREFIX_ENTERPRISE,
@@ -28,6 +30,8 @@ const VERIFIER_CLAIM_PREFIXES: [&str; 9] = [
     CLAIM_PREFIX_SWARM,
     CLAIM_PREFIX_DISCLOSURE,
     CLAIM_PREFIX_COMMERCE,
+    CLAIM_PREFIX_TRANSACTION,
+    CLAIM_PREFIX_MARKET,
 ];
 
 #[derive(Clone, Copy)]
@@ -1053,12 +1057,21 @@ fn verifier_policy_claim_requirements(
         requirements.required_claims = claims.clone();
         for claim in claims {
             let Some(claim) = claim.as_str() else {
-                continue;
+                return Err(CliError::cli_other_error(
+                    "proof verify: required claims must be strings".to_string(),
+                ));
             };
+            let mut supported = false;
             for prefix in VERIFIER_CLAIM_PREFIXES {
                 if claim.starts_with(prefix) {
                     requirements.prefixes.insert(prefix);
+                    supported = true;
                 }
+            }
+            if !supported {
+                return Err(CliError::cli_other_error(format!(
+                    "proof verify: unsupported required proof claim: {claim}",
+                )));
             }
         }
     }

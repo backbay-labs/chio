@@ -282,6 +282,22 @@ pub(crate) fn refresh_bundle_signature(bundle: &Path) -> Result<(), Box<dyn Erro
     sign_bundle_signature_with_key(bundle, &keypair)
 }
 
+fn trust_test_bundle_signer(bundle: &Path) -> Result<String, Box<dyn Error>> {
+    let test_key_id = Keypair::from_seed(&TEST_SIGNATURE_SEED)
+        .public_key()
+        .to_hex();
+    let trust_roots_path = bundle.join("artifacts/authority/trust-roots.json");
+    let mut trust_roots: serde_json::Value = serde_json::from_slice(&fs::read(&trust_roots_path)?)?;
+    let root = trust_roots["roots"]
+        .as_array_mut()
+        .and_then(|roots| roots.first_mut())
+        .ok_or("trust roots missing")?;
+    root["key_id"] = serde_json::Value::String(test_key_id.clone());
+    root["key_digest"] = serde_json::Value::String(super::sha256_hex(test_key_id.as_bytes()));
+    fs::write(&trust_roots_path, json_bytes(&trust_roots)?)?;
+    sha256_file(&trust_roots_path)
+}
+
 pub(crate) fn sign_bundle_signature_with_key(
     bundle: &Path,
     keypair: &Keypair,
@@ -549,6 +565,7 @@ pub(crate) fn add_required_claim_to_verifier_policy(
         .push(serde_json::Value::String(claim.to_string()));
     fs::write(&verifier_policy_path, json_bytes(&verifier_policy)?)?;
     let verifier_policy_sha256 = sha256_file(&verifier_policy_path)?;
+    let trust_roots_sha256 = trust_test_bundle_signer(bundle)?;
 
     let evidence_graph_path = bundle.join("roots/evidence-graph.json");
     let mut evidence_graph: serde_json::Value =
@@ -559,6 +576,11 @@ pub(crate) fn add_required_claim_to_verifier_policy(
     {
         if node.get("path").and_then(serde_json::Value::as_str) == Some("verifier-policy.json") {
             node["sha256"] = serde_json::Value::String(verifier_policy_sha256.clone());
+        }
+        if node.get("path").and_then(serde_json::Value::as_str)
+            == Some("artifacts/authority/trust-roots.json")
+        {
+            node["sha256"] = serde_json::Value::String(trust_roots_sha256.clone());
         }
     }
     fs::write(&evidence_graph_path, json_bytes(&evidence_graph)?)?;
@@ -617,6 +639,9 @@ pub(crate) fn add_required_claim_to_verifier_policy(
             }
             Some("ui/proof-room-static/load-report.json") => {
                 artifact["sha256"] = serde_json::Value::String(ui_report_sha256.clone());
+            }
+            Some("artifacts/authority/trust-roots.json") => {
+                artifact["sha256"] = serde_json::Value::String(trust_roots_sha256.clone());
             }
             _ => {}
         }
@@ -678,19 +703,7 @@ pub(crate) fn remove_verifier_policy_field_and_rehash(
     fs::write(&ui_report_path, json_bytes(&ui_report)?)?;
     let ui_report_sha256 = sha256_file(&ui_report_path)?;
 
-    let test_key_id = Keypair::from_seed(&TEST_SIGNATURE_SEED)
-        .public_key()
-        .to_hex();
-    let trust_roots_path = bundle.join("artifacts/authority/trust-roots.json");
-    let mut trust_roots: serde_json::Value = serde_json::from_slice(&fs::read(&trust_roots_path)?)?;
-    let root = trust_roots["roots"]
-        .as_array_mut()
-        .and_then(|roots| roots.first_mut())
-        .ok_or("trust roots missing")?;
-    root["key_id"] = serde_json::Value::String(test_key_id.clone());
-    root["key_digest"] = serde_json::Value::String(super::sha256_hex(test_key_id.as_bytes()));
-    fs::write(&trust_roots_path, json_bytes(&trust_roots)?)?;
-    let trust_roots_sha256 = sha256_file(&trust_roots_path)?;
+    let trust_roots_sha256 = trust_test_bundle_signer(bundle)?;
 
     let manifest_path = bundle.join("manifest.json");
     let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;

@@ -391,10 +391,15 @@ pub(crate) fn source_verifier_claim_requirements(
                 return Err("proof-room.verifier-policy.required-claim-invalid".to_string());
             };
             requirements.required_claims.push(claim.to_string());
+            let mut supported = false;
             for prefix in SOURCE_VERIFIER_CLAIM_PREFIXES {
                 if claim.starts_with(prefix) {
                     requirements.prefixes.insert(prefix);
+                    supported = true;
                 }
+            }
+            if !supported {
+                return Err(format!("unsupported required proof claim: {claim}"));
             }
         }
     }

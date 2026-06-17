@@ -518,7 +518,7 @@ pub(crate) fn refresh_transaction_artifact_digest_at(
     artifact_path: &str,
 ) {
     let mut evidence_graph: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
+        serde_json::from_slice(&std::fs::read(evidence_graph_path).test_expect("read graph"))
             .test_expect("graph parses");
     let graph_nodes = evidence_graph["nodes"]
         .as_array_mut()
@@ -534,14 +534,13 @@ pub(crate) fn refresh_transaction_artifact_digest_at(
         refreshed,
         "transaction evidence graph did not contain {artifact_path}"
     );
-    write_json(&evidence_graph_path, &evidence_graph);
+    write_json(evidence_graph_path, &evidence_graph);
 
     let mut passport: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+        serde_json::from_slice(&std::fs::read(passport_path).test_expect("read passport"))
             .test_expect("passport parses");
-    passport["evidence_graph_sha256"] =
-        serde_json::Value::String(sha256_file(&evidence_graph_path));
-    write_json(&passport_path, &passport);
+    passport["evidence_graph_sha256"] = serde_json::Value::String(sha256_file(evidence_graph_path));
+    write_json(passport_path, &passport);
 }
 
 pub(crate) fn artifact_ref(bundle: &Path, path: &str, schema: &str) -> serde_json::Value {

@@ -408,16 +408,18 @@ fn fixture_catalog_schema_rejects_uninspectable_available_fixture() {
         ]
     });
 
-    let error = super::validate_proof_room_schema(
+    let result = super::validate_proof_room_schema(
         &catalog,
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../../spec/schemas/chio-proof-room/v1/fixture-catalog.schema.json"
         )),
         "proof-room fixture catalog",
-    )
-    .err()
-    .expect("available fixture without report should be rejected");
+    );
+    let error = match result {
+        Err(error) => error,
+        Ok(()) => panic!("available fixture without report should be rejected"),
+    };
 
     assert!(error.contains("verifier_report"), "{error}");
 }
