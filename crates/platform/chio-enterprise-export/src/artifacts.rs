@@ -233,6 +233,12 @@ pub(super) fn validate_evidence_export_bundle(
     if export_bundle.approval_case_ref != approval.id {
         return Err(claim_failed("evidence export approval case mismatch"));
     }
+    let export_issued_at =
+        parse_rfc3339_utc(&export_bundle.issued_at, "evidence export issued_at")?;
+    let approval_expires_at = parse_rfc3339_utc(&approval.expires_at, "approval expires_at")?;
+    if export_issued_at >= approval_expires_at {
+        return Err(claim_failed("approval case expired before export issuance"));
+    }
     validate_sha256_hex(&export_bundle.bundle_digest)
         .map_err(|_| claim_failed("export bundle digest mismatch"))?;
 

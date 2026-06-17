@@ -1154,23 +1154,26 @@ fn enterprise_bundle_with_required_claim(claim: &str) -> EnterpriseExportBundle 
     bundle
 }
 
-fn replace_approval_case(bundle: &mut EnterpriseExportBundle, approval: Value) {
-    let approval_bytes = json_bytes(approval);
-    let approval_sha256 = chio_core_types::sha256_hex(&approval_bytes);
-    bundle
-        .artifacts
-        .insert("approval-case.json".to_string(), approval_bytes);
+fn replace_graph_artifact(
+    bundle: &mut EnterpriseExportBundle,
+    path: &str,
+    node_id: &str,
+    artifact: Value,
+) {
+    let artifact_bytes = json_bytes(artifact);
+    let artifact_sha256 = chio_core_types::sha256_hex(&artifact_bytes);
+    bundle.artifacts.insert(path.to_string(), artifact_bytes);
 
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("evidence graph parses");
     let nodes = graph["nodes"]
         .as_array_mut()
         .test_expect("evidence graph nodes are an array");
-    let approval_node = nodes
+    let node = nodes
         .iter_mut()
-        .find(|node| node.get("id").and_then(Value::as_str) == Some("approval-case"))
-        .test_expect("approval-case node exists");
-    approval_node["sha256"] = Value::String(approval_sha256);
+        .find(|node| node.get("id").and_then(Value::as_str) == Some(node_id))
+        .test_expect("graph node exists");
+    node["sha256"] = Value::String(artifact_sha256);
     bundle.evidence_graph_bytes = json_bytes(graph);
     bundle.passport.evidence_graph_sha256 =
         chio_core_types::sha256_hex(&bundle.evidence_graph_bytes);
@@ -1210,8 +1213,10 @@ fn enterprise_export_accepts_valid_autonomous_commerce_fixture() {
 #[test]
 fn enterprise_export_rejects_duplicate_approvers_for_quorum() {
     let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
-    replace_approval_case(
+    replace_graph_artifact(
         &mut bundle,
+        "approval-case.json",
+        "approval-case",
         json!({
             "schema": "chio.enterprise.approval-case.v1",
             "id": "approval-case-enterprise-valid",
@@ -1235,8 +1240,10 @@ fn enterprise_export_rejects_duplicate_approvers_for_quorum() {
 #[test]
 fn enterprise_export_rejects_blank_approvers() {
     let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
-    replace_approval_case(
+    replace_graph_artifact(
         &mut bundle,
+        "approval-case.json",
+        "approval-case",
         json!({
             "schema": "chio.enterprise.approval-case.v1",
             "id": "approval-case-enterprise-valid",
@@ -1257,6 +1264,32 @@ fn enterprise_export_rejects_blank_approvers() {
     assert!(error
         .to_string()
         .contains("approval approver identity missing"));
+}
+
+#[test]
+fn enterprise_export_rejects_approval_expired_before_export_issued() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    let mut export_bundle: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("evidence-export-bundle.json")
+            .test_expect("evidence export bundle artifact exists"),
+    )
+    .test_expect("evidence export bundle parses");
+    export_bundle["issued_at"] = Value::String("2026-06-12T00:00:00Z".to_string());
+    replace_graph_artifact(
+        &mut bundle,
+        "evidence-export-bundle.json",
+        "evidence-export-bundle",
+        export_bundle,
+    );
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("expired approval must not authorize later export");
+
+    assert!(error
+        .to_string()
+        .contains("approval case expired before export issuance"));
 }
 
 #[test]
