@@ -32,6 +32,7 @@ pub(super) struct RuntimeEvidenceNode {
 #[serde(rename_all = "kebab-case")]
 pub(super) enum RuntimeEvidenceRole {
     Receipt,
+    TrustRoot,
     ExecutionLease,
     ToolServerAck,
     RevocationFreshnessProof,
@@ -126,6 +127,18 @@ pub(super) fn leased_receipt_nodes<'a>(
                     && edge.to == node.id
                     && matches!(edge.predicate, EvidenceEdgePredicate::Leases)
             })
+    })
+}
+
+pub(super) fn trust_root_authorizes_lease(
+    graph: &RuntimeEvidenceGraph,
+    trust_root_node: &RuntimeEvidenceNode,
+    lease_node: &RuntimeEvidenceNode,
+) -> bool {
+    graph.edges.iter().any(|edge| {
+        edge.from == trust_root_node.id
+            && edge.to == lease_node.id
+            && matches!(edge.predicate, EvidenceEdgePredicate::Authorizes)
     })
 }
 

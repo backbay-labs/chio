@@ -1,0 +1,6 @@
+{
+  "authority": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "id": "runtime-trust-root-valid",
+  "schema": "chio.trust.root.v1",
+  "signature": "sig-runtime-trust-root-valid"
+}

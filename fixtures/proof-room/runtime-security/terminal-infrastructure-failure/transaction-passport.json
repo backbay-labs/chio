@@ -1,1 +1,9 @@
-{"schema":"chio.transaction-passport.v1","id":"runtime-passport-failure","issued_at":"2026-06-10T00:00:00Z","evidence_graph_sha256":"991ef79cae0b35e276b8ff8342e2d4ca962d2921805878ea20e4a498e6288955","evidence_graph_path":"evidence-graph.json","verifier_policy_sha256":"687126355154079b3ab9c62e3eb18e5d285e435c9321720bae34a343877d0cd9","verifier_policy_path":"verifier-policy.json"}
+{
+  "evidence_graph_path": "evidence-graph.json",
+  "evidence_graph_sha256": "e8dd6df849568c2f5c3fc6c02aee7569d641a74c3d59f4a88f2aed85a4f6c21e",
+  "id": "runtime-passport-failure",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "schema": "chio.transaction-passport.v1",
+  "verifier_policy_path": "verifier-policy.json",
+  "verifier_policy_sha256": "687126355154079b3ab9c62e3eb18e5d285e435c9321720bae34a343877d0cd9"
+}

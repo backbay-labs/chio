@@ -591,6 +591,7 @@ pub(crate) fn is_runtime_evidence_graph_node(node: &serde_json::Value) -> bool {
         "advisory-observation"
             | "verifier-policy"
             | "execution-lease"
+            | "trust-root"
             | "tool-server-ack"
             | "revocation-freshness-proof"
             | "sandbox-attestation"

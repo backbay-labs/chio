@@ -17,7 +17,9 @@
     "nonce",
     "side_effect_class",
     "issued_at",
-    "expires_at"
+    "expires_at",
+    "issuer",
+    "signature"
   ],
   "properties": {
     "schema": { "const": "chio.runtime.execution-lease.v1" },
@@ -40,7 +42,9 @@
       ]
     },
     "issued_at": { "type": "string", "minLength": 1 },
-    "expires_at": { "type": "string", "minLength": 1 }
+    "expires_at": { "type": "string", "minLength": 1 },
+    "issuer": { "type": "string", "minLength": 1 },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
   },
   "$defs": {
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }

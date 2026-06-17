@@ -30,7 +30,7 @@ use claims::{
 };
 use evidence::{
     ensure_no_advisory_authorization, leased_receipt_nodes, nodes_by_role, parse_artifact,
-    parse_graph, RuntimeEvidenceGraph, RuntimeEvidenceRole,
+    parse_graph, trust_root_authorizes_lease, RuntimeEvidenceGraph, RuntimeEvidenceRole,
 };
 use policy::parse_policy;
 
@@ -218,10 +218,24 @@ fn verify_allowed_execution_attempts(
         RuntimeEvidenceRole::ToolServerAck,
         RUNTIME_TOOL_SERVER_ACK_SCHEMA_ID,
     )?;
+    let trust_roots: Vec<_> = nodes_by_role(graph, RuntimeEvidenceRole::TrustRoot)
+        .map(|node| parse_artifact(bundle, node, "chio.trust.root.v1").map(|root| (node, root)))
+        .collect::<Result<Vec<_>, _>>()?;
     validate_nonce_uniqueness(bundle, graph)?;
 
     for (lease_node, lease) in &leases {
-        validate_execution_lease(lease, &bundle.passport.verifier_policy_sha256)?;
+        let authorizing_trust_roots: Vec<_> = trust_roots
+            .iter()
+            .filter(|(trust_root_node, _)| {
+                trust_root_authorizes_lease(graph, trust_root_node, lease_node)
+            })
+            .map(|(_, trust_root)| trust_root)
+            .collect();
+        validate_execution_lease(
+            lease,
+            &bundle.passport.verifier_policy_sha256,
+            &authorizing_trust_roots,
+        )?;
 
         let revocation = revocations
             .iter()

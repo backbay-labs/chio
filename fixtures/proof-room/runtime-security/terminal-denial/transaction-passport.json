@@ -1,1 +1,9 @@
-{"schema":"chio.transaction-passport.v1","id":"runtime-passport-denial","issued_at":"2026-06-10T00:00:00Z","evidence_graph_sha256":"11db8d29ea87e6f37710cc1c78921fa45795366ca668560b0929d7bc5953d9b7","evidence_graph_path":"evidence-graph.json","verifier_policy_sha256":"c39e2989da55c8f6dd7af5b25568a72a3fcc8fa1e3683c1e783b9fa042b3c261","verifier_policy_path":"verifier-policy.json"}
+{
+  "evidence_graph_path": "evidence-graph.json",
+  "evidence_graph_sha256": "7930afa095b80986401483053dc8d2c1a4a4d97ff5f91c765c97866821e3b5b4",
+  "id": "runtime-passport-denial",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "schema": "chio.transaction-passport.v1",
+  "verifier_policy_path": "verifier-policy.json",
+  "verifier_policy_sha256": "c39e2989da55c8f6dd7af5b25568a72a3fcc8fa1e3683c1e783b9fa042b3c261"
+}

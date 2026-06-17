@@ -800,10 +800,19 @@ pub(crate) fn dispatch_chio_runtime_command(command: ChioRuntimeCommands) -> Res
         },
         ChioRuntimeCommands::RunLoopback {
             scenario,
+            static_package,
+            static_report,
             store_dir,
             now_unix_ms,
             out_dir,
-        } => cmd_chio_runtime_run_loopback(&scenario, &store_dir, now_unix_ms, &out_dir),
+        } => cmd_chio_runtime_run_loopback(
+            &scenario,
+            static_package.as_deref(),
+            static_report.as_deref(),
+            &store_dir,
+            now_unix_ms,
+            &out_dir,
+        ),
     }
 }
 

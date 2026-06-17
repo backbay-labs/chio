@@ -1,1 +1,9 @@
-{"schema":"chio.transaction-passport.v1","id":"runtime-passport-valid","issued_at":"2026-06-10T00:00:00Z","evidence_graph_sha256":"02d595ba993fef91ca7c2f0b333969a61b336a7ecb7357a8364ff4f5d6ecd420","evidence_graph_path":"evidence-graph.json","verifier_policy_sha256":"3ef61f665f58362585af0237105bac37a93554952f010664f31468c3ca94f7b6","verifier_policy_path":"verifier-policy.json"}
+{
+  "evidence_graph_path": "evidence-graph.json",
+  "evidence_graph_sha256": "94621c6b100ec10fa2d74bef63f5d01971dd29c0d6ca542fc7863f255299b598",
+  "id": "runtime-passport-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "schema": "chio.transaction-passport.v1",
+  "verifier_policy_path": "verifier-policy.json",
+  "verifier_policy_sha256": "3ef61f665f58362585af0237105bac37a93554952f010664f31468c3ca94f7b6"
+}

@@ -334,6 +334,7 @@ pub(crate) fn is_runtime_artifact_role(role: &str) -> bool {
         role,
         "receipt"
             | "execution-lease"
+            | "trust-root"
             | "tool-server-ack"
             | "revocation-freshness-proof"
             | "sandbox-attestation"

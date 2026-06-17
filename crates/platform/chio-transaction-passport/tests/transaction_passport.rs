@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use chio_core_types::crypto::Keypair;
 use chio_test_support::prelude::*;
 use serde_json::{json, Value};
 use sha2::Digest;
@@ -133,6 +134,34 @@ fn update_runtime_artifact(
         .artifacts
         .insert(artifact_path.to_string(), artifact_bytes);
     update_runtime_graph_node_digest(bundle, artifact_path, &artifact_digest);
+}
+
+fn sign_runtime_lease_with_fixture_authority(value: &mut Value) {
+    let signing_key = Keypair::from_seed(&[46u8; 32]);
+    value["issuer"] = Value::String(format!("did:chio:{}", signing_key.public_key().to_hex()));
+    let body = json!({
+        "schema": "chio.runtime.execution-lease-signature.v1",
+        "leaseId": value["lease_id"],
+        "toolServerId": value["tool_server_id"],
+        "toolInstanceId": value["tool_instance_id"],
+        "toolManifestDigest": value["tool_manifest_digest"],
+        "sandboxAttestationRef": value["sandbox_attestation_ref"],
+        "requestDigest": value["request_digest"],
+        "revocationFreshnessRef": value["revocation_freshness_ref"],
+        "policyDigest": value["policy_digest"],
+        "nonce": value["nonce"],
+        "sideEffectClass": value["side_effect_class"],
+        "issuedAt": value["issued_at"],
+        "expiresAt": value["expires_at"],
+        "issuer": value["issuer"],
+    });
+    value["signature"] = Value::String(
+        signing_key
+            .sign_canonical(&body)
+            .test_expect("execution lease signs")
+            .0
+            .to_hex(),
+    );
 }
 
 fn add_unavailable_runtime_receipt_node(
@@ -716,6 +745,7 @@ fn runtime_online_checks_run_for_tool_ack_requirement() {
     let policy_digest = bundle.passport.verifier_policy_sha256.clone();
     update_runtime_artifact(&mut bundle, "execution-lease.json", |lease| {
         lease["policy_digest"] = Value::String(policy_digest.clone());
+        sign_runtime_lease_with_fixture_authority(lease);
     });
     update_runtime_artifact(&mut bundle, "allow-receipt.json", |receipt| {
         receipt["policy_digest"] = Value::String(policy_digest);

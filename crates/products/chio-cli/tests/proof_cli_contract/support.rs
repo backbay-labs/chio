@@ -595,6 +595,38 @@ pub(crate) fn sign_terminal_receipt(mut receipt: serde_json::Value) -> serde_jso
     receipt
 }
 
+fn sign_runtime_lease_with_fixture_authority(value: &mut serde_json::Value) {
+    let signing_key = Keypair::from_seed(&[46u8; 32]);
+    value["issuer"] =
+        serde_json::Value::String(format!("did:chio:{}", signing_key.public_key().to_hex()));
+    value["signature"] =
+        serde_json::Value::String(sign_runtime_execution_lease(value, &signing_key));
+}
+
+fn sign_runtime_execution_lease(value: &serde_json::Value, keypair: &Keypair) -> String {
+    let body = serde_json::json!({
+        "schema": "chio.runtime.execution-lease-signature.v1",
+        "leaseId": value["lease_id"],
+        "toolServerId": value["tool_server_id"],
+        "toolInstanceId": value["tool_instance_id"],
+        "toolManifestDigest": value["tool_manifest_digest"],
+        "sandboxAttestationRef": value["sandbox_attestation_ref"],
+        "requestDigest": value["request_digest"],
+        "revocationFreshnessRef": value["revocation_freshness_ref"],
+        "policyDigest": value["policy_digest"],
+        "nonce": value["nonce"],
+        "sideEffectClass": value["side_effect_class"],
+        "issuedAt": value["issued_at"],
+        "expiresAt": value["expires_at"],
+        "issuer": value["issuer"],
+    });
+    keypair
+        .sign_canonical(&body)
+        .test_expect("runtime execution lease signs")
+        .0
+        .to_hex()
+}
+
 pub(crate) fn sign_transaction_receipt_artifact(bundle: &Path, artifact_path: &str) {
     let receipt_path = bundle.join(artifact_path);
     let receipt: serde_json::Value =
@@ -867,6 +899,9 @@ pub(crate) fn build_runtime_commerce_passport_bundle() -> (tempfile::TempDir, Pa
             serde_json::from_slice(&std::fs::read(&artifact_path).test_expect("read artifact"))
                 .test_expect("artifact parses");
         artifact["policy_digest"] = serde_json::Value::String(policy_sha256.clone());
+        if path == "execution-lease.json" {
+            sign_runtime_lease_with_fixture_authority(&mut artifact);
+        }
         write_json(&artifact_path, &artifact);
     }
 
@@ -1040,6 +1075,9 @@ pub(crate) fn build_integrated_runtime_commerce_settlement_agent_web_bundle(
             serde_json::from_slice(&std::fs::read(&artifact_path).test_expect("read artifact"))
                 .test_expect("artifact parses");
         artifact["policy_digest"] = serde_json::Value::String(policy_sha256.clone());
+        if path == "execution-lease.json" {
+            sign_runtime_lease_with_fixture_authority(&mut artifact);
+        }
         write_json(&artifact_path, &artifact);
     }
 

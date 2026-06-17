@@ -1608,6 +1608,9 @@ fn is_runtime_artifact_node(role: &str, schema: Option<&str>) -> bool {
     if role == "receipt" {
         return schema == Some("chio.runtime.terminal-receipt.v1");
     }
+    if role == "trust-root" {
+        return schema == Some("chio.trust.root.v1");
+    }
     is_runtime_artifact_role(role)
 }
 
@@ -1629,7 +1632,8 @@ fn is_runtime_evidence_graph_node_parts(role: &str, _id: &str, schema: Option<&s
     if role == "receipt" {
         return schema == Some("chio.runtime.terminal-receipt.v1");
     }
-    matches!(role, "advisory-observation" | "verifier-policy") || is_runtime_artifact_role(role)
+    matches!(role, "advisory-observation" | "trust-root" | "verifier-policy")
+        || is_runtime_artifact_role(role)
 }
 
 fn is_runtime_artifact_role(role: &str) -> bool {

@@ -47,6 +47,7 @@ fn load_runtime_security_fixture(
     for artifact_path in [
         "allow-receipt.json",
         "execution-lease.json",
+        "trust-root.json",
         "revocation-freshness-proof.json",
         "sandbox-attestation.json",
         "tool-server-ack.json",
@@ -217,6 +218,7 @@ fn add_second_runtime_attempt_without_terminal_receipt(
     lease["sandbox_attestation_ref"] = Value::String("sandbox-runtime-second".to_string());
     lease["revocation_freshness_ref"] = Value::String("revocation-runtime-second".to_string());
     lease["nonce"] = Value::String("nonce-runtime-second".to_string());
+    sign_runtime_lease_with_fixture_authority(&mut lease);
 
     let mut revocation: Value = serde_json::from_slice(
         bundle
@@ -320,6 +322,12 @@ fn add_second_runtime_attempt_without_terminal_receipt(
                 "evidence_class": "chio-sidecar-proof"
             }),
             json!({
+                "from": "runtime-trust-root",
+                "to": "lease-runtime-second",
+                "predicate": "authorizes",
+                "evidence_class": "digest-bound-reference"
+            }),
+            json!({
                 "from": "revocation-runtime-second",
                 "to": "lease-runtime-second",
                 "predicate": "freshens",
@@ -356,6 +364,36 @@ fn sign_revocation_freshness(value: &Value, keypair: &Keypair) -> String {
     keypair
         .sign_canonical(&body)
         .test_expect("revocation proof signs")
+        .0
+        .to_hex()
+}
+
+fn sign_runtime_lease_with_fixture_authority(value: &mut Value) {
+    let signing_key = Keypair::from_seed(&[46u8; 32]);
+    value["issuer"] = Value::String(format!("did:chio:{}", signing_key.public_key().to_hex()));
+    value["signature"] = Value::String(sign_execution_lease(value, &signing_key));
+}
+
+fn sign_execution_lease(value: &Value, keypair: &Keypair) -> String {
+    let body = json!({
+        "schema": "chio.runtime.execution-lease-signature.v1",
+        "leaseId": value["lease_id"],
+        "toolServerId": value["tool_server_id"],
+        "toolInstanceId": value["tool_instance_id"],
+        "toolManifestDigest": value["tool_manifest_digest"],
+        "sandboxAttestationRef": value["sandbox_attestation_ref"],
+        "requestDigest": value["request_digest"],
+        "revocationFreshnessRef": value["revocation_freshness_ref"],
+        "policyDigest": value["policy_digest"],
+        "nonce": value["nonce"],
+        "sideEffectClass": value["side_effect_class"],
+        "issuedAt": value["issued_at"],
+        "expiresAt": value["expires_at"],
+        "issuer": value["issuer"],
+    });
+    keypair
+        .sign_canonical(&body)
+        .test_expect("execution lease signs")
         .0
         .to_hex()
 }
@@ -627,6 +665,7 @@ fn receipt_totality_rejects_second_execution_lease_without_terminal_receipt() {
     let policy_digest = bundle.passport.verifier_policy_sha256.clone();
     update_artifact(&mut bundle, "execution-lease.json", |lease| {
         lease["policy_digest"] = Value::String(policy_digest.clone());
+        sign_runtime_lease_with_fixture_authority(lease);
     });
     update_artifact(&mut bundle, "allow-receipt.json", |receipt| {
         receipt["policy_digest"] = Value::String(policy_digest);
@@ -846,6 +885,36 @@ fn side_effecting_runtime_claim_rejects_tampered_tool_server_ack_signature() {
     assert!(error
         .to_string()
         .contains("tool-server acknowledgement signature invalid"));
+}
+
+#[test]
+fn side_effecting_runtime_claim_rejects_forged_tool_server_bound_by_unsigned_lease() {
+    let sandbox_key = Keypair::from_seed(&[44u8; 32]);
+    let forged_ack_key = Keypair::from_seed(&[47u8; 32]);
+    let forged_tool_server_id = format!("did:chio:{}", forged_ack_key.public_key().to_hex());
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    update_artifact(&mut bundle, "execution-lease.json", |lease| {
+        lease["tool_server_id"] = Value::String(forged_tool_server_id.clone());
+    });
+    update_artifact(&mut bundle, "sandbox-attestation.json", |sandbox| {
+        sandbox["tool_server_id"] = Value::String(forged_tool_server_id.clone());
+        sandbox["attester"] =
+            Value::String(format!("did:chio:{}", sandbox_key.public_key().to_hex()));
+        sandbox["signature"] = Value::String(sign_sandbox_attestation(sandbox, &sandbox_key));
+    });
+    update_artifact(&mut bundle, "tool-server-ack.json", |ack| {
+        ack["tool_server_id"] = Value::String(forged_tool_server_id);
+        ack["signature"] = Value::String(sign_tool_server_ack(ack, &forged_ack_key));
+    });
+
+    let error = chio_control_plane::transaction_passport::verify_runtime_security_claims(&bundle)
+        .test_expect_err("forged tool server must not be authorized by an unsigned lease");
+
+    let error = error.to_string();
+    assert!(
+        error.contains("execution lease signature invalid"),
+        "{error}"
+    );
 }
 
 #[test]

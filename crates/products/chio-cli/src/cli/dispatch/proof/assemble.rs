@@ -368,6 +368,14 @@ fn assemble_runtime_edges(nodes: &[AssembledEvidenceNode]) -> Vec<AssembledEvide
             predicate: "authorizes",
             evidence_class: "chio-sidecar-proof",
         });
+        for trust_root in nodes.iter().filter(|node| node.role == "trust-root") {
+            edges.push(AssembledEvidenceEdge {
+                from: trust_root.id.clone(),
+                to: lease.id.clone(),
+                predicate: "authorizes",
+                evidence_class: "digest-bound-reference",
+            });
+        }
         if let Some(revocation) = nodes.iter().find(|node| {
             node.role == "revocation-freshness-proof"
                 && node.runtime_binding.revocation_proof_id.as_deref()

@@ -196,7 +196,7 @@ d24ddeb9ab605a42e546b513bbae7af39e083f192e943c38d325ec517427d09b  spec/schemas/c
 a80dcbf85529967e111b684b494635dc8f0b74f2f156cbc22f8658803f6cfa5b  spec/schemas/chio-trust/v1/key-state.schema.json
 78ef587b5b79bd6b5117a88ef496e8e5ebb6044daf4ad1c1e5dec8551a8712c0  spec/schemas/chio-trust/v1/revocation-snapshot.schema.json
 8bffd22d9aa0746be9e1c010a5568b84733a3fef8c6f1f096ff0cfd92c2964e9  spec/schemas/chio-risk/v1/comptroller-report.schema.json
-ddf366ba68dfd5fa0ba5a2b8707636fe19b0560819a043b1ffe0e8bcf2589371  spec/schemas/chio-runtime/v1/execution-lease.schema.json
+b268320f2dac1d48eb0c8d99c7ace24805031e94703de3c63f65cc93186041aa  spec/schemas/chio-runtime/v1/execution-lease.schema.json
 43dd1bc2f4406afa9dab505c2b9c6ebe76853414ae4287c60e5a2ef4b6d1c617  spec/schemas/chio-runtime/v1/revocation-freshness-proof.schema.json
 c38928e551ab6891e8773184bf19486bbb4a860681851637d9800e8e6635ee83  spec/schemas/chio-runtime/v1/sandbox-attestation.schema.json
 317dfd677a720ce6f70bbf724f56a800237d6f4379d435699b416373f8ede85d  spec/schemas/chio-runtime/v1/terminal-receipt.schema.json

@@ -811,6 +811,7 @@ fn proof_assemble_outputs_runtime_security_bundle_verifiable_by_runtime_requirem
     for artifact in [
         "allow-receipt.json",
         "execution-lease.json",
+        "trust-root.json",
         "revocation-freshness-proof.json",
         "sandbox-attestation.json",
         "tool-server-ack.json",

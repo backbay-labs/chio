@@ -11,6 +11,7 @@ use super::evidence::{parse_artifact, RuntimeEvidenceGraph, RuntimeEvidenceRole}
 use super::RuntimeSecurityBundle;
 
 const DID_CHIO_PREFIX: &str = "did:chio:";
+const RUNTIME_EXECUTION_LEASE_SIGNATURE_SCHEMA: &str = "chio.runtime.execution-lease-signature.v1";
 const RUNTIME_REVOCATION_FRESHNESS_PROOF_SIGNATURE_SCHEMA: &str =
     "chio.runtime.revocation-freshness-proof-signature.v1";
 const RUNTIME_SANDBOX_ATTESTATION_SIGNATURE_SCHEMA: &str =
@@ -33,6 +34,26 @@ pub(super) struct RuntimeExecutionLease {
     side_effect_class: String,
     issued_at: String,
     expires_at: String,
+    issuer: String,
+    signature: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RuntimeTrustRoot {
+    schema: String,
+    id: String,
+    #[serde(default)]
+    authority: Option<String>,
+    #[serde(default)]
+    roots: Vec<RuntimeTrustRootEntry>,
+    signature: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RuntimeTrustRootEntry {
+    subject: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,6 +118,7 @@ pub(super) struct RuntimeTerminalReceipt {
 pub(super) fn validate_execution_lease(
     lease: &RuntimeExecutionLease,
     policy_digest: &str,
+    trusted_roots: &[&RuntimeTrustRoot],
 ) -> Result<(), TransactionPassportError> {
     for (field, value) in [
         ("schema", &lease.schema),
@@ -109,6 +131,8 @@ pub(super) fn validate_execution_lease(
         ("side_effect_class", &lease.side_effect_class),
         ("issued_at", &lease.issued_at),
         ("expires_at", &lease.expires_at),
+        ("issuer", &lease.issuer),
+        ("signature", &lease.signature),
     ] {
         require_non_empty(value, field)?;
     }
@@ -136,7 +160,111 @@ pub(super) fn validate_execution_lease(
             "execution lease expired before issuance".to_string(),
         ));
     }
+    validate_execution_lease_trust_root(lease, trusted_roots)?;
+    verify_execution_lease_signature(lease)?;
     Ok(())
+}
+
+fn validate_execution_lease_trust_root(
+    lease: &RuntimeExecutionLease,
+    trusted_roots: &[&RuntimeTrustRoot],
+) -> Result<(), TransactionPassportError> {
+    for trust_root in trusted_roots {
+        validate_trust_root(trust_root)?;
+        if trust_root.authority.as_deref() == Some(lease.issuer.as_str())
+            || trust_root
+                .roots
+                .iter()
+                .any(|entry| entry.subject == lease.issuer)
+        {
+            return Ok(());
+        }
+    }
+    Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+        "execution lease issuer is not trusted".to_string(),
+    ))
+}
+
+fn validate_trust_root(trust_root: &RuntimeTrustRoot) -> Result<(), TransactionPassportError> {
+    if trust_root.schema != "chio.trust.root.v1" {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "runtime trust root schema mismatch".to_string(),
+        ));
+    }
+    require_non_empty(&trust_root.id, "runtime trust root id")?;
+    require_non_empty(&trust_root.signature, "runtime trust root signature")?;
+    if let Some(authority) = trust_root.authority.as_deref() {
+        require_non_empty(authority, "runtime trust root authority")?;
+    }
+    for root in &trust_root.roots {
+        require_non_empty(&root.subject, "runtime trust root subject")?;
+    }
+    Ok(())
+}
+
+fn verify_execution_lease_signature(
+    lease: &RuntimeExecutionLease,
+) -> Result<(), TransactionPassportError> {
+    let public_key = self_certifying_public_key(&lease.issuer, "execution lease issuer")?;
+    let signature = Signature::from_hex(&lease.signature).map_err(|error| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+            "execution lease signature invalid: {error}"
+        ))
+    })?;
+    let verified = public_key
+        .verify_canonical(&execution_lease_signature_body(lease), &signature)
+        .map_err(|error| {
+            TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+                "execution lease signature invalid: {error}"
+            ))
+        })?;
+    if verified {
+        Ok(())
+    } else {
+        Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease signature invalid".to_string(),
+        ))
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeExecutionLeaseSignatureBody<'a> {
+    schema: &'static str,
+    lease_id: &'a str,
+    tool_server_id: &'a str,
+    tool_instance_id: &'a str,
+    tool_manifest_digest: &'a str,
+    sandbox_attestation_ref: &'a str,
+    request_digest: &'a str,
+    revocation_freshness_ref: &'a str,
+    policy_digest: &'a str,
+    nonce: &'a str,
+    side_effect_class: &'a str,
+    issued_at: &'a str,
+    expires_at: &'a str,
+    issuer: &'a str,
+}
+
+fn execution_lease_signature_body(
+    lease: &RuntimeExecutionLease,
+) -> RuntimeExecutionLeaseSignatureBody<'_> {
+    RuntimeExecutionLeaseSignatureBody {
+        schema: RUNTIME_EXECUTION_LEASE_SIGNATURE_SCHEMA,
+        lease_id: &lease.lease_id,
+        tool_server_id: &lease.tool_server_id,
+        tool_instance_id: &lease.tool_instance_id,
+        tool_manifest_digest: &lease.tool_manifest_digest,
+        sandbox_attestation_ref: &lease.sandbox_attestation_ref,
+        request_digest: &lease.request_digest,
+        revocation_freshness_ref: &lease.revocation_freshness_ref,
+        policy_digest: &lease.policy_digest,
+        nonce: &lease.nonce,
+        side_effect_class: &lease.side_effect_class,
+        issued_at: &lease.issued_at,
+        expires_at: &lease.expires_at,
+        issuer: &lease.issuer,
+    }
 }
 
 pub(super) fn validate_revocation_freshness(
