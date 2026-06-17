@@ -483,6 +483,39 @@ fn advisory_observation_cannot_authorize_runtime_execution() {
 }
 
 #[test]
+fn advisory_observation_role_cannot_authorize_runtime_execution() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    let mut graph: Value =
+        serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("graph parses");
+    graph["nodes"]
+        .as_array_mut()
+        .test_expect("graph has nodes")
+        .push(json!({
+            "id": "external-advisory-observation",
+            "schema": "chio.runtime.observation.v1",
+            "path": "advisory-observation.json",
+            "sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+            "role": "advisory-observation"
+        }));
+    graph["edges"]
+        .as_array_mut()
+        .test_expect("graph has edges")
+        .push(json!({
+            "from": "external-advisory-observation",
+            "to": "lease-runtime-valid",
+            "predicate": "authorizes"
+        }));
+    rebind_graph(&mut bundle, graph);
+
+    let error = chio_control_plane::transaction_passport::verify_runtime_security_claims(&bundle)
+        .test_expect_err("advisory node role must not authorize");
+
+    assert!(error
+        .to_string()
+        .contains("advisory evidence cannot authorize"));
+}
+
+#[test]
 fn receipt_totality_accepts_denial_terminal_receipt() {
     let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
     update_policy_required_claims(&mut bundle, vec!["claim.runtime.receipt_totality_complete"]);

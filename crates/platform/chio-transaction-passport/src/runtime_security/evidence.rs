@@ -88,12 +88,19 @@ pub(super) fn ensure_no_advisory_authorization(
     graph: &RuntimeEvidenceGraph,
 ) -> Result<(), TransactionPassportError> {
     for edge in &graph.edges {
-        if matches!(
+        let authorizes_runtime = matches!(
             edge.predicate,
             EvidenceEdgePredicate::Authorizes | EvidenceEdgePredicate::Executes
-        ) && edge.evidence_class == Some(EvidenceClass::AdvisoryObservation)
-        {
-            return Err(TransactionPassportError::AdvisoryEvidenceCannotAuthorize);
+        );
+        if authorizes_runtime {
+            let advisory_class = edge.evidence_class == Some(EvidenceClass::AdvisoryObservation);
+            let advisory_endpoint = graph.nodes.iter().any(|node| {
+                (node.id == edge.from || node.id == edge.to)
+                    && node.role == RuntimeEvidenceRole::AdvisoryObservation
+            });
+            if advisory_class || advisory_endpoint {
+                return Err(TransactionPassportError::AdvisoryEvidenceCannotAuthorize);
+            }
         }
         require_non_empty(&edge.from, "evidence graph edge from")?;
         require_non_empty(&edge.to, "evidence graph edge to")?;
