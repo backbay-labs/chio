@@ -81,9 +81,16 @@ export function getToken(): string {
   const param = new URLSearchParams(window.location.search).get('token')
   if (param) {
     sessionStorage.setItem(TOKEN_KEY, param)
-    // Remove the token from the URL bar and history so it is not leaked via
+    // Remove only the token from the URL bar and history so it is not leaked via
     // the Referer header, browser history, or shoulder-surfing.
-    window.history.replaceState({}, document.title, window.location.pathname)
+    const url = new URL(window.location.href)
+    url.searchParams.delete('token')
+    const search = url.searchParams.toString()
+    window.history.replaceState(
+      {},
+      document.title,
+      `${url.pathname}${search ? `?${search}` : ''}${url.hash}`,
+    )
     return param
   }
   return ''

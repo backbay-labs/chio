@@ -319,6 +319,23 @@ function servedProofRoomRoutesWithVerifierRoots(): Record<string, MockFetchRoute
 }
 
 describe('App operator paths', () => {
+  it('keeps Proof Room mode when token cleanup strips the URL secret', async () => {
+    sessionStorage.clear()
+    window.history.replaceState({}, '', '/?view=proof-room&token=proof-room-token')
+    const fetchMock = mockFetch(servedProofRoomRoutes('served-proof-room', 'single-call-authority'))
+
+    const container = await renderIntoDocument(<App />)
+    await waitForText(container, 'served-proof-room')
+
+    expect(container.textContent).toContain('Chio Proof Room')
+    expect(container.textContent).not.toContain('Chio Receipt Dashboard')
+    expect(window.location.search).toBe('?view=proof-room')
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringMatching(/^\/v1\/receipts\/query/),
+      expect.anything(),
+    )
+  })
+
   it('renders static Proof Room data without bearer token prompts', async () => {
     sessionStorage.clear()
     window.history.replaceState({}, '', '/?view=proof-room')

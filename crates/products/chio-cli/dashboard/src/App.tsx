@@ -17,7 +17,9 @@ const INITIAL_FILTERS: Filters = {
 export default function App() {
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS)
   const [token, setToken] = useState<string | null>(null)
-  const isProofRoom = new URLSearchParams(window.location.search).get('view') === 'proof-room'
+  const isProofRoom =
+    window.location.pathname === '/proof-room'
+    || new URLSearchParams(window.location.search).get('view') === 'proof-room'
 
   useEffect(() => {
     setToken(getToken())
