@@ -239,6 +239,25 @@ pub fn validate_runtime_proof_regeneration_artifacts(
             detail: "runtime proof regeneration evidence must be accepted".to_string(),
         });
     }
+    validate_non_empty(
+        &proof_report.run_id,
+        "runtime_proof_regeneration_missing_run_id",
+    )?;
+    ensure_runtime_regeneration_run_id(
+        &proof_report.run_id,
+        &proof_input.run_id,
+        "proof regeneration input",
+    )?;
+    ensure_runtime_regeneration_run_id(
+        &proof_report.run_id,
+        &manifest.run_id,
+        "evidence manifest",
+    )?;
+    ensure_runtime_regeneration_run_id(
+        &proof_report.run_id,
+        &workflow_report.run_id,
+        "workflow run report",
+    )?;
 
     let proof_report_sha256 = canonical_sha256(&proof_report)?;
     let proof_input_manifest_sha256 = canonical_sha256(&manifest)?;
@@ -373,6 +392,21 @@ fn validate_manifest_entry(
             detail: format!(
                 "runtime proof regeneration evidence manifest artifact mismatch for {role}"
             ),
+        });
+    }
+    Ok(())
+}
+
+fn ensure_runtime_regeneration_run_id(
+    expected: &str,
+    actual: &str,
+    label: &str,
+) -> Result<(), ChioRuntimeError> {
+    validate_non_empty(actual, "runtime_proof_regeneration_missing_run_id")?;
+    if actual != expected {
+        return Err(ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_run_id_mismatch",
+            detail: format!("runtime proof regeneration run ID mismatch for {label}"),
         });
     }
     Ok(())

@@ -320,6 +320,182 @@ fn runtime_proof_regeneration_contracts_bind_evidence() -> Result<(), Box<dyn st
 }
 
 #[test]
+fn runtime_proof_regeneration_artifacts_reject_run_id_mismatch(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let artifacts = runtime_proof_regeneration_artifacts("runtime-loopback-other")?;
+
+    match validate_runtime_proof_regeneration_artifacts(artifacts.as_runtime_artifacts()) {
+        Ok(()) => panic!("runtime regeneration artifacts with mismatched run IDs verified"),
+        Err(error) => assert_eq!(error.code(), "runtime_proof_regeneration_run_id_mismatch"),
+    }
+    Ok(())
+}
+
+struct TestRuntimeProofRegenerationArtifacts {
+    proof_regeneration_report: Vec<u8>,
+    proof_regeneration_input: Vec<u8>,
+    evidence_manifest: Vec<u8>,
+    workflow_run_report: Vec<u8>,
+    proof_package: Vec<u8>,
+    verifier_report: Vec<u8>,
+    workflow_receipt: Vec<u8>,
+}
+
+impl TestRuntimeProofRegenerationArtifacts {
+    fn as_runtime_artifacts(&self) -> RuntimeProofRegenerationArtifacts<'_> {
+        RuntimeProofRegenerationArtifacts {
+            proof_regeneration_report: &self.proof_regeneration_report,
+            proof_regeneration_input: &self.proof_regeneration_input,
+            evidence_manifest: &self.evidence_manifest,
+            workflow_run_report: &self.workflow_run_report,
+            proof_package: &self.proof_package,
+            verifier_report: &self.verifier_report,
+            workflow_receipt: &self.workflow_receipt,
+        }
+    }
+}
+
+fn runtime_proof_regeneration_artifacts(
+    proof_input_run_id: &str,
+) -> Result<TestRuntimeProofRegenerationArtifacts, Box<dyn std::error::Error>> {
+    let proof_package = serde_json::json!({
+        "schema": "test.runtime-proof-package.v1",
+        "packageId": "runtime-proof-package-1"
+    });
+    let verifier_report = serde_json::json!({
+        "schema": "test.runtime-verifier-report.v1",
+        "verdict": "verified"
+    });
+    let workflow_receipt = serde_json::json!({
+        "schema": "test.runtime-workflow-receipt.v1",
+        "receiptId": "runtime-workflow-receipt-1"
+    });
+    let proof_package_bytes = serde_json::to_vec(&proof_package)?;
+    let verifier_report_bytes = serde_json::to_vec(&verifier_report)?;
+    let workflow_receipt_bytes = serde_json::to_vec(&workflow_receipt)?;
+    let source_record = RuntimeProofSourceRecord {
+        step_index: 0,
+        admission_report_sha256: "1".repeat(64),
+        tool_receipt_sha256: "2".repeat(64),
+        bilateral_dsse_sha256: "3".repeat(64),
+        workflow_step_sha256: "4".repeat(64),
+    };
+    let proof_report = RuntimeProofRegenerationReport {
+        schema: CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA.to_string(),
+        run_id: "runtime-loopback-7-3".to_string(),
+        accepted: true,
+        failure_code: None,
+        generated_at_unix_ms: 1_800_000_001_000,
+        proof_package_sha256: Some(canonical_value_sha256(&proof_package)?),
+        verifier_report_sha256: Some(canonical_value_sha256(&verifier_report)?),
+        workflow_receipt_sha256: Some(canonical_value_sha256(&workflow_receipt)?),
+        source_records: vec![source_record.clone()],
+        checks: vec!["runtime_source_records.bound".to_string()],
+    };
+    let proof_report_sha256 = canonical_value_sha256(&proof_report)?;
+    let workflow_report = RuntimeWorkflowRunReport {
+        schema: CHIO_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
+        run_id: "runtime-loopback-7-3".to_string(),
+        accepted: true,
+        failure_code: None,
+        generated_at_unix_ms: 1_800_000_001_000,
+        admission_report_sha256: "1".repeat(64),
+        evidence_paths: vec!["proof-regeneration-report.json".to_string()],
+        step_evidence: vec![RuntimeStepEvidence {
+            schema: CHIO_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
+            step_index: 0,
+            admission_id: "admission-runtime-loopback".to_string(),
+            admission_report_sha256: "1".repeat(64),
+            tool_receipt_id: "receipt-runtime-loopback".to_string(),
+            tool_receipt_sha256: "2".repeat(64),
+            output_sha256: "5".repeat(64),
+            bilateral_dsse_sha256: "3".repeat(64),
+            workflow_step_sha256: "4".repeat(64),
+            parent_receipt_sha256: None,
+            consistency_anchor: "anchor-runtime-loopback".to_string(),
+            destructive: false,
+            lease_id: None,
+            governance_receipt_id: None,
+        }],
+        proof_regeneration_report_sha256: Some(proof_report_sha256.clone()),
+    };
+    let proof_report_bytes = serde_json::to_vec(&proof_report)?;
+    let workflow_report_bytes = serde_json::to_vec(&workflow_report)?;
+    let workflow_report_sha256 = canonical_value_sha256(&workflow_report)?;
+    let manifest = RuntimeEvidenceManifest {
+        schema: CHIO_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+        run_id: "runtime-loopback-7-3".to_string(),
+        generated_at_unix_ms: 1_800_000_001_000,
+        workflow_run_report_sha256: workflow_report_sha256.clone(),
+        proof_regeneration_report_sha256: proof_report_sha256,
+        entries: vec![
+            runtime_artifact_entry(
+                "proof_package",
+                "runtime-proof-package.json",
+                &proof_package_bytes,
+            ),
+            runtime_artifact_entry(
+                "verifier_report",
+                "runtime-verifier-report.json",
+                &verifier_report_bytes,
+            ),
+            runtime_artifact_entry(
+                "workflow_receipt",
+                "runtime-workflow-receipt.json",
+                &workflow_receipt_bytes,
+            ),
+            runtime_artifact_entry(
+                "proof_regeneration_report",
+                "proof-regeneration-report.json",
+                &proof_report_bytes,
+            ),
+            runtime_artifact_entry(
+                "runtime_run_report",
+                "runtime-workflow-run-report.json",
+                &workflow_report_bytes,
+            ),
+        ],
+    };
+    let manifest_sha256 = canonical_value_sha256(&manifest)?;
+    let manifest_bytes = serde_json::to_vec(&manifest)?;
+    let proof_input = RuntimeProofRegenerationInput {
+        schema: CHIO_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA.to_string(),
+        run_id: proof_input_run_id.to_string(),
+        evidence_manifest_sha256: manifest_sha256,
+        workflow_run_report_sha256: workflow_report_sha256,
+        admission_report_sha256: "1".repeat(64),
+        trust_bundle_sha256: "6".repeat(64),
+        verification_context_sha256: "7".repeat(64),
+        source_records: vec![source_record],
+    };
+
+    Ok(TestRuntimeProofRegenerationArtifacts {
+        proof_regeneration_report: proof_report_bytes,
+        proof_regeneration_input: serde_json::to_vec(&proof_input)?,
+        evidence_manifest: manifest_bytes,
+        workflow_run_report: workflow_report_bytes,
+        proof_package: proof_package_bytes,
+        verifier_report: verifier_report_bytes,
+        workflow_receipt: workflow_receipt_bytes,
+    })
+}
+
+fn runtime_artifact_entry(role: &str, path: &str, bytes: &[u8]) -> RuntimeEvidenceManifestEntry {
+    RuntimeEvidenceManifestEntry {
+        role: role.to_string(),
+        path: path.to_string(),
+        sha256: sha256_hex(bytes),
+        byte_count: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
+    }
+}
+
+fn canonical_value_sha256<T: serde::Serialize>(
+    value: &T,
+) -> Result<String, Box<dyn std::error::Error>> {
+    Ok(sha256_hex(&canonical_json_bytes(value)?))
+}
+
+#[test]
 fn runtime_orchestration_contracts_validate_status_and_run_report(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let profile = chio_runtime_core::RuntimeOrchestrationProfile {
