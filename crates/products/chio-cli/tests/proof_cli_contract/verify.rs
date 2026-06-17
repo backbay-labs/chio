@@ -1,6 +1,7 @@
 use super::support::*;
+use chio_core::{canonical_json_bytes, sha256_hex};
 use chio_test_support::prelude::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[test]
 fn proof_verify_requires_commerce_claims_when_requested() {
@@ -448,6 +449,8 @@ fn build_swarm_bundle_with_runtime_parity() -> (tempfile::TempDir, PathBuf) {
     let bundle = tempdir.path().join("swarm-with-runtime-parity");
     copy_dir_all(&source, &bundle).test_expect("copy swarm bundle");
 
+    write_runtime_regeneration_artifacts(&bundle);
+
     let parity_path = bundle.join("runtime-proof-parity-report.json");
     write_json(
         &parity_path,
@@ -470,16 +473,61 @@ fn build_swarm_bundle_with_runtime_parity() -> (tempfile::TempDir, PathBuf) {
         &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
     )
     .test_expect("evidence graph parses");
-    evidence_graph["nodes"]
+    let graph_nodes = evidence_graph["nodes"]
         .as_array_mut()
-        .test_expect("graph nodes array")
-        .push(serde_json::json!({
+        .test_expect("graph nodes array");
+    graph_nodes.push(serde_json::json!({
             "id": "runtime-proof-parity-report",
             "schema": "chio.runtime.proof-parity-report.v1",
             "path": "runtime-proof-parity-report.json",
             "sha256": sha256_file(&parity_path),
             "role": "runtime-proof-parity-report"
+    }));
+    for (role, schema, path) in [
+        (
+            "runtime-proof-regeneration-report",
+            "chio.runtime.proof-regeneration-report.v1",
+            "proof-regeneration-report.json",
+        ),
+        (
+            "runtime-proof-regeneration-input",
+            "chio.runtime.proof-regeneration-input.v1",
+            "proof-regeneration-input.json",
+        ),
+        (
+            "runtime-evidence-manifest",
+            "chio.runtime.evidence-manifest.v1",
+            "runtime-evidence-manifest.json",
+        ),
+        (
+            "runtime-workflow-run-report",
+            "chio.runtime.workflow-run-report.v1",
+            "runtime-workflow-run-report.json",
+        ),
+        (
+            "runtime-proof-package",
+            "test.runtime-proof-package.v1",
+            "runtime-proof-package.json",
+        ),
+        (
+            "runtime-verifier-report",
+            "test.runtime-verifier-report.v1",
+            "runtime-verifier-report.json",
+        ),
+        (
+            "runtime-workflow-receipt",
+            "test.runtime-workflow-receipt.v1",
+            "runtime-workflow-receipt.json",
+        ),
+    ] {
+        graph_nodes.push(serde_json::json!({
+            "id": role,
+            "schema": schema,
+            "path": path,
+            "sha256": sha256_file(&bundle.join(path)),
+            "role": role
         }));
+    }
     write_json(&evidence_graph_path, &evidence_graph);
 
     let passport_path = bundle.join("transaction-passport.json");
@@ -491,6 +539,136 @@ fn build_swarm_bundle_with_runtime_parity() -> (tempfile::TempDir, PathBuf) {
     write_json(&passport_path, &passport);
 
     (tempdir, bundle)
+}
+
+fn write_runtime_regeneration_artifacts(bundle: &Path) {
+    let proof_package = serde_json::json!({
+        "schema": "test.runtime-proof-package.v1",
+        "packageId": "runtime-swarm-proof-package"
+    });
+    let verifier_report = serde_json::json!({
+        "schema": "test.runtime-verifier-report.v1",
+        "verdict": "verified"
+    });
+    let workflow_receipt = serde_json::json!({
+        "schema": "test.runtime-workflow-receipt.v1",
+        "receiptId": "runtime-swarm-workflow-receipt"
+    });
+    write_json(&bundle.join("runtime-proof-package.json"), &proof_package);
+    write_json(
+        &bundle.join("runtime-verifier-report.json"),
+        &verifier_report,
+    );
+    write_json(
+        &bundle.join("runtime-workflow-receipt.json"),
+        &workflow_receipt,
+    );
+
+    let source_record = serde_json::json!({
+        "stepIndex": 0,
+        "admissionReportSha256": "a".repeat(64),
+        "toolReceiptSha256": "b".repeat(64),
+        "bilateralDsseSha256": "c".repeat(64),
+        "workflowStepSha256": "d".repeat(64)
+    });
+    let proof_report = serde_json::json!({
+        "schema": "chio.runtime.proof-regeneration-report.v1",
+        "runId": "runtime-swarm-valid",
+        "accepted": true,
+        "generatedAtUnixMs": 1800000001000_u64,
+        "proofPackageSha256": canonical_file_sha256(&bundle.join("runtime-proof-package.json")),
+        "verifierReportSha256": canonical_file_sha256(&bundle.join("runtime-verifier-report.json")),
+        "workflowReceiptSha256": canonical_file_sha256(&bundle.join("runtime-workflow-receipt.json")),
+        "sourceRecords": [source_record.clone()],
+        "checks": ["runtime_regeneration.source_records_bound"]
+    });
+    write_json(
+        &bundle.join("proof-regeneration-report.json"),
+        &proof_report,
+    );
+    let proof_report_sha256 = canonical_value_sha256(&proof_report);
+
+    let workflow_report = serde_json::json!({
+        "schema": "chio.runtime.workflow-run-report.v1",
+        "runId": "runtime-swarm-valid",
+        "accepted": true,
+        "generatedAtUnixMs": 1800000001000_u64,
+        "admissionReportSha256": "a".repeat(64),
+        "evidencePaths": ["proof-regeneration-report.json"],
+        "stepEvidence": [{
+            "schema": "chio.runtime.step-evidence.v1",
+            "stepIndex": 0,
+            "admissionId": "runtime-swarm-admission",
+            "admissionReportSha256": "a".repeat(64),
+            "toolReceiptId": "runtime-swarm-tool-receipt",
+            "toolReceiptSha256": "b".repeat(64),
+            "outputSha256": "e".repeat(64),
+            "bilateralDsseSha256": "c".repeat(64),
+            "workflowStepSha256": "d".repeat(64),
+            "consistencyAnchor": "runtime-swarm-anchor",
+            "destructive": false
+        }],
+        "proofRegenerationReportSha256": proof_report_sha256
+    });
+    write_json(
+        &bundle.join("runtime-workflow-run-report.json"),
+        &workflow_report,
+    );
+    let workflow_report_sha256 = canonical_value_sha256(&workflow_report);
+
+    let evidence_manifest = serde_json::json!({
+        "schema": "chio.runtime.evidence-manifest.v1",
+        "runId": "runtime-swarm-valid",
+        "generatedAtUnixMs": 1800000001000_u64,
+        "workflowRunReportSha256": workflow_report_sha256,
+        "proofRegenerationReportSha256": proof_report_sha256,
+        "entries": [
+            runtime_manifest_entry(bundle, "proof_package", "runtime-proof-package.json"),
+            runtime_manifest_entry(bundle, "verifier_report", "runtime-verifier-report.json"),
+            runtime_manifest_entry(bundle, "workflow_receipt", "runtime-workflow-receipt.json"),
+            runtime_manifest_entry(bundle, "proof_regeneration_report", "proof-regeneration-report.json"),
+            runtime_manifest_entry(bundle, "runtime_run_report", "runtime-workflow-run-report.json")
+        ]
+    });
+    write_json(
+        &bundle.join("runtime-evidence-manifest.json"),
+        &evidence_manifest,
+    );
+    let evidence_manifest_sha256 = canonical_value_sha256(&evidence_manifest);
+
+    let proof_input = serde_json::json!({
+        "schema": "chio.runtime.proof-regeneration-input.v1",
+        "runId": "runtime-swarm-valid",
+        "evidenceManifestSha256": evidence_manifest_sha256,
+        "workflowRunReportSha256": workflow_report_sha256,
+        "admissionReportSha256": "a".repeat(64),
+        "trustBundleSha256": "f".repeat(64),
+        "verificationContextSha256": "1".repeat(64),
+        "sourceRecords": [source_record]
+    });
+    write_json(&bundle.join("proof-regeneration-input.json"), &proof_input);
+}
+
+fn runtime_manifest_entry(bundle: &Path, role: &str, path: &str) -> serde_json::Value {
+    let bytes = std::fs::read(bundle.join(path)).test_expect("read runtime manifest entry");
+    serde_json::json!({
+        "role": role,
+        "path": path,
+        "sha256": sha256_hex(&bytes),
+        "byteCount": bytes.len()
+    })
+}
+
+fn canonical_file_sha256(path: &Path) -> String {
+    let value: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(path).test_expect("read canonical file"))
+            .test_expect("canonical file parses");
+    canonical_value_sha256(&value)
+}
+
+fn canonical_value_sha256(value: &serde_json::Value) -> String {
+    let bytes = canonical_json_bytes(value).test_expect("canonical JSON serializes");
+    sha256_hex(&bytes)
 }
 
 #[test]
