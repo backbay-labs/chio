@@ -13,10 +13,10 @@ mod evidence;
 mod policy;
 
 use artifacts::{
-    validate_approval_case, validate_control_map, validate_data_governance,
-    validate_evidence_export_bundle, validate_risk_portfolio_reports, validate_risk_report,
-    validate_telemetry_projection, ApprovalCase, ControlEvidenceMap, DataGovernanceReport,
-    EvidenceExportBundleArtifact, RiskComptrollerReport, TelemetryProjection,
+    select_referenced_risk_report, validate_approval_case, validate_control_map,
+    validate_data_governance, validate_evidence_export_bundle, validate_risk_portfolio_reports,
+    validate_risk_report, validate_telemetry_projection, ApprovalCase, ControlEvidenceMap,
+    DataGovernanceReport, EvidenceExportBundleArtifact, RiskComptrollerReport, TelemetryProjection,
 };
 use claims::{
     push_claim_once, CLAIM_CONTROL_MAP_BOUND, CLAIM_DATA_GOVERNANCE_BOUND,
@@ -75,11 +75,6 @@ pub fn verify_enterprise_export(
     let risk_reports = find_nodes(&graph, EnterpriseEvidenceRole::RiskComptrollerReport)
         .map(|node| parse_artifact(bundle, node, "chio.risk.comptroller-report.v1"))
         .collect::<Result<Vec<RiskComptrollerReport>, TransactionPassportError>>()?;
-    let risk_report = risk_reports.first().ok_or_else(|| {
-        TransactionPassportError::EnterpriseExportClaimFailed(
-            "missing enterprise evidence".to_string(),
-        )
-    })?;
     let data_governance_node = require_node(&graph, EnterpriseEvidenceRole::DataGovernanceReport)?;
     let export_bundle_node = require_node(&graph, EnterpriseEvidenceRole::EvidenceExportBundle)?;
     let telemetry_node = require_node(&graph, EnterpriseEvidenceRole::TelemetryProjection)?;
@@ -108,6 +103,14 @@ pub fn verify_enterprise_export(
         bundle,
         control_map_node,
         "chio.enterprise.control-evidence-map.v1",
+    )?;
+    let risk_report = select_referenced_risk_report(
+        &risk_reports,
+        &data_governance,
+        &export_bundle,
+        &telemetry,
+        &approval,
+        &control_map,
     )?;
 
     let mut verified_claims = Vec::new();

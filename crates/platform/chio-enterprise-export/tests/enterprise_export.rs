@@ -1186,6 +1186,56 @@ fn replace_graph_artifact(
         chio_core_types::sha256_hex(&bundle.evidence_graph_bytes);
 }
 
+fn prepend_unreferenced_risk_report(bundle: &mut EnterpriseExportBundle) {
+    let source = bundle
+        .artifacts
+        .get("risk-comptroller-report.json")
+        .test_expect("risk report artifact exists");
+    let mut risk_report: Value =
+        serde_json::from_slice(source).test_expect("risk report artifact parses");
+    risk_report["id"] = json!("risk-comptroller-enterprise-unreferenced");
+    risk_report["order_id"] = json!("order-commerce-unreferenced");
+    risk_report["subject"] = json!("did:chio:buyer-unreferenced");
+    risk_report["facility"]["facility_id"] = json!("facility-enterprise-unreferenced");
+    risk_report["facility"]["reserve_ref"] = json!("reserve-enterprise-unreferenced");
+    risk_report["coverage"]["coverage_id"] = json!("coverage-enterprise-unreferenced");
+    risk_report["coverage"]["order_id"] = json!("order-commerce-unreferenced");
+    risk_report["coverage"]["subject"] = json!("did:chio:buyer-unreferenced");
+    risk_report["coverage"]["covered_claim_ids"] = json!(["claim-enterprise-unreferenced"]);
+    risk_report["coverage"]["reserve_ref"] = json!("reserve-enterprise-unreferenced");
+    risk_report["reconciliation"]["order_id"] = json!("order-commerce-unreferenced");
+
+    let risk_report_bytes = json_bytes(risk_report);
+    let risk_report_sha256 = chio_core_types::sha256_hex(&risk_report_bytes);
+    bundle.artifacts.insert(
+        "risk-comptroller-report-unreferenced.json".to_string(),
+        risk_report_bytes,
+    );
+
+    let mut graph: Value =
+        serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("evidence graph parses");
+    let nodes = graph["nodes"]
+        .as_array_mut()
+        .test_expect("evidence graph nodes are an array");
+    let risk_node_index = nodes
+        .iter()
+        .position(|node| node.get("id").and_then(Value::as_str) == Some("risk-comptroller-report"))
+        .test_expect("risk report graph node exists");
+    nodes.insert(
+        risk_node_index,
+        json!({
+            "id": "risk-comptroller-report-unreferenced",
+            "schema": "chio.risk.comptroller-report.v1",
+            "path": "risk-comptroller-report-unreferenced.json",
+            "sha256": risk_report_sha256,
+            "role": "risk-comptroller-report"
+        }),
+    );
+    bundle.evidence_graph_bytes = json_bytes(graph);
+    bundle.passport.evidence_graph_sha256 =
+        chio_core_types::sha256_hex(&bundle.evidence_graph_bytes);
+}
+
 fn replace_exported_bundle_artifact(
     bundle: &mut EnterpriseExportBundle,
     path: &str,
@@ -1252,6 +1302,20 @@ fn enterprise_export_accepts_valid_autonomous_commerce_fixture() {
     assert!(report
         .verified_claims
         .contains(&CLAIM_CONTROL_MAP_BOUND.to_string()));
+}
+
+#[test]
+fn enterprise_export_selects_referenced_risk_report_when_unrelated_report_precedes_it() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    prepend_unreferenced_risk_report(&mut bundle);
+
+    let report = verify_enterprise_export(&bundle)
+        .test_expect("enterprise evidence should bind to its referenced risk report");
+
+    assert_eq!(
+        report.risk_comptroller_report_ref,
+        "risk-comptroller-enterprise-valid"
+    );
 }
 
 #[test]

@@ -152,6 +152,45 @@ pub(super) fn validate_risk_portfolio_reports(
     validate_comptroller_portfolio_reports(reports)
 }
 
+pub(super) fn select_referenced_risk_report<'a>(
+    reports: &'a [RiskComptrollerReport],
+    data_governance: &DataGovernanceReport,
+    export_bundle: &EvidenceExportBundleArtifact,
+    telemetry: &TelemetryProjection,
+    approval: &ApprovalCase,
+    control_map: &ControlEvidenceMap,
+) -> Result<&'a RiskComptrollerReport, TransactionPassportError> {
+    let expected_ref = data_governance.risk_comptroller_report_ref.as_str();
+    require_non_empty(expected_ref, "risk_comptroller_report_ref")?;
+    for (field, actual_ref) in [
+        (
+            "evidence export risk_comptroller_report_ref",
+            export_bundle.risk_comptroller_report_ref.as_str(),
+        ),
+        (
+            "telemetry projection risk_comptroller_report_ref",
+            telemetry.risk_comptroller_report_ref.as_str(),
+        ),
+        (
+            "approval case risk_comptroller_report_ref",
+            approval.risk_comptroller_report_ref.as_str(),
+        ),
+        (
+            "control map risk_comptroller_report_ref",
+            control_map.risk_comptroller_report_ref.as_str(),
+        ),
+    ] {
+        require_non_empty(actual_ref, field)?;
+        if actual_ref != expected_ref {
+            return Err(claim_failed(format!("{field} mismatch")));
+        }
+    }
+    reports
+        .iter()
+        .find(|report| report.id == expected_ref)
+        .ok_or_else(|| claim_failed("referenced risk report missing"))
+}
+
 pub(super) fn validate_data_governance(
     passport: &TransactionPassport,
     risk_report: &RiskComptrollerReport,
