@@ -115,14 +115,27 @@ pub(super) fn graph_contains_receipt_node_id(
     })
 }
 
-pub(super) fn graph_contains_risk_evidence_kind(
+pub(super) fn bundle_contains_risk_evidence_kind(
+    bundle: &TrustMarketBundle,
     graph: &TrustMarketEvidenceGraph,
     evidence_ref: &str,
     kind: RiskEvidenceRefKind,
 ) -> bool {
-    graph.nodes.iter().any(|node| {
+    let Some(node) = graph.nodes.iter().find(|node| {
         node.id == evidence_ref && risk_evidence_schema_matches_kind(&node.schema, kind)
-    })
+    }) else {
+        return false;
+    };
+    let Some(bytes) = bundle.artifacts.get(&node.path) else {
+        return false;
+    };
+    if chio_core_types::sha256_hex(bytes) != node.sha256 {
+        return false;
+    }
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) else {
+        return false;
+    };
+    value.get("schema").and_then(serde_json::Value::as_str) == Some(node.schema.as_str())
 }
 
 fn risk_evidence_schema_matches_kind(schema: &str, kind: RiskEvidenceRefKind) -> bool {

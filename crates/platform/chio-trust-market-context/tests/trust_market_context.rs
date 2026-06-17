@@ -42,6 +42,7 @@ enum TrustMarketCase {
     RiskFacilityLifecycleReplayGap,
     RiskFacilityLifecycleReplayed,
     RiskFacilityLifecycleMissingEvidence,
+    RiskFacilityLifecycleMissingEvidenceArtifact,
 }
 
 fn json_bytes(value: Value) -> Vec<u8> {
@@ -414,7 +415,8 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
     let facility_state = match case {
         TrustMarketCase::RiskFacilityLifecycleReplayGap
         | TrustMarketCase::RiskFacilityLifecycleReplayed
-        | TrustMarketCase::RiskFacilityLifecycleMissingEvidence => "settlement_matched",
+        | TrustMarketCase::RiskFacilityLifecycleMissingEvidence
+        | TrustMarketCase::RiskFacilityLifecycleMissingEvidenceArtifact => "settlement_matched",
         _ => "coverage_bound",
     };
     let mut risk_report_value = json!({
@@ -492,7 +494,10 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
     }
     if !matches!(case, TrustMarketCase::RiskFacilityLifecycleReplayGap) {
         let settlement_evidence_ref = match case {
-            TrustMarketCase::RiskFacilityLifecycleMissingEvidence => "missing-risk-evidence",
+            TrustMarketCase::RiskFacilityLifecycleMissingEvidence
+            | TrustMarketCase::RiskFacilityLifecycleMissingEvidenceArtifact => {
+                "missing-risk-evidence"
+            }
             _ => "guarantee-decision",
         };
         risk_report_value["facility_lifecycle"] =
@@ -731,6 +736,19 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         ],
         "max_reputation_import_weight": 30
     }));
+
+    if matches!(
+        case,
+        TrustMarketCase::RiskFacilityLifecycleMissingEvidenceArtifact
+    ) {
+        graph_nodes.push(json!({
+            "id": "missing-risk-evidence",
+            "schema": "chio.risk.guarantee-decision.v1",
+            "path": "missing-risk-evidence.json",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "role": "guarantee-decision"
+        }));
+    }
 
     let evidence_graph = json_bytes(json!({
         "schema": "chio.transaction.evidence-graph.v1",
@@ -1092,6 +1110,18 @@ fn trust_market_rejects_facility_lifecycle_missing_evidence() {
         TrustMarketCase::RiskFacilityLifecycleMissingEvidence,
     ))
     .test_expect_err("trust-market lifecycle evidence must be graph-bound");
+
+    assert!(error
+        .to_string()
+        .contains("risk facility lifecycle evidence missing"));
+}
+
+#[test]
+fn trust_market_rejects_risk_evidence_ref_without_artifact() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::RiskFacilityLifecycleMissingEvidenceArtifact,
+    ))
+    .test_expect_err("trust-market risk evidence refs must load their artifacts");
 
     assert!(error
         .to_string()

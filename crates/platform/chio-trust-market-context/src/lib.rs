@@ -26,8 +26,8 @@ use claims::{
     CLAIM_UNSUPPORTED_MARKET_LIMITED,
 };
 use evidence::{
-    graph_contains_receipt_node_id, graph_contains_risk_evidence_kind, parse_artifact, parse_graph,
-    require_node, TrustMarketEvidenceRole,
+    bundle_contains_risk_evidence_kind, graph_contains_receipt_node_id, parse_artifact,
+    parse_graph, require_node, TrustMarketEvidenceRole,
 };
 use policy::parse_policy;
 
@@ -162,7 +162,7 @@ pub fn verify_trust_market_context(
         &bundle.passport,
         &selection,
         &risk_report,
-        |evidence_ref, kind| graph_contains_risk_evidence_kind(&graph, evidence_ref, kind),
+        |evidence_ref, kind| bundle_contains_risk_evidence_kind(bundle, &graph, evidence_ref, kind),
     )?;
     push_claim_once(&mut verified_claims, CLAIM_RISK_COMPTROLLER_REPORT_BOUND);
     push_claim_once(&mut verified_claims, CLAIM_SELECTION_BOUND);
