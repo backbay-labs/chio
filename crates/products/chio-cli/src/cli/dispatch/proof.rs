@@ -836,6 +836,11 @@ fn attach_runtime_proof_parity_report(
     else {
         return Ok(());
     };
+    if !runtime_parity_report_is_accepted(&parity_report) {
+        return Err(CliError::cli_other_error(
+            "proof verify: runtime proof parity report is not accepted".to_string(),
+        ));
+    }
     validate_runtime_proof_regeneration_artifacts_from_graph(bundle_dir, evidence_graph_bytes)?;
     let report_object = report.as_object_mut().ok_or_else(|| {
         CliError::cli_other_error("proof verify: verifier report is not a JSON object".to_string())

@@ -515,6 +515,39 @@ fn proof_verify_runtime_parity_accepts_evidence_graph_bound_report() {
 }
 
 #[test]
+fn proof_verify_runtime_parity_rejects_failed_evidence_graph_bound_report() {
+    let (_tempdir, bundle) = build_swarm_bundle_with_runtime_parity();
+    let parity_path = bundle.join("runtime-proof-parity-report.json");
+    let mut parity_report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&parity_path).test_expect("read parity report"))
+            .test_expect("parity report parses");
+    parity_report["accepted"] = serde_json::Value::Bool(false);
+    parity_report["failureCode"] =
+        serde_json::Value::String("runtime_proof_parity_package_hash_drift".to_string());
+    parity_report["runtimeProofPackageSha256"] = serde_json::Value::String("c".repeat(64));
+    parity_report["mismatches"] = serde_json::json!([{
+        "field": "proof_package_sha256",
+        "staticValueSha256": "a".repeat(64),
+        "runtimeValueSha256": "c".repeat(64)
+    }]);
+    write_json(&parity_path, &parity_report);
+    refresh_transaction_artifact_digest(&bundle, "runtime-proof-parity-report.json");
+
+    let output = chio(&[
+        "proof",
+        "verify",
+        utf8_path(&bundle).as_str(),
+        "--require",
+        "delegation",
+    ]);
+
+    assert_failure(
+        &output,
+        "proof verify: runtime proof parity report is not accepted",
+    );
+}
+
+#[test]
 fn proof_verify_runtime_parity_rejects_accepted_package_hash_drift() {
     let (_tempdir, bundle) = build_swarm_bundle_with_runtime_parity();
     let parity_path = bundle.join("runtime-proof-parity-report.json");
