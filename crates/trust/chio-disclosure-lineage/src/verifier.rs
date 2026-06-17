@@ -170,8 +170,13 @@ fn validate_lineage(lineage: &SignedLineageSubgraph) -> Result<(), DisclosureLin
         }
     }
     for root in &lineage.root_receipt_ids {
-        if !node_ids.contains(root.as_str()) {
+        let Some(root_node) = lineage.nodes.iter().find(|node| node.id == *root) else {
             return Err(invalid(format!("unknown lineage root receipt: {root}")));
+        };
+        if root_node.receipt_ref != *root {
+            return Err(invalid(format!(
+                "lineage root receipt ref mismatch: {root}"
+            )));
         }
     }
     validate_lineage_edges(lineage, &node_ids)?;

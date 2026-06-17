@@ -191,7 +191,7 @@ fn disclosure_lineage_rejects_recomputed_digest_only_signature() {
     let Ok(mut bundle) = valid_bundle() else {
         panic!("valid bundle fixture should build");
     };
-    bundle.lineage.nodes[0].receipt_ref = "receipt-root-forged".to_string();
+    bundle.lineage.nodes[1].receipt_ref = "receipt-child-forged".to_string();
     let Ok(digest) = compute_signed_lineage_subgraph_digest(&bundle.lineage) else {
         panic!("mutated lineage digest should compute");
     };
@@ -240,4 +240,29 @@ fn disclosure_lineage_rejects_unknown_lineage_root() {
     };
 
     assert!(error.to_string().contains("unknown lineage root receipt"));
+}
+
+#[test]
+fn disclosure_lineage_rejects_root_receipt_ref_mismatch() {
+    let Ok(mut bundle) = valid_bundle() else {
+        panic!("valid bundle fixture should build");
+    };
+    bundle.lineage.nodes[0].receipt_ref = "receipt-other".to_string();
+    let Ok(digest) = compute_signed_lineage_subgraph_digest(&bundle.lineage) else {
+        panic!("mutated lineage digest should compute");
+    };
+    bundle.lineage.subgraph_sha256 = digest;
+    let Ok(signature) = sign_lineage_subgraph(&bundle.lineage, &lineage_signer()) else {
+        panic!("mutated lineage signature should build");
+    };
+    bundle.lineage.signature = signature;
+
+    let error = match verify_disclosure_lineage_bundle(&bundle) {
+        Ok(_) => panic!("lineage root receipt ref mismatch must fail"),
+        Err(error) => error,
+    };
+
+    assert!(error
+        .to_string()
+        .contains("lineage root receipt ref mismatch"));
 }
