@@ -498,6 +498,7 @@ pub(super) fn validate_minimal_governed_action_artifact_bindings(
 #[derive(Deserialize)]
 struct MinimalCapabilityProof {
     capability_id: String,
+    not_before: Option<String>,
     expires_at: String,
     issuer: String,
 }
@@ -700,6 +701,15 @@ fn validate_capability_window(
     capability: &MinimalCapabilityProof,
     evidence_graph_issued_at: DateTime<Utc>,
 ) -> Result<(), TransactionPassportError> {
+    if let Some(not_before) = capability.not_before.as_deref() {
+        require_binding_value(not_before, "capability not_before")?;
+        let not_before = parse_rfc3339_utc(not_before, "capability not_before")?;
+        if not_before > evidence_graph_issued_at {
+            return Err(minimal_governed_action_binding_error(
+                "capability proof not valid at evidence graph issuance",
+            ));
+        }
+    }
     require_binding_value(&capability.expires_at, "capability expires_at")?;
     let expires_at = parse_rfc3339_utc(&capability.expires_at, "capability expires_at")?;
     if expires_at <= evidence_graph_issued_at {

@@ -638,6 +638,38 @@ fn standalone_minimal_passport_rejects_stale_capability_proof() {
 }
 
 #[test]
+fn standalone_minimal_passport_rejects_future_capability_not_before() {
+    let mut artifacts = governed_action_artifacts();
+    let mut capability: serde_json::Value = serde_json::from_slice(
+        artifacts
+            .get("capability-proof.json")
+            .test_expect("capability artifact exists"),
+    )
+    .test_expect("capability artifact parses");
+    capability["not_before"] = serde_json::Value::String("2026-06-10T00:00:01Z".to_string());
+    artifacts.insert(
+        "capability-proof.json".to_string(),
+        serde_json::to_vec(&capability).test_expect("capability artifact serializes"),
+    );
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let verifier_policy_bytes = valid_verifier_policy_bytes();
+    let passport = passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+
+    let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        verifier_policy_bytes,
+        &artifacts,
+    )
+    .test_expect_err("standalone minimal passport must reject future capability activation");
+
+    assert!(error
+        .to_string()
+        .contains("capability proof not valid at evidence graph issuance"));
+}
+
+#[test]
 fn standalone_minimal_passport_accepts_packaged_verifier_policy_node_path() {
     let mut artifacts = governed_action_artifacts();
     let verifier_policy_bytes = valid_verifier_policy_bytes();
