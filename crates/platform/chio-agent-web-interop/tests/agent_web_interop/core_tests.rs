@@ -479,6 +479,18 @@ fn agent_web_interop_accepts_acp_client_projection() {
 }
 
 #[test]
+fn agent_web_interop_rejects_denied_acp_client_permission() {
+    let bundle = agent_web_bundle(AgentWebCase::AcpClientDenied);
+
+    let error =
+        verify_agent_web_interop(&bundle).test_expect_err("denied ACP-Client permission must fail");
+
+    assert!(error
+        .to_string()
+        .contains("ACP-Client permission was denied"));
+}
+
+#[test]
 fn agent_web_interop_accepts_acp_commerce_projection() {
     let bundle = agent_web_bundle(AgentWebCase::AcpCommerceProjection);
 

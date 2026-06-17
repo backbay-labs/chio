@@ -539,7 +539,10 @@ pub(crate) fn add_core_projection_manifests(builder: &mut AgentWebBundleBuilder)
             "ACP-Client permission evidence is digest-bound client protocol evidence, not Chio capability authority."
         ]
     }));
-    if matches!(case, AgentWebCase::AcpClientProjection) {
+    if matches!(
+        case,
+        AgentWebCase::AcpClientProjection | AgentWebCase::AcpClientDenied
+    ) {
         push_artifact(
             &mut builder.artifacts,
             &mut builder.graph_nodes,

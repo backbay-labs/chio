@@ -223,6 +223,7 @@ pub(crate) enum AgentWebCase {
     OpenApiUnsupportedVersion,
     OpenApiReceiptRefMismatch,
     AcpClientProjection,
+    AcpClientDenied,
     AcpCommerceProjection,
     AcpCommerceOrderContextDigestMismatch,
     AcpCommerceReceiptRefMismatch,

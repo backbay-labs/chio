@@ -282,7 +282,10 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
         ],
         "signature": "sig-agent-web-acp-client-envelope"
     }));
-    if matches!(case, AgentWebCase::AcpClientProjection) {
+    if matches!(
+        case,
+        AgentWebCase::AcpClientProjection | AgentWebCase::AcpClientDenied
+    ) {
         push_artifact(
             &mut builder.artifacts,
             &mut builder.graph_nodes,

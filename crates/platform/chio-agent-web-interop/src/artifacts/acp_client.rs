@@ -38,6 +38,9 @@ pub(super) fn validate_subject(
     if !matches!(permission_decision, "allow" | "deny") {
         return Err(claim_failed("unsupported ACP-Client permission decision"));
     }
+    if permission_decision == "deny" {
+        return Err(claim_failed("ACP-Client permission was denied"));
+    }
     let bridge_fidelity = required_json_str(
         value,
         "bridge_fidelity",

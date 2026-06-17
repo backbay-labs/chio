@@ -167,6 +167,10 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         );
     }
 
+    let acp_client_permission_decision = match case {
+        AgentWebCase::AcpClientDenied => "deny",
+        _ => "allow",
+    };
     let acp_client_permission = json_bytes(json!({
         "object_kind": "acp_client_permission_request",
         "id": "acp-client-permission-agent-web-valid",
@@ -174,7 +178,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "capability_id": "write_file",
         "category": "filesystem",
         "requires_permission": true,
-        "permission_decision": "allow",
+        "permission_decision": acp_client_permission_decision,
         "bridge_fidelity": "lossless",
         "source_envelope_digest": "acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac",
         "arguments_digest": "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
@@ -182,7 +186,10 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "agent_id_digest": "dededededededededededededededededededededededededededededededede",
         "authorization_context_digest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
     }));
-    if matches!(case, AgentWebCase::AcpClientProjection) {
+    if matches!(
+        case,
+        AgentWebCase::AcpClientProjection | AgentWebCase::AcpClientDenied
+    ) {
         push_artifact(
             &mut builder.artifacts,
             &mut builder.graph_nodes,
