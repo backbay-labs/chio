@@ -511,6 +511,10 @@ pub fn verify_proof_room_bundle(manifest_path: &Path) -> Result<(), ProofRoomErr
     verify_proof_room_bundle_inner(manifest_path).map_err(ProofRoomError::Validation)
 }
 
+pub fn validate_proof_room_bundle_relative_path(relative_path: &str) -> Result<(), String> {
+    validate_bundle_relative_path(relative_path)
+}
+
 pub fn verify_proof_room_quickstart(
     bundle: &Path,
     doctor_report: Option<&Path>,

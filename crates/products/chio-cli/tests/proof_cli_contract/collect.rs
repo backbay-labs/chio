@@ -972,6 +972,72 @@ fn proof_collect_derives_receipt_coverage_for_each_terminal_status() {
 }
 
 #[test]
+fn proof_collect_rejects_unsafe_receipt_coverage_node_path() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source = workspace_root().join("fixtures/proof-room/minimal-passport/valid");
+    let artifact_path = tempdir.path().join("passport-with-unsafe-receipt-path");
+    copy_dir_all(&source, &artifact_path).test_expect("copy artifact dir");
+    sign_transaction_receipt_artifact(&artifact_path, "kernel-receipt.json");
+
+    let kernel_receipt_path = artifact_path.join("kernel-receipt.json");
+    let kernel_receipt: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&kernel_receipt_path).test_expect("read receipt"))
+            .test_expect("receipt parses");
+    let policy_digest = kernel_receipt["policy_digest"]
+        .as_str()
+        .test_expect("receipt policy digest")
+        .to_string();
+    let receipt_path = artifact_path.join("receipt%2fescape.json");
+    write_json(
+        &receipt_path,
+        &signed_terminal_receipt(
+            "receipt-terminal-denial",
+            "denied_guard_request",
+            &policy_digest,
+        ),
+    );
+
+    let evidence_graph_path = artifact_path.join("evidence-graph.json");
+    let mut evidence_graph: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
+    )
+    .test_expect("evidence graph parses");
+    evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("graph nodes array")
+        .push(serde_json::json!({
+            "id": "terminal-denial-unsafe-path",
+            "schema": "chio.receipt.v1",
+            "path": "receipt%2fescape.json",
+            "sha256": sha256_file(&receipt_path),
+            "role": "receipt"
+        }));
+    write_json(&evidence_graph_path, &evidence_graph);
+
+    let passport_path = artifact_path.join("transaction-passport.json");
+    let mut passport: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+            .test_expect("passport parses");
+    passport["evidence_graph_sha256"] =
+        serde_json::Value::String(sha256_file(&evidence_graph_path));
+    write_json(&passport_path, &passport);
+
+    let out_path = tempdir.path().join("collected-unsafe-receipt-path");
+    let output = chio(&[
+        "proof",
+        "collect",
+        "--kind",
+        "transaction-passport",
+        "--artifact-dir",
+        utf8_path(&artifact_path).as_str(),
+        "--out",
+        utf8_path(&out_path).as_str(),
+    ]);
+
+    assert_failure(&output, "proof-room.artifact.unsafe-path");
+}
+
+#[test]
 fn proof_collect_records_receipt_coverage_exclusions_for_missing_terminal_statuses() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let source = workspace_root().join("fixtures/proof-room/minimal-passport/valid");

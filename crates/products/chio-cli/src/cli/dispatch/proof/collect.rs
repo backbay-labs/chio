@@ -875,10 +875,16 @@ fn collected_receipt_coverage(
     let mut categories = BTreeSet::new();
     let mut coverage = Vec::new();
     for node in &evidence_graph.nodes {
-        if !is_terminal_receipt_schema(&node.schema) || !bundle.join(&node.path).is_file() {
+        if !is_terminal_receipt_schema(&node.schema) {
             continue;
         }
-        let bytes = fs::read(bundle.join(&node.path))?;
+        chio_proof_room::validate_proof_room_bundle_relative_path(&node.path)
+            .map_err(CliError::cli_other_error)?;
+        let source_path = bundle.join(&node.path);
+        if !source_path.is_file() {
+            continue;
+        }
+        let bytes = fs::read(&source_path)?;
         let receipt: serde_json::Value = serde_json::from_slice(&bytes)?;
         let Some(status) = receipt
             .get("terminal_status")
@@ -905,7 +911,6 @@ fn collected_receipt_coverage(
             continue;
         }
         let artifact_path = normalized_receipt_artifact_path(category);
-        let source_path = bundle.join(&node.path);
         let destination_path = bundle.join(artifact_path);
         if source_path != destination_path {
             if let Some(parent) = destination_path.parent() {
