@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
@@ -458,6 +460,11 @@ pub(super) fn validate_selection(
     if selection.scorecard_ref != scorecard.id {
         return Err(claim_failed("selection scorecard ref mismatch"));
     }
+    ensure_freshness_contains(
+        &scorecard.freshness_window,
+        &selection.issued_at,
+        "scorecard snapshot is stale at selection",
+    )?;
     let selected_score = selection
         .ranking_results
         .iter()
@@ -472,7 +479,7 @@ pub(super) fn validate_selection(
     if selection.ranking_results.is_empty() {
         return Err(claim_failed("selection ranking results missing"));
     }
-    validate_ranking(selection, &mut contains_override_receipt_ref)?;
+    validate_ranking(selection, discovery, &mut contains_override_receipt_ref)?;
     for summary in &selection.rejected_candidate_summaries {
         validate_rejected_candidate_summary(summary)?;
     }
@@ -817,10 +824,20 @@ fn validate_guarantee(
     if guarantee.maximum_remedy == 0 || guarantee.maximum_remedy > collateral.available_amount {
         return Err(claim_failed("guarantee remedy exceeds backing"));
     }
+    ensure_time_order(
+        &guarantee.claim_window.start,
+        &guarantee.claim_window.end,
+        "guarantee claim window invalid",
+    )?;
     ensure_effective_window_contains(
         &sla.effective_window,
         &guarantee.claim_window.start,
         "guarantee starts outside SLA window",
+    )?;
+    ensure_timestamp_at_or_after(
+        &guarantee.claim_window.start,
+        &collateral.lock_start,
+        "collateral lock starts after guarantee claim window",
     )?;
     ensure_timestamp_at_or_after(
         &collateral.lock_expiry,
@@ -862,6 +879,7 @@ fn validate_provider_candidate(
 
 fn validate_ranking(
     selection: &ProviderSelectionReport,
+    discovery: &ProviderDiscoverySnapshot,
     contains_override_receipt_ref: &mut impl FnMut(&str) -> bool,
 ) -> Result<(), TransactionPassportError> {
     let selected = selection
@@ -891,6 +909,25 @@ fn validate_ranking(
         require_non_empty(&result.provider_subject, "ranking provider subject")?;
         if result.rank == 0 || result.total_score > 100 {
             return Err(claim_failed("ranking result outside policy range"));
+        }
+    }
+    for higher in &selection.ranking_results {
+        for lower in &selection.ranking_results {
+            if higher.total_score > lower.total_score && higher.rank > lower.rank {
+                return Err(claim_failed("selection ranking order mismatch"));
+            }
+        }
+    }
+    let ranked_providers = selection
+        .ranking_results
+        .iter()
+        .map(|result| result.provider_subject.as_str())
+        .collect::<BTreeSet<_>>();
+    for candidate in &discovery.provider_candidates {
+        if !candidate.excluded && !ranked_providers.contains(candidate.subject.as_str()) {
+            return Err(claim_failed(
+                "selection ranking missing available candidate",
+            ));
         }
     }
     Ok(())

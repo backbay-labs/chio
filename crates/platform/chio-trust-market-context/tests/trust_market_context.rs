@@ -23,7 +23,10 @@ enum TrustMarketCase {
     StaleDiscovery,
     AmbiguousTopRank,
     LowerRankOverrideReceiptUnbound,
+    SelectionRankingMissingAvailableCandidate,
+    SelectionRankingOrderMismatch,
     SelectionScorecardScoreMismatch,
+    ScorecardStaleAtSelection,
     GlobalScorecardScope,
     ScoreRecomputeMismatch,
     ReputationImportOverweight,
@@ -34,6 +37,8 @@ enum TrustMarketCase {
     GuaranteeWithoutBacking,
     GuaranteeWrongBeneficiary,
     GuaranteeUnsupportedType,
+    GuaranteeInvertedClaimWindow,
+    CollateralLockStartsAfterGuarantee,
     SlashAuthorityOutsideJurisdiction,
     RequiredUnsupportedMarketClaim,
     RiskReportRefUnbound,
@@ -188,6 +193,10 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         TrustMarketCase::ScoreRecomputeMismatch => 99,
         _ => 92,
     };
+    let scorecard_valid_until = match case {
+        TrustMarketCase::ScorecardStaleAtSelection => "2026-06-10T01:00:00Z",
+        _ => "2026-06-11T00:00:00Z",
+    };
     let scorecard = json_bytes(json!({
         "schema": "chio.trust.scorecard-snapshot.v1",
         "id": "scorecard-trust-market-valid",
@@ -225,7 +234,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         "negative_event_refs": [],
         "freshness_window": {
             "valid_from": "2026-06-09T00:00:00Z",
-            "valid_until": "2026-06-11T00:00:00Z"
+            "valid_until": scorecard_valid_until
         },
         "score_floor": 0,
         "score_ceiling": 100,
@@ -519,6 +528,10 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         TrustMarketCase::CollateralUnsupportedSource => "unsecured_note",
         _ => "bond",
     };
+    let collateral_lock_start = match case {
+        TrustMarketCase::CollateralLockStartsAfterGuarantee => "2026-06-11T00:00:00Z",
+        _ => "2026-06-10T00:00:00Z",
+    };
     let collateral = json_bytes(json!({
         "schema": "chio.risk.collateral-position-report.v1",
         "id": "collateral-trust-market-valid",
@@ -530,7 +543,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         "amount": 1000,
         "source_type": collateral_source_type,
         "source_ref": "provider-bond-alpha",
-        "lock_start": "2026-06-10T00:00:00Z",
+        "lock_start": collateral_lock_start,
         "lock_expiry": "2026-06-12T00:00:00Z",
         "claim_priority": "sla-remedy",
         "slash_authority_ref": collateral_slash_authority,
@@ -561,6 +574,16 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         TrustMarketCase::GuaranteeUnsupportedType => "permissionless_liquidity_backstop",
         _ => "bounded_sla_remedy",
     };
+    let guarantee_claim_window = match case {
+        TrustMarketCase::GuaranteeInvertedClaimWindow => json!({
+            "start": "2026-06-11T00:00:00Z",
+            "end": "2026-06-10T00:00:00Z"
+        }),
+        _ => json!({
+            "start": "2026-06-10T00:00:00Z",
+            "end": "2026-06-12T00:00:00Z"
+        }),
+    };
     let guarantee = json_bytes(json!({
         "schema": "chio.risk.guarantee-decision.v1",
         "id": "guarantee-trust-market-valid",
@@ -575,10 +598,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         "backing_refs": guarantee_backing_refs,
         "coverage_decision_ref": "coverage-decision-market-valid",
         "sla_commitment_ref": "sla-commitment-trust-market-valid",
-        "claim_window": {
-            "start": "2026-06-10T00:00:00Z",
-            "end": "2026-06-12T00:00:00Z"
-        },
+        "claim_window": guarantee_claim_window,
         "exclusions_ref": "guarantee-exclusions-market-valid",
         "adjudication_jurisdiction_ref": "jurisdiction-trust-market-valid",
         "verdict": "backed",
@@ -640,6 +660,10 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         TrustMarketCase::AmbiguousTopRank | TrustMarketCase::LowerRankOverrideReceiptUnbound => 1,
         _ => 2,
     };
+    let beta_total_score = match case {
+        TrustMarketCase::SelectionRankingOrderMismatch => 99,
+        _ => 81,
+    };
     let selected_rank = match case {
         TrustMarketCase::LowerRankOverrideReceiptUnbound => 2,
         _ => 1,
@@ -652,10 +676,35 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         TrustMarketCase::SelectionScorecardScoreMismatch => 91,
         _ => 92,
     };
+    let selection_issued_at = match case {
+        TrustMarketCase::ScorecardStaleAtSelection => "2026-06-10T02:00:00Z",
+        _ => "2026-06-10T00:00:00Z",
+    };
+    let ranking_results = match case {
+        TrustMarketCase::SelectionRankingMissingAvailableCandidate => json!([
+            {
+                "provider_subject": absent_selected_provider,
+                "rank": selected_rank,
+                "total_score": selected_total_score
+            }
+        ]),
+        _ => json!([
+            {
+                "provider_subject": absent_selected_provider,
+                "rank": selected_rank,
+                "total_score": selected_total_score
+            },
+            {
+                "provider_subject": "did:chio:provider-beta",
+                "rank": beta_rank,
+                "total_score": beta_total_score
+            }
+        ]),
+    };
     let selection = json_bytes(json!({
         "schema": "chio.commerce.provider-selection-report.v1",
         "id": "selection-trust-market-valid",
-        "issued_at": "2026-06-10T00:00:00Z",
+        "issued_at": selection_issued_at,
         "passport_id": passport.id,
         "order_id": "order-commerce-001",
         "discovery_snapshot_ref": "discovery-trust-market-valid",
@@ -667,18 +716,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         "risk_report_ref": risk_report_ref,
         "override_receipt_ref": override_receipt_ref,
         "selection_reason_codes": ["highest_local_score", "sla_available"],
-        "ranking_results": [
-            {
-                "provider_subject": absent_selected_provider,
-                "rank": selected_rank,
-                "total_score": selected_total_score
-            },
-            {
-                "provider_subject": "did:chio:provider-beta",
-                "rank": beta_rank,
-                "total_score": 81
-            }
-        ],
+        "ranking_results": ranking_results,
         "rejected_candidate_summaries": [
             {
                 "provider_subject": "did:chio:provider-beta",
@@ -907,6 +945,42 @@ fn trust_market_rejects_selection_scorecard_score_mismatch() {
 }
 
 #[test]
+fn trust_market_rejects_ranking_missing_available_candidate() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::SelectionRankingMissingAvailableCandidate,
+    ))
+    .test_expect_err("ranking must cover every available provider candidate");
+
+    assert!(error
+        .to_string()
+        .contains("selection ranking missing available candidate"));
+}
+
+#[test]
+fn trust_market_rejects_scorecard_stale_at_selection_time() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::ScorecardStaleAtSelection,
+    ))
+    .test_expect_err("selection must use a fresh scorecard");
+
+    assert!(error
+        .to_string()
+        .contains("scorecard snapshot is stale at selection"));
+}
+
+#[test]
+fn trust_market_rejects_ranking_order_mismatch() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::SelectionRankingOrderMismatch,
+    ))
+    .test_expect_err("ranking order must match candidate scores");
+
+    assert!(error
+        .to_string()
+        .contains("selection ranking order mismatch"));
+}
+
+#[test]
 fn trust_market_rejects_stale_discovery_snapshot() {
     let error = verify_trust_market_context(&trust_market_bundle(TrustMarketCase::StaleDiscovery))
         .test_expect_err("stale discovery fails");
@@ -1017,6 +1091,28 @@ fn trust_market_rejects_unsupported_guarantee_type() {
     .test_expect_err("unsupported guarantee type must fail");
 
     assert!(error.to_string().contains("guarantee type unsupported"));
+}
+
+#[test]
+fn trust_market_rejects_inverted_guarantee_claim_window() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::GuaranteeInvertedClaimWindow,
+    ))
+    .test_expect_err("guarantee claim window must be ordered");
+
+    assert!(error.to_string().contains("guarantee claim window invalid"));
+}
+
+#[test]
+fn trust_market_rejects_collateral_lock_start_after_guarantee_start() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::CollateralLockStartsAfterGuarantee,
+    ))
+    .test_expect_err("collateral must be locked before the guarantee begins");
+
+    assert!(error
+        .to_string()
+        .contains("collateral lock starts after guarantee claim window"));
 }
 
 #[test]

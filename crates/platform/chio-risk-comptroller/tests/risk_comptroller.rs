@@ -109,6 +109,41 @@ fn verified_enterprise_risk_report_matches_public_schema() {
 }
 
 #[test]
+fn report_rejects_inverted_actuarial_backtest_window() {
+    let passport = enterprise_passport("valid-autonomous-commerce");
+    let mut report = enterprise_risk_report_value("valid-autonomous-commerce");
+    report["actuarial_evidence"]["backtest"]["window_start"] =
+        serde_json::json!("2026-06-17T00:00:00Z");
+    report["actuarial_evidence"]["backtest"]["window_end"] =
+        serde_json::json!("2026-06-16T00:00:00Z");
+
+    let report: RiskComptrollerReport =
+        serde_json::from_value(report).test_expect("risk report reparses");
+    let error = validate_risk_report(&passport, &report)
+        .test_expect_err("risk actuarial backtest windows must be ordered");
+
+    assert!(error
+        .to_string()
+        .contains("risk actuarial backtest window inverted"));
+}
+
+#[test]
+fn report_rejects_insurance_copy_below_exposure() {
+    let passport = enterprise_passport("valid-autonomous-commerce");
+    let mut report = enterprise_risk_report_value("valid-autonomous-commerce");
+    report["insurance_copy"]["maximum_coverage_units"] = serde_json::json!(1);
+
+    let report: RiskComptrollerReport =
+        serde_json::from_value(report).test_expect("risk report reparses");
+    let error = validate_risk_report(&passport, &report)
+        .test_expect_err("insurance copy must cover the bound exposure");
+
+    assert!(error
+        .to_string()
+        .contains("risk insurance copy undercovers exposure"));
+}
+
+#[test]
 fn open_appeal_only_blocks_named_reserve_actions() {
     let passport = enterprise_passport("open-appeal-claim-payout");
     let mut report = enterprise_risk_report_value("open-appeal-claim-payout");

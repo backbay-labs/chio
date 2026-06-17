@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 mod ledger;
@@ -705,6 +706,17 @@ fn validate_risk_actuarial_limits(
     if actuarial.confidence_level_bps == 0 || actuarial.confidence_level_bps > 10_000 {
         return Err(claim_failed("risk actuarial confidence unsupported"));
     }
+    let window_start = parse_rfc3339_utc(
+        &actuarial.backtest.window_start,
+        "actuarial backtest window_start",
+    )?;
+    let window_end = parse_rfc3339_utc(
+        &actuarial.backtest.window_end,
+        "actuarial backtest window_end",
+    )?;
+    if window_end < window_start {
+        return Err(claim_failed("risk actuarial backtest window inverted"));
+    }
     if actuarial.backtest.sample_size == 0 {
         return Err(claim_failed("risk actuarial backtest sample missing"));
     }
@@ -726,6 +738,9 @@ fn validate_risk_actuarial_limits(
         return Err(claim_failed(
             "risk insurance copy exceeds actuarial support",
         ));
+    }
+    if insurance_copy.maximum_coverage_units < report.coverage.exposure_units {
+        return Err(claim_failed("risk insurance copy undercovers exposure"));
     }
     if insurance_copy.maximum_coverage_units > report.coverage.exposure_units {
         return Err(claim_failed("risk insurance copy exceeds bound coverage"));
@@ -921,6 +936,15 @@ fn optional_non_empty<'a>(
         }
         None => Ok(None),
     }
+}
+
+fn parse_rfc3339_utc(
+    value: &str,
+    field: &'static str,
+) -> Result<DateTime<Utc>, TransactionPassportError> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|timestamp| timestamp.with_timezone(&Utc))
+        .map_err(|_| claim_failed(format!("invalid risk timestamp: {field}")))
 }
 
 fn claim_failed(message: impl Into<String>) -> TransactionPassportError {
