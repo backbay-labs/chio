@@ -644,7 +644,7 @@ fn validate_finality(bundle: &PublicSettlementProofBundle) -> Result<(), Web3Con
 fn validate_dispute_posture(bundle: &PublicSettlementProofBundle) -> Result<(), Web3ContractError> {
     let dispute = required_dispute_snapshot(bundle)?;
     validate_dispute_snapshot(bundle, dispute)?;
-    if active_dispute_posture(bundle.dispute_posture) && dispute.open_dispute_count > 0 {
+    if dispute.open_dispute_count > 0 {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement active dispute blocks finality".to_string(),
         ));

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::anchors::{
-    validate_anchor_inclusion_proof, validate_oracle_conversion_evidence, AnchorInclusionProof,
+    validate_oracle_conversion_evidence, verify_anchor_inclusion_proof, AnchorInclusionProof,
     OracleConversionEvidence,
 };
 use crate::capability::scope::MonetaryAmount;
@@ -238,7 +238,7 @@ pub fn validate_web3_settlement_execution_receipt(
         ));
     }
     if let Some(anchor_proof) = receipt.reconciled_anchor_proof.as_ref() {
-        validate_anchor_inclusion_proof(anchor_proof)?;
+        verify_anchor_inclusion_proof(anchor_proof)?;
         if let Some(chain_anchor) = anchor_proof.chain_anchor.as_ref() {
             if chain_anchor.chain_id != receipt.dispatch.chain_id {
                 return Err(Web3ContractError::invalid_settlement(

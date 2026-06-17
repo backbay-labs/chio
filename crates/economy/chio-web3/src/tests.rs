@@ -724,6 +724,24 @@ fn merkle_settlement_receipt_requires_anchor_proof() {
 }
 
 #[test]
+fn merkle_settlement_receipt_rejects_tampered_anchor_signature() {
+    let mut receipt = sample_execution_receipt();
+    let Some(anchor_proof) = receipt.reconciled_anchor_proof.as_mut() else {
+        panic!("sample execution receipt has anchor proof");
+    };
+    anchor_proof.checkpoint_statement.signature = Signature::from_hex(
+        "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    )
+    .unwrap();
+
+    assert!(matches!(
+        validate_web3_settlement_execution_receipt(&receipt),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("checkpoint statement signature verification failed")
+    ));
+}
+
+#[test]
 fn fx_sensitive_settlement_receipt_requires_oracle_evidence() {
     let mut receipt = sample_execution_receipt();
     receipt.oracle_evidence = None;
@@ -1088,6 +1106,24 @@ fn public_settlement_proof_rejects_finality_with_active_dispute() {
     };
     dispute_snapshot.posture = PublicSettlementDisputePosture::Challenged;
     dispute_snapshot.dispute_id = "dispute-public-settlement-challenged".to_string();
+    dispute_snapshot.open_dispute_count = 1;
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("public settlement active dispute blocks finality")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_closed_posture_with_open_dispute() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.dispute_posture = PublicSettlementDisputePosture::Closed;
+    let Some(dispute_snapshot) = bundle.dispute_snapshot.as_mut() else {
+        panic!("sample public settlement proof bundle has dispute snapshot");
+    };
+    dispute_snapshot.posture = PublicSettlementDisputePosture::Closed;
+    dispute_snapshot.dispute_id = "dispute-public-settlement-closed".to_string();
     dispute_snapshot.open_dispute_count = 1;
 
     assert!(matches!(
