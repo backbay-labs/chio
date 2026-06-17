@@ -1154,6 +1154,28 @@ fn enterprise_bundle_with_required_claim(claim: &str) -> EnterpriseExportBundle 
     bundle
 }
 
+fn replace_approval_case(bundle: &mut EnterpriseExportBundle, approval: Value) {
+    let approval_bytes = json_bytes(approval);
+    let approval_sha256 = chio_core_types::sha256_hex(&approval_bytes);
+    bundle
+        .artifacts
+        .insert("approval-case.json".to_string(), approval_bytes);
+
+    let mut graph: Value =
+        serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("evidence graph parses");
+    let nodes = graph["nodes"]
+        .as_array_mut()
+        .test_expect("evidence graph nodes are an array");
+    let approval_node = nodes
+        .iter_mut()
+        .find(|node| node.get("id").and_then(Value::as_str) == Some("approval-case"))
+        .test_expect("approval-case node exists");
+    approval_node["sha256"] = Value::String(approval_sha256);
+    bundle.evidence_graph_bytes = json_bytes(graph);
+    bundle.passport.evidence_graph_sha256 =
+        chio_core_types::sha256_hex(&bundle.evidence_graph_bytes);
+}
+
 #[test]
 fn enterprise_export_accepts_valid_autonomous_commerce_fixture() {
     let bundle = enterprise_bundle(EnterpriseCase::Valid);
@@ -1183,6 +1205,58 @@ fn enterprise_export_accepts_valid_autonomous_commerce_fixture() {
     assert!(report
         .verified_claims
         .contains(&CLAIM_CONTROL_MAP_BOUND.to_string()));
+}
+
+#[test]
+fn enterprise_export_rejects_duplicate_approvers_for_quorum() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    replace_approval_case(
+        &mut bundle,
+        json!({
+            "schema": "chio.enterprise.approval-case.v1",
+            "id": "approval-case-enterprise-valid",
+            "issued_at": "2026-06-10T00:00:00Z",
+            "passport_id": "passport-enterprise-valid",
+            "risk_comptroller_report_ref": "risk-comptroller-enterprise-valid",
+            "decision": "approved",
+            "decision_subject": "evidence-export",
+            "approvers": ["did:chio:enterprise-reviewer", "did:chio:enterprise-reviewer"],
+            "required_quorum": 2,
+            "expires_at": "2026-06-11T00:00:00Z"
+        }),
+    );
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("duplicate approvers must not satisfy quorum");
+
+    assert!(error.to_string().contains("approval quorum not satisfied"));
+}
+
+#[test]
+fn enterprise_export_rejects_blank_approvers() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    replace_approval_case(
+        &mut bundle,
+        json!({
+            "schema": "chio.enterprise.approval-case.v1",
+            "id": "approval-case-enterprise-valid",
+            "issued_at": "2026-06-10T00:00:00Z",
+            "passport_id": "passport-enterprise-valid",
+            "risk_comptroller_report_ref": "risk-comptroller-enterprise-valid",
+            "decision": "approved",
+            "decision_subject": "evidence-export",
+            "approvers": [""],
+            "required_quorum": 1,
+            "expires_at": "2026-06-11T00:00:00Z"
+        }),
+    );
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("blank approver identity must not satisfy quorum");
+
+    assert!(error
+        .to_string()
+        .contains("approval approver identity missing"));
 }
 
 #[test]

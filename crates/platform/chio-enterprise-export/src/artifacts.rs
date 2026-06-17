@@ -364,8 +364,15 @@ pub(super) fn validate_approval_case(
     if approval.decision != "approved" || approval.decision_subject != "evidence-export" {
         return Err(claim_failed("evidence export approval denied"));
     }
+    let mut unique_approvers = BTreeSet::new();
+    for approver in &approval.approvers {
+        if approver.trim().is_empty() {
+            return Err(claim_failed("approval approver identity missing"));
+        }
+        unique_approvers.insert(approver.as_str());
+    }
     if approval.required_quorum == 0
-        || approval.approvers.len()
+        || unique_approvers.len()
             < usize::try_from(approval.required_quorum)
                 .map_err(|_| claim_failed("approval quorum overflow"))?
     {
