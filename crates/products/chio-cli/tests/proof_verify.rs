@@ -1483,6 +1483,42 @@ fn proof_verify_accepts_disclosure_crypto_context_required_claim() {
 }
 
 #[test]
+fn proof_verify_rejects_disclosure_lineage_unregistered_crypto_context_claim() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/disclosure-lineage/valid-lineage-ledger");
+    let bundle_dir = tempdir.path().join("disclosure-lineage");
+    copy_dir_all(&source, &bundle_dir);
+    add_disclosure_crypto_context_report(&bundle_dir);
+    add_disclosure_crypto_context_verified_claim(
+        &bundle_dir,
+        "claim.disclosure.unregistered_crypto_context_claim",
+    );
+    set_disclosure_policy_required_claims(
+        &bundle_dir,
+        &["claim.disclosure.unregistered_crypto_context_claim"],
+    );
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        !output.status.success(),
+        "disclosure lineage with unregistered crypto context claim unexpectedly verified\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains(
+        "crypto context report unsupported claim: claim.disclosure.unregistered_crypto_context_claim"
+    ));
+}
+
+#[test]
 fn proof_verify_rejects_disclosure_lineage_missing_crypto_context_report() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let source =

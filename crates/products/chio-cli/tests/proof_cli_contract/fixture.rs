@@ -118,6 +118,7 @@ fn proof_fixture_list_reports_proof_fixtures() {
         "enterprise-payout-amount-mismatch",
         "disclosure-lineage-missing-ledger-entry",
         "disclosure-lineage-unknown-lineage-root",
+        "disclosure-lineage-excess-disclosed-field",
         "trust-market-guarantee-wrong-beneficiary",
         "trust-market-unsupported-guarantee-type",
         "trust-market-unsupported-collateral-source",
@@ -1600,6 +1601,11 @@ fn proof_fixture_generate_copies_runnable_negative_passport_fixtures() {
             "disclosure-lineage-unknown-lineage-root",
             "signed-lineage-subgraph.json",
             "unknown lineage root receipt",
+        ),
+        (
+            "disclosure-lineage-excess-disclosed-field",
+            "crypto-context-report.json",
+            "crypto context report excess disclosed field",
         ),
         (
             "trust-market-guarantee-wrong-beneficiary",

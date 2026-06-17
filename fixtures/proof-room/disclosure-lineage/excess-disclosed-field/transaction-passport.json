@@ -1,0 +1,9 @@
+{
+  "schema": "chio.transaction-passport.v1",
+  "id": "passport-disclosure-lineage-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "evidence_graph_sha256": "66669dd95df201e0b0b0203356e4db054c60db68b96d41fbc360cf85cd788f52",
+  "evidence_graph_path": "evidence-graph.json",
+  "verifier_policy_sha256": "45fa7f751f906a5e4ff14a5c1f594856019c42f0c3b7c291d0eedcf5ee8b171d",
+  "verifier_policy_path": "verifier-policy.json"
+}

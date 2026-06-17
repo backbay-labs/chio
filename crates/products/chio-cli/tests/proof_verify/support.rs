@@ -179,6 +179,47 @@ pub(crate) fn add_disclosure_crypto_context_report(bundle_dir: &std::path::Path)
     set_passport_digest(bundle_dir, "evidence_graph_sha256", evidence_graph_digest);
 }
 
+pub(crate) fn add_disclosure_crypto_context_verified_claim(
+    bundle_dir: &std::path::Path,
+    claim: &str,
+) {
+    let crypto_context_report_path = bundle_dir.join("crypto-context-report.json");
+    let mut crypto_context_report: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&crypto_context_report_path).test_expect("read crypto report"),
+    )
+    .test_expect("parse crypto report");
+    crypto_context_report["verified_claims"]
+        .as_array_mut()
+        .test_expect("verified claims are an array")
+        .push(serde_json::Value::String(claim.to_string()));
+    let crypto_context_report_bytes =
+        serde_json::to_vec(&crypto_context_report).test_expect("serialize crypto report");
+    std::fs::write(&crypto_context_report_path, &crypto_context_report_bytes)
+        .test_expect("write crypto report");
+    let crypto_context_report_digest = chio_core::sha256_hex(&crypto_context_report_bytes);
+
+    let evidence_graph_path = bundle_dir.join("evidence-graph.json");
+    let mut evidence_graph: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
+    )
+    .test_expect("parse evidence graph");
+    for node in evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("evidence graph nodes")
+    {
+        if node.get("role").and_then(serde_json::Value::as_str)
+            == Some("disclosure-crypto-context-report")
+        {
+            node["sha256"] = serde_json::Value::String(crypto_context_report_digest.clone());
+        }
+    }
+    let evidence_graph_bytes =
+        serde_json::to_vec(&evidence_graph).test_expect("serialize evidence graph");
+    std::fs::write(&evidence_graph_path, &evidence_graph_bytes).test_expect("write evidence graph");
+    let evidence_graph_digest = chio_core::sha256_hex(&evidence_graph_bytes);
+    set_passport_digest(bundle_dir, "evidence_graph_sha256", evidence_graph_digest);
+}
+
 pub(crate) fn remove_disclosure_crypto_context_report(bundle_dir: &std::path::Path) {
     let crypto_context_report_path = bundle_dir.join("crypto-context-report.json");
     if crypto_context_report_path.exists() {

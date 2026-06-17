@@ -187,6 +187,48 @@ fn disclosure_lineage_rejects_crypto_context_missing_disclosed_field() {
 }
 
 #[test]
+fn disclosure_lineage_rejects_crypto_context_excess_disclosed_field() {
+    let Ok(mut bundle) = valid_bundle() else {
+        panic!("valid bundle fixture should build");
+    };
+    let Some(report) = bundle.crypto_context_report.as_mut() else {
+        panic!("valid bundle should include crypto context report");
+    };
+    report.disclosed_fields.push("customer_email".to_string());
+
+    let error = match verify_disclosure_lineage_bundle(&bundle) {
+        Ok(_) => panic!("crypto context excess disclosed field must fail"),
+        Err(error) => error,
+    };
+
+    assert!(error
+        .to_string()
+        .contains("crypto context report excess disclosed field: customer_email"));
+}
+
+#[test]
+fn disclosure_lineage_rejects_crypto_context_unsupported_claim() {
+    let Ok(mut bundle) = valid_bundle() else {
+        panic!("valid bundle fixture should build");
+    };
+    let Some(report) = bundle.crypto_context_report.as_mut() else {
+        panic!("valid bundle should include crypto context report");
+    };
+    report
+        .verified_claims
+        .push("claim.disclosure.unregistered_crypto_context_claim".to_string());
+
+    let error = match verify_disclosure_lineage_bundle(&bundle) {
+        Ok(_) => panic!("unsupported crypto context claim must fail"),
+        Err(error) => error,
+    };
+
+    assert!(error.to_string().contains(
+        "crypto context report unsupported claim: claim.disclosure.unregistered_crypto_context_claim"
+    ));
+}
+
+#[test]
 fn disclosure_lineage_rejects_recomputed_digest_only_signature() {
     let Ok(mut bundle) = valid_bundle() else {
         panic!("valid bundle fixture should build");

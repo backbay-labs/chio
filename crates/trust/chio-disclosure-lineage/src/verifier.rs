@@ -366,6 +366,17 @@ fn validate_bundle_bindings(
     {
         return Err(invalid("crypto context report was not verified"));
     }
+    for verified_claim in &report.verified_claims {
+        if !matches!(
+            verified_claim.as_str(),
+            CLAIM_DISCLOSURE_CRYPTO_CONTEXT_BOUND
+                | CLAIM_DISCLOSURE_PROFILE_CONTEXT_POLICY_ENFORCED
+        ) {
+            return Err(invalid(format!(
+                "crypto context report unsupported claim: {verified_claim}"
+            )));
+        }
+    }
     for disclosed_field in &bundle.capsule.disclosed_fields {
         if !report
             .disclosed_fields
@@ -374,6 +385,18 @@ fn validate_bundle_bindings(
         {
             return Err(invalid(format!(
                 "crypto context report missing disclosed field: {disclosed_field}"
+            )));
+        }
+    }
+    for disclosed_field in &report.disclosed_fields {
+        if !bundle
+            .capsule
+            .disclosed_fields
+            .iter()
+            .any(|field| field == disclosed_field)
+        {
+            return Err(invalid(format!(
+                "crypto context report excess disclosed field: {disclosed_field}"
             )));
         }
     }

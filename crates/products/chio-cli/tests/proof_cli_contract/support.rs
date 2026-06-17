@@ -5,7 +5,7 @@ use chio_core_types::{
 use chio_test_support::prelude::*;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
@@ -36,7 +36,8 @@ pub(crate) const PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS: &str = concat!(
     "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a"
 );
 const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
-pub(crate) const PROOF_SERVE_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
+pub(crate) const PROOF_SERVE_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+const PROOF_SERVE_HTTP_READ_POLL: Duration = Duration::from_millis(200);
 
 pub(crate) fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -170,14 +171,56 @@ pub(crate) fn assert_json_schema_accepts(relative_schema_path: &str, instance: &
 
 pub(crate) fn http_get(address: SocketAddr, path: &str) -> std::io::Result<String> {
     let mut stream = TcpStream::connect_timeout(&address, PROOF_SERVE_HTTP_REQUEST_TIMEOUT)?;
-    stream.set_read_timeout(Some(PROOF_SERVE_HTTP_REQUEST_TIMEOUT))?;
+    stream.set_read_timeout(Some(PROOF_SERVE_HTTP_READ_POLL))?;
     write!(
         stream,
         "GET {path} HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
     )?;
-    let mut response = String::new();
-    stream.read_to_string(&mut response)?;
-    Ok(response)
+    let deadline = Instant::now() + PROOF_SERVE_HTTP_REQUEST_TIMEOUT;
+    let mut response = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    loop {
+        match stream.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(count) => {
+                response.extend_from_slice(&buffer[..count]);
+                if http_response_has_declared_body(&response) {
+                    break;
+                }
+            }
+            Err(error)
+                if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut)
+                    && Instant::now() < deadline =>
+            {
+                continue;
+            }
+            Err(error) => return Err(error),
+        }
+        if Instant::now() >= deadline {
+            return Err(std::io::Error::new(
+                ErrorKind::TimedOut,
+                "timed out reading HTTP response",
+            ));
+        }
+    }
+    String::from_utf8(response).map_err(|error| std::io::Error::new(ErrorKind::InvalidData, error))
+}
+
+fn http_response_has_declared_body(response: &[u8]) -> bool {
+    let Some(header_end) = response.windows(4).position(|window| window == b"\r\n\r\n") else {
+        return false;
+    };
+    let headers = String::from_utf8_lossy(&response[..header_end]);
+    let Some(content_length) = headers.lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        if !name.eq_ignore_ascii_case("content-length") {
+            return None;
+        }
+        value.trim().parse::<usize>().ok()
+    }) else {
+        return false;
+    };
+    response.len() >= header_end + 4 + content_length
 }
 
 pub(crate) fn wait_for_http_body(address: SocketAddr, path: &str) -> String {

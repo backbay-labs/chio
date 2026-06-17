@@ -1,0 +1,55 @@
+{
+  "schema": "chio.transaction.evidence-graph.v1",
+  "id": "evidence-graph-disclosure-lineage-excess-disclosed-field",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "nodes": [
+    {
+      "id": "disclosure-capsule",
+      "schema": "chio.disclosure.capsule.v1",
+      "path": "capsule.json",
+      "sha256": "06670fb09239cde0b0315e834514190ca9a60176c49472211461cb753fcea4f7",
+      "role": "disclosure-capsule"
+    },
+    {
+      "id": "signed-lineage-subgraph",
+      "schema": "chio.lineage.signed-subgraph.v1",
+      "path": "signed-lineage-subgraph.json",
+      "sha256": "b52614ec4d5c3266bfde5ef25d065014ab9d441657a4d6302a6b5b4138ac64f1",
+      "role": "signed-lineage-subgraph"
+    },
+    {
+      "id": "leakage-ledger",
+      "schema": "chio.disclosure.leakage-ledger.v1",
+      "path": "leakage-ledger.json",
+      "sha256": "e10f31c98f5cb3afd367e5522ef767be871161c2c3810532be0e25402dd0cf1b",
+      "role": "disclosure-leakage-ledger"
+    },
+    {
+      "id": "crypto-context-report",
+      "schema": "chio.disclosure.crypto-context-report.v1",
+      "path": "crypto-context-report.json",
+      "sha256": "e6d783b763e88b5a1add579d6be107b9fe447a4915ed5c95087ffdc191a590f2",
+      "role": "disclosure-crypto-context-report"
+    }
+  ],
+  "edges": [
+    {
+      "from": "disclosure-capsule",
+      "to": "signed-lineage-subgraph",
+      "predicate": "binds",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "from": "disclosure-capsule",
+      "to": "leakage-ledger",
+      "predicate": "binds",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "from": "disclosure-capsule",
+      "to": "crypto-context-report",
+      "predicate": "binds",
+      "evidence_class": "digest-bound-reference"
+    }
+  ]
+}

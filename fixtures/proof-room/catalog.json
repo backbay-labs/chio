@@ -266,6 +266,12 @@
       "description": "Disclosure lineage fixture rejected when the signed lineage subgraph names an unknown root receipt"
     },
     {
+      "id": "disclosure-lineage-excess-disclosed-field",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/excess-disclosed-field",
+      "description": "Disclosure lineage fixture rejected when the crypto context report discloses fields outside the capsule"
+    },
+    {
       "id": "crypto-context-valid-bbs",
       "kind": "disclosure-crypto-context",
       "path": "fixtures/proof-room/crypto-context/valid-bbs-context",
