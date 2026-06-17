@@ -155,6 +155,21 @@ fn commerce_order_replay_rejects_payment_capture_after_replay_event() {
 }
 
 #[test]
+fn commerce_order_replay_rejects_payment_capture_before_authorization_events() {
+    let mut bundle = load_bundle("offline-psp-valid");
+    mutate_payment_lifecycle(&mut bundle, |payment_lifecycle| {
+        payment_lifecycle["captured_at"] = serde_json::json!("2026-06-10T00:01:30Z");
+    });
+
+    let error = chio_commerce_order::verify_commerce_order(&bundle)
+        .test_expect_err("payment capture must follow mandate and budget authorization");
+
+    assert!(error
+        .to_string()
+        .contains("payment captured before commerce authorization event"));
+}
+
+#[test]
 fn commerce_order_replay_rejects_expired_mandate() {
     let bundle = load_bundle("expired-mandate");
 

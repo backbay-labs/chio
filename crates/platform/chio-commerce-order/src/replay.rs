@@ -48,6 +48,8 @@ pub(super) fn replay_event_log(
     let mut current_state = "none".to_string();
     let mut saw_payment = false;
     let mut saw_mandate = false;
+    let mut mandate_bound_at = None;
+    let mut budget_reserved_at = None;
     let mut previous_event_occurred_at = None;
     let payment_captured_at = parse_rfc3339_utc(&payment.captured_at, "payment captured_at")?;
     for event in &event_log.events {
@@ -94,10 +96,26 @@ pub(super) fn replay_event_log(
                 "payment captured after replay event".to_string(),
             ));
         }
+        if event.next_state == "payment_verified"
+            && [mandate_bound_at.as_ref(), budget_reserved_at.as_ref()]
+                .into_iter()
+                .flatten()
+                .any(|authorization_occurred_at| &payment_captured_at < authorization_occurred_at)
+        {
+            return Err(CommerceOrderError::ReplayFailed(
+                "payment captured before commerce authorization event".to_string(),
+            ));
+        }
         if event.next_state == "mandate_bound" && !event.evidence_refs.contains(&mandate.id) {
             return Err(CommerceOrderError::ReplayFailed(
                 "mandate event missing mandate allowance evidence".to_string(),
             ));
+        }
+        if event.next_state == "mandate_bound" {
+            mandate_bound_at = Some(occurred_at);
+        }
+        if event.next_state == "budget_reserved" {
+            budget_reserved_at = Some(occurred_at);
         }
         saw_payment |= event.next_state == "payment_verified";
         saw_mandate |= event.next_state == "mandate_bound";
