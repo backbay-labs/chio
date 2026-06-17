@@ -7,35 +7,35 @@
       "id": "provider-discovery-snapshot",
       "schema": "chio.commerce.provider-discovery-snapshot.v1",
       "path": "provider-discovery-snapshot.json",
-      "sha256": "15dccba6f142e66106b714c0401916dc25eacbdc7d46be4eed714152dfa5c05e",
+      "sha256": "d1a4b7aed0daf6aeeca885893e7114b1f8f5eff2c847f2003a0600fa48d8adf1",
       "role": "provider-discovery-snapshot"
     },
     {
       "id": "trust-scorecard-snapshot",
       "schema": "chio.trust.scorecard-snapshot.v1",
       "path": "trust-scorecard-snapshot.json",
-      "sha256": "32245825d2733f2817859467b99a7e6d9d1b71fb1a1cb91785d13cbbd562a086",
+      "sha256": "2b803de8f1fa734a89ed203feb107e27d970a06113b29c1e684459f83f32739b",
       "role": "trust-scorecard-snapshot"
     },
     {
       "id": "reputation-import-report",
       "schema": "chio.trust.reputation-import-report.v1",
       "path": "reputation-import-report.json",
-      "sha256": "a947a990c6b69bb308af09ce7bbeeeb9f8f0f066630bf245bc863ffa4790b0f5",
+      "sha256": "1a207a90c6f99fe0e0c034d6a6b7f023db3f9176ad8a2ffb53ed889b701768e5",
       "role": "reputation-import-report"
     },
     {
       "id": "sla-commitment",
       "schema": "chio.commerce.sla-commitment.v1",
       "path": "sla-commitment.json",
-      "sha256": "b4a85d1aa966b1dd7e51ce8b2c0d5d2693039a0c3e3d8b390762739fc47d35a1",
+      "sha256": "429b48f0d8b7aa712b084aa00c3370ef52a8b3d92ef82c57ca01c2b893f0493b",
       "role": "sla-commitment"
     },
     {
       "id": "sla-performance-report",
       "schema": "chio.commerce.sla-performance-report.v1",
       "path": "sla-performance-report.json",
-      "sha256": "3f3d8b162df46d8ea103e21782f710a86423b6e8870417e3b2d0e692d4e8cd07",
+      "sha256": "ccce20ab6e8cea3d7c5bc3fcb20048b89b1e454a0350a46c78d76d8e6a4d7d6d",
       "role": "sla-performance-report"
     },
     {
@@ -49,28 +49,28 @@
       "id": "collateral-position-report",
       "schema": "chio.risk.collateral-position-report.v1",
       "path": "collateral-position-report.json",
-      "sha256": "979b9c92a626706537a0ce66addd2dc5075c090f0b9f874f69eb6730ea54d4ff",
+      "sha256": "7184f2c317581a7f0058cded0551d534dc23314222b970884104ab695a39dc67",
       "role": "collateral-position-report"
     },
     {
       "id": "guarantee-decision",
       "schema": "chio.risk.guarantee-decision.v1",
       "path": "guarantee-decision.json",
-      "sha256": "f3a9693c924fe04ba8bc1750ced88032252c8abcdb114c3b0fa1574a7632a86e",
+      "sha256": "58605086db3108618bb833931b2dd8443dd6d94c56afb2874f506ef07b027865",
       "role": "guarantee-decision"
     },
     {
       "id": "adjudication-jurisdiction-receipt",
       "schema": "chio.risk.adjudication-jurisdiction-receipt.v1",
       "path": "adjudication-jurisdiction-receipt.json",
-      "sha256": "e73fef441f38b507f22a0209b4d8159ffd8ded23bed792a051f6f3a0c355042d",
+      "sha256": "9f89790898b7f3f0a3c8c2fa30a100c50a84997eec7a0640f162a499fc3c38e8",
       "role": "adjudication-jurisdiction-receipt"
     },
     {
       "id": "provider-selection-report",
       "schema": "chio.commerce.provider-selection-report.v1",
       "path": "provider-selection-report.json",
-      "sha256": "38ff59a8813c7c90f3f9c463a127adefe1dea55a79321abc12e8e0336f286f37",
+      "sha256": "b57746cc4feeaf3c3cd21c955214bd57aa269dc3ed0d1f2c61b3ae8e6b4124eb",
       "role": "provider-selection-report"
     }
   ],

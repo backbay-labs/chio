@@ -27,7 +27,7 @@ use claims::{
 };
 use evidence::{
     bundle_contains_risk_evidence_kind, bundle_contains_verified_receipt_node_id, parse_artifact,
-    parse_graph, require_node, TrustMarketEvidenceRole,
+    parse_graph, parse_signed_artifact, require_node, TrustMarketEvidenceRole,
 };
 use policy::parse_policy;
 
@@ -82,58 +82,67 @@ pub fn verify_trust_market_context(
     let policy = parse_policy(&bundle.verifier_policy_bytes)?;
     reject_required_unsupported_market_claims(&policy.required_claims)?;
 
-    let discovery: ProviderDiscoverySnapshot = parse_artifact(
+    let discovery: ProviderDiscoverySnapshot = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::ProviderDiscoverySnapshot)?,
         "chio.commerce.provider-discovery-snapshot.v1",
+        &policy.trusted_market_authority_keys,
     )?;
-    let selection: ProviderSelectionReport = parse_artifact(
+    let selection: ProviderSelectionReport = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::ProviderSelectionReport)?,
         "chio.commerce.provider-selection-report.v1",
+        &policy.trusted_market_authority_keys,
     )?;
-    let scorecard: TrustScorecardSnapshot = parse_artifact(
+    let scorecard: TrustScorecardSnapshot = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::TrustScorecardSnapshot)?,
         "chio.trust.scorecard-snapshot.v1",
+        &policy.trusted_market_authority_keys,
     )?;
-    let reputation_import: ReputationImportReport = parse_artifact(
+    let reputation_import: ReputationImportReport = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::ReputationImportReport)?,
         "chio.trust.reputation-import-report.v1",
+        &policy.trusted_market_authority_keys,
     )?;
-    let sla: SlaCommitment = parse_artifact(
+    let sla: SlaCommitment = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::SlaCommitment)?,
         "chio.commerce.sla-commitment.v1",
+        &policy.trusted_market_authority_keys,
     )?;
-    let sla_performance: SlaPerformanceReport = parse_artifact(
+    let sla_performance: SlaPerformanceReport = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::SlaPerformanceReport)?,
         "chio.commerce.sla-performance-report.v1",
+        &policy.trusted_market_authority_keys,
     )?;
     let risk_report: RiskComptrollerReport = parse_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::RiskComptrollerReport)?,
         "chio.risk.comptroller-report.v1",
     )?;
-    let collateral: CollateralPositionReport = parse_artifact(
+    let collateral: CollateralPositionReport = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::CollateralPositionReport)?,
         "chio.risk.collateral-position-report.v1",
+        &policy.trusted_market_authority_keys,
     )?;
-    let guarantee: GuaranteeDecision = parse_artifact(
+    let guarantee: GuaranteeDecision = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::GuaranteeDecision)?,
         "chio.risk.guarantee-decision.v1",
+        &policy.trusted_market_authority_keys,
     )?;
-    let jurisdiction: AdjudicationJurisdictionReceipt = parse_artifact(
+    let jurisdiction: AdjudicationJurisdictionReceipt = parse_signed_artifact(
         bundle,
         require_node(
             &graph,
             TrustMarketEvidenceRole::AdjudicationJurisdictionReceipt,
         )?,
         "chio.risk.adjudication-jurisdiction-receipt.v1",
+        &policy.trusted_market_authority_keys,
     )?;
 
     let mut verified_claims = Vec::new();

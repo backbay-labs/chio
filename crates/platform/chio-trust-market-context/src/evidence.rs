@@ -1,5 +1,6 @@
 use serde::Deserialize;
 
+use chio_core_types::{PublicKey, Signature};
 use chio_risk_comptroller::RiskEvidenceRefKind;
 use chio_transaction_passport::{TransactionPassportError, TRANSACTION_EVIDENCE_GRAPH_SCHEMA_ID};
 
@@ -201,6 +202,26 @@ pub(super) fn parse_artifact<T: for<'de> Deserialize<'de>>(
     node: &TrustMarketEvidenceNode,
     expected_schema: &str,
 ) -> Result<T, TransactionPassportError> {
+    parse_artifact_value(bundle, node, expected_schema)
+        .and_then(|value| parse_artifact_from_value(node, value))
+}
+
+pub(super) fn parse_signed_artifact<T: for<'de> Deserialize<'de>>(
+    bundle: &TrustMarketBundle,
+    node: &TrustMarketEvidenceNode,
+    expected_schema: &str,
+    trusted_authority_keys: &[PublicKey],
+) -> Result<T, TransactionPassportError> {
+    let value = parse_artifact_value(bundle, node, expected_schema)?;
+    validate_artifact_signature(node, &value, trusted_authority_keys)?;
+    parse_artifact_from_value(node, value)
+}
+
+fn parse_artifact_value(
+    bundle: &TrustMarketBundle,
+    node: &TrustMarketEvidenceNode,
+    expected_schema: &str,
+) -> Result<serde_json::Value, TransactionPassportError> {
     validate_node(node)?;
     let bytes = bundle
         .artifacts
@@ -235,12 +256,72 @@ pub(super) fn parse_artifact<T: for<'de> Deserialize<'de>>(
             message: format!("unsupported schema: {schema}"),
         });
     }
+    Ok(value)
+}
+
+fn parse_artifact_from_value<T: for<'de> Deserialize<'de>>(
+    node: &TrustMarketEvidenceNode,
+    value: serde_json::Value,
+) -> Result<T, TransactionPassportError> {
     serde_json::from_value(value).map_err(|error| {
         TransactionPassportError::InvalidTrustMarketArtifact {
             path: node.path.clone(),
             message: error.to_string(),
         }
     })
+}
+
+fn validate_artifact_signature(
+    node: &TrustMarketEvidenceNode,
+    value: &serde_json::Value,
+    trusted_authority_keys: &[PublicKey],
+) -> Result<(), TransactionPassportError> {
+    let signature = value
+        .get("signature")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| invalid_signature(node, "signature field missing"))?;
+    let Some(rest) = signature.strip_prefix("sig-ed25519:") else {
+        return Err(invalid_signature(node, "unsupported signature format"));
+    };
+    let mut parts = rest.splitn(2, ':');
+    let Some(key_hex) = parts.next().filter(|value| !value.is_empty()) else {
+        return Err(invalid_signature(node, "signing key missing"));
+    };
+    let Some(signature_hex) = parts.next().filter(|value| !value.is_empty()) else {
+        return Err(invalid_signature(node, "signature bytes missing"));
+    };
+    let trusted_key = trusted_authority_keys
+        .iter()
+        .find(|key| key.to_hex() == key_hex)
+        .ok_or_else(|| invalid_signature(node, "signing key is not trusted"))?;
+    let signature = Signature::from_hex(signature_hex)
+        .map_err(|error| invalid_signature(node, format!("signature decode failed: {error}")))?;
+    let mut signed_value = value.clone();
+    let Some(object) = signed_value.as_object_mut() else {
+        return Err(invalid_signature(node, "artifact must be an object"));
+    };
+    object.remove("signature");
+    let verified = trusted_key
+        .verify_canonical(&signed_value, &signature)
+        .map_err(|error| invalid_signature(node, format!("signature check failed: {error}")))?;
+    if verified {
+        Ok(())
+    } else {
+        Err(invalid_signature(node, "signature check failed"))
+    }
+}
+
+fn invalid_signature(
+    node: &TrustMarketEvidenceNode,
+    message: impl Into<String>,
+) -> TransactionPassportError {
+    TransactionPassportError::InvalidTrustMarketArtifact {
+        path: node.path.clone(),
+        message: format!(
+            "trust-market artifact signature invalid: {}",
+            message.into()
+        ),
+    }
 }
 
 fn validate_graph_references(

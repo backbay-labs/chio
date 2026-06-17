@@ -173,7 +173,7 @@ f0946e69ffddd8fe61ce6c6d7336bfd1a1c03ec59d95d928a6acd6cb27440701  spec/schemas/c
 9fd8cf45e2245c9e514fadff11700aa5bf899c2d9db2d7fb34cb121ba6996309  spec/schemas/chio-transaction/v1/response-digest.schema.json
 658ffe072e697deb2874f0043b019801ef408aea926a6d0b05ceb82fc5928d49  spec/schemas/chio-transaction/v1/runtime-security-report.schema.json
 91fa86ca2eca50a5530baf0b36af6bc0c66b17097c7a949b54763b92da3ead2a  spec/schemas/chio-transaction/v1/transaction-passport.schema.json
-008a2c8bdfd1c7d4328f39c0437379afc32a39836dea691bb8b68962107ccc85  spec/schemas/chio-transaction/v1/verifier-policy.schema.json
+128b044a9649c45971478ae382c04228c86139661ef05e06e11fee8f8bd1d646  spec/schemas/chio-transaction/v1/verifier-policy.schema.json
 4bf31440e06984d62b76c110997a3f8e6dce4d1421637cd1406e61a7190e773a  spec/schemas/chio-transaction/v1/verifier-report.schema.json
 4646a51a6d23c27f0ba3951923e029ab9568bfa87f1b373ad2b1334be0ca7f62  spec/schemas/chio-workflow/v1/preflight-plan.schema.json
 3374b9d40520b66cae420da1f9c8bb07fed6bfbd62ae918615e2f88b6e1b7700  spec/schemas/chio-workflow/v1/preflight-report.schema.json

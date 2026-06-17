@@ -1,5 +1,6 @@
 use serde::Deserialize;
 
+use chio_core_types::PublicKey;
 use chio_transaction_passport::{TransactionPassportError, TRANSACTION_VERIFIER_POLICY_SCHEMA_ID};
 
 #[derive(Debug, Deserialize)]
@@ -12,6 +13,8 @@ pub(super) struct TrustMarketVerifierPolicy {
     omitted_claims: Vec<String>,
     pub(super) unsupported_claims: Vec<String>,
     pub(super) max_reputation_import_weight: u64,
+    #[serde(default)]
+    pub(super) trusted_market_authority_keys: Vec<PublicKey>,
 }
 
 pub(super) fn parse_policy(
@@ -37,6 +40,9 @@ pub(super) fn parse_policy(
         return Err(claim_failed(
             "max reputation import weight must not exceed 100",
         ));
+    }
+    if policy.trusted_market_authority_keys.is_empty() {
+        return Err(claim_failed("trusted market authority keys missing"));
     }
     let _ = &policy.omitted_claims;
     Ok(policy)

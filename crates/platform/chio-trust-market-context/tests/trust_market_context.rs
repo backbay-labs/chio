@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use chio_core_types::Keypair;
 use chio_test_support::prelude::*;
 use serde_json::{json, Value};
 
@@ -15,6 +16,7 @@ const CLAIM_COLLATERAL_GUARANTEE_BOUND: &str = "claim.trust_market.collateral_gu
 const CLAIM_JURISDICTION_BOUND: &str = "claim.trust_market.jurisdiction_bound";
 const CLAIM_UNSUPPORTED_MARKET_LIMITED: &str =
     "claim.trust_market.unsupported_market_claims_limited";
+const MARKET_AUTHORITY_SEED: [u8; 32] = [59; 32];
 
 #[derive(Debug, Clone, Copy)]
 enum TrustMarketCase {
@@ -56,6 +58,32 @@ enum TrustMarketCase {
 
 fn json_bytes(value: Value) -> Vec<u8> {
     serde_json::to_vec(&value).test_expect("test json serializes")
+}
+
+fn market_authority_keypair() -> Keypair {
+    Keypair::from_seed(&MARKET_AUTHORITY_SEED)
+}
+
+fn market_authority_key_hex() -> String {
+    market_authority_keypair().public_key().to_hex()
+}
+
+fn signed_market_artifact_bytes(mut value: Value) -> Vec<u8> {
+    let keypair = market_authority_keypair();
+    let object = value
+        .as_object_mut()
+        .test_expect("signed market artifact is an object");
+    object.remove("signature");
+    let signature = keypair
+        .sign_canonical(&value)
+        .test_expect("market artifact signs")
+        .0
+        .to_hex();
+    value["signature"] = Value::String(format!(
+        "sig-ed25519:{}:{signature}",
+        keypair.public_key().to_hex()
+    ));
+    json_bytes(value)
 }
 
 fn push_artifact(
@@ -144,7 +172,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         TrustMarketCase::StaleDiscovery => "2026-06-09T00:00:00Z",
         _ => "2026-06-11T00:00:00Z",
     };
-    let discovery = json_bytes(json!({
+    let discovery = signed_market_artifact_bytes(json!({
         "schema": "chio.commerce.provider-discovery-snapshot.v1",
         "id": "discovery-trust-market-valid",
         "issued_at": "2026-06-10T00:00:00Z",
@@ -210,7 +238,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         TrustMarketCase::ScorecardStaleAtSelection => "2026-06-10T01:00:00Z",
         _ => "2026-06-11T00:00:00Z",
     };
-    let scorecard = json_bytes(json!({
+    let scorecard = signed_market_artifact_bytes(json!({
         "schema": "chio.trust.scorecard-snapshot.v1",
         "id": "scorecard-trust-market-valid",
         "issued_at": "2026-06-10T00:00:00Z",
@@ -265,7 +293,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         scorecard,
     );
 
-    let reputation_import = json_bytes(json!({
+    let reputation_import = signed_market_artifact_bytes(json!({
         "schema": "chio.trust.reputation-import-report.v1",
         "id": "reputation-import-trust-market-valid",
         "issued_at": "2026-06-10T00:00:00Z",
@@ -322,7 +350,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             }
         ]),
     };
-    let sla_commitment = json_bytes(json!({
+    let sla_commitment = signed_market_artifact_bytes(json!({
         "schema": "chio.commerce.sla-commitment.v1",
         "id": "sla-commitment-trust-market-valid",
         "issued_at": "2026-06-10T00:00:00Z",
@@ -356,7 +384,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         TrustMarketCase::SlaPerformanceMetricMismatch => "availability_percent",
         _ => "completion_time_minutes",
     };
-    let sla_performance = json_bytes(json!({
+    let sla_performance = signed_market_artifact_bytes(json!({
         "schema": "chio.commerce.sla-performance-report.v1",
         "id": "sla-performance-trust-market-valid",
         "issued_at": "2026-06-10T01:00:00Z",
@@ -545,7 +573,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         TrustMarketCase::CollateralLockStartsAfterGuarantee => "2026-06-11T00:00:00Z",
         _ => "2026-06-10T00:00:00Z",
     };
-    let collateral = json_bytes(json!({
+    let collateral = signed_market_artifact_bytes(json!({
         "schema": "chio.risk.collateral-position-report.v1",
         "id": "collateral-trust-market-valid",
         "issued_at": "2026-06-10T00:00:00Z",
@@ -601,7 +629,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             "end": "2026-06-11T00:00:00Z"
         }),
     };
-    let guarantee = json_bytes(json!({
+    let guarantee = signed_market_artifact_bytes(json!({
         "schema": "chio.risk.guarantee-decision.v1",
         "id": "guarantee-trust-market-valid",
         "issued_at": "2026-06-10T00:00:00Z",
@@ -635,7 +663,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         TrustMarketCase::SlashAuthorityOutsideJurisdiction => vec!["did:chio:other-authority"],
         _ => vec![collateral_slash_authority],
     };
-    let jurisdiction = json_bytes(json!({
+    let jurisdiction = signed_market_artifact_bytes(json!({
         "schema": "chio.risk.adjudication-jurisdiction-receipt.v1",
         "id": "jurisdiction-trust-market-valid",
         "issued_at": "2026-06-10T00:00:00Z",
@@ -725,7 +753,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             }
         ]),
     };
-    let selection = json_bytes(json!({
+    let selection = signed_market_artifact_bytes(json!({
         "schema": "chio.commerce.provider-selection-report.v1",
         "id": "selection-trust-market-valid",
         "issued_at": selection_issued_at,
@@ -796,7 +824,8 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             "claim.market.underwriter_market_operated",
             "claim.market.slashing_court_operated"
         ],
-        "max_reputation_import_weight": 30
+        "max_reputation_import_weight": 30,
+        "trusted_market_authority_keys": [market_authority_key_hex()]
     }));
 
     if matches!(
@@ -894,6 +923,26 @@ fn trust_market_bundle_with_required_claim(claim: &str) -> TrustMarketBundle {
     bundle
 }
 
+fn update_trust_market_artifact(bundle: &mut TrustMarketBundle, path: &str, value: Value) {
+    let bytes = json_bytes(value);
+    let digest = chio_core_types::sha256_hex(&bytes);
+    bundle.artifacts.insert(path.to_string(), bytes);
+
+    let mut graph: Value =
+        serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("evidence graph parses");
+    for node in graph["nodes"]
+        .as_array_mut()
+        .test_expect("evidence graph nodes array")
+    {
+        if node["path"] == path {
+            node["sha256"] = Value::String(digest.clone());
+        }
+    }
+    bundle.evidence_graph_bytes = json_bytes(graph);
+    bundle.passport.evidence_graph_sha256 =
+        chio_core_types::sha256_hex(&bundle.evidence_graph_bytes);
+}
+
 #[test]
 fn trust_market_context_accepts_marketplace_fixture() {
     let report = verify_trust_market_context(&trust_market_bundle(TrustMarketCase::Valid))
@@ -914,6 +963,29 @@ fn trust_market_context_accepts_marketplace_fixture() {
         .unsupported_claims
         .iter()
         .any(|claim| claim == "claim.market.global_trust_score_published"));
+}
+
+#[test]
+fn trust_market_rejects_tampered_provider_selection_signature() {
+    let mut bundle = trust_market_bundle(TrustMarketCase::Valid);
+    let mut selection: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("provider-selection-report.json")
+            .test_expect("selection artifact exists"),
+    )
+    .test_expect("selection artifact parses");
+    selection["signature"] = Value::String("sig-selection-attacker".to_string());
+    update_trust_market_artifact(&mut bundle, "provider-selection-report.json", selection);
+
+    let error = verify_trust_market_context(&bundle)
+        .test_expect_err("tampered provider selection signature must fail");
+
+    let message = error.to_string();
+    assert!(
+        message.contains("trust-market artifact signature invalid"),
+        "{message}"
+    );
 }
 
 #[test]

@@ -28,6 +28,11 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 100
+    },
+    "trusted_market_authority_keys": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+      "uniqueItems": true
     }
   }
 }

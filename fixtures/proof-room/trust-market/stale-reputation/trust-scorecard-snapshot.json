@@ -49,5 +49,5 @@
   "score_ceiling": 100,
   "computed_score": 92,
   "downgrade_reasons": [],
-  "signature": "sig-scorecard-valid"
+  "signature": "sig-ed25519:cf1b37e85dc00aee94f10108b37f151e2a37b3ae2a0cae77521f83488db9c4d7:5c4328d43621a93eb2f77255d7d3fa69e519d229f0eb12dc977f0adbdb248ad81ef9a405de216452616bccf6f80bd0a58a7e496f3442dc0d92cc9590b52b4b04"
 }

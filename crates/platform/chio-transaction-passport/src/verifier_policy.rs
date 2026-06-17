@@ -24,6 +24,8 @@ pub(super) struct TransactionVerifierPolicy {
     unsupported_claims: Vec<String>,
     #[serde(default)]
     max_reputation_import_weight: Option<u64>,
+    #[serde(default)]
+    trusted_market_authority_keys: Vec<String>,
 }
 
 pub(super) fn validate_verifier_policy(
@@ -51,6 +53,10 @@ pub(super) fn validate_verifier_policy(
             "max reputation import weight must not exceed 100".to_string(),
         ));
     }
+    validate_claim_list(
+        &policy.trusted_market_authority_keys,
+        "trusted_market_authority_keys",
+    )?;
     Ok(())
 }
 
