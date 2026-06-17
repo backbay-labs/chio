@@ -301,6 +301,18 @@ pub(super) fn validate_evidence_export_bundle(
         "data_governance_report",
         &data_governance.id,
     )?;
+    ensure_export_role_points_to(
+        bundle,
+        &export_bundle.artifacts,
+        "disclosure_capsule",
+        &data_governance.disclosure_capsule_ref,
+    )?;
+    ensure_export_role_points_to(
+        bundle,
+        &export_bundle.artifacts,
+        "leakage_ledger",
+        &data_governance.leakage_ledger_ref,
+    )?;
     Ok(())
 }
 

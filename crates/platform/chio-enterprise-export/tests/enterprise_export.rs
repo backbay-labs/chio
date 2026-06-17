@@ -1186,6 +1186,43 @@ fn replace_graph_artifact(
         chio_core_types::sha256_hex(&bundle.evidence_graph_bytes);
 }
 
+fn replace_exported_bundle_artifact(
+    bundle: &mut EnterpriseExportBundle,
+    path: &str,
+    role: &str,
+    artifact: Value,
+) {
+    let artifact_bytes = json_bytes(artifact);
+    let artifact_sha256 = chio_core_types::sha256_hex(&artifact_bytes);
+    bundle.artifacts.insert(path.to_string(), artifact_bytes);
+
+    let mut export_bundle: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("evidence-export-bundle.json")
+            .test_expect("evidence export bundle artifact exists"),
+    )
+    .test_expect("evidence export bundle parses");
+    let artifacts = export_bundle["artifacts"]
+        .as_array_mut()
+        .test_expect("export artifacts are an array");
+    let exported_ref = artifacts
+        .iter_mut()
+        .find(|artifact_ref| {
+            artifact_ref.get("role").and_then(Value::as_str) == Some(role)
+                && artifact_ref.get("path").and_then(Value::as_str) == Some(path)
+        })
+        .test_expect("export artifact ref exists");
+    exported_ref["sha256"] = Value::String(artifact_sha256);
+    export_bundle["bundle_digest"] = Value::String(export_bundle_digest(artifacts));
+    replace_graph_artifact(
+        bundle,
+        "evidence-export-bundle.json",
+        "evidence-export-bundle",
+        export_bundle,
+    );
+}
+
 #[test]
 fn enterprise_export_accepts_valid_autonomous_commerce_fixture() {
     let bundle = enterprise_bundle(EnterpriseCase::Valid);
@@ -1372,6 +1409,62 @@ fn enterprise_export_rejects_passport_export_bound_to_other_passport() {
     assert!(error
         .to_string()
         .contains("export artifact passport mismatch for role: transaction_passport"));
+}
+
+#[test]
+fn enterprise_export_rejects_disclosure_capsule_export_bound_to_other_ref() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    replace_exported_bundle_artifact(
+        &mut bundle,
+        "disclosure-capsule.json",
+        "disclosure_capsule",
+        json!({
+            "schema": "chio.disclosure.crypto-context-report.v1",
+            "id": "disclosure-report-enterprise-other",
+            "context_id": "crypto-context-buyer-auditor",
+            "artifact_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "verdict": "verified",
+            "evidence_class": "verifier_context",
+            "cryptographic_proof_verified": true,
+            "verified_claims": [
+                "claim.disclosure.crypto_context_bound",
+                "claim.disclosure.profile_context_policy_enforced"
+            ],
+            "rejected_checks": [],
+            "disclosed_fields": ["capability_id", "id", "tool_name"]
+        }),
+    );
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("exported disclosure capsule must match governance ref");
+
+    assert!(error
+        .to_string()
+        .contains("export artifact id mismatch for role: disclosure_capsule"));
+}
+
+#[test]
+fn enterprise_export_rejects_leakage_ledger_export_bound_to_other_ref() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    replace_exported_bundle_artifact(
+        &mut bundle,
+        "leakage-ledger.json",
+        "leakage_ledger",
+        json!({
+            "schema": "chio.enterprise.leakage-ledger.v1",
+            "id": "leakage-ledger-enterprise-other",
+            "passport_id": "passport-enterprise-valid",
+            "disclosed_fields": ["capability_id", "id", "tool_name"],
+            "redacted_fields": ["customer_email", "card_last4"]
+        }),
+    );
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("exported leakage ledger must match governance ref");
+
+    assert!(error
+        .to_string()
+        .contains("export artifact id mismatch for role: leakage_ledger"));
 }
 
 #[test]
