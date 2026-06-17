@@ -448,7 +448,11 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
         ],
         "signature": "sig-agent-web-browser-automation-envelope"
     }));
-    if matches!(case, AgentWebCase::BrowserAutomationProjection) {
+    if matches!(
+        case,
+        AgentWebCase::BrowserAutomationProjection
+            | AgentWebCase::BrowserAutomationReceiptRefMismatch
+    ) {
         push_artifact(
             &mut builder.artifacts,
             &mut builder.graph_nodes,

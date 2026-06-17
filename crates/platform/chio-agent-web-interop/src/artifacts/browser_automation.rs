@@ -90,5 +90,17 @@ pub(super) fn validate_subject(
             "browser command was not mediated by Chio receipt",
         ));
     }
+    let receipt_ref = required_json_str(
+        value,
+        "chio_command_receipt_ref",
+        "missing browser command receipt ref",
+    )?;
+    if !envelope
+        .receipt_refs
+        .iter()
+        .any(|bound_ref| bound_ref == receipt_ref)
+    {
+        return Err(claim_failed("browser command receipt ref is not bound"));
+    }
     Ok(())
 }

@@ -259,6 +259,7 @@ pub(crate) enum AgentWebCase {
     AgUiProjection,
     AgUiDenied,
     BrowserAutomationProjection,
+    BrowserAutomationReceiptRefMismatch,
     RpaProjection,
     EmailProjection,
     EmailMissingMessageDigest,

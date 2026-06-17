@@ -660,6 +660,21 @@ fn agent_web_interop_accepts_browser_automation_projection() {
 }
 
 #[test]
+fn agent_web_interop_rejects_browser_automation_unbound_command_receipt() {
+    let bundle = agent_web_bundle(AgentWebCase::BrowserAutomationReceiptRefMismatch);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("browser automation command receipt must be bound to the envelope");
+
+    assert!(
+        error
+            .to_string()
+            .contains("browser command receipt ref is not bound"),
+        "{error}"
+    );
+}
+
+#[test]
 fn agent_web_interop_accepts_rpa_projection() {
     let bundle = agent_web_bundle(AgentWebCase::RpaProjection);
 

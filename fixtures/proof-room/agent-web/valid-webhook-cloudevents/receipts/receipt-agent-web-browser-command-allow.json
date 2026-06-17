@@ -1,30 +1,30 @@
 {
-  "id": "af20f789de4999bfdfda6a7b03ffd33179d2320d0f64787e3c1a1cfab9e13b97",
-  "timestamp": 1770508800,
-  "capability_id": "cap-agent-web-fixture",
-  "tool_server": "agent-web-sidecar",
-  "tool_name": "project-external-evidence",
   "action": {
+    "parameter_hash": "ee7ffe6e96475518fac965fd9c25568add56d8f7ebb7e60b9b6e3dbd97852820",
     "parameters": {
       "agent_web_receipt_ref": "receipt-agent-web-browser-command-allow",
-      "content_hash": "6565d9904ab7716a06ac227123f9b4293b07268767d0f87820528205a85aa0b1"
-    },
-    "parameter_hash": "8069b9a012a768acb5a31746d54de82f8791c70ee833abbf8bee8a582c0bcd59"
+      "content_hash": "ed7be84c02de0156ff3895ac9b4601cbfee2abaab4d1afae3ce1a9943df3fbfa"
+    }
   },
+  "boundary_class": "prevent",
+  "capability_id": "cap-agent-web-fixture",
+  "content_hash": "ed7be84c02de0156ff3895ac9b4601cbfee2abaab4d1afae3ce1a9943df3fbfa",
   "decision": {
     "verdict": "allow"
   },
-  "receipt_kind": "mediated_decision",
-  "boundary_class": "prevent",
-  "tool_origin": "caller_executed",
-  "redaction_mode": "summary",
-  "content_hash": "6565d9904ab7716a06ac227123f9b4293b07268767d0f87820528205a85aa0b1",
-  "policy_hash": "1a267f15367cb2e191ad9bb7e2c89d3ef154eb8e6978676f9df5566e4d836bdb",
+  "id": "35fbddc2a7404a92409b22829177c5ed686f600435ea9b384fddcd2c0fe99bae",
+  "kernel_key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
   "metadata": {
     "agent_web_receipt_ref": "receipt-agent-web-browser-command-allow",
-    "chio_receipt_signing_nonce": "receipt-agent-web-browser-command-allow"
+    "chio_receipt_signing_nonce": "af20f789de4999bfdfda6a7b03ffd33179d2320d0f64787e3c1a1cfab9e13b97"
   },
-  "trust_level": "mediated",
-  "kernel_key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-  "signature": "4c43bfc2c6df353e5e7dad4f7666c1f69c7aee987fbdd7185c30cf4e1e4247820b1544e5d4d72d9c6b1a1ab8ab466a87589cd29d97c48a25bb07e347c715f50d"
+  "policy_hash": "1a267f15367cb2e191ad9bb7e2c89d3ef154eb8e6978676f9df5566e4d836bdb",
+  "receipt_kind": "mediated_decision",
+  "redaction_mode": "summary",
+  "signature": "3989a4d49861672b5bfb1851e2040150b8cf6f1fa08d8d15c8e1a3f4803ab4b6d203917a0951d1ea51050cec1c9b74c5fc828699260539274c963f8175dbf60f",
+  "timestamp": 1770508800,
+  "tool_name": "project-external-evidence",
+  "tool_origin": "caller_executed",
+  "tool_server": "agent-web-sidecar",
+  "trust_level": "mediated"
 }

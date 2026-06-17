@@ -181,6 +181,7 @@ pub fn verify_public_settlement_proof(
     validate_chain_snapshot(bundle)?;
     validate_finality(bundle)?;
     validate_dispute_posture(bundle)?;
+    validate_finality_settlement_state(bundle)?;
     let bond = required_bond_snapshot(bundle)?;
     let block = required_block_snapshot(bundle)?;
     let chain_anchor = required_chain_anchor(bundle)?;
@@ -672,6 +673,20 @@ fn validate_dispute_posture(bundle: &PublicSettlementProofBundle) -> Result<(), 
         }
         _ => Ok(()),
     }
+}
+
+fn validate_finality_settlement_state(
+    bundle: &PublicSettlementProofBundle,
+) -> Result<(), Web3ContractError> {
+    if matches!(
+        bundle.settlement_receipt.lifecycle_state,
+        Web3SettlementLifecycleState::Failed | Web3SettlementLifecycleState::Reorged
+    ) {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement finality requires successful settlement state".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn active_dispute_posture(posture: PublicSettlementDisputePosture) -> bool {

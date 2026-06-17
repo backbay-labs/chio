@@ -1179,6 +1179,32 @@ fn public_settlement_proof_rejects_observed_execution_outside_dispatch_window() 
 }
 
 #[test]
+fn public_settlement_proof_rejects_failed_settlement_before_finality_claims() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.settlement_receipt.lifecycle_state = Web3SettlementLifecycleState::Failed;
+    bundle.settlement_receipt.failure_reason = Some("provider execution failed".to_string());
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("public settlement finality requires successful settlement state")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_reorged_settlement_before_finality_claims() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.settlement_receipt.lifecycle_state = Web3SettlementLifecycleState::Reorged;
+    bundle.settlement_receipt.failure_reason = Some("settlement transaction reorged".to_string());
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("public settlement finality requires successful settlement state")
+    ));
+}
+
+#[test]
 fn public_settlement_proof_rejects_missing_observed_execution_reference() {
     let mut bundle = sample_public_settlement_proof_bundle();
     bundle

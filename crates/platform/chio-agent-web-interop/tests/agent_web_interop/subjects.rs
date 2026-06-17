@@ -300,6 +300,12 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         );
     }
 
+    let browser_command_receipt_ref = match case {
+        AgentWebCase::BrowserAutomationReceiptRefMismatch => {
+            "receipt-agent-web-browser-command-other"
+        }
+        _ => "receipt-agent-web-browser-command-allow",
+    };
     let browser_automation_command = json_bytes(json!({
         "object_kind": "browser_automation_command",
         "id": "browser-command-agent-web-valid",
@@ -317,9 +323,14 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "storage_scope_digest": "7878787878787878787878787878787878787878787878787878787878787878",
         "network_egress_digest": "7979797979797979797979797979797979797979797979797979797979797979",
         "authorization_context_digest": "7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a",
+        "chio_command_receipt_ref": browser_command_receipt_ref,
         "mediated_by_chio_receipt": true
     }));
-    if matches!(case, AgentWebCase::BrowserAutomationProjection) {
+    if matches!(
+        case,
+        AgentWebCase::BrowserAutomationProjection
+            | AgentWebCase::BrowserAutomationReceiptRefMismatch
+    ) {
         push_artifact(
             &mut builder.artifacts,
             &mut builder.graph_nodes,

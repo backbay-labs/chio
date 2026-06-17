@@ -321,12 +321,19 @@ pub(crate) fn verify_manifest_claims(
         .collect::<BTreeSet<_>>();
     for claim in claims {
         let source_verified = source_report_verifies_claim(source_report, &claim.claim_id);
-        if !ALLOWED_BUNDLE_CLAIMS.contains(&claim.claim_id.as_str()) && !source_verified {
+        let bundle_allowed = ALLOWED_BUNDLE_CLAIMS.contains(&claim.claim_id.as_str());
+        if !bundle_allowed && !source_verified {
             return Err(format!("proof-room.claim.unregistered: {}", claim.claim_id));
         }
         if source_verified && claim.result != "verified" {
             return Err(format!(
                 "proof-room.claim.source-result-mismatch: {}",
+                claim.claim_id
+            ));
+        }
+        if bundle_allowed && claim.result != "verified" {
+            return Err(format!(
+                "proof-room.claim.result-unverified: {}",
                 claim.claim_id
             ));
         }

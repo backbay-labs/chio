@@ -712,6 +712,7 @@ pub(crate) fn add_core_projection_manifests(builder: &mut AgentWebBundleBuilder)
             "storage_scope_digest",
             "network_egress_digest",
             "authorization_context_digest",
+            "chio_command_receipt_ref",
             "mediated_by_chio_receipt"
         ],
         "external_fields_not_used": [
@@ -749,7 +750,11 @@ pub(crate) fn add_core_projection_manifests(builder: &mut AgentWebBundleBuilder)
             "Browser automation command evidence is digest-bound browser transcript evidence, not Chio capability authority."
         ]
     }));
-    if matches!(case, AgentWebCase::BrowserAutomationProjection) {
+    if matches!(
+        case,
+        AgentWebCase::BrowserAutomationProjection
+            | AgentWebCase::BrowserAutomationReceiptRefMismatch
+    ) {
         push_artifact(
             &mut builder.artifacts,
             &mut builder.graph_nodes,

@@ -230,7 +230,11 @@ pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> Age
             "evidence_class": "digest-bound-reference"
         }));
     }
-    if matches!(case, AgentWebCase::BrowserAutomationProjection) {
+    if matches!(
+        case,
+        AgentWebCase::BrowserAutomationProjection
+            | AgentWebCase::BrowserAutomationReceiptRefMismatch
+    ) {
         graph_edges.push(json!({
             "from": "browser-automation-envelope",
             "to": "browser-automation-manifest",
