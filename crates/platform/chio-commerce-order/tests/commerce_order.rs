@@ -197,3 +197,19 @@ fn commerce_order_replay_rejects_unknown_recovery_status_before_completion() {
 
     assert!(error.to_string().contains("unsupported refund_status"));
 }
+
+#[test]
+fn commerce_order_replay_rejects_refund_before_completion() {
+    let mut bundle = load_bundle("offline-psp-valid");
+    truncate_to_payment_verified(&mut bundle);
+    mutate_payment_lifecycle(&mut bundle, |payment_lifecycle| {
+        payment_lifecycle["refund_status"] = serde_json::json!("succeeded");
+    });
+
+    let error = chio_commerce_order::verify_commerce_order(&bundle)
+        .test_expect_err("refunded payment must not verify before completion");
+
+    assert!(error
+        .to_string()
+        .contains("unresolved payment recovery state"));
+}

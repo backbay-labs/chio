@@ -103,15 +103,14 @@ pub(super) fn validate_payment_lifecycle(
         &payment.transfer_reversal_status,
         &["none", "pending", "succeeded", "failed"],
     )?;
-    if context.current_state == "completed"
-        && [
-            &payment.dispute_status,
-            &payment.refund_status,
-            &payment.chargeback_status,
-            &payment.transfer_reversal_status,
-        ]
-        .iter()
-        .any(|status| status.as_str() != "none")
+    if [
+        &payment.dispute_status,
+        &payment.refund_status,
+        &payment.chargeback_status,
+        &payment.transfer_reversal_status,
+    ]
+    .iter()
+    .any(|status| status.as_str() != "none")
     {
         return Err(CommerceOrderError::PaymentFailed(
             "unresolved payment recovery state".to_string(),
