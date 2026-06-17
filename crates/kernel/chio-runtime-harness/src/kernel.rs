@@ -321,7 +321,9 @@ pub(crate) fn execute_runtime_loopback_step(
         keypair: vendor_key.clone(),
         ca_public_keys: vec![vendor_key.public_key()],
         max_delegation_depth: 5,
-        policy_hash: format!("chio-runtime-loopback-policy:{}", step_index),
+        policy_hash: chio_core::sha256_hex(
+            format!("runtime-loopback:{step_index}:policy").as_bytes(),
+        ),
         allow_sampling: false,
         allow_sampling_tool_use: false,
         allow_elicitation: false,

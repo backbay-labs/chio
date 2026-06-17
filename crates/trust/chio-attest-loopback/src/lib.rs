@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -470,6 +471,80 @@ pub fn authority_issuance_request() -> Result<ChioIssuanceRequest, ChioPackageEr
         )?);
     }
     Ok(issuance_request(steps))
+}
+
+pub fn authority_issuance_request_for_package(
+    package: &ChioProofPackage,
+) -> Result<ChioIssuanceRequest, ChioPackageError> {
+    let receipts_by_id = package
+        .tool_receipts
+        .iter()
+        .map(|receipt| (receipt.id.as_str(), receipt))
+        .collect::<HashMap<_, _>>();
+    let governance_by_id = package
+        .governance_receipts
+        .iter()
+        .map(|receipt| (receipt.body.receipt_id.as_str(), receipt))
+        .collect::<HashMap<_, _>>();
+    let mut request = authority_issuance_request()?;
+    for step in &mut request.steps {
+        let workflow_step = package
+            .workflow_receipt
+            .steps
+            .iter()
+            .find(|workflow_step| workflow_step.step_index == step.step_index)
+            .ok_or_else(|| {
+                ChioPackageError::Workflow(format!(
+                    "package is missing workflow step {}",
+                    step.step_index
+                ))
+            })?;
+        let tool_receipt_id = workflow_step.tool_receipt_id.as_deref().ok_or_else(|| {
+            ChioPackageError::Workflow(format!(
+                "workflow step {} is missing tool receipt id",
+                step.step_index
+            ))
+        })?;
+        let receipt = receipts_by_id.get(tool_receipt_id).ok_or_else(|| {
+            ChioPackageError::Workflow(format!(
+                "tool receipt {tool_receipt_id} is not present in package"
+            ))
+        })?;
+        step.tool_args_hash = receipt.action.parameter_hash.clone();
+        if step.destructive {
+            let governance_receipt_id =
+                workflow_step
+                    .governance_receipt_id
+                    .as_ref()
+                    .ok_or_else(|| {
+                        ChioPackageError::Governance(format!(
+                            "destructive workflow step {} is missing governance receipt id",
+                            step.step_index
+                        ))
+                    })?;
+            let governance_receipt = governance_by_id
+                .get(governance_receipt_id.as_str())
+                .ok_or_else(|| {
+                    ChioPackageError::Governance(format!(
+                        "governance receipt {governance_receipt_id} is not present in package"
+                    ))
+                })?;
+            let step_sha256 = canonical_sha256(&receipt.body())?;
+            if governance_receipt.body.step_sha256 != step_sha256 {
+                return Err(ChioPackageError::Governance(format!(
+                    "governance receipt {governance_receipt_id} step hash does not match tool receipt {tool_receipt_id}"
+                )));
+            }
+            step.governance_receipt_id = Some(governance_receipt_id.clone());
+            step.step_sha256 = Some(step_sha256);
+        } else {
+            step.governance_receipt_id = None;
+            step.governance_issued_at_unix_ms = None;
+            step.governance_expires_at_unix_ms = None;
+            step.step_sha256 = None;
+        }
+    }
+    Ok(request)
 }
 
 pub fn revocation_publication_request(
