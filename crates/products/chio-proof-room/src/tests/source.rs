@@ -146,6 +146,29 @@ fn source_trust_market_report_ignores_unrelated_family_graph_nodes() -> Result<(
     Ok(())
 }
 
+#[test]
+fn source_verifier_accepts_single_family_cli_report_without_wrapper() -> Result<(), Box<dyn Error>>
+{
+    let root = repo_root()?;
+    let fixture = root.join("fixtures/proof-room/commerce-payments/offline-psp-valid");
+    let passport_path = fixture.join("transaction-passport.json");
+    let expected_report = verify_transaction_passport_family_report(&fixture, &passport_path)?;
+    let commerce_report = expected_report["family_reports"]
+        .as_array()
+        .ok_or("family_reports missing")?
+        .first()
+        .ok_or("commerce report missing")?
+        .clone();
+    let transaction_passport_artifact = VerifiedManifestArtifact {
+        bytes: fs::read(&passport_path)?,
+        path: passport_path,
+    };
+
+    verify_source_verifier_report(&fixture, &transaction_passport_artifact, &commerce_report)
+        .map_err(|error| format!("single-family source report rejected: {error}"))?;
+    Ok(())
+}
+
 #[tokio::test]
 async fn quickstart_router_serves_enterprise_fixture_verifier_report() -> Result<(), Box<dyn Error>>
 {

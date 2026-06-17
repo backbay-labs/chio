@@ -5,7 +5,7 @@ pub(crate) fn verify_source_verifier_report(
     transaction_passport_artifact: &VerifiedManifestArtifact,
     actual_report: &serde_json::Value,
 ) -> Result<(), String> {
-    if source_report_has_family_reports(actual_report) {
+    if source_report_requires_family_verification(actual_report) {
         verify_family_source_verifier_report(
             bundle_root,
             transaction_passport_artifact,
@@ -34,6 +34,13 @@ pub(crate) fn source_report_has_family_reports(report: &serde_json::Value) -> bo
         .is_some_and(|reports| !reports.is_empty())
 }
 
+pub(crate) fn source_report_requires_family_verification(report: &serde_json::Value) -> bool {
+    source_report_has_family_reports(report)
+        || source_report_verified_claims(report)
+            .iter()
+            .any(|claim| !claim.starts_with(CLAIM_PREFIX_TRANSACTION))
+}
+
 pub(crate) fn verify_family_source_verifier_report(
     bundle_root: &Path,
     transaction_passport_artifact: &VerifiedManifestArtifact,
@@ -43,13 +50,25 @@ pub(crate) fn verify_family_source_verifier_report(
         bundle_root,
         &transaction_passport_artifact.path,
     )?;
-    if actual_report != &expected_report {
+    if actual_report != &expected_report
+        && !source_report_matches_unwrapped_single_family(actual_report, &expected_report)
+    {
         return Err(
             "proof-room.report.mismatch: verifier report does not match transaction passport"
                 .to_string(),
         );
     }
     Ok(())
+}
+
+pub(crate) fn source_report_matches_unwrapped_single_family(
+    actual_report: &serde_json::Value,
+    expected_report: &serde_json::Value,
+) -> bool {
+    expected_report
+        .get("family_reports")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|reports| reports.len() == 1 && reports.first() == Some(actual_report))
 }
 
 pub(crate) struct SourceVerifierContext {
