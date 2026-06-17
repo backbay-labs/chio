@@ -104,15 +104,48 @@ pub(super) fn require_node(
         })
 }
 
-pub(super) fn graph_contains_receipt_node_id(
+pub(super) fn bundle_contains_verified_receipt_node_id(
+    bundle: &TrustMarketBundle,
     graph: &TrustMarketEvidenceGraph,
     node_id: &str,
 ) -> bool {
-    graph.nodes.iter().any(|node| {
+    let Some(node) = graph.nodes.iter().find(|node| {
         node.id == node_id
             && node.role == TrustMarketEvidenceRole::Receipt
-            && node.schema == "chio.receipt.v1"
-    })
+            && node.schema == CHIO_RECEIPT_SCHEMA
+    }) else {
+        return false;
+    };
+    let Some(bytes) = bundle.artifacts.get(&node.path) else {
+        return false;
+    };
+    if chio_core_types::sha256_hex(bytes) != node.sha256 {
+        return false;
+    }
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) else {
+        return false;
+    };
+    if value.get("schema").and_then(serde_json::Value::as_str) != Some(CHIO_RECEIPT_SCHEMA) {
+        return false;
+    }
+    let receipt_id = value
+        .get("receipt_id")
+        .or_else(|| value.get("id"))
+        .and_then(serde_json::Value::as_str);
+    if receipt_id != Some(node_id) {
+        return false;
+    }
+    if value
+        .get("terminal_status")
+        .and_then(serde_json::Value::as_str)
+        != Some("allowed_executed")
+    {
+        return false;
+    }
+    value
+        .get("signature")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|signature| !signature.trim().is_empty())
 }
 
 pub(super) fn bundle_contains_risk_evidence_kind(

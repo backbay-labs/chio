@@ -24,6 +24,7 @@ enum TrustMarketCase {
     SelectionPredatesDiscovery,
     AmbiguousTopRank,
     LowerRankOverrideReceiptUnbound,
+    LowerRankOverrideReceiptUnavailable,
     SelectionRankingMissingAvailableCandidate,
     SelectionRankingOrderMismatch,
     SelectionScorecardScoreMismatch,
@@ -668,19 +669,24 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         _ => "risk-comptroller-market-valid",
     };
     let beta_rank = match case {
-        TrustMarketCase::AmbiguousTopRank | TrustMarketCase::LowerRankOverrideReceiptUnbound => 1,
+        TrustMarketCase::AmbiguousTopRank
+        | TrustMarketCase::LowerRankOverrideReceiptUnbound
+        | TrustMarketCase::LowerRankOverrideReceiptUnavailable => 1,
         _ => 2,
     };
     let beta_total_score = match case {
         TrustMarketCase::SelectionRankingOrderMismatch => 99,
+        TrustMarketCase::LowerRankOverrideReceiptUnavailable => 99,
         _ => 81,
     };
     let selected_rank = match case {
-        TrustMarketCase::LowerRankOverrideReceiptUnbound => 2,
+        TrustMarketCase::LowerRankOverrideReceiptUnbound
+        | TrustMarketCase::LowerRankOverrideReceiptUnavailable => 2,
         _ => 1,
     };
     let override_receipt_ref = match case {
         TrustMarketCase::LowerRankOverrideReceiptUnbound => "selection-override-receipt-missing",
+        TrustMarketCase::LowerRankOverrideReceiptUnavailable => "selection-override-receipt",
         _ => "",
     };
     let selected_total_score = match case {
@@ -798,6 +804,15 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             "path": "missing-risk-evidence.json",
             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "role": "guarantee-decision"
+        }));
+    }
+    if matches!(case, TrustMarketCase::LowerRankOverrideReceiptUnavailable) {
+        graph_nodes.push(json!({
+            "id": "selection-override-receipt",
+            "schema": "chio.receipt.v1",
+            "path": "selection-override-receipt.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "role": "receipt"
         }));
     }
 
@@ -939,6 +954,18 @@ fn trust_market_rejects_lower_rank_selection_with_unbound_override_receipt() {
         TrustMarketCase::LowerRankOverrideReceiptUnbound,
     ))
     .test_expect_err("unbound selection override receipt must fail");
+
+    assert!(error
+        .to_string()
+        .contains("selection override receipt missing"));
+}
+
+#[test]
+fn trust_market_rejects_lower_rank_selection_with_unavailable_override_receipt() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::LowerRankOverrideReceiptUnavailable,
+    ))
+    .test_expect_err("selection override receipt artifact must be available");
 
     assert!(error
         .to_string()
