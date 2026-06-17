@@ -291,6 +291,29 @@ async fn quickstart_router_serves_standalone_risk_fixture_verifier_report(
     Ok(())
 }
 
+#[test]
+fn source_standalone_risk_rejects_tampered_supporting_evidence() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/enterprise-export/standalone-risk-comptroller");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let report_path = work.path().join("data-governance-report.json");
+    let mut report: serde_json::Value = serde_json::from_slice(&fs::read(&report_path)?)?;
+    report["observed_region"] = serde_json::json!("EU");
+    fs::write(&report_path, json_bytes(&report)?)?;
+
+    let passport_path = work.path().join("transaction-passport.json");
+    let error = verify_transaction_passport_family_report(work.path(), &passport_path)
+        .err()
+        .ok_or("tampered standalone risk evidence unexpectedly verified")?;
+
+    assert!(error
+        .to_string()
+        .contains("risk facility lifecycle evidence missing"));
+    Ok(())
+}
+
 #[tokio::test]
 async fn quickstart_router_serves_agent_web_fixture_verifier_report() -> Result<(), Box<dyn Error>>
 {

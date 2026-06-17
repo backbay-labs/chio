@@ -1,6 +1,7 @@
 use super::*;
+use chrono::{DateTime, Utc};
 use std::{
-    collections::BTreeMap,
+    collections::BTreeSet,
     fs,
     path::Path,
 };
@@ -55,13 +56,16 @@ pub(super) fn verify_standalone_risk_claim(
     let risk_report = load_risk_comptroller_report_from_graph(bundle_dir, evidence_graph_bytes)?;
     chio_control_plane::risk_comptroller::validate_risk_report(passport, &risk_report)
         .map_err(map_proof_error)?;
-    let risk_evidence_ref_schemas = evidence_graph_ref_schemas(evidence_graph_bytes)?;
+    let risk_evidence_graph = parse_graph_artifact_paths(evidence_graph_bytes)?;
     chio_control_plane::risk_comptroller::validate_risk_evidence_refs(
         &risk_report,
         |evidence_ref, kind| {
-            risk_evidence_ref_schemas
-                .get(evidence_ref)
-                .is_some_and(|schema| risk_evidence_schema_matches_kind(schema, kind))
+            standalone_risk_evidence_ref_matches(
+                &risk_evidence_graph.nodes,
+                bundle_dir,
+                evidence_ref,
+                kind,
+            )
         },
     )
         .map_err(map_proof_error)?;
@@ -96,12 +100,14 @@ pub(super) fn verify_standalone_risk_claim(
 struct StandaloneRiskApprovalCase {
     schema: String,
     id: String,
+    issued_at: String,
     passport_id: String,
     risk_comptroller_report_ref: String,
     decision: String,
     decision_subject: String,
     approvers: Vec<String>,
     required_quorum: u64,
+    expires_at: String,
 }
 
 fn validate_standalone_risk_evidence_content(
@@ -133,6 +139,7 @@ fn validate_standalone_risk_approval_case(
     for (field, value) in [
         ("approval case schema", &approval.schema),
         ("approval case id", &approval.id),
+        ("approval case issued_at", &approval.issued_at),
         ("approval case passport id", &approval.passport_id),
         (
             "approval case risk comptroller report ref",
@@ -143,6 +150,7 @@ fn validate_standalone_risk_approval_case(
             "approval case decision subject",
             &approval.decision_subject,
         ),
+        ("approval case expires_at", &approval.expires_at),
     ] {
         if value.is_empty() {
             return Err(CliError::cli_other_error(format!(
@@ -165,15 +173,51 @@ fn validate_standalone_risk_approval_case(
             "proof verify: risk approval case denied",
         ));
     }
+    let passport_issued_at = parse_risk_timestamp(
+        &passport.issued_at,
+        "risk transaction passport issued_at",
+    )?;
+    let approval_issued_at =
+        parse_risk_timestamp(&approval.issued_at, "risk approval case issued_at")?;
+    let approval_expires_at =
+        parse_risk_timestamp(&approval.expires_at, "risk approval case expires_at")?;
+    if approval_issued_at >= approval_expires_at
+        || passport_issued_at < approval_issued_at
+        || passport_issued_at >= approval_expires_at
+    {
+        return Err(CliError::cli_other_error(
+            "proof verify: risk approval case outside validity window",
+        ));
+    }
     let required_quorum = usize::try_from(approval.required_quorum).map_err(|_| {
         CliError::cli_other_error("proof verify: risk approval quorum overflow")
     })?;
-    if required_quorum == 0 || approval.approvers.len() < required_quorum {
+    let mut unique_approvers = BTreeSet::new();
+    for approver in &approval.approvers {
+        let approver = approver.trim();
+        if approver.is_empty() {
+            return Err(CliError::cli_other_error(
+                "proof verify: risk approval approver missing",
+            ));
+        }
+        if !unique_approvers.insert(approver) {
+            return Err(CliError::cli_other_error(
+                "proof verify: risk approval approver duplicate",
+            ));
+        }
+    }
+    if required_quorum == 0 || unique_approvers.len() < required_quorum {
         return Err(CliError::cli_other_error(
             "proof verify: risk approval quorum not satisfied",
         ));
     }
     Ok(())
+}
+
+fn parse_risk_timestamp(value: &str, label: &str) -> Result<DateTime<Utc>, CliError> {
+    DateTime::parse_from_rfc3339(value)
+        .map(|timestamp| timestamp.with_timezone(&Utc))
+        .map_err(|_| CliError::cli_other_error(format!("proof verify: {label} invalid")))
 }
 
 #[derive(serde::Deserialize)]
@@ -184,28 +228,6 @@ struct EvidenceGraphRoleIndex {
 #[derive(serde::Deserialize)]
 struct EvidenceGraphRoleNode {
     role: String,
-}
-
-#[derive(serde::Deserialize)]
-struct EvidenceGraphNodeIdIndex {
-    nodes: Vec<EvidenceGraphNodeId>,
-}
-
-#[derive(serde::Deserialize)]
-struct EvidenceGraphNodeId {
-    id: String,
-    schema: String,
-}
-
-fn evidence_graph_ref_schemas(
-    evidence_graph_bytes: &[u8],
-) -> Result<BTreeMap<String, String>, CliError> {
-    let graph: EvidenceGraphNodeIdIndex = serde_json::from_slice(evidence_graph_bytes)?;
-    Ok(graph
-        .nodes
-        .into_iter()
-        .map(|node| (node.id, node.schema))
-        .collect())
 }
 
 fn risk_evidence_schema_matches_kind(
@@ -245,6 +267,25 @@ fn risk_evidence_schema_matches_kind(
                 | CHIO_RECEIPT_SCHEMA
         ),
     }
+}
+
+fn standalone_risk_evidence_ref_matches(
+    nodes: &[GraphArtifactNode],
+    bundle_dir: &Path,
+    evidence_ref: &str,
+    kind: chio_control_plane::risk_comptroller::RiskEvidenceRefKind,
+) -> bool {
+    let Some(node) = nodes
+        .iter()
+        .find(|node| node.id.as_deref() == Some(evidence_ref))
+    else {
+        return false;
+    };
+    let Ok(schema) = graph_node_schema(node, "risk evidence") else {
+        return false;
+    };
+    risk_evidence_schema_matches_kind(schema, kind)
+        && load_graph_bytes_artifact(bundle_dir, node, schema, "risk evidence").is_ok()
 }
 
 fn evidence_graph_has_enterprise_risk_context(

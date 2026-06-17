@@ -39,6 +39,19 @@ pub(crate) fn risk_evidence_schema_matches_kind(
     }
 }
 
+pub(crate) fn embedded_risk_evidence_ref_matches(
+    nodes: &[ProofRoomEmbeddedEvidenceNode],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    evidence_ref: &str,
+    kind: chio_risk_comptroller::RiskEvidenceRefKind,
+) -> bool {
+    let Some(node) = nodes.iter().find(|node| node.id == evidence_ref) else {
+        return false;
+    };
+    risk_evidence_schema_matches_kind(&node.schema, kind)
+        && embedded_artifact_node_bytes(node, artifacts, &node.schema, "risk evidence").is_ok()
+}
+
 pub(crate) fn is_enterprise_risk_context_role(role: &str) -> bool {
     matches!(
         role,

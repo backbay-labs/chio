@@ -1317,6 +1317,50 @@ pub(crate) fn deny_standalone_risk_approval_case(bundle: &Path) {
     rehash_standalone_risk_graph_artifact(bundle, "approval-case", &approval_path);
 }
 
+pub(crate) fn set_standalone_risk_approval_quorum(
+    bundle: &Path,
+    approvers: &[&str],
+    required_quorum: u64,
+) {
+    let approval_path = bundle.join("approval-case.json");
+    let mut approval: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&approval_path).test_expect("read approval case"))
+            .test_expect("approval case parses");
+    approval["approvers"] = serde_json::Value::Array(
+        approvers
+            .iter()
+            .map(|approver| serde_json::Value::String((*approver).to_string()))
+            .collect(),
+    );
+    approval["required_quorum"] = serde_json::json!(required_quorum);
+    write_json(&approval_path, &approval);
+    rehash_standalone_risk_graph_artifact(bundle, "approval-case", &approval_path);
+}
+
+pub(crate) fn set_standalone_risk_approval_window(
+    bundle: &Path,
+    issued_at: &str,
+    expires_at: &str,
+) {
+    let approval_path = bundle.join("approval-case.json");
+    let mut approval: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&approval_path).test_expect("read approval case"))
+            .test_expect("approval case parses");
+    approval["issued_at"] = serde_json::json!(issued_at);
+    approval["expires_at"] = serde_json::json!(expires_at);
+    write_json(&approval_path, &approval);
+    rehash_standalone_risk_graph_artifact(bundle, "approval-case", &approval_path);
+}
+
+pub(crate) fn tamper_standalone_risk_supporting_evidence_without_rehash(bundle: &Path) {
+    let report_path = bundle.join("data-governance-report.json");
+    let mut report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&report_path).test_expect("read risk evidence"))
+            .test_expect("risk evidence parses");
+    report["observed_region"] = serde_json::json!("EU");
+    write_json(&report_path, &report);
+}
+
 pub(crate) fn rehash_standalone_risk_graph_artifact(
     bundle: &Path,
     node_id: &str,

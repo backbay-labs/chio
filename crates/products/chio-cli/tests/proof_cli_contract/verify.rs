@@ -248,6 +248,17 @@ fn proof_verify_rejects_standalone_risk_with_unbound_evidence_ref() {
 }
 
 #[test]
+fn proof_verify_rejects_standalone_risk_tampered_supporting_evidence() {
+    let (_tempdir, bundle) = build_standalone_risk_only_policy_bundle();
+    tamper_standalone_risk_supporting_evidence_without_rehash(&bundle);
+    let bundle = utf8_path(&bundle);
+
+    let output = chio(&["proof", "verify", bundle.as_str(), "--require", "risk"]);
+
+    assert_failure(&output, "risk facility lifecycle evidence missing");
+}
+
+#[test]
 fn proof_verify_rejects_standalone_risk_with_unbound_reserve_ledger_refs() {
     let (_tempdir, bundle) = build_standalone_risk_only_policy_bundle();
     add_standalone_risk_unbound_reserve_ledger(&bundle);
@@ -278,6 +289,51 @@ fn proof_verify_rejects_standalone_risk_denied_approval_case() {
     let output = chio(&["proof", "verify", bundle.as_str(), "--require", "risk"]);
 
     assert_failure(&output, "risk approval case denied");
+}
+
+#[test]
+fn proof_verify_rejects_standalone_risk_duplicate_approval_quorum() {
+    let (_tempdir, bundle) = build_standalone_risk_only_policy_bundle();
+    set_standalone_risk_approval_quorum(
+        &bundle,
+        &[
+            "did:chio:enterprise-reviewer",
+            "did:chio:enterprise-reviewer",
+        ],
+        2,
+    );
+    let bundle = utf8_path(&bundle);
+
+    let output = chio(&["proof", "verify", bundle.as_str(), "--require", "risk"]);
+
+    assert_failure(&output, "risk approval approver duplicate");
+}
+
+#[test]
+fn proof_verify_rejects_standalone_risk_blank_approval_quorum() {
+    let (_tempdir, bundle) = build_standalone_risk_only_policy_bundle();
+    set_standalone_risk_approval_quorum(&bundle, &["", "did:chio:enterprise-reviewer"], 2);
+    let bundle = utf8_path(&bundle);
+
+    let output = chio(&["proof", "verify", bundle.as_str(), "--require", "risk"]);
+
+    assert_failure(&output, "risk approval approver missing");
+}
+
+#[test]
+fn proof_verify_rejects_standalone_risk_approval_outside_validity_window() {
+    for (issued_at, expires_at) in [
+        ("2026-06-01T00:00:00Z", "2026-06-09T00:00:00Z"),
+        ("2026-06-11T00:00:00Z", "2026-06-12T00:00:00Z"),
+    ] {
+        let (_tempdir, bundle) = build_standalone_risk_only_policy_bundle();
+        set_standalone_risk_approval_window(&bundle, issued_at, expires_at);
+        let bundle = utf8_path(&bundle);
+
+        let output = chio(&["proof", "verify", bundle.as_str(), "--require", "risk"]);
+
+        assert_failure(&output, "risk approval case outside validity window");
+    }
 }
 
 #[test]

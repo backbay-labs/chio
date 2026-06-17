@@ -970,12 +970,15 @@ pub(crate) fn proof_room_fixture_standalone_risk_report(
         )
         .map(|(contents, _)| contents);
     }
-    let risk_evidence_ref_schemas = embedded_evidence_graph_ref_schemas(evidence_graph_bytes)
+    let risk_evidence_graph = parse_embedded_evidence_graph(evidence_graph_bytes, "evidence graph")
         .map_err(|error| proof_room_fixture_invalid(fixture_id, "evidence-graph", error))?;
     match chio_risk_comptroller::validate_risk_evidence_refs(&risk_report, |evidence_ref, kind| {
-        risk_evidence_ref_schemas
-            .get(evidence_ref)
-            .is_some_and(|schema| risk_evidence_schema_matches_kind(schema, kind))
+        embedded_risk_evidence_ref_matches(
+            &risk_evidence_graph.nodes,
+            artifacts,
+            evidence_ref,
+            kind,
+        )
     }) {
         Ok(()) => {}
         Err(error) => {
@@ -1084,15 +1087,4 @@ pub(crate) fn embedded_evidence_graph_has_role(
 ) -> Result<bool, String> {
     let graph = parse_embedded_evidence_graph(evidence_graph_bytes, "evidence graph")?;
     Ok(graph.nodes.iter().any(|node| predicate(&node.role)))
-}
-
-pub(crate) fn embedded_evidence_graph_ref_schemas(
-    evidence_graph_bytes: &[u8],
-) -> Result<BTreeMap<String, String>, String> {
-    let graph = parse_embedded_evidence_graph(evidence_graph_bytes, "evidence graph")?;
-    Ok(graph
-        .nodes
-        .into_iter()
-        .map(|node| (node.id, node.schema))
-        .collect())
 }

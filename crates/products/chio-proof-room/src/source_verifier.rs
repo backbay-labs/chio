@@ -606,13 +606,16 @@ pub(crate) fn verify_source_standalone_risk_report(
             .map_err(|error| format!("proof-room.risk-invalid: {error}"))?;
     chio_risk_comptroller::validate_risk_report(&context.passport, &risk_report)
         .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
-    let risk_evidence_ref_schemas =
-        embedded_evidence_graph_ref_schemas(&context.evidence_graph_bytes)
+    let risk_evidence_graph =
+        parse_embedded_evidence_graph(&context.evidence_graph_bytes, "evidence graph")
             .map_err(|error| format!("proof-room.evidence-graph-invalid: {error}"))?;
     chio_risk_comptroller::validate_risk_evidence_refs(&risk_report, |evidence_ref, kind| {
-        risk_evidence_ref_schemas
-            .get(evidence_ref)
-            .is_some_and(|schema| risk_evidence_schema_matches_kind(schema, kind))
+        embedded_risk_evidence_ref_matches(
+            &risk_evidence_graph.nodes,
+            &context.artifacts,
+            evidence_ref,
+            kind,
+        )
     })
     .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
     let verified_claims = vec![CLAIM_RISK_COMPTROLLER_REPORT_BOUND.to_string()];
