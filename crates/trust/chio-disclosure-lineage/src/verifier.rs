@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+use chio_core_types::{Keypair, PublicKey, Signature};
 use serde::Serialize;
 
 use super::types::{
@@ -15,6 +16,9 @@ const CLAIM_DISCLOSURE_LEAKAGE_LEDGER_COMPLETE: &str = "claim.disclosure.leakage
 const CLAIM_DISCLOSURE_CRYPTO_CONTEXT_BOUND: &str = "claim.disclosure.crypto_context_bound";
 const CLAIM_DISCLOSURE_PROFILE_CONTEXT_POLICY_ENFORCED: &str =
     "claim.disclosure.profile_context_policy_enforced";
+const LINEAGE_SIGNATURE_PREFIX: &str = "sig-ed25519:";
+const TRUSTED_LINEAGE_SIGNER_PUBLIC_KEYS: &[&str] =
+    &["e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"];
 
 #[derive(Serialize)]
 struct LineageSubgraphDigestMaterial<'a> {
@@ -29,17 +33,36 @@ struct LineageSubgraphDigestMaterial<'a> {
 pub fn compute_signed_lineage_subgraph_digest(
     lineage: &SignedLineageSubgraph,
 ) -> Result<String, DisclosureLineageError> {
-    let material = LineageSubgraphDigestMaterial {
+    let material = lineage_subgraph_digest_material(lineage);
+    let bytes = chio_core_types::canonical_json_bytes(&material)
+        .map_err(|error| invalid(format!("lineage digest canonicalization failed: {error}")))?;
+    Ok(chio_core_types::sha256_hex(&bytes))
+}
+
+pub fn sign_lineage_subgraph(
+    lineage: &SignedLineageSubgraph,
+    signer: &Keypair,
+) -> Result<String, DisclosureLineageError> {
+    let digest = compute_signed_lineage_subgraph_digest(lineage)?;
+    let signature = signer.sign(digest.as_bytes());
+    Ok(format!(
+        "{LINEAGE_SIGNATURE_PREFIX}{}:{}",
+        signer.public_key().to_hex(),
+        signature.to_hex()
+    ))
+}
+
+fn lineage_subgraph_digest_material(
+    lineage: &SignedLineageSubgraph,
+) -> LineageSubgraphDigestMaterial<'_> {
+    LineageSubgraphDigestMaterial {
         id: &lineage.id,
         transaction_passport_ref: &lineage.transaction_passport_ref,
         root_receipt_ids: &lineage.root_receipt_ids,
         nodes: &lineage.nodes,
         edges: &lineage.edges,
         redactions: &lineage.redactions,
-    };
-    let bytes = chio_core_types::canonical_json_bytes(&material)
-        .map_err(|error| invalid(format!("lineage digest canonicalization failed: {error}")))?;
-    Ok(chio_core_types::sha256_hex(&bytes))
+    }
 }
 
 pub fn verify_disclosure_lineage_bundle(
@@ -158,9 +181,32 @@ fn validate_lineage(lineage: &SignedLineageSubgraph) -> Result<(), DisclosureLin
     if actual_digest != lineage.subgraph_sha256 {
         return Err(invalid("lineage subgraph digest mismatch"));
     }
-    let expected_signature = format!("sig-sha256:{actual_digest}");
-    if lineage.signature != expected_signature {
-        return Err(invalid("lineage subgraph signature mismatch"));
+    verify_lineage_signature(lineage, &actual_digest)?;
+    Ok(())
+}
+
+fn verify_lineage_signature(
+    lineage: &SignedLineageSubgraph,
+    digest: &str,
+) -> Result<(), DisclosureLineageError> {
+    let signature = lineage
+        .signature
+        .strip_prefix(LINEAGE_SIGNATURE_PREFIX)
+        .ok_or_else(|| invalid("lineage subgraph signature unsupported"))?;
+    let Some((public_key, signature)) = signature.split_once(':') else {
+        return Err(invalid("lineage subgraph signature malformed"));
+    };
+    let public_key = PublicKey::from_hex(public_key)
+        .map_err(|error| invalid(format!("lineage subgraph signer invalid: {error}")))?;
+    let public_key_hex = public_key.to_hex();
+    if !TRUSTED_LINEAGE_SIGNER_PUBLIC_KEYS.contains(&public_key_hex.as_str()) {
+        return Err(invalid("lineage subgraph signer untrusted"));
+    }
+    let signature = Signature::from_hex(signature)
+        .map_err(|error| invalid(format!("lineage subgraph signature invalid: {error}")))?;
+    let verified = public_key.verify(digest.as_bytes(), &signature);
+    if !verified {
+        return Err(invalid("lineage subgraph signature verification failed"));
     }
     Ok(())
 }

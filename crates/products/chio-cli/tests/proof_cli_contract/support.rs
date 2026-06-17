@@ -15,6 +15,7 @@ pub(crate) const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str =
     "application/vnd.chio.proof-room.bundle.v1+json";
 pub(crate) const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
 pub(crate) const COLLECT_SIGNATURE_SEED: [u8; 32] = [11; 32];
+const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 pub(crate) const PROOF_SERVE_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 
 pub(crate) fn workspace_root() -> PathBuf {
@@ -1484,22 +1485,18 @@ pub(crate) fn replace_json_string(value: &mut serde_json::Value, from: &str, to:
 
 pub(crate) fn refresh_signed_lineage_subgraph_digest(bundle: &Path) {
     let path = bundle.join("signed-lineage-subgraph.json");
-    let mut lineage: serde_json::Value =
+    let mut lineage: chio_selective_disclosure::SignedLineageSubgraph =
         serde_json::from_slice(&std::fs::read(&path).test_expect("read signed lineage subgraph"))
             .test_expect("signed lineage subgraph parses");
-    let digest_material = serde_json::json!({
-        "id": lineage["id"].clone(),
-        "transaction_passport_ref": lineage["transaction_passport_ref"].clone(),
-        "root_receipt_ids": lineage["root_receipt_ids"].clone(),
-        "nodes": lineage["nodes"].clone(),
-        "edges": lineage["edges"].clone(),
-        "redactions": lineage["redactions"].clone()
-    });
-    let canonical = chio_core::canonical::canonical_json_bytes(&digest_material)
-        .test_expect("signed lineage subgraph canonicalizes");
-    let digest = hex::encode(Sha256::digest(&canonical));
-    lineage["subgraph_sha256"] = serde_json::Value::String(digest.clone());
-    lineage["signature"] = serde_json::Value::String(format!("sig-sha256:{digest}"));
+    lineage.subgraph_sha256 =
+        chio_selective_disclosure::compute_signed_lineage_subgraph_digest(&lineage)
+            .test_expect("signed lineage subgraph digest computes");
+    lineage.signature = chio_selective_disclosure::sign_lineage_subgraph(
+        &lineage,
+        &Keypair::from_seed(&DISCLOSURE_LINEAGE_SIGNATURE_SEED),
+    )
+    .test_expect("signed lineage subgraph signs");
+    let lineage = serde_json::to_value(lineage).test_expect("signed lineage subgraph serializes");
     write_json(&path, &lineage);
 }
 

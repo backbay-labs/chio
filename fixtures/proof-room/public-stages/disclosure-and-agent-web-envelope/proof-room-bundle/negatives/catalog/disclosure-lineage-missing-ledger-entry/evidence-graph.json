@@ -14,7 +14,7 @@
       "id": "signed-lineage-subgraph",
       "schema": "chio.lineage.signed-subgraph.v1",
       "path": "signed-lineage-subgraph.json",
-      "sha256": "7fb7aa0e91fc282e43e7798943d62c5a62b5d696f15d80290b5b2e54dfd79cf0",
+      "sha256": "90d60efa74be2a6354265bb6bdbf7d42c7a628c19ac715c826573aba49668ab3",
       "role": "signed-lineage-subgraph"
     },
     {

@@ -16,6 +16,7 @@ const DISCLOSURE_AGENT_WEB_FIXTURE_SOURCE: &str =
     "generated:disclosure-lineage/valid-lineage-ledger+agent-web/valid-webhook-cloudevents";
 const RECURSIVE_RUNTIME_SWARM_FIXTURE_ID: &str = "recursive-runtime-swarm";
 const RUNTIME_SWARM_LOOPBACK_NOW_UNIX_MS: u64 = 1_800_000_001_000;
+const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 const RUNTIME_SWARM_LOOPBACK_SCENARIO: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../examples/chio-3vendor/fixtures/runtime-spine/scenario.json"
@@ -1007,21 +1008,19 @@ fn merge_agent_web_fixture(bundle: &Path, agent_web_source: &Path) -> Result<(),
 
 fn refresh_signed_lineage_subgraph_digest(bundle: &Path) -> Result<(), CliError> {
     let path = bundle.join("signed-lineage-subgraph.json");
-    let mut lineage = read_json_value(&path)?;
-    let digest_material = serde_json::json!({
-        "id": lineage["id"].clone(),
-        "transaction_passport_ref": lineage["transaction_passport_ref"].clone(),
-        "root_receipt_ids": lineage["root_receipt_ids"].clone(),
-        "nodes": lineage["nodes"].clone(),
-        "edges": lineage["edges"].clone(),
-        "redactions": lineage["redactions"].clone()
-    });
-    let canonical = chio_core::canonical::canonical_json_bytes(&digest_material).map_err(|error| {
-        CliError::cli_other_error(format!("lineage digest canonicalization failed: {error}"))
-    })?;
-    let digest = chio_core::sha256_hex(&canonical);
-    lineage["subgraph_sha256"] = serde_json::Value::String(digest.clone());
-    lineage["signature"] = serde_json::Value::String(format!("sig-sha256:{digest}"));
+    let mut lineage: chio_selective_disclosure::SignedLineageSubgraph =
+        serde_json::from_value(read_json_value(&path)?).map_err(|error| {
+            CliError::cli_other_error(format!("signed lineage subgraph parse failed: {error}"))
+        })?;
+    lineage.subgraph_sha256 = chio_selective_disclosure::compute_signed_lineage_subgraph_digest(
+        &lineage,
+    )
+    .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    lineage.signature = chio_selective_disclosure::sign_lineage_subgraph(
+        &lineage,
+        &Keypair::from_seed(&DISCLOSURE_LINEAGE_SIGNATURE_SEED),
+    )
+    .map_err(|error| CliError::cli_other_error(error.to_string()))?;
     write_json_line_file(&path, &lineage)?;
     Ok(())
 }

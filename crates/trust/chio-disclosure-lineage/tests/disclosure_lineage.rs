@@ -1,11 +1,12 @@
+use chio_core_types::Keypair;
 use chio_disclosure_lineage::{
-    compute_signed_lineage_subgraph_digest, verify_disclosure_lineage_bundle, DisclosureCapsule,
-    DisclosureContextVerdict, DisclosureCryptoContextReport, DisclosureLeakageLedger,
-    DisclosureLeakageLedgerEntry, DisclosureLineageBundle, DisclosureSignedLineageEdge,
-    DisclosureSignedLineageNode, DisclosureSignedLineageRedaction, SignedLineageSubgraph,
-    DISCLOSURE_CAPSULE_SCHEMA_V1, DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1,
-    DISCLOSURE_LEAKAGE_LEDGER_SCHEMA_V1, DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1,
-    LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
+    compute_signed_lineage_subgraph_digest, sign_lineage_subgraph,
+    verify_disclosure_lineage_bundle, DisclosureCapsule, DisclosureContextVerdict,
+    DisclosureCryptoContextReport, DisclosureLeakageLedger, DisclosureLeakageLedgerEntry,
+    DisclosureLineageBundle, DisclosureSignedLineageEdge, DisclosureSignedLineageNode,
+    DisclosureSignedLineageRedaction, SignedLineageSubgraph, DISCLOSURE_CAPSULE_SCHEMA_V1,
+    DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1, DISCLOSURE_LEAKAGE_LEDGER_SCHEMA_V1,
+    DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1, LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
 };
 
 fn valid_bundle() -> Result<DisclosureLineageBundle, Box<dyn std::error::Error>> {
@@ -50,7 +51,7 @@ fn valid_bundle() -> Result<DisclosureLineageBundle, Box<dyn std::error::Error>>
         signature: String::new(),
     };
     lineage.subgraph_sha256 = compute_signed_lineage_subgraph_digest(&lineage)?;
-    lineage.signature = format!("sig-sha256:{}", lineage.subgraph_sha256);
+    lineage.signature = sign_lineage_subgraph(&lineage, &lineage_signer())?;
     let leakage_ledger = DisclosureLeakageLedger {
         schema: DISCLOSURE_LEAKAGE_LEDGER_SCHEMA_V1.to_string(),
         id: "leakage-ledger-valid".to_string(),
@@ -98,6 +99,10 @@ fn valid_bundle() -> Result<DisclosureLineageBundle, Box<dyn std::error::Error>>
         leakage_ledger,
         crypto_context_report: Some(crypto_context_report),
     })
+}
+
+fn lineage_signer() -> Keypair {
+    Keypair::from_seed(&[29u8; 32])
 }
 
 #[test]
@@ -179,6 +184,47 @@ fn disclosure_lineage_rejects_crypto_context_missing_disclosed_field() {
     assert!(error
         .to_string()
         .contains("crypto context report missing disclosed field: tool_name"));
+}
+
+#[test]
+fn disclosure_lineage_rejects_recomputed_digest_only_signature() {
+    let Ok(mut bundle) = valid_bundle() else {
+        panic!("valid bundle fixture should build");
+    };
+    bundle.lineage.nodes[0].receipt_ref = "receipt-root-forged".to_string();
+    let Ok(digest) = compute_signed_lineage_subgraph_digest(&bundle.lineage) else {
+        panic!("mutated lineage digest should compute");
+    };
+    bundle.lineage.subgraph_sha256 = digest.clone();
+    bundle.lineage.signature = format!("sig-sha256:{digest}");
+
+    let error = match verify_disclosure_lineage_bundle(&bundle) {
+        Ok(_) => panic!("recomputed digest-only signature must fail"),
+        Err(error) => error,
+    };
+
+    assert!(error.to_string().contains("lineage subgraph signature"));
+}
+
+#[test]
+fn disclosure_lineage_rejects_untrusted_lineage_signer() {
+    let Ok(mut bundle) = valid_bundle() else {
+        panic!("valid bundle fixture should build");
+    };
+    let untrusted_signer = Keypair::from_seed(&[31u8; 32]);
+    let Ok(signature) = sign_lineage_subgraph(&bundle.lineage, &untrusted_signer) else {
+        panic!("untrusted signature should build");
+    };
+    bundle.lineage.signature = signature;
+
+    let error = match verify_disclosure_lineage_bundle(&bundle) {
+        Ok(_) => panic!("untrusted lineage signer must fail"),
+        Err(error) => error,
+    };
+
+    assert!(error
+        .to_string()
+        .contains("lineage subgraph signer untrusted"));
 }
 
 #[test]

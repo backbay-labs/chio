@@ -2702,7 +2702,8 @@ describe('App operator paths', () => {
           reason: 'privacy_profile',
         },
       ],
-      signature: 'sig-sha256:lineage-subgraph-valid',
+      signature:
+        'sig-ed25519:e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa:c7985a45677320c42a98141b4a79b284a8a7e79ebaec4385e94231bd107dc8be6ff2c71587c263c315cd4c04eed7e824e6d91b6e766436740a8a51904b6aca06',
     })
     const leakageLedgerJson = JSON.stringify({
       schema: 'chio.disclosure.leakage-ledger.v1',
