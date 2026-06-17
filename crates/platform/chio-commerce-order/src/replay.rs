@@ -49,6 +49,7 @@ pub(super) fn replay_event_log(
     let mut saw_payment = false;
     let mut saw_mandate = false;
     let mut previous_event_occurred_at = None;
+    let payment_captured_at = parse_rfc3339_utc(&payment.captured_at, "payment captured_at")?;
     for event in &event_log.events {
         let occurred_at = validate_event_shape(event, context)?;
         if let Some(previous_occurred_at) = previous_event_occurred_at.as_ref() {
@@ -86,6 +87,11 @@ pub(super) fn replay_event_log(
         if event.next_state == "payment_verified" && !event.evidence_refs.contains(&payment.id) {
             return Err(CommerceOrderError::ReplayFailed(
                 "payment event missing payment lifecycle evidence".to_string(),
+            ));
+        }
+        if event.next_state == "payment_verified" && payment_captured_at > occurred_at {
+            return Err(CommerceOrderError::ReplayFailed(
+                "payment captured after replay event".to_string(),
             ));
         }
         if event.next_state == "mandate_bound" && !event.evidence_refs.contains(&mandate.id) {

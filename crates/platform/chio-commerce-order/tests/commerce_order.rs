@@ -140,6 +140,21 @@ fn commerce_order_replay_rejects_payment_before_budget_reservation() {
 }
 
 #[test]
+fn commerce_order_replay_rejects_payment_capture_after_replay_event() {
+    let mut bundle = load_bundle("offline-psp-valid");
+    mutate_payment_lifecycle(&mut bundle, |payment_lifecycle| {
+        payment_lifecycle["captured_at"] = serde_json::json!("2026-06-10T00:09:00Z");
+    });
+
+    let error = chio_commerce_order::verify_commerce_order(&bundle)
+        .test_expect_err("payment replay event must not predate capture");
+
+    assert!(error
+        .to_string()
+        .contains("payment captured after replay event"));
+}
+
+#[test]
 fn commerce_order_replay_rejects_expired_mandate() {
     let bundle = load_bundle("expired-mandate");
 
