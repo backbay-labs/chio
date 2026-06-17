@@ -489,6 +489,29 @@ fn rejects_source_report_for_misspelled_required_claim_prefix() -> Result<(), Bo
 }
 
 #[test]
+fn rejects_source_report_for_unhandled_market_required_claim() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root
+        .join("fixtures/proof-room/public-stages/commerce-transaction-passport/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    add_required_claim_to_verifier_policy(work.path(), "claim.market.not_routed")?;
+
+    let error = verify_proof_room_bundle(&work.path().join("manifest.json"))
+        .err()
+        .ok_or("mutated proof room bundle unexpectedly verified")?;
+
+    assert!(
+        error
+            .to_string()
+            .contains("required proof claim not verified: claim.market.not_routed"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn rejects_evidence_graph_that_transaction_verifier_rejects() -> Result<(), Box<dyn Error>> {
     let root = repo_root()?;
     let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");

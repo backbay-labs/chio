@@ -221,6 +221,7 @@ pub(crate) fn verify_transaction_passport_family_report(
     } else {
         merge_source_family_verifier_reports(&context, family_reports)
     };
+    ensure_source_policy_required_claims_verified(&requirements.required_claims, &report)?;
     attach_source_runtime_proof_parity_report(&context, &mut report)?;
     Ok(report)
 }
@@ -705,6 +706,21 @@ pub(crate) fn ensure_source_required_claims_verified(
         {
             return Err(format!(
                 "proof-room.source-verifier.failed: required {label} claim not verified: {required_claim}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn ensure_source_policy_required_claims_verified(
+    required_claims: &[String],
+    report: &serde_json::Value,
+) -> Result<(), String> {
+    let verified_claims = source_report_verified_claims(report);
+    for required_claim in required_claims {
+        if !verified_claims.iter().any(|claim| claim == required_claim) {
+            return Err(format!(
+                "proof-room.source-verifier.failed: required proof claim not verified: {required_claim}"
             ));
         }
     }
