@@ -699,6 +699,15 @@ pub(crate) fn source_runtime_proof_parity_report(
         .map_err(|error| format!("proof-room.runtime-parity.invalid-json: {error}"))?;
     chio_runtime_proof_parity::validate_runtime_proof_parity_report(&report)
         .map_err(|error| format!("proof-room.runtime-parity.invalid: {error}"))?;
+    if !report.accepted {
+        return Err(format!(
+            "proof-room.runtime-parity.failed: {}",
+            report
+                .failure_code
+                .as_deref()
+                .unwrap_or("runtime proof parity report rejected")
+        ));
+    }
     serde_json::to_value(report)
         .map(Some)
         .map_err(|error| format!("proof-room.runtime-parity.report-encode: {error}"))

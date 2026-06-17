@@ -19,6 +19,58 @@ fn source_runtime_parity_rejects_tampered_proof_regeneration_report() -> Result<
 }
 
 #[test]
+fn source_runtime_parity_rejects_failed_parity_report() -> Result<(), Box<dyn Error>> {
+    let mut context = runtime_regeneration_context(false)?;
+    let failed_parity_report = serde_json::json!({
+        "schema": chio_runtime_proof_parity::CHIO_RUNTIME_PROOF_PARITY_REPORT_SCHEMA,
+        "runId": "runtime-loopback-1",
+        "accepted": false,
+        "failureCode": "runtime_proof_parity_report_failed",
+        "generatedAtUnixMs": 1_800_000_000_000u64,
+        "staticProofPackageSha256": "2".repeat(64),
+        "runtimeProofPackageSha256": "4".repeat(64),
+        "staticVerifierReportSha256": "3".repeat(64),
+        "runtimeVerifierReportSha256": "5".repeat(64),
+        "comparedFields": ["verified_claims"],
+        "mismatches": [{
+            "field": "verified_claims",
+            "staticValueSha256": "6".repeat(64),
+            "runtimeValueSha256": "7".repeat(64)
+        }]
+    });
+    let failed_parity_report_bytes = json_bytes(&failed_parity_report)?;
+    context.artifacts.insert(
+        "runtime-proof-parity-report.json".to_string(),
+        failed_parity_report_bytes.clone(),
+    );
+
+    let mut evidence_graph: serde_json::Value =
+        serde_json::from_slice(&context.evidence_graph_bytes)?;
+    let parity_node = evidence_graph["nodes"]
+        .as_array_mut()
+        .ok_or("evidence graph nodes missing")?
+        .iter_mut()
+        .find(|node| {
+            node.get("path").and_then(serde_json::Value::as_str)
+                == Some("runtime-proof-parity-report.json")
+        })
+        .ok_or("runtime proof parity report node missing")?;
+    parity_node["sha256"] = serde_json::Value::String(sha256_hex(&failed_parity_report_bytes));
+    context.evidence_graph_bytes = json_bytes(&evidence_graph)?;
+
+    let mut report = serde_json::json!({});
+    let error = super::attach_source_runtime_proof_parity_report(&context, &mut report)
+        .err()
+        .ok_or("failed runtime proof parity report unexpectedly verified")?;
+
+    assert!(
+        error.contains("proof-room.runtime-parity.failed"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn verifies_single_call_authority_bundle() -> Result<(), Box<dyn Error>> {
     let bundle = repo_root()?.join(
         "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/manifest.json",
