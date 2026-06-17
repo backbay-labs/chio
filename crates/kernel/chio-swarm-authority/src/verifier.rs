@@ -682,6 +682,12 @@ fn validate_revocation_epoch(
         return Err(rejected("swarm revocation epoch ref mismatch"));
     }
     require_sha256(&epoch.root_hash, "swarm revocation epoch root")?;
+    if epoch.issued_at_unix_ms > bundle.now_unix_ms {
+        return Err(rejected("swarm revocation epoch is from the future"));
+    }
+    if epoch.valid_until_unix_ms <= epoch.issued_at_unix_ms {
+        return Err(rejected("swarm revocation epoch window is empty"));
+    }
     if epoch.valid_until_unix_ms <= bundle.now_unix_ms {
         return Err(rejected("swarm revocation epoch is stale"));
     }

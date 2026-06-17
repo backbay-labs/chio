@@ -579,6 +579,21 @@ fn swarm_authority_stage0_rejects_revoked_task() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn swarm_authority_stage0_rejects_future_revocation_epoch() -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.revocation_epoch.issued_at_unix_ms = NOW_UNIX_MS + 1_000;
+
+    let error = match verify_swarm_authority_bundle(&bundle) {
+        Ok(report) => panic!("future revocation epoch verified unexpectedly: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("swarm revocation epoch is from the future"));
+    Ok(())
+}
+
+#[test]
 fn swarm_authority_stage0_rejects_revoked_authority_subject() -> Result<(), Box<dyn Error>> {
     let mut bundle = sample_swarm_bundle()?;
     bundle
