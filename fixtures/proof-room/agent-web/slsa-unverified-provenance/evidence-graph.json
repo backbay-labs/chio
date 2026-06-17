@@ -34,7 +34,7 @@
       "path": "slsa-envelope.json",
       "role": "agent-web-proof-envelope",
       "schema": "chio.agent-web-proof-envelope.v1",
-      "sha256": "37b4a1afff9b3aab67a7bf79751d5b7094f2b36a812e93e004cac0a0da3cf940"
+      "sha256": "c9d365bd6b6d77177d7c1e87b53c67fc9b5da0168b43119ea8a01eb0599e46cf"
     },
     {
       "id": "slsa-manifest",

@@ -34,7 +34,7 @@
       "path": "acp-client-envelope.json",
       "role": "agent-web-proof-envelope",
       "schema": "chio.agent-web-proof-envelope.v1",
-      "sha256": "61e950bebe1027c34431d8c6d1ff5fa016b5ff45c9401239fc6d08ff1fb9ef35"
+      "sha256": "a0295b5614fba78ca769ea8e432fbfde2b4d3470c0c5977be0a5454954207158"
     },
     {
       "id": "acp-client-manifest",

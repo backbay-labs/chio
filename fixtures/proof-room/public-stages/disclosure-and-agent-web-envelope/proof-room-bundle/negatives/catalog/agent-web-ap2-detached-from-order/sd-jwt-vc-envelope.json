@@ -24,5 +24,5 @@
   "limitations": [
     "SD-JWT VC projection does not make credential presentation evidence equivalent to Chio authority."
   ],
-  "signature": "sig-agent-web-sd-jwt-vc-envelope"
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:25b227eceba81e77e9ac374ae4d161c8a93dc5267ad6956a29b3af42c81d084e49007dfd6f7d6fd387241fc11ae4380ba4923c77d5c60bc05362d93125443306"
 }

@@ -34,7 +34,7 @@
       "path": "email-envelope.json",
       "role": "agent-web-proof-envelope",
       "schema": "chio.agent-web-proof-envelope.v1",
-      "sha256": "578d57b98b5ad1ecd904ebfe6aee213a389200b038313a85b86574cb9496c995"
+      "sha256": "1aec6ecb1d73f18557d99b04a8ffa963df79eac30e427a5f6b9c94921fd9283b"
     },
     {
       "id": "email-manifest",

@@ -24,5 +24,5 @@
   "limitations": [
     "A2A task projection does not make task state equivalent to Chio authority."
   ],
-  "signature": "sig-agent-web-a2a-envelope"
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:279b9cf4e592c02ccf99a7979a8ad4d86b4cf0729bb444fd5eee341d233b3db198cb835476f7ca0a85bce6531a321273ec37d1444f3b53d21317e051f0600e0f"
 }

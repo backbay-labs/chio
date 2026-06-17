@@ -21,7 +21,7 @@
   "risk_refs": [],
   "schema": "chio.agent-web-proof-envelope.v1",
   "settlement_refs": [],
-  "signature": "sig-agent-web-spiffe-envelope",
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:b405535f2c484fbe55580a182269e604da092dd6aa64fe04940ad1baaf314bbb703b5095f039ecb60210357a855d645aa59138ae9f9b30a0e3dc6e07cb244d00",
   "source_protocol": "spiffe",
   "source_protocol_version": "workload-api-v1",
   "transaction_passport_ref": "passport-agent-web-valid"

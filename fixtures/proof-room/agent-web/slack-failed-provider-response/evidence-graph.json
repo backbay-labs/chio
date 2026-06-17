@@ -34,7 +34,7 @@
       "path": "slack-envelope.json",
       "role": "agent-web-proof-envelope",
       "schema": "chio.agent-web-proof-envelope.v1",
-      "sha256": "80e2a0b20e90ac188262c98bd3e523cdbefabfa14a1aecdfaf5a0a7dfc931be2"
+      "sha256": "8708a5f760f64819abed08d0d354b70903d89c49ab52113b2a595e579d20885e"
     },
     {
       "id": "slack-manifest",

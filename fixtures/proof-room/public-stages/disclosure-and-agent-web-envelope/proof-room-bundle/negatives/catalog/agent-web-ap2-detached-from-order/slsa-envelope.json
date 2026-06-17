@@ -24,5 +24,5 @@
   "limitations": [
     "SLSA provenance projection does not make build provenance evidence equivalent to Chio authority."
   ],
-  "signature": "sig-agent-web-slsa-envelope"
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:e2edbb20b2a62502a8441e035d2ddfef0be95f1f8f5bb2bb2d051e043d4873861f859f008267f371e681ec5ac72b6440376cec3af4a8ccde35b074721bd2e605"
 }

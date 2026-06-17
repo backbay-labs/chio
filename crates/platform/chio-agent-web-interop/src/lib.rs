@@ -48,6 +48,7 @@ pub struct AgentWebVerifierTrust {
     default_standard_webhooks_secret: Option<Vec<u8>>,
     standard_webhooks_secrets: BTreeMap<String, Vec<u8>>,
     trusted_receipt_kernel_keys: Vec<PublicKey>,
+    trusted_envelope_sidecar_keys: Vec<PublicKey>,
 }
 
 impl AgentWebVerifierTrust {
@@ -78,6 +79,14 @@ impl AgentWebVerifierTrust {
         self
     }
 
+    pub fn with_trusted_envelope_sidecar_keys(
+        mut self,
+        keys: impl IntoIterator<Item = PublicKey>,
+    ) -> Self {
+        self.trusted_envelope_sidecar_keys.extend(keys);
+        self
+    }
+
     pub(crate) fn standard_webhooks_secret(&self, webhook_id: &str) -> Option<&[u8]> {
         let secret = self
             .standard_webhooks_secrets
@@ -92,6 +101,12 @@ impl AgentWebVerifierTrust {
 
     fn trusts_receipt_kernel_key(&self, key: &PublicKey) -> bool {
         self.trusted_receipt_kernel_keys
+            .iter()
+            .any(|trusted_key| trusted_key == key)
+    }
+
+    fn trusts_envelope_sidecar_key(&self, key: &PublicKey) -> bool {
+        self.trusted_envelope_sidecar_keys
             .iter()
             .any(|trusted_key| trusted_key == key)
     }
@@ -188,7 +203,7 @@ pub fn verify_agent_web_interop_with_trust(
     {
         let envelope: AgentWebProofEnvelope =
             parse_artifact(bundle, envelope_node, "chio.agent-web-proof-envelope.v1")?;
-        validate_envelope(&bundle.passport, &envelope)?;
+        validate_envelope(&bundle.passport, &envelope, trust)?;
         let manifest_entry = manifests
             .get(&envelope.projection_manifest_ref)
             .ok_or_else(|| claim_failed("missing projection manifest"))?;

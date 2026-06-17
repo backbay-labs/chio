@@ -24,5 +24,5 @@
   "limitations": [
     "AG-UI projection does not make UI event evidence equivalent to Chio authority."
   ],
-  "signature": "sig-agent-web-ag-ui-envelope"
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:c757c8925bb2dc366e9dbac0bb8e91d4608000867817fff2de12c71f477310a676037e878f4e4d2a768a4ad07c830cebda2b3adad6b0ce4204f023053d2b3a06"
 }

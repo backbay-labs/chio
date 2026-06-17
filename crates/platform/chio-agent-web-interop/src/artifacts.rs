@@ -1,5 +1,6 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
+use chio_core_types::{PublicKey, Signature};
 use chio_transaction_passport::{TransactionPassport, TransactionPassportError};
 
 use super::{
@@ -79,6 +80,7 @@ pub(super) struct ClaimMapping {
 pub(super) fn validate_envelope(
     passport: &TransactionPassport,
     envelope: &AgentWebProofEnvelope,
+    trust: &AgentWebVerifierTrust,
 ) -> Result<(), TransactionPassportError> {
     for (field, value) in [
         ("schema", &envelope.schema),
@@ -100,6 +102,7 @@ pub(super) fn validate_envelope(
     if envelope.transaction_passport_ref != passport.id {
         return Err(claim_failed("Agent Web envelope passport mismatch"));
     }
+    verify_envelope_signature(envelope, trust)?;
     validate_source_protocol(&envelope.source_protocol)?;
     validate_bundle_relative_path(&envelope.external_subject_path).map_err(|_| {
         TransactionPassportError::InvalidAgentWebArtifact {
@@ -138,6 +141,77 @@ pub(super) fn validate_envelope(
         require_non_empty(limitation, "limitations")?;
     }
     let _ = &envelope.external_subject_signature_ref;
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct AgentWebProofEnvelopeSignaturePayload<'a> {
+    schema: &'a str,
+    envelope_id: &'a str,
+    transaction_passport_ref: &'a str,
+    source_protocol: &'a str,
+    source_protocol_version: &'a str,
+    external_subject: &'a str,
+    external_subject_path: &'a str,
+    external_subject_digest: &'a str,
+    external_subject_signature_ref: &'a str,
+    projection_manifest_ref: &'a str,
+    chio_claim_refs: &'a [String],
+    receipt_refs: &'a [String],
+    disclosure_capsule_refs: &'a [String],
+    settlement_refs: &'a [String],
+    risk_refs: &'a [String],
+    limitations: &'a [String],
+}
+
+fn verify_envelope_signature(
+    envelope: &AgentWebProofEnvelope,
+    trust: &AgentWebVerifierTrust,
+) -> Result<(), TransactionPassportError> {
+    let Some(signature_ref) = envelope.signature.strip_prefix("sig-ed25519:") else {
+        return Err(claim_failed("Agent Web envelope signature invalid"));
+    };
+    let mut parts = signature_ref.split(':');
+    let Some(public_key_ref) = parts.next() else {
+        return Err(claim_failed("Agent Web envelope signature invalid"));
+    };
+    let Some(signature_ref) = parts.next() else {
+        return Err(claim_failed("Agent Web envelope signature invalid"));
+    };
+    if parts.next().is_some() {
+        return Err(claim_failed("Agent Web envelope signature invalid"));
+    }
+
+    let public_key = PublicKey::from_hex(public_key_ref)
+        .map_err(|_| claim_failed("Agent Web envelope signature invalid"))?;
+    if !trust.trusts_envelope_sidecar_key(&public_key) {
+        return Err(claim_failed("Agent Web envelope signer untrusted"));
+    }
+    let signature = Signature::from_hex(signature_ref)
+        .map_err(|_| claim_failed("Agent Web envelope signature invalid"))?;
+    let payload = AgentWebProofEnvelopeSignaturePayload {
+        schema: &envelope.schema,
+        envelope_id: &envelope.envelope_id,
+        transaction_passport_ref: &envelope.transaction_passport_ref,
+        source_protocol: &envelope.source_protocol,
+        source_protocol_version: &envelope.source_protocol_version,
+        external_subject: &envelope.external_subject,
+        external_subject_path: &envelope.external_subject_path,
+        external_subject_digest: &envelope.external_subject_digest,
+        external_subject_signature_ref: &envelope.external_subject_signature_ref,
+        projection_manifest_ref: &envelope.projection_manifest_ref,
+        chio_claim_refs: &envelope.chio_claim_refs,
+        receipt_refs: &envelope.receipt_refs,
+        disclosure_capsule_refs: &envelope.disclosure_capsule_refs,
+        settlement_refs: &envelope.settlement_refs,
+        risk_refs: &envelope.risk_refs,
+        limitations: &envelope.limitations,
+    };
+    let canonical = chio_core_types::canonical_json_bytes(&payload)
+        .map_err(|_| claim_failed("Agent Web envelope signature invalid"))?;
+    if !public_key.verify(&canonical, &signature) {
+        return Err(claim_failed("Agent Web envelope signature invalid"));
+    }
     Ok(())
 }
 

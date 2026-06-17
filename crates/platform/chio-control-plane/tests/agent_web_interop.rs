@@ -28,6 +28,8 @@ const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: [&str; 5] = [
     "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
     "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565",
 ];
+const AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS: [&str; 1] =
+    ["d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"];
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -75,6 +77,8 @@ fn agent_web_fixture_bundle() -> AgentWebInteropBundle {
 fn agent_web_fixture_trust() -> AgentWebVerifierTrust {
     let trusted_kernel_keys = AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS
         .map(|key| PublicKey::from_hex(key).test_expect("Agent Web fixture kernel key parses"));
+    let trusted_sidecar_keys = AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS
+        .map(|key| PublicKey::from_hex(key).test_expect("Agent Web fixture sidecar key parses"));
 
     AgentWebVerifierTrust::new()
         .with_standard_webhooks_secret_for(
@@ -82,6 +86,7 @@ fn agent_web_fixture_trust() -> AgentWebVerifierTrust {
             STANDARD_WEBHOOKS_VERIFIER_SECRET.to_vec(),
         )
         .with_trusted_receipt_kernel_keys(trusted_kernel_keys)
+        .with_trusted_envelope_sidecar_keys(trusted_sidecar_keys)
 }
 
 fn verify_agent_web_fixture(
@@ -159,6 +164,63 @@ fn resign_agent_web_receipt_for_subject_digest(
     replace_agent_web_artifact(bundle, receipt_path, updated_receipt);
 }
 
+fn resign_agent_web_envelope(bundle: &mut AgentWebInteropBundle, envelope_path: &str) {
+    let envelope_bytes = bundle
+        .artifacts
+        .get(envelope_path)
+        .test_expect("agent web envelope exists");
+    let mut envelope: Value =
+        serde_json::from_slice(envelope_bytes).test_expect("agent web envelope parses");
+    let keypair = Keypair::from_seed(&[17u8; 32]);
+    let public_key = keypair.public_key().to_hex();
+    let payload = agent_web_envelope_signature_payload(&envelope);
+    let canonical =
+        chio_core::canonical_json_bytes(&payload).test_expect("agent web envelope canonicalizes");
+    envelope["signature"] = Value::String(format!(
+        "sig-ed25519:{public_key}:{}",
+        keypair.sign(&canonical).to_hex()
+    ));
+    replace_agent_web_artifact(
+        bundle,
+        envelope_path,
+        serde_json::to_vec(&envelope).test_expect("agent web envelope serializes"),
+    );
+}
+
+fn agent_web_envelope_signature_payload(envelope: &Value) -> Value {
+    let object = envelope
+        .as_object()
+        .test_expect("agent web envelope is object");
+    let mut payload = serde_json::Map::new();
+    for field in [
+        "schema",
+        "envelope_id",
+        "transaction_passport_ref",
+        "source_protocol",
+        "source_protocol_version",
+        "external_subject",
+        "external_subject_path",
+        "external_subject_digest",
+        "external_subject_signature_ref",
+        "projection_manifest_ref",
+        "chio_claim_refs",
+        "receipt_refs",
+        "disclosure_capsule_refs",
+        "settlement_refs",
+        "risk_refs",
+        "limitations",
+    ] {
+        payload.insert(
+            field.to_string(),
+            object
+                .get(field)
+                .unwrap_or_else(|| panic!("agent web envelope missing field: {field}"))
+                .clone(),
+        );
+    }
+    Value::Object(payload)
+}
+
 #[test]
 fn control_plane_agent_web_reexport_verifies_product_fixture() {
     let bundle = agent_web_fixture_bundle();
@@ -191,6 +253,7 @@ fn agent_web_rejects_dsse_subject_without_chio_receipt_mediation() {
     mutate_agent_web_json_artifact(&mut bundle, "dsse-envelope.json", |envelope| {
         envelope["external_subject_digest"] = Value::String(external_subject_digest.clone());
     });
+    resign_agent_web_envelope(&mut bundle, "dsse-envelope.json");
     resign_agent_web_receipt_for_subject_digest(
         &mut bundle,
         "receipts/receipt-agent-web-dsse-envelope-allow.json",

@@ -33,6 +33,7 @@ pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> Age
         &mut builder.graph_nodes,
         &verifier_policy_sha256,
     );
+    sign_agent_web_envelopes(&mut builder.artifacts, &mut builder.graph_nodes);
 
     let mut graph_edges = vec![
         json!({

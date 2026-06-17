@@ -24,5 +24,5 @@
   "limitations": [
     "Webhook signature evidence is not Chio capability authority."
   ],
-  "signature": "sig-agent-web-webhook-envelope"
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:63eefa454d38f68dfe05dc9ec64eb34a61b330fd9bcf64a683d4b72dc04d3ec635cd384c25bf3e705d65e0be669bc5bd1f6ac1fc2c7087f2eb8a70012a13c402"
 }

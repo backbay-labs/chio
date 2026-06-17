@@ -24,5 +24,5 @@
   "limitations": [
     "SCIM projection does not make lifecycle evidence equivalent to Chio authority."
   ],
-  "signature": "sig-agent-web-scim-envelope"
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:5918892fab136d1bc5ba62124daca4c818023151896dabfc2960803b66e54de68b9ebf633e19744245ef03d397cfe20b1eff1f162d8eb50e1c64d278d6618a0b"
 }

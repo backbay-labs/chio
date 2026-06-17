@@ -24,5 +24,5 @@
   "limitations": [
     "Kubernetes admission projection does not make cluster admission evidence equivalent to Chio authority."
   ],
-  "signature": "sig-agent-web-kubernetes-admission-envelope"
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:1ac987ad00bbdb5feb71e5dc583798fd24177d00a343572b6ee9b307490a700dea3a17390b85c39e44f0edfb1ff4f2e39b5ef2522051bbc13201442598de5109"
 }

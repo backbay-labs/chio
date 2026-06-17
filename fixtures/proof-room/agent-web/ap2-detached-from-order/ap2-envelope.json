@@ -21,7 +21,7 @@
   "risk_refs": [],
   "schema": "chio.agent-web-proof-envelope.v1",
   "settlement_refs": [],
-  "signature": "sig-agent-web-ap2-envelope",
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:43be01331e30c5d69e09706dfa2fdb0c8a4942fba10b60c85bcb982607a35094e7db68dc3a2ea73ce12c053fedfa64def11071931dc4998d058c782202547b05",
   "source_protocol": "ap2",
   "source_protocol_version": "0.2",
   "transaction_passport_ref": "passport-agent-web-valid"

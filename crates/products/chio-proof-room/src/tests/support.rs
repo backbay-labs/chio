@@ -19,6 +19,8 @@ pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
     "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737,",
     "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565"
 );
+pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS: &str =
+    "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737";
 pub(crate) const PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS: &str = concat!(
     "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,",
     "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"
@@ -36,6 +38,10 @@ pub(crate) fn configure_agent_web_fixture_secret() {
     std::env::set_var(
         "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
         AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
+    );
+    std::env::set_var(
+        "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS",
+        AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS,
     );
     configure_proof_room_fixture_trust();
 }

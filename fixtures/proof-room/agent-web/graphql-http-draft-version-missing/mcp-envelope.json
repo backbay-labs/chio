@@ -24,5 +24,5 @@
   "limitations": [
     "MCP tool-call projection does not make MCP authority equivalent to Chio receipts."
   ],
-  "signature": "sig-agent-web-mcp-envelope"
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:2fdeed4f42d8a6dda1b8fc029d688a35888f788295a5908663135969bac8f2dd24edd267dd2b1449a2de2245d6cce3ff1a0d11541e5648f60c7d1c64de352a07"
 }

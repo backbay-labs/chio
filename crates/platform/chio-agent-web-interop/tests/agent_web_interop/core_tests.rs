@@ -1,5 +1,6 @@
 use super::support::*;
 use chio_test_support::prelude::*;
+use serde_json::json;
 
 #[test]
 fn published_agent_web_schemas_accept_supported_projection_fixtures() {
@@ -108,8 +109,10 @@ fn agent_web_interop_accepts_webhook_and_cloudevents_fixture() {
 #[test]
 fn agent_web_interop_rejects_standard_webhooks_without_configured_secret() {
     let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let trust = chio_agent_web_interop::AgentWebVerifierTrust::new()
+        .with_trusted_envelope_sidecar_keys([agent_web_fixture_sidecar_keypair().public_key()]);
 
-    let error = chio_agent_web_interop::verify_agent_web_interop(&bundle)
+    let error = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
         .test_expect_err("Standard Webhooks verification requires verifier-owned secret config");
 
     assert!(error
@@ -124,7 +127,8 @@ fn agent_web_interop_rejects_receipts_without_trusted_kernel_key() {
         .with_standard_webhooks_secret_for(
             STANDARD_WEBHOOKS_WEBHOOK_ID,
             STANDARD_WEBHOOKS_VERIFIER_SECRET.to_vec(),
-        );
+        )
+        .with_trusted_envelope_sidecar_keys([agent_web_fixture_sidecar_keypair().public_key()]);
 
     let error = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
         .test_expect_err("Agent Web receipt signer must be verifier-trusted");
@@ -132,6 +136,21 @@ fn agent_web_interop_rejects_receipts_without_trusted_kernel_key() {
     assert!(error
         .to_string()
         .contains("Agent Web receipt kernel key untrusted"));
+}
+
+#[test]
+fn agent_web_interop_rejects_tampered_sidecar_envelope_signature() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    replace_agent_web_json_artifact(&mut bundle, "standard-webhooks-envelope.json", |envelope| {
+        envelope["signature"] = json!("sig-agent-web-standard-webhooks-envelope-tampered");
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Agent Web sidecar envelope signature must verify");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web envelope signature invalid"));
 }
 
 #[test]

@@ -24,5 +24,5 @@
   "limitations": [
     "RPA projection does not make desktop automation evidence equivalent to Chio authority."
   ],
-  "signature": "sig-agent-web-rpa-envelope"
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:865bd9a75aea9c2b324d414d72b27c1dbff50f1ea18041f164f03ed5d245c5afb1f9912abae4ef1517d22ae989931a70e1c9d2d5738386405567fe08dc718a08"
 }

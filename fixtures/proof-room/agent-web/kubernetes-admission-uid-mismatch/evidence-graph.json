@@ -34,7 +34,7 @@
       "path": "kubernetes-admission-envelope.json",
       "role": "agent-web-proof-envelope",
       "schema": "chio.agent-web-proof-envelope.v1",
-      "sha256": "e941d9c07b591d622517d30f472ac8796081eb2c2ca4b131ec201d305c8badf7"
+      "sha256": "175681f30d7e98550af8050166df277f18f7321756cbebd6009dc301b3fa9323"
     },
     {
       "id": "kubernetes-admission-manifest",

@@ -34,7 +34,7 @@
       "path": "oci-ref-envelope.json",
       "role": "agent-web-proof-envelope",
       "schema": "chio.agent-web-proof-envelope.v1",
-      "sha256": "822fd5fe15cf4f1c5ac796d8cc20a3a720ef5c227d2f088e984cb4c1449e9e78"
+      "sha256": "c0a066439f91a68be7225b990014013aba0fec89fc0b698ed67e5aee7e804748"
     },
     {
       "id": "oci-ref-manifest",

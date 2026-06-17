@@ -34,7 +34,7 @@
       "path": "calendar-envelope.json",
       "role": "agent-web-proof-envelope",
       "schema": "chio.agent-web-proof-envelope.v1",
-      "sha256": "b7b79d2678fe46d1a5193b05ce425ebfea629a1d44eaab65247e338229b0fb30"
+      "sha256": "9f69ae26f9af9c7cf7ff4dabba7dde7686bfdf034b145950224890c16d351fc2"
     },
     {
       "id": "calendar-manifest",

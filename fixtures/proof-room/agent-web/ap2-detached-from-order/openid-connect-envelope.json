@@ -21,7 +21,7 @@
   "risk_refs": [],
   "schema": "chio.agent-web-proof-envelope.v1",
   "settlement_refs": [],
-  "signature": "sig-agent-web-openid-connect-envelope",
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:68f7d418062767d7d4c4471fa584f88431444f95d38ca07da2b76cf731a6c67b4cb1c7f97b23a38001d6e78046963d0872be196572ccd3dc289d0cdc4b264b0d",
   "source_protocol": "openid-connect",
   "source_protocol_version": "core-1.0",
   "transaction_passport_ref": "passport-agent-web-valid"

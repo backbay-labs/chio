@@ -34,7 +34,7 @@
       "path": "vc-envelope.json",
       "role": "agent-web-proof-envelope",
       "schema": "chio.agent-web-proof-envelope.v1",
-      "sha256": "6f81b44136c89779b19229b66ba8eb96b6155e2513056a1f4fa4a823fa8c66c6"
+      "sha256": "a1837e096ef435687349ee29c6846e5f1bc55c92c494b90d3cba97492c8345b5"
     },
     {
       "id": "vc-manifest",

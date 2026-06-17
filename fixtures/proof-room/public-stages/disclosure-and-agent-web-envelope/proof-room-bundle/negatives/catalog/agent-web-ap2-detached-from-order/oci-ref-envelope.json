@@ -24,5 +24,5 @@
   "limitations": [
     "OCI projection does not make artifact reference evidence equivalent to Chio authority."
   ],
-  "signature": "sig-agent-web-oci-ref-envelope"
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:b7325c36df707965f19e54153a7e509af357e355b119a2f98053f8edcd42ba43d6690e8e92b2bb2ba3b1c2551944aede75f402d107acf00024f19370afa7d70c"
 }

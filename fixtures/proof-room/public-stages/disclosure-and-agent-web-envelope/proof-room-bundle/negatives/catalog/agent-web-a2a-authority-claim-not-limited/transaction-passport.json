@@ -1,6 +1,6 @@
 {
   "evidence_graph_path": "evidence-graph.json",
-  "evidence_graph_sha256": "65652906dfa7c947eb95bfa50c3da2bd5bdce2898abde86fe8004bb865d76b38",
+  "evidence_graph_sha256": "65c0af9e610e0828014c70eaaeaf3235f1dea994e01f7c4173e0e16747666069",
   "id": "passport-agent-web-valid",
   "issued_at": "2026-06-10T00:00:00Z",
   "schema": "chio.transaction-passport.v1",

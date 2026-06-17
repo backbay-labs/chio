@@ -24,5 +24,5 @@
   "limitations": [
     "Slack projection does not make provider action evidence equivalent to Chio authority."
   ],
-  "signature": "sig-agent-web-slack-envelope"
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:f13513d39f2b932b95a16d9c8e02fc30a3e352d2191972a5a9bd4719a8c8aca842334002f0bab2078a5c099af2cd18bf61176367c0755e841011541a7a61d307"
 }

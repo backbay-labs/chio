@@ -24,5 +24,5 @@
   "limitations": [
     "CloudEvents projection is digest-bound event evidence, not Chio capability authority."
   ],
-  "signature": "sig-agent-web-cloudevents-envelope"
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:134ed00319a28ba18a2e415a98adf29dbaca36d778fb9dc4faa1a73ba51c434ebb82a52427186c2fd3e957346063db1a6a63cc43ff8f284dbb677f63c961df0a"
 }

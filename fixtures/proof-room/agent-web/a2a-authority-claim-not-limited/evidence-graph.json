@@ -34,7 +34,7 @@
       "path": "a2a-envelope.json",
       "role": "agent-web-proof-envelope",
       "schema": "chio.agent-web-proof-envelope.v1",
-      "sha256": "0787415b790cd2b507e0ea74ef22144bd4d9a6aef6b8438bb02bd6cdd11424c4"
+      "sha256": "fb3bb263689b397d857ab015a0fc9d8240dedde23007750a10bd662b1a661571"
     },
     {
       "id": "a2a-manifest",

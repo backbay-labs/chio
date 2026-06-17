@@ -494,8 +494,7 @@ fn proof_verify_rejects_enterprise_export_risk_portfolio_capital_overallocated_f
 
 #[test]
 fn proof_verify_rejects_agent_web_fixture_without_configured_standard_webhooks_secret() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
-        .env_remove("CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET")
+    let output = chio_with_agent_web_fixture_trust_without_webhooks_secret()
         .arg("proof")
         .arg("verify")
         .arg(agent_web_fixture_path("valid-webhook-cloudevents"))

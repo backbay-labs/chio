@@ -24,5 +24,5 @@
   "limitations": [
     "GraphQL over HTTP projection is digest-bound HTTP evidence, not Chio capability authority."
   ],
-  "signature": "sig-agent-web-graphql-http-envelope"
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:d86dd48d7edb91c666fe7d696ee89fbdba154fd46bc7d842796c9b98d4fc2730ee2a3ff3c5e41f76a2de6b3b19b0ef4d85df554c31f771c5d6473273fcc01f0c"
 }
