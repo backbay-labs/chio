@@ -428,9 +428,9 @@ fn validate_beneficiary_identity_binding(
             "public settlement beneficiary identity binding address mismatch".to_string(),
         ));
     }
-    let settlement_issued_at = bundle.settlement_receipt.issued_at;
-    if certificate.issued_at > settlement_issued_at
-        || certificate.expires_at <= settlement_issued_at
+    let settlement_observed_at = bundle.settlement_receipt.observed_execution.observed_at;
+    if certificate.issued_at > settlement_observed_at
+        || certificate.expires_at <= settlement_observed_at
     {
         return Err(Web3ContractError::InvalidBinding(
             "public settlement beneficiary identity binding not valid at settlement time"

@@ -73,6 +73,26 @@ fn signed_identity_binding(
     chain_scope: Vec<&str>,
     nonce: &str,
 ) -> SignedWeb3IdentityBinding {
+    signed_identity_binding_with_window(
+        signer,
+        settlement_address,
+        purpose,
+        chain_scope,
+        nonce,
+        1_743_292_800,
+        1_774_828_800,
+    )
+}
+
+fn signed_identity_binding_with_window(
+    signer: Keypair,
+    settlement_address: &str,
+    purpose: Vec<Web3KeyBindingPurpose>,
+    chain_scope: Vec<&str>,
+    nonce: &str,
+    issued_at: u64,
+    expires_at: u64,
+) -> SignedWeb3IdentityBinding {
     let public_key = signer.public_key();
     let certificate = Web3IdentityBindingCertificate {
         schema: CHIO_KEY_BINDING_CERTIFICATE_SCHEMA.to_string(),
@@ -81,8 +101,8 @@ fn signed_identity_binding(
         chain_scope: chain_scope.into_iter().map(str::to_string).collect(),
         purpose,
         settlement_address: settlement_address.to_string(),
-        issued_at: 1_743_292_800,
-        expires_at: 1_774_828_800,
+        issued_at,
+        expires_at,
         nonce: nonce.to_string(),
     };
     let Ok((signature, _)) = signer.sign_canonical(&certificate) else {
@@ -1072,6 +1092,33 @@ fn public_settlement_proof_rejects_beneficiary_identity_address_mismatch() {
         verify_public_settlement_proof(&bundle),
         Err(Web3ContractError::InvalidBinding(message))
             if message.contains("public settlement beneficiary identity binding address mismatch")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_beneficiary_binding_issued_after_execution() {
+    let mut bundle = sample_public_settlement_proof_bundle_with_chain_snapshot(|bundle| {
+        let binding = signed_identity_binding_with_window(
+            beneficiary_keypair(),
+            "0x2222222222222222222222222222222222222222",
+            vec![Web3KeyBindingPurpose::Settle],
+            vec!["eip155:8453"],
+            "beneficiary-identity-binding-after-execution",
+            1_743_292_890,
+            1_743_296_460,
+        );
+        let Ok(binding) = serde_json::to_value(binding) else {
+            panic!("sample beneficiary identity binding serializes");
+        };
+        bundle["chain_snapshot"]["beneficiary_identity_binding"] = binding;
+    });
+    bundle.settlement_receipt.issued_at =
+        bundle.settlement_receipt.observed_execution.observed_at + 60;
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidBinding(message))
+            if message.contains("public settlement beneficiary identity binding not valid at settlement time")
     ));
 }
 
