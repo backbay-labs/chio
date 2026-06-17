@@ -13,6 +13,9 @@ use super::RuntimeSecurityBundle;
 const DID_CHIO_PREFIX: &str = "did:chio:";
 const RUNTIME_REVOCATION_FRESHNESS_PROOF_SIGNATURE_SCHEMA: &str =
     "chio.runtime.revocation-freshness-proof-signature.v1";
+const RUNTIME_SANDBOX_ATTESTATION_SIGNATURE_SCHEMA: &str =
+    "chio.runtime.sandbox-attestation-signature.v1";
+const RUNTIME_TOOL_SERVER_ACK_SIGNATURE_SCHEMA: &str = "chio.runtime.tool-server-ack-signature.v1";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -183,7 +186,8 @@ pub(super) fn validate_revocation_freshness(
 fn verify_revocation_freshness_signature(
     proof: &RuntimeRevocationFreshnessProof,
 ) -> Result<(), TransactionPassportError> {
-    let public_key = revocation_oracle_public_key(&proof.oracle_id)?;
+    let public_key =
+        self_certifying_public_key(&proof.oracle_id, "revocation freshness oracle id")?;
     let signature = Signature::from_hex(&proof.signature).map_err(|error| {
         TransactionPassportError::RuntimeSecurityClaimFailed(format!(
             "revocation freshness signature invalid: {error}"
@@ -205,20 +209,23 @@ fn verify_revocation_freshness_signature(
     }
 }
 
-fn revocation_oracle_public_key(oracle_id: &str) -> Result<PublicKey, TransactionPassportError> {
-    let public_key_hex = if let Some(public_key_hex) = oracle_id.strip_prefix(DID_CHIO_PREFIX) {
+fn self_certifying_public_key(
+    identity: &str,
+    label: &'static str,
+) -> Result<PublicKey, TransactionPassportError> {
+    let public_key_hex = if let Some(public_key_hex) = identity.strip_prefix(DID_CHIO_PREFIX) {
         if public_key_hex.len() != 64 || !public_key_hex.bytes().all(is_lower_hex_byte) {
             return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
-                "revocation freshness oracle id is not self-certifying".to_string(),
+                format!("{label} is not self-certifying"),
             ));
         }
         public_key_hex
     } else {
-        oracle_id
+        identity
     };
     PublicKey::from_hex(public_key_hex).map_err(|error| {
         TransactionPassportError::RuntimeSecurityClaimFailed(format!(
-            "revocation freshness oracle public key invalid: {error}"
+            "{label} public key invalid: {error}"
         ))
     })
 }
@@ -250,6 +257,63 @@ fn revocation_freshness_signature_body(
         fetched_at: &proof.fetched_at,
         max_staleness_ms: proof.max_staleness_ms,
         revoked_leaf_result: proof.revoked_leaf_result,
+    }
+}
+
+fn verify_sandbox_attestation_signature(
+    sandbox: &RuntimeSandboxAttestation,
+) -> Result<(), TransactionPassportError> {
+    let public_key = self_certifying_public_key(&sandbox.attester, "sandbox attester")?;
+    let signature = Signature::from_hex(&sandbox.signature).map_err(|error| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+            "sandbox attestation signature invalid: {error}"
+        ))
+    })?;
+    let verified = public_key
+        .verify_canonical(&sandbox_attestation_signature_body(sandbox), &signature)
+        .map_err(|error| {
+            TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+                "sandbox attestation signature invalid: {error}"
+            ))
+        })?;
+    if verified {
+        Ok(())
+    } else {
+        Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "sandbox attestation signature invalid".to_string(),
+        ))
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeSandboxAttestationSignatureBody<'a> {
+    schema: &'static str,
+    attestation_id: &'a str,
+    tool_server_id: &'a str,
+    tool_instance_id: &'a str,
+    tool_manifest_digest: &'a str,
+    sandbox_profile_digest: &'a str,
+    egress_policy_digest: &'a str,
+    started_at: &'a str,
+    expires_at: &'a str,
+    attester: &'a str,
+}
+
+fn sandbox_attestation_signature_body(
+    sandbox: &RuntimeSandboxAttestation,
+) -> RuntimeSandboxAttestationSignatureBody<'_> {
+    RuntimeSandboxAttestationSignatureBody {
+        schema: RUNTIME_SANDBOX_ATTESTATION_SIGNATURE_SCHEMA,
+        attestation_id: &sandbox.attestation_id,
+        tool_server_id: &sandbox.tool_server_id,
+        tool_instance_id: &sandbox.tool_instance_id,
+        tool_manifest_digest: &sandbox.tool_manifest_digest,
+        sandbox_profile_digest: &sandbox.sandbox_profile_digest,
+        egress_policy_digest: &sandbox.egress_policy_digest,
+        started_at: &sandbox.started_at,
+        expires_at: &sandbox.expires_at,
+        attester: &sandbox.attester,
     }
 }
 
@@ -297,6 +361,7 @@ pub(super) fn validate_sandbox_attestation(
             "sandbox attestation not valid for execution lease".to_string(),
         ));
     }
+    verify_sandbox_attestation_signature(sandbox)?;
     Ok(())
 }
 
@@ -332,7 +397,63 @@ pub(super) fn validate_tool_server_ack(
             "acknowledgement outside execution lease".to_string(),
         ));
     }
+    verify_tool_server_ack_signature(ack)?;
     Ok(())
+}
+
+fn verify_tool_server_ack_signature(
+    ack: &RuntimeToolServerAck,
+) -> Result<(), TransactionPassportError> {
+    let public_key = self_certifying_public_key(&ack.tool_server_id, "tool-server id")?;
+    let signature = Signature::from_hex(&ack.signature).map_err(|error| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+            "tool-server acknowledgement signature invalid: {error}"
+        ))
+    })?;
+    let verified = public_key
+        .verify_canonical(&tool_server_ack_signature_body(ack), &signature)
+        .map_err(|error| {
+            TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+                "tool-server acknowledgement signature invalid: {error}"
+            ))
+        })?;
+    if verified {
+        Ok(())
+    } else {
+        Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "tool-server acknowledgement signature invalid".to_string(),
+        ))
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeToolServerAckSignatureBody<'a> {
+    schema: &'static str,
+    ack_id: &'a str,
+    lease_id: &'a str,
+    tool_server_id: &'a str,
+    tool_instance_id: &'a str,
+    sandbox_attestation_ref: &'a str,
+    nonce: &'a str,
+    terminal_status: &'a str,
+    issued_at: &'a str,
+}
+
+fn tool_server_ack_signature_body(
+    ack: &RuntimeToolServerAck,
+) -> RuntimeToolServerAckSignatureBody<'_> {
+    RuntimeToolServerAckSignatureBody {
+        schema: RUNTIME_TOOL_SERVER_ACK_SIGNATURE_SCHEMA,
+        ack_id: &ack.ack_id,
+        lease_id: &ack.lease_id,
+        tool_server_id: &ack.tool_server_id,
+        tool_instance_id: &ack.tool_instance_id,
+        sandbox_attestation_ref: &ack.sandbox_attestation_ref,
+        nonce: &ack.nonce,
+        terminal_status: &ack.terminal_status,
+        issued_at: &ack.issued_at,
+    }
 }
 
 pub(super) fn validate_nonce_uniqueness(

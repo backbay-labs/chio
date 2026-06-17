@@ -241,7 +241,12 @@ fn add_second_runtime_attempt_without_terminal_receipt(
     .test_expect("sandbox parses");
     sandbox["attestation_id"] = Value::String("sandbox-runtime-second".to_string());
     sandbox["tool_instance_id"] = Value::String("tool-instance-002".to_string());
-    sandbox["signature"] = Value::String("sig-sandbox-runtime-second".to_string());
+    let sandbox_signing_key = Keypair::from_seed(&[44u8; 32]);
+    sandbox["attester"] = Value::String(format!(
+        "did:chio:{}",
+        sandbox_signing_key.public_key().to_hex()
+    ));
+    sandbox["signature"] = Value::String(sign_sandbox_attestation(&sandbox, &sandbox_signing_key));
 
     let mut ack: Value = serde_json::from_slice(
         bundle
@@ -255,7 +260,8 @@ fn add_second_runtime_attempt_without_terminal_receipt(
     ack["tool_instance_id"] = Value::String("tool-instance-002".to_string());
     ack["sandbox_attestation_ref"] = Value::String("sandbox-runtime-second".to_string());
     ack["nonce"] = Value::String("nonce-runtime-second".to_string());
-    ack["signature"] = Value::String("sig-ack-runtime-second".to_string());
+    let ack_signing_key = Keypair::from_seed(&[45u8; 32]);
+    ack["signature"] = Value::String(sign_tool_server_ack(&ack, &ack_signing_key));
 
     let artifacts = [
         (
@@ -350,6 +356,45 @@ fn sign_revocation_freshness(value: &Value, keypair: &Keypair) -> String {
     keypair
         .sign_canonical(&body)
         .test_expect("revocation proof signs")
+        .0
+        .to_hex()
+}
+
+fn sign_sandbox_attestation(value: &Value, keypair: &Keypair) -> String {
+    let body = json!({
+        "schema": "chio.runtime.sandbox-attestation-signature.v1",
+        "attestationId": value["attestation_id"],
+        "toolServerId": value["tool_server_id"],
+        "toolInstanceId": value["tool_instance_id"],
+        "toolManifestDigest": value["tool_manifest_digest"],
+        "sandboxProfileDigest": value["sandbox_profile_digest"],
+        "egressPolicyDigest": value["egress_policy_digest"],
+        "startedAt": value["started_at"],
+        "expiresAt": value["expires_at"],
+        "attester": value["attester"],
+    });
+    keypair
+        .sign_canonical(&body)
+        .test_expect("sandbox attestation signs")
+        .0
+        .to_hex()
+}
+
+fn sign_tool_server_ack(value: &Value, keypair: &Keypair) -> String {
+    let body = json!({
+        "schema": "chio.runtime.tool-server-ack-signature.v1",
+        "ackId": value["ack_id"],
+        "leaseId": value["lease_id"],
+        "toolServerId": value["tool_server_id"],
+        "toolInstanceId": value["tool_instance_id"],
+        "sandboxAttestationRef": value["sandbox_attestation_ref"],
+        "nonce": value["nonce"],
+        "terminalStatus": value["terminal_status"],
+        "issuedAt": value["issued_at"],
+    });
+    keypair
+        .sign_canonical(&body)
+        .test_expect("tool-server acknowledgement signs")
         .0
         .to_hex()
 }
@@ -699,6 +744,58 @@ fn side_effecting_runtime_claim_rejects_sandbox_not_valid_for_lease() {
     assert!(error
         .to_string()
         .contains("sandbox attestation not valid for execution lease"));
+}
+
+#[test]
+fn side_effecting_runtime_claim_rejects_tampered_sandbox_signature() {
+    let signing_key = Keypair::from_seed(&[44u8; 32]);
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    update_artifact(&mut bundle, "sandbox-attestation.json", |sandbox| {
+        sandbox["attester"] =
+            Value::String(format!("did:chio:{}", signing_key.public_key().to_hex()));
+        sandbox["signature"] = Value::String(sign_sandbox_attestation(sandbox, &signing_key));
+    });
+    update_artifact(&mut bundle, "sandbox-attestation.json", |sandbox| {
+        sandbox["signature"] = Value::String("00".repeat(64));
+    });
+
+    let error = chio_control_plane::transaction_passport::verify_runtime_security_claims(&bundle)
+        .test_expect_err("tampered sandbox attestation signature must fail");
+
+    assert!(error
+        .to_string()
+        .contains("sandbox attestation signature invalid"));
+}
+
+#[test]
+fn side_effecting_runtime_claim_rejects_tampered_tool_server_ack_signature() {
+    let sandbox_key = Keypair::from_seed(&[44u8; 32]);
+    let ack_key = Keypair::from_seed(&[45u8; 32]);
+    let tool_server_id = format!("did:chio:{}", ack_key.public_key().to_hex());
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    update_artifact(&mut bundle, "execution-lease.json", |lease| {
+        lease["tool_server_id"] = Value::String(tool_server_id.clone());
+    });
+    update_artifact(&mut bundle, "sandbox-attestation.json", |sandbox| {
+        sandbox["tool_server_id"] = Value::String(tool_server_id.clone());
+        sandbox["attester"] =
+            Value::String(format!("did:chio:{}", sandbox_key.public_key().to_hex()));
+        sandbox["signature"] = Value::String(sign_sandbox_attestation(sandbox, &sandbox_key));
+    });
+    update_artifact(&mut bundle, "tool-server-ack.json", |ack| {
+        ack["tool_server_id"] = Value::String(tool_server_id);
+        ack["signature"] = Value::String(sign_tool_server_ack(ack, &ack_key));
+    });
+    update_artifact(&mut bundle, "tool-server-ack.json", |ack| {
+        ack["signature"] = Value::String("00".repeat(64));
+    });
+
+    let error = chio_control_plane::transaction_passport::verify_runtime_security_claims(&bundle)
+        .test_expect_err("tampered tool-server acknowledgement signature must fail");
+
+    assert!(error
+        .to_string()
+        .contains("tool-server acknowledgement signature invalid"));
 }
 
 #[test]
