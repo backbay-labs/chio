@@ -822,6 +822,27 @@ fn proof_verify_runtime_parity_rejects_failed_evidence_graph_bound_report() {
 }
 
 #[test]
+fn proof_verify_runtime_parity_requires_regeneration_artifacts_when_report_is_present() {
+    let (_tempdir, bundle) = build_swarm_bundle_with_runtime_parity();
+    remove_runtime_regeneration_evidence_nodes(&bundle);
+
+    let output = chio(&[
+        "proof",
+        "verify",
+        utf8_path(&bundle).as_str(),
+        "--require",
+        "delegation",
+        "--require",
+        "runtime-parity",
+    ]);
+
+    assert_failure(
+        &output,
+        "proof verify: runtime proof regeneration evidence missing: runtime-proof-regeneration-report",
+    );
+}
+
+#[test]
 fn proof_verify_runtime_parity_rejects_accepted_package_hash_drift() {
     let (_tempdir, bundle) = build_swarm_bundle_with_runtime_parity();
     let parity_path = bundle.join("runtime-proof-parity-report.json");
@@ -843,6 +864,41 @@ fn proof_verify_runtime_parity_rejects_accepted_package_hash_drift() {
     ]);
 
     assert_failure(&output, "runtime_proof_parity_accepted_package_hash_drift");
+}
+
+fn remove_runtime_regeneration_evidence_nodes(bundle: &Path) {
+    let evidence_graph_path = bundle.join("evidence-graph.json");
+    let mut evidence_graph: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
+    )
+    .test_expect("evidence graph parses");
+    let graph_nodes = evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("graph nodes array");
+    graph_nodes.retain(|node| {
+        let role = node.get("role").and_then(serde_json::Value::as_str);
+        !matches!(
+            role,
+            Some(
+                "runtime-proof-regeneration-report"
+                    | "runtime-proof-regeneration-input"
+                    | "runtime-evidence-manifest"
+                    | "runtime-workflow-run-report"
+                    | "runtime-proof-package"
+                    | "runtime-verifier-report"
+                    | "runtime-workflow-receipt"
+            )
+        )
+    });
+    write_json(&evidence_graph_path, &evidence_graph);
+
+    let passport_path = bundle.join("transaction-passport.json");
+    let mut passport: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+            .test_expect("passport parses");
+    passport["evidence_graph_sha256"] =
+        serde_json::Value::String(sha256_file(&evidence_graph_path));
+    write_json(&passport_path, &passport);
 }
 
 #[test]

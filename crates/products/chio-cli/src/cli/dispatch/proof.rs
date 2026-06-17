@@ -900,13 +900,6 @@ fn validate_runtime_proof_regeneration_artifacts_from_graph(
     evidence_graph_bytes: &[u8],
 ) -> Result<(), CliError> {
     let graph: RuntimeParityEvidenceGraph = serde_json::from_slice(evidence_graph_bytes)?;
-    if !graph
-        .nodes
-        .iter()
-        .any(runtime_proof_regeneration_node_is_present)
-    {
-        return Ok(());
-    }
     let proof_regeneration_report = runtime_graph_artifact_bytes(
         bundle_dir,
         &graph.nodes,
@@ -950,22 +943,6 @@ fn validate_runtime_proof_regeneration_artifacts_from_graph(
         },
     )
     .map_err(|error| CliError::cli_other_error(format!("proof verify: {error}")))
-}
-
-fn runtime_proof_regeneration_node_is_present(node: &RuntimeParityEvidenceNode) -> bool {
-    matches!(
-        node.role.as_str(),
-        "runtime-proof-regeneration-report"
-            | "runtime-proof-regeneration-input"
-            | "runtime-evidence-manifest"
-            | "runtime-workflow-run-report"
-    ) || matches!(
-        node.schema.as_str(),
-        chio_runtime_core::CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA
-            | chio_runtime_core::CHIO_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA
-            | chio_runtime_core::CHIO_RUNTIME_EVIDENCE_MANIFEST_SCHEMA
-            | chio_runtime_core::CHIO_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA
-    )
 }
 
 fn runtime_graph_artifact_bytes(
