@@ -356,6 +356,32 @@ pub(super) fn validate_reputation_import(
     {
         return Err(claim_failed("reputation import issuer not trusted"));
     }
+    let mut portable_reputation_weight = 0_u64;
+    let mut has_portable_reputation_component = false;
+    for component in &scorecard.component_scores {
+        if component.component == "portable_reputation" {
+            has_portable_reputation_component = true;
+            if component.evidence_ref != import.id {
+                return Err(claim_failed(
+                    "scorecard portable reputation evidence mismatch",
+                ));
+            }
+            portable_reputation_weight =
+                portable_reputation_weight
+                    .checked_add(component.weight)
+                    .ok_or_else(|| claim_failed("scorecard portable reputation weight overflow"))?;
+        }
+    }
+    if !has_portable_reputation_component {
+        return Err(claim_failed(
+            "scorecard missing portable reputation component",
+        ));
+    }
+    if portable_reputation_weight > import.local_weight {
+        return Err(claim_failed(
+            "scorecard portable reputation weight exceeds import limit",
+        ));
+    }
     let _ = &import.negative_event_refs;
     Ok(())
 }

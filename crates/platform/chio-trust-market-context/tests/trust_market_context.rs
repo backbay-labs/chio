@@ -31,6 +31,7 @@ enum TrustMarketCase {
     GlobalScorecardScope,
     ScoreRecomputeMismatch,
     ReputationImportOverweight,
+    ScorecardPortableReputationOverweight,
     SlaWrongOrder,
     SlaPerformanceMetricMismatch,
     SlaPerformanceMissingCommittedMetric,
@@ -192,7 +193,16 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
     };
     let computed_score = match case {
         TrustMarketCase::ScoreRecomputeMismatch => 99,
+        TrustMarketCase::ScorecardPortableReputationOverweight => 91,
         _ => 92,
+    };
+    let native_reputation_weight = match case {
+        TrustMarketCase::ScorecardPortableReputationOverweight => 30,
+        _ => 40,
+    };
+    let portable_reputation_weight = match case {
+        TrustMarketCase::ScorecardPortableReputationOverweight => 40,
+        _ => 30,
     };
     let scorecard_valid_until = match case {
         TrustMarketCase::ScorecardStaleAtSelection => "2026-06-10T01:00:00Z",
@@ -209,14 +219,14 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             {
                 "component": "native_reputation",
                 "score": 92,
-                "weight": 40,
+                "weight": native_reputation_weight,
                 "evidence_ref": "reputation-native-alpha",
                 "stale": false
             },
             {
                 "component": "portable_reputation",
                 "score": 88,
-                "weight": 30,
+                "weight": portable_reputation_weight,
                 "evidence_ref": "reputation-import-trust-market-valid",
                 "stale": false
             },
@@ -675,6 +685,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
     };
     let selected_total_score = match case {
         TrustMarketCase::SelectionScorecardScoreMismatch => 91,
+        TrustMarketCase::ScorecardPortableReputationOverweight => 91,
         _ => 92,
     };
     let selection_issued_at = match case {
@@ -1033,6 +1044,18 @@ fn trust_market_rejects_reputation_import_overweight() {
     assert!(error
         .to_string()
         .contains("reputation import local weight exceeds policy"));
+}
+
+#[test]
+fn trust_market_rejects_scorecard_portable_reputation_overweight() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::ScorecardPortableReputationOverweight,
+    ))
+    .test_expect_err("scorecard portable reputation weight must honor import limit");
+
+    assert!(error
+        .to_string()
+        .contains("scorecard portable reputation weight exceeds import limit"));
 }
 
 #[test]
