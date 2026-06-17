@@ -384,10 +384,14 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
     }
 
     let calendar_time_range_digest = match case {
-        AgentWebCase::CalendarTimeRangeMismatch => {
+        AgentWebCase::CalendarTimeRangeMismatch | AgentWebCase::CalendarCreateTimeRangeMismatch => {
             "8a8b8a8b8a8b8a8b8a8b8a8b8a8b8a8b8a8b8a8b8a8b8a8b8a8b8a8b8a8b8a8b"
         }
         _ => "8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c",
+    };
+    let calendar_write_method = match case {
+        AgentWebCase::CalendarCreateTimeRangeMismatch => "create",
+        _ => "update",
     };
     let calendar_connector_action = json_bytes(json!({
         "object_kind": "calendar_connector_action",
@@ -403,14 +407,16 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "approved_time_range_digest": "8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c8a8c",
         "recurrence_digest": "8b8d8b8d8b8d8b8d8b8d8b8d8b8d8b8d8b8d8b8d8b8d8b8d8b8d8b8d8b8d8b8d",
         "conferencing_link_digest": "8b8e8b8e8b8e8b8e8b8e8b8e8b8e8b8e8b8e8b8e8b8e8b8e8b8e8b8e8b8e8b8e",
-        "write_method": "update",
+        "write_method": calendar_write_method,
         "oauth_scope_set_digest": "8b8f8b8f8b8f8b8f8b8f8b8f8b8f8b8f8b8f8b8f8b8f8b8f8b8f8b8f8b8f8b8f",
         "receipt_refs": ["receipt-agent-web-calendar-event-allow"],
         "mediated_by_chio_receipt": true
     }));
     if matches!(
         case,
-        AgentWebCase::CalendarProjection | AgentWebCase::CalendarTimeRangeMismatch
+        AgentWebCase::CalendarProjection
+            | AgentWebCase::CalendarTimeRangeMismatch
+            | AgentWebCase::CalendarCreateTimeRangeMismatch
     ) {
         push_artifact(
             &mut builder.artifacts,

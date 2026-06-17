@@ -61,7 +61,9 @@ pub(super) fn validate_subject(
         "approved_time_range_digest",
         "missing Calendar approved time range digest",
     )?;
-    if write_method == "update" && time_range_digest != approved_time_range_digest {
+    if matches!(write_method, "create" | "update")
+        && time_range_digest != approved_time_range_digest
+    {
         return Err(claim_failed("Calendar time range changed after approval"));
     }
     let attendee_digests = value

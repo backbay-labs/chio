@@ -15,6 +15,18 @@ fn agent_web_interop_rejects_calendar_time_range_mismatch() {
 }
 
 #[test]
+fn agent_web_interop_rejects_calendar_create_time_range_mismatch() {
+    let bundle = agent_web_bundle(AgentWebCase::CalendarCreateTimeRangeMismatch);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Calendar create must match approved time range");
+
+    assert!(error
+        .to_string()
+        .contains("Calendar time range changed after approval"));
+}
+
+#[test]
 fn agent_web_interop_accepts_slack_projection() {
     let bundle = agent_web_bundle(AgentWebCase::SlackProjection);
 

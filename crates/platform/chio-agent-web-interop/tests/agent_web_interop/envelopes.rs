@@ -602,7 +602,9 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }));
     if matches!(
         case,
-        AgentWebCase::CalendarProjection | AgentWebCase::CalendarTimeRangeMismatch
+        AgentWebCase::CalendarProjection
+            | AgentWebCase::CalendarTimeRangeMismatch
+            | AgentWebCase::CalendarCreateTimeRangeMismatch
     ) {
         push_artifact(
             &mut builder.artifacts,

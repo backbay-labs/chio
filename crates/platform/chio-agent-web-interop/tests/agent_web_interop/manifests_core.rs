@@ -945,7 +945,9 @@ pub(crate) fn add_core_projection_manifests(builder: &mut AgentWebBundleBuilder)
     }));
     if matches!(
         case,
-        AgentWebCase::CalendarProjection | AgentWebCase::CalendarTimeRangeMismatch
+        AgentWebCase::CalendarProjection
+            | AgentWebCase::CalendarTimeRangeMismatch
+            | AgentWebCase::CalendarCreateTimeRangeMismatch
     ) {
         push_artifact(
             &mut builder.artifacts,

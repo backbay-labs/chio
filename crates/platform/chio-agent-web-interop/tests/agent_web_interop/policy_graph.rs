@@ -291,7 +291,9 @@ pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> Age
     }
     if matches!(
         case,
-        AgentWebCase::CalendarProjection | AgentWebCase::CalendarTimeRangeMismatch
+        AgentWebCase::CalendarProjection
+            | AgentWebCase::CalendarTimeRangeMismatch
+            | AgentWebCase::CalendarCreateTimeRangeMismatch
     ) {
         graph_edges.push(json!({
             "from": "calendar-envelope",

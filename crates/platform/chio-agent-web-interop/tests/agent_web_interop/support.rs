@@ -235,6 +235,7 @@ pub(crate) enum AgentWebCase {
     EmailMissingMessageDigest,
     CalendarProjection,
     CalendarTimeRangeMismatch,
+    CalendarCreateTimeRangeMismatch,
     SlackProjection,
     SlackOkFalse,
     OAuth2Projection,
