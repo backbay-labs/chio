@@ -3,10 +3,6 @@ use std::collections::BTreeSet;
 
 const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str = "application/vnd.chio.proof-room.bundle.v1+json";
 const PROOF_ROOM_TRUST_ROOTS_PATH: &str = "artifacts/authority/trust-roots.json";
-const PROOF_ROOM_EVIDENCE_GRAPH_PATH: &str = "roots/evidence-graph.json";
-const PROOF_ROOM_TRANSACTION_PASSPORT_PATH: &str = "roots/transaction-passport.json";
-const PROOF_ROOM_VERIFIER_REPORT_PATH: &str = "verifier/report.json";
-const PROOF_ROOM_UI_REPORT_PATH: &str = "ui/proof-room-static/load-report.json";
 const PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX_ENV: &str =
     "CHIO_PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX";
 
@@ -134,10 +130,15 @@ fn redact_public_proof_archive_entries(
 ) -> Result<Vec<ProofArchiveEntry>, CliError> {
     let manifest_path = root.join("manifest.json");
     let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;
+    let signature_path = proof_room_signature_ref_path(&manifest)?;
     let redacted_paths = redact_public_manifest_artifacts(&mut manifest)?;
-    let export_signer = prepare_public_bundle_export_signer(&mut entries, &mut manifest)?;
+    let export_signer =
+        prepare_public_bundle_export_signer(&mut entries, &mut manifest, signature_path.as_deref())?;
     let manifest_bytes = pretty_json_line(&manifest)?;
-    let signature_bytes = redact_public_bundle_signature(root, &manifest_bytes, export_signer)?;
+    let signature_bytes = signature_path
+        .as_deref()
+        .map(|path| redact_public_bundle_signature(&entries, path, &manifest_bytes, export_signer))
+        .transpose()?;
     let allowed = public_proof_archive_member_allowlist(root, &manifest)?;
     Ok(entries
         .into_iter()
@@ -147,8 +148,10 @@ fn redact_public_proof_archive_entries(
             }
             if entry.path == "manifest.json" {
                 entry.bytes = manifest_bytes.clone();
-            } else if entry.path == "bundle-signature.dsse.json" {
-                entry.bytes = signature_bytes.clone();
+            } else if signature_path.as_deref() == Some(entry.path.as_str()) {
+                if let Some(signature_bytes) = &signature_bytes {
+                    entry.bytes = signature_bytes.clone();
+                }
             }
             Some(entry)
         })
@@ -307,30 +310,39 @@ fn is_public_sensitivity_class(sensitivity_class: &str) -> bool {
 fn prepare_public_bundle_export_signer(
     entries: &mut [ProofArchiveEntry],
     manifest: &mut serde_json::Value,
+    signature_path: Option<&str>,
 ) -> Result<Option<chio_core::Keypair>, CliError> {
-    if !entries
-        .iter()
-        .any(|entry| entry.path == "bundle-signature.dsse.json")
-    {
+    let Some(signature_path) = signature_path else {
         return Ok(None);
-    }
+    };
+    archive_entry_bytes(entries, signature_path)?;
 
     let keypair = proof_export_bundle_signer_from_env()?;
     if !manifest_artifact_path_exists(manifest, PROOF_ROOM_TRUST_ROOTS_PATH) {
         return Ok(Some(keypair));
     }
 
+    let evidence_graph_path = manifest_ref_path(manifest, "evidence_graph_ref")?;
+    let transaction_passport_path = manifest_ref_path(manifest, "transaction_passport_ref")?;
+    let verifier_report_path = manifest_ref_path(manifest, "verifier_report_ref")?;
+    let ui_report_path = manifest_ref_path(manifest, "proof_room_verifier_report_ref")?;
     let public_key = keypair.public_key().to_hex();
     let trust_roots_sha256 = update_export_trust_roots(entries, &public_key)?;
     let evidence_graph_sha256 = update_export_evidence_graph_optional_node(
         entries,
+        &evidence_graph_path,
         PROOF_ROOM_TRUST_ROOTS_PATH,
         &trust_roots_sha256,
     )?;
-    let transaction_passport_sha256 =
-        update_export_transaction_passport(entries, &evidence_graph_sha256)?;
-    let verifier_report_sha256 = update_export_verifier_report(entries, &evidence_graph_sha256)?;
-    let ui_report_sha256 = update_export_ui_report(entries, &verifier_report_sha256)?;
+    let transaction_passport_sha256 = update_export_transaction_passport(
+        entries,
+        &transaction_passport_path,
+        &evidence_graph_sha256,
+    )?;
+    let verifier_report_sha256 =
+        update_export_verifier_report(entries, &verifier_report_path, &evidence_graph_sha256)?;
+    let ui_report_sha256 =
+        update_export_ui_report(entries, &ui_report_path, &verifier_report_sha256)?;
 
     set_manifest_ref_sha256(
         manifest,
@@ -346,18 +358,38 @@ fn prepare_public_bundle_export_signer(
     )?;
     for (path, sha256) in [
         (PROOF_ROOM_TRUST_ROOTS_PATH, trust_roots_sha256.as_str()),
-        (PROOF_ROOM_EVIDENCE_GRAPH_PATH, evidence_graph_sha256.as_str()),
+        (evidence_graph_path.as_str(), evidence_graph_sha256.as_str()),
         (
-            PROOF_ROOM_TRANSACTION_PASSPORT_PATH,
+            transaction_passport_path.as_str(),
             transaction_passport_sha256.as_str(),
         ),
-        (PROOF_ROOM_VERIFIER_REPORT_PATH, verifier_report_sha256.as_str()),
-        (PROOF_ROOM_UI_REPORT_PATH, ui_report_sha256.as_str()),
+        (verifier_report_path.as_str(), verifier_report_sha256.as_str()),
+        (ui_report_path.as_str(), ui_report_sha256.as_str()),
     ] {
         set_manifest_artifact_sha256(manifest, path, sha256)?;
     }
 
     Ok(Some(keypair))
+}
+
+fn manifest_ref_path(manifest: &serde_json::Value, field: &str) -> Result<String, CliError> {
+    let path = manifest
+        .get(field)
+        .and_then(|reference| reference.get("path"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| CliError::cli_other_error(format!("proof manifest missing {field}.path")))?;
+    crate::archive::safe_archive_member_path(path, "proof archive")
+}
+
+fn proof_room_signature_ref_path(
+    manifest: &serde_json::Value,
+) -> Result<Option<String>, CliError> {
+    manifest
+        .get("signature")
+        .and_then(|signature| signature.get("signature_ref"))
+        .and_then(serde_json::Value::as_str)
+        .map(|path| crate::archive::safe_archive_member_path(path, "proof archive"))
+        .transpose()
 }
 
 fn proof_export_bundle_signer_from_env() -> Result<chio_core::Keypair, CliError> {
@@ -419,10 +451,11 @@ fn update_export_trust_roots(
 
 fn update_export_evidence_graph_optional_node(
     entries: &mut [ProofArchiveEntry],
+    evidence_graph_path: &str,
     artifact_path: &str,
     sha256: &str,
 ) -> Result<String, CliError> {
-    let bytes = archive_entry_bytes_mut(entries, PROOF_ROOM_EVIDENCE_GRAPH_PATH)?;
+    let bytes = archive_entry_bytes_mut(entries, evidence_graph_path)?;
     let mut evidence_graph: serde_json::Value = serde_json::from_slice(bytes)?;
     let nodes = evidence_graph
         .get_mut("nodes")
@@ -443,9 +476,10 @@ fn update_export_evidence_graph_optional_node(
 
 fn update_export_transaction_passport(
     entries: &mut [ProofArchiveEntry],
+    transaction_passport_path: &str,
     evidence_graph_sha256: &str,
 ) -> Result<String, CliError> {
-    let bytes = archive_entry_bytes_mut(entries, PROOF_ROOM_TRANSACTION_PASSPORT_PATH)?;
+    let bytes = archive_entry_bytes_mut(entries, transaction_passport_path)?;
     let mut passport: serde_json::Value = serde_json::from_slice(bytes)?;
     passport["evidence_graph_sha256"] =
         serde_json::Value::String(evidence_graph_sha256.to_string());
@@ -455,9 +489,10 @@ fn update_export_transaction_passport(
 
 fn update_export_verifier_report(
     entries: &mut [ProofArchiveEntry],
+    verifier_report_path: &str,
     evidence_graph_sha256: &str,
 ) -> Result<String, CliError> {
-    let bytes = archive_entry_bytes_mut(entries, PROOF_ROOM_VERIFIER_REPORT_PATH)?;
+    let bytes = archive_entry_bytes_mut(entries, verifier_report_path)?;
     let mut report: serde_json::Value = serde_json::from_slice(bytes)?;
     report["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256.to_string());
     *bytes = pretty_json_line(&report)?;
@@ -466,9 +501,10 @@ fn update_export_verifier_report(
 
 fn update_export_ui_report(
     entries: &mut [ProofArchiveEntry],
+    ui_report_path: &str,
     verifier_report_sha256: &str,
 ) -> Result<String, CliError> {
-    let bytes = archive_entry_bytes_mut(entries, PROOF_ROOM_UI_REPORT_PATH)?;
+    let bytes = archive_entry_bytes_mut(entries, ui_report_path)?;
     let mut report: serde_json::Value = serde_json::from_slice(bytes)?;
     report["source_verifier_report_ref"]["sha256"] =
         serde_json::Value::String(verifier_report_sha256.to_string());
@@ -484,6 +520,17 @@ fn archive_entry_bytes_mut<'a>(
         .iter_mut()
         .find(|entry| entry.path == path)
         .map(|entry| &mut entry.bytes)
+        .ok_or_else(|| CliError::cli_other_error(format!("proof archive missing member: {path}")))
+}
+
+fn archive_entry_bytes<'a>(
+    entries: &'a [ProofArchiveEntry],
+    path: &str,
+) -> Result<&'a [u8], CliError> {
+    entries
+        .iter()
+        .find(|entry| entry.path == path)
+        .map(|entry| entry.bytes.as_slice())
         .ok_or_else(|| CliError::cli_other_error(format!("proof archive missing member: {path}")))
 }
 
@@ -519,12 +566,13 @@ fn set_manifest_artifact_sha256(
 }
 
 fn redact_public_bundle_signature(
-    root: &Path,
+    entries: &[ProofArchiveEntry],
+    signature_path: &str,
     manifest_bytes: &[u8],
     signer: Option<chio_core::Keypair>,
 ) -> Result<Vec<u8>, CliError> {
-    let signature_path = root.join("bundle-signature.dsse.json");
-    let mut signature: serde_json::Value = serde_json::from_slice(&fs::read(&signature_path)?)?;
+    let mut signature: serde_json::Value =
+        serde_json::from_slice(archive_entry_bytes(entries, signature_path)?)?;
     if signature
         .get("payloadRef")
         .and_then(|payload_ref| payload_ref.get("path"))
@@ -581,7 +629,9 @@ fn public_proof_archive_member_allowlist(
 ) -> Result<BTreeSet<String>, CliError> {
     let mut members = BTreeSet::new();
     insert_allowed_member(&mut members, "manifest.json")?;
-    if root.join("bundle-signature.dsse.json").is_file() {
+    if let Some(path) = proof_room_signature_ref_path(manifest)? {
+        insert_allowed_member(&mut members, &path)?;
+    } else if root.join("bundle-signature.dsse.json").is_file() {
         insert_allowed_member(&mut members, "bundle-signature.dsse.json")?;
     }
     if root.join("README.md").is_file() {

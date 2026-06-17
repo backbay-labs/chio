@@ -205,6 +205,197 @@ fn proof_export_public_redaction_preserves_collected_catalog_negative_artifacts(
 }
 
 #[test]
+fn proof_export_public_redaction_honors_manifest_ref_paths_and_signature_ref() {
+    let (_bundle_tempdir, bundle) = build_minimal_passport_proof_room_bundle();
+    let output_tempdir = tempfile::tempdir().test_expect("output tempdir");
+
+    move_bundle_member(
+        &bundle,
+        "roots/transaction-passport.json",
+        "public-roots/passport.json",
+    );
+    move_bundle_member(
+        &bundle,
+        "roots/evidence-graph.json",
+        "public-roots/graph.json",
+    );
+    move_bundle_member(
+        &bundle,
+        "roots/verifier-policy.json",
+        "public-roots/verifier-policy.json",
+    );
+    move_bundle_member(
+        &bundle,
+        "verifier/report.json",
+        "public-verifier/report.json",
+    );
+    move_bundle_member(
+        &bundle,
+        "ui/proof-room-static/load-report.json",
+        "public-ui/load-report.json",
+    );
+    move_bundle_member(
+        &bundle,
+        "bundle-signature.dsse.json",
+        "signatures/bundle.dsse.json",
+    );
+
+    let evidence_graph_path = bundle.join("public-roots/graph.json");
+    let mut evidence_graph: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
+    )
+    .test_expect("evidence graph parses");
+    replace_manifest_path_strings(
+        &mut evidence_graph,
+        &[(
+            "roots/verifier-policy.json",
+            "public-roots/verifier-policy.json",
+        )],
+    );
+    write_json(&evidence_graph_path, &evidence_graph);
+    let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
+
+    let passport_path = bundle.join("public-roots/passport.json");
+    let mut passport: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+            .test_expect("passport parses");
+    passport["evidence_graph_path"] = serde_json::Value::String("graph.json".to_string());
+    passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256.clone());
+    passport["verifier_policy_path"] =
+        serde_json::Value::String("verifier-policy.json".to_string());
+    write_json(&passport_path, &passport);
+
+    let verifier_report_path = bundle.join("public-verifier/report.json");
+    let mut verifier_report: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&verifier_report_path).test_expect("read verifier report"),
+    )
+    .test_expect("verifier report parses");
+    verifier_report["passport_path"] = serde_json::Value::String("passport.json".to_string());
+    verifier_report["evidence_graph_path"] = serde_json::Value::String("graph.json".to_string());
+    verifier_report["evidence_graph_sha256"] =
+        serde_json::Value::String(evidence_graph_sha256.clone());
+    verifier_report["verifier_policy_path"] =
+        serde_json::Value::String("verifier-policy.json".to_string());
+    write_json(&verifier_report_path, &verifier_report);
+    let verifier_report_sha256 = sha256_file(&verifier_report_path);
+
+    let ui_report_path = bundle.join("public-ui/load-report.json");
+    let mut ui_report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&ui_report_path).test_expect("read UI report"))
+            .test_expect("UI report parses");
+    replace_manifest_path_strings(
+        &mut ui_report,
+        &[("verifier/report.json", "public-verifier/report.json")],
+    );
+    ui_report["source_verifier_report_ref"]["path"] =
+        serde_json::Value::String("public-verifier/report.json".to_string());
+    ui_report["source_verifier_report_ref"]["sha256"] =
+        serde_json::Value::String(verifier_report_sha256);
+    write_json(&ui_report_path, &ui_report);
+
+    let manifest_path = bundle.join("manifest.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&manifest_path).test_expect("read manifest"))
+            .test_expect("manifest parses");
+    replace_manifest_path_strings(
+        &mut manifest,
+        &[
+            (
+                "roots/transaction-passport.json",
+                "public-roots/passport.json",
+            ),
+            ("roots/evidence-graph.json", "public-roots/graph.json"),
+            (
+                "roots/verifier-policy.json",
+                "public-roots/verifier-policy.json",
+            ),
+            ("verifier/report.json", "public-verifier/report.json"),
+            (
+                "ui/proof-room-static/load-report.json",
+                "public-ui/load-report.json",
+            ),
+            ("bundle-signature.dsse.json", "signatures/bundle.dsse.json"),
+        ],
+    );
+    refresh_manifest_ref_and_artifact_sha256(
+        &bundle,
+        &mut manifest,
+        "transaction_passport_ref",
+        "public-roots/passport.json",
+    );
+    refresh_manifest_ref_and_artifact_sha256(
+        &bundle,
+        &mut manifest,
+        "evidence_graph_ref",
+        "public-roots/graph.json",
+    );
+    refresh_manifest_ref_and_artifact_sha256(
+        &bundle,
+        &mut manifest,
+        "verifier_report_ref",
+        "public-verifier/report.json",
+    );
+    refresh_manifest_ref_and_artifact_sha256(
+        &bundle,
+        &mut manifest,
+        "proof_room_verifier_report_ref",
+        "public-ui/load-report.json",
+    );
+    refresh_manifest_artifact_sha256(&bundle, &mut manifest, "public-roots/verifier-policy.json");
+    write_json(&manifest_path, &manifest);
+
+    let signature_path = bundle.join("signatures/bundle.dsse.json");
+    let mut signature: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&signature_path).test_expect("read signature"))
+            .test_expect("signature parses");
+    sign_bundle_signature(&bundle, &mut signature);
+    write_json(&signature_path, &signature);
+
+    let input_verify = chio(&["proof", "serve", utf8_path(&bundle).as_str(), "--dry-run"]);
+    assert_success(&input_verify);
+
+    let output_file = output_tempdir.path().join("proof-room-public.tgz");
+    let export = chio(&[
+        "proof",
+        "export",
+        utf8_path(&bundle).as_str(),
+        "--out",
+        utf8_path(&output_file).as_str(),
+        "--redact",
+        "public",
+    ]);
+    assert_success(&export);
+
+    let members = tgz_member_names(&output_file);
+    for path in [
+        "public-roots/passport.json",
+        "public-roots/graph.json",
+        "public-verifier/report.json",
+        "public-ui/load-report.json",
+        "signatures/bundle.dsse.json",
+    ] {
+        assert!(members.contains(path), "exported archive missing {path}");
+    }
+    for path in [
+        "roots/transaction-passport.json",
+        "roots/evidence-graph.json",
+        "verifier/report.json",
+        "ui/proof-room-static/load-report.json",
+        "bundle-signature.dsse.json",
+    ] {
+        assert!(!members.contains(path), "exported archive kept {path}");
+    }
+
+    let verify = chio(&[
+        "proof",
+        "serve",
+        utf8_path(&output_file).as_str(),
+        "--dry-run",
+    ]);
+    assert_success(&verify);
+}
+
+#[test]
 fn proof_export_rejects_unsupported_archive_extension() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let bundle = proof_room_bundle_fixture();
@@ -242,6 +433,62 @@ fn proof_export_rejects_passport_directory_without_proof_room_manifest() {
 
     assert_failure(&output, "proof room bundle manifest missing");
     assert!(!Path::new(&output_file).exists());
+}
+
+fn move_bundle_member(bundle: &Path, from: &str, to: &str) {
+    let from_path = bundle.join(from);
+    let to_path = bundle.join(to);
+    std::fs::create_dir_all(to_path.parent().test_expect("moved member has parent"))
+        .test_expect("create moved member parent");
+    std::fs::rename(from_path, to_path).test_expect("move bundle member");
+}
+
+fn replace_manifest_path_strings(value: &mut serde_json::Value, replacements: &[(&str, &str)]) {
+    match value {
+        serde_json::Value::String(text) => {
+            if let Some((_, replacement)) = replacements.iter().find(|(from, _)| text == from) {
+                *text = (*replacement).to_string();
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                replace_manifest_path_strings(value, replacements);
+            }
+        }
+        serde_json::Value::Object(values) => {
+            for value in values.values_mut() {
+                replace_manifest_path_strings(value, replacements);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn refresh_manifest_ref_and_artifact_sha256(
+    bundle: &Path,
+    manifest: &mut serde_json::Value,
+    ref_field: &str,
+    path: &str,
+) {
+    let sha256 = sha256_file(&bundle.join(path));
+    manifest[ref_field]["sha256"] = serde_json::Value::String(sha256.clone());
+    set_manifest_artifact_sha256(manifest, path, &sha256);
+}
+
+fn refresh_manifest_artifact_sha256(bundle: &Path, manifest: &mut serde_json::Value, path: &str) {
+    let sha256 = sha256_file(&bundle.join(path));
+    set_manifest_artifact_sha256(manifest, path, &sha256);
+}
+
+fn set_manifest_artifact_sha256(manifest: &mut serde_json::Value, path: &str, sha256: &str) {
+    for artifact in manifest["artifacts"]
+        .as_array_mut()
+        .test_expect("manifest artifacts array")
+    {
+        if artifact.get("path").and_then(serde_json::Value::as_str) == Some(path) {
+            artifact["sha256"] = serde_json::Value::String(sha256.to_string());
+        }
+    }
 }
 
 #[test]
