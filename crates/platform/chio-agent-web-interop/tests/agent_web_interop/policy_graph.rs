@@ -131,6 +131,7 @@ pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> Age
         AgentWebCase::OpenApiProjection
             | AgentWebCase::OpenApiUnsupportedVersion
             | AgentWebCase::OpenApiReceiptRefMismatch
+            | AgentWebCase::OpenApiFailedStatus
     ) {
         graph_edges.push(json!({
             "from": "openapi-envelope",

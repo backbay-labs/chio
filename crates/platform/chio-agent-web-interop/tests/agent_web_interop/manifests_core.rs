@@ -477,6 +477,7 @@ pub(crate) fn add_core_projection_manifests(builder: &mut AgentWebBundleBuilder)
         AgentWebCase::OpenApiProjection
             | AgentWebCase::OpenApiUnsupportedVersion
             | AgentWebCase::OpenApiReceiptRefMismatch
+            | AgentWebCase::OpenApiFailedStatus
     ) {
         push_artifact(
             &mut builder.artifacts,

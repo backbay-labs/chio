@@ -382,6 +382,21 @@ fn agent_web_interop_rejects_graphql_errors_projected_as_success() {
 }
 
 #[test]
+fn agent_web_interop_rejects_graphql_http_failed_status() {
+    let bundle = agent_web_bundle(AgentWebCase::GraphqlHttpFailedStatus);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("GraphQL failed HTTP status must not verify as success");
+
+    assert!(
+        error
+            .to_string()
+            .contains("GraphQL HTTP status was not successful"),
+        "{error}"
+    );
+}
+
+#[test]
 fn agent_web_interop_rejects_external_subject_schema_mismatch() {
     let bundle = agent_web_bundle(AgentWebCase::ExternalSubjectSchemaMismatch);
 
@@ -415,6 +430,21 @@ fn agent_web_interop_rejects_a2a_authority_claim_without_limitation() {
     assert!(error.to_string().contains(
         "missing Agent Web unsupported authority limitation: claim.external.a2a_task_is_chio_authority"
     ));
+}
+
+#[test]
+fn agent_web_interop_rejects_a2a_failed_task_state() {
+    let bundle = agent_web_bundle(AgentWebCase::A2aFailedTaskState);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("A2A failed task state must not verify as success");
+
+    assert!(
+        error
+            .to_string()
+            .contains("A2A task state was not successful"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -458,6 +488,21 @@ fn agent_web_interop_rejects_openapi_unbound_operation_receipt() {
         error
             .to_string()
             .contains("OpenAPI operation receipt ref is not bound"),
+        "{error}"
+    );
+}
+
+#[test]
+fn agent_web_interop_rejects_openapi_failed_status() {
+    let bundle = agent_web_bundle(AgentWebCase::OpenApiFailedStatus);
+
+    let error =
+        verify_agent_web_interop(&bundle).test_expect_err("OpenAPI failed status must not verify");
+
+    assert!(
+        error
+            .to_string()
+            .contains("OpenAPI response status was not successful"),
         "{error}"
     );
 }

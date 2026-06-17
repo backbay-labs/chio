@@ -71,6 +71,9 @@ pub(super) fn validate_subject(
     if !(100..=599).contains(&status_code) {
         return Err(claim_failed("unsupported GraphQL status code"));
     }
+    if !(200..=299).contains(&status_code) {
+        return Err(claim_failed("GraphQL HTTP status was not successful"));
+    }
     if let Some(response_has_errors) = value.get("response_has_errors") {
         let Some(response_has_errors) = response_has_errors.as_bool() else {
             return Err(claim_failed("GraphQL response error flag must be boolean"));

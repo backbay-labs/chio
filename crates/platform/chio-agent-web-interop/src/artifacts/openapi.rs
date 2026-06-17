@@ -45,6 +45,9 @@ pub(super) fn validate_subject(
     if !(100..=599).contains(&status_code) {
         return Err(claim_failed("unsupported OpenAPI status code"));
     }
+    if !(200..=299).contains(&status_code) {
+        return Err(claim_failed("OpenAPI response status was not successful"));
+    }
     let operation_receipt_ref = required_json_str(
         value,
         "chio_operation_receipt_ref",

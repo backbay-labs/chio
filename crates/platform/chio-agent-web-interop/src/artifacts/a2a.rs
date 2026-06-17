@@ -30,6 +30,9 @@ pub(super) fn validate_subject(
     ) {
         return Err(claim_failed("unsupported A2A task state"));
     }
+    if task_state != "completed" {
+        return Err(claim_failed("A2A task state was not successful"));
+    }
     for (field, message) in [
         ("agent_card_digest", "missing A2A agent card digest"),
         ("task_input_digest", "missing A2A task input digest"),

@@ -53,6 +53,10 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         cloudevent.clone(),
     );
 
+    let graphql_status_code = match case {
+        AgentWebCase::GraphqlHttpFailedStatus => 500,
+        _ => 200,
+    };
     let mut graphql_operation_value = json!({
         "object_kind": "graphql_http_operation",
         "id": "graphql-operation-agent-web-valid",
@@ -65,7 +69,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "document_digest": "abababababababababababababababababababababababababababababababab",
         "variables_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "response_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-        "status_code": 200
+        "status_code": graphql_status_code
     });
     if matches!(case, AgentWebCase::GraphqlErrorsProjectedAsSuccess) {
         graphql_operation_value["response_has_errors"] = serde_json::Value::Bool(true);
@@ -110,6 +114,10 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         mcp_tool_call.clone(),
     );
 
+    let a2a_task_state = match case {
+        AgentWebCase::A2aFailedTaskState => "failed",
+        _ => "completed",
+    };
     let a2a_task = json_bytes(json!({
         "object_kind": "a2a_task",
         "id": "a2a-task-agent-web-valid",
@@ -118,7 +126,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "message_id": "message-a2a-agent-web-001",
         "agent_card_digest": "1313131313131313131313131313131313131313131313131313131313131313",
         "task_input_digest": "2424242424242424242424242424242424242424242424242424242424242424",
-        "task_state": "completed",
+        "task_state": a2a_task_state,
         "task_state_digest": "3535353535353535353535353535353535353535353535353535353535353535",
         "result_digest": "4646464646464646464646464646464646464646464646464646464646464646",
         "authorization_context_digest": "5757575757575757575757575757575757575757575757575757575757575757"
@@ -137,6 +145,10 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         AgentWebCase::OpenApiReceiptRefMismatch => "receipt-agent-web-openapi-other-allow",
         _ => "receipt-agent-web-openapi-operation-allow",
     };
+    let openapi_status_code = match case {
+        AgentWebCase::OpenApiFailedStatus => 500,
+        _ => 201,
+    };
     let openapi_operation = json_bytes(json!({
         "object_kind": "openapi_operation",
         "id": "openapi-operation-agent-web-valid",
@@ -146,7 +158,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "path_template": "/orders",
         "request_digest": "7979797979797979797979797979797979797979797979797979797979797979",
         "response_digest": "8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a",
-        "status_code": 201,
+        "status_code": openapi_status_code,
         "authorization_context_digest": "9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b",
         "chio_operation_receipt_ref": openapi_receipt_ref
     }));
@@ -155,6 +167,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         AgentWebCase::OpenApiProjection
             | AgentWebCase::OpenApiUnsupportedVersion
             | AgentWebCase::OpenApiReceiptRefMismatch
+            | AgentWebCase::OpenApiFailedStatus
     ) {
         push_artifact(
             &mut builder.artifacts,
