@@ -236,7 +236,11 @@ pub(super) fn validate_evidence_export_bundle(
     }
     let export_issued_at =
         parse_rfc3339_utc(&export_bundle.issued_at, "evidence export issued_at")?;
+    let approval_issued_at = parse_rfc3339_utc(&approval.issued_at, "approval issued_at")?;
     let approval_expires_at = parse_rfc3339_utc(&approval.expires_at, "approval expires_at")?;
+    if export_issued_at < approval_issued_at {
+        return Err(claim_failed("approval case issued after export issuance"));
+    }
     if export_issued_at >= approval_expires_at {
         return Err(claim_failed("approval case expired before export issuance"));
     }

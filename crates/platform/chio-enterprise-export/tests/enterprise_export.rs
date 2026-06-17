@@ -1300,6 +1300,35 @@ fn enterprise_export_rejects_approval_expired_before_export_issued() {
 }
 
 #[test]
+fn enterprise_export_rejects_export_issued_before_approval() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    replace_graph_artifact(
+        &mut bundle,
+        "approval-case.json",
+        "approval-case",
+        json!({
+            "schema": "chio.enterprise.approval-case.v1",
+            "id": "approval-case-enterprise-valid",
+            "issued_at": "2026-06-10T00:01:00Z",
+            "passport_id": "passport-enterprise-valid",
+            "risk_comptroller_report_ref": "risk-comptroller-enterprise-valid",
+            "decision": "approved",
+            "decision_subject": "evidence-export",
+            "approvers": ["did:chio:enterprise-reviewer"],
+            "required_quorum": 1,
+            "expires_at": "2026-06-11T00:00:00Z"
+        }),
+    );
+
+    let error =
+        verify_enterprise_export(&bundle).test_expect_err("approval must predate evidence export");
+
+    assert!(error
+        .to_string()
+        .contains("approval case issued after export issuance"));
+}
+
+#[test]
 fn enterprise_export_ignores_non_enterprise_required_claims() {
     let bundle =
         enterprise_bundle_with_required_claim("claim.runtime.security_receipt_totality_bound");
