@@ -67,11 +67,7 @@ pub fn verify_runtime_security_claims(
     ensure_no_advisory_authorization(&graph)?;
 
     let mut verified_claims = Vec::new();
-    if policy
-        .required_claims
-        .iter()
-        .any(|claim| claim == CLAIM_EXECUTION_LEASE_VALID)
-    {
+    if requires_online_runtime_evidence(&policy.required_claims) {
         verify_online_runtime_evidence(bundle, &graph, &mut verified_claims)?;
     }
     if policy
@@ -117,6 +113,19 @@ fn verify_online_runtime_evidence(
     push_claim_once(verified_claims, CLAIM_TOOL_ACK_BOUND);
     push_claim_once(verified_claims, CLAIM_RECEIPT_TOTALITY);
     Ok(())
+}
+
+fn requires_online_runtime_evidence(required_claims: &[String]) -> bool {
+    required_claims.iter().any(|claim| {
+        matches!(
+            claim.as_str(),
+            CLAIM_EXECUTION_LEASE_VALID
+                | CLAIM_NONCE_FRESH
+                | CLAIM_REVOCATION_FRESH
+                | CLAIM_SANDBOX_MATCHED
+                | CLAIM_TOOL_ACK_BOUND
+        )
+    })
 }
 
 fn ensure_required_claims_verified(

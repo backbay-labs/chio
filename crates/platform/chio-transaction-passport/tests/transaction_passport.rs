@@ -74,6 +74,67 @@ fn rebind_runtime_graph(
     bundle.evidence_graph_bytes = graph_bytes;
 }
 
+fn update_runtime_graph_node_digest(
+    bundle: &mut chio_transaction_passport::RuntimeSecurityBundle,
+    artifact_path: &str,
+    digest: &str,
+) {
+    let mut graph: Value =
+        serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("runtime graph parses");
+    let nodes = graph["nodes"]
+        .as_array_mut()
+        .test_expect("runtime graph has nodes");
+    for node in nodes {
+        if node["path"] == artifact_path {
+            node["sha256"] = Value::String(digest.to_string());
+            rebind_runtime_graph(bundle, graph);
+            return;
+        }
+    }
+    panic!("runtime graph node exists for {artifact_path}");
+}
+
+fn update_runtime_policy_required_claims(
+    bundle: &mut chio_transaction_passport::RuntimeSecurityBundle,
+    required_claims: Vec<&str>,
+) {
+    let mut policy: Value =
+        serde_json::from_slice(&bundle.verifier_policy_bytes).test_expect("runtime policy parses");
+    policy["required_claims"] = Value::Array(
+        required_claims
+            .into_iter()
+            .map(|claim| Value::String(claim.to_string()))
+            .collect(),
+    );
+    let policy_bytes = serde_json::to_vec_pretty(&policy).test_expect("runtime policy serializes");
+    let policy_digest = sha256_hex(&policy_bytes);
+    bundle.passport.verifier_policy_sha256 = policy_digest.clone();
+    bundle.verifier_policy_bytes = policy_bytes;
+    update_runtime_graph_node_digest(bundle, "verifier-policy.json", &policy_digest);
+}
+
+fn update_runtime_artifact(
+    bundle: &mut chio_transaction_passport::RuntimeSecurityBundle,
+    artifact_path: &str,
+    update: impl FnOnce(&mut Value),
+) {
+    let artifact_bytes = bundle
+        .artifacts
+        .get(artifact_path)
+        .test_expect("runtime artifact exists")
+        .clone();
+    let mut artifact: Value =
+        serde_json::from_slice(&artifact_bytes).test_expect("runtime artifact parses");
+    update(&mut artifact);
+    let artifact_bytes =
+        serde_json::to_vec_pretty(&artifact).test_expect("runtime artifact serializes");
+    let artifact_digest = sha256_hex(&artifact_bytes);
+    bundle
+        .artifacts
+        .insert(artifact_path.to_string(), artifact_bytes);
+    update_runtime_graph_node_digest(bundle, artifact_path, &artifact_digest);
+}
+
 fn add_unavailable_runtime_receipt_node(
     bundle: &mut chio_transaction_passport::RuntimeSecurityBundle,
 ) {
@@ -589,6 +650,26 @@ fn runtime_receipt_totality_rejects_graph_receipt_without_artifact() {
         error.contains("missing runtime artifact: missing-denial-receipt.json"),
         "{error}"
     );
+}
+
+#[test]
+fn runtime_online_checks_run_for_tool_ack_requirement() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    update_runtime_policy_required_claims(&mut bundle, vec!["claim.runtime.tool_server_ack_bound"]);
+    let policy_digest = bundle.passport.verifier_policy_sha256.clone();
+    update_runtime_artifact(&mut bundle, "execution-lease.json", |lease| {
+        lease["policy_digest"] = Value::String(policy_digest.clone());
+    });
+    update_runtime_artifact(&mut bundle, "allow-receipt.json", |receipt| {
+        receipt["policy_digest"] = Value::String(policy_digest);
+    });
+
+    let report = chio_transaction_passport::verify_runtime_security_claims(&bundle)
+        .test_expect("tool ack claim should run the online runtime verifier");
+
+    assert!(report
+        .verified_claims
+        .contains(&"claim.runtime.tool_server_ack_bound".to_string()));
 }
 
 #[test]
