@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use chio_core::sha256_hex;
+use chio_core::Keypair;
 use chio_test_support::prelude::*;
 use serde_json::{json, Value};
 
@@ -225,7 +226,11 @@ fn add_second_runtime_attempt_without_terminal_receipt(
     )
     .test_expect("revocation parses");
     revocation["proof_id"] = Value::String("revocation-runtime-second".to_string());
-    revocation["signature"] = Value::String("sig-revocation-runtime-second".to_string());
+    let revocation_signing_key = Keypair::from_seed(&[43u8; 32]);
+    revocation["signature"] = Value::String(sign_revocation_freshness(
+        &revocation,
+        &revocation_signing_key,
+    ));
 
     let mut sandbox: Value = serde_json::from_slice(
         bundle
@@ -328,6 +333,25 @@ fn add_second_runtime_attempt_without_terminal_receipt(
             }),
         ]);
     rebind_graph(bundle, graph);
+}
+
+fn sign_revocation_freshness(value: &Value, keypair: &Keypair) -> String {
+    let body = json!({
+        "schema": "chio.runtime.revocation-freshness-proof-signature.v1",
+        "proofId": value["proof_id"],
+        "oracleId": value["oracle_id"],
+        "epochId": value["epoch_id"],
+        "epochRoot": value["epoch_root"],
+        "sequence": value["sequence"],
+        "fetchedAt": value["fetched_at"],
+        "maxStalenessMs": value["max_staleness_ms"],
+        "revokedLeafResult": value["revoked_leaf_result"],
+    });
+    keypair
+        .sign_canonical(&body)
+        .test_expect("revocation proof signs")
+        .0
+        .to_hex()
 }
 
 fn remove_receipt_node(
@@ -588,6 +612,36 @@ fn side_effecting_runtime_claim_rejects_future_revocation_freshness() {
     assert!(error
         .to_string()
         .contains("revocation freshness fetched after lease issuance"));
+}
+
+#[test]
+fn side_effecting_runtime_claim_rejects_tampered_revocation_signature() {
+    let signing_key = Keypair::from_seed(&[43u8; 32]);
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    update_artifact(
+        &mut bundle,
+        "revocation-freshness-proof.json",
+        |freshness| {
+            freshness["oracle_id"] =
+                Value::String(format!("did:chio:{}", signing_key.public_key().to_hex()));
+            freshness["signature"] =
+                Value::String(sign_revocation_freshness(freshness, &signing_key));
+        },
+    );
+    update_artifact(
+        &mut bundle,
+        "revocation-freshness-proof.json",
+        |freshness| {
+            freshness["signature"] = Value::String("00".repeat(64));
+        },
+    );
+
+    let error = chio_control_plane::transaction_passport::verify_runtime_security_claims(&bundle)
+        .test_expect_err("tampered revocation signature must fail");
+
+    assert!(error
+        .to_string()
+        .contains("revocation freshness signature invalid"));
 }
 
 #[test]

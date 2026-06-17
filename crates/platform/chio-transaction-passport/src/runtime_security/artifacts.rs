@@ -1,13 +1,18 @@
 use std::collections::BTreeSet;
 
+use chio_core_types::crypto::{PublicKey, Signature};
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::super::error::TransactionPassportError;
 use super::super::ids::RUNTIME_TOOL_SERVER_ACK_SCHEMA_ID;
 use super::super::validation::validate_sha256_hex;
 use super::evidence::{parse_artifact, RuntimeEvidenceGraph, RuntimeEvidenceRole};
 use super::RuntimeSecurityBundle;
+
+const DID_CHIO_PREFIX: &str = "did:chio:";
+const RUNTIME_REVOCATION_FRESHNESS_PROOF_SIGNATURE_SCHEMA: &str =
+    "chio.runtime.revocation-freshness-proof-signature.v1";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -171,7 +176,81 @@ pub(super) fn validate_revocation_freshness(
             "revocation freshness stale".to_string(),
         ));
     }
+    verify_revocation_freshness_signature(proof)?;
     Ok(())
+}
+
+fn verify_revocation_freshness_signature(
+    proof: &RuntimeRevocationFreshnessProof,
+) -> Result<(), TransactionPassportError> {
+    let public_key = revocation_oracle_public_key(&proof.oracle_id)?;
+    let signature = Signature::from_hex(&proof.signature).map_err(|error| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+            "revocation freshness signature invalid: {error}"
+        ))
+    })?;
+    let verified = public_key
+        .verify_canonical(&revocation_freshness_signature_body(proof), &signature)
+        .map_err(|error| {
+            TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+                "revocation freshness signature invalid: {error}"
+            ))
+        })?;
+    if verified {
+        Ok(())
+    } else {
+        Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "revocation freshness signature invalid".to_string(),
+        ))
+    }
+}
+
+fn revocation_oracle_public_key(oracle_id: &str) -> Result<PublicKey, TransactionPassportError> {
+    let public_key_hex = if let Some(public_key_hex) = oracle_id.strip_prefix(DID_CHIO_PREFIX) {
+        if public_key_hex.len() != 64 || !public_key_hex.bytes().all(is_lower_hex_byte) {
+            return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                "revocation freshness oracle id is not self-certifying".to_string(),
+            ));
+        }
+        public_key_hex
+    } else {
+        oracle_id
+    };
+    PublicKey::from_hex(public_key_hex).map_err(|error| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+            "revocation freshness oracle public key invalid: {error}"
+        ))
+    })
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeRevocationFreshnessSignatureBody<'a> {
+    schema: &'static str,
+    proof_id: &'a str,
+    oracle_id: &'a str,
+    epoch_id: &'a str,
+    epoch_root: &'a str,
+    sequence: u64,
+    fetched_at: &'a str,
+    max_staleness_ms: u64,
+    revoked_leaf_result: bool,
+}
+
+fn revocation_freshness_signature_body(
+    proof: &RuntimeRevocationFreshnessProof,
+) -> RuntimeRevocationFreshnessSignatureBody<'_> {
+    RuntimeRevocationFreshnessSignatureBody {
+        schema: RUNTIME_REVOCATION_FRESHNESS_PROOF_SIGNATURE_SCHEMA,
+        proof_id: &proof.proof_id,
+        oracle_id: &proof.oracle_id,
+        epoch_id: &proof.epoch_id,
+        epoch_root: &proof.epoch_root,
+        sequence: proof.sequence,
+        fetched_at: &proof.fetched_at,
+        max_staleness_ms: proof.max_staleness_ms,
+        revoked_leaf_result: proof.revoked_leaf_result,
+    }
 }
 
 pub(super) fn validate_sandbox_attestation(
@@ -360,6 +439,10 @@ fn is_governed_side_effect_class(side_effect_class: &str) -> bool {
         side_effect_class,
         "network-write" | "filesystem-write" | "process-spawn" | "state-write"
     )
+}
+
+fn is_lower_hex_byte(byte: u8) -> bool {
+    byte.is_ascii_digit() || matches!(byte, b'a'..=b'f')
 }
 
 fn parse_rfc3339_utc(

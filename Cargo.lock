@@ -4519,6 +4519,7 @@ dependencies = [
 name = "chio-transaction-passport"
 version = "0.1.0"
 dependencies = [
+ "chio-core-types",
  "chio-test-support",
  "chrono",
  "hex",

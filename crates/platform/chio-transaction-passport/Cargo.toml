@@ -9,6 +9,7 @@ repository.workspace = true
 publish = false
 
 [dependencies]
+chio-core-types = { workspace = true }
 chrono = { version = "0.4", features = ["clock"] }
 hex = { workspace = true }
 serde = { workspace = true }

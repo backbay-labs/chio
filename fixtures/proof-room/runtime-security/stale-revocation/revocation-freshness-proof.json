@@ -1,1 +1,12 @@
-{"schema":"chio.runtime.revocation-freshness-proof.v1","proof_id":"revocation-runtime-valid","oracle_id":"revocation-oracle-main","epoch_id":"revocation-epoch-42","epoch_root":"3333333333333333333333333333333333333333333333333333333333333333","sequence":42,"fetched_at":"2026-06-09T23:00:00Z","max_staleness_ms":5000,"revoked_leaf_result":false,"signature":"sig-revocation-runtime-valid"}
+{
+  "schema": "chio.runtime.revocation-freshness-proof.v1",
+  "proof_id": "revocation-runtime-valid",
+  "oracle_id": "did:chio:4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff",
+  "epoch_id": "revocation-epoch-42",
+  "epoch_root": "3333333333333333333333333333333333333333333333333333333333333333",
+  "sequence": 42,
+  "fetched_at": "2026-06-09T23:00:00Z",
+  "max_staleness_ms": 5000,
+  "revoked_leaf_result": false,
+  "signature": "1077a74ebec8f692b8cd5c653d8366a0a01e3f7d4128d6fcb601b00764a09db0bb2f26846dbad6174342be6dfb646c94b101a526c95a46b5df6296c60f26ea01"
+}
