@@ -24,6 +24,10 @@ pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
     "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737,",
     "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565"
 );
+pub(crate) const PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS: &str = concat!(
+    "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,",
+    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"
+);
 const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 pub(crate) const PROOF_SERVE_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -37,18 +41,27 @@ pub(crate) fn workspace_root() -> PathBuf {
 }
 
 pub(crate) fn chio(args: &[&str]) -> std::process::Output {
-    std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
-        .env(
-            "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
-            STANDARD_WEBHOOKS_VERIFIER_SECRET,
-        )
-        .env(
-            "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
-            AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
-        )
+    chio_command()
         .args(args)
         .output()
         .test_expect("chio command runs")
+}
+
+pub(crate) fn chio_command() -> std::process::Command {
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_chio"));
+    command.env(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
+        STANDARD_WEBHOOKS_VERIFIER_SECRET,
+    );
+    command.env(
+        "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
+        AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
+    );
+    command.env(
+        "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS",
+        PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
+    );
+    command
 }
 
 pub(crate) fn stdout(output: std::process::Output) -> String {
@@ -180,15 +193,7 @@ pub(crate) fn wait_for_http_response(address: SocketAddr, path: &str) -> String 
 }
 
 pub(crate) fn spawn_proof_serve(bundle: &Path, ui_dir: Option<&Path>) -> RunningProofServe {
-    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_chio"));
-    command.env(
-        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
-        STANDARD_WEBHOOKS_VERIFIER_SECRET,
-    );
-    command.env(
-        "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
-        AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
-    );
+    let mut command = chio_command();
     if let Some(ui_dir) = ui_dir {
         command.env("CHIO_PROOF_ROOM_UI_DIR", ui_dir);
     }

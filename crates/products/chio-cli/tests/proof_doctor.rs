@@ -13,6 +13,10 @@ const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
     "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737,",
     "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565"
 );
+const PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS: &str = concat!(
+    "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,",
+    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"
+);
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -24,15 +28,7 @@ fn workspace_root() -> PathBuf {
 }
 
 fn run_proof_doctor_scenario(root: &Path, scenario: &str) -> std::process::Output {
-    std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
-        .env(
-            "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
-            STANDARD_WEBHOOKS_VERIFIER_SECRET,
-        )
-        .env(
-            "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
-            AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
-        )
+    proof_doctor_command()
         .arg("proof")
         .arg("doctor")
         .arg("--scenario")
@@ -49,15 +45,7 @@ fn run_proof_doctor(root: &Path) -> std::process::Output {
 }
 
 fn run_proof_doctor_default_scenario(root: &Path) -> std::process::Output {
-    std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
-        .env(
-            "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
-            STANDARD_WEBHOOKS_VERIFIER_SECRET,
-        )
-        .env(
-            "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
-            AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
-        )
+    proof_doctor_command()
         .arg("proof")
         .arg("doctor")
         .arg("--root")
@@ -65,6 +53,23 @@ fn run_proof_doctor_default_scenario(root: &Path) -> std::process::Output {
         .arg("--json")
         .output()
         .test_expect("chio proof doctor runs")
+}
+
+fn proof_doctor_command() -> std::process::Command {
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_chio"));
+    command.env(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
+        STANDARD_WEBHOOKS_VERIFIER_SECRET,
+    );
+    command.env(
+        "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
+        AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
+    );
+    command.env(
+        "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS",
+        PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
+    );
+    command
 }
 
 fn copy_dir_all(source: &Path, destination: &Path) -> std::io::Result<()> {

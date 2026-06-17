@@ -11,6 +11,7 @@ pub(crate) fn verify(
     bundle_root: &Path,
     coverage: &[ProofRoomReceiptCoverage],
     artifacts: &[ProofRoomArtifactRef],
+    trusted_kernel_keys: &BTreeSet<String>,
     require_full_matrix: bool,
 ) -> Result<(), String> {
     if coverage.is_empty() {
@@ -36,7 +37,9 @@ pub(crate) fn verify(
             ));
         }
         match entry.status.as_str() {
-            "covered" => verify_covered_category(bundle_root, entry, artifacts)?,
+            "covered" => {
+                verify_covered_category(bundle_root, entry, artifacts, trusted_kernel_keys)?
+            }
             "excluded" => verify_excluded_category(entry)?,
             _ => {
                 return Err(format!(
@@ -63,6 +66,7 @@ fn verify_covered_category(
     bundle_root: &Path,
     entry: &ProofRoomReceiptCoverage,
     artifacts: &[ProofRoomArtifactRef],
+    trusted_kernel_keys: &BTreeSet<String>,
 ) -> Result<(), String> {
     let artifact_path = entry.artifact_path.as_deref().ok_or_else(|| {
         format!(
@@ -124,7 +128,7 @@ fn verify_covered_category(
     let _policy_digest = required_receipt_field(&value, "policy_digest", &entry.category)?;
     let _signature = required_receipt_field(&value, "signature", &entry.category)?;
     let _kernel_key = required_receipt_field(&value, "kernel_key", &entry.category)?;
-    verify_receipt_signature(&entry.category, receipt_id, &value)?;
+    verify_receipt_signature(&entry.category, receipt_id, &value, trusted_kernel_keys)?;
     Ok(())
 }
 
@@ -153,12 +157,18 @@ fn verify_receipt_signature(
     category: &str,
     receipt_id: &str,
     receipt: &serde_json::Value,
+    trusted_kernel_keys: &BTreeSet<String>,
 ) -> Result<(), String> {
     let signature = required_receipt_field(receipt, "signature", category)?;
     let kernel_key = required_receipt_field(receipt, "kernel_key", category)?;
     let public_key = PublicKey::from_hex(kernel_key).map_err(|error| {
         format!("proof-room.receipt-coverage.signature-invalid: {category}: {error}")
     })?;
+    if !trusted_kernel_keys.contains(&public_key.to_hex()) {
+        return Err(format!(
+            "proof-room.receipt-coverage.signer-untrusted: {category}"
+        ));
+    }
     let signature = Signature::from_hex(signature).map_err(|error| {
         format!("proof-room.receipt-coverage.signature-invalid: {category}: {error}")
     })?;

@@ -449,7 +449,7 @@ fn proof_collect_rejects_catalog_negative_fixture_expected_failure_mismatch() {
         workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
     let out_path = tempdir.path().join("collected-commerce-passport");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_command()
         .env("CHIO_PROOF_FIXTURE_ROOT", &installed_root)
         .arg("proof")
         .arg("collect")
@@ -512,7 +512,7 @@ fn proof_collect_rejects_catalog_negative_fixture_failure_prefix() {
         workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
     let out_path = tempdir.path().join("collected-commerce-passport");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_command()
         .env("CHIO_PROOF_FIXTURE_ROOT", &installed_root)
         .arg("proof")
         .arg("collect")

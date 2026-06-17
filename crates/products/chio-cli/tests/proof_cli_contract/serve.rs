@@ -46,7 +46,7 @@ fn proof_serve_dry_run_rejects_configured_static_ui_without_index() {
         .join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
     let bundle = utf8_path(&bundle);
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_command()
         .args([
             "proof",
             "serve",
@@ -68,7 +68,7 @@ fn proof_serve_json_reports_actual_bound_address_for_ephemeral_port() {
     let bundle = workspace_root()
         .join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
     let bundle = utf8_path(&bundle);
-    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let mut child = chio_command()
         .args([
             "proof",
             "serve",

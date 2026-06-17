@@ -130,6 +130,7 @@ COPY --from=dashboard-builder --chown=chio:chio /workspace/crates/products/chio-
 COPY --chown=chio:chio fixtures/proof-room ./fixtures/proof-room
 ENV CHIO_PROOF_ROOM_UI_DIR=/opt/chio/dashboard/dist
 ENV CHIO_PROOF_FIXTURE_ROOT=/opt/chio/fixtures/proof-room
+ENV CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS=31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa
 EXPOSE 7391
 USER chio:chio
 ENTRYPOINT []

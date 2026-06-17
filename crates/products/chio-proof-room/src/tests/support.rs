@@ -19,6 +19,10 @@ pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
     "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737,",
     "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565"
 );
+pub(crate) const PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS: &str = concat!(
+    "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,",
+    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"
+);
 
 pub(crate) fn configure_agent_web_fixture_secret() {
     std::env::set_var(
@@ -28,6 +32,14 @@ pub(crate) fn configure_agent_web_fixture_secret() {
     std::env::set_var(
         "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
         AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
+    );
+    configure_proof_room_fixture_trust();
+}
+
+pub(crate) fn configure_proof_room_fixture_trust() {
+    std::env::set_var(
+        "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS",
+        PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
     );
 }
 
@@ -270,6 +282,7 @@ pub(crate) fn canonical_json_sha256(value: &serde_json::Value) -> Result<String,
 }
 
 pub(crate) fn repo_root() -> Result<std::path::PathBuf, Box<dyn Error>> {
+    configure_proof_room_fixture_trust();
     let mut path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for _ in 0..3 {
         path = path
@@ -499,7 +512,14 @@ pub(crate) fn add_unexpected_field_to_bundle_artifact_and_rehash(
 pub(crate) fn sign_first_run_receipt_projection(
     receipt: &mut serde_json::Value,
 ) -> Result<(), Box<dyn Error>> {
-    let keypair = Keypair::from_seed(&TEST_RECEIPT_SEED);
+    sign_first_run_receipt_projection_with_seed(receipt, TEST_RECEIPT_SEED)
+}
+
+pub(crate) fn sign_first_run_receipt_projection_with_seed(
+    receipt: &mut serde_json::Value,
+    seed: [u8; 32],
+) -> Result<(), Box<dyn Error>> {
+    let keypair = Keypair::from_seed(&seed);
     receipt["kernel_key"] = serde_json::Value::String(keypair.public_key().to_hex());
     let mut signed_body = receipt.clone();
     signed_body

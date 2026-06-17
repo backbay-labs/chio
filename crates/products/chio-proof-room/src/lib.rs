@@ -126,6 +126,8 @@ const CLAIM_PREFIX_TRANSACTION: &str = "claim.transaction.";
 const CLAIM_PREFIX_MARKET: &str = "claim.market.";
 const AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV: &str = "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET";
 const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS";
+const PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV: &str =
+    "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS";
 const SOURCE_VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_RUNTIME,
     CLAIM_PREFIX_RISK,
@@ -187,6 +189,43 @@ fn parse_agent_web_trusted_kernel_keys(
             chio_core_types::PublicKey::from_hex(key).map_err(|error| {
                 format!("{AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV} contains invalid public key: {error}")
             })
+        })
+        .collect()
+}
+
+pub(crate) fn proof_room_trusted_receipt_kernel_keys_from_env() -> Result<BTreeSet<String>, String>
+{
+    match env::var(PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV) {
+        Ok(keys) => parse_proof_room_trusted_receipt_kernel_keys(&keys),
+        Err(env::VarError::NotPresent) => Ok(BTreeSet::new()),
+        Err(env::VarError::NotUnicode(_)) => Err(format!(
+            "{PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV} must be valid UTF-8"
+        )),
+    }
+}
+
+fn parse_proof_room_trusted_receipt_kernel_keys(keys: &str) -> Result<BTreeSet<String>, String> {
+    if keys.trim().is_empty() {
+        return Err(format!(
+            "{PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV} must contain comma-separated public keys"
+        ));
+    }
+
+    keys.split(',')
+        .map(|key| {
+            let key = key.trim();
+            if key.is_empty() {
+                return Err(format!(
+                    "{PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV} must not contain empty public keys"
+                ));
+            }
+            chio_core_types::PublicKey::from_hex(key)
+                .map(|key| key.to_hex())
+                .map_err(|error| {
+                    format!(
+                        "{PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV} contains invalid public key: {error}"
+                    )
+                })
         })
         .collect()
 }

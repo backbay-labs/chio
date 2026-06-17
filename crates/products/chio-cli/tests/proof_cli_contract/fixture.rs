@@ -280,7 +280,7 @@ fn proof_fixture_generate_keeps_commerce_stage_available_with_installed_fixture_
     let fixture_root = workspace_root().join("fixtures/proof-room");
     let out_path = tempdir.path().join("commerce-transaction-passport");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_command()
         .env("CHIO_PROOF_FIXTURE_ROOT", &fixture_root)
         .arg("proof")
         .arg("fixture")
@@ -776,7 +776,7 @@ fn proof_fixture_generate_uses_installed_fixture_root() {
     .test_expect("write installed marker");
     let out_path = tempdir.path().join("generated-minimal-passport");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_command()
         .env("CHIO_PROOF_FIXTURE_ROOT", &installed_root)
         .arg("proof")
         .arg("fixture")
@@ -814,7 +814,7 @@ fn proof_fixture_list_uses_installed_fixture_catalog() {
     )
     .test_expect("write installed fixture catalog");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_command()
         .env("CHIO_PROOF_FIXTURE_ROOT", &installed_root)
         .arg("proof")
         .arg("fixture")
@@ -847,7 +847,7 @@ fn proof_fixture_list_rejects_configured_fixture_root_without_catalog() {
     let installed_root = tempdir.path().join("installed-proof-room");
     std::fs::create_dir_all(&installed_root).test_expect("create installed fixture root");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_command()
         .env("CHIO_PROOF_FIXTURE_ROOT", &installed_root)
         .arg("proof")
         .arg("fixture")
@@ -884,7 +884,7 @@ fn proof_fixture_generate_uses_installed_fixture_catalog() {
     .test_expect("write installed fixture catalog");
     let out_path = tempdir.path().join("generated-minimal-passport");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_command()
         .env("CHIO_PROOF_FIXTURE_ROOT", &installed_root)
         .arg("proof")
         .arg("fixture")
@@ -943,7 +943,7 @@ fn proof_fixture_generate_rejects_negative_fixture_expected_failure_mismatch() {
     .test_expect("write installed fixture catalog");
     let out_path = tempdir.path().join("generated-policy-digest-mismatch");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_command()
         .env("CHIO_PROOF_FIXTURE_ROOT", &installed_root)
         .arg("proof")
         .arg("fixture")
@@ -1003,7 +1003,7 @@ fn proof_fixture_generate_rejects_negative_fixture_failure_prefix() {
     .test_expect("write installed fixture catalog");
     let out_path = tempdir.path().join("generated-commerce-mismatch");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_command()
         .env("CHIO_PROOF_FIXTURE_ROOT", &installed_root)
         .arg("proof")
         .arg("fixture")
@@ -1048,7 +1048,7 @@ fn proof_fixture_generate_rejects_installed_catalog_path_escape() {
     .test_expect("write installed fixture catalog");
     let out_path = tempdir.path().join("generated-escaped-fixture");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_command()
         .env("CHIO_PROOF_FIXTURE_ROOT", &installed_root)
         .arg("proof")
         .arg("fixture")

@@ -6,6 +6,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+const PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS: &str = concat!(
+    "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,",
+    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"
+);
+
 #[test]
 fn proof_room_help_succeeds() -> Result<(), Box<dyn Error>> {
     let output = Command::new(env!("CARGO_BIN_EXE_chio-proof-room"))
@@ -37,6 +42,10 @@ fn proof_room_verify_only_writes_doctor_report() -> Result<(), Box<dyn Error>> {
         .join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
 
     let output = Command::new(env!("CARGO_BIN_EXE_chio-proof-room"))
+        .env(
+            "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS",
+            PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
+        )
         .args([
             "--bundle",
             path_str(&bundle)?,

@@ -75,10 +75,12 @@ pub(crate) fn verify_proof_room_bundle_inner_with_options(
         &manifest.claims,
         CLAIM_PROOF_ROOM_RECEIPT_COVERAGE_MATRIX_BOUND,
     );
+    let trusted_receipt_kernel_keys = proof_room_trusted_receipt_kernel_keys_from_env()?;
     receipt_coverage::verify(
         bundle_root,
         &manifest.receipt_coverage,
         &manifest.artifacts,
+        &trusted_receipt_kernel_keys,
         requires_first_run_claims || has_receipt_matrix_claim,
     )?;
     if verify_manifest_negative_cases {

@@ -331,6 +331,42 @@ fn rejects_first_run_receipt_body_forgery_with_rehashed_artifact() -> Result<(),
 }
 
 #[test]
+fn rejects_first_run_receipt_signed_by_untrusted_kernel_key() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let receipt_path = work.path().join("artifacts/receipts/allow-receipt.json");
+    let mut receipt: serde_json::Value = serde_json::from_slice(&fs::read(&receipt_path)?)?;
+    sign_first_run_receipt_projection_with_seed(&mut receipt, [31; 32])?;
+    fs::write(&receipt_path, json_bytes(&receipt)?)?;
+    let receipt_sha256 = sha256_file(&receipt_path)?;
+    update_evidence_graph_node_hash(
+        work.path(),
+        "artifacts/receipts/allow-receipt.json",
+        &receipt_sha256,
+    )?;
+    refresh_source_roots_and_manifest(
+        work.path(),
+        Some(("artifacts/receipts/allow-receipt.json", receipt_sha256)),
+    )?;
+
+    let manifest_path = work.path().join("manifest.json");
+    let error = verify_proof_room_bundle(&manifest_path)
+        .err()
+        .ok_or("receipt signed by untrusted kernel key unexpectedly verified")?;
+
+    assert!(
+        error
+            .to_string()
+            .contains("proof-room.receipt-coverage.signer-untrusted: runtime_terminal_allow"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn rejects_first_run_receipt_projection_with_unexpected_field() -> Result<(), Box<dyn Error>> {
     let root = repo_root()?;
     let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
