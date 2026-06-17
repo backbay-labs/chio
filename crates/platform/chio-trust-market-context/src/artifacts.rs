@@ -454,6 +454,11 @@ pub(super) fn validate_selection(
             "selected provider absent from discovery snapshot",
         ));
     }
+    ensure_timestamp_at_or_after(
+        &selection.issued_at,
+        &discovery.issued_at,
+        "selection predates discovery snapshot",
+    )?;
     if scorecard.subject != selection.selected_provider_subject {
         return Err(claim_failed("selection scorecard subject mismatch"));
     }

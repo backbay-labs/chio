@@ -21,6 +21,7 @@ enum TrustMarketCase {
     Valid,
     SelectedProviderAbsent,
     StaleDiscovery,
+    SelectionPredatesDiscovery,
     AmbiguousTopRank,
     LowerRankOverrideReceiptUnbound,
     SelectionRankingMissingAvailableCandidate,
@@ -678,6 +679,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
     };
     let selection_issued_at = match case {
         TrustMarketCase::ScorecardStaleAtSelection => "2026-06-10T02:00:00Z",
+        TrustMarketCase::SelectionPredatesDiscovery => "2026-06-09T23:59:00Z",
         _ => "2026-06-10T00:00:00Z",
     };
     let ranking_results = match case {
@@ -986,6 +988,18 @@ fn trust_market_rejects_stale_discovery_snapshot() {
         .test_expect_err("stale discovery fails");
 
     assert!(error.to_string().contains("discovery snapshot is stale"));
+}
+
+#[test]
+fn trust_market_rejects_selection_before_discovery_snapshot() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::SelectionPredatesDiscovery,
+    ))
+    .test_expect_err("selection must not predate discovery");
+
+    assert!(error
+        .to_string()
+        .contains("selection predates discovery snapshot"));
 }
 
 #[test]
