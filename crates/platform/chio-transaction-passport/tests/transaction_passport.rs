@@ -556,6 +556,31 @@ fn standalone_minimal_passport_accepts_governed_action_evidence() {
 }
 
 #[test]
+fn standalone_minimal_passport_rejects_unregistered_transaction_claim() {
+    let mut artifacts = governed_action_artifacts();
+    let verifier_policy_bytes = br#"{"schema":"chio.transaction.verifier-policy.v1","id":"verifier-policy-minimal-invalid-claim","issued_at":"2026-06-10T00:00:00Z","required_claims":["claim.transaction.not_real"],"omitted_claims":[]}"#.to_vec();
+    artifacts.insert(
+        "verifier-policy.json".to_string(),
+        verifier_policy_bytes.clone(),
+    );
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let passport = passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
+
+    let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &artifacts,
+    )
+    .test_expect_err("standalone minimal passport must reject unregistered transaction claim");
+
+    assert!(error.to_string().contains(
+        "standalone transaction verifier cannot satisfy required claim: claim.transaction.not_real"
+    ));
+}
+
+#[test]
 fn standalone_minimal_passport_rejects_governed_action_mismatch() {
     let mut artifacts = governed_action_artifacts();
     artifacts.insert(

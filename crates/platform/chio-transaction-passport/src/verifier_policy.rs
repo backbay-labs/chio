@@ -6,6 +6,12 @@ use super::error::TransactionPassportError;
 use super::ids::TRANSACTION_VERIFIER_POLICY_SCHEMA_ID;
 use super::validation::require_non_empty;
 
+const STANDALONE_TRANSACTION_REQUIRED_CLAIMS: &[&str] = &[
+    "claim.transaction.passport_root_verified",
+    "claim.transaction.evidence_graph_digest_bound",
+    "claim.transaction.policy_digest_bound",
+];
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct TransactionVerifierPolicy {
@@ -62,7 +68,7 @@ pub(super) fn validate_standalone_transaction_claims(
     policy: &TransactionVerifierPolicy,
 ) -> Result<(), TransactionPassportError> {
     for claim in &policy.required_claims {
-        if !claim.starts_with("claim.transaction.") {
+        if !STANDALONE_TRANSACTION_REQUIRED_CLAIMS.contains(&claim.as_str()) {
             return Err(TransactionPassportError::InvalidVerifierPolicyArtifact(
                 format!("standalone transaction verifier cannot satisfy required claim: {claim}"),
             ));
