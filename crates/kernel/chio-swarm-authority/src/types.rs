@@ -148,11 +148,19 @@ pub struct SwarmJoinReceipt {
     pub schema: String,
     pub join_id: String,
     pub graph_id: String,
+    pub parent_task_receipts: Vec<SwarmJoinParentReceipt>,
     pub expected_parent_receipt_ids: Vec<String>,
     pub actual_parent_receipt_ids: Vec<String>,
     pub join_predicate: String,
     pub result_digest: String,
     pub next_task_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SwarmJoinParentReceipt {
+    pub task_id: String,
+    pub receipt_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

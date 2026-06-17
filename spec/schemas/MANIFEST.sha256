@@ -279,7 +279,7 @@ c73d2c7deaad7a657cf9948f77ab0baedbae2499a0a6561a01f9d95e344005ea  spec/schemas/c
 7bc3cb2865d160eb3543b6ff5e92f8174544acd4c577d6a6bf43973057c5cbf1  spec/schemas/chio-swarm/v1/budget-pool.schema.json
 e5e4c4b8fc40aabb9a15e3d4fe4d86d433a145f1726126696be2fa2a9a6766f9  spec/schemas/chio-swarm/v1/continuation-token.schema.json
 55edb44e9f1a3c7089e939d03bb34b3da7a700ccb69bab89a5737a3edf77887a  spec/schemas/chio-swarm/v1/delegation-witness-chain.schema.json
-8139af59e5829a597095c78376bb2ecfa03a3953962492949608412e54d1a6f3  spec/schemas/chio-swarm/v1/join-receipt.schema.json
+348bb222917f5ddae626133da13d5949b1b7e59859a0e6c7eb49ccd0caf05dd6  spec/schemas/chio-swarm/v1/join-receipt.schema.json
 2b240b4bebc6b06a1dcd71358d4030789c7afc2553ac216956157358d8f6fb9e  spec/schemas/chio-swarm/v1/revocation-epoch.schema.json
 9edea964a2f774808237294455229352fc04ceebf4fbef242cfcb1ec16501951  spec/schemas/chio-swarm/v1/route-plan-receipt.schema.json
 74d5341c00c85649a51a97d5c606896a7c43901c531576e1fae477b29db3abaf  spec/schemas/chio-swarm/v1/task-graph.schema.json

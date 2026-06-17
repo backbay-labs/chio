@@ -6,9 +6,9 @@ pub use error::SwarmAuthorityError;
 pub use types::{
     SwarmAuthorityBundle, SwarmAuthorityVerifierReport, SwarmBudgetAllocation, SwarmBudgetPool,
     SwarmContinuationMode, SwarmContinuationToken, SwarmDelegationWitnessChain,
-    SwarmDelegationWitnessHop, SwarmGraphEdge, SwarmGraphJoin, SwarmGraphNode, SwarmJoinReceipt,
-    SwarmRevocationEpoch, SwarmRoutePlanReceipt, SwarmTaskGraph,
-    CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA, CHIO_SWARM_BUDGET_POOL_SCHEMA,
+    SwarmDelegationWitnessHop, SwarmGraphEdge, SwarmGraphJoin, SwarmGraphNode,
+    SwarmJoinParentReceipt, SwarmJoinReceipt, SwarmRevocationEpoch, SwarmRoutePlanReceipt,
+    SwarmTaskGraph, CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA, CHIO_SWARM_BUDGET_POOL_SCHEMA,
     CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA, CHIO_SWARM_DELEGATION_WITNESS_CHAIN_SCHEMA,
     CHIO_SWARM_JOIN_RECEIPT_SCHEMA, CHIO_SWARM_REVOCATION_EPOCH_SCHEMA,
     CHIO_SWARM_ROUTE_PLAN_RECEIPT_SCHEMA, CHIO_SWARM_TASK_GRAPH_SCHEMA,

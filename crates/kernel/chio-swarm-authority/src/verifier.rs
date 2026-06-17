@@ -8,8 +8,8 @@ use serde::Serialize;
 
 use super::types::{
     SwarmAuthorityBundle, SwarmAuthorityVerifierReport, SwarmBudgetAllocation,
-    SwarmContinuationToken, SwarmDelegationWitnessChain, SwarmGraphEdge, SwarmGraphNode,
-    SwarmJoinReceipt, SwarmRoutePlanReceipt, SwarmTaskGraph,
+    SwarmContinuationToken, SwarmDelegationWitnessChain, SwarmGraphEdge, SwarmGraphJoin,
+    SwarmGraphNode, SwarmJoinReceipt, SwarmRoutePlanReceipt, SwarmTaskGraph,
     CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA, CHIO_SWARM_BUDGET_POOL_SCHEMA,
     CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA, CHIO_SWARM_DELEGATION_WITNESS_CHAIN_SCHEMA,
     CHIO_SWARM_JOIN_RECEIPT_SCHEMA, CHIO_SWARM_REVOCATION_EPOCH_SCHEMA,
@@ -531,6 +531,7 @@ fn validate_join_receipts<'a>(
                 receipt.join_id
             )));
         }
+        validate_join_parent_task_receipts(receipt, graph_join)?;
         if receipts.insert(receipt.join_id.as_str(), receipt).is_some() {
             return Err(rejected(format!(
                 "duplicate swarm join receipt: {}",
@@ -544,6 +545,47 @@ fn validate_join_receipts<'a>(
         }
     }
     Ok(receipts)
+}
+
+fn validate_join_parent_task_receipts(
+    receipt: &SwarmJoinReceipt,
+    graph_join: &SwarmGraphJoin,
+) -> Result<(), SwarmAuthorityError> {
+    if receipt.parent_task_receipts.len() != graph_join.parent_task_ids.len() {
+        return Err(rejected(format!(
+            "swarm join receipt parent task receipts mismatch: {}",
+            receipt.join_id
+        )));
+    }
+
+    let mut task_ids = Vec::with_capacity(receipt.parent_task_receipts.len());
+    let mut receipt_ids = Vec::with_capacity(receipt.parent_task_receipts.len());
+    for (index, parent) in receipt.parent_task_receipts.iter().enumerate() {
+        require_non_empty(&parent.task_id, "swarm join parent task receipt task")?;
+        require_non_empty(&parent.receipt_id, "swarm join parent task receipt receipt")?;
+        if parent.task_id != graph_join.parent_task_ids[index]
+            || parent.receipt_id != receipt.expected_parent_receipt_ids[index]
+            || parent.receipt_id != receipt.actual_parent_receipt_ids[index]
+        {
+            return Err(rejected(format!(
+                "swarm join receipt parent task receipts mismatch: {}",
+                receipt.join_id
+            )));
+        }
+        task_ids.push(parent.task_id.clone());
+        receipt_ids.push(parent.receipt_id.clone());
+    }
+    require_unique_strings(&task_ids, "swarm join parent task receipt task")?;
+    require_unique_strings(&receipt_ids, "swarm join parent task receipt receipt")?;
+    if sorted_strings(&task_ids) != sorted_strings(&graph_join.parent_task_ids)
+        || sorted_strings(&receipt_ids) != sorted_strings(&receipt.actual_parent_receipt_ids)
+    {
+        return Err(rejected(format!(
+            "swarm join receipt parent task receipts mismatch: {}",
+            receipt.join_id
+        )));
+    }
+    Ok(())
 }
 
 fn validate_join_receipt_schema(

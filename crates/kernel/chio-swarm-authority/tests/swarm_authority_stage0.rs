@@ -7,13 +7,13 @@ use chio_swarm_authority::{
     sign_swarm_delegation_witness_hop, verify_swarm_authority_bundle, SwarmAuthorityBundle,
     SwarmBudgetAllocation, SwarmBudgetPool, SwarmContinuationMode, SwarmContinuationToken,
     SwarmDelegationWitnessChain, SwarmDelegationWitnessHop, SwarmGraphEdge, SwarmGraphJoin,
-    SwarmGraphNode, SwarmJoinReceipt, SwarmRevocationEpoch, SwarmRoutePlanReceipt, SwarmTaskGraph,
-    CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA, CHIO_SWARM_BUDGET_POOL_SCHEMA,
-    CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA, CHIO_SWARM_DELEGATION_WITNESS_CHAIN_SCHEMA,
-    CHIO_SWARM_JOIN_RECEIPT_SCHEMA, CHIO_SWARM_REVOCATION_EPOCH_SCHEMA,
-    CHIO_SWARM_ROUTE_PLAN_RECEIPT_SCHEMA, CHIO_SWARM_TASK_GRAPH_SCHEMA,
-    CLAIM_SWARM_ATTENUATION_WITNESS_CHAIN_BOUND, CLAIM_SWARM_BUDGET_POOL_BOUND,
-    CLAIM_SWARM_CONTINUATION_FRESH, CLAIM_SWARM_JOIN_RECEIPT_BOUND,
+    SwarmGraphNode, SwarmJoinParentReceipt, SwarmJoinReceipt, SwarmRevocationEpoch,
+    SwarmRoutePlanReceipt, SwarmTaskGraph, CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA,
+    CHIO_SWARM_BUDGET_POOL_SCHEMA, CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA,
+    CHIO_SWARM_DELEGATION_WITNESS_CHAIN_SCHEMA, CHIO_SWARM_JOIN_RECEIPT_SCHEMA,
+    CHIO_SWARM_REVOCATION_EPOCH_SCHEMA, CHIO_SWARM_ROUTE_PLAN_RECEIPT_SCHEMA,
+    CHIO_SWARM_TASK_GRAPH_SCHEMA, CLAIM_SWARM_ATTENUATION_WITNESS_CHAIN_BOUND,
+    CLAIM_SWARM_BUDGET_POOL_BOUND, CLAIM_SWARM_CONTINUATION_FRESH, CLAIM_SWARM_JOIN_RECEIPT_BOUND,
     CLAIM_SWARM_REVOCATION_EPOCH_BOUND, CLAIM_SWARM_ROUTE_PLAN_BOUND, CLAIM_SWARM_TASK_GRAPH_BOUND,
 };
 
@@ -414,6 +414,38 @@ fn swarm_authority_stage0_rejects_join_parent_set_mismatch() -> Result<(), Box<d
 }
 
 #[test]
+fn swarm_authority_stage0_rejects_join_parent_task_receipt_mapping_mismatch(
+) -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.join_receipts[0].parent_task_receipts[0].receipt_id = "receipt-unrelated".to_string();
+
+    let error = match verify_swarm_authority_bundle(&bundle) {
+        Ok(report) => panic!("join parent task receipt mismatch verified: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("swarm join receipt parent task receipts mismatch"));
+    Ok(())
+}
+
+#[test]
+fn swarm_authority_stage0_rejects_join_parent_task_receipt_swapped_mapping(
+) -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.join_receipts[0].parent_task_receipts.swap(0, 1);
+
+    let error = match verify_swarm_authority_bundle(&bundle) {
+        Ok(report) => panic!("join parent task receipt swapped mapping verified: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("swarm join receipt parent task receipts mismatch"));
+    Ok(())
+}
+
+#[test]
 fn swarm_authority_stage0_rejects_single_parent_join() -> Result<(), Box<dyn Error>> {
     let mut bundle = sample_swarm_bundle()?;
     bundle.task_graph.joins[0].parent_task_ids.pop();
@@ -647,6 +679,16 @@ fn sample_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
             schema: CHIO_SWARM_JOIN_RECEIPT_SCHEMA.to_string(),
             join_id: "join-child-results".to_string(),
             graph_id: "swarm-graph-proof-valid".to_string(),
+            parent_task_receipts: vec![
+                SwarmJoinParentReceipt {
+                    task_id: "task-child-a".to_string(),
+                    receipt_id: "receipt-child-a".to_string(),
+                },
+                SwarmJoinParentReceipt {
+                    task_id: "task-child-b".to_string(),
+                    receipt_id: "receipt-child-b".to_string(),
+                },
+            ],
             expected_parent_receipt_ids: vec![
                 "receipt-child-a".to_string(),
                 "receipt-child-b".to_string(),
