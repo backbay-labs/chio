@@ -1,7 +1,15 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chio_transaction_passport::TransactionPassportError;
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 
 use super::super::evidence::validate_sha256_hex;
 use super::{claim_failed, required_json_str};
+
+type HmacSha256 = Hmac<Sha256>;
+
+const STANDARD_WEBHOOKS_VERIFIER_SECRET: &[u8] =
+    b"chio-agent-web-standard-webhooks-fixture-secret-v1";
 
 pub(super) fn validate_subject(
     value: &serde_json::Value,
@@ -37,15 +45,49 @@ pub(super) fn validate_subject(
     if webhook_signature != envelope_signature_ref {
         return Err(claim_failed("external signature mismatch"));
     }
+    verify_signature_ref(
+        webhook_signature,
+        webhook_id,
+        webhook_timestamp,
+        body_digest,
+        endpoint_url_digest,
+    )?;
     Ok(())
 }
 
-fn validate_signature_ref(signature_ref: &str) -> Result<(), TransactionPassportError> {
+fn validate_signature_ref(signature_ref: &str) -> Result<Vec<u8>, TransactionPassportError> {
     let Some((version, signature)) = signature_ref.split_once(',') else {
         return Err(claim_failed("invalid Standard Webhooks signature"));
     };
     if version != "v1" || signature.is_empty() || signature.chars().any(char::is_whitespace) {
         return Err(claim_failed("invalid Standard Webhooks signature"));
     }
-    Ok(())
+    let signature = STANDARD
+        .decode(signature)
+        .map_err(|_| claim_failed("invalid Standard Webhooks signature"))?;
+    if signature.len() != 32 {
+        return Err(claim_failed("invalid Standard Webhooks signature"));
+    }
+    Ok(signature)
+}
+
+fn verify_signature_ref(
+    signature_ref: &str,
+    webhook_id: &str,
+    webhook_timestamp: &str,
+    body_digest: &str,
+    endpoint_url_digest: &str,
+) -> Result<(), TransactionPassportError> {
+    let signature = validate_signature_ref(signature_ref)?;
+    let mut mac = HmacSha256::new_from_slice(STANDARD_WEBHOOKS_VERIFIER_SECRET)
+        .map_err(|_| claim_failed("invalid Standard Webhooks signature"))?;
+    mac.update(webhook_id.as_bytes());
+    mac.update(b".");
+    mac.update(webhook_timestamp.as_bytes());
+    mac.update(b".");
+    mac.update(body_digest.as_bytes());
+    mac.update(b".");
+    mac.update(endpoint_url_digest.as_bytes());
+    mac.verify_slice(&signature)
+        .map_err(|_| claim_failed("invalid Standard Webhooks signature"))
 }

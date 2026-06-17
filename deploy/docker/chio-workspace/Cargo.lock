@@ -2369,13 +2369,16 @@ dependencies = [
 name = "chio-agent-web-interop"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chio-commerce-order",
  "chio-core-types",
  "chio-test-support",
  "chio-transaction-passport",
+ "hmac 0.12.1",
  "jsonschema",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]

@@ -3,8 +3,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chio_test_support::prelude::*;
+use hmac::{Hmac, Mac};
 use serde_json::{json, Value};
+use sha2::Sha256;
 
 use chio_agent_web_interop::AgentWebInteropBundle;
 use chio_core_types::{
@@ -88,6 +91,19 @@ pub(crate) const UNSUPPORTED_AP2_AUTHORITY_CLAIM: &str =
     "claim.external.ap2_mandate_is_chio_authority";
 pub(crate) const UNSUPPORTED_X402_AUTHORITY_CLAIM: &str =
     "claim.external.x402_payment_is_chio_authority";
+pub(crate) const STANDARD_WEBHOOKS_WEBHOOK_ID: &str = "msg_agent_web_001";
+pub(crate) const STANDARD_WEBHOOKS_TIMESTAMP: &str = "1770508800";
+pub(crate) const STANDARD_WEBHOOKS_ENDPOINT_URL_DIGEST: &str =
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+pub(crate) const STANDARD_WEBHOOKS_BODY_DIGEST: &str =
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+type HmacSha256 = Hmac<Sha256>;
+
+const STANDARD_WEBHOOKS_VERIFIER_SECRET: &[u8] =
+    b"chio-agent-web-standard-webhooks-fixture-secret-v1";
+const FORGED_STANDARD_WEBHOOKS_SIGNATURE_REF: &str =
+    "v1,Zm9yZ2VkLXN0YW5kYXJkLXdlYmhvb2tzLXNpZ25hdHVyZQ==";
 
 pub(crate) fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -96,6 +112,34 @@ pub(crate) fn workspace_root() -> PathBuf {
         .and_then(|crates_dir| crates_dir.parent())
         .test_expect("workspace root is parent of crates/platform/chio-agent-web-interop")
         .to_path_buf()
+}
+
+pub(crate) fn standard_webhooks_timestamp_for_case(case: AgentWebCase) -> &'static str {
+    match case {
+        AgentWebCase::MissingWebhookTimestamp => "",
+        _ => STANDARD_WEBHOOKS_TIMESTAMP,
+    }
+}
+
+pub(crate) fn standard_webhooks_signature_ref_for_case(case: AgentWebCase) -> String {
+    match case {
+        AgentWebCase::MalformedWebhookSignature => "standard-webhooks-signature".to_string(),
+        AgentWebCase::ForgedWebhookSignature => FORGED_STANDARD_WEBHOOKS_SIGNATURE_REF.to_string(),
+        _ => standard_webhooks_signature_ref(standard_webhooks_timestamp_for_case(case)),
+    }
+}
+
+fn standard_webhooks_signature_ref(webhook_timestamp: &str) -> String {
+    let mut mac = HmacSha256::new_from_slice(STANDARD_WEBHOOKS_VERIFIER_SECRET)
+        .test_expect("Standard Webhooks test secret initializes HMAC");
+    mac.update(STANDARD_WEBHOOKS_WEBHOOK_ID.as_bytes());
+    mac.update(b".");
+    mac.update(webhook_timestamp.as_bytes());
+    mac.update(b".");
+    mac.update(STANDARD_WEBHOOKS_BODY_DIGEST.as_bytes());
+    mac.update(b".");
+    mac.update(STANDARD_WEBHOOKS_ENDPOINT_URL_DIGEST.as_bytes());
+    format!("v1,{}", STANDARD.encode(mac.finalize().into_bytes()))
 }
 
 pub(crate) fn read_workspace_json(relative_path: &str) -> Value {
@@ -155,6 +199,7 @@ pub(crate) enum AgentWebCase {
     SidecarClaimMarkedNative,
     MissingRequiredSignature,
     MalformedWebhookSignature,
+    ForgedWebhookSignature,
     MissingWebhookTimestamp,
     CloudEventsAuthorityClaimNotLimited,
     CloudEventsSpecVersionMismatch,

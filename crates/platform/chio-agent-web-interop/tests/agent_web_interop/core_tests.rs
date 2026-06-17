@@ -310,6 +310,18 @@ fn agent_web_interop_rejects_malformed_webhook_signature() {
 }
 
 #[test]
+fn agent_web_interop_rejects_forged_webhook_signature() {
+    let bundle = agent_web_bundle(AgentWebCase::ForgedWebhookSignature);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Standard Webhooks signature must verify against the delivery fields");
+
+    assert!(error
+        .to_string()
+        .contains("invalid Standard Webhooks signature"));
+}
+
+#[test]
 fn agent_web_interop_rejects_missing_webhook_timestamp() {
     let bundle = agent_web_bundle(AgentWebCase::MissingWebhookTimestamp);
 

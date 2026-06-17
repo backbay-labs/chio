@@ -56,9 +56,11 @@ chio-workflow-preflight = { path = "crates/platform/chio-workflow-preflight" }
 chio-test-support = { path = "crates/tooling/chio-test-support" }
 chio-underwriting = { path = "crates/economy/chio-underwriting" }
 chio-web3 = { path = "crates/economy/chio-web3" }
+base64 = "0.22"
 chrono = "0.4"
 fips204 = { version = "0.4.6", default-features = false, features = ["ml-dsa-65"] }
 hex = "0.4"
+hmac = "0.12"
 jsonschema = { version = "0.46", default-features = false, features = ["resolve-file"] }
 proptest = "1.10"
 serde = { version = "1", features = ["derive"] }

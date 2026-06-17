@@ -3567,7 +3567,7 @@ describe('App operator paths', () => {
       external_subject: 'webhook-delivery-agent-web-valid',
       external_subject_path: 'external/webhook-delivery.json',
       external_subject_digest: '0cee872f0435ed63db5f54256fdbeef885effba8dd43e5f82bb0ab870e2f8c71',
-      external_subject_signature_ref: 'v1,standard-webhooks-signature',
+      external_subject_signature_ref: 'v1,5L5d/oR9uJZiOH43WGkTL7Q5Leb+QXd6x9VeYHmLzS4=',
       projection_manifest_ref: 'projection-standard-webhooks-valid',
       chio_claim_refs: [
         'claim.agent_web.external_subject_digest_bound',

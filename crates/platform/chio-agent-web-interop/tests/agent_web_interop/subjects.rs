@@ -4,25 +4,19 @@ use serde_json::json;
 
 pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder) {
     let case = builder.case;
-    let webhook_timestamp = match case {
-        AgentWebCase::MissingWebhookTimestamp => "",
-        _ => "1770508800",
-    };
-    let webhook_signature = match case {
-        AgentWebCase::MalformedWebhookSignature => "standard-webhooks-signature",
-        _ => "v1,standard-webhooks-signature",
-    };
+    let webhook_timestamp = standard_webhooks_timestamp_for_case(case);
+    let webhook_signature = standard_webhooks_signature_ref_for_case(case);
     let webhook_delivery = json_bytes(json!({
         "object_kind": "standard_webhooks_delivery",
         "id": "webhook-delivery-agent-web-valid",
-        "webhook_id": "msg_agent_web_001",
+        "webhook_id": STANDARD_WEBHOOKS_WEBHOOK_ID,
         "webhook_timestamp": webhook_timestamp,
         "webhook_signature": webhook_signature,
         "event_type": "order.created",
         "tenant_id": "tenant-backbay",
-        "endpoint_url_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "endpoint_url_digest": STANDARD_WEBHOOKS_ENDPOINT_URL_DIGEST,
         "method": "POST",
-        "body_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "body_digest": STANDARD_WEBHOOKS_BODY_DIGEST,
         "signature_ref": "sig-standard-webhooks-valid"
     }));
     push_artifact(

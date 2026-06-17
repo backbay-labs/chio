@@ -77,9 +77,8 @@ pub(crate) fn add_core_projection_manifests(builder: &mut AgentWebBundleBuilder)
         _ => chio_core_types::sha256_hex(&webhook_delivery),
     };
     let webhook_signature_ref = match case {
-        AgentWebCase::MissingRequiredSignature => "",
-        AgentWebCase::MalformedWebhookSignature => "standard-webhooks-signature",
-        _ => "v1,standard-webhooks-signature",
+        AgentWebCase::MissingRequiredSignature => String::new(),
+        _ => standard_webhooks_signature_ref_for_case(case),
     };
     let webhook_claim_refs = match case {
         AgentWebCase::MissingRequiredSidecarClaim => vec![
