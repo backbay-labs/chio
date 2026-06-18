@@ -130,6 +130,34 @@ fn proof_collect_binds_bundle_signature_to_manifest_trust_roots() {
 }
 
 #[test]
+fn proof_collect_requires_configured_bundle_signer() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let artifact_dir = workspace_root().join("fixtures/proof-room/minimal-passport/valid");
+    let out_path = tempdir.path().join("collected-passport");
+    let mut command = chio_command();
+    let output = command
+        .env_remove("CHIO_PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX")
+        .args([
+            "proof",
+            "collect",
+            "--kind",
+            "transaction-passport",
+            "--artifact-dir",
+            utf8_path(&artifact_dir).as_str(),
+            "--out",
+            utf8_path(&out_path).as_str(),
+        ])
+        .output()
+        .test_expect("proof collect runs");
+
+    assert_failure(
+        &output,
+        "proof collect requires CHIO_PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX",
+    );
+    assert!(!out_path.join("bundle-signature.dsse.json").exists());
+}
+
+#[test]
 fn proof_collect_ioa_web3_outputs_verifiable_commerce_settlement_bundle() {
     let (tempdir, artifact_dir) = build_commerce_settlement_passport_bundle();
     let out_path = tempdir.path().join("collected-ioa-web3");

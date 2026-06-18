@@ -16,6 +16,8 @@ pub(crate) const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str =
 pub(crate) const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
 pub(crate) const COLLECT_SIGNATURE_SEED: [u8; 32] = [11; 32];
 pub(crate) const PUBLIC_EXPORT_SIGNATURE_SEED: [u8; 32] = [13; 32];
+const COLLECT_SIGNATURE_SEED_HEX: &str =
+    "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b";
 const PUBLIC_EXPORT_SIGNATURE_SEED_HEX: &str =
     "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d";
 pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
@@ -79,6 +81,10 @@ pub(crate) fn chio_command() -> std::process::Command {
     command.env(
         "CHIO_PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS",
         proof_room_fixture_trusted_bundle_signer_keys(),
+    );
+    command.env(
+        "CHIO_PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX",
+        COLLECT_SIGNATURE_SEED_HEX,
     );
     command.env(
         "CHIO_PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX",

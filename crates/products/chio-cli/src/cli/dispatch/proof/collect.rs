@@ -6,9 +6,10 @@ const PROOF_ROOM_VERIFIER_REPORT_SCHEMA: &str = "chio.proof-room.verifier-report
 const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str = "application/vnd.chio.proof-room.bundle.v1+json";
 const PROOF_ROOM_TRUST_ROOTS_PATH: &str = "artifacts/authority/trust-roots.json";
 const PROOF_ROOM_TRUST_ROOTS_SCHEMA: &str = "chio.proof.first-run.trust-roots.v1";
+const PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX_ENV: &str =
+    "CHIO_PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX";
 const CHIO_RECEIPT_SCHEMA: &str = "chio.receipt.v1";
 const RUNTIME_TERMINAL_RECEIPT_SCHEMA: &str = "chio.runtime.terminal-receipt.v1";
-const COLLECT_SIGNATURE_SEED: [u8; 32] = [11; 32];
 const REPORT_HASH_MISMATCH_NEGATIVE_ID: &str = "report-hash-mismatch";
 const REPORT_HASH_MISMATCH_NEGATIVE_PATH: &str = "negatives/report-hash-mismatch.json";
 const REPORT_HASH_MISMATCH_FAILURE_CODE: &str = "proof-room.report.hash-mismatch";
@@ -156,6 +157,7 @@ fn write_collected_proof_room_bundle(
     kind: ProofCollectKind,
     public_fixture_id: Option<&str>,
 ) -> Result<(), CliError> {
+    let keypair = proof_collect_bundle_signer_from_env()?;
     fs::create_dir_all(bundle.join("roots"))?;
     fs::create_dir_all(bundle.join("ui/proof-room-static"))?;
     for artifact in [
@@ -205,7 +207,7 @@ fn write_collected_proof_room_bundle(
         &bundle.join("ui/proof-room-static/load-report.json"),
         &ui_report,
     )?;
-    write_collected_trust_roots(bundle, passport_id)?;
+    write_collected_trust_roots(bundle, passport_id, &keypair)?;
     write_collected_bundle_readme(bundle, &fixture_id, &source_command, verdict)?;
 
     let artifacts = collected_manifest_artifacts(bundle, &evidence_graph, &receipt_coverage)?;
@@ -245,7 +247,7 @@ fn write_collected_proof_room_bundle(
         }
     });
     write_json_line_file(&bundle.join("manifest.json"), &manifest)?;
-    write_bundle_signature(bundle)
+    write_bundle_signature(bundle, &keypair)
 }
 
 fn write_collected_bundle_readme(
@@ -1018,9 +1020,8 @@ fn required_report_string<'a>(
         .ok_or_else(|| CliError::cli_other_error(format!("proof collect report missing {field}")))
 }
 
-fn write_bundle_signature(bundle: &Path) -> Result<(), CliError> {
+fn write_bundle_signature(bundle: &Path, keypair: &chio_core::Keypair) -> Result<(), CliError> {
     let manifest_bytes = fs::read(bundle.join("manifest.json"))?;
-    let keypair = collected_bundle_keypair();
     let signed_payload = dsse_pre_auth_encoding(PROOF_ROOM_DSSE_PAYLOAD_TYPE, &manifest_bytes);
     let signature = serde_json::json!({
         "payloadType": PROOF_ROOM_DSSE_PAYLOAD_TYPE,
@@ -1039,12 +1040,35 @@ fn write_bundle_signature(bundle: &Path) -> Result<(), CliError> {
     write_json_line_file(&bundle.join("bundle-signature.dsse.json"), &signature)
 }
 
-fn collected_bundle_keypair() -> chio_core::Keypair {
-    chio_core::Keypair::from_seed(&COLLECT_SIGNATURE_SEED)
+fn proof_collect_bundle_signer_from_env() -> Result<chio_core::Keypair, CliError> {
+    match std::env::var(PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX_ENV) {
+        Ok(seed_hex) => {
+            let seed_hex = seed_hex.trim();
+            if seed_hex.is_empty() {
+                return Err(CliError::cli_other_error(format!(
+                    "{PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX_ENV} must contain a 32-byte hex seed"
+                )));
+            }
+            chio_core::Keypair::from_seed_hex(seed_hex).map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "{PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX_ENV} is invalid: {error}"
+                ))
+            })
+        }
+        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
+            "proof collect requires {PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX_ENV} to sign the collected bundle manifest"
+        ))),
+        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
+            "{PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX_ENV} must be valid UTF-8"
+        ))),
+    }
 }
 
-fn write_collected_trust_roots(bundle: &Path, passport_id: &str) -> Result<(), CliError> {
-    let keypair = collected_bundle_keypair();
+fn write_collected_trust_roots(
+    bundle: &Path,
+    passport_id: &str,
+    keypair: &chio_core::Keypair,
+) -> Result<(), CliError> {
     let public_key = keypair.public_key().to_hex();
     let mut trust_roots = serde_json::json!({
         "schema": PROOF_ROOM_TRUST_ROOTS_SCHEMA,
