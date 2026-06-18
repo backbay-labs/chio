@@ -2,7 +2,7 @@
   "schema": "chio.transaction-passport.v1",
   "id": "passport-trust-market-valid",
   "issued_at": "2026-06-10T00:00:00Z",
-  "evidence_graph_sha256": "be69c077641464259dfe31c47700d7ec7a451d5d4c39f8e2b7f2e7aa3fb55520",
+  "evidence_graph_sha256": "b8a76332963f6cf6ff27c7783d43e2a252163bcd4711aabd20df4ab40c5fe42c",
   "evidence_graph_path": "evidence-graph.json",
   "verifier_policy_sha256": "c60f7977f24fde2152a36237485796dc6d5efcfdfb2de0cecee712f4ffaa3c5c",
   "verifier_policy_path": "verifier-policy.json"

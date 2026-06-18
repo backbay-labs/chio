@@ -207,15 +207,6 @@ fn risk_evidence_schema_matches_kind(schema: &str, kind: RiskEvidenceRefKind) ->
     }
 }
 
-pub(super) fn parse_artifact<T: for<'de> Deserialize<'de>>(
-    bundle: &TrustMarketBundle,
-    node: &TrustMarketEvidenceNode,
-    expected_schema: &str,
-) -> Result<T, TransactionPassportError> {
-    parse_artifact_value(bundle, node, expected_schema)
-        .and_then(|value| parse_artifact_from_value(node, value))
-}
-
 pub(super) fn parse_signed_artifact<T: for<'de> Deserialize<'de>>(
     bundle: &TrustMarketBundle,
     node: &TrustMarketEvidenceNode,

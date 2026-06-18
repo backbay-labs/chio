@@ -29,6 +29,7 @@
     "subject": { "type": "string", "minLength": 1 },
     "verdict": { "enum": ["verified", "rejected"] },
     "risk_state": { "type": "string", "minLength": 1 },
+    "signature": { "type": "string", "minLength": 1 },
     "facility": {
       "type": "object",
       "additionalProperties": false,

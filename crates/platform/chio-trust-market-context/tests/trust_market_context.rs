@@ -49,6 +49,7 @@ enum TrustMarketCase {
     SlashAuthorityOutsideJurisdiction,
     RequiredUnsupportedMarketClaim,
     RiskReportRefUnbound,
+    RiskComptrollerReportUnsigned,
     RiskDoubleConsumedReserve,
     RiskOpenAppealReserveRelease,
     RiskFacilityLifecycleReplayGap,
@@ -567,7 +568,11 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
                 json!("unsigned-risk-authority");
         }
     }
-    let risk_report = json_bytes(risk_report_value);
+    let risk_report = if matches!(case, TrustMarketCase::RiskComptrollerReportUnsigned) {
+        json_bytes(risk_report_value)
+    } else {
+        signed_market_artifact_bytes(risk_report_value)
+    };
     push_artifact(
         &mut artifacts,
         &mut graph_nodes,
@@ -1340,6 +1345,18 @@ fn trust_market_rejects_unbound_risk_report_ref() {
     assert!(error
         .to_string()
         .contains("selection risk report ref mismatch"));
+}
+
+#[test]
+fn trust_market_rejects_unsigned_risk_comptroller_report() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::RiskComptrollerReportUnsigned,
+    ))
+    .test_expect_err("risk comptroller report must be signed by a trusted market key");
+
+    assert!(error
+        .to_string()
+        .contains("trust-market artifact signature invalid"));
 }
 
 #[test]

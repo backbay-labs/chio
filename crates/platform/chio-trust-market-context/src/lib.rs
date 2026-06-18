@@ -26,8 +26,8 @@ use claims::{
     CLAIM_UNSUPPORTED_MARKET_LIMITED,
 };
 use evidence::{
-    bundle_contains_risk_evidence_kind, bundle_contains_verified_receipt_node_id, parse_artifact,
-    parse_graph, parse_signed_artifact, require_node, TrustMarketEvidenceRole,
+    bundle_contains_risk_evidence_kind, bundle_contains_verified_receipt_node_id, parse_graph,
+    parse_signed_artifact, require_node, TrustMarketEvidenceRole,
 };
 use policy::parse_policy;
 
@@ -118,10 +118,11 @@ pub fn verify_trust_market_context(
         "chio.commerce.sla-performance-report.v1",
         &policy.trusted_market_authority_keys,
     )?;
-    let risk_report: RiskComptrollerReport = parse_artifact(
+    let risk_report: RiskComptrollerReport = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::RiskComptrollerReport)?,
         "chio.risk.comptroller-report.v1",
+        &policy.trusted_market_authority_keys,
     )?;
     let collateral: CollateralPositionReport = parse_signed_artifact(
         bundle,

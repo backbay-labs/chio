@@ -42,7 +42,7 @@
       "id": "risk-comptroller-report",
       "schema": "chio.risk.comptroller-report.v1",
       "path": "risk-comptroller-report.json",
-      "sha256": "438f7ace62fdd053655b708c095264ef2f8918784b144e58325a24386daa5e13",
+      "sha256": "07c68a559cdca8150201bcf235e8b149f4fbef1790ddd5e9afef2890227856b9",
       "role": "risk-comptroller-report"
     },
     {

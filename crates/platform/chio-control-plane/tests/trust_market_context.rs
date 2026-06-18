@@ -509,7 +509,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         }
         risk_report_value["facility_lifecycle"] = json!(facility_lifecycle);
     }
-    let risk_report = json_bytes(risk_report_value);
+    let risk_report = signed_market_artifact_bytes(risk_report_value);
     push_artifact(
         &mut artifacts,
         &mut graph_nodes,

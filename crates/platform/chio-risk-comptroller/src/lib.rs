@@ -22,6 +22,8 @@ pub struct RiskComptrollerReport {
     pub subject: String,
     verdict: String,
     risk_state: String,
+    #[serde(default)]
+    pub signature: String,
     facility: RiskFacilityState,
     #[serde(default)]
     facility_lifecycle: Vec<RiskFacilityTransition>,
