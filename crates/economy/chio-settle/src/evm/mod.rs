@@ -291,7 +291,10 @@ mod tests {
                     .to_string(),
                 instruction_id: instruction_id.to_string(),
                 issued_at: 1_743_292_800,
-                query: CapitalBookQuery::default(),
+                query: CapitalBookQuery {
+                    agent_subject: Some("subject-1".to_string()),
+                    ..CapitalBookQuery::default()
+                },
                 subject_key: "subject-1".to_string(),
                 source_id: "capital-source:facility:facility-1".to_string(),
                 source_kind: CapitalBookSourceKind::FacilityCommitment,
@@ -706,7 +709,7 @@ mod tests {
             &dispatch,
             "exec-failed".to_string(),
             "settlement-ref".to_string(),
-            "tx-failed".to_string(),
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
             "node rejected tx".to_string(),
         )
         .test_unwrap();
@@ -720,7 +723,7 @@ mod tests {
             &dispatch,
             "exec-reversed".to_string(),
             "settlement-ref".to_string(),
-            "tx-reverse".to_string(),
+            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
             dispatch.settlement_amount.clone(),
             "exec-failed".to_string(),
             true,

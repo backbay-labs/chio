@@ -1001,10 +1001,10 @@ mod tests {
             &config,
             ExecutionProjectionInput {
                 dispatch: &dispatch,
-                tx_hash: "0xdeadbeef",
+                tx_hash: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
                 execution_receipt_id: "exec-1".to_string(),
                 settlement_reference: "settlement-1".to_string(),
-                observed_at: Some(1_700_004_000),
+                observed_at: Some(1_743_292_900),
                 observed_amount: dispatch.settlement_amount.clone(),
                 anchor_proof: None,
                 oracle_evidence: None,
@@ -1082,10 +1082,10 @@ mod tests {
             &config,
             ExecutionProjectionInput {
                 dispatch: &dispatch,
-                tx_hash: "0xfeedbeef",
+                tx_hash: "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
                 execution_receipt_id: "exec-2".to_string(),
                 settlement_reference: "settlement-2".to_string(),
-                observed_at: Some(1_700_001_000),
+                observed_at: Some(1_743_292_900),
                 observed_amount: chio_core::capability::scope::MonetaryAmount {
                     units: dispatch.settlement_amount.units / 2,
                     currency: dispatch.settlement_amount.currency.clone(),
