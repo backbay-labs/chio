@@ -1082,7 +1082,7 @@ fn write_collected_trust_roots(
             }
         ]
     });
-    sign_collected_json_artifact(&mut trust_roots, &keypair)?;
+    sign_collected_json_artifact(&mut trust_roots, keypair)?;
     let path = bundle.join(PROOF_ROOM_TRUST_ROOTS_PATH);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;

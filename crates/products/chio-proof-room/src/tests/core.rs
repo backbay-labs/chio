@@ -1,5 +1,6 @@
 use super::support::*;
 use super::*;
+use std::path::Path;
 
 #[test]
 fn source_runtime_parity_rejects_tampered_proof_regeneration_report() -> Result<(), Box<dyn Error>>
@@ -1057,6 +1058,73 @@ async fn quickstart_router_serves_referenced_bundle_assets() -> Result<(), Box<d
 }
 
 #[tokio::test]
+async fn quickstart_router_verifies_uploaded_bundle() -> Result<(), Box<dyn Error>> {
+    let bundle =
+        repo_root()?.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let ui = tempfile::tempdir()?;
+    fs::write(
+        ui.path().join("index.html"),
+        "<!doctype html><main>Proof Room</main>",
+    )?;
+    let router = proof_room_router(bundle.clone(), ui.path().to_path_buf());
+    let (body, content_type) = multipart_bundle_body(&bundle, None)?;
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/proof-room/upload/verify")
+                .header(CONTENT_TYPE, content_type)
+                .body(Body::from(body))?,
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024).await?;
+    let body: serde_json::Value = serde_json::from_slice(&body)?;
+    assert_eq!(body["schema"], "chio.proof-room.upload-verification.v1");
+    assert_eq!(body["verdict"], "verified");
+    assert_eq!(body["bundle_id"], "proof-room-single-call-authority");
+    Ok(())
+}
+
+#[tokio::test]
+async fn quickstart_router_rejects_uploaded_bundle_path_escape() -> Result<(), Box<dyn Error>> {
+    let bundle =
+        repo_root()?.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let ui = tempfile::tempdir()?;
+    fs::write(
+        ui.path().join("index.html"),
+        "<!doctype html><main>Proof Room</main>",
+    )?;
+    let router = proof_room_router(bundle.clone(), ui.path().to_path_buf());
+    let (body, content_type) = multipart_bundle_body(&bundle, Some(("../manifest.json", b"{}")))?;
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/proof-room/upload/verify")
+                .header(CONTENT_TYPE, content_type)
+                .body(Body::from(body))?,
+        )
+        .await?;
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = to_bytes(response.into_body(), 1024 * 1024).await?;
+    let body: serde_json::Value = serde_json::from_slice(&body)?;
+    assert_eq!(body["schema"], "chio.proof-room.upload-verification.v1");
+    assert_eq!(body["verdict"], "failed");
+    assert!(
+        body["error"]
+            .as_str()
+            .is_some_and(|error| error.contains("proof-room.artifact.unsafe-path")),
+        "{body}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn quickstart_router_does_not_host_unmanifested_bundle_files() -> Result<(), Box<dyn Error>> {
     let source =
         repo_root()?.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
@@ -1088,4 +1156,53 @@ async fn quickstart_router_does_not_host_unmanifested_bundle_files() -> Result<(
     let body = String::from_utf8(body.to_vec())?;
     assert!(!body.contains("debug-notes.v1"));
     Ok(())
+}
+
+fn multipart_bundle_body(
+    bundle: &Path,
+    extra: Option<(&str, &[u8])>,
+) -> Result<(Vec<u8>, String), Box<dyn Error>> {
+    const BOUNDARY: &str = "chio-proof-room-upload-boundary";
+
+    let mut body = Vec::new();
+    append_multipart_bundle_files(bundle, bundle, BOUNDARY, &mut body)?;
+    if let Some((path, contents)) = extra {
+        append_multipart_part(BOUNDARY, path, contents, &mut body);
+    }
+    body.extend_from_slice(format!("--{BOUNDARY}--\r\n").as_bytes());
+    Ok((body, format!("multipart/form-data; boundary={BOUNDARY}")))
+}
+
+fn append_multipart_bundle_files(
+    root: &Path,
+    dir: &Path,
+    boundary: &str,
+    body: &mut Vec<u8>,
+) -> Result<(), Box<dyn Error>> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            append_multipart_bundle_files(root, &path, boundary, body)?;
+        } else if path.is_file() {
+            let relative = path
+                .strip_prefix(root)?
+                .to_string_lossy()
+                .replace('\\', "/");
+            let contents = fs::read(&path)?;
+            append_multipart_part(boundary, &relative, &contents, body);
+        }
+    }
+    Ok(())
+}
+
+fn append_multipart_part(boundary: &str, path: &str, contents: &[u8], body: &mut Vec<u8>) {
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(
+        format!("Content-Disposition: form-data; name=\"file\"; filename=\"{path}\"\r\n")
+            .as_bytes(),
+    );
+    body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
+    body.extend_from_slice(contents);
+    body.extend_from_slice(b"\r\n");
 }

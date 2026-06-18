@@ -6,10 +6,10 @@ use std::{
 };
 
 use axum::{
-    extract::{OriginalUri, Path as AxumPath, State},
+    extract::{DefaultBodyLimit, Multipart, OriginalUri, Path as AxumPath, State},
     http::{header::CONTENT_TYPE, StatusCode},
     response::{IntoResponse, Redirect, Response},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use tower_http::services::{ServeDir, ServeFile};
@@ -106,6 +106,10 @@ pub fn proof_room_router_with_optional_ui_root(
     let router = Router::new()
         .route("/", get(proof_room_view_redirect))
         .route(
+            "/proof-room/upload/verify",
+            post(proof_room_upload_verify).layer(DefaultBodyLimit::max(32 * 1024 * 1024)),
+        )
+        .route(
             "/proof-room-fixture-catalog.json",
             get(proof_room_fixture_catalog_response),
         )
@@ -137,6 +141,159 @@ pub fn proof_room_router_with_optional_ui_root(
 
 async fn proof_room_view_redirect() -> Redirect {
     Redirect::temporary("/proof-room?view=proof-room")
+}
+
+async fn proof_room_upload_verify(multipart: Multipart) -> Response {
+    match verify_uploaded_proof_room_bundle(multipart).await {
+        Ok(bundle_id) => proof_room_upload_verification_response(
+            StatusCode::OK,
+            "verified",
+            None,
+            Some(bundle_id),
+        ),
+        Err((status, error)) => {
+            proof_room_upload_verification_response(status, "failed", Some(error), None)
+        }
+    }
+}
+
+async fn verify_uploaded_proof_room_bundle(
+    multipart: Multipart,
+) -> Result<String, (StatusCode, String)> {
+    let upload = UploadedProofRoomBundle::create().map_err(upload_io_error)?;
+    write_uploaded_proof_room_bundle(multipart, upload.path()).await?;
+    let manifest_path = upload.path().join("manifest.json");
+    super::verify_proof_room_bundle(&manifest_path)
+        .map_err(|error| (StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))?;
+    uploaded_bundle_id(&manifest_path).map_err(upload_io_error)
+}
+
+async fn write_uploaded_proof_room_bundle(
+    mut multipart: Multipart,
+    root: &Path,
+) -> Result<(), (StatusCode, String)> {
+    let mut file_count = 0usize;
+    let mut paths = BTreeSet::new();
+    while let Some(field) = multipart.next_field().await.map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("proof-room.upload.multipart: {error}"),
+        )
+    })? {
+        let relative_path = uploaded_part_path(&field)?;
+        super::validate_bundle_relative_path(&relative_path)
+            .map_err(|error| (StatusCode::BAD_REQUEST, error))?;
+        if !paths.insert(relative_path.clone()) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!("proof-room.upload.duplicate-path: {relative_path}"),
+            ));
+        }
+        let bytes = field.bytes().await.map_err(|error| {
+            (
+                StatusCode::BAD_REQUEST,
+                format!("proof-room.upload.part: {error}"),
+            )
+        })?;
+        let destination = root.join(&relative_path);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).map_err(upload_io_error)?;
+        }
+        fs::write(destination, &bytes).map_err(upload_io_error)?;
+        file_count += 1;
+    }
+    if file_count == 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "proof-room.upload.empty".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn uploaded_part_path(
+    field: &axum::extract::multipart::Field<'_>,
+) -> Result<String, (StatusCode, String)> {
+    field
+        .file_name()
+        .or_else(|| field.name())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "proof-room.upload.path-missing".to_string(),
+            )
+        })
+}
+
+fn uploaded_bundle_id(manifest_path: &Path) -> Result<String, std::io::Error> {
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(manifest_path)?).map_err(std::io::Error::other)?;
+    Ok(manifest
+        .get("bundle_id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("unknown")
+        .to_string())
+}
+
+fn proof_room_upload_verification_response(
+    status: StatusCode,
+    verdict: &str,
+    error: Option<String>,
+    bundle_id: Option<String>,
+) -> Response {
+    let mut body = serde_json::json!({
+        "schema": "chio.proof-room.upload-verification.v1",
+        "verdict": verdict,
+    });
+    if let Some(error) = error {
+        body["error"] = serde_json::Value::String(error);
+    }
+    if let Some(bundle_id) = bundle_id {
+        body["bundle_id"] = serde_json::Value::String(bundle_id);
+    }
+    (
+        status,
+        [(CONTENT_TYPE, "application/json")],
+        body.to_string(),
+    )
+        .into_response()
+}
+
+fn upload_io_error(error: std::io::Error) -> (StatusCode, String) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        format!("proof-room.upload.io: {error}"),
+    )
+}
+
+struct UploadedProofRoomBundle {
+    path: PathBuf,
+}
+
+impl UploadedProofRoomBundle {
+    fn create() -> Result<Self, std::io::Error> {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(std::io::Error::other)?
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "chio-proof-room-upload-{}-{timestamp}",
+            std::process::id()
+        ));
+        fs::create_dir(&path)?;
+        Ok(Self { path })
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for UploadedProofRoomBundle {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
 }
 
 async fn proof_room_trusted_bundle_signers_response() -> Response {
