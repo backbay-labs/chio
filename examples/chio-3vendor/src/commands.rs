@@ -64,6 +64,7 @@ enum Command {
     WriteAuthorityInputDir { dir: PathBuf },
     WriteAuthorityInputForPackage { package: PathBuf, dir: PathBuf },
     WritePheromoneOutDir { dir: PathBuf },
+    WritePheromoneForPackage { package: PathBuf, dir: PathBuf },
 }
 
 impl Command {
@@ -99,6 +100,12 @@ impl Command {
             [_, flag, dir] if flag == "--pheromone-out-dir" => Ok(Self::WritePheromoneOutDir {
                 dir: PathBuf::from(dir),
             }),
+            [_, flag, package, dir] if flag == "--pheromone-package" => {
+                Ok(Self::WritePheromoneForPackage {
+                    package: PathBuf::from(package),
+                    dir: PathBuf::from(dir),
+                })
+            }
             _ => Err(ChioPackageError::Json(usage(&argv0))),
         }
     }
@@ -155,13 +162,19 @@ fn execute_command(command: Command) -> Result<(), ChioPackageError> {
             let package = fresh_proof_package()?;
             write_pheromone_fixtures(&package, &dir)?;
         }
+        Command::WritePheromoneForPackage { package, dir } => {
+            let package_json = fs::read_to_string(package)
+                .map_err(|error| ChioPackageError::Json(error.to_string()))?;
+            let package = proof_package_from_json(&package_json)?;
+            write_pheromone_fixtures(&package, &dir)?;
+        }
     }
     Ok(())
 }
 
 fn usage(argv0: &str) -> String {
     format!(
-        "usage: {argv0} [--report|--out-dir DIR|--signed-negative-dir DIR|--authority-input-dir DIR|--authority-input-package PACKAGE DIR|--pheromone-out-dir DIR|--sign-transit-policy BODY OUT]"
+        "usage: {argv0} [--report|--out-dir DIR|--signed-negative-dir DIR|--authority-input-dir DIR|--authority-input-package PACKAGE DIR|--pheromone-out-dir DIR|--pheromone-package PACKAGE DIR|--sign-transit-policy BODY OUT]"
     )
 }
 

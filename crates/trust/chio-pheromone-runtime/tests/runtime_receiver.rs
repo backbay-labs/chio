@@ -520,7 +520,7 @@ fn receiver_accepts_fixture_and_persists_report() {
 
     let report = receiver.receive_batch(&load_batch(), &policy).unwrap();
 
-    assert!(report.accepted);
+    assert!(report.accepted, "{report:#?}");
     assert_eq!(report.batch_outcome, PheromoneBatchOutcome::Accepted);
     assert_eq!(report.accepted_frame_count, 1);
     assert_eq!(report.rejected_frame_count, 0);
