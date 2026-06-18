@@ -21,6 +21,8 @@ pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
 );
 pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS: &str =
     "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737";
+pub(crate) const SWARM_FIXTURE_TRUSTED_WITNESS_KEYS: &str =
+    "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de";
 pub(crate) const PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS: &str = concat!(
     "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,",
     "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"
@@ -66,6 +68,10 @@ pub(crate) fn configure_proof_room_fixture_trust() {
         TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS,
     );
     std::env::set_var(
+        "CHIO_SWARM_TRUSTED_WITNESS_KEYS",
+        SWARM_FIXTURE_TRUSTED_WITNESS_KEYS,
+    );
+    std::env::set_var(
         "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS",
         TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS,
     );
@@ -76,6 +82,13 @@ pub(crate) fn proof_room_fixture_trusted_bundle_signer_keys() -> String {
         .public_key()
         .to_hex();
     format!("{PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS},{test_bundle_signer}")
+}
+
+pub(crate) fn swarm_fixture_trusted_witness_keys(
+) -> Result<Vec<chio_core_types::PublicKey>, Box<dyn Error>> {
+    Ok(vec![chio_core_types::PublicKey::from_hex(
+        SWARM_FIXTURE_TRUSTED_WITNESS_KEYS,
+    )?])
 }
 
 pub(crate) fn proof_room_router(

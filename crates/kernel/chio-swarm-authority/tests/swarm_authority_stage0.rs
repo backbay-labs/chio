@@ -2,7 +2,7 @@ use std::error::Error;
 
 use chio_core_types::capability::attenuation::{compute_attenuation_witness, scope_hash};
 use chio_core_types::capability::scope::{ChioScope, Operation, ToolGrant};
-use chio_core_types::crypto::{canonical_json_bytes, sha256_hex, Keypair};
+use chio_core_types::crypto::{canonical_json_bytes, sha256_hex, Keypair, PublicKey};
 use chio_swarm_authority::{
     sign_swarm_delegation_witness_hop, verify_swarm_authority_bundle, SwarmAuthorityBundle,
     SwarmBudgetAllocation, SwarmBudgetPool, SwarmContinuationMode, SwarmContinuationToken,
@@ -22,7 +22,7 @@ const NOW_UNIX_MS: u64 = 1_800_000_001_000;
 #[test]
 fn swarm_authority_stage0_verifies_valid_bundle() -> Result<(), Box<dyn Error>> {
     let bundle = sample_swarm_bundle()?;
-    let report = verify_swarm_authority_bundle(&bundle)?;
+    let report = verify_swarm_authority_bundle(&bundle, &trusted_witness_keys())?;
 
     assert_eq!(report.schema, CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA);
     assert_eq!(report.verdict, "verified");
@@ -56,10 +56,24 @@ fn swarm_authority_stage0_verifies_valid_bundle() -> Result<(), Box<dyn Error>> 
 }
 
 #[test]
+fn swarm_authority_stage0_rejects_unpinned_witness_issuer() -> Result<(), Box<dyn Error>> {
+    let bundle = sample_swarm_bundle()?;
+    let error = match verify_swarm_authority_bundle(&bundle, &[]) {
+        Ok(report) => panic!("unpinned swarm witness verified unexpectedly: {report:#?}"),
+        Err(error) => error,
+    };
+
+    assert!(error
+        .to_string()
+        .contains("trusted swarm witness keys missing"));
+    Ok(())
+}
+
+#[test]
 fn swarm_authority_stage0_omits_delegation_claims_without_delegation_evidence(
 ) -> Result<(), Box<dyn Error>> {
     let bundle = root_only_swarm_bundle()?;
-    let report = verify_swarm_authority_bundle(&bundle)?;
+    let report = verify_swarm_authority_bundle(&bundle, &[])?;
 
     assert!(report
         .verified_claims
@@ -94,7 +108,7 @@ fn swarm_authority_stage0_rejects_graph_cycle() -> Result<(), Box<dyn Error>> {
         edge_type: "delegates".to_string(),
     });
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("cyclic swarm task graph verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -123,7 +137,7 @@ fn swarm_authority_stage0_rejects_edge_depth_bypass() -> Result<(), Box<dyn Erro
     )?;
     refresh_continuation_graph_digests(&mut bundle)?;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("understated swarm graph depth verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -137,7 +151,7 @@ fn swarm_authority_stage0_rejects_non_root_task_without_parent() -> Result<(), B
     bundle.task_graph.nodes[1].parent_task_id = None;
     refresh_continuation_graph_digests(&mut bundle)?;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("non-root task without parent verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -152,7 +166,7 @@ fn swarm_authority_stage0_rejects_stale_continuation() -> Result<(), Box<dyn Err
     let mut bundle = sample_swarm_bundle()?;
     bundle.continuation_tokens[0].expires_at_unix_ms = NOW_UNIX_MS - 1;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("stale continuation verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -167,7 +181,7 @@ fn swarm_authority_stage0_rejects_future_continuation() -> Result<(), Box<dyn Er
     let mut bundle = sample_swarm_bundle()?;
     bundle.continuation_tokens[0].issued_at_unix_ms = NOW_UNIX_MS + 1_000;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("future continuation verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -182,7 +196,7 @@ fn swarm_authority_stage0_rejects_replayed_continuation_nonce() -> Result<(), Bo
     let mut bundle = sample_swarm_bundle()?;
     bundle.continuation_tokens[1].nonce = bundle.continuation_tokens[0].nonce.clone();
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("replayed continuation nonce verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -227,7 +241,7 @@ fn swarm_authority_stage0_rejects_join_continuation_parent_receipt_mismatch(
     });
     refresh_continuation_graph_digests(&mut bundle)?;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("join continuation parent receipt mismatch verified: {report:#?}"),
         Err(error) => error,
     };
@@ -246,7 +260,7 @@ fn swarm_authority_stage0_rejects_continuation_route_ref_mismatch() -> Result<()
     bundle.task_graph.nodes[1].route_plan_ref = Some("route-child-b".to_string());
     refresh_continuation_graph_digests(&mut bundle)?;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("route ref mismatch verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -262,7 +276,7 @@ fn swarm_authority_stage0_rejects_child_without_continuation_ref() -> Result<(),
     bundle.task_graph.nodes[1].continuation_token_ref = None;
     refresh_continuation_graph_digests(&mut bundle)?;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("child without continuation ref verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -278,7 +292,7 @@ fn swarm_authority_stage0_rejects_continuation_budget_ref_mismatch() -> Result<(
     bundle.task_graph.nodes[1].budget_allocation_ref = Some("budget-child-b".to_string());
     refresh_continuation_graph_digests(&mut bundle)?;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("budget ref mismatch verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -293,7 +307,7 @@ fn swarm_authority_stage0_rejects_witness_child_scope_mismatch() -> Result<(), B
     let mut bundle = sample_swarm_bundle()?;
     bundle.witness_chains[0].hops[0].child_scope_hash = sha256_hex(b"wrong-child-scope");
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("witness mismatch verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -308,7 +322,7 @@ fn swarm_authority_stage0_rejects_tampered_witness_signature() -> Result<(), Box
     let mut bundle = sample_swarm_bundle()?;
     bundle.witness_chains[0].hops[0].witness_signature = "sig-tampered-witness-child-a".to_string();
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("tampered witness signature verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -356,7 +370,7 @@ fn swarm_authority_stage0_rejects_disconnected_witness_hops() -> Result<(), Box<
     ];
     sign_witness_chain(&mut bundle.witness_chains[0])?;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("disconnected witness hops verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -371,7 +385,7 @@ fn swarm_authority_stage0_rejects_stale_route_plan() -> Result<(), Box<dyn Error
     let mut bundle = sample_swarm_bundle()?;
     bundle.route_plan_receipts[0].expires_at_unix_ms = NOW_UNIX_MS - 1;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("stale route plan verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -386,7 +400,7 @@ fn swarm_authority_stage0_rejects_rejected_route_plan() -> Result<(), Box<dyn Er
     let mut bundle = sample_swarm_bundle()?;
     bundle.route_plan_receipts[0].attenuation_decision = "rejected".to_string();
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("rejected route plan verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -402,7 +416,7 @@ fn swarm_authority_stage0_rejects_route_plan_selected_route_bridge_mismatch(
     let mut bundle = sample_swarm_bundle()?;
     bundle.route_plan_receipts[0].selected_route = "a2a:task-child-a".to_string();
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("route bridge mismatch verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -418,7 +432,7 @@ fn swarm_authority_stage0_rejects_route_plan_protocol_target_bridge_mismatch(
     let mut bundle = sample_swarm_bundle()?;
     bundle.route_plan_receipts[0].protocol_target = "a2a://provider-a".to_string();
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("route target mismatch verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -433,7 +447,7 @@ fn swarm_authority_stage0_rejects_join_parent_set_mismatch() -> Result<(), Box<d
     let mut bundle = sample_swarm_bundle()?;
     bundle.join_receipts[0].actual_parent_receipt_ids.pop();
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("join mismatch verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -449,7 +463,7 @@ fn swarm_authority_stage0_rejects_join_parent_task_receipt_mapping_mismatch(
     let mut bundle = sample_swarm_bundle()?;
     bundle.join_receipts[0].parent_task_receipts[0].receipt_id = "receipt-unrelated".to_string();
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("join parent task receipt mismatch verified: {report:#?}"),
         Err(error) => error,
     };
@@ -465,7 +479,7 @@ fn swarm_authority_stage0_rejects_join_parent_task_receipt_swapped_mapping(
     let mut bundle = sample_swarm_bundle()?;
     bundle.join_receipts[0].parent_task_receipts.swap(0, 1);
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("join parent task receipt swapped mapping verified: {report:#?}"),
         Err(error) => error,
     };
@@ -483,7 +497,7 @@ fn swarm_authority_stage0_rejects_single_parent_join() -> Result<(), Box<dyn Err
     bundle.join_receipts[0].actual_parent_receipt_ids.pop();
     refresh_continuation_graph_digests(&mut bundle)?;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("single-parent join verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -504,7 +518,7 @@ fn swarm_authority_stage0_rejects_join_receipt_parent_count_mismatch() -> Result
         .actual_parent_receipt_ids
         .push("receipt-extra".to_string());
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("extra join parent receipt verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -521,7 +535,7 @@ fn swarm_authority_stage0_rejects_join_next_task_that_is_parent() -> Result<(), 
     bundle.join_receipts[0].next_task_id = "task-child-a".to_string();
     refresh_continuation_graph_digests(&mut bundle)?;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("self-referential join verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -536,7 +550,7 @@ fn swarm_authority_stage0_rejects_unsupported_join_predicate() -> Result<(), Box
     let mut bundle = sample_swarm_bundle()?;
     bundle.join_receipts[0].join_predicate = "first_success".to_string();
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("unsupported join predicate verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -552,7 +566,7 @@ fn swarm_authority_stage0_rejects_budget_allocations_exceeding_pool() -> Result<
     let mut bundle = sample_swarm_bundle()?;
     bundle.budget_pool.total_units = 100;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("overspent budget verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -570,7 +584,7 @@ fn swarm_authority_stage0_rejects_revoked_task() -> Result<(), Box<dyn Error>> {
         .revoked_task_ids
         .push("task-child-a".to_string());
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("revoked task verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -583,7 +597,7 @@ fn swarm_authority_stage0_rejects_future_revocation_epoch() -> Result<(), Box<dy
     let mut bundle = sample_swarm_bundle()?;
     bundle.revocation_epoch.issued_at_unix_ms = NOW_UNIX_MS + 1_000;
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("future revocation epoch verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -601,7 +615,7 @@ fn swarm_authority_stage0_rejects_revoked_authority_subject() -> Result<(), Box<
         .revoked_subjects
         .push("did:chio:authority".to_string());
 
-    let error = match verify_swarm_authority_bundle(&bundle) {
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("revoked authority subject verified unexpectedly: {report:#?}"),
         Err(error) => error,
     };
@@ -903,6 +917,10 @@ fn sign_witness_chain(chain: &mut SwarmDelegationWitnessChain) -> Result<(), Box
 
 fn witness_keypair() -> Keypair {
     Keypair::from_seed(&[31u8; 32])
+}
+
+fn trusted_witness_keys() -> Vec<PublicKey> {
+    vec![witness_keypair().public_key()]
 }
 
 fn witness_issuer() -> String {

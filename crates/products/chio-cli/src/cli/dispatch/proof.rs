@@ -31,6 +31,7 @@ const AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV: &str =
     "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS";
 const TRANSACTION_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS";
 const TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV: &str = "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS";
+const SWARM_TRUSTED_WITNESS_KEYS_ENV: &str = "CHIO_SWARM_TRUSTED_WITNESS_KEYS";
 const VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_RUNTIME,
     CLAIM_PREFIX_RISK,
@@ -134,6 +135,28 @@ fn transaction_trusted_root_keys_from_env() -> Result<Vec<chio_core_types::Publi
         Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
             "{TRANSACTION_TRUSTED_ROOT_KEYS_ENV} must be valid UTF-8"
         ))),
+    }
+}
+
+fn swarm_trusted_witness_keys_from_env() -> Result<Vec<chio_core_types::PublicKey>, CliError> {
+    match std::env::var(SWARM_TRUSTED_WITNESS_KEYS_ENV) {
+        Ok(keys) => parse_public_keys(SWARM_TRUSTED_WITNESS_KEYS_ENV, &keys),
+        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
+            "{SWARM_TRUSTED_WITNESS_KEYS_ENV} must pin trusted swarm witness keys"
+        ))),
+        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
+            "{SWARM_TRUSTED_WITNESS_KEYS_ENV} must be valid UTF-8"
+        ))),
+    }
+}
+
+fn swarm_trusted_witness_keys_for_bundle(
+    bundle: &chio_swarm_authority::SwarmAuthorityBundle,
+) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
+    if bundle.witness_chains.is_empty() {
+        Ok(Vec::new())
+    } else {
+        swarm_trusted_witness_keys_from_env()
     }
 }
 
@@ -758,8 +781,10 @@ fn push_local_proof_family_report(
         }
         LocalProofFamilyRoute::Swarm => {
             let bundle = load_swarm_authority_bundle_from_graph(bundle_dir, evidence_graph_bytes)?;
-            let report = chio_swarm_authority::verify_swarm_authority_bundle(&bundle)
-                .map_err(|error| CliError::cli_other_error(format!("proof verify: {error}")))?;
+            let trusted_witness_keys = swarm_trusted_witness_keys_for_bundle(&bundle)?;
+            let report =
+                chio_swarm_authority::verify_swarm_authority_bundle(&bundle, &trusted_witness_keys)
+                    .map_err(|error| CliError::cli_other_error(format!("proof verify: {error}")))?;
             push_checked_local_family_report(family_reports, claim_requirements, spec, report)
         }
         LocalProofFamilyRoute::PublicSettlement => {

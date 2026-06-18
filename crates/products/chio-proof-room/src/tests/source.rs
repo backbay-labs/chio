@@ -48,9 +48,12 @@ fn swarm_fixture_uses_verification_time_for_freshness() -> Result<(), Box<dyn Er
     let evidence_graph_bytes = json_bytes(&evidence_graph)?;
     let bundle = embedded_swarm_authority_bundle(&evidence_graph_bytes, &artifacts)?;
 
-    let error = chio_swarm_authority::verify_swarm_authority_bundle(&bundle)
-        .err()
-        .ok_or("expired swarm bundle unexpectedly verified")?;
+    let error = chio_swarm_authority::verify_swarm_authority_bundle(
+        &bundle,
+        &swarm_fixture_trusted_witness_keys()?,
+    )
+    .err()
+    .ok_or("expired swarm bundle unexpectedly verified")?;
 
     assert!(
         error.to_string().contains("swarm task graph is expired"),

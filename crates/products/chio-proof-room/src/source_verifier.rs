@@ -284,11 +284,13 @@ pub(crate) fn push_source_local_family_report(
             let bundle =
                 embedded_swarm_authority_bundle(&context.evidence_graph_bytes, &context.artifacts)
                     .map_err(|error| format!("proof-room.swarm-invalid: {error}"))?;
+            let trusted_witness_keys = crate::swarm_trusted_witness_keys_for_bundle(&bundle)
+                .map_err(|error| format!("proof-room.swarm-invalid: {error}"))?;
             push_source_local_family_result(
                 family_reports,
                 required_claims,
                 route,
-                chio_swarm_authority::verify_swarm_authority_bundle(&bundle),
+                chio_swarm_authority::verify_swarm_authority_bundle(&bundle, &trusted_witness_keys),
             )
         }
         ProofRoomFixtureReportRoute::PublicSettlement => {

@@ -25,6 +25,7 @@ const DID_CHIO_PREFIX: &str = "did:chio:";
 
 pub fn verify_swarm_authority_bundle(
     bundle: &SwarmAuthorityBundle,
+    trusted_witness_issuer_keys: &[PublicKey],
 ) -> Result<SwarmAuthorityVerifierReport, SwarmAuthorityError> {
     validate_task_graph(&bundle.task_graph, bundle.now_unix_ms)?;
     let graph_sha256 = canonical_sha256(&bundle.task_graph)?;
@@ -43,7 +44,7 @@ pub fn verify_swarm_authority_bundle(
         &join_by_id,
         &allocation_by_id,
     )?;
-    validate_witness_chains(bundle, &task_by_id, &edge_set)?;
+    validate_witness_chains(bundle, &task_by_id, &edge_set, trusted_witness_issuer_keys)?;
 
     let mut verified_claims = vec![CLAIM_SWARM_TASK_GRAPH_BOUND.to_string()];
     if !bundle.continuation_tokens.is_empty() {
@@ -1002,10 +1003,17 @@ fn validate_witness_chains(
     bundle: &SwarmAuthorityBundle,
     task_by_id: &BTreeMap<&str, &SwarmGraphNode>,
     edge_set: &BTreeSet<(&str, &str)>,
+    trusted_witness_issuer_keys: &[PublicKey],
 ) -> Result<(), SwarmAuthorityError> {
     let mut witnessed_edges = BTreeSet::new();
     for chain in &bundle.witness_chains {
-        validate_witness_chain(bundle, chain, task_by_id, edge_set)?;
+        validate_witness_chain(
+            bundle,
+            chain,
+            task_by_id,
+            edge_set,
+            trusted_witness_issuer_keys,
+        )?;
         if !witnessed_edges.insert((chain.parent_task_id.as_str(), chain.child_task_id.as_str())) {
             return Err(rejected(format!(
                 "duplicate swarm delegation witness chain: {} -> {}",
@@ -1029,6 +1037,7 @@ fn validate_witness_chain(
     chain: &SwarmDelegationWitnessChain,
     task_by_id: &BTreeMap<&str, &SwarmGraphNode>,
     edge_set: &BTreeSet<(&str, &str)>,
+    trusted_witness_issuer_keys: &[PublicKey],
 ) -> Result<(), SwarmAuthorityError> {
     if chain.schema != CHIO_SWARM_DELEGATION_WITNESS_CHAIN_SCHEMA {
         return Err(rejected(format!(
@@ -1096,7 +1105,7 @@ fn validate_witness_chain(
     }
     let mut previous_hop: Option<&super::types::SwarmDelegationWitnessHop> = None;
     for hop in &chain.hops {
-        validate_witness_hop(bundle, chain, hop)?;
+        validate_witness_hop(bundle, chain, hop, trusted_witness_issuer_keys)?;
         if let Some(previous) = previous_hop {
             if previous.child_scope_hash != hop.parent_scope_hash {
                 return Err(rejected(format!(
@@ -1120,6 +1129,7 @@ fn validate_witness_hop(
     bundle: &SwarmAuthorityBundle,
     chain: &SwarmDelegationWitnessChain,
     hop: &super::types::SwarmDelegationWitnessHop,
+    trusted_witness_issuer_keys: &[PublicKey],
 ) -> Result<(), SwarmAuthorityError> {
     require_sha256(
         &hop.parent_capability_digest,
@@ -1147,15 +1157,17 @@ fn validate_witness_hop(
         &hop.scope_subset_proof,
     )
     .map_err(|error| rejected(format!("swarm attenuation witness invalid: {error}")))?;
-    verify_witness_signature(chain, hop)?;
+    verify_witness_signature(chain, hop, trusted_witness_issuer_keys)?;
     Ok(())
 }
 
 fn verify_witness_signature(
     chain: &SwarmDelegationWitnessChain,
     hop: &super::types::SwarmDelegationWitnessHop,
+    trusted_witness_issuer_keys: &[PublicKey],
 ) -> Result<(), SwarmAuthorityError> {
     let public_key = witness_issuer_public_key(&hop.issuer)?;
+    ensure_witness_issuer_is_pinned(chain, &public_key, trusted_witness_issuer_keys)?;
     let signature = Signature::from_hex(&hop.witness_signature).map_err(|error| {
         rejected(format!(
             "swarm witness signature invalid: {}: {error}",
@@ -1171,6 +1183,29 @@ fn verify_witness_signature(
     } else {
         Err(rejected(format!(
             "swarm witness signature invalid: {}",
+            chain.chain_id
+        )))
+    }
+}
+
+fn ensure_witness_issuer_is_pinned(
+    chain: &SwarmDelegationWitnessChain,
+    public_key: &PublicKey,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    if trusted_witness_issuer_keys.is_empty() {
+        return Err(rejected(
+            "trusted swarm witness keys missing: CHIO_SWARM_TRUSTED_WITNESS_KEYS must pin trusted swarm witness keys",
+        ));
+    }
+    if trusted_witness_issuer_keys
+        .iter()
+        .any(|trusted_key| trusted_key == public_key)
+    {
+        Ok(())
+    } else {
+        Err(rejected(format!(
+            "swarm witness issuer is not trusted: {}",
             chain.chain_id
         )))
     }

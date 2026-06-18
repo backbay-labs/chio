@@ -1393,6 +1393,24 @@ fn proof_verify_accepts_swarm_authority_fixture() {
 }
 
 #[test]
+fn proof_verify_rejects_swarm_authority_without_trusted_witness_keys() {
+    let output = chio_with_transaction_fixture_roots()
+        .env_remove("CHIO_SWARM_TRUSTED_WITNESS_KEYS")
+        .arg("proof")
+        .arg("verify")
+        .arg(swarm_fixture_path("valid-recursive-delegation"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(
+        stderr.contains("CHIO_SWARM_TRUSTED_WITNESS_KEYS must pin trusted swarm witness keys"),
+        "{stderr}"
+    );
+}
+
+#[test]
 fn proof_verify_rejects_swarm_authority_expired_at_verification_time() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let source =

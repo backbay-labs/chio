@@ -850,10 +850,20 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
         ProofRoomFixtureReportRoute::Swarm => {
             let swarm_bundle = embedded_swarm_authority_bundle(evidence_graph_bytes, artifacts)
                 .map_err(|error| proof_room_fixture_invalid(fixture_id, "swarm", error))?;
+            let trusted_witness_keys = crate::swarm_trusted_witness_keys_for_bundle(&swarm_bundle)
+                .map_err(|error| {
+                    (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        format!("proof-room.fixture.swarm-invalid: {fixture_id}: {error}"),
+                    )
+                })?;
             proof_room_fixture_verified_report_bytes(
                 fixture_id,
                 passport,
-                chio_swarm_authority::verify_swarm_authority_bundle(&swarm_bundle),
+                chio_swarm_authority::verify_swarm_authority_bundle(
+                    &swarm_bundle,
+                    &trusted_witness_keys,
+                ),
             )
         }
         ProofRoomFixtureReportRoute::PublicSettlement => {

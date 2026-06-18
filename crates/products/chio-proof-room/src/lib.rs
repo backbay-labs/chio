@@ -130,6 +130,7 @@ const AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV: &str =
     "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS";
 const TRANSACTION_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS";
 const TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV: &str = "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS";
+const SWARM_TRUSTED_WITNESS_KEYS_ENV: &str = "CHIO_SWARM_TRUSTED_WITNESS_KEYS";
 const PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV: &str =
     "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS";
 const PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS_ENV: &str =
@@ -236,6 +237,29 @@ pub(crate) fn transaction_trusted_root_keys_from_env(
         Err(env::VarError::NotUnicode(_)) => Err(format!(
             "{TRANSACTION_TRUSTED_ROOT_KEYS_ENV} must be valid UTF-8"
         )),
+    }
+}
+
+pub(crate) fn swarm_trusted_witness_keys_from_env(
+) -> Result<Vec<chio_core_types::PublicKey>, String> {
+    match env::var(SWARM_TRUSTED_WITNESS_KEYS_ENV) {
+        Ok(keys) => parse_public_keys(SWARM_TRUSTED_WITNESS_KEYS_ENV, &keys),
+        Err(env::VarError::NotPresent) => Err(format!(
+            "{SWARM_TRUSTED_WITNESS_KEYS_ENV} must pin trusted swarm witness keys"
+        )),
+        Err(env::VarError::NotUnicode(_)) => Err(format!(
+            "{SWARM_TRUSTED_WITNESS_KEYS_ENV} must be valid UTF-8"
+        )),
+    }
+}
+
+pub(crate) fn swarm_trusted_witness_keys_for_bundle(
+    bundle: &chio_swarm_authority::SwarmAuthorityBundle,
+) -> Result<Vec<chio_core_types::PublicKey>, String> {
+    if bundle.witness_chains.is_empty() {
+        Ok(Vec::new())
+    } else {
+        swarm_trusted_witness_keys_from_env()
     }
 }
 

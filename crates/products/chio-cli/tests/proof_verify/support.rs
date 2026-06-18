@@ -12,6 +12,8 @@ const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
 );
 const AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS: &str =
     "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737";
+const SWARM_FIXTURE_TRUSTED_WITNESS_KEYS: &str =
+    "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de";
 const TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS: &str = concat!(
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
     "68f4b6017d0f876a55c80a82b8388a54aad264d367269e2de8be079c935b5f96"
@@ -64,6 +66,10 @@ pub(crate) fn chio_with_transaction_fixture_roots() -> std::process::Command {
     command.env(
         "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS",
         TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS,
+    );
+    command.env(
+        "CHIO_SWARM_TRUSTED_WITNESS_KEYS",
+        SWARM_FIXTURE_TRUSTED_WITNESS_KEYS,
     );
     command
 }
