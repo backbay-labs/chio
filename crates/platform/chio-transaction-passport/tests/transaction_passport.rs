@@ -814,6 +814,31 @@ fn runtime_receipt_totality_rejects_graph_receipt_without_artifact() {
 }
 
 #[test]
+fn runtime_security_rejects_advisory_authorization_by_node_role() {
+    let mut bundle = load_runtime_security_fixture("advisory-used-as-authorization");
+    let mut graph: Value =
+        serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("runtime graph parses");
+    let edges = graph["edges"]
+        .as_array_mut()
+        .test_expect("runtime graph has edges");
+    let advisory_edge = edges
+        .iter_mut()
+        .find(|edge| edge["from"] == "external-advisory-observation")
+        .test_expect("advisory edge exists");
+    advisory_edge["evidence_class"] = Value::String("digest-bound-reference".to_string());
+    rebind_runtime_graph(&mut bundle, graph);
+
+    let error = chio_transaction_passport::verify_runtime_security_claims(&bundle)
+        .test_expect_err("advisory node role must not authorize runtime execution");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("advisory evidence cannot authorize runtime execution"),
+        "{error}"
+    );
+}
+
+#[test]
 fn runtime_online_checks_run_for_tool_ack_requirement() {
     let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
     update_runtime_policy_required_claims(&mut bundle, vec!["claim.runtime.tool_server_ack_bound"]);
