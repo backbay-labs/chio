@@ -714,14 +714,12 @@ fn validate_sla_performance(
         return Err(claim_failed("SLA metric results missing"));
     }
     for result in &performance.computed_metric_results {
-        validate_metric_result(result)?;
-        if !sla
+        let definition = sla
             .metric_definitions
             .iter()
-            .any(|definition| definition.metric == result.metric && definition.unit == result.unit)
-        {
-            return Err(claim_failed("SLA performance metric mismatch"));
-        }
+            .find(|definition| definition.metric == result.metric && definition.unit == result.unit)
+            .ok_or_else(|| claim_failed("SLA performance metric mismatch"))?;
+        validate_metric_result(result, definition)?;
     }
     for definition in &sla.metric_definitions {
         if !performance
@@ -992,13 +990,18 @@ fn validate_metric_definition(metric: &MetricDefinition) -> Result<(), Transacti
     Ok(())
 }
 
-fn validate_metric_result(result: &ComputedMetricResult) -> Result<(), TransactionPassportError> {
+fn validate_metric_result(
+    result: &ComputedMetricResult,
+    definition: &MetricDefinition,
+) -> Result<(), TransactionPassportError> {
     require_non_empty(&result.metric, "SLA result metric")?;
     require_non_empty(&result.unit, "SLA result unit")?;
+    if result.value > definition.target {
+        return Err(claim_failed("SLA metric target exceeded"));
+    }
     if !result.passed {
         return Err(claim_failed("SLA metric failed"));
     }
-    let _ = result.value;
     Ok(())
 }
 

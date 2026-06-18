@@ -38,6 +38,7 @@ enum TrustMarketCase {
     SlaWrongOrder,
     SlaPerformanceMetricMismatch,
     SlaPerformanceMissingCommittedMetric,
+    SlaPerformanceTargetExceeded,
     CollateralUnsupportedSource,
     GuaranteeWithoutBacking,
     GuaranteeWrongBeneficiary,
@@ -384,6 +385,10 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         TrustMarketCase::SlaPerformanceMetricMismatch => "availability_percent",
         _ => "completion_time_minutes",
     };
+    let sla_performance_value = match case {
+        TrustMarketCase::SlaPerformanceTargetExceeded => 45,
+        _ => 18,
+    };
     let sla_performance = signed_market_artifact_bytes(json!({
         "schema": "chio.commerce.sla-performance-report.v1",
         "id": "sla-performance-trust-market-valid",
@@ -398,7 +403,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         "computed_metric_results": [
             {
                 "metric": sla_performance_metric,
-                "value": 18,
+                "value": sla_performance_value,
                 "unit": "minutes",
                 "passed": true
             }
@@ -1190,6 +1195,16 @@ fn trust_market_rejects_missing_committed_sla_metric() {
     .test_expect_err("SLA performance must cover every committed metric");
 
     assert!(error.to_string().contains("SLA performance metric missing"));
+}
+
+#[test]
+fn trust_market_rejects_sla_performance_target_exceeded_even_if_report_passed() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::SlaPerformanceTargetExceeded,
+    ))
+    .test_expect_err("SLA performance must be recomputed from committed target");
+
+    assert!(error.to_string().contains("SLA metric target exceeded"));
 }
 
 #[test]
