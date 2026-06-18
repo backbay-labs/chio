@@ -6,8 +6,9 @@ use std::{
 };
 
 use axum::{
-    extract::{DefaultBodyLimit, Multipart, OriginalUri, Path as AxumPath, State},
-    http::{header::CONTENT_TYPE, StatusCode},
+    body::Bytes,
+    extract::{DefaultBodyLimit, OriginalUri, Path as AxumPath, State},
+    http::{header::CONTENT_TYPE, HeaderMap, StatusCode},
     response::{IntoResponse, Redirect, Response},
     routing::{get, post},
     Json, Router,
@@ -36,6 +37,10 @@ struct ProofRoomServeState {
     allowed_bundle_paths: BTreeSet<String>,
     fixture_root: Option<PathBuf>,
 }
+
+type UploadError = (StatusCode, String);
+type UploadResult<T> = Result<T, UploadError>;
+type UploadPart = (String, Vec<u8>);
 
 pub async fn serve_proof_room(config: ProofRoomServeConfig) -> Result<(), ProofRoomError> {
     verify_proof_room_ui_dir(&config.ui_dir)?;
@@ -143,8 +148,8 @@ async fn proof_room_view_redirect() -> Redirect {
     Redirect::temporary("/proof-room?view=proof-room")
 }
 
-async fn proof_room_upload_verify(multipart: Multipart) -> Response {
-    match verify_uploaded_proof_room_bundle(multipart).await {
+async fn proof_room_upload_verify(headers: HeaderMap, body: Bytes) -> Response {
+    match verify_uploaded_proof_room_bundle(&headers, &body) {
         Ok(bundle_id) => proof_room_upload_verification_response(
             StatusCode::OK,
             "verified",
@@ -157,30 +162,24 @@ async fn proof_room_upload_verify(multipart: Multipart) -> Response {
     }
 }
 
-async fn verify_uploaded_proof_room_bundle(
-    multipart: Multipart,
-) -> Result<String, (StatusCode, String)> {
+fn verify_uploaded_proof_room_bundle(headers: &HeaderMap, body: &[u8]) -> UploadResult<String> {
     let upload = UploadedProofRoomBundle::create().map_err(upload_io_error)?;
-    write_uploaded_proof_room_bundle(multipart, upload.path()).await?;
+    write_uploaded_proof_room_bundle(headers, body, upload.path())?;
     let manifest_path = upload.path().join("manifest.json");
     super::verify_proof_room_bundle(&manifest_path)
         .map_err(|error| (StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))?;
     uploaded_bundle_id(&manifest_path).map_err(upload_io_error)
 }
 
-async fn write_uploaded_proof_room_bundle(
-    mut multipart: Multipart,
+fn write_uploaded_proof_room_bundle(
+    headers: &HeaderMap,
+    body: &[u8],
     root: &Path,
-) -> Result<(), (StatusCode, String)> {
+) -> UploadResult<()> {
     let mut file_count = 0usize;
     let mut paths = BTreeSet::new();
-    while let Some(field) = multipart.next_field().await.map_err(|error| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("proof-room.upload.multipart: {error}"),
-        )
-    })? {
-        let relative_path = uploaded_part_path(&field)?;
+    let boundary = multipart_boundary(headers)?;
+    for (relative_path, bytes) in parse_uploaded_multipart(body, &boundary)? {
         super::validate_bundle_relative_path(&relative_path)
             .map_err(|error| (StatusCode::BAD_REQUEST, error))?;
         if !paths.insert(relative_path.clone()) {
@@ -189,12 +188,6 @@ async fn write_uploaded_proof_room_bundle(
                 format!("proof-room.upload.duplicate-path: {relative_path}"),
             ));
         }
-        let bytes = field.bytes().await.map_err(|error| {
-            (
-                StatusCode::BAD_REQUEST,
-                format!("proof-room.upload.part: {error}"),
-            )
-        })?;
         let destination = root.join(&relative_path);
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent).map_err(upload_io_error)?;
@@ -211,19 +204,135 @@ async fn write_uploaded_proof_room_bundle(
     Ok(())
 }
 
-fn uploaded_part_path(
-    field: &axum::extract::multipart::Field<'_>,
-) -> Result<String, (StatusCode, String)> {
-    field
-        .file_name()
-        .or_else(|| field.name())
-        .map(ToOwned::to_owned)
+fn multipart_boundary(headers: &HeaderMap) -> UploadResult<String> {
+    let content_type = headers
+        .get(CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "proof-room.upload.content-type-missing".to_string(),
+            )
+        })?;
+    for segment in content_type.split(';') {
+        let segment = segment.trim();
+        if let Some(value) = segment.strip_prefix("boundary=") {
+            let boundary = value.trim_matches('"');
+            if boundary.is_empty()
+                || boundary.len() > 200
+                || boundary.bytes().any(|byte| byte <= 0x20 || byte == 0x7f)
+            {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    "proof-room.upload.boundary-invalid".to_string(),
+                ));
+            }
+            return Ok(boundary.to_string());
+        }
+    }
+    Err((
+        StatusCode::BAD_REQUEST,
+        "proof-room.upload.boundary-missing".to_string(),
+    ))
+}
+
+fn parse_uploaded_multipart(body: &[u8], boundary: &str) -> UploadResult<Vec<UploadPart>> {
+    let delimiter = format!("--{boundary}");
+    let delimiter = delimiter.as_bytes();
+    let part_delimiter = format!("\r\n--{boundary}");
+    let part_delimiter = part_delimiter.as_bytes();
+    if !body.starts_with(delimiter) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "proof-room.upload.multipart-boundary-missing".to_string(),
+        ));
+    }
+
+    let mut parts = Vec::new();
+    let mut cursor = delimiter.len();
+    loop {
+        if body.get(cursor..cursor + 2) == Some(b"--") {
+            break;
+        }
+        if body.get(cursor..cursor + 2) != Some(b"\r\n") {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "proof-room.upload.multipart-part-malformed".to_string(),
+            ));
+        }
+        cursor += 2;
+        let header_end = find_bytes(&body[cursor..], b"\r\n\r\n")
+            .map(|offset| cursor + offset)
+            .ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "proof-room.upload.multipart-headers-missing".to_string(),
+                )
+            })?;
+        let headers = std::str::from_utf8(&body[cursor..header_end]).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "proof-room.upload.multipart-headers-invalid".to_string(),
+            )
+        })?;
+        let path = multipart_part_path(headers)?;
+        let content_start = header_end + 4;
+        let next_delimiter = find_bytes(&body[content_start..], part_delimiter)
+            .map(|offset| content_start + offset)
+            .ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "proof-room.upload.multipart-delimiter-missing".to_string(),
+                )
+            })?;
+        parts.push((path, body[content_start..next_delimiter].to_vec()));
+        cursor = next_delimiter + part_delimiter.len();
+    }
+    Ok(parts)
+}
+
+fn multipart_part_path(headers: &str) -> Result<String, (StatusCode, String)> {
+    let disposition = headers
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            if name.trim().eq_ignore_ascii_case("content-disposition") {
+                Some(value.trim())
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                "proof-room.upload.disposition-missing".to_string(),
+            )
+        })?;
+    disposition_param(disposition, "filename")
+        .or_else(|| disposition_param(disposition, "name"))
         .ok_or_else(|| {
             (
                 StatusCode::BAD_REQUEST,
                 "proof-room.upload.path-missing".to_string(),
             )
         })
+}
+
+fn disposition_param(disposition: &str, key: &str) -> Option<String> {
+    for segment in disposition.split(';') {
+        if let Some((name, value)) = segment.trim().split_once('=') {
+            if name.trim().eq_ignore_ascii_case(key) {
+                return Some(value.trim().trim_matches('"').to_string());
+            }
+        }
+    }
+    None
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
 fn uploaded_bundle_id(manifest_path: &Path) -> Result<String, std::io::Error> {

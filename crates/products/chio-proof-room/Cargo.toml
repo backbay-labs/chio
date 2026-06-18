@@ -19,7 +19,7 @@ name = "chio-proof-room"
 path = "src/main.rs"
 
 [dependencies]
-axum = { version = "0.8", features = ["multipart"] }
+axum = "0.8"
 chio-agent-web-interop = { workspace = true }
 chio-commerce-order = { workspace = true }
 chio-core-types = { workspace = true }

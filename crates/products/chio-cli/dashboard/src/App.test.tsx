@@ -87,7 +87,7 @@ function buttonWithText(container: HTMLElement, text: string): HTMLButtonElement
   return button
 }
 
-type MockFetchRoute = unknown | ((url: string) => unknown | Promise<unknown>)
+type MockFetchRoute = unknown | ((url: string, init?: RequestInit) => unknown | Promise<unknown>)
 const mockJsonBody: unique symbol = Symbol('mockJsonBody')
 
 interface MockJsonResponse {
@@ -191,13 +191,20 @@ async function signMockProofRoomManifest(
 function mockFetch(routes: Record<string, MockFetchRoute>) {
   mockTrustedProofRoomSignerKeys.clear()
   const signatures = new Map<string, Promise<SignedMockProofRoomManifest>>()
-  const fetchMock = vi.fn(async (input: string | URL | Request) => {
+  const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
     if (!Object.prototype.hasOwnProperty.call(routes, url)) {
       if (url === '/proof-room-trusted-bundle-signers.json') {
         return jsonResponse({
           schema: 'chio.proof-room.trusted-bundle-signers.v1',
           keys: Array.from(mockTrustedProofRoomSignerKeys),
+        })
+      }
+      if (url === '/proof-room/upload/verify') {
+        return jsonResponse({
+          schema: 'chio.proof-room.upload-verification.v1',
+          verdict: 'verified',
+          bundle_id: 'mock-uploaded-proof-room',
         })
       }
       const signature = signatures.get(url)
@@ -215,7 +222,7 @@ function mockFetch(routes: Record<string, MockFetchRoute>) {
     }
 
     const route = routes[url]
-    const response = await Promise.resolve(typeof route === 'function' ? route(url) : route)
+    const response = await Promise.resolve(typeof route === 'function' ? route(url, init) : route)
     const body = objectRecord(mockJsonResponseBody(response))
     if (
       body
@@ -296,6 +303,85 @@ function selectedVerifierRootFiles(prefix = 'roots'): [File, File, File] {
     uploadedJsonFile('{}', `${root}transaction-passport.json`),
     uploadedJsonFile('{}', `${root}evidence-graph.json`),
     uploadedJsonFile('{}', `${root}verifier-policy.json`),
+  ]
+}
+
+async function selectedVerifiedProofRoomFiles(
+  bundleId = 'uploaded-proof-room',
+  fixtureId = 'uploaded-fixture',
+  claimId = 'claim.proof_room.upload_verified',
+): Promise<File[]> {
+  const verifierReportJson = JSON.stringify({
+    schema: 'chio.transaction.verifier-report.v1',
+    id: `${bundleId}-verifier-report`,
+    verdict: 'verified',
+    passport_id: `${bundleId}-passport`,
+    passport_path: 'transaction-passport.json',
+    evidence_graph_path: 'evidence-graph.json',
+    verifier_policy_path: 'verifier-policy.json',
+    verified_claims: [claimId],
+  })
+  const verifierReportDigest = await sha256Hex(verifierReportJson)
+  const loadReportJson = JSON.stringify({
+    schema: 'chio.proof-room.verifier-report.v1',
+    verdict: 'verified',
+    bundle_id: bundleId,
+    fixture_id: fixtureId,
+    source_verifier_report_ref: {
+      path: 'verifier/report.json',
+      sha256: verifierReportDigest,
+      schema: 'chio.transaction.verifier-report.v1',
+    },
+    ui_verdict_source: 'verifier_report_ref',
+    rendered_claims: [
+      {
+        claim_id: claimId,
+        source: 'verifier/report.json',
+        verdict: 'verified',
+      },
+    ],
+  })
+  const loadReportDigest = await sha256Hex(loadReportJson)
+  const manifestJson = JSON.stringify({
+    schema: 'chio.proof-room.bundle.v1',
+    bundle_id: bundleId,
+    fixture_id: fixtureId,
+    verifier_report_ref: {
+      path: 'verifier/report.json',
+      sha256: verifierReportDigest,
+      schema: 'chio.transaction.verifier-report.v1',
+    },
+    proof_room_verifier_report_ref: {
+      path: 'ui/proof-room-static/load-report.json',
+      sha256: loadReportDigest,
+      schema: 'chio.proof-room.verifier-report.v1',
+    },
+    signature: {
+      kind: 'detached-dsse',
+      signature_ref: 'bundle-signature.dsse.json',
+    },
+    claims: [
+      {
+        claim_id: claimId,
+        required_artifacts: ['verifier/report.json'],
+        result: 'verified',
+      },
+    ],
+    negative_cases: [],
+  })
+  const [transactionPassport, evidenceGraph, verifierPolicy] = selectedVerifierRootFiles()
+  return [
+    uploadedJsonFile(manifestJson, 'manifest.json'),
+    await signedProofRoomManifestFile(manifestJson),
+    new File([loadReportJson], 'ui/proof-room-static/load-report.json', {
+      type: 'application/json',
+    }),
+    new File([verifierReportJson], 'verifier/report.json', {
+      type: 'application/json',
+    }),
+    transactionPassport,
+    evidenceGraph,
+    verifierPolicy,
   ]
 }
 
@@ -4381,6 +4467,46 @@ describe('App operator paths', () => {
     expect(container.textContent).not.toContain('uploaded-proof-room')
   })
 
+  it('rejects a selected Proof Room bundle when server upload verification fails', async () => {
+    sessionStorage.clear()
+    window.history.replaceState({}, '', '/?view=proof-room')
+    const fetchMock = mockFetch({
+      ...servedProofRoomRoutesWithVerifierRoots(),
+      '/proof-room/upload/verify': jsonResponse({
+        schema: 'chio.proof-room.upload-verification.v1',
+        verdict: 'failed',
+        error: 'proof-room.signature.trusted-signers-missing',
+      }, {
+        status: 422,
+      }),
+    })
+
+    const container = await renderIntoDocument(<App />)
+    await waitForText(container, 'served-proof-room')
+
+    const input = container.querySelector('input[type="file"]')
+    if (!input) {
+      throw new Error('Proof Room file input missing')
+    }
+
+    await act(async () => {
+      Object.defineProperty(input, 'files', {
+        value: await selectedVerifiedProofRoomFiles(),
+        configurable: true,
+      })
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+
+    await waitForText(container, 'proof-room.signature.trusted-signers-missing')
+
+    expect(fetchMock).toHaveBeenCalledWith('/proof-room/upload/verify', expect.objectContaining({
+      method: 'POST',
+      body: expect.any(FormData),
+    }))
+    expect(container.textContent).toContain('served-proof-room')
+    expect(container.textContent).not.toContain('uploaded-proof-room')
+  })
+
   it('rejects a selected Proof Room bundle when a manifest-bound verifier root digest does not match', async () => {
     sessionStorage.clear()
     window.history.replaceState({}, '', '/?view=proof-room')
@@ -4909,10 +5035,11 @@ describe('App operator paths', () => {
 
     const matched = await waitForAnyText(container, [
       'selected verifier report path is unsafe',
+      'unsafe Proof Room asset path',
       'uploaded-unsafe-proof-room',
     ])
 
-    expect(matched).toBe('selected verifier report path is unsafe')
+    expect(['selected verifier report path is unsafe', 'unsafe Proof Room asset path']).toContain(matched)
     expect(container.textContent).toContain('served-proof-room')
     expect(container.textContent).not.toContain('uploaded-unsafe-proof-room')
   })

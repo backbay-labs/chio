@@ -109,6 +109,19 @@ function proofRoomFilePath(file: UploadedProofRoomFile): string {
   return file.webkitRelativePath || file.name
 }
 
+function selectedBundleRootPrefix(manifestFile: UploadedProofRoomFile): string {
+  const path = proofRoomFilePath(manifestFile)
+  return path.endsWith('/manifest.json') ? path.slice(0, -'/manifest.json'.length) : ''
+}
+
+function proofRoomUploadPath(file: UploadedProofRoomFile, bundleRootPrefix: string): string {
+  const path = proofRoomFilePath(file)
+  const prefix = bundleRootPrefix ? `${bundleRootPrefix}/` : ''
+  const relativePath = prefix && path.startsWith(prefix) ? path.slice(prefix.length) : path
+  assertProofRoomBundleRelativePath(relativePath)
+  return relativePath
+}
+
 function findProofRoomFile(files: UploadedProofRoomFile[], suffix: string): UploadedProofRoomFile | null {
   assertProofRoomBundleRelativePath(suffix)
   return files.find((file) => proofRoomFilePath(file) === suffix || proofRoomFilePath(file).endsWith(`/${suffix}`)) ?? null
@@ -451,7 +464,7 @@ function selectedProofRoomArtifactReader(files: UploadedProofRoomFile[]): ProofR
     readSelectedManifestArtifactSource(files, artifact))
 }
 
-async function readSelectedProofRoomBundle(fileList: FileList): Promise<ProofRoomStaticBundle> {
+async function readSelectedProofRoomBundle(fileList: FileList | UploadedProofRoomFile[]): Promise<ProofRoomStaticBundle> {
   const files = Array.from(fileList) as UploadedProofRoomFile[]
   const manifestFile = findProofRoomFile(files, 'manifest.json')
 
@@ -517,6 +530,36 @@ async function readSelectedProofRoomBundle(fileList: FileList): Promise<ProofRoo
   return {
     ...bundle,
     ...evidence,
+  }
+}
+
+async function verifySelectedProofRoomBundleUpload(files: UploadedProofRoomFile[]) {
+  const manifestFile = findProofRoomFile(files, 'manifest.json')
+  if (!manifestFile) {
+    throw new Error('selected files must include manifest.json and load-report.json')
+  }
+
+  const formData = new FormData()
+  const bundleRootPrefix = selectedBundleRootPrefix(manifestFile)
+  for (const file of files) {
+    formData.append('file', file, proofRoomUploadPath(file, bundleRootPrefix))
+  }
+
+  const response = await fetch('/proof-room/upload/verify', {
+    method: 'POST',
+    body: formData,
+  })
+  const body = await response.json() as Record<string, unknown>
+  if (
+    !response.ok
+    || body.schema !== 'chio.proof-room.upload-verification.v1'
+    || body.verdict !== 'verified'
+  ) {
+    throw new Error(
+      typeof body.error === 'string'
+        ? body.error
+        : 'selected Proof Room bundle server verification failed',
+    )
   }
 }
 
@@ -2325,7 +2368,9 @@ export function ProofRoomView() {
     }
 
     try {
-      const bundle = await readSelectedProofRoomBundle(files)
+      const uploadedFiles = Array.from(files) as UploadedProofRoomFile[]
+      await verifySelectedProofRoomBundleUpload(uploadedFiles)
+      const bundle = await readSelectedProofRoomBundle(uploadedFiles)
       setState({ status: 'loaded', bundle })
       setBundleSource('selected')
       setFixtureCatalog(null)

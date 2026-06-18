@@ -68,4 +68,4 @@ serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.10"
 thiserror = "1"
 tokio = { version = "1", features = ["full"] }
-axum = { version = "0.8", features = ["multipart"] }
+axum = "0.8"

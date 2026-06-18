@@ -41,7 +41,7 @@ fn swarm_fixture_uses_verification_time_for_freshness() -> Result<(), Box<dyn Er
             .ok_or("node path missing")?
             .to_string();
         let value = values.get(&path).ok_or("mutated swarm artifact missing")?;
-        let bytes = json_bytes(&value)?;
+        let bytes = json_bytes(value)?;
         node["sha256"] = serde_json::Value::String(sha256_hex(&bytes));
         artifacts.insert(path, bytes);
     }
