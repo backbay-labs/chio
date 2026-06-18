@@ -2,6 +2,7 @@ use super::*;
 use std::collections::BTreeSet;
 
 const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str = "application/vnd.chio.proof-room.bundle.v1+json";
+const PROOF_ROOM_GUARD_REPORT_PATH: &str = "artifacts/authority/guard-report.json";
 const PROOF_ROOM_TRUST_ROOTS_PATH: &str = "artifacts/authority/trust-roots.json";
 const PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX_ENV: &str =
     "CHIO_PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX";
@@ -326,14 +327,24 @@ fn prepare_public_bundle_export_signer(
     let transaction_passport_path = manifest_ref_path(manifest, "transaction_passport_ref")?;
     let verifier_report_path = manifest_ref_path(manifest, "verifier_report_ref")?;
     let ui_report_path = manifest_ref_path(manifest, "proof_room_verifier_report_ref")?;
-    let public_key = keypair.public_key().to_hex();
-    let trust_roots_sha256 = update_export_trust_roots(entries, &public_key)?;
+    let trust_roots_sha256 = update_export_trust_roots(entries, &keypair)?;
+    let guard_report_sha256 =
+        update_export_signed_json_artifact(entries, PROOF_ROOM_GUARD_REPORT_PATH, &keypair)?;
     let evidence_graph_sha256 = update_export_evidence_graph_optional_node(
         entries,
         &evidence_graph_path,
         PROOF_ROOM_TRUST_ROOTS_PATH,
         &trust_roots_sha256,
     )?;
+    let evidence_graph_sha256 = match guard_report_sha256.as_deref() {
+        Some(guard_report_sha256) => update_export_evidence_graph_optional_node(
+            entries,
+            &evidence_graph_path,
+            PROOF_ROOM_GUARD_REPORT_PATH,
+            guard_report_sha256,
+        )?,
+        None => evidence_graph_sha256,
+    };
     let transaction_passport_sha256 = update_export_transaction_passport(
         entries,
         &transaction_passport_path,
@@ -367,6 +378,9 @@ fn prepare_public_bundle_export_signer(
         (ui_report_path.as_str(), ui_report_sha256.as_str()),
     ] {
         set_manifest_artifact_sha256(manifest, path, sha256)?;
+    }
+    if let Some(guard_report_sha256) = guard_report_sha256.as_deref() {
+        set_manifest_artifact_sha256(manifest, PROOF_ROOM_GUARD_REPORT_PATH, guard_report_sha256)?;
     }
 
     Ok(Some(keypair))
@@ -429,10 +443,11 @@ fn manifest_artifact_path_exists(manifest: &serde_json::Value, path: &str) -> bo
 
 fn update_export_trust_roots(
     entries: &mut [ProofArchiveEntry],
-    public_key: &str,
+    keypair: &chio_core::Keypair,
 ) -> Result<String, CliError> {
     let bytes = archive_entry_bytes_mut(entries, PROOF_ROOM_TRUST_ROOTS_PATH)?;
     let mut trust_roots: serde_json::Value = serde_json::from_slice(bytes)?;
+    let public_key = keypair.public_key().to_hex();
     let roots = trust_roots
         .get_mut("roots")
         .and_then(serde_json::Value::as_array_mut)
@@ -442,11 +457,41 @@ fn update_export_trust_roots(
             "proof room trust roots missing".to_string(),
         ));
     }
-    roots[0]["key_id"] = serde_json::Value::String(public_key.to_string());
+    roots[0]["key_id"] = serde_json::Value::String(public_key.clone());
     roots[0]["key_digest"] =
         serde_json::Value::String(chio_core::sha256_hex(public_key.as_bytes()));
+    sign_export_json_artifact(&mut trust_roots, keypair)?;
     *bytes = pretty_json_line(&trust_roots)?;
     Ok(chio_core::sha256_hex(bytes))
+}
+
+fn update_export_signed_json_artifact(
+    entries: &mut [ProofArchiveEntry],
+    artifact_path: &str,
+    keypair: &chio_core::Keypair,
+) -> Result<Option<String>, CliError> {
+    let Some(bytes) = archive_entry_bytes_mut_optional(entries, artifact_path) else {
+        return Ok(None);
+    };
+    let mut artifact: serde_json::Value = serde_json::from_slice(bytes)?;
+    sign_export_json_artifact(&mut artifact, keypair)?;
+    *bytes = pretty_json_line(&artifact)?;
+    Ok(Some(chio_core::sha256_hex(bytes)))
+}
+
+fn sign_export_json_artifact(
+    value: &mut serde_json::Value,
+    keypair: &chio_core::Keypair,
+) -> Result<(), CliError> {
+    let object = value.as_object_mut().ok_or_else(|| {
+        CliError::cli_other_error("proof archive artifact must be a JSON object")
+    })?;
+    object.remove("signature");
+    let (signature, _) = keypair.sign_canonical(value).map_err(|error| {
+        CliError::cli_other_error(format!("failed to sign proof archive artifact: {error}"))
+    })?;
+    value["signature"] = serde_json::Value::String(signature.to_hex());
+    Ok(())
 }
 
 fn update_export_evidence_graph_optional_node(
@@ -516,11 +561,18 @@ fn archive_entry_bytes_mut<'a>(
     entries: &'a mut [ProofArchiveEntry],
     path: &str,
 ) -> Result<&'a mut Vec<u8>, CliError> {
+    archive_entry_bytes_mut_optional(entries, path)
+        .ok_or_else(|| CliError::cli_other_error(format!("proof archive missing member: {path}")))
+}
+
+fn archive_entry_bytes_mut_optional<'a>(
+    entries: &'a mut [ProofArchiveEntry],
+    path: &str,
+) -> Option<&'a mut Vec<u8>> {
     entries
         .iter_mut()
         .find(|entry| entry.path == path)
         .map(|entry| &mut entry.bytes)
-        .ok_or_else(|| CliError::cli_other_error(format!("proof archive missing member: {path}")))
 }
 
 fn archive_entry_bytes<'a>(

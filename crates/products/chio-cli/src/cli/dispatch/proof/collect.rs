@@ -1044,8 +1044,9 @@ fn collected_bundle_keypair() -> chio_core::Keypair {
 }
 
 fn write_collected_trust_roots(bundle: &Path, passport_id: &str) -> Result<(), CliError> {
-    let public_key = collected_bundle_keypair().public_key().to_hex();
-    let trust_roots = serde_json::json!({
+    let keypair = collected_bundle_keypair();
+    let public_key = keypair.public_key().to_hex();
+    let mut trust_roots = serde_json::json!({
         "schema": PROOF_ROOM_TRUST_ROOTS_SCHEMA,
         "id": format!("trust-roots-collected-{passport_id}"),
         "trust_domain": format!("did:chio:proof-room-collected:{passport_id}"),
@@ -1055,14 +1056,29 @@ fn write_collected_trust_roots(bundle: &Path, passport_id: &str) -> Result<(), C
                 "key_id": public_key,
                 "key_digest": chio_core::sha256_hex(public_key.as_bytes())
             }
-        ],
-        "signature": format!("sig-trust-roots-collected-{passport_id}")
+        ]
     });
+    sign_collected_json_artifact(&mut trust_roots, &keypair)?;
     let path = bundle.join(PROOF_ROOM_TRUST_ROOTS_PATH);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
     write_json_line_file(&path, &trust_roots)
+}
+
+fn sign_collected_json_artifact(
+    value: &mut serde_json::Value,
+    keypair: &chio_core::Keypair,
+) -> Result<(), CliError> {
+    let object = value.as_object_mut().ok_or_else(|| {
+        CliError::cli_other_error("collected proof artifact must be a JSON object")
+    })?;
+    object.remove("signature");
+    let (signature, _) = keypair.sign_canonical(value).map_err(|error| {
+        CliError::cli_other_error(format!("failed to sign collected proof artifact: {error}"))
+    })?;
+    value["signature"] = serde_json::Value::String(signature.to_hex());
+    Ok(())
 }
 
 fn dsse_pre_auth_encoding(payload_type: &str, payload: &[u8]) -> Vec<u8> {

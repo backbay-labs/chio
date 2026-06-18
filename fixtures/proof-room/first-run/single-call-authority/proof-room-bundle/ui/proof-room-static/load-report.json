@@ -34,7 +34,7 @@
   "source_verifier_report_ref": {
     "path": "verifier/report.json",
     "schema": "chio.transaction.verifier-report.v1",
-    "sha256": "78f0578f5aed744a1ea38d92b91cea5648e033b571120f668fc4fa30c60c1b41"
+    "sha256": "c480214fbe5c72776dc156982b93e15a0e3f5a6bdbd276346c6b4cd57872e5e3"
   },
   "ui_verdict_source": "verifier_report_ref",
   "verdict": "verified"

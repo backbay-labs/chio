@@ -19,7 +19,7 @@
       "renderer_hint": "transaction-passport",
       "schema": "chio.transaction-passport.v1",
       "sensitivity_class": "public-fixture",
-      "sha256": "75e61b475f551c95ac14497614d598c48446cf62762ae750fcbcddddf2409917"
+      "sha256": "f4d3e788f8a3a87cbafa38efa26c5dec0ea4fe3b2715641d351d1acf88618b4f"
     },
     {
       "artifact_class": "transaction-root",
@@ -30,7 +30,7 @@
       "renderer_hint": "evidence-graph",
       "schema": "chio.transaction.evidence-graph.v1",
       "sensitivity_class": "public-fixture",
-      "sha256": "d398bbf80f0f229876876f040495f2a8c95fb59e5f9c5be9df078d2208b877a1"
+      "sha256": "cc7f1d2fd7319406e4268a02516314b09f4d5ba8f72454c4b0712ea38079c0fd"
     },
     {
       "artifact_class": "transaction-policy",
@@ -52,7 +52,7 @@
       "renderer_hint": "verifier-report",
       "schema": "chio.transaction.verifier-report.v1",
       "sensitivity_class": "public-fixture",
-      "sha256": "78f0578f5aed744a1ea38d92b91cea5648e033b571120f668fc4fa30c60c1b41"
+      "sha256": "c480214fbe5c72776dc156982b93e15a0e3f5a6bdbd276346c6b4cd57872e5e3"
     },
     {
       "artifact_class": "proof-room-display",
@@ -63,7 +63,7 @@
       "renderer_hint": "proof-room-report",
       "schema": "chio.proof-room.verifier-report.v1",
       "sensitivity_class": "public-fixture",
-      "sha256": "2147e87b8dae088d53baac77e630cf96f54f584772a68df7610f052536b668de"
+      "sha256": "bb63bb4dfb05426a1a1531dab1e882fc63e6c8c3b299cbfe3b76cfb1ab836bce"
     },
     {
       "artifact_class": "receipt",
@@ -74,7 +74,7 @@
       "renderer_hint": "receipt",
       "schema": "chio.proof-room.receipt-evidence.v1",
       "sensitivity_class": "public-fixture",
-      "sha256": "60cb061bc226c4c46887e5f86783fc9a17d8453dc07104c6714be2c1b6e511e2"
+      "sha256": "9f68a1753601e9e9dc87c0fea2e74789e3b18ab9750c7b7f1590533bf5a25844"
     },
     {
       "artifact_class": "receipt",
@@ -96,7 +96,7 @@
       "renderer_hint": "capability-proof",
       "schema": "chio.proof.first-run.capability-proof.v1",
       "sensitivity_class": "public-fixture",
-      "sha256": "23575edd5e9af4a2ecbbb51726f5ff6260fc0bdb70a043a1d638c39524ebc1d5"
+      "sha256": "742f0e7a663f45c90f78d7f4e604f400ff392bba00000707c8c87bf2c98fda46"
     },
     {
       "artifact_class": "authority-evidence",
@@ -107,7 +107,7 @@
       "renderer_hint": "guard-report",
       "schema": "chio.proof.first-run.guard-report.v1",
       "sensitivity_class": "public-fixture",
-      "sha256": "1d97ebf2724fe1a76b346b5e51df9081b4848c163ef9d2c47a6b4785dcc58d3a"
+      "sha256": "f3d9f529a7a873070d2662ef0107a9233ab6ebf3aa633faa20fed83688f1955c"
     },
     {
       "artifact_class": "authority-evidence",
@@ -118,7 +118,7 @@
       "renderer_hint": "trust-roots",
       "schema": "chio.proof.first-run.trust-roots.v1",
       "sensitivity_class": "public-fixture",
-      "sha256": "e0aa67f2fb78d2a6e1e11141c81881c34c337f16f17d521140b9519ffc6848f4"
+      "sha256": "f5ec7175c6ddb6fc302e55bb6c4d9662f470041ece2f07b8a2edef763647671f"
     },
     {
       "artifact_class": "release-evidence",
@@ -300,7 +300,7 @@
   "evidence_graph_ref": {
     "path": "roots/evidence-graph.json",
     "schema": "chio.transaction.evidence-graph.v1",
-    "sha256": "d398bbf80f0f229876876f040495f2a8c95fb59e5f9c5be9df078d2208b877a1"
+    "sha256": "cc7f1d2fd7319406e4268a02516314b09f4d5ba8f72454c4b0712ea38079c0fd"
   },
   "excluded_artifacts": [],
   "fixture_id": "single-call-authority",
@@ -325,9 +325,9 @@
       "path": "negatives/missing-denial-receipt.json"
     },
     {
-      "expected_failure_code": "proof-room.receipt-coverage.signature-invalid: runtime_terminal_allow",
+      "expected_failure_code": "receipt signature invalid",
       "id": "bad-receipt-signature",
-      "observed_failure_code": "proof-room.receipt-coverage.signature-invalid: runtime_terminal_allow",
+      "observed_failure_code": "receipt signature invalid",
       "path": "negatives/bad-receipt-signature.json"
     },
     {
@@ -370,7 +370,7 @@
   "proof_room_verifier_report_ref": {
     "path": "ui/proof-room-static/load-report.json",
     "schema": "chio.proof-room.verifier-report.v1",
-    "sha256": "2147e87b8dae088d53baac77e630cf96f54f584772a68df7610f052536b668de"
+    "sha256": "bb63bb4dfb05426a1a1531dab1e882fc63e6c8c3b299cbfe3b76cfb1ab836bce"
   },
   "receipt_coverage": [
     {
@@ -411,11 +411,11 @@
   "transaction_passport_ref": {
     "path": "roots/transaction-passport.json",
     "schema": "chio.transaction-passport.v1",
-    "sha256": "75e61b475f551c95ac14497614d598c48446cf62762ae750fcbcddddf2409917"
+    "sha256": "f4d3e788f8a3a87cbafa38efa26c5dec0ea4fe3b2715641d351d1acf88618b4f"
   },
   "verifier_report_ref": {
     "path": "verifier/report.json",
     "schema": "chio.transaction.verifier-report.v1",
-    "sha256": "78f0578f5aed744a1ea38d92b91cea5648e033b571120f668fc4fa30c60c1b41"
+    "sha256": "c480214fbe5c72776dc156982b93e15a0e3f5a6bdbd276346c6b4cd57872e5e3"
   }
 }

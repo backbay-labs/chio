@@ -1,13 +1,13 @@
 {
-  "schema": "chio.proof.first-run.guard-report.v1",
-  "id": "guard-report-single-call-authority",
-  "guard_id": "guard-first-run-request",
-  "decision": "allow-and-deny-covered",
-  "policy_digest": "3f562106e60d01c801571ab725ce3d9c8f5cf35451ae9e5d08c1fff1bf005bfe",
   "allow_receipt_ref": "first-run-single-call-allow",
+  "capability_id": "cap-first-run-single-call",
+  "decision": "allow-and-deny-covered",
   "denial_receipt_ref": "first-run-single-call-denial",
-  "request_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "response_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-  "signature": "sig-guard-report-single-call-authority",
-  "capability_id": "cap-first-run-single-call"
+  "guard_id": "guard-first-run-request",
+  "id": "guard-report-single-call-authority",
+  "policy_digest": "3f562106e60d01c801571ab725ce3d9c8f5cf35451ae9e5d08c1fff1bf005bfe",
+  "request_digest": "259f1b7f139b7541b5f0c79d46344b43db90070e8f7a785cbf66a35d915190a9",
+  "response_digest": "6125f4552d9689d705cc020e04688440c9be513df82bc2bbd916039076cb5da7",
+  "schema": "chio.proof.first-run.guard-report.v1",
+  "signature": "59f9cf0ee7bcc3f5a5b98447f5a7cb582e868ba94ae4b48e42a6706ed1f2c1411483af121618d479d0d2d9073c2fb722ed80847f8feae0bb862d98d04a35ac04"
 }

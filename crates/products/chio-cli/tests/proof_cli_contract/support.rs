@@ -31,7 +31,8 @@ pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS: &str =
     "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737";
 pub(crate) const PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS: &str = concat!(
     "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,",
-    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"
+    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa,",
+    "a6d2455ea3a5771aba9fcb037924114c92f9f325049f6b4269e739d9048bb869"
 );
 pub(crate) const PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS: &str = concat!(
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
@@ -838,7 +839,7 @@ pub(crate) fn proof_room_trust_roots_for_seed(seed: [u8; 32]) -> serde_json::Val
     let keypair = chio_core::Keypair::from_seed(&seed);
     let key_id = keypair.public_key().to_hex();
     let key_digest = hex::encode(Sha256::digest(key_id.as_bytes()));
-    serde_json::json!({
+    let mut trust_roots = serde_json::json!({
         "schema": "chio.proof.first-run.trust-roots.v1",
         "id": "trust-roots-test-bundle",
         "trust_domain": "did:chio:proof-room-test",
@@ -848,9 +849,13 @@ pub(crate) fn proof_room_trust_roots_for_seed(seed: [u8; 32]) -> serde_json::Val
                 "key_id": key_id,
                 "key_digest": key_digest
             }
-        ],
-        "signature": "sig-trust-roots-test-bundle"
-    })
+        ]
+    });
+    let (signature, _) = keypair
+        .sign_canonical(&trust_roots)
+        .test_expect("trust roots sign");
+    trust_roots["signature"] = serde_json::Value::String(signature.to_hex());
+    trust_roots
 }
 
 pub(crate) fn build_runtime_commerce_passport_bundle() -> (tempfile::TempDir, PathBuf) {

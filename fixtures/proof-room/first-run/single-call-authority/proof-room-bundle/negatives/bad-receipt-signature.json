@@ -9,5 +9,5 @@
     ],
     "value": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
   },
-  "expected_failure_code": "proof-room.receipt-coverage.signature-invalid: runtime_terminal_allow"
+  "expected_failure_code": "receipt signature invalid"
 }

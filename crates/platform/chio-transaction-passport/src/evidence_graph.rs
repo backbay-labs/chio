@@ -1,12 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path};
 
+use chio_core_types::crypto::{PublicKey, Signature};
 use chrono::{DateTime, Utc};
 use serde::{de::DeserializeOwned, Deserialize};
 
 use super::error::TransactionPassportError;
 use super::ids::TRANSACTION_EVIDENCE_GRAPH_SCHEMA_ID;
 use super::validation::{require_non_empty, validate_bundle_relative_path, validate_sha256_hex};
+
+const DID_CHIO_PREFIX: &str = "did:chio:";
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -491,6 +494,43 @@ pub(super) fn validate_minimal_governed_action_artifact_bindings(
         "guard decision response digest mismatch",
     )?;
     ensure_trust_root_authorizes_issuer(&trust_root, &capability.issuer)?;
+    let trust_root_signer = trust_root_signer_identity(&trust_root, &capability.issuer)?;
+    verify_signed_role_artifact(
+        graph,
+        artifacts,
+        EvidenceNodeRole::Capability,
+        Some(capability.issuer.as_str()),
+        capability.signature.as_deref(),
+        "capability proof",
+    )?;
+    verify_signed_role_artifact(
+        graph,
+        artifacts,
+        EvidenceNodeRole::TrustRoot,
+        Some(trust_root_signer.as_str()),
+        trust_root.signature.as_deref(),
+        "trust root",
+    )?;
+    let guard_signer = guard
+        .guard_key
+        .as_deref()
+        .unwrap_or(trust_root_signer.as_str());
+    verify_signed_role_artifact(
+        graph,
+        artifacts,
+        EvidenceNodeRole::GuardDecision,
+        Some(guard_signer),
+        guard.signature.as_deref(),
+        "guard decision",
+    )?;
+    verify_signed_role_artifact(
+        graph,
+        artifacts,
+        EvidenceNodeRole::Receipt,
+        receipt.kernel_key.as_deref(),
+        receipt.signature.as_deref(),
+        "receipt",
+    )?;
 
     Ok(())
 }
@@ -501,6 +541,7 @@ struct MinimalCapabilityProof {
     not_before: Option<String>,
     expires_at: String,
     issuer: String,
+    signature: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -515,6 +556,8 @@ struct MinimalGuardDecision {
     response_sha256: Option<String>,
     response_digest: Option<String>,
     allow_receipt_ref: Option<String>,
+    guard_key: Option<String>,
+    signature: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -525,6 +568,8 @@ struct MinimalReceipt {
     policy_digest: String,
     request_digest: String,
     response_digest: String,
+    kernel_key: Option<String>,
+    signature: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -532,11 +577,14 @@ struct MinimalTrustRoot {
     authority: Option<String>,
     #[serde(default)]
     roots: Vec<MinimalTrustRootEntry>,
+    signature: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct MinimalTrustRootEntry {
     subject: String,
+    key_id: Option<String>,
+    key_digest: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -679,11 +727,9 @@ fn ensure_trust_root_authorizes_issuer(
 ) -> Result<(), TransactionPassportError> {
     if let Some(authority) = trust_root.authority.as_deref() {
         require_binding_value(authority, "trust root authority")?;
-        return ensure_binding_equal(
-            authority,
-            issuer,
-            "trust root does not authorize capability issuer",
-        );
+        if authority == issuer {
+            return Ok(());
+        }
     }
     if trust_root
         .roots
@@ -695,6 +741,98 @@ fn ensure_trust_root_authorizes_issuer(
     Err(minimal_governed_action_binding_error(
         "trust root does not authorize capability issuer",
     ))
+}
+
+fn trust_root_signer_identity(
+    trust_root: &MinimalTrustRoot,
+    issuer: &str,
+) -> Result<String, TransactionPassportError> {
+    if let Some(authority) = trust_root.authority.as_deref() {
+        require_binding_value(authority, "trust root authority")?;
+        return Ok(authority.to_string());
+    }
+    let root = trust_root
+        .roots
+        .iter()
+        .find(|root| root.subject == issuer)
+        .ok_or_else(|| {
+            minimal_governed_action_binding_error("trust root does not authorize capability issuer")
+        })?;
+    let key_id = root
+        .key_id
+        .as_deref()
+        .ok_or_else(|| minimal_governed_action_binding_error("trust root signer key missing"))?;
+    require_binding_value(key_id, "trust root signer key")?;
+    if let Some(key_digest) = root.key_digest.as_deref() {
+        require_binding_digest(key_digest, "trust root signer key digest")?;
+        let actual = super::sha256_hex(key_id.as_bytes());
+        if key_digest != actual {
+            return Err(minimal_governed_action_binding_error(
+                "trust root signer key digest mismatch",
+            ));
+        }
+    }
+    Ok(key_id.to_string())
+}
+
+fn verify_signed_role_artifact(
+    graph: &TransactionEvidenceGraph,
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    role: EvidenceNodeRole,
+    signer_identity: Option<&str>,
+    signature: Option<&str>,
+    label: &'static str,
+) -> Result<(), TransactionPassportError> {
+    let signer_identity = signer_identity
+        .ok_or_else(|| minimal_governed_action_binding_error(format!("{label} signer missing")))?;
+    require_binding_value(signer_identity, "artifact signer")?;
+    let signature = signature.ok_or_else(|| {
+        minimal_governed_action_binding_error(format!("{label} signature missing"))
+    })?;
+    require_binding_value(signature, "artifact signature")?;
+    let public_key = minimal_self_certifying_public_key(signer_identity, label)?;
+    let signature = Signature::from_hex(signature).map_err(|error| {
+        minimal_governed_action_binding_error(format!("{label} signature invalid: {error}"))
+    })?;
+    let bytes = artifact_bytes_for_role(graph, artifacts, role)?;
+    let mut artifact: serde_json::Value = serde_json::from_slice(bytes).map_err(|error| {
+        minimal_governed_action_binding_error(format!("invalid {label}: {error}"))
+    })?;
+    let object = artifact.as_object_mut().ok_or_else(|| {
+        minimal_governed_action_binding_error(format!("{label} artifact must be an object"))
+    })?;
+    object.remove("signature");
+    let verified = public_key
+        .verify_canonical(&artifact, &signature)
+        .map_err(|error| {
+            minimal_governed_action_binding_error(format!("{label} signature invalid: {error}"))
+        })?;
+    if verified {
+        Ok(())
+    } else {
+        Err(minimal_governed_action_binding_error(format!(
+            "{label} signature invalid"
+        )))
+    }
+}
+
+fn minimal_self_certifying_public_key(
+    identity: &str,
+    label: &'static str,
+) -> Result<PublicKey, TransactionPassportError> {
+    let public_key_hex = if let Some(public_key_hex) = identity.strip_prefix(DID_CHIO_PREFIX) {
+        if validate_sha256_hex(public_key_hex).is_err() {
+            return Err(minimal_governed_action_binding_error(format!(
+                "{label} signer is not self-certifying"
+            )));
+        }
+        public_key_hex
+    } else {
+        identity
+    };
+    PublicKey::from_hex(public_key_hex).map_err(|error| {
+        minimal_governed_action_binding_error(format!("{label} signer key invalid: {error}"))
+    })
 }
 
 fn validate_capability_window(

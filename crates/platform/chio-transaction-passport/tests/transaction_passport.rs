@@ -164,6 +164,18 @@ fn sign_runtime_lease_with_fixture_authority(value: &mut Value) {
     );
 }
 
+fn signed_json_bytes(mut value: Value, keypair: &Keypair) -> Vec<u8> {
+    value
+        .as_object_mut()
+        .test_expect("signed artifact is an object")
+        .remove("signature");
+    let (signature, _) = keypair
+        .sign_canonical(&value)
+        .test_expect("signed artifact signs");
+    value["signature"] = Value::String(signature.to_hex());
+    serde_json::to_vec(&value).test_expect("signed artifact serializes")
+}
+
 fn add_unavailable_runtime_receipt_node(
     bundle: &mut chio_transaction_passport::RuntimeSecurityBundle,
 ) {
@@ -203,55 +215,75 @@ fn valid_verifier_policy_bytes() -> &'static [u8] {
 }
 
 fn governed_action_artifacts() -> BTreeMap<String, Vec<u8>> {
+    let capability_key = Keypair::from_seed(&[51u8; 32]);
+    let guard_key = Keypair::from_seed(&[52u8; 32]);
+    let receipt_key = Keypair::from_seed(&[53u8; 32]);
+    let trust_root_key = Keypair::from_seed(&[54u8; 32]);
+    let capability_issuer = format!("did:chio:{}", capability_key.public_key().to_hex());
+    let trust_root_authority = format!("did:chio:{}", trust_root_key.public_key().to_hex());
     let policy_bytes = br#"{"schema":"chio.policy.bundle.v1","id":"policy","version":"2026-06-10","rules":[{"id":"allow-demo-echo","effect":"allow","scope":"tool:demo.echo"}]}"#.to_vec();
     let policy_digest = sha256_hex(&policy_bytes);
     let request_bytes = br#"{"schema":"chio.request.digest.v1","id":"request-digest","method":"demo.echo","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#.to_vec();
     let request_digest = sha256_hex(&request_bytes);
     let response_bytes = br#"{"schema":"chio.response.digest.v1","id":"response-digest","method":"demo.echo","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}"#.to_vec();
     let response_digest = sha256_hex(&response_bytes);
-    let guard_decision_bytes = serde_json::to_vec(&serde_json::json!({
-        "schema": "chio.guard.decision.v1",
-        "id": "guard-decision",
-        "capability_id": "cap-tool-read-demo",
-        "policy_sha256": policy_digest,
-        "decision": "allow",
-        "request_sha256": request_digest,
-        "response_sha256": response_digest,
-        "signature": "sig-guard-decision"
-    }))
-    .test_expect("serialize guard decision");
-    let receipt_bytes = serde_json::to_vec(&serde_json::json!({
-        "schema": "chio.receipt.v1",
-        "receipt_id": "receipt-minimal-allow",
-        "capability_id": "cap-tool-read-demo",
-        "guard_decision_id": "guard-decision",
-        "policy_digest": policy_digest,
-        "request_digest": request_digest,
-        "response_digest": response_digest,
-        "terminal_status": "allowed_executed",
-        "signature": "sig-receipt-minimal-allow"
-    }))
-    .test_expect("serialize receipt");
+    let capability_bytes = signed_json_bytes(
+        json!({
+            "schema": "chio.capability.proof.v1",
+            "id": "capability-proof",
+            "capability_id": "cap-tool-read-demo",
+            "subject": "agent:first-run",
+            "scope": "tool:demo.echo",
+            "expires_at": "2026-06-10T00:05:00Z",
+            "issuer": capability_issuer
+        }),
+        &capability_key,
+    );
+    let guard_decision_bytes = signed_json_bytes(
+        json!({
+            "schema": "chio.guard.decision.v1",
+            "id": "guard-decision",
+            "capability_id": "cap-tool-read-demo",
+            "policy_sha256": policy_digest,
+            "decision": "allow",
+            "request_sha256": request_digest,
+            "response_sha256": response_digest,
+            "guard_key": guard_key.public_key().to_hex()
+        }),
+        &guard_key,
+    );
+    let receipt_bytes = signed_json_bytes(
+        json!({
+            "schema": "chio.receipt.v1",
+            "receipt_id": "receipt-minimal-allow",
+            "capability_id": "cap-tool-read-demo",
+            "guard_decision_id": "guard-decision",
+            "policy_digest": policy_digest,
+            "request_digest": request_digest,
+            "response_digest": response_digest,
+            "terminal_status": "allowed_executed",
+            "kernel_key": receipt_key.public_key().to_hex()
+        }),
+        &receipt_key,
+    );
+    let trust_root_bytes = signed_json_bytes(
+        json!({
+            "schema": "chio.trust.root.v1",
+            "id": "trust-root",
+            "root_id": "trust-root-first-run",
+            "authority": trust_root_authority,
+            "roots": [{"subject": capability_issuer}]
+        }),
+        &trust_root_key,
+    );
     BTreeMap::from([
-        (
-            "capability-proof.json".to_string(),
-            br#"{"schema":"chio.capability.proof.v1","id":"capability-proof","capability_id":"cap-tool-read-demo","subject":"agent:first-run","scope":"tool:demo.echo","expires_at":"2026-06-10T00:05:00Z","issuer":"did:chio:authority:first-run","signature":"sig-capability-proof"}"#.to_vec(),
-        ),
-        (
-            "guard-decision.json".to_string(),
-            guard_decision_bytes,
-        ),
-        (
-            "kernel-receipt.json".to_string(),
-            receipt_bytes,
-        ),
+        ("capability-proof.json".to_string(), capability_bytes),
+        ("guard-decision.json".to_string(), guard_decision_bytes),
+        ("kernel-receipt.json".to_string(), receipt_bytes),
         ("policy.json".to_string(), policy_bytes),
         ("request-digest.json".to_string(), request_bytes),
         ("response-digest.json".to_string(), response_bytes),
-        (
-            "trust-root.json".to_string(),
-            br#"{"schema":"chio.trust.root.v1","id":"trust-root","root_id":"trust-root-first-run","authority":"did:chio:authority:first-run","signature":"sig-trust-root"}"#.to_vec(),
-        ),
+        ("trust-root.json".to_string(), trust_root_bytes),
         (
             "verifier-policy.json".to_string(),
             valid_verifier_policy_bytes().to_vec(),
@@ -582,6 +614,49 @@ fn standalone_minimal_passport_accepts_governed_action_evidence() {
         &artifacts,
     )
     .test_expect("standalone minimal passport should accept governed action evidence");
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_forged_governed_action_signatures() {
+    for (artifact_path, expected_error) in [
+        (
+            "capability-proof.json",
+            "capability proof signature invalid",
+        ),
+        ("trust-root.json", "trust root signature invalid"),
+        ("guard-decision.json", "guard decision signature invalid"),
+        ("kernel-receipt.json", "receipt signature invalid"),
+    ] {
+        let mut artifacts = governed_action_artifacts();
+        let mut artifact: serde_json::Value = serde_json::from_slice(
+            artifacts
+                .get(artifact_path)
+                .test_expect("governed action artifact exists"),
+        )
+        .test_expect("governed action artifact parses");
+        artifact["signature"] = serde_json::Value::String("sig-forged".to_string());
+        artifacts.insert(
+            artifact_path.to_string(),
+            serde_json::to_vec(&artifact).test_expect("governed action artifact serializes"),
+        );
+        let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+        let verifier_policy_bytes = valid_verifier_policy_bytes();
+        let passport = passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+
+        let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+            &passport,
+            "transaction-passport.json".to_string(),
+            &evidence_graph_bytes,
+            verifier_policy_bytes,
+            &artifacts,
+        )
+        .test_expect_err("standalone minimal passport must reject forged signatures");
+
+        assert!(
+            error.to_string().contains(expected_error),
+            "{artifact_path} should fail with {expected_error}, got {error}"
+        );
+    }
 }
 
 #[test]

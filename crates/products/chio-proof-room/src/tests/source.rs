@@ -744,10 +744,19 @@ fn rejects_first_run_public_artifacts_with_unexpected_fields() -> Result<(), Box
     let root = repo_root()?;
     let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
 
-    for artifact_path in [
-        "artifacts/release/command-log.json",
-        "roots/request-digest.json",
-        "roots/response-digest.json",
+    for (artifact_path, expected_error) in [
+        (
+            "artifacts/release/command-log.json",
+            "proof-room.schema-violation: artifact",
+        ),
+        (
+            "roots/request-digest.json",
+            "receipt request digest mismatch",
+        ),
+        (
+            "roots/response-digest.json",
+            "receipt response digest mismatch",
+        ),
     ] {
         let work = tempfile::tempdir()?;
         copy_dir_all(&source, work.path())?;
@@ -758,9 +767,7 @@ fn rejects_first_run_public_artifacts_with_unexpected_fields() -> Result<(), Box
             .ok_or("mutated proof room bundle unexpectedly verified")?;
 
         assert!(
-            error
-                .to_string()
-                .contains("proof-room.schema-violation: artifact"),
+            error.to_string().contains(expected_error),
             "{artifact_path}: {error}"
         );
     }

@@ -306,9 +306,7 @@ fn rejects_first_run_receipt_signature_mismatch() -> Result<(), Box<dyn Error>> 
         .ok_or("mutated proof room bundle unexpectedly verified")?;
 
     assert!(
-        error
-            .to_string()
-            .contains("proof-room.receipt-coverage.signature-invalid: runtime_terminal_allow"),
+        error.to_string().contains("receipt signature invalid"),
         "{error}"
     );
     Ok(())
@@ -353,9 +351,7 @@ fn rejects_first_run_receipt_body_forgery_with_rehashed_artifact() -> Result<(),
         .ok_or("mutated proof room bundle unexpectedly verified")?;
 
     assert!(
-        error
-            .to_string()
-            .contains("proof-room.receipt-coverage.signature-invalid: runtime_terminal_allow"),
+        error.to_string().contains("receipt signature invalid"),
         "{error}"
     );
     Ok(())

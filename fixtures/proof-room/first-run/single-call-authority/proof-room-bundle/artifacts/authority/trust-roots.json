@@ -1,13 +1,13 @@
 {
-  "schema": "chio.proof.first-run.trust-roots.v1",
   "id": "trust-roots-single-call-authority",
-  "trust_domain": "did:chio:proof-room-stage-0",
   "roots": [
     {
-      "subject": "did:chio:authority-root",
+      "key_digest": "27a18c4142f414227b37507c1da6e90ee6d73565eea7686152c067e2ee262ba7",
       "key_id": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-      "key_digest": "27a18c4142f414227b37507c1da6e90ee6d73565eea7686152c067e2ee262ba7"
+      "subject": "did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"
     }
   ],
-  "signature": "sig-trust-roots-single-call-authority"
+  "schema": "chio.proof.first-run.trust-roots.v1",
+  "signature": "e9feda18b61fc4d8c61b441afa913708989048b16208300acb8f5fdba44e4bbb28d88cd9d4376b1305e850b9fd5a76cb1bb71b0c386c64be978120e6e6fb3d01",
+  "trust_domain": "did:chio:proof-room-stage-0"
 }
