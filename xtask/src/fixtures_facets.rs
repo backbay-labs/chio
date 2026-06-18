@@ -620,7 +620,7 @@ fn invalid(message: &str) -> XtaskError {
 // -- Imperative bodies -----------------------------------------------------
 
 /// `transit`: cargo tests, then (mode == All) fixture regen via the generator
-/// and a `cmp` of the five fixtures against the freshly-generated copies.
+/// and a `cmp` of the five fixtures against the checked package copies.
 fn handle_transit(root: &Path, facet: &Facet, mode: Mode) -> Result<(), XtaskError> {
     run_cargo_tests(root, facet)?;
     if mode == Mode::NegativeOnly {
@@ -629,6 +629,10 @@ fn handle_transit(root: &Path, facet: &Facet, mode: Mode) -> Result<(), XtaskErr
     let scratch = ScratchDir::new("transit")?;
     let out_dir = scratch.join("pheromone");
     let out_arg = display(&out_dir);
+    let proof_package = root
+        .join("examples/chio-3vendor/fixtures")
+        .join("buyer-auditor-proof-package.json");
+    let proof_package_arg = display(&proof_package);
     require_cli(
         root,
         &[
@@ -637,7 +641,8 @@ fn handle_transit(root: &Path, facet: &Facet, mode: Mode) -> Result<(), XtaskErr
             "--bin",
             "generate-chio-three-vendor-fixtures",
             "--",
-            "--pheromone-out-dir",
+            "--pheromone-package",
+            &proof_package_arg,
             &out_arg,
         ],
     )?;
@@ -655,7 +660,7 @@ fn handle_transit(root: &Path, facet: &Facet, mode: Mode) -> Result<(), XtaskErr
 }
 
 /// `runtime`: cargo tests, then (mode == All) regen + cmp of the eight runtime
-/// fixtures and the receive/query CLI orchestration, then recurse into
+/// fixtures from the checked package and the receive/query CLI orchestration, then recurse into
 /// `transit` (full).
 fn handle_runtime(
     root: &Path,
@@ -683,6 +688,10 @@ fn handle_runtime(
     let scratch = ScratchDir::new("runtime")?;
     let out_dir = scratch.join("pheromone");
     let out_arg = display(&out_dir);
+    let proof_package = root
+        .join("examples/chio-3vendor/fixtures")
+        .join("buyer-auditor-proof-package.json");
+    let proof_package_arg = display(&proof_package);
     require_cli(
         root,
         &[
@@ -691,7 +700,8 @@ fn handle_runtime(
             "--bin",
             "generate-chio-three-vendor-fixtures",
             "--",
-            "--pheromone-out-dir",
+            "--pheromone-package",
+            &proof_package_arg,
             &out_arg,
         ],
     )?;
