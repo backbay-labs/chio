@@ -860,7 +860,7 @@ fn proof_verify_rejects_agent_web_manifests_that_omit_secondary_authority_limita
 
 #[test]
 fn proof_verify_accepts_trust_market_context_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_trust_market_fixture_authority()
         .arg("proof")
         .arg("verify")
         .arg(trust_market_fixture_path("valid-marketplace-context"))

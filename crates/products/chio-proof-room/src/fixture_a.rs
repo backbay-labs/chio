@@ -882,18 +882,28 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
             evidence_graph_bytes,
             artifacts,
         ),
-        ProofRoomFixtureReportRoute::TrustMarket => proof_room_fixture_verified_report_bytes(
-            fixture_id,
-            passport,
-            chio_trust_market_context::verify_trust_market_context(
-                &chio_trust_market_context::TrustMarketBundle {
-                    passport: passport.clone(),
-                    evidence_graph_bytes: evidence_graph_bytes.to_vec(),
-                    verifier_policy_bytes: verifier_policy_bytes.to_vec(),
-                    artifacts: artifacts.clone(),
-                },
-            ),
-        ),
+        ProofRoomFixtureReportRoute::TrustMarket => {
+            let trusted_market_authority_keys =
+                crate::trust_market_trusted_authority_keys_from_env().map_err(|error| {
+                    (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        format!("proof-room.fixture.trust-market-invalid: {fixture_id}: {error}"),
+                    )
+                })?;
+            proof_room_fixture_verified_report_bytes(
+                fixture_id,
+                passport,
+                chio_trust_market_context::verify_trust_market_context(
+                    &chio_trust_market_context::TrustMarketBundle {
+                        passport: passport.clone(),
+                        evidence_graph_bytes: evidence_graph_bytes.to_vec(),
+                        verifier_policy_bytes: verifier_policy_bytes.to_vec(),
+                        artifacts: artifacts.clone(),
+                        trusted_market_authority_keys,
+                    },
+                ),
+            )
+        }
         ProofRoomFixtureReportRoute::Enterprise => proof_room_fixture_verified_report_bytes(
             fixture_id,
             passport,

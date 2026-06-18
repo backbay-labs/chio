@@ -959,6 +959,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         evidence_graph_bytes: evidence_graph,
         verifier_policy_bytes: verifier_policy,
         artifacts,
+        trusted_market_authority_keys: vec![market_authority_keypair().public_key()],
     }
 }
 
@@ -1016,6 +1017,32 @@ fn trust_market_context_accepts_marketplace_fixture() {
         .unsupported_claims
         .iter()
         .any(|claim| claim == "claim.market.global_trust_score_published"));
+}
+
+#[test]
+fn trust_market_rejects_policy_authority_without_external_root() {
+    let mut bundle = trust_market_bundle(TrustMarketCase::Valid);
+    bundle.trusted_market_authority_keys.clear();
+
+    let error = verify_trust_market_context(&bundle)
+        .test_expect_err("trust-market authority must be verifier-pinned");
+
+    assert!(error
+        .to_string()
+        .contains("trusted market authority keys missing"));
+}
+
+#[test]
+fn trust_market_rejects_policy_authority_not_pinned_by_verifier() {
+    let mut bundle = trust_market_bundle(TrustMarketCase::Valid);
+    bundle.trusted_market_authority_keys = vec![Keypair::from_seed(&[60; 32]).public_key()];
+
+    let error = verify_trust_market_context(&bundle)
+        .test_expect_err("bundle-local trust-market authority must not self-authorize");
+
+    assert!(error
+        .to_string()
+        .contains("trusted market authority keys do not match verifier policy"));
 }
 
 #[test]

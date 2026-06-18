@@ -784,6 +784,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         evidence_graph_bytes: evidence_graph,
         verifier_policy_bytes: verifier_policy,
         artifacts,
+        trusted_market_authority_keys: vec![market_authority_keypair().public_key()],
     }
 }
 

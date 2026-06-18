@@ -128,6 +128,7 @@ const AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV: &str = "CHIO_AGENT_WEB_STANDARD_WE
 const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS";
 const AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV: &str =
     "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS";
+const TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV: &str = "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS";
 const PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV: &str =
     "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS";
 const PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS_ENV: &str =
@@ -160,7 +161,7 @@ pub(crate) fn agent_web_verifier_trust_from_env(
     };
     match env::var(AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV) {
         Ok(keys) => {
-            trust = trust.with_trusted_receipt_kernel_keys(parse_agent_web_public_keys(
+            trust = trust.with_trusted_receipt_kernel_keys(parse_public_keys(
                 AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV,
                 &keys,
             )?);
@@ -174,7 +175,7 @@ pub(crate) fn agent_web_verifier_trust_from_env(
     }
     match env::var(AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV) {
         Ok(keys) => {
-            trust = trust.with_trusted_envelope_sidecar_keys(parse_agent_web_public_keys(
+            trust = trust.with_trusted_envelope_sidecar_keys(parse_public_keys(
                 AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV,
                 &keys,
             )?);
@@ -189,7 +190,7 @@ pub(crate) fn agent_web_verifier_trust_from_env(
     Ok(trust)
 }
 
-fn parse_agent_web_public_keys(
+fn parse_public_keys(
     env_name: &str,
     keys: &str,
 ) -> Result<Vec<chio_core_types::PublicKey>, String> {
@@ -209,6 +210,19 @@ fn parse_agent_web_public_keys(
                 .map_err(|error| format!("{env_name} contains invalid public key: {error}"))
         })
         .collect()
+}
+
+pub(crate) fn trust_market_trusted_authority_keys_from_env(
+) -> Result<Vec<chio_core_types::PublicKey>, String> {
+    match env::var(TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV) {
+        Ok(keys) => parse_public_keys(TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV, &keys),
+        Err(env::VarError::NotPresent) => Err(format!(
+            "{TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV} must pin trusted market authority keys"
+        )),
+        Err(env::VarError::NotUnicode(_)) => Err(format!(
+            "{TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV} must be valid UTF-8"
+        )),
+    }
 }
 
 pub(crate) fn proof_room_trusted_bundle_signer_keys_from_env() -> Result<BTreeSet<String>, String> {

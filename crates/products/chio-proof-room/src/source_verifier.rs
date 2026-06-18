@@ -163,12 +163,16 @@ pub(crate) fn verify_transaction_passport_family_report(
             is_trust_market_evidence_graph_node,
         )?;
         let passport = source_passport_for_evidence_graph(&context.passport, &evidence_graph_bytes);
+        let trusted_market_authority_keys =
+            crate::trust_market_trusted_authority_keys_from_env()
+                .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
         let report = chio_trust_market_context::verify_trust_market_context(
             &chio_trust_market_context::TrustMarketBundle {
                 passport,
                 evidence_graph_bytes,
                 verifier_policy_bytes: context.verifier_policy_bytes.clone(),
                 artifacts: context.artifacts.clone(),
+                trusted_market_authority_keys,
             },
         )
         .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;

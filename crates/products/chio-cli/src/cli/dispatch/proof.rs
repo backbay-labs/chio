@@ -29,6 +29,7 @@ const AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV: &str = "CHIO_AGENT_WEB_STANDARD_WE
 const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS";
 const AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV: &str =
     "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS";
+const TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV: &str = "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS";
 const VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_RUNTIME,
     CLAIM_PREFIX_RISK,
@@ -58,7 +59,7 @@ fn agent_web_verifier_trust_from_env(
     match std::env::var(AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV) {
         Ok(keys) => {
             trust =
-                trust.with_trusted_receipt_kernel_keys(parse_agent_web_public_keys(
+                trust.with_trusted_receipt_kernel_keys(parse_public_keys(
                     AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV,
                     &keys,
                 )?);
@@ -70,7 +71,7 @@ fn agent_web_verifier_trust_from_env(
     }
     match std::env::var(AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV) {
         Ok(keys) => {
-            trust = trust.with_trusted_envelope_sidecar_keys(parse_agent_web_public_keys(
+            trust = trust.with_trusted_envelope_sidecar_keys(parse_public_keys(
                 AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV,
                 &keys,
             )?);
@@ -83,7 +84,7 @@ fn agent_web_verifier_trust_from_env(
     Ok(trust)
 }
 
-fn parse_agent_web_public_keys(
+fn parse_public_keys(
     env_name: &str,
     keys: &str,
 ) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
@@ -108,6 +109,19 @@ fn parse_agent_web_public_keys(
             })
         })
         .collect()
+}
+
+fn trust_market_trusted_authority_keys_from_env(
+) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
+    match std::env::var(TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV) {
+        Ok(keys) => parse_public_keys(TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV, &keys),
+        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
+            "{TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV} must pin trusted market authority keys"
+        ))),
+        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
+            "{TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV} must be valid UTF-8"
+        ))),
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -608,12 +622,14 @@ pub(super) fn verify_transaction_passport_file(
             load_trust_market_artifacts_from_graph(bundle_dir, &trust_market_evidence_graph_bytes)?;
         let trust_market_passport =
             passport_for_evidence_graph(&passport, &trust_market_evidence_graph_bytes);
+        let trusted_market_authority_keys = trust_market_trusted_authority_keys_from_env()?;
         let report = chio_control_plane::trust_market::verify_trust_market_context(
             &chio_control_plane::trust_market::TrustMarketBundle {
                 passport: trust_market_passport,
                 evidence_graph_bytes: trust_market_evidence_graph_bytes,
                 verifier_policy_bytes: verifier_policy_bytes.clone(),
                 artifacts,
+                trusted_market_authority_keys,
             },
         )
         .map_err(map_proof_error)?;

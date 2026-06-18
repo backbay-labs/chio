@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use chio_core_types::PublicKey;
 use chio_transaction_passport::{
     verify_minimal_passport_artifacts, TransactionPassport, TransactionPassportError,
     TRANSACTION_VERIFIER_REPORT_SCHEMA_ID,
@@ -37,6 +38,7 @@ pub struct TrustMarketBundle {
     pub evidence_graph_bytes: Vec<u8>,
     pub verifier_policy_bytes: Vec<u8>,
     pub artifacts: BTreeMap<String, Vec<u8>>,
+    pub trusted_market_authority_keys: Vec<PublicKey>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -81,60 +83,61 @@ pub fn verify_trust_market_context(
     let graph = parse_graph(&bundle.evidence_graph_bytes)?;
     let policy = parse_policy(&bundle.verifier_policy_bytes)?;
     reject_required_unsupported_market_claims(&policy.required_claims)?;
+    let trusted_market_authority_keys = trusted_market_authority_keys(&policy, bundle)?;
 
     let discovery: ProviderDiscoverySnapshot = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::ProviderDiscoverySnapshot)?,
         "chio.commerce.provider-discovery-snapshot.v1",
-        &policy.trusted_market_authority_keys,
+        &trusted_market_authority_keys,
     )?;
     let selection: ProviderSelectionReport = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::ProviderSelectionReport)?,
         "chio.commerce.provider-selection-report.v1",
-        &policy.trusted_market_authority_keys,
+        &trusted_market_authority_keys,
     )?;
     let scorecard: TrustScorecardSnapshot = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::TrustScorecardSnapshot)?,
         "chio.trust.scorecard-snapshot.v1",
-        &policy.trusted_market_authority_keys,
+        &trusted_market_authority_keys,
     )?;
     let reputation_import: ReputationImportReport = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::ReputationImportReport)?,
         "chio.trust.reputation-import-report.v1",
-        &policy.trusted_market_authority_keys,
+        &trusted_market_authority_keys,
     )?;
     let sla: SlaCommitment = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::SlaCommitment)?,
         "chio.commerce.sla-commitment.v1",
-        &policy.trusted_market_authority_keys,
+        &trusted_market_authority_keys,
     )?;
     let sla_performance: SlaPerformanceReport = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::SlaPerformanceReport)?,
         "chio.commerce.sla-performance-report.v1",
-        &policy.trusted_market_authority_keys,
+        &trusted_market_authority_keys,
     )?;
     let risk_report: RiskComptrollerReport = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::RiskComptrollerReport)?,
         "chio.risk.comptroller-report.v1",
-        &policy.trusted_market_authority_keys,
+        &trusted_market_authority_keys,
     )?;
     let collateral: CollateralPositionReport = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::CollateralPositionReport)?,
         "chio.risk.collateral-position-report.v1",
-        &policy.trusted_market_authority_keys,
+        &trusted_market_authority_keys,
     )?;
     let guarantee: GuaranteeDecision = parse_signed_artifact(
         bundle,
         require_node(&graph, TrustMarketEvidenceRole::GuaranteeDecision)?,
         "chio.risk.guarantee-decision.v1",
-        &policy.trusted_market_authority_keys,
+        &trusted_market_authority_keys,
     )?;
     let jurisdiction: AdjudicationJurisdictionReceipt = parse_signed_artifact(
         bundle,
@@ -143,7 +146,7 @@ pub fn verify_trust_market_context(
             TrustMarketEvidenceRole::AdjudicationJurisdictionReceipt,
         )?,
         "chio.risk.adjudication-jurisdiction-receipt.v1",
-        &policy.trusted_market_authority_keys,
+        &trusted_market_authority_keys,
     )?;
 
     let mut verified_claims = Vec::new();
@@ -178,7 +181,7 @@ pub fn verify_trust_market_context(
                 &graph,
                 evidence_ref,
                 kind,
-                &policy.trusted_market_authority_keys,
+                &trusted_market_authority_keys,
             )
         },
     )?;
@@ -221,6 +224,32 @@ pub fn verify_trust_market_context(
             selected_provider_subject: selection.selected_provider_subject,
         },
     })
+}
+
+fn trusted_market_authority_keys(
+    policy: &policy::TrustMarketVerifierPolicy,
+    bundle: &TrustMarketBundle,
+) -> Result<Vec<PublicKey>, TransactionPassportError> {
+    if bundle.trusted_market_authority_keys.is_empty() {
+        return Err(claim_failed("trusted market authority keys missing"));
+    }
+    let trusted = bundle
+        .trusted_market_authority_keys
+        .iter()
+        .filter(|key| {
+            policy
+                .trusted_market_authority_keys
+                .iter()
+                .any(|policy_key| policy_key == *key)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    if trusted.is_empty() {
+        return Err(claim_failed(
+            "trusted market authority keys do not match verifier policy",
+        ));
+    }
+    Ok(trusted)
 }
 
 fn reject_required_unsupported_market_claims(
