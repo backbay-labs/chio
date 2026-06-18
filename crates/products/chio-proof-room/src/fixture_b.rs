@@ -399,9 +399,10 @@ pub(crate) fn embedded_swarm_authority_bundle(
             chio_swarm_authority::CHIO_SWARM_ROUTE_PLAN_RECEIPT_SCHEMA,
             "swarm",
         )?;
+    let now_unix_ms = proof_room_swarm_verification_time()?;
 
     Ok(chio_swarm_authority::SwarmAuthorityBundle {
-        now_unix_ms: task_graph.created_at_unix_ms.saturating_add(1_000),
+        now_unix_ms,
         task_graph,
         continuation_tokens,
         witness_chains,
@@ -410,6 +411,16 @@ pub(crate) fn embedded_swarm_authority_bundle(
         budget_pool,
         revocation_epoch,
     })
+}
+
+fn proof_room_swarm_verification_time() -> Result<u64, String> {
+    let duration = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| {
+            format!("proof room swarm verifier system clock before Unix epoch: {error}")
+        })?;
+    u64::try_from(duration.as_millis())
+        .map_err(|_| "proof room swarm verifier system clock milliseconds overflow".to_string())
 }
 
 pub(crate) fn embedded_public_settlement_proof_bundle(

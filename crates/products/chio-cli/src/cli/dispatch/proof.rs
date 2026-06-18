@@ -1547,11 +1547,7 @@ fn load_swarm_authority_bundle_from_graph(
             chio_swarm_authority::CHIO_SWARM_ROUTE_PLAN_RECEIPT_SCHEMA,
             "swarm",
         )?;
-    let now_unix_ms = swarm_authority_verification_time(
-        &task_graph,
-        &continuation_tokens,
-        &revocation_epoch,
-    );
+    let now_unix_ms = swarm_authority_verification_time()?;
 
     Ok(chio_swarm_authority::SwarmAuthorityBundle {
         now_unix_ms,
@@ -1565,20 +1561,17 @@ fn load_swarm_authority_bundle_from_graph(
     })
 }
 
-fn swarm_authority_verification_time(
-    task_graph: &chio_swarm_authority::SwarmTaskGraph,
-    continuation_tokens: &[chio_swarm_authority::SwarmContinuationToken],
-    revocation_epoch: &chio_swarm_authority::SwarmRevocationEpoch,
-) -> u64 {
-    continuation_tokens
-        .iter()
-        .map(|token| token.issued_at_unix_ms)
-        .chain([
-            task_graph.created_at_unix_ms,
-            revocation_epoch.issued_at_unix_ms,
-        ])
-        .max()
-        .unwrap_or(task_graph.created_at_unix_ms)
+fn swarm_authority_verification_time() -> Result<u64, CliError> {
+    let duration = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "proof verify: system clock before Unix epoch: {error}"
+            ))
+        })?;
+    u64::try_from(duration.as_millis()).map_err(|_| {
+        CliError::cli_other_error("proof verify: system clock milliseconds overflow".to_string())
+    })
 }
 
 fn load_public_settlement_proof_bundle_from_graph(

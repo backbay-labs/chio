@@ -1,5 +1,81 @@
 use super::support::*;
 use super::*;
+use crate::embedded_swarm_authority_bundle;
+
+#[test]
+fn swarm_fixture_uses_verification_time_for_freshness() -> Result<(), Box<dyn Error>> {
+    let fixture =
+        repo_root()?.join("fixtures/proof-room/swarm-authority/valid-recursive-delegation");
+    let mut evidence_graph: serde_json::Value =
+        serde_json::from_slice(&fs::read(fixture.join("evidence-graph.json"))?)?;
+    let mut values = std::collections::BTreeMap::new();
+    for node in evidence_graph["nodes"]
+        .as_array()
+        .ok_or("evidence graph nodes missing")?
+    {
+        let path = node["path"]
+            .as_str()
+            .ok_or("node path missing")?
+            .to_string();
+        let mut value: serde_json::Value = serde_json::from_slice(&fs::read(fixture.join(&path))?)?;
+        expire_swarm_artifact_before_verification_time(&mut value);
+        values.insert(path, value);
+    }
+    let task_graph_sha256 = canonical_json_sha256(
+        values
+            .get("task-graph.json")
+            .ok_or("mutated task graph missing")?,
+    )?;
+    for value in values.values_mut() {
+        if value.get("graphSha256").is_some() {
+            value["graphSha256"] = serde_json::Value::String(task_graph_sha256.clone());
+        }
+    }
+    let mut artifacts = std::collections::BTreeMap::new();
+    for node in evidence_graph["nodes"]
+        .as_array_mut()
+        .ok_or("evidence graph nodes missing")?
+    {
+        let path = node["path"]
+            .as_str()
+            .ok_or("node path missing")?
+            .to_string();
+        let value = values.get(&path).ok_or("mutated swarm artifact missing")?;
+        let bytes = json_bytes(&value)?;
+        node["sha256"] = serde_json::Value::String(sha256_hex(&bytes));
+        artifacts.insert(path, bytes);
+    }
+    let evidence_graph_bytes = json_bytes(&evidence_graph)?;
+    let bundle = embedded_swarm_authority_bundle(&evidence_graph_bytes, &artifacts)?;
+
+    let error = chio_swarm_authority::verify_swarm_authority_bundle(&bundle)
+        .err()
+        .ok_or("expired swarm bundle unexpectedly verified")?;
+
+    assert!(
+        error.to_string().contains("swarm task graph is expired"),
+        "{error}"
+    );
+    Ok(())
+}
+
+fn expire_swarm_artifact_before_verification_time(value: &mut serde_json::Value) {
+    const CREATED_AT_UNIX_MS: u64 = 1_700_000_000_000;
+    const EXPIRES_AT_UNIX_MS: u64 = 1_700_000_600_000;
+
+    if value.get("createdAtUnixMs").is_some() {
+        value["createdAtUnixMs"] = serde_json::Value::from(CREATED_AT_UNIX_MS);
+    }
+    if value.get("issuedAtUnixMs").is_some() {
+        value["issuedAtUnixMs"] = serde_json::Value::from(CREATED_AT_UNIX_MS);
+    }
+    if value.get("expiresAtUnixMs").is_some() {
+        value["expiresAtUnixMs"] = serde_json::Value::from(EXPIRES_AT_UNIX_MS);
+    }
+    if value.get("validUntilUnixMs").is_some() {
+        value["validUntilUnixMs"] = serde_json::Value::from(EXPIRES_AT_UNIX_MS);
+    }
+}
 
 #[test]
 fn crypto_context_verified_report_rejects_context_report_drift() -> Result<(), Box<dyn Error>> {
