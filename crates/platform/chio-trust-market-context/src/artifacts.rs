@@ -939,8 +939,12 @@ fn validate_ranking(
     {
         return Err(claim_failed("selection override receipt missing"));
     }
+    let mut ranked_providers = BTreeSet::new();
     for result in &selection.ranking_results {
         require_non_empty(&result.provider_subject, "ranking provider subject")?;
+        if !ranked_providers.insert(result.provider_subject.as_str()) {
+            return Err(claim_failed("selection ranking duplicate provider"));
+        }
         if result.rank == 0 || result.total_score > 100 {
             return Err(claim_failed("ranking result outside policy range"));
         }
@@ -952,11 +956,6 @@ fn validate_ranking(
             }
         }
     }
-    let ranked_providers = selection
-        .ranking_results
-        .iter()
-        .map(|result| result.provider_subject.as_str())
-        .collect::<BTreeSet<_>>();
     for candidate in &discovery.provider_candidates {
         if !candidate.excluded && !ranked_providers.contains(candidate.subject.as_str()) {
             return Err(claim_failed(

@@ -28,6 +28,7 @@ enum TrustMarketCase {
     LowerRankOverrideReceiptUnbound,
     LowerRankOverrideReceiptUnavailable,
     SelectionRankingMissingAvailableCandidate,
+    SelectionRankingDuplicateProvider,
     SelectionRankingOrderMismatch,
     SelectionScorecardScoreMismatch,
     ScorecardStaleAtSelection,
@@ -775,6 +776,23 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
                 "total_score": selected_total_score
             }
         ]),
+        TrustMarketCase::SelectionRankingDuplicateProvider => json!([
+            {
+                "provider_subject": absent_selected_provider,
+                "rank": selected_rank,
+                "total_score": selected_total_score
+            },
+            {
+                "provider_subject": "did:chio:provider-beta",
+                "rank": 2,
+                "total_score": 81
+            },
+            {
+                "provider_subject": "did:chio:provider-beta",
+                "rank": 3,
+                "total_score": 70
+            }
+        ]),
         _ => json!([
             {
                 "provider_subject": absent_selected_provider,
@@ -1106,6 +1124,18 @@ fn trust_market_rejects_ranking_missing_available_candidate() {
     assert!(error
         .to_string()
         .contains("selection ranking missing available candidate"));
+}
+
+#[test]
+fn trust_market_rejects_ranking_duplicate_provider() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::SelectionRankingDuplicateProvider,
+    ))
+    .test_expect_err("ranking must not duplicate provider candidates");
+
+    assert!(error
+        .to_string()
+        .contains("selection ranking duplicate provider"));
 }
 
 #[test]
