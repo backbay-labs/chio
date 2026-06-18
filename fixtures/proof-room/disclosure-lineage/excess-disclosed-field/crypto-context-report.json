@@ -1,19 +1,20 @@
 {
-  "schema": "chio.disclosure.crypto-context-report.v1",
-  "id": "crypto-context-report-valid",
-  "context_id": "crypto-context-valid",
   "artifact_ref": "disclosure-capsule-valid",
-  "verdict": "verified",
-  "evidence_class": "verifier_context",
+  "context_id": "crypto-context-valid",
   "cryptographic_proof_verified": true,
-  "verified_claims": [
-    "claim.disclosure.crypto_context_bound",
-    "claim.disclosure.profile_context_policy_enforced"
-  ],
-  "rejected_checks": [],
   "disclosed_fields": [
     "capability_id",
     "tool_name",
     "customer_email"
+  ],
+  "evidence_class": "verifier_context",
+  "id": "crypto-context-report-valid",
+  "rejected_checks": [],
+  "schema": "chio.disclosure.crypto-context-report.v1",
+  "signature": "sig-ed25519:e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa:fe5989d949a435954e31ccb212da1335e8ae3120ed7cddd5f377439be91a431ad11428d5e85de281451f2520a6b2d68ab1b5e34d3cae3b8bfde35807b7754002",
+  "verdict": "verified",
+  "verified_claims": [
+    "claim.disclosure.crypto_context_bound",
+    "claim.disclosure.profile_context_policy_enforced"
   ]
 }

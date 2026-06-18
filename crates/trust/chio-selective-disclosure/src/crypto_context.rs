@@ -63,5 +63,6 @@ pub fn verify_selective_disclosure_with_context(
             .iter()
             .map(|message| message.field.clone())
             .collect(),
+        signature: None,
     })
 }

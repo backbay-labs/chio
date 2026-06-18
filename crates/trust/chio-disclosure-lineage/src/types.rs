@@ -50,6 +50,8 @@ pub struct DisclosureCryptoContextReport {
     pub verified_claims: Vec<String>,
     pub rejected_checks: Vec<DisclosureContextCheck>,
     pub disclosed_fields: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

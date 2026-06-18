@@ -101,6 +101,7 @@ pub fn crypto_context_rejection_report_bytes(
         verified_claims: Vec::new(),
         rejected_checks,
         disclosed_fields: Vec::new(),
+        signature: None,
     };
     serde_json::to_vec(&report).map_err(|error| {
         format!("proof-room.fixture.crypto-context-report-encode: {fixture_id}: {error}")

@@ -4,11 +4,11 @@ use chio_core_types::{Keypair, PublicKey, Signature};
 use serde::Serialize;
 
 use super::types::{
-    DisclosureCapsule, DisclosureContextVerdict, DisclosureLeakageLedger, DisclosureLineageBundle,
-    DisclosureLineageError, DisclosureLineageVerifierReport, SignedLineageSubgraph,
-    DISCLOSURE_CAPSULE_SCHEMA_V1, DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1,
-    DISCLOSURE_LEAKAGE_LEDGER_SCHEMA_V1, DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1,
-    LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
+    DisclosureCapsule, DisclosureContextVerdict, DisclosureCryptoContextReport,
+    DisclosureLeakageLedger, DisclosureLineageBundle, DisclosureLineageError,
+    DisclosureLineageVerifierReport, SignedLineageSubgraph, DISCLOSURE_CAPSULE_SCHEMA_V1,
+    DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1, DISCLOSURE_LEAKAGE_LEDGER_SCHEMA_V1,
+    DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1, LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
 };
 
 const CLAIM_DISCLOSURE_LINEAGE_SUBGRAPH_BOUND: &str = "claim.disclosure.lineage_subgraph_bound";
@@ -18,6 +18,8 @@ const CLAIM_DISCLOSURE_PROFILE_CONTEXT_POLICY_ENFORCED: &str =
     "claim.disclosure.profile_context_policy_enforced";
 const LINEAGE_SIGNATURE_PREFIX: &str = "sig-ed25519:";
 const TRUSTED_LINEAGE_SIGNER_PUBLIC_KEYS: &[&str] =
+    &["e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"];
+const TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_PUBLIC_KEYS: &[&str] =
     &["e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"];
 
 #[derive(Serialize)]
@@ -52,6 +54,22 @@ pub fn sign_lineage_subgraph(
     ))
 }
 
+pub fn sign_crypto_context_report(
+    report: &DisclosureCryptoContextReport,
+    signer: &Keypair,
+) -> Result<String, DisclosureLineageError> {
+    let mut material = report.clone();
+    material.signature = None;
+    let (signature, _) = signer
+        .sign_canonical(&material)
+        .map_err(|error| invalid(format!("crypto context report signature failed: {error}")))?;
+    Ok(format!(
+        "{LINEAGE_SIGNATURE_PREFIX}{}:{}",
+        signer.public_key().to_hex(),
+        signature.to_hex()
+    ))
+}
+
 fn lineage_subgraph_digest_material(
     lineage: &SignedLineageSubgraph,
 ) -> LineageSubgraphDigestMaterial<'_> {
@@ -78,6 +96,7 @@ pub fn verify_disclosure_lineage_bundle(
         CLAIM_DISCLOSURE_LEAKAGE_LEDGER_COMPLETE.to_string(),
     ];
     if let Some(report) = &bundle.crypto_context_report {
+        verify_crypto_context_report_signature(report)?;
         verified_claims.extend(report.verified_claims.iter().cloned());
     }
 
@@ -212,6 +231,38 @@ fn verify_lineage_signature(
     let verified = public_key.verify(digest.as_bytes(), &signature);
     if !verified {
         return Err(invalid("lineage subgraph signature verification failed"));
+    }
+    Ok(())
+}
+
+fn verify_crypto_context_report_signature(
+    report: &DisclosureCryptoContextReport,
+) -> Result<(), DisclosureLineageError> {
+    let signature = report
+        .signature
+        .as_deref()
+        .and_then(|signature| signature.strip_prefix(LINEAGE_SIGNATURE_PREFIX))
+        .ok_or_else(|| invalid("crypto context report signature missing"))?;
+    let Some((public_key, signature)) = signature.split_once(':') else {
+        return Err(invalid("crypto context report signature malformed"));
+    };
+    let public_key = PublicKey::from_hex(public_key)
+        .map_err(|error| invalid(format!("crypto context report signer invalid: {error}")))?;
+    let public_key_hex = public_key.to_hex();
+    if !TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_PUBLIC_KEYS.contains(&public_key_hex.as_str()) {
+        return Err(invalid("crypto context report signer untrusted"));
+    }
+    let signature = Signature::from_hex(signature)
+        .map_err(|error| invalid(format!("crypto context report signature invalid: {error}")))?;
+    let mut material = report.clone();
+    material.signature = None;
+    let verified = public_key
+        .verify_canonical(&material, &signature)
+        .map_err(|error| invalid(format!("crypto context report signature invalid: {error}")))?;
+    if !verified {
+        return Err(invalid(
+            "crypto context report signature verification failed",
+        ));
     }
     Ok(())
 }

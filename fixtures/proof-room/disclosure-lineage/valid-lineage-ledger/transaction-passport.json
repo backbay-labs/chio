@@ -1,9 +1,9 @@
 {
-  "schema": "chio.transaction-passport.v1",
+  "evidence_graph_path": "evidence-graph.json",
+  "evidence_graph_sha256": "078a059e064c18ac3cc32471430019fd74205bb4c8b55927768e12cd15a6cd18",
   "id": "passport-disclosure-lineage-valid",
   "issued_at": "2026-06-10T00:00:00Z",
-  "evidence_graph_sha256": "f0fc9cfa8cb79a893ebdf6adfb67f79b53e2275ab0020a8a96d84b71666e077a",
-  "evidence_graph_path": "evidence-graph.json",
-  "verifier_policy_sha256": "45fa7f751f906a5e4ff14a5c1f594856019c42f0c3b7c291d0eedcf5ee8b171d",
-  "verifier_policy_path": "verifier-policy.json"
+  "schema": "chio.transaction-passport.v1",
+  "verifier_policy_path": "verifier-policy.json",
+  "verifier_policy_sha256": "45fa7f751f906a5e4ff14a5c1f594856019c42f0c3b7c291d0eedcf5ee8b171d"
 }

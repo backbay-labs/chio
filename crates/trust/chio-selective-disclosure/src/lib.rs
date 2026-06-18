@@ -25,7 +25,7 @@ use encoding::{
 };
 
 pub use chio_disclosure_lineage::{
-    compute_signed_lineage_subgraph_digest, sign_lineage_subgraph,
+    compute_signed_lineage_subgraph_digest, sign_crypto_context_report, sign_lineage_subgraph,
     verify_disclosure_lineage_bundle, DisclosureCapsule, DisclosureLeakageLedger,
     DisclosureLeakageLedgerEntry, DisclosureLineageBundle, DisclosureLineageError,
     DisclosureLineageVerifierReport, DisclosureSignedLineageEdge, DisclosureSignedLineageNode,

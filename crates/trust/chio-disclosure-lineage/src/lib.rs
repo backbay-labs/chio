@@ -11,5 +11,6 @@ pub use types::{
     DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1, LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
 };
 pub use verifier::{
-    compute_signed_lineage_subgraph_digest, sign_lineage_subgraph, verify_disclosure_lineage_bundle,
+    compute_signed_lineage_subgraph_digest, sign_crypto_context_report, sign_lineage_subgraph,
+    verify_disclosure_lineage_bundle,
 };

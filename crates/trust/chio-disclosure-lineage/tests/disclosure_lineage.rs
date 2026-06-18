@@ -1,6 +1,6 @@
 use chio_core_types::Keypair;
 use chio_disclosure_lineage::{
-    compute_signed_lineage_subgraph_digest, sign_lineage_subgraph,
+    compute_signed_lineage_subgraph_digest, sign_crypto_context_report, sign_lineage_subgraph,
     verify_disclosure_lineage_bundle, DisclosureCapsule, DisclosureContextVerdict,
     DisclosureCryptoContextReport, DisclosureLeakageLedger, DisclosureLeakageLedgerEntry,
     DisclosureLineageBundle, DisclosureSignedLineageEdge, DisclosureSignedLineageNode,
@@ -78,7 +78,7 @@ fn valid_bundle() -> Result<DisclosureLineageBundle, Box<dyn std::error::Error>>
             },
         ],
     };
-    let crypto_context_report = DisclosureCryptoContextReport {
+    let mut crypto_context_report = DisclosureCryptoContextReport {
         schema: DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1.to_string(),
         id: "crypto-context-report-valid".to_string(),
         context_id: "crypto-context-valid".to_string(),
@@ -92,7 +92,12 @@ fn valid_bundle() -> Result<DisclosureLineageBundle, Box<dyn std::error::Error>>
         ],
         rejected_checks: Vec::new(),
         disclosed_fields: vec!["capability_id".to_string(), "tool_name".to_string()],
+        signature: None,
     };
+    crypto_context_report.signature = Some(sign_crypto_context_report(
+        &crypto_context_report,
+        &lineage_signer(),
+    )?);
     Ok(DisclosureLineageBundle {
         capsule,
         lineage,
@@ -226,6 +231,26 @@ fn disclosure_lineage_rejects_crypto_context_unsupported_claim() {
     assert!(error.to_string().contains(
         "crypto context report unsupported claim: claim.disclosure.unregistered_crypto_context_claim"
     ));
+}
+
+#[test]
+fn disclosure_lineage_rejects_unsigned_crypto_context_report() {
+    let Ok(mut bundle) = valid_bundle() else {
+        panic!("valid bundle fixture should build");
+    };
+    let Some(report) = bundle.crypto_context_report.as_mut() else {
+        panic!("valid bundle should include crypto context report");
+    };
+    report.signature = None;
+
+    let error = match verify_disclosure_lineage_bundle(&bundle) {
+        Ok(_) => panic!("unsigned crypto context report must fail"),
+        Err(error) => error,
+    };
+
+    assert!(error
+        .to_string()
+        .contains("crypto context report signature missing"));
 }
 
 #[test]

@@ -127,7 +127,7 @@ pub(crate) fn copy_dir_all(source: &std::path::Path, destination: &std::path::Pa
 
 pub(crate) fn add_disclosure_crypto_context_report(bundle_dir: &std::path::Path) {
     let crypto_context_report_path = bundle_dir.join("crypto-context-report.json");
-    let crypto_context_report = serde_json::json!({
+    let mut crypto_context_report = serde_json::json!({
         "schema": "chio.disclosure.crypto-context-report.v1",
         "id": "crypto-context-report-valid",
         "context_id": "crypto-context-valid",
@@ -142,6 +142,7 @@ pub(crate) fn add_disclosure_crypto_context_report(bundle_dir: &std::path::Path)
         "rejected_checks": [],
         "disclosed_fields": ["capability_id", "tool_name"]
     });
+    sign_disclosure_crypto_context_report(&mut crypto_context_report);
     let crypto_context_report_bytes =
         serde_json::to_vec(&crypto_context_report).test_expect("serialize crypto report");
     std::fs::write(&crypto_context_report_path, &crypto_context_report_bytes)
@@ -199,6 +200,17 @@ pub(crate) fn add_disclosure_crypto_context_report(bundle_dir: &std::path::Path)
     set_passport_digest(bundle_dir, "evidence_graph_sha256", evidence_graph_digest);
 }
 
+fn sign_disclosure_crypto_context_report(report: &mut serde_json::Value) {
+    let report_value: chio_selective_disclosure::DisclosureCryptoContextReport =
+        serde_json::from_value(report.clone()).test_expect("parse crypto report");
+    let signature = chio_selective_disclosure::sign_crypto_context_report(
+        &report_value,
+        &chio_core::Keypair::from_seed(&[29u8; 32]),
+    )
+    .test_expect("sign crypto report");
+    report["signature"] = serde_json::Value::String(signature);
+}
+
 pub(crate) fn add_disclosure_crypto_context_verified_claim(
     bundle_dir: &std::path::Path,
     claim: &str,
@@ -212,6 +224,7 @@ pub(crate) fn add_disclosure_crypto_context_verified_claim(
         .as_array_mut()
         .test_expect("verified claims are an array")
         .push(serde_json::Value::String(claim.to_string()));
+    sign_disclosure_crypto_context_report(&mut crypto_context_report);
     let crypto_context_report_bytes =
         serde_json::to_vec(&crypto_context_report).test_expect("serialize crypto report");
     std::fs::write(&crypto_context_report_path, &crypto_context_report_bytes)
