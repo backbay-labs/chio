@@ -110,6 +110,10 @@ pub fn proof_room_router_with_optional_ui_root(
             get(proof_room_fixture_catalog_response),
         )
         .route(
+            "/proof-room-trusted-bundle-signers.json",
+            get(proof_room_trusted_bundle_signers_response),
+        )
+        .route(
             "/proof-room-fixtures/{fixture_id}/{*asset_path}",
             get(proof_room_fixture_asset_with_state_response),
         )
@@ -133,6 +137,36 @@ pub fn proof_room_router_with_optional_ui_root(
 
 async fn proof_room_view_redirect() -> Redirect {
     Redirect::temporary("/proof-room?view=proof-room")
+}
+
+async fn proof_room_trusted_bundle_signers_response() -> Response {
+    match super::proof_room_trusted_bundle_signer_keys_from_env() {
+        Ok(keys) if !keys.is_empty() => Json(serde_json::json!({
+            "schema": "chio.proof-room.trusted-bundle-signers.v1",
+            "keys": keys.into_iter().collect::<Vec<_>>(),
+        }))
+        .into_response(),
+        Ok(_) => (
+            StatusCode::PRECONDITION_FAILED,
+            [(CONTENT_TYPE, "application/json")],
+            serde_json::json!({
+                "schema": "chio.proof-room.trusted-bundle-signers.v1",
+                "error": "proof-room.signature.trusted-signers-missing",
+            })
+            .to_string(),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::PRECONDITION_FAILED,
+            [(CONTENT_TYPE, "application/json")],
+            serde_json::json!({
+                "schema": "chio.proof-room.trusted-bundle-signers.v1",
+                "error": error,
+            })
+            .to_string(),
+        )
+            .into_response(),
+    }
 }
 
 async fn proof_room_manifest_asset(State(state): State<ProofRoomServeState>) -> Response {

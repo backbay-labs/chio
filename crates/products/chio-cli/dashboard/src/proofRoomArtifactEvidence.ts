@@ -46,6 +46,8 @@ export type ProofRoomArtifactTextReader = (
 ) => Promise<string | ProofRoomArtifactText>
 
 const proofRoomBundlePayloadType = 'application/vnd.chio.proof-room.bundle.v1+json'
+const proofRoomTrustedBundleSignersPath = '/proof-room-trusted-bundle-signers.json'
+const proofRoomTrustedBundleSignersSchema = 'chio.proof-room.trusted-bundle-signers.v1'
 
 export async function sha256Hex(contents: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(contents))
@@ -150,6 +152,38 @@ function dssePreAuthEncoding(payloadType: string, payload: string): Uint8Array {
   ])
 }
 
+export async function fetchProofRoomTrustedBundleSignerKeys(label: string): Promise<Set<string>> {
+  let response: Response
+  try {
+    response = await fetch(proofRoomTrustedBundleSignersPath)
+  } catch {
+    throw new Error(`${label} trusted signer config missing`)
+  }
+  if (!response.ok) {
+    throw new Error(`${label} trusted signer config missing`)
+  }
+  const config = await response.json() as { schema?: string; keys?: unknown[] }
+  if (config.schema !== proofRoomTrustedBundleSignersSchema) {
+    throw new Error(`${label} trusted signer config schema is unsupported`)
+  }
+  if (!Array.isArray(config.keys) || config.keys.length === 0) {
+    throw new Error(`${label} trusted signer config missing`)
+  }
+  const keys = new Set<string>()
+  for (const key of config.keys) {
+    if (typeof key !== 'string' || key.length === 0) {
+      throw new Error(`${label} trusted signer config key is invalid`)
+    }
+    const normalizedKey = key.toLowerCase()
+    hexToBytes(normalizedKey, `${label} trusted signer key`)
+    keys.add(normalizedKey)
+  }
+  if (keys.size === 0) {
+    throw new Error(`${label} trusted signer config missing`)
+  }
+  return keys
+}
+
 export async function assertProofRoomBundleDsseSignature(
   signature: ProofRoomDsseSignature,
   manifestText: string,
@@ -178,12 +212,16 @@ export async function assertProofRoomBundleDsseSignature(
   if (signature.signatures.some((entry) => !entry.keyid || !entry.sig)) {
     throw new Error(`${label} entry is incomplete`)
   }
+  if (!trustedSignerKeys || trustedSignerKeys.size === 0) {
+    throw new Error(`${label} trusted signer config missing`)
+  }
   const signedPayload = dssePreAuthEncoding(signature.payloadType, manifestText)
   for (const entry of signature.signatures) {
-    if (trustedSignerKeys && !trustedSignerKeys.has(entry.keyid ?? '')) {
+    const keyId = (entry.keyid ?? '').toLowerCase()
+    if (!trustedSignerKeys.has(keyId)) {
       throw new Error(`${label} signer is not trusted`)
     }
-    const keyBytes = hexToBytes(entry.keyid ?? '', `${label} key`)
+    const keyBytes = hexToBytes(keyId, `${label} key`)
     const signatureBytes = hexToBytes(entry.sig ?? '', label)
     let publicKey: CryptoKey
     try {

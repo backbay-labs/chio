@@ -15,9 +15,9 @@ import {
   assertProofRoomBundleDsseSignature,
   assertProofRoomBundleRelativePath,
   assertProofRoomArtifactDigest,
+  fetchProofRoomTrustedBundleSignerKeys,
   proofRoomArtifactReader,
   readProofRoomArtifactSourceText,
-  sha256Hex,
 } from '../proofRoomArtifactEvidence'
 import type {
   ProofRoomAgentWebProjection,
@@ -385,47 +385,6 @@ async function readFileText(file: File): Promise<string> {
   })
 }
 
-async function selectedBundleTrustedSignerKeys(
-  files: UploadedProofRoomFile[],
-  manifest: ProofRoomBundleManifest,
-): Promise<Set<string> | undefined> {
-  const trustRootsRef = manifest.artifacts?.find(
-    (artifact) => artifact.path === 'artifacts/authority/trust-roots.json',
-  )
-  if (!trustRootsRef) {
-    return undefined
-  }
-
-  const trustRootsText = await readSelectedManifestArtifact(
-    files,
-    trustRootsRef,
-    'selected bundle signature trust roots',
-  )
-  const trustRoots = JSON.parse(trustRootsText) as {
-    schema?: string
-    roots?: Array<{ key_id?: string; key_digest?: string }>
-  }
-  if (trustRoots.schema !== 'chio.proof.first-run.trust-roots.v1') {
-    throw new Error('selected bundle signature trust roots have unsupported schema')
-  }
-  if (!trustRoots.roots || trustRoots.roots.length === 0) {
-    throw new Error('selected bundle signature trust roots are missing')
-  }
-
-  const trustedKeys = new Set<string>()
-  for (const root of trustRoots.roots) {
-    if (!root.key_id || !root.key_digest) {
-      throw new Error('selected bundle signature trust root is incomplete')
-    }
-    const keyDigest = await sha256Hex(root.key_id)
-    if (root.key_digest !== keyDigest) {
-      throw new Error('selected bundle signature trust root digest does not match key id')
-    }
-    trustedKeys.add(root.key_id)
-  }
-  return trustedKeys
-}
-
 async function assertSelectedBundleSignature(
   files: UploadedProofRoomFile[],
   manifest: ProofRoomBundleManifest,
@@ -447,7 +406,7 @@ async function assertSelectedBundleSignature(
 
   const signatureText = await readFileText(signatureFile)
   const signature = JSON.parse(signatureText) as ProofRoomDsseSignature
-  const trustedSignerKeys = await selectedBundleTrustedSignerKeys(files, manifest)
+  const trustedSignerKeys = await fetchProofRoomTrustedBundleSignerKeys('selected bundle signature')
   await assertProofRoomBundleDsseSignature(
     signature,
     manifestText,

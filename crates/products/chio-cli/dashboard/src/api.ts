@@ -51,6 +51,7 @@ import {
   assertProofRoomBundleDsseSignature,
   assertProofRoomBundleRelativePath,
   assertProofRoomArtifactDigest,
+  fetchProofRoomTrustedBundleSignerKeys,
   isUnsafeProofRoomPathSegment,
   manifestArtifactBySchemaOrHint,
   proofRoomArtifactReader,
@@ -693,7 +694,7 @@ async function assertServedProofRoomBundleSignature(
     staticAssetPath(manifest.signature.signature_ref, basePath),
   )).contents
   const signature = JSON.parse(signatureText) as ProofRoomDsseSignature
-  const trustedSignerKeys = await servedBundleTrustedSignerKeys(manifest, basePath)
+  const trustedSignerKeys = await fetchProofRoomTrustedBundleSignerKeys('served bundle signature')
   await assertProofRoomBundleDsseSignature(
     signature,
     manifestText,
@@ -704,46 +705,6 @@ async function assertServedProofRoomBundleSignature(
 
 export async function fetchProofRoomStaticBundle(): Promise<ProofRoomStaticBundle> {
   return fetchProofRoomBundleFromManifest('', 'served load report', 'served verifier report')
-}
-
-async function servedBundleTrustedSignerKeys(
-  manifest: ProofRoomBundleManifest,
-  basePath: string,
-): Promise<Set<string> | undefined> {
-  const trustRootsRef = manifest.artifacts?.find(
-    (artifact) => artifact.path === 'artifacts/authority/trust-roots.json',
-  )
-  if (!trustRootsRef) {
-    return undefined
-  }
-
-  const trustRoots = await parseStaticJsonWithDigest<{
-    schema?: string
-    roots?: Array<{ key_id?: string; key_digest?: string }>
-  }>(
-    staticAssetPath(trustRootsRef.path, basePath),
-    trustRootsRef.sha256,
-    'served bundle signature trust roots',
-  )
-  if (trustRoots.schema !== 'chio.proof.first-run.trust-roots.v1') {
-    throw new Error('served bundle signature trust roots have unsupported schema')
-  }
-  if (!trustRoots.roots || trustRoots.roots.length === 0) {
-    throw new Error('served bundle signature trust roots are missing')
-  }
-
-  const trustedKeys = new Set<string>()
-  for (const root of trustRoots.roots) {
-    if (!root.key_id || !root.key_digest) {
-      throw new Error('served bundle signature trust root is incomplete')
-    }
-    const keyDigest = await sha256Hex(root.key_id)
-    if (root.key_digest !== keyDigest) {
-      throw new Error('served bundle signature trust root digest does not match key id')
-    }
-    trustedKeys.add(root.key_id)
-  }
-  return trustedKeys
 }
 
 async function hydrateProofRoomBundle(

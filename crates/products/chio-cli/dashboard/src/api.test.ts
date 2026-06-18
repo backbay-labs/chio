@@ -61,7 +61,14 @@ function dssePreAuthEncoding(payloadType: string, payload: string): Uint8Array {
   ])
 }
 
-async function signedProofRoomBundleSignatureJson(manifestJson: string): Promise<string> {
+interface SignedProofRoomBundleSignature {
+  signatureJson: string
+  signerKeyId: string
+}
+
+async function signedProofRoomBundleSignature(
+  manifestJson: string,
+): Promise<SignedProofRoomBundleSignature> {
   const keypair = await crypto.subtle.generateKey(
     { name: 'Ed25519' },
     true,
@@ -73,15 +80,22 @@ async function signedProofRoomBundleSignatureJson(manifestJson: string): Promise
     keypair.privateKey,
     dssePreAuthEncoding(proofRoomBundlePayloadType, manifestJson),
   )
-  return JSON.stringify({
-    payloadType: proofRoomBundlePayloadType,
-    payloadRef: {
-      path: 'manifest.json',
-      schema: 'chio.proof-room.bundle.v1',
-      sha256: await sha256Hex(manifestJson),
-    },
-    signatures: [{ keyid: signerKeyId, sig: bytesToHex(signatureBytes) }],
-  })
+  return {
+    signerKeyId,
+    signatureJson: JSON.stringify({
+      payloadType: proofRoomBundlePayloadType,
+      payloadRef: {
+        path: 'manifest.json',
+        schema: 'chio.proof-room.bundle.v1',
+        sha256: await sha256Hex(manifestJson),
+      },
+      signatures: [{ keyid: signerKeyId, sig: bytesToHex(signatureBytes) }],
+    }),
+  }
+}
+
+async function signedProofRoomBundleSignatureJson(manifestJson: string): Promise<string> {
+  return (await signedProofRoomBundleSignature(manifestJson)).signatureJson
 }
 
 describe('dashboard api helpers', () => {
@@ -892,12 +906,26 @@ describe('dashboard api helpers', () => {
       '/ui/proof-room-static/load-report.json': loadReportJson,
       '/verifier/report.json': verifierReportJson,
       '/bundle-signature.dsse.json': signatureJson,
+      '/proof-room-trusted-bundle-signers.json': JSON.stringify({
+        schema: 'chio.proof-room.trusted-bundle-signers.v1',
+        keys: ['1'.repeat(64)],
+      }),
     }
-    vi.stubGlobal('fetch', vi.fn((path: string) => Promise.resolve({
-      ok: true,
-      json: async () => JSON.parse(routes[path]),
-      text: async () => routes[path],
-    })))
+    vi.stubGlobal('fetch', vi.fn((path: string) => {
+      if (!Object.prototype.hasOwnProperty.call(routes, path)) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: async () => ({}),
+          text: async () => '',
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => JSON.parse(routes[path]),
+        text: async () => routes[path],
+      })
+    }))
 
     await expect(fetchProofRoomStaticBundle()).rejects.toThrow(
       'served bundle signature verification failed',
@@ -972,15 +1000,137 @@ describe('dashboard api helpers', () => {
       '/verifier/report.json': verifierReportJson,
       '/artifacts/authority/trust-roots.json': trustRootsJson,
       '/bundle-signature.dsse.json': signatureJson,
+      '/proof-room-trusted-bundle-signers.json': JSON.stringify({
+        schema: 'chio.proof-room.trusted-bundle-signers.v1',
+        keys: [trustedKeyId],
+      }),
     }
-    vi.stubGlobal('fetch', vi.fn((path: string) => Promise.resolve({
-      ok: true,
-      json: async () => JSON.parse(routes[path]),
-      text: async () => routes[path],
-    })))
+    vi.stubGlobal('fetch', vi.fn((path: string) => {
+      if (!Object.prototype.hasOwnProperty.call(routes, path)) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: async () => ({}),
+          text: async () => '',
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => JSON.parse(routes[path]),
+        text: async () => routes[path],
+      })
+    }))
 
     await expect(fetchProofRoomStaticBundle()).rejects.toThrow(
       'served bundle signature signer is not trusted',
+    )
+  })
+
+  it('rejects served Proof Room bundles trusted only by bundle-local roots', async () => {
+    const verifierReportJson = JSON.stringify({
+      schema: 'chio.transaction.verifier-report.v1',
+      verdict: 'verified',
+      verified_claims: [],
+    })
+    const verifierReportDigest = await sha256Hex(verifierReportJson)
+    const loadReportJson = JSON.stringify({
+      schema: 'chio.proof-room.verifier-report.v1',
+      verdict: 'verified',
+      bundle_id: 'served-proof-room',
+      fixture_id: 'single-call-authority',
+      source_verifier_report_ref: {
+        path: 'verifier/report.json',
+        sha256: verifierReportDigest,
+        schema: 'chio.transaction.verifier-report.v1',
+      },
+      ui_verdict_source: 'verifier_report_ref',
+      rendered_claims: [],
+    })
+    const loadReportDigest = await sha256Hex(loadReportJson)
+    const keypair = await crypto.subtle.generateKey(
+      { name: 'Ed25519' },
+      true,
+      ['sign', 'verify'],
+    ) as CryptoKeyPair
+    const signerKeyId = bytesToHex(await crypto.subtle.exportKey('raw', keypair.publicKey))
+    const trustRootsJson = JSON.stringify({
+      schema: 'chio.proof.first-run.trust-roots.v1',
+      id: 'served-trust-roots',
+      trust_domain: 'did:chio:proof-room-served',
+      roots: [{
+        subject: 'did:chio:bundle-local-signer',
+        key_id: signerKeyId,
+        key_digest: await sha256Hex(signerKeyId),
+      }],
+      signature: 'sig-served-trust-roots',
+    })
+    const trustRootsDigest = await sha256Hex(trustRootsJson)
+    const manifestJson = JSON.stringify({
+      schema: 'chio.proof-room.bundle.v1',
+      bundle_id: 'served-proof-room',
+      fixture_id: 'single-call-authority',
+      verifier_report_ref: {
+        path: 'verifier/report.json',
+        sha256: verifierReportDigest,
+        schema: 'chio.transaction.verifier-report.v1',
+      },
+      proof_room_verifier_report_ref: {
+        path: 'ui/proof-room-static/load-report.json',
+        sha256: loadReportDigest,
+        schema: 'chio.proof-room.verifier-report.v1',
+      },
+      artifacts: [{
+        path: 'artifacts/authority/trust-roots.json',
+        sha256: trustRootsDigest,
+        schema: 'chio.proof.first-run.trust-roots.v1',
+        renderer_hint: 'trust-roots',
+      }],
+      signature: {
+        kind: 'detached-dsse',
+        signature_ref: 'bundle-signature.dsse.json',
+      },
+      claims: [],
+      negative_cases: [],
+    })
+    const signatureBytes = await crypto.subtle.sign(
+      { name: 'Ed25519' },
+      keypair.privateKey,
+      dssePreAuthEncoding(proofRoomBundlePayloadType, manifestJson),
+    )
+    const signatureJson = JSON.stringify({
+      payloadType: proofRoomBundlePayloadType,
+      payloadRef: {
+        path: 'manifest.json',
+        schema: 'chio.proof-room.bundle.v1',
+        sha256: await sha256Hex(manifestJson),
+      },
+      signatures: [{ keyid: signerKeyId, sig: bytesToHex(signatureBytes) }],
+    })
+    const routes: Record<string, string> = {
+      '/manifest.json': manifestJson,
+      '/ui/proof-room-static/load-report.json': loadReportJson,
+      '/verifier/report.json': verifierReportJson,
+      '/artifacts/authority/trust-roots.json': trustRootsJson,
+      '/bundle-signature.dsse.json': signatureJson,
+    }
+    vi.stubGlobal('fetch', vi.fn((path: string) => {
+      if (!Object.prototype.hasOwnProperty.call(routes, path)) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: async () => ({}),
+          text: async () => '',
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => JSON.parse(routes[path]),
+        text: async () => routes[path],
+      })
+    }))
+
+    await expect(fetchProofRoomStaticBundle()).rejects.toThrow(
+      'served bundle signature trusted signer config missing',
     )
   })
 

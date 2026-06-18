@@ -102,7 +102,10 @@ interface SignedMockProofRoomManifest {
   manifest: Record<string, unknown>
   signatureUrl: string
   signatureText: string
+  signerKeyId: string
 }
+
+const mockTrustedProofRoomSignerKeys = new Set<string>()
 
 function jsonResponse(
   body: unknown,
@@ -168,9 +171,11 @@ async function signMockProofRoomManifest(
     keypair.privateKey,
     dssePreAuthEncoding(proofRoomBundlePayloadType, manifestText),
   )
+  mockTrustedProofRoomSignerKeys.add(signerKeyId)
   return {
     manifest,
     signatureUrl: proofRoomSignatureUrl(manifestUrl, signatureRef),
+    signerKeyId,
     signatureText: JSON.stringify({
       payloadType: proofRoomBundlePayloadType,
       payloadRef: {
@@ -184,10 +189,17 @@ async function signMockProofRoomManifest(
 }
 
 function mockFetch(routes: Record<string, MockFetchRoute>) {
+  mockTrustedProofRoomSignerKeys.clear()
   const signatures = new Map<string, Promise<SignedMockProofRoomManifest>>()
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
     const url = String(input)
     if (!Object.prototype.hasOwnProperty.call(routes, url)) {
+      if (url === '/proof-room-trusted-bundle-signers.json') {
+        return jsonResponse({
+          schema: 'chio.proof-room.trusted-bundle-signers.v1',
+          keys: Array.from(mockTrustedProofRoomSignerKeys),
+        })
+      }
       const signature = signatures.get(url)
       if (signature) {
         return textResponse((await signature).signatureText)
@@ -232,13 +244,28 @@ function uploadedJsonFile(contents: string, path: string): File {
 
 const proofRoomBundlePayloadType = 'application/vnd.chio.proof-room.bundle.v1+json'
 
-async function signedProofRoomManifestFile(manifestJson: string): Promise<File> {
+async function generatedProofRoomSigner(): Promise<{
+  keypair: CryptoKeyPair
+  signerKeyId: string
+}> {
   const keypair = await crypto.subtle.generateKey(
     { name: 'Ed25519' },
     true,
     ['sign', 'verify'],
   ) as CryptoKeyPair
   const signerKeyId = bytesToHex(await crypto.subtle.exportKey('raw', keypair.publicKey))
+  return { keypair, signerKeyId }
+}
+
+async function signedProofRoomManifestFileWithSigner(
+  manifestJson: string,
+  keypair: CryptoKeyPair,
+  signerKeyId: string,
+  trusted = true,
+): Promise<File> {
+  if (trusted) {
+    mockTrustedProofRoomSignerKeys.add(signerKeyId)
+  }
   const signatureBytes = await crypto.subtle.sign(
     { name: 'Ed25519' },
     keypair.privateKey,
@@ -256,6 +283,11 @@ async function signedProofRoomManifestFile(manifestJson: string): Promise<File> 
     }),
     'bundle-signature.dsse.json',
   )
+}
+
+async function signedProofRoomManifestFile(manifestJson: string): Promise<File> {
+  const { keypair, signerKeyId } = await generatedProofRoomSigner()
+  return signedProofRoomManifestFileWithSigner(manifestJson, keypair, signerKeyId)
 }
 
 function selectedVerifierRootFiles(prefix = 'roots'): [File, File, File] {
@@ -5849,6 +5881,7 @@ describe('App operator paths', () => {
       'bundle-signature.dsse.json',
       { type: 'application/json' },
     )
+    mockTrustedProofRoomSignerKeys.add('1'.repeat(64))
     const [transactionPassport, evidenceGraph, verifierPolicy] = selectedVerifierRootFiles()
 
     await act(async () => {
@@ -5973,6 +6006,7 @@ describe('App operator paths', () => {
       'bundle-signature.dsse.json',
       { type: 'application/json' },
     )
+    mockTrustedProofRoomSignerKeys.add('1'.repeat(64))
     const [transactionPassport, evidenceGraph, verifierPolicy] = selectedVerifierRootFiles()
 
     await act(async () => {
@@ -6130,6 +6164,149 @@ describe('App operator paths', () => {
       ],
       'bundle-signature.dsse.json',
       { type: 'application/json' },
+    )
+    const trustRoots = new File(
+      [trustRootsJson],
+      'artifacts/authority/trust-roots.json',
+      { type: 'application/json' },
+    )
+    const [transactionPassport, evidenceGraph, verifierPolicy] = selectedVerifierRootFiles()
+
+    await act(async () => {
+      Object.defineProperty(input, 'files', {
+        value: [
+          manifest,
+          loadReport,
+          verifierReport,
+          signature,
+          trustRoots,
+          transactionPassport,
+          evidenceGraph,
+          verifierPolicy,
+        ],
+        configurable: true,
+      })
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+
+    await waitForText(container, 'selected bundle signature signer is not trusted')
+
+    expect(container.textContent).toContain('served-proof-room')
+    expect(container.textContent).not.toContain('uploaded-proof-room')
+  })
+
+  it('rejects a selected Proof Room bundle trusted only by uploaded trust roots', async () => {
+    sessionStorage.clear()
+    window.history.replaceState({}, '', '/?view=proof-room')
+    mockFetch(servedProofRoomRoutesWithVerifierRoots())
+
+    const container = await renderIntoDocument(<App />)
+    await waitForText(container, 'served-proof-room')
+
+    const input = container.querySelector('input[type="file"]')
+    if (!input) {
+      throw new Error('Proof Room file input missing')
+    }
+
+    const verifierReportJson = JSON.stringify({
+      schema: 'chio.transaction.verifier-report.v1',
+      id: 'uploaded-verifier-report',
+      verdict: 'verified',
+      passport_id: 'uploaded-passport',
+      passport_path: 'transaction-passport.json',
+      evidence_graph_path: 'evidence-graph.json',
+      verifier_policy_path: 'verifier-policy.json',
+      verified_claims: ['claim.transaction.passport_root_verified'],
+    })
+    const verifierReportDigest = await sha256Hex(verifierReportJson)
+    const loadReportJson = JSON.stringify({
+      schema: 'chio.proof-room.verifier-report.v1',
+      verdict: 'verified',
+      bundle_id: 'uploaded-proof-room',
+      fixture_id: 'single-call-authority',
+      source_verifier_report_ref: {
+        path: 'verifier/report.json',
+        sha256: verifierReportDigest,
+        schema: 'chio.transaction.verifier-report.v1',
+      },
+      ui_verdict_source: 'verifier_report_ref',
+      rendered_claims: [
+        {
+          claim_id: 'claim.transaction.passport_root_verified',
+          source: 'verifier/report.json',
+          verdict: 'verified',
+        },
+      ],
+    })
+    const loadReportDigest = await sha256Hex(loadReportJson)
+    const { keypair, signerKeyId } = await generatedProofRoomSigner()
+    const trustRootsJson = JSON.stringify({
+      schema: 'chio.proof.first-run.trust-roots.v1',
+      id: 'uploaded-trust-roots',
+      trust_domain: 'did:chio:test',
+      roots: [
+        {
+          subject: 'did:chio:uploaded-bundle-local-signer',
+          key_id: signerKeyId,
+          key_digest: await sha256Hex(signerKeyId),
+        },
+      ],
+      signature: 'sig-uploaded-trust-roots',
+    })
+    const trustRootsDigest = await sha256Hex(trustRootsJson)
+    const manifestJson = JSON.stringify({
+      schema: 'chio.proof-room.bundle.v1',
+      bundle_id: 'uploaded-proof-room',
+      fixture_id: 'single-call-authority',
+      verifier_report_ref: {
+        path: 'verifier/report.json',
+        sha256: verifierReportDigest,
+        schema: 'chio.transaction.verifier-report.v1',
+      },
+      proof_room_verifier_report_ref: {
+        path: 'ui/proof-room-static/load-report.json',
+        sha256: loadReportDigest,
+        schema: 'chio.proof-room.verifier-report.v1',
+      },
+      signature: {
+        kind: 'detached-dsse',
+        signature_ref: 'bundle-signature.dsse.json',
+      },
+      artifacts: [
+        {
+          path: 'artifacts/authority/trust-roots.json',
+          sha256: trustRootsDigest,
+          schema: 'chio.proof.first-run.trust-roots.v1',
+          renderer_hint: 'trust-roots',
+        },
+      ],
+      claims: [
+        {
+          claim_id: 'claim.transaction.passport_root_verified',
+          required_artifacts: ['verifier/report.json'],
+          result: 'verified',
+        },
+      ],
+      negative_cases: [],
+    })
+    const manifest = new File([manifestJson], 'manifest.json', {
+      type: 'application/json',
+    })
+    const loadReport = new File(
+      [loadReportJson],
+      'ui/proof-room-static/load-report.json',
+      { type: 'application/json' },
+    )
+    const verifierReport = new File(
+      [verifierReportJson],
+      'verifier/report.json',
+      { type: 'application/json' },
+    )
+    const signature = await signedProofRoomManifestFileWithSigner(
+      manifestJson,
+      keypair,
+      signerKeyId,
+      false,
     )
     const trustRoots = new File(
       [trustRootsJson],

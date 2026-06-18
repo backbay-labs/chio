@@ -293,6 +293,40 @@ async fn quickstart_router_serves_fixture_catalog() -> Result<(), Box<dyn Error>
 }
 
 #[tokio::test]
+async fn proof_room_router_serves_configured_trusted_bundle_signers() -> Result<(), Box<dyn Error>>
+{
+    configure_proof_room_fixture_trust();
+    let bundle =
+        repo_root()?.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
+    let ui = tempfile::tempdir()?;
+    fs::write(
+        ui.path().join("index.html"),
+        "<!doctype html><main>Proof Room</main>",
+    )?;
+    let router = proof_room_router_with_repo_fixture_root(bundle, ui.path().to_path_buf())?;
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .uri("/proof-room-trusted-bundle-signers.json")
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024).await?;
+    let signers: serde_json::Value = serde_json::from_slice(&body)?;
+
+    assert_eq!(
+        signers["schema"],
+        "chio.proof-room.trusted-bundle-signers.v1"
+    );
+    assert!(signers["keys"]
+        .as_array()
+        .is_some_and(|keys| !keys.is_empty()));
+    Ok(())
+}
+
+#[tokio::test]
 async fn quickstart_router_without_fixture_root_lists_only_embedded_fixture_assets(
 ) -> Result<(), Box<dyn Error>> {
     let bundle =
