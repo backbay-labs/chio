@@ -128,6 +128,7 @@ const AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV: &str = "CHIO_AGENT_WEB_STANDARD_WE
 const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS";
 const AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV: &str =
     "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS";
+const TRANSACTION_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS";
 const TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV: &str = "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS";
 const PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV: &str =
     "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS";
@@ -221,6 +222,19 @@ pub(crate) fn trust_market_trusted_authority_keys_from_env(
         )),
         Err(env::VarError::NotUnicode(_)) => Err(format!(
             "{TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV} must be valid UTF-8"
+        )),
+    }
+}
+
+pub(crate) fn transaction_trusted_root_keys_from_env(
+) -> Result<Vec<chio_core_types::PublicKey>, String> {
+    match env::var(TRANSACTION_TRUSTED_ROOT_KEYS_ENV) {
+        Ok(keys) => parse_public_keys(TRANSACTION_TRUSTED_ROOT_KEYS_ENV, &keys),
+        Err(env::VarError::NotPresent) => Err(format!(
+            "{TRANSACTION_TRUSTED_ROOT_KEYS_ENV} must pin trusted transaction root keys"
+        )),
+        Err(env::VarError::NotUnicode(_)) => Err(format!(
+            "{TRANSACTION_TRUSTED_ROOT_KEYS_ENV} must be valid UTF-8"
         )),
     }
 }

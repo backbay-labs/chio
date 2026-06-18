@@ -12,6 +12,10 @@ const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
 );
 const AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS: &str =
     "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737";
+const TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS: &str = concat!(
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
+    "68f4b6017d0f876a55c80a82b8388a54aad264d367269e2de8be079c935b5f96"
+);
 const TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS: &str =
     "cf1b37e85dc00aee94f10108b37f151e2a37b3ae2a0cae77521f83488db9c4d7";
 
@@ -47,10 +51,19 @@ pub(crate) fn chio_with_agent_web_fixture_trust_without_webhooks_secret() -> std
 }
 
 pub(crate) fn chio_with_trust_market_fixture_authority() -> std::process::Command {
-    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_chio"));
+    let mut command = chio_with_transaction_fixture_roots();
     command.env(
         "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS",
         TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS,
+    );
+    command
+}
+
+pub(crate) fn chio_with_transaction_fixture_roots() -> std::process::Command {
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_chio"));
+    command.env(
+        "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS",
+        TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS,
     );
     command
 }

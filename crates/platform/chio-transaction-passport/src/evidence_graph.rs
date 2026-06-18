@@ -379,6 +379,7 @@ pub(super) fn validate_evidence_graph_artifact_bytes(
 pub(super) fn validate_minimal_governed_action_artifact_bindings(
     graph: &TransactionEvidenceGraph,
     artifacts: &BTreeMap<String, Vec<u8>>,
+    trusted_root_signer_keys: &[PublicKey],
 ) -> Result<(), TransactionPassportError> {
     let capability: MinimalCapabilityProof =
         parse_artifact_for_role(graph, artifacts, EvidenceNodeRole::Capability, "capability")?;
@@ -495,6 +496,7 @@ pub(super) fn validate_minimal_governed_action_artifact_bindings(
     )?;
     ensure_trust_root_authorizes_issuer(&trust_root, &capability.issuer)?;
     let trust_root_signer = trust_root_signer_identity(&trust_root, &capability.issuer)?;
+    ensure_trust_root_signer_is_pinned(&trust_root_signer, trusted_root_signer_keys)?;
     verify_signed_role_artifact(
         graph,
         artifacts,
@@ -741,6 +743,28 @@ fn ensure_trust_root_authorizes_issuer(
     Err(minimal_governed_action_binding_error(
         "trust root does not authorize capability issuer",
     ))
+}
+
+fn ensure_trust_root_signer_is_pinned(
+    signer_identity: &str,
+    trusted_root_signer_keys: &[PublicKey],
+) -> Result<(), TransactionPassportError> {
+    if trusted_root_signer_keys.is_empty() {
+        return Err(minimal_governed_action_binding_error(
+            "trusted transaction root keys missing",
+        ));
+    }
+    let signer_key = minimal_self_certifying_public_key(signer_identity, "trust root")?;
+    if trusted_root_signer_keys
+        .iter()
+        .any(|trusted_key| trusted_key == &signer_key)
+    {
+        Ok(())
+    } else {
+        Err(minimal_governed_action_binding_error(
+            "trust root signer is not trusted",
+        ))
+    }
 }
 
 fn trust_root_signer_identity(

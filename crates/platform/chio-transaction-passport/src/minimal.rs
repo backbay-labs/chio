@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use chio_core_types::PublicKey;
+
 use super::error::TransactionPassportError;
 use super::evidence_graph::{
     validate_evidence_graph, validate_evidence_graph_artifact_bytes,
@@ -97,6 +99,7 @@ pub fn verify_standalone_minimal_passport_artifacts(
     evidence_graph_bytes: &[u8],
     verifier_policy_bytes: &[u8],
     artifacts: &BTreeMap<String, Vec<u8>>,
+    trusted_root_signer_keys: &[PublicKey],
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
     let report = verify_minimal_passport_artifacts(
         passport,
@@ -120,6 +123,10 @@ pub fn verify_standalone_minimal_passport_artifacts(
         &passport.verifier_policy_sha256,
     )?;
     validate_evidence_graph_artifact_bytes(&evidence_graph, artifacts)?;
-    validate_minimal_governed_action_artifact_bindings(&evidence_graph, artifacts)?;
+    validate_minimal_governed_action_artifact_bindings(
+        &evidence_graph,
+        artifacts,
+        trusted_root_signer_keys,
+    )?;
     Ok(report)
 }

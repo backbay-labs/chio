@@ -6,7 +6,7 @@ use support::*;
 
 #[test]
 fn proof_verify_accepts_minimal_passport_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(fixture_path("valid"))
@@ -23,8 +23,27 @@ fn proof_verify_accepts_minimal_passport_fixture() {
 }
 
 #[test]
-fn proof_verify_accepts_minimal_passport_bundle_directory() {
+fn proof_verify_rejects_minimal_passport_without_trusted_transaction_roots() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+        .env_remove("CHIO_TRANSACTION_TRUSTED_ROOT_KEYS")
+        .arg("proof")
+        .arg("verify")
+        .arg(fixture_path("valid"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(
+        stderr
+            .contains("CHIO_TRANSACTION_TRUSTED_ROOT_KEYS must pin trusted transaction root keys"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn proof_verify_accepts_minimal_passport_bundle_directory() {
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(workspace_root().join("fixtures/proof-room/minimal-passport/valid"))
@@ -64,7 +83,7 @@ fn proof_verify_rejects_minimal_passport_missing_governed_action_evidence() {
         }),
     );
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir)
@@ -112,7 +131,7 @@ fn proof_verify_rejects_schema_invalid_evidence_graph_node_role() {
         }));
     write_minimal_evidence_graph(&bundle_dir, evidence_graph);
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir)
@@ -133,7 +152,7 @@ fn proof_verify_rejects_minimal_passport_missing_governed_action_artifact() {
     std::fs::remove_file(bundle_dir.join("kernel-receipt.json"))
         .test_expect("remove receipt artifact");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir)
@@ -165,7 +184,7 @@ fn proof_verify_rejects_minimal_passport_governed_action_mismatch() {
     .test_expect("write guard decision");
     refresh_minimal_evidence_graph_node_digest(&bundle_dir, "guard-decision.json");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir)
@@ -181,7 +200,7 @@ fn proof_verify_rejects_minimal_passport_governed_action_mismatch() {
 fn proof_verify_out_writes_the_deterministic_report() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let report_path = tempdir.path().join("verifier-report.json");
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(workspace_root().join("fixtures/proof-room/minimal-passport/valid"))
@@ -204,7 +223,7 @@ fn proof_verify_out_rejects_existing_report_file() {
     let report_path = tempdir.path().join("verifier-report.json");
     write_file(&report_path, "existing verifier report\n");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(workspace_root().join("fixtures/proof-room/minimal-passport/valid"))
@@ -222,7 +241,7 @@ fn proof_verify_out_rejects_existing_report_file() {
 
 #[test]
 fn proof_verify_rejects_unknown_passport_schema_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(fixture_path("unknown-passport-schema"))
@@ -236,7 +255,7 @@ fn proof_verify_rejects_unknown_passport_schema_fixture() {
 
 #[test]
 fn proof_verify_rejects_evidence_graph_digest_mismatch_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(fixture_path("evidence-graph-digest-mismatch"))
@@ -250,7 +269,7 @@ fn proof_verify_rejects_evidence_graph_digest_mismatch_fixture() {
 
 #[test]
 fn proof_verify_rejects_stale_capability_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(fixture_path("stale-capability"))
@@ -264,7 +283,7 @@ fn proof_verify_rejects_stale_capability_fixture() {
 
 #[test]
 fn proof_verify_accepts_runtime_passport_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(runtime_fixture_path("valid-side-effecting-call"))
@@ -283,7 +302,7 @@ fn proof_verify_accepts_runtime_passport_fixture() {
 
 #[test]
 fn proof_verify_accepts_runtime_denial_terminal_receipt_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(runtime_fixture_path("terminal-denial"))
@@ -328,7 +347,7 @@ fn proof_verify_accepts_runtime_terminal_receipt_under_common_receipts_dir() {
     }
     write_minimal_evidence_graph(&bundle_dir, evidence_graph);
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir.join("transaction-passport.json"))
@@ -346,7 +365,7 @@ fn proof_verify_accepts_runtime_terminal_receipt_under_common_receipts_dir() {
 
 #[test]
 fn proof_verify_accepts_runtime_infrastructure_failure_receipt_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(runtime_fixture_path("terminal-infrastructure-failure"))
@@ -364,7 +383,7 @@ fn proof_verify_accepts_runtime_infrastructure_failure_receipt_fixture() {
 
 #[test]
 fn proof_verify_accepts_enterprise_export_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(enterprise_fixture_path("valid-autonomous-commerce"))
@@ -390,7 +409,7 @@ fn proof_verify_accepts_enterprise_export_fixture() {
 
 #[test]
 fn proof_verify_require_risk_outputs_verified_risk_claim() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg("--require")
@@ -413,7 +432,7 @@ fn proof_verify_rejects_enterprise_routed_unknown_risk_claim() {
     copy_dir_all(&source, &bundle_dir);
     add_verifier_policy_required_claim(&bundle_dir, "claim.risk.not_real");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir)
@@ -450,7 +469,7 @@ fn proof_verify_rejects_standalone_risk_graph_node_without_schema() {
     }
     write_minimal_evidence_graph(&bundle_dir, evidence_graph);
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir)
@@ -464,7 +483,7 @@ fn proof_verify_rejects_standalone_risk_graph_node_without_schema() {
 
 #[test]
 fn proof_verify_rejects_enterprise_export_risk_subject_mismatch_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(enterprise_fixture_path("coverage-subject-mismatch"))
@@ -478,7 +497,7 @@ fn proof_verify_rejects_enterprise_export_risk_subject_mismatch_fixture() {
 
 #[test]
 fn proof_verify_rejects_enterprise_export_risk_portfolio_capital_overallocated_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(enterprise_fixture_path(
@@ -888,7 +907,7 @@ fn proof_verify_accepts_trust_market_context_fixture() {
 
 #[test]
 fn proof_verify_accepts_public_settlement_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(public_settlement_fixture_path("valid-offline-finality"))
@@ -964,7 +983,7 @@ fn proof_verify_rejects_public_settlement_graph_node_without_schema() {
     }
     write_minimal_evidence_graph(&bundle_dir, evidence_graph);
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir)
@@ -1133,7 +1152,7 @@ fn proof_verify_rejects_public_settlement_unverified_required_claim() {
     )
     .test_expect("write passport");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(passport_path)
@@ -1198,7 +1217,7 @@ fn proof_verify_rejects_misspelled_required_claim_prefix() {
     )
     .test_expect("write passport");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(passport_path)
@@ -1231,7 +1250,7 @@ fn proof_verify_rejects_public_settlement_passport_policy_digest_mismatch() {
     )
     .test_expect("write passport");
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(passport_path)
@@ -1255,7 +1274,7 @@ fn proof_verify_rejects_public_settlement_passport_id_mismatch() {
             serde_json::Value::String("passport-other-settlement-root".to_string());
     });
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir.join("transaction-passport.json"))
@@ -1269,7 +1288,7 @@ fn proof_verify_rejects_public_settlement_passport_id_mismatch() {
 
 #[test]
 fn proof_verify_accepts_commerce_payment_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(commerce_fixture_path("offline-psp-valid"))
@@ -1290,7 +1309,7 @@ fn proof_verify_accepts_commerce_payment_fixture() {
 
 #[test]
 fn proof_verify_rejects_commerce_payment_wrong_merchant_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(commerce_fixture_path("payment-wrong-merchant"))
@@ -1312,7 +1331,7 @@ fn proof_verify_rejects_commerce_event_log_invalid_timestamp() {
         event_log["events"][0]["occurred_at"] = serde_json::Value::String("not-a-timestamp".into());
     });
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir.join("transaction-passport.json"))
@@ -1335,7 +1354,7 @@ fn proof_verify_rejects_commerce_event_log_regressed_timestamp() {
             serde_json::Value::String("2026-06-10T00:01:30Z".into());
     });
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir.join("transaction-passport.json"))
@@ -1349,7 +1368,7 @@ fn proof_verify_rejects_commerce_event_log_regressed_timestamp() {
 
 #[test]
 fn proof_verify_accepts_swarm_authority_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(swarm_fixture_path("valid-recursive-delegation"))
@@ -1382,7 +1401,7 @@ fn proof_verify_rejects_swarm_authority_expired_at_verification_time() {
     copy_dir_all(&source, &bundle_dir);
     expire_swarm_bundle_before_verification_time(&bundle_dir);
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir.join("transaction-passport.json"))
@@ -1403,7 +1422,7 @@ fn proof_verify_rejects_local_family_malformed_verifier_policy() {
     copy_dir_all(&source, &bundle_dir);
     duplicate_first_verifier_policy_required_claim(&bundle_dir);
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir.join("transaction-passport.json"))
@@ -1420,7 +1439,7 @@ fn proof_verify_rejects_local_family_malformed_verifier_policy() {
 
 #[test]
 fn proof_verify_accepts_disclosure_lineage_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(disclosure_lineage_fixture_path("valid-lineage-ledger"))
@@ -1441,7 +1460,7 @@ fn proof_verify_accepts_disclosure_lineage_fixture() {
 
 #[test]
 fn proof_verify_rejects_disclosure_lineage_missing_ledger_entry_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(disclosure_lineage_fixture_path("missing-ledger-entry"))
@@ -1463,7 +1482,7 @@ fn proof_verify_accepts_disclosure_crypto_context_required_claim() {
     add_disclosure_crypto_context_report(&bundle_dir);
     set_disclosure_policy_required_claims(&bundle_dir, &["claim.disclosure.crypto_context_bound"]);
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir.join("transaction-passport.json"))
@@ -1498,7 +1517,7 @@ fn proof_verify_rejects_disclosure_lineage_unregistered_crypto_context_claim() {
         &["claim.disclosure.unregistered_crypto_context_claim"],
     );
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir.join("transaction-passport.json"))
@@ -1526,7 +1545,7 @@ fn proof_verify_rejects_disclosure_lineage_missing_crypto_context_report() {
     copy_dir_all(&source, &bundle_dir);
     remove_disclosure_crypto_context_report(&bundle_dir);
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir.join("transaction-passport.json"))
@@ -1561,7 +1580,7 @@ fn proof_verify_rejects_disclosure_lineage_crypto_context_ref_mismatch() {
     std::fs::write(&capsule_path, &capsule_bytes).test_expect("write capsule");
     add_disclosure_crypto_context_report(&bundle_dir);
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(bundle_dir.join("transaction-passport.json"))
@@ -1580,7 +1599,7 @@ fn proof_verify_rejects_disclosure_lineage_crypto_context_ref_mismatch() {
 
 #[test]
 fn proof_verify_rejects_policy_digest_mismatch_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(fixture_path("invalid-policy-digest-mismatch"))
@@ -1617,7 +1636,7 @@ fn proof_verify_rejects_symlink_escape_artifact() {
     let passport_path = bundle_dir.join("transaction-passport.json");
     write_file(&passport_path, &passport);
 
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(passport_path)
@@ -1631,7 +1650,7 @@ fn proof_verify_rejects_symlink_escape_artifact() {
 
 #[test]
 fn proof_verify_rejects_runtime_missing_execution_lease_fixture() {
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))
+    let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
         .arg(runtime_fixture_path("missing-execution-lease"))

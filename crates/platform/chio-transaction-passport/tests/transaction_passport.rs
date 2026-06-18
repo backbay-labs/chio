@@ -291,6 +291,10 @@ fn governed_action_artifacts() -> BTreeMap<String, Vec<u8>> {
     ])
 }
 
+fn governed_action_trusted_root_keys() -> Vec<chio_core_types::PublicKey> {
+    vec![Keypair::from_seed(&[54u8; 32]).public_key()]
+}
+
 fn governed_action_evidence_graph_bytes(artifacts: &BTreeMap<String, Vec<u8>>) -> Vec<u8> {
     governed_action_evidence_graph_bytes_with_verifier_policy_path(
         artifacts,
@@ -591,6 +595,7 @@ fn standalone_minimal_passport_rejects_missing_governed_action_evidence() {
         evidence_graph_bytes,
         verifier_policy_bytes,
         &BTreeMap::new(),
+        &governed_action_trusted_root_keys(),
     )
     .test_expect_err("standalone minimal passport must prove a governed action");
 
@@ -612,8 +617,31 @@ fn standalone_minimal_passport_accepts_governed_action_evidence() {
         &evidence_graph_bytes,
         verifier_policy_bytes,
         &artifacts,
+        &governed_action_trusted_root_keys(),
     )
     .test_expect("standalone minimal passport should accept governed action evidence");
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_unpinned_trust_root_signer() {
+    let artifacts = governed_action_artifacts();
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let verifier_policy_bytes = valid_verifier_policy_bytes();
+    let passport = passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+
+    let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        verifier_policy_bytes,
+        &artifacts,
+        &[],
+    )
+    .test_expect_err("standalone minimal passport must require pinned transaction roots");
+
+    assert!(error
+        .to_string()
+        .contains("trusted transaction root keys missing"));
 }
 
 #[test]
@@ -649,6 +677,7 @@ fn standalone_minimal_passport_rejects_forged_governed_action_signatures() {
             &evidence_graph_bytes,
             verifier_policy_bytes,
             &artifacts,
+            &governed_action_trusted_root_keys(),
         )
         .test_expect_err("standalone minimal passport must reject forged signatures");
 
@@ -676,6 +705,7 @@ fn standalone_minimal_passport_rejects_unregistered_transaction_claim() {
         &evidence_graph_bytes,
         &verifier_policy_bytes,
         &artifacts,
+        &governed_action_trusted_root_keys(),
     )
     .test_expect_err("standalone minimal passport must reject unregistered transaction claim");
 
@@ -701,6 +731,7 @@ fn standalone_minimal_passport_rejects_governed_action_mismatch() {
         &evidence_graph_bytes,
         verifier_policy_bytes,
         &artifacts,
+        &governed_action_trusted_root_keys(),
     )
     .test_expect_err("standalone minimal passport must reject mismatched governed action evidence");
 
@@ -733,6 +764,7 @@ fn standalone_minimal_passport_rejects_stale_capability_proof() {
         &evidence_graph_bytes,
         verifier_policy_bytes,
         &artifacts,
+        &governed_action_trusted_root_keys(),
     )
     .test_expect_err("standalone minimal passport must reject stale capability evidence");
 
@@ -765,6 +797,7 @@ fn standalone_minimal_passport_rejects_future_capability_not_before() {
         &evidence_graph_bytes,
         verifier_policy_bytes,
         &artifacts,
+        &governed_action_trusted_root_keys(),
     )
     .test_expect_err("standalone minimal passport must reject future capability activation");
 
@@ -794,6 +827,7 @@ fn standalone_minimal_passport_accepts_packaged_verifier_policy_node_path() {
         &evidence_graph_bytes,
         verifier_policy_bytes,
         &artifacts,
+        &governed_action_trusted_root_keys(),
     )
     .test_expect("standalone minimal passport should accept packaged verifier policy path");
 }
@@ -873,6 +907,7 @@ fn standalone_minimal_passport_rejects_missing_governed_action_artifacts() {
         &evidence_graph_bytes,
         verifier_policy_bytes,
         &artifacts,
+        &governed_action_trusted_root_keys(),
     )
     .test_expect_err("standalone minimal passport must verify graph artifact bytes");
 
@@ -898,6 +933,7 @@ fn standalone_minimal_passport_rejects_detached_verifier_policy_node() {
         &evidence_graph_bytes,
         verifier_policy_bytes,
         &artifacts,
+        &governed_action_trusted_root_keys(),
     )
     .test_expect_err("evidence graph verifier policy node must match passport policy digest");
 

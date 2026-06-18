@@ -23,6 +23,10 @@ const PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS: &str = concat!(
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
     "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a"
 );
+const TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS: &str = concat!(
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
+    "68f4b6017d0f876a55c80a82b8388a54aad264d367269e2de8be079c935b5f96"
+);
 const TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS: &str =
     "cf1b37e85dc00aee94f10108b37f151e2a37b3ae2a0cae77521f83488db9c4d7";
 
@@ -84,6 +88,10 @@ fn proof_doctor_command() -> std::process::Command {
     command.env(
         "CHIO_PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS",
         proof_room_fixture_trusted_bundle_signer_keys(),
+    );
+    command.env(
+        "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS",
+        TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS,
     );
     command.env(
         "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS",

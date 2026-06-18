@@ -29,6 +29,7 @@ const AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV: &str = "CHIO_AGENT_WEB_STANDARD_WE
 const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS";
 const AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV: &str =
     "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS";
+const TRANSACTION_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS";
 const TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV: &str = "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS";
 const VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_RUNTIME,
@@ -120,6 +121,18 @@ fn trust_market_trusted_authority_keys_from_env(
         ))),
         Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
             "{TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV} must be valid UTF-8"
+        ))),
+    }
+}
+
+fn transaction_trusted_root_keys_from_env() -> Result<Vec<chio_core_types::PublicKey>, CliError> {
+    match std::env::var(TRANSACTION_TRUSTED_ROOT_KEYS_ENV) {
+        Ok(keys) => parse_public_keys(TRANSACTION_TRUSTED_ROOT_KEYS_ENV, &keys),
+        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
+            "{TRANSACTION_TRUSTED_ROOT_KEYS_ENV} must pin trusted transaction root keys"
+        ))),
+        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
+            "{TRANSACTION_TRUSTED_ROOT_KEYS_ENV} must be valid UTF-8"
         ))),
     }
 }
@@ -695,6 +708,7 @@ pub(super) fn verify_transaction_passport_file(
         let artifact_base_dir = standalone_evidence_artifact_base_dir(bundle_dir);
         let artifacts =
             load_standalone_evidence_graph_artifacts(&artifact_base_dir, &evidence_graph_bytes)?;
+        let trusted_root_signer_keys = transaction_trusted_root_keys_from_env()?;
         let report =
             chio_control_plane::transaction_passport::verify_standalone_minimal_passport_artifacts(
                 &passport,
@@ -702,6 +716,7 @@ pub(super) fn verify_transaction_passport_file(
                 &evidence_graph_bytes,
                 &verifier_policy_bytes,
                 &artifacts,
+                &trusted_root_signer_keys,
             )
             .map_err(map_proof_error)?;
         serde_json::to_value(report).map_err(CliError::from)

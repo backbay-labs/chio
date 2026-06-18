@@ -795,12 +795,15 @@ pub(crate) fn verify_transaction_passport_file(
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string_lossy().into_owned());
+    let trusted_root_signer_keys = crate::transaction_trusted_root_keys_from_env()
+        .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
     let report = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
         &passport,
         passport_report_path,
         &evidence_graph_bytes,
         &verifier_policy_bytes,
         &artifacts,
+        &trusted_root_signer_keys,
     )
     .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
     let mut report = serde_json::to_value(report)

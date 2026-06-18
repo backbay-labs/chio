@@ -950,17 +950,29 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
                 ),
             )
         }
-        ProofRoomFixtureReportRoute::MinimalPassport => proof_room_fixture_verified_report_bytes(
-            fixture_id,
-            passport,
-            chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        ProofRoomFixtureReportRoute::MinimalPassport => {
+            let trusted_root_signer_keys = crate::transaction_trusted_root_keys_from_env()
+                .map_err(|error| {
+                    (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        format!(
+                            "proof-room.fixture.minimal-passport-invalid: {fixture_id}: {error}"
+                        ),
+                    )
+                })?;
+            proof_room_fixture_verified_report_bytes(
+                fixture_id,
                 passport,
-                "transaction-passport.json".to_string(),
-                evidence_graph_bytes,
-                verifier_policy_bytes,
-                artifacts,
-            ),
-        ),
+                chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+                    passport,
+                    "transaction-passport.json".to_string(),
+                    evidence_graph_bytes,
+                    verifier_policy_bytes,
+                    artifacts,
+                    &trusted_root_signer_keys,
+                ),
+            )
+        }
     }
 }
 
