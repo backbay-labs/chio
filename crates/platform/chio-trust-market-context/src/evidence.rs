@@ -154,6 +154,7 @@ pub(super) fn bundle_contains_risk_evidence_kind(
     graph: &TrustMarketEvidenceGraph,
     evidence_ref: &str,
     kind: RiskEvidenceRefKind,
+    trusted_authority_keys: &[PublicKey],
 ) -> bool {
     let Some(node) = graph.nodes.iter().find(|node| {
         node.id == evidence_ref && risk_evidence_schema_matches_kind(&node.schema, kind)
@@ -169,7 +170,16 @@ pub(super) fn bundle_contains_risk_evidence_kind(
     let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) else {
         return false;
     };
-    value.get("schema").and_then(serde_json::Value::as_str) == Some(node.schema.as_str())
+    if value.get("schema").and_then(serde_json::Value::as_str) != Some(node.schema.as_str()) {
+        return false;
+    }
+    if node.schema == CHIO_RECEIPT_SCHEMA {
+        return value
+            .get("signature")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|signature| !signature.trim().is_empty());
+    }
+    validate_artifact_signature(node, &value, trusted_authority_keys).is_ok()
 }
 
 fn risk_evidence_schema_matches_kind(schema: &str, kind: RiskEvidenceRefKind) -> bool {

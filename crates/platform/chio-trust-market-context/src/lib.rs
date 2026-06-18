@@ -171,7 +171,15 @@ pub fn verify_trust_market_context(
         &bundle.passport,
         &selection,
         &risk_report,
-        |evidence_ref, kind| bundle_contains_risk_evidence_kind(bundle, &graph, evidence_ref, kind),
+        |evidence_ref, kind| {
+            bundle_contains_risk_evidence_kind(
+                bundle,
+                &graph,
+                evidence_ref,
+                kind,
+                &policy.trusted_market_authority_keys,
+            )
+        },
     )?;
     push_claim_once(&mut verified_claims, CLAIM_RISK_COMPTROLLER_REPORT_BOUND);
     push_claim_once(&mut verified_claims, CLAIM_SELECTION_BOUND);

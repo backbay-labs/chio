@@ -55,6 +55,7 @@ enum TrustMarketCase {
     RiskFacilityLifecycleReplayed,
     RiskFacilityLifecycleMissingEvidence,
     RiskFacilityLifecycleMissingEvidenceArtifact,
+    RiskFacilityLifecycleUnsignedAuthorityEvidence,
 }
 
 fn json_bytes(value: Value) -> Vec<u8> {
@@ -471,7 +472,8 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         TrustMarketCase::RiskFacilityLifecycleReplayGap
         | TrustMarketCase::RiskFacilityLifecycleReplayed
         | TrustMarketCase::RiskFacilityLifecycleMissingEvidence
-        | TrustMarketCase::RiskFacilityLifecycleMissingEvidenceArtifact => "settlement_matched",
+        | TrustMarketCase::RiskFacilityLifecycleMissingEvidenceArtifact
+        | TrustMarketCase::RiskFacilityLifecycleUnsignedAuthorityEvidence => "settlement_matched",
         _ => "coverage_bound",
     };
     let mut risk_report_value = json!({
@@ -557,6 +559,13 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         };
         risk_report_value["facility_lifecycle"] =
             facility_lifecycle_for_state(facility_state, settlement_evidence_ref);
+        if matches!(
+            case,
+            TrustMarketCase::RiskFacilityLifecycleUnsignedAuthorityEvidence
+        ) {
+            risk_report_value["facility_lifecycle"][0]["authority_receipt_ref"] =
+                json!("unsigned-risk-authority");
+        }
     }
     let risk_report = json_bytes(risk_report_value);
     push_artifact(
@@ -663,6 +672,22 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         "guarantee-decision.json",
         guarantee,
     );
+    if matches!(
+        case,
+        TrustMarketCase::RiskFacilityLifecycleUnsignedAuthorityEvidence
+    ) {
+        push_artifact(
+            &mut artifacts,
+            &mut graph_nodes,
+            "guarantee-decision",
+            "unsigned-risk-authority",
+            "chio.risk.guarantee-decision.v1",
+            "unsigned-risk-authority.json",
+            json_bytes(json!({
+                "schema": "chio.risk.guarantee-decision.v1"
+            })),
+        );
+    }
 
     let slash_authority_refs = match case {
         TrustMarketCase::SlashAuthorityOutsideJurisdiction => vec!["did:chio:other-authority"],
@@ -1377,6 +1402,18 @@ fn trust_market_rejects_facility_lifecycle_missing_evidence() {
     assert!(error
         .to_string()
         .contains("risk facility lifecycle evidence missing"));
+}
+
+#[test]
+fn trust_market_rejects_unsigned_risk_lifecycle_authority_evidence() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::RiskFacilityLifecycleUnsignedAuthorityEvidence,
+    ))
+    .test_expect_err("risk lifecycle authority evidence must be signed by a trusted key");
+
+    assert!(error
+        .to_string()
+        .contains("risk facility lifecycle authority missing"));
 }
 
 #[test]
