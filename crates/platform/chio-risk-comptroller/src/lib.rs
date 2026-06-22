@@ -32,6 +32,8 @@ pub struct RiskComptrollerReport {
     actuarial_evidence: RiskActuarialEvidence,
     insurance_copy: RiskInsuranceCopy,
     #[serde(default)]
+    capital_instructions: Vec<RiskCapitalInstruction>,
+    #[serde(default)]
     reserve_ledger: Vec<RiskReserveLedgerEntry>,
     #[serde(default)]
     sanction_reserve_ledger: Vec<RiskSanctionReserveLedgerEntry>,
@@ -53,6 +55,7 @@ pub enum RiskEvidenceRefKind {
 #[serde(deny_unknown_fields)]
 struct RiskFacilityState {
     facility_id: String,
+    policy_id: String,
     state: String,
     capital_currency: String,
     capital_units: u64,
@@ -65,6 +68,7 @@ struct RiskFacilityState {
 #[serde(deny_unknown_fields)]
 struct RiskFacilityTransition {
     transition_id: String,
+    policy_id: String,
     from_state: String,
     to_state: String,
     authority_receipt_ref: String,
@@ -131,6 +135,25 @@ struct RiskInsuranceCopy {
     currency: String,
     maximum_coverage_units: u64,
     coverage_statement: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RiskCapitalInstruction {
+    instruction_id: String,
+    reserve_entry_id: String,
+    order_id: String,
+    claim_id: String,
+    reserve_ref: String,
+    currency: String,
+    units: u64,
+    settlement_ref: String,
+    intended_action: String,
+    source_kind: String,
+    intended_state: String,
+    reconciled_state: String,
+    #[serde(default)]
+    observed_execution_ref: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -232,6 +255,7 @@ pub fn validate_risk_report(
         &report.reserve_ledger,
         &report.sanction_reserve_ledger,
     )?;
+    validate_risk_capital_instructions(report)?;
     validate_risk_coverage_claim_scope(report)?;
     validate_risk_facility_closure(report)?;
     Ok(())
@@ -425,6 +449,7 @@ fn validate_risk_facility_state(
 ) -> Result<(), TransactionPassportError> {
     for (field, value) in [
         ("facility_id", &facility.facility_id),
+        ("facility_policy_id", &facility.policy_id),
         ("facility_state", &facility.state),
         ("capital_currency", &facility.capital_currency),
         ("reserve_currency", &facility.reserve_currency),
@@ -463,18 +488,19 @@ fn validate_risk_facility_lifecycle(
     }
 
     let mut transition_ids = BTreeSet::new();
-    let mut previous_to_state: Option<&str> = None;
-    let mut final_state: Option<&str> = None;
-    for transition in transitions {
+    let mut transitions_by_from_state = BTreeMap::new();
+    for (index, transition) in transitions.iter().enumerate() {
         validate_risk_facility_transition(transition)?;
+        if transition.policy_id != facility.policy_id {
+            return Err(claim_failed("risk facility lifecycle policy mismatch"));
+        }
         if !transition_ids.insert(transition.transition_id.as_str()) {
             return Err(claim_failed("risk facility lifecycle duplicate transition"));
         }
-        if let Some(previous_to_state) = previous_to_state {
-            if previous_to_state != transition.from_state {
-                return Err(claim_failed("risk facility lifecycle replay gap"));
-            }
-        } else if transition.from_state != "evidence_cold" {
+        if transitions_by_from_state
+            .insert(transition.from_state.as_str(), index)
+            .is_some()
+        {
             return Err(claim_failed("risk facility lifecycle replay gap"));
         }
 
@@ -486,13 +512,25 @@ fn validate_risk_facility_lifecycle(
         if !is_allowed_risk_facility_transition(&transition.from_state, &transition.to_state) {
             return Err(claim_failed("risk facility lifecycle replay gap"));
         }
-
-        previous_to_state = Some(transition.to_state.as_str());
-        final_state = Some(transition.to_state.as_str());
     }
 
-    if final_state != Some(facility.state.as_str()) {
-        return Err(claim_failed("risk facility lifecycle final state mismatch"));
+    let mut current_state = "evidence_cold";
+    let mut used_transition_indexes = BTreeSet::new();
+    while current_state != facility.state {
+        let Some(index) = transitions_by_from_state.get(current_state).copied() else {
+            if !used_transition_indexes.is_empty() {
+                return Err(claim_failed("risk facility lifecycle final state mismatch"));
+            }
+            return Err(claim_failed("risk facility lifecycle replay gap"));
+        };
+        if !used_transition_indexes.insert(index) {
+            return Err(claim_failed("risk facility lifecycle replay gap"));
+        }
+        current_state = transitions[index].to_state.as_str();
+    }
+
+    if used_transition_indexes.len() != transitions.len() {
+        return Err(claim_failed("risk facility lifecycle replay gap"));
     }
     Ok(())
 }
@@ -502,6 +540,7 @@ fn validate_risk_facility_transition(
 ) -> Result<(), TransactionPassportError> {
     for (field, value) in [
         ("facility_transition_id", &transition.transition_id),
+        ("facility_transition_policy_id", &transition.policy_id),
         ("facility_transition_from_state", &transition.from_state),
         ("facility_transition_to_state", &transition.to_state),
         (
@@ -618,7 +657,23 @@ fn validate_risk_coverage_binding(
     if coverage.status != "bound" {
         return Err(claim_failed("risk coverage is not bound"));
     }
+    if !risk_facility_state_reaches_bound_coverage(&report.facility.state) {
+        return Err(claim_failed("risk facility lifecycle replay missing"));
+    }
     Ok(())
+}
+
+fn risk_facility_state_reaches_bound_coverage(state: &str) -> bool {
+    matches!(
+        state,
+        "coverage_bound"
+            | "claim_open"
+            | "claim_decided"
+            | "payout_matched"
+            | "settlement_matched"
+            | "reserve_controlled"
+            | "closed"
+    )
 }
 
 fn validate_risk_reconciliation(
@@ -759,6 +814,122 @@ fn validate_risk_facility_closure(
         return Err(claim_failed("risk facility closure reserve unreconciled"));
     }
     Ok(())
+}
+
+fn validate_risk_capital_instructions(
+    report: &RiskComptrollerReport,
+) -> Result<(), TransactionPassportError> {
+    let claim_payouts = report
+        .reserve_ledger
+        .iter()
+        .filter(|entry| entry.lane == "claim_payout")
+        .collect::<Vec<_>>();
+    if claim_payouts.is_empty() {
+        if report.capital_instructions.is_empty() {
+            return Ok(());
+        }
+        return Err(claim_failed("risk capital instruction unbound"));
+    }
+
+    let mut instructions_by_entry = BTreeMap::new();
+    for instruction in &report.capital_instructions {
+        validate_risk_capital_instruction(instruction)?;
+        if instructions_by_entry
+            .insert(instruction.reserve_entry_id.as_str(), instruction)
+            .is_some()
+        {
+            return Err(claim_failed(
+                "risk capital instruction duplicate reserve entry",
+            ));
+        }
+    }
+
+    for entry in claim_payouts {
+        let Some(instruction) = instructions_by_entry.remove(entry.entry_id.as_str()) else {
+            return Err(claim_failed("risk capital instruction missing"));
+        };
+        if !instruction.matches_claim_payout(report, entry) {
+            return Err(claim_failed("risk capital instruction mismatch"));
+        }
+    }
+
+    if !instructions_by_entry.is_empty() {
+        return Err(claim_failed("risk capital instruction unbound"));
+    }
+    Ok(())
+}
+
+fn validate_risk_capital_instruction(
+    instruction: &RiskCapitalInstruction,
+) -> Result<(), TransactionPassportError> {
+    for (field, value) in [
+        ("capital_instruction_id", &instruction.instruction_id),
+        (
+            "capital_instruction_reserve_entry_id",
+            &instruction.reserve_entry_id,
+        ),
+        ("capital_instruction_order_id", &instruction.order_id),
+        ("capital_instruction_claim_id", &instruction.claim_id),
+        ("capital_instruction_reserve_ref", &instruction.reserve_ref),
+        ("capital_instruction_currency", &instruction.currency),
+        (
+            "capital_instruction_settlement_ref",
+            &instruction.settlement_ref,
+        ),
+        (
+            "capital_instruction_intended_action",
+            &instruction.intended_action,
+        ),
+        ("capital_instruction_source_kind", &instruction.source_kind),
+        (
+            "capital_instruction_intended_state",
+            &instruction.intended_state,
+        ),
+        (
+            "capital_instruction_reconciled_state",
+            &instruction.reconciled_state,
+        ),
+    ] {
+        require_non_empty(value, field)?;
+    }
+    if instruction.units == 0 {
+        return Err(claim_failed("risk capital instruction units missing"));
+    }
+    if instruction.intended_action != "transfer_funds" {
+        return Err(claim_failed("risk capital instruction action unsupported"));
+    }
+    if instruction.source_kind != "facility_commitment" {
+        return Err(claim_failed("risk capital instruction source unsupported"));
+    }
+    if instruction.intended_state != "pending_execution" {
+        return Err(claim_failed("risk capital instruction state unsupported"));
+    }
+    if optional_non_empty(
+        instruction.observed_execution_ref.as_ref(),
+        "capital_instruction_observed_execution_ref",
+    )?
+    .is_some()
+        || instruction.reconciled_state != "not_observed"
+    {
+        return Err(claim_failed("risk payout preobserved instruction"));
+    }
+    Ok(())
+}
+
+impl RiskCapitalInstruction {
+    fn matches_claim_payout(
+        &self,
+        report: &RiskComptrollerReport,
+        entry: &RiskReserveLedgerEntry,
+    ) -> bool {
+        self.reserve_entry_id == entry.entry_id
+            && self.order_id == report.order_id
+            && self.claim_id == entry.claim_id
+            && self.reserve_ref == entry.reserve_ref
+            && self.currency == entry.currency
+            && self.units == entry.units
+            && self.settlement_ref == entry.settlement_ref
+    }
 }
 
 fn validate_risk_settlement_counterparties(

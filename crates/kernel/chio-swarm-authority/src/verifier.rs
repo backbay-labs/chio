@@ -8,15 +8,19 @@ use serde::Serialize;
 
 use super::types::{
     SwarmAuthorityBundle, SwarmAuthorityVerifierReport, SwarmBudgetAllocation,
-    SwarmContinuationToken, SwarmDelegationWitnessChain, SwarmGraphEdge, SwarmGraphJoin,
-    SwarmGraphNode, SwarmJoinReceipt, SwarmRoutePlanReceipt, SwarmTaskGraph,
+    SwarmBudgetAllocationState, SwarmBudgetFanInReleaseRequest,
+    SwarmBudgetFanoutReservationRequest, SwarmBudgetPool, SwarmContinuationToken,
+    SwarmContinuationTokenMintRequest, SwarmDelegationWitnessChain, SwarmGraphEdge, SwarmGraphJoin,
+    SwarmGraphNode, SwarmJoinReceipt, SwarmJoinReceiptMintRequest, SwarmRoutePlanReceipt,
+    SwarmTaskGraph, SwarmTerminalBudgetRollup, SwarmTerminalGraphReceipt,
     CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA, CHIO_SWARM_BUDGET_POOL_SCHEMA,
     CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA, CHIO_SWARM_DELEGATION_WITNESS_CHAIN_SCHEMA,
     CHIO_SWARM_JOIN_RECEIPT_SCHEMA, CHIO_SWARM_REVOCATION_EPOCH_SCHEMA,
     CHIO_SWARM_ROUTE_PLAN_RECEIPT_SCHEMA, CHIO_SWARM_TASK_GRAPH_SCHEMA,
-    CLAIM_SWARM_ATTENUATION_WITNESS_CHAIN_BOUND, CLAIM_SWARM_BUDGET_POOL_BOUND,
-    CLAIM_SWARM_CONTINUATION_FRESH, CLAIM_SWARM_JOIN_RECEIPT_BOUND,
+    CHIO_SWARM_TERMINAL_GRAPH_RECEIPT_SCHEMA, CLAIM_SWARM_ATTENUATION_WITNESS_CHAIN_BOUND,
+    CLAIM_SWARM_BUDGET_POOL_BOUND, CLAIM_SWARM_CONTINUATION_FRESH, CLAIM_SWARM_JOIN_RECEIPT_BOUND,
     CLAIM_SWARM_REVOCATION_EPOCH_BOUND, CLAIM_SWARM_ROUTE_PLAN_BOUND, CLAIM_SWARM_TASK_GRAPH_BOUND,
+    CLAIM_SWARM_TERMINAL_GRAPH_RECEIPT_BOUND,
 };
 
 const CHIO_SWARM_DELEGATION_WITNESS_HOP_SIGNATURE_SCHEMA: &str =
@@ -27,23 +31,35 @@ pub fn verify_swarm_authority_bundle(
     bundle: &SwarmAuthorityBundle,
     trusted_witness_issuer_keys: &[PublicKey],
 ) -> Result<SwarmAuthorityVerifierReport, SwarmAuthorityError> {
+    require_trusted_witness_issuer_keys(trusted_witness_issuer_keys)?;
     validate_task_graph(&bundle.task_graph, bundle.now_unix_ms)?;
+    require_signed_swarm_delegation_evidence(bundle)?;
     let graph_sha256 = canonical_sha256(&bundle.task_graph)?;
     let task_by_id = task_index(&bundle.task_graph)?;
     let edge_set = edge_set(&bundle.task_graph.edges);
-    let route_by_id = validate_route_plan_receipts(bundle, &task_by_id)?;
-    let join_by_id = validate_join_receipts(bundle, &task_by_id)?;
+    let route_by_id =
+        validate_route_plan_receipts(bundle, &task_by_id, trusted_witness_issuer_keys)?;
+    let join_by_id = validate_join_receipts(bundle, &task_by_id, trusted_witness_issuer_keys)?;
     let allocation_by_id = validate_budget_pool(bundle, &task_by_id)?;
     validate_revocation_epoch(bundle, &task_by_id)?;
-    validate_continuation_tokens(
+    validate_terminal_graph_receipts(
         bundle,
-        &graph_sha256,
         &task_by_id,
-        &edge_set,
         &route_by_id,
         &join_by_id,
         &allocation_by_id,
+        trusted_witness_issuer_keys,
     )?;
+    validate_continuation_tokens(&ContinuationValidationContext {
+        bundle,
+        graph_sha256: &graph_sha256,
+        task_by_id: &task_by_id,
+        edge_set: &edge_set,
+        route_by_id: &route_by_id,
+        join_by_id: &join_by_id,
+        allocation_by_id: &allocation_by_id,
+        trusted_witness_issuer_keys,
+    })?;
     validate_witness_chains(bundle, &task_by_id, &edge_set, trusted_witness_issuer_keys)?;
 
     let mut verified_claims = vec![CLAIM_SWARM_TASK_GRAPH_BOUND.to_string()];
@@ -61,6 +77,7 @@ pub fn verify_swarm_authority_bundle(
     }
     verified_claims.push(CLAIM_SWARM_BUDGET_POOL_BOUND.to_string());
     verified_claims.push(CLAIM_SWARM_REVOCATION_EPOCH_BOUND.to_string());
+    verified_claims.push(CLAIM_SWARM_TERMINAL_GRAPH_RECEIPT_BOUND.to_string());
 
     Ok(SwarmAuthorityVerifierReport {
         schema: CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA.to_string(),
@@ -76,6 +93,28 @@ pub fn verify_swarm_authority_bundle(
         route_count: bundle.route_plan_receipts.len(),
         verified_claims,
     })
+}
+
+fn require_signed_swarm_delegation_evidence(
+    bundle: &SwarmAuthorityBundle,
+) -> Result<(), SwarmAuthorityError> {
+    if bundle.continuation_tokens.is_empty() || bundle.witness_chains.is_empty() {
+        return Err(rejected(
+            "signed swarm delegation evidence missing: continuation tokens and witness chains are required",
+        ));
+    }
+    Ok(())
+}
+
+fn require_trusted_witness_issuer_keys(
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    if trusted_witness_issuer_keys.is_empty() {
+        return Err(rejected(
+            "trusted swarm witness keys missing: CHIO_SWARM_TRUSTED_WITNESS_KEYS must pin trusted swarm witness keys",
+        ));
+    }
+    Ok(())
 }
 
 pub fn sign_swarm_delegation_witness_hop(
@@ -96,6 +135,290 @@ pub fn sign_swarm_delegation_witness_hop(
         )));
     }
     let body = witness_signature_body(chain, hop);
+    let (signature, _canonical) = keypair
+        .sign_canonical(&body)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    Ok(signature.to_hex())
+}
+
+pub fn sign_swarm_continuation_token(
+    token: &SwarmContinuationToken,
+    keypair: &Keypair,
+) -> Result<String, SwarmAuthorityError> {
+    let issuer_public_key = witness_issuer_public_key(&token.issuer).map_err(|error| {
+        rejected(format!(
+            "swarm continuation issuer public key invalid: {}",
+            error.runtime_detail()
+        ))
+    })?;
+    if issuer_public_key != keypair.public_key() {
+        return Err(rejected(format!(
+            "swarm continuation signer does not match issuer: {}",
+            token.token_id
+        )));
+    }
+    let body = continuation_token_signature_body(token)?;
+    let (signature, _canonical) = keypair
+        .sign_canonical(&body)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    Ok(signature.to_hex())
+}
+
+pub fn mint_swarm_continuation_token(
+    request: SwarmContinuationTokenMintRequest,
+    keypair: &Keypair,
+) -> Result<SwarmContinuationToken, SwarmAuthorityError> {
+    if request.expires_at_unix_ms <= request.issued_at_unix_ms {
+        return Err(rejected(format!(
+            "swarm continuation expiry must be after issue time: {}",
+            request.token_id
+        )));
+    }
+    let issuer = format!("{DID_CHIO_PREFIX}{}", keypair.public_key().to_hex());
+    let mut token = SwarmContinuationToken {
+        schema: CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA.to_string(),
+        token_id: request.token_id,
+        graph_id: request.graph_id,
+        child_task_id: request.child_task_id,
+        parent_task_id: request.parent_task_id,
+        join_receipt_id: request.join_receipt_id,
+        parent_receipt_ids: request.parent_receipt_ids,
+        graph_sha256: request.graph_sha256,
+        route_plan_receipt_id: request.route_plan_receipt_id,
+        budget_allocation_id: request.budget_allocation_id,
+        revocation_epoch_ref: request.revocation_epoch_ref,
+        revocation_epoch_root_hash: request.revocation_epoch_root_hash,
+        session_anchor_ref: request.session_anchor_ref,
+        nonce: request.nonce,
+        mode: request.mode,
+        issued_at_unix_ms: request.issued_at_unix_ms,
+        expires_at_unix_ms: request.expires_at_unix_ms,
+        issuer,
+        signature: String::new(),
+    };
+    token.signature = sign_swarm_continuation_token(&token, keypair)?;
+    Ok(token)
+}
+
+pub fn sign_swarm_join_receipt(
+    receipt: &SwarmJoinReceipt,
+    keypair: &Keypair,
+) -> Result<String, SwarmAuthorityError> {
+    let issuer_public_key = witness_issuer_public_key(&receipt.issuer).map_err(|error| {
+        rejected(format!(
+            "swarm join receipt issuer public key invalid: {}",
+            error.runtime_detail()
+        ))
+    })?;
+    if issuer_public_key != keypair.public_key() {
+        return Err(rejected(format!(
+            "swarm join receipt signer does not match issuer: {}",
+            receipt.join_id
+        )));
+    }
+    let body = join_receipt_signature_body(receipt)?;
+    let (signature, _canonical) = keypair
+        .sign_canonical(&body)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    Ok(signature.to_hex())
+}
+
+pub fn mint_swarm_join_receipt(
+    request: SwarmJoinReceiptMintRequest,
+    keypair: &Keypair,
+) -> Result<SwarmJoinReceipt, SwarmAuthorityError> {
+    if request.parent_task_receipts.is_empty() {
+        return Err(rejected(format!(
+            "swarm join receipt parent task receipts missing: {}",
+            request.join_id
+        )));
+    }
+    if request.actual_parent_receipt_ids.is_empty() {
+        return Err(rejected(format!(
+            "swarm join receipt actual parent receipts missing: {}",
+            request.join_id
+        )));
+    }
+    if request.dag_ordinal == 0 {
+        return Err(rejected(format!(
+            "swarm join receipt dag ordinal must be positive: {}",
+            request.join_id
+        )));
+    }
+    let parent_set_hash =
+        join_parent_set_hash_from_parts(&request.chain_id, &request.actual_parent_receipt_ids)?;
+    let issuer = format!("{DID_CHIO_PREFIX}{}", keypair.public_key().to_hex());
+    let mut receipt = SwarmJoinReceipt {
+        schema: CHIO_SWARM_JOIN_RECEIPT_SCHEMA.to_string(),
+        join_id: request.join_id,
+        graph_id: request.graph_id,
+        chain_id: request.chain_id,
+        parent_set_hash,
+        dag_ordinal: request.dag_ordinal,
+        hlc_unix_ms: request.hlc_unix_ms,
+        parent_task_receipts: request.parent_task_receipts,
+        expected_parent_receipt_ids: request.expected_parent_receipt_ids,
+        actual_parent_receipt_ids: request.actual_parent_receipt_ids,
+        join_predicate: request.join_predicate,
+        result_digest: request.result_digest,
+        next_task_id: request.next_task_id,
+        issuer,
+        signature: String::new(),
+    };
+    receipt.signature = sign_swarm_join_receipt(&receipt, keypair)?;
+    Ok(receipt)
+}
+
+pub fn reserve_swarm_budget_fanout(
+    request: SwarmBudgetFanoutReservationRequest,
+) -> Result<SwarmBudgetPool, SwarmAuthorityError> {
+    require_non_empty(&request.pool_id, "swarm budget pool id")?;
+    require_non_empty(&request.graph_id, "swarm budget pool graph")?;
+    require_non_empty(&request.currency, "swarm budget currency")?;
+    if request.allocations.is_empty() {
+        return Err(rejected("swarm budget fanout allocations missing"));
+    }
+
+    let mut allocation_ids = Vec::with_capacity(request.allocations.len());
+    let mut task_ids = Vec::with_capacity(request.allocations.len());
+    let mut total_reserved = 0_u64;
+    let mut allocations = Vec::with_capacity(request.allocations.len());
+    for allocation in request.allocations {
+        require_non_empty(&allocation.allocation_id, "swarm budget allocation id")?;
+        require_non_empty(&allocation.task_id, "swarm budget task id")?;
+        require_non_empty(
+            &allocation.dimension_id,
+            "swarm budget allocation dimension",
+        )?;
+        if allocation.reserved_units == 0 {
+            return Err(rejected(format!(
+                "swarm budget fanout allocation units missing: {}",
+                allocation.allocation_id
+            )));
+        }
+        total_reserved = total_reserved
+            .checked_add(allocation.reserved_units)
+            .ok_or_else(|| rejected("swarm budget fanout overflow"))?;
+        allocation_ids.push(allocation.allocation_id.clone());
+        task_ids.push(allocation.task_id.clone());
+        allocations.push(SwarmBudgetAllocation {
+            allocation_id: allocation.allocation_id,
+            task_id: allocation.task_id,
+            dimension_id: allocation.dimension_id,
+            state: SwarmBudgetAllocationState::Reserved,
+            max_units: allocation.reserved_units,
+            reserved_units: allocation.reserved_units,
+            active_units: 0,
+            consumed_units: 0,
+            released_units: 0,
+            reversed_units: 0,
+        });
+    }
+    require_unique_strings(&allocation_ids, "swarm budget allocation")?;
+    require_unique_strings(&task_ids, "swarm budget task")?;
+    if total_reserved > request.total_units {
+        return Err(rejected("swarm budget fanout exceeds pool total"));
+    }
+
+    Ok(SwarmBudgetPool {
+        schema: CHIO_SWARM_BUDGET_POOL_SCHEMA.to_string(),
+        pool_id: request.pool_id,
+        graph_id: request.graph_id,
+        currency: request.currency,
+        total_units: request.total_units,
+        allocations,
+    })
+}
+
+pub fn release_swarm_budget_fanin(
+    request: SwarmBudgetFanInReleaseRequest,
+) -> Result<SwarmBudgetPool, SwarmAuthorityError> {
+    if request.completed_task_ids.is_empty() {
+        return Err(rejected("swarm budget fanin completed tasks missing"));
+    }
+    require_unique_strings(&request.completed_task_ids, "swarm budget fanin task")?;
+    let completed_task_ids = request
+        .completed_task_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    let mut pool = request.pool;
+    let mut released_task_ids = BTreeSet::new();
+
+    for allocation in &mut pool.allocations {
+        if !completed_task_ids.contains(allocation.task_id.as_str()) {
+            continue;
+        }
+        let already_final = allocation
+            .consumed_units
+            .checked_add(allocation.released_units)
+            .and_then(|units| units.checked_add(allocation.reversed_units))
+            .ok_or_else(|| rejected("swarm budget fanin release overflow"))?;
+        let releasable = allocation
+            .max_units
+            .checked_sub(already_final)
+            .ok_or_else(|| {
+                rejected(format!(
+                    "swarm budget fanin release exceeds allocation: {}",
+                    allocation.allocation_id
+                ))
+            })?;
+        allocation.reserved_units = 0;
+        allocation.active_units = 0;
+        allocation.released_units = allocation
+            .released_units
+            .checked_add(releasable)
+            .ok_or_else(|| rejected("swarm budget fanin release overflow"))?;
+        allocation.state = SwarmBudgetAllocationState::Released;
+        released_task_ids.insert(allocation.task_id.as_str());
+    }
+
+    if released_task_ids != completed_task_ids {
+        return Err(rejected("swarm budget fanin task has no allocation"));
+    }
+    Ok(pool)
+}
+
+pub fn sign_swarm_route_plan_receipt(
+    receipt: &SwarmRoutePlanReceipt,
+    keypair: &Keypair,
+) -> Result<String, SwarmAuthorityError> {
+    let issuer_public_key = witness_issuer_public_key(&receipt.issuer).map_err(|error| {
+        rejected(format!(
+            "swarm route-plan issuer public key invalid: {}",
+            error.runtime_detail()
+        ))
+    })?;
+    if issuer_public_key != keypair.public_key() {
+        return Err(rejected(format!(
+            "swarm route-plan signer does not match issuer: {}",
+            receipt.route_plan_id
+        )));
+    }
+    let body = route_plan_signature_body(receipt)?;
+    let (signature, _canonical) = keypair
+        .sign_canonical(&body)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    Ok(signature.to_hex())
+}
+
+pub fn sign_swarm_terminal_graph_receipt(
+    receipt: &SwarmTerminalGraphReceipt,
+    keypair: &Keypair,
+) -> Result<String, SwarmAuthorityError> {
+    let issuer_public_key = witness_issuer_public_key(&receipt.issuer).map_err(|error| {
+        rejected(format!(
+            "swarm terminal receipt issuer public key invalid: {}",
+            error.runtime_detail()
+        ))
+    })?;
+    if issuer_public_key != keypair.public_key() {
+        return Err(rejected(format!(
+            "swarm terminal receipt signer does not match issuer: {}",
+            receipt.receipt_id
+        )));
+    }
+    let body = terminal_graph_receipt_signature_body(receipt)?;
     let (signature, _canonical) = keypair
         .sign_canonical(&body)
         .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
@@ -385,6 +708,7 @@ fn visit_task<'a>(
 fn validate_route_plan_receipts<'a>(
     bundle: &'a SwarmAuthorityBundle,
     task_by_id: &BTreeMap<&str, &SwarmGraphNode>,
+    trusted_witness_issuer_keys: &[PublicKey],
 ) -> Result<BTreeMap<&'a str, &'a SwarmRoutePlanReceipt>, SwarmAuthorityError> {
     let mut route_plan_refs = BTreeSet::new();
     for route_plan_ref in &bundle.task_graph.route_plan_refs {
@@ -410,6 +734,7 @@ fn validate_route_plan_receipts<'a>(
         )?;
         require_non_empty(&route.bridge_id, "swarm route bridge id")?;
         require_non_empty(&route.protocol_target, "swarm route protocol target")?;
+        require_non_empty(&route.egress_contract_id, "swarm route egress contract id")?;
         validate_route_plan_target(route)?;
         require_non_empty(
             &route.attenuation_decision,
@@ -425,6 +750,9 @@ fn validate_route_plan_receipts<'a>(
                 route.route_plan_id
             )));
         }
+        require_non_empty(&route.issuer, "swarm route-plan issuer")?;
+        require_non_empty(&route.signature, "swarm route-plan signature")?;
+        verify_route_plan_signature(route, trusted_witness_issuer_keys)?;
         if !task_by_id.contains_key(route.task_id.as_str()) {
             return Err(rejected(format!(
                 "swarm route-plan task is unknown: {}",
@@ -488,12 +816,75 @@ fn validate_route_plan_target(route: &SwarmRoutePlanReceipt) -> Result<(), Swarm
             route.route_plan_id
         )));
     }
+
+    let Some((egress_bridge, _egress_contract)) = route.egress_contract_id.split_once(':') else {
+        return Err(rejected(format!(
+            "swarm route-plan egress contract bridge mismatch: {}",
+            route.route_plan_id
+        )));
+    };
+    if egress_bridge != route.bridge_id {
+        return Err(rejected(format!(
+            "swarm route-plan egress contract bridge mismatch: {}",
+            route.route_plan_id
+        )));
+    }
     Ok(())
+}
+
+fn verify_route_plan_signature(
+    receipt: &SwarmRoutePlanReceipt,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    let public_key = witness_issuer_public_key(&receipt.issuer)?;
+    ensure_route_plan_issuer_is_pinned(receipt, &public_key, trusted_witness_issuer_keys)?;
+    let signature = Signature::from_hex(&receipt.signature).map_err(|error| {
+        rejected(format!(
+            "swarm route-plan signature invalid: {}: {error}",
+            receipt.route_plan_id
+        ))
+    })?;
+    let body = route_plan_signature_body(receipt)?;
+    let verified = public_key
+        .verify_canonical(&body, &signature)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    if verified {
+        Ok(())
+    } else {
+        Err(rejected(format!(
+            "swarm route-plan signature invalid: {}",
+            receipt.route_plan_id
+        )))
+    }
+}
+
+fn ensure_route_plan_issuer_is_pinned(
+    receipt: &SwarmRoutePlanReceipt,
+    public_key: &PublicKey,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    if trusted_witness_issuer_keys.is_empty() {
+        return Err(rejected(
+            "trusted swarm witness keys missing: CHIO_SWARM_TRUSTED_WITNESS_KEYS must pin trusted swarm witness keys",
+        ));
+    }
+    if trusted_witness_issuer_keys
+        .iter()
+        .any(|trusted_key| trusted_key == public_key)
+    {
+        Ok(())
+    } else {
+        Err(rejected(format!(
+            "swarm route-plan issuer is not trusted: {}",
+            receipt.route_plan_id
+        )))
+    }
 }
 
 fn validate_join_receipts<'a>(
     bundle: &'a SwarmAuthorityBundle,
     task_by_id: &BTreeMap<&str, &SwarmGraphNode>,
+    trusted_witness_issuer_keys: &[PublicKey],
 ) -> Result<BTreeMap<&'a str, &'a SwarmJoinReceipt>, SwarmAuthorityError> {
     let mut graph_joins = BTreeMap::new();
     for join in &bundle.task_graph.joins {
@@ -502,7 +893,8 @@ fn validate_join_receipts<'a>(
 
     let mut receipts = BTreeMap::new();
     for receipt in &bundle.join_receipts {
-        validate_join_receipt_schema(receipt, &bundle.task_graph.graph_id)?;
+        validate_join_receipt_schema(receipt, &bundle.task_graph.graph_id, bundle.now_unix_ms)?;
+        verify_join_receipt_signature(receipt, trusted_witness_issuer_keys)?;
         let graph_join = graph_joins
             .get(receipt.join_id.as_str())
             .ok_or_else(|| rejected(format!("unknown swarm join receipt: {}", receipt.join_id)))?;
@@ -526,17 +918,18 @@ fn validate_join_receipts<'a>(
             &receipt.actual_parent_receipt_ids,
             "swarm actual parent receipt",
         )?;
-        if sorted_strings(&receipt.expected_parent_receipt_ids)
-            != sorted_strings(&receipt.actual_parent_receipt_ids)
-        {
-            return Err(rejected(format!(
-                "swarm join receipt parent set mismatch: {}",
-                receipt.join_id
-            )));
-        }
         if receipt.expected_parent_receipt_ids.len() != graph_join.parent_task_ids.len() {
             return Err(rejected(format!(
                 "swarm join receipt parent count mismatch: {}",
+                receipt.join_id
+            )));
+        }
+        validate_join_predicate(receipt)?;
+        validate_actual_parent_receipt_subset(receipt)?;
+        let parent_set_hash = join_parent_set_hash(receipt)?;
+        if receipt.parent_set_hash != parent_set_hash {
+            return Err(rejected(format!(
+                "swarm join receipt parent set hash mismatch: {}",
                 receipt.join_id
             )));
         }
@@ -560,7 +953,7 @@ fn validate_join_parent_task_receipts(
     receipt: &SwarmJoinReceipt,
     graph_join: &SwarmGraphJoin,
 ) -> Result<(), SwarmAuthorityError> {
-    if receipt.parent_task_receipts.len() != graph_join.parent_task_ids.len() {
+    if receipt.parent_task_receipts.len() != receipt.actual_parent_receipt_ids.len() {
         return Err(rejected(format!(
             "swarm join receipt parent task receipts mismatch: {}",
             receipt.join_id
@@ -569,13 +962,17 @@ fn validate_join_parent_task_receipts(
 
     let mut task_ids = Vec::with_capacity(receipt.parent_task_receipts.len());
     let mut receipt_ids = Vec::with_capacity(receipt.parent_task_receipts.len());
+    let expected_actual_pairs = expected_actual_parent_receipt_pairs(receipt, graph_join);
     for (index, parent) in receipt.parent_task_receipts.iter().enumerate() {
         require_non_empty(&parent.task_id, "swarm join parent task receipt task")?;
         require_non_empty(&parent.receipt_id, "swarm join parent task receipt receipt")?;
-        if parent.task_id != graph_join.parent_task_ids[index]
-            || parent.receipt_id != receipt.expected_parent_receipt_ids[index]
-            || parent.receipt_id != receipt.actual_parent_receipt_ids[index]
-        {
+        let Some((expected_task_id, expected_receipt_id)) = expected_actual_pairs.get(index) else {
+            return Err(rejected(format!(
+                "swarm join receipt parent task receipts mismatch: {}",
+                receipt.join_id
+            )));
+        };
+        if parent.task_id != *expected_task_id || parent.receipt_id != *expected_receipt_id {
             return Err(rejected(format!(
                 "swarm join receipt parent task receipts mismatch: {}",
                 receipt.join_id
@@ -586,8 +983,17 @@ fn validate_join_parent_task_receipts(
     }
     require_unique_strings(&task_ids, "swarm join parent task receipt task")?;
     require_unique_strings(&receipt_ids, "swarm join parent task receipt receipt")?;
-    if sorted_strings(&task_ids) != sorted_strings(&graph_join.parent_task_ids)
+    let expected_actual_task_ids = expected_actual_pairs
+        .iter()
+        .map(|(task_id, _receipt_id)| (*task_id).to_string())
+        .collect::<Vec<_>>();
+    let expected_actual_receipt_ids = expected_actual_pairs
+        .iter()
+        .map(|(_task_id, receipt_id)| (*receipt_id).to_string())
+        .collect::<Vec<_>>();
+    if sorted_strings(&task_ids) != sorted_strings(&expected_actual_task_ids)
         || sorted_strings(&receipt_ids) != sorted_strings(&receipt.actual_parent_receipt_ids)
+        || sorted_strings(&receipt_ids) != sorted_strings(&expected_actual_receipt_ids)
     {
         return Err(rejected(format!(
             "swarm join receipt parent task receipts mismatch: {}",
@@ -600,6 +1006,7 @@ fn validate_join_parent_task_receipts(
 fn validate_join_receipt_schema(
     receipt: &SwarmJoinReceipt,
     graph_id: &str,
+    now_unix_ms: u64,
 ) -> Result<(), SwarmAuthorityError> {
     if receipt.schema != CHIO_SWARM_JOIN_RECEIPT_SCHEMA {
         return Err(rejected(format!(
@@ -609,15 +1016,192 @@ fn validate_join_receipt_schema(
     }
     require_non_empty(&receipt.join_id, "swarm join receipt id")?;
     require_same_graph(&receipt.graph_id, graph_id, "join receipt")?;
-    require_non_empty(&receipt.join_predicate, "swarm join predicate")?;
-    if receipt.join_predicate != "all_success" {
+    require_non_empty(&receipt.chain_id, "swarm join receipt chain id")?;
+    require_sha256(&receipt.parent_set_hash, "swarm join parent set hash")?;
+    if receipt.dag_ordinal == 0 {
         return Err(rejected(format!(
-            "swarm join receipt predicate unsupported: {}",
-            receipt.join_predicate
+            "swarm join receipt dag ordinal must be positive: {}",
+            receipt.join_id
         )));
     }
+    if receipt.hlc_unix_ms > now_unix_ms {
+        return Err(rejected(format!(
+            "swarm join receipt is from the future: {}",
+            receipt.join_id
+        )));
+    }
+    require_non_empty(&receipt.join_predicate, "swarm join predicate")?;
     require_sha256(&receipt.result_digest, "swarm join result digest")?;
+    require_non_empty(&receipt.issuer, "swarm join receipt issuer")?;
+    require_non_empty(&receipt.signature, "swarm join receipt signature")?;
     Ok(())
+}
+
+fn validate_join_predicate(receipt: &SwarmJoinReceipt) -> Result<(), SwarmAuthorityError> {
+    let expected_len = receipt.expected_parent_receipt_ids.len();
+    let actual_len = receipt.actual_parent_receipt_ids.len();
+    match receipt.join_predicate.as_str() {
+        "all_success" => {
+            if sorted_strings(&receipt.expected_parent_receipt_ids)
+                != sorted_strings(&receipt.actual_parent_receipt_ids)
+            {
+                return Err(rejected(format!(
+                    "swarm join receipt parent set mismatch: {}",
+                    receipt.join_id
+                )));
+            }
+            Ok(())
+        }
+        "any_success" => {
+            if actual_len == 0 {
+                return Err(rejected(format!(
+                    "swarm join receipt parent set mismatch: {}",
+                    receipt.join_id
+                )));
+            }
+            Ok(())
+        }
+        predicate if predicate.starts_with("quorum:") => {
+            let quorum = predicate
+                .strip_prefix("quorum:")
+                .and_then(|value| value.parse::<usize>().ok())
+                .ok_or_else(|| {
+                    rejected(format!(
+                        "swarm join receipt predicate unsupported: {}",
+                        receipt.join_predicate
+                    ))
+                })?;
+            if quorum == 0 || quorum > expected_len {
+                return Err(rejected(format!(
+                    "swarm join receipt predicate unsupported: {}",
+                    receipt.join_predicate
+                )));
+            }
+            if actual_len < quorum {
+                return Err(rejected(format!(
+                    "swarm join receipt parent set mismatch: {}",
+                    receipt.join_id
+                )));
+            }
+            Ok(())
+        }
+        _ => Err(rejected(format!(
+            "swarm join receipt predicate unsupported: {}",
+            receipt.join_predicate
+        ))),
+    }
+}
+
+fn validate_actual_parent_receipt_subset(
+    receipt: &SwarmJoinReceipt,
+) -> Result<(), SwarmAuthorityError> {
+    let expected = receipt
+        .expected_parent_receipt_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if receipt
+        .actual_parent_receipt_ids
+        .iter()
+        .any(|receipt_id| !expected.contains(receipt_id.as_str()))
+    {
+        return Err(rejected(format!(
+            "swarm join receipt parent set mismatch: {}",
+            receipt.join_id
+        )));
+    }
+    Ok(())
+}
+
+fn expected_actual_parent_receipt_pairs<'a>(
+    receipt: &'a SwarmJoinReceipt,
+    graph_join: &'a SwarmGraphJoin,
+) -> Vec<(&'a str, &'a str)> {
+    let actual_receipts = receipt
+        .actual_parent_receipt_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    graph_join
+        .parent_task_ids
+        .iter()
+        .zip(receipt.expected_parent_receipt_ids.iter())
+        .filter_map(|(task_id, receipt_id)| {
+            if actual_receipts.contains(receipt_id.as_str()) {
+                Some((task_id.as_str(), receipt_id.as_str()))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+fn verify_join_receipt_signature(
+    receipt: &SwarmJoinReceipt,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    let public_key = witness_issuer_public_key(&receipt.issuer)?;
+    ensure_join_issuer_is_pinned(receipt, &public_key, trusted_witness_issuer_keys)?;
+    let signature = Signature::from_hex(&receipt.signature).map_err(|error| {
+        rejected(format!(
+            "swarm join receipt signature invalid: {}: {error}",
+            receipt.join_id
+        ))
+    })?;
+    let body = join_receipt_signature_body(receipt)?;
+    let verified = public_key
+        .verify_canonical(&body, &signature)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    if verified {
+        Ok(())
+    } else {
+        Err(rejected(format!(
+            "swarm join receipt signature invalid: {}",
+            receipt.join_id
+        )))
+    }
+}
+
+fn ensure_join_issuer_is_pinned(
+    receipt: &SwarmJoinReceipt,
+    public_key: &PublicKey,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    if trusted_witness_issuer_keys.is_empty() {
+        return Err(rejected(
+            "trusted swarm witness keys missing: CHIO_SWARM_TRUSTED_WITNESS_KEYS must pin trusted swarm witness keys",
+        ));
+    }
+    if trusted_witness_issuer_keys
+        .iter()
+        .any(|trusted_key| trusted_key == public_key)
+    {
+        Ok(())
+    } else {
+        Err(rejected(format!(
+            "swarm join receipt issuer is not trusted: {}",
+            receipt.join_id
+        )))
+    }
+}
+
+fn join_parent_set_hash(receipt: &SwarmJoinReceipt) -> Result<String, SwarmAuthorityError> {
+    join_parent_set_hash_from_parts(&receipt.chain_id, &receipt.actual_parent_receipt_ids)
+}
+
+fn join_parent_set_hash_from_parts(
+    chain_id: &str,
+    receipt_ids: &[String],
+) -> Result<String, SwarmAuthorityError> {
+    let mut receipt_ids = receipt_ids.to_vec();
+    receipt_ids.sort();
+    let body = serde_json::json!({
+        "chainId": chain_id,
+        "parentReceiptIds": receipt_ids,
+    });
+    let canonical = canonical_json_bytes(&body)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    Ok(sha256_hex(&canonical))
 }
 
 fn validate_budget_pool<'a>(
@@ -642,12 +1226,17 @@ fn validate_budget_pool<'a>(
     for allocation in &budget.allocations {
         require_non_empty(&allocation.allocation_id, "swarm budget allocation id")?;
         require_non_empty(&allocation.task_id, "swarm budget task id")?;
+        require_non_empty(
+            &allocation.dimension_id,
+            "swarm budget allocation dimension",
+        )?;
         if !task_by_id.contains_key(allocation.task_id.as_str()) {
             return Err(rejected(format!(
                 "swarm budget allocation task is unknown: {}",
                 allocation.task_id
             )));
         }
+        validate_budget_allocation_units(allocation)?;
         total = total
             .checked_add(allocation.max_units)
             .ok_or_else(|| rejected("swarm budget allocation overflow"))?;
@@ -665,6 +1254,31 @@ fn validate_budget_pool<'a>(
         return Err(rejected("swarm budget allocations exceed pool total"));
     }
     Ok(allocations)
+}
+
+fn validate_budget_allocation_units(
+    allocation: &SwarmBudgetAllocation,
+) -> Result<(), SwarmAuthorityError> {
+    let units = allocation
+        .reserved_units
+        .checked_add(allocation.active_units)
+        .and_then(|units| units.checked_add(allocation.consumed_units))
+        .and_then(|units| units.checked_add(allocation.released_units))
+        .and_then(|units| units.checked_add(allocation.reversed_units))
+        .ok_or_else(|| rejected("swarm budget allocation unit overflow"))?;
+    if units != allocation.max_units {
+        return Err(rejected(format!(
+            "swarm budget allocation unit rollup mismatch: {}",
+            allocation.allocation_id
+        )));
+    }
+    if allocation.state == SwarmBudgetAllocationState::Active && allocation.active_units == 0 {
+        return Err(rejected(format!(
+            "swarm budget allocation has no active units: {}",
+            allocation.allocation_id
+        )));
+    }
+    Ok(())
 }
 
 fn validate_revocation_epoch(
@@ -727,6 +1341,293 @@ fn validate_revocation_epoch(
     Ok(())
 }
 
+fn validate_terminal_graph_receipts(
+    bundle: &SwarmAuthorityBundle,
+    task_by_id: &BTreeMap<&str, &SwarmGraphNode>,
+    route_by_id: &BTreeMap<&str, &SwarmRoutePlanReceipt>,
+    join_by_id: &BTreeMap<&str, &SwarmJoinReceipt>,
+    allocation_by_id: &BTreeMap<&str, &SwarmBudgetAllocation>,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    if bundle.terminal_receipts.is_empty() {
+        return Err(rejected("missing swarm terminal graph receipt"));
+    }
+
+    let mut receipt_ids = BTreeSet::new();
+    for receipt in &bundle.terminal_receipts {
+        validate_terminal_graph_receipt_schema(receipt, bundle)?;
+        verify_terminal_graph_receipt_signature(receipt, trusted_witness_issuer_keys)?;
+        if !receipt_ids.insert(receipt.receipt_id.as_str()) {
+            return Err(rejected(format!(
+                "duplicate swarm terminal receipt: {}",
+                receipt.receipt_id
+            )));
+        }
+        validate_terminal_graph_receipt_refs(receipt, task_by_id, route_by_id, join_by_id)?;
+        validate_terminal_budget_rollups(receipt, bundle, allocation_by_id)?;
+    }
+    Ok(())
+}
+
+fn validate_terminal_graph_receipt_schema(
+    receipt: &SwarmTerminalGraphReceipt,
+    bundle: &SwarmAuthorityBundle,
+) -> Result<(), SwarmAuthorityError> {
+    if receipt.schema != CHIO_SWARM_TERMINAL_GRAPH_RECEIPT_SCHEMA {
+        return Err(rejected(format!(
+            "unsupported swarm terminal receipt schema: {}",
+            receipt.schema
+        )));
+    }
+    require_non_empty(&receipt.receipt_id, "swarm terminal receipt id")?;
+    require_same_graph(
+        &receipt.graph_id,
+        &bundle.task_graph.graph_id,
+        "terminal receipt",
+    )?;
+    require_non_empty(&receipt.chain_id, "swarm terminal receipt chain id")?;
+    require_unique_strings(&receipt.terminal_task_ids, "swarm terminal task")?;
+    require_unique_strings(&receipt.completed_task_ids, "swarm completed task")?;
+    require_unique_strings(&receipt.join_receipt_ids, "swarm terminal join receipt")?;
+    require_unique_strings(
+        &receipt.route_plan_receipt_ids,
+        "swarm terminal route-plan receipt",
+    )?;
+    if receipt.budget_pool_id != bundle.budget_pool.pool_id {
+        return Err(rejected(format!(
+            "swarm terminal budget pool mismatch: {}",
+            receipt.receipt_id
+        )));
+    }
+    if receipt.revocation_epoch_ref != bundle.revocation_epoch.epoch_id {
+        return Err(rejected(format!(
+            "swarm terminal revocation epoch mismatch: {}",
+            receipt.receipt_id
+        )));
+    }
+    require_sha256(&receipt.result_digest, "swarm terminal result digest")?;
+    if receipt.completed_at_unix_ms > bundle.now_unix_ms {
+        return Err(rejected(format!(
+            "swarm terminal receipt is from the future: {}",
+            receipt.receipt_id
+        )));
+    }
+    require_non_empty(&receipt.issuer, "swarm terminal receipt issuer")?;
+    require_non_empty(&receipt.signature, "swarm terminal receipt signature")?;
+    Ok(())
+}
+
+fn validate_terminal_graph_receipt_refs(
+    receipt: &SwarmTerminalGraphReceipt,
+    task_by_id: &BTreeMap<&str, &SwarmGraphNode>,
+    route_by_id: &BTreeMap<&str, &SwarmRoutePlanReceipt>,
+    join_by_id: &BTreeMap<&str, &SwarmJoinReceipt>,
+) -> Result<(), SwarmAuthorityError> {
+    for terminal_task_id in &receipt.terminal_task_ids {
+        if !task_by_id.contains_key(terminal_task_id.as_str()) {
+            return Err(rejected(format!(
+                "swarm terminal task is unknown: {terminal_task_id}"
+            )));
+        }
+    }
+    let expected_task_ids = task_by_id
+        .keys()
+        .map(|task_id| (*task_id).to_string())
+        .collect::<Vec<_>>();
+    if sorted_strings(&receipt.completed_task_ids) != sorted_strings(&expected_task_ids) {
+        return Err(rejected(format!(
+            "swarm terminal completed task set mismatch: {}",
+            receipt.receipt_id
+        )));
+    }
+
+    let expected_join_ids = join_by_id
+        .keys()
+        .map(|join_id| (*join_id).to_string())
+        .collect::<Vec<_>>();
+    if sorted_strings(&receipt.join_receipt_ids) != sorted_strings(&expected_join_ids) {
+        return Err(rejected(format!(
+            "swarm terminal join receipt set mismatch: {}",
+            receipt.receipt_id
+        )));
+    }
+
+    let expected_route_ids = route_by_id
+        .keys()
+        .map(|route_id| (*route_id).to_string())
+        .collect::<Vec<_>>();
+    if sorted_strings(&receipt.route_plan_receipt_ids) != sorted_strings(&expected_route_ids) {
+        return Err(rejected(format!(
+            "swarm terminal route-plan set mismatch: {}",
+            receipt.receipt_id
+        )));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct BudgetRollupTotals {
+    reserved_units: u64,
+    active_units: u64,
+    consumed_units: u64,
+    released_units: u64,
+    reversed_units: u64,
+}
+
+impl BudgetRollupTotals {
+    fn add_allocation(
+        &mut self,
+        allocation: &SwarmBudgetAllocation,
+    ) -> Result<(), SwarmAuthorityError> {
+        self.reserved_units = self
+            .reserved_units
+            .checked_add(allocation.reserved_units)
+            .ok_or_else(|| rejected("swarm terminal budget rollup overflow"))?;
+        self.active_units = self
+            .active_units
+            .checked_add(allocation.active_units)
+            .ok_or_else(|| rejected("swarm terminal budget rollup overflow"))?;
+        self.consumed_units = self
+            .consumed_units
+            .checked_add(allocation.consumed_units)
+            .ok_or_else(|| rejected("swarm terminal budget rollup overflow"))?;
+        self.released_units = self
+            .released_units
+            .checked_add(allocation.released_units)
+            .ok_or_else(|| rejected("swarm terminal budget rollup overflow"))?;
+        self.reversed_units = self
+            .reversed_units
+            .checked_add(allocation.reversed_units)
+            .ok_or_else(|| rejected("swarm terminal budget rollup overflow"))?;
+        Ok(())
+    }
+
+    fn total_units(&self) -> Result<u64, SwarmAuthorityError> {
+        self.reserved_units
+            .checked_add(self.active_units)
+            .and_then(|units| units.checked_add(self.consumed_units))
+            .and_then(|units| units.checked_add(self.released_units))
+            .and_then(|units| units.checked_add(self.reversed_units))
+            .ok_or_else(|| rejected("swarm terminal budget rollup overflow"))
+    }
+}
+
+fn validate_terminal_budget_rollups(
+    receipt: &SwarmTerminalGraphReceipt,
+    bundle: &SwarmAuthorityBundle,
+    allocation_by_id: &BTreeMap<&str, &SwarmBudgetAllocation>,
+) -> Result<(), SwarmAuthorityError> {
+    let mut expected = BTreeMap::<&str, BudgetRollupTotals>::new();
+    for allocation in allocation_by_id.values() {
+        expected
+            .entry(allocation.dimension_id.as_str())
+            .or_default()
+            .add_allocation(allocation)?;
+    }
+
+    let mut actual = BTreeMap::<&str, BudgetRollupTotals>::new();
+    for rollup in &receipt.budget_rollups {
+        require_non_empty(&rollup.dimension_id, "swarm terminal budget dimension")?;
+        if actual
+            .insert(rollup.dimension_id.as_str(), totals_from_rollup(rollup)?)
+            .is_some()
+        {
+            return Err(rejected(format!(
+                "duplicate swarm terminal budget rollup: {}",
+                rollup.dimension_id
+            )));
+        }
+    }
+
+    if actual != expected {
+        return Err(rejected(format!(
+            "swarm terminal budget rollup mismatch: {}",
+            receipt.receipt_id
+        )));
+    }
+
+    let total_units = actual.values().try_fold(0_u64, |total, rollup| {
+        total
+            .checked_add(rollup.total_units()?)
+            .ok_or_else(|| rejected("swarm terminal budget rollup overflow"))
+    })?;
+    if total_units > bundle.budget_pool.total_units {
+        return Err(rejected(format!(
+            "swarm terminal budget exceeds pool total: {}",
+            receipt.receipt_id
+        )));
+    }
+    Ok(())
+}
+
+fn totals_from_rollup(
+    rollup: &SwarmTerminalBudgetRollup,
+) -> Result<BudgetRollupTotals, SwarmAuthorityError> {
+    let totals = BudgetRollupTotals {
+        reserved_units: rollup.reserved_units,
+        active_units: rollup.active_units,
+        consumed_units: rollup.consumed_units,
+        released_units: rollup.released_units,
+        reversed_units: rollup.reversed_units,
+    };
+    if totals.total_units()? != rollup.total_units {
+        return Err(rejected(format!(
+            "swarm terminal budget rollup total mismatch: {}",
+            rollup.dimension_id
+        )));
+    }
+    Ok(totals)
+}
+
+fn verify_terminal_graph_receipt_signature(
+    receipt: &SwarmTerminalGraphReceipt,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    let public_key = witness_issuer_public_key(&receipt.issuer)?;
+    ensure_terminal_receipt_issuer_is_pinned(receipt, &public_key, trusted_witness_issuer_keys)?;
+    let signature = Signature::from_hex(&receipt.signature).map_err(|error| {
+        rejected(format!(
+            "swarm terminal receipt signature invalid: {}: {error}",
+            receipt.receipt_id
+        ))
+    })?;
+    let body = terminal_graph_receipt_signature_body(receipt)?;
+    let verified = public_key
+        .verify_canonical(&body, &signature)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    if verified {
+        Ok(())
+    } else {
+        Err(rejected(format!(
+            "swarm terminal receipt signature invalid: {}",
+            receipt.receipt_id
+        )))
+    }
+}
+
+fn ensure_terminal_receipt_issuer_is_pinned(
+    receipt: &SwarmTerminalGraphReceipt,
+    public_key: &PublicKey,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    if trusted_witness_issuer_keys.is_empty() {
+        return Err(rejected(
+            "trusted swarm witness keys missing: CHIO_SWARM_TRUSTED_WITNESS_KEYS must pin trusted swarm witness keys",
+        ));
+    }
+    if trusted_witness_issuer_keys
+        .iter()
+        .any(|trusted_key| trusted_key == public_key)
+    {
+        Ok(())
+    } else {
+        Err(rejected(format!(
+            "swarm terminal receipt issuer is not trusted: {}",
+            receipt.receipt_id
+        )))
+    }
+}
+
 struct ContinuationValidationContext<'a, 'b> {
     bundle: &'a SwarmAuthorityBundle,
     graph_sha256: &'a str,
@@ -735,30 +1636,17 @@ struct ContinuationValidationContext<'a, 'b> {
     route_by_id: &'a BTreeMap<&'b str, &'b SwarmRoutePlanReceipt>,
     join_by_id: &'a BTreeMap<&'b str, &'b SwarmJoinReceipt>,
     allocation_by_id: &'a BTreeMap<&'b str, &'b SwarmBudgetAllocation>,
+    trusted_witness_issuer_keys: &'a [PublicKey],
 }
 
 fn validate_continuation_tokens(
-    bundle: &SwarmAuthorityBundle,
-    graph_sha256: &str,
-    task_by_id: &BTreeMap<&str, &SwarmGraphNode>,
-    edge_set: &BTreeSet<(&str, &str)>,
-    route_by_id: &BTreeMap<&str, &SwarmRoutePlanReceipt>,
-    join_by_id: &BTreeMap<&str, &SwarmJoinReceipt>,
-    allocation_by_id: &BTreeMap<&str, &SwarmBudgetAllocation>,
+    context: &ContinuationValidationContext<'_, '_>,
 ) -> Result<(), SwarmAuthorityError> {
-    let context = ContinuationValidationContext {
-        bundle,
-        graph_sha256,
-        task_by_id,
-        edge_set,
-        route_by_id,
-        join_by_id,
-        allocation_by_id,
-    };
     let mut continuations = BTreeMap::new();
     let mut continuation_nonces = BTreeSet::new();
-    for token in &bundle.continuation_tokens {
-        validate_continuation_token(&context, token)?;
+    for token in &context.bundle.continuation_tokens {
+        validate_continuation_token(context, token)?;
+        verify_continuation_token_signature(token, context.trusted_witness_issuer_keys)?;
         if !continuation_nonces.insert(token.nonce.as_str()) {
             return Err(rejected(format!(
                 "swarm continuation nonce replay: {}",
@@ -775,7 +1663,7 @@ fn validate_continuation_tokens(
             )));
         }
     }
-    for node in &bundle.task_graph.nodes {
+    for node in &context.bundle.task_graph.nodes {
         if node.parent_task_id.is_some() && node.continuation_token_ref.is_none() {
             return Err(rejected(format!(
                 "swarm task continuation token ref missing: {}",
@@ -819,6 +1707,8 @@ fn validate_continuation_token(
         "continuation token",
     )?;
     require_non_empty(&token.child_task_id, "swarm continuation child task id")?;
+    require_non_empty(&token.issuer, "swarm continuation issuer")?;
+    require_non_empty(&token.signature, "swarm continuation signature")?;
     let child_task = context
         .task_by_id
         .get(token.child_task_id.as_str())
@@ -865,7 +1755,66 @@ fn validate_continuation_token(
             token.token_id
         )));
     }
+    require_sha256(
+        &token.revocation_epoch_root_hash,
+        "swarm continuation revocation epoch root",
+    )?;
+    if token.revocation_epoch_root_hash != bundle.revocation_epoch.root_hash {
+        return Err(rejected(format!(
+            "swarm continuation revocation epoch root mismatch: {}",
+            token.token_id
+        )));
+    }
     Ok(())
+}
+
+fn verify_continuation_token_signature(
+    token: &SwarmContinuationToken,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    let public_key = witness_issuer_public_key(&token.issuer)?;
+    ensure_continuation_issuer_is_pinned(token, &public_key, trusted_witness_issuer_keys)?;
+    let signature = Signature::from_hex(&token.signature).map_err(|error| {
+        rejected(format!(
+            "swarm continuation signature invalid: {}: {error}",
+            token.token_id
+        ))
+    })?;
+    let body = continuation_token_signature_body(token)?;
+    let verified = public_key
+        .verify_canonical(&body, &signature)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    if verified {
+        Ok(())
+    } else {
+        Err(rejected(format!(
+            "swarm continuation signature invalid: {}",
+            token.token_id
+        )))
+    }
+}
+
+fn ensure_continuation_issuer_is_pinned(
+    token: &SwarmContinuationToken,
+    public_key: &PublicKey,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    if trusted_witness_issuer_keys.is_empty() {
+        return Err(rejected(
+            "trusted swarm witness keys missing: CHIO_SWARM_TRUSTED_WITNESS_KEYS must pin trusted swarm witness keys",
+        ));
+    }
+    if trusted_witness_issuer_keys
+        .iter()
+        .any(|trusted_key| trusted_key == public_key)
+    {
+        Ok(())
+    } else {
+        Err(rejected(format!(
+            "swarm continuation issuer is not trusted: {}",
+            token.token_id
+        )))
+    }
 }
 
 fn validate_continuation_parent(
@@ -994,6 +1943,12 @@ fn validate_continuation_budget(
         return Err(rejected(format!(
             "swarm continuation budget task mismatch: {}",
             token.token_id
+        )));
+    }
+    if allocation.state != SwarmBudgetAllocationState::Active {
+        return Err(rejected(format!(
+            "swarm budget allocation is not active: {}",
+            allocation.allocation_id
         )));
     }
     Ok(())
@@ -1269,6 +2224,82 @@ fn witness_signature_body<'a>(
         issuer: &hop.issuer,
         policy_digest: &hop.policy_digest,
     }
+}
+
+fn continuation_token_signature_body(
+    token: &SwarmContinuationToken,
+) -> Result<serde_json::Value, SwarmAuthorityError> {
+    let mut body = serde_json::to_value(token).map_err(|error| {
+        rejected(format!(
+            "swarm continuation signature body invalid: {}: {error}",
+            token.token_id
+        ))
+    })?;
+    let object = body.as_object_mut().ok_or_else(|| {
+        rejected(format!(
+            "swarm continuation signature body invalid: {}",
+            token.token_id
+        ))
+    })?;
+    object.remove("signature");
+    Ok(body)
+}
+
+fn join_receipt_signature_body(
+    receipt: &SwarmJoinReceipt,
+) -> Result<serde_json::Value, SwarmAuthorityError> {
+    let mut body = serde_json::to_value(receipt).map_err(|error| {
+        rejected(format!(
+            "swarm join receipt signature body invalid: {}: {error}",
+            receipt.join_id
+        ))
+    })?;
+    let object = body.as_object_mut().ok_or_else(|| {
+        rejected(format!(
+            "swarm join receipt signature body invalid: {}",
+            receipt.join_id
+        ))
+    })?;
+    object.remove("signature");
+    Ok(body)
+}
+
+fn route_plan_signature_body(
+    receipt: &SwarmRoutePlanReceipt,
+) -> Result<serde_json::Value, SwarmAuthorityError> {
+    let mut body = serde_json::to_value(receipt).map_err(|error| {
+        rejected(format!(
+            "swarm route-plan signature body invalid: {}: {error}",
+            receipt.route_plan_id
+        ))
+    })?;
+    let object = body.as_object_mut().ok_or_else(|| {
+        rejected(format!(
+            "swarm route-plan signature body invalid: {}",
+            receipt.route_plan_id
+        ))
+    })?;
+    object.remove("signature");
+    Ok(body)
+}
+
+fn terminal_graph_receipt_signature_body(
+    receipt: &SwarmTerminalGraphReceipt,
+) -> Result<serde_json::Value, SwarmAuthorityError> {
+    let mut body = serde_json::to_value(receipt).map_err(|error| {
+        rejected(format!(
+            "swarm terminal receipt signature body invalid: {}: {error}",
+            receipt.receipt_id
+        ))
+    })?;
+    let object = body.as_object_mut().ok_or_else(|| {
+        rejected(format!(
+            "swarm terminal receipt signature body invalid: {}",
+            receipt.receipt_id
+        ))
+    })?;
+    object.remove("signature");
+    Ok(body)
 }
 
 fn require_same_graph(

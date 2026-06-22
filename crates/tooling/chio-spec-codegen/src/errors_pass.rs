@@ -912,6 +912,7 @@ fn domain_variant(value: &str) -> Option<&'static str> {
         "custody" => Some("Custody"),
         "weights" => Some("Weights"),
         "mobile" => Some("Mobile"),
+        "transaction" => Some("Transaction"),
         _ => None,
     }
 }

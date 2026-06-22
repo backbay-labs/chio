@@ -11,6 +11,18 @@
       "schemaFile": "spec/schemas/chio-wire/v1/anchor/batch.schema.json"
     },
     {
+      "schema": "chio.anchor-inclusion-proof.v1",
+      "artifactKind": "anchor_inclusion_proof",
+      "introducedBy": "public-settlement-v1",
+      "schemaFile": "spec/schemas/chio-web3/v1/anchor-inclusion-proof.schema.json"
+    },
+    {
+      "schema": "chio.anchor-proof-bundle.v1",
+      "artifactKind": "anchor_proof_bundle",
+      "introducedBy": "public-settlement-v1",
+      "schemaFile": "spec/schemas/chio-web3/v1/anchor-proof-bundle.schema.json"
+    },
+    {
       "schema": "chio.attest.buyer-attestation-explanation.v1",
       "artifactKind": "chio_attest_buyer_attestation_explanation",
       "introducedBy": "chio-final-architecture/v1",
@@ -954,6 +966,12 @@
       "schemaFile": "spec/schemas/chio-runtime/v1/execution-lease.schema.json"
     },
     {
+      "schema": "chio.policy.activation-receipt.v1",
+      "artifactKind": "policy_activation_receipt",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-runtime/v1/policy-activation-receipt.schema.json"
+    },
+    {
       "schema": "chio.runtime.tool-server-ack.v1",
       "artifactKind": "runtime_tool_server_ack",
       "introducedBy": "runtime-security-v1",
@@ -976,6 +994,18 @@
       "artifactKind": "runtime_sandbox_attestation",
       "introducedBy": "runtime-security-v1",
       "schemaFile": "spec/schemas/chio-runtime/v1/sandbox-attestation.schema.json"
+    },
+    {
+      "schema": "chio.runtime.attack-simulation-report.v1",
+      "artifactKind": "runtime_attack_simulation_report",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-runtime/v1/attack-simulation-report.schema.json"
+    },
+    {
+      "schema": "chio.runtime.chaos-run-report.v1",
+      "artifactKind": "runtime_chaos_run_report",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-runtime/v1/chaos-run-report.schema.json"
     },
     {
       "schema": "chio.runtime.verifier-trust-bundle.v1",
@@ -1014,10 +1044,40 @@
       "schemaFile": "spec/schemas/chio-commerce/v1/mandate-allowance-ledger.schema.json"
     },
     {
+      "schema": "chio.commerce.protocol-payload.v1",
+      "artifactKind": "commerce_protocol_payload",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/protocol-payload.schema.json"
+    },
+    {
+      "schema": "chio.commerce.settlement-packet.v1",
+      "artifactKind": "commerce_settlement_packet",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/settlement-packet.schema.json"
+    },
+    {
       "schema": "chio.commerce.order-passport.v1",
       "artifactKind": "commerce_order_passport",
       "introducedBy": "commerce-payments-v1",
       "schemaFile": "spec/schemas/chio-commerce/v1/order-passport.schema.json"
+    },
+    {
+      "schema": "chio.commerce.provider-passport.v1",
+      "artifactKind": "commerce_provider_passport",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/provider-passport.schema.json"
+    },
+    {
+      "schema": "chio.commerce.reputation-snapshot.v1",
+      "artifactKind": "commerce_reputation_snapshot",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/reputation-snapshot.schema.json"
+    },
+    {
+      "schema": "chio.commerce.federation-trust-bundle.v1",
+      "artifactKind": "commerce_federation_trust_bundle",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/federation-trust-bundle.schema.json"
     },
     {
       "schema": "chio.risk.comptroller-report.v1",
@@ -1200,6 +1260,12 @@
       "schemaFile": "spec/schemas/chio-swarm/v1/route-plan-receipt.schema.json"
     },
     {
+      "schema": "chio.swarm.terminal-graph-receipt.v1",
+      "artifactKind": "swarm_terminal_graph_receipt",
+      "introducedBy": "swarm-authority-v1",
+      "schemaFile": "spec/schemas/chio-swarm/v1/terminal-graph-receipt.schema.json"
+    },
+    {
       "schema": "chio.swarm.budget-pool.v1",
       "artifactKind": "swarm_budget_pool",
       "introducedBy": "swarm-authority-v1",
@@ -1260,6 +1326,12 @@
       "schemaFile": "spec/schemas/chio-disclosure/v1/crypto-context-report.schema.json"
     },
     {
+      "schema": "chio.bbs-projection.manifest.v2",
+      "artifactKind": "bbs_projection_manifest",
+      "introducedBy": "crypto-context-v1",
+      "schemaFile": "spec/schemas/chio-disclosure/v2/bbs-projection-manifest.schema.json"
+    },
+    {
       "schema": "chio.disclosure.capsule.v1",
       "artifactKind": "disclosure_capsule",
       "introducedBy": "disclosure-lineage-v1",
@@ -1302,6 +1374,12 @@
       "schemaFile": "spec/schemas/chio-transaction/v1/evidence-graph.schema.json"
     },
     {
+      "schema": "chio.transaction.claim-set.v1",
+      "artifactKind": "transaction_claim_set",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/claim-set.schema.json"
+    },
+    {
       "schema": "chio.transaction.verifier-policy.v1",
       "artifactKind": "transaction_verifier_policy",
       "introducedBy": "transaction-passport-v1",
@@ -1318,6 +1396,30 @@
       "artifactKind": "transaction_runtime_security_report",
       "introducedBy": "runtime-security-v1",
       "schemaFile": "spec/schemas/chio-transaction/v1/runtime-security-report.schema.json"
+    },
+    {
+      "schema": "chio.capability.proof.v1",
+      "artifactKind": "capability_proof",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/capability-proof.schema.json"
+    },
+    {
+      "schema": "chio.guard.decision.v1",
+      "artifactKind": "guard_decision",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/guard-decision.schema.json"
+    },
+    {
+      "schema": "chio.policy.bundle.v1",
+      "artifactKind": "policy_bundle",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/policy-bundle.schema.json"
+    },
+    {
+      "schema": "chio.trust.root.v1",
+      "artifactKind": "trust_root",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-trust/v1/trust-root.schema.json"
     },
     {
       "schema": "chio.request.digest.v1",

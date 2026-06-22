@@ -95,10 +95,18 @@ fn proof_manifest_rust_test_refs_point_to_live_files() {
                 .get("ref")
                 .and_then(serde_json::Value::as_str)
                 .test_expect("rust_test ref is present");
-            let (file_ref, _) = reference
-                .split_once("::")
+            let (file_ref, test_name) = reference
+                .rsplit_once("::")
                 .test_expect("rust_test ref includes test name");
-            if !root.join(file_ref).is_file() {
+            let test_file = root.join(file_ref);
+            if !test_file.is_file() {
+                missing_refs.push(format!("{manifest_id}: {reference}"));
+                continue;
+            }
+            let test_source =
+                std::fs::read_to_string(&test_file).test_expect("rust_test ref file is readable");
+            let fn_ref = format!("fn {test_name}(");
+            if !test_source.contains(&fn_ref) {
                 missing_refs.push(format!("{manifest_id}: {reference}"));
             }
         }
@@ -106,9 +114,51 @@ fn proof_manifest_rust_test_refs_point_to_live_files() {
 
     assert!(
         missing_refs.is_empty(),
-        "proof manifest rust_test refs point to missing files: {}",
+        "proof manifest rust_test refs point to missing tests: {}",
         missing_refs.join(", ")
     );
+}
+
+#[test]
+fn transaction_passport_required_claim_rows_are_registered() {
+    let root = workspace_root();
+    let claim_registry = read_json(&root.join("spec/registries/claim-registry.v1.json"));
+    let proof_manifest = read_json(&root.join("spec/registries/proof-manifest.v1.json"));
+    let claim_ids = claim_registry["claims"]
+        .as_array()
+        .test_expect("claim registry has claims array")
+        .iter()
+        .filter_map(|claim| claim.get("id").and_then(serde_json::Value::as_str))
+        .collect::<BTreeSet<_>>();
+    let manifest_claim_refs = proof_manifest["manifests"]
+        .as_array()
+        .test_expect("proof manifest has manifests array")
+        .iter()
+        .filter_map(|manifest| {
+            manifest
+                .get("claim_ref")
+                .and_then(serde_json::Value::as_str)
+        })
+        .collect::<BTreeSet<_>>();
+    let required_claims = [
+        "claim.transaction.passport_root_verified",
+        "claim.transaction.evidence_graph_digest_bound",
+        "claim.transaction.evidence_graph_structure_verified",
+        "claim.transaction.claim_set_digest_bound",
+        "claim.transaction.policy_digest_bound",
+        "claim.transaction.omission_policy_bound",
+    ];
+
+    for claim in required_claims {
+        assert!(
+            claim_ids.contains(claim),
+            "missing claim registry row: {claim}"
+        );
+        assert!(
+            manifest_claim_refs.contains(claim),
+            "missing proof manifest row for claim: {claim}"
+        );
+    }
 }
 
 #[test]

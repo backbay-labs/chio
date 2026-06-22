@@ -244,6 +244,33 @@ fn agent_web_interop_accepts_oci_ref_projection() {
 }
 
 #[test]
+fn agent_web_interop_rejects_self_asserted_oci_rekor_verified() {
+    let mut bundle = agent_web_bundle(AgentWebCase::OciRefProjection);
+    replace_agent_web_json_artifact(&mut bundle, "external/oci-ref.json", |subject| {
+        subject["rekor_inclusion_status"] = serde_json::json!("verified");
+    });
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/oci-ref.json")
+            .test_expect("OCI subject exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "oci-ref-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = serde_json::json!(subject_digest);
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("OCI Rekor verification must not be self-asserted");
+
+    assert!(
+        error
+            .to_string()
+            .contains("OCI Rekor inclusion must not be self-asserted as verified"),
+        "{error}"
+    );
+}
+
+#[test]
 fn agent_web_interop_rejects_oci_tag_only_ref() {
     let bundle = agent_web_bundle(AgentWebCase::OciTagOnly);
 
@@ -351,6 +378,33 @@ fn agent_web_interop_accepts_sigstore_projection() {
 }
 
 #[test]
+fn agent_web_interop_rejects_self_asserted_sigstore_verified_status() {
+    let mut bundle = agent_web_bundle(AgentWebCase::SigstoreProjection);
+    replace_agent_web_json_artifact(&mut bundle, "external/sigstore-bundle.json", |subject| {
+        subject["verification_status"] = serde_json::json!("verified");
+    });
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/sigstore-bundle.json")
+            .test_expect("Sigstore subject exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "sigstore-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = serde_json::json!(subject_digest);
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Sigstore verification must not be self-asserted");
+
+    assert!(
+        error
+            .to_string()
+            .contains("Sigstore verification status must not be self-asserted as verified"),
+        "{error}"
+    );
+}
+
+#[test]
 fn agent_web_interop_rejects_sigstore_bundle_without_bound_receipt() {
     let bundle = agent_web_bundle(AgentWebCase::SigstoreReceiptRefMissing);
 
@@ -382,6 +436,37 @@ fn agent_web_interop_accepts_in_toto_dsse_projection() {
 }
 
 #[test]
+fn agent_web_interop_rejects_in_toto_single_signature_count() {
+    let mut bundle = agent_web_bundle(AgentWebCase::InTotoProjection);
+    replace_agent_web_json_artifact(
+        &mut bundle,
+        "external/in-toto-statement.json",
+        |statement| {
+            statement["signature_count"] = serde_json::json!(1);
+        },
+    );
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/in-toto-statement.json")
+            .test_expect("in-toto statement exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "in-toto-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = serde_json::json!(subject_digest);
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("in-toto statements require bilateral signatures");
+
+    assert!(
+        error
+            .to_string()
+            .contains("in-toto statement requires bilateral DSSE signatures"),
+        "{error}"
+    );
+}
+
+#[test]
 fn agent_web_interop_rejects_in_toto_statement_without_bound_receipt() {
     let bundle = agent_web_bundle(AgentWebCase::InTotoReceiptRefMissing);
 
@@ -404,6 +489,33 @@ fn agent_web_interop_accepts_dsse_projection() {
     assert!(report
         .unsupported_claims
         .contains(&UNSUPPORTED_DSSE_AUTHORITY_CLAIM.to_string()));
+}
+
+#[test]
+fn agent_web_interop_rejects_dsse_single_signature_count() {
+    let mut bundle = agent_web_bundle(AgentWebCase::DsseProjection);
+    replace_agent_web_json_artifact(&mut bundle, "external/dsse-envelope.json", |envelope| {
+        envelope["signature_count"] = serde_json::json!(1);
+    });
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/dsse-envelope.json")
+            .test_expect("DSSE envelope exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "dsse-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = serde_json::json!(subject_digest);
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("DSSE envelopes require bilateral signatures");
+
+    assert!(
+        error
+            .to_string()
+            .contains("DSSE envelope requires bilateral signatures"),
+        "{error}"
+    );
 }
 
 #[test]

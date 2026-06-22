@@ -5,7 +5,11 @@ use chio_core_types::{PublicKey, Signature};
 use super::{
     verify_manifest_ref, ProofRoomArtifactRef, ProofRoomReceiptCoverage, CHIO_RECEIPT_SCHEMA,
     PROOF_ROOM_RECEIPT_EVIDENCE_SCHEMA, REQUIRED_RECEIPT_COVERAGE_CATEGORIES,
+    RUNTIME_TERMINAL_RECEIPT_SCHEMA,
 };
+
+const RUNTIME_TERMINAL_RECEIPT_SIGNATURE_SCHEMA: &str =
+    "chio.runtime.terminal-receipt-signature.v1";
 
 pub(crate) fn verify(
     bundle_root: &Path,
@@ -40,7 +44,7 @@ pub(crate) fn verify(
             "covered" => {
                 verify_covered_category(bundle_root, entry, artifacts, trusted_kernel_keys)?
             }
-            "excluded" => verify_excluded_category(entry)?,
+            "excluded" => verify_excluded_category(entry, require_full_matrix)?,
             _ => {
                 return Err(format!(
                     "proof-room.receipt-coverage.status-unsupported: {}",
@@ -133,7 +137,9 @@ fn verify_covered_category(
 }
 
 fn is_receipt_coverage_schema(schema: &str) -> bool {
-    schema == PROOF_ROOM_RECEIPT_EVIDENCE_SCHEMA || schema == CHIO_RECEIPT_SCHEMA
+    schema == PROOF_ROOM_RECEIPT_EVIDENCE_SCHEMA
+        || schema == CHIO_RECEIPT_SCHEMA
+        || schema == RUNTIME_TERMINAL_RECEIPT_SCHEMA
 }
 
 fn required_receipt_field<'a>(
@@ -172,13 +178,7 @@ fn verify_receipt_signature(
     let signature = Signature::from_hex(signature).map_err(|error| {
         format!("proof-room.receipt-coverage.signature-invalid: {category}: {error}")
     })?;
-    let mut signed_body = receipt.clone();
-    let Some(signed_body_object) = signed_body.as_object_mut() else {
-        return Err(format!(
-            "proof-room.receipt-coverage.invalid-json: {category}"
-        ));
-    };
-    signed_body_object.remove("signature");
+    let signed_body = receipt_signature_body(category, receipt)?;
     let verified = public_key
         .verify_canonical(&signed_body, &signature)
         .map_err(|error| {
@@ -192,7 +192,55 @@ fn verify_receipt_signature(
     ))
 }
 
-fn verify_excluded_category(entry: &ProofRoomReceiptCoverage) -> Result<(), String> {
+fn receipt_signature_body(
+    category: &str,
+    receipt: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    if receipt.get("schema").and_then(serde_json::Value::as_str)
+        == Some(RUNTIME_TERMINAL_RECEIPT_SCHEMA)
+    {
+        let mut body = serde_json::json!({
+            "schema": RUNTIME_TERMINAL_RECEIPT_SIGNATURE_SCHEMA,
+            "receiptId": required_receipt_field(receipt, "receipt_id", category)?,
+            "terminalStatus": required_receipt_field(receipt, "terminal_status", category)?,
+            "policyDigest": required_receipt_field(receipt, "policy_digest", category)?,
+            "kernelKey": required_receipt_field(receipt, "kernel_key", category)?,
+        });
+        if let Some(execution_lease_ref) = receipt
+            .get("execution_lease_ref")
+            .and_then(serde_json::Value::as_str)
+        {
+            body["executionLeaseRef"] = serde_json::Value::String(execution_lease_ref.to_string());
+        }
+        if let Some(incident_ref) = receipt
+            .get("incident_ref")
+            .and_then(serde_json::Value::as_str)
+        {
+            body["incidentRef"] = serde_json::Value::String(incident_ref.to_string());
+        }
+        return Ok(body);
+    }
+
+    let mut signed_body = receipt.clone();
+    let Some(signed_body_object) = signed_body.as_object_mut() else {
+        return Err(format!(
+            "proof-room.receipt-coverage.invalid-json: {category}"
+        ));
+    };
+    signed_body_object.remove("signature");
+    Ok(signed_body)
+}
+
+fn verify_excluded_category(
+    entry: &ProofRoomReceiptCoverage,
+    require_full_matrix: bool,
+) -> Result<(), String> {
+    if require_full_matrix && terminal_category_requires_artifact(&entry.category) {
+        return Err(format!(
+            "proof-room.receipt-coverage.exclusion-forbidden: {}",
+            entry.category
+        ));
+    }
     let Some(reason) = entry.exclusion_reason.as_deref() else {
         return Err(format!(
             "proof-room.receipt-coverage.exclusion-reason-missing: {}",
@@ -212,6 +260,13 @@ fn verify_excluded_category(entry: &ProofRoomReceiptCoverage) -> Result<(), Stri
         ));
     }
     Ok(())
+}
+
+fn terminal_category_requires_artifact(category: &str) -> bool {
+    matches!(
+        category,
+        "runtime_terminal_allow" | "runtime_terminal_denial"
+    )
 }
 
 fn terminal_status_matches_category(category: &str, status: &str) -> bool {

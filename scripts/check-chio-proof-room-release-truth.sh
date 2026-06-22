@@ -67,17 +67,31 @@ REQUIRED_DOCKER_ENDPOINTS = {
     "/?view=proof-room": "Chio",
 }
 DEFAULT_DOCS = (
-    "docs/start-here/PROOF_ROOM_QUICKSTART.md",
-    "docs/release/RELEASE_CANDIDATE.md",
+    "README.md",
+    "docs/README.md",
+    "docs/start-here",
+    "docs/release",
+    "spec/PROTOCOL.md",
+)
+DEFAULT_DOC_EXCLUDES = (
+    "docs/adr/",
+    "docs/archive/",
+    "docs/brainstorm/",
+    "docs/operations/",
+    "docs/papers/",
+    "docs/research/",
+    "docs/superpowers/",
 )
 
 ALLOW_CONTEXT_RE = re.compile(
     r"\b("
     r"blocked|cannot|does not|false|hold|not|not yet|unavailable|unpublished|"
-    r"pre-release|must not|no |without|until"
+    r"pre-release|must not|no |without|until|never|beyond|bounded|deferred|"
+    r"unsupported|excluded|exclusion"
     r")\b",
     re.IGNORECASE,
 )
+CLAUSE_BOUNDARY_RE = re.compile(r"[.;!?]")
 
 CLAIM_PATTERNS = {
     "public_release": (
@@ -120,6 +134,61 @@ CLAIM_PATTERNS = {
     "transparency_log": (
         re.compile(r"\b(Rekor inclusion|Sigstore transparency log)\b", re.IGNORECASE),
         "transparency log claim requires release-truth transparency_log=true",
+    ),
+}
+COPY_STOP_PATTERNS = {
+    "bare_acp": (
+        re.compile(r"(?<![A-Za-z0-9_-])ACP(?![A-Za-z0-9_-])"),
+        "use ACP-Client or ACP-Commerce, never bare ACP",
+    ),
+    "ambient_external_authority": (
+        re.compile(
+            r"\b(?:x402|AP2|ACP-Commerce|web3(?: settlement)?)\b.{0,96}"
+            r"\b(?:ambient|universal|authority)\b|"
+            r"\b(?:ambient|universal)\b.{0,96}"
+            r"\b(?:x402|AP2|ACP-Commerce|web3(?: settlement)?)\b",
+            re.IGNORECASE,
+        ),
+        "external standards must be subordinate evidence, not ambient Chio authority",
+    ),
+    "every_action_overclaim": (
+        re.compile(r"\bevery action\b", re.IGNORECASE),
+        "every-action claims require a receipt coverage matrix and exclusions",
+    ),
+    "insurance_pricing_overclaim": (
+        re.compile(
+            r"\b(?:autonomous insurer pricing|autonomous insurance pricing|insurance pricing)\b",
+            re.IGNORECASE,
+        ),
+        "insurance pricing claims must stay within actuarial and reserve evidence",
+    ),
+    "universal_protocol_overclaim": (
+        re.compile(r"\buniversal agent protocol\b", re.IGNORECASE),
+        "Chio is not a replacement for external agent protocols",
+    ),
+    "native_external_authority_overclaim": (
+        re.compile(
+            r"\bevery external agent protocol natively verifies\b|"
+            r"\bnative(?:ly)? across all protocols\b",
+            re.IGNORECASE,
+        ),
+        "external standards are projections, not native Chio authority",
+    ),
+    "stale_a2a_version": (
+        re.compile(r"\bA2A v1\.0\.0\b", re.IGNORECASE),
+        "A2A launch claims must use the pinned v0.3.0 source",
+    ),
+    "stale_slsa_version": (
+        re.compile(r"\bSLSA v1\.1\b", re.IGNORECASE),
+        "SLSA launch claims must use the pinned current source",
+    ),
+    "unsupported_openapi_32": (
+        re.compile(r"\bOpenAPI 3\.2 support\b", re.IGNORECASE),
+        "OpenAPI 3.2 support requires a 3.2 fixture",
+    ),
+    "sigstore_runtime_authority": (
+        re.compile(r"\bSigstore proves runtime authorization\b", re.IGNORECASE),
+        "Sigstore can support supply-chain transparency, not Chio runtime authority",
     ),
 }
 
@@ -381,6 +450,11 @@ def configured_docs() -> list[Path]:
     return [absolute(Path(raw)) for raw in raw_docs if raw]
 
 
+def is_default_doc_excluded(path: Path) -> bool:
+    relative_path = relative(path)
+    return any(relative_path.startswith(prefix) for prefix in DEFAULT_DOC_EXCLUDES)
+
+
 def iter_doc_lines(paths: list[Path]):
     for path in paths:
         if path.is_dir():
@@ -392,10 +466,26 @@ def iter_doc_lines(paths: list[Path]):
         for child in children:
             if not child.exists():
                 continue
+            if is_default_doc_excluded(child):
+                continue
             for line_no, line in enumerate(
                 child.read_text(encoding="utf-8").splitlines(), start=1
             ):
                 yield child, line_no, line
+
+
+def claim_has_allowed_context(line: str, match: re.Match[str]) -> bool:
+    clause_start = 0
+    for boundary in CLAUSE_BOUNDARY_RE.finditer(line, 0, match.start()):
+        clause_start = boundary.end()
+
+    next_boundary = CLAUSE_BOUNDARY_RE.search(line, match.end())
+    clause_end = next_boundary.start() if next_boundary else len(line)
+    return ALLOW_CONTEXT_RE.search(line[clause_start:clause_end]) is not None
+
+
+def stop_pattern_has_allowed_context(line: str, match: re.Match[str]) -> bool:
+    return False
 
 
 truth_doc = read_truth(TRUTH_PATH)
@@ -407,14 +497,23 @@ truth = truth_doc["truth"]
 verify_docker_quickstart_evidence(truth)
 failures: list[str] = []
 for path, line_no, line in iter_doc_lines(configured_docs()):
-    if ALLOW_CONTEXT_RE.search(line):
-        continue
     for key, (pattern, guidance) in CLAIM_PATTERNS.items():
         if truth[key]:
             continue
-        if pattern.search(line):
+        if any(
+            not claim_has_allowed_context(line, match)
+            for match in pattern.finditer(line)
+        ):
             failures.append(
                 f"{relative(path)}:{line_no}: proof-room.release.unavailable: {key}: {guidance}"
+            )
+    for key, (pattern, guidance) in COPY_STOP_PATTERNS.items():
+        if any(
+            not stop_pattern_has_allowed_context(line, match)
+            for match in pattern.finditer(line)
+        ):
+            failures.append(
+                f"{relative(path)}:{line_no}: proof-room.release.copy-forbidden: {key}: {guidance}"
             )
 
 if failures:

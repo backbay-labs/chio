@@ -2,15 +2,17 @@
 mod tests {
     use chio_test_support::prelude::*;
     use super::*;
-    use std::sync::{Mutex, MutexGuard};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex, MutexGuard};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use chio_core::capability::{scope::{ChioScope, Operation, ToolGrant}, token::{CapabilityTokenBody}};
     use chio_core::crypto::Keypair;
     use chio_kernel::{
-        ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallChunk, ToolCallStream,
-        ToolServerStreamResult, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
-        DEFAULT_MAX_STREAM_TOTAL_BYTES,
+        ChioKernel, KernelConfig, KernelError, NestedFlowBridge, RuntimeAdmissionContext,
+        RuntimeAdmissionDecision, RuntimeAdmissionHook, ToolCallChunk, ToolCallStream,
+        ToolServerStreamResult, DEFAULT_CHECKPOINT_BATCH_SIZE,
+        DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
     };
     use chio_manifest::LatencyHint;
 
@@ -111,6 +113,68 @@ mod tests {
                     },
                 ],
             })))
+        }
+    }
+
+    struct CountingStreamingToolServer {
+        invocations: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl ToolServerConnection for CountingStreamingToolServer {
+        fn server_id(&self) -> &str {
+            "stream-srv"
+        }
+
+        fn tool_names(&self) -> Vec<String> {
+            vec!["stream".to_string()]
+        }
+
+        async fn invoke(
+            &self,
+            _tool_name: &str,
+            _arguments: Value,
+            _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+        ) -> Result<Value, KernelError> {
+            self.invocations.fetch_add(1, Ordering::SeqCst);
+            Ok(json!({"result": "fallback"}))
+        }
+
+        async fn invoke_stream(
+            &self,
+            _tool_name: &str,
+            _arguments: Value,
+            _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+        ) -> Result<Option<ToolServerStreamResult>, KernelError> {
+            self.invocations.fetch_add(1, Ordering::SeqCst);
+            Ok(Some(ToolServerStreamResult::Complete(ToolCallStream {
+                chunks: vec![ToolCallChunk {
+                    data: json!("should-not-dispatch"),
+                }],
+            })))
+        }
+    }
+
+    struct DenyingRuntimeAdmissionHook;
+
+    impl RuntimeAdmissionHook for DenyingRuntimeAdmissionHook {
+        fn name(&self) -> &str {
+            "a2a-edge-denying-runtime-admission"
+        }
+
+        fn evaluate(
+            &self,
+            _context: &RuntimeAdmissionContext<'_>,
+        ) -> Result<RuntimeAdmissionDecision, KernelError> {
+            Ok(RuntimeAdmissionDecision::deny(
+                "a2a edge runtime admission denied",
+                Some(json!({
+                    "chio_runtime": {
+                        "accepted": false,
+                        "failure_code": "a2a_edge_runtime_admission_denied"
+                    }
+                })),
+            ))
         }
     }
 
@@ -1990,6 +2054,78 @@ mod tests {
             .as_array()
             .test_expect("resolved task should contain parts");
         assert_eq!(parts.len(), 2);
+    }
+
+    #[test]
+    fn jsonrpc_task_get_runtime_admission_denies_before_deferred_dispatch() {
+        let mut edge =
+            ChioA2aEdge::new(A2aEdgeConfig::default(), vec![stream_manifest()]).test_unwrap();
+        let config = test_kernel_config();
+        let kernel_issuer = config.keypair.clone();
+        let mut kernel = ChioKernel::new(config);
+        let invocations = Arc::new(AtomicUsize::new(0));
+        kernel.register_tool_server(Box::new(CountingStreamingToolServer {
+            invocations: Arc::clone(&invocations),
+        }));
+        let subject = Keypair::generate();
+        let execution = A2aKernelExecutionContext {
+            capability: capability_for_tool(&kernel_issuer, &subject, "stream-srv", "stream"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+        };
+
+        let accepted = edge.handle_jsonrpc(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 10,
+                "method": "message/stream",
+                "params": {
+                    "message": {
+                        "role": "user",
+                        "parts": [{"type": "text", "text": "start"}]
+                    }
+                }
+            }),
+            &kernel,
+            &execution,
+        );
+        assert_eq!(accepted["result"]["status"].as_str(), Some("working"));
+        assert_eq!(invocations.load(Ordering::SeqCst), 0);
+        let task_id = accepted["result"]["id"]
+            .as_str()
+            .test_expect("message/stream should return task id")
+            .to_string();
+
+        kernel.set_runtime_admission_hook(Arc::new(DenyingRuntimeAdmissionHook));
+        let denied = edge.handle_jsonrpc(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 11,
+                "method": "task/get",
+                "params": {
+                    "taskId": task_id
+                }
+            }),
+            &kernel,
+            &execution,
+        );
+
+        assert_eq!(denied["result"]["status"].as_str(), Some("failed"));
+        assert_eq!(
+            denied["result"]["statusMessage"].as_str(),
+            Some("a2a edge runtime admission denied")
+        );
+        assert_eq!(
+            denied["result"]["metadata"]
+                .pointer("/chio/receipt/metadata/chio_runtime/failure_code")
+                .and_then(Value::as_str),
+            Some("a2a_edge_runtime_admission_denied")
+        );
+        assert_eq!(invocations.load(Ordering::SeqCst), 0);
     }
 
     #[test]

@@ -11,6 +11,10 @@ struct AllowingRuntimeAdmissionHook {
     calls: std::sync::Arc<AtomicU64>,
 }
 
+struct MetadataInspectingRuntimeAdmissionHook {
+    calls: std::sync::Arc<AtomicU64>,
+}
+
 struct LiveReceiptAllowingRuntimeAdmissionHook {
     calls: std::sync::Arc<AtomicU64>,
 }
@@ -55,6 +59,8 @@ struct IncompleteAfterSideEffectServer {
     tools: Vec<String>,
     side_effects: std::sync::Arc<AtomicU64>,
 }
+
+struct NoopNestedFlowClient;
 
 impl RuntimeAdmissionHook for DenyingRuntimeAdmissionHook {
     fn name(&self) -> &str {
@@ -101,6 +107,44 @@ impl RuntimeAdmissionHook for AllowingRuntimeAdmissionHook {
                 "observe_only": true
             }
         }))))
+    }
+}
+
+impl RuntimeAdmissionHook for MetadataInspectingRuntimeAdmissionHook {
+    fn name(&self) -> &str {
+        "test-chio-metadata-admission"
+    }
+
+    fn evaluate(
+        &self,
+        context: &RuntimeAdmissionContext<'_>,
+    ) -> Result<RuntimeAdmissionDecision, KernelError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let bridge = context
+            .extra_metadata
+            .and_then(|metadata| metadata.get("route"))
+            .and_then(|route| route.get("bridge"))
+            .and_then(serde_json::Value::as_str);
+        if bridge == Some("mcp") {
+            Ok(RuntimeAdmissionDecision::allow(Some(serde_json::json!({
+                "chio_runtime": {
+                    "admission_id": "adm-route-metadata",
+                    "accepted": true,
+                    "failure_code": null
+                }
+            }))))
+        } else {
+            Ok(RuntimeAdmissionDecision::deny(
+                "route metadata missing from runtime admission context",
+                Some(serde_json::json!({
+                    "chio_runtime": {
+                        "admission_id": "adm-route-metadata",
+                        "accepted": false,
+                        "failure_code": "route_metadata_missing"
+                    }
+                })),
+            ))
+        }
     }
 }
 
@@ -200,6 +244,61 @@ impl RuntimeAdmissionHook for FailingReleaseRuntimeAdmissionHook {
         Err(KernelError::Internal(
             "runtime reservation release failed".to_string(),
         ))
+    }
+}
+
+impl NestedFlowClient for NoopNestedFlowClient {
+    fn list_roots(
+        &mut self,
+        _parent_context: &OperationContext,
+        _child_context: &OperationContext,
+    ) -> Result<Vec<RootDefinition>, KernelError> {
+        Ok(Vec::new())
+    }
+
+    fn create_message(
+        &mut self,
+        _parent_context: &OperationContext,
+        _child_context: &OperationContext,
+        _operation: &CreateMessageOperation,
+    ) -> Result<CreateMessageResult, KernelError> {
+        Err(KernelError::Internal(
+            "unexpected nested createMessage request".to_string(),
+        ))
+    }
+
+    fn create_elicitation(
+        &mut self,
+        _parent_context: &OperationContext,
+        _child_context: &OperationContext,
+        _operation: &CreateElicitationOperation,
+    ) -> Result<CreateElicitationResult, KernelError> {
+        Err(KernelError::Internal(
+            "unexpected nested elicitation request".to_string(),
+        ))
+    }
+
+    fn notify_elicitation_completed(
+        &mut self,
+        _parent_context: &OperationContext,
+        _elicitation_id: &str,
+    ) -> Result<(), KernelError> {
+        Ok(())
+    }
+
+    fn notify_resource_updated(
+        &mut self,
+        _parent_context: &OperationContext,
+        _uri: &str,
+    ) -> Result<(), KernelError> {
+        Ok(())
+    }
+
+    fn notify_resources_list_changed(
+        &mut self,
+        _parent_context: &OperationContext,
+    ) -> Result<(), KernelError> {
+        Ok(())
     }
 }
 
@@ -783,6 +882,155 @@ fn federated_origin_without_runtime_hook_or_context_fails_closed(
 }
 
 #[test]
+fn chio_swarm_request_without_runtime_hook_fails_closed(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let mut request = make_request_with_arguments(
+        "req-chio-swarm-no-hook",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+    request.governed_intent = Some(GovernedTransactionIntent {
+        id: "intent:chio:swarm-no-hook".to_string(),
+        server_id: request.server_id.clone(),
+        tool_name: request.tool_name.clone(),
+        purpose: "verify swarm authority fails closed without a runtime hook".to_string(),
+        max_amount: None,
+        commerce: None,
+        metered_billing: None,
+        runtime_attestation: None,
+        call_chain: None,
+        autonomy: None,
+        context: Some(serde_json::json!({
+            "chioSwarm": {
+                "taskGraph": {
+                    "id": "swarm-task-graph-runtime",
+                    "sha256": "a".repeat(64)
+                },
+                "continuationToken": {
+                    "id": "swarm-continuation-runtime",
+                    "sha256": "b".repeat(64)
+                }
+            }
+        })),
+    });
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    let metadata = response
+        .receipt
+        .metadata
+        .ok_or_else(|| std::io::Error::other("deny metadata missing"))?;
+    assert_eq!(metadata["chio_runtime"]["accepted"], false);
+    assert_eq!(
+        metadata["chio_runtime"]["failure_code"],
+        "runtime_admission_hook_missing"
+    );
+    Ok(())
+}
+
+#[test]
+fn session_tool_call_preserves_chio_swarm_runtime_context(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        "req-chio-swarm-session-no-hook",
+        &agent_kp.public_key().to_hex(),
+    );
+    let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
+        capability: cap,
+        server_id: "srv-chio-runtime".to_string(),
+        tool_name: "destructive_update".to_string(),
+        arguments: serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+        governed_intent: Some(GovernedTransactionIntent {
+            id: "intent:chio:swarm-session-no-hook".to_string(),
+            server_id: "srv-chio-runtime".to_string(),
+            tool_name: "destructive_update".to_string(),
+            purpose: "verify session swarm authority fails closed without a runtime hook"
+                .to_string(),
+            max_amount: None,
+            commerce: None,
+            metered_billing: None,
+            runtime_attestation: None,
+            call_chain: None,
+            autonomy: None,
+            context: Some(serde_json::json!({
+                "chioSwarm": {
+                    "taskGraph": {
+                        "id": "swarm-task-graph-runtime",
+                        "sha256": "a".repeat(64)
+                    },
+                    "continuationToken": {
+                        "id": "swarm-continuation-runtime",
+                        "sha256": "b".repeat(64)
+                    }
+                }
+            })),
+        }),
+        execution_nonce: None,
+        model_metadata: None,
+                extra_metadata: None,
+    }));
+
+    let response = session_tool_call(kernel.evaluate_session_operation(&context, &operation)?)
+        .ok_or_else(|| std::io::Error::other("tool call response missing"))?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    let metadata = response
+        .receipt
+        .metadata
+        .ok_or_else(|| std::io::Error::other("deny metadata missing"))?;
+    assert_eq!(metadata["chio_runtime"]["accepted"], false);
+    assert_eq!(
+        metadata["chio_runtime"]["failure_code"],
+        "runtime_admission_hook_missing"
+    );
+    Ok(())
+}
+
+#[test]
 fn chio_runtime_admission_hook_allows_dispatch_and_records_metadata(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut kernel = make_kernel(make_config());
@@ -831,6 +1079,117 @@ fn chio_runtime_admission_hook_allows_dispatch_and_records_metadata(
     assert_eq!(metadata["chio_runtime"]["admission_id"], "adm-allowed");
     assert_eq!(metadata["chio_runtime"]["accepted"], true);
     assert_eq!(metadata["chio_runtime"]["observe_only"], true);
+    Ok(())
+}
+
+#[test]
+fn chio_runtime_admission_hook_receives_route_metadata_before_dispatch(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        MetadataInspectingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chio-runtime-route-metadata",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+    let metadata = serde_json::json!({
+        "route": {
+            "bridge": "mcp",
+            "protocolTarget": "mcp://provider-a"
+        }
+    });
+
+    let response = kernel.evaluate_tool_call_blocking_with_metadata(&request, Some(metadata))?;
+
+    assert_eq!(response.verdict, Verdict::Allow);
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(invocations.load(Ordering::SeqCst), 1);
+    Ok(())
+}
+
+#[test]
+fn chio_runtime_admission_hook_receives_nested_flow_route_metadata_before_dispatch(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        MetadataInspectingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        "req-chio-runtime-nested-route-metadata",
+        &agent_kp.public_key().to_hex(),
+    );
+    let operation = ToolCallOperation {
+        capability: cap,
+        server_id: "srv-chio-runtime".to_string(),
+        tool_name: "destructive_update".to_string(),
+        arguments: serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+        governed_intent: None,
+        execution_nonce: None,
+        model_metadata: None,
+        extra_metadata: Some(serde_json::json!({
+            "route": {
+                "bridge": "mcp",
+                "protocolTarget": "mcp://provider-a"
+            }
+        })),
+    };
+    let mut client = NoopNestedFlowClient;
+
+    let response =
+        kernel.evaluate_tool_call_operation_with_nested_flow_client(&context, &operation, &mut client)?;
+
+    assert_eq!(response.verdict, Verdict::Allow);
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(invocations.load(Ordering::SeqCst), 1);
     Ok(())
 }
 

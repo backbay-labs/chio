@@ -8,12 +8,18 @@
     "schema",
     "joinId",
     "graphId",
+    "chainId",
+    "parentSetHash",
+    "dagOrdinal",
+    "hlcUnixMs",
     "parentTaskReceipts",
     "expectedParentReceiptIds",
     "actualParentReceiptIds",
     "joinPredicate",
     "resultDigest",
-    "nextTaskId"
+    "nextTaskId",
+    "issuer",
+    "signature"
   ],
   "properties": {
     "schema": {
@@ -26,6 +32,21 @@
     "graphId": {
       "type": "string",
       "minLength": 1
+    },
+    "chainId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parentSetHash": {
+      "$ref": "#/$defs/digest"
+    },
+    "dagOrdinal": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "hlcUnixMs": {
+      "type": "integer",
+      "minimum": 0
     },
     "parentTaskReceipts": {
       "type": "array",
@@ -76,6 +97,20 @@
     "nextTaskId": {
       "type": "string",
       "minLength": 1
+    },
+    "issuer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     }
   }
 }

@@ -401,14 +401,16 @@ fn recompute_decision(
         RequestId::new("chio-replay-001"),
         session_agent_id,
     );
-    let operation = SessionOperation::ToolCall(ToolCallOperation {
+    let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
         capability: cap,
         server_id: REPLAY_PRE_OUTPUT_SERVER_ID.to_string(),
         tool_name: invocation.tool_name.clone(),
         arguments,
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
-    });
+                extra_metadata: None,
+    }));
 
     match kernel.evaluate_session_operation(&context, &operation) {
         Ok(SessionOperationResponse::ToolCall(response)) => {

@@ -32,6 +32,7 @@ pub const EMERGENCY_STOP_DENY_REASON: &str = "kernel emergency stop active";
 /// dispatch and federation co-signing side effects.
 pub struct RuntimeAdmissionContext<'a> {
     pub request: &'a ToolCallRequest,
+    pub extra_metadata: Option<&'a serde_json::Value>,
     pub now_unix_secs: u64,
     pub now_unix_ms: u64,
     pub matched_grant_index: Option<usize>,

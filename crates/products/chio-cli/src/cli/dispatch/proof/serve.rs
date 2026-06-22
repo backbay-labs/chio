@@ -52,9 +52,12 @@ pub(super) fn serve_proof_bundle(
         return Ok(());
     }
     let fixture_root = proof_room_fixture_root();
-    let router =
-        chio_proof_room::proof_room_router_with_optional_ui_root(static_root, ui_root, fixture_root)
-            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+    let router = chio_proof_room::proof_room_router_with_optional_ui_root(
+        static_root,
+        ui_root,
+        fixture_root,
+    )
+    .map_err(|error| CliError::cli_other_error(error.to_string()))?;
 
     let address = listen.parse::<SocketAddr>().map_err(|error| {
         CliError::cli_other_error(format!("proof serve listen address parse failed: {error}"))

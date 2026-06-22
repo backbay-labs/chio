@@ -825,8 +825,13 @@ impl ChioKernel {
             }
         };
 
-        let runtime_admission =
-            self.run_runtime_admission_hook(request, now, now_unix_ms, Some(matched_grant_index));
+        let runtime_admission = self.run_runtime_admission_hook(
+            request,
+            extra_metadata.as_ref(),
+            now,
+            now_unix_ms,
+            Some(matched_grant_index),
+        );
         let extra_metadata =
             merge_metadata_objects(extra_metadata.clone(), runtime_admission.metadata.clone());
         if !runtime_admission.allowed {
@@ -1197,11 +1202,13 @@ impl ChioKernel {
         parent_context: &OperationContext,
         request: &ToolCallRequest,
         client: &mut C,
+        extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
         block_on_async_tool_dispatch(self.evaluate_tool_call_with_nested_flow_client_async(
             parent_context,
             request,
             client,
+            extra_metadata,
         ))
     }
 
@@ -1210,6 +1217,7 @@ impl ChioKernel {
         parent_context: &OperationContext,
         request: &ToolCallRequest,
         client: &mut C,
+        extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
         // Install the parent session's tenant_id so every
         // receipt signed while this nested-flow evaluation is in flight
@@ -1498,8 +1506,13 @@ impl ChioKernel {
             }
         };
 
-        let runtime_admission =
-            self.run_runtime_admission_hook(request, now, now_unix_ms, Some(matched_grant_index));
+        let runtime_admission = self.run_runtime_admission_hook(
+            request,
+            extra_metadata.as_ref(),
+            now,
+            now_unix_ms,
+            Some(matched_grant_index),
+        );
         let runtime_admission_metadata = runtime_admission.metadata.clone();
         if !runtime_admission.allowed {
             let msg = runtime_admission

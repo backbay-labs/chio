@@ -1,14 +1,18 @@
 use std::collections::BTreeMap;
 
+use chio_core_types::crypto::PublicKey;
 use serde::{Deserialize, Serialize};
 
 use super::error::TransactionPassportError;
 use super::ids::{
+    POLICY_ACTIVATION_RECEIPT_SCHEMA_ID, REQUEST_DIGEST_SCHEMA_ID,
+    RUNTIME_ATTACK_SIMULATION_REPORT_SCHEMA_ID, RUNTIME_CHAOS_RUN_REPORT_SCHEMA_ID,
     RUNTIME_EXECUTION_LEASE_SCHEMA_ID, RUNTIME_REVOCATION_FRESHNESS_PROOF_SCHEMA_ID,
     RUNTIME_SANDBOX_ATTESTATION_SCHEMA_ID, RUNTIME_TERMINAL_RECEIPT_SCHEMA_ID,
-    RUNTIME_TOOL_SERVER_ACK_SCHEMA_ID, TRANSACTION_RUNTIME_SECURITY_REPORT_SCHEMA_ID,
+    RUNTIME_TOOL_SERVER_ACK_SCHEMA_ID, SWARM_ROUTE_PLAN_RECEIPT_SCHEMA_ID,
+    TRANSACTION_RUNTIME_SECURITY_REPORT_SCHEMA_ID,
 };
-use super::minimal::verify_minimal_passport_artifacts;
+use super::minimal::verify_passport_root_and_claim_set_artifacts;
 use super::types::TransactionPassport;
 
 mod artifacts;
@@ -17,11 +21,15 @@ mod evidence;
 mod policy;
 
 use artifacts::{
-    validate_allow_receipt, validate_execution_lease, validate_nonce_uniqueness,
-    validate_revocation_freshness, validate_revocation_freshness_at_ack,
+    validate_allow_receipt, validate_attack_simulation_report, validate_chaos_run_report,
+    validate_execution_lease, validate_nonce_uniqueness, validate_policy_activation_receipt,
+    validate_request_digest_binding, validate_revocation_freshness,
+    validate_revocation_freshness_at_ack, validate_route_plan_receipt,
     validate_sandbox_attestation, validate_terminal_receipt, validate_tool_server_ack,
-    RuntimeExecutionLease, RuntimeRevocationFreshnessProof, RuntimeSandboxAttestation,
-    RuntimeTerminalReceipt, RuntimeToolServerAck,
+    RuntimeAttackSimulationReport, RuntimeChaosRunReport, RuntimeExecutionLease,
+    RuntimePolicyActivationReceipt, RuntimeRequestDigest, RuntimeRevocationFreshnessProof,
+    RuntimeRoutePlanReceipt, RuntimeSandboxAttestation, RuntimeTerminalReceipt,
+    RuntimeToolServerAck, RuntimeTrustRoot,
 };
 use claims::{
     push_claim_once, CLAIM_ADVISORY_NOT_AUTHORIZATION, CLAIM_EXECUTION_LEASE_VALID,
@@ -29,8 +37,9 @@ use claims::{
     CLAIM_TOOL_ACK_BOUND,
 };
 use evidence::{
-    ensure_no_advisory_authorization, leased_receipt_nodes, nodes_by_role, parse_artifact,
-    parse_graph, trust_root_authorizes_lease, RuntimeEvidenceGraph, RuntimeEvidenceRole,
+    bound_request_nodes, bound_route_plan_nodes, ensure_no_advisory_authorization,
+    leased_receipt_nodes, nodes_by_role, parse_artifact, parse_graph, trust_root_authorizes_lease,
+    RuntimeEvidenceGraph, RuntimeEvidenceRole,
 };
 use policy::parse_policy;
 
@@ -38,8 +47,15 @@ use policy::parse_policy;
 pub struct RuntimeSecurityBundle {
     pub passport: TransactionPassport,
     pub evidence_graph_bytes: Vec<u8>,
+    pub root_evidence_graph_bytes: Option<Vec<u8>>,
     pub verifier_policy_bytes: Vec<u8>,
     pub artifacts: BTreeMap<String, Vec<u8>>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RuntimeSecurityTrust {
+    pub trusted_passport_signer_keys: Vec<PublicKey>,
+    pub trusted_root_signer_keys: Vec<PublicKey>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -56,20 +72,33 @@ pub struct RuntimeSecurityReport {
 pub fn verify_runtime_security_claims(
     bundle: &RuntimeSecurityBundle,
 ) -> Result<RuntimeSecurityReport, TransactionPassportError> {
-    verify_minimal_passport_artifacts(
+    verify_runtime_security_claims_with_trust(bundle, &RuntimeSecurityTrust::default())
+}
+
+pub fn verify_runtime_security_claims_with_trust(
+    bundle: &RuntimeSecurityBundle,
+    trust: &RuntimeSecurityTrust,
+) -> Result<RuntimeSecurityReport, TransactionPassportError> {
+    let graph_artifacts = runtime_graph_artifacts(bundle);
+    let root_evidence_graph_bytes = bundle
+        .root_evidence_graph_bytes
+        .as_deref()
+        .unwrap_or(&bundle.evidence_graph_bytes);
+    verify_passport_root_and_claim_set_artifacts(
         &bundle.passport,
         "transaction-passport.json".to_string(),
-        &bundle.evidence_graph_bytes,
+        root_evidence_graph_bytes,
         &bundle.verifier_policy_bytes,
+        &graph_artifacts,
+        &trust.trusted_passport_signer_keys,
     )?;
-
     let graph = parse_graph(&bundle.evidence_graph_bytes)?;
     let policy = parse_policy(&bundle.verifier_policy_bytes)?;
     ensure_no_advisory_authorization(&graph)?;
 
     let mut verified_claims = Vec::new();
     if requires_online_runtime_evidence(&policy.required_claims) {
-        verify_online_runtime_evidence(bundle, &graph, &mut verified_claims)?;
+        verify_online_runtime_evidence(bundle, trust, &graph, &mut verified_claims)?;
     }
     if policy
         .required_claims
@@ -79,7 +108,7 @@ pub fn verify_runtime_security_claims(
             .iter()
             .any(|claim| claim == CLAIM_RECEIPT_TOTALITY)
     {
-        verify_terminal_receipt_totality(bundle, &graph, &mut verified_claims)?;
+        verify_terminal_receipt_totality(bundle, trust, &graph, &mut verified_claims)?;
     }
     if policy
         .required_claims
@@ -100,12 +129,22 @@ pub fn verify_runtime_security_claims(
     })
 }
 
+fn runtime_graph_artifacts(bundle: &RuntimeSecurityBundle) -> BTreeMap<String, Vec<u8>> {
+    let mut artifacts = bundle.artifacts.clone();
+    artifacts.insert(
+        bundle.passport.verifier_policy_path.clone(),
+        bundle.verifier_policy_bytes.clone(),
+    );
+    artifacts
+}
+
 fn verify_online_runtime_evidence(
     bundle: &RuntimeSecurityBundle,
+    trust: &RuntimeSecurityTrust,
     graph: &RuntimeEvidenceGraph,
     verified_claims: &mut Vec<String>,
 ) -> Result<(), TransactionPassportError> {
-    verify_allowed_execution_attempts(bundle, graph)?;
+    verify_allowed_execution_attempts(bundle, trust, graph)?;
 
     push_claim_once(verified_claims, CLAIM_EXECUTION_LEASE_VALID);
     push_claim_once(verified_claims, CLAIM_NONCE_FRESH);
@@ -151,6 +190,7 @@ fn ensure_required_claims_verified(
 
 fn verify_terminal_receipt_totality(
     bundle: &RuntimeSecurityBundle,
+    trust: &RuntimeSecurityTrust,
     graph: &RuntimeEvidenceGraph,
     verified_claims: &mut Vec<String>,
 ) -> Result<(), TransactionPassportError> {
@@ -173,14 +213,22 @@ fn verify_terminal_receipt_totality(
             message.to_string(),
         ));
     }
+    let trust_roots = parse_runtime_trust_roots(bundle, graph)?;
+    let trusted_roots: Vec<_> = trust_roots.iter().collect();
     for receipt in &receipts {
-        validate_terminal_receipt(receipt, &bundle.passport.verifier_policy_sha256)?;
+        validate_terminal_receipt(
+            receipt,
+            &bundle.passport.verifier_policy_sha256,
+            &trusted_roots,
+            &trust.trusted_root_signer_keys,
+        )?;
     }
+    ensure_terminal_receipts_cover_execution_leases(bundle, graph)?;
     if receipts
         .iter()
         .any(|receipt| receipt.terminal_status == "allowed_executed")
     {
-        verify_allowed_execution_attempts(bundle, graph)?;
+        verify_allowed_execution_attempts(bundle, trust, graph)?;
     }
     push_claim_once(verified_claims, CLAIM_RECEIPT_TOTALITY);
     Ok(())
@@ -188,6 +236,7 @@ fn verify_terminal_receipt_totality(
 
 fn verify_allowed_execution_attempts(
     bundle: &RuntimeSecurityBundle,
+    trust: &RuntimeSecurityTrust,
     graph: &RuntimeEvidenceGraph,
 ) -> Result<(), TransactionPassportError> {
     let leases: Vec<_> = nodes_by_role(graph, RuntimeEvidenceRole::ExecutionLease)
@@ -221,6 +270,42 @@ fn verify_allowed_execution_attempts(
     let trust_roots: Vec<_> = nodes_by_role(graph, RuntimeEvidenceRole::TrustRoot)
         .map(|node| parse_artifact(bundle, node, "chio.trust.root.v1").map(|root| (node, root)))
         .collect::<Result<Vec<_>, _>>()?;
+    let activation_receipts: Vec<RuntimePolicyActivationReceipt> = parse_artifacts_by_role(
+        bundle,
+        graph,
+        RuntimeEvidenceRole::PolicyActivationReceipt,
+        POLICY_ACTIVATION_RECEIPT_SCHEMA_ID,
+    )?;
+    let trusted_roots: Vec<_> = trust_roots
+        .iter()
+        .map(|(_, trust_root)| trust_root)
+        .collect();
+    for receipt in &activation_receipts {
+        validate_policy_activation_receipt(
+            receipt,
+            &bundle.passport.verifier_policy_sha256,
+            &trusted_roots,
+            &trust.trusted_root_signer_keys,
+        )?;
+    }
+    let attack_reports: Vec<RuntimeAttackSimulationReport> = parse_artifacts_by_role(
+        bundle,
+        graph,
+        RuntimeEvidenceRole::RuntimeAttackSimulationReport,
+        RUNTIME_ATTACK_SIMULATION_REPORT_SCHEMA_ID,
+    )?;
+    for report in &attack_reports {
+        validate_attack_simulation_report(report, &trusted_roots, &trust.trusted_root_signer_keys)?;
+    }
+    let chaos_reports: Vec<RuntimeChaosRunReport> = parse_artifacts_by_role(
+        bundle,
+        graph,
+        RuntimeEvidenceRole::RuntimeChaosRunReport,
+        RUNTIME_CHAOS_RUN_REPORT_SCHEMA_ID,
+    )?;
+    for report in &chaos_reports {
+        validate_chaos_run_report(report, &trusted_roots, &trust.trusted_root_signer_keys)?;
+    }
     validate_nonce_uniqueness(bundle, graph)?;
 
     for (lease_node, lease) in &leases {
@@ -235,7 +320,50 @@ fn verify_allowed_execution_attempts(
             lease,
             &bundle.passport.verifier_policy_sha256,
             &authorizing_trust_roots,
+            &trust.trusted_root_signer_keys,
         )?;
+        let requests: Vec<RuntimeRequestDigest> = bound_request_nodes(graph, lease_node)
+            .map(|node| parse_artifact(bundle, node, REQUEST_DIGEST_SCHEMA_ID))
+            .collect::<Result<_, _>>()?;
+        let request = match requests.as_slice() {
+            [request] => request,
+            [] => {
+                return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                    "missing request digest for execution lease".to_string(),
+                ));
+            }
+            _ => {
+                return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                    "multiple request digests for execution lease".to_string(),
+                ));
+            }
+        };
+        validate_request_digest_binding(lease, request)?;
+        if lease.route_plan_receipt_ref.is_some() {
+            let route_plans: Vec<RuntimeRoutePlanReceipt> =
+                bound_route_plan_nodes(graph, lease_node)
+                    .map(|node| parse_artifact(bundle, node, SWARM_ROUTE_PLAN_RECEIPT_SCHEMA_ID))
+                    .collect::<Result<_, _>>()?;
+            let route_plan = match route_plans.as_slice() {
+                [route_plan] => route_plan,
+                [] => {
+                    return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                        "missing route plan receipt for execution lease".to_string(),
+                    ));
+                }
+                _ => {
+                    return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                        "multiple route plan receipts for execution lease".to_string(),
+                    ));
+                }
+            };
+            validate_route_plan_receipt(
+                lease,
+                route_plan,
+                &authorizing_trust_roots,
+                &trust.trusted_root_signer_keys,
+            )?;
+        }
 
         let revocation = revocations
             .iter()
@@ -245,7 +373,12 @@ fn verify_allowed_execution_attempts(
                     "missing revocation freshness proof for execution lease".to_string(),
                 )
             })?;
-        validate_revocation_freshness(lease, revocation)?;
+        validate_revocation_freshness(
+            lease,
+            revocation,
+            &authorizing_trust_roots,
+            &trust.trusted_root_signer_keys,
+        )?;
 
         let sandbox = sandboxes
             .iter()
@@ -255,7 +388,12 @@ fn verify_allowed_execution_attempts(
                     "missing sandbox attestation for execution lease".to_string(),
                 )
             })?;
-        validate_sandbox_attestation(lease, sandbox)?;
+        validate_sandbox_attestation(
+            lease,
+            sandbox,
+            &authorizing_trust_roots,
+            &trust.trusted_root_signer_keys,
+        )?;
 
         let ack = acks
             .iter()
@@ -265,7 +403,13 @@ fn verify_allowed_execution_attempts(
                     "missing tool-server acknowledgement for execution lease".to_string(),
                 )
             })?;
-        validate_tool_server_ack(lease, sandbox, ack)?;
+        validate_tool_server_ack(
+            lease,
+            sandbox,
+            ack,
+            &authorizing_trust_roots,
+            &trust.trusted_root_signer_keys,
+        )?;
         validate_revocation_freshness_at_ack(revocation, ack)?;
 
         let receipts: Vec<RuntimeTerminalReceipt> = leased_receipt_nodes(graph, lease_node)
@@ -279,10 +423,46 @@ fn verify_allowed_execution_attempts(
                     "missing terminal receipt for execution lease".to_string(),
                 )
             })?;
-        validate_allow_receipt(lease, receipt)?;
+        validate_allow_receipt(
+            lease,
+            receipt,
+            &authorizing_trust_roots,
+            &trust.trusted_root_signer_keys,
+        )?;
     }
 
     Ok(())
+}
+
+fn ensure_terminal_receipts_cover_execution_leases(
+    bundle: &RuntimeSecurityBundle,
+    graph: &RuntimeEvidenceGraph,
+) -> Result<(), TransactionPassportError> {
+    for lease_node in nodes_by_role(graph, RuntimeEvidenceRole::ExecutionLease) {
+        let lease: RuntimeExecutionLease =
+            parse_artifact(bundle, lease_node, RUNTIME_EXECUTION_LEASE_SCHEMA_ID)?;
+        let receipts: Vec<RuntimeTerminalReceipt> = leased_receipt_nodes(graph, lease_node)
+            .map(|node| parse_artifact(bundle, node, RUNTIME_TERMINAL_RECEIPT_SCHEMA_ID))
+            .collect::<Result<_, _>>()?;
+        if !receipts
+            .iter()
+            .any(|receipt| receipt.execution_lease_ref.as_deref() == Some(lease.lease_id.as_str()))
+        {
+            return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                "missing terminal receipt for execution lease".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn parse_runtime_trust_roots(
+    bundle: &RuntimeSecurityBundle,
+    graph: &RuntimeEvidenceGraph,
+) -> Result<Vec<RuntimeTrustRoot>, TransactionPassportError> {
+    nodes_by_role(graph, RuntimeEvidenceRole::TrustRoot)
+        .map(|node| parse_artifact(bundle, node, "chio.trust.root.v1"))
+        .collect()
 }
 
 fn parse_artifacts_by_role<T: for<'de> Deserialize<'de>>(

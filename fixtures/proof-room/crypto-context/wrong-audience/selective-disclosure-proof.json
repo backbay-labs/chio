@@ -1,0 +1,36 @@
+{
+  "schema": "chio.attest.selective-disclosure-proof.v1",
+  "projection_version": "chio.bbs-projection.receipt.v1",
+  "subject_sha256_hex": "567ce6b216b033edb85f4ff844a636b55f2b604897f6a557537efb1e5303e08a",
+  "ciphersuite": "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_",
+  "issuer_fingerprint": "6a121a2677591664f157535b7e64e2b0e7e6d1a98e23005908254fdedd029c29",
+  "issuer_public_key_hex": "812f1585d56083bc4ea8568a9521234855692905c7dc96a42284d6241e1601869bbd0f16b6d289d99a1f3c0cab4e942e1046dbadd45ab37f3b47534f3edf377e98e7c48ae56b051a3decafb49df1f58c4c63dbf7602bc6d33ed6ceb0ea770290",
+  "message_count": 3,
+  "disclosed_indices": [
+    0,
+    1,
+    2
+  ],
+  "disclosed": [
+    {
+      "index": 0,
+      "field": "capability_id",
+      "encoding": "S",
+      "bytes_hex": "6361702d63727970746f2d636f6e746578742d76616c6964"
+    },
+    {
+      "index": 1,
+      "field": "id",
+      "encoding": "S",
+      "bytes_hex": "726563656970742d63727970746f2d636f6e746578742d76616c6964"
+    },
+    {
+      "index": 2,
+      "field": "tool_name",
+      "encoding": "S",
+      "bytes_hex": "726561645f726566756e645f63617365"
+    }
+  ],
+  "proof_nonce_hex": "6e6f6e63652d63727970746f2d636f6e74657874",
+  "proof_bytes_hex": "a4710604868ab3cd1b68595fdbcdf947855c04e5ec0d690f5ed69a1ed4db9f4b5a389b851451636d53c6395307c3555fab967eb494978fc8c5bc4cde3279d0284acc66db87875e789cefca6ae31a85ee2e3a4308a6d9dc0db9ecde62775852bca55d7531a0e6e87f342ff91fd5bc6e4dea3380190533443cd820ec7cc065257f86c897ae11a8d5df4524f447c719383c3be994835e56456c43af00db1d6804388129057299d87fae68bad414c6bddc5e5118bb7197f23e1f12e45e9884f36eef6d2e354c4570dfb0b003952b42ececc2275d27802bd4f8d4e9519f0195aa614eb46dfc9eec5f395bd4fa639dd731776b456f35cc6a0751e36bab01bac5d2a48cd2325e8272061414328d1c3acf8a9713"
+}

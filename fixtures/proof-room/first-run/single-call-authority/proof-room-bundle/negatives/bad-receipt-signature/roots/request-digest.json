@@ -1,0 +1,6 @@
+{
+  "schema": "chio.request.digest.v1",
+  "id": "request-digest-single-call-authority",
+  "method": "demo.echo",
+  "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

@@ -2972,6 +2972,7 @@ dependencies = [
 name = "chio-commerce-order"
 version = "0.1.0"
 dependencies = [
+ "chio-core-types",
  "chio-test-support",
  "chrono",
  "hex",
@@ -3025,6 +3026,7 @@ dependencies = [
  "chio-selective-disclosure",
  "chio-siem",
  "chio-store-sqlite",
+ "chio-swarm-authority",
  "chio-tee-frame",
  "chio-wasm-guards",
  "chio-weights",
@@ -3035,6 +3037,7 @@ dependencies = [
  "jsonschema",
  "jsonwebtoken",
  "p256 0.13.2",
+ "proptest",
  "rand 0.8.5",
  "reqwest 0.13.2",
  "rusqlite",
@@ -4108,6 +4111,7 @@ dependencies = [
  "chio-enterprise-export",
  "chio-risk-comptroller",
  "chio-runtime-proof-parity",
+ "chio-selective-disclosure",
  "chio-swarm-authority",
  "chio-transaction-passport",
  "chio-trust-market-context",
@@ -4245,6 +4249,7 @@ dependencies = [
  "chio-core-types",
  "chio-kernel",
  "chio-runtime-core",
+ "chio-swarm-authority",
  "chio-weights",
  "serde",
  "serde_json",
@@ -4261,6 +4266,7 @@ dependencies = [
  "chio-federation",
  "chio-kernel",
  "chio-runtime-proof-parity",
+ "chio-swarm-authority",
  "chio-weights",
  "chrono",
  "rusqlite",
@@ -4412,6 +4418,7 @@ version = "0.1.0"
 dependencies = [
  "chio-core-types",
  "chio-test-support",
+ "proptest",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

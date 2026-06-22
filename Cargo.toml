@@ -252,9 +252,11 @@ lto = "thin"
 # behaviour is unchanged.
 [profile.dev]
 debug = 0
+split-debuginfo = "off"
 
 [profile.test]
 debug = 0
+split-debuginfo = "off"
 
 [workspace.dependencies]
 async-trait = "0.1"

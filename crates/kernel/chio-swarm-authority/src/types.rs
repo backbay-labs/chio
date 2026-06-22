@@ -9,6 +9,7 @@ pub const CHIO_SWARM_JOIN_RECEIPT_SCHEMA: &str = "chio.swarm.join-receipt.v1";
 pub const CHIO_SWARM_ROUTE_PLAN_RECEIPT_SCHEMA: &str = "chio.swarm.route-plan-receipt.v1";
 pub const CHIO_SWARM_BUDGET_POOL_SCHEMA: &str = "chio.swarm.budget-pool.v1";
 pub const CHIO_SWARM_REVOCATION_EPOCH_SCHEMA: &str = "chio.swarm.revocation-epoch.v1";
+pub const CHIO_SWARM_TERMINAL_GRAPH_RECEIPT_SCHEMA: &str = "chio.swarm.terminal-graph-receipt.v1";
 pub const CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA: &str =
     "chio.swarm.authority-verifier-report.v1";
 
@@ -20,6 +21,8 @@ pub const CLAIM_SWARM_ROUTE_PLAN_BOUND: &str = "claim.swarm.route_plan_bound";
 pub const CLAIM_SWARM_JOIN_RECEIPT_BOUND: &str = "claim.swarm.join_receipt_bound";
 pub const CLAIM_SWARM_BUDGET_POOL_BOUND: &str = "claim.swarm.budget_pool_bound";
 pub const CLAIM_SWARM_REVOCATION_EPOCH_BOUND: &str = "claim.swarm.revocation_epoch_bound";
+pub const CLAIM_SWARM_TERMINAL_GRAPH_RECEIPT_BOUND: &str =
+    "claim.swarm.terminal_graph_receipt_bound";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -31,6 +34,8 @@ pub struct SwarmAuthorityBundle {
     pub route_plan_receipts: Vec<SwarmRoutePlanReceipt>,
     pub budget_pool: SwarmBudgetPool,
     pub revocation_epoch: SwarmRevocationEpoch,
+    #[serde(default)]
+    pub terminal_receipts: Vec<SwarmTerminalGraphReceipt>,
     pub now_unix_ms: u64,
 }
 
@@ -102,6 +107,29 @@ pub struct SwarmContinuationToken {
     pub route_plan_receipt_id: String,
     pub budget_allocation_id: String,
     pub revocation_epoch_ref: String,
+    pub revocation_epoch_root_hash: String,
+    pub session_anchor_ref: String,
+    pub nonce: String,
+    pub mode: SwarmContinuationMode,
+    pub issued_at_unix_ms: u64,
+    pub expires_at_unix_ms: u64,
+    pub issuer: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SwarmContinuationTokenMintRequest {
+    pub token_id: String,
+    pub graph_id: String,
+    pub child_task_id: String,
+    pub parent_task_id: Option<String>,
+    pub join_receipt_id: Option<String>,
+    pub parent_receipt_ids: Vec<String>,
+    pub graph_sha256: String,
+    pub route_plan_receipt_id: String,
+    pub budget_allocation_id: String,
+    pub revocation_epoch_ref: String,
+    pub revocation_epoch_root_hash: String,
     pub session_anchor_ref: String,
     pub nonce: String,
     pub mode: SwarmContinuationMode,
@@ -148,6 +176,27 @@ pub struct SwarmJoinReceipt {
     pub schema: String,
     pub join_id: String,
     pub graph_id: String,
+    pub chain_id: String,
+    pub parent_set_hash: String,
+    pub dag_ordinal: u64,
+    pub hlc_unix_ms: u64,
+    pub parent_task_receipts: Vec<SwarmJoinParentReceipt>,
+    pub expected_parent_receipt_ids: Vec<String>,
+    pub actual_parent_receipt_ids: Vec<String>,
+    pub join_predicate: String,
+    pub result_digest: String,
+    pub next_task_id: String,
+    pub issuer: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SwarmJoinReceiptMintRequest {
+    pub join_id: String,
+    pub graph_id: String,
+    pub chain_id: String,
+    pub dag_ordinal: u64,
+    pub hlc_unix_ms: u64,
     pub parent_task_receipts: Vec<SwarmJoinParentReceipt>,
     pub expected_parent_receipt_ids: Vec<String>,
     pub actual_parent_receipt_ids: Vec<String>,
@@ -175,10 +224,13 @@ pub struct SwarmRoutePlanReceipt {
     pub registry_snapshot_hash: String,
     pub bridge_id: String,
     pub protocol_target: String,
+    pub egress_contract_id: String,
     pub egress_constraints: Vec<String>,
     pub attenuation_decision: String,
     pub policy_digest: String,
     pub expires_at_unix_ms: u64,
+    pub issuer: String,
+    pub signature: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -192,12 +244,52 @@ pub struct SwarmBudgetPool {
     pub allocations: Vec<SwarmBudgetAllocation>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SwarmBudgetFanoutReservationRequest {
+    pub pool_id: String,
+    pub graph_id: String,
+    pub currency: String,
+    pub total_units: u64,
+    pub allocations: Vec<SwarmBudgetFanoutAllocationRequest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SwarmBudgetFanoutAllocationRequest {
+    pub allocation_id: String,
+    pub task_id: String,
+    pub dimension_id: String,
+    pub reserved_units: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SwarmBudgetFanInReleaseRequest {
+    pub pool: SwarmBudgetPool,
+    pub completed_task_ids: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SwarmBudgetAllocation {
     pub allocation_id: String,
     pub task_id: String,
+    pub dimension_id: String,
+    pub state: SwarmBudgetAllocationState,
     pub max_units: u64,
+    pub reserved_units: u64,
+    pub active_units: u64,
+    pub consumed_units: u64,
+    pub released_units: u64,
+    pub reversed_units: u64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SwarmBudgetAllocationState {
+    Reserved,
+    Active,
+    Consumed,
+    Released,
+    Reversed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -210,6 +302,38 @@ pub struct SwarmRevocationEpoch {
     pub valid_until_unix_ms: u64,
     pub revoked_subjects: Vec<String>,
     pub revoked_task_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SwarmTerminalGraphReceipt {
+    pub schema: String,
+    pub receipt_id: String,
+    pub graph_id: String,
+    pub chain_id: String,
+    pub terminal_task_ids: Vec<String>,
+    pub completed_task_ids: Vec<String>,
+    pub join_receipt_ids: Vec<String>,
+    pub route_plan_receipt_ids: Vec<String>,
+    pub budget_pool_id: String,
+    pub budget_rollups: Vec<SwarmTerminalBudgetRollup>,
+    pub revocation_epoch_ref: String,
+    pub result_digest: String,
+    pub completed_at_unix_ms: u64,
+    pub issuer: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SwarmTerminalBudgetRollup {
+    pub dimension_id: String,
+    pub reserved_units: u64,
+    pub active_units: u64,
+    pub consumed_units: u64,
+    pub released_units: u64,
+    pub reversed_units: u64,
+    pub total_units: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

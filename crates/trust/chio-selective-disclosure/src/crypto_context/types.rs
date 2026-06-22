@@ -2,11 +2,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::SelectiveDisclosureError;
 
+pub use chio_disclosure_lineage::{
+    DisclosureVerifierPrivacyProfile, TransparencyState,
+    DISCLOSURE_VERIFIER_PRIVACY_PROFILE_SCHEMA_V1,
+};
+
 pub const CRYPTO_VERIFICATION_CONTEXT_SCHEMA_V1: &str = "chio.crypto.verification-context.v1";
 pub const TRUST_KEY_STATE_SCHEMA_V1: &str = "chio.trust.key-state.v1";
 pub const TRUST_REVOCATION_SNAPSHOT_SCHEMA_V1: &str = "chio.trust.revocation-snapshot.v1";
-pub const DISCLOSURE_VERIFIER_PRIVACY_PROFILE_SCHEMA_V1: &str =
-    "chio.disclosure.verifier-privacy-profile.v1";
 pub use chio_disclosure_lineage::{
     DisclosureContextCheck, DisclosureContextVerdict, DisclosureCryptoContextReport,
     DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1,
@@ -69,26 +72,6 @@ pub struct DisclosureRevocationSnapshot {
     pub expires_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
-pub struct DisclosureVerifierPrivacyProfile {
-    pub schema: String,
-    pub profile_id: String,
-    pub allowed_proof_mechanisms: Vec<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub required_holder_binding: Option<String>,
-    pub allowed_issuer_keys: Vec<String>,
-    pub required_key_epoch_min: u64,
-    pub forbidden_key_epochs: Vec<u64>,
-    pub required_status_freshness_seconds: u64,
-    pub required_audience: String,
-    pub nonce_policy: String,
-    pub allowed_algorithms: Vec<String>,
-    pub forbidden_algorithms: Vec<String>,
-    pub required_transparency_state: TransparencyState,
-    pub max_presentation_age_seconds: u64,
-}
-
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum KeyStateStatus {
@@ -118,12 +101,4 @@ pub enum HolderBindingStatus {
     Bound,
     Missing,
     Mismatch,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-#[serde(rename_all = "snake_case")]
-pub enum TransparencyState {
-    None,
-    Preview,
-    Anchored,
 }

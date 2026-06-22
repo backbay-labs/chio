@@ -97,6 +97,26 @@ fn sanction_backed_market_slash_report_value() -> serde_json::Value {
     report
 }
 
+fn set_claim_payout_capital_instruction(report: &mut serde_json::Value) {
+    let entry = report["reserve_ledger"][0].clone();
+    report["capital_instructions"] = serde_json::json!([
+        {
+            "instruction_id": "capital-instruction-claim-payout-enterprise-valid",
+            "reserve_entry_id": entry["entry_id"],
+            "order_id": report["order_id"],
+            "claim_id": entry["claim_id"],
+            "reserve_ref": entry["reserve_ref"],
+            "currency": entry["currency"],
+            "units": entry["units"],
+            "settlement_ref": entry["settlement_ref"],
+            "intended_action": "transfer_funds",
+            "source_kind": "facility_commitment",
+            "intended_state": "pending_execution",
+            "reconciled_state": "not_observed"
+        }
+    ]);
+}
+
 #[test]
 fn verified_enterprise_risk_report_matches_public_schema() {
     let passport = enterprise_passport("valid-autonomous-commerce");
@@ -106,6 +126,59 @@ fn verified_enterprise_risk_report_matches_public_schema() {
 
     validate_risk_report(&passport, &report).test_expect("risk report verifies");
     assert_risk_report_schema_accepts(&report_value);
+}
+
+#[test]
+fn report_rejects_bound_coverage_without_lifecycle_replay() {
+    let passport = enterprise_passport("valid-autonomous-commerce");
+    let mut report = enterprise_risk_report_value("valid-autonomous-commerce");
+    report["facility"]["state"] = serde_json::json!("reserve_held");
+    report["facility_lifecycle"] = serde_json::json!([]);
+
+    let report: RiskComptrollerReport =
+        serde_json::from_value(report).test_expect("risk report reparses");
+    let error = validate_risk_report(&passport, &report)
+        .test_expect_err("bound coverage must replay lifecycle to coverage_bound");
+
+    assert!(error
+        .to_string()
+        .contains("risk facility lifecycle replay missing"));
+}
+
+#[test]
+fn report_rejects_facility_lifecycle_without_policy_binding() {
+    let passport = enterprise_passport("valid-autonomous-commerce");
+    let mut report = enterprise_risk_report_value("valid-autonomous-commerce");
+    report["facility"]["policy_id"] = serde_json::json!("");
+    for transition in report["facility_lifecycle"]
+        .as_array_mut()
+        .test_expect("facility lifecycle is array")
+    {
+        transition["policy_id"] = serde_json::json!("");
+    }
+
+    let report: RiskComptrollerReport =
+        serde_json::from_value(report).test_expect("risk report reparses");
+    let error = validate_risk_report(&passport, &report)
+        .test_expect_err("facility lifecycle must bind a policy id");
+
+    assert!(error.to_string().contains("facility_policy_id"));
+}
+
+#[test]
+fn report_accepts_facility_lifecycle_independent_of_input_order() {
+    let passport = enterprise_passport("valid-autonomous-commerce");
+    let mut report = enterprise_risk_report_value("valid-autonomous-commerce");
+    report["facility_lifecycle"]
+        .as_array_mut()
+        .test_expect("facility lifecycle is array")
+        .rotate_left(2);
+
+    let report: RiskComptrollerReport =
+        serde_json::from_value(report).test_expect("risk report reparses");
+
+    validate_risk_report(&passport, &report)
+        .test_expect("facility lifecycle replay must be order independent");
 }
 
 #[test]
@@ -149,11 +222,55 @@ fn open_appeal_only_blocks_named_reserve_actions() {
     let mut report = enterprise_risk_report_value("open-appeal-claim-payout");
     report["coverage"]["covered_claim_ids"] = serde_json::json!(["claim-enterprise-valid"]);
     report["appeals"][0]["blocks"] = serde_json::json!(["facility_closure"]);
+    set_claim_payout_capital_instruction(&mut report);
     let report: RiskComptrollerReport =
         serde_json::from_value(report).test_expect("risk report reparses");
 
     validate_risk_report(&passport, &report)
         .test_expect("facility-closure appeal must not block claim payout");
+}
+
+#[test]
+fn report_rejects_claim_payout_without_capital_instruction() {
+    let passport = enterprise_passport("open-appeal-claim-payout");
+    let mut report = enterprise_risk_report_value("open-appeal-claim-payout");
+    report["coverage"]["covered_claim_ids"] = serde_json::json!(["claim-enterprise-valid"]);
+    report["appeals"][0]["blocks"] = serde_json::json!(["facility_closure"]);
+    set_claim_payout_capital_instruction(&mut report);
+    report
+        .as_object_mut()
+        .test_expect("risk report is object")
+        .remove("capital_instructions");
+
+    let report: RiskComptrollerReport =
+        serde_json::from_value(report).test_expect("risk report reparses");
+    let error = validate_risk_report(&passport, &report)
+        .test_expect_err("claim payout must bind a capital instruction");
+
+    assert!(error
+        .to_string()
+        .contains("risk capital instruction missing"));
+}
+
+#[test]
+fn report_rejects_preobserved_claim_payout_capital_instruction() {
+    let passport = enterprise_passport("open-appeal-claim-payout");
+    let mut report = enterprise_risk_report_value("open-appeal-claim-payout");
+    report["coverage"]["covered_claim_ids"] = serde_json::json!(["claim-enterprise-valid"]);
+    report["appeals"][0]["blocks"] = serde_json::json!(["facility_closure"]);
+    set_claim_payout_capital_instruction(&mut report);
+    report["capital_instructions"][0]["reconciled_state"] = serde_json::json!("matched");
+    report["capital_instructions"][0]["observed_execution_ref"] =
+        serde_json::json!("claim-payout-wire-1");
+
+    let report: RiskComptrollerReport =
+        serde_json::from_value(report).test_expect("risk report reparses");
+    let error = validate_risk_report(&passport, &report)
+        .test_expect_err("claim payout instruction must be pre-observed");
+
+    assert!(error
+        .to_string()
+        .contains("risk payout preobserved instruction"));
 }
 
 #[test]
@@ -163,6 +280,7 @@ fn portfolio_rejects_cross_report_reserve_double_consumption() {
     report_a["facility"]["capital_units"] = serde_json::json!(20_000);
     report_a["coverage"]["covered_claim_ids"] = serde_json::json!(["claim-enterprise-valid"]);
     report_a["appeals"][0]["status"] = serde_json::json!("resolved");
+    set_claim_payout_capital_instruction(&mut report_a);
 
     let mut report_b = report_a.clone();
     report_b["id"] = serde_json::json!("risk-comptroller-enterprise-duplicate");
@@ -173,6 +291,7 @@ fn portfolio_rejects_cross_report_reserve_double_consumption() {
         serde_json::json!("claim-payout-reserve-enterprise-duplicate");
     report_b["reserve_ledger"][0]["receipt_ref"] =
         serde_json::json!("risk-receipt-open-appeal-payout-duplicate");
+    set_claim_payout_capital_instruction(&mut report_b);
 
     let report_a: RiskComptrollerReport =
         serde_json::from_value(report_a).test_expect("first risk report reparses");
@@ -199,6 +318,7 @@ fn portfolio_rejects_cross_report_duplicate_reserve_receipt_id() {
     report_a["reconciliation"]["settlement_units"] = serde_json::json!(500);
     report_a["reserve_ledger"][0]["units"] = serde_json::json!(500);
     report_a["appeals"][0]["status"] = serde_json::json!("resolved");
+    set_claim_payout_capital_instruction(&mut report_a);
 
     let mut report_b = report_a.clone();
     report_b["id"] = serde_json::json!("risk-comptroller-enterprise-duplicate-receipt");
@@ -212,6 +332,7 @@ fn portfolio_rejects_cross_report_duplicate_reserve_receipt_id() {
     report_b["reserve_ledger"][0]["claim_id"] =
         serde_json::json!("claim-enterprise-duplicate-receipt");
     report_b["appeals"][0]["claim_id"] = serde_json::json!("claim-enterprise-duplicate-receipt");
+    set_claim_payout_capital_instruction(&mut report_b);
 
     let report_a: RiskComptrollerReport =
         serde_json::from_value(report_a).test_expect("first risk report reparses");
@@ -238,6 +359,7 @@ fn portfolio_rejects_shared_reserve_overconsumption_across_claims() {
     report_a["reconciliation"]["settlement_units"] = serde_json::json!(700);
     report_a["reserve_ledger"][0]["units"] = serde_json::json!(700);
     report_a["appeals"][0]["status"] = serde_json::json!("resolved");
+    set_claim_payout_capital_instruction(&mut report_a);
 
     let mut report_b = report_a.clone();
     report_b["id"] = serde_json::json!("risk-comptroller-enterprise-secondary");
@@ -251,6 +373,7 @@ fn portfolio_rejects_shared_reserve_overconsumption_across_claims() {
         serde_json::json!("risk-receipt-open-appeal-payout-secondary");
     report_b["reserve_ledger"][0]["claim_id"] = serde_json::json!("claim-enterprise-secondary");
     report_b["appeals"][0]["claim_id"] = serde_json::json!("claim-enterprise-secondary");
+    set_claim_payout_capital_instruction(&mut report_b);
 
     let report_a: RiskComptrollerReport =
         serde_json::from_value(report_a).test_expect("first risk report reparses");
@@ -277,6 +400,7 @@ fn portfolio_counts_shared_facility_reserve_once_across_claims() {
     report_a["reconciliation"]["settlement_units"] = serde_json::json!(500);
     report_a["reserve_ledger"][0]["units"] = serde_json::json!(500);
     report_a["appeals"][0]["status"] = serde_json::json!("resolved");
+    set_claim_payout_capital_instruction(&mut report_a);
 
     let mut report_b = report_a.clone();
     report_b["id"] = serde_json::json!("risk-comptroller-enterprise-second-covered-claim");
@@ -293,6 +417,7 @@ fn portfolio_counts_shared_facility_reserve_once_across_claims() {
     report_b["reserve_ledger"][0]["claim_id"] =
         serde_json::json!("claim-enterprise-second-covered-claim");
     report_b["appeals"][0]["claim_id"] = serde_json::json!("claim-enterprise-second-covered-claim");
+    set_claim_payout_capital_instruction(&mut report_b);
 
     let report_a: RiskComptrollerReport =
         serde_json::from_value(report_a).test_expect("first risk report reparses");
@@ -316,6 +441,7 @@ fn portfolio_rejects_same_reserve_ref_across_facilities() {
     report_a["reconciliation"]["settlement_units"] = serde_json::json!(500);
     report_a["reserve_ledger"][0]["units"] = serde_json::json!(500);
     report_a["appeals"][0]["status"] = serde_json::json!("resolved");
+    set_claim_payout_capital_instruction(&mut report_a);
 
     let mut report_b = report_a.clone();
     report_b["id"] = serde_json::json!("risk-comptroller-enterprise-other-facility");
@@ -332,6 +458,7 @@ fn portfolio_rejects_same_reserve_ref_across_facilities() {
     report_b["reserve_ledger"][0]["claim_id"] =
         serde_json::json!("claim-enterprise-other-facility");
     report_b["appeals"][0]["claim_id"] = serde_json::json!("claim-enterprise-other-facility");
+    set_claim_payout_capital_instruction(&mut report_b);
 
     let report_a: RiskComptrollerReport =
         serde_json::from_value(report_a).test_expect("first risk report reparses");
@@ -448,6 +575,10 @@ fn report_rejects_reserve_slash_reported_as_claim_payout() {
         .test_expect("reserve ledger entry is object");
     reserve_entry.remove("payer_subject");
     reserve_entry.remove("payee_subject");
+    report
+        .as_object_mut()
+        .test_expect("risk report is object")
+        .remove("capital_instructions");
 
     let report: RiskComptrollerReport =
         serde_json::from_value(report).test_expect("risk report reparses");
@@ -463,6 +594,7 @@ fn report_rejects_appeal_outside_coverage() {
     let mut report = enterprise_risk_report_value("open-appeal-claim-payout");
     report["coverage"]["covered_claim_ids"] = serde_json::json!(["claim-enterprise-valid"]);
     report["appeals"][0]["claim_id"] = serde_json::json!("claim-enterprise-uncovered");
+    set_claim_payout_capital_instruction(&mut report);
 
     let report: RiskComptrollerReport =
         serde_json::from_value(report).test_expect("risk report reparses");
@@ -478,6 +610,7 @@ fn report_rejects_duplicate_appeal_id() {
     let mut report = enterprise_risk_report_value("open-appeal-claim-payout");
     report["coverage"]["covered_claim_ids"] = serde_json::json!(["claim-enterprise-valid"]);
     report["appeals"][0]["status"] = serde_json::json!("resolved");
+    set_claim_payout_capital_instruction(&mut report);
     let duplicate_appeal = report["appeals"][0].clone();
     report["appeals"]
         .as_array_mut()
@@ -514,12 +647,17 @@ fn report_rejects_closed_facility_with_open_appeal() {
             "settlement_ref": "settlement-enterprise-valid"
         }
     ]);
+    report
+        .as_object_mut()
+        .test_expect("risk report is object")
+        .remove("capital_instructions");
     report["facility_lifecycle"]
         .as_array_mut()
         .test_expect("facility lifecycle is array")
         .extend([
             serde_json::json!({
                 "transition_id": "facility-transition-reserve-controlled",
+                "policy_id": "risk-policy-enterprise-valid",
                 "from_state": "settlement_matched",
                 "to_state": "reserve_controlled",
                 "authority_receipt_ref": "approval-case",
@@ -527,6 +665,7 @@ fn report_rejects_closed_facility_with_open_appeal() {
             }),
             serde_json::json!({
                 "transition_id": "facility-transition-closed",
+                "policy_id": "risk-policy-enterprise-valid",
                 "from_state": "reserve_controlled",
                 "to_state": "closed",
                 "authority_receipt_ref": "approval-case",
@@ -566,12 +705,17 @@ fn report_allows_closed_facility_when_open_appeal_blocks_different_action() {
             "settlement_ref": "settlement-enterprise-valid"
         }
     ]);
+    report
+        .as_object_mut()
+        .test_expect("risk report is object")
+        .remove("capital_instructions");
     report["facility_lifecycle"]
         .as_array_mut()
         .test_expect("facility lifecycle is array")
         .extend([
             serde_json::json!({
                 "transition_id": "facility-transition-reserve-controlled",
+                "policy_id": "risk-policy-enterprise-valid",
                 "from_state": "settlement_matched",
                 "to_state": "reserve_controlled",
                 "authority_receipt_ref": "approval-case",
@@ -579,6 +723,7 @@ fn report_allows_closed_facility_when_open_appeal_blocks_different_action() {
             }),
             serde_json::json!({
                 "transition_id": "facility-transition-closed",
+                "policy_id": "risk-policy-enterprise-valid",
                 "from_state": "reserve_controlled",
                 "to_state": "closed",
                 "authority_receipt_ref": "approval-case",

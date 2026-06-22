@@ -37,6 +37,7 @@ pub(super) struct TrustMarketEvidenceNode {
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub(super) enum TrustMarketEvidenceRole {
+    ClaimSet,
     Receipt,
     ProviderDiscoverySnapshot,
     ProviderSelectionReport,
@@ -109,6 +110,7 @@ pub(super) fn bundle_contains_verified_receipt_node_id(
     bundle: &TrustMarketBundle,
     graph: &TrustMarketEvidenceGraph,
     node_id: &str,
+    trusted_authority_keys: &[PublicKey],
 ) -> bool {
     let Some(node) = graph.nodes.iter().find(|node| {
         node.id == node_id
@@ -143,10 +145,7 @@ pub(super) fn bundle_contains_verified_receipt_node_id(
     {
         return false;
     }
-    value
-        .get("signature")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|signature| !signature.trim().is_empty())
+    validate_artifact_signature(node, &value, trusted_authority_keys).is_ok()
 }
 
 pub(super) fn bundle_contains_risk_evidence_kind(
@@ -172,12 +171,6 @@ pub(super) fn bundle_contains_risk_evidence_kind(
     };
     if value.get("schema").and_then(serde_json::Value::as_str) != Some(node.schema.as_str()) {
         return false;
-    }
-    if node.schema == CHIO_RECEIPT_SCHEMA {
-        return value
-            .get("signature")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|signature| !signature.trim().is_empty());
     }
     validate_artifact_signature(node, &value, trusted_authority_keys).is_ok()
 }

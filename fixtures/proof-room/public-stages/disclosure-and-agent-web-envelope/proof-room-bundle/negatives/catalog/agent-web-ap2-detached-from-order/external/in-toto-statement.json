@@ -12,7 +12,7 @@
   "receipt_refs": [
     "receipt-agent-web-in-toto-statement-allow"
   ],
-  "signature_count": 1,
+  "signature_count": 2,
   "signer_identity_digest": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
   "statement_type": "https://in-toto.io/Statement/v1",
   "subject_digest": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",

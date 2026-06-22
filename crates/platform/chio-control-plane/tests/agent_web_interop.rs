@@ -30,6 +30,9 @@ const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: [&str; 5] = [
 ];
 const AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS: [&str; 1] =
     ["d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"];
+const AGENT_WEB_FIXTURE_TRUSTED_PASSPORT_KEYS: [&str; 1] =
+    ["ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"];
+const TRANSACTION_PASSPORT_SIGNATURE_SEED: [u8; 32] = [7; 32];
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -69,6 +72,7 @@ fn agent_web_fixture_bundle() -> AgentWebInteropBundle {
     AgentWebInteropBundle {
         passport,
         evidence_graph_bytes,
+        root_evidence_graph_bytes: None,
         verifier_policy_bytes,
         artifacts,
     }
@@ -79,14 +83,30 @@ fn agent_web_fixture_trust() -> AgentWebVerifierTrust {
         .map(|key| PublicKey::from_hex(key).test_expect("Agent Web fixture kernel key parses"));
     let trusted_sidecar_keys = AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS
         .map(|key| PublicKey::from_hex(key).test_expect("Agent Web fixture sidecar key parses"));
+    let trusted_passport_keys = AGENT_WEB_FIXTURE_TRUSTED_PASSPORT_KEYS
+        .map(|key| PublicKey::from_hex(key).test_expect("Agent Web fixture passport key parses"));
 
     AgentWebVerifierTrust::new()
+        .with_trusted_passport_signer_keys(trusted_passport_keys)
         .with_standard_webhooks_secret_for(
             STANDARD_WEBHOOKS_WEBHOOK_ID,
             STANDARD_WEBHOOKS_VERIFIER_SECRET.to_vec(),
         )
         .with_trusted_receipt_kernel_keys(trusted_kernel_keys)
         .with_trusted_envelope_sidecar_keys(trusted_sidecar_keys)
+}
+
+fn transaction_passport_keypair() -> Keypair {
+    Keypair::from_seed(&TRANSACTION_PASSPORT_SIGNATURE_SEED)
+}
+
+fn sign_transaction_passport(passport: &mut TransactionPassport) {
+    let keypair = transaction_passport_keypair();
+    passport.issuer = format!("did:chio:{}", keypair.public_key().to_hex());
+    passport.signature = String::new();
+    passport.signature =
+        chio_control_plane::transaction_passport::sign_transaction_passport(passport, &keypair)
+            .test_expect("transaction passport signs");
 }
 
 fn verify_agent_web_fixture(
@@ -136,6 +156,7 @@ fn replace_agent_web_artifact(
     let updated_graph = serde_json::to_vec(&graph).test_expect("updated evidence graph serializes");
     bundle.passport.evidence_graph_sha256 = chio_core::sha256_hex(&updated_graph);
     bundle.evidence_graph_bytes = updated_graph;
+    sign_transaction_passport(&mut bundle.passport);
     updated_digest
 }
 
@@ -173,6 +194,7 @@ fn resign_agent_web_envelope(bundle: &mut AgentWebInteropBundle, envelope_path: 
         serde_json::from_slice(envelope_bytes).test_expect("agent web envelope parses");
     let keypair = Keypair::from_seed(&[17u8; 32]);
     let public_key = keypair.public_key().to_hex();
+    envelope["envelope_id"] = Value::String(agent_web_envelope_id(&envelope));
     let payload = agent_web_envelope_signature_payload(&envelope);
     let canonical =
         chio_core::canonical_json_bytes(&payload).test_expect("agent web envelope canonicalizes");
@@ -187,33 +209,108 @@ fn resign_agent_web_envelope(bundle: &mut AgentWebInteropBundle, envelope_path: 
     );
 }
 
+fn rebind_agent_web_manifest_digest(bundle: &mut AgentWebInteropBundle, manifest_path: &str) {
+    let manifest_bytes = bundle
+        .artifacts
+        .get(manifest_path)
+        .test_expect("agent web manifest exists");
+    let manifest: Value =
+        serde_json::from_slice(manifest_bytes).test_expect("agent web manifest parses");
+    let projection_id = manifest
+        .get("projection_id")
+        .and_then(Value::as_str)
+        .test_expect("agent web manifest has projection id");
+    let manifest_digest = chio_core::sha256_hex(manifest_bytes);
+    let envelope_paths = bundle
+        .artifacts
+        .iter()
+        .filter_map(|(path, bytes)| {
+            if !path.ends_with("-envelope.json") {
+                return None;
+            }
+            let envelope: Value = serde_json::from_slice(bytes).ok()?;
+            if envelope
+                .get("projection_manifest_ref")
+                .and_then(Value::as_str)
+                == Some(projection_id)
+            {
+                Some(path.clone())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    for envelope_path in envelope_paths {
+        mutate_agent_web_json_artifact(bundle, &envelope_path, |envelope| {
+            envelope["projection_manifest_sha256"] = Value::String(manifest_digest.clone());
+        });
+        resign_agent_web_envelope(bundle, &envelope_path);
+    }
+}
+
 fn agent_web_envelope_signature_payload(envelope: &Value) -> Value {
+    agent_web_envelope_payload(
+        envelope,
+        &[
+            "schema",
+            "envelope_id",
+            "transaction_passport_ref",
+            "source_protocol",
+            "source_protocol_version",
+            "external_subject",
+            "external_subject_path",
+            "external_subject_digest",
+            "external_subject_signature_ref",
+            "projection_manifest_ref",
+            "projection_manifest_sha256",
+            "chio_claim_refs",
+            "receipt_refs",
+            "disclosure_capsule_refs",
+            "settlement_refs",
+            "risk_refs",
+            "limitations",
+        ],
+    )
+}
+
+fn agent_web_envelope_id(envelope: &Value) -> String {
+    let payload = agent_web_envelope_payload(
+        envelope,
+        &[
+            "schema",
+            "transaction_passport_ref",
+            "source_protocol",
+            "source_protocol_version",
+            "external_subject",
+            "external_subject_path",
+            "external_subject_digest",
+            "external_subject_signature_ref",
+            "projection_manifest_ref",
+            "projection_manifest_sha256",
+            "chio_claim_refs",
+            "receipt_refs",
+            "disclosure_capsule_refs",
+            "settlement_refs",
+            "risk_refs",
+            "limitations",
+        ],
+    );
+    let canonical =
+        chio_core::canonical_json_bytes(&payload).test_expect("agent web envelope canonicalizes");
+    chio_core::sha256_hex(&canonical)
+}
+
+fn agent_web_envelope_payload(envelope: &Value, fields: &[&str]) -> Value {
     let object = envelope
         .as_object()
         .test_expect("agent web envelope is object");
     let mut payload = serde_json::Map::new();
-    for field in [
-        "schema",
-        "envelope_id",
-        "transaction_passport_ref",
-        "source_protocol",
-        "source_protocol_version",
-        "external_subject",
-        "external_subject_path",
-        "external_subject_digest",
-        "external_subject_signature_ref",
-        "projection_manifest_ref",
-        "chio_claim_refs",
-        "receipt_refs",
-        "disclosure_capsule_refs",
-        "settlement_refs",
-        "risk_refs",
-        "limitations",
-    ] {
+    for field in fields {
         payload.insert(
-            field.to_string(),
+            (*field).to_string(),
             object
-                .get(field)
+                .get(*field)
                 .unwrap_or_else(|| panic!("agent web envelope missing field: {field}"))
                 .clone(),
         );
@@ -294,6 +391,7 @@ fn assert_agent_web_rejects_unsupported_manifest_version(
     mutate_agent_web_json_artifact(&mut bundle, envelope_path, |envelope| {
         envelope["source_protocol_version"] = Value::String(unsupported_version.to_string());
     });
+    rebind_agent_web_manifest_digest(&mut bundle, manifest_path);
 
     let error = verify_agent_web_fixture(&bundle)
         .test_expect_err("unsupported source protocol version must fail closed");
@@ -335,6 +433,7 @@ fn assert_agent_web_rejects_unsupported_protocol_field_version(
         receipt_path,
         &external_subject_digest,
     );
+    rebind_agent_web_manifest_digest(&mut bundle, manifest_path);
 
     let error = verify_agent_web_fixture(&bundle)
         .test_expect_err("unsupported source protocol version must fail closed");
@@ -456,6 +555,7 @@ fn agent_web_rejects_graphql_http_without_authority_limitation() {
             claim.as_str() != Some("claim.external.graphql_http_operation_is_chio_authority")
         });
     });
+    rebind_agent_web_manifest_digest(&mut bundle, "graphql-http-manifest.json");
 
     let error = verify_agent_web_fixture(&bundle)
         .test_expect_err("GraphQL HTTP projection without authority limitation must fail closed");
@@ -472,6 +572,7 @@ fn agent_web_rejects_standard_webhooks_manifest_that_disables_required_signature
         manifest["requires_external_signature"] = Value::Bool(false);
         manifest["signature_algorithm"] = Value::String("none".to_string());
     });
+    rebind_agent_web_manifest_digest(&mut bundle, "standard-webhooks-manifest.json");
 
     let error = verify_agent_web_fixture(&bundle)
         .test_expect_err("Standard Webhooks manifest must declare its external signature");
@@ -493,6 +594,7 @@ fn agent_web_rejects_unsupported_external_authority_claim_marked_native() {
             "evidence_class": "native-external-proof"
         }));
     });
+    rebind_agent_web_manifest_digest(&mut bundle, "mcp-manifest.json");
 
     let error = verify_agent_web_fixture(&bundle)
         .test_expect_err("unsupported external authority claim must not be native proof");

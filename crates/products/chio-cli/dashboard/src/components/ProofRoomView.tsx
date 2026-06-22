@@ -1229,8 +1229,10 @@ function DisclosureLineage({ evidence }: { evidence?: ProofRoomDisclosureEvidenc
           {disclosedFields.map((field) => (
             <code key={`field:${field}`}>{field}</code>
           ))}
-          {hiddenPredicates.map((predicate) => (
-            <code key={`predicate:${predicate}`}>{predicate}</code>
+          {hiddenPredicates.map((predicate, index) => (
+            <code key={`predicate:${hiddenPredicateKey(predicate, index)}`}>
+              {hiddenPredicateLabel(predicate)}
+            </code>
           ))}
         </div>
       ) : null}
@@ -1294,6 +1296,40 @@ function DisclosureLineage({ evidence }: { evidence?: ProofRoomDisclosureEvidenc
       ) : null}
     </section>
   )
+}
+
+function hiddenPredicateKey(predicate: unknown, index: number): string {
+  if (typeof predicate === 'string') {
+    return predicate
+  }
+  if (predicate && typeof predicate === 'object' && 'predicate_id' in predicate) {
+    const predicateId = (predicate as { predicate_id?: unknown }).predicate_id
+    if (typeof predicateId === 'string' && predicateId.length > 0) {
+      return predicateId
+    }
+  }
+  return String(index)
+}
+
+function hiddenPredicateLabel(predicate: unknown): string {
+  if (typeof predicate === 'string') {
+    return predicate
+  }
+  if (!predicate || typeof predicate !== 'object') {
+    return 'unknown_predicate'
+  }
+  const typed = predicate as {
+    predicate_id?: unknown
+    operator?: unknown
+    operand?: unknown
+    unit?: unknown
+  }
+  const predicateId =
+    typeof typed.predicate_id === 'string' ? typed.predicate_id : 'unknown_predicate'
+  const operator = typeof typed.operator === 'string' ? typed.operator : ''
+  const operand = typeof typed.operand === 'string' ? typed.operand : ''
+  const unit = typeof typed.unit === 'string' ? typed.unit : ''
+  return [predicateId, operator, operand, unit].filter(Boolean).join(' ')
 }
 
 function listText(values: string[] | undefined): string {

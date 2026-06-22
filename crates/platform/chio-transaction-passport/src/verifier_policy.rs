@@ -9,7 +9,10 @@ use super::validation::require_non_empty;
 const STANDALONE_TRANSACTION_REQUIRED_CLAIMS: &[&str] = &[
     "claim.transaction.passport_root_verified",
     "claim.transaction.evidence_graph_digest_bound",
+    "claim.transaction.evidence_graph_structure_verified",
+    "claim.transaction.claim_set_digest_bound",
     "claim.transaction.policy_digest_bound",
+    "claim.transaction.omission_policy_bound",
 ];
 
 #[derive(Debug, Deserialize)]
@@ -26,6 +29,16 @@ pub(super) struct TransactionVerifierPolicy {
     max_reputation_import_weight: Option<u64>,
     #[serde(default)]
     trusted_market_authority_keys: Vec<String>,
+}
+
+impl TransactionVerifierPolicy {
+    pub(super) fn required_claims(&self) -> &[String] {
+        &self.required_claims
+    }
+
+    pub(super) fn omitted_claims(&self) -> &[String] {
+        &self.omitted_claims
+    }
 }
 
 pub(super) fn validate_verifier_policy(

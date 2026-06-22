@@ -10,8 +10,9 @@ use chio_selective_disclosure::{
     derive_selective_disclosure_proof, derive_selective_disclosure_proof_from_receipt,
     generate_bbs_keypair, project_receipt_body, project_step_record, project_workflow_receipt_body,
     receipt_signed_projection, sign_chio_receipt_with_bbs, sign_projection,
-    verify_selective_disclosure_proof, verify_selective_disclosure_with_context,
-    verify_signed_projection, BbsKeyPair, CryptoVerificationContext, DisclosureContextVerdict,
+    verify_bbs_projection_manifest, verify_selective_disclosure_proof,
+    verify_selective_disclosure_with_context, verify_signed_projection, BbsKeyPair,
+    BbsProjectionHiddenPredicate, CryptoVerificationContext, DisclosureContextVerdict,
     DisclosureKeyState, DisclosureRevocationSnapshot, DisclosureSet,
     DisclosureVerifierPrivacyProfile, HolderBindingStatus, InMemoryIssuerRegistry, KeyStateStatus,
     NonceReplayStatus, RevocationSnapshotStatus, SelectiveDisclosureError,
@@ -167,6 +168,19 @@ fn context_profile(keypair: &BbsKeyPair) -> DisclosureVerifierPrivacyProfile {
         profile_id: "profile-buyer-auditor-context".to_string(),
         allowed_proof_mechanisms: vec!["bbs".to_string()],
         required_holder_binding: Some("holder:buyer-agent".to_string()),
+        transaction_passport_ref: "passport-bbs-context-valid".to_string(),
+        leakage_budget: chio_selective_disclosure::DisclosureProfileLeakageBudget {
+            max_disclosed_fields: 3,
+            max_hidden_predicates: 1,
+        },
+        sensitivity_classes: vec![chio_selective_disclosure::DisclosureSensitivityClass {
+            class_id: "operational".to_string(),
+            fields: vec![
+                "capability_id".to_string(),
+                "tool_name".to_string(),
+                "decision".to_string(),
+            ],
+        }],
         allowed_issuer_keys: vec![keypair.issuer_fingerprint.clone()],
         required_key_epoch_min: 7,
         forbidden_key_epochs: vec![9],
@@ -177,6 +191,14 @@ fn context_profile(keypair: &BbsKeyPair) -> DisclosureVerifierPrivacyProfile {
         forbidden_algorithms: vec!["rsa-pkcs1v15-sha1".to_string()],
         required_transparency_state: TransparencyState::Anchored,
         max_presentation_age_seconds: 600,
+        allowed_disclosed_fields: vec![
+            "capability_id".to_string(),
+            "tool_name".to_string(),
+            "decision".to_string(),
+        ],
+        forbidden_disclosed_fields: vec!["customer_email".to_string()],
+        allowed_hidden_predicates: vec!["amount_lte_100".to_string()],
+        forbidden_hidden_predicates: vec!["raw_amount".to_string()],
     }
 }
 
@@ -405,6 +427,44 @@ fn step_record_proof_validates_against_attest_schema() {
         "selective-disclosure-proof.schema.json",
         &serde_json::to_value(&proof).expect("proof serializes"),
     );
+}
+
+#[test]
+fn projection_manifest_rejects_unproven_hidden_predicates() {
+    let ed25519 = Keypair::generate();
+    let workflow = workflow_fixture(&ed25519);
+    let projection =
+        project_workflow_receipt_body(&workflow).expect("workflow projection succeeds");
+    let keypair = generate_bbs_keypair(b"chio-bbs-signing-key-material-predicate", b"chio")
+        .expect("BBS keypair succeeds");
+    let signed = sign_projection(&projection, &keypair).expect("projection signing succeeds");
+    let proof = derive_selective_disclosure_proof(
+        &signed,
+        &projection,
+        &keypair,
+        &DisclosureSet(vec![4, 9, 10]),
+        b"hidden-predicate-manifest-nonce",
+    )
+    .expect("selective disclosure proof succeeds");
+    let mut manifest =
+        chio_selective_disclosure::bbs_projection_manifest_from_projection(&projection);
+    manifest
+        .hidden_predicates
+        .push(BbsProjectionHiddenPredicate {
+            predicate_id: "amount_lte_100".to_string(),
+            field: "amount".to_string(),
+            operator: "<=".to_string(),
+            value_sha256: Some(sha256_hex(b"100")),
+        });
+
+    let error = verify_bbs_projection_manifest(&proof, &manifest)
+        .expect_err("hidden predicates require cryptographic predicate proof");
+
+    assert!(matches!(
+        error,
+        SelectiveDisclosureError::ProjectionManifestInvalid(message)
+            if message.contains("hidden predicates require cryptographic predicate proof")
+    ));
 }
 
 #[test]

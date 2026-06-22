@@ -1,9 +1,13 @@
 {
+  "claim_set_path": "claim-set.json",
+  "claim_set_sha256": "71a4272657e64f82c7b9eb0de797db0eea54384db07a5a46afb57a0ce9202045",
   "evidence_graph_path": "evidence-graph.json",
-  "evidence_graph_sha256": "e58689336bc961b6512d137aafbed7fa3fb435630c7c13ff44936e5021e7d811",
+  "evidence_graph_sha256": "682fc59aad7b291ebb57ba483740cf13a5f6dda59658fde159faa11ffc988ca0",
   "id": "runtime-passport-valid",
   "issued_at": "2026-06-10T00:00:00Z",
+  "issuer": "did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
   "schema": "chio.transaction-passport.v1",
+  "signature": "36e7732b23c21ef7e815c176fbe1afa1355737567360faff6a7f512755f6d97fb9b2c8301282c319c07ff5d06e704c5bf44596ddcd2a76e922eb24a887094306",
   "verifier_policy_path": "verifier-policy.json",
   "verifier_policy_sha256": "3ef61f665f58362585af0237105bac37a93554952f010664f31468c3ca94f7b6"
 }

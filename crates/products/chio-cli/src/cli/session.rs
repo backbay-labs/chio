@@ -231,14 +231,16 @@ pub(crate) fn normalize_agent_message(
                 RequestId::new(id.clone()),
                 session_agent_id.to_string(),
             ),
-            SessionOperation::ToolCall(ToolCallOperation {
+            SessionOperation::ToolCall(Box::new(ToolCallOperation {
                 capability: *capability_token.clone(),
                 server_id: server_id.clone(),
                 tool_name: tool.clone(),
                 arguments: params.clone(),
+                governed_intent: None,
                 execution_nonce: None,
                 model_metadata: None,
-            }),
+                extra_metadata: None,
+            })),
         ),
         AgentMessage::ListCapabilities => (
             OperationContext::new(

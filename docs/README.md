@@ -91,7 +91,7 @@ The primary live release documents. Auditors and operators start here.
 
 ### Interop and adapters
 
-- [A2A Adapter Guide](reference/A2A_ADAPTER_GUIDE.md) - thin Chio bridge for the A2A v1.0.0 protocol
+- [A2A Adapter Guide](reference/A2A_ADAPTER_GUIDE.md) - thin Chio bridge for the A2A v0.3.0 protocol
 - [Chio Certify Guide](reference/CHIO_CERTIFY_GUIDE.md) - certification layer that signs conformance evidence into pass/fail artifacts
 - [Credential Interop Guide](reference/CREDENTIAL_INTEROP_GUIDE.md) - narrow portable-credential interop and public identity-network contracts
 - [Economic Interop Guide](reference/ECONOMIC_INTEROP_GUIDE.md) - makes governed receipts legible to IAM, finance, and partner systems

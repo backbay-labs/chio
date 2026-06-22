@@ -272,6 +272,48 @@
       "description": "Disclosure lineage fixture rejected when the crypto context report discloses fields outside the capsule"
     },
     {
+      "id": "disclosure-lineage-unsupported-edge-kind",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/unsupported-edge-kind",
+      "description": "Disclosure lineage fixture rejected when the signed subgraph uses an unsupported edge kind"
+    },
+    {
+      "id": "disclosure-lineage-missing-parent",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/missing-parent",
+      "description": "Disclosure lineage fixture rejected when the signed subgraph edge references a missing parent"
+    },
+    {
+      "id": "disclosure-lineage-node-digest-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/lineage-node-digest-mismatch",
+      "description": "Disclosure lineage fixture rejected when a lineage node artifact digest does not match its receipt ref"
+    },
+    {
+      "id": "disclosure-lineage-depth-regression",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/lineage-depth-regression",
+      "description": "Disclosure lineage fixture rejected when a child lineage node is not deeper than its parent"
+    },
+    {
+      "id": "disclosure-lineage-frontier-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/lineage-frontier-mismatch",
+      "description": "Disclosure lineage fixture rejected when the signed frontier digest is stale"
+    },
+    {
+      "id": "disclosure-lineage-checkpoint-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/lineage-checkpoint-mismatch",
+      "description": "Disclosure lineage fixture rejected when checkpoint inclusion does not bind the frontier"
+    },
+    {
+      "id": "disclosure-lineage-evidence-below-floor",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/lineage-evidence-below-floor",
+      "description": "Disclosure lineage fixture rejected when node evidence class is below the required floor"
+    },
+    {
       "id": "crypto-context-valid-bbs",
       "kind": "disclosure-crypto-context",
       "path": "fixtures/proof-room/crypto-context/valid-bbs-context",
@@ -366,6 +408,18 @@
       "kind": "negative-transaction-passport",
       "path": "fixtures/proof-room/public-settlement/refunded-posture-without-reversal",
       "description": "Public settlement fixture rejected when refunded posture is not backed by a reversal lifecycle state"
+    },
+    {
+      "id": "public-settlement-deployment-provenance-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/deployment-provenance-mismatch",
+      "description": "Public settlement fixture rejected when deployment provenance does not match the reviewed contract package"
+    },
+    {
+      "id": "public-settlement-advisory-witness",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/advisory-witness",
+      "description": "Public settlement fixture rejected when public witness evidence is advisory only"
     },
     {
       "id": "agent-web-interop",
@@ -596,6 +650,12 @@
       "description": "Enterprise export fixture rejected when an open appeal blocks claim payout"
     },
     {
+      "id": "enterprise-risk-payout-preobserved-instruction",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/risk-payout-preobserved-instruction",
+      "description": "Enterprise export fixture rejected when a claim payout uses a capital instruction that already observed execution"
+    },
+    {
       "id": "enterprise-open-appeal-facility-closure",
       "kind": "negative-transaction-passport",
       "path": "fixtures/proof-room/enterprise-export/open-appeal-facility-closure",
@@ -612,6 +672,18 @@
       "kind": "negative-transaction-passport",
       "path": "fixtures/proof-room/enterprise-export/telemetry-digest-mismatch",
       "description": "Enterprise export fixture rejected when telemetry references an artifact digest that does not match"
+    },
+    {
+      "id": "enterprise-telemetry-passport-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/telemetry-passport-mismatch",
+      "description": "Enterprise export fixture rejected when telemetry is bound to a different passport"
+    },
+    {
+      "id": "enterprise-telemetry-siem-without-receipt",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/telemetry-siem-without-receipt",
+      "description": "Enterprise export fixture rejected when SIEM telemetry is not bound to a receipt"
     },
     {
       "id": "enterprise-facility-lifecycle-final-state-mismatch",

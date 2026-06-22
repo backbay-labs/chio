@@ -631,10 +631,10 @@ pub(super) fn run_proof_doctor(
     let report = match transaction_passport_scenario_report(&root, scenario) {
         Some(report) => report,
         None => match scenario {
-        ProofDoctorScenario::EnterpriseExport => enterprise_export_report(&root),
-        ProofDoctorScenario::ProofPackage => proof_package_report(&root),
-        ProofDoctorScenario::SingleCallAuthority => single_call_authority_report(&root),
-        ProofDoctorScenario::WorkflowPreflight => workflow_preflight_report(&root),
+            ProofDoctorScenario::EnterpriseExport => enterprise_export_report(&root),
+            ProofDoctorScenario::ProofPackage => proof_package_report(&root),
+            ProofDoctorScenario::SingleCallAuthority => single_call_authority_report(&root),
+            ProofDoctorScenario::WorkflowPreflight => workflow_preflight_report(&root),
             _ => ProofDoctorReport::new(
                 scenario.as_str(),
                 vec![failed(
@@ -663,7 +663,9 @@ fn workflow_preflight_report(root: &Path) -> ProofDoctorReport {
         .map(|spec| {
             let path = workflow_root.join(spec.fixture).join("preflight-plan.json");
             match spec.expectation {
-                WorkflowPreflightExpectation::Accepts => check_workflow_preflight_accepts(spec.id, &path),
+                WorkflowPreflightExpectation::Accepts => {
+                    check_workflow_preflight_accepts(spec.id, &path)
+                }
                 WorkflowPreflightExpectation::Rejects(expected_error) => {
                     check_workflow_preflight_rejects(spec.id, &path, expected_error)
                 }
@@ -1097,18 +1099,28 @@ fn check_crypto_context_fixture(id: impl Into<String>, dir: &Path) -> ProofDocto
         Ok(bytes) => bytes,
         Err(error) => return failed(id, &context_path, format!("missing or unreadable: {error}")),
     };
-    match chio_proof_room::crypto_context_rejection_report_bytes(&context_bytes, &id) {
-        Ok(report_bytes) => {
-            return failed(
-                id,
-                &context_path,
-                format!(
-                    "crypto context verification context rejected: {}",
-                    crypto_context_rejection_summary(&report_bytes)
-                ),
-            );
-        }
-        Err(error) if error.contains("no rejected context checks") => {}
+    let report_bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) => return failed(id, &path, format!("missing or unreadable: {error}")),
+    };
+    let proof_path = dir.join("selective-disclosure-proof.json");
+    let proof_bytes = match fs::read(&proof_path) {
+        Ok(bytes) => bytes,
+        Err(error) => return failed(id, &proof_path, format!("missing or unreadable: {error}")),
+    };
+    let profile_path = dir.join("verifier-privacy-profile.json");
+    let profile_bytes = match fs::read(&profile_path) {
+        Ok(bytes) => bytes,
+        Err(error) => return failed(id, &profile_path, format!("missing or unreadable: {error}")),
+    };
+    let verified_report_bytes = match chio_proof_room::crypto_context_verified_report_bytes_with_bbs(
+        &context_bytes,
+        &report_bytes,
+        &proof_bytes,
+        &profile_bytes,
+        &id,
+    ) {
+        Ok(bytes) => bytes,
         Err(error) => {
             return failed(
                 id,
@@ -1116,10 +1128,10 @@ fn check_crypto_context_fixture(id: impl Into<String>, dir: &Path) -> ProofDocto
                 format!("crypto context check failed: {error}"),
             );
         }
-    }
-    let report = match read_json(&path) {
+    };
+    let report: serde_json::Value = match serde_json::from_slice(&verified_report_bytes) {
         Ok(report) => report,
-        Err(error) => return failed(id, &path, error),
+        Err(error) => return failed(id, &path, format!("invalid JSON: {error}")),
     };
     if report.get("schema").and_then(serde_json::Value::as_str)
         != Some("chio.disclosure.crypto-context-report.v1")
@@ -1156,29 +1168,6 @@ fn check_crypto_context_fixture(id: impl Into<String>, dir: &Path) -> ProofDocto
     passed(id, &path, "crypto context verified")
 }
 
-fn crypto_context_rejection_summary(report_bytes: &[u8]) -> String {
-    let Ok(report) = serde_json::from_slice::<serde_json::Value>(report_bytes) else {
-        return "invalid rejection report".to_string();
-    };
-    report
-        .get("rejected_checks")
-        .and_then(serde_json::Value::as_array)
-        .and_then(|checks| checks.first())
-        .and_then(|check| {
-            let code = check.get("code").and_then(serde_json::Value::as_str)?;
-            let message = check
-                .get("message")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("");
-            Some(if message.is_empty() {
-                code.to_string()
-            } else {
-                format!("{code}: {message}")
-            })
-        })
-        .unwrap_or_else(|| "rejected without checks".to_string())
-}
-
 fn check_crypto_context_negative_fixture(
     id: impl Into<String>,
     dir: &Path,
@@ -1190,7 +1179,22 @@ fn check_crypto_context_negative_fixture(
         Ok(bytes) => bytes,
         Err(error) => return failed(id, &path, format!("missing or unreadable: {error}")),
     };
-    match chio_proof_room::crypto_context_rejection_report_bytes(&context_bytes, fixture_id) {
+    let proof_path = dir.join("selective-disclosure-proof.json");
+    let proof_bytes = match fs::read(&proof_path) {
+        Ok(bytes) => bytes,
+        Err(error) => return failed(id, &proof_path, format!("missing or unreadable: {error}")),
+    };
+    let profile_path = dir.join("verifier-privacy-profile.json");
+    let profile_bytes = match fs::read(&profile_path) {
+        Ok(bytes) => bytes,
+        Err(error) => return failed(id, &profile_path, format!("missing or unreadable: {error}")),
+    };
+    match chio_proof_room::crypto_context_rejected_report_bytes_with_bbs(
+        &context_bytes,
+        &proof_bytes,
+        &profile_bytes,
+        fixture_id,
+    ) {
         Ok(report_bytes) => {
             let report: serde_json::Value = match serde_json::from_slice(&report_bytes) {
                 Ok(report) => report,

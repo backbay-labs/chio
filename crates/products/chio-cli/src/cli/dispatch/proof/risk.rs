@@ -1,19 +1,13 @@
 use super::*;
 use chrono::{DateTime, Utc};
-use std::{
-    collections::BTreeSet,
-    fs,
-    path::Path,
-};
+use std::{collections::BTreeSet, fs, path::Path};
 
 const CLAIM_RISK_COMPTROLLER_REPORT_BOUND: &str = "claim.risk.comptroller_report_bound";
 const RISK_COMPTROLLER_REPORT_SCHEMA: &str = "chio.risk.comptroller-report.v1";
 const ENTERPRISE_APPROVAL_CASE_SCHEMA: &str = "chio.enterprise.approval-case.v1";
 const ENTERPRISE_CONTROL_EVIDENCE_MAP_SCHEMA: &str = "chio.enterprise.control-evidence-map.v1";
-const ENTERPRISE_DATA_GOVERNANCE_REPORT_SCHEMA: &str =
-    "chio.enterprise.data-governance-report.v1";
-const ENTERPRISE_EVIDENCE_EXPORT_BUNDLE_SCHEMA: &str =
-    "chio.enterprise.evidence-export-bundle.v1";
+const ENTERPRISE_DATA_GOVERNANCE_REPORT_SCHEMA: &str = "chio.enterprise.data-governance-report.v1";
+const ENTERPRISE_EVIDENCE_EXPORT_BUNDLE_SCHEMA: &str = "chio.enterprise.evidence-export-bundle.v1";
 const ENTERPRISE_TELEMETRY_PROJECTION_SCHEMA: &str = "chio.enterprise.telemetry-projection.v1";
 const RISK_ADJUDICATION_JURISDICTION_RECEIPT_SCHEMA: &str =
     "chio.risk.adjudication-jurisdiction-receipt.v1";
@@ -21,8 +15,7 @@ const RISK_GUARANTEE_DECISION_SCHEMA: &str = "chio.risk.guarantee-decision.v1";
 const COMMERCE_PROVIDER_SELECTION_REPORT_SCHEMA: &str =
     "chio.commerce.provider-selection-report.v1";
 const CHIO_RECEIPT_SCHEMA: &str = "chio.receipt.v1";
-const WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA: &str =
-    "chio.web3-settlement-execution-receipt.v1";
+const WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA: &str = "chio.web3-settlement-execution-receipt.v1";
 const WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA: &str = "chio.web3-settlement-proof-bundle.v1";
 
 pub(super) struct RiskRoute {
@@ -68,7 +61,7 @@ pub(super) fn verify_standalone_risk_claim(
             )
         },
     )
-        .map_err(map_proof_error)?;
+    .map_err(map_proof_error)?;
     validate_standalone_risk_evidence_content(
         passport,
         &risk_report.id,
@@ -146,10 +139,7 @@ fn validate_standalone_risk_approval_case(
             &approval.risk_comptroller_report_ref,
         ),
         ("approval case decision", &approval.decision),
-        (
-            "approval case decision subject",
-            &approval.decision_subject,
-        ),
+        ("approval case decision subject", &approval.decision_subject),
         ("approval case expires_at", &approval.expires_at),
     ] {
         if value.is_empty() {
@@ -173,10 +163,8 @@ fn validate_standalone_risk_approval_case(
             "proof verify: risk approval case denied",
         ));
     }
-    let passport_issued_at = parse_risk_timestamp(
-        &passport.issued_at,
-        "risk transaction passport issued_at",
-    )?;
+    let passport_issued_at =
+        parse_risk_timestamp(&passport.issued_at, "risk transaction passport issued_at")?;
     let approval_issued_at =
         parse_risk_timestamp(&approval.issued_at, "risk approval case issued_at")?;
     let approval_expires_at =
@@ -189,9 +177,8 @@ fn validate_standalone_risk_approval_case(
             "proof verify: risk approval case outside validity window",
         ));
     }
-    let required_quorum = usize::try_from(approval.required_quorum).map_err(|_| {
-        CliError::cli_other_error("proof verify: risk approval quorum overflow")
-    })?;
+    let required_quorum = usize::try_from(approval.required_quorum)
+        .map_err(|_| CliError::cli_other_error("proof verify: risk approval quorum overflow"))?;
     let mut unique_approvers = BTreeSet::new();
     for approver in &approval.approvers {
         let approver = approver.trim();

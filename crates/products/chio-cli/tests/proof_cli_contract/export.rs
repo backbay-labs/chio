@@ -171,6 +171,89 @@ fn proof_export_public_redaction_excludes_manifested_internal_artifacts() {
 }
 
 #[test]
+fn proof_export_public_redaction_excludes_manifested_receipt_log() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source = proof_room_bundle_fixture();
+    let bundle = tempdir.path().join("proof-room-bundle");
+    copy_dir_all(&source, &bundle).test_expect("copy proof room bundle");
+    let receipt_log_path = "receipts.ndjson";
+    let receipt_log_file = bundle.join(receipt_log_path);
+    std::fs::write(
+        &receipt_log_file,
+        b"{\"schema\":\"chio.receipts.log.v1\",\"tenant_id\":\"tenant-secret\",\"body\":\"raw receipt body\"}\n",
+    )
+    .test_expect("write receipt log");
+    let tenant_body_path = "tenants/tenant-secret/body.json";
+    let tenant_body_file = bundle.join(tenant_body_path);
+    std::fs::create_dir_all(
+        tenant_body_file
+            .parent()
+            .test_expect("tenant body has parent"),
+    )
+    .test_expect("create tenant body dir");
+    std::fs::write(
+        &tenant_body_file,
+        b"{\"schema\":\"chio.tenant.body.v1\",\"tenant_id\":\"tenant-secret\",\"body\":\"private tenant body\"}\n",
+    )
+    .test_expect("write tenant body");
+
+    let manifest_path = bundle.join("manifest.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&manifest_path).test_expect("read manifest"))
+            .test_expect("manifest parses");
+    manifest["artifacts"]
+        .as_array_mut()
+        .test_expect("manifest artifacts array")
+        .push(serde_json::json!({
+            "path": receipt_log_path,
+            "sha256": sha256_file(&receipt_log_file),
+            "schema": "chio.receipts.log.v1",
+            "media_type": "application/json",
+            "artifact_class": "receipt-log",
+            "sensitivity_class": "public",
+            "producer": "test-fixture",
+            "participates_in_primary_verdict": false,
+            "renderer_hint": "hidden"
+        }));
+    manifest["artifacts"]
+        .as_array_mut()
+        .test_expect("manifest artifacts array")
+        .push(serde_json::json!({
+            "path": tenant_body_path,
+            "sha256": sha256_file(&tenant_body_file),
+            "schema": "chio.tenant.body.v1",
+            "media_type": "application/json",
+            "artifact_class": "tenant-body",
+            "sensitivity_class": "public",
+            "producer": "test-fixture",
+            "participates_in_primary_verdict": false,
+            "renderer_hint": "hidden"
+        }));
+    write_json(&manifest_path, &manifest);
+    refresh_bundle_signature(&bundle);
+
+    let output_file = tempdir.path().join("proof-room-public.tgz");
+    let output = chio(&[
+        "proof",
+        "export",
+        utf8_path(&bundle).as_str(),
+        "--out",
+        utf8_path(&output_file).as_str(),
+        "--redact",
+        "public",
+    ]);
+
+    assert_success(&output);
+    let members = tgz_member_names(&output_file);
+    assert!(members.contains("manifest.json"));
+    assert!(!members.contains(receipt_log_path));
+    assert!(!members.contains(tenant_body_path));
+
+    let verify = chio(&["proof", "verify", utf8_path(&output_file).as_str()]);
+    assert_success(&verify);
+}
+
+#[test]
 fn proof_export_public_redaction_preserves_collected_catalog_negative_artifacts() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let artifact_dir =
@@ -218,6 +301,11 @@ fn proof_export_public_redaction_honors_manifest_ref_paths_and_signature_ref() {
         &bundle,
         "roots/evidence-graph.json",
         "public-roots/graph.json",
+    );
+    move_bundle_member(
+        &bundle,
+        "roots/claim-set.json",
+        "public-roots/claim-set.json",
     );
     move_bundle_member(
         &bundle,
@@ -305,6 +393,7 @@ fn proof_export_public_redaction_honors_manifest_ref_paths_and_signature_ref() {
                 "public-roots/passport.json",
             ),
             ("roots/evidence-graph.json", "public-roots/graph.json"),
+            ("roots/claim-set.json", "public-roots/claim-set.json"),
             (
                 "roots/verifier-policy.json",
                 "public-roots/verifier-policy.json",
@@ -341,6 +430,7 @@ fn proof_export_public_redaction_honors_manifest_ref_paths_and_signature_ref() {
         "proof_room_verifier_report_ref",
         "public-ui/load-report.json",
     );
+    refresh_manifest_artifact_sha256(&bundle, &mut manifest, "public-roots/claim-set.json");
     refresh_manifest_artifact_sha256(&bundle, &mut manifest, "public-roots/verifier-policy.json");
     write_json(&manifest_path, &manifest);
 
@@ -370,6 +460,7 @@ fn proof_export_public_redaction_honors_manifest_ref_paths_and_signature_ref() {
     for path in [
         "public-roots/passport.json",
         "public-roots/graph.json",
+        "public-roots/claim-set.json",
         "public-verifier/report.json",
         "public-ui/load-report.json",
         "signatures/bundle.dsse.json",
@@ -379,6 +470,7 @@ fn proof_export_public_redaction_honors_manifest_ref_paths_and_signature_ref() {
     for path in [
         "roots/transaction-passport.json",
         "roots/evidence-graph.json",
+        "roots/claim-set.json",
         "verifier/report.json",
         "ui/proof-room-static/load-report.json",
         "bundle-signature.dsse.json",
@@ -569,7 +661,7 @@ fn proof_verify_rejects_proof_room_signature_payload_hash_mismatch() {
 
     let output = chio(&["proof", "verify", bundle.as_str()]);
 
-    assert_failure(&output, "proof-room.signature.payload-hash-mismatch");
+    assert_failure_exit_code(&output, "proof-room.signature.payload-hash-mismatch", 20);
 }
 
 #[test]
@@ -585,7 +677,7 @@ fn proof_verify_root_passport_input_revalidates_enclosing_proof_room_bundle() {
 
     let output = chio(&["proof", "verify", utf8_path(&passport_path).as_str()]);
 
-    assert_failure(&output, "proof-room.signature.payload-hash-mismatch");
+    assert_failure_exit_code(&output, "proof-room.signature.payload-hash-mismatch", 20);
 }
 
 #[test]
@@ -605,7 +697,7 @@ fn proof_verify_rejects_proof_room_manifest_schema_drift() {
 
     let output = chio(&["proof", "verify", bundle.as_str()]);
 
-    assert_failure(&output, "proof-room.schema-violation: manifest");
+    assert_failure_exit_code(&output, "proof-room.schema-violation: manifest", 30);
 }
 
 #[test]
@@ -622,7 +714,7 @@ fn proof_verify_rejects_manifested_artifact_schema_drift() {
 
     let output = chio(&["proof", "verify", bundle.as_str()]);
 
-    assert_failure(&output, "proof-room.schema-violation: artifact");
+    assert_failure_exit_code(&output, "proof-room.schema-violation: artifact", 30);
 }
 
 #[test]

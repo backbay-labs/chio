@@ -23,6 +23,23 @@ fn proof_explain_reports_claim_status_and_evidence_path() {
 }
 
 #[test]
+fn proof_explain_rejects_unknown_claim_id() {
+    let bundle = workspace_root().join("fixtures/proof-room/minimal-passport/valid");
+    let bundle = utf8_path(&bundle);
+
+    let output = chio(&[
+        "proof",
+        "explain",
+        bundle.as_str(),
+        "--claim",
+        "claim.example.fabricated",
+        "--json",
+    ]);
+
+    assert_failure(&output, "unknown proof claim: claim.example.fabricated");
+}
+
+#[test]
 fn proof_explain_reports_swarm_claims_as_verified() {
     let bundle =
         workspace_root().join("fixtures/proof-room/swarm-authority/valid-recursive-delegation");
@@ -222,6 +239,10 @@ fn proof_explain_reports_negative_passport_verifier_failure() {
         "claim.transaction.passport_root_verified"
     );
     assert_eq!(report["status"], "failed");
+    assert_eq!(
+        report["failureCode"],
+        "urn:chio:error:transaction:passport-hash-mismatch"
+    );
     assert!(report["verifier_error"]
         .as_str()
         .test_expect("verifier error string")
@@ -238,6 +259,60 @@ fn proof_explain_reports_negative_passport_verifier_failure() {
     assert!(evidence_paths
         .iter()
         .any(|path| path.ends_with("verifier-policy.json")));
+}
+
+#[test]
+fn proof_explain_reports_unsupported_passport_schema_failure_code() {
+    let bundle =
+        workspace_root().join("fixtures/proof-room/minimal-passport/unknown-passport-schema");
+    let bundle = utf8_path(&bundle);
+
+    let output = chio(&[
+        "proof",
+        "explain",
+        bundle.as_str(),
+        "--claim",
+        "claim.transaction.passport_root_verified",
+        "--json",
+    ]);
+
+    assert_success(&output);
+    let stdout = stdout(output);
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout).test_expect("explain report parses");
+
+    assert_eq!(report["status"], "failed");
+    assert_eq!(
+        report["failureCode"],
+        "urn:chio:error:transaction:passport-schema-unsupported"
+    );
+}
+
+#[test]
+fn proof_explain_reports_runtime_proof_rejection_failure_code() {
+    let bundle =
+        workspace_root().join("fixtures/proof-room/runtime-security/missing-execution-lease");
+    let bundle = utf8_path(&bundle);
+
+    let output = chio(&[
+        "proof",
+        "explain",
+        bundle.as_str(),
+        "--claim",
+        "claim.runtime.execution_lease_valid",
+        "--json",
+    ]);
+
+    assert_success(&output);
+    let stdout = stdout(output);
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout).test_expect("explain report parses");
+
+    assert_eq!(report["status"], "failed");
+    assert_eq!(
+        report["failureCode"],
+        "urn:chio:error:transaction:runtime-proof-rejected"
+    );
 }
 
 #[test]

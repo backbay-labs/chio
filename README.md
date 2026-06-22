@@ -122,7 +122,7 @@ Each line carries the decision verdict, the policy hash, the signing kernel key,
 and an Ed25519 signature over the receipt.
 
 > Status: 0.1.0, pre-release. APIs and wire surfaces may change before the first
-> tagged release.
+> stable release tag.
 
 ## Choose your path
 

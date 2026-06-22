@@ -107,9 +107,23 @@ fn agent_web_interop_accepts_webhook_and_cloudevents_fixture() {
 }
 
 #[test]
+fn agent_web_interop_rejects_tampered_transaction_passport_signature() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    bundle.passport.signature = "00".repeat(64);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Agent Web verifier must reject a forged passport root");
+
+    assert!(error
+        .to_string()
+        .contains("transaction passport signature invalid"));
+}
+
+#[test]
 fn agent_web_interop_rejects_standard_webhooks_without_configured_secret() {
     let bundle = agent_web_bundle(AgentWebCase::Valid);
     let trust = chio_agent_web_interop::AgentWebVerifierTrust::new()
+        .with_trusted_passport_signer_keys([transaction_passport_keypair().public_key()])
         .with_trusted_envelope_sidecar_keys([agent_web_fixture_sidecar_keypair().public_key()]);
 
     let error = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
@@ -124,6 +138,7 @@ fn agent_web_interop_rejects_standard_webhooks_without_configured_secret() {
 fn agent_web_interop_rejects_receipts_without_trusted_kernel_key() {
     let bundle = agent_web_bundle(AgentWebCase::Valid);
     let trust = chio_agent_web_interop::AgentWebVerifierTrust::new()
+        .with_trusted_passport_signer_keys([transaction_passport_keypair().public_key()])
         .with_standard_webhooks_secret_for(
             STANDARD_WEBHOOKS_WEBHOOK_ID,
             STANDARD_WEBHOOKS_VERIFIER_SECRET.to_vec(),
@@ -151,6 +166,43 @@ fn agent_web_interop_rejects_tampered_sidecar_envelope_signature() {
     assert!(error
         .to_string()
         .contains("Agent Web envelope signature invalid"));
+}
+
+#[test]
+fn agent_web_interop_rejects_non_content_addressed_envelope_id() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    replace_agent_web_json_artifact(&mut bundle, "standard-webhooks-envelope.json", |envelope| {
+        envelope["envelope_id"] = json!("agent-web-envelope-standard-webhooks-valid");
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Agent Web envelope id must be content-addressed");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web envelope id is not content-addressed"));
+}
+
+#[test]
+fn agent_web_interop_rejects_projection_manifest_changed_after_sidecar_signature() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    replace_agent_web_json_artifact(&mut bundle, "standard-webhooks-manifest.json", |manifest| {
+        let mappings = manifest["claim_mapping"]
+            .as_array_mut()
+            .test_expect("Agent Web manifest has claim mappings");
+        let mapping = mappings
+            .iter_mut()
+            .find(|mapping| mapping["claim_ref"].as_str() == Some(CLAIM_PROJECTION_MANIFEST_BOUND))
+            .test_expect("projection manifest claim mapping exists");
+        mapping["evidence_class"] = json!("digest-bound-reference");
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("sidecar envelope signature must bind projection manifest digest");
+
+    assert!(error
+        .to_string()
+        .contains("projection manifest digest mismatch"));
 }
 
 #[test]

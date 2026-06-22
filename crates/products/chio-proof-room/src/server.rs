@@ -3,6 +3,7 @@ use std::{
     fs,
     net::SocketAddr,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use axum::{
@@ -41,6 +42,7 @@ struct ProofRoomServeState {
 type UploadError = (StatusCode, String);
 type UploadResult<T> = Result<T, UploadError>;
 type UploadPart = (String, Vec<u8>);
+static UPLOAD_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub async fn serve_proof_room(config: ProofRoomServeConfig) -> Result<(), ProofRoomError> {
     verify_proof_room_ui_dir(&config.ui_dir)?;
@@ -386,8 +388,9 @@ impl UploadedProofRoomBundle {
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(std::io::Error::other)?
             .as_nanos();
+        let sequence = UPLOAD_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
         let path = std::env::temp_dir().join(format!(
-            "chio-proof-room-upload-{}-{timestamp}",
+            "chio-proof-room-upload-{}-{timestamp}-{sequence}",
             std::process::id()
         ));
         fs::create_dir(&path)?;

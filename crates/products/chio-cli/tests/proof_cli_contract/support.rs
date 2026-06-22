@@ -1,10 +1,11 @@
 use chio_core_types::{
     receipt::body::{ChioReceipt, ChioReceiptBody},
+    receipt::decision::ToolCallAction,
     Keypair,
 };
 use chio_test_support::prelude::*;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
@@ -46,8 +47,20 @@ const TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS: &str = concat!(
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
     "68f4b6017d0f876a55c80a82b8388a54aad264d367269e2de8be079c935b5f96"
 );
+const RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS: &str =
+    "5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca";
+const ENTERPRISE_FIXTURE_TRUSTED_APPROVAL_KEYS: &str =
+    "f95c6a5dff031fac7b1a6a54b6610caeb83b39f7e8a66be16ff5faa4a511ed2d";
 const TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS: &str =
     "cf1b37e85dc00aee94f10108b37f151e2a37b3ae2a0cae77521f83488db9c4d7";
+const COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS: &str =
+    "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS: &str =
+    "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS: &str =
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS: &str =
+    "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a";
 const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 pub(crate) const PROOF_SERVE_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const PROOF_SERVE_HTTP_READ_POLL: Duration = Duration::from_millis(200);
@@ -95,6 +108,14 @@ pub(crate) fn chio_command() -> std::process::Command {
         transaction_fixture_trusted_root_keys(),
     );
     command.env(
+        "CHIO_RUNTIME_TRUSTED_ROOT_KEYS",
+        RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS,
+    );
+    command.env(
+        "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS",
+        ENTERPRISE_FIXTURE_TRUSTED_APPROVAL_KEYS,
+    );
+    command.env(
         "CHIO_SWARM_TRUSTED_WITNESS_KEYS",
         SWARM_FIXTURE_TRUSTED_WITNESS_KEYS,
     );
@@ -102,6 +123,27 @@ pub(crate) fn chio_command() -> std::process::Command {
         "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS",
         TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS,
     );
+    command.env(
+        "CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS",
+        COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS,
+    );
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS,
+    );
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS,
+    );
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS,
+    );
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS",
+        "eip155:8453,eip155:42161",
+    );
+    command.env("CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS", "1");
     command.env(
         "CHIO_PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX",
         COLLECT_SIGNATURE_SEED_HEX,
@@ -129,10 +171,15 @@ pub(crate) fn proof_room_fixture_trusted_bundle_signer_keys() -> String {
 }
 
 fn transaction_fixture_trusted_root_keys() -> String {
+    let collect_bundle_signer = Keypair::from_seed(&COLLECT_SIGNATURE_SEED)
+        .public_key()
+        .to_hex();
     let public_export_bundle_signer = Keypair::from_seed(&PUBLIC_EXPORT_SIGNATURE_SEED)
         .public_key()
         .to_hex();
-    format!("{TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS},{public_export_bundle_signer}")
+    format!(
+        "{TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS},{collect_bundle_signer},{public_export_bundle_signer}"
+    )
 }
 
 pub(crate) fn stdout(output: std::process::Output) -> String {
@@ -163,6 +210,21 @@ pub(crate) fn assert_failure(output: &std::process::Output, expected: &str) {
     assert!(
         combined.contains(expected),
         "expected failure to contain {expected:?}\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+pub(crate) fn assert_failure_exit_code(
+    output: &std::process::Output,
+    expected: &str,
+    exit_code: i32,
+) {
+    assert_failure(output, expected);
+    assert_eq!(
+        output.status.code(),
+        Some(exit_code),
+        "unexpected exit code\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
@@ -595,8 +657,32 @@ pub(crate) fn remove_evidence_graph_node_and_rehash(
 }
 
 pub(crate) fn write_json(path: &Path, value: &serde_json::Value) {
-    let bytes = serde_json::to_vec_pretty(value).test_expect("serialize JSON");
+    let value = sign_transaction_passport_if_needed(path, value.clone());
+    let bytes = serde_json::to_vec_pretty(&value).test_expect("serialize JSON");
     std::fs::write(path, [&bytes[..], b"\n"].concat()).test_expect("write JSON");
+}
+
+fn sign_transaction_passport_if_needed(
+    _path: &Path,
+    mut value: serde_json::Value,
+) -> serde_json::Value {
+    if value.get("schema").and_then(serde_json::Value::as_str)
+        != Some("chio.transaction-passport.v1")
+    {
+        return value;
+    }
+    let keypair = Keypair::from_seed(&TEST_SIGNATURE_SEED);
+    value["issuer"] =
+        serde_json::Value::String(format!("did:chio:{}", keypair.public_key().to_hex()));
+    value["signature"] = serde_json::Value::String(String::new());
+    let passport: chio_control_plane::transaction_passport::TransactionPassport =
+        serde_json::from_value(value.clone())
+            .test_expect("transaction passport parses for signing");
+    value["signature"] = serde_json::Value::String(
+        chio_control_plane::transaction_passport::sign_transaction_passport(&passport, &keypair)
+            .test_expect("transaction passport signs"),
+    );
+    value
 }
 
 pub(crate) fn signed_terminal_receipt(
@@ -638,7 +724,7 @@ fn sign_runtime_lease_with_fixture_authority(value: &mut serde_json::Value) {
 }
 
 fn sign_runtime_execution_lease(value: &serde_json::Value, keypair: &Keypair) -> String {
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "schema": "chio.runtime.execution-lease-signature.v1",
         "leaseId": value["lease_id"],
         "toolServerId": value["tool_server_id"],
@@ -654,9 +740,46 @@ fn sign_runtime_execution_lease(value: &serde_json::Value, keypair: &Keypair) ->
         "expiresAt": value["expires_at"],
         "issuer": value["issuer"],
     });
+    if value.get("revocation_epoch_ref").is_some() {
+        body["revocationEpochRef"] = value["revocation_epoch_ref"].clone();
+    }
+    if value.get("route_plan_receipt_ref").is_some() {
+        body["routePlanReceiptRef"] = value["route_plan_receipt_ref"].clone();
+    }
+    if value.get("max_invocations").is_some() {
+        body["maxInvocations"] = value["max_invocations"].clone();
+    }
     keypair
         .sign_canonical(&body)
         .test_expect("runtime execution lease signs")
+        .0
+        .to_hex()
+}
+
+fn sign_runtime_terminal_receipt_with_fixture_kernel(value: &mut serde_json::Value) {
+    let signing_key = Keypair::from_seed(&[23u8; 32]);
+    value["kernel_key"] = serde_json::Value::String(signing_key.public_key().to_hex());
+    value["signature"] =
+        serde_json::Value::String(sign_runtime_terminal_receipt(value, &signing_key));
+}
+
+fn sign_runtime_terminal_receipt(value: &serde_json::Value, keypair: &Keypair) -> String {
+    let mut body = serde_json::json!({
+        "schema": "chio.runtime.terminal-receipt-signature.v1",
+        "receiptId": value["receipt_id"],
+        "terminalStatus": value["terminal_status"],
+        "policyDigest": value["policy_digest"],
+        "kernelKey": value["kernel_key"],
+    });
+    if value.get("execution_lease_ref").is_some() {
+        body["executionLeaseRef"] = value["execution_lease_ref"].clone();
+    }
+    if value.get("incident_ref").is_some() {
+        body["incidentRef"] = value["incident_ref"].clone();
+    }
+    keypair
+        .sign_canonical(&body)
+        .test_expect("runtime terminal receipt signs")
         .0
         .to_hex()
 }
@@ -666,8 +789,48 @@ pub(crate) fn sign_transaction_receipt_artifact(bundle: &Path, artifact_path: &s
     let receipt: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&receipt_path).test_expect("read receipt"))
             .test_expect("receipt parses");
-    write_json(&receipt_path, &sign_terminal_receipt(receipt));
+    let signed_receipt = sign_terminal_receipt(receipt);
+    let kernel_key = signed_receipt["kernel_key"]
+        .as_str()
+        .test_expect("signed receipt kernel key")
+        .to_string();
+    write_json(&receipt_path, &signed_receipt);
+    authorize_transaction_trust_root_subject(bundle, &kernel_key);
+    refresh_transaction_artifact_digest(bundle, "trust-root.json");
     refresh_transaction_artifact_digest(bundle, artifact_path);
+}
+
+fn authorize_transaction_trust_root_subject(bundle: &Path, subject: &str) {
+    for trust_root_path in [
+        bundle.join("trust-root.json"),
+        bundle.join("roots/trust-root.json"),
+    ] {
+        if !trust_root_path.is_file() {
+            continue;
+        }
+        let mut trust_root: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&trust_root_path).test_expect("read trust root"))
+                .test_expect("trust root parses");
+        let roots = trust_root["roots"]
+            .as_array_mut()
+            .test_expect("trust root roots array");
+        if !roots
+            .iter()
+            .any(|root| root.get("subject").and_then(serde_json::Value::as_str) == Some(subject))
+        {
+            roots.push(serde_json::json!({ "subject": subject }));
+        }
+        let object = trust_root
+            .as_object_mut()
+            .test_expect("trust root is object");
+        object.remove("signature");
+        let keypair = Keypair::from_seed(&[54u8; 32]);
+        let (signature, _) = keypair
+            .sign_canonical(&trust_root)
+            .test_expect("trust root signs");
+        trust_root["signature"] = serde_json::Value::String(signature.to_hex());
+        write_json(&trust_root_path, &trust_root);
+    }
 }
 
 pub(crate) fn refresh_transaction_artifact_digest(bundle: &Path, artifact_path: &str) {
@@ -803,13 +966,23 @@ pub(crate) fn resign_agent_web_receipts_for_policy(bundle: &Path, policy_sha256:
         else {
             continue;
         };
+        let content_hash = agent_web_receipt_subject_path(receipt_ref)
+            .map(|subject_path| bundle.join(subject_path))
+            .filter(|subject_path| subject_path.is_file())
+            .map(|subject_path| sha256_file(&subject_path))
+            .unwrap_or_else(|| receipt.content_hash.clone());
+        let action = ToolCallAction::from_parameters(serde_json::json!({
+            "agent_web_receipt_ref": receipt_ref,
+            "content_hash": content_hash
+        }))
+        .test_expect("Agent Web receipt action hashes");
         let body = ChioReceiptBody {
             id: receipt_ref.to_string(),
             timestamp: receipt.timestamp,
             capability_id: receipt.capability_id,
             tool_server: receipt.tool_server,
             tool_name: receipt.tool_name,
-            action: receipt.action,
+            action,
             decision: receipt.decision,
             receipt_kind: receipt.receipt_kind,
             boundary_class: receipt.boundary_class,
@@ -817,7 +990,7 @@ pub(crate) fn resign_agent_web_receipts_for_policy(bundle: &Path, policy_sha256:
             tool_origin: receipt.tool_origin,
             redaction_mode: receipt.redaction_mode,
             actor_chain: receipt.actor_chain,
-            content_hash: receipt.content_hash,
+            content_hash,
             policy_hash: policy_sha256.to_string(),
             evidence: receipt.evidence,
             metadata: receipt.metadata,
@@ -833,6 +1006,162 @@ pub(crate) fn resign_agent_web_receipts_for_policy(bundle: &Path, policy_sha256:
         std::fs::write(&receipt_path, [&bytes[..], b"\n"].concat())
             .test_expect("write Agent Web receipt");
     }
+}
+
+pub(crate) fn refresh_agent_web_envelopes_for_subjects(
+    bundle: &Path,
+    evidence_graph: &mut serde_json::Value,
+) {
+    let keypair = Keypair::from_seed(&[17u8; 32]);
+    let public_key = keypair.public_key().to_hex();
+    for node in evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("graph nodes array")
+    {
+        if node.get("role").and_then(serde_json::Value::as_str) != Some("agent-web-proof-envelope")
+        {
+            continue;
+        }
+        let path = node["path"]
+            .as_str()
+            .test_expect("Agent Web envelope node has path");
+        let envelope_path = bundle.join(path);
+        let mut envelope: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(&envelope_path).test_expect("read Agent Web envelope"),
+        )
+        .test_expect("Agent Web envelope parses");
+        let subject_path = envelope["external_subject_path"]
+            .as_str()
+            .test_expect("Agent Web envelope has external subject path");
+        envelope["external_subject_digest"] =
+            serde_json::Value::String(sha256_file(&bundle.join(subject_path)));
+        sign_agent_web_envelope_value(&mut envelope, &keypair, &public_key);
+        write_json(&envelope_path, &envelope);
+        node["sha256"] = serde_json::Value::String(sha256_file(&envelope_path));
+    }
+}
+
+fn sign_agent_web_envelope_value(
+    envelope: &mut serde_json::Value,
+    keypair: &Keypair,
+    public_key: &str,
+) {
+    envelope["envelope_id"] = serde_json::Value::String(agent_web_envelope_id(envelope));
+    let payload = agent_web_envelope_signature_payload(envelope);
+    let canonical =
+        chio_core_types::canonical_json_bytes(&payload).test_expect("Agent Web envelope signs");
+    let signature = keypair.sign(&canonical).to_hex();
+    envelope["signature"] =
+        serde_json::Value::String(format!("sig-ed25519:{public_key}:{signature}"));
+}
+
+fn agent_web_envelope_id(envelope: &serde_json::Value) -> String {
+    let payload = agent_web_envelope_payload(
+        envelope,
+        &[
+            "schema",
+            "transaction_passport_ref",
+            "source_protocol",
+            "source_protocol_version",
+            "external_subject",
+            "external_subject_path",
+            "external_subject_digest",
+            "external_subject_signature_ref",
+            "projection_manifest_ref",
+            "projection_manifest_sha256",
+            "chio_claim_refs",
+            "receipt_refs",
+            "disclosure_capsule_refs",
+            "settlement_refs",
+            "risk_refs",
+            "limitations",
+        ],
+    );
+    let canonical =
+        chio_core_types::canonical_json_bytes(&payload).test_expect("Agent Web envelope id hashes");
+    chio_core_types::sha256_hex(&canonical)
+}
+
+fn agent_web_envelope_signature_payload(envelope: &serde_json::Value) -> serde_json::Value {
+    agent_web_envelope_payload(
+        envelope,
+        &[
+            "schema",
+            "envelope_id",
+            "transaction_passport_ref",
+            "source_protocol",
+            "source_protocol_version",
+            "external_subject",
+            "external_subject_path",
+            "external_subject_digest",
+            "external_subject_signature_ref",
+            "projection_manifest_ref",
+            "projection_manifest_sha256",
+            "chio_claim_refs",
+            "receipt_refs",
+            "disclosure_capsule_refs",
+            "settlement_refs",
+            "risk_refs",
+            "limitations",
+        ],
+    )
+}
+
+fn agent_web_envelope_payload(envelope: &serde_json::Value, fields: &[&str]) -> serde_json::Value {
+    let object = envelope
+        .as_object()
+        .test_expect("Agent Web envelope is an object");
+    let mut payload = serde_json::Map::new();
+    for field in fields {
+        payload.insert(
+            (*field).to_string(),
+            object
+                .get(*field)
+                .unwrap_or_else(|| panic!("Agent Web envelope missing field: {field}"))
+                .clone(),
+        );
+    }
+    serde_json::Value::Object(payload)
+}
+
+fn agent_web_receipt_subject_path(receipt_id: &str) -> Option<&'static str> {
+    Some(match receipt_id {
+        "receipt-agent-web-webhook-allow" => "external/webhook-delivery.json",
+        "receipt-agent-web-cloudevents-allow" => "external/cloudevent.json",
+        "receipt-agent-web-graphql-mutation-allow" => "external/graphql-operation.json",
+        "receipt-agent-web-mcp-tool-call-allow" => "external/mcp-tool-call.json",
+        "receipt-agent-web-a2a-task-allow" => "external/a2a-task.json",
+        "receipt-agent-web-openapi-operation-allow" => "external/openapi-operation.json",
+        "receipt-agent-web-acp-client-permission-allow" => "external/acp-client-permission.json",
+        "receipt-agent-web-acp-commerce-checkout-allow" => "external/acp-commerce-checkout.json",
+        "receipt-agent-web-ag-ui-event-allow" => "external/ag-ui-event.json",
+        "receipt-agent-web-browser-command-allow" => "external/browser-command.json",
+        "receipt-agent-web-rpa-transcript-allow" => "external/rpa-transcript.json",
+        "receipt-agent-web-email-message-allow" => "external/email-message.json",
+        "receipt-agent-web-calendar-event-allow" => "external/calendar-event.json",
+        "receipt-agent-web-slack-message-allow" => "external/slack-message.json",
+        "receipt-agent-web-oauth2-authorization-allow" => "external/oauth2-authorization.json",
+        "receipt-agent-web-openid-connect-identity-allow" => {
+            "external/openid-connect-identity.json"
+        }
+        "receipt-agent-web-scim-lifecycle-allow" => "external/scim-lifecycle.json",
+        "receipt-agent-web-spiffe-workload-allow" => "external/spiffe-workload-identity.json",
+        "receipt-agent-web-kubernetes-admission-allow" => {
+            "external/kubernetes-admission-review.json"
+        }
+        "receipt-agent-web-oci-ref-allow" => "external/oci-ref.json",
+        "receipt-agent-web-vc-allow" => "external/verifiable-credential.json",
+        "receipt-agent-web-sd-jwt-vc-presentation-allow" => "external/sd-jwt-vc-presentation.json",
+        "receipt-agent-web-bbs-disclosure-allow" => "external/bbs-receipt-disclosure.json",
+        "receipt-agent-web-sigstore-bundle-allow" => "external/sigstore-bundle.json",
+        "receipt-agent-web-in-toto-statement-allow" => "external/in-toto-statement.json",
+        "receipt-agent-web-dsse-envelope-allow" => "external/dsse-envelope.json",
+        "receipt-agent-web-slsa-provenance-allow" => "external/slsa-provenance.json",
+        "receipt-agent-web-asyncapi-message-allow" => "external/asyncapi-message.json",
+        "receipt-agent-web-ap2-mandate-allow" => "external/ap2-mandate-chain.json",
+        "receipt-agent-web-x402-payment-allow" => "external/x402-payment.json",
+        _ => return None,
+    })
 }
 
 pub(crate) fn dsse_pre_auth_encoding(payload_type: &str, payload: &[u8]) -> Vec<u8> {
@@ -905,10 +1234,19 @@ pub(crate) fn build_runtime_commerce_passport_bundle() -> (tempfile::TempDir, Pa
         "event-log.json",
         "payment-lifecycle.json",
         "mandate-allowance-ledger.json",
+        "settlement-packet.json",
+        "provider-passport.json",
+        "reputation-snapshot.json",
+        "federation-trust-bundle.json",
     ] {
         std::fs::copy(commerce_source.join(path), bundle.join(path))
             .test_expect("copy commerce artifact");
     }
+    copy_dir_all(
+        &commerce_source.join("protocol-payloads"),
+        &bundle.join("protocol-payloads"),
+    )
+    .test_expect("copy commerce protocol payloads");
 
     let policy_path = bundle.join("verifier-policy.json");
     let commerce_policy_path = commerce_source.join("verifier-policy.json");
@@ -930,6 +1268,18 @@ pub(crate) fn build_runtime_commerce_passport_bundle() -> (tempfile::TempDir, Pa
     }
     write_json(&policy_path, &policy);
     let policy_sha256 = sha256_file(&policy_path);
+    let passport_path = bundle.join("transaction-passport.json");
+    let mut passport: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+            .test_expect("passport parses");
+    let claim_set_sha256 = refresh_claim_set_for_policy(
+        &bundle,
+        passport["id"].as_str().test_expect("passport has id"),
+        passport["issued_at"]
+            .as_str()
+            .test_expect("passport has issued_at"),
+        &policy,
+    );
 
     for path in ["execution-lease.json", "allow-receipt.json"] {
         let artifact_path = bundle.join(path);
@@ -939,6 +1289,8 @@ pub(crate) fn build_runtime_commerce_passport_bundle() -> (tempfile::TempDir, Pa
         artifact["policy_digest"] = serde_json::Value::String(policy_sha256.clone());
         if path == "execution-lease.json" {
             sign_runtime_lease_with_fixture_authority(&mut artifact);
+        } else if path == "allow-receipt.json" {
+            sign_runtime_terminal_receipt_with_fixture_kernel(&mut artifact);
         }
         write_json(&artifact_path, &artifact);
     }
@@ -947,6 +1299,7 @@ pub(crate) fn build_runtime_commerce_passport_bundle() -> (tempfile::TempDir, Pa
     let mut evidence_graph: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
             .test_expect("graph parses");
+    upsert_claim_set_graph_binding(&mut evidence_graph, &claim_set_sha256);
     let graph_nodes = evidence_graph["nodes"]
         .as_array_mut()
         .test_expect("graph nodes array");
@@ -967,6 +1320,19 @@ pub(crate) fn build_runtime_commerce_passport_bundle() -> (tempfile::TempDir, Pa
         .test_expect("commerce graph nodes array")
     {
         let path = node["path"].as_str().test_expect("commerce node path");
+        let id = node["id"].as_str().test_expect("commerce node id");
+        let role = node["role"].as_str().test_expect("commerce node role");
+        if matches!(
+            path,
+            "transaction-passport.json"
+                | "evidence-graph.json"
+                | "claim-set.json"
+                | "verifier-policy.json"
+        ) || matches!(id, "claim-set" | "verifier-policy")
+            || matches!(role, "claim-set" | "verifier-policy")
+        {
+            continue;
+        }
         let mut node = node.clone();
         node["sha256"] = serde_json::Value::String(sha256_file(&bundle.join(path)));
         graph_nodes.push(node);
@@ -974,11 +1340,9 @@ pub(crate) fn build_runtime_commerce_passport_bundle() -> (tempfile::TempDir, Pa
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
 
-    let passport_path = bundle.join("transaction-passport.json");
-    let mut passport: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
-            .test_expect("passport parses");
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
+    passport["claim_set_sha256"] = serde_json::Value::String(claim_set_sha256);
+    passport["claim_set_path"] = serde_json::Value::String("claim-set.json".to_string());
     passport["verifier_policy_sha256"] = serde_json::Value::String(policy_sha256);
     write_json(&passport_path, &passport);
 
@@ -996,6 +1360,7 @@ pub(crate) fn build_commerce_transfer_group_mismatch_bundle() -> (tempfile::Temp
         serde_json::from_slice(&std::fs::read(&payment_path).test_expect("read payment lifecycle"))
             .test_expect("payment lifecycle parses");
     payment_lifecycle["transfer_group"] = serde_json::json!("order-commerce-other");
+    sign_commerce_payment_lifecycle(&mut payment_lifecycle);
     write_json(&payment_path, &payment_lifecycle);
 
     let order_context_path = bundle.join("order-context.json");
@@ -1030,6 +1395,15 @@ pub(crate) fn build_commerce_settlement_passport_bundle() -> (tempfile::TempDir,
     let passport_id = settlement_passport["id"]
         .as_str()
         .test_expect("public settlement passport has id");
+    let settlement_proof: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(settlement_source.join("settlement-proof-bundle.json"))
+            .test_expect("read settlement proof bundle"),
+    )
+    .test_expect("settlement proof bundle parses");
+    let commerce_order_id = settlement_proof["commerce_order_id"]
+        .as_str()
+        .test_expect("settlement proof bundle has commerce_order_id");
+    retarget_commerce_order_id(&bundle, commerce_order_id);
 
     let policy_path = bundle.join("verifier-policy.json");
     let mut policy: serde_json::Value =
@@ -1042,10 +1416,24 @@ pub(crate) fn build_commerce_settlement_passport_bundle() -> (tempfile::TempDir,
     write_json(&policy_path, &policy);
     let policy_sha256 = sha256_file(&policy_path);
 
+    let passport_path = bundle.join("transaction-passport.json");
+    let mut passport: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+            .test_expect("passport parses");
+    let claim_set_sha256 = refresh_claim_set_for_policy(
+        &bundle,
+        passport_id,
+        passport["issued_at"]
+            .as_str()
+            .test_expect("passport has issued_at"),
+        &policy,
+    );
+
     let evidence_graph_path = bundle.join("evidence-graph.json");
     let mut evidence_graph: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
             .test_expect("graph parses");
+    upsert_claim_set_graph_binding(&mut evidence_graph, &claim_set_sha256);
     append_graph_artifacts_from_fixture(
         &bundle,
         &settlement_source,
@@ -1065,12 +1453,10 @@ pub(crate) fn build_commerce_settlement_passport_bundle() -> (tempfile::TempDir,
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
 
-    let passport_path = bundle.join("transaction-passport.json");
-    let mut passport: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
-            .test_expect("passport parses");
     passport["id"] = serde_json::Value::String(passport_id.to_string());
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
+    passport["claim_set_sha256"] = serde_json::Value::String(claim_set_sha256);
+    passport["claim_set_path"] = serde_json::Value::String("claim-set.json".to_string());
     passport["verifier_policy_sha256"] = serde_json::Value::String(policy_sha256);
     write_json(&passport_path, &passport);
 
@@ -1079,11 +1465,27 @@ pub(crate) fn build_commerce_settlement_passport_bundle() -> (tempfile::TempDir,
 
 pub(crate) fn build_integrated_runtime_commerce_settlement_agent_web_bundle(
 ) -> (tempfile::TempDir, PathBuf) {
+    build_integrated_runtime_commerce_settlement_agent_web_bundle_for_commerce_order(
+        "order-public-settlement-valid",
+    )
+}
+
+pub(crate) fn build_integrated_runtime_commerce_settlement_agent_web_bundle_with_mismatched_orders(
+) -> (tempfile::TempDir, PathBuf) {
+    build_integrated_runtime_commerce_settlement_agent_web_bundle_for_commerce_order(
+        "order-commerce-001",
+    )
+}
+
+fn build_integrated_runtime_commerce_settlement_agent_web_bundle_for_commerce_order(
+    commerce_order_id: &str,
+) -> (tempfile::TempDir, PathBuf) {
     let (tempdir, bundle) = build_runtime_commerce_passport_bundle();
     let settlement_source =
         workspace_root().join("fixtures/proof-room/public-settlement/valid-offline-finality");
     let agent_web_source =
         workspace_root().join("fixtures/proof-room/agent-web/valid-webhook-cloudevents");
+    retarget_commerce_order_id(&bundle, commerce_order_id);
 
     let passport_path = bundle.join("transaction-passport.json");
     let agent_web_passport: serde_json::Value = serde_json::from_slice(
@@ -1099,6 +1501,9 @@ pub(crate) fn build_integrated_runtime_commerce_settlement_agent_web_bundle(
     let mut policy: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&policy_path).test_expect("read verifier policy"))
             .test_expect("verifier policy parses");
+    let current_passport: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+            .test_expect("passport parses");
     append_required_claims_from_policy(
         &mut policy,
         &settlement_source.join("verifier-policy.json"),
@@ -1106,6 +1511,14 @@ pub(crate) fn build_integrated_runtime_commerce_settlement_agent_web_bundle(
     append_required_claims_from_policy(&mut policy, &agent_web_source.join("verifier-policy.json"));
     write_json(&policy_path, &policy);
     let policy_sha256 = sha256_file(&policy_path);
+    let claim_set_sha256 = refresh_claim_set_for_policy(
+        &bundle,
+        passport_id,
+        current_passport["issued_at"]
+            .as_str()
+            .test_expect("passport issued_at"),
+        &policy,
+    );
 
     for path in ["execution-lease.json", "allow-receipt.json"] {
         let artifact_path = bundle.join(path);
@@ -1115,6 +1528,8 @@ pub(crate) fn build_integrated_runtime_commerce_settlement_agent_web_bundle(
         artifact["policy_digest"] = serde_json::Value::String(policy_sha256.clone());
         if path == "execution-lease.json" {
             sign_runtime_lease_with_fixture_authority(&mut artifact);
+        } else if path == "allow-receipt.json" {
+            sign_runtime_terminal_receipt_with_fixture_kernel(&mut artifact);
         }
         write_json(&artifact_path, &artifact);
     }
@@ -1123,6 +1538,7 @@ pub(crate) fn build_integrated_runtime_commerce_settlement_agent_web_bundle(
     let mut evidence_graph: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
             .test_expect("graph parses");
+    upsert_claim_set_graph_binding(&mut evidence_graph, &claim_set_sha256);
     append_graph_artifacts_from_fixture(
         &bundle,
         &settlement_source,
@@ -1130,6 +1546,8 @@ pub(crate) fn build_integrated_runtime_commerce_settlement_agent_web_bundle(
         &[("passport-public-settlement-valid", passport_id)],
     );
     append_graph_artifacts_from_fixture(&bundle, &agent_web_source, &mut evidence_graph, &[]);
+    remove_graph_nodes_by_path(&mut evidence_graph, "external/settlement-packet.json");
+    refresh_agent_web_envelopes_for_subjects(&bundle, &mut evidence_graph);
     resign_agent_web_receipts_for_policy(&bundle, &policy_sha256);
 
     let graph_nodes = evidence_graph["nodes"]
@@ -1149,10 +1567,191 @@ pub(crate) fn build_integrated_runtime_commerce_settlement_agent_web_bundle(
             .test_expect("passport parses");
     passport["id"] = serde_json::Value::String(passport_id.to_string());
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
+    passport["claim_set_sha256"] = serde_json::Value::String(claim_set_sha256);
+    passport["claim_set_path"] = serde_json::Value::String("claim-set.json".to_string());
     passport["verifier_policy_sha256"] = serde_json::Value::String(policy_sha256);
     write_json(&passport_path, &passport);
 
     (tempdir, bundle)
+}
+
+fn retarget_commerce_order_id(bundle: &Path, order_id: &str) {
+    let event_log_path = bundle.join("event-log.json");
+    let payment_path = bundle.join("payment-lifecycle.json");
+    let mandate_path = bundle.join("mandate-allowance-ledger.json");
+    let settlement_packet_path = bundle.join("settlement-packet.json");
+    let order_context_path = bundle.join("order-context.json");
+
+    let mut order_context: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&order_context_path).test_expect("read order context"),
+    )
+    .test_expect("order context parses");
+    order_context["order_id"] = serde_json::json!(order_id);
+    let quote_sha256 = commerce_quote_sha256(&order_context);
+    order_context["quote_sha256"] = serde_json::json!(quote_sha256.clone());
+
+    let mut event_log: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&event_log_path).test_expect("read event log"))
+            .test_expect("event log parses");
+    event_log["order_id"] = serde_json::json!(order_id);
+    for event in event_log["events"]
+        .as_array_mut()
+        .test_expect("event log events array")
+    {
+        event["order_id"] = serde_json::json!(order_id);
+    }
+    seal_commerce_event_log(&mut event_log);
+    write_json(&event_log_path, &event_log);
+
+    let mut payment_lifecycle: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&payment_path).test_expect("read payment lifecycle"))
+            .test_expect("payment lifecycle parses");
+    payment_lifecycle["order_id"] = serde_json::json!(order_id);
+    payment_lifecycle["transfer_group"] = serde_json::json!(order_id);
+    payment_lifecycle["quote_sha256"] = serde_json::json!(quote_sha256.clone());
+    sign_commerce_payment_lifecycle(&mut payment_lifecycle);
+    write_json(&payment_path, &payment_lifecycle);
+
+    let mut mandate_ledger: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&mandate_path).test_expect("read mandate ledger"))
+            .test_expect("mandate ledger parses");
+    mandate_ledger["order_id"] = serde_json::json!(order_id);
+    mandate_ledger["quote_sha256"] = serde_json::json!(quote_sha256.clone());
+    retarget_commerce_mandate_projection_order_ids(&mut mandate_ledger, order_id);
+    retarget_commerce_mandate_protocol_payloads(bundle, &mut mandate_ledger, order_id);
+    write_json(&mandate_path, &mandate_ledger);
+
+    let mut settlement_packet: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&settlement_packet_path).test_expect("read settlement packet"),
+    )
+    .test_expect("settlement packet parses");
+    settlement_packet["order_id"] = serde_json::json!(order_id);
+    settlement_packet["quote_sha256"] = serde_json::json!(quote_sha256);
+    write_json(&settlement_packet_path, &settlement_packet);
+
+    order_context["event_log_sha256"] = serde_json::Value::String(sha256_file(&event_log_path));
+    order_context["payment_lifecycle_sha256"] =
+        serde_json::Value::String(sha256_file(&payment_path));
+    order_context["mandate_ledger_sha256"] = serde_json::Value::String(sha256_file(&mandate_path));
+    order_context["settlement_packet_sha256"] =
+        serde_json::Value::String(sha256_file(&settlement_packet_path));
+    write_json(&order_context_path, &order_context);
+}
+
+fn commerce_quote_sha256(order_context: &serde_json::Value) -> String {
+    let quote_amount_minor = order_context["quote_amount_minor"]
+        .as_u64()
+        .test_expect("quote amount is u64");
+    let binding = serde_json::json!({
+        "amount_minor": quote_amount_minor,
+        "currency": order_context["quote_currency"],
+        "merchant_subject": order_context["merchant_subject"],
+        "order_id": order_context["order_id"],
+        "quote_id": order_context["quote_id"],
+    });
+    let canonical =
+        chio_core_types::canonical_json_bytes(&binding).test_expect("quote binding canonicalizes");
+    hex::encode(Sha256::digest(&canonical))
+}
+
+fn seal_commerce_event_log(event_log: &mut serde_json::Value) {
+    for event in event_log["events"]
+        .as_array_mut()
+        .test_expect("event log events array")
+    {
+        event
+            .as_object_mut()
+            .test_expect("event object")
+            .remove("event_sha256");
+        let canonical =
+            chio_core_types::canonical_json_bytes(event).test_expect("event canonicalizes");
+        event["event_sha256"] = serde_json::Value::String(hex::encode(Sha256::digest(&canonical)));
+    }
+}
+
+fn retarget_commerce_mandate_projection_order_ids(
+    mandate_ledger: &mut serde_json::Value,
+    order_id: &str,
+) {
+    if let Some(projections) = mandate_ledger
+        .get_mut("protocol_projections")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for projection in projections {
+            projection["order_id"] = serde_json::json!(order_id);
+        }
+    }
+}
+
+fn retarget_commerce_mandate_protocol_payloads(
+    bundle: &Path,
+    mandate_ledger: &mut serde_json::Value,
+    order_id: &str,
+) {
+    let projection_refs = mandate_ledger["protocol_projections"]
+        .as_array()
+        .test_expect("mandate projections array")
+        .iter()
+        .enumerate()
+        .map(|(index, projection)| {
+            (
+                index,
+                projection["protocol"]
+                    .as_str()
+                    .test_expect("projection protocol")
+                    .to_string(),
+                projection["purpose"]
+                    .as_str()
+                    .test_expect("projection purpose")
+                    .to_string(),
+                projection["payload_path"]
+                    .as_str()
+                    .test_expect("projection payload path")
+                    .to_string(),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    for (index, protocol, purpose, payload_path) in projection_refs {
+        let payload_path = bundle.join(payload_path);
+        let mut payload: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&payload_path).test_expect("read payload"))
+                .test_expect("payload parses");
+        payload["order_id"] = serde_json::json!(order_id);
+        write_json(&payload_path, &payload);
+        let payload_sha256 = sha256_file(&payload_path);
+        mandate_ledger["protocol_projections"]
+            .as_array_mut()
+            .test_expect("mandate projections array")[index]["digest"] =
+            serde_json::Value::String(payload_sha256.clone());
+        if let Some(field) = commerce_mandate_protocol_hash_field(&protocol, &purpose) {
+            mandate_ledger[field] = serde_json::Value::String(payload_sha256);
+        }
+    }
+}
+
+fn commerce_mandate_protocol_hash_field(protocol: &str, purpose: &str) -> Option<&'static str> {
+    match (protocol, purpose) {
+        ("ap2", "checkout_mandate") => Some("ap2_checkout_mandate_hash"),
+        ("ap2", "payment_mandate") => Some("ap2_payment_mandate_hash"),
+        ("acp-commerce", "delegated_payment_token") => Some("acp_delegated_payment_token_hash"),
+        ("x402", "payment_requirements") => Some("x402_payment_requirements_hash"),
+        _ => None,
+    }
+}
+
+fn sign_commerce_payment_lifecycle(payment_lifecycle: &mut serde_json::Value) {
+    let keypair = Keypair::from_seed(&TEST_SIGNATURE_SEED);
+    payment_lifecycle["issuer"] =
+        serde_json::Value::String(format!("did:chio:{}", keypair.public_key().to_hex()));
+    payment_lifecycle
+        .as_object_mut()
+        .test_expect("payment lifecycle object")
+        .remove("signature");
+    let (signature, _) = keypair
+        .sign_canonical(payment_lifecycle)
+        .test_expect("payment lifecycle signs");
+    payment_lifecycle["signature"] = serde_json::Value::String(signature.to_hex());
 }
 
 pub(crate) fn build_disclosure_agent_web_bundle() -> (tempfile::TempDir, PathBuf) {
@@ -1187,11 +1786,20 @@ pub(crate) fn build_disclosure_agent_web_bundle() -> (tempfile::TempDir, PathBuf
     append_required_claims_from_policy(&mut policy, &agent_web_source.join("verifier-policy.json"));
     write_json(&policy_path, &policy);
     let policy_sha256 = sha256_file(&policy_path);
+    let claim_set_sha256 = refresh_claim_set_for_policy(
+        &bundle,
+        agent_web_passport_id,
+        disclosure_passport["issued_at"]
+            .as_str()
+            .test_expect("disclosure passport issued_at"),
+        &policy,
+    );
 
     let evidence_graph_path = bundle.join("evidence-graph.json");
     let mut evidence_graph: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
             .test_expect("graph parses");
+    upsert_claim_set_graph_binding(&mut evidence_graph, &claim_set_sha256);
     replace_json_strings_in_graph_artifacts(
         &bundle,
         &evidence_graph,
@@ -1216,10 +1824,130 @@ pub(crate) fn build_disclosure_agent_web_bundle() -> (tempfile::TempDir, PathBuf
     let mut passport = disclosure_passport;
     passport["id"] = serde_json::Value::String(agent_web_passport_id.to_string());
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
+    passport["claim_set_sha256"] = serde_json::Value::String(claim_set_sha256);
+    passport["claim_set_path"] = serde_json::Value::String("claim-set.json".to_string());
     passport["verifier_policy_sha256"] = serde_json::Value::String(policy_sha256);
     write_json(&passport_path, &passport);
 
     (tempdir, bundle)
+}
+
+fn refresh_claim_set_for_policy(
+    bundle: &Path,
+    passport_id: &str,
+    issued_at: &str,
+    policy: &serde_json::Value,
+) -> String {
+    let claims = policy["required_claims"]
+        .as_array()
+        .test_expect("policy required_claims array")
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let claim_set = serde_json::json!({
+        "schema": "chio.transaction.claim-set.v1",
+        "id": format!("claim-set-{passport_id}"),
+        "issued_at": issued_at,
+        "claims": claims.into_iter().map(|claim_id| {
+            serde_json::json!({
+                "claim_id": claim_id,
+                "status": "verified",
+                "required_evidence": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "evidence_refs": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "verifier_module": "chio proof verify"
+            })
+        }).collect::<Vec<_>>()
+    });
+    let path = bundle.join("claim-set.json");
+    write_json(&path, &claim_set);
+    sha256_file(&path)
+}
+
+fn upsert_claim_set_graph_binding(evidence_graph: &mut serde_json::Value, claim_set_sha256: &str) {
+    let nodes = evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("graph nodes array");
+    let verifier_policy_node_id = nodes
+        .iter()
+        .find(|node| {
+            node.get("role")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|role| role == "verifier-policy")
+        })
+        .and_then(|node| node.get("id"))
+        .and_then(serde_json::Value::as_str)
+        .test_expect("graph has verifier-policy node")
+        .to_string();
+    nodes.retain(|node| {
+        node.get("id").and_then(serde_json::Value::as_str) != Some("claim-set")
+            && node.get("path").and_then(serde_json::Value::as_str) != Some("claim-set.json")
+    });
+    nodes.push(serde_json::json!({
+        "id": "claim-set",
+        "path": "claim-set.json",
+        "role": "claim-set",
+        "schema": "chio.transaction.claim-set.v1",
+        "sha256": claim_set_sha256
+    }));
+
+    let edges = evidence_graph["edges"]
+        .as_array_mut()
+        .test_expect("graph edges array");
+    edges.retain(|edge| {
+        edge.get("from").and_then(serde_json::Value::as_str) != Some("claim-set")
+            || edge.get("to").and_then(serde_json::Value::as_str)
+                != Some(verifier_policy_node_id.as_str())
+            || edge.get("predicate").and_then(serde_json::Value::as_str) != Some("binds")
+    });
+    edges.push(serde_json::json!({
+        "evidence_class": "digest-bound-reference",
+        "from": "claim-set",
+        "predicate": "binds",
+        "to": verifier_policy_node_id
+    }));
+}
+
+fn remove_graph_nodes_by_path(evidence_graph: &mut serde_json::Value, path: &str) {
+    let nodes = evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("graph nodes array");
+    let mut removed_ids = BTreeSet::new();
+    nodes.retain(|node| {
+        let should_remove = node.get("path").and_then(serde_json::Value::as_str) == Some(path);
+        if should_remove {
+            if let Some(id) = node.get("id").and_then(serde_json::Value::as_str) {
+                removed_ids.insert(id.to_string());
+            }
+        }
+        !should_remove
+    });
+    if removed_ids.is_empty() {
+        return;
+    }
+
+    let edges = evidence_graph["edges"]
+        .as_array_mut()
+        .test_expect("graph edges array");
+    edges.retain(|edge| {
+        let from_removed = edge
+            .get("from")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|from| removed_ids.contains(from));
+        let to_removed = edge
+            .get("to")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|to| removed_ids.contains(to));
+        !from_removed && !to_removed
+    });
 }
 
 pub(crate) fn build_risk_only_policy_bundle(
@@ -1231,6 +1959,17 @@ pub(crate) fn build_risk_only_policy_bundle(
     let bundle = tempdir.path().join(bundle_name);
     copy_dir_all(&source, &bundle).test_expect("copy proof bundle");
 
+    if bundle.join("manifest.json").is_file() {
+        std::fs::create_dir_all(bundle.join("artifacts/authority"))
+            .test_expect("create proof room authority directory");
+        write_json(
+            &bundle.join("artifacts/authority/trust-roots.json"),
+            &proof_room_trust_roots_for_seed(TEST_SIGNATURE_SEED),
+        );
+        refresh_manifest_artifact_ref(&bundle, "artifacts/authority/trust-roots.json");
+        retain_standalone_risk_manifest_claim(&bundle);
+    }
+
     let policy_path = bundle.join("verifier-policy.json");
     let mut policy: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&policy_path).test_expect("read verifier policy"))
@@ -1238,13 +1977,34 @@ pub(crate) fn build_risk_only_policy_bundle(
     policy["required_claims"] = serde_json::json!(["claim.risk.comptroller_report_bound"]);
     write_json(&policy_path, &policy);
     let policy_sha256 = sha256_file(&policy_path);
+    refresh_standalone_risk_root_artifacts(&bundle);
+
+    let evidence_graph_path = bundle.join("evidence-graph.json");
+    let mut evidence_graph: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
+            .test_expect("graph parses");
+    let policy_node = evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("graph nodes array")
+        .iter_mut()
+        .find(|node| {
+            node.get("role").and_then(serde_json::Value::as_str) == Some("verifier-policy")
+        })
+        .test_expect("verifier policy graph node");
+    policy_node["sha256"] = serde_json::Value::String(policy_sha256.clone());
+    write_json(&evidence_graph_path, &evidence_graph);
+    let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
+    refresh_standalone_risk_root_artifacts(&bundle);
 
     let passport_path = bundle.join("transaction-passport.json");
     let mut passport: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
             .test_expect("passport parses");
+    passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
     passport["verifier_policy_sha256"] = serde_json::Value::String(policy_sha256);
     write_json(&passport_path, &passport);
+    refresh_standalone_risk_root_artifacts(&bundle);
+    refresh_risk_only_policy_bundle_report_refs(&bundle);
 
     (tempdir, bundle)
 }
@@ -1256,6 +2016,16 @@ pub(crate) fn build_standalone_risk_only_policy_bundle() -> (tempfile::TempDir, 
     let bundle = tempdir.path().join("standalone-risk-only");
     copy_dir_all(&source, &bundle).test_expect("copy proof bundle");
 
+    if bundle.join("manifest.json").is_file() {
+        std::fs::create_dir_all(bundle.join("artifacts/authority"))
+            .test_expect("create proof room authority directory");
+        write_json(
+            &bundle.join("artifacts/authority/trust-roots.json"),
+            &proof_room_trust_roots_for_seed(TEST_SIGNATURE_SEED),
+        );
+        refresh_manifest_artifact_ref(&bundle, "artifacts/authority/trust-roots.json");
+    }
+
     let policy_path = bundle.join("verifier-policy.json");
     let mut policy: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&policy_path).test_expect("read verifier policy"))
@@ -1263,6 +2033,7 @@ pub(crate) fn build_standalone_risk_only_policy_bundle() -> (tempfile::TempDir, 
     policy["required_claims"] = serde_json::json!(["claim.risk.comptroller_report_bound"]);
     write_json(&policy_path, &policy);
     let policy_sha256 = sha256_file(&policy_path);
+    refresh_manifest_artifact_ref_if_present(&bundle, "verifier-policy.json");
 
     let evidence_graph_path = bundle.join("evidence-graph.json");
     let mut evidence_graph: serde_json::Value =
@@ -1293,6 +2064,7 @@ pub(crate) fn build_standalone_risk_only_policy_bundle() -> (tempfile::TempDir, 
     evidence_graph["edges"] = serde_json::Value::Array(Vec::new());
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
+    refresh_standalone_risk_root_artifacts(&bundle);
 
     let passport_path = bundle.join("transaction-passport.json");
     let mut passport: serde_json::Value =
@@ -1301,6 +2073,8 @@ pub(crate) fn build_standalone_risk_only_policy_bundle() -> (tempfile::TempDir, 
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
     passport["verifier_policy_sha256"] = serde_json::Value::String(policy_sha256);
     write_json(&passport_path, &passport);
+    refresh_standalone_risk_root_artifacts(&bundle);
+    refresh_standalone_risk_verifier_report(&bundle);
 
     (tempdir, bundle)
 }
@@ -1351,6 +2125,7 @@ pub(crate) fn remove_standalone_risk_graph_node(bundle: &Path, removed_node_id: 
             .test_expect("passport parses");
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
     write_json(&passport_path, &passport);
+    refresh_standalone_risk_root_artifacts(bundle);
 }
 
 pub(crate) fn add_standalone_risk_unbound_reserve_ledger(bundle: &Path) {
@@ -1376,6 +2151,7 @@ pub(crate) fn add_standalone_risk_unbound_reserve_ledger(bundle: &Path) {
             "payee_subject": "did:chio:buyer-enterprise"
         }
     ]);
+    set_standalone_risk_claim_payout_capital_instruction(&mut risk_report);
     write_standalone_risk_report_and_rehash(bundle, risk_report);
 }
 
@@ -1470,6 +2246,16 @@ pub(crate) fn rehash_standalone_risk_graph_artifact(
             .test_expect("passport parses");
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
     write_json(&passport_path, &passport);
+    let relative_artifact_path = artifact_path
+        .strip_prefix(bundle)
+        .test_expect("risk artifact path is inside bundle")
+        .to_str()
+        .test_expect("risk artifact path is utf8");
+    refresh_manifest_artifact_ref_if_present(bundle, relative_artifact_path);
+    refresh_standalone_risk_root_artifacts(bundle);
+    if node_id == "approval-case" {
+        refresh_standalone_risk_verifier_report(bundle);
+    }
 }
 
 pub(crate) fn add_standalone_risk_uncovered_reserve_ledger_claim(bundle: &Path) {
@@ -1498,7 +2284,28 @@ pub(crate) fn add_standalone_risk_uncovered_reserve_ledger_claim(bundle: &Path) 
             "payee_subject": "did:chio:buyer-enterprise"
         }
     ]);
+    set_standalone_risk_claim_payout_capital_instruction(&mut risk_report);
     write_standalone_risk_report_and_rehash(bundle, risk_report);
+}
+
+fn set_standalone_risk_claim_payout_capital_instruction(risk_report: &mut serde_json::Value) {
+    let entry = risk_report["reserve_ledger"][0].clone();
+    risk_report["capital_instructions"] = serde_json::json!([
+        {
+            "instruction_id": "capital-instruction-standalone-risk-claim-payout",
+            "reserve_entry_id": entry["entry_id"],
+            "order_id": risk_report["order_id"],
+            "claim_id": entry["claim_id"],
+            "reserve_ref": entry["reserve_ref"],
+            "currency": entry["currency"],
+            "units": entry["units"],
+            "settlement_ref": entry["settlement_ref"],
+            "intended_action": "transfer_funds",
+            "source_kind": "facility_commitment",
+            "intended_state": "pending_execution",
+            "reconciled_state": "not_observed"
+        }
+    ]);
 }
 
 pub(crate) fn add_standalone_risk_sanction_backed_market_slash(bundle: &Path) {
@@ -1578,6 +2385,134 @@ pub(crate) fn write_standalone_risk_report_and_rehash(
             .test_expect("passport parses");
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
     write_json(&passport_path, &passport);
+    refresh_manifest_artifact_ref_if_present(bundle, "risk-comptroller-report.json");
+    refresh_standalone_risk_root_artifacts(bundle);
+    refresh_standalone_risk_verifier_report(bundle);
+}
+
+fn refresh_standalone_risk_root_artifacts(bundle: &Path) {
+    for artifact_path in [
+        "verifier-policy.json",
+        "evidence-graph.json",
+        "transaction-passport.json",
+    ] {
+        let root_artifact_path = format!("roots/{artifact_path}");
+        let source = bundle.join(artifact_path);
+        let destination = bundle.join(&root_artifact_path);
+        if source.is_file() && destination.is_file() {
+            std::fs::copy(&source, &destination).test_expect("sync standalone risk root artifact");
+            refresh_manifest_artifact_ref_if_present(bundle, &root_artifact_path);
+        }
+        refresh_manifest_artifact_ref_if_present(bundle, artifact_path);
+    }
+}
+
+fn refresh_standalone_risk_verifier_report(bundle: &Path) {
+    let passport_path = bundle.join("transaction-passport.json");
+    let passport: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+            .test_expect("passport parses");
+    let risk_report_path = bundle.join("risk-comptroller-report.json");
+    let risk_report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&risk_report_path).test_expect("read risk report"))
+            .test_expect("risk report parses");
+    let verifier_report = serde_json::json!({
+        "schema": "chio.transaction.verifier-report.v1",
+        "id": format!(
+            "verifier-report-{}",
+            passport["id"].as_str().test_expect("passport id")
+        ),
+        "issued_at": passport["issued_at"],
+        "verdict": "verified",
+        "passport_id": passport["id"],
+        "passport_path": "transaction-passport.json",
+        "evidence_graph_sha256": passport["evidence_graph_sha256"],
+        "evidence_graph_path": passport["evidence_graph_path"],
+        "verifier_policy_sha256": passport["verifier_policy_sha256"],
+        "verifier_policy_path": passport["verifier_policy_path"],
+        "risk_comptroller_report_ref": risk_report["id"],
+        "order_id": risk_report["order_id"],
+        "subject": risk_report["subject"],
+        "verified_claims": ["claim.risk.comptroller_report_bound"]
+    });
+    write_json(&bundle.join("verifier/report.json"), &verifier_report);
+    retain_standalone_risk_manifest_claim(bundle);
+    retain_standalone_risk_ui_claim(bundle);
+    refresh_verifier_report_refs_with_seed(bundle, TEST_SIGNATURE_SEED);
+    retain_standalone_risk_manifest_claim(bundle);
+}
+
+fn refresh_risk_only_policy_bundle_report_refs(bundle: &Path) {
+    let passport_path = bundle.join("transaction-passport.json");
+    let passport: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+            .test_expect("passport parses");
+    let report_path = bundle.join("verifier/report.json");
+    let mut report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&report_path).test_expect("read verifier report"))
+            .test_expect("verifier report parses");
+    report["evidence_graph_sha256"] = passport["evidence_graph_sha256"].clone();
+    report["evidence_graph_path"] = passport["evidence_graph_path"].clone();
+    report["verifier_policy_sha256"] = passport["verifier_policy_sha256"].clone();
+    report["verifier_policy_path"] = passport["verifier_policy_path"].clone();
+    if let Some(claim_set_sha256) = passport.get("claim_set_sha256") {
+        report["claim_set_sha256"] = claim_set_sha256.clone();
+    }
+    if let Some(claim_set_path) = passport.get("claim_set_path") {
+        report["claim_set_path"] = claim_set_path.clone();
+    }
+    write_json(&report_path, &report);
+    retain_standalone_risk_manifest_claim(bundle);
+    retain_standalone_risk_ui_claim(bundle);
+    refresh_verifier_report_refs_with_seed(bundle, TEST_SIGNATURE_SEED);
+    retain_standalone_risk_manifest_claim(bundle);
+}
+
+fn retain_standalone_risk_manifest_claim(bundle: &Path) {
+    let manifest_path = bundle.join("manifest.json");
+    if !manifest_path.is_file() {
+        return;
+    }
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&manifest_path).test_expect("read manifest"))
+            .test_expect("manifest parses");
+    let claims = manifest["claims"]
+        .as_array_mut()
+        .test_expect("manifest claims array");
+    claims.retain(|claim| {
+        matches!(
+            claim.get("claim_id").and_then(serde_json::Value::as_str),
+            Some("claim.proof_room.verifier_report_bound")
+                | Some("claim.risk.comptroller_report_bound")
+        )
+    });
+    write_json(&manifest_path, &manifest);
+    refresh_bundle_signature(bundle);
+}
+
+fn retain_standalone_risk_ui_claim(bundle: &Path) {
+    let ui_report_path = bundle.join("ui/proof-room-static/load-report.json");
+    if !ui_report_path.is_file() {
+        return;
+    }
+    let mut ui_report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&ui_report_path).test_expect("read UI report"))
+            .test_expect("UI report parses");
+    ui_report["rendered_claims"] = serde_json::json!([
+        {
+            "checker": "chio proof serve --dry-run",
+            "claim_id": "claim.proof_room.verifier_report_bound",
+            "source": "ui/proof-room-static/load-report.json",
+            "verdict": "verified"
+        },
+        {
+            "checker": "chio proof verify --require risk",
+            "claim_id": "claim.risk.comptroller_report_bound",
+            "source": "verifier/report.json",
+            "verdict": "verified"
+        }
+    ]);
+    write_json(&ui_report_path, &ui_report);
 }
 
 pub(crate) fn append_required_claims_from_policy(
@@ -1610,16 +2545,31 @@ pub(crate) fn append_graph_artifacts_from_fixture(
         &std::fs::read(source.join("evidence-graph.json")).test_expect("read graph"),
     )
     .test_expect("graph parses");
+    let mut existing_ids = evidence_graph["nodes"]
+        .as_array()
+        .test_expect("graph nodes array")
+        .iter()
+        .filter_map(|node| node.get("id").and_then(serde_json::Value::as_str))
+        .map(std::string::ToString::to_string)
+        .collect::<BTreeSet<_>>();
+    let mut id_remaps = BTreeMap::new();
     let mut retained_ids = BTreeSet::new();
     for node in source_graph["nodes"]
         .as_array()
         .test_expect("source graph nodes array")
     {
         let path = node["path"].as_str().test_expect("source node path");
+        let id = node["id"].as_str().test_expect("source node id");
+        let role = node["role"].as_str().test_expect("source node role");
         if matches!(
             path,
-            "transaction-passport.json" | "evidence-graph.json" | "verifier-policy.json"
-        ) {
+            "transaction-passport.json"
+                | "evidence-graph.json"
+                | "claim-set.json"
+                | "verifier-policy.json"
+        ) || matches!(id, "claim-set" | "verifier-policy")
+            || matches!(role, "claim-set" | "verifier-policy")
+        {
             continue;
         }
         let destination_path = bundle.join(path);
@@ -1640,6 +2590,11 @@ pub(crate) fn append_graph_artifacts_from_fixture(
         }
 
         let mut node = node.clone();
+        let node_id = unique_graph_node_id(id, &mut existing_ids);
+        if node_id != id {
+            id_remaps.insert(id.to_string(), node_id.clone());
+            node["id"] = serde_json::Value::String(node_id);
+        }
         node["sha256"] = serde_json::Value::String(sha256_file(&destination_path));
         retained_ids.insert(node["id"].as_str().test_expect("node id").to_string());
         evidence_graph["nodes"]
@@ -1654,13 +2609,31 @@ pub(crate) fn append_graph_artifacts_from_fixture(
     {
         let from = edge["from"].as_str().test_expect("edge from");
         let to = edge["to"].as_str().test_expect("edge to");
+        let from = id_remaps.get(from).map(String::as_str).unwrap_or(from);
+        let to = id_remaps.get(to).map(String::as_str).unwrap_or(to);
         if retained_ids.contains(from) && retained_ids.contains(to) {
+            let mut edge = edge.clone();
+            edge["from"] = serde_json::Value::String(from.to_string());
+            edge["to"] = serde_json::Value::String(to.to_string());
             evidence_graph["edges"]
                 .as_array_mut()
                 .test_expect("graph edges array")
-                .push(edge.clone());
+                .push(edge);
         }
     }
+}
+
+fn unique_graph_node_id(id: &str, existing_ids: &mut BTreeSet<String>) -> String {
+    if existing_ids.insert(id.to_string()) {
+        return id.to_string();
+    }
+    for suffix in 2.. {
+        let candidate = format!("{id}-{suffix}");
+        if existing_ids.insert(candidate.clone()) {
+            return candidate;
+        }
+    }
+    unreachable!("unbounded suffix search returns a graph node id")
 }
 
 pub(crate) fn replace_json_strings_in_graph_artifacts(
@@ -1817,6 +2790,12 @@ pub(crate) fn refresh_manifest_artifact_ref(bundle: &Path, artifact_path: &str) 
     refresh_bundle_signature(bundle);
 }
 
+pub(crate) fn refresh_manifest_artifact_ref_if_present(bundle: &Path, artifact_path: &str) {
+    if bundle.join("manifest.json").is_file() {
+        refresh_manifest_artifact_ref(bundle, artifact_path);
+    }
+}
+
 pub(crate) fn copy_proof_room_bundle_to_temp() -> (tempfile::TempDir, PathBuf) {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let source = proof_room_bundle_fixture();
@@ -1837,6 +2816,7 @@ pub(crate) fn build_minimal_passport_proof_room_bundle() -> (tempfile::TempDir, 
     for file in [
         "transaction-passport.json",
         "evidence-graph.json",
+        "claim-set.json",
         "verifier-policy.json",
     ] {
         std::fs::copy(source.join(file), bundle.join("roots").join(file))
@@ -1911,6 +2891,7 @@ pub(crate) fn build_minimal_passport_proof_room_bundle() -> (tempfile::TempDir, 
             "proof_room_verifier_report": "chio.proof-room.verifier-report.v1",
             "transaction_passport": "chio.transaction-passport.v1",
             "transaction_evidence_graph": "chio.transaction.evidence-graph.v1",
+            "transaction_claim_set": "chio.transaction.claim-set.v1",
             "transaction_verifier_policy": "chio.transaction.verifier-policy.v1",
             "transaction_verifier_report": "chio.transaction.verifier-report.v1"
         },
@@ -1922,6 +2903,7 @@ pub(crate) fn build_minimal_passport_proof_room_bundle() -> (tempfile::TempDir, 
         "artifacts": [
             artifact(&bundle, "roots/transaction-passport.json", "chio.transaction-passport.v1", "transaction-root", "transaction-passport"),
             artifact(&bundle, "roots/evidence-graph.json", "chio.transaction.evidence-graph.v1", "transaction-root", "evidence-graph"),
+            artifact(&bundle, "roots/claim-set.json", "chio.transaction.claim-set.v1", "transaction-root", "claim-set"),
             artifact(&bundle, "roots/verifier-policy.json", "chio.transaction.verifier-policy.v1", "transaction-policy", "verifier-policy"),
             artifact(&bundle, "verifier/report.json", "chio.transaction.verifier-report.v1", "verifier-output", "verifier-report"),
             artifact(&bundle, "ui/proof-room-static/load-report.json", "chio.proof-room.verifier-report.v1", "proof-room-display", "proof-room-report"),
@@ -1940,6 +2922,7 @@ pub(crate) fn build_minimal_passport_proof_room_bundle() -> (tempfile::TempDir, 
                 "required_artifacts": [
                     "roots/transaction-passport.json",
                     "roots/evidence-graph.json",
+                    "roots/claim-set.json",
                     "roots/verifier-policy.json",
                     "verifier/report.json"
                 ],

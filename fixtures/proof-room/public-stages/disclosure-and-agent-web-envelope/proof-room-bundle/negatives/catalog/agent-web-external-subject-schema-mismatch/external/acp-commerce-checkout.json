@@ -8,7 +8,7 @@
   "id": "acp-commerce-checkout-agent-web-valid",
   "merchant_identity_digest": "ecececececececececececececececececececececececececececececececec",
   "object_kind": "acp_commerce_checkout",
-  "order_context_digest": "293d7f5ea66ceda4b6976218d3d1a8bb3718f9cc565f7504e47dcde62c84b747",
+  "order_context_digest": "b5eb0fe2638ce2e16711ee20d4a034b94df300ece8b04f255fa844c67be7862a",
   "order_id": "order-commerce-001",
   "payment_instruction_digest": "dbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdbdb",
   "status": "authorized",

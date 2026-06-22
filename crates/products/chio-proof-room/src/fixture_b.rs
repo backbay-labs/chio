@@ -125,6 +125,31 @@ pub(crate) fn embedded_artifact_nodes_by_role<'a>(
     nodes.iter().filter(|node| node.role == role).collect()
 }
 
+fn select_single_embedded_artifact_node_by_path<'a>(
+    nodes: &'a [ProofRoomEmbeddedEvidenceNode],
+    path: &str,
+    label: &str,
+) -> Result<&'a ProofRoomEmbeddedEvidenceNode, String> {
+    let matches: Vec<&ProofRoomEmbeddedEvidenceNode> =
+        nodes.iter().filter(|node| node.path == path).collect();
+    match matches.as_slice() {
+        [node] => Ok(node),
+        [] => Err(format!("missing {label} artifact path: {path}")),
+        _ => Err(format!("multiple {label} artifact paths: {path}")),
+    }
+}
+
+fn embedded_artifact_bytes_by_path(
+    nodes: &[ProofRoomEmbeddedEvidenceNode],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    path: &str,
+    expected_schema: &str,
+    label: &str,
+) -> Result<Vec<u8>, String> {
+    let node = select_single_embedded_artifact_node_by_path(nodes, path, label)?;
+    embedded_artifact_node_bytes(node, artifacts, expected_schema, label)
+}
+
 pub(crate) fn embedded_artifact_node_bytes(
     node: &ProofRoomEmbeddedEvidenceNode,
     artifacts: &BTreeMap<String, Vec<u8>>,
@@ -220,34 +245,128 @@ pub(crate) fn embedded_commerce_order_bundle(
         "commerce-order-context",
         chio_commerce_order::COMMERCE_ORDER_CONTEXT_SCHEMA_ID,
     )?;
-    let event_log_bytes = embedded_single_role_artifact_bytes(
+    let event_log_bytes = embedded_artifact_bytes_by_path(
         &graph.nodes,
         artifacts,
-        "commerce-event-log",
+        &order_context.event_log_path,
         chio_commerce_order::COMMERCE_EVENT_LOG_SCHEMA_ID,
         "commerce",
     )?;
-    let payment_lifecycle_bytes = embedded_single_role_artifact_bytes(
+    let payment_lifecycle_bytes = embedded_artifact_bytes_by_path(
         &graph.nodes,
         artifacts,
-        "commerce-payment-lifecycle",
+        &order_context.payment_lifecycle_path,
         chio_commerce_order::COMMERCE_PAYMENT_LIFECYCLE_SCHEMA_ID,
         "commerce",
     )?;
-    let mandate_ledger_bytes = embedded_single_role_artifact_bytes(
+    let mandate_ledger_bytes = embedded_artifact_bytes_by_path(
         &graph.nodes,
         artifacts,
-        "commerce-mandate-allowance-ledger",
+        &order_context.mandate_ledger_path,
         chio_commerce_order::COMMERCE_MANDATE_ALLOWANCE_LEDGER_SCHEMA_ID,
         "commerce",
     )?;
+    let mandate_protocol_payloads = embedded_commerce_mandate_protocol_payloads(
+        &graph.nodes,
+        artifacts,
+        &mandate_ledger_bytes,
+    )?;
+    let provider_passport_bytes = embedded_artifact_bytes_by_path(
+        &graph.nodes,
+        artifacts,
+        &order_context.provider_passport_path,
+        chio_commerce_order::COMMERCE_PROVIDER_PASSPORT_SCHEMA_ID,
+        "commerce",
+    )?;
+    let reputation_snapshot_bytes = embedded_artifact_bytes_by_path(
+        &graph.nodes,
+        artifacts,
+        &order_context.reputation_snapshot_path,
+        chio_commerce_order::COMMERCE_REPUTATION_SNAPSHOT_SCHEMA_ID,
+        "commerce",
+    )?;
+    let federation_trust_bundle_bytes = embedded_artifact_bytes_by_path(
+        &graph.nodes,
+        artifacts,
+        &order_context.federation_trust_bundle_path,
+        chio_commerce_order::COMMERCE_FEDERATION_TRUST_BUNDLE_SCHEMA_ID,
+        "commerce",
+    )?;
+    let settlement_packet_bytes = embedded_artifact_bytes_by_path(
+        &graph.nodes,
+        artifacts,
+        &order_context.settlement_packet_path,
+        chio_commerce_order::COMMERCE_SETTLEMENT_PACKET_SCHEMA_ID,
+        "commerce",
+    )?;
+    let risk_comptroller_report_bytes = if let Some(requirement) = order_context
+        .coverage_requirement
+        .as_ref()
+        .filter(|requirement| requirement.required)
+    {
+        Some(embedded_artifact_bytes_by_path(
+            &graph.nodes,
+            artifacts,
+            &requirement.risk_comptroller_report_path,
+            "chio.risk.comptroller-report.v1",
+            "commerce",
+        )?)
+    } else {
+        None
+    };
 
     Ok(chio_commerce_order::CommerceOrderVerificationBundle {
         order_context,
         event_log_bytes,
         payment_lifecycle_bytes,
         mandate_ledger_bytes,
+        provider_passport_bytes,
+        reputation_snapshot_bytes,
+        federation_trust_bundle_bytes,
+        settlement_packet_bytes,
+        mandate_protocol_payloads,
+        risk_comptroller_report_bytes,
+        trusted_payment_signer_keys: crate::transaction_trusted_root_keys_from_env()?,
+        trusted_provider_trust_signer_keys: crate::commerce_trusted_provider_keys_from_env()?,
     })
+}
+
+#[derive(serde::Deserialize)]
+struct EmbeddedCommerceMandateProtocolPayloadRefs {
+    protocol_projections: Vec<EmbeddedCommerceMandateProtocolPayloadRef>,
+}
+
+#[derive(serde::Deserialize)]
+struct EmbeddedCommerceMandateProtocolPayloadRef {
+    protocol: String,
+    purpose: String,
+    payload_path: String,
+}
+
+fn embedded_commerce_mandate_protocol_payloads(
+    nodes: &[ProofRoomEmbeddedEvidenceNode],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    mandate_ledger_bytes: &[u8],
+) -> Result<Vec<chio_commerce_order::CommerceMandateProtocolPayload>, String> {
+    let refs: EmbeddedCommerceMandateProtocolPayloadRefs =
+        serde_json::from_slice(mandate_ledger_bytes)
+            .map_err(|error| format!("commerce mandate payload refs invalid: {error}"))?;
+    let mut payloads = Vec::with_capacity(refs.protocol_projections.len());
+    for projection in refs.protocol_projections {
+        let payload_bytes = embedded_artifact_bytes_by_path(
+            nodes,
+            artifacts,
+            &projection.payload_path,
+            chio_commerce_order::COMMERCE_PROTOCOL_PAYLOAD_SCHEMA_ID,
+            "commerce mandate protocol payload",
+        )?;
+        payloads.push(chio_commerce_order::CommerceMandateProtocolPayload {
+            protocol: projection.protocol,
+            purpose: projection.purpose,
+            payload_bytes,
+        });
+    }
+    Ok(payloads)
 }
 
 pub(crate) fn embedded_commerce_json_artifact<T: for<'de> serde::Deserialize<'de>>(
@@ -282,6 +401,14 @@ pub(crate) fn embedded_disclosure_lineage_bundle(
         chio_disclosure_lineage::LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
         "disclosure lineage",
     )?;
+    let privacy_profile: chio_disclosure_lineage::DisclosureVerifierPrivacyProfile =
+        embedded_required_json_artifact(
+            &graph.nodes,
+            artifacts,
+            "disclosure-verifier-privacy-profile",
+            chio_disclosure_lineage::DISCLOSURE_VERIFIER_PRIVACY_PROFILE_SCHEMA_V1,
+            "disclosure lineage",
+        )?;
     let leakage_ledger: chio_disclosure_lineage::DisclosureLeakageLedger =
         embedded_required_json_artifact(
             &graph.nodes,
@@ -298,9 +425,57 @@ pub(crate) fn embedded_disclosure_lineage_bundle(
             chio_disclosure_lineage::DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1,
             "disclosure lineage",
         )?;
+    if crypto_context_report.as_ref().is_some_and(|report| {
+        report
+            .verified_claims
+            .iter()
+            .any(|claim| claim == "claim.disclosure.crypto_context_bound")
+    }) {
+        let context_bytes = embedded_single_role_artifact_bytes(
+            &graph.nodes,
+            artifacts,
+            "crypto-verification-context",
+            chio_selective_disclosure::CRYPTO_VERIFICATION_CONTEXT_SCHEMA_V1,
+            "disclosure crypto context",
+        )
+        .map_err(|error| format!("missing BBS proof material: {error}"))?;
+        let report_bytes = embedded_single_role_artifact_bytes(
+            &graph.nodes,
+            artifacts,
+            "disclosure-crypto-context-report",
+            chio_disclosure_lineage::DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1,
+            "disclosure crypto context",
+        )
+        .map_err(|error| format!("missing BBS proof material: {error}"))?;
+        let proof_bytes = embedded_single_role_artifact_bytes(
+            &graph.nodes,
+            artifacts,
+            "selective-disclosure-proof",
+            chio_selective_disclosure::SELECTIVE_DISCLOSURE_PROOF_SCHEMA_V1,
+            "disclosure crypto context",
+        )
+        .map_err(|error| format!("missing BBS proof material: {error}"))?;
+        let privacy_profile_bytes = embedded_single_role_artifact_bytes(
+            &graph.nodes,
+            artifacts,
+            "disclosure-verifier-privacy-profile",
+            chio_disclosure_lineage::DISCLOSURE_VERIFIER_PRIVACY_PROFILE_SCHEMA_V1,
+            "disclosure crypto context",
+        )
+        .map_err(|error| format!("missing BBS proof material: {error}"))?;
+        crate::crypto_context::crypto_context_verified_report_bytes_with_bbs(
+            &context_bytes,
+            &report_bytes,
+            &proof_bytes,
+            &privacy_profile_bytes,
+            "source-disclosure-lineage",
+        )
+        .map_err(|error| format!("disclosure crypto context invalid: {error}"))?;
+    }
 
     Ok(chio_disclosure_lineage::DisclosureLineageBundle {
         capsule,
+        privacy_profile,
         lineage,
         leakage_ledger,
         crypto_context_report,
@@ -332,7 +507,9 @@ pub(crate) fn embedded_runtime_artifacts(
 pub(crate) fn is_runtime_artifact_role(role: &str) -> bool {
     matches!(
         role,
-        "receipt"
+        "claim-set"
+            | "receipt"
+            | "request"
             | "execution-lease"
             | "trust-root"
             | "tool-server-ack"
@@ -399,6 +576,14 @@ pub(crate) fn embedded_swarm_authority_bundle(
             chio_swarm_authority::CHIO_SWARM_ROUTE_PLAN_RECEIPT_SCHEMA,
             "swarm",
         )?;
+    let terminal_receipts: Vec<chio_swarm_authority::SwarmTerminalGraphReceipt> =
+        embedded_json_artifacts(
+            &graph.nodes,
+            artifacts,
+            "swarm-terminal-graph-receipt",
+            chio_swarm_authority::CHIO_SWARM_TERMINAL_GRAPH_RECEIPT_SCHEMA,
+            "swarm",
+        )?;
     let now_unix_ms = proof_room_swarm_verification_time()?;
 
     Ok(chio_swarm_authority::SwarmAuthorityBundle {
@@ -410,6 +595,7 @@ pub(crate) fn embedded_swarm_authority_bundle(
         route_plan_receipts,
         budget_pool,
         revocation_epoch,
+        terminal_receipts,
     })
 }
 
@@ -902,7 +1088,7 @@ pub(crate) fn verify_available_proof_room_fixture_bundle(
     else {
         return Ok(());
     };
-    verify_proof_room_bundle_inner_with_options(&manifest_path, false, true)
+    verify_proof_room_bundle_inner_with_options(&manifest_path, false, true, true)
 }
 
 pub(crate) fn proof_room_available_fixture_report_from_contents(

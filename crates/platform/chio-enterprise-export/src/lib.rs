@@ -2,9 +2,10 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use chio_core_types::PublicKey;
 use chio_transaction_passport::{
-    verify_minimal_passport_artifacts, TransactionPassport, TransactionPassportError,
-    TRANSACTION_VERIFIER_REPORT_SCHEMA_ID,
+    verify_minimal_passport_artifacts, verify_transaction_passport_signature_with_evidence_graph,
+    TransactionPassport, TransactionPassportError, TRANSACTION_VERIFIER_REPORT_SCHEMA_ID,
 };
 
 mod artifacts;
@@ -32,8 +33,11 @@ use policy::parse_policy;
 pub struct EnterpriseExportBundle {
     pub passport: TransactionPassport,
     pub evidence_graph_bytes: Vec<u8>,
+    pub root_evidence_graph_bytes: Option<Vec<u8>>,
     pub verifier_policy_bytes: Vec<u8>,
     pub artifacts: BTreeMap<String, Vec<u8>>,
+    pub trusted_passport_signer_keys: Vec<PublicKey>,
+    pub trusted_approval_signer_keys: Vec<PublicKey>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -62,6 +66,16 @@ pub struct EnterpriseVerifierSections {
 pub fn verify_enterprise_export(
     bundle: &EnterpriseExportBundle,
 ) -> Result<EnterpriseVerifierReport, TransactionPassportError> {
+    let signed_evidence_graph_bytes = bundle
+        .root_evidence_graph_bytes
+        .as_deref()
+        .unwrap_or(&bundle.evidence_graph_bytes);
+    verify_transaction_passport_signature_with_evidence_graph(
+        &bundle.passport,
+        signed_evidence_graph_bytes,
+        &bundle.evidence_graph_bytes,
+        &bundle.trusted_passport_signer_keys,
+    )?;
     verify_minimal_passport_artifacts(
         &bundle.passport,
         "transaction-passport.json".to_string(),
@@ -135,7 +149,13 @@ pub fn verify_enterprise_export(
     validate_telemetry_projection(bundle, &bundle.passport, risk_report, &telemetry)?;
     push_claim_once(&mut verified_claims, CLAIM_TELEMETRY_PROJECTION_BOUND);
 
-    validate_approval_case(&bundle.passport, risk_report, &approval)?;
+    validate_approval_case(
+        &bundle.passport,
+        risk_report,
+        &export_bundle,
+        &approval,
+        &bundle.trusted_approval_signer_keys,
+    )?;
     push_claim_once(&mut verified_claims, CLAIM_EXPORT_APPROVAL_BOUND);
 
     validate_control_map(&graph, &bundle.passport, risk_report, &control_map)?;

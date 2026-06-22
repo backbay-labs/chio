@@ -35,6 +35,7 @@
       "additionalProperties": false,
       "required": [
         "facility_id",
+        "policy_id",
         "state",
         "capital_currency",
         "capital_units",
@@ -44,6 +45,7 @@
       ],
       "properties": {
         "facility_id": { "type": "string", "minLength": 1 },
+        "policy_id": { "type": "string", "minLength": 1 },
         "state": {
           "enum": [
             "evidence_cold",
@@ -74,6 +76,7 @@
         "additionalProperties": false,
         "required": [
           "transition_id",
+          "policy_id",
           "from_state",
           "to_state",
           "authority_receipt_ref",
@@ -81,6 +84,7 @@
         ],
         "properties": {
           "transition_id": { "type": "string", "minLength": 1 },
+          "policy_id": { "type": "string", "minLength": 1 },
           "from_state": {
             "enum": [
               "evidence_cold",
@@ -241,6 +245,42 @@
         "coverage_statement": { "type": "string", "minLength": 1 }
       }
     },
+    "capital_instructions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instruction_id",
+          "reserve_entry_id",
+          "order_id",
+          "claim_id",
+          "reserve_ref",
+          "currency",
+          "units",
+          "settlement_ref",
+          "intended_action",
+          "source_kind",
+          "intended_state",
+          "reconciled_state"
+        ],
+        "properties": {
+          "instruction_id": { "type": "string", "minLength": 1 },
+          "reserve_entry_id": { "type": "string", "minLength": 1 },
+          "order_id": { "type": "string", "minLength": 1 },
+          "claim_id": { "type": "string", "minLength": 1 },
+          "reserve_ref": { "type": "string", "minLength": 1 },
+          "currency": { "type": "string", "minLength": 1 },
+          "units": { "type": "integer", "minimum": 1 },
+          "settlement_ref": { "type": "string", "minLength": 1 },
+          "intended_action": { "const": "transfer_funds" },
+          "source_kind": { "const": "facility_commitment" },
+          "intended_state": { "const": "pending_execution" },
+          "reconciled_state": { "enum": ["not_observed", "matched"] },
+          "observed_execution_ref": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "reserve_ledger": {
       "type": "array",
       "items": {
@@ -266,7 +306,8 @@
               "reserve_slash",
               "market_slash",
               "hold",
-              "reverse_slash"
+              "reverse_slash",
+              "write_off"
             ]
           },
           "reserve_ref": { "type": "string", "minLength": 1 },
@@ -354,6 +395,7 @@
                 "claim_payout",
                 "reserve_release",
                 "reserve_slash",
+                "market_slash",
                 "facility_closure",
                 "write_off"
               ]

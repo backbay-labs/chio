@@ -283,6 +283,7 @@ fn kernel_hook_accepts_governed_context_reference_and_returns_receipt_metadata(
     let hook = allowing_policy_hook(store)?;
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
+        extra_metadata: None,
         now_unix_secs: 1_800_000_001,
         now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
@@ -352,6 +353,7 @@ fn kernel_hook_preserves_millisecond_admission_time() -> Result<(), Box<dyn std:
         .with_runtime_pheromone_policy(signed_policy, signed_weights);
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
+        extra_metadata: None,
         now_unix_secs: 1_800_000_001,
         now_unix_ms: 1_800_000_001_600,
         matched_grant_index: Some(0),
@@ -400,6 +402,7 @@ fn kernel_hook_bypasses_non_chio_request() -> Result<(), Box<dyn std::error::Err
 
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
+        extra_metadata: None,
         now_unix_secs: 1_800_000_001,
         now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
@@ -454,6 +457,7 @@ fn kernel_hook_denies_retired_runtime_context_instead_of_bypassing(
 
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
+        extra_metadata: None,
         now_unix_secs: 1_800_000_001,
         now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
@@ -498,6 +502,7 @@ fn kernel_hook_denies_federated_origin_without_any_runtime_context(
     let hook = allowing_policy_hook(store)?;
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
+        extra_metadata: None,
         now_unix_secs: 1_800_000_001,
         now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
@@ -563,6 +568,7 @@ fn kernel_hook_denies_federated_runtime_request_without_treaty_context(
     let hook = allowing_policy_hook(store)?;
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
+        extra_metadata: None,
         now_unix_secs: 1_800_000_001,
         now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),
@@ -637,6 +643,7 @@ fn kernel_hook_denies_cross_boundary_request_when_treaty_store_evidence_missing(
     let hook = allowing_policy_hook(store)?;
     let decision = hook.evaluate(&RuntimeAdmissionContext {
         request: &request,
+        extra_metadata: None,
         now_unix_secs: 1_800_000_001,
         now_unix_ms: 1_800_000_001_000,
         matched_grant_index: Some(0),

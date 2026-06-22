@@ -1,7 +1,8 @@
 use std::collections::BTreeSet;
 
+use chio_core_types::crypto::{PublicKey, Signature};
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use chio_risk_comptroller::{
     validate_risk_evidence_refs,
@@ -31,6 +32,7 @@ const RISK_ADJUDICATION_JURISDICTION_RECEIPT_SCHEMA: &str =
 const RISK_GUARANTEE_DECISION_SCHEMA: &str = "chio.risk.guarantee-decision.v1";
 const WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA: &str = "chio.web3-settlement-execution-receipt.v1";
 const WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA: &str = "chio.web3-settlement-proof-bundle.v1";
+const MIN_ENTERPRISE_AUDIT_RETENTION_DAYS: u64 = 365;
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -66,6 +68,8 @@ pub(super) struct ApprovalCase {
     issued_at: String,
     passport_id: String,
     risk_comptroller_report_ref: String,
+    evidence_export_bundle_digest: String,
+    signature: String,
     decision: String,
     decision_subject: String,
     approvers: Vec<String>,
@@ -112,6 +116,7 @@ struct TelemetryEvent {
     event_kind: String,
     artifact_ref: String,
     artifact_sha256: String,
+    receipt_ref: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -231,6 +236,7 @@ pub(super) fn validate_data_governance(
     if report.legal_hold_status != "not_held" {
         return Err(claim_failed("data governance legal hold blocks export"));
     }
+    validate_retention_class(&report.retention_class)?;
     if report.field_classifications.is_empty() {
         return Err(claim_failed(
             "data governance field classifications missing",
@@ -309,6 +315,7 @@ pub(super) fn validate_evidence_export_bundle(
     }
     for required_role in [
         "transaction_passport",
+        "verifier_report",
         "risk_comptroller_report",
         "disclosure_capsule",
         "leakage_ledger",
@@ -327,6 +334,22 @@ pub(super) fn validate_evidence_export_bundle(
         "passport_id",
         &passport.id,
         "passport",
+    )?;
+    ensure_export_role_field_points_to(
+        bundle,
+        &export_bundle.artifacts,
+        "verifier_report",
+        "passport_id",
+        &passport.id,
+        "passport",
+    )?;
+    ensure_export_role_field_points_to(
+        bundle,
+        &export_bundle.artifacts,
+        "verifier_report",
+        "verdict",
+        "verified",
+        "verdict",
     )?;
     ensure_export_role_points_to(
         bundle,
@@ -393,6 +416,21 @@ pub(super) fn validate_telemetry_projection(
         if actual_digest != event.artifact_sha256 {
             return Err(claim_failed("telemetry artifact digest mismatch"));
         }
+        if let Some(receipt_ref) = event.receipt_ref.as_deref() {
+            require_non_empty(receipt_ref, "receipt_ref")?;
+            let receipt_bytes = bundle.artifacts.get(receipt_ref).ok_or_else(|| {
+                TransactionPassportError::MissingEnterpriseArtifact(receipt_ref.to_string())
+            })?;
+            let receipt: serde_json::Value = serde_json::from_slice(receipt_bytes)
+                .map_err(|_| claim_failed("telemetry receipt invalid"))?;
+            if receipt.get("schema").and_then(serde_json::Value::as_str)
+                != Some(CHIO_RECEIPT_SCHEMA)
+            {
+                return Err(claim_failed("telemetry receipt schema mismatch"));
+            }
+        } else if event.event_kind == "siem_export" {
+            return Err(claim_failed("telemetry SIEM event missing receipt"));
+        }
         event_kinds.insert(event.event_kind.as_str());
     }
     for required_event in ["allow", "denied_guard", "risk_verifier"] {
@@ -408,7 +446,9 @@ pub(super) fn validate_telemetry_projection(
 pub(super) fn validate_approval_case(
     passport: &TransactionPassport,
     risk_report: &RiskComptrollerReport,
+    export_bundle: &EvidenceExportBundleArtifact,
     approval: &ApprovalCase,
+    trusted_approval_signer_keys: &[PublicKey],
 ) -> Result<(), TransactionPassportError> {
     for (field, value) in [
         ("schema", &approval.schema),
@@ -419,6 +459,11 @@ pub(super) fn validate_approval_case(
             "risk_comptroller_report_ref",
             &approval.risk_comptroller_report_ref,
         ),
+        (
+            "evidence_export_bundle_digest",
+            &approval.evidence_export_bundle_digest,
+        ),
+        ("signature", &approval.signature),
         ("decision", &approval.decision),
         ("decision_subject", &approval.decision_subject),
         ("expires_at", &approval.expires_at),
@@ -430,6 +475,11 @@ pub(super) fn validate_approval_case(
     }
     if approval.risk_comptroller_report_ref != risk_report.id {
         return Err(claim_failed("approval case risk report mismatch"));
+    }
+    validate_sha256_hex(&approval.evidence_export_bundle_digest)
+        .map_err(|_| claim_failed("approval case export bundle digest mismatch"))?;
+    if approval.evidence_export_bundle_digest != export_bundle.bundle_digest {
+        return Err(claim_failed("approval case export bundle digest mismatch"));
     }
     if approval.decision != "approved" || approval.decision_subject != "evidence-export" {
         return Err(claim_failed("evidence export approval denied"));
@@ -453,7 +503,68 @@ pub(super) fn validate_approval_case(
     if expires_at <= issued_at {
         return Err(claim_failed("approval case expired before issuance"));
     }
+    verify_approval_signature(approval, trusted_approval_signer_keys)?;
     Ok(())
+}
+
+fn verify_approval_signature(
+    approval: &ApprovalCase,
+    trusted_approval_signer_keys: &[PublicKey],
+) -> Result<(), TransactionPassportError> {
+    let Some(signature_ref) = approval.signature.strip_prefix("sig-ed25519:") else {
+        return Err(claim_failed("approval signature unsupported"));
+    };
+    let Some((public_key_hex, signature_hex)) = signature_ref.split_once(':') else {
+        return Err(claim_failed("approval signature malformed"));
+    };
+    require_non_empty(public_key_hex, "approval signature public key")?;
+    require_non_empty(signature_hex, "approval signature")?;
+    let public_key = PublicKey::from_hex(public_key_hex)
+        .map_err(|_| claim_failed("approval signature public key invalid"))?;
+    if !trusted_approval_signer_keys.contains(&public_key) {
+        return Err(claim_failed("approval signer untrusted"));
+    }
+    let signature = Signature::from_hex(signature_hex)
+        .map_err(|_| claim_failed("approval signature invalid"))?;
+    let verified = public_key
+        .verify_canonical(&approval_signature_body(approval), &signature)
+        .map_err(|_| claim_failed("approval signature invalid"))?;
+    if verified {
+        Ok(())
+    } else {
+        Err(claim_failed("approval signature invalid"))
+    }
+}
+
+#[derive(Serialize)]
+struct ApprovalCaseSignatureBody<'a> {
+    schema: &'a str,
+    id: &'a str,
+    issued_at: &'a str,
+    passport_id: &'a str,
+    risk_comptroller_report_ref: &'a str,
+    evidence_export_bundle_digest: &'a str,
+    decision: &'a str,
+    decision_subject: &'a str,
+    approvers: &'a [String],
+    required_quorum: u64,
+    expires_at: &'a str,
+}
+
+fn approval_signature_body(approval: &ApprovalCase) -> ApprovalCaseSignatureBody<'_> {
+    ApprovalCaseSignatureBody {
+        schema: &approval.schema,
+        id: &approval.id,
+        issued_at: &approval.issued_at,
+        passport_id: &approval.passport_id,
+        risk_comptroller_report_ref: &approval.risk_comptroller_report_ref,
+        evidence_export_bundle_digest: &approval.evidence_export_bundle_digest,
+        decision: &approval.decision,
+        decision_subject: &approval.decision_subject,
+        approvers: &approval.approvers,
+        required_quorum: approval.required_quorum,
+        expires_at: &approval.expires_at,
+    }
 }
 
 pub(super) fn validate_control_map(
@@ -500,6 +611,27 @@ pub(super) fn validate_control_map(
         if !graph_contains_claim_gate(graph, &control.gate_ref, &control.claim_ref) {
             return Err(claim_failed("control gate does not prove cited claim"));
         }
+    }
+    Ok(())
+}
+
+fn validate_retention_class(retention_class: &str) -> Result<(), TransactionPassportError> {
+    let Some(days_text) = retention_class
+        .strip_prefix("audit-")
+        .and_then(|value| value.strip_suffix('d'))
+    else {
+        return Err(claim_failed("data governance retention class unsupported"));
+    };
+    if days_text.is_empty() {
+        return Err(claim_failed("data governance retention class unsupported"));
+    }
+    let days = days_text
+        .parse::<u64>()
+        .map_err(|_| claim_failed("data governance retention class unsupported"))?;
+    if days < MIN_ENTERPRISE_AUDIT_RETENTION_DAYS {
+        return Err(claim_failed(
+            "data governance retention shorter than policy",
+        ));
     }
     Ok(())
 }

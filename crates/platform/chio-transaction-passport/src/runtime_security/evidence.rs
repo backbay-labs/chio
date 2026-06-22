@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 use super::super::error::TransactionPassportError;
 use super::super::evidence_graph::{
-    validate_graph_references, EvidenceClass, EvidenceEdgePredicate,
+    validate_graph_acyclic, validate_graph_references, EvidenceClass, EvidenceEdgePredicate,
 };
 use super::super::ids::TRANSACTION_EVIDENCE_GRAPH_SCHEMA_ID;
 use super::super::validation::{validate_bundle_relative_path, validate_sha256_hex};
@@ -32,12 +32,18 @@ pub(super) struct RuntimeEvidenceNode {
 #[serde(rename_all = "kebab-case")]
 pub(super) enum RuntimeEvidenceRole {
     Receipt,
+    Request,
     TrustRoot,
+    PolicyActivationReceipt,
     ExecutionLease,
     ToolServerAck,
     RevocationFreshnessProof,
     SandboxAttestation,
+    RuntimeAttackSimulationReport,
+    RuntimeChaosRunReport,
+    SwarmRoutePlanReceipt,
     AdvisoryObservation,
+    ClaimSet,
     VerifierPolicy,
     #[serde(other)]
     Other,
@@ -82,6 +88,13 @@ pub(super) fn parse_graph(bytes: &[u8]) -> Result<RuntimeEvidenceGraph, Transact
             .iter()
             .map(|edge| (edge.from.as_str(), edge.to.as_str())),
     )?;
+    validate_graph_acyclic(
+        graph.nodes.iter().map(|node| node.id.as_str()),
+        graph
+            .edges
+            .iter()
+            .map(|edge| (edge.from.as_str(), edge.to.as_str())),
+    )?;
     Ok(graph)
 }
 
@@ -91,7 +104,11 @@ pub(super) fn ensure_no_advisory_authorization(
     for edge in &graph.edges {
         let authorizes_runtime = matches!(
             edge.predicate,
-            EvidenceEdgePredicate::Authorizes | EvidenceEdgePredicate::Executes
+            EvidenceEdgePredicate::Authorizes
+                | EvidenceEdgePredicate::Executes
+                | EvidenceEdgePredicate::Leases
+                | EvidenceEdgePredicate::Attenuates
+                | EvidenceEdgePredicate::Settles
         );
         if authorizes_runtime {
             let advisory_class = edge.evidence_class == Some(EvidenceClass::AdvisoryObservation);
@@ -126,6 +143,34 @@ pub(super) fn leased_receipt_nodes<'a>(
                 edge.from == lease_node.id
                     && edge.to == node.id
                     && matches!(edge.predicate, EvidenceEdgePredicate::Leases)
+            })
+    })
+}
+
+pub(super) fn bound_request_nodes<'a>(
+    graph: &'a RuntimeEvidenceGraph,
+    lease_node: &'a RuntimeEvidenceNode,
+) -> impl Iterator<Item = &'a RuntimeEvidenceNode> + 'a {
+    graph.nodes.iter().filter(move |node| {
+        node.role == RuntimeEvidenceRole::Request
+            && graph.edges.iter().any(|edge| {
+                edge.from == node.id
+                    && edge.to == lease_node.id
+                    && matches!(edge.predicate, EvidenceEdgePredicate::Binds)
+            })
+    })
+}
+
+pub(super) fn bound_route_plan_nodes<'a>(
+    graph: &'a RuntimeEvidenceGraph,
+    lease_node: &'a RuntimeEvidenceNode,
+) -> impl Iterator<Item = &'a RuntimeEvidenceNode> + 'a {
+    graph.nodes.iter().filter(move |node| {
+        node.role == RuntimeEvidenceRole::SwarmRoutePlanReceipt
+            && graph.edges.iter().any(|edge| {
+                edge.from == node.id
+                    && edge.to == lease_node.id
+                    && matches!(edge.predicate, EvidenceEdgePredicate::Binds)
             })
     })
 }

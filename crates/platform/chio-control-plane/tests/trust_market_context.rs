@@ -16,6 +16,8 @@ const CLAIM_JURISDICTION_BOUND: &str = "claim.trust_market.jurisdiction_bound";
 const CLAIM_UNSUPPORTED_MARKET_LIMITED: &str =
     "claim.trust_market.unsupported_market_claims_limited";
 const MARKET_AUTHORITY_SEED: [u8; 32] = [59; 32];
+const RISK_POLICY_ID: &str = "risk-policy-facility-market-valid";
+const TRANSACTION_PASSPORT_SIGNATURE_SEED: [u8; 32] = [7; 32];
 
 #[derive(Debug, Clone, Copy)]
 enum TrustMarketCase {
@@ -47,6 +49,19 @@ fn json_bytes(value: Value) -> Vec<u8> {
 
 fn market_authority_keypair() -> chio_core::Keypair {
     chio_core::Keypair::from_seed(&MARKET_AUTHORITY_SEED)
+}
+
+fn transaction_passport_keypair() -> chio_core::Keypair {
+    chio_core::Keypair::from_seed(&TRANSACTION_PASSPORT_SIGNATURE_SEED)
+}
+
+fn sign_transaction_passport(passport: &mut TransactionPassport) {
+    let keypair = transaction_passport_keypair();
+    passport.issuer = format!("did:chio:{}", keypair.public_key().to_hex());
+    passport.signature = String::new();
+    passport.signature =
+        chio_control_plane::transaction_passport::sign_transaction_passport(passport, &keypair)
+            .test_expect("transaction passport signs");
 }
 
 fn market_authority_key_hex() -> String {
@@ -96,10 +111,18 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         schema: "chio.transaction-passport.v1".to_string(),
         id: "passport-trust-market-valid".to_string(),
         issued_at: "2026-06-10T00:00:00Z".to_string(),
+        issuer: "did:chio:66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a"
+            .to_string(),
+        not_before: None,
+        expires_at: None,
         evidence_graph_sha256: String::new(),
         evidence_graph_path: "evidence-graph.json".to_string(),
+        claim_set_sha256: "0".repeat(64),
+        claim_set_path: "claim-set.json".to_string(),
         verifier_policy_sha256: String::new(),
         verifier_policy_path: "verifier-policy.json".to_string(),
+        omission_policy: Vec::new(),
+        signature: "0".repeat(128),
     };
 
     let mut artifacts = BTreeMap::new();
@@ -390,6 +413,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         "risk_state": "reconciled",
         "facility": {
             "facility_id": "facility-market-valid",
+            "policy_id": RISK_POLICY_ID,
             "state": facility_state,
             "capital_currency": "USD",
             "capital_units": 2000,
@@ -462,6 +486,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         let mut facility_lifecycle = vec![
             json!({
                 "transition_id": "facility-transition-underwriting-ready",
+                "policy_id": RISK_POLICY_ID,
                 "from_state": "evidence_cold",
                 "to_state": "underwriting_ready",
                 "authority_receipt_ref": lifecycle_authority_ref,
@@ -469,6 +494,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             }),
             json!({
                 "transition_id": "facility-transition-facility-granted",
+                "policy_id": RISK_POLICY_ID,
                 "from_state": "underwriting_ready",
                 "to_state": "facility_granted",
                 "authority_receipt_ref": "adjudication-jurisdiction-receipt",
@@ -476,6 +502,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             }),
             json!({
                 "transition_id": "facility-transition-reserve-held",
+                "policy_id": RISK_POLICY_ID,
                 "from_state": "facility_granted",
                 "to_state": "reserve_held",
                 "authority_receipt_ref": "adjudication-jurisdiction-receipt",
@@ -483,6 +510,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             }),
             json!({
                 "transition_id": "facility-transition-coverage-bound",
+                "policy_id": RISK_POLICY_ID,
                 "from_state": "reserve_held",
                 "to_state": "coverage_bound",
                 "authority_receipt_ref": "adjudication-jurisdiction-receipt",
@@ -501,6 +529,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             };
             facility_lifecycle.push(json!({
                 "transition_id": "facility-transition-settlement-matched",
+                "policy_id": RISK_POLICY_ID,
                 "from_state": "coverage_bound",
                 "to_state": "settlement_matched",
                 "authority_receipt_ref": "adjudication-jurisdiction-receipt",
@@ -727,6 +756,47 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         "max_reputation_import_weight": 30,
         "trusted_market_authority_keys": [market_authority_key_hex()]
     }));
+    let claim_set = json_bytes(json!({
+        "schema": "chio.transaction.claim-set.v1",
+        "id": "claim-set-trust-market-valid",
+        "issued_at": "2026-06-10T00:00:00Z",
+        "claims": policy_required_claims.iter().map(|claim_id| {
+            json!({
+                "claim_id": claim_id,
+                "status": "verified",
+                "required_evidence": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "evidence_refs": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "verifier_module": "chio-control-plane::trust_market"
+            })
+        }).collect::<Vec<_>>()
+    }));
+    let claim_set_sha256 = chio_core::sha256_hex(&claim_set);
+    push_artifact(
+        &mut artifacts,
+        &mut graph_nodes,
+        "claim-set",
+        "claim-set",
+        "chio.transaction.claim-set.v1",
+        "claim-set.json",
+        claim_set,
+    );
+    push_artifact(
+        &mut artifacts,
+        &mut graph_nodes,
+        "verifier-policy",
+        "verifier-policy",
+        "chio.transaction.verifier-policy.v1",
+        "verifier-policy.json",
+        verifier_policy.clone(),
+    );
 
     let evidence_graph = json_bytes(json!({
         "schema": "chio.transaction.evidence-graph.v1",
@@ -734,6 +804,12 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         "issued_at": "2026-06-10T00:00:00Z",
         "nodes": graph_nodes,
         "edges": [
+            {
+                "from": "claim-set",
+                "to": "verifier-policy",
+                "predicate": "binds",
+                "evidence_class": "digest-bound-reference"
+            },
             {
                 "from": "provider-discovery-snapshot",
                 "to": "provider-selection-report",
@@ -773,17 +849,21 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         ]
     }));
 
-    let passport = TransactionPassport {
+    let mut passport = TransactionPassport {
         evidence_graph_sha256: chio_core::sha256_hex(&evidence_graph),
+        claim_set_sha256,
         verifier_policy_sha256: chio_core::sha256_hex(&verifier_policy),
         ..passport
     };
+    sign_transaction_passport(&mut passport);
 
     TrustMarketBundle {
         passport,
         evidence_graph_bytes: evidence_graph,
+        root_evidence_graph_bytes: None,
         verifier_policy_bytes: verifier_policy,
         artifacts,
+        trusted_passport_signer_keys: vec![transaction_passport_keypair().public_key()],
         trusted_market_authority_keys: vec![market_authority_keypair().public_key()],
     }
 }

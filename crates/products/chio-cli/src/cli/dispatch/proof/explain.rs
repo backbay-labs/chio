@@ -12,6 +12,8 @@ struct ProofExplainReport {
     verifier_report_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     verifier_error: Option<String>,
+    #[serde(rename = "failureCode", skip_serializing_if = "Option::is_none")]
+    failure_code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     checker: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -64,9 +66,10 @@ pub(super) fn explain_proof_claim(
     let receipt_coverage = load_explain_receipt_coverage(input_path, claim_id)?;
     let manifest_metadata = manifest_claim_metadata(manifest_claim.as_ref());
     let verification = verify_transaction_passport_file(&passport_path);
-    let (status, verifier_report_id, verifier_error, evidence_paths, agent_web, risk) =
+    let (status, verifier_report_id, verifier_error, failure_code, evidence_paths, agent_web, risk) =
         match verification {
             Ok(report) => {
+                ensure_explain_claim_known(manifest_claim.as_ref(), &report, claim_id)?;
                 let verified = proof_claim_verified(&report, manifest_claim.as_ref(), claim_id);
                 (
                     if verified { "verified" } else { "not_verified" },
@@ -75,19 +78,24 @@ pub(super) fn explain_proof_claim(
                         .and_then(serde_json::Value::as_str)
                         .map(str::to_string),
                     None,
+                    None,
                     proof_claim_evidence_paths(&report, &passport_path, manifest_claim.as_ref()),
                     agent_web_claim_details(&report, claim_id),
                     risk_claim_details(&report, &passport_path, claim_id)?,
                 )
             }
-            Err(error) => (
-                "failed",
-                None,
-                Some(error.to_string()),
-                proof_claim_failure_evidence_paths(&passport_path, manifest_claim.as_ref()),
-                None,
-                None,
-            ),
+            Err(error) => {
+                ensure_failed_explain_claim_known(manifest_claim.as_ref(), claim_id)?;
+                (
+                    "failed",
+                    None,
+                    Some(error.to_string()),
+                    cli_error_failure_code(&error),
+                    proof_claim_failure_evidence_paths(&passport_path, manifest_claim.as_ref()),
+                    None,
+                    None,
+                )
+            }
         };
     let explain_report = ProofExplainReport {
         schema: "chio.proof.explain-report.v1",
@@ -97,6 +105,7 @@ pub(super) fn explain_proof_claim(
         passport_path: passport_path.to_string_lossy().into_owned(),
         verifier_report_id,
         verifier_error,
+        failure_code,
         checker: manifest_metadata.checker,
         proof_level: manifest_metadata.proof_level,
         caveat: manifest_metadata.caveat,
@@ -118,6 +127,9 @@ fn write_explain_report(report: &ProofExplainReport, json_output: bool) -> Resul
         writeln!(stdout, "status: {}", report.status)?;
         if let Some(error) = &report.verifier_error {
             writeln!(stdout, "verifier-error: {error}")?;
+        }
+        if let Some(failure_code) = &report.failure_code {
+            writeln!(stdout, "failure-code: {failure_code}")?;
         }
         if let Some(checker) = &report.checker {
             writeln!(stdout, "checker: {checker}")?;
@@ -173,13 +185,22 @@ fn write_explain_report(report: &ProofExplainReport, json_output: bool) -> Resul
     Ok(())
 }
 
+fn cli_error_failure_code(error: &CliError) -> Option<String> {
+    match error {
+        CliError::Chio(error) => Some(error.code().as_str().to_string()),
+        _ => None,
+    }
+}
+
 struct ManifestClaimMetadata {
     checker: Option<String>,
     proof_level: Option<String>,
     caveat: Option<String>,
 }
 
-fn manifest_claim_metadata(manifest_claim: Option<&ProofBundleManifestClaim>) -> ManifestClaimMetadata {
+fn manifest_claim_metadata(
+    manifest_claim: Option<&ProofBundleManifestClaim>,
+) -> ManifestClaimMetadata {
     let Some(claim) = manifest_claim else {
         return ManifestClaimMetadata {
             checker: None,
@@ -233,10 +254,7 @@ fn write_receipt_coverage_line(
     stdout: &mut impl Write,
     coverage: &serde_json::Value,
 ) -> Result<(), CliError> {
-    let Some(category) = coverage
-        .get("category")
-        .and_then(serde_json::Value::as_str)
-    else {
+    let Some(category) = coverage.get("category").and_then(serde_json::Value::as_str) else {
         return Ok(());
     };
     let status = coverage
@@ -292,7 +310,9 @@ fn proof_claim_evidence_paths(
     manifest_claim: Option<&ProofBundleManifestClaim>,
 ) -> Vec<String> {
     if let Some(claim) = manifest_claim {
-        return manifest_claim_evidence_paths(claim);
+        let mut paths = manifest_claim_evidence_paths(claim);
+        push_passport_support_evidence_paths(passport_path, &mut paths);
+        return paths;
     }
 
     let mut paths = Vec::new();
@@ -311,7 +331,9 @@ fn proof_claim_failure_evidence_paths(
     manifest_claim: Option<&ProofBundleManifestClaim>,
 ) -> Vec<String> {
     if let Some(claim) = manifest_claim {
-        return manifest_claim_evidence_paths(claim);
+        let mut paths = manifest_claim_evidence_paths(claim);
+        push_passport_support_evidence_paths(passport_path, &mut paths);
+        return paths;
     }
 
     let mut paths = vec![passport_path.to_string_lossy().into_owned()];
@@ -327,19 +349,21 @@ fn agent_web_claim_details(
         return None;
     }
 
-    let projections = report
-        .get("projections")
-        .and_then(serde_json::Value::as_array)
-        .map(|projections| {
-            projections
-                .iter()
-                .filter(|projection| projection_supports_claim(projection, claim_id))
-                .cloned()
-                .collect::<Vec<_>>()
+    let reports = reports_with_claim(report, claim_id);
+    let projections = reports
+        .iter()
+        .flat_map(|report| {
+            report
+                .get("projections")
+                .and_then(serde_json::Value::as_array)
+                .into_iter()
+                .flatten()
         })
-        .unwrap_or_default();
-    let unsupported_claims = string_array_field(report, "unsupported_claims");
-    let limitations = string_array_field(report, "limitations");
+        .filter(|projection| projection_supports_claim(projection, claim_id))
+        .cloned()
+        .collect::<Vec<_>>();
+    let unsupported_claims = string_array_field_from_reports(&reports, "unsupported_claims");
+    let limitations = string_array_field_from_reports(&reports, "limitations");
 
     if projections.is_empty() && unsupported_claims.is_empty() && limitations.is_empty() {
         None
@@ -352,16 +376,38 @@ fn agent_web_claim_details(
     }
 }
 
+fn reports_with_claim<'a>(
+    report: &'a serde_json::Value,
+    claim_id: &str,
+) -> Vec<&'a serde_json::Value> {
+    let mut reports = report
+        .get("family_reports")
+        .and_then(serde_json::Value::as_array)
+        .map(|family_reports| {
+            family_reports
+                .iter()
+                .filter(|family_report| report_verifies_claim(family_report, claim_id))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if report_verifies_claim(report, claim_id) {
+        reports.push(report);
+    }
+    reports
+}
+
+fn report_verifies_claim(report: &serde_json::Value, claim_id: &str) -> bool {
+    verified_claims_array(report)
+        .is_some_and(|claims| claims.iter().any(|claim| claim.as_str() == Some(claim_id)))
+}
+
 fn projection_supports_claim(projection: &serde_json::Value, claim_id: &str) -> bool {
     projection
         .get("claim_evidence")
         .and_then(serde_json::Value::as_array)
         .is_some_and(|claim_evidence| {
             claim_evidence.iter().any(|entry| {
-                entry
-                    .get("claim_ref")
-                    .and_then(serde_json::Value::as_str)
-                    == Some(claim_id)
+                entry.get("claim_ref").and_then(serde_json::Value::as_str) == Some(claim_id)
             })
         })
 }
@@ -411,6 +457,19 @@ fn risk_claim_details(
 }
 
 fn risk_comptroller_report_ref(report: &serde_json::Value) -> Option<&str> {
+    risk_comptroller_report_ref_from_report(report).or_else(|| {
+        report
+            .get("family_reports")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|family_reports| {
+                family_reports
+                    .iter()
+                    .find_map(risk_comptroller_report_ref_from_report)
+            })
+    })
+}
+
+fn risk_comptroller_report_ref_from_report(report: &serde_json::Value) -> Option<&str> {
     report
         .get("risk_comptroller_report_ref")
         .and_then(serde_json::Value::as_str)
@@ -489,8 +548,7 @@ fn is_risk_comptroller_node(node: &serde_json::Value) -> bool {
 }
 
 fn node_digest_matches(node: &serde_json::Value, bytes: &[u8]) -> bool {
-    node
-        .get("sha256")
+    node.get("sha256")
         .and_then(serde_json::Value::as_str)
         .is_some_and(|sha256| sha256 == chio_core::sha256_hex(bytes))
 }
@@ -507,6 +565,18 @@ fn string_array_field(report: &serde_json::Value, field: &str) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn string_array_field_from_reports(reports: &[&serde_json::Value], field: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    for report in reports {
+        for value in string_array_field(report, field) {
+            if !values.iter().any(|existing| existing == &value) {
+                values.push(value);
+            }
+        }
+    }
+    values
 }
 
 fn value_array_field(report: &serde_json::Value, field: &str) -> Vec<serde_json::Value> {
@@ -527,18 +597,77 @@ fn manifest_claim_evidence_paths(claim: &ProofBundleManifestClaim) -> Vec<String
     paths
 }
 
+fn ensure_explain_claim_known(
+    manifest_claim: Option<&ProofBundleManifestClaim>,
+    report: &serde_json::Value,
+    claim_id: &str,
+) -> Result<(), CliError> {
+    if manifest_claim.is_some()
+        || claim_id == "claim.transaction.passport_root_verified"
+        || report_mentions_claim(report, claim_id)
+    {
+        return Ok(());
+    }
+
+    Err(unknown_proof_claim(claim_id))
+}
+
+fn ensure_failed_explain_claim_known(
+    manifest_claim: Option<&ProofBundleManifestClaim>,
+    claim_id: &str,
+) -> Result<(), CliError> {
+    if manifest_claim.is_some()
+        || claim_id == "claim.transaction.passport_root_verified"
+        || VERIFIER_CLAIM_PREFIXES
+            .iter()
+            .any(|prefix| claim_id.starts_with(prefix))
+    {
+        return Ok(());
+    }
+
+    Err(unknown_proof_claim(claim_id))
+}
+
+fn unknown_proof_claim(claim_id: &str) -> CliError {
+    CliError::cli_other_error(format!("unknown proof claim: {claim_id}"))
+}
+
+fn report_mentions_claim(report: &serde_json::Value, claim_id: &str) -> bool {
+    report_verifies_claim(report, claim_id)
+        || claim_results_mention_claim(report, claim_id)
+        || report
+            .get("family_reports")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|family_reports| {
+                family_reports
+                    .iter()
+                    .any(|family_report| report_mentions_claim(family_report, claim_id))
+            })
+}
+
+fn claim_results_mention_claim(report: &serde_json::Value, claim_id: &str) -> bool {
+    report
+        .get("claimResults")
+        .or_else(|| report.get("claim_results"))
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|results| {
+            results.iter().any(|result| {
+                result
+                    .get("claim_id")
+                    .or_else(|| result.get("claimId"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some(claim_id)
+            })
+        })
+}
+
 fn push_passport_support_evidence_paths(passport_path: &Path, paths: &mut Vec<String>) {
     if let Ok(passport_bytes) = fs::read(passport_path) {
-        if let Ok(passport) =
-            serde_json::from_slice::<chio_control_plane::transaction_passport::TransactionPassport>(
-                &passport_bytes,
-            )
+        if let Ok(passport) = serde_json::from_slice::<
+            chio_control_plane::transaction_passport::TransactionPassport,
+        >(&passport_bytes)
         {
-            push_bundle_relative_evidence_path(
-                passport_path,
-                paths,
-                &passport.evidence_graph_path,
-            );
+            push_bundle_relative_evidence_path(passport_path, paths, &passport.evidence_graph_path);
             push_bundle_relative_evidence_path(
                 passport_path,
                 paths,
@@ -548,7 +677,11 @@ fn push_passport_support_evidence_paths(passport_path: &Path, paths: &mut Vec<St
     }
 }
 
-fn push_bundle_relative_evidence_path(passport_path: &Path, paths: &mut Vec<String>, relative: &str) {
+fn push_bundle_relative_evidence_path(
+    passport_path: &Path,
+    paths: &mut Vec<String>,
+    relative: &str,
+) {
     let path = passport_path
         .parent()
         .map(|parent| parent.join(relative))
@@ -568,11 +701,9 @@ fn proof_claim_verified(
     if report.get("verdict").and_then(serde_json::Value::as_str) != Some("verified") {
         return false;
     }
-    if verified_claims_array(report).is_some_and(|claims| {
-        claims
-            .iter()
-            .any(|claim| claim.as_str() == Some(claim_id))
-    }) {
+    if verified_claims_array(report)
+        .is_some_and(|claims| claims.iter().any(|claim| claim.as_str() == Some(claim_id)))
+    {
         return true;
     }
     if let Some(claim) = manifest_claim {

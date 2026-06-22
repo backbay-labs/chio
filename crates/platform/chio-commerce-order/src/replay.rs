@@ -1,13 +1,16 @@
 use std::collections::BTreeSet;
 
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use super::error::CommerceOrderError;
 use super::ids::COMMERCE_EVENT_LOG_SCHEMA_ID;
 use super::mandate::CommerceMandateLedger;
-use super::types::{CommerceOrderContext, CommercePaymentLifecycle};
-use super::validation::{parse_rfc3339_utc, require_non_empty};
+use super::types::{
+    CommerceOrderContext, CommercePaymentLifecycle, CommerceTrustMarketRequirement,
+};
+use super::validation::{parse_rfc3339_utc, require_non_empty, validate_sha256_hex};
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -19,10 +22,12 @@ pub(super) struct CommerceEventLog {
     events: Vec<CommerceOrderEvent>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 struct CommerceOrderEvent {
     event_id: String,
+    idempotency_key: String,
+    actor: String,
     order_id: String,
     prior_state: String,
     next_state: String,
@@ -30,6 +35,7 @@ struct CommerceOrderEvent {
     occurred_at: String,
     authority_receipt_ref: String,
     evidence_refs: Vec<String>,
+    event_sha256: String,
 }
 
 pub(super) struct CommerceReplayResult {
@@ -45,9 +51,11 @@ pub(super) fn replay_event_log(
     validate_log_shape(event_log, context)?;
 
     let mut seen_event_ids = BTreeSet::new();
+    let mut seen_idempotency_keys = BTreeSet::new();
     let mut current_state = "none".to_string();
     let mut saw_payment = false;
     let mut saw_mandate = false;
+    let mut saw_budget_reservation = false;
     let mut mandate_bound_at = None;
     let mut budget_reserved_at = None;
     let mut previous_event_occurred_at = None;
@@ -69,6 +77,20 @@ pub(super) fn replay_event_log(
                 event.event_id
             )));
         }
+        if !seen_idempotency_keys.insert(event.idempotency_key.as_str()) {
+            return Err(CommerceOrderError::ReplayFailed(format!(
+                "duplicate commerce idempotency key: {}",
+                event.idempotency_key
+            )));
+        }
+        if event.next_state == "budget_reserved" {
+            if saw_budget_reservation {
+                return Err(CommerceOrderError::ReplayFailed(
+                    "commerce budget reserved more than once".to_string(),
+                ));
+            }
+            saw_budget_reservation = true;
+        }
         if event.prior_state != current_state {
             return Err(CommerceOrderError::ReplayFailed(format!(
                 "commerce event {} expected prior state {}, got {}",
@@ -81,14 +103,56 @@ pub(super) fn replay_event_log(
                 event.prior_state, event.next_state, event.transition
             )));
         }
+        if event.next_state == "intent_recorded"
+            && !event.evidence_refs.contains(&context.intent_ref)
+        {
+            return Err(CommerceOrderError::ReplayFailed(
+                "intent event missing intent evidence".to_string(),
+            ));
+        }
+        if event.next_state == "provider_admitted"
+            && !event
+                .evidence_refs
+                .contains(&context.provider_admission_ref)
+        {
+            return Err(CommerceOrderError::ReplayFailed(
+                "provider event missing provider admission evidence".to_string(),
+            ));
+        }
+        if event.next_state == "provider_admitted"
+            && [
+                &context.provider_passport_ref,
+                &context.reputation_snapshot_ref,
+                &context.federation_trust_bundle_ref,
+            ]
+            .iter()
+            .any(|required_ref| !event.evidence_refs.contains(required_ref))
+        {
+            return Err(CommerceOrderError::ReplayFailed(
+                "provider event missing provider trust evidence".to_string(),
+            ));
+        }
+        if event.next_state == "provider_admitted" {
+            if let Some(requirement) = active_trust_market_requirement(context) {
+                require_provider_trust_market_refs(event, requirement)?;
+            }
+        }
         if event.next_state == "quote_bound" && !event.evidence_refs.contains(&context.quote_id) {
             return Err(CommerceOrderError::ReplayFailed(
                 "quote event missing quote evidence".to_string(),
             ));
         }
-        if event.next_state == "payment_verified" && !event.evidence_refs.contains(&payment.id) {
+        if [
+            "payment_challenged",
+            "payment_verified",
+            "disputed",
+            "refunded",
+        ]
+        .contains(&event.next_state.as_str())
+            && !event.evidence_refs.contains(&payment.id)
+        {
             return Err(CommerceOrderError::ReplayFailed(
-                "payment event missing payment lifecycle evidence".to_string(),
+                "payment state event missing payment lifecycle evidence".to_string(),
             ));
         }
         if event.next_state == "payment_verified" && payment_captured_at > occurred_at {
@@ -117,17 +181,41 @@ pub(super) fn replay_event_log(
         if event.next_state == "budget_reserved" {
             budget_reserved_at = Some(occurred_at);
         }
+        if [
+            "settlement_packet_assembled",
+            "settlement_dispatched",
+            "settlement_observed",
+        ]
+        .contains(&event.next_state.as_str())
+            && !event.evidence_refs.contains(&context.settlement_packet_ref)
+        {
+            return Err(CommerceOrderError::ReplayFailed(
+                "settlement event missing settlement packet evidence".to_string(),
+            ));
+        }
+        if is_settlement_lifecycle_state(&event.next_state) {
+            if let Some(requirement) = active_trust_market_requirement(context) {
+                require_settlement_trust_market_refs(event, requirement)?;
+            }
+        }
+        if event.next_state == "settlement_reconciled"
+            && !event.evidence_refs.contains(&context.reconciliation_ref)
+        {
+            return Err(CommerceOrderError::ReplayFailed(
+                "reconciliation event missing reconciliation evidence".to_string(),
+            ));
+        }
         saw_payment |= event.next_state == "payment_verified";
         saw_mandate |= event.next_state == "mandate_bound";
         current_state = event.next_state.clone();
     }
 
-    if !saw_mandate {
+    if current_state != "failed_closed" && !saw_mandate {
         return Err(CommerceOrderError::ReplayFailed(
             "commerce replay missing mandate binding".to_string(),
         ));
     }
-    if !saw_payment {
+    if current_state != "failed_closed" && !saw_payment {
         return Err(CommerceOrderError::ReplayFailed(
             "commerce replay missing payment verification".to_string(),
         ));
@@ -140,6 +228,72 @@ pub(super) fn replay_event_log(
     }
 
     Ok(CommerceReplayResult { current_state })
+}
+
+fn active_trust_market_requirement(
+    context: &CommerceOrderContext,
+) -> Option<&CommerceTrustMarketRequirement> {
+    context
+        .trust_market_requirement
+        .as_ref()
+        .filter(|requirement| requirement.required)
+}
+
+fn require_provider_trust_market_refs(
+    event: &CommerceOrderEvent,
+    requirement: &CommerceTrustMarketRequirement,
+) -> Result<(), CommerceOrderError> {
+    if [
+        requirement.provider_discovery_snapshot_ref.as_str(),
+        requirement.provider_selection_report_ref.as_str(),
+        requirement.trust_scorecard_ref.as_str(),
+        requirement.reputation_import_ref.as_str(),
+    ]
+    .iter()
+    .any(|required_ref| !has_evidence_ref(event, required_ref))
+    {
+        return Err(CommerceOrderError::ReplayFailed(
+            "provider event missing trust-market evidence".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn require_settlement_trust_market_refs(
+    event: &CommerceOrderEvent,
+    requirement: &CommerceTrustMarketRequirement,
+) -> Result<(), CommerceOrderError> {
+    if [
+        requirement.sla_commitment_ref.as_str(),
+        requirement.collateral_position_ref.as_str(),
+        requirement.guarantee_decision_ref.as_str(),
+        requirement.adjudication_jurisdiction_ref.as_str(),
+    ]
+    .iter()
+    .any(|required_ref| !has_evidence_ref(event, required_ref))
+    {
+        return Err(CommerceOrderError::ReplayFailed(
+            "settlement event missing trust-market evidence".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn is_settlement_lifecycle_state(state: &str) -> bool {
+    [
+        "settlement_packet_assembled",
+        "settlement_dispatched",
+        "settlement_observed",
+        "settlement_reconciled",
+    ]
+    .contains(&state)
+}
+
+fn has_evidence_ref(event: &CommerceOrderEvent, required_ref: &str) -> bool {
+    event
+        .evidence_refs
+        .iter()
+        .any(|evidence_ref| evidence_ref == required_ref)
 }
 
 fn validate_log_shape(
@@ -178,20 +332,33 @@ fn validate_event_shape(
 ) -> Result<DateTime<Utc>, CommerceOrderError> {
     for (field, value) in [
         ("event_id", &event.event_id),
+        ("idempotency_key", &event.idempotency_key),
+        ("event actor", &event.actor),
         ("order_id", &event.order_id),
         ("prior_state", &event.prior_state),
         ("next_state", &event.next_state),
         ("transition", &event.transition),
         ("occurred_at", &event.occurred_at),
         ("authority_receipt_ref", &event.authority_receipt_ref),
+        ("event_sha256", &event.event_sha256),
     ] {
         require_non_empty(value, field).map_err(CommerceOrderError::ReplayFailed)?;
     }
+    validate_sha256_hex(&event.event_sha256).map_err(|_| {
+        CommerceOrderError::ReplayFailed(format!("invalid event_sha256: {}", event.event_sha256))
+    })?;
     if event.order_id != context.order_id {
         return Err(CommerceOrderError::ReplayFailed(
             "commerce event order mismatch".to_string(),
         ));
     }
+    if !is_order_actor(&event.actor, context) {
+        return Err(CommerceOrderError::ReplayFailed(format!(
+            "commerce event actor is not bound to order context: {}",
+            event.actor
+        )));
+    }
+    validate_event_digest(event)?;
     let occurred_at = parse_rfc3339_utc(&event.occurred_at, "commerce event occurred_at")?;
     if event.evidence_refs.is_empty() {
         return Err(CommerceOrderError::ReplayFailed(format!(
@@ -202,6 +369,38 @@ fn validate_event_shape(
     Ok(occurred_at)
 }
 
+fn is_order_actor(actor: &str, context: &CommerceOrderContext) -> bool {
+    [
+        context.agent_subject.as_str(),
+        context.buyer_subject.as_str(),
+        context.merchant_subject.as_str(),
+    ]
+    .contains(&actor)
+}
+
+fn validate_event_digest(event: &CommerceOrderEvent) -> Result<(), CommerceOrderError> {
+    let mut body = serde_json::to_value(event).map_err(|error| {
+        CommerceOrderError::ReplayFailed(format!("commerce event digest body invalid: {error}"))
+    })?;
+    let body_object = body.as_object_mut().ok_or_else(|| {
+        CommerceOrderError::ReplayFailed("commerce event digest body invalid".to_string())
+    })?;
+    body_object.remove("event_sha256");
+    let canonical = chio_core_types::canonical_json_bytes(&body).map_err(|error| {
+        CommerceOrderError::ReplayFailed(format!(
+            "commerce event canonical digest body invalid: {error}"
+        ))
+    })?;
+    let actual = hex::encode(Sha256::digest(&canonical));
+    if event.event_sha256 != actual {
+        return Err(CommerceOrderError::ReplayFailed(format!(
+            "commerce event digest mismatch: {}",
+            event.event_id
+        )));
+    }
+    Ok(())
+}
+
 fn is_allowed_transition(prior_state: &str, next_state: &str, transition: &str) -> bool {
     matches!(
         (prior_state, next_state, transition),
@@ -210,11 +409,33 @@ fn is_allowed_transition(prior_state: &str, next_state: &str, transition: &str) 
             | ("provider_admitted", "quote_bound", "bind_quote")
             | ("quote_bound", "mandate_bound", "bind_mandate")
             | ("mandate_bound", "budget_reserved", "reserve_budget")
+            | ("budget_reserved", "payment_challenged", "challenge_payment")
+            | ("payment_challenged", "payment_verified", "verify_payment")
             | ("budget_reserved", "payment_verified", "verify_payment")
+            | (
+                "payment_verified",
+                "fulfillment_requested",
+                "request_fulfillment"
+            )
+            | (
+                "fulfillment_requested",
+                "fulfillment_attested",
+                "attest_fulfillment"
+            )
             | (
                 "payment_verified",
                 "fulfillment_attested",
                 "attest_fulfillment"
+            )
+            | (
+                "fulfillment_attested",
+                "settlement_packet_assembled",
+                "assemble_settlement_packet"
+            )
+            | (
+                "settlement_packet_assembled",
+                "settlement_dispatched",
+                "dispatch_settlement"
             )
             | (
                 "fulfillment_attested",
@@ -223,9 +444,38 @@ fn is_allowed_transition(prior_state: &str, next_state: &str, transition: &str) 
             )
             | (
                 "settlement_dispatched",
+                "settlement_observed",
+                "observe_settlement"
+            )
+            | (
+                "settlement_observed",
+                "settlement_reconciled",
+                "reconcile_settlement"
+            )
+            | (
+                "settlement_dispatched",
                 "settlement_reconciled",
                 "reconcile_settlement"
             )
             | ("settlement_reconciled", "completed", "complete_order")
+            | ("completed", "disputed", "open_dispute")
+            | ("disputed", "refunded", "refund_payment")
+            | ("provider_admitted", "failed_closed", "fail_closed")
+            | ("quote_bound", "failed_closed", "fail_closed")
+            | ("mandate_bound", "failed_closed", "fail_closed")
+            | ("budget_reserved", "failed_closed", "fail_closed")
+            | ("payment_challenged", "failed_closed", "fail_closed")
+            | ("payment_verified", "failed_closed", "fail_closed")
+            | ("fulfillment_requested", "failed_closed", "fail_closed")
+            | ("fulfillment_attested", "failed_closed", "fail_closed")
+            | (
+                "settlement_packet_assembled",
+                "failed_closed",
+                "fail_closed"
+            )
+            | ("settlement_dispatched", "failed_closed", "fail_closed")
+            | ("settlement_observed", "failed_closed", "fail_closed")
+            | ("settlement_reconciled", "failed_closed", "fail_closed")
+            | ("disputed", "failed_closed", "fail_closed")
     )
 }

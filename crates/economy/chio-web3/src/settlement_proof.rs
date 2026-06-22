@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+use crate::canonical::canonical_json_bytes;
 use crate::credit::CapitalBookEvidenceKind;
+use crate::crypto::sha256_hex;
+use crate::crypto::PublicKey;
 use crate::error::Web3ContractError;
 use crate::hashing::Hash;
 use crate::identity::{
@@ -28,6 +31,25 @@ pub const CLAIM_PUBLIC_SETTLEMENT_ORACLE_CONVERSION_BOUND: &str =
     "claim.public_settlement.oracle_conversion_bound";
 pub const CLAIM_PUBLIC_SETTLEMENT_DISPUTE_POSTURE_BOUND: &str =
     "claim.public_settlement.dispute_posture_bound";
+pub const CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND: &str =
+    "claim.public_settlement.trust_market_refs_bound";
+pub const CLAIM_PUBLIC_SETTLEMENT_PUBLIC_WITNESS_VERIFIED: &str =
+    "claim.public_settlement.public_witness_verified";
+
+#[cfg(test)]
+pub(crate) const PUBLIC_SETTLEMENT_FINALITY_REPORT_STATUSES: &[&str] = &[
+    "final",
+    "closed",
+    "partially_settled",
+    "refunded",
+    "slashed",
+    "reversed",
+    "charged_back",
+    "timed_out",
+    "failed",
+    "reorged",
+    "not_final",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -36,14 +58,88 @@ pub struct PublicSettlementProofBundle {
     pub bundle_id: String,
     pub transaction_passport_id: String,
     pub commerce_order_id: String,
+    pub order_binding: PublicSettlementOrderBinding,
     pub chain_id: String,
     pub settlement_receipt: Web3SettlementExecutionReceiptArtifact,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deployment_provenance: Option<PublicSettlementDeploymentProvenance>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_witness: Option<PublicSettlementWitnessReport>,
     pub chain_snapshot: PublicSettlementChainSnapshot,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dispute_snapshot: Option<PublicSettlementDisputeSnapshot>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collateral_position_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guarantee_decision_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sla_remedy_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slash_authority_ref: Option<String>,
     pub required_confirmations: u32,
     pub observed_confirmations: u32,
     pub dispute_posture: PublicSettlementDisputePosture,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicSettlementOrderBinding {
+    pub transaction_passport_id: String,
+    pub commerce_order_id: String,
+    pub chain_id: String,
+    pub settlement_reference: String,
+    pub settlement_tx_hash: String,
+    pub beneficiary_address: String,
+    pub escrow_id: String,
+    pub settlement_amount: crate::capability::scope::MonetaryAmount,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicSettlementDeploymentProvenance {
+    pub provenance_id: String,
+    pub chain_id: String,
+    pub contract_package_id: String,
+    pub reviewed_manifest_hash: String,
+    pub approval_hash: String,
+    pub create2_factory: String,
+    pub salt_namespace: String,
+    pub root_registry_address: String,
+    pub escrow_contract: String,
+    pub bond_vault_contract: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicSettlementWitnessReport {
+    pub witness_id: String,
+    pub mode: PublicSettlementWitnessMode,
+    pub body_hash: String,
+    pub chain_id: String,
+    pub registry_root: String,
+    pub anchor_tx_hash: String,
+    pub anchored_merkle_root: String,
+    pub anchored_checkpoint_seq: u64,
+    pub observed_at: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicSettlementWitnessMode {
+    Live,
+    VerifiedCache,
+    Advisory,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PublicSettlementVerifierTrust {
+    pub trusted_capital_signer_keys: Vec<PublicKey>,
+    pub trusted_anchor_kernel_keys: Vec<PublicKey>,
+    pub trusted_beneficiary_identity_keys: Vec<PublicKey>,
+    pub allowed_chain_ids: Vec<String>,
+    pub mainnet_blocked: bool,
+    pub minimum_confirmations: Option<u32>,
+    pub expected_trust_market_context: Option<PublicSettlementTrustMarketContext>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,9 +223,12 @@ pub struct PublicSettlementVerifierReport {
     pub commerce_order_id: String,
     pub recomputed_settlement_state: String,
     pub chain_context: PublicSettlementChainContext,
+    pub public_witness: PublicSettlementWitnessContext,
     pub finality_decision: PublicSettlementFinalityDecision,
     pub dispute_context: PublicSettlementDisputeContext,
     pub dispute_posture: PublicSettlementDisputePosture,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust_market_context: Option<PublicSettlementTrustMarketContext>,
     pub verified_claims: Vec<String>,
 }
 
@@ -154,6 +253,15 @@ pub struct PublicSettlementChainContext {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct PublicSettlementWitnessContext {
+    pub witness_id: String,
+    pub mode: PublicSettlementWitnessMode,
+    pub body_hash: String,
+    pub observed_at: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PublicSettlementDisputeContext {
     pub dispute_id: String,
     pub posture: PublicSettlementDisputePosture,
@@ -171,20 +279,36 @@ pub struct PublicSettlementFinalityDecision {
     pub observed_confirmations: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicSettlementTrustMarketContext {
+    pub collateral_position_ref: String,
+    pub guarantee_decision_ref: String,
+    pub sla_remedy_ref: String,
+    pub slash_authority_ref: String,
+}
+
 pub fn verify_public_settlement_proof(
     bundle: &PublicSettlementProofBundle,
+    trust: &PublicSettlementVerifierTrust,
 ) -> Result<PublicSettlementVerifierReport, Web3ContractError> {
     validate_bundle_header(bundle)?;
     validate_web3_settlement_execution_receipt(&bundle.settlement_receipt)?;
+    validate_public_settlement_trust(bundle, trust)?;
+    validate_public_settlement_verifier_policy(bundle, trust)?;
+    validate_deployment_provenance(bundle)?;
     validate_order_binding(bundle)?;
     validate_chain_binding(bundle)?;
     validate_chain_snapshot(bundle)?;
     validate_finality(bundle)?;
     validate_dispute_posture(bundle)?;
+    let trust_market_context = validate_trust_market_refs(bundle)?;
+    validate_expected_trust_market_context(&trust_market_context, trust)?;
     validate_finality_settlement_state(bundle)?;
     let bond = required_bond_snapshot(bundle)?;
     let block = required_block_snapshot(bundle)?;
     let chain_anchor = required_chain_anchor(bundle)?;
+    let public_witness = validate_public_witness(bundle, chain_anchor)?;
     let beneficiary_binding = required_beneficiary_identity_binding(bundle)?;
     let dispute_snapshot = required_dispute_snapshot(bundle)?;
 
@@ -210,6 +334,16 @@ pub fn verify_public_settlement_proof(
     push_claim_once(
         &mut verified_claims,
         CLAIM_PUBLIC_SETTLEMENT_DISPUTE_POSTURE_BOUND,
+    );
+    if trust_market_context.is_some() {
+        push_claim_once(
+            &mut verified_claims,
+            CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND,
+        );
+    }
+    push_claim_once(
+        &mut verified_claims,
+        CLAIM_PUBLIC_SETTLEMENT_PUBLIC_WITNESS_VERIFIED,
     );
 
     Ok(PublicSettlementVerifierReport {
@@ -241,6 +375,7 @@ pub fn verify_public_settlement_proof(
             beneficiary_address: beneficiary_binding.certificate.settlement_address.clone(),
             beneficiary_chio_identity: beneficiary_binding.certificate.chio_identity.clone(),
         },
+        public_witness,
         finality_decision: PublicSettlementFinalityDecision {
             status: finality_report_status(bundle).to_string(),
             required_confirmations: bundle.required_confirmations,
@@ -255,8 +390,376 @@ pub fn verify_public_settlement_proof(
             open_dispute_count: dispute_snapshot.open_dispute_count,
         },
         dispute_posture: bundle.dispute_posture,
+        trust_market_context,
         verified_claims,
     })
+}
+
+fn validate_deployment_provenance(
+    bundle: &PublicSettlementProofBundle,
+) -> Result<(), Web3ContractError> {
+    let provenance = bundle.deployment_provenance.as_ref().ok_or_else(|| {
+        Web3ContractError::InvalidProof(
+            "public settlement deployment provenance missing".to_string(),
+        )
+    })?;
+
+    for (field, value) in [
+        (
+            "public_settlement.deployment_provenance.provenance_id",
+            &provenance.provenance_id,
+        ),
+        (
+            "public_settlement.deployment_provenance.chain_id",
+            &provenance.chain_id,
+        ),
+        (
+            "public_settlement.deployment_provenance.contract_package_id",
+            &provenance.contract_package_id,
+        ),
+        (
+            "public_settlement.deployment_provenance.reviewed_manifest_hash",
+            &provenance.reviewed_manifest_hash,
+        ),
+        (
+            "public_settlement.deployment_provenance.approval_hash",
+            &provenance.approval_hash,
+        ),
+        (
+            "public_settlement.deployment_provenance.create2_factory",
+            &provenance.create2_factory,
+        ),
+        (
+            "public_settlement.deployment_provenance.salt_namespace",
+            &provenance.salt_namespace,
+        ),
+        (
+            "public_settlement.deployment_provenance.root_registry_address",
+            &provenance.root_registry_address,
+        ),
+        (
+            "public_settlement.deployment_provenance.escrow_contract",
+            &provenance.escrow_contract,
+        ),
+        (
+            "public_settlement.deployment_provenance.bond_vault_contract",
+            &provenance.bond_vault_contract,
+        ),
+    ] {
+        ensure_non_empty(value, field)?;
+    }
+
+    Hash::from_hex(&provenance.reviewed_manifest_hash)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    Hash::from_hex(&provenance.approval_hash)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+
+    let dispatch = &bundle.settlement_receipt.dispatch;
+    if provenance.chain_id != bundle.chain_id {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement deployment provenance chain mismatch".to_string(),
+        ));
+    }
+    if provenance.contract_package_id != dispatch.contract_package_id {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement deployment contract package mismatch".to_string(),
+        ));
+    }
+    if provenance.root_registry_address != bundle.chain_snapshot.root_registry_address {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement deployment root registry mismatch".to_string(),
+        ));
+    }
+    if provenance.escrow_contract != dispatch.escrow_contract {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement deployment escrow contract mismatch".to_string(),
+        ));
+    }
+    if provenance.bond_vault_contract != dispatch.bond_vault_contract {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement deployment bond vault mismatch".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_public_witness(
+    bundle: &PublicSettlementProofBundle,
+    chain_anchor: &crate::anchors::Web3ChainAnchorRecord,
+) -> Result<PublicSettlementWitnessContext, Web3ContractError> {
+    let witness = bundle.public_witness.as_ref().ok_or_else(|| {
+        Web3ContractError::InvalidProof("public settlement witness report missing".to_string())
+    })?;
+
+    for (field, value) in [
+        (
+            "public_settlement.public_witness.witness_id",
+            &witness.witness_id,
+        ),
+        (
+            "public_settlement.public_witness.body_hash",
+            &witness.body_hash,
+        ),
+        (
+            "public_settlement.public_witness.chain_id",
+            &witness.chain_id,
+        ),
+        (
+            "public_settlement.public_witness.registry_root",
+            &witness.registry_root,
+        ),
+        (
+            "public_settlement.public_witness.anchor_tx_hash",
+            &witness.anchor_tx_hash,
+        ),
+        (
+            "public_settlement.public_witness.anchored_merkle_root",
+            &witness.anchored_merkle_root,
+        ),
+    ] {
+        ensure_non_empty(value, field)?;
+    }
+
+    if witness.mode == PublicSettlementWitnessMode::Advisory {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement witness mode advisory".to_string(),
+        ));
+    }
+
+    Hash::from_hex(&witness.body_hash)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    Hash::from_hex(&witness.registry_root)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    Hash::from_hex(&witness.anchor_tx_hash)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    Hash::from_hex(&witness.anchored_merkle_root)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+
+    if witness.chain_id != bundle.chain_id {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement witness chain mismatch".to_string(),
+        ));
+    }
+    if witness.registry_root != bundle.chain_snapshot.registry_root {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement witness registry root mismatch".to_string(),
+        ));
+    }
+    if witness.anchor_tx_hash != chain_anchor.tx_hash {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement witness anchor tx mismatch".to_string(),
+        ));
+    }
+    if witness.anchored_merkle_root != chain_anchor.anchored_merkle_root.to_hex_prefixed() {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement witness merkle root mismatch".to_string(),
+        ));
+    }
+    if witness.anchored_checkpoint_seq != chain_anchor.anchored_checkpoint_seq {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement witness checkpoint mismatch".to_string(),
+        ));
+    }
+
+    let expected_body_hash = public_settlement_witness_body_hash(witness)?;
+    if witness.body_hash != expected_body_hash {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement witness body hash mismatch".to_string(),
+        ));
+    }
+
+    Ok(PublicSettlementWitnessContext {
+        witness_id: witness.witness_id.clone(),
+        mode: witness.mode,
+        body_hash: witness.body_hash.clone(),
+        observed_at: witness.observed_at,
+    })
+}
+
+#[derive(Serialize)]
+struct PublicSettlementWitnessBody<'a> {
+    witness_id: &'a str,
+    mode: PublicSettlementWitnessMode,
+    chain_id: &'a str,
+    registry_root: &'a str,
+    anchor_tx_hash: &'a str,
+    anchored_merkle_root: &'a str,
+    anchored_checkpoint_seq: u64,
+    observed_at: u64,
+}
+
+pub(crate) fn public_settlement_witness_body_hash(
+    witness: &PublicSettlementWitnessReport,
+) -> Result<String, Web3ContractError> {
+    let body = PublicSettlementWitnessBody {
+        witness_id: &witness.witness_id,
+        mode: witness.mode,
+        chain_id: &witness.chain_id,
+        registry_root: &witness.registry_root,
+        anchor_tx_hash: &witness.anchor_tx_hash,
+        anchored_merkle_root: &witness.anchored_merkle_root,
+        anchored_checkpoint_seq: witness.anchored_checkpoint_seq,
+        observed_at: witness.observed_at,
+    };
+    let canonical = canonical_json_bytes(&body).map_err(|error| {
+        Web3ContractError::InvalidProof(format!(
+            "public settlement witness canonicalization failed: {error}"
+        ))
+    })?;
+    Ok(sha256_hex(&canonical))
+}
+
+fn validate_trust_market_refs(
+    bundle: &PublicSettlementProofBundle,
+) -> Result<Option<PublicSettlementTrustMarketContext>, Web3ContractError> {
+    match (
+        bundle.collateral_position_ref.as_deref(),
+        bundle.guarantee_decision_ref.as_deref(),
+        bundle.sla_remedy_ref.as_deref(),
+        bundle.slash_authority_ref.as_deref(),
+    ) {
+        (None, None, None, None) => Ok(None),
+        (Some(collateral), Some(guarantee), Some(remedy), Some(slash_authority)) => {
+            ensure_non_empty(collateral, "public_settlement.collateral_position_ref")?;
+            ensure_non_empty(guarantee, "public_settlement.guarantee_decision_ref")?;
+            ensure_non_empty(remedy, "public_settlement.sla_remedy_ref")?;
+            ensure_non_empty(slash_authority, "public_settlement.slash_authority_ref")?;
+            Ok(Some(PublicSettlementTrustMarketContext {
+                collateral_position_ref: collateral.to_string(),
+                guarantee_decision_ref: guarantee.to_string(),
+                sla_remedy_ref: remedy.to_string(),
+                slash_authority_ref: slash_authority.to_string(),
+            }))
+        }
+        _ => Err(Web3ContractError::InvalidProof(
+            "public settlement trust-market refs incomplete".to_string(),
+        )),
+    }
+}
+
+fn validate_expected_trust_market_context(
+    actual: &Option<PublicSettlementTrustMarketContext>,
+    trust: &PublicSettlementVerifierTrust,
+) -> Result<(), Web3ContractError> {
+    let Some(expected) = trust.expected_trust_market_context.as_ref() else {
+        return Ok(());
+    };
+    match actual {
+        Some(actual) if actual == expected => Ok(()),
+        _ => Err(Web3ContractError::InvalidProof(
+            "public settlement trust-market ref mismatch".to_string(),
+        )),
+    }
+}
+
+fn validate_public_settlement_trust(
+    bundle: &PublicSettlementProofBundle,
+    trust: &PublicSettlementVerifierTrust,
+) -> Result<(), Web3ContractError> {
+    require_trusted_public_settlement_key(
+        "capital signer",
+        &bundle
+            .settlement_receipt
+            .dispatch
+            .capital_instruction
+            .signer_key,
+        &trust.trusted_capital_signer_keys,
+    )?;
+
+    let chain_anchor = required_chain_anchor(bundle)?;
+    let anchor_proof = bundle
+        .settlement_receipt
+        .reconciled_anchor_proof
+        .as_ref()
+        .ok_or_else(|| {
+            Web3ContractError::InvalidProof(
+                "public settlement trust requires an anchor proof".to_string(),
+            )
+        })?;
+    if chain_anchor.anchored_checkpoint_seq != anchor_proof.checkpoint_statement.checkpoint_seq {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement anchor checkpoint mismatch".to_string(),
+        ));
+    }
+    require_trusted_public_settlement_key(
+        "anchor kernel",
+        &anchor_proof.checkpoint_statement.kernel_key,
+        &trust.trusted_anchor_kernel_keys,
+    )?;
+
+    let beneficiary_binding = required_beneficiary_identity_binding(bundle)?;
+    require_trusted_public_settlement_key(
+        "beneficiary identity",
+        &beneficiary_binding.certificate.chio_public_key,
+        &trust.trusted_beneficiary_identity_keys,
+    )
+}
+
+fn require_trusted_public_settlement_key(
+    label: &'static str,
+    key: &PublicKey,
+    trusted_keys: &[PublicKey],
+) -> Result<(), Web3ContractError> {
+    if trusted_keys.is_empty() {
+        return Err(Web3ContractError::InvalidProof(format!(
+            "trusted public settlement {label} keys missing"
+        )));
+    }
+    if trusted_keys.iter().any(|trusted_key| trusted_key == key) {
+        Ok(())
+    } else {
+        Err(Web3ContractError::InvalidProof(format!(
+            "public settlement {label} key is not trusted"
+        )))
+    }
+}
+
+fn validate_public_settlement_verifier_policy(
+    bundle: &PublicSettlementProofBundle,
+    trust: &PublicSettlementVerifierTrust,
+) -> Result<(), Web3ContractError> {
+    if trust.allowed_chain_ids.is_empty() {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement verifier chain allow-list missing".to_string(),
+        ));
+    }
+    if !trust
+        .allowed_chain_ids
+        .iter()
+        .any(|chain_id| chain_id == &bundle.chain_id)
+    {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement chain id is not allowed".to_string(),
+        ));
+    }
+    if trust.mainnet_blocked && public_settlement_chain_is_mainnet(&bundle.chain_id) {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement mainnet chain is blocked by verifier policy".to_string(),
+        ));
+    }
+    if let Some(minimum_confirmations) = trust.minimum_confirmations {
+        if bundle.required_confirmations < minimum_confirmations {
+            return Err(Web3ContractError::InvalidProof(
+                "public settlement verifier minimum confirmations not met".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn public_settlement_chain_is_mainnet(chain_id: &str) -> bool {
+    matches!(
+        chain_id,
+        "eip155:1"
+            | "eip155:10"
+            | "eip155:56"
+            | "eip155:137"
+            | "eip155:324"
+            | "eip155:8453"
+            | "eip155:42161"
+            | "eip155:43114"
+            | "eip155:59144"
+    )
 }
 
 fn validate_bundle_header(bundle: &PublicSettlementProofBundle) -> Result<(), Web3ContractError> {
@@ -596,6 +1099,8 @@ fn validate_block_snapshot(
 }
 
 fn validate_order_binding(bundle: &PublicSettlementProofBundle) -> Result<(), Web3ContractError> {
+    validate_order_binding_tuple(bundle)?;
+
     let mut has_order_ref = false;
     for evidence_ref in &bundle
         .settlement_receipt
@@ -618,6 +1123,92 @@ fn validate_order_binding(bundle: &PublicSettlementProofBundle) -> Result<(), We
     if !has_order_ref {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement commerce order evidence missing".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_order_binding_tuple(
+    bundle: &PublicSettlementProofBundle,
+) -> Result<(), Web3ContractError> {
+    let binding = &bundle.order_binding;
+    for (field, value) in [
+        (
+            "public_settlement.order_binding.transaction_passport_id",
+            &binding.transaction_passport_id,
+        ),
+        (
+            "public_settlement.order_binding.commerce_order_id",
+            &binding.commerce_order_id,
+        ),
+        (
+            "public_settlement.order_binding.chain_id",
+            &binding.chain_id,
+        ),
+        (
+            "public_settlement.order_binding.settlement_reference",
+            &binding.settlement_reference,
+        ),
+        (
+            "public_settlement.order_binding.settlement_tx_hash",
+            &binding.settlement_tx_hash,
+        ),
+        (
+            "public_settlement.order_binding.beneficiary_address",
+            &binding.beneficiary_address,
+        ),
+        (
+            "public_settlement.order_binding.escrow_id",
+            &binding.escrow_id,
+        ),
+    ] {
+        ensure_non_empty(value, field)?;
+    }
+    ensure_money(
+        &binding.settlement_amount,
+        "public_settlement.order_binding.settlement_amount",
+    )?;
+
+    let dispatch = &bundle.settlement_receipt.dispatch;
+    let observed = &bundle.settlement_receipt.observed_execution;
+    if binding.transaction_passport_id != bundle.transaction_passport_id {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement order binding passport mismatch".to_string(),
+        ));
+    }
+    if binding.commerce_order_id != bundle.commerce_order_id {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement order binding commerce order mismatch".to_string(),
+        ));
+    }
+    if binding.chain_id != bundle.chain_id {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement order binding chain mismatch".to_string(),
+        ));
+    }
+    if binding.settlement_reference != bundle.settlement_receipt.settlement_reference {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement order binding settlement reference mismatch".to_string(),
+        ));
+    }
+    if binding.settlement_tx_hash != observed.external_reference_id {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement order binding settlement tx mismatch".to_string(),
+        ));
+    }
+    if binding.beneficiary_address != dispatch.beneficiary_address {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement order binding beneficiary mismatch".to_string(),
+        ));
+    }
+    if binding.escrow_id != dispatch.escrow_id {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement order binding escrow mismatch".to_string(),
+        ));
+    }
+    if binding.settlement_amount != dispatch.settlement_amount {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement order binding amount mismatch".to_string(),
         ));
     }
     Ok(())
@@ -765,6 +1356,16 @@ fn validate_dispute_snapshot(
     }
     for receipt_id in &dispute.linked_receipt_ids {
         ensure_non_empty(receipt_id, "public_settlement.dispute.linked_receipt_ids")?;
+    }
+    if dispute.posture != PublicSettlementDisputePosture::Undisputed
+        && !dispute
+            .linked_receipt_ids
+            .iter()
+            .any(|receipt_id| receipt_id == &bundle.settlement_receipt.execution_receipt_id)
+    {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement dispute not linked to settlement receipt".to_string(),
+        ));
     }
     let block = required_block_snapshot(bundle)?;
     for tx_hash in &dispute.chain_event_tx_hashes {

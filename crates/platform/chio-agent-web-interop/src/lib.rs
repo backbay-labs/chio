@@ -12,7 +12,8 @@ use chio_core_types::{
     PublicKey,
 };
 use chio_transaction_passport::{
-    verify_minimal_passport_artifacts, TransactionPassport, TransactionPassportError,
+    verify_minimal_passport_artifacts, verify_transaction_passport_signature_with_evidence_graph,
+    TransactionPassport, TransactionPassportError,
 };
 
 mod artifacts;
@@ -39,12 +40,14 @@ use policy::parse_policy;
 pub struct AgentWebInteropBundle {
     pub passport: TransactionPassport,
     pub evidence_graph_bytes: Vec<u8>,
+    pub root_evidence_graph_bytes: Option<Vec<u8>>,
     pub verifier_policy_bytes: Vec<u8>,
     pub artifacts: BTreeMap<String, Vec<u8>>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct AgentWebVerifierTrust {
+    trusted_passport_signer_keys: Vec<PublicKey>,
     default_standard_webhooks_secret: Option<Vec<u8>>,
     standard_webhooks_secrets: BTreeMap<String, Vec<u8>>,
     trusted_receipt_kernel_keys: Vec<PublicKey>,
@@ -58,6 +61,14 @@ impl AgentWebVerifierTrust {
 
     pub fn with_standard_webhooks_secret(mut self, secret: impl Into<Vec<u8>>) -> Self {
         self.default_standard_webhooks_secret = Some(secret.into());
+        self
+    }
+
+    pub fn with_trusted_passport_signer_keys(
+        mut self,
+        keys: impl IntoIterator<Item = PublicKey>,
+    ) -> Self {
+        self.trusted_passport_signer_keys.extend(keys);
         self
     }
 
@@ -114,6 +125,7 @@ impl AgentWebVerifierTrust {
 
 struct ProjectionManifestEntry {
     node_id: String,
+    node_sha256: String,
     manifest: ProjectionManifest,
 }
 
@@ -159,6 +171,16 @@ pub fn verify_agent_web_interop_with_trust(
     bundle: &AgentWebInteropBundle,
     trust: &AgentWebVerifierTrust,
 ) -> Result<AgentWebInteropReport, TransactionPassportError> {
+    let signed_evidence_graph_bytes = bundle
+        .root_evidence_graph_bytes
+        .as_deref()
+        .unwrap_or(&bundle.evidence_graph_bytes);
+    verify_transaction_passport_signature_with_evidence_graph(
+        &bundle.passport,
+        signed_evidence_graph_bytes,
+        &bundle.evidence_graph_bytes,
+        &trust.trusted_passport_signer_keys,
+    )?;
     verify_minimal_passport_artifacts(
         &bundle.passport,
         "transaction-passport.json".to_string(),
@@ -186,6 +208,7 @@ pub fn verify_agent_web_interop_with_trust(
             manifest.projection_id.clone(),
             ProjectionManifestEntry {
                 node_id: node.id.clone(),
+                node_sha256: node.sha256.clone(),
                 manifest,
             },
         );
@@ -207,7 +230,7 @@ pub fn verify_agent_web_interop_with_trust(
         let manifest_entry = manifests
             .get(&envelope.projection_manifest_ref)
             .ok_or_else(|| claim_failed("missing projection manifest"))?;
-        validate_envelope_manifest_binding(&envelope, &manifest_entry.manifest)?;
+        validate_envelope_manifest_binding(&envelope, manifest_entry)?;
         validate_required_edge(
             &graph,
             &envelope_node.id,
@@ -543,12 +566,16 @@ fn validate_required_edge(
 
 fn validate_envelope_manifest_binding(
     envelope: &AgentWebProofEnvelope,
-    manifest: &ProjectionManifest,
+    manifest_entry: &ProjectionManifestEntry,
 ) -> Result<(), TransactionPassportError> {
+    let manifest = &manifest_entry.manifest;
     if envelope.source_protocol != manifest.source_protocol
         || envelope.source_protocol_version != manifest.source_version
     {
         return Err(claim_failed("projection manifest protocol mismatch"));
+    }
+    if envelope.projection_manifest_sha256 != manifest_entry.node_sha256 {
+        return Err(claim_failed("projection manifest digest mismatch"));
     }
     Ok(())
 }

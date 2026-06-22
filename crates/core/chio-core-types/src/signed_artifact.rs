@@ -17,13 +17,20 @@ use crate::session::{CHIO_REQUEST_LINEAGE_RECORD_SCHEMA, CHIO_SESSION_ANCHOR_SCH
 /// Anchor-batch signed artifact schema. Defined here so non-anchor verifiers
 /// can reject unknown signed artifacts before loading the `chio-anchor` crate.
 pub const CHIO_ANCHOR_BATCH_V1_SCHEMA: &str = "chio.anchor_batch.v1";
+pub const CHIO_ANCHOR_INCLUSION_PROOF_V1_SCHEMA: &str = "chio.anchor-inclusion-proof.v1";
+pub const CHIO_ANCHOR_PROOF_BUNDLE_V1_SCHEMA: &str = "chio.anchor-proof-bundle.v1";
 pub const CHIO_BILATERAL_SIGNATURE_SLICE_V1_SCHEMA: &str = "chio.bilateral-signature-slice.v1";
 pub const CHIO_TRANSACTION_PASSPORT_V1_SCHEMA: &str = "chio.transaction-passport.v1";
 pub const CHIO_TRANSACTION_EVIDENCE_GRAPH_V1_SCHEMA: &str = "chio.transaction.evidence-graph.v1";
+pub const CHIO_TRANSACTION_CLAIM_SET_V1_SCHEMA: &str = "chio.transaction.claim-set.v1";
 pub const CHIO_TRANSACTION_VERIFIER_POLICY_V1_SCHEMA: &str = "chio.transaction.verifier-policy.v1";
 pub const CHIO_TRANSACTION_VERIFIER_REPORT_V1_SCHEMA: &str = "chio.transaction.verifier-report.v1";
 pub const CHIO_TRANSACTION_RUNTIME_SECURITY_REPORT_V1_SCHEMA: &str =
     "chio.transaction.runtime-security-report.v1";
+pub const CHIO_CAPABILITY_PROOF_V1_SCHEMA: &str = "chio.capability.proof.v1";
+pub const CHIO_GUARD_DECISION_V1_SCHEMA: &str = "chio.guard.decision.v1";
+pub const CHIO_POLICY_BUNDLE_V1_SCHEMA: &str = "chio.policy.bundle.v1";
+pub const CHIO_TRUST_ROOT_V1_SCHEMA: &str = "chio.trust.root.v1";
 pub const CHIO_REQUEST_DIGEST_V1_SCHEMA: &str = "chio.request.digest.v1";
 pub const CHIO_RESPONSE_DIGEST_V1_SCHEMA: &str = "chio.response.digest.v1";
 pub const CHIO_COMMERCE_ORDER_CONTEXT_V1_SCHEMA: &str = "chio.commerce.order-context.v1";
@@ -31,6 +38,13 @@ pub const CHIO_COMMERCE_EVENT_LOG_V1_SCHEMA: &str = "chio.commerce.event-log.v1"
 pub const CHIO_COMMERCE_PAYMENT_LIFECYCLE_V1_SCHEMA: &str = "chio.commerce.payment-lifecycle.v1";
 pub const CHIO_COMMERCE_MANDATE_ALLOWANCE_LEDGER_V1_SCHEMA: &str =
     "chio.commerce.mandate-allowance-ledger.v1";
+pub const CHIO_COMMERCE_PROTOCOL_PAYLOAD_V1_SCHEMA: &str = "chio.commerce.protocol-payload.v1";
+pub const CHIO_COMMERCE_SETTLEMENT_PACKET_V1_SCHEMA: &str = "chio.commerce.settlement-packet.v1";
+pub const CHIO_COMMERCE_PROVIDER_PASSPORT_V1_SCHEMA: &str = "chio.commerce.provider-passport.v1";
+pub const CHIO_COMMERCE_REPUTATION_SNAPSHOT_V1_SCHEMA: &str =
+    "chio.commerce.reputation-snapshot.v1";
+pub const CHIO_COMMERCE_FEDERATION_TRUST_BUNDLE_V1_SCHEMA: &str =
+    "chio.commerce.federation-trust-bundle.v1";
 pub const CHIO_COMMERCE_ORDER_PASSPORT_V1_SCHEMA: &str = "chio.commerce.order-passport.v1";
 pub const CHIO_COMMERCE_PROVIDER_DISCOVERY_SNAPSHOT_V1_SCHEMA: &str =
     "chio.commerce.provider-discovery-snapshot.v1";
@@ -51,6 +65,9 @@ pub const CHIO_DISCLOSURE_VERIFIER_PRIVACY_PROFILE_V1_SCHEMA: &str =
     "chio.disclosure.verifier-privacy-profile.v1";
 pub const CHIO_DISCLOSURE_CRYPTO_CONTEXT_REPORT_V1_SCHEMA: &str =
     "chio.disclosure.crypto-context-report.v1";
+pub const CHIO_ATTEST_SELECTIVE_DISCLOSURE_PROOF_V1_SCHEMA: &str =
+    "chio.attest.selective-disclosure-proof.v1";
+pub const CHIO_BBS_PROJECTION_MANIFEST_V2_SCHEMA: &str = "chio.bbs-projection.manifest.v2";
 pub const CHIO_DISCLOSURE_CAPSULE_V1_SCHEMA: &str = "chio.disclosure.capsule.v1";
 pub const CHIO_LINEAGE_SIGNED_SUBGRAPH_V1_SCHEMA: &str = "chio.lineage.signed-subgraph.v1";
 pub const CHIO_DISCLOSURE_LEAKAGE_LEDGER_V1_SCHEMA: &str = "chio.disclosure.leakage-ledger.v1";
@@ -58,11 +75,15 @@ pub const CHIO_DISCLOSURE_LINEAGE_VERIFIER_REPORT_V1_SCHEMA: &str =
     "chio.disclosure.lineage-verifier-report.v1";
 pub const CHIO_TRANSPARENCY_INCLUSION_PROOF_V1_SCHEMA: &str =
     "chio.transparency.inclusion-proof.v1";
+pub const CHIO_POLICY_ACTIVATION_RECEIPT_V1_SCHEMA: &str = "chio.policy.activation-receipt.v1";
 pub const CHIO_RUNTIME_EXECUTION_LEASE_V1_SCHEMA: &str = "chio.runtime.execution-lease.v1";
 pub const CHIO_RUNTIME_TOOL_SERVER_ACK_V1_SCHEMA: &str = "chio.runtime.tool-server-ack.v1";
 pub const CHIO_RUNTIME_REVOCATION_FRESHNESS_PROOF_V1_SCHEMA: &str =
     "chio.runtime.revocation-freshness-proof.v1";
 pub const CHIO_RUNTIME_SANDBOX_ATTESTATION_V1_SCHEMA: &str = "chio.runtime.sandbox-attestation.v1";
+pub const CHIO_RUNTIME_ATTACK_SIMULATION_REPORT_V1_SCHEMA: &str =
+    "chio.runtime.attack-simulation-report.v1";
+pub const CHIO_RUNTIME_CHAOS_RUN_REPORT_V1_SCHEMA: &str = "chio.runtime.chaos-run-report.v1";
 pub const CHIO_RISK_COMPTROLLER_REPORT_V1_SCHEMA: &str = "chio.risk.comptroller-report.v1";
 pub const CHIO_RISK_COLLATERAL_POSITION_REPORT_V1_SCHEMA: &str =
     "chio.risk.collateral-position-report.v1";
@@ -112,6 +133,8 @@ pub const CHIO_SWARM_DELEGATION_WITNESS_CHAIN_V1_SCHEMA: &str =
     "chio.swarm.delegation-witness-chain.v1";
 pub const CHIO_SWARM_JOIN_RECEIPT_V1_SCHEMA: &str = "chio.swarm.join-receipt.v1";
 pub const CHIO_SWARM_ROUTE_PLAN_RECEIPT_V1_SCHEMA: &str = "chio.swarm.route-plan-receipt.v1";
+pub const CHIO_SWARM_TERMINAL_GRAPH_RECEIPT_V1_SCHEMA: &str =
+    "chio.swarm.terminal-graph-receipt.v1";
 pub const CHIO_SWARM_BUDGET_POOL_V1_SCHEMA: &str = "chio.swarm.budget-pool.v1";
 pub const CHIO_SWARM_REVOCATION_EPOCH_V1_SCHEMA: &str = "chio.swarm.revocation-epoch.v1";
 pub const CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_V1_SCHEMA: &str =
@@ -144,6 +167,14 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
         Some(("anchor_batch", "schema-registry/v1/anchor-batch-v1")),
     ),
     (
+        CHIO_ANCHOR_INCLUSION_PROOF_V1_SCHEMA,
+        Some(("anchor_inclusion_proof", "public-settlement-v1")),
+    ),
+    (
+        CHIO_ANCHOR_PROOF_BUNDLE_V1_SCHEMA,
+        Some(("anchor_proof_bundle", "public-settlement-v1")),
+    ),
+    (
         CHIO_BILATERAL_SIGNATURE_SLICE_V1_SCHEMA,
         Some(("bilateral_dsse_signature_slice", "federation-dsse-slice")),
     ),
@@ -158,6 +189,10 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
         Some(("transaction_evidence_graph", "transaction-passport-v1")),
     ),
     (
+        CHIO_TRANSACTION_CLAIM_SET_V1_SCHEMA,
+        Some(("transaction_claim_set", "transaction-passport-v1")),
+    ),
+    (
         CHIO_TRANSACTION_VERIFIER_POLICY_V1_SCHEMA,
         Some(("transaction_verifier_policy", "transaction-passport-v1")),
     ),
@@ -168,6 +203,22 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_TRANSACTION_RUNTIME_SECURITY_REPORT_V1_SCHEMA,
         Some(("transaction_runtime_security_report", "runtime-security-v1")),
+    ),
+    (
+        CHIO_CAPABILITY_PROOF_V1_SCHEMA,
+        Some(("capability_proof", "transaction-passport-v1")),
+    ),
+    (
+        CHIO_GUARD_DECISION_V1_SCHEMA,
+        Some(("guard_decision", "transaction-passport-v1")),
+    ),
+    (
+        CHIO_POLICY_BUNDLE_V1_SCHEMA,
+        Some(("policy_bundle", "transaction-passport-v1")),
+    ),
+    (
+        CHIO_TRUST_ROOT_V1_SCHEMA,
+        Some(("trust_root", "transaction-passport-v1")),
     ),
     (
         CHIO_REQUEST_DIGEST_V1_SCHEMA,
@@ -192,6 +243,26 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_COMMERCE_MANDATE_ALLOWANCE_LEDGER_V1_SCHEMA,
         Some(("commerce_mandate_allowance_ledger", "commerce-payments-v1")),
+    ),
+    (
+        CHIO_COMMERCE_PROTOCOL_PAYLOAD_V1_SCHEMA,
+        Some(("commerce_protocol_payload", "commerce-payments-v1")),
+    ),
+    (
+        CHIO_COMMERCE_SETTLEMENT_PACKET_V1_SCHEMA,
+        Some(("commerce_settlement_packet", "commerce-payments-v1")),
+    ),
+    (
+        CHIO_COMMERCE_PROVIDER_PASSPORT_V1_SCHEMA,
+        Some(("commerce_provider_passport", "commerce-payments-v1")),
+    ),
+    (
+        CHIO_COMMERCE_REPUTATION_SNAPSHOT_V1_SCHEMA,
+        Some(("commerce_reputation_snapshot", "commerce-payments-v1")),
+    ),
+    (
+        CHIO_COMMERCE_FEDERATION_TRUST_BUNDLE_V1_SCHEMA,
+        Some(("commerce_federation_trust_bundle", "commerce-payments-v1")),
     ),
     (
         CHIO_COMMERCE_ORDER_PASSPORT_V1_SCHEMA,
@@ -250,6 +321,17 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
         Some(("disclosure_crypto_context_report", "crypto-context-v1")),
     ),
     (
+        CHIO_ATTEST_SELECTIVE_DISCLOSURE_PROOF_V1_SCHEMA,
+        Some((
+            "chio_attest_selective_disclosure_proof",
+            "crypto-context-v1",
+        )),
+    ),
+    (
+        CHIO_BBS_PROJECTION_MANIFEST_V2_SCHEMA,
+        Some(("bbs_projection_manifest", "crypto-context-v1")),
+    ),
+    (
         CHIO_DISCLOSURE_CAPSULE_V1_SCHEMA,
         Some(("disclosure_capsule", "disclosure-lineage-v1")),
     ),
@@ -273,6 +355,10 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
         Some(("transparency_inclusion_proof", "crypto-context-v1")),
     ),
     (
+        CHIO_POLICY_ACTIVATION_RECEIPT_V1_SCHEMA,
+        Some(("policy_activation_receipt", "runtime-security-v1")),
+    ),
+    (
         CHIO_RUNTIME_EXECUTION_LEASE_V1_SCHEMA,
         Some(("runtime_execution_lease", "runtime-security-v1")),
     ),
@@ -287,6 +373,14 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_RUNTIME_SANDBOX_ATTESTATION_V1_SCHEMA,
         Some(("runtime_sandbox_attestation", "runtime-security-v1")),
+    ),
+    (
+        CHIO_RUNTIME_ATTACK_SIMULATION_REPORT_V1_SCHEMA,
+        Some(("runtime_attack_simulation_report", "runtime-security-v1")),
+    ),
+    (
+        CHIO_RUNTIME_CHAOS_RUN_REPORT_V1_SCHEMA,
+        Some(("runtime_chaos_run_report", "runtime-security-v1")),
     ),
     (
         CHIO_RISK_COMPTROLLER_REPORT_V1_SCHEMA,
@@ -426,6 +520,10 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_SWARM_ROUTE_PLAN_RECEIPT_V1_SCHEMA,
         Some(("swarm_route_plan_receipt", "swarm-authority-v1")),
+    ),
+    (
+        CHIO_SWARM_TERMINAL_GRAPH_RECEIPT_V1_SCHEMA,
+        Some(("swarm_terminal_graph_receipt", "swarm-authority-v1")),
     ),
     (
         CHIO_SWARM_BUDGET_POOL_V1_SCHEMA,

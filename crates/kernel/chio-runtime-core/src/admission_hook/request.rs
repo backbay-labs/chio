@@ -70,6 +70,7 @@ pub(super) fn request_has_chio_runtime_context(request: &ToolCallRequest) -> boo
             let retired_treaty_key = retired_context_key("Treaty");
             context.contains_key("chioAdmission")
                 || context.contains_key("chioTreaty")
+                || context.contains_key("chioSwarm")
                 || context.contains_key(retired_admission_key.as_str())
                 || context.contains_key(retired_treaty_key.as_str())
         })

@@ -140,8 +140,10 @@ fn kernel_persists_child_receipts_to_sqlite_store() {
         server_id: "nested".to_string(),
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
+                extra_metadata: None,
     };
 
     let response = kernel
@@ -195,14 +197,16 @@ fn session_tool_call_records_incomplete_terminal_state() {
         "incomplete-tool-call",
         &agent_kp.public_key().to_hex(),
     );
-    let operation = SessionOperation::ToolCall(ToolCallOperation {
+    let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
         capability,
         server_id: "broken".to_string(),
         tool_name: "drop_stream".to_string(),
         arguments: serde_json::json!({}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
-    });
+                extra_metadata: None,
+    }));
 
     let response = session_tool_call(
         kernel

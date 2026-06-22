@@ -24,6 +24,10 @@ impl SqliteRuntimeOrchestrationStore {
                     continuation_id TEXT PRIMARY KEY NOT NULL,
                     admission_id TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS runtime_consumed_swarm_continuations (
+                    continuation_id TEXT PRIMARY KEY NOT NULL,
+                    admission_id TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS runtime_trust_floors (
                     verifier_id TEXT NOT NULL,
                     key_id TEXT NOT NULL,
@@ -68,6 +72,12 @@ impl SqliteRuntimeOrchestrationStore {
                     raw_json TEXT NOT NULL,
                     created_at_unix_ms INTEGER NOT NULL,
                     PRIMARY KEY (evidence_kind, evidence_id)
+                );
+                CREATE TABLE IF NOT EXISTS runtime_swarm_authority_bundles (
+                    task_graph_id TEXT PRIMARY KEY NOT NULL,
+                    bundle_sha256 TEXT NOT NULL,
+                    raw_json TEXT NOT NULL,
+                    created_at_unix_ms INTEGER NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS runtime_run_leases (
                     run_id TEXT PRIMARY KEY NOT NULL,

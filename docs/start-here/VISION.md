@@ -50,7 +50,7 @@ an audit sidecar. Chio is what you need when agents do real things, when the
 action has consequences, when someone needs to know it was authorized, what it
 cost, and when a machine-verifiable proof must exist after the fact.
 
-**The core primitive is non-repudiation.** Every action that flows through Chio
+**The core primitive is non-repudiation.** Each mediated action that flows through Chio
 produces a signed, timestamped, capability-bound receipt. That receipt is not a
 log line. It is a cryptographic attestation: a specific capability token was
 exercised to invoke this tool, with these parameters, and the kernel rendered

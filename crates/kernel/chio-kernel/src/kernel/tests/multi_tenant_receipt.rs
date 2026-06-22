@@ -63,14 +63,16 @@ fn session_tenant_id_is_stamped_on_tool_call_receipt() {
     kernel.activate_session(&session_id).unwrap();
 
     let context = make_operation_context(&session_id, "req-tenant", &agent_kp.public_key().to_hex());
-    let operation = SessionOperation::ToolCall(ToolCallOperation {
+    let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
         capability: cap,
         server_id: "srv-a".to_string(),
         tool_name: "read_file".to_string(),
         arguments: serde_json::json!({"path": "/app/src/main.rs"}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
-    });
+                extra_metadata: None,
+    }));
 
     let response = session_tool_call(
         kernel
@@ -133,14 +135,16 @@ fn session_without_tenant_id_produces_untagged_receipt() {
     kernel.activate_session(&session_id).unwrap();
 
     let context = make_operation_context(&session_id, "req-notenant", &agent_kp.public_key().to_hex());
-    let operation = SessionOperation::ToolCall(ToolCallOperation {
+    let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
         capability: cap,
         server_id: "srv-a".to_string(),
         tool_name: "read_file".to_string(),
         arguments: serde_json::json!({"path": "/app/src/main.rs"}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
-    });
+                extra_metadata: None,
+    }));
 
     let response = session_tool_call(
         kernel
@@ -211,14 +215,16 @@ fn tenant_id_falls_back_to_oauth_federated_claims() {
     kernel.activate_session(&session_id).unwrap();
 
     let context = make_operation_context(&session_id, "req-fed", &agent_kp.public_key().to_hex());
-    let operation = SessionOperation::ToolCall(ToolCallOperation {
+    let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
         capability: cap,
         server_id: "srv-a".to_string(),
         tool_name: "read_file".to_string(),
         arguments: serde_json::json!({"path": "/app/src/main.rs"}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
-    });
+                extra_metadata: None,
+    }));
 
     let response = session_tool_call(
         kernel

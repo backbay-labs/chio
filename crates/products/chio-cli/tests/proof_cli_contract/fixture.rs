@@ -52,6 +52,8 @@ fn proof_fixture_list_reports_proof_fixtures() {
         "public-settlement-order-evidence-mismatch",
         "public-settlement-missing-oracle-evidence",
         "public-settlement-refunded-posture-without-reversal",
+        "public-settlement-deployment-provenance-mismatch",
+        "public-settlement-advisory-witness",
         "public-settlement-wrong-chain-id",
         "agent-web-interop",
         "agent-web-external-digest-mismatch",
@@ -106,8 +108,11 @@ fn proof_fixture_list_reports_proof_fixtures() {
         "enterprise-reverse-slash-without-prior-penalty",
         "enterprise-missing-approval-case",
         "enterprise-open-appeal-reserve-release",
+        "enterprise-risk-payout-preobserved-instruction",
         "enterprise-pii-overdisclosure",
         "enterprise-telemetry-digest-mismatch",
+        "enterprise-telemetry-passport-mismatch",
+        "enterprise-telemetry-siem-without-receipt",
         "enterprise-facility-lifecycle-final-state-mismatch",
         "enterprise-insurance-copy-exceeds-actuarial-support",
         "enterprise-risk-exposure-exceeds-capital",
@@ -119,6 +124,13 @@ fn proof_fixture_list_reports_proof_fixtures() {
         "disclosure-lineage-missing-ledger-entry",
         "disclosure-lineage-unknown-lineage-root",
         "disclosure-lineage-excess-disclosed-field",
+        "disclosure-lineage-unsupported-edge-kind",
+        "disclosure-lineage-missing-parent",
+        "disclosure-lineage-node-digest-mismatch",
+        "disclosure-lineage-depth-regression",
+        "disclosure-lineage-frontier-mismatch",
+        "disclosure-lineage-checkpoint-mismatch",
+        "disclosure-lineage-evidence-below-floor",
         "trust-market-guarantee-wrong-beneficiary",
         "trust-market-unsupported-guarantee-type",
         "trust-market-unsupported-collateral-source",
@@ -614,6 +626,18 @@ fn proof_fixture_generate_outputs_servable_enterprise_bundle() {
         "--json",
     ]);
     assert_success(&output);
+
+    let disclosure_report: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(out_path.join("disclosure-capsule.json"))
+            .test_expect("read disclosure crypto context report"),
+    )
+    .test_expect("disclosure crypto context report parses");
+    assert_eq!(
+        disclosure_report
+            .get("projection_manifest_ref")
+            .and_then(serde_json::Value::as_str),
+        Some("chio.bbs-projection.receipt.v1")
+    );
 
     let serve_output = chio(&[
         "proof",
@@ -1368,6 +1392,16 @@ fn proof_fixture_generate_copies_runnable_negative_passport_fixtures() {
             "refunded dispute posture requires reversed or timed out settlement",
         ),
         (
+            "public-settlement-deployment-provenance-mismatch",
+            "settlement-proof-bundle.json",
+            "public settlement deployment contract package mismatch",
+        ),
+        (
+            "public-settlement-advisory-witness",
+            "settlement-proof-bundle.json",
+            "public settlement witness mode advisory",
+        ),
+        (
             "agent-web-external-digest-mismatch",
             "cloudevents-envelope.json",
             "external subject digest mismatch",
@@ -1533,6 +1567,11 @@ fn proof_fixture_generate_copies_runnable_negative_passport_fixtures() {
             "risk open appeal blocks reserve action",
         ),
         (
+            "enterprise-risk-payout-preobserved-instruction",
+            "risk-comptroller-report.json",
+            "risk payout preobserved instruction",
+        ),
+        (
             "enterprise-open-appeal-facility-closure",
             "risk-comptroller-report.json",
             "risk open appeal blocks facility closure",
@@ -1606,6 +1645,41 @@ fn proof_fixture_generate_copies_runnable_negative_passport_fixtures() {
             "disclosure-lineage-excess-disclosed-field",
             "crypto-context-report.json",
             "crypto context report excess disclosed field",
+        ),
+        (
+            "disclosure-lineage-unsupported-edge-kind",
+            "signed-lineage-subgraph.json",
+            "unsupported lineage edge kind",
+        ),
+        (
+            "disclosure-lineage-missing-parent",
+            "signed-lineage-subgraph.json",
+            "unknown lineage edge source",
+        ),
+        (
+            "disclosure-lineage-node-digest-mismatch",
+            "signed-lineage-subgraph.json",
+            "lineage node artifact digest mismatch",
+        ),
+        (
+            "disclosure-lineage-depth-regression",
+            "signed-lineage-subgraph.json",
+            "lineage node depth not greater than parent",
+        ),
+        (
+            "disclosure-lineage-frontier-mismatch",
+            "signed-lineage-subgraph.json",
+            "lineage frontier digest mismatch",
+        ),
+        (
+            "disclosure-lineage-checkpoint-mismatch",
+            "signed-lineage-subgraph.json",
+            "lineage checkpoint inclusion digest mismatch",
+        ),
+        (
+            "disclosure-lineage-evidence-below-floor",
+            "signed-lineage-subgraph.json",
+            "lineage node evidence class below floor",
         ),
         (
             "trust-market-guarantee-wrong-beneficiary",

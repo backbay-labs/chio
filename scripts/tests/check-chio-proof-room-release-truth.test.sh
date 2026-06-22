@@ -37,6 +37,46 @@ cat > "$work/fail.md" <<'EOF'
 The Docker quickstart is release-qualified for public proof.
 EOF
 
+cat > "$work/mixed-negation-fail.md" <<'EOF'
+Docker quickstart evidence is not captured; the Docker image is published.
+EOF
+
+cat > "$work/launch-copy-fail.md" <<'EOF'
+Chio has ACP support and makes x402 a universal Chio authority for every action.
+EOF
+
+cat > "$work/hedged-launch-copy-fail.md" <<'EOF'
+Chio ships autonomous insurer pricing, but not as a regulated insurer.
+EOF
+
+cat > "$work/hedged-stop-pattern-fail.md" <<'EOF'
+Chio does not yet support public release claims, but x402 is universal authority for Chio actions.
+EOF
+
+cat > "$work/rejected-standards-fail.md" <<'EOF'
+Chio is the universal agent protocol.
+Every external agent protocol natively verifies Chio authority.
+Chio provides A2A v1.0.0 conformance.
+Chio provides OpenAPI 3.2 support.
+SLSA v1.1 is the current source.
+Sigstore proves runtime authorization.
+EOF
+
+if ! grep -Fq '"spec/PROTOCOL.md"' "$lint"; then
+  echo "release truth default docs do not include spec/PROTOCOL.md" >&2
+  exit 1
+fi
+
+if ! grep -Fq '"docs/start-here"' "$lint"; then
+  echo "release truth default docs do not include recursive start-here docs" >&2
+  exit 1
+fi
+
+if ! grep -Fq '"docs/release"' "$lint"; then
+  echo "release truth default docs do not include recursive release docs" >&2
+  exit 1
+fi
+
 CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
   CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \
   CHIO_PROOF_ROOM_RELEASE_DOCS="$work/pass.md" \
@@ -50,6 +90,58 @@ if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
   exit 1
 fi
 grep -q "proof-room.release.unavailable: docker_quickstart" "$work/fail.out"
+
+if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
+  CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \
+  CHIO_PROOF_ROOM_RELEASE_DOCS="$work/mixed-negation-fail.md" \
+  "$lint" >"$work/mixed-negation-fail.out" 2>&1; then
+  echo "docker quickstart release claim accepted next to unrelated negation" >&2
+  exit 1
+fi
+grep -q "proof-room.release.unavailable: docker_quickstart" "$work/mixed-negation-fail.out"
+
+if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
+  CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \
+  CHIO_PROOF_ROOM_RELEASE_DOCS="$work/launch-copy-fail.md" \
+  "$lint" >"$work/launch-copy-fail.out" 2>&1; then
+  echo "launch copy overclaims unexpectedly passed" >&2
+  exit 1
+fi
+grep -q "proof-room.release.copy-forbidden: bare_acp" "$work/launch-copy-fail.out"
+grep -q "proof-room.release.copy-forbidden: ambient_external_authority" "$work/launch-copy-fail.out"
+grep -q "proof-room.release.copy-forbidden: every_action_overclaim" "$work/launch-copy-fail.out"
+
+if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
+  CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \
+  CHIO_PROOF_ROOM_RELEASE_DOCS="$work/hedged-launch-copy-fail.md" \
+  "$lint" >"$work/hedged-launch-copy-fail.out" 2>&1; then
+  echo "hedged launch copy overclaim unexpectedly passed" >&2
+  exit 1
+fi
+grep -q "proof-room.release.copy-forbidden: insurance_pricing_overclaim" "$work/hedged-launch-copy-fail.out"
+
+if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
+  CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \
+  CHIO_PROOF_ROOM_RELEASE_DOCS="$work/hedged-stop-pattern-fail.md" \
+  "$lint" >"$work/hedged-stop-pattern-fail.out" 2>&1; then
+  echo "hedged ambient-authority overclaim unexpectedly passed" >&2
+  exit 1
+fi
+grep -q "proof-room.release.copy-forbidden: ambient_external_authority" "$work/hedged-stop-pattern-fail.out"
+
+if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
+  CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \
+  CHIO_PROOF_ROOM_RELEASE_DOCS="$work/rejected-standards-fail.md" \
+  "$lint" >"$work/rejected-standards-fail.out" 2>&1; then
+  echo "rejected standards overclaims unexpectedly passed" >&2
+  exit 1
+fi
+grep -q "proof-room.release.copy-forbidden: universal_protocol_overclaim" "$work/rejected-standards-fail.out"
+grep -q "proof-room.release.copy-forbidden: native_external_authority_overclaim" "$work/rejected-standards-fail.out"
+grep -q "proof-room.release.copy-forbidden: stale_a2a_version" "$work/rejected-standards-fail.out"
+grep -q "proof-room.release.copy-forbidden: unsupported_openapi_32" "$work/rejected-standards-fail.out"
+grep -q "proof-room.release.copy-forbidden: stale_slsa_version" "$work/rejected-standards-fail.out"
+grep -q "proof-room.release.copy-forbidden: sigstore_runtime_authority" "$work/rejected-standards-fail.out"
 
 cp "$truth" "$work/release-truth-extra-field.json"
 python3 - "$work/release-truth-extra-field.json" <<'PY'

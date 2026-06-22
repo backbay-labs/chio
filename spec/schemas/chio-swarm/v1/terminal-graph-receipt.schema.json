@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-swarm/v1/terminal-graph-receipt.schema.json",
+  "title": "Chio Swarm Terminal Graph Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "receiptId",
+    "graphId",
+    "chainId",
+    "terminalTaskIds",
+    "completedTaskIds",
+    "joinReceiptIds",
+    "routePlanReceiptIds",
+    "budgetPoolId",
+    "budgetRollups",
+    "revocationEpochRef",
+    "resultDigest",
+    "completedAtUnixMs",
+    "issuer",
+    "signature"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.swarm.terminal-graph-receipt.v1"
+    },
+    "receiptId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "graphId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "chainId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "terminalTaskIds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "completedTaskIds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "joinReceiptIds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "routePlanReceiptIds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "budgetPoolId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "budgetRollups": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/budgetRollup"
+      }
+    },
+    "revocationEpochRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "resultDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "completedAtUnixMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "issuer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "budgetRollup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dimensionId",
+        "reservedUnits",
+        "activeUnits",
+        "consumedUnits",
+        "releasedUnits",
+        "reversedUnits",
+        "totalUnits"
+      ],
+      "properties": {
+        "dimensionId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reservedUnits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "activeUnits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "consumedUnits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "releasedUnits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reversedUnits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "totalUnits": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

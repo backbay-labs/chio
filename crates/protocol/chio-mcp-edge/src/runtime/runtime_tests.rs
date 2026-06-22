@@ -14,7 +14,8 @@ use chio_core::{
     SamplingToolChoice,
 };
 use chio_kernel::{
-    KernelConfig, KernelError, PromptProvider, ResourceProvider, ToolCallChunk, ToolCallStream,
+    KernelConfig, KernelError, PromptProvider, ResourceProvider, RuntimeAdmissionContext,
+    RuntimeAdmissionDecision, RuntimeAdmissionHook, ToolCallChunk, ToolCallStream,
     ToolServerConnection, ToolServerEvent, ToolServerStreamResult,
 };
 use std::io::Cursor;
@@ -33,6 +34,7 @@ struct EchoServer;
 struct StreamingEchoServer;
 struct UrlRequiredServer;
 struct CancelledServer;
+struct RouteSelectionAdmissionHook;
 #[derive(Default)]
 struct AsyncEventServer {
     events: Mutex<Vec<ToolServerEvent>>,
@@ -184,6 +186,31 @@ impl ToolServerConnection for CancelledServer {
 impl AsyncEventServer {
     fn push_event(&self, event: ToolServerEvent) {
         self.events.lock().unwrap().push(event);
+    }
+}
+
+impl RuntimeAdmissionHook for RouteSelectionAdmissionHook {
+    fn name(&self) -> &str {
+        "test-route-selection-admission"
+    }
+
+    fn evaluate(
+        &self,
+        context: &RuntimeAdmissionContext<'_>,
+    ) -> Result<RuntimeAdmissionDecision, KernelError> {
+        let selected_route = context
+            .extra_metadata
+            .and_then(|metadata| metadata.get("route_selection"))
+            .and_then(|route| route.get("selectedRouteId"))
+            .and_then(Value::as_str);
+        if selected_route == Some("mcp:task-child-a") {
+            Ok(RuntimeAdmissionDecision::allow(None))
+        } else {
+            Ok(RuntimeAdmissionDecision::deny(
+                "route selection metadata missing",
+                None,
+            ))
+        }
     }
 }
 
@@ -515,6 +542,7 @@ fn make_kernel_error_bridge_fixture(
         arguments: json!({}),
         agent_id: agent.public_key().to_hex(),
         execution_nonce: None,
+        governed_intent: None,
         model_metadata: None,
         route_selection_metadata: None,
         peer_supports_chio_tool_streaming: false,
@@ -929,6 +957,31 @@ fn make_edge_with_config(page_size: usize, logging_enabled: bool) -> ChioMcpEdge
     .unwrap()
 }
 
+fn make_edge_with_route_selection_admission(page_size: usize) -> ChioMcpEdge {
+    let (mut kernel, _) = make_kernel();
+    kernel.set_runtime_admission_hook(Arc::new(RouteSelectionAdmissionHook));
+    let agent = Keypair::generate();
+    let capabilities = issue_capabilities(&kernel, &agent);
+    ChioMcpEdge::new(
+        McpEdgeConfig {
+            server_name: "Chio MCP Edge".to_string(),
+            server_version: "0.1.0".to_string(),
+            page_size,
+            tools_list_changed: false,
+            completion_enabled: None,
+            resources_subscribe: false,
+            resources_list_changed: false,
+            prompts_list_changed: false,
+            logging_enabled: false,
+        },
+        kernel,
+        agent.public_key().to_hex(),
+        capabilities,
+        vec![sample_manifest()],
+    )
+    .unwrap()
+}
+
 fn initialize_edge(edge: &mut ChioMcpEdge) {
     let _ = edge.handle_jsonrpc(json!({
         "jsonrpc": "2.0",
@@ -959,6 +1012,7 @@ fn execute_bridge_mcp_tool_call_preserves_model_metadata() {
             arguments: json!({"path":"/tmp/demo.txt"}),
             agent_id: agent.public_key().to_hex(),
             execution_nonce: None,
+            governed_intent: None,
             model_metadata: Some(ModelMetadata {
                 model_id: "gpt-5".to_string(),
                 safety_tier: Some(ModelSafetyTier::High),
@@ -990,6 +1044,7 @@ fn pending_approval_receipt_write_uses_pending_outcome_label() {
             arguments: json!({"path":"/tmp/demo.txt"}),
             agent_id: agent.public_key().to_hex(),
             execution_nonce: None,
+            governed_intent: None,
             model_metadata: None,
             route_selection_metadata: None,
             peer_supports_chio_tool_streaming: false,
@@ -1049,6 +1104,79 @@ fn tools_call_jsonrpc_path_records_receipt_write_allow() {
         crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ALLOW) > before_allow,
         "MCP JSON-RPC allow path must advance receipt write metrics"
     );
+}
+
+#[test]
+fn tools_call_jsonrpc_preserves_governed_swarm_context() {
+    let _metrics_guard = metrics_test_guard();
+    let mut edge = make_edge_with_config(10, false);
+    initialize_edge(&mut edge);
+    let before_deny = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY);
+
+    let response = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "read_file",
+                "arguments": { "path": "/tmp/demo.txt" },
+                "_meta": {
+                    "governedIntent": {
+                        "id": "intent:chio:mcp-swarm-no-hook",
+                        "server_id": "srv",
+                        "tool_name": "read_file",
+                        "purpose": "verify MCP swarm authority fails closed without a runtime hook",
+                        "context": {
+                            "chioSwarm": {
+                                "taskGraph": {
+                                    "id": "swarm-task-graph-runtime",
+                                    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                                },
+                                "continuationToken": {
+                                    "id": "swarm-continuation-runtime",
+                                    "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }))
+        .unwrap();
+
+    assert_eq!(response["result"]["isError"], true);
+    assert!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY) > before_deny,
+        "MCP JSON-RPC governed swarm path must deny before tool execution"
+    );
+}
+
+#[test]
+fn tools_call_jsonrpc_passes_route_selection_metadata_to_runtime_admission() {
+    let _metrics_guard = metrics_test_guard();
+    let mut edge = make_edge_with_route_selection_admission(10);
+    initialize_edge(&mut edge);
+
+    let response = edge
+        .handle_jsonrpc(json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "read_file",
+                "arguments": { "path": "/tmp/demo.txt" },
+                "_meta": {
+                    "routeSelection": {
+                        "selectedRouteId": "mcp:task-child-a",
+                        "selectedTargetProtocol": "mcp"
+                    }
+                }
+            }
+        }))
+        .unwrap();
+
+    assert_eq!(response["result"]["isError"], false);
 }
 
 #[test]
@@ -1184,6 +1312,7 @@ fn kernel_error_records_receipt_write_error_outcome() {
             arguments: json!({"path":"/tmp/demo.txt"}),
             agent_id: agent.public_key().to_hex(),
             execution_nonce: None,
+            governed_intent: None,
             model_metadata: None,
             route_selection_metadata: None,
             peer_supports_chio_tool_streaming: false,
@@ -1343,6 +1472,7 @@ async fn execute_bridge_mcp_tool_call_async_preserves_model_metadata() {
             arguments: json!({"path":"/tmp/demo.txt"}),
             agent_id: agent.public_key().to_hex(),
             execution_nonce: None,
+            governed_intent: None,
             model_metadata: Some(ModelMetadata {
                 model_id: "gpt-5".to_string(),
                 safety_tier: Some(ModelSafetyTier::High),

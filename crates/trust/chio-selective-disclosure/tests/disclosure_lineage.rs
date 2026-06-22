@@ -1,12 +1,14 @@
-use chio_core_types::Keypair;
+use chio_core_types::{sha256_hex, Keypair};
 use chio_selective_disclosure::{
     compute_signed_lineage_subgraph_digest, sign_crypto_context_report, sign_lineage_subgraph,
     verify_disclosure_lineage_bundle, DisclosureCapsule, DisclosureContextVerdict,
-    DisclosureCryptoContextReport, DisclosureLeakageLedger, DisclosureLeakageLedgerEntry,
-    DisclosureLineageBundle, DisclosureSignedLineageEdge, DisclosureSignedLineageNode,
-    DisclosureSignedLineageRedaction, SignedLineageSubgraph, DISCLOSURE_CAPSULE_SCHEMA_V1,
-    DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1, DISCLOSURE_LEAKAGE_LEDGER_SCHEMA_V1,
-    DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1, LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
+    DisclosureCryptoContextReport, DisclosureHiddenPredicate, DisclosureLeakageLedger,
+    DisclosureLeakageLedgerEntry, DisclosureLineageBundle, DisclosureProfileLeakageBudget,
+    DisclosureSensitivityClass, DisclosureSignedLineageEdge, DisclosureSignedLineageNode,
+    DisclosureSignedLineageRedaction, DisclosureVerifierPrivacyProfile, SignedLineageSubgraph,
+    TransparencyState, DISCLOSURE_CAPSULE_SCHEMA_V1, DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1,
+    DISCLOSURE_LEAKAGE_LEDGER_SCHEMA_V1, DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1,
+    DISCLOSURE_VERIFIER_PRIVACY_PROFILE_SCHEMA_V1, LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
 };
 
 fn valid_bundle() -> Result<DisclosureLineageBundle, Box<dyn std::error::Error>> {
@@ -15,33 +17,125 @@ fn valid_bundle() -> Result<DisclosureLineageBundle, Box<dyn std::error::Error>>
         id: "disclosure-capsule-valid".to_string(),
         transaction_passport_ref: "passport-disclosure-valid".to_string(),
         crypto_context_report_ref: "crypto-context-report-valid".to_string(),
+        projection_manifest_ref: "bbs-projection-manifest-valid".to_string(),
         privacy_profile_ref: "privacy-profile-valid".to_string(),
         lineage_subgraph_ref: "lineage-subgraph-valid".to_string(),
         leakage_ledger_ref: "leakage-ledger-valid".to_string(),
         disclosed_fields: vec!["capability_id".to_string(), "tool_name".to_string()],
-        hidden_predicates: vec!["amount_lte_100".to_string()],
+        hidden_predicates: vec![amount_cap_hidden_predicate()],
     };
+    let privacy_profile = DisclosureVerifierPrivacyProfile {
+        schema: DISCLOSURE_VERIFIER_PRIVACY_PROFILE_SCHEMA_V1.to_string(),
+        profile_id: "privacy-profile-valid".to_string(),
+        allowed_proof_mechanisms: vec!["bbs".to_string()],
+        required_holder_binding: Some("holder:buyer-agent".to_string()),
+        transaction_passport_ref: "passport-disclosure-valid".to_string(),
+        leakage_budget: DisclosureProfileLeakageBudget {
+            max_disclosed_fields: 2,
+            max_hidden_predicates: 1,
+        },
+        sensitivity_classes: vec![
+            DisclosureSensitivityClass {
+                class_id: "capability_identifier".to_string(),
+                fields: vec!["capability_id".to_string()],
+            },
+            DisclosureSensitivityClass {
+                class_id: "tool_identity".to_string(),
+                fields: vec!["tool_name".to_string()],
+            },
+            DisclosureSensitivityClass {
+                class_id: "amount_or_budget".to_string(),
+                fields: vec!["amount_lte_100".to_string()],
+            },
+            DisclosureSensitivityClass {
+                class_id: "runtime_assurance".to_string(),
+                fields: vec![
+                    "derived.crypto.issuer_status".to_string(),
+                    "derived.crypto.revocation_freshness".to_string(),
+                ],
+            },
+            DisclosureSensitivityClass {
+                class_id: "timing".to_string(),
+                fields: vec!["derived.crypto.presentation_timing".to_string()],
+            },
+        ],
+        allowed_issuer_keys: vec![
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+        ],
+        required_key_epoch_min: 7,
+        forbidden_key_epochs: vec![9],
+        required_status_freshness_seconds: 300,
+        required_audience: "https://auditor.example/chio".to_string(),
+        nonce_policy: "no_replay".to_string(),
+        allowed_algorithms: vec!["bbs-bls12381-sha256".to_string()],
+        forbidden_algorithms: vec!["rsa-pkcs1v15-sha1".to_string()],
+        required_transparency_state: TransparencyState::Anchored,
+        max_presentation_age_seconds: 600,
+        allowed_disclosed_fields: vec!["capability_id".to_string(), "tool_name".to_string()],
+        forbidden_disclosed_fields: vec!["customer_email".to_string()],
+        allowed_hidden_predicates: vec!["amount_lte_100".to_string()],
+        forbidden_hidden_predicates: vec!["raw_amount".to_string()],
+    };
+    let frontier_sha256 = lineage_frontier_digest("receipt-child", &digest("receipt-child"), 1);
+    let checkpoint_ref = "checkpoint-disclosure-valid".to_string();
     let mut lineage = SignedLineageSubgraph {
         schema: LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1.to_string(),
         id: "lineage-subgraph-valid".to_string(),
         transaction_passport_ref: "passport-disclosure-valid".to_string(),
+        policy_profile_id: "privacy-profile-valid".to_string(),
+        generated_at: "2026-06-10T00:00:00Z".to_string(),
+        audience: "https://auditor.example/chio".to_string(),
+        challenge_nonce: "disclosure-lineage-fixture-nonce".to_string(),
+        frontier_sha256: frontier_sha256.clone(),
+        checkpoint_ref: checkpoint_ref.clone(),
+        checkpoint_inclusion_sha256: digest(&format!("{checkpoint_ref}|{frontier_sha256}")),
+        max_depth: 1,
+        required_evidence_class: "observed".to_string(),
+        lineage_anchor_ref: "lineage-anchor-local-fixture".to_string(),
+        redaction_map_sha256: digest("receipt-child|privacy_profile"),
+        leakage_ledger_sha256: digest("leakage-ledger-valid"),
+        projection_manifest_sha256: digest("bbs-projection-manifest-valid"),
         root_receipt_ids: vec!["receipt-root".to_string()],
         nodes: vec![
             DisclosureSignedLineageNode {
                 id: "receipt-root".to_string(),
+                kind: "receipt".to_string(),
                 receipt_ref: "receipt-root".to_string(),
+                artifact_sha256: digest("receipt-root"),
+                artifact_schema: "chio.receipt.v1".to_string(),
+                evidence_class: "observed".to_string(),
+                tenant_hash: digest("tenant-fixture"),
+                source_table: "receipts".to_string(),
+                source_id_hash: digest("receipt-root"),
+                depth: 0,
+                parent_ids: Vec::new(),
                 disclosure_state: "disclosed".to_string(),
             },
             DisclosureSignedLineageNode {
                 id: "receipt-child".to_string(),
+                kind: "receipt_lineage_statement".to_string(),
                 receipt_ref: "receipt-child".to_string(),
+                artifact_sha256: digest("receipt-child"),
+                artifact_schema: "chio.receipt-lineage-statement.v1".to_string(),
+                evidence_class: "derived".to_string(),
+                tenant_hash: digest("tenant-fixture"),
+                source_table: "receipt_lineage_statements".to_string(),
+                source_id_hash: digest("receipt-child"),
+                depth: 1,
+                parent_ids: vec!["receipt-root".to_string()],
                 disclosure_state: "redacted".to_string(),
             },
         ],
         edges: vec![DisclosureSignedLineageEdge {
+            edge_id: "edge-receipt-root-receipt-child".to_string(),
             from: "receipt-root".to_string(),
             to: "receipt-child".to_string(),
             relation: "continued".to_string(),
+            kind: "continued_by".to_string(),
+            evidence_class: "observed".to_string(),
+            source_artifact_sha256: digest("edge-receipt-root-receipt-child"),
+            statement_sha256: digest("receipt-root|receipt-child|continued_by"),
+            disclosure_state: "disclosed".to_string(),
         }],
         redactions: vec![DisclosureSignedLineageRedaction {
             node_id: "receipt-child".to_string(),
@@ -57,25 +151,63 @@ fn valid_bundle() -> Result<DisclosureLineageBundle, Box<dyn std::error::Error>>
         id: "leakage-ledger-valid".to_string(),
         transaction_passport_ref: "passport-disclosure-valid".to_string(),
         privacy_profile_ref: "privacy-profile-valid".to_string(),
+        policy_profile_id: "privacy-profile-valid".to_string(),
+        subject_artifact_sha256: digest("disclosure-capsule-valid"),
+        generated_at: "2026-06-10T00:00:00Z".to_string(),
+        audience: "https://auditor.example/chio".to_string(),
+        total_leakage_score: 7,
+        max_allowed_leakage_score: 7,
+        tenant_leakage_notice_ref: "tenant-leakage-notice-none".to_string(),
+        accepted: true,
         entries: vec![
-            DisclosureLeakageLedgerEntry {
-                field: "capability_id".to_string(),
-                leakage_kind: "disclosed_field".to_string(),
-                allowed_by_profile: true,
-                residual_inference_note: None,
-            },
-            DisclosureLeakageLedgerEntry {
-                field: "tool_name".to_string(),
-                leakage_kind: "disclosed_field".to_string(),
-                allowed_by_profile: true,
-                residual_inference_note: None,
-            },
-            DisclosureLeakageLedgerEntry {
-                field: "amount_lte_100".to_string(),
-                leakage_kind: "hidden_predicate".to_string(),
-                allowed_by_profile: true,
-                residual_inference_note: Some("predicate reveals capped amount band".to_string()),
-            },
+            leakage_entry(
+                "leakage-capability-id",
+                "capability_id",
+                "disclosed_field",
+                "capability_identifier",
+                1,
+                None,
+            ),
+            leakage_entry(
+                "leakage-tool-name",
+                "tool_name",
+                "disclosed_field",
+                "tool_identity",
+                1,
+                None,
+            ),
+            leakage_entry(
+                "leakage-amount-cap",
+                "amount_lte_100",
+                "hidden_predicate",
+                "amount_or_budget",
+                2,
+                Some("predicate reveals capped amount band"),
+            ),
+            leakage_entry(
+                "leakage-derived-issuer-status",
+                "derived.crypto.issuer_status",
+                "derived_fact",
+                "runtime_assurance",
+                1,
+                None,
+            ),
+            leakage_entry(
+                "leakage-derived-revocation-freshness",
+                "derived.crypto.revocation_freshness",
+                "derived_fact",
+                "runtime_assurance",
+                1,
+                None,
+            ),
+            leakage_entry(
+                "leakage-derived-presentation-timing",
+                "derived.crypto.presentation_timing",
+                "derived_fact",
+                "timing",
+                1,
+                None,
+            ),
         ],
     };
     let mut crypto_context_report = DisclosureCryptoContextReport {
@@ -83,6 +215,7 @@ fn valid_bundle() -> Result<DisclosureLineageBundle, Box<dyn std::error::Error>>
         id: "crypto-context-report-valid".to_string(),
         context_id: "crypto-context-valid".to_string(),
         artifact_ref: "disclosure-capsule-valid".to_string(),
+        projection_manifest_ref: "bbs-projection-manifest-valid".to_string(),
         verdict: DisclosureContextVerdict::Verified,
         evidence_class: "verifier_context".to_string(),
         cryptographic_proof_verified: true,
@@ -100,6 +233,7 @@ fn valid_bundle() -> Result<DisclosureLineageBundle, Box<dyn std::error::Error>>
     )?);
     Ok(DisclosureLineageBundle {
         capsule,
+        privacy_profile,
         lineage,
         leakage_ledger,
         crypto_context_report: Some(crypto_context_report),
@@ -108,6 +242,55 @@ fn valid_bundle() -> Result<DisclosureLineageBundle, Box<dyn std::error::Error>>
 
 fn lineage_signer() -> Keypair {
     Keypair::from_seed(&[29u8; 32])
+}
+
+fn digest(value: &str) -> String {
+    sha256_hex(value.as_bytes())
+}
+
+fn lineage_frontier_digest(node_id: &str, artifact_sha256: &str, depth: u32) -> String {
+    digest(&format!("{node_id}:{artifact_sha256}:{depth}"))
+}
+
+fn leakage_entry(
+    entry_id: &str,
+    field: &str,
+    leakage_kind: &str,
+    sensitivity_class: &str,
+    score: u32,
+    residual_inference_note: Option<&str>,
+) -> DisclosureLeakageLedgerEntry {
+    DisclosureLeakageLedgerEntry {
+        entry_id: entry_id.to_string(),
+        source: "disclosure-capsule".to_string(),
+        field: field.to_string(),
+        leakage_kind: leakage_kind.to_string(),
+        disclosure_kind: leakage_kind.to_string(),
+        sensitivity_class: sensitivity_class.to_string(),
+        value_class: "identifier_or_predicate".to_string(),
+        reason: "required by disclosure profile".to_string(),
+        policy_rule: "profile.allowed_disclosure".to_string(),
+        derived_inferences: Vec::new(),
+        cross_tenant_risk: false,
+        mitigation: None,
+        score,
+        allowed_by_profile: true,
+        residual_inference_note: residual_inference_note.map(str::to_string),
+    }
+}
+
+fn amount_cap_hidden_predicate() -> DisclosureHiddenPredicate {
+    DisclosureHiddenPredicate {
+        predicate_id: "amount_lte_100".to_string(),
+        kind: "amount_cap".to_string(),
+        field: "amount".to_string(),
+        operator: "<=".to_string(),
+        operand: "100".to_string(),
+        unit: "USD".to_string(),
+        result: true,
+        proof_ref: "selective-disclosure-proof".to_string(),
+        projection_slot: 2,
+    }
 }
 
 #[test]
@@ -140,6 +323,7 @@ fn disclosure_lineage_rejects_disclosed_field_absent_from_ledger() {
         .leakage_ledger
         .entries
         .retain(|entry| entry.field != "tool_name");
+    bundle.leakage_ledger.total_leakage_score = 6;
 
     let error = match verify_disclosure_lineage_bundle(&bundle) {
         Ok(_) => panic!("missing leakage ledger entry must fail"),

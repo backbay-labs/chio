@@ -26,10 +26,11 @@ pub enum Domain {
     Custody,
     Weights,
     Mobile,
+    Transaction,
 }
 
 impl Domain {
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 20] = [
         Self::Capability,
         Self::Policy,
         Self::Guard,
@@ -49,6 +50,7 @@ impl Domain {
         Self::Custody,
         Self::Weights,
         Self::Mobile,
+        Self::Transaction,
     ];
 
     #[must_use]
@@ -73,6 +75,7 @@ impl Domain {
             Self::Custody => "custody",
             Self::Weights => "weights",
             Self::Mobile => "mobile",
+            Self::Transaction => "transaction",
         }
     }
 
@@ -98,6 +101,7 @@ impl Domain {
             "custody" => Some(Self::Custody),
             "weights" => Some(Self::Weights),
             "mobile" => Some(Self::Mobile),
+            "transaction" => Some(Self::Transaction),
             _ => None,
         }
     }

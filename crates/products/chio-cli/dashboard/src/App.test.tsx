@@ -2805,7 +2805,19 @@ describe('App operator paths', () => {
       lineage_subgraph_ref: 'lineage-subgraph-valid',
       leakage_ledger_ref: 'leakage-ledger-valid',
       disclosed_fields: ['capability_id', 'tool_name'],
-      hidden_predicates: ['amount_lte_100'],
+      hidden_predicates: [
+        {
+          predicate_id: 'amount_lte_100',
+          kind: 'amount_cap',
+          field: 'amount',
+          operator: '<=',
+          operand: '100',
+          unit: 'USD',
+          result: true,
+          proof_ref: 'selective-disclosure-proof',
+          projection_slot: 2,
+        },
+      ],
     })
     const signedLineageJson = JSON.stringify({
       schema: 'chio.lineage.signed-subgraph.v1',

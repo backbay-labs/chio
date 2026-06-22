@@ -10,6 +10,8 @@
     "issued_at",
     "passport_id",
     "risk_comptroller_report_ref",
+    "evidence_export_bundle_digest",
+    "signature",
     "decision",
     "decision_subject",
     "approvers",
@@ -22,6 +24,11 @@
     "issued_at": { "type": "string", "minLength": 1 },
     "passport_id": { "type": "string", "minLength": 1 },
     "risk_comptroller_report_ref": { "type": "string", "minLength": 1 },
+    "evidence_export_bundle_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "signature": { "type": "string", "minLength": 1 },
     "decision": { "type": "string", "minLength": 1 },
     "decision_subject": { "type": "string", "minLength": 1 },
     "approvers": {

@@ -85,13 +85,17 @@ fn crypto_context_verified_report_rejects_context_report_drift() -> Result<(), B
     let fixture = repo_root()?.join("fixtures/proof-room/crypto-context/valid-bbs-context");
     let report_bytes = fs::read(fixture.join("crypto-context-report.json"))?;
     let context_bytes = fs::read(fixture.join("verification-context.json"))?;
+    let proof_bytes = fs::read(fixture.join("selective-disclosure-proof.json"))?;
+    let privacy_profile_bytes = fs::read(fixture.join("verifier-privacy-profile.json"))?;
     let mut context: serde_json::Value = serde_json::from_slice(&context_bytes)?;
     context["audience"] = serde_json::Value::String("https://attacker.example/chio".to_string());
     let context_bytes = serde_json::to_vec(&context)?;
 
-    let error = crypto_context_verified_report_bytes(
+    let error = crypto_context_verified_report_bytes_with_bbs(
         &context_bytes,
         &report_bytes,
+        &proof_bytes,
+        &privacy_profile_bytes,
         "crypto-context-valid-bbs",
     )
     .err()
@@ -101,8 +105,54 @@ fn crypto_context_verified_report_rejects_context_report_drift() -> Result<(), B
     Ok(())
 }
 
+#[test]
+fn crypto_context_verified_report_rejects_unsigned_report() -> Result<(), Box<dyn Error>> {
+    let fixture = repo_root()?.join("fixtures/proof-room/crypto-context/valid-bbs-context");
+    let mut report: serde_json::Value =
+        serde_json::from_slice(&fs::read(fixture.join("crypto-context-report.json"))?)?;
+    report
+        .as_object_mut()
+        .ok_or("crypto context report is not an object")?
+        .remove("signature");
+    let report_bytes = serde_json::to_vec(&report)?;
+    let context_bytes = fs::read(fixture.join("verification-context.json"))?;
+    let proof_bytes = fs::read(fixture.join("selective-disclosure-proof.json"))?;
+    let privacy_profile_bytes = fs::read(fixture.join("verifier-privacy-profile.json"))?;
+
+    let error = crypto_context_verified_report_bytes_with_bbs(
+        &context_bytes,
+        &report_bytes,
+        &proof_bytes,
+        &privacy_profile_bytes,
+        "crypto-context-valid-bbs",
+    )
+    .err()
+    .ok_or("unsigned crypto context report unexpectedly verified")?;
+
+    assert!(error.contains("crypto context report signature missing"));
+    Ok(())
+}
+
+#[test]
+fn crypto_context_verified_report_requires_bbs_proof_material() -> Result<(), Box<dyn Error>> {
+    let fixture = repo_root()?.join("fixtures/proof-room/crypto-context/valid-bbs-context");
+    let report_bytes = fs::read(fixture.join("crypto-context-report.json"))?;
+    let context_bytes = fs::read(fixture.join("verification-context.json"))?;
+
+    let error = crypto_context_verified_report_bytes(
+        &context_bytes,
+        &report_bytes,
+        "crypto-context-valid-bbs",
+    )
+    .err()
+    .ok_or("crypto context report unexpectedly verified without BBS proof material")?;
+
+    assert!(error.contains("missing BBS proof material"));
+    Ok(())
+}
+
 #[tokio::test]
-async fn quickstart_router_serves_crypto_context_negative_fixture_report(
+async fn quickstart_router_serves_bbs_verified_crypto_context_negative_fixture_report(
 ) -> Result<(), Box<dyn Error>> {
     let bundle =
         repo_root()?.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
@@ -114,6 +164,7 @@ async fn quickstart_router_serves_crypto_context_negative_fixture_report(
     let router = proof_room_router_with_repo_fixture_root(bundle, ui.path().to_path_buf())?;
 
     let response = router
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/proof-room-fixtures/crypto-context-wrong-audience/verifier-report.json")
@@ -127,11 +178,27 @@ async fn quickstart_router_serves_crypto_context_negative_fixture_report(
     assert_eq!(report["schema"], "chio.disclosure.crypto-context-report.v1");
     assert_eq!(report["verdict"], "rejected");
     assert_eq!(report["context_id"], "crypto-context-wrong-audience");
+    assert_eq!(report["cryptographic_proof_verified"], true);
     assert!(report["rejected_checks"]
         .as_array()
         .ok_or("rejected_checks missing")?
         .iter()
         .any(|check| check["code"] == "disclosure_context_audience_mismatch"));
+    assert_eq!(
+        report["disclosed_fields"],
+        serde_json::json!(["capability_id", "id", "tool_name"])
+    );
+
+    let proof_response = router
+        .oneshot(
+            Request::builder()
+                .uri(
+                    "/proof-room-fixtures/crypto-context-wrong-audience/selective-disclosure-proof.json",
+                )
+                .body(Body::empty())?,
+        )
+        .await?;
+    assert_eq!(proof_response.status(), StatusCode::OK);
     Ok(())
 }
 
@@ -243,8 +310,13 @@ fn source_verifier_accepts_single_family_cli_report_without_wrapper() -> Result<
         path: passport_path,
     };
 
-    verify_source_verifier_report(&fixture, &transaction_passport_artifact, &commerce_report)
-        .map_err(|error| format!("single-family source report rejected: {error}"))?;
+    verify_source_verifier_report(
+        &fixture,
+        &transaction_passport_artifact,
+        &commerce_report,
+        true,
+    )
+    .map_err(|error| format!("single-family source report rejected: {error}"))?;
     Ok(())
 }
 
@@ -569,6 +641,71 @@ fn rejects_verifier_report_that_does_not_match_passport() -> Result<(), Box<dyn 
 }
 
 #[test]
+fn rejects_disclosure_crypto_context_claim_without_bbs_material() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join(
+        "fixtures/proof-room/public-stages/disclosure-and-agent-web-envelope/proof-room-bundle",
+    );
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(work.path().join("manifest.json"))?)?;
+    let manifest_claims = manifest["claims"]
+        .as_array()
+        .ok_or("manifest claims missing")?;
+    assert!(manifest_claims
+        .iter()
+        .any(|claim| { claim["claim_id"] == "claim.disclosure.crypto_context_bound" }));
+
+    let top_level_graph_path = work.path().join("evidence-graph.json");
+    remove_bbs_material_graph_nodes(&top_level_graph_path)?;
+    let top_level_graph_sha256 = sha256_file(&top_level_graph_path)?;
+    remove_bbs_material_graph_nodes(&work.path().join("roots/evidence-graph.json"))?;
+    refresh_source_roots_and_manifest(
+        work.path(),
+        Some(("evidence-graph.json", top_level_graph_sha256)),
+    )?;
+
+    let evidence_graph: serde_json::Value =
+        serde_json::from_slice(&fs::read(work.path().join("roots/evidence-graph.json"))?)?;
+    let nodes = evidence_graph["nodes"]
+        .as_array()
+        .ok_or("evidence graph nodes missing")?;
+    assert!(!nodes
+        .iter()
+        .any(|node| { node["role"] == "selective-disclosure-proof" }));
+
+    let error = verify_proof_room_bundle(&work.path().join("manifest.json"))
+        .err()
+        .ok_or(
+            "bundle with crypto context claim but no BBS proof material unexpectedly verified",
+        )?;
+
+    assert!(
+        error.to_string().contains("missing BBS proof material"),
+        "{error}"
+    );
+    Ok(())
+}
+
+fn remove_bbs_material_graph_nodes(path: &std::path::Path) -> Result<(), Box<dyn Error>> {
+    let mut evidence_graph: serde_json::Value = serde_json::from_slice(&fs::read(path)?)?;
+    evidence_graph["nodes"]
+        .as_array_mut()
+        .ok_or("evidence graph nodes missing")?
+        .retain(|node| {
+            let role = node.get("role").and_then(serde_json::Value::as_str);
+            !matches!(
+                role,
+                Some("crypto-verification-context" | "selective-disclosure-proof")
+            )
+        });
+    fs::write(path, json_bytes(&evidence_graph)?)?;
+    Ok(())
+}
+
+#[test]
 fn rejects_source_report_for_non_transaction_required_claim() -> Result<(), Box<dyn Error>> {
     let root = repo_root()?;
     let source = root.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
@@ -830,11 +967,11 @@ fn rejects_first_run_public_artifacts_with_unexpected_fields() -> Result<(), Box
         ),
         (
             "roots/request-digest.json",
-            "receipt request digest mismatch",
+            "proof-room.schema-violation: artifact",
         ),
         (
             "roots/response-digest.json",
-            "receipt response digest mismatch",
+            "proof-room.schema-violation: artifact",
         ),
     ] {
         let work = tempfile::tempdir()?;

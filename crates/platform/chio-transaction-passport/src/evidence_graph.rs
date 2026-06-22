@@ -4,9 +4,10 @@ use std::path::{Component, Path};
 use chio_core_types::crypto::{PublicKey, Signature};
 use chrono::{DateTime, Utc};
 use serde::{de::DeserializeOwned, Deserialize};
+use serde_json::Value;
 
 use super::error::TransactionPassportError;
-use super::ids::TRANSACTION_EVIDENCE_GRAPH_SCHEMA_ID;
+use super::ids::{TRANSACTION_CLAIM_SET_SCHEMA_ID, TRANSACTION_EVIDENCE_GRAPH_SCHEMA_ID};
 use super::validation::{require_non_empty, validate_bundle_relative_path, validate_sha256_hex};
 
 const DID_CHIO_PREFIX: &str = "did:chio:";
@@ -38,16 +39,29 @@ enum EvidenceNodeRole {
     Capability,
     GuardDecision,
     Policy,
+    PolicyActivationReceipt,
     Request,
     Response,
     TrustRoot,
+    ClaimSet,
     VerifierPolicy,
     Report,
     ExecutionLease,
     ToolServerAck,
     RevocationFreshnessProof,
     SandboxAttestation,
+    RuntimeAttackSimulationReport,
+    RuntimeChaosRunReport,
     AdvisoryObservation,
+    CommerceOrderContext,
+    CommerceEventLog,
+    CommercePaymentLifecycle,
+    CommerceMandateAllowanceLedger,
+    CommerceProtocolPayload,
+    CommerceProviderPassport,
+    CommerceReputationSnapshot,
+    CommerceFederationTrustBundle,
+    CommerceSettlementPacket,
     RiskComptrollerReport,
     DataGovernanceReport,
     EvidenceExportBundle,
@@ -66,10 +80,24 @@ enum EvidenceNodeRole {
     CollateralPositionReport,
     GuaranteeDecision,
     AdjudicationJurisdictionReceipt,
+    PublicSettlementProofBundle,
+    SwarmTaskGraph,
+    SwarmContinuationToken,
+    SwarmDelegationWitnessChain,
+    SwarmJoinReceipt,
+    SwarmRoutePlanReceipt,
+    SwarmTerminalGraphReceipt,
+    SwarmBudgetPool,
+    SwarmRevocationEpoch,
     DisclosureCapsule,
     DisclosureLeakageLedger,
     SignedLineageSubgraph,
     DisclosureCryptoContextReport,
+    DisclosureVerifierPrivacyProfile,
+    CryptoVerificationContext,
+    SelectiveDisclosureProof,
+    BbsProjectionManifest,
+    TransparencyInclusionProof,
 }
 
 impl<'de> Deserialize<'de> for EvidenceNodeRole {
@@ -84,16 +112,29 @@ impl<'de> Deserialize<'de> for EvidenceNodeRole {
             "capability" => Self::Capability,
             "guard-decision" => Self::GuardDecision,
             "policy" => Self::Policy,
+            "policy-activation-receipt" => Self::PolicyActivationReceipt,
             "request" => Self::Request,
             "response" => Self::Response,
             "trust-root" => Self::TrustRoot,
+            "claim-set" => Self::ClaimSet,
             "verifier-policy" => Self::VerifierPolicy,
             "report" => Self::Report,
             "execution-lease" => Self::ExecutionLease,
             "tool-server-ack" => Self::ToolServerAck,
             "revocation-freshness-proof" => Self::RevocationFreshnessProof,
             "sandbox-attestation" => Self::SandboxAttestation,
+            "runtime-attack-simulation-report" => Self::RuntimeAttackSimulationReport,
+            "runtime-chaos-run-report" => Self::RuntimeChaosRunReport,
             "advisory-observation" => Self::AdvisoryObservation,
+            "commerce-order-context" => Self::CommerceOrderContext,
+            "commerce-event-log" => Self::CommerceEventLog,
+            "commerce-payment-lifecycle" => Self::CommercePaymentLifecycle,
+            "commerce-mandate-allowance-ledger" => Self::CommerceMandateAllowanceLedger,
+            "commerce-protocol-payload" => Self::CommerceProtocolPayload,
+            "commerce-provider-passport" => Self::CommerceProviderPassport,
+            "commerce-reputation-snapshot" => Self::CommerceReputationSnapshot,
+            "commerce-federation-trust-bundle" => Self::CommerceFederationTrustBundle,
+            "commerce-settlement-packet" => Self::CommerceSettlementPacket,
             "risk-comptroller-report" => Self::RiskComptrollerReport,
             "data-governance-report" => Self::DataGovernanceReport,
             "evidence-export-bundle" => Self::EvidenceExportBundle,
@@ -112,10 +153,24 @@ impl<'de> Deserialize<'de> for EvidenceNodeRole {
             "collateral-position-report" => Self::CollateralPositionReport,
             "guarantee-decision" => Self::GuaranteeDecision,
             "adjudication-jurisdiction-receipt" => Self::AdjudicationJurisdictionReceipt,
+            "public-settlement-proof-bundle" => Self::PublicSettlementProofBundle,
+            "swarm-task-graph" => Self::SwarmTaskGraph,
+            "swarm-continuation-token" => Self::SwarmContinuationToken,
+            "swarm-delegation-witness-chain" => Self::SwarmDelegationWitnessChain,
+            "swarm-join-receipt" => Self::SwarmJoinReceipt,
+            "swarm-route-plan-receipt" => Self::SwarmRoutePlanReceipt,
+            "swarm-terminal-graph-receipt" => Self::SwarmTerminalGraphReceipt,
+            "swarm-budget-pool" => Self::SwarmBudgetPool,
+            "swarm-revocation-epoch" => Self::SwarmRevocationEpoch,
             "disclosure-capsule" => Self::DisclosureCapsule,
             "disclosure-leakage-ledger" => Self::DisclosureLeakageLedger,
             "signed-lineage-subgraph" => Self::SignedLineageSubgraph,
             "disclosure-crypto-context-report" => Self::DisclosureCryptoContextReport,
+            "disclosure-verifier-privacy-profile" => Self::DisclosureVerifierPrivacyProfile,
+            "crypto-verification-context" => Self::CryptoVerificationContext,
+            "selective-disclosure-proof" => Self::SelectiveDisclosureProof,
+            "bbs-projection-manifest" => Self::BbsProjectionManifest,
+            "transparency-inclusion-proof" => Self::TransparencyInclusionProof,
             _ => {
                 return Err(serde::de::Error::unknown_variant(
                     &value,
@@ -125,16 +180,29 @@ impl<'de> Deserialize<'de> for EvidenceNodeRole {
                         "capability",
                         "guard-decision",
                         "policy",
+                        "policy-activation-receipt",
                         "request",
                         "response",
                         "trust-root",
+                        "claim-set",
                         "verifier-policy",
                         "report",
                         "execution-lease",
                         "tool-server-ack",
                         "revocation-freshness-proof",
                         "sandbox-attestation",
+                        "runtime-attack-simulation-report",
+                        "runtime-chaos-run-report",
                         "advisory-observation",
+                        "commerce-order-context",
+                        "commerce-event-log",
+                        "commerce-payment-lifecycle",
+                        "commerce-mandate-allowance-ledger",
+                        "commerce-protocol-payload",
+                        "commerce-provider-passport",
+                        "commerce-reputation-snapshot",
+                        "commerce-federation-trust-bundle",
+                        "commerce-settlement-packet",
                         "risk-comptroller-report",
                         "data-governance-report",
                         "evidence-export-bundle",
@@ -153,10 +221,24 @@ impl<'de> Deserialize<'de> for EvidenceNodeRole {
                         "collateral-position-report",
                         "guarantee-decision",
                         "adjudication-jurisdiction-receipt",
+                        "public-settlement-proof-bundle",
+                        "swarm-task-graph",
+                        "swarm-continuation-token",
+                        "swarm-delegation-witness-chain",
+                        "swarm-join-receipt",
+                        "swarm-route-plan-receipt",
+                        "swarm-terminal-graph-receipt",
+                        "swarm-budget-pool",
+                        "swarm-revocation-epoch",
                         "disclosure-capsule",
                         "disclosure-leakage-ledger",
                         "signed-lineage-subgraph",
                         "disclosure-crypto-context-report",
+                        "disclosure-verifier-privacy-profile",
+                        "crypto-verification-context",
+                        "selective-disclosure-proof",
+                        "bbs-projection-manifest",
+                        "transparency-inclusion-proof",
                     ],
                 ))
             }
@@ -231,6 +313,7 @@ pub(super) fn validate_evidence_graph(
     for edge in &graph.edges {
         validate_evidence_edge(edge)?;
     }
+    validate_no_advisory_authority_edges(graph)?;
     validate_graph_references(
         graph.nodes.iter().map(|node| node.id.as_str()),
         graph
@@ -238,7 +321,78 @@ pub(super) fn validate_evidence_graph(
             .iter()
             .map(|edge| (edge.from.as_str(), edge.to.as_str())),
     )?;
+    validate_graph_acyclic(
+        graph.nodes.iter().map(|node| node.id.as_str()),
+        graph
+            .edges
+            .iter()
+            .map(|edge| (edge.from.as_str(), edge.to.as_str())),
+    )?;
     Ok(())
+}
+
+pub fn validate_transaction_evidence_graph(
+    evidence_graph_bytes: &[u8],
+) -> Result<(), TransactionPassportError> {
+    let graph: Value = serde_json::from_slice(evidence_graph_bytes).map_err(|error| {
+        TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
+    })?;
+    let schema = required_graph_string(&graph, "schema", "evidence graph schema")?;
+    if schema != TRANSACTION_EVIDENCE_GRAPH_SCHEMA_ID {
+        return Err(TransactionPassportError::UnsupportedEvidenceGraphSchema(
+            schema.to_string(),
+        ));
+    }
+    required_graph_string(&graph, "id", "evidence graph id")?;
+    required_graph_string(&graph, "issued_at", "evidence graph issued_at")?;
+
+    let nodes = required_graph_array(&graph, "nodes", "evidence graph nodes")?;
+    if nodes.is_empty() {
+        return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+            "evidence graph must contain at least one node".to_string(),
+        ));
+    }
+    let mut node_ids = Vec::with_capacity(nodes.len());
+    for node in nodes {
+        node_ids.push(required_graph_string(node, "id", "evidence graph node id")?);
+    }
+
+    let edges = required_graph_array(&graph, "edges", "evidence graph edges")?;
+    let mut edge_refs = Vec::with_capacity(edges.len());
+    for edge in edges {
+        edge_refs.push((
+            required_graph_string(edge, "from", "evidence graph edge source")?,
+            required_graph_string(edge, "to", "evidence graph edge target")?,
+        ));
+    }
+    validate_no_advisory_authority_edges_in_value(&graph)?;
+
+    validate_graph_references(node_ids.iter().copied(), edge_refs.iter().copied())?;
+    validate_graph_acyclic(node_ids.iter().copied(), edge_refs.iter().copied())
+}
+
+fn required_graph_array<'a>(
+    value: &'a Value,
+    field: &str,
+    label: &'static str,
+) -> Result<&'a Vec<Value>, TransactionPassportError> {
+    value.get(field).and_then(Value::as_array).ok_or_else(|| {
+        TransactionPassportError::InvalidEvidenceGraphArtifact(format!("{label} missing"))
+    })
+}
+
+fn required_graph_string<'a>(
+    value: &'a Value,
+    field: &str,
+    label: &'static str,
+) -> Result<&'a str, TransactionPassportError> {
+    let text = value.get(field).and_then(Value::as_str).ok_or_else(|| {
+        TransactionPassportError::InvalidEvidenceGraphArtifact(format!("{label} missing"))
+    })?;
+    require_non_empty(text, label).map_err(|error| {
+        TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
+    })?;
+    Ok(text)
 }
 
 pub(super) fn validate_minimal_governed_action_evidence(
@@ -252,6 +406,7 @@ pub(super) fn validate_minimal_governed_action_evidence(
         (EvidenceNodeRole::Request, "request digest"),
         (EvidenceNodeRole::Response, "response digest"),
         (EvidenceNodeRole::TrustRoot, "trust root"),
+        (EvidenceNodeRole::ClaimSet, "claim set"),
         (EvidenceNodeRole::VerifierPolicy, "verifier policy"),
     ] {
         node_for_role(graph, role).ok_or_else(|| {
@@ -299,6 +454,12 @@ pub(super) fn validate_minimal_governed_action_evidence(
             "trust root authorizes capability",
         ),
         (
+            EvidenceNodeRole::ClaimSet,
+            EvidenceNodeRole::VerifierPolicy,
+            EvidenceEdgePredicate::Binds,
+            "claim set binds verifier policy",
+        ),
+        (
             EvidenceNodeRole::VerifierPolicy,
             EvidenceNodeRole::Receipt,
             EvidenceEdgePredicate::Binds,
@@ -312,6 +473,29 @@ pub(super) fn validate_minimal_governed_action_evidence(
         }
     }
 
+    Ok(())
+}
+
+pub(super) fn validate_claim_set_node_binding(
+    graph: &TransactionEvidenceGraph,
+    claim_set_path: &str,
+    claim_set_sha256: &str,
+) -> Result<(), TransactionPassportError> {
+    let node = node_for_role(graph, EvidenceNodeRole::ClaimSet).ok_or_else(|| {
+        TransactionPassportError::InvalidEvidenceGraphArtifact(
+            "minimal governed action evidence missing: claim set".to_string(),
+        )
+    })?;
+    if !path_matches_or_contains_suffix(&node.path, claim_set_path) {
+        return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+            "claim set evidence graph path mismatch".to_string(),
+        ));
+    }
+    if node.sha256 != claim_set_sha256 {
+        return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+            "claim set evidence graph digest mismatch".to_string(),
+        ));
+    }
     Ok(())
 }
 
@@ -406,14 +590,8 @@ pub(super) fn validate_minimal_governed_action_artifact_bindings(
         "response digest",
     )?;
     let policy_digest = artifact_digest_for_role(graph, artifacts, EvidenceNodeRole::Policy)?;
-    let request_artifact_digest =
-        artifact_digest_for_role(graph, artifacts, EvidenceNodeRole::Request)?;
-    let response_artifact_digest =
-        artifact_digest_for_role(graph, artifacts, EvidenceNodeRole::Response)?;
-    let request_digest_candidates =
-        digest_candidates(request_artifact_digest, request.sha256.as_deref())?;
-    let response_digest_candidates =
-        digest_candidates(response_artifact_digest, response.sha256.as_deref())?;
+    let request_digest = declared_digest(request.sha256.as_deref(), "request digest")?;
+    let response_digest = declared_digest(response.sha256.as_deref(), "response digest")?;
     let evidence_graph_issued_at = parse_rfc3339_utc(&graph.issued_at, "evidence graph issued_at")?;
     let guard_id = first_present(
         guard.id.as_deref(),
@@ -474,24 +652,24 @@ pub(super) fn validate_minimal_governed_action_artifact_bindings(
         &policy_digest,
         "guard decision policy digest mismatch",
     )?;
-    ensure_digest_candidate(
+    ensure_binding_equal(
         &receipt.request_digest,
-        &request_digest_candidates,
+        request_digest,
         "receipt request digest mismatch",
     )?;
-    ensure_digest_candidate(
+    ensure_binding_equal(
         guard_request_digest,
-        &request_digest_candidates,
+        request_digest,
         "guard decision request digest mismatch",
     )?;
-    ensure_digest_candidate(
+    ensure_binding_equal(
         &receipt.response_digest,
-        &response_digest_candidates,
+        response_digest,
         "receipt response digest mismatch",
     )?;
-    ensure_digest_candidate(
+    ensure_binding_equal(
         guard_response_digest,
-        &response_digest_candidates,
+        response_digest,
         "guard decision response digest mismatch",
     )?;
     ensure_trust_root_authorizes_issuer(&trust_root, &capability.issuer)?;
@@ -517,6 +695,7 @@ pub(super) fn validate_minimal_governed_action_artifact_bindings(
         .guard_key
         .as_deref()
         .unwrap_or(trust_root_signer.as_str());
+    ensure_trust_root_authorizes_signer(&trust_root, guard_signer, "guard decision")?;
     verify_signed_role_artifact(
         graph,
         artifacts,
@@ -525,6 +704,9 @@ pub(super) fn validate_minimal_governed_action_artifact_bindings(
         guard.signature.as_deref(),
         "guard decision",
     )?;
+    if let Some(receipt_signer) = receipt.kernel_key.as_deref() {
+        ensure_trust_root_authorizes_signer(&trust_root, receipt_signer, "receipt")?;
+    }
     verify_signed_role_artifact(
         graph,
         artifacts,
@@ -534,6 +716,92 @@ pub(super) fn validate_minimal_governed_action_artifact_bindings(
         "receipt",
     )?;
 
+    Ok(())
+}
+
+pub(super) fn validate_claim_set_artifact_bindings(
+    graph: &TransactionEvidenceGraph,
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    required_claims: &[String],
+) -> Result<(), TransactionPassportError> {
+    let claim_set: MinimalClaimSet =
+        parse_artifact_for_role(graph, artifacts, EvidenceNodeRole::ClaimSet, "claim set")?;
+    if claim_set.schema != TRANSACTION_CLAIM_SET_SCHEMA_ID {
+        return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+            "unsupported claim set schema".to_string(),
+        ));
+    }
+    require_binding_value(&claim_set.id, "claim set id")?;
+    require_binding_value(&claim_set.issued_at, "claim set issued_at")?;
+    if claim_set.claims.is_empty() {
+        return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+            "claim set must contain at least one claim".to_string(),
+        ));
+    }
+    let mut seen = BTreeSet::new();
+    for claim in &claim_set.claims {
+        require_binding_value(&claim.claim_id, "claim id")?;
+        require_binding_value(&claim.verifier_module, "claim verifier module")?;
+        validate_required_evidence_refs(&claim.required_evidence, "required evidence")?;
+        validate_required_evidence_refs(&claim.evidence_refs, "evidence ref")?;
+        if !seen.insert(claim.claim_id.as_str()) {
+            return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+                format!("duplicate claim set claim: {}", claim.claim_id),
+            ));
+        }
+        match claim.status.as_str() {
+            "verified" | "omitted" | "unsupported" => {}
+            "failed" => {
+                if claim
+                    .failure_reason
+                    .as_deref()
+                    .unwrap_or_default()
+                    .is_empty()
+                {
+                    return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+                        "failed claim set entry missing failure reason".to_string(),
+                    ));
+                }
+            }
+            _ => {
+                return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+                    format!("unsupported claim set status: {}", claim.status),
+                ));
+            }
+        }
+    }
+    for required_claim in required_claims {
+        let Some(claim) = claim_set
+            .claims
+            .iter()
+            .find(|claim| claim.claim_id == *required_claim)
+        else {
+            return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+                format!("claim set missing required claim: {required_claim}"),
+            ));
+        };
+        if claim.status != "verified" {
+            return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+                format!("claim set required claim was not verified: {required_claim}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_required_evidence_refs(
+    values: &[String],
+    label: &'static str,
+) -> Result<(), TransactionPassportError> {
+    let mut seen = BTreeSet::new();
+    for value in values {
+        require_binding_value(value, label)?;
+        if !seen.insert(value.as_str()) {
+            return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+                format!("duplicate claim set {label}: {value}"),
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -592,6 +860,26 @@ struct MinimalTrustRootEntry {
 #[derive(Deserialize)]
 struct MinimalDigestArtifact {
     sha256: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MinimalClaimSet {
+    schema: String,
+    id: String,
+    issued_at: String,
+    claims: Vec<MinimalClaimSetClaim>,
+}
+
+#[derive(Deserialize)]
+struct MinimalClaimSetClaim {
+    claim_id: String,
+    status: String,
+    #[serde(default)]
+    required_evidence: Vec<String>,
+    #[serde(default)]
+    evidence_refs: Vec<String>,
+    failure_reason: Option<String>,
+    verifier_module: String,
 }
 
 fn parse_artifact_for_role<T: DeserializeOwned>(
@@ -665,32 +953,14 @@ fn first_present<'a>(
         .ok_or_else(|| minimal_governed_action_binding_error(format!("{field} missing")))
 }
 
-fn digest_candidates(
-    artifact_digest: String,
-    declared_digest: Option<&str>,
-) -> Result<Vec<String>, TransactionPassportError> {
-    let mut candidates = vec![artifact_digest];
-    if let Some(declared_digest) = declared_digest {
-        require_binding_digest(declared_digest, "declared digest")?;
-        if !candidates
-            .iter()
-            .any(|candidate| candidate == declared_digest)
-        {
-            candidates.push(declared_digest.to_string());
-        }
-    }
-    Ok(candidates)
-}
-
-fn ensure_digest_candidate(
-    actual: &str,
-    candidates: &[String],
-    message: &'static str,
-) -> Result<(), TransactionPassportError> {
-    if !candidates.iter().any(|candidate| candidate == actual) {
-        return Err(minimal_governed_action_binding_error(message));
-    }
-    Ok(())
+fn declared_digest<'a>(
+    declared_digest: Option<&'a str>,
+    field: &'static str,
+) -> Result<&'a str, TransactionPassportError> {
+    let declared_digest = declared_digest
+        .ok_or_else(|| minimal_governed_action_binding_error(format!("{field} missing")))?;
+    require_binding_digest(declared_digest, field)?;
+    Ok(declared_digest)
 }
 
 fn ensure_guard_receipt_binding(
@@ -743,6 +1013,26 @@ fn ensure_trust_root_authorizes_issuer(
     Err(minimal_governed_action_binding_error(
         "trust root does not authorize capability issuer",
     ))
+}
+
+fn ensure_trust_root_authorizes_signer(
+    trust_root: &MinimalTrustRoot,
+    signer_identity: &str,
+    label: &'static str,
+) -> Result<(), TransactionPassportError> {
+    require_binding_value(signer_identity, "artifact signer")?;
+    if trust_root.authority.as_deref() == Some(signer_identity)
+        || trust_root
+            .roots
+            .iter()
+            .any(|root| root.subject.as_str() == signer_identity)
+    {
+        Ok(())
+    } else {
+        Err(minimal_governed_action_binding_error(format!(
+            "{label} signer is not authorized"
+        )))
+    }
 }
 
 fn ensure_trust_root_signer_is_pinned(
@@ -949,6 +1239,57 @@ pub(super) fn validate_graph_references<'a>(
     Ok(())
 }
 
+pub(super) fn validate_graph_acyclic<'a>(
+    node_ids: impl IntoIterator<Item = &'a str>,
+    edge_refs: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> Result<(), TransactionPassportError> {
+    let mut adjacency = BTreeMap::new();
+    for node_id in node_ids {
+        adjacency.entry(node_id).or_insert_with(Vec::new);
+    }
+    for (from, to) in edge_refs {
+        adjacency.entry(from).or_insert_with(Vec::new).push(to);
+    }
+
+    let mut visit_state = BTreeMap::new();
+    let nodes: Vec<_> = adjacency.keys().copied().collect();
+    for node_id in nodes {
+        visit_graph_node(node_id, &adjacency, &mut visit_state)?;
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GraphVisitState {
+    Visiting,
+    Visited,
+}
+
+fn visit_graph_node<'a>(
+    node_id: &'a str,
+    adjacency: &BTreeMap<&'a str, Vec<&'a str>>,
+    visit_state: &mut BTreeMap<&'a str, GraphVisitState>,
+) -> Result<(), TransactionPassportError> {
+    match visit_state.get(node_id).copied() {
+        Some(GraphVisitState::Visiting) => {
+            return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+                format!("cyclic evidence graph: {node_id}"),
+            ));
+        }
+        Some(GraphVisitState::Visited) => return Ok(()),
+        None => {}
+    }
+
+    visit_state.insert(node_id, GraphVisitState::Visiting);
+    if let Some(children) = adjacency.get(node_id) {
+        for child in children {
+            visit_graph_node(child, adjacency, visit_state)?;
+        }
+    }
+    visit_state.insert(node_id, GraphVisitState::Visited);
+    Ok(())
+}
+
 fn validate_evidence_node(node: &EvidenceNode) -> Result<(), TransactionPassportError> {
     require_non_empty(&node.id, "evidence graph node id").map_err(|error| {
         TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
@@ -956,6 +1297,13 @@ fn validate_evidence_node(node: &EvidenceNode) -> Result<(), TransactionPassport
     require_non_empty(&node.schema, "evidence graph node schema").map_err(|error| {
         TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
     })?;
+    if evidence_node_schema_requires_registry(node.role)
+        && !chio_core_types::is_supported_signed_artifact_schema(&node.schema)
+    {
+        return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+            format!("unsupported evidence graph node schema: {}", node.schema),
+        ));
+    }
     validate_sha256_hex(&node.sha256).map_err(|_| {
         TransactionPassportError::InvalidEvidenceGraphArtifact(format!(
             "invalid evidence graph node digest: {}",
@@ -972,6 +1320,13 @@ fn validate_evidence_node(node: &EvidenceNode) -> Result<(), TransactionPassport
     Ok(())
 }
 
+fn evidence_node_schema_requires_registry(role: EvidenceNodeRole) -> bool {
+    !matches!(
+        role,
+        EvidenceNodeRole::AdvisoryObservation | EvidenceNodeRole::ExternalSubject
+    )
+}
+
 fn validate_evidence_edge(edge: &EvidenceEdge) -> Result<(), TransactionPassportError> {
     require_non_empty(&edge.from, "evidence graph edge from").map_err(|error| {
         TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
@@ -979,7 +1334,95 @@ fn validate_evidence_edge(edge: &EvidenceEdge) -> Result<(), TransactionPassport
     require_non_empty(&edge.to, "evidence graph edge to").map_err(|error| {
         TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
     })?;
-    let _ = &edge.predicate;
-    let _ = &edge.evidence_class;
+    if is_authority_edge_predicate(&edge.predicate)
+        && matches!(
+            edge.evidence_class.as_ref(),
+            Some(EvidenceClass::AdvisoryObservation)
+        )
+    {
+        return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+            "advisory evidence cannot satisfy authority edge".to_string(),
+        ));
+    }
     Ok(())
+}
+
+fn validate_no_advisory_authority_edges(
+    graph: &TransactionEvidenceGraph,
+) -> Result<(), TransactionPassportError> {
+    for edge in &graph.edges {
+        if !is_authority_edge_predicate(&edge.predicate) {
+            continue;
+        }
+        let advisory_class = matches!(
+            edge.evidence_class.as_ref(),
+            Some(EvidenceClass::AdvisoryObservation)
+        );
+        let advisory_endpoint = graph.nodes.iter().any(|node| {
+            (node.id == edge.from || node.id == edge.to)
+                && node.role == EvidenceNodeRole::AdvisoryObservation
+        });
+        if advisory_class || advisory_endpoint {
+            return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+                "advisory evidence cannot satisfy authority edge".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_no_advisory_authority_edges_in_value(
+    graph: &Value,
+) -> Result<(), TransactionPassportError> {
+    let advisory_node_ids: BTreeSet<&str> =
+        required_graph_array(graph, "nodes", "evidence graph nodes")?
+            .iter()
+            .filter_map(|node| {
+                if node.get("role").and_then(Value::as_str) == Some("advisory-observation") {
+                    node.get("id").and_then(Value::as_str)
+                } else {
+                    None
+                }
+            })
+            .collect();
+    for edge in required_graph_array(graph, "edges", "evidence graph edges")? {
+        let Some(predicate) = edge.get("predicate").and_then(Value::as_str) else {
+            continue;
+        };
+        if !is_authority_edge_predicate_value(predicate) {
+            continue;
+        }
+        let advisory_class =
+            edge.get("evidence_class").and_then(Value::as_str) == Some("advisory-observation");
+        let from = edge.get("from").and_then(Value::as_str);
+        let to = edge.get("to").and_then(Value::as_str);
+        let advisory_endpoint = from
+            .into_iter()
+            .chain(to)
+            .any(|node_id| advisory_node_ids.contains(node_id));
+        if advisory_class || advisory_endpoint {
+            return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+                "advisory evidence cannot satisfy authority edge".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn is_authority_edge_predicate(predicate: &EvidenceEdgePredicate) -> bool {
+    matches!(
+        predicate,
+        EvidenceEdgePredicate::Authorizes
+            | EvidenceEdgePredicate::Executes
+            | EvidenceEdgePredicate::Leases
+            | EvidenceEdgePredicate::Attenuates
+            | EvidenceEdgePredicate::Settles
+    )
+}
+
+fn is_authority_edge_predicate_value(predicate: &str) -> bool {
+    matches!(
+        predicate,
+        "authorizes" | "executes" | "leases" | "attenuates" | "settles"
+    )
 }

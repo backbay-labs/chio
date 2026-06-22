@@ -27,6 +27,7 @@ pub(super) struct EnterpriseEvidenceNode {
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub(super) enum EnterpriseEvidenceRole {
+    ClaimSet,
     RiskComptrollerReport,
     DataGovernanceReport,
     EvidenceExportBundle,

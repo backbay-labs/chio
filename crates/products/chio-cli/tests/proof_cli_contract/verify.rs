@@ -1,6 +1,7 @@
 use super::support::*;
 use chio_core::{canonical_json_bytes, sha256_hex};
 use chio_test_support::prelude::*;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 #[test]
@@ -46,6 +47,131 @@ fn proof_verify_rejects_commerce_payment_wrong_transfer_group() {
 }
 
 #[test]
+fn proof_verify_rejects_commerce_claim_set_required_claim_not_verified() {
+    let (_tempdir, bundle) = build_runtime_commerce_passport_bundle();
+    let report_dir = tempfile::tempdir().test_expect("tempdir");
+    let out = report_dir.path().join("required-claim-missing-report.json");
+
+    let claim_set_path = bundle.join("claim-set.json");
+    let mut claim_set: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&claim_set_path).test_expect("read claim set"))
+            .test_expect("claim set parses");
+    let claims = claim_set["claims"]
+        .as_array_mut()
+        .test_expect("claim set claims array");
+    let claim = claims
+        .iter_mut()
+        .find(|claim| {
+            claim.get("claim_id").and_then(serde_json::Value::as_str)
+                == Some("claim.commerce.order_replay_consistent")
+        })
+        .test_expect("commerce claim exists");
+    claim["status"] = serde_json::Value::String("omitted".to_string());
+    write_json(&claim_set_path, &claim_set);
+    let claim_set_sha256 = sha256_file(&claim_set_path);
+    refresh_transaction_artifact_digest(&bundle, "claim-set.json");
+
+    let passport_path = bundle.join("transaction-passport.json");
+    let mut passport: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+            .test_expect("passport parses");
+    passport["claim_set_sha256"] = serde_json::Value::String(claim_set_sha256);
+    write_json(&passport_path, &passport);
+
+    let bundle = utf8_path(&bundle);
+    let output = chio(&[
+        "proof",
+        "verify",
+        bundle.as_str(),
+        "--require",
+        "commerce",
+        "--out",
+        utf8_path(&out).as_str(),
+    ]);
+
+    assert_failure(
+        &output,
+        "claim set required claim was not verified: claim.commerce.order_replay_consistent",
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&out).test_expect("failed report was written"))
+            .test_expect("failed report parses");
+    assert_eq!(
+        report["failureCode"],
+        "urn:chio:error:transaction:required-claim-missing"
+    );
+}
+
+#[test]
+fn proof_verify_wraps_single_family_domain_report_with_machine_result_fields() {
+    let fixture = workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let out = tempdir.path().join("commerce-report.json");
+
+    let output = chio(&[
+        "proof",
+        "verify",
+        utf8_path(&fixture).as_str(),
+        "--require",
+        "commerce",
+        "--out",
+        utf8_path(&out).as_str(),
+    ]);
+
+    assert_success(&output);
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&out).test_expect("commerce report was written"))
+            .test_expect("commerce report parses");
+    assert_json_schema_accepts(
+        "spec/schemas/chio-transaction/v1/verifier-report.schema.json",
+        &report,
+    );
+    assert_eq!(report["schema"], "chio.transaction.verifier-report.v1");
+    assert_eq!(report["verdict"], "verified");
+    assert_eq!(report["accepted"], true);
+    assert_eq!(report["state"], "verified");
+    assert_eq!(report["claimResults"][0]["status"], "verified");
+    assert_eq!(
+        report["claimResults"][0]["verifier_module"],
+        "chio proof verify --require commerce"
+    );
+    assert_eq!(
+        report["family_reports"][0]["schema"],
+        "chio.commerce.order-passport.v1"
+    );
+}
+
+#[test]
+fn proof_verify_writes_failed_transaction_report_to_out() {
+    let fixture = workspace_root()
+        .join("fixtures/proof-room/minimal-passport/invalid-policy-digest-mismatch");
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let out = tempdir.path().join("failed-transaction-report.json");
+
+    let output = chio(&[
+        "proof",
+        "verify",
+        utf8_path(&fixture).as_str(),
+        "--out",
+        utf8_path(&out).as_str(),
+    ]);
+
+    assert_failure(&output, "verifier policy digest mismatch");
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&out).test_expect("failed report was written"))
+            .test_expect("failed report parses");
+    assert_eq!(report["schema"], "chio.transaction.verifier-report.v1");
+    assert_eq!(report["verdict"], "failed");
+    assert_eq!(report["accepted"], false);
+    assert_eq!(report["state"], "failed");
+    assert_eq!(
+        report["failureCode"],
+        "urn:chio:error:transaction:passport-hash-mismatch"
+    );
+    assert_eq!(report["claimResults"][0]["status"], "failed");
+}
+
+#[test]
 fn proof_verify_requires_runtime_claims_when_requested() {
     let minimal_bundle = workspace_root().join("fixtures/proof-room/minimal-passport/valid");
     let minimal_bundle = utf8_path(&minimal_bundle);
@@ -63,7 +189,7 @@ fn proof_verify_requires_runtime_claims_when_requested() {
 
     assert_failure(
         &minimal_output,
-        "required proof claim family missing: runtime",
+        "required proof runtime authority missing: claim.runtime.execution_lease_valid",
     );
 
     let runtime_output = chio(&[
@@ -177,6 +303,30 @@ fn proof_verify_accepts_integrated_runtime_commerce_settlement_and_agent_web_cla
     assert!(stdout.contains("\"claim.commerce.order_replay_consistent\""));
     assert!(stdout.contains("\"claim.public_settlement.finality_verified\""));
     assert!(stdout.contains("\"claim.agent_web.external_subject_digest_bound\""));
+}
+
+#[test]
+fn proof_verify_rejects_integrated_commerce_settlement_order_mismatch() {
+    let (_tempdir, bundle) =
+        build_integrated_runtime_commerce_settlement_agent_web_bundle_with_mismatched_orders();
+    let bundle = utf8_path(&bundle);
+
+    let output = chio(&[
+        "proof",
+        "verify",
+        bundle.as_str(),
+        "--require",
+        "runtime",
+        "--require",
+        "commerce",
+        "--require",
+        "settlement",
+    ]);
+
+    assert_failure(
+        &output,
+        "proof verify: public settlement commerce order mismatch",
+    );
 }
 
 #[test]
@@ -463,10 +613,17 @@ fn proof_verify_requires_documented_claim_families_when_requested() {
             "--require",
             requirement,
         ]);
-        assert_failure(
-            &minimal_output,
-            &format!("required proof claim family missing: {expected_label}"),
-        );
+        if requirement == "delegation" {
+            assert_failure(
+                &minimal_output,
+                "required delegation claim not verified: claim.swarm.continuation_fresh",
+            );
+        } else {
+            assert_failure(
+                &minimal_output,
+                &format!("required proof claim family missing: {expected_label}"),
+            );
+        }
 
         let proof_bundle = workspace_root().join(fixture_path);
         let proof_bundle = utf8_path(&proof_bundle);
@@ -482,7 +639,7 @@ fn proof_verify_requires_documented_claim_families_when_requested() {
 }
 
 #[test]
-fn proof_verify_accepts_root_only_swarm_without_optional_evidence() {
+fn proof_verify_delegation_requirement_rejects_root_only_swarm() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let source =
         workspace_root().join("fixtures/proof-room/swarm-authority/valid-recursive-delegation");
@@ -546,6 +703,22 @@ fn proof_verify_accepts_root_only_swarm_without_optional_evidence() {
         };
         node["sha256"] = serde_json::Value::String(sha256_file(&bundle.join(path)));
     }
+    let retained_node_ids = evidence_graph["nodes"]
+        .as_array()
+        .test_expect("evidence graph nodes array")
+        .iter()
+        .filter_map(|node| node.get("id").and_then(serde_json::Value::as_str))
+        .map(std::string::ToString::to_string)
+        .collect::<BTreeSet<_>>();
+    evidence_graph["edges"]
+        .as_array_mut()
+        .test_expect("evidence graph edges array")
+        .retain(|edge| {
+            let from = edge.get("from").and_then(serde_json::Value::as_str);
+            let to = edge.get("to").and_then(serde_json::Value::as_str);
+            from.is_some_and(|from| retained_node_ids.contains(from))
+                && to.is_some_and(|to| retained_node_ids.contains(to))
+        });
     write_json(&evidence_graph_path, &evidence_graph);
 
     let passport_path = bundle.join("transaction-passport.json");
@@ -566,15 +739,7 @@ fn proof_verify_accepts_root_only_swarm_without_optional_evidence() {
         "delegation",
     ]);
 
-    assert_success(&output);
-    let stdout = stdout(output);
-    assert!(stdout.contains("\"claim.swarm.task_graph_bound\""));
-    assert!(stdout.contains("\"claim.swarm.budget_pool_bound\""));
-    assert!(stdout.contains("\"claim.swarm.revocation_epoch_bound\""));
-    assert!(!stdout.contains("\"claim.swarm.continuation_fresh\""));
-    assert!(!stdout.contains("\"claim.swarm.attenuation_witness_chain_bound\""));
-    assert!(!stdout.contains("\"claim.swarm.route_plan_bound\""));
-    assert!(!stdout.contains("\"claim.swarm.join_receipt_bound\""));
+    assert_failure(&output, "signed swarm delegation evidence missing");
 }
 
 #[test]
@@ -611,10 +776,10 @@ fn build_swarm_bundle_with_runtime_parity() -> (tempfile::TempDir, PathBuf) {
             "runId": "runtime-swarm-valid",
             "accepted": true,
             "generatedAtUnixMs": 1800000001000_u64,
-            "staticProofPackageSha256": "a".repeat(64),
-            "runtimeProofPackageSha256": "a".repeat(64),
-            "staticVerifierReportSha256": "b".repeat(64),
-            "runtimeVerifierReportSha256": "b".repeat(64),
+            "staticProofPackageSha256": canonical_file_sha256(&bundle.join("runtime-proof-package.json")),
+            "runtimeProofPackageSha256": canonical_file_sha256(&bundle.join("runtime-proof-package.json")),
+            "staticVerifierReportSha256": canonical_file_sha256(&bundle.join("runtime-verifier-report.json")),
+            "runtimeVerifierReportSha256": canonical_file_sha256(&bundle.join("runtime-verifier-report.json")),
             "comparedFields": ["workflow_id", "workflow_steps"],
             "mismatches": []
         }),
@@ -920,6 +1085,31 @@ fn proof_verify_runtime_parity_rejects_accepted_package_hash_drift() {
     ]);
 
     assert_failure(&output, "runtime_proof_parity_accepted_package_hash_drift");
+}
+
+#[test]
+fn proof_verify_runtime_parity_binds_report_hashes_to_regenerated_artifacts() {
+    let (_tempdir, bundle) = build_swarm_bundle_with_runtime_parity();
+    let parity_path = bundle.join("runtime-proof-parity-report.json");
+    let mut parity_report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&parity_path).test_expect("read parity report"))
+            .test_expect("parity report parses");
+    parity_report["staticProofPackageSha256"] = serde_json::Value::String("a".repeat(64));
+    parity_report["runtimeProofPackageSha256"] = serde_json::Value::String("a".repeat(64));
+    write_json(&parity_path, &parity_report);
+    refresh_transaction_artifact_digest(&bundle, "runtime-proof-parity-report.json");
+
+    let output = chio(&[
+        "proof",
+        "verify",
+        utf8_path(&bundle).as_str(),
+        "--require",
+        "delegation",
+        "--require",
+        "runtime-parity",
+    ]);
+
+    assert_failure(&output, "runtime proof parity package hash mismatch");
 }
 
 fn remove_runtime_regeneration_evidence_nodes(bundle: &Path) {

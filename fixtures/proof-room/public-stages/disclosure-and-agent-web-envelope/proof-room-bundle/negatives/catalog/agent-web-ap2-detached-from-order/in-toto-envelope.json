@@ -6,22 +6,23 @@
     "claim.agent_web.sidecar_not_native_authority"
   ],
   "disclosure_capsule_refs": [],
-  "envelope_id": "agent-web-envelope-in-toto-valid",
+  "envelope_id": "42bdb897b10fa1af8ba6a906d6a9f3fca7a09374848284f7af727e2ef6dc6ec6",
   "external_subject": "in-toto-statement-agent-web-valid",
-  "external_subject_digest": "d976f03efa2977eecde1648ea69b93814301f8026c24ee424db151338b9d60ce",
+  "external_subject_digest": "b8d28c83faf408ca431f78c572baf77b035b30cad69c4763693547dd7545d41f",
   "external_subject_path": "external/in-toto-statement.json",
   "external_subject_signature_ref": "",
   "limitations": [
     "in-toto and DSSE projection does not make supply-chain statement evidence equivalent to Chio authority."
   ],
   "projection_manifest_ref": "projection-in-toto-valid",
+  "projection_manifest_sha256": "8438dc17e4c7feef6e4e911b637332446b4e1827cd3e93b08623d2e2bed1db62",
   "receipt_refs": [
     "receipt-agent-web-in-toto-statement-allow"
   ],
   "risk_refs": [],
   "schema": "chio.agent-web-proof-envelope.v1",
   "settlement_refs": [],
-  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:8ecec95f42a0db46d0f7ae52f083574bc7f5bba6a3fb53967a25fcd2e4c35fa9ba9d0d592b1dcc2a0ae748f23da5c0db420e07325274b2b72fb438e8061f4d07",
+  "signature": "sig-ed25519:d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737:c9b0295556b3c93406775ea97c60c8d5a65f86d5112db0a643ffdd19a42bcdd558bb2f716e400b4a2f31cde4f00b200413087382532d78ddf67d1abe1c50d906",
   "source_protocol": "in-toto",
   "source_protocol_version": "statement-v1-dsse",
   "transaction_passport_ref": "passport-agent-web-valid"

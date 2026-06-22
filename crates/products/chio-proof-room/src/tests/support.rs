@@ -25,7 +25,8 @@ pub(crate) const SWARM_FIXTURE_TRUSTED_WITNESS_KEYS: &str =
     "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de";
 pub(crate) const PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS: &str = concat!(
     "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,",
-    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"
+    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa,",
+    "a6d2455ea3a5771aba9fcb037924114c92f9f325049f6b4269e739d9048bb869"
 );
 pub(crate) const PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS: &str = concat!(
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
@@ -33,10 +34,23 @@ pub(crate) const PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS: &str = concat!(
 );
 pub(crate) const TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS: &str = concat!(
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
+    "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a,",
     "68f4b6017d0f876a55c80a82b8388a54aad264d367269e2de8be079c935b5f96"
 );
+pub(crate) const RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS: &str =
+    "5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca";
+pub(crate) const ENTERPRISE_FIXTURE_TRUSTED_APPROVAL_KEYS: &str =
+    "f95c6a5dff031fac7b1a6a54b6610caeb83b39f7e8a66be16ff5faa4a511ed2d";
+pub(crate) const COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS: &str =
+    "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca";
 pub(crate) const TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS: &str =
     "cf1b37e85dc00aee94f10108b37f151e2a37b3ae2a0cae77521f83488db9c4d7";
+pub(crate) const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS: &str =
+    "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618";
+pub(crate) const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS: &str =
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
+pub(crate) const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS: &str =
+    "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a";
 
 pub(crate) fn configure_agent_web_fixture_secret() {
     std::env::set_var(
@@ -68,6 +82,18 @@ pub(crate) fn configure_proof_room_fixture_trust() {
         TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS,
     );
     std::env::set_var(
+        "CHIO_RUNTIME_TRUSTED_ROOT_KEYS",
+        RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS,
+    );
+    std::env::set_var(
+        "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS",
+        ENTERPRISE_FIXTURE_TRUSTED_APPROVAL_KEYS,
+    );
+    std::env::set_var(
+        "CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS",
+        COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS,
+    );
+    std::env::set_var(
         "CHIO_SWARM_TRUSTED_WITNESS_KEYS",
         SWARM_FIXTURE_TRUSTED_WITNESS_KEYS,
     );
@@ -75,6 +101,23 @@ pub(crate) fn configure_proof_room_fixture_trust() {
         "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS",
         TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS,
     );
+    std::env::set_var(
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS,
+    );
+    std::env::set_var(
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS,
+    );
+    std::env::set_var(
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS,
+    );
+    std::env::set_var(
+        "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS",
+        "eip155:8453,eip155:42161",
+    );
+    std::env::set_var("CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS", "1");
 }
 
 pub(crate) fn proof_room_fixture_trusted_bundle_signer_keys() -> String {
@@ -357,7 +400,30 @@ pub(crate) fn copy_dir_all(source: &Path, destination: &Path) -> Result<(), Box<
 }
 
 pub(crate) fn json_bytes(value: &serde_json::Value) -> Result<Vec<u8>, Box<dyn Error>> {
-    Ok([serde_json::to_vec_pretty(value)?.as_slice(), b"\n"].concat())
+    let value = signed_transaction_passport_value(value)?;
+    Ok([serde_json::to_vec_pretty(&value)?.as_slice(), b"\n"].concat())
+}
+
+fn signed_transaction_passport_value(
+    value: &serde_json::Value,
+) -> Result<serde_json::Value, Box<dyn Error>> {
+    if value.get("schema").and_then(serde_json::Value::as_str)
+        != Some("chio.transaction-passport.v1")
+    {
+        return Ok(value.clone());
+    }
+
+    let keypair = Keypair::from_seed(&TEST_SIGNATURE_SEED);
+    let mut passport = value.clone();
+    passport["issuer"] =
+        serde_json::Value::String(format!("did:chio:{}", keypair.public_key().to_hex()));
+    passport["signature"] = serde_json::Value::String(String::new());
+    let typed: chio_transaction_passport::TransactionPassport =
+        serde_json::from_value(passport.clone())?;
+    passport["signature"] = serde_json::Value::String(
+        chio_transaction_passport::sign_transaction_passport(&typed, &keypair)?,
+    );
+    Ok(passport)
 }
 
 pub(crate) fn refresh_bundle_signature(bundle: &Path) -> Result<(), Box<dyn Error>> {
@@ -496,6 +562,44 @@ pub(crate) fn remove_graph_node_and_rehash(
     Ok(())
 }
 
+fn ensure_claim_set_artifact_row(
+    manifest: &mut serde_json::Value,
+    claim_set_sha256: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
+    let artifacts = manifest["artifacts"]
+        .as_array_mut()
+        .ok_or("manifest artifacts missing")?;
+    if artifacts.iter().any(|artifact| {
+        artifact.get("path").and_then(serde_json::Value::as_str) == Some("roots/claim-set.json")
+    }) {
+        return Ok(());
+    }
+    let producer = artifacts
+        .iter()
+        .find(|artifact| {
+            artifact.get("path").and_then(serde_json::Value::as_str)
+                == Some("roots/transaction-passport.json")
+        })
+        .and_then(|artifact| artifact.get("producer"))
+        .cloned()
+        .unwrap_or_else(|| serde_json::Value::String("fixtures/proof-room".to_string()));
+    artifacts.insert(
+        2,
+        serde_json::json!({
+            "artifact_class": "transaction-root",
+            "media_type": "application/json",
+            "participates_in_primary_verdict": true,
+            "path": "roots/claim-set.json",
+            "producer": producer,
+            "renderer_hint": "claim-set",
+            "schema": "chio.transaction.claim-set.v1",
+            "sensitivity_class": "public-fixture",
+            "sha256": claim_set_sha256.unwrap_or_default()
+        }),
+    );
+    Ok(())
+}
+
 pub(crate) fn remove_guard_report_capability_binding_and_rehash(
     bundle: &Path,
 ) -> Result<(), Box<dyn Error>> {
@@ -605,11 +709,42 @@ pub(crate) fn refresh_source_roots_and_manifest(
     extra_artifact_hash: Option<(&str, String)>,
 ) -> Result<(), Box<dyn Error>> {
     let evidence_graph_path = bundle.join("roots/evidence-graph.json");
+    let trust_roots_path = "artifacts/authority/trust-roots.json";
+    let trust_roots_sha256 = match extra_artifact_hash.as_ref() {
+        Some((path, sha256)) if *path == trust_roots_path => Some(sha256.clone()),
+        _ if bundle.join(trust_roots_path).is_file() => Some(trust_test_bundle_signer(bundle)?),
+        _ => None,
+    };
+    if let Some(trust_roots_sha256) = &trust_roots_sha256 {
+        let mut evidence_graph: serde_json::Value =
+            serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
+        if let Some(node) = evidence_graph["nodes"]
+            .as_array_mut()
+            .ok_or("evidence graph nodes missing")?
+            .iter_mut()
+            .find(|node| {
+                node.get("path").and_then(serde_json::Value::as_str) == Some(trust_roots_path)
+            })
+        {
+            node["sha256"] = serde_json::Value::String(trust_roots_sha256.clone());
+            fs::write(&evidence_graph_path, json_bytes(&evidence_graph)?)?;
+        }
+    }
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
+    let claim_set_path = bundle.join("roots/claim-set.json");
+    let claim_set_sha256 = if claim_set_path.is_file() {
+        Some(sha256_file(&claim_set_path)?)
+    } else {
+        None
+    };
 
     let passport_path = bundle.join("roots/transaction-passport.json");
     let mut passport: serde_json::Value = serde_json::from_slice(&fs::read(&passport_path)?)?;
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256.clone());
+    if let Some(claim_set_sha256) = &claim_set_sha256 {
+        passport["claim_set_sha256"] = serde_json::Value::String(claim_set_sha256.clone());
+        passport["claim_set_path"] = serde_json::Value::String("claim-set.json".to_string());
+    }
     fs::write(&passport_path, json_bytes(&passport)?)?;
     let passport_sha256 = sha256_file(&passport_path)?;
 
@@ -618,6 +753,10 @@ pub(crate) fn refresh_source_roots_and_manifest(
         serde_json::from_slice(&fs::read(&verifier_report_path)?)?;
     verifier_report["evidence_graph_sha256"] =
         serde_json::Value::String(evidence_graph_sha256.clone());
+    if let Some(claim_set_sha256) = &claim_set_sha256 {
+        verifier_report["claim_set_sha256"] = serde_json::Value::String(claim_set_sha256.clone());
+        verifier_report["claim_set_path"] = serde_json::Value::String("claim-set.json".to_string());
+    }
     fs::write(&verifier_report_path, json_bytes(&verifier_report)?)?;
     let verifier_report_sha256 = sha256_file(&verifier_report_path)?;
 
@@ -630,6 +769,11 @@ pub(crate) fn refresh_source_roots_and_manifest(
 
     let manifest_path = bundle.join("manifest.json");
     let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;
+    if claim_set_sha256.is_some() {
+        manifest["schema_versions"]["transaction_claim_set"] =
+            serde_json::Value::String("chio.transaction.claim-set.v1".to_string());
+        ensure_claim_set_artifact_row(&mut manifest, claim_set_sha256.as_deref())?;
+    }
     manifest["transaction_passport_ref"]["sha256"] =
         serde_json::Value::String(passport_sha256.clone());
     manifest["evidence_graph_ref"]["sha256"] =
@@ -649,11 +793,21 @@ pub(crate) fn refresh_source_roots_and_manifest(
             Some("roots/evidence-graph.json") => {
                 artifact["sha256"] = serde_json::Value::String(evidence_graph_sha256.clone());
             }
+            Some("roots/claim-set.json") => {
+                if let Some(claim_set_sha256) = &claim_set_sha256 {
+                    artifact["sha256"] = serde_json::Value::String(claim_set_sha256.clone());
+                }
+            }
             Some("verifier/report.json") => {
                 artifact["sha256"] = serde_json::Value::String(verifier_report_sha256.clone());
             }
             Some("ui/proof-room-static/load-report.json") => {
                 artifact["sha256"] = serde_json::Value::String(ui_report_sha256.clone());
+            }
+            Some("artifacts/authority/trust-roots.json") => {
+                if let Some(trust_roots_sha256) = &trust_roots_sha256 {
+                    artifact["sha256"] = serde_json::Value::String(trust_roots_sha256.clone());
+                }
             }
             Some(path) => {
                 if let Some((extra_path, extra_hash)) = extra_artifact_hash.as_ref() {

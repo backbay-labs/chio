@@ -6,7 +6,7 @@ const PROOF_ROOM_VERIFIER_REPORT_SCHEMA: &str = "chio.proof-room.verifier-report
 const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str = "application/vnd.chio.proof-room.bundle.v1+json";
 const PROOF_ROOM_TRUST_ROOTS_PATH: &str = "artifacts/authority/trust-roots.json";
 const PROOF_ROOM_TRUST_ROOTS_SCHEMA: &str = "chio.proof.first-run.trust-roots.v1";
-const PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX_ENV: &str =
+pub(super) const PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX_ENV: &str =
     "CHIO_PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX";
 const CHIO_RECEIPT_SCHEMA: &str = "chio.receipt.v1";
 const RUNTIME_TERMINAL_RECEIPT_SCHEMA: &str = "chio.runtime.terminal-receipt.v1";
@@ -57,6 +57,12 @@ pub(super) fn collect_proof_bundle(
         | ProofCollectKind::TransactionPassport
         | ProofCollectKind::RuntimeSpine => {
             fixture::copy_dir_contents(artifact_dir, out)?;
+            if kind == ProofCollectKind::DisclosureAgentWebEnvelope
+                && out.join("capsule.json").is_file()
+                && out.join("crypto-context-report.json").is_file()
+            {
+                fixture::add_disclosure_bbs_material_to_bundle(out)?;
+            }
             let report = seal_collected_proof_bundle(kind, out)?;
             let passport_path = out.join("transaction-passport.json");
             let verifier_report_path = out.join("verifier/report.json");
@@ -163,6 +169,7 @@ fn write_collected_proof_room_bundle(
     for artifact in [
         "transaction-passport.json",
         "evidence-graph.json",
+        "claim-set.json",
         "verifier-policy.json",
     ] {
         fs::copy(bundle.join(artifact), bundle.join("roots").join(artifact))?;
@@ -227,6 +234,7 @@ fn write_collected_proof_room_bundle(
             "proof_room_verifier_report": PROOF_ROOM_VERIFIER_REPORT_SCHEMA,
             "transaction_passport": "chio.transaction-passport.v1",
             "transaction_evidence_graph": "chio.transaction.evidence-graph.v1",
+            "transaction_claim_set": "chio.transaction.claim-set.v1",
             "transaction_verifier_policy": "chio.transaction.verifier-policy.v1",
             "transaction_verifier_report": "chio.transaction.verifier-report.v1"
         },
@@ -298,9 +306,7 @@ fn collected_verifier_report(
     bundle: &Path,
     report: serde_json::Value,
 ) -> Result<serde_json::Value, CliError> {
-    if report
-        .get("schema")
-        .and_then(serde_json::Value::as_str)
+    if report.get("schema").and_then(serde_json::Value::as_str)
         == Some("chio.transaction.verifier-report.v1")
         && report
             .get("passport_id")
@@ -325,6 +331,8 @@ fn collected_verifier_report(
         "passport_path": "transaction-passport.json",
         "evidence_graph_sha256": passport.evidence_graph_sha256,
         "evidence_graph_path": passport.evidence_graph_path,
+        "claim_set_sha256": passport.claim_set_sha256,
+        "claim_set_path": passport.claim_set_path,
         "verifier_policy_sha256": passport.verifier_policy_sha256,
         "verifier_policy_path": passport.verifier_policy_path,
         "verified_claims": verified_claims,
@@ -477,7 +485,13 @@ fn write_catalog_negative_cases(
             continue;
         }
         let destination = bundle.join("negatives/catalog").join(&descriptor.id);
+        if destination.exists() {
+            fs::remove_dir_all(&destination)?;
+        }
         fixture::copy_proof_fixture(&descriptor.id, &destination)?;
+        if descriptor.id.starts_with("disclosure-lineage-") {
+            fixture::add_disclosure_bbs_material_to_bundle(&destination)?;
+        }
         let passport_path = destination.join("transaction-passport.json");
         let expected_failure = fixture::proof_fixture_negative_expected_failure(&descriptor)?;
         let observed_failure = match verify_transaction_passport_file(&passport_path) {
@@ -518,10 +532,16 @@ fn catalog_negative_claim_matches(
 fn catalog_negative_prefixes(verifier_report: &serde_json::Value) -> Vec<&'static str> {
     let claims = report_verified_claims(verifier_report);
     let mut prefixes = BTreeSet::new();
-    if claims.iter().any(|claim| claim.starts_with("claim.commerce.")) {
+    if claims
+        .iter()
+        .any(|claim| claim.starts_with("claim.commerce."))
+    {
         prefixes.insert("commerce-");
     }
-    if claims.iter().any(|claim| claim.starts_with("claim.runtime.")) {
+    if claims
+        .iter()
+        .any(|claim| claim.starts_with("claim.runtime."))
+    {
         prefixes.insert("runtime-");
     }
     if claims.iter().any(|claim| claim.starts_with("claim.swarm.")) {
@@ -576,6 +596,7 @@ fn collected_manifest_claims(
             "required_artifacts": [
                 "roots/transaction-passport.json",
                 "roots/evidence-graph.json",
+                "roots/claim-set.json",
                 "roots/verifier-policy.json",
                 "verifier/report.json"
             ],
@@ -613,8 +634,8 @@ fn collected_manifest_claims(
         }));
     }
 
-    if receipt_coverage_has_category(receipt_coverage, "runtime_terminal_allow")
-        && receipt_coverage_has_category(receipt_coverage, "runtime_terminal_denial")
+    if allow_receipt.is_some()
+        && denial_receipt.is_some()
         && receipt_coverage_has_category(receipt_coverage, "runtime_terminal_failure")
     {
         let required_artifacts = receipt_coverage
@@ -672,7 +693,9 @@ fn collected_rendered_claims(
             let claim_id = claim
                 .get("claim_id")
                 .and_then(serde_json::Value::as_str)
-                .ok_or_else(|| CliError::cli_other_error("proof collect claim missing id".to_string()))?;
+                .ok_or_else(|| {
+                    CliError::cli_other_error("proof collect claim missing id".to_string())
+                })?;
             let source = claim
                 .get("required_artifacts")
                 .and_then(serde_json::Value::as_array)
@@ -706,14 +729,18 @@ fn covered_receipt_artifact(
             entry.get("category").and_then(serde_json::Value::as_str) == Some(category)
                 && entry.get("status").and_then(serde_json::Value::as_str) == Some("covered")
         })
-        .and_then(|entry| entry.get("artifact_path").and_then(serde_json::Value::as_str))
+        .and_then(|entry| {
+            entry
+                .get("artifact_path")
+                .and_then(serde_json::Value::as_str)
+        })
         .map(str::to_string)
 }
 
 fn receipt_coverage_has_category(receipt_coverage: &[serde_json::Value], category: &str) -> bool {
-    receipt_coverage.iter().any(|entry| {
-        entry.get("category").and_then(serde_json::Value::as_str) == Some(category)
-    })
+    receipt_coverage
+        .iter()
+        .any(|entry| entry.get("category").and_then(serde_json::Value::as_str) == Some(category))
 }
 
 fn collected_manifest_artifacts(
@@ -735,6 +762,12 @@ fn collected_manifest_artifacts(
             "chio.transaction.evidence-graph.v1",
             "transaction-root",
             "evidence-graph",
+        ),
+        (
+            "roots/claim-set.json",
+            "chio.transaction.claim-set.v1",
+            "transaction-root",
+            "claim-set",
         ),
         (
             "roots/verifier-policy.json",
@@ -761,7 +794,13 @@ fn collected_manifest_artifacts(
             "trust-roots",
         ),
     ] {
-        artifacts.push(artifact(bundle, path, schema, artifact_class, renderer_hint)?);
+        artifacts.push(artifact(
+            bundle,
+            path,
+            schema,
+            artifact_class,
+            renderer_hint,
+        )?);
         paths.insert(path.to_string());
     }
 
@@ -1040,7 +1079,7 @@ fn write_bundle_signature(bundle: &Path, keypair: &chio_core::Keypair) -> Result
     write_json_line_file(&bundle.join("bundle-signature.dsse.json"), &signature)
 }
 
-fn proof_collect_bundle_signer_from_env() -> Result<chio_core::Keypair, CliError> {
+pub(super) fn proof_collect_bundle_signer_from_env() -> Result<chio_core::Keypair, CliError> {
     match std::env::var(PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX_ENV) {
         Ok(seed_hex) => {
             let seed_hex = seed_hex.trim();

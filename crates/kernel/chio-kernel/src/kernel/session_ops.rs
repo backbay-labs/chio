@@ -608,13 +608,18 @@ impl ChioKernel {
             arguments: operation.arguments.clone(),
             dpop_proof: None,
             execution_nonce: None,
-            governed_intent: None,
+            governed_intent: operation.governed_intent.clone(),
             approval_token: None,
             model_metadata: operation.model_metadata.clone(),
             federated_origin_kernel_id: None,
         };
 
-        let result = self.evaluate_tool_call_with_nested_flow_client(context, &request, client);
+        let result = self.evaluate_tool_call_with_nested_flow_client(
+            context,
+            &request,
+            client,
+            operation.extra_metadata.clone(),
+        );
         let terminal_state = match &result {
             Ok(response) => response.terminal_state.clone(),
             Err(KernelError::RequestCancelled { request_id, reason })
@@ -662,14 +667,19 @@ impl ChioKernel {
             arguments: operation.arguments.clone(),
             dpop_proof: None,
             execution_nonce: None,
-            governed_intent: None,
+            governed_intent: operation.governed_intent.clone(),
             approval_token: None,
             model_metadata: operation.model_metadata.clone(),
             federated_origin_kernel_id: None,
         };
 
         let result = self
-            .evaluate_tool_call_with_nested_flow_client_async(context, &request, client)
+            .evaluate_tool_call_with_nested_flow_client_async(
+                context,
+                &request,
+                client,
+                operation.extra_metadata.clone(),
+            )
             .await;
         let terminal_state = match &result {
             Ok(response) => response.terminal_state.clone(),
@@ -757,7 +767,7 @@ impl ChioKernel {
                     arguments: tool_call.arguments.clone(),
                     dpop_proof: None,
                     execution_nonce,
-                    governed_intent: None,
+                    governed_intent: tool_call.governed_intent.clone(),
                     approval_token: None,
                     model_metadata: tool_call.model_metadata.clone(),
                     federated_origin_kernel_id: None,
@@ -771,7 +781,7 @@ impl ChioKernel {
                 self.evaluate_tool_call_sync_with_session_context(
                     &request,
                     Some(session_roots.as_slice()),
-                    None,
+                    tool_call.extra_metadata.clone(),
                     Some(&context.session_id),
                 )
                 .map(SessionOperationResponse::ToolCall)

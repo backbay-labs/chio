@@ -67,7 +67,7 @@ The shipped v1 contract covers:
 - `did:chio`
 - Agent Passport artifacts and verifier-policy distribution
 - federated evidence export/import and cross-org delegation continuation
-- A2A v1.0.0 consumption through `chio-a2a-adapter` only where receipt
+- A2A v0.3.0 consumption through `chio-a2a-adapter` only where receipt
   authority is backed by a live kernel authorization receipt
 - signed certification checks plus operator-scoped registry and discovery-network
   surfaces
@@ -949,6 +949,50 @@ Receipts prove kernel-observed evaluation events. Receipt-lineage statements
 and continuation tokens prove authenticated linkage between those events. None
 of these artifacts alone prove external real-world side effects beyond Chio's
 observation boundary.
+
+### 6.3.2 Swarm Authority Runtime Admission
+
+Recursive delegation and multi-swarm execution are governed at runtime, not
+only in offline proof reports. A protocol or kernel edge that dispatches
+swarm-bound child work must verify a stored swarm authority bundle before the
+child action can run. Missing, stale, malformed, or mismatched swarm evidence
+denies the action.
+
+The admission reference binds the child dispatch to:
+
+- the task graph digest
+- the parent or join receipt
+- the continuation token
+- the delegation witness chain for the hop
+- the route-plan receipt
+- the revocation epoch id and root hash
+- the budget pool allocation or lease
+
+Continuation tokens are signed by a pinned witness key and bind graph,
+route-plan, budget-allocation, revocation-epoch, nonce, and mode. `SingleUse`
+continuations are reserved before dispatch and cannot be replayed through the
+memory or durable runtime stores. `Resumable` continuations are revalidated on
+resume without being treated as single-use replay.
+
+Route metadata is mandatory for swarm-bound dispatch. Runtime admission accepts
+the current edge metadata spellings `route`, `route_selection`, and
+`routeSelection`, then compares the selected route, bridge, and protocol target
+against the verified route-plan receipt. Omitting route metadata is a denial,
+not a way to bypass route-plan enforcement.
+
+Budget fan-out and fan-in use explicit reservation and release transitions.
+Allocations carry dimension id, state, reserved units, active units, consumed
+units, released units, and reversed units. Admission rejects inactive or
+replayed allocations, and terminal graph receipts reconcile the final rollup
+against the budget pool.
+
+The bounded conformance surface for this release covers recursive-delegation
+positive fixtures, generated malformed graph, budget, epoch, route, and
+terminal-rollup cases, plus edge-dispatch checks for MCP, A2A, ACP-Client, OpenAI
+function-call execution, and OpenAPI bridge dispatch. This remains a bounded
+runtime-admission contract. Listing or exporting swarm evidence does not widen
+runtime authority unless the admission verifier accepts the current stored
+bundle and pinned witness keys.
 
 ### 6.4 Checkpoints
 
@@ -2093,7 +2137,7 @@ following operator claims explicit:
 
 This is still a bounded policy surface, not a live capital market. Chio does
 not lock collateral, execute bonds, slash reserves, clear external capital, or
-claim autonomous insurer pricing from this phase alone.
+claim autonomous insurer-rate setting from this phase alone.
 
 `GET /v1/reports/credit-backtest` is Chio's replay and qualification surface for
 that same credit layer. It evaluates one subject-scoped historical window set
@@ -2129,6 +2173,34 @@ This package is still a bounded review artifact rather than a live financing
 contract. Chio can now package honest credit posture for external capital review,
 but it still does not bind external capital, execute reserves, or run a
 liability market from the current automation profile alone.
+
+`chio.risk.comptroller-report.v1` is the launch risk control projection. It is
+a signed verifier-facing artifact over one transaction passport, commerce order,
+subject, facility state, coverage binding, reserve ledger, sanction bridge,
+appeal state, capital instruction set, reconciliation summary, actuarial
+backtest, and bounded insurance copy statement. The report folds the launch
+facility-state, coverage, reserve, sanction, appeal, capital, and actuarial
+sub-reports into one artifact for the first release; verifiers must treat those
+folded sections as required contract fields, not optional prose. Verification
+fails closed unless the report is `verified`, has risk state `reconciled`,
+binds the same passport id, order id, subject, currency, reserve, coverage,
+payout, settlement, and policy ids across all folded sections, carries
+`claim.risk.comptroller_report_bound`, and passes deterministic replay of the
+facility lifecycle from `evidence_cold` to the declared current state.
+
+The comptroller report is not an autonomous insurer or capital-market claim.
+It only proves that Chio reconciled the signed risk evidence supplied to the
+proof. The verifier rejects zero or over-consumed reserves, reserve currency
+drift, missing coverage, coverage outside the order or subject, unsupported
+facility states, duplicate reserve consumption, market slash without an
+explicit sanction and reserve bridge, open appeals that block payout, payout
+instructions that were already externally observed, invalid actuarial windows,
+failed backtests, and insurance copy whose maximum coverage exceeds the
+actuarial support. Standalone schema names such as facility-state report,
+claim-case file, sanction-reserve ledger, capital adequacy report, and
+actuarial-backtest report are future split points unless and until they are
+registered as signed artifacts; launch verifiers consume their semantics
+through `chio.risk.comptroller-report.v1`.
 
 `GET /v1/reports/capital-book` is Chio's signed live source-of-funds ledger for
 that same bounded credit layer. It returns:
@@ -2291,7 +2363,7 @@ It is not permissionless settlement routing, automatic dispute adjudication,
 cross-chain fund movement, gas sponsorship, or a claim that Chio itself is the
 custodian or regulated insurer.
 
-The shipped bounded web3-operations surface is explicit rather than ambient.
+The shipped bounded web3-operations surface is explicitly scoped.
 It consists of one `CHIO_WEB3_OPERATIONS_PROFILE.md`, one anchor runtime-report
 example, one settlement runtime-report example, one operations qualification
 matrix, one deployment-promotion policy, one focused readiness audit, and one
@@ -2317,7 +2389,7 @@ artifact-driven rather than ambient. It consists of
 `chio.autonomous-drift-report.v1`, and
 `chio.autonomous-qualification-matrix.v1`. Those artifacts bind one bounded
 autonomous pricing lane back to underwriting, credit, capital, liability, and
-official-web3 truth while keeping execution subordinate to explicit authority
+official-web3 truth while keeping execution subordinate to explicit control
 envelopes, rollback plans, human interrupt contacts, and operator-visible
 comparison evidence.
 
@@ -2441,7 +2513,7 @@ External launch, partner, or standards materials should derive claims from this
 protocol document, the release-qualification corpus, and the release audit.
 They must not imply permissionless or arbitrary external capital dispatch
 beyond the documented official web3 lane, implicit regulated-actor status,
-autonomous insurer pricing beyond the documented bounded autonomous-pricing
+autonomous insurer-rate setting beyond the documented bounded autonomous-pricing
 surface, claim or dispute adjudication beyond the documented liability-market
 surface, or theorem-prover completion beyond the boundary and assumptions
 defined in Section 5.4.
@@ -2834,7 +2906,7 @@ admission.
 
 ## 11. A2A Adapter Contract
 
-`chio-a2a-adapter` is a thin bridge for A2A v1.0.0, not a new A2A wire
+`chio-a2a-adapter` is a thin bridge for A2A v0.3.0, not a new A2A wire
 standard.
 
 The current shipped behavior includes:
@@ -3064,7 +3136,7 @@ The following are intentionally outside the shipped v1 contract:
 - custom A2A auth schemes beyond the shipped matrix
 - full automatic wallet/distribution semantics for passports
 - permissionless or arbitrary external capital dispatch beyond the documented
-  official web3 lane, or autonomous insurer pricing beyond the documented
+  official web3 lane, or autonomous insurer-rate setting beyond the documented
   autonomous-pricing, capital-pool, rollback, live-capital, reserve-control,
   payout, and settlement surfaces
 - performance claims beyond the qualification and documentation surfaces

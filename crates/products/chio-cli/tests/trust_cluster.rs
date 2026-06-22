@@ -178,7 +178,7 @@ fn spawn_trust_service(
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
+        .stderr(Stdio::null())
         .spawn()
         .expect("spawn chio trust serve");
 
@@ -3162,7 +3162,7 @@ fn trust_control_cluster_multi_region_partition_qualification() {
             .duration_since(UNIX_EPOCH)
             .expect("system time before unix epoch")
             .as_secs(),
-        "clusterSyncIntervalMs": 200,
+        "clusterSyncIntervalMs": 2000,
         "regions": [
             {"name": "region-a", "baseUrl": url_a},
             {"name": "region-b", "baseUrl": url_b},

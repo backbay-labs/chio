@@ -72,6 +72,25 @@ fn source_runtime_parity_rejects_failed_parity_report() -> Result<(), Box<dyn Er
 }
 
 #[test]
+fn source_runtime_parity_binds_report_hashes_to_regenerated_artifacts() -> Result<(), Box<dyn Error>>
+{
+    let context = runtime_regeneration_context(false)?;
+    let mut report = serde_json::json!({});
+
+    let error = super::attach_source_runtime_proof_parity_report(&context, &mut report)
+        .err()
+        .ok_or(
+            "runtime proof parity report with mismatched artifact hashes unexpectedly verified",
+        )?;
+
+    assert!(
+        error.contains("proof-room.runtime-parity.package-hash-mismatch"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn source_runtime_parity_requires_regeneration_artifacts() -> Result<(), Box<dyn Error>> {
     let mut context = runtime_regeneration_context(false)?;
     let mut evidence_graph: serde_json::Value =
@@ -209,12 +228,19 @@ fn rejects_receipt_coverage_status_mismatch() -> Result<(), Box<dyn Error>> {
     let work = tempfile::tempdir()?;
     copy_dir_all(&source, work.path())?;
     let manifest_path = work.path().join("manifest.json");
-    let manifest = fs::read_to_string(&manifest_path)?;
-    let mutated = manifest.replace(
-        "\"terminal_status\": \"denied_guard_request\"",
-        "\"terminal_status\": \"allowed_executed\"",
-    );
-    fs::write(&manifest_path, mutated)?;
+    let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;
+    let coverage = manifest
+        .get_mut("receipt_coverage")
+        .and_then(serde_json::Value::as_array_mut)
+        .ok_or("manifest receipt coverage missing")?
+        .iter_mut()
+        .find(|entry| {
+            entry.get("category").and_then(serde_json::Value::as_str)
+                == Some("runtime_terminal_denial")
+        })
+        .ok_or("runtime denial coverage missing")?;
+    coverage["terminal_status"] = serde_json::Value::String("allowed_executed".to_string());
+    fs::write(&manifest_path, json_bytes(&manifest)?)?;
     refresh_bundle_signature(work.path())?;
 
     let error = verify_proof_room_bundle(&manifest_path)
@@ -385,10 +411,9 @@ fn rejects_first_run_receipt_signed_by_untrusted_kernel_key() -> Result<(), Box<
         .err()
         .ok_or("receipt signed by untrusted kernel key unexpectedly verified")?;
 
+    let error = error.to_string();
     assert!(
-        error
-            .to_string()
-            .contains("proof-room.receipt-coverage.signer-untrusted: runtime_terminal_allow"),
+        error.contains("receipt signer is not authorized"),
         "{error}"
     );
     Ok(())

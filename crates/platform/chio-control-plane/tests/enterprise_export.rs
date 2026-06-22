@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use chio_core::Keypair;
 use chio_test_support::prelude::*;
 use serde_json::{json, Value};
 
@@ -11,6 +12,8 @@ const CLAIM_EVIDENCE_EXPORT_DIGEST_BOUND: &str = "claim.enterprise.evidence_expo
 const CLAIM_TELEMETRY_PROJECTION_BOUND: &str = "claim.enterprise.telemetry_projection_bound";
 const CLAIM_EXPORT_APPROVAL_BOUND: &str = "claim.enterprise.export_approval_bound";
 const CLAIM_CONTROL_MAP_BOUND: &str = "claim.enterprise.control_map_bound";
+const TRANSACTION_PASSPORT_SIGNATURE_SEED: [u8; 32] = [7; 32];
+const RISK_POLICY_ID: &str = "policy-enterprise-valid";
 
 #[derive(Debug, Clone, Copy)]
 enum EnterpriseCase {
@@ -60,6 +63,44 @@ fn json_bytes(value: Value) -> Vec<u8> {
     serde_json::to_vec(&value).test_expect("test json serializes")
 }
 
+fn transaction_passport_keypair() -> Keypair {
+    Keypair::from_seed(&TRANSACTION_PASSPORT_SIGNATURE_SEED)
+}
+
+fn sign_transaction_passport(passport: &mut TransactionPassport) {
+    let keypair = transaction_passport_keypair();
+    passport.issuer = format!("did:chio:{}", keypair.public_key().to_hex());
+    passport.signature = String::new();
+    passport.signature =
+        chio_control_plane::transaction_passport::sign_transaction_passport(passport, &keypair)
+            .test_expect("transaction passport signs");
+}
+
+fn approval_keypair() -> Keypair {
+    Keypair::from_seed(&[61u8; 32])
+}
+
+fn approval_approver() -> String {
+    format!("did:chio:{}", approval_keypair().public_key().to_hex())
+}
+
+fn signed_approval_case(mut value: Value) -> Value {
+    value
+        .as_object_mut()
+        .test_expect("approval case is an object")
+        .remove("signature");
+    let keypair = approval_keypair();
+    let (signature, _) = keypair
+        .sign_canonical(&value)
+        .test_expect("approval case signs");
+    value["signature"] = Value::String(format!(
+        "sig-ed25519:{}:{}",
+        keypair.public_key().to_hex(),
+        signature.to_hex()
+    ));
+    value
+}
+
 fn artifact_ref(role: &str, path: &str, bytes: &[u8]) -> Value {
     json!({
         "role": role,
@@ -73,6 +114,50 @@ fn export_bundle_digest(artifacts: &[Value]) -> String {
     let canonical = chio_core::canonical_json_bytes(&artifact_list)
         .test_expect("export artifacts canonicalize");
     chio_core::sha256_hex(&canonical)
+}
+
+fn capital_instructions_for_claim_payouts(reserve_ledger: &Value) -> Value {
+    let entries = reserve_ledger
+        .as_array()
+        .test_expect("reserve ledger is an array");
+    Value::Array(
+        entries
+            .iter()
+            .filter(|entry| entry.get("lane").and_then(Value::as_str) == Some("claim_payout"))
+            .map(|entry| {
+                let entry_id = entry["entry_id"]
+                    .as_str()
+                    .test_expect("claim payout entry id");
+                let claim_id = entry["claim_id"]
+                    .as_str()
+                    .test_expect("claim payout claim id");
+                let reserve_ref = entry["reserve_ref"]
+                    .as_str()
+                    .test_expect("claim payout reserve ref");
+                let currency = entry["currency"]
+                    .as_str()
+                    .test_expect("claim payout currency");
+                let units = entry["units"].as_u64().test_expect("claim payout units");
+                let settlement_ref = entry["settlement_ref"]
+                    .as_str()
+                    .test_expect("claim payout settlement ref");
+                json!({
+                    "instruction_id": format!("capital-instruction-{entry_id}"),
+                    "reserve_entry_id": entry_id,
+                    "order_id": "order-commerce-001",
+                    "claim_id": claim_id,
+                    "reserve_ref": reserve_ref,
+                    "currency": currency,
+                    "units": units,
+                    "settlement_ref": settlement_ref,
+                    "intended_action": "transfer_funds",
+                    "source_kind": "facility_commitment",
+                    "intended_state": "pending_execution",
+                    "reconciled_state": "not_observed"
+                })
+            })
+            .collect(),
+    )
 }
 
 fn push_artifact(
@@ -163,6 +248,7 @@ fn facility_lifecycle_from_start(mut transitions_after_reserve_held: Vec<Value>)
     let mut transitions = vec![
         json!({
             "transition_id": "facility-transition-underwriting-ready",
+            "policy_id": RISK_POLICY_ID,
             "from_state": "evidence_cold",
             "to_state": "underwriting_ready",
             "authority_receipt_ref": "approval-case",
@@ -170,6 +256,7 @@ fn facility_lifecycle_from_start(mut transitions_after_reserve_held: Vec<Value>)
         }),
         json!({
             "transition_id": "facility-transition-facility-granted",
+            "policy_id": RISK_POLICY_ID,
             "from_state": "underwriting_ready",
             "to_state": "facility_granted",
             "authority_receipt_ref": "approval-case",
@@ -177,6 +264,7 @@ fn facility_lifecycle_from_start(mut transitions_after_reserve_held: Vec<Value>)
         }),
         json!({
             "transition_id": "facility-transition-reserve-held",
+            "policy_id": RISK_POLICY_ID,
             "from_state": "facility_granted",
             "to_state": "reserve_held",
             "authority_receipt_ref": "approval-case",
@@ -192,10 +280,18 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         schema: "chio.transaction-passport.v1".to_string(),
         id: "passport-enterprise-valid".to_string(),
         issued_at: "2026-06-10T00:00:00Z".to_string(),
+        not_before: None,
+        expires_at: None,
+        issuer: "did:chio:66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a"
+            .to_string(),
         evidence_graph_sha256: String::new(),
         evidence_graph_path: "evidence-graph.json".to_string(),
+        claim_set_sha256: "0".repeat(64),
+        claim_set_path: "claim-set.json".to_string(),
         verifier_policy_sha256: String::new(),
         verifier_policy_path: "verifier-policy.json".to_string(),
+        omission_policy: Vec::new(),
+        signature: "0".repeat(128),
     };
 
     let mut artifacts = BTreeMap::new();
@@ -641,12 +737,13 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         | EnterpriseCase::RiskFacilityLifecycleMissingInitialGates => "coverage_bound",
         EnterpriseCase::RiskCapitalAllocatableWithoutLifecycle => "capital_allocatable",
         EnterpriseCase::RiskClosedFacilityUnreconciledReserve => "closed",
-        _ => "reserve_held",
+        _ => "coverage_bound",
     };
     let facility_lifecycle = match case {
         EnterpriseCase::RiskPayoutMatchedLifecycle => facility_lifecycle_from_start(vec![
             json!({
                 "transition_id": "facility-transition-coverage-bound",
+                "policy_id": RISK_POLICY_ID,
                 "from_state": "reserve_held",
                 "to_state": "coverage_bound",
                 "authority_receipt_ref": "approval-case",
@@ -654,6 +751,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
             }),
             json!({
                 "transition_id": "facility-transition-claim-open",
+                "policy_id": RISK_POLICY_ID,
                 "from_state": "coverage_bound",
                 "to_state": "claim_open",
                 "authority_receipt_ref": "approval-case",
@@ -661,6 +759,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
             }),
             json!({
                 "transition_id": "facility-transition-claim-decided",
+                "policy_id": RISK_POLICY_ID,
                 "from_state": "claim_open",
                 "to_state": "claim_decided",
                 "authority_receipt_ref": "approval-case",
@@ -668,6 +767,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
             }),
             json!({
                 "transition_id": "facility-transition-payout-matched",
+                "policy_id": RISK_POLICY_ID,
                 "from_state": "claim_decided",
                 "to_state": "payout_matched",
                 "authority_receipt_ref": "approval-case",
@@ -678,6 +778,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
             facility_lifecycle_from_start(vec![
                 json!({
                     "transition_id": "facility-transition-coverage-bound",
+                    "policy_id": RISK_POLICY_ID,
                     "from_state": "reserve_held",
                     "to_state": "coverage_bound",
                     "authority_receipt_ref": "approval-case",
@@ -685,6 +786,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
                 }),
                 json!({
                     "transition_id": "facility-transition-settlement-matched",
+                    "policy_id": RISK_POLICY_ID,
                     "from_state": "coverage_bound",
                     "to_state": "settlement_matched",
                     "authority_receipt_ref": "approval-case",
@@ -692,6 +794,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
                 }),
                 json!({
                     "transition_id": "facility-transition-reserve-controlled",
+                    "policy_id": RISK_POLICY_ID,
                     "from_state": "settlement_matched",
                     "to_state": "reserve_controlled",
                     "authority_receipt_ref": "approval-case",
@@ -699,6 +802,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
                 }),
                 json!({
                     "transition_id": "facility-transition-closed",
+                    "policy_id": RISK_POLICY_ID,
                     "from_state": "reserve_controlled",
                     "to_state": "closed",
                     "authority_receipt_ref": "approval-case",
@@ -709,6 +813,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         EnterpriseCase::RiskFacilityLifecycleMissingInitialGates => json!([
             {
                 "transition_id": "facility-transition-coverage-bound",
+                "policy_id": RISK_POLICY_ID,
                 "from_state": "reserve_held",
                 "to_state": "coverage_bound",
                 "authority_receipt_ref": "approval-case",
@@ -720,6 +825,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
             facility_lifecycle_from_start(vec![
                 json!({
                     "transition_id": "facility-transition-coverage-bound",
+                    "policy_id": RISK_POLICY_ID,
                     "from_state": "reserve_held",
                     "to_state": "coverage_bound",
                     "authority_receipt_ref": if matches!(
@@ -734,6 +840,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
                 }),
                 json!({
                     "transition_id": "facility-transition-settlement-matched",
+                    "policy_id": RISK_POLICY_ID,
                     "from_state": "coverage_bound",
                     "to_state": "settlement_matched",
                     "authority_receipt_ref": "approval-case",
@@ -748,7 +855,16 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
                 }),
             ])
         }
-        _ => json!([]),
+        EnterpriseCase::RiskCoverageBoundWithoutLifecycle
+        | EnterpriseCase::RiskCapitalAllocatableWithoutLifecycle => json!([]),
+        _ => facility_lifecycle_from_start(vec![json!({
+            "transition_id": "facility-transition-coverage-bound",
+            "policy_id": RISK_POLICY_ID,
+            "from_state": "reserve_held",
+            "to_state": "coverage_bound",
+            "authority_receipt_ref": "approval-case",
+            "evidence_ref": "data-governance-report"
+        })]),
     };
     let actuarial_supported_exposure_units = match case {
         EnterpriseCase::RiskInsuranceCopyExceedsActuarialEvidence => 6_000,
@@ -782,6 +898,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         "risk_state": "reconciled",
         "facility": {
             "facility_id": "facility-enterprise-valid",
+            "policy_id": RISK_POLICY_ID,
             "state": facility_state,
             "capital_currency": "USD",
             "capital_units": capital_units,
@@ -834,6 +951,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         },
         "reserve_ledger": reserve_ledger,
         "sanction_reserve_ledger": sanction_reserve_ledger,
+        "capital_instructions": capital_instructions_for_claim_payouts(&reserve_ledger),
         "appeals": appeals,
         "facility_lifecycle": facility_lifecycle,
         "verified_claims": ["claim.risk.comptroller_report_bound"]
@@ -968,30 +1086,6 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         data_governance.clone(),
     );
 
-    let approval_artifact = json_bytes(json!({
-        "schema": "chio.enterprise.approval-case.v1",
-        "id": "approval-case-enterprise-valid",
-        "issued_at": "2026-06-10T00:00:00Z",
-        "passport_id": passport.id,
-        "risk_comptroller_report_ref": "risk-comptroller-enterprise-valid",
-        "decision": "approved",
-        "decision_subject": "evidence-export",
-        "approvers": ["did:chio:enterprise-reviewer"],
-        "required_quorum": 1,
-        "expires_at": "2026-06-11T00:00:00Z"
-    }));
-    if !matches!(case, EnterpriseCase::MissingApproval) {
-        push_artifact(
-            &mut artifacts,
-            &mut graph_nodes,
-            "approval-case",
-            "approval-case",
-            "chio.enterprise.approval-case.v1",
-            "approval-case.json",
-            approval_artifact.clone(),
-        );
-    }
-
     let passport_export = json_bytes(json!({
         "id": "transaction-passport-export-enterprise-valid",
         "artifact_kind": "transaction_passport_export",
@@ -1001,11 +1095,29 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         "verifier_policy_path": passport.verifier_policy_path,
         "redaction_profile_ref": "redaction-profile-enterprise-valid"
     }));
+    let verifier_report_export = json_bytes(json!({
+        "schema": "chio.transaction.verifier-report.v1",
+        "id": "verifier-report-enterprise-valid",
+        "passport_id": passport.id,
+        "verdict": "verified",
+        "verified_claims": [
+            CLAIM_DATA_GOVERNANCE_BOUND,
+            CLAIM_EVIDENCE_EXPORT_DIGEST_BOUND,
+            CLAIM_TELEMETRY_PROJECTION_BOUND,
+            CLAIM_EXPORT_APPROVAL_BOUND,
+            CLAIM_CONTROL_MAP_BOUND
+        ]
+    }));
     let export_artifacts = vec![
         artifact_ref(
             "transaction_passport",
             "transaction-passport-export.json",
             &passport_export,
+        ),
+        artifact_ref(
+            "verifier_report",
+            "verifier-report-enterprise-valid.json",
+            &verifier_report_export,
         ),
         artifact_ref(
             "risk_comptroller_report",
@@ -1028,6 +1140,30 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         EnterpriseCase::ExportDigestMismatch => "f".repeat(64),
         _ => export_bundle_digest(&export_artifacts),
     };
+    let approval_artifact = json_bytes(signed_approval_case(json!({
+        "schema": "chio.enterprise.approval-case.v1",
+        "id": "approval-case-enterprise-valid",
+        "issued_at": "2026-06-10T00:00:00Z",
+        "passport_id": passport.id,
+        "risk_comptroller_report_ref": "risk-comptroller-enterprise-valid",
+        "evidence_export_bundle_digest": bundle_digest,
+        "decision": "approved",
+        "decision_subject": "evidence-export",
+        "approvers": [approval_approver()],
+        "required_quorum": 1,
+        "expires_at": "2026-06-11T00:00:00Z"
+    })));
+    if !matches!(case, EnterpriseCase::MissingApproval) {
+        push_artifact(
+            &mut artifacts,
+            &mut graph_nodes,
+            "approval-case",
+            "approval-case",
+            "chio.enterprise.approval-case.v1",
+            "approval-case.json",
+            approval_artifact,
+        );
+    }
     let export_bundle = json_bytes(json!({
         "schema": "chio.enterprise.evidence-export-bundle.v1",
         "id": "evidence-export-enterprise-valid",
@@ -1137,8 +1273,47 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         ],
         "omitted_claims": []
     }));
+    let claim_set = json_bytes(json!({
+        "schema": "chio.transaction.claim-set.v1",
+        "id": "enterprise-claim-set-valid",
+        "issued_at": "2026-06-10T00:00:00Z",
+        "claims": [
+            {
+                "claim_id": CLAIM_DATA_GOVERNANCE_BOUND,
+                "status": "verified",
+                "required_evidence": ["data-governance-report.json"],
+                "evidence_refs": ["data-governance-report.json"],
+                "verifier_module": "chio-enterprise-export"
+            }
+        ]
+    }));
+    push_artifact(
+        &mut artifacts,
+        &mut graph_nodes,
+        "verifier-policy",
+        "enterprise-policy-valid",
+        "chio.transaction.verifier-policy.v1",
+        "verifier-policy.json",
+        verifier_policy.clone(),
+    );
+    let claim_set_sha256 = chio_core::sha256_hex(&claim_set);
+    push_artifact(
+        &mut artifacts,
+        &mut graph_nodes,
+        "claim-set",
+        "claim-set",
+        "chio.transaction.claim-set.v1",
+        "claim-set.json",
+        claim_set,
+    );
 
     let mut graph_edges = vec![
+        json!({
+            "from": "claim-set",
+            "to": "enterprise-policy-valid",
+            "predicate": "binds",
+            "evidence_class": "digest-bound-reference"
+        }),
         json!({
             "from": "data-governance-report",
             "to": "risk-comptroller-report",
@@ -1188,17 +1363,26 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
 
     let mut passport = passport;
     passport.evidence_graph_sha256 = chio_core::sha256_hex(&evidence_graph);
+    passport.claim_set_sha256 = claim_set_sha256;
     passport.verifier_policy_sha256 = chio_core::sha256_hex(&verifier_policy);
+    sign_transaction_passport(&mut passport);
     artifacts.insert(
         "transaction-passport-export.json".to_string(),
         passport_export,
+    );
+    artifacts.insert(
+        "verifier-report-enterprise-valid.json".to_string(),
+        verifier_report_export,
     );
 
     EnterpriseExportBundle {
         passport,
         evidence_graph_bytes: evidence_graph,
+        root_evidence_graph_bytes: None,
         verifier_policy_bytes: verifier_policy,
         artifacts,
+        trusted_passport_signer_keys: vec![transaction_passport_keypair().public_key()],
+        trusted_approval_signer_keys: vec![approval_keypair().public_key()],
     }
 }
 
@@ -1219,6 +1403,7 @@ fn with_graph_node_schema(
     node["schema"] = json!(schema);
     bundle.evidence_graph_bytes = json_bytes(graph);
     bundle.passport.evidence_graph_sha256 = chio_core::sha256_hex(&bundle.evidence_graph_bytes);
+    sign_transaction_passport(&mut bundle.passport);
     bundle
 }
 

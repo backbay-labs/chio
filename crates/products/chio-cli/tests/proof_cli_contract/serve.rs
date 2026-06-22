@@ -367,8 +367,20 @@ fn proof_serve_hosts_static_ui_and_verifier_bundle_assets() {
     let fixture_catalog = wait_for_http_body(server.address, "/proof-room-fixture-catalog.json");
 
     assert!(index.contains("Proof Room shell"));
-    assert!(manifest.contains("\"schema\": \"chio.proof-room.bundle.v1\""));
-    assert!(load_report.contains("\"schema\": \"chio.proof-room.verifier-report.v1\""));
+    let manifest: serde_json::Value =
+        serde_json::from_str(&manifest).test_expect("manifest parses");
+    assert_eq!(
+        manifest.get("schema").and_then(serde_json::Value::as_str),
+        Some("chio.proof-room.bundle.v1")
+    );
+    let load_report: serde_json::Value =
+        serde_json::from_str(&load_report).test_expect("load report parses");
+    assert_eq!(
+        load_report
+            .get("schema")
+            .and_then(serde_json::Value::as_str),
+        Some("chio.proof-room.verifier-report.v1")
+    );
     assert!(fixture_catalog.contains("\"schema\":\"chio.proof-room.fixture-catalog.v1\""));
     assert!(fixture_catalog.contains("\"fixture_id\":\"single-call-authority\""));
     let catalog: serde_json::Value =
@@ -531,6 +543,18 @@ fn proof_serve_hosts_exported_bundle_assets() {
     let manifest = wait_for_http_body(server.address, "/manifest.json");
     let load_report = wait_for_http_body(server.address, "/ui/proof-room-static/load-report.json");
 
-    assert!(manifest.contains("\"schema\": \"chio.proof-room.bundle.v1\""));
-    assert!(load_report.contains("\"schema\": \"chio.proof-room.verifier-report.v1\""));
+    let manifest: serde_json::Value =
+        serde_json::from_str(&manifest).test_expect("manifest parses");
+    assert_eq!(
+        manifest.get("schema").and_then(serde_json::Value::as_str),
+        Some("chio.proof-room.bundle.v1")
+    );
+    let load_report: serde_json::Value =
+        serde_json::from_str(&load_report).test_expect("load report parses");
+    assert_eq!(
+        load_report
+            .get("schema")
+            .and_then(serde_json::Value::as_str),
+        Some("chio.proof-room.verifier-report.v1")
+    );
 }

@@ -619,12 +619,8 @@ fn proof_collect_binds_runtime_catalog_semantic_negative_cases() {
         allow_coverage
             .get("status")
             .and_then(serde_json::Value::as_str),
-        Some("excluded")
+        Some("covered")
     );
-    assert!(allow_coverage
-        .get("exclusion_reason")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|reason| reason.contains("signature")));
 
     let serve_output = chio(&[
         "proof",
@@ -838,6 +834,7 @@ fn proof_assemble_outputs_runtime_security_bundle_verifiable_by_runtime_requirem
     std::fs::create_dir_all(&artifact_dir).test_expect("create artifact dir");
     for artifact in [
         "allow-receipt.json",
+        "request-digest.json",
         "execution-lease.json",
         "trust-root.json",
         "revocation-freshness-proof.json",

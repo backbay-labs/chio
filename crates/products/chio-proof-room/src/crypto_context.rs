@@ -1,47 +1,59 @@
 const CLAIM_DISCLOSURE_CRYPTO_CONTEXT_BOUND: &str = "claim.disclosure.crypto_context_bound";
-const CRYPTO_VERIFICATION_CONTEXT_SCHEMA_V1: &str = "chio.crypto.verification-context.v1";
 
+#[cfg(test)]
 pub(crate) fn crypto_context_verified_report_bytes(
     context_bytes: &[u8],
     report_bytes: &[u8],
     fixture_id: &str,
 ) -> Result<Vec<u8>, String> {
-    match crypto_context_rejection_report_bytes(context_bytes, fixture_id) {
-        Ok(rejection_report_bytes) => {
-            return Err(format!(
-                "proof-room.fixture.crypto-context-invalid: {fixture_id}: {}",
-                crypto_context_rejection_summary(&rejection_report_bytes)
-            ));
-        }
-        Err(error) if error.contains("no rejected context checks") => {}
-        Err(error) => return Err(error),
-    }
+    let _ = (context_bytes, report_bytes);
+    Err(format!(
+        "proof-room.fixture.crypto-context-report-invalid: {fixture_id}: missing BBS proof material"
+    ))
+}
 
-    let context: serde_json::Value = serde_json::from_slice(context_bytes).map_err(|error| {
-        format!("proof-room.fixture.crypto-context-invalid: {fixture_id}: {error}")
-    })?;
-    let context_id = required_context_string(&context, "context_id", fixture_id)?;
-    let artifact_ref = required_context_string(&context, "artifact_ref", fixture_id)?;
+pub fn crypto_context_verified_report_bytes_with_bbs(
+    context_bytes: &[u8],
+    report_bytes: &[u8],
+    proof_bytes: &[u8],
+    privacy_profile_bytes: &[u8],
+    fixture_id: &str,
+) -> Result<Vec<u8>, String> {
+    let context: chio_selective_disclosure::CryptoVerificationContext =
+        serde_json::from_slice(context_bytes).map_err(|error| {
+            format!("proof-room.fixture.crypto-context-invalid: {fixture_id}: {error}")
+        })?;
     let report: chio_disclosure_lineage::DisclosureCryptoContextReport =
         serde_json::from_slice(report_bytes).map_err(|error| {
             format!("proof-room.fixture.crypto-context-report-invalid: {fixture_id}: {error}")
+        })?;
+    let proof: chio_selective_disclosure::SelectiveDisclosureProof =
+        serde_json::from_slice(proof_bytes).map_err(|error| {
+            format!("proof-room.fixture.crypto-context-proof-invalid: {fixture_id}: {error}")
+        })?;
+    let privacy_profile: chio_selective_disclosure::DisclosureVerifierPrivacyProfile =
+        serde_json::from_slice(privacy_profile_bytes).map_err(|error| {
+            format!("proof-room.fixture.crypto-context-profile-invalid: {fixture_id}: {error}")
         })?;
     if report.schema != chio_disclosure_lineage::DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1 {
         return Err(format!(
             "proof-room.fixture.crypto-context-report-invalid: {fixture_id}: unsupported schema"
         ));
     }
+    chio_disclosure_lineage::verify_crypto_context_report_signature(&report).map_err(|error| {
+        format!("proof-room.fixture.crypto-context-report-invalid: {fixture_id}: {error}")
+    })?;
     if report.verdict != chio_disclosure_lineage::DisclosureContextVerdict::Verified {
         return Err(format!(
             "proof-room.fixture.crypto-context-report-invalid: {fixture_id}: verdict not verified"
         ));
     }
-    if report.context_id != context_id {
+    if report.context_id != context.context_id {
         return Err(format!(
             "proof-room.fixture.crypto-context-report-invalid: {fixture_id}: context id mismatch"
         ));
     }
-    if report.artifact_ref != artifact_ref {
+    if report.artifact_ref != context.artifact_ref {
         return Err(format!(
             "proof-room.fixture.crypto-context-report-invalid: {fixture_id}: artifact ref mismatch"
         ));
@@ -65,152 +77,118 @@ pub(crate) fn crypto_context_verified_report_bytes(
             "proof-room.fixture.crypto-context-report-invalid: {fixture_id}: missing crypto context claim"
         ));
     }
+    let recomputed =
+        recompute_crypto_context_report(&context, &proof, &privacy_profile, fixture_id)?;
+    if recomputed.verdict != chio_selective_disclosure::DisclosureContextVerdict::Verified {
+        let rejected_codes = recomputed
+            .rejected_checks
+            .iter()
+            .map(|check| check.code.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!(
+            "proof-room.fixture.crypto-context-invalid: {fixture_id}: {rejected_codes}"
+        ));
+    }
+    if report.projection_manifest_ref != recomputed.projection_manifest_ref {
+        return Err(format!(
+            "proof-room.fixture.crypto-context-report-invalid: {fixture_id}: projection manifest ref mismatch"
+        ));
+    }
+    ensure_same_string_set(
+        fixture_id,
+        "verified claims",
+        &report.verified_claims,
+        &recomputed.verified_claims,
+    )?;
+    ensure_same_string_set(
+        fixture_id,
+        "disclosed fields",
+        &report.disclosed_fields,
+        &recomputed.disclosed_fields,
+    )?;
     Ok(report_bytes.to_vec())
 }
 
-pub fn crypto_context_rejection_report_bytes(
+pub fn crypto_context_rejected_report_bytes_with_bbs(
     context_bytes: &[u8],
+    proof_bytes: &[u8],
+    privacy_profile_bytes: &[u8],
     fixture_id: &str,
 ) -> Result<Vec<u8>, String> {
-    let context: serde_json::Value = serde_json::from_slice(context_bytes).map_err(|error| {
-        format!("proof-room.fixture.crypto-context-invalid: {fixture_id}: {error}")
-    })?;
-    if context.get("schema").and_then(serde_json::Value::as_str)
-        != Some(CRYPTO_VERIFICATION_CONTEXT_SCHEMA_V1)
-    {
+    let context: chio_selective_disclosure::CryptoVerificationContext =
+        serde_json::from_slice(context_bytes).map_err(|error| {
+            format!("proof-room.fixture.crypto-context-invalid: {fixture_id}: {error}")
+        })?;
+    let proof: chio_selective_disclosure::SelectiveDisclosureProof =
+        serde_json::from_slice(proof_bytes).map_err(|error| {
+            format!("proof-room.fixture.crypto-context-proof-invalid: {fixture_id}: {error}")
+        })?;
+    let privacy_profile: chio_selective_disclosure::DisclosureVerifierPrivacyProfile =
+        serde_json::from_slice(privacy_profile_bytes).map_err(|error| {
+            format!("proof-room.fixture.crypto-context-profile-invalid: {fixture_id}: {error}")
+        })?;
+    let report = recompute_crypto_context_report(&context, &proof, &privacy_profile, fixture_id)?;
+    if report.verdict != chio_selective_disclosure::DisclosureContextVerdict::Rejected {
         return Err(format!(
-            "proof-room.fixture.crypto-context-invalid: {fixture_id}: unsupported schema"
+            "proof-room.fixture.crypto-context-invalid: {fixture_id}: context unexpectedly verified"
         ));
     }
-    let context_id = required_context_string(&context, "context_id", fixture_id)?;
-    let artifact_ref = required_context_string(&context, "artifact_ref", fixture_id)?;
-    let rejected_checks = crypto_context_rejected_checks(&context);
-    if rejected_checks.is_empty() {
-        return Err(format!(
-            "proof-room.fixture.crypto-context-invalid: {fixture_id}: no rejected context checks"
-        ));
-    }
-    let report = chio_disclosure_lineage::DisclosureCryptoContextReport {
-        schema: chio_disclosure_lineage::DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1.to_string(),
-        id: format!("disclosure-crypto-context-report-{context_id}"),
-        context_id,
-        artifact_ref,
-        verdict: chio_disclosure_lineage::DisclosureContextVerdict::Rejected,
-        evidence_class: "verifier_context".to_string(),
-        cryptographic_proof_verified: true,
-        verified_claims: Vec::new(),
-        rejected_checks,
-        disclosed_fields: Vec::new(),
-        signature: None,
-    };
     serde_json::to_vec(&report).map_err(|error| {
         format!("proof-room.fixture.crypto-context-report-encode: {fixture_id}: {error}")
     })
 }
 
-fn crypto_context_rejection_summary(report_bytes: &[u8]) -> String {
-    let Ok(report) = serde_json::from_slice::<serde_json::Value>(report_bytes) else {
-        return "invalid rejection report".to_string();
-    };
-    report
-        .get("rejected_checks")
-        .and_then(serde_json::Value::as_array)
-        .and_then(|checks| checks.first())
-        .and_then(|check| {
-            let code = check.get("code").and_then(serde_json::Value::as_str)?;
-            let message = check
-                .get("message")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("");
-            Some(if message.is_empty() {
-                code.to_string()
-            } else {
-                format!("{code}: {message}")
-            })
-        })
-        .unwrap_or_else(|| "rejected without checks".to_string())
-}
-
-fn required_context_string(
-    value: &serde_json::Value,
-    field: &str,
+fn recompute_crypto_context_report(
+    context: &chio_selective_disclosure::CryptoVerificationContext,
+    proof: &chio_selective_disclosure::SelectiveDisclosureProof,
+    privacy_profile: &chio_selective_disclosure::DisclosureVerifierPrivacyProfile,
     fixture_id: &str,
-) -> Result<String, String> {
-    value
-        .get(field)
-        .and_then(serde_json::Value::as_str)
-        .filter(|field_value| !field_value.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| {
-            format!("proof-room.fixture.crypto-context-invalid: {fixture_id}: missing {field}")
-        })
+) -> Result<chio_selective_disclosure::DisclosureCryptoContextReport, String> {
+    let public_key_bytes = hex::decode(&proof.issuer_public_key_hex).map_err(|error| {
+        format!("proof-room.fixture.crypto-context-proof-invalid: {fixture_id}: {error}")
+    })?;
+    if chio_core_types::sha256_hex(&public_key_bytes) != proof.issuer_fingerprint {
+        return Err(format!(
+            "proof-room.fixture.crypto-context-proof-invalid: {fixture_id}: issuer fingerprint mismatch"
+        ));
+    }
+    let mut registry = chio_selective_disclosure::InMemoryIssuerRegistry::default();
+    registry.insert(
+        proof.issuer_fingerprint.clone(),
+        proof.issuer_public_key_hex.clone(),
+    );
+    let mut proof_context = context.clone();
+    proof_context.artifact_ref = proof.subject_sha256_hex.clone();
+    chio_selective_disclosure::verify_selective_disclosure_with_context(
+        proof,
+        &registry,
+        &proof_context,
+        privacy_profile,
+    )
+    .map_err(|error| {
+        format!("proof-room.fixture.crypto-context-proof-invalid: {fixture_id}: {error}")
+    })
 }
 
-fn crypto_context_rejected_checks(
-    context: &serde_json::Value,
-) -> Vec<chio_disclosure_lineage::DisclosureContextCheck> {
-    let mut checks = Vec::new();
-    if context.get("algorithm").and_then(serde_json::Value::as_str) != Some("bbs-bls12381-sha256") {
-        checks.push(chio_disclosure_lineage::DisclosureContextCheck::new(
-            "disclosure_context_algorithm_forbidden",
-            "proof algorithm is not allowed by the verifier profile",
+fn ensure_same_string_set(
+    fixture_id: &str,
+    label: &str,
+    actual: &[String],
+    expected: &[String],
+) -> Result<(), String> {
+    let actual = actual
+        .iter()
+        .map(String::as_str)
+        .collect::<std::collections::BTreeSet<_>>();
+    let expected = expected
+        .iter()
+        .map(String::as_str)
+        .collect::<std::collections::BTreeSet<_>>();
+    if actual != expected {
+        return Err(format!(
+            "proof-room.fixture.crypto-context-report-invalid: {fixture_id}: {label} did not match recomputed BBS verification"
         ));
     }
-    if context
-        .get("key_state")
-        .and_then(|key_state| key_state.get("status"))
-        .and_then(serde_json::Value::as_str)
-        != Some("active")
-    {
-        checks.push(chio_disclosure_lineage::DisclosureContextCheck::new(
-            "disclosure_context_key_not_active",
-            "issuer key state is not active",
-        ));
-    }
-    if context.get("revocation_snapshot").is_none() {
-        checks.push(chio_disclosure_lineage::DisclosureContextCheck::new(
-            "disclosure_context_revocation_snapshot_missing",
-            "revocation snapshot evidence is missing",
-        ));
-    }
-    if context
-        .get("nonce_replay_status")
-        .and_then(serde_json::Value::as_str)
-        == Some("replayed")
-    {
-        checks.push(chio_disclosure_lineage::DisclosureContextCheck::new(
-            "disclosure_context_nonce_replayed",
-            "presentation nonce has already been observed",
-        ));
-    }
-    if context.get("holder_binding_ref").is_none()
-        || context
-            .get("holder_binding_status")
-            .and_then(serde_json::Value::as_str)
-            != Some("bound")
-    {
-        checks.push(chio_disclosure_lineage::DisclosureContextCheck::new(
-            "disclosure_context_holder_binding_missing",
-            "holder binding evidence is missing",
-        ));
-    }
-    if context
-        .get("transparency_state")
-        .and_then(serde_json::Value::as_str)
-        != Some("anchored")
-    {
-        checks.push(chio_disclosure_lineage::DisclosureContextCheck::new(
-            "disclosure_context_transparency_state_insufficient",
-            "transparency state does not satisfy the verifier profile",
-        ));
-    }
-    if context.get("audience").and_then(serde_json::Value::as_str)
-        != Some("https://auditor.example/chio")
-    {
-        checks.push(chio_disclosure_lineage::DisclosureContextCheck::new(
-            "disclosure_context_audience_mismatch",
-            "verifier audience does not match the presentation audience",
-        ));
-    }
-    checks
+    Ok(())
 }

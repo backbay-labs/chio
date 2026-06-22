@@ -325,6 +325,7 @@ impl ChioKernel {
     pub(crate) fn run_runtime_admission_hook(
         &self,
         request: &ToolCallRequest,
+        extra_metadata: Option<&serde_json::Value>,
         now: u64,
         now_unix_ms: u64,
         matched_grant_index: Option<usize>,
@@ -339,6 +340,7 @@ impl ChioKernel {
                     let retired_treaty_key = ["chio", "dos", "Treaty"].concat();
                     context.get("chioAdmission").is_some()
                         || context.get("chioTreaty").is_some()
+                        || context.get("chioSwarm").is_some()
                         || context.get(retired_admission_key.as_str()).is_some()
                         || context.get(retired_treaty_key.as_str()).is_some()
                 });
@@ -368,6 +370,7 @@ impl ChioKernel {
         };
         let context = RuntimeAdmissionContext {
             request,
+            extra_metadata,
             now_unix_secs: now,
             now_unix_ms,
             matched_grant_index,

@@ -4,44 +4,89 @@
   "title": "Chio Transaction Evidence Graph",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "id", "issued_at", "nodes", "edges"],
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "nodes",
+    "edges"
+  ],
   "properties": {
-    "schema": { "const": "chio.transaction.evidence-graph.v1" },
-    "id": { "type": "string", "minLength": 1 },
-    "issued_at": { "type": "string", "minLength": 1 },
+    "schema": {
+      "const": "chio.transaction.evidence-graph.v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issued_at": {
+      "type": "string",
+      "minLength": 1
+    },
     "nodes": {
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/node" }
+      "items": {
+        "$ref": "#/$defs/node"
+      }
     },
     "edges": {
       "type": "array",
-      "items": { "$ref": "#/$defs/edge" }
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
     }
   },
   "$defs": {
-    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
     "bundleRelativePath": {
       "type": "string",
       "minLength": 1,
       "not": {
         "anyOf": [
-          { "pattern": "^/" },
-          { "pattern": "^[A-Za-z]:" },
-          { "pattern": "\\\\" },
-          { "pattern": "(^|/)\\.\\.(/|$)" }
+          {
+            "pattern": "^/"
+          },
+          {
+            "pattern": "^[A-Za-z]:"
+          },
+          {
+            "pattern": "\\\\"
+          },
+          {
+            "pattern": "(^|/)\\.\\.(/|$)"
+          }
         ]
       }
     },
     "node": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "schema", "path", "sha256", "role"],
+      "required": [
+        "id",
+        "schema",
+        "path",
+        "sha256",
+        "role"
+      ],
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "schema": { "type": "string", "minLength": 1 },
-        "path": { "$ref": "#/$defs/bundleRelativePath" },
-        "sha256": { "$ref": "#/$defs/sha256" },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "$ref": "#/$defs/bundleRelativePath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
         "role": {
           "type": "string",
           "enum": [
@@ -53,6 +98,7 @@
             "request",
             "response",
             "trust-root",
+            "claim-set",
             "verifier-policy",
             "report",
             "execution-lease",
@@ -60,6 +106,15 @@
             "revocation-freshness-proof",
             "sandbox-attestation",
             "advisory-observation",
+            "commerce-order-context",
+            "commerce-event-log",
+            "commerce-payment-lifecycle",
+            "commerce-mandate-allowance-ledger",
+            "commerce-protocol-payload",
+            "commerce-settlement-packet",
+            "commerce-federation-trust-bundle",
+            "commerce-reputation-snapshot",
+            "commerce-provider-passport",
             "risk-comptroller-report",
             "data-governance-report",
             "evidence-export-bundle",
@@ -77,7 +132,25 @@
             "sla-performance-report",
             "collateral-position-report",
             "guarantee-decision",
-            "adjudication-jurisdiction-receipt"
+            "adjudication-jurisdiction-receipt",
+            "public-settlement-proof-bundle",
+            "swarm-task-graph",
+            "swarm-continuation-token",
+            "swarm-delegation-witness-chain",
+            "swarm-join-receipt",
+            "swarm-route-plan-receipt",
+            "swarm-terminal-graph-receipt",
+            "swarm-budget-pool",
+            "swarm-revocation-epoch",
+            "disclosure-capsule",
+            "disclosure-leakage-ledger",
+            "signed-lineage-subgraph",
+            "disclosure-crypto-context-report",
+            "disclosure-verifier-privacy-profile",
+            "crypto-verification-context",
+            "selective-disclosure-proof",
+            "bbs-projection-manifest",
+            "transparency-inclusion-proof"
           ]
         }
       }
@@ -85,10 +158,20 @@
     "edge": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["from", "to", "predicate"],
+      "required": [
+        "from",
+        "to",
+        "predicate"
+      ],
       "properties": {
-        "from": { "type": "string", "minLength": 1 },
-        "to": { "type": "string", "minLength": 1 },
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
         "predicate": {
           "type": "string",
           "enum": [

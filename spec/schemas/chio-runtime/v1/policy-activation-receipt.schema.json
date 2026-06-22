@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-runtime/v1/policy-activation-receipt.schema.json",
+  "title": "Chio Policy Activation Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "policy_digest",
+    "previous_policy_digest",
+    "activation_epoch",
+    "activated_at",
+    "activation_mode",
+    "narrowing_or_widening",
+    "migration_rule",
+    "issuer",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.policy.activation-receipt.v1" },
+    "policy_digest": { "$ref": "#/$defs/sha256" },
+    "previous_policy_digest": { "$ref": "#/$defs/sha256" },
+    "activation_epoch": { "type": "string", "minLength": 1 },
+    "activated_at": { "type": "string", "minLength": 1 },
+    "activation_mode": {
+      "type": "string",
+      "enum": ["initial_load", "hot_reload"]
+    },
+    "narrowing_or_widening": {
+      "type": "string",
+      "enum": ["same", "narrowing", "widening"]
+    },
+    "migration_rule": { "type": "string", "minLength": 1 },
+    "issuer": { "type": "string", "minLength": 1 },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

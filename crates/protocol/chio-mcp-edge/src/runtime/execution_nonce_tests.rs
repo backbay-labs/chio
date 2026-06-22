@@ -104,6 +104,7 @@ fn make_bridge_nonce_request(kernel: &ChioKernel, agent: &Keypair) -> BridgeMcpT
         arguments: json!({}),
         agent_id: agent.public_key().to_hex(),
         execution_nonce: None,
+        governed_intent: None,
         model_metadata: None,
         route_selection_metadata: None,
         peer_supports_chio_tool_streaming: false,

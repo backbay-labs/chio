@@ -444,9 +444,9 @@ The current Chio candidate does not claim:
 - arbitrary plugin execution that mutates signed Chio truth, bypasses local
   policy activation, or widens trust outside Chio's named extension points
 - permissionless or arbitrary external capital dispatch, implicit regulated-
-  actor status, or autonomous insurer pricing beyond Chio's documented official
-  web3 rail plus bounded autonomous-pricing, capital-pool, execution, and
-  rollback surface
+  actor status, or unsupported autonomous insurer-rate setting beyond Chio's
+  documented official web3 rail plus bounded autonomous-pricing, capital-pool,
+  execution, and rollback surface
 - external recovery clearing or insurer-network messaging beyond Chio's
   documented liability-market orchestration boundary, including its bounded
   payout-instruction, payout-receipt, settlement-instruction, and

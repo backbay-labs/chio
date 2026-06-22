@@ -17,6 +17,7 @@ include = [
     "peers.lock.toml",
     "verdict_matrix/**",
     "tests/cross_surface/**",
+    "tests/runtime_edges/**",
     "tests/conformance/fixtures/mcp_core/**",
     "tests/conformance/native/scenarios/**",
     "tests/conformance/scenarios/**",
@@ -107,6 +108,7 @@ chio-federation = { workspace = true, features = ["demo"] }
 # evaluate_with_crypto_floor_and_budgets via chio-kernel-core directly.
 # Portable verifier surface for negotiated-floor capability tests.
 chio-kernel-core = { workspace = true }
+chio-swarm-authority = { workspace = true }
 chio-custody-hw = { workspace = true }
 chio-http-core = { workspace = true }
 chio-http-session = { workspace = true }
@@ -158,6 +160,7 @@ async-trait = "0.1"
 # under an attacker-held P-256 key to prove the verifier rejects it.
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem"] }
 rand = { workspace = true }
+proptest = { workspace = true }
 chio-store-sqlite = { workspace = true }
 rusqlite = { workspace = true }
 tempfile = { workspace = true }

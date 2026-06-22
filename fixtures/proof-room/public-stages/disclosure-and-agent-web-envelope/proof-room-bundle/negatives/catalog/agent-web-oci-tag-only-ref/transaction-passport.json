@@ -1,9 +1,1 @@
-{
-  "evidence_graph_path": "evidence-graph.json",
-  "evidence_graph_sha256": "ff91846ae58b07e05f71620ddf932d8f6c258492a5ce737bf8fc649843e23a31",
-  "id": "passport-agent-web-valid",
-  "issued_at": "2026-06-10T00:00:00Z",
-  "schema": "chio.transaction-passport.v1",
-  "verifier_policy_path": "verifier-policy.json",
-  "verifier_policy_sha256": "1a267f15367cb2e191ad9bb7e2c89d3ef154eb8e6978676f9df5566e4d836bdb"
-}
+{"claim_set_path":"claim-set.json","claim_set_sha256":"e9e23c84fb46f8dca94e7bdb0de6a1546202c89c16d5462b4f4ea755ca44a61f","evidence_graph_path":"evidence-graph.json","evidence_graph_sha256":"a15892d0a10da6961bb7181942a8b17b5873ceef912ae2885be31540bbb31f8e","id":"passport-agent-web-valid","issued_at":"2026-06-10T00:00:00Z","issuer":"did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c","schema":"chio.transaction-passport.v1","signature":"fb9aa2730e47c98bfbe92064227d91d5b907ef6247be352ceae215f116742f097cb05f3261b5d48421a28be6b7d793bf112982e256fc8701864869fed14d4c04","verifier_policy_path":"verifier-policy.json","verifier_policy_sha256":"1a267f15367cb2e191ad9bb7e2c89d3ef154eb8e6978676f9df5566e4d836bdb"}

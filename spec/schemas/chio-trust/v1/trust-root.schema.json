@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-trust/v1/trust-root.schema.json",
+  "title": "Chio Trust Root",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "authority", "roots", "signature"],
+  "properties": {
+    "schema": { "const": "chio.trust.root.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "root_id": { "type": "string", "minLength": 1 },
+    "authority": { "type": "string", "minLength": 1 },
+    "roots": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["subject"],
+        "properties": {
+          "subject": { "type": "string", "minLength": 1 },
+          "key_id": { "type": "string", "minLength": 1 },
+          "key_digest": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "signature": { "type": "string", "minLength": 1 }
+  }
+}

@@ -352,14 +352,16 @@ fn session_operation_tool_call_tracks_and_clears_inflight() {
     kernel.activate_session(&session_id).unwrap();
 
     let context = make_operation_context(&session_id, "req-1", &agent_kp.public_key().to_hex());
-    let operation = SessionOperation::ToolCall(ToolCallOperation {
+    let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
         capability: cap,
         server_id: "srv-a".to_string(),
         tool_name: "read_file".to_string(),
         arguments: serde_json::json!({"path": "/app/src/main.rs"}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
-    });
+                extra_metadata: None,
+    }));
 
     let response = session_tool_call(
         kernel
@@ -928,8 +930,10 @@ fn tool_call_nested_flow_bridge_roundtrips_sampling() {
         server_id: "nested".to_string(),
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
+                extra_metadata: None,
     };
 
     let response = kernel
@@ -1022,8 +1026,10 @@ fn tool_call_nested_flow_bridge_roundtrips_elicitation() {
         server_id: "nested".to_string(),
         tool_name: "elicit_via_client".to_string(),
         arguments: serde_json::json!({}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
+                extra_metadata: None,
     };
 
     let response = kernel
@@ -1105,8 +1111,10 @@ fn tool_call_nested_flow_bridge_updates_session_roots() {
         server_id: "nested".to_string(),
         tool_name: "roots_via_client".to_string(),
         arguments: serde_json::json!({}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
+                extra_metadata: None,
     };
 
     let response = kernel
@@ -1182,8 +1190,10 @@ fn tool_call_nested_flow_bridge_propagates_parent_cancellation() {
         server_id: "nested".to_string(),
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
+                extra_metadata: None,
     };
 
     let response = kernel
@@ -1278,8 +1288,10 @@ fn tool_call_nested_flow_bridge_propagates_child_cancellation() {
         server_id: "nested".to_string(),
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
+                extra_metadata: None,
     };
 
     let response = kernel
@@ -1400,8 +1412,10 @@ fn tool_call_nested_flow_bridge_filters_resource_notifications_to_session_subscr
         server_id: "nested".to_string(),
         tool_name: "notify_resources_via_client".to_string(),
         arguments: serde_json::json!({}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
+                extra_metadata: None,
     };
 
     let response = kernel

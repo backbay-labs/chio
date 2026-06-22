@@ -32,6 +32,7 @@ fn proof_verify_rejects_minimal_passport_without_trusted_transaction_roots() {
         .output()
         .test_expect("chio command runs");
 
+    assert_eq!(output.status.code(), Some(50));
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
     assert!(
@@ -63,6 +64,12 @@ fn proof_verify_rejects_minimal_passport_missing_governed_action_evidence() {
     let source = workspace_root().join("fixtures/proof-room/minimal-passport/valid");
     let bundle_dir = tempdir.path().join("minimal-passport");
     copy_dir_all(&source, &bundle_dir);
+    let claim_set_sha256 = chio_core::sha256_hex(
+        &std::fs::read(bundle_dir.join("claim-set.json")).test_expect("read claim set"),
+    );
+    let verifier_policy_sha256 = chio_core::sha256_hex(
+        &std::fs::read(bundle_dir.join("verifier-policy.json")).test_expect("read verifier policy"),
+    );
 
     write_minimal_evidence_graph(
         &bundle_dir,
@@ -72,14 +79,28 @@ fn proof_verify_rejects_minimal_passport_missing_governed_action_evidence() {
             "issued_at": "2026-06-10T00:00:00Z",
             "nodes": [
                 {
+                    "id": "claim-set",
+                    "schema": "chio.transaction.claim-set.v1",
+                    "path": "claim-set.json",
+                    "sha256": claim_set_sha256,
+                    "role": "claim-set"
+                },
+                {
                     "id": "verifier-policy",
                     "schema": "chio.transaction.verifier-policy.v1",
                     "path": "verifier-policy.json",
-                    "sha256": "3f562106e60d01c801571ab725ce3d9c8f5cf35451ae9e5d08c1fff1bf005bfe",
+                    "sha256": verifier_policy_sha256,
                     "role": "verifier-policy"
                 }
             ],
-            "edges": []
+            "edges": [
+                {
+                    "evidence_class": "digest-bound-reference",
+                    "from": "claim-set",
+                    "predicate": "binds",
+                    "to": "verifier-policy"
+                }
+            ]
         }),
     );
 
@@ -144,6 +165,40 @@ fn proof_verify_rejects_schema_invalid_evidence_graph_node_role() {
 }
 
 #[test]
+fn proof_verify_rejects_known_role_with_unregistered_evidence_schema() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source = workspace_root().join("fixtures/proof-room/minimal-passport/valid");
+    let bundle_dir = tempdir.path().join("minimal-passport");
+    copy_dir_all(&source, &bundle_dir);
+
+    let evidence_graph_path = bundle_dir.join("evidence-graph.json");
+    let mut evidence_graph: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
+    )
+    .test_expect("parse evidence graph");
+    for node in evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("evidence graph nodes")
+    {
+        if node.get("role").and_then(serde_json::Value::as_str) == Some("trust-root") {
+            node["schema"] = serde_json::json!("chio.unsupported_future_schema.v999");
+        }
+    }
+    write_minimal_evidence_graph(&bundle_dir, evidence_graph);
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir)
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("unsupported evidence graph node schema"));
+}
+
+#[test]
 fn proof_verify_rejects_minimal_passport_missing_governed_action_artifact() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let source = workspace_root().join("fixtures/proof-room/minimal-passport/valid");
@@ -159,8 +214,11 @@ fn proof_verify_rejects_minimal_passport_missing_governed_action_artifact() {
         .output()
         .test_expect("chio command runs");
 
+    assert_eq!(output.status.code(), Some(20));
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("urn:chio:error:transaction:graph-not-closed"));
+    assert!(stderr.contains("CHIO-TRANSACTION-GRAPH-NOT-CLOSED"));
     assert!(stderr.contains("proof verify: missing evidence graph artifact: kernel-receipt.json"));
 }
 
@@ -248,6 +306,7 @@ fn proof_verify_rejects_unknown_passport_schema_fixture() {
         .output()
         .test_expect("chio command runs");
 
+    assert_eq!(output.status.code(), Some(30));
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
     assert!(stderr.contains("unsupported transaction passport schema"));
@@ -262,8 +321,11 @@ fn proof_verify_rejects_evidence_graph_digest_mismatch_fixture() {
         .output()
         .test_expect("chio command runs");
 
+    assert_eq!(output.status.code(), Some(20));
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("urn:chio:error:transaction:passport-hash-mismatch"));
+    assert!(stderr.contains("CHIO-TRANSACTION-PASSPORT-HASH-MISMATCH"));
     assert!(stderr.contains("evidence graph digest mismatch"));
 }
 
@@ -278,6 +340,8 @@ fn proof_verify_rejects_stale_capability_fixture() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("urn:chio:error:transaction:authorization-not-bound"));
+    assert!(stderr.contains("CHIO-TRANSACTION-AUTHORIZATION-NOT-BOUND"));
     assert!(stderr.contains("capability proof expired before evidence graph issuance"));
 }
 
@@ -439,6 +503,7 @@ fn proof_verify_rejects_enterprise_routed_unknown_risk_claim() {
         .output()
         .test_expect("chio command runs");
 
+    assert_eq!(output.status.code(), Some(10));
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
     assert!(stderr.contains("required proof claim not verified: claim.risk.not_real"));
@@ -932,12 +997,21 @@ fn proof_verify_accepts_public_settlement_fixture() {
         "currency": "USD",
         "units": 150,
     });
+    let settlement_report = report["family_reports"]
+        .as_array()
+        .and_then(|reports| {
+            reports.iter().find(|report| {
+                report.get("schema").and_then(serde_json::Value::as_str)
+                    == Some("chio.public-settlement-verifier-report.v1")
+            })
+        })
+        .test_expect("public settlement family report");
     assert_eq!(
-        report.pointer("/chain_context/posted_bond_amount"),
+        settlement_report.pointer("/chain_context/posted_bond_amount"),
         Some(&expected_amount)
     );
     assert_eq!(
-        report.pointer("/chain_context/minimum_bond_amount"),
+        settlement_report.pointer("/chain_context/minimum_bond_amount"),
         Some(&expected_amount)
     );
     assert!(stdout.contains(
@@ -954,6 +1028,77 @@ fn proof_verify_accepts_public_settlement_fixture() {
     assert!(stdout.contains("\"claim.public_settlement.finality_verified\""));
     assert!(stdout.contains("\"claim.public_settlement.oracle_conversion_bound\""));
     assert!(stdout.contains("\"claim.public_settlement.dispute_posture_bound\""));
+    assert!(stdout.contains("\"claim.public_settlement.trust_market_refs_bound\""));
+    assert!(stdout.contains("\"trust_market_context\""));
+    assert!(stdout.contains("\"collateral_position_ref\":\"collateral-trust-market-valid\""));
+    assert!(stdout.contains("\"guarantee_decision_ref\":\"guarantee-trust-market-valid\""));
+    assert!(stdout.contains("\"slash_authority_ref\":\"did:chio:slash-authority\""));
+}
+
+#[test]
+fn proof_verify_accepts_public_settlement_trust_market_refs() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/public-settlement/valid-offline-finality");
+    let bundle_dir = tempdir.path().join("public-settlement");
+    copy_dir_all(&source, &bundle_dir);
+    mutate_public_settlement_bundle(&bundle_dir, |settlement_bundle| {
+        settlement_bundle["collateral_position_ref"] =
+            serde_json::json!("collateral-trust-market-valid");
+        settlement_bundle["guarantee_decision_ref"] =
+            serde_json::json!("guarantee-trust-market-valid");
+        settlement_bundle["sla_remedy_ref"] = serde_json::json!("remedy-policy-market-valid");
+        settlement_bundle["slash_authority_ref"] = serde_json::json!("did:chio:slash-authority");
+    });
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).test_expect("stdout is utf8");
+    assert!(stdout.contains("\"trust_market_context\""));
+    assert!(stdout.contains("\"collateral_position_ref\":\"collateral-trust-market-valid\""));
+    assert!(stdout.contains("\"guarantee_decision_ref\":\"guarantee-trust-market-valid\""));
+    assert!(stdout.contains("\"sla_remedy_ref\":\"remedy-policy-market-valid\""));
+    assert!(stdout.contains("\"slash_authority_ref\":\"did:chio:slash-authority\""));
+    assert!(stdout.contains("\"claim.public_settlement.trust_market_refs_bound\""));
+}
+
+#[test]
+fn proof_verify_rejects_public_settlement_partial_trust_market_refs() {
+    assert_public_settlement_mutation_rejected(
+        |settlement_bundle| {
+            settlement_bundle
+                .as_object_mut()
+                .test_expect("settlement bundle object")
+                .remove("collateral_position_ref");
+        },
+        "public settlement trust-market refs incomplete",
+    );
+}
+
+#[test]
+fn proof_verify_rejects_public_settlement_without_chain_allow_list() {
+    let output = chio_with_transaction_fixture_roots()
+        .env_remove("CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS")
+        .arg("proof")
+        .arg("verify")
+        .arg(public_settlement_fixture_path("valid-offline-finality"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(
+        stderr.contains(
+            "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS must pin trusted public settlement chain IDs"
+        ),
+        "{stderr}"
+    );
 }
 
 #[test]
@@ -1050,7 +1195,7 @@ fn proof_verify_rejects_public_settlement_invalid_chain_snapshot() {
         },
         "public settlement dispute event tx hash not included in block",
     );
-    assert_public_settlement_mutation_rejected(
+    assert_public_settlement_mutation_rejected_with_codes(
         |settlement_bundle| {
             settlement_bundle["chain_snapshot"] = public_settlement_chain_snapshot_json();
             settlement_bundle["chain_snapshot"]
@@ -1059,8 +1204,12 @@ fn proof_verify_rejects_public_settlement_invalid_chain_snapshot() {
                 .remove("beneficiary_identity_binding");
         },
         "public settlement beneficiary identity binding missing",
+        &[
+            "urn:chio:error:transaction:identity-not-bound",
+            "CHIO-TRANSACTION-IDENTITY-NOT-BOUND",
+        ],
     );
-    assert_public_settlement_mutation_rejected(
+    assert_public_settlement_mutation_rejected_with_codes(
         |settlement_bundle| {
             settlement_bundle
                 .as_object_mut()
@@ -1068,6 +1217,10 @@ fn proof_verify_rejects_public_settlement_invalid_chain_snapshot() {
                 .remove("dispute_snapshot");
         },
         "public settlement dispute snapshot missing",
+        &[
+            "urn:chio:error:transaction:dispute-unbound",
+            "CHIO-TRANSACTION-DISPUTE-UNBOUND",
+        ],
     );
     assert_public_settlement_mutation_rejected(
         |settlement_bundle| {
@@ -1086,6 +1239,18 @@ fn proof_verify_rejects_public_settlement_invalid_chain_snapshot() {
                 serde_json::json!(149);
         },
         "public settlement bond below policy",
+    );
+}
+
+#[test]
+fn proof_verify_rejects_public_settlement_order_binding_settlement_tx_mismatch() {
+    assert_public_settlement_mutation_rejected(
+        |settlement_bundle| {
+            settlement_bundle["order_binding"]["settlement_tx_hash"] = serde_json::json!(
+                "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            );
+        },
+        "public settlement order binding settlement tx mismatch",
     );
 }
 
@@ -1146,11 +1311,7 @@ fn proof_verify_rejects_public_settlement_unverified_required_claim() {
             .test_expect("parse passport");
     passport["verifier_policy_sha256"] = serde_json::Value::String(policy_digest);
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_digest);
-    std::fs::write(
-        &passport_path,
-        serde_json::to_vec(&passport).test_expect("serialize passport"),
-    )
-    .test_expect("write passport");
+    write_json(&passport_path, &passport);
 
     let output = chio_with_transaction_fixture_roots()
         .arg("proof")
@@ -1211,11 +1372,7 @@ fn proof_verify_rejects_misspelled_required_claim_prefix() {
             .test_expect("parse passport");
     passport["verifier_policy_sha256"] = serde_json::Value::String(policy_digest);
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_digest);
-    std::fs::write(
-        &passport_path,
-        serde_json::to_vec(&passport).test_expect("serialize passport"),
-    )
-    .test_expect("write passport");
+    write_json(&passport_path, &passport);
 
     let output = chio_with_transaction_fixture_roots()
         .arg("proof")
@@ -1244,11 +1401,7 @@ fn proof_verify_rejects_public_settlement_passport_policy_digest_mismatch() {
         serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
             .test_expect("parse passport");
     passport["verifier_policy_sha256"] = serde_json::Value::String("0".repeat(64));
-    std::fs::write(
-        &passport_path,
-        serde_json::to_vec(&passport).test_expect("serialize passport"),
-    )
-    .test_expect("write passport");
+    write_json(&passport_path, &passport);
 
     let output = chio_with_transaction_fixture_roots()
         .arg("proof")
@@ -1259,6 +1412,9 @@ fn proof_verify_rejects_public_settlement_passport_policy_digest_mismatch() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("urn:chio:error:transaction:passport-hash-mismatch"));
+    assert!(stderr.contains("CHIO-TRANSACTION-PASSPORT-HASH-MISMATCH"));
+    assert!(!stderr.contains("urn:chio:error:cli:other"));
     assert!(stderr.contains("verifier policy digest mismatch"));
 }
 
@@ -1302,9 +1458,82 @@ fn proof_verify_accepts_commerce_payment_fixture() {
     assert!(stdout.contains("\"verdict\":\"verified\""));
     assert!(stdout.contains("\"order_id\":\"order-commerce-001\""));
     assert!(stdout.contains("\"current_state\":\"completed\""));
+    assert!(stdout.contains("\"artifact_digests\""));
+    assert!(stdout.contains("\"order_context_sha256\""));
+    assert!(stdout.contains("\"payment_lifecycle_sha256\""));
+    assert!(stdout.contains("\"selective_disclosure_policy\""));
+    assert!(stdout.contains("\"chio.commerce.order-passport.public-summary.v1\""));
+    assert!(stdout.contains("\"redacted_fields\""));
+    assert!(stdout.contains("\"payment_intent_id\""));
     assert!(stdout.contains("\"claim.commerce.order_replay_consistent\""));
     assert!(stdout.contains("\"claim.commerce.payment_lifecycle_bound\""));
     assert!(stdout.contains("\"claim.commerce.mandate_allowance_bound\""));
+    assert!(stdout.contains("\"claim.commerce.admission_gates_bound\""));
+    assert!(stdout.contains("\"claim.commerce.settlement_lifecycle_bound\""));
+    assert!(stdout.contains("\"claim.commerce.order_passport_summary_bound\""));
+}
+
+#[test]
+fn proof_verify_rejects_commerce_without_trusted_provider_keys() {
+    let output = chio_with_transaction_fixture_roots()
+        .env_remove("CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS")
+        .arg("proof")
+        .arg("verify")
+        .arg(commerce_fixture_path("offline-psp-valid"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr
+        .contains("CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS must pin trusted commerce provider keys"));
+}
+
+#[test]
+fn proof_verify_rejects_commerce_cyclic_evidence_graph_before_family_verifier() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source = workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
+    let bundle_dir = tempdir.path().join("commerce-payments");
+    let report_path = tempdir.path().join("graph-cycle-report.json");
+    copy_dir_all(&source, &bundle_dir);
+
+    let evidence_graph_path = bundle_dir.join("evidence-graph.json");
+    let mut evidence_graph: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
+    )
+    .test_expect("parse evidence graph");
+    evidence_graph["edges"]
+        .as_array_mut()
+        .test_expect("evidence graph edges")
+        .push(serde_json::json!({
+            "evidence_class": "digest-bound-reference",
+            "from": "event-log",
+            "predicate": "binds",
+            "to": "order-context"
+        }));
+    write_minimal_evidence_graph(&bundle_dir, evidence_graph);
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .arg("--out")
+        .arg(&report_path)
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("urn:chio:error:transaction:graph-cycle"));
+    assert!(stderr.contains("CHIO-TRANSACTION-GRAPH-CYCLE"));
+    assert!(stderr.contains("cyclic evidence graph"));
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&report_path).test_expect("read failure report"))
+            .test_expect("failure report parses");
+    assert_eq!(
+        report["failureCode"],
+        "urn:chio:error:transaction:graph-cycle"
+    );
 }
 
 #[test]
@@ -1319,6 +1548,200 @@ fn proof_verify_rejects_commerce_payment_wrong_merchant_fixture() {
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
     assert!(stderr.contains("payment merchant mismatch"));
+}
+
+#[test]
+fn proof_verify_rejects_commerce_payment_bad_psp_object_ref() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source = workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
+    let bundle_dir = tempdir.path().join("commerce-payments");
+    copy_dir_all(&source, &bundle_dir);
+    mutate_commerce_payment_lifecycle(&bundle_dir, |payment_lifecycle| {
+        payment_lifecycle["capture_ref"] = serde_json::Value::String("charge_only".to_string());
+    });
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("payment capture_ref is not a supported PSP object ref"));
+}
+
+#[test]
+fn proof_verify_rejects_commerce_payment_quote_digest_mismatch() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source = workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
+    let bundle_dir = tempdir.path().join("commerce-payments");
+    copy_dir_all(&source, &bundle_dir);
+    mutate_commerce_payment_lifecycle(&bundle_dir, |payment_lifecycle| {
+        payment_lifecycle["quote_sha256"] =
+            serde_json::json!("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
+    });
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("payment quote digest mismatch"));
+}
+
+#[test]
+fn proof_verify_rejects_commerce_provider_passport_subject_mismatch() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source = workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
+    let bundle_dir = tempdir.path().join("commerce-payments");
+    copy_dir_all(&source, &bundle_dir);
+    mutate_commerce_provider_passport(&bundle_dir, |provider_passport| {
+        provider_passport["provider_subject"] = serde_json::json!("merchant:stripe:other-shop");
+    });
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("provider passport subject mismatch"));
+}
+
+#[test]
+fn proof_verify_rejects_commerce_mandate_missing_x402_projection() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source = workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
+    let bundle_dir = tempdir.path().join("commerce-payments");
+    copy_dir_all(&source, &bundle_dir);
+    mutate_commerce_mandate_ledger(&bundle_dir, |mandate_ledger| {
+        let projections = mandate_ledger["protocol_projections"]
+            .as_array_mut()
+            .test_expect("mandate projections array");
+        projections.retain(|projection| projection["protocol"] != "x402");
+    });
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("mandate projection missing: x402/payment_requirements"));
+}
+
+#[test]
+fn proof_verify_rejects_commerce_refund_without_dispute_transition() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source = workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
+    let bundle_dir = tempdir.path().join("commerce-payments");
+    copy_dir_all(&source, &bundle_dir);
+    mutate_commerce_event_log(&bundle_dir, |event_log| {
+        event_log["events"]
+            .as_array_mut()
+            .test_expect("event log events array")
+            .push(serde_json::json!({
+                "actor": "agent:single-call-authority",
+                "event_id": "event-commerce-001-refund",
+                "order_id": "order-commerce-001",
+                "prior_state": "completed",
+                "next_state": "refunded",
+                "transition": "refund_payment",
+                "occurred_at": "2026-06-10T00:09:00Z",
+                "authority_receipt_ref": "receipt-refund-commerce-001",
+                "evidence_refs": ["payment-lifecycle-commerce-001"],
+                "idempotency_key": "idem-event-commerce-001-refund"
+            }));
+    });
+    mutate_commerce_payment_lifecycle(&bundle_dir, |payment_lifecycle| {
+        payment_lifecycle["refund_status"] = serde_json::json!("succeeded");
+    });
+    mutate_commerce_order_context(&bundle_dir, |order_context| {
+        order_context["current_state"] = serde_json::json!("refunded");
+    });
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(
+        stderr.contains("unknown commerce transition: completed -> refunded via refund_payment")
+    );
+}
+
+#[test]
+fn proof_verify_rejects_commerce_intent_evidence_mismatch_fixture() {
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(commerce_fixture_path("intent-evidence-mismatch"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("intent event missing intent evidence"));
+}
+
+#[test]
+fn proof_verify_rejects_commerce_provider_admission_mismatch_fixture() {
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(commerce_fixture_path("provider-admission-mismatch"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("provider event missing provider admission evidence"));
+}
+
+#[test]
+fn proof_verify_rejects_commerce_settlement_packet_mismatch_fixture() {
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(commerce_fixture_path("settlement-packet-mismatch"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("settlement event missing settlement packet evidence"));
+    assert!(stderr.contains("urn:chio:error:transaction:settlement-unverified"));
+    assert!(stderr.contains("CHIO-TRANSACTION-SETTLEMENT-UNVERIFIED"));
+}
+
+#[test]
+fn proof_verify_rejects_commerce_reconciliation_mismatch_fixture() {
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(commerce_fixture_path("reconciliation-mismatch"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("reconciliation event missing reconciliation evidence"));
 }
 
 #[test]
@@ -1477,6 +1900,82 @@ fn proof_verify_accepts_disclosure_lineage_fixture() {
 }
 
 #[test]
+fn proof_verify_rejects_disclosure_lineage_field_forbidden_by_privacy_profile() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/disclosure-lineage/valid-lineage-ledger");
+    let bundle_dir = tempdir.path().join("disclosure-lineage");
+    copy_dir_all(&source, &bundle_dir);
+
+    let profile_path = bundle_dir.join("privacy-profile.json");
+    let mut profile: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&profile_path).test_expect("read privacy profile"))
+            .test_expect("parse privacy profile");
+    profile["forbidden_disclosed_fields"]
+        .as_array_mut()
+        .test_expect("forbidden disclosed fields")
+        .push(serde_json::Value::String("tool_name".to_string()));
+    write_json(&profile_path, &profile);
+    refresh_minimal_evidence_graph_node_digest(&bundle_dir, "privacy-profile.json");
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        !output.status.success(),
+        "privacy profile forbidden disclosure unexpectedly verified\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(
+        stderr.contains("disclosed field forbidden by privacy profile: tool_name"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn proof_verify_rejects_disclosure_lineage_privacy_profile_transaction_ref_mismatch() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/disclosure-lineage/valid-lineage-ledger");
+    let bundle_dir = tempdir.path().join("disclosure-lineage");
+    copy_dir_all(&source, &bundle_dir);
+
+    let profile_path = bundle_dir.join("privacy-profile.json");
+    let mut profile: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&profile_path).test_expect("read privacy profile"))
+            .test_expect("parse privacy profile");
+    profile["transaction_passport_ref"] =
+        serde_json::Value::String("passport-disclosure-other".to_string());
+    write_json(&profile_path, &profile);
+    refresh_minimal_evidence_graph_node_digest(&bundle_dir, "privacy-profile.json");
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        !output.status.success(),
+        "privacy profile transaction mismatch unexpectedly verified\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(
+        stderr.contains("privacy profile transaction passport ref mismatch"),
+        "{stderr}"
+    );
+}
+
+#[test]
 fn proof_verify_rejects_disclosure_lineage_missing_ledger_entry_fixture() {
     let output = chio_with_transaction_fixture_roots()
         .arg("proof")
@@ -1491,6 +1990,188 @@ fn proof_verify_rejects_disclosure_lineage_missing_ledger_entry_fixture() {
 }
 
 #[test]
+fn proof_verify_rejects_disclosure_lineage_unsupported_edge_kind_fixture() {
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(disclosure_lineage_fixture_path("unsupported-edge-kind"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("unsupported lineage edge kind"));
+}
+
+#[test]
+fn proof_verify_rejects_disclosure_lineage_missing_parent_fixture() {
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(disclosure_lineage_fixture_path("missing-parent"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("unknown lineage edge source"));
+}
+
+#[test]
+fn proof_verify_rejects_disclosure_swapped_crypto_proof_without_required_claim() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/disclosure-lineage/valid-lineage-ledger");
+    let bundle_dir = tempdir.path().join("disclosure-lineage");
+    copy_dir_all(&source, &bundle_dir);
+    std::fs::copy(
+        workspace_root().join(
+            "fixtures/proof-room/disclosure-lineage/excess-disclosed-field/selective-disclosure-proof.json",
+        ),
+        bundle_dir.join("selective-disclosure-proof.json"),
+    )
+    .test_expect("copy overdisclosing proof");
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .arg("--require")
+        .arg("disclosure")
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        !output.status.success(),
+        "disclosure family verified swapped crypto proof\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn proof_verify_rejects_disclosure_evidence_failure_without_policy_required_claim() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/disclosure-lineage/valid-lineage-ledger");
+    let bundle_dir = tempdir.path().join("disclosure-lineage");
+    copy_dir_all(&source, &bundle_dir);
+    std::fs::copy(
+        workspace_root().join(
+            "fixtures/proof-room/disclosure-lineage/excess-disclosed-field/selective-disclosure-proof.json",
+        ),
+        bundle_dir.join("selective-disclosure-proof.json"),
+    )
+    .test_expect("copy overdisclosing proof");
+    refresh_minimal_evidence_graph_node_digest(&bundle_dir, "selective-disclosure-proof.json");
+    let evidence_graph_path = bundle_dir.join("evidence-graph.json");
+    let mut evidence_graph: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
+    )
+    .test_expect("parse evidence graph");
+    for edge in evidence_graph["edges"]
+        .as_array_mut()
+        .test_expect("evidence graph edges")
+    {
+        if matches!(
+            edge["predicate"].as_str(),
+            Some("defines" | "verifies" | "anchors")
+        ) {
+            edge["predicate"] = serde_json::json!("binds");
+        }
+    }
+    write_minimal_evidence_graph(&bundle_dir, evidence_graph);
+    set_disclosure_policy_required_claims(&bundle_dir, &[]);
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        !output.status.success(),
+        "disclosure evidence failure was skipped when policy required no disclosure claims\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(
+        stderr.contains("disclosure selective disclosure proof rejected")
+            || stderr.contains(
+                "BBS projection manifest message slot count does not match proof message count"
+            )
+            || stderr.contains("disclosed field forbidden by privacy profile"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn proof_verify_require_disclosure_rejects_missing_profile_context_claim() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/disclosure-lineage/valid-lineage-ledger");
+    let bundle_dir = tempdir.path().join("disclosure-lineage");
+    copy_dir_all(&source, &bundle_dir);
+    remove_disclosure_crypto_context_verified_claim(
+        &bundle_dir,
+        "claim.disclosure.profile_context_policy_enforced",
+    );
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .arg("--require")
+        .arg("disclosure")
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        !output.status.success(),
+        "disclosure requirement verified without profile context claim\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(
+        stderr.contains(
+            "proof verify: disclosure crypto report verified claims did not match recomputed BBS verification"
+        ),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn proof_verify_require_disclosure_rejects_missing_crypto_context_report() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/disclosure-lineage/valid-lineage-ledger");
+    let bundle_dir = tempdir.path().join("disclosure-lineage");
+    copy_dir_all(&source, &bundle_dir);
+    remove_disclosure_crypto_context_report(&bundle_dir);
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .arg("--require")
+        .arg("disclosure")
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        !output.status.success(),
+        "disclosure requirement verified without crypto context report\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("missing crypto context report"), "{stderr}");
+}
+
+#[test]
 fn proof_verify_accepts_disclosure_crypto_context_required_claim() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let source =
@@ -1498,6 +2179,8 @@ fn proof_verify_accepts_disclosure_crypto_context_required_claim() {
     let bundle_dir = tempdir.path().join("disclosure-lineage");
     copy_dir_all(&source, &bundle_dir);
     add_disclosure_crypto_context_report(&bundle_dir);
+    add_disclosure_crypto_verification_context(&bundle_dir);
+    add_valid_disclosure_selective_disclosure_proof(&bundle_dir);
     set_disclosure_policy_required_claims(&bundle_dir, &["claim.disclosure.crypto_context_bound"]);
 
     let output = chio_with_transaction_fixture_roots()
@@ -1516,6 +2199,102 @@ fn proof_verify_accepts_disclosure_crypto_context_required_claim() {
     let stdout = String::from_utf8(output.stdout).test_expect("stdout is utf8");
     assert!(stdout.contains("\"schema\":\"chio.disclosure.lineage-verifier-report.v1\""));
     assert!(stdout.contains("\"claim.disclosure.crypto_context_bound\""));
+}
+
+#[test]
+fn proof_verify_rejects_disclosure_crypto_context_preview_transparency() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/disclosure-lineage/valid-lineage-ledger");
+    let bundle_dir = tempdir.path().join("disclosure-lineage");
+    copy_dir_all(&source, &bundle_dir);
+    add_disclosure_crypto_context_report(&bundle_dir);
+    add_disclosure_crypto_verification_context(&bundle_dir);
+    add_valid_disclosure_selective_disclosure_proof(&bundle_dir);
+    let context_path = bundle_dir.join("verification-context.json");
+    let mut context: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&context_path).test_expect("read context"))
+            .test_expect("parse context");
+    context["transparency_state"] = serde_json::Value::String("preview".to_string());
+    write_json(&context_path, &context);
+    refresh_minimal_evidence_graph_node_digest(&bundle_dir, "verification-context.json");
+    set_disclosure_policy_required_claims(&bundle_dir, &["claim.disclosure.crypto_context_bound"]);
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        !output.status.success(),
+        "disclosure crypto context with preview transparency unexpectedly verified\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("disclosure_context_transparency_state_insufficient"));
+    assert!(stderr.contains("urn:chio:error:transaction:transparency-preview-not-allowed"));
+    assert!(stderr.contains("CHIO-TRANSACTION-TRANSPARENCY-PREVIEW-NOT-ALLOWED"));
+}
+
+#[test]
+fn proof_verify_rejects_disclosure_crypto_context_required_claim_without_context_material() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/disclosure-lineage/valid-lineage-ledger");
+    let bundle_dir = tempdir.path().join("disclosure-lineage");
+    copy_dir_all(&source, &bundle_dir);
+    add_disclosure_crypto_context_report(&bundle_dir);
+    remove_disclosure_crypto_verification_context(&bundle_dir);
+    remove_disclosure_selective_disclosure_proof(&bundle_dir);
+    set_disclosure_policy_required_claims(&bundle_dir, &["claim.disclosure.crypto_context_bound"]);
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        !output.status.success(),
+        "disclosure crypto context claim verified without context material\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("missing disclosure crypto verification context"));
+}
+
+#[test]
+fn proof_verify_rejects_disclosure_crypto_context_required_claim_without_bbs_proof() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/disclosure-lineage/valid-lineage-ledger");
+    let bundle_dir = tempdir.path().join("disclosure-lineage");
+    copy_dir_all(&source, &bundle_dir);
+    add_disclosure_crypto_context_report(&bundle_dir);
+    add_disclosure_crypto_verification_context(&bundle_dir);
+    remove_disclosure_selective_disclosure_proof(&bundle_dir);
+    set_disclosure_policy_required_claims(&bundle_dir, &["claim.disclosure.crypto_context_bound"]);
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        !output.status.success(),
+        "disclosure crypto context claim verified without BBS proof\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("missing disclosure selective disclosure proof"));
 }
 
 #[test]
@@ -1550,7 +2329,7 @@ fn proof_verify_rejects_disclosure_lineage_unregistered_crypto_context_claim() {
     );
     let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
     assert!(stderr.contains(
-        "crypto context report unsupported claim: claim.disclosure.unregistered_crypto_context_claim"
+        "disclosure crypto report verified claims did not match recomputed BBS verification"
     ));
 }
 
@@ -1616,6 +2395,125 @@ fn proof_verify_rejects_disclosure_lineage_crypto_context_ref_mismatch() {
 }
 
 #[test]
+fn proof_verify_rejects_disclosure_lineage_projection_manifest_ref_mismatch() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/disclosure-lineage/valid-lineage-ledger");
+    let bundle_dir = tempdir.path().join("disclosure-lineage");
+    copy_dir_all(&source, &bundle_dir);
+
+    let capsule_path = bundle_dir.join("capsule.json");
+    let mut capsule: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&capsule_path).test_expect("read capsule"))
+            .test_expect("parse capsule");
+    capsule["projection_manifest_ref"] =
+        serde_json::Value::String("chio.bbs-projection.other.v1".to_string());
+    write_json(&capsule_path, &capsule);
+    refresh_minimal_evidence_graph_node_digest(&bundle_dir, "capsule.json");
+
+    let report_path = bundle_dir.join("crypto-context-report.json");
+    let mut report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&report_path).test_expect("read crypto report"))
+            .test_expect("parse crypto report");
+    report["projection_manifest_ref"] =
+        serde_json::Value::String("chio.bbs-projection.other.v1".to_string());
+    sign_disclosure_crypto_context_report(&mut report);
+    write_json(&report_path, &report);
+    refresh_minimal_evidence_graph_node_digest(&bundle_dir, "crypto-context-report.json");
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        !output.status.success(),
+        "disclosure lineage with mismatched projection manifest unexpectedly verified\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("disclosure crypto report projection manifest ref mismatch"));
+}
+
+#[test]
+fn proof_verify_rejects_disclosure_lineage_wholesale_only_projection_slot() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/disclosure-lineage/valid-lineage-ledger");
+    let bundle_dir = tempdir.path().join("disclosure-lineage");
+    copy_dir_all(&source, &bundle_dir);
+
+    add_disclosure_bbs_projection_manifest(
+        &bundle_dir,
+        serde_json::json!([
+            {
+                "slot": 0,
+                "field": "capability_id",
+                "encoding": "S",
+                "disclosure": "disclosed",
+                "wholesale_only": false
+            },
+            {
+                "slot": 1,
+                "field": "tool_name",
+                "encoding": "S",
+                "disclosure": "disclosed",
+                "wholesale_only": true
+            }
+        ]),
+    );
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .arg("--require")
+        .arg("disclosure")
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        !output.status.success(),
+        "disclosure lineage with wholesale-only disclosed BBS slot unexpectedly verified\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("BBS projection manifest wholesale-only slot disclosed"));
+}
+
+#[test]
+fn proof_verify_rejects_disclosure_lineage_bad_transparency_inclusion_root() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source =
+        workspace_root().join("fixtures/proof-room/disclosure-lineage/valid-lineage-ledger");
+    let bundle_dir = tempdir.path().join("disclosure-lineage");
+    copy_dir_all(&source, &bundle_dir);
+    add_bad_disclosure_transparency_inclusion_proof(&bundle_dir);
+
+    let output = chio_with_transaction_fixture_roots()
+        .arg("proof")
+        .arg("verify")
+        .arg(bundle_dir.join("transaction-passport.json"))
+        .arg("--require")
+        .arg("disclosure")
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        !output.status.success(),
+        "disclosure lineage with bad transparency inclusion root unexpectedly verified\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("transparency inclusion proof root mismatch"));
+}
+
+#[test]
 fn proof_verify_rejects_policy_digest_mismatch_fixture() {
     let output = chio_with_transaction_fixture_roots()
         .arg("proof")
@@ -1627,6 +2525,9 @@ fn proof_verify_rejects_policy_digest_mismatch_fixture() {
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
     assert!(stderr.contains("verifier policy digest mismatch"));
+    assert!(stderr.contains("urn:chio:error:transaction:passport-hash-mismatch"));
+    assert!(stderr.contains("CHIO-TRANSACTION-PASSPORT-HASH-MISMATCH"));
+    assert!(!stderr.contains("urn:chio:error:cli:other"));
 }
 
 #[cfg(unix)]
@@ -1646,9 +2547,12 @@ fn proof_verify_rejects_symlink_escape_artifact() {
     std::os::unix::fs::symlink(&outside_evidence, bundle_dir.join("evidence-graph.json"))
         .test_expect("create symlink");
 
+    let claim_set = r#"{"schema":"chio.transaction.claim-set.v1","id":"claim-set-symlink-escape","issued_at":"2026-06-10T00:00:00Z","claims":[{"claim_id":"claim.transaction.passport_root_verified","status":"verified","required_evidence":["transaction-passport.json","evidence-graph.json","verifier-policy.json"],"evidence_refs":["transaction-passport.json","evidence-graph.json","verifier-policy.json"],"verifier_module":"chio proof verify"}]}"#;
+    write_file(&bundle_dir.join("claim-set.json"), claim_set);
     let passport = format!(
-        "{{\"schema\":\"chio.transaction-passport.v1\",\"id\":\"passport-symlink-escape\",\"issued_at\":\"2026-06-10T00:00:00Z\",\"evidence_graph_sha256\":\"{}\",\"evidence_graph_path\":\"evidence-graph.json\",\"verifier_policy_sha256\":\"{}\",\"verifier_policy_path\":\"verifier-policy.json\"}}",
+        "{{\"schema\":\"chio.transaction-passport.v1\",\"id\":\"passport-symlink-escape\",\"issued_at\":\"2026-06-10T00:00:00Z\",\"evidence_graph_sha256\":\"{}\",\"evidence_graph_path\":\"evidence-graph.json\",\"claim_set_sha256\":\"{}\",\"claim_set_path\":\"claim-set.json\",\"verifier_policy_sha256\":\"{}\",\"verifier_policy_path\":\"verifier-policy.json\"}}",
         chio_core::sha256_hex(evidence_graph.as_bytes()),
+        chio_core::sha256_hex(claim_set.as_bytes()),
         chio_core::sha256_hex(verifier_policy.as_bytes())
     );
     let passport_path = bundle_dir.join("transaction-passport.json");

@@ -1,0 +1,23 @@
+{
+  "id": "trust-roots-single-call-authority",
+  "roots": [
+    {
+      "key_digest": "27a18c4142f414227b37507c1da6e90ee6d73565eea7686152c067e2ee262ba7",
+      "key_id": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+      "subject": "did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"
+    },
+    {
+      "key_digest": "27a18c4142f414227b37507c1da6e90ee6d73565eea7686152c067e2ee262ba7",
+      "key_id": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+      "subject": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"
+    },
+    {
+      "key_digest": "dfb8a0b323800dfcdb20b4f6b382e16328ace67c8e94a0335d25631a723fb792",
+      "key_id": "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa",
+      "subject": "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"
+    }
+  ],
+  "schema": "chio.proof.first-run.trust-roots.v1",
+  "signature": "5e7d357730456d7b583d8036f627ae854b399d502c2be261bdcaf66d344eb910bfd2963e72ff4ff1d031f2a16bdb61fddcea874d9cc138e9d7b48dda3a65050e",
+  "trust_domain": "did:chio:proof-room-stage-0"
+}

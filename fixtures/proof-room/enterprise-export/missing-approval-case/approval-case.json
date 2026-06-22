@@ -1,14 +1,1 @@
-{
-  "schema": "chio.enterprise.approval-case.v1",
-  "id": "approval-case-enterprise-valid",
-  "issued_at": "2026-06-10T00:00:00Z",
-  "passport_id": "passport-enterprise-valid",
-  "risk_comptroller_report_ref": "risk-comptroller-enterprise-valid",
-  "decision": "approved",
-  "decision_subject": "evidence-export",
-  "approvers": [
-    "did:chio:enterprise-reviewer"
-  ],
-  "required_quorum": 1,
-  "expires_at": "2026-06-11T00:00:00Z"
-}
+{"approvers":["did:chio:enterprise-reviewer"],"decision":"approved","decision_subject":"evidence-export","evidence_export_bundle_digest":"0ae541bdf5c53a92364b0c37b7a3e3c8c9704babb3e99e2dd306b236d46aa8d5","expires_at":"2026-06-11T00:00:00Z","id":"approval-case-enterprise-valid","issued_at":"2026-06-10T00:00:00Z","passport_id":"passport-enterprise-valid","required_quorum":1,"risk_comptroller_report_ref":"risk-comptroller-enterprise-valid","schema":"chio.enterprise.approval-case.v1","signature":"sig-ed25519:f95c6a5dff031fac7b1a6a54b6610caeb83b39f7e8a66be16ff5faa4a511ed2d:30e07180ea7abec44d4dcff3495f40e5aec815396c6bfff7c2d3d0ceaac6530a266bf0b678fdc8b997f407387b94e4a3064705f4677cb4ec6a26b19683bcbd07"}

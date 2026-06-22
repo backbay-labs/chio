@@ -19,7 +19,8 @@ const SWARM_FIXTURE_TRUSTED_WITNESS_KEYS: &str =
     "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de";
 const PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS: &str = concat!(
     "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,",
-    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"
+    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa,",
+    "a6d2455ea3a5771aba9fcb037924114c92f9f325049f6b4269e739d9048bb869"
 );
 const PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS: &str = concat!(
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
@@ -27,10 +28,23 @@ const PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS: &str = concat!(
 );
 const TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS: &str = concat!(
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
+    "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a,",
     "68f4b6017d0f876a55c80a82b8388a54aad264d367269e2de8be079c935b5f96"
 );
+const RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS: &str =
+    "5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca";
+const ENTERPRISE_FIXTURE_TRUSTED_APPROVAL_KEYS: &str =
+    "f95c6a5dff031fac7b1a6a54b6610caeb83b39f7e8a66be16ff5faa4a511ed2d";
 const TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS: &str =
     "cf1b37e85dc00aee94f10108b37f151e2a37b3ae2a0cae77521f83488db9c4d7";
+const COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS: &str =
+    "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS: &str =
+    "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS: &str =
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS: &str =
+    "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a";
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -96,6 +110,14 @@ fn proof_doctor_command() -> std::process::Command {
         TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS,
     );
     command.env(
+        "CHIO_RUNTIME_TRUSTED_ROOT_KEYS",
+        RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS,
+    );
+    command.env(
+        "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS",
+        ENTERPRISE_FIXTURE_TRUSTED_APPROVAL_KEYS,
+    );
+    command.env(
         "CHIO_SWARM_TRUSTED_WITNESS_KEYS",
         SWARM_FIXTURE_TRUSTED_WITNESS_KEYS,
     );
@@ -103,6 +125,27 @@ fn proof_doctor_command() -> std::process::Command {
         "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS",
         TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS,
     );
+    command.env(
+        "CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS",
+        COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS,
+    );
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS,
+    );
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS,
+    );
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS,
+    );
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS",
+        "eip155:8453,eip155:42161",
+    );
+    command.env("CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS", "1");
     command
 }
 
@@ -470,7 +513,7 @@ fn proof_doctor_rejects_crypto_context_report_not_derived_from_context() {
     assert!(!output.status.success());
     let stdout = String::from_utf8(output.stdout).test_expect("stdout is utf8");
     assert!(stdout.contains("fixture_crypto_context_valid_bbs"));
-    assert!(stdout.contains("crypto context verification context rejected"));
+    assert!(stdout.contains("crypto context check failed"));
     assert!(stdout.contains("disclosure_context_audience_mismatch"));
 }
 

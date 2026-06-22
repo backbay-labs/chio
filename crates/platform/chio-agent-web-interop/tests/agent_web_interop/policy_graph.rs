@@ -27,15 +27,108 @@ pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> Age
         "omitted_claims": []
     }));
     let verifier_policy_sha256 = chio_core_types::sha256_hex(&verifier_policy);
+    let claim_set = json_bytes(json!({
+        "schema": "chio.transaction.claim-set.v1",
+        "id": "claim-set-agent-web-valid",
+        "issued_at": "2026-06-10T00:00:00Z",
+        "claims": [
+            {
+                "claim_id": CLAIM_EXTERNAL_SUBJECT_DIGEST_BOUND,
+                "status": "verified",
+                "required_evidence": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "evidence_refs": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "verifier_module": "chio-agent-web-interop"
+            },
+            {
+                "claim_id": CLAIM_PROJECTION_MANIFEST_BOUND,
+                "status": "verified",
+                "required_evidence": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "evidence_refs": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "verifier_module": "chio-agent-web-interop"
+            },
+            {
+                "claim_id": CLAIM_UNSUPPORTED_CLAIMS_LIMITED,
+                "status": "verified",
+                "required_evidence": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "evidence_refs": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "verifier_module": "chio-agent-web-interop"
+            },
+            {
+                "claim_id": CLAIM_SIDECAR_NOT_NATIVE_AUTHORITY,
+                "status": "verified",
+                "required_evidence": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "evidence_refs": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "verifier_module": "chio-agent-web-interop"
+            }
+        ]
+    }));
+    let claim_set_sha256 = chio_core_types::sha256_hex(&claim_set);
+    push_artifact(
+        &mut builder.artifacts,
+        &mut builder.graph_nodes,
+        "claim-set",
+        "claim-set",
+        "chio.transaction.claim-set.v1",
+        "claim-set.json",
+        claim_set,
+    );
+    push_artifact(
+        &mut builder.artifacts,
+        &mut builder.graph_nodes,
+        "verifier-policy",
+        "verifier-policy",
+        "chio.transaction.verifier-policy.v1",
+        "verifier-policy.json",
+        verifier_policy.clone(),
+    );
     sign_agent_web_receipts(
         case,
         &mut builder.artifacts,
         &mut builder.graph_nodes,
         &verifier_policy_sha256,
     );
+    bind_agent_web_envelope_manifest_digests(&mut builder.artifacts, &mut builder.graph_nodes);
     sign_agent_web_envelopes(&mut builder.artifacts, &mut builder.graph_nodes);
 
     let mut graph_edges = vec![
+        json!({
+            "from": "claim-set",
+            "to": "verifier-policy",
+            "predicate": "binds",
+            "evidence_class": "digest-bound-reference"
+        }),
         json!({
             "from": "standard-webhooks-envelope",
             "to": "standard-webhooks-manifest",
@@ -770,11 +863,14 @@ pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> Age
     }));
 
     builder.passport.evidence_graph_sha256 = chio_core_types::sha256_hex(&evidence_graph);
+    builder.passport.claim_set_sha256 = claim_set_sha256;
     builder.passport.verifier_policy_sha256 = verifier_policy_sha256;
+    sign_transaction_passport(&mut builder.passport);
 
     AgentWebInteropBundle {
         passport: builder.passport,
         evidence_graph_bytes: evidence_graph,
+        root_evidence_graph_bytes: None,
         verifier_policy_bytes: verifier_policy,
         artifacts: builder.artifacts,
     }

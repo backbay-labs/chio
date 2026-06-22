@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use crate::{AdapterError, McpTransport};
 use chio_core::capability::{
+    governance::GovernedTransactionIntent,
     scope::{ModelMetadata, Operation},
     token::CapabilityToken,
 };

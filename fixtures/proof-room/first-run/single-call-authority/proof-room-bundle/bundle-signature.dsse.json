@@ -2,13 +2,13 @@
   "payloadRef": {
     "path": "manifest.json",
     "schema": "chio.proof-room.bundle.v1",
-    "sha256": "fc2b29100fc230c3cba8dd3c5500b92b0ca793eaf1f2cf35f3066fdd2dad736c"
+    "sha256": "8c6c339716a5fa68340bfa9bb575ebaac4761a9dc934e3f8175b755d6df7607a"
   },
   "payloadType": "application/vnd.chio.proof-room.bundle.v1+json",
   "signatures": [
     {
       "keyid": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-      "sig": "b4d6879adf3b96b167b0c0cb6f6e1fe399cab9ac500081ae3db081be5ffece4f4b0bd8a74bacc62fbb2c98603dd0c24e9a4a6831cd53754daa66d9ed8a6d4403"
+      "sig": "6c28ece82841ec00743bc28a9611544bff7c88b4d83de56e275f12561d92eaede50c2b00f030bfffd8f9e81b1bc20832e7cc709e4b3884f34c285fdca0ad6300"
     }
   ]
 }

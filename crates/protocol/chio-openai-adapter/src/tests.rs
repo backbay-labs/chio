@@ -6,10 +6,13 @@ use chio_core::capability::{
 use chio_core::crypto::Keypair;
 use chio_kernel::{
     ChioKernel, ExecutionNonceConfig, InMemoryExecutionNonceStore, KernelConfig, KernelError,
-    NestedFlowBridge, ToolCallRequest, ToolServerConnection, DEFAULT_CHECKPOINT_BATCH_SIZE,
+    NestedFlowBridge, RuntimeAdmissionContext, RuntimeAdmissionDecision, RuntimeAdmissionHook,
+    ToolCallRequest, ToolServerConnection, DEFAULT_CHECKPOINT_BATCH_SIZE,
     DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 struct MockToolServer {
     response: Value,
@@ -58,6 +61,54 @@ impl ToolServerConnection for FailingServer {
         _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<Value, KernelError> {
         Err(KernelError::ToolServerError("simulated failure".into()))
+    }
+}
+
+struct CountingToolServer {
+    invocations: Arc<AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for CountingToolServer {
+    fn server_id(&self) -> &str {
+        "test-srv"
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        vec!["get_weather".to_string(), "search".to_string()]
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<Value, KernelError> {
+        self.invocations.fetch_add(1, Ordering::SeqCst);
+        Ok(json!({"temperature": 72, "conditions": "sunny"}))
+    }
+}
+
+struct DenyingOpenAiRuntimeAdmissionHook;
+
+impl RuntimeAdmissionHook for DenyingOpenAiRuntimeAdmissionHook {
+    fn name(&self) -> &str {
+        "openai-denying-runtime-admission"
+    }
+
+    fn evaluate(
+        &self,
+        _context: &RuntimeAdmissionContext<'_>,
+    ) -> Result<RuntimeAdmissionDecision, KernelError> {
+        Ok(RuntimeAdmissionDecision::deny(
+            "openai runtime admission denied",
+            Some(json!({
+                "chio_runtime": {
+                    "accepted": false,
+                    "failure_code": "openai_runtime_admission_denied"
+                }
+            })),
+        ))
     }
 }
 
@@ -307,6 +358,34 @@ fn execute_tool_call_success() {
             .and_then(Value::as_str),
         Some("select")
     );
+}
+
+#[test]
+fn execute_tool_call_runtime_admission_denies_before_tool_server_dispatch() {
+    let adapter = ChioOpenAiAdapter::new(test_config(), vec![test_manifest()]).unwrap();
+    let mut kernel = ChioKernel::new(test_kernel_config());
+    let invocations = Arc::new(AtomicUsize::new(0));
+    kernel.register_tool_server(Box::new(CountingToolServer {
+        invocations: Arc::clone(&invocations),
+    }));
+    kernel.set_runtime_admission_hook(Arc::new(DenyingOpenAiRuntimeAdmissionHook));
+    let agent_kp = Keypair::generate();
+    let execution = test_execution_context(&kernel, &agent_kp, "test-srv", "get_weather");
+
+    let result = adapter.execute_tool_call(&weather_tool_call(), &kernel, &execution);
+
+    assert!(result.denied);
+    assert!(result.content.contains("openai runtime admission denied"));
+    assert_eq!(
+        result
+            .receipt
+            .as_ref()
+            .and_then(|receipt| receipt.metadata.as_ref())
+            .and_then(|metadata| metadata.pointer("/chio_runtime/failure_code"))
+            .and_then(Value::as_str),
+        Some("openai_runtime_admission_denied")
+    );
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
 }
 
 #[test]

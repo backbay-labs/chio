@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use chio_core_types::crypto::Keypair;
@@ -17,6 +17,69 @@ fn workspace_root() -> PathBuf {
         .and_then(|crates_dir| crates_dir.parent())
         .test_expect("workspace root is parent of crates/platform/chio-transaction-passport")
         .to_path_buf()
+}
+
+fn evidence_graph_schema_roles() -> BTreeSet<String> {
+    let schema_path =
+        workspace_root().join("spec/schemas/chio-transaction/v1/evidence-graph.schema.json");
+    let schema: Value = serde_json::from_slice(
+        &std::fs::read(schema_path).test_expect("evidence graph schema reads"),
+    )
+    .test_expect("evidence graph schema parses");
+    schema
+        .pointer("/$defs/node/properties/role/enum")
+        .and_then(Value::as_array)
+        .test_expect("evidence graph schema role enum")
+        .iter()
+        .map(|role| {
+            role.as_str()
+                .test_expect("evidence graph schema role enum string")
+                .to_string()
+        })
+        .collect()
+}
+
+#[test]
+fn evidence_graph_schema_allows_public_settlement_proof_bundle_role() {
+    assert!(evidence_graph_schema_roles().contains("public-settlement-proof-bundle"));
+}
+
+#[test]
+fn evidence_graph_schema_allows_swarm_authority_roles() {
+    let roles = evidence_graph_schema_roles();
+    for role in [
+        "swarm-task-graph",
+        "swarm-continuation-token",
+        "swarm-delegation-witness-chain",
+        "swarm-join-receipt",
+        "swarm-route-plan-receipt",
+        "swarm-terminal-graph-receipt",
+        "swarm-budget-pool",
+        "swarm-revocation-epoch",
+    ] {
+        assert!(roles.contains(role), "missing evidence graph role {role}");
+    }
+}
+
+#[test]
+fn transaction_verifier_report_schema_allows_machine_result_fields() {
+    let schema_path =
+        workspace_root().join("spec/schemas/chio-transaction/v1/verifier-report.schema.json");
+    let schema: Value = serde_json::from_slice(
+        &std::fs::read(schema_path).test_expect("verifier report schema reads"),
+    )
+    .test_expect("verifier report schema parses");
+    let properties = schema
+        .pointer("/properties")
+        .and_then(Value::as_object)
+        .test_expect("verifier report schema properties");
+
+    for field in ["accepted", "state", "failureCode", "claimResults"] {
+        assert!(
+            properties.contains_key(field),
+            "verifier report schema missing {field}"
+        );
+    }
 }
 
 fn runtime_security_fixture_dir(case_name: &str) -> PathBuf {
@@ -61,6 +124,7 @@ fn load_runtime_security_fixture(
     chio_transaction_passport::RuntimeSecurityBundle {
         passport,
         evidence_graph_bytes,
+        root_evidence_graph_bytes: None,
         verifier_policy_bytes,
         artifacts,
     }
@@ -73,6 +137,14 @@ fn rebind_runtime_graph(
     let graph_bytes = serde_json::to_vec(&graph).test_expect("runtime graph serializes");
     bundle.passport.evidence_graph_sha256 = sha256_hex(&graph_bytes);
     bundle.evidence_graph_bytes = graph_bytes;
+    resign_runtime_passport(bundle);
+}
+
+fn resign_runtime_passport(bundle: &mut chio_transaction_passport::RuntimeSecurityBundle) {
+    let signing_key = Keypair::from_seed(&[7u8; 32]);
+    bundle.passport.signature =
+        chio_transaction_passport::sign_transaction_passport(&bundle.passport, &signing_key)
+            .test_expect("runtime passport signs");
 }
 
 fn update_runtime_graph_node_digest(
@@ -101,17 +173,62 @@ fn update_runtime_policy_required_claims(
 ) {
     let mut policy: Value =
         serde_json::from_slice(&bundle.verifier_policy_bytes).test_expect("runtime policy parses");
+    let required_claims: Vec<String> = required_claims
+        .into_iter()
+        .map(std::string::ToString::to_string)
+        .collect();
     policy["required_claims"] = Value::Array(
         required_claims
-            .into_iter()
-            .map(|claim| Value::String(claim.to_string()))
+            .iter()
+            .map(|claim| Value::String(claim.clone()))
             .collect(),
     );
     let policy_bytes = serde_json::to_vec_pretty(&policy).test_expect("runtime policy serializes");
     let policy_digest = sha256_hex(&policy_bytes);
     bundle.passport.verifier_policy_sha256 = policy_digest.clone();
     bundle.verifier_policy_bytes = policy_bytes;
+    update_runtime_claim_set_required_claims(bundle, &required_claims);
     update_runtime_graph_node_digest(bundle, "verifier-policy.json", &policy_digest);
+}
+
+fn update_runtime_claim_set_required_claims(
+    bundle: &mut chio_transaction_passport::RuntimeSecurityBundle,
+    required_claims: &[String],
+) {
+    let claims: Vec<Value> = required_claims
+        .iter()
+        .map(|claim| {
+            json!({
+                "claim_id": claim,
+                "status": "verified",
+                "required_evidence": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "evidence_refs": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "verifier_module": "chio proof verify"
+            })
+        })
+        .collect();
+    let claim_set = json!({
+        "schema": "chio.transaction.claim-set.v1",
+        "id": "claim-set-runtime-passport-valid",
+        "issued_at": bundle.passport.issued_at.clone(),
+        "claims": claims
+    });
+    let claim_set_bytes =
+        serde_json::to_vec_pretty(&claim_set).test_expect("runtime claim set serializes");
+    let claim_set_digest = sha256_hex(&claim_set_bytes);
+    bundle
+        .artifacts
+        .insert("claim-set.json".to_string(), claim_set_bytes);
+    bundle.passport.claim_set_sha256 = claim_set_digest.clone();
+    update_runtime_graph_node_digest(bundle, "claim-set.json", &claim_set_digest);
 }
 
 fn update_runtime_artifact(
@@ -139,7 +256,11 @@ fn update_runtime_artifact(
 fn sign_runtime_lease_with_fixture_authority(value: &mut Value) {
     let signing_key = Keypair::from_seed(&[46u8; 32]);
     value["issuer"] = Value::String(format!("did:chio:{}", signing_key.public_key().to_hex()));
-    let body = json!({
+    value["signature"] = Value::String(sign_runtime_execution_lease(value, &signing_key));
+}
+
+fn sign_runtime_execution_lease(value: &Value, signing_key: &Keypair) -> String {
+    let mut body = json!({
         "schema": "chio.runtime.execution-lease-signature.v1",
         "leaseId": value["lease_id"],
         "toolServerId": value["tool_server_id"],
@@ -155,13 +276,82 @@ fn sign_runtime_lease_with_fixture_authority(value: &mut Value) {
         "expiresAt": value["expires_at"],
         "issuer": value["issuer"],
     });
-    value["signature"] = Value::String(
-        signing_key
-            .sign_canonical(&body)
-            .test_expect("execution lease signs")
-            .0
-            .to_hex(),
-    );
+    if value.get("revocation_epoch_ref").is_some() {
+        body["revocationEpochRef"] = value["revocation_epoch_ref"].clone();
+    }
+    if value.get("route_plan_receipt_ref").is_some() {
+        body["routePlanReceiptRef"] = value["route_plan_receipt_ref"].clone();
+    }
+    if value.get("max_invocations").is_some() {
+        body["maxInvocations"] = value["max_invocations"].clone();
+    }
+    signing_key
+        .sign_canonical(&body)
+        .test_expect("execution lease signs")
+        .0
+        .to_hex()
+}
+
+fn sign_runtime_terminal_receipt_with_fixture_kernel(value: &mut Value) {
+    let signing_key = Keypair::from_seed(&[23u8; 32]);
+    value["kernel_key"] = Value::String(signing_key.public_key().to_hex());
+    value["signature"] = Value::String(sign_runtime_terminal_receipt(value, &signing_key));
+}
+
+fn sign_runtime_terminal_receipt(value: &Value, signing_key: &Keypair) -> String {
+    let mut body = json!({
+        "schema": "chio.runtime.terminal-receipt-signature.v1",
+        "receiptId": value["receipt_id"],
+        "terminalStatus": value["terminal_status"],
+        "policyDigest": value["policy_digest"],
+        "kernelKey": value["kernel_key"],
+    });
+    if value.get("execution_lease_ref").is_some() {
+        body["executionLeaseRef"] = value["execution_lease_ref"].clone();
+    }
+    if value.get("incident_ref").is_some() {
+        body["incidentRef"] = value["incident_ref"].clone();
+    }
+    signing_key
+        .sign_canonical(&body)
+        .test_expect("terminal receipt signs")
+        .0
+        .to_hex()
+}
+
+fn sign_runtime_trust_root(value: &Value, signing_key: &Keypair) -> String {
+    let mut body = value.clone();
+    body.as_object_mut()
+        .test_expect("runtime trust root is an object")
+        .remove("signature");
+    signing_key
+        .sign_canonical(&body)
+        .test_expect("runtime trust root signs")
+        .0
+        .to_hex()
+}
+
+fn runtime_trusted_root_keys() -> Vec<chio_core_types::PublicKey> {
+    vec![Keypair::from_seed(&[46u8; 32]).public_key()]
+}
+
+fn transaction_trusted_root_keys() -> Vec<chio_core_types::PublicKey> {
+    vec![Keypair::from_seed(&[7u8; 32]).public_key()]
+}
+
+fn verify_runtime_security_fixture(
+    bundle: &chio_transaction_passport::RuntimeSecurityBundle,
+) -> Result<
+    chio_transaction_passport::RuntimeSecurityReport,
+    chio_transaction_passport::TransactionPassportError,
+> {
+    chio_transaction_passport::verify_runtime_security_claims_with_trust(
+        bundle,
+        &chio_transaction_passport::RuntimeSecurityTrust {
+            trusted_passport_signer_keys: transaction_trusted_root_keys(),
+            trusted_root_signer_keys: runtime_trusted_root_keys(),
+        },
+    )
 }
 
 fn signed_json_bytes(mut value: Value, keypair: &Keypair) -> Vec<u8> {
@@ -174,6 +364,25 @@ fn signed_json_bytes(mut value: Value, keypair: &Keypair) -> Vec<u8> {
         .test_expect("signed artifact signs");
     value["signature"] = Value::String(signature.to_hex());
     serde_json::to_vec(&value).test_expect("signed artifact serializes")
+}
+
+fn replace_signed_artifact_key(
+    artifacts: &mut BTreeMap<String, Vec<u8>>,
+    artifact_path: &str,
+    key_field: &str,
+    keypair: &Keypair,
+) {
+    let mut artifact: Value = serde_json::from_slice(
+        artifacts
+            .get(artifact_path)
+            .test_expect("governed action artifact exists"),
+    )
+    .test_expect("governed action artifact parses");
+    artifact[key_field] = Value::String(keypair.public_key().to_hex());
+    artifacts.insert(
+        artifact_path.to_string(),
+        signed_json_bytes(artifact, keypair),
+    );
 }
 
 fn add_unavailable_runtime_receipt_node(
@@ -199,22 +408,122 @@ fn valid_minimal_passport() -> chio_transaction_passport::TransactionPassport {
         schema: "chio.transaction-passport.v1".to_string(),
         id: "passport-minimal-valid".to_string(),
         issued_at: "2026-06-10T00:00:00Z".to_string(),
+        issuer: format!(
+            "did:chio:{}",
+            Keypair::from_seed(&[7u8; 32]).public_key().to_hex()
+        ),
         evidence_graph_sha256: "0".repeat(64),
         evidence_graph_path: "evidence-graph.json".to_string(),
+        not_before: None,
+        expires_at: None,
+        claim_set_sha256: sha256_hex(valid_claim_set_bytes()),
+        claim_set_path: "claim-set.json".to_string(),
         verifier_policy_sha256: "1".repeat(64),
         verifier_policy_path: "verifier-policy.json".to_string(),
+        omission_policy: Vec::new(),
+        signature: "00".repeat(64),
     }
 }
 
+fn signed_minimal_passport(
+    keypair: &Keypair,
+) -> Result<
+    chio_transaction_passport::TransactionPassport,
+    chio_transaction_passport::TransactionPassportError,
+> {
+    let mut passport = valid_minimal_passport();
+    passport.issuer = format!("did:chio:{}", keypair.public_key().to_hex());
+    passport.signature = chio_transaction_passport::sign_transaction_passport(&passport, keypair)?;
+    Ok(passport)
+}
+
 fn valid_evidence_graph_bytes() -> &'static [u8] {
-    br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-minimal-valid","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"verifier-policy","schema":"chio.transaction.verifier-policy.v1","path":"verifier-policy.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"verifier-policy"}],"edges":[]}"#
+    br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-minimal-valid","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"claim-set","schema":"chio.transaction.claim-set.v1","path":"claim-set.json","sha256":"ba7948a6ea038b3846c2402ae41a5d122a39133124cb493ddd7a30166b7a6dae","role":"claim-set"},{"id":"verifier-policy","schema":"chio.transaction.verifier-policy.v1","path":"verifier-policy.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"verifier-policy"}],"edges":[{"from":"claim-set","to":"verifier-policy","predicate":"binds","evidence_class":"digest-bound-reference"}]}"#
+}
+
+fn valid_claim_set_bytes() -> &'static [u8] {
+    br#"{"schema":"chio.transaction.claim-set.v1","id":"claim-set-minimal-valid","issued_at":"2026-06-10T00:00:00Z","claims":[{"claim_id":"claim.transaction.passport_root_verified","status":"verified","required_evidence":["transaction-passport.json","evidence-graph.json","verifier-policy.json"],"evidence_refs":["transaction-passport.json","evidence-graph.json","verifier-policy.json"],"verifier_module":"chio-transaction-passport::minimal"}]}"#
 }
 
 fn valid_verifier_policy_bytes() -> &'static [u8] {
     br#"{"schema":"chio.transaction.verifier-policy.v1","id":"verifier-policy-minimal-valid","issued_at":"2026-06-10T00:00:00Z","required_claims":["claim.transaction.passport_root_verified"],"omitted_claims":[]}"#
 }
 
+fn all_standalone_transaction_claims() -> [&'static str; 6] {
+    [
+        "claim.transaction.passport_root_verified",
+        "claim.transaction.evidence_graph_digest_bound",
+        "claim.transaction.evidence_graph_structure_verified",
+        "claim.transaction.claim_set_digest_bound",
+        "claim.transaction.policy_digest_bound",
+        "claim.transaction.omission_policy_bound",
+    ]
+}
+
+fn verifier_policy_with_all_standalone_transaction_claims_bytes() -> Vec<u8> {
+    serde_json::to_vec(&json!({
+        "schema": "chio.transaction.verifier-policy.v1",
+        "id": "verifier-policy-all-standalone-claims",
+        "issued_at": "2026-06-10T00:00:00Z",
+        "required_claims": all_standalone_transaction_claims(),
+        "omitted_claims": []
+    }))
+    .test_expect("verifier policy serializes")
+}
+
+fn claim_set_with_all_standalone_transaction_claims_bytes() -> Vec<u8> {
+    let claims = all_standalone_transaction_claims()
+        .into_iter()
+        .map(|claim_id| {
+            json!({
+                "claim_id": claim_id,
+                "status": "verified",
+                "required_evidence": ["transaction-passport.json", "evidence-graph.json", "verifier-policy.json"],
+                "evidence_refs": ["transaction-passport.json", "evidence-graph.json", "verifier-policy.json"],
+                "verifier_module": "chio-transaction-passport::minimal"
+            })
+        })
+        .collect::<Vec<_>>();
+    serde_json::to_vec(&json!({
+        "schema": "chio.transaction.claim-set.v1",
+        "id": "claim-set-all-standalone-claims",
+        "issued_at": "2026-06-10T00:00:00Z",
+        "claims": claims
+    }))
+    .test_expect("claim set serializes")
+}
+
+fn verifier_policy_with_risk_claim_bytes() -> Vec<u8> {
+    br#"{"schema":"chio.transaction.verifier-policy.v1","id":"verifier-policy-with-risk","issued_at":"2026-06-10T00:00:00Z","required_claims":["claim.transaction.passport_root_verified","claim.risk.comptroller_report_bound"],"omitted_claims":[]}"#.to_vec()
+}
+
+fn claim_set_with_risk_claim_bytes() -> Vec<u8> {
+    br#"{"schema":"chio.transaction.claim-set.v1","id":"claim-set-with-risk","issued_at":"2026-06-10T00:00:00Z","claims":[{"claim_id":"claim.transaction.passport_root_verified","status":"verified","required_evidence":["transaction-passport.json","evidence-graph.json","verifier-policy.json"],"evidence_refs":["transaction-passport.json","evidence-graph.json","verifier-policy.json"],"verifier_module":"chio-transaction-passport::minimal"},{"claim_id":"claim.risk.comptroller_report_bound","status":"verified","required_evidence":["risk-comptroller-report.json"],"evidence_refs":["risk-comptroller-report.json"],"verifier_module":"chio-risk-comptroller"}]}"#.to_vec()
+}
+
+fn verifier_policy_with_omission_bytes() -> Vec<u8> {
+    br#"{"schema":"chio.transaction.verifier-policy.v1","id":"verifier-policy-with-omission","issued_at":"2026-06-10T00:00:00Z","required_claims":["claim.transaction.passport_root_verified"],"omitted_claims":["claim.transaction.settlement_finality_verified"]}"#.to_vec()
+}
+
+#[derive(Clone, Copy)]
+enum GovernedActionDigestBinding {
+    DeclaredDigest,
+    ArtifactWrapperDigest,
+}
+
 fn governed_action_artifacts() -> BTreeMap<String, Vec<u8>> {
+    governed_action_artifacts_with_digest_binding(GovernedActionDigestBinding::DeclaredDigest)
+}
+
+fn governed_action_artifacts_bound_to_wrapper_digest() -> BTreeMap<String, Vec<u8>> {
+    governed_action_artifacts_with_digest_binding(
+        GovernedActionDigestBinding::ArtifactWrapperDigest,
+    )
+}
+
+fn governed_action_artifacts_with_digest_binding(
+    digest_binding: GovernedActionDigestBinding,
+) -> BTreeMap<String, Vec<u8>> {
     let capability_key = Keypair::from_seed(&[51u8; 32]);
     let guard_key = Keypair::from_seed(&[52u8; 32]);
     let receipt_key = Keypair::from_seed(&[53u8; 32]);
@@ -223,10 +532,30 @@ fn governed_action_artifacts() -> BTreeMap<String, Vec<u8>> {
     let trust_root_authority = format!("did:chio:{}", trust_root_key.public_key().to_hex());
     let policy_bytes = br#"{"schema":"chio.policy.bundle.v1","id":"policy","version":"2026-06-10","rules":[{"id":"allow-demo-echo","effect":"allow","scope":"tool:demo.echo"}]}"#.to_vec();
     let policy_digest = sha256_hex(&policy_bytes);
-    let request_bytes = br#"{"schema":"chio.request.digest.v1","id":"request-digest","method":"demo.echo","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#.to_vec();
-    let request_digest = sha256_hex(&request_bytes);
-    let response_bytes = br#"{"schema":"chio.response.digest.v1","id":"response-digest","method":"demo.echo","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}"#.to_vec();
-    let response_digest = sha256_hex(&response_bytes);
+    let request_declared_digest = "a".repeat(64);
+    let request_bytes = serde_json::to_vec(&json!({
+        "schema": "chio.request.digest.v1",
+        "id": "request-digest",
+        "method": "demo.echo",
+        "sha256": request_declared_digest
+    }))
+    .test_expect("request digest artifact serializes");
+    let response_declared_digest = "b".repeat(64);
+    let response_bytes = serde_json::to_vec(&json!({
+        "schema": "chio.response.digest.v1",
+        "id": "response-digest",
+        "method": "demo.echo",
+        "sha256": response_declared_digest
+    }))
+    .test_expect("response digest artifact serializes");
+    let request_digest = match digest_binding {
+        GovernedActionDigestBinding::DeclaredDigest => request_declared_digest,
+        GovernedActionDigestBinding::ArtifactWrapperDigest => sha256_hex(&request_bytes),
+    };
+    let response_digest = match digest_binding {
+        GovernedActionDigestBinding::DeclaredDigest => response_declared_digest,
+        GovernedActionDigestBinding::ArtifactWrapperDigest => sha256_hex(&response_bytes),
+    };
     let capability_bytes = signed_json_bytes(
         json!({
             "schema": "chio.capability.proof.v1",
@@ -272,7 +601,11 @@ fn governed_action_artifacts() -> BTreeMap<String, Vec<u8>> {
             "id": "trust-root",
             "root_id": "trust-root-first-run",
             "authority": trust_root_authority,
-            "roots": [{"subject": capability_issuer}]
+            "roots": [
+                {"subject": capability_issuer},
+                {"subject": guard_key.public_key().to_hex()},
+                {"subject": receipt_key.public_key().to_hex()}
+            ]
         }),
         &trust_root_key,
     );
@@ -287,6 +620,10 @@ fn governed_action_artifacts() -> BTreeMap<String, Vec<u8>> {
         (
             "verifier-policy.json".to_string(),
             valid_verifier_policy_bytes().to_vec(),
+        ),
+        (
+            "claim-set.json".to_string(),
+            valid_claim_set_bytes().to_vec(),
         ),
     ])
 }
@@ -368,6 +705,13 @@ fn governed_action_evidence_graph_bytes_with_verifier_policy_path(
                 "role": "trust-root"
             },
             {
+                "id": "claim-set",
+                "schema": "chio.transaction.claim-set.v1",
+                "path": "claim-set.json",
+                "sha256": digest("claim-set.json"),
+                "role": "claim-set"
+            },
+            {
                 "id": "verifier-policy",
                 "schema": "chio.transaction.verifier-policy.v1",
                 "path": verifier_policy_path,
@@ -413,6 +757,12 @@ fn governed_action_evidence_graph_bytes_with_verifier_policy_path(
                 "evidence_class": "digest-bound-reference"
             },
             {
+                "from": "claim-set",
+                "to": "verifier-policy",
+                "predicate": "binds",
+                "evidence_class": "digest-bound-reference"
+            },
+            {
                 "from": "verifier-policy",
                 "to": "kernel-receipt",
                 "predicate": "binds",
@@ -448,12 +798,152 @@ fn passport_for_artifact_bytes(
     passport
 }
 
+fn standalone_passport_for_artifact_bytes(
+    evidence_graph_bytes: &[u8],
+    verifier_policy_bytes: &[u8],
+) -> chio_transaction_passport::TransactionPassport {
+    let keypair = Keypair::from_seed(&[54u8; 32]);
+    let mut passport = passport_for_artifact_bytes(evidence_graph_bytes, verifier_policy_bytes);
+    passport.issuer = format!("did:chio:{}", keypair.public_key().to_hex());
+    passport.signature = chio_transaction_passport::sign_transaction_passport(&passport, &keypair)
+        .test_expect("standalone transaction passport signs with pinned root");
+    passport
+}
+
 #[test]
 fn transaction_passport_accepts_minimal_schema_shape() {
     let passport = valid_minimal_passport();
 
     chio_transaction_passport::verify_minimal_passport_schema(&passport)
         .test_expect("valid minimal passport shape should pass");
+}
+
+#[test]
+fn transaction_passport_rejects_expired_validity_window() {
+    let passport: chio_transaction_passport::TransactionPassport = serde_json::from_value(json!({
+        "schema": "chio.transaction-passport.v1",
+        "id": "passport-minimal-valid",
+        "issued_at": "2026-06-10T00:00:00Z",
+        "not_before": "2026-06-10T00:00:00Z",
+        "expires_at": "2026-06-11T00:00:00Z",
+        "issuer": format!("did:chio:{}", Keypair::from_seed(&[7u8; 32]).public_key().to_hex()),
+        "evidence_graph_sha256": "0".repeat(64),
+        "evidence_graph_path": "evidence-graph.json",
+        "claim_set_sha256": sha256_hex(valid_claim_set_bytes()),
+        "claim_set_path": "claim-set.json",
+        "verifier_policy_sha256": "1".repeat(64),
+        "verifier_policy_path": "verifier-policy.json",
+        "signature": "00".repeat(64)
+    }))
+    .test_expect("passport with optional validity window parses");
+
+    let now = chrono::DateTime::parse_from_rfc3339("2026-06-12T00:00:00Z")
+        .test_expect("now timestamp parses")
+        .with_timezone(&chrono::Utc);
+    let error = chio_transaction_passport::verify_minimal_passport_schema_at(&passport, now)
+        .test_expect_err("expired passport must fail closed");
+
+    assert!(error.to_string().contains("transaction passport expired"));
+}
+
+#[test]
+fn transaction_passport_rejects_unsigned_root_json() {
+    let unsigned_passport = json!({
+        "schema": "chio.transaction-passport.v1",
+        "id": "passport-minimal-valid",
+        "issued_at": "2026-06-10T00:00:00Z",
+        "evidence_graph_sha256": "0".repeat(64),
+        "evidence_graph_path": "evidence-graph.json",
+        "verifier_policy_sha256": "1".repeat(64),
+        "verifier_policy_path": "verifier-policy.json"
+    });
+
+    let error = match serde_json::from_value::<chio_transaction_passport::TransactionPassport>(
+        unsigned_passport,
+    ) {
+        Ok(passport) => panic!("unsigned transaction passport parsed unexpectedly: {passport:#?}"),
+        Err(error) => error,
+    };
+
+    assert!(
+        error.to_string().contains("missing field `issuer`")
+            || error.to_string().contains("missing field `signature`")
+    );
+}
+
+#[test]
+fn transaction_passport_rejects_root_without_claim_set_binding() {
+    let unbound_passport = json!({
+        "schema": "chio.transaction-passport.v1",
+        "id": "passport-minimal-valid",
+        "issued_at": "2026-06-10T00:00:00Z",
+        "issuer": format!("did:chio:{}", Keypair::from_seed(&[7u8; 32]).public_key().to_hex()),
+        "evidence_graph_sha256": "0".repeat(64),
+        "evidence_graph_path": "evidence-graph.json",
+        "verifier_policy_sha256": "1".repeat(64),
+        "verifier_policy_path": "verifier-policy.json",
+        "signature": "00".repeat(64)
+    });
+
+    let error = match serde_json::from_value::<chio_transaction_passport::TransactionPassport>(
+        unbound_passport,
+    ) {
+        Ok(passport) => {
+            panic!("transaction passport without claim set parsed unexpectedly: {passport:#?}")
+        }
+        Err(error) => error,
+    };
+
+    assert!(error
+        .to_string()
+        .contains("missing field `claim_set_sha256`"));
+}
+
+#[test]
+fn transaction_passport_accepts_signed_root() -> Result<(), Box<dyn std::error::Error>> {
+    let keypair = Keypair::from_seed(&[7u8; 32]);
+    let passport = signed_minimal_passport(&keypair)?;
+
+    chio_transaction_passport::verify_transaction_passport_signature(
+        &passport,
+        &[keypair.public_key()],
+    )?;
+
+    Ok(())
+}
+
+#[test]
+fn transaction_passport_rejects_tampered_signed_root() -> Result<(), Box<dyn std::error::Error>> {
+    let keypair = Keypair::from_seed(&[7u8; 32]);
+    let mut passport = signed_minimal_passport(&keypair)?;
+    passport.evidence_graph_sha256 = "f".repeat(64);
+
+    let error = chio_transaction_passport::verify_transaction_passport_signature(
+        &passport,
+        &[keypair.public_key()],
+    )
+    .test_expect_err("tampered passport root must fail");
+    assert!(error
+        .to_string()
+        .contains("transaction passport signature invalid"));
+    Ok(())
+}
+
+#[test]
+fn transaction_passport_rejects_untrusted_signed_root() -> Result<(), Box<dyn std::error::Error>> {
+    let keypair = Keypair::from_seed(&[7u8; 32]);
+    let untrusted_keypair = Keypair::from_seed(&[8u8; 32]);
+    let passport = signed_minimal_passport(&keypair)?;
+
+    let error = chio_transaction_passport::verify_transaction_passport_signature(
+        &passport,
+        &[untrusted_keypair.public_key()],
+    )
+    .test_expect_err("passport signed by untrusted key must fail");
+    assert!(error
+        .to_string()
+        .contains("transaction passport signer is not trusted"));
+    Ok(())
 }
 
 #[test]
@@ -564,6 +1054,54 @@ fn transaction_passport_rejects_unresolved_evidence_graph_edge_refs() {
 }
 
 #[test]
+fn transaction_passport_rejects_cyclic_evidence_graph() {
+    let evidence_graph_bytes = br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-cycle","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"verifier-policy","schema":"chio.transaction.verifier-policy.v1","path":"verifier-policy.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"verifier-policy"},{"id":"receipt","schema":"chio.receipt.v1","path":"receipt.json","sha256":"2222222222222222222222222222222222222222222222222222222222222222","role":"receipt"}],"edges":[{"from":"verifier-policy","to":"receipt","predicate":"binds","evidence_class":"digest-bound-reference"},{"from":"receipt","to":"verifier-policy","predicate":"binds","evidence_class":"digest-bound-reference"}]}"#;
+
+    let error = passport_error_for_evidence_graph(evidence_graph_bytes);
+
+    assert!(error.to_string().contains("cyclic evidence graph"));
+}
+
+#[test]
+fn transaction_evidence_graph_rejects_advisory_authority_predicates() {
+    for predicate in ["authorizes", "executes", "leases", "attenuates", "settles"] {
+        let evidence_graph_bytes = format!(
+            r#"{{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-advisory-{predicate}","issued_at":"2026-06-10T00:00:00Z","nodes":[{{"id":"capability","schema":"chio.capability.proof.v1","path":"capability.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"capability"}},{{"id":"receipt","schema":"chio.receipt.v1","path":"receipt.json","sha256":"2222222222222222222222222222222222222222222222222222222222222222","role":"receipt"}}],"edges":[{{"from":"capability","to":"receipt","predicate":"{predicate}","evidence_class":"advisory-observation"}}]}}"#
+        );
+
+        let error = chio_transaction_passport::validate_transaction_evidence_graph(
+            evidence_graph_bytes.as_bytes(),
+        )
+        .test_expect_err("public evidence graph validator must reject advisory authority edges");
+
+        assert!(
+            error
+                .to_string()
+                .contains("advisory evidence cannot satisfy authority edge"),
+            "{predicate}: {error}"
+        );
+    }
+}
+
+#[test]
+fn transaction_evidence_graph_rejects_advisory_authority_endpoint() {
+    let evidence_graph_bytes = br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-advisory-node","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"advisory","schema":"chio.external.observation.v1","path":"advisory.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"advisory-observation"},{"id":"receipt","schema":"chio.receipt.v1","path":"receipt.json","sha256":"2222222222222222222222222222222222222222222222222222222222222222","role":"receipt"}],"edges":[{"from":"advisory","to":"receipt","predicate":"authorizes","evidence_class":"digest-bound-reference"}]}"#;
+
+    let error =
+        chio_transaction_passport::validate_transaction_evidence_graph(evidence_graph_bytes)
+            .test_expect_err(
+                "public evidence graph validator must reject advisory authority nodes",
+            );
+
+    assert!(
+        error
+            .to_string()
+            .contains("advisory evidence cannot satisfy authority edge"),
+        "{error}"
+    );
+}
+
+#[test]
 fn transaction_passport_rejects_wrong_verifier_policy_schema() {
     let evidence_graph_bytes = valid_evidence_graph_bytes();
     let verifier_policy_bytes =
@@ -587,7 +1125,8 @@ fn transaction_passport_rejects_wrong_verifier_policy_schema() {
 fn standalone_minimal_passport_rejects_missing_governed_action_evidence() {
     let evidence_graph_bytes = valid_evidence_graph_bytes();
     let verifier_policy_bytes = valid_verifier_policy_bytes();
-    let passport = passport_for_artifact_bytes(evidence_graph_bytes, verifier_policy_bytes);
+    let passport =
+        standalone_passport_for_artifact_bytes(evidence_graph_bytes, verifier_policy_bytes);
 
     let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
         &passport,
@@ -609,9 +1148,10 @@ fn standalone_minimal_passport_accepts_governed_action_evidence() {
     let artifacts = governed_action_artifacts();
     let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
     let verifier_policy_bytes = valid_verifier_policy_bytes();
-    let passport = passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
 
-    chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+    let report = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
         &passport,
         "transaction-passport.json".to_string(),
         &evidence_graph_bytes,
@@ -620,6 +1160,287 @@ fn standalone_minimal_passport_accepts_governed_action_evidence() {
         &governed_action_trusted_root_keys(),
     )
     .test_expect("standalone minimal passport should accept governed action evidence");
+
+    assert!(report.accepted);
+    assert_eq!(report.state, "verified");
+    assert_eq!(report.failure_code, None);
+    assert_eq!(
+        report.verified_claims,
+        vec!["claim.transaction.passport_root_verified".to_string()]
+    );
+    assert_eq!(report.claim_results.len(), 1);
+    assert_eq!(
+        report.claim_results[0].claim_id,
+        "claim.transaction.passport_root_verified"
+    );
+    assert_eq!(report.claim_results[0].status, "verified");
+}
+
+#[test]
+fn standalone_minimal_passport_emits_all_registered_transaction_claims() {
+    let mut artifacts = governed_action_artifacts();
+    let verifier_policy_bytes = verifier_policy_with_all_standalone_transaction_claims_bytes();
+    artifacts.insert(
+        "verifier-policy.json".to_string(),
+        verifier_policy_bytes.clone(),
+    );
+    let claim_set_bytes = claim_set_with_all_standalone_transaction_claims_bytes();
+    artifacts.insert("claim-set.json".to_string(), claim_set_bytes.clone());
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let mut passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
+    passport.claim_set_sha256 = sha256_hex(&claim_set_bytes);
+    passport.signature = chio_transaction_passport::sign_transaction_passport(
+        &passport,
+        &Keypair::from_seed(&[54u8; 32]),
+    )
+    .test_expect("standalone transaction passport resigns");
+
+    let report = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect("standalone verifier should emit all registered transaction claims");
+
+    for claim in all_standalone_transaction_claims() {
+        assert!(
+            report.verified_claims.contains(&claim.to_string()),
+            "missing verified claim {claim}"
+        );
+    }
+    assert_eq!(
+        report.claim_results.len(),
+        all_standalone_transaction_claims().len()
+    );
+}
+
+#[test]
+fn root_claim_set_rejects_required_risk_claim_without_external_verifier() {
+    let mut artifacts = governed_action_artifacts();
+    let verifier_policy_bytes = verifier_policy_with_risk_claim_bytes();
+    artifacts.insert(
+        "verifier-policy.json".to_string(),
+        verifier_policy_bytes.clone(),
+    );
+    let claim_set_bytes = claim_set_with_risk_claim_bytes();
+    let claim_set_sha256 = sha256_hex(&claim_set_bytes);
+    artifacts.insert("claim-set.json".to_string(), claim_set_bytes);
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let mut passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
+    passport.claim_set_sha256 = claim_set_sha256;
+    passport.signature = chio_transaction_passport::sign_transaction_passport(
+        &passport,
+        &Keypair::from_seed(&[54u8; 32]),
+    )
+    .test_expect("standalone transaction passport re-signs with risk claim set");
+
+    let error = chio_transaction_passport::verify_passport_root_and_claim_set_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect_err("risk claims must not be satisfied by claim-set self-report alone");
+
+    assert!(
+        error
+            .to_string()
+            .contains("required risk claim not verified by comptroller"),
+        "{error}"
+    );
+}
+
+#[test]
+fn root_claim_set_accepts_required_risk_claim_after_external_verifier() {
+    let mut artifacts = governed_action_artifacts();
+    let verifier_policy_bytes = verifier_policy_with_risk_claim_bytes();
+    artifacts.insert(
+        "verifier-policy.json".to_string(),
+        verifier_policy_bytes.clone(),
+    );
+    let claim_set_bytes = claim_set_with_risk_claim_bytes();
+    let claim_set_sha256 = sha256_hex(&claim_set_bytes);
+    artifacts.insert("claim-set.json".to_string(), claim_set_bytes);
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let mut passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
+    passport.claim_set_sha256 = claim_set_sha256;
+    passport.signature = chio_transaction_passport::sign_transaction_passport(
+        &passport,
+        &Keypair::from_seed(&[54u8; 32]),
+    )
+    .test_expect("standalone transaction passport re-signs with risk claim set");
+    let verified_claims = vec!["claim.risk.comptroller_report_bound".to_string()];
+
+    let report =
+        chio_transaction_passport::verify_passport_root_and_claim_set_artifacts_with_external_claims(
+            &passport,
+            "transaction-passport.json".to_string(),
+            &evidence_graph_bytes,
+            &verifier_policy_bytes,
+            &artifacts,
+            &governed_action_trusted_root_keys(),
+            &verified_claims,
+        )
+        .test_expect("risk claim should pass after comptroller verification");
+
+    assert!(report.accepted);
+    assert!(report
+        .verified_claims
+        .contains(&"claim.risk.comptroller_report_bound".to_string()));
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_unsigned_omission_policy() {
+    let mut artifacts = governed_action_artifacts();
+    let verifier_policy_bytes = verifier_policy_with_omission_bytes();
+    artifacts.insert(
+        "verifier-policy.json".to_string(),
+        verifier_policy_bytes.clone(),
+    );
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
+
+    let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect_err("omitted policy claims must be signed into the passport");
+
+    assert!(error
+        .to_string()
+        .contains("passport omission policy missing claim"));
+}
+
+#[test]
+fn standalone_minimal_passport_accepts_signed_omission_policy() {
+    let mut artifacts = governed_action_artifacts();
+    let verifier_policy_bytes = verifier_policy_with_omission_bytes();
+    artifacts.insert(
+        "verifier-policy.json".to_string(),
+        verifier_policy_bytes.clone(),
+    );
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let mut passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
+    passport.omission_policy = vec![chio_transaction_passport::TransactionOmissionPolicyEntry {
+        claim_id: "claim.transaction.settlement_finality_verified".to_string(),
+        status: "omitted_not_applicable".to_string(),
+        reason: "offline minimal fixture has no settlement leg".to_string(),
+    }];
+    let keypair = Keypair::from_seed(&[54u8; 32]);
+    passport.signature = chio_transaction_passport::sign_transaction_passport(&passport, &keypair)
+        .test_expect("passport signs with omission policy");
+
+    let report = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect("signed omission policy should satisfy omitted claims");
+
+    assert!(report.accepted);
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_tampered_signed_omission_policy() {
+    let mut artifacts = governed_action_artifacts();
+    let verifier_policy_bytes = verifier_policy_with_omission_bytes();
+    artifacts.insert(
+        "verifier-policy.json".to_string(),
+        verifier_policy_bytes.clone(),
+    );
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let mut passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
+    passport.omission_policy = vec![chio_transaction_passport::TransactionOmissionPolicyEntry {
+        claim_id: "claim.transaction.settlement_finality_verified".to_string(),
+        status: "omitted_not_applicable".to_string(),
+        reason: "offline minimal fixture has no settlement leg".to_string(),
+    }];
+    let keypair = Keypair::from_seed(&[54u8; 32]);
+    passport.signature = chio_transaction_passport::sign_transaction_passport(&passport, &keypair)
+        .test_expect("passport signs with omission policy");
+    passport.omission_policy[0].status = "omitted_no_join_path".to_string();
+
+    let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect_err("tampered omission policy must break the passport signature");
+
+    assert!(error
+        .to_string()
+        .contains("transaction passport signature invalid"));
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_tampered_passport_signature() {
+    let artifacts = governed_action_artifacts();
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let verifier_policy_bytes = valid_verifier_policy_bytes();
+    let mut passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+    passport.signature = "00".repeat(64);
+
+    let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect_err("standalone minimal passport must verify the signed root");
+
+    assert!(error
+        .to_string()
+        .contains("transaction passport signature invalid"));
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_request_response_wrapper_digest_binding() {
+    let artifacts = governed_action_artifacts_bound_to_wrapper_digest();
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let verifier_policy_bytes = valid_verifier_policy_bytes();
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+
+    let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect_err("request and response bindings must use declared payload digests");
+
+    assert!(
+        error
+            .to_string()
+            .contains("receipt request digest mismatch"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -627,7 +1448,8 @@ fn standalone_minimal_passport_rejects_unpinned_trust_root_signer() {
     let artifacts = governed_action_artifacts();
     let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
     let verifier_policy_bytes = valid_verifier_policy_bytes();
-    let passport = passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
 
     let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
         &passport,
@@ -669,7 +1491,8 @@ fn standalone_minimal_passport_rejects_forged_governed_action_signatures() {
         );
         let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
         let verifier_policy_bytes = valid_verifier_policy_bytes();
-        let passport = passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+        let passport =
+            standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
 
         let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
             &passport,
@@ -689,6 +1512,94 @@ fn standalone_minimal_passport_rejects_forged_governed_action_signatures() {
 }
 
 #[test]
+fn standalone_minimal_passport_rejects_self_declared_guard_and_kernel_keys() {
+    for (artifact_path, key_field, key_seed, expected_error) in [
+        (
+            "guard-decision.json",
+            "guard_key",
+            91_u8,
+            "guard decision signer is not authorized",
+        ),
+        (
+            "kernel-receipt.json",
+            "kernel_key",
+            92_u8,
+            "receipt signer is not authorized",
+        ),
+    ] {
+        let mut artifacts = governed_action_artifacts();
+        replace_signed_artifact_key(
+            &mut artifacts,
+            artifact_path,
+            key_field,
+            &Keypair::from_seed(&[key_seed; 32]),
+        );
+        let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+        let verifier_policy_bytes = valid_verifier_policy_bytes();
+        let passport =
+            standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+
+        let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+            &passport,
+            "transaction-passport.json".to_string(),
+            &evidence_graph_bytes,
+            verifier_policy_bytes,
+            &artifacts,
+            &governed_action_trusted_root_keys(),
+        )
+        .test_expect_err("standalone minimal passport must reject self-declared signer keys");
+
+        assert!(
+            error.to_string().contains(expected_error),
+            "{artifact_path} should fail with {expected_error}, got {error}"
+        );
+    }
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_advisory_authority_edge() {
+    let artifacts = governed_action_artifacts();
+    let mut evidence_graph: Value =
+        serde_json::from_slice(&governed_action_evidence_graph_bytes(&artifacts))
+            .test_expect("governed action evidence graph parses");
+    let edges = evidence_graph["edges"]
+        .as_array_mut()
+        .test_expect("governed action evidence graph has edges");
+    let authorizing_edge = edges
+        .iter_mut()
+        .find(|edge| {
+            edge["from"] == "capability-proof"
+                && edge["to"] == "kernel-receipt"
+                && edge["predicate"] == "authorizes"
+        })
+        .test_expect("capability authorizes receipt edge exists");
+    authorizing_edge["evidence_class"] = Value::String("advisory-observation".to_string());
+
+    let evidence_graph_bytes =
+        serde_json::to_vec(&evidence_graph).test_expect("evidence graph serializes");
+    let verifier_policy_bytes = valid_verifier_policy_bytes();
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+
+    let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect_err("standalone minimal passport must reject advisory authority evidence");
+
+    assert!(
+        error
+            .to_string()
+            .contains("advisory evidence cannot satisfy authority edge"),
+        "{error}"
+    );
+}
+
+#[test]
 fn standalone_minimal_passport_rejects_unregistered_transaction_claim() {
     let mut artifacts = governed_action_artifacts();
     let verifier_policy_bytes = br#"{"schema":"chio.transaction.verifier-policy.v1","id":"verifier-policy-minimal-invalid-claim","issued_at":"2026-06-10T00:00:00Z","required_claims":["claim.transaction.not_real"],"omitted_claims":[]}"#.to_vec();
@@ -697,7 +1608,8 @@ fn standalone_minimal_passport_rejects_unregistered_transaction_claim() {
         verifier_policy_bytes.clone(),
     );
     let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
-    let passport = passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
 
     let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
         &passport,
@@ -723,7 +1635,8 @@ fn standalone_minimal_passport_rejects_governed_action_mismatch() {
     );
     let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
     let verifier_policy_bytes = valid_verifier_policy_bytes();
-    let passport = passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
 
     let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
         &passport,
@@ -756,7 +1669,8 @@ fn standalone_minimal_passport_rejects_stale_capability_proof() {
     );
     let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
     let verifier_policy_bytes = valid_verifier_policy_bytes();
-    let passport = passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
 
     let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
         &passport,
@@ -789,7 +1703,8 @@ fn standalone_minimal_passport_rejects_future_capability_not_before() {
     );
     let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
     let verifier_policy_bytes = valid_verifier_policy_bytes();
-    let passport = passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
 
     let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
         &passport,
@@ -819,7 +1734,8 @@ fn standalone_minimal_passport_accepts_packaged_verifier_policy_node_path() {
         &artifacts,
         "roots/verifier-policy.json",
     );
-    let passport = passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
 
     chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
         &passport,
@@ -837,7 +1753,7 @@ fn runtime_receipt_totality_rejects_graph_receipt_without_artifact() {
     let mut bundle = load_runtime_security_fixture("terminal-denial");
     add_unavailable_runtime_receipt_node(&mut bundle);
 
-    let error = chio_transaction_passport::verify_runtime_security_claims(&bundle)
+    let error = verify_runtime_security_fixture(&bundle)
         .test_expect_err("graph-listed terminal receipt must have artifact bytes");
     let error = error.to_string();
 
@@ -848,8 +1764,54 @@ fn runtime_receipt_totality_rejects_graph_receipt_without_artifact() {
 }
 
 #[test]
+fn runtime_receipt_totality_rejects_unsigned_terminal_receipt() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    update_runtime_policy_required_claims(
+        &mut bundle,
+        vec!["claim.runtime.receipt_totality_complete"],
+    );
+    let policy_digest = bundle.passport.verifier_policy_sha256.clone();
+    update_runtime_artifact(&mut bundle, "allow-receipt.json", |receipt| {
+        receipt["policy_digest"] = Value::String(policy_digest);
+        receipt["terminal_status"] = Value::String("denied_guard_request".to_string());
+        receipt
+            .as_object_mut()
+            .test_expect("terminal receipt is object")
+            .remove("execution_lease_ref");
+        receipt
+            .as_object_mut()
+            .test_expect("terminal receipt is object")
+            .remove("kernel_key");
+        receipt
+            .as_object_mut()
+            .test_expect("terminal receipt is object")
+            .remove("signature");
+    });
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("unsigned terminal receipt must fail closed");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("terminal receipt kernel_key must not be empty")
+            || error.contains("missing field `kernel_key`"),
+        "{error}"
+    );
+}
+
+#[test]
 fn runtime_security_rejects_advisory_authorization_by_node_role() {
     let mut bundle = load_runtime_security_fixture("advisory-used-as-authorization");
+    let advisory_bytes = serde_json::to_vec(&json!({
+        "schema": "chio.runtime.observation.v1",
+        "id": "external-advisory-observation"
+    }))
+    .test_expect("advisory observation serializes");
+    let advisory_digest = sha256_hex(&advisory_bytes);
+    bundle
+        .artifacts
+        .insert("advisory-observation.json".to_string(), advisory_bytes);
+    update_runtime_graph_node_digest(&mut bundle, "advisory-observation.json", &advisory_digest);
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("runtime graph parses");
     let edges = graph["edges"]
@@ -862,7 +1824,7 @@ fn runtime_security_rejects_advisory_authorization_by_node_role() {
     advisory_edge["evidence_class"] = Value::String("digest-bound-reference".to_string());
     rebind_runtime_graph(&mut bundle, graph);
 
-    let error = chio_transaction_passport::verify_runtime_security_claims(&bundle)
+    let error = verify_runtime_security_fixture(&bundle)
         .test_expect_err("advisory node role must not authorize runtime execution");
     let error = error.to_string();
 
@@ -870,6 +1832,52 @@ fn runtime_security_rejects_advisory_authorization_by_node_role() {
         error.contains("advisory evidence cannot authorize runtime execution"),
         "{error}"
     );
+}
+
+#[test]
+fn runtime_security_rejects_advisory_runtime_authority_edge_predicates() {
+    for predicate in ["leases", "attenuates", "settles"] {
+        let mut bundle = load_runtime_security_fixture("advisory-used-as-authorization");
+        update_runtime_policy_required_claims(
+            &mut bundle,
+            vec!["claim.runtime.advisory_not_used_as_authorization"],
+        );
+        let advisory_bytes = serde_json::to_vec(&json!({
+            "schema": "chio.runtime.observation.v1",
+            "id": "external-advisory-observation"
+        }))
+        .test_expect("advisory observation serializes");
+        let advisory_digest = sha256_hex(&advisory_bytes);
+        bundle
+            .artifacts
+            .insert("advisory-observation.json".to_string(), advisory_bytes);
+        update_runtime_graph_node_digest(
+            &mut bundle,
+            "advisory-observation.json",
+            &advisory_digest,
+        );
+        let mut graph: Value = serde_json::from_slice(&bundle.evidence_graph_bytes)
+            .test_expect("runtime graph parses");
+        let edges = graph["edges"]
+            .as_array_mut()
+            .test_expect("runtime graph has edges");
+        let advisory_edge = edges
+            .iter_mut()
+            .find(|edge| edge["from"] == "external-advisory-observation")
+            .test_expect("advisory edge exists");
+        advisory_edge["predicate"] = Value::String(predicate.to_string());
+        advisory_edge["evidence_class"] = Value::String("digest-bound-reference".to_string());
+        rebind_runtime_graph(&mut bundle, graph);
+
+        let error = verify_runtime_security_fixture(&bundle)
+            .test_expect_err("advisory edge must not satisfy runtime authority");
+        let error = error.to_string();
+
+        assert!(
+            error.contains("advisory evidence cannot authorize runtime execution"),
+            "{predicate}: {error}"
+        );
+    }
 }
 
 #[test]
@@ -883,9 +1891,10 @@ fn runtime_online_checks_run_for_tool_ack_requirement() {
     });
     update_runtime_artifact(&mut bundle, "allow-receipt.json", |receipt| {
         receipt["policy_digest"] = Value::String(policy_digest);
+        sign_runtime_terminal_receipt_with_fixture_kernel(receipt);
     });
 
-    let report = chio_transaction_passport::verify_runtime_security_claims(&bundle)
+    let report = verify_runtime_security_fixture(&bundle)
         .test_expect("tool ack claim should run the online runtime verifier");
 
     assert!(report
@@ -894,12 +1903,73 @@ fn runtime_online_checks_run_for_tool_ack_requirement() {
 }
 
 #[test]
+fn runtime_security_rejects_tampered_transaction_passport_signature() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    bundle.passport.signature = "00".repeat(64);
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("tampered transaction passport signature must fail");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("transaction passport signature invalid"),
+        "{error}"
+    );
+}
+
+#[test]
+fn runtime_security_rejects_missing_claim_set_artifact() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    bundle.artifacts.remove("claim-set.json");
+
+    let error =
+        verify_runtime_security_fixture(&bundle).test_expect_err("missing claim set must fail");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("missing evidence graph artifact: claim-set.json")
+            || error.contains("missing runtime artifact: claim-set.json"),
+        "{error}"
+    );
+}
+
+#[test]
+fn runtime_security_rejects_self_supplied_runtime_trust_root() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    let attacker_key = Keypair::from_seed(&[91u8; 32]);
+    let attacker_identity = format!("did:chio:{}", attacker_key.public_key().to_hex());
+
+    update_runtime_artifact(&mut bundle, "execution-lease.json", |lease| {
+        lease["issuer"] = Value::String(attacker_identity.clone());
+        lease["signature"] = Value::String(sign_runtime_execution_lease(lease, &attacker_key));
+    });
+    update_runtime_artifact(&mut bundle, "trust-root.json", |trust_root| {
+        trust_root["authority"] = Value::String(attacker_identity);
+        trust_root["signature"] = Value::String(sign_runtime_trust_root(trust_root, &attacker_key));
+    });
+
+    let error = chio_transaction_passport::verify_runtime_security_claims_with_trust(
+        &bundle,
+        &chio_transaction_passport::RuntimeSecurityTrust {
+            trusted_passport_signer_keys: transaction_trusted_root_keys(),
+            trusted_root_signer_keys: runtime_trusted_root_keys(),
+        },
+    )
+    .test_expect_err("self-supplied runtime trust root must fail");
+
+    assert!(error
+        .to_string()
+        .contains("runtime trust root signer is not trusted"));
+}
+
+#[test]
 fn standalone_minimal_passport_rejects_missing_governed_action_artifacts() {
     let mut artifacts = governed_action_artifacts();
     let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
     artifacts.remove("kernel-receipt.json");
     let verifier_policy_bytes = valid_verifier_policy_bytes();
-    let passport = passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
 
     let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
         &passport,
@@ -925,7 +1995,8 @@ fn standalone_minimal_passport_rejects_detached_verifier_policy_node() {
     );
     let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
     let verifier_policy_bytes = valid_verifier_policy_bytes();
-    let passport = passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
 
     let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
         &passport,

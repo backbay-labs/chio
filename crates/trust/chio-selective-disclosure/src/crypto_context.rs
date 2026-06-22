@@ -53,6 +53,7 @@ pub fn verify_selective_disclosure_with_context(
         id: format!("disclosure-crypto-context-report-{}", context.context_id),
         context_id: context.context_id.clone(),
         artifact_ref: context.artifact_ref.clone(),
+        projection_manifest_ref: proof.projection_version.clone(),
         verdict,
         evidence_class: "verifier_context".to_string(),
         cryptographic_proof_verified: true,

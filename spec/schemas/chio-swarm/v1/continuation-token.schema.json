@@ -14,11 +14,14 @@
     "routePlanReceiptId",
     "budgetAllocationId",
     "revocationEpochRef",
+    "revocationEpochRootHash",
     "sessionAnchorRef",
     "nonce",
     "mode",
     "issuedAtUnixMs",
-    "expiresAtUnixMs"
+    "expiresAtUnixMs",
+    "issuer",
+    "signature"
   ],
   "properties": {
     "schema": {
@@ -66,6 +69,9 @@
       "type": "string",
       "minLength": 1
     },
+    "revocationEpochRootHash": {
+      "$ref": "#/$defs/digest"
+    },
     "sessionAnchorRef": {
       "type": "string",
       "minLength": 1
@@ -87,6 +93,14 @@
     "expiresAtUnixMs": {
       "type": "integer",
       "minimum": 0
+    },
+    "issuer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
     }
   },
   "$defs": {

@@ -3,10 +3,12 @@ use std::{collections::BTreeMap, fs, io::Write, path::Path};
 
 const TRANSACTION_PASSPORT_SCHEMA: &str = "chio.transaction-passport.v1";
 const TRANSACTION_EVIDENCE_GRAPH_SCHEMA: &str = "chio.transaction.evidence-graph.v1";
+const TRANSACTION_CLAIM_SET_SCHEMA: &str = "chio.transaction.claim-set.v1";
 const TRANSACTION_VERIFIER_POLICY_SCHEMA: &str = "chio.transaction.verifier-policy.v1";
 const RESERVED_ASSEMBLE_ROOTS: &[&str] = &[
     "transaction-passport.json",
     "evidence-graph.json",
+    "claim-set.json",
     "verifier-policy.json",
 ];
 
@@ -45,6 +47,7 @@ struct AssembledEvidenceNode {
 #[derive(Clone, Default)]
 struct RuntimeArtifactBinding {
     lease_id: Option<String>,
+    request_digest: Option<String>,
     revocation_freshness_ref: Option<String>,
     sandbox_attestation_ref: Option<String>,
     revocation_proof_id: Option<String>,
@@ -87,6 +90,11 @@ pub(super) fn assemble_transaction_passport(
     fixture::copy_dir_contents(artifact_dir, out)?;
     let verifier_policy_out = out.join("verifier-policy.json");
     fs::copy(verifier_policy, &verifier_policy_out)?;
+    let verifier_policy_bytes = fs::read(&verifier_policy_out)?;
+    let claim_set_bytes =
+        assembled_claim_set_bytes(passport_id, issued_at, &verifier_policy_bytes)?;
+    let claim_set_sha256 = chio_core::sha256_hex(&claim_set_bytes);
+    fs::write(out.join("claim-set.json"), &claim_set_bytes)?;
 
     let nodes = assemble_evidence_nodes(out)?;
     let graph = AssembledEvidenceGraph {
@@ -99,17 +107,30 @@ pub(super) fn assemble_transaction_passport(
     let evidence_graph_path = out.join("evidence-graph.json");
     write_json_line_file(&evidence_graph_path, &graph)?;
     let evidence_graph_bytes = fs::read(&evidence_graph_path)?;
-    let verifier_policy_bytes = fs::read(&verifier_policy_out)?;
 
-    let passport = serde_json::json!({
+    let keypair = super::collect::proof_collect_bundle_signer_from_env()?;
+    let mut passport = serde_json::json!({
         "schema": TRANSACTION_PASSPORT_SCHEMA,
         "id": passport_id,
         "issued_at": issued_at,
+        "issuer": format!("did:chio:{}", keypair.public_key().to_hex()),
         "evidence_graph_sha256": chio_core::sha256_hex(&evidence_graph_bytes),
         "evidence_graph_path": "evidence-graph.json",
+        "claim_set_sha256": claim_set_sha256,
+        "claim_set_path": "claim-set.json",
         "verifier_policy_sha256": chio_core::sha256_hex(&verifier_policy_bytes),
-        "verifier_policy_path": "verifier-policy.json"
+        "verifier_policy_path": "verifier-policy.json",
+        "signature": ""
     });
+    let typed_passport: chio_control_plane::transaction_passport::TransactionPassport =
+        serde_json::from_value(passport.clone())?;
+    passport["signature"] = serde_json::Value::String(
+        chio_control_plane::transaction_passport::sign_transaction_passport(
+            &typed_passport,
+            &keypair,
+        )
+        .map_err(map_proof_error)?,
+    );
     let passport_path = out.join("transaction-passport.json");
     write_json_line_file(&passport_path, &passport)?;
 
@@ -165,6 +186,51 @@ fn ensure_no_reserved_roots(artifact_dir: &Path) -> Result<(), CliError> {
         }
     }
     Ok(())
+}
+
+fn assembled_claim_set_bytes(
+    passport_id: &str,
+    issued_at: &str,
+    verifier_policy_bytes: &[u8],
+) -> Result<Vec<u8>, CliError> {
+    let policy: serde_json::Value = serde_json::from_slice(verifier_policy_bytes)?;
+    let mut claims = policy
+        .get("required_claims")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .filter(|claim| !claim.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    if claims.is_empty() {
+        claims.push("claim.transaction.passport_root_verified".to_string());
+    }
+    let claim_set = serde_json::json!({
+        "schema": TRANSACTION_CLAIM_SET_SCHEMA,
+        "id": format!("claim-set-{passport_id}"),
+        "issued_at": issued_at,
+        "claims": claims.into_iter().map(|claim_id| {
+            serde_json::json!({
+                "claim_id": claim_id,
+                "status": "verified",
+                "required_evidence": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "evidence_refs": [
+                    "transaction-passport.json",
+                    "evidence-graph.json",
+                    "verifier-policy.json"
+                ],
+                "verifier_module": "chio proof verify"
+            })
+        }).collect::<Vec<_>>()
+    });
+    let mut bytes = serde_json::to_vec(&claim_set)?;
+    bytes.push(b'\n');
+    Ok(bytes)
 }
 
 fn ensure_required_receipt(nodes: &[AssembledEvidenceNode]) -> Result<(), CliError> {
@@ -257,33 +323,41 @@ fn evidence_node_for_entry(path: &str, bytes: &[u8]) -> Result<AssembledEvidence
 fn evidence_node_id(path: &str) -> String {
     path.trim_end_matches(".json")
         .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() {
-                ch
-            } else {
-                '-'
-            }
-        })
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
         .collect()
 }
 
 fn evidence_role_for_schema(path: &str, schema: &str) -> String {
-    if path == "verifier-policy.json" || schema == TRANSACTION_VERIFIER_POLICY_SCHEMA {
+    if path == "claim-set.json" {
+        return "claim-set".to_string();
+    }
+    if path == "verifier-policy.json" {
         return "verifier-policy".to_string();
+    }
+    if path == "policy.json" || path.ends_with("/policy.json") {
+        return "policy".to_string();
+    }
+    if schema == TRANSACTION_VERIFIER_POLICY_SCHEMA {
+        return "verifier-policy".to_string();
+    }
+    if schema == TRANSACTION_CLAIM_SET_SCHEMA {
+        return "claim-set".to_string();
     }
     match schema {
         "chio.capability.proof.v1" => "capability".to_string(),
+        "chio.proof.first-run.capability-proof.v1" => "capability".to_string(),
         "chio.guard.decision.v1" => "guard-decision".to_string(),
+        "chio.proof.first-run.guard-report.v1" => "guard-decision".to_string(),
         "chio.policy.bundle.v1" => "policy".to_string(),
         "chio.receipt.v1" => "receipt".to_string(),
+        "chio.proof-room.receipt-evidence.v1" => "receipt".to_string(),
         "chio.runtime.terminal-receipt.v1" => "receipt".to_string(),
         "chio.request.digest.v1" => "request".to_string(),
         "chio.response.digest.v1" => "response".to_string(),
         "chio.trust.root.v1" => "trust-root".to_string(),
+        "chio.proof.first-run.trust-roots.v1" => "trust-root".to_string(),
         "chio.runtime.execution-lease.v1" => "execution-lease".to_string(),
-        "chio.runtime.revocation-freshness-proof.v1" => {
-            "revocation-freshness-proof".to_string()
-        }
+        "chio.runtime.revocation-freshness-proof.v1" => "revocation-freshness-proof".to_string(),
         "chio.runtime.sandbox-attestation.v1" => "sandbox-attestation".to_string(),
         "chio.runtime.tool-server-ack.v1" => "tool-server-ack".to_string(),
         "chio.runtime.advisory-observation.v1" => "advisory-observation".to_string(),
@@ -292,6 +366,7 @@ fn evidence_role_for_schema(path: &str, schema: &str) -> String {
         "chio.enterprise.telemetry-projection.v1" => "telemetry-projection".to_string(),
         "chio.enterprise.approval-case.v1" => "approval-case".to_string(),
         "chio.enterprise.control-evidence-map.v1" => "control-evidence-map".to_string(),
+        "chio.web3-settlement-proof-bundle.v1" => "public-settlement-proof-bundle".to_string(),
         _ => schema
             .trim_start_matches("chio.")
             .trim_end_matches(".v1")
@@ -302,6 +377,8 @@ fn evidence_role_for_schema(path: &str, schema: &str) -> String {
 fn runtime_binding_for_artifact(value: &serde_json::Value) -> RuntimeArtifactBinding {
     RuntimeArtifactBinding {
         lease_id: string_field(value, "lease_id"),
+        request_digest: string_field(value, "request_digest")
+            .or_else(|| string_field(value, "sha256")),
         revocation_freshness_ref: string_field(value, "revocation_freshness_ref"),
         sandbox_attestation_ref: string_field(value, "sandbox_attestation_ref"),
         revocation_proof_id: string_field(value, "proof_id"),
@@ -337,7 +414,9 @@ fn assemble_minimal_edges(nodes: &[AssembledEvidenceNode]) -> Vec<AssembledEvide
         ("request", "receipt", "binds"),
         ("response", "receipt", "binds"),
         ("trust-root", "capability", "authorizes"),
+        ("claim-set", "verifier-policy", "binds"),
         ("verifier-policy", "receipt", "binds"),
+        ("public-settlement-proof-bundle", "verifier-policy", "binds"),
     ]
     .into_iter()
     .filter_map(|(from_role, to_role, predicate)| {
@@ -368,6 +447,18 @@ fn assemble_runtime_edges(nodes: &[AssembledEvidenceNode]) -> Vec<AssembledEvide
             predicate: "authorizes",
             evidence_class: "chio-sidecar-proof",
         });
+        for request in nodes.iter().filter(|node| {
+            node.role == "request"
+                && node.runtime_binding.request_digest.as_deref()
+                    == lease.runtime_binding.request_digest.as_deref()
+        }) {
+            edges.push(AssembledEvidenceEdge {
+                from: request.id.clone(),
+                to: lease.id.clone(),
+                predicate: "binds",
+                evidence_class: "digest-bound-reference",
+            });
+        }
         for trust_root in nodes.iter().filter(|node| node.role == "trust-root") {
             edges.push(AssembledEvidenceEdge {
                 from: trust_root.id.clone(),
@@ -424,4 +515,20 @@ fn assemble_runtime_edges(nodes: &[AssembledEvidenceNode]) -> Vec<AssembledEvide
         }
     }
     edges
+}
+
+#[cfg(test)]
+mod tests {
+    use super::evidence_role_for_schema;
+
+    #[test]
+    fn proof_assemble_maps_public_settlement_bundle_schema_to_public_role() {
+        assert_eq!(
+            evidence_role_for_schema(
+                "settlement-proof-bundle.json",
+                "chio.web3-settlement-proof-bundle.v1"
+            ),
+            "public-settlement-proof-bundle"
+        );
+    }
 }

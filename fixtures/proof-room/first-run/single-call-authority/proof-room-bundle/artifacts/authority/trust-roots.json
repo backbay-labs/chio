@@ -1,13 +1,1 @@
-{
-  "id": "trust-roots-single-call-authority",
-  "roots": [
-    {
-      "key_digest": "27a18c4142f414227b37507c1da6e90ee6d73565eea7686152c067e2ee262ba7",
-      "key_id": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-      "subject": "did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"
-    }
-  ],
-  "schema": "chio.proof.first-run.trust-roots.v1",
-  "signature": "e9feda18b61fc4d8c61b441afa913708989048b16208300acb8f5fdba44e4bbb28d88cd9d4376b1305e850b9fd5a76cb1bb71b0c386c64be978120e6e6fb3d01",
-  "trust_domain": "did:chio:proof-room-stage-0"
-}
+{"id":"trust-roots-single-call-authority","roots":[{"key_digest":"27a18c4142f414227b37507c1da6e90ee6d73565eea7686152c067e2ee262ba7","key_id":"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c","subject":"did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"},{"key_digest":"27a18c4142f414227b37507c1da6e90ee6d73565eea7686152c067e2ee262ba7","key_id":"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c","subject":"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"},{"key_digest":"dfb8a0b323800dfcdb20b4f6b382e16328ace67c8e94a0335d25631a723fb792","key_id":"e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa","subject":"e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"},{"key_digest":"60b866e24ed77a81532726ed8257bcc763dd1f8db01a1e78da4f07c1bcb8f6a2","key_id":"31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc","subject":"31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc"}],"schema":"chio.proof.first-run.trust-roots.v1","signature":"afddec2741112be353a30b9a492eb16df7ac95e97d6b3e1b0268b46ac2fac6a35b7bfbf829b8b7f17093296ac3d24fa4659dc1c9e73b174c58c6f98ccd8ba500","trust_domain":"did:chio:proof-room-stage-0"}

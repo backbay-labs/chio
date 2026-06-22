@@ -1,0 +1,21 @@
+{
+  "schema": "chio.enterprise.control-evidence-map.v1",
+  "id": "control-map-enterprise-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "passport_id": "passport-enterprise-valid",
+  "risk_comptroller_report_ref": "risk-comptroller-enterprise-valid",
+  "controls": [
+    {
+      "control_id": "data-minimization",
+      "control_family": "internal-proof",
+      "claim_ref": "claim.enterprise.data_governance_bound",
+      "gate_ref": "data-governance-report"
+    },
+    {
+      "control_id": "sensitive-export-approval",
+      "control_family": "internal-proof",
+      "claim_ref": "claim.enterprise.export_approval_bound",
+      "gate_ref": "approval-case"
+    }
+  ]
+}

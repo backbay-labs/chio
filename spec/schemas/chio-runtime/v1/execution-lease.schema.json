@@ -29,6 +29,8 @@
     "tool_manifest_digest": { "$ref": "#/$defs/sha256" },
     "sandbox_attestation_ref": { "type": "string", "minLength": 1 },
     "request_digest": { "$ref": "#/$defs/sha256" },
+    "revocation_epoch_ref": { "type": "string", "minLength": 1 },
+    "route_plan_receipt_ref": { "type": "string", "minLength": 1 },
     "revocation_freshness_ref": { "type": "string", "minLength": 1 },
     "policy_digest": { "$ref": "#/$defs/sha256" },
     "nonce": { "type": "string", "minLength": 1 },
@@ -41,6 +43,7 @@
         "state-write"
       ]
     },
+    "max_invocations": { "const": 1 },
     "issued_at": { "type": "string", "minLength": 1 },
     "expires_at": { "type": "string", "minLength": 1 },
     "issuer": { "type": "string", "minLength": 1 },

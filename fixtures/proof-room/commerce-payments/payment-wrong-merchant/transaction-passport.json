@@ -1,9 +1,1 @@
-{
-  "schema": "chio.transaction-passport.v1",
-  "id": "passport-commerce-payment-wrong-merchant",
-  "issued_at": "2026-06-10T00:08:00Z",
-  "evidence_graph_sha256": "227ecf2dd4fe3d0e7aa69b9c2ee454c101065f2893ef4623e21b7afa54fa113b",
-  "evidence_graph_path": "evidence-graph.json",
-  "verifier_policy_sha256": "da5d8b5901ec78ebab4065e7e55adc7733b74b3a1ac5c3af52143edfbd0208b3",
-  "verifier_policy_path": "verifier-policy.json"
-}
+{"claim_set_path":"claim-set.json","claim_set_sha256":"2235c8823a97e5a43c5a7a8137c98464469ab24ff550af4ac8bc15c08e0759dc","evidence_graph_path":"evidence-graph.json","evidence_graph_sha256":"11f40a8d6c4b64a3a030dfb926d76bf7eeb58ec842d3948ec1e5dd1f77488cf5","id":"passport-commerce-payment-wrong-merchant","issued_at":"2026-06-10T00:08:00Z","issuer":"did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c","schema":"chio.transaction-passport.v1","signature":"96186a3541e73215daf998215a90defa6fdef59e00251bb8a2cb8d6216b06a7fbaf8a9a7d700e27328f93c6a7b789a4ee68ff7b756602ae5b16852ea7a6a8109","verifier_policy_path":"verifier-policy.json","verifier_policy_sha256":"c0adad9e62d0e34a77d2b750f38e84540cc61740a9bbf23912d063ec2c827374"}

@@ -83,6 +83,8 @@ jobs:
           bash ./scripts/check-log-redaction.sh
           bash ./scripts/check-http-egress-contract.sh
           bash ./scripts/tests/check-http-egress-contract.test.sh
+          bash ./scripts/check-chio-proof-room-release-truth.sh
+          bash ./scripts/tests/check-chio-proof-room-release-truth.test.sh
 
       - name: Anchor batch async witness lint
         run: bash ./scripts/check-anchor-batch-async-witness.sh

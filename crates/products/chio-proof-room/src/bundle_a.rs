@@ -1,13 +1,14 @@
 use super::*;
 
 pub(crate) fn verify_proof_room_bundle_inner(manifest_path: &Path) -> Result<(), String> {
-    verify_proof_room_bundle_inner_with_options(manifest_path, true, true)
+    verify_proof_room_bundle_inner_with_options(manifest_path, true, true, true)
 }
 
 pub(crate) fn verify_proof_room_bundle_inner_with_options(
     manifest_path: &Path,
     verify_manifest_negative_cases: bool,
     verify_manifest_signature: bool,
+    verify_transaction_passport_signature: bool,
 ) -> Result<(), String> {
     let bundle_root = manifest_path
         .parent()
@@ -62,7 +63,12 @@ pub(crate) fn verify_proof_room_bundle_inner_with_options(
     let verifier_report_value: serde_json::Value =
         serde_json::from_slice(&verifier_report.bytes)
             .map_err(|error| format!("proof-room.report.invalid-json: {error}"))?;
-    verify_source_verifier_report(bundle_root, &transaction_passport, &verifier_report_value)?;
+    verify_source_verifier_report(
+        bundle_root,
+        &transaction_passport,
+        &verifier_report_value,
+        verify_transaction_passport_signature,
+    )?;
     verify_manifest_claims(
         &manifest.claims,
         &manifest.artifacts,
@@ -88,6 +94,7 @@ pub(crate) fn verify_proof_room_bundle_inner_with_options(
             bundle_root,
             &manifest.negative_cases,
             requires_first_run_claims,
+            verify_transaction_passport_signature,
         )?;
     }
     let source_verifier_verdict = verifier_report_value
@@ -163,6 +170,7 @@ pub(crate) fn verify_negative_cases(
     bundle_root: &Path,
     negative_cases: &[ProofRoomNegativeCase],
     require_cases: bool,
+    verify_transaction_passport_signature: bool,
 ) -> Result<(), String> {
     if negative_cases.is_empty() {
         return if require_cases {
@@ -195,7 +203,12 @@ pub(crate) fn verify_negative_cases(
             ));
         }
         let negative_path = resolve_proof_room_bundle_path(bundle_root, &negative_case.path)?;
-        let error = match verify_negative_case_path(bundle_root, &negative_path, negative_case) {
+        let error = match verify_negative_case_path(
+            bundle_root,
+            &negative_path,
+            negative_case,
+            verify_transaction_passport_signature,
+        ) {
             Ok(()) => {
                 return Err(format!(
                     "proof-room.negative-case.unexpected-success: {}",
@@ -248,6 +261,7 @@ pub(crate) fn verify_negative_case_path(
     bundle_root: &Path,
     negative_path: &Path,
     negative_case: &ProofRoomNegativeCase,
+    verify_transaction_passport_signature: bool,
 ) -> Result<(), String> {
     let bytes = fs::read(negative_path)
         .map_err(|error| format!("proof-room.negative-case.unreadable: {error}"))?;
@@ -258,7 +272,8 @@ pub(crate) fn verify_negative_case_path(
             .map_err(|error| format!("proof-room.negative-case.descriptor-invalid: {error}"))?;
         verify_proof_room_negative_descriptor(bundle_root, &descriptor, negative_case)
     } else {
-        verify_negative_transaction_passport(negative_path).map(|_| ())
+        verify_negative_transaction_passport(negative_path, verify_transaction_passport_signature)
+            .map(|_| ())
     }
 }
 
@@ -291,17 +306,25 @@ pub(crate) fn verify_proof_room_negative_descriptor(
         copy_dir_all(bundle_root, &work)?;
         apply_proof_room_negative_descriptor(&work, descriptor)?;
         let manifest_path = resolve_proof_room_bundle_path(&work, &descriptor.base_manifest)?;
-        verify_proof_room_bundle_inner_with_options(&manifest_path, false, false)
+        verify_proof_room_bundle_inner_with_options(&manifest_path, false, false, false)
     })();
     let _ = fs::remove_dir_all(&work);
     result
 }
 
-pub(crate) fn verify_negative_transaction_passport(path: &Path) -> Result<(), String> {
+pub(crate) fn verify_negative_transaction_passport(
+    path: &Path,
+    verify_transaction_passport_signature: bool,
+) -> Result<(), String> {
     let bundle_root = path
         .parent()
         .ok_or_else(|| "proof-room.negative-case.path-invalid".to_string())?;
-    verify_transaction_passport_family_report(bundle_root, path).map(|_| ())
+    verify_transaction_passport_family_report_with_options(
+        bundle_root,
+        path,
+        verify_transaction_passport_signature,
+    )
+    .map(|_| ())
 }
 
 pub(crate) fn verify_manifest_claims(

@@ -9,8 +9,11 @@
     "bundle_id",
     "transaction_passport_id",
     "commerce_order_id",
+    "order_binding",
     "chain_id",
     "settlement_receipt",
+    "deployment_provenance",
+    "public_witness",
     "chain_snapshot",
     "dispute_snapshot",
     "required_confirmations",
@@ -22,10 +25,17 @@
     "bundle_id": { "type": "string", "minLength": 1 },
     "transaction_passport_id": { "type": "string", "minLength": 1 },
     "commerce_order_id": { "type": "string", "minLength": 1 },
+    "order_binding": { "$ref": "#/$defs/orderBinding" },
     "chain_id": { "$ref": "#/$defs/chainId" },
     "settlement_receipt": { "$ref": "#/$defs/settlementReceipt" },
+    "deployment_provenance": { "$ref": "#/$defs/deploymentProvenance" },
+    "public_witness": { "$ref": "#/$defs/publicWitness" },
     "chain_snapshot": { "$ref": "#/$defs/chainSnapshot" },
     "dispute_snapshot": { "$ref": "#/$defs/disputeSnapshot" },
+    "collateral_position_ref": { "type": "string", "minLength": 1 },
+    "guarantee_decision_ref": { "type": "string", "minLength": 1 },
+    "sla_remedy_ref": { "type": "string", "minLength": 1 },
+    "slash_authority_ref": { "type": "string", "minLength": 1 },
     "required_confirmations": { "type": "integer", "minimum": 1 },
     "observed_confirmations": { "type": "integer", "minimum": 0 },
     "dispute_posture": {
@@ -52,6 +62,105 @@
       "properties": {
         "units": { "type": "integer", "minimum": 1 },
         "currency": { "type": "string", "minLength": 1 }
+      }
+    },
+    "orderBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transaction_passport_id",
+        "commerce_order_id",
+        "chain_id",
+        "settlement_reference",
+        "settlement_tx_hash",
+        "beneficiary_address",
+        "escrow_id",
+        "settlement_amount"
+      ],
+      "properties": {
+        "transaction_passport_id": { "type": "string", "minLength": 1 },
+        "commerce_order_id": { "type": "string", "minLength": 1 },
+        "chain_id": { "$ref": "#/$defs/chainId" },
+        "settlement_reference": { "type": "string", "minLength": 1 },
+        "settlement_tx_hash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "beneficiary_address": { "type": "string", "minLength": 1 },
+        "escrow_id": { "type": "string", "minLength": 1 },
+        "settlement_amount": { "$ref": "#/$defs/money" }
+      }
+    },
+    "deploymentProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provenance_id",
+        "chain_id",
+        "contract_package_id",
+        "reviewed_manifest_hash",
+        "approval_hash",
+        "create2_factory",
+        "salt_namespace",
+        "root_registry_address",
+        "escrow_contract",
+        "bond_vault_contract"
+      ],
+      "properties": {
+        "provenance_id": { "type": "string", "minLength": 1 },
+        "chain_id": { "$ref": "#/$defs/chainId" },
+        "contract_package_id": { "type": "string", "minLength": 1 },
+        "reviewed_manifest_hash": {
+          "type": "string",
+          "pattern": "^(0x)?[0-9a-fA-F]{64}$"
+        },
+        "approval_hash": {
+          "type": "string",
+          "pattern": "^(0x)?[0-9a-fA-F]{64}$"
+        },
+        "create2_factory": { "type": "string", "minLength": 1 },
+        "salt_namespace": { "type": "string", "minLength": 1 },
+        "root_registry_address": { "type": "string", "minLength": 1 },
+        "escrow_contract": { "type": "string", "minLength": 1 },
+        "bond_vault_contract": { "type": "string", "minLength": 1 }
+      }
+    },
+    "publicWitness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "witness_id",
+        "mode",
+        "body_hash",
+        "chain_id",
+        "registry_root",
+        "anchor_tx_hash",
+        "anchored_merkle_root",
+        "anchored_checkpoint_seq",
+        "observed_at"
+      ],
+      "properties": {
+        "witness_id": { "type": "string", "minLength": 1 },
+        "mode": { "enum": ["live", "verified_cache", "advisory"] },
+        "body_hash": {
+          "type": "string",
+          "pattern": "^(0x)?[0-9a-fA-F]{64}$"
+        },
+        "chain_id": { "$ref": "#/$defs/chainId" },
+        "registry_root": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "anchor_tx_hash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "anchored_merkle_root": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "anchored_checkpoint_seq": { "type": "integer", "minimum": 0 },
+        "observed_at": { "type": "integer", "minimum": 0 }
       }
     },
     "chainSnapshot": {

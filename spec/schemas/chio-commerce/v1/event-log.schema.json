@@ -22,16 +22,21 @@
       "additionalProperties": false,
       "required": [
         "event_id",
+        "idempotency_key",
+        "actor",
         "order_id",
         "prior_state",
         "next_state",
         "transition",
         "occurred_at",
         "authority_receipt_ref",
-        "evidence_refs"
+        "evidence_refs",
+        "event_sha256"
       ],
       "properties": {
         "event_id": { "type": "string", "minLength": 1 },
+        "idempotency_key": { "type": "string", "minLength": 1 },
+        "actor": { "type": "string", "minLength": 1 },
         "order_id": { "type": "string", "minLength": 1 },
         "prior_state": { "type": "string", "minLength": 1 },
         "next_state": { "type": "string", "minLength": 1 },
@@ -42,8 +47,13 @@
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 }
-        }
+        },
+        "event_sha256": { "$ref": "#/$defs/sha256" }
       }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     }
   }
 }

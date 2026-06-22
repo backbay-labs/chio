@@ -1,9 +1,1 @@
-{
-  "schema": "chio.transaction-passport.v1",
-  "id": "passport-commerce-offline-psp-valid",
-  "issued_at": "2026-06-10T00:08:00Z",
-  "evidence_graph_sha256": "59a6f967536f58dce85c050dfc3e91a4e9df17d7f5d1ded65ecd109a4a9d9836",
-  "evidence_graph_path": "evidence-graph.json",
-  "verifier_policy_sha256": "06253b9686c75fb44dd36d818e0e04530dfe96f92acc29fbe2cc91d90c08c5af",
-  "verifier_policy_path": "verifier-policy.json"
-}
+{"claim_set_path":"claim-set.json","claim_set_sha256":"0452ba20e3fcb77c0e69b4655aa5eadd399f5bb84cb16833d6cad776903dcf9a","evidence_graph_path":"evidence-graph.json","evidence_graph_sha256":"f62a7a9452a14470bb873bc44f1477bbb3b64f15f9e5a1003fecffb2abbdd36e","id":"passport-commerce-offline-psp-valid","issued_at":"2026-06-10T00:08:00Z","issuer":"did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c","schema":"chio.transaction-passport.v1","signature":"c12a51e43ea683c3775e664eabb74b230f1c4fdb06a4ceefe128e6427b8937528310ab8cb81d75af129a7771bdaf18b3d1365d1079bef3ec1e62ac4e11654e03","verifier_policy_path":"verifier-policy.json","verifier_policy_sha256":"78e68dd47ad8a38db52d2c34c9ee6254afee57479aa00c0e550a880351539a44"}

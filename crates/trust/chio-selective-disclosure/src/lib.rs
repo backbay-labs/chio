@@ -10,6 +10,7 @@ use chio_core_types::receipt::{
 use chio_core_types::receipt::{body::ChioReceiptBody, kinds::TrustLevel};
 use chio_workflow::receipt::{StepRecord, WorkflowReceiptBody};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 #[cfg(feature = "bbs")]
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -26,9 +27,10 @@ use encoding::{
 
 pub use chio_disclosure_lineage::{
     compute_signed_lineage_subgraph_digest, sign_crypto_context_report, sign_lineage_subgraph,
-    verify_disclosure_lineage_bundle, DisclosureCapsule, DisclosureLeakageLedger,
-    DisclosureLeakageLedgerEntry, DisclosureLineageBundle, DisclosureLineageError,
-    DisclosureLineageVerifierReport, DisclosureSignedLineageEdge, DisclosureSignedLineageNode,
+    verify_disclosure_lineage_bundle, DisclosureCapsule, DisclosureHiddenPredicate,
+    DisclosureLeakageLedger, DisclosureLeakageLedgerEntry, DisclosureLineageBundle,
+    DisclosureLineageError, DisclosureLineageVerifierReport, DisclosureProfileLeakageBudget,
+    DisclosureSensitivityClass, DisclosureSignedLineageEdge, DisclosureSignedLineageNode,
     DisclosureSignedLineageRedaction, SignedLineageSubgraph, DISCLOSURE_CAPSULE_SCHEMA_V1,
     DISCLOSURE_LEAKAGE_LEDGER_SCHEMA_V1, DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1,
     LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
@@ -87,6 +89,78 @@ pub struct Projection {
     pub version: String,
     pub subject_sha256_hex: String,
     pub messages: Vec<ProjectionMessage>,
+}
+
+/// Schema for the BBS projection manifest that binds proof slots to policy.
+pub const BBS_PROJECTION_MANIFEST_SCHEMA_V2: &str = "chio.bbs-projection.manifest.v2";
+
+/// Per-slot disclosure policy in a BBS projection manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BbsProjectionDisclosure {
+    Disclosed,
+    Hidden,
+}
+
+/// One message slot in a BBS projection manifest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BbsProjectionMessageSlot {
+    pub slot: u16,
+    pub field: String,
+    pub encoding: String,
+    pub disclosure: BbsProjectionDisclosure,
+    pub wholesale_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_sha256: Option<String>,
+}
+
+/// One hidden predicate declared by a BBS projection manifest.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BbsProjectionHiddenPredicate {
+    pub predicate_id: String,
+    pub field: String,
+    pub operator: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value_sha256: Option<String>,
+}
+
+/// Manifest that makes the BBS slot table explicit and verifier-checkable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BbsProjectionManifest {
+    pub schema: String,
+    pub manifest_id: String,
+    pub artifact_ref: String,
+    pub canonicalization: String,
+    pub hash_algorithm: String,
+    pub message_slots: Vec<BbsProjectionMessageSlot>,
+    pub hidden_predicates: Vec<BbsProjectionHiddenPredicate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuer_key_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signature_ref: Option<String>,
+}
+
+/// Schema for a transparency log inclusion proof over the disclosed artifact.
+pub const TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V1: &str = "chio.transparency.inclusion-proof.v1";
+
+/// Merkle inclusion proof binding a selective disclosure artifact to a log root.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TransparencyInclusionProof {
+    pub schema: String,
+    pub proof_id: String,
+    pub log_id: String,
+    pub artifact_ref: String,
+    pub root_hash: String,
+    pub leaf_hash: String,
+    pub tree_size: u64,
+    pub leaf_index: u64,
+    pub checkpoint: String,
+    pub inclusion_path: Vec<String>,
+    pub verified_at: u64,
 }
 
 /// Message indices to disclose to a buyer or auditor.
@@ -197,6 +271,10 @@ pub enum SelectiveDisclosureError {
     ReceiptBbsSignatureMissing,
     #[error("receipt BBS binding is invalid: {0}")]
     ReceiptBbsBindingInvalid(String),
+    #[error("BBS projection manifest {0}")]
+    ProjectionManifestInvalid(String),
+    #[error("transparency inclusion proof {0}")]
+    TransparencyInclusionInvalid(String),
     #[error("issuer {0} is not registered")]
     UnknownIssuer(String),
     #[error("issuer public key does not match registry")]
@@ -538,6 +616,220 @@ fn validate_disclosure_set(
         }
     }
     Ok(seen)
+}
+
+pub fn bbs_projection_manifest_from_projection(projection: &Projection) -> BbsProjectionManifest {
+    BbsProjectionManifest {
+        schema: BBS_PROJECTION_MANIFEST_SCHEMA_V2.to_string(),
+        manifest_id: projection.version.clone(),
+        artifact_ref: projection.subject_sha256_hex.clone(),
+        canonicalization: "jcs".to_string(),
+        hash_algorithm: "sha-256".to_string(),
+        message_slots: projection
+            .messages
+            .iter()
+            .map(|message| BbsProjectionMessageSlot {
+                slot: message.index,
+                field: message.field.clone(),
+                encoding: message.encoding.clone(),
+                disclosure: if message.wholesale_only {
+                    BbsProjectionDisclosure::Hidden
+                } else {
+                    BbsProjectionDisclosure::Disclosed
+                },
+                wholesale_only: message.wholesale_only,
+                value_sha256: None,
+            })
+            .collect(),
+        hidden_predicates: Vec::new(),
+        issuer_key_ref: None,
+        signature_ref: None,
+    }
+}
+
+pub fn verify_bbs_projection_manifest(
+    proof: &SelectiveDisclosureProof,
+    manifest: &BbsProjectionManifest,
+) -> Result<(), SelectiveDisclosureError> {
+    if manifest.schema != BBS_PROJECTION_MANIFEST_SCHEMA_V2 {
+        return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+            format!("schema expected {BBS_PROJECTION_MANIFEST_SCHEMA_V2}"),
+        ));
+    }
+    if manifest.manifest_id != proof.projection_version {
+        return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+            "manifest id does not match proof projection version".to_string(),
+        ));
+    }
+    if manifest.artifact_ref != proof.subject_sha256_hex {
+        return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+            "artifact ref does not match proof subject".to_string(),
+        ));
+    }
+    if manifest.canonicalization != "jcs" {
+        return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+            "canonicalization must be jcs".to_string(),
+        ));
+    }
+    if manifest.hash_algorithm != "sha-256" {
+        return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+            "hash algorithm must be sha-256".to_string(),
+        ));
+    }
+    if manifest.message_slots.len() != proof.message_count {
+        return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+            "message slot count does not match proof message count".to_string(),
+        ));
+    }
+    if !manifest.hidden_predicates.is_empty() {
+        return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+            "hidden predicates require cryptographic predicate proof".to_string(),
+        ));
+    }
+
+    let mut seen_slots = Vec::with_capacity(manifest.message_slots.len());
+    for slot in &manifest.message_slots {
+        if usize::from(slot.slot) >= proof.message_count {
+            return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+                format!("slot {} is outside proof message count", slot.slot),
+            ));
+        }
+        if seen_slots.contains(&slot.slot) {
+            return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+                format!("duplicate slot {}", slot.slot),
+            ));
+        }
+        seen_slots.push(slot.slot);
+        if slot.field.trim().is_empty() || slot.encoding.trim().is_empty() {
+            return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+                "message slot field and encoding must not be empty".to_string(),
+            ));
+        }
+    }
+
+    for disclosed in &proof.disclosed {
+        let slot = projection_manifest_slot(manifest, disclosed.index)?;
+        if slot.wholesale_only {
+            return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+                "wholesale-only slot disclosed".to_string(),
+            ));
+        }
+        if slot.disclosure != BbsProjectionDisclosure::Disclosed {
+            return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+                format!("slot {} is not marked disclosed", disclosed.index),
+            ));
+        }
+        if slot.field != disclosed.field {
+            return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+                format!("slot {} field does not match proof", disclosed.index),
+            ));
+        }
+        if slot.encoding != disclosed.encoding {
+            return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+                format!("slot {} encoding does not match proof", disclosed.index),
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub fn verify_transparency_inclusion_proof(
+    proof: &SelectiveDisclosureProof,
+    inclusion: &TransparencyInclusionProof,
+) -> Result<(), SelectiveDisclosureError> {
+    if inclusion.schema != TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V1 {
+        return Err(SelectiveDisclosureError::TransparencyInclusionInvalid(
+            format!("schema expected {TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V1}"),
+        ));
+    }
+    for (field, value) in [
+        ("proof_id", inclusion.proof_id.as_str()),
+        ("log_id", inclusion.log_id.as_str()),
+        ("checkpoint", inclusion.checkpoint.as_str()),
+    ] {
+        if value.trim().is_empty() {
+            return Err(SelectiveDisclosureError::TransparencyInclusionInvalid(
+                format!("{field} must not be empty"),
+            ));
+        }
+    }
+    if inclusion.verified_at == 0 {
+        return Err(SelectiveDisclosureError::TransparencyInclusionInvalid(
+            "verified_at must be greater than zero".to_string(),
+        ));
+    }
+    if inclusion.artifact_ref != proof.subject_sha256_hex {
+        return Err(SelectiveDisclosureError::TransparencyInclusionInvalid(
+            "artifact ref mismatch".to_string(),
+        ));
+    }
+    let expected_leaf = sha256_hex_bytes(proof.subject_sha256_hex.as_bytes());
+    if inclusion.leaf_hash != expected_leaf {
+        return Err(SelectiveDisclosureError::TransparencyInclusionInvalid(
+            "leaf hash mismatch".to_string(),
+        ));
+    }
+    if inclusion.tree_size == 0 {
+        return Err(SelectiveDisclosureError::TransparencyInclusionInvalid(
+            "tree size must be greater than zero".to_string(),
+        ));
+    }
+    if inclusion.leaf_index >= inclusion.tree_size {
+        return Err(SelectiveDisclosureError::TransparencyInclusionInvalid(
+            "leaf index outside tree size".to_string(),
+        ));
+    }
+
+    let mut current = decode_hx_field("leaf_hash", &inclusion.leaf_hash)?;
+    let mut index = inclusion.leaf_index;
+    let mut width = inclusion.tree_size;
+    for (level, sibling_hex) in inclusion.inclusion_path.iter().enumerate() {
+        if width <= 1 {
+            return Err(SelectiveDisclosureError::TransparencyInclusionInvalid(
+                "inclusion path exceeds tree height".to_string(),
+            ));
+        }
+        let sibling = decode_hx_field(&format!("inclusion_path[{level}]"), sibling_hex)?;
+        current = merkle_parent_hash(index, &current, &sibling);
+        index /= 2;
+        width = width.div_ceil(2);
+    }
+    if index != 0 {
+        return Err(SelectiveDisclosureError::TransparencyInclusionInvalid(
+            "inclusion path did not reach the root".to_string(),
+        ));
+    }
+    if hex::encode(&current) != inclusion.root_hash {
+        return Err(SelectiveDisclosureError::TransparencyInclusionInvalid(
+            "root mismatch".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn merkle_parent_hash(index: u64, current: &[u8], sibling: &[u8]) -> Vec<u8> {
+    let mut hasher = Sha256::new();
+    if index.is_multiple_of(2) {
+        hasher.update(current);
+        hasher.update(sibling);
+    } else {
+        hasher.update(sibling);
+        hasher.update(current);
+    }
+    hasher.finalize().to_vec()
+}
+
+fn projection_manifest_slot(
+    manifest: &BbsProjectionManifest,
+    index: u16,
+) -> Result<&BbsProjectionMessageSlot, SelectiveDisclosureError> {
+    manifest
+        .message_slots
+        .iter()
+        .find(|slot| slot.slot == index)
+        .ok_or_else(|| {
+            SelectiveDisclosureError::ProjectionManifestInvalid(format!("missing slot {index}"))
+        })
 }
 
 #[cfg(feature = "bbs")]

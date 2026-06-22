@@ -13,6 +13,7 @@
     "commerce_order_id",
     "recomputed_settlement_state",
     "chain_context",
+    "public_witness",
     "finality_decision",
     "dispute_context",
     "dispute_posture",
@@ -92,6 +93,20 @@
         }
       }
     },
+    "public_witness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["witness_id", "mode", "body_hash", "observed_at"],
+      "properties": {
+        "witness_id": { "type": "string", "minLength": 1 },
+        "mode": { "enum": ["live", "verified_cache"] },
+        "body_hash": {
+          "type": "string",
+          "pattern": "^(0x)?[0-9a-fA-F]{64}$"
+        },
+        "observed_at": { "type": "integer", "minimum": 0 }
+      }
+    },
     "finality_decision": {
       "type": "object",
       "additionalProperties": false,
@@ -101,7 +116,21 @@
         "observed_confirmations"
       ],
       "properties": {
-        "status": { "enum": ["final"] },
+        "status": {
+          "enum": [
+            "final",
+            "closed",
+            "partially_settled",
+            "refunded",
+            "slashed",
+            "reversed",
+            "charged_back",
+            "timed_out",
+            "failed",
+            "reorged",
+            "not_final"
+          ]
+        },
         "required_confirmations": { "type": "integer", "minimum": 1 },
         "observed_confirmations": { "type": "integer", "minimum": 0 }
       }
@@ -146,6 +175,22 @@
         "appealed",
         "closed"
       ]
+    },
+    "trust_market_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "collateral_position_ref",
+        "guarantee_decision_ref",
+        "sla_remedy_ref",
+        "slash_authority_ref"
+      ],
+      "properties": {
+        "collateral_position_ref": { "type": "string", "minLength": 1 },
+        "guarantee_decision_ref": { "type": "string", "minLength": 1 },
+        "sla_remedy_ref": { "type": "string", "minLength": 1 },
+        "slash_authority_ref": { "type": "string", "minLength": 1 }
+      }
     },
     "verified_claims": {
       "type": "array",

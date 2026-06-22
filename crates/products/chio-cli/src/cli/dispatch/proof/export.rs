@@ -4,8 +4,7 @@ use std::collections::BTreeSet;
 const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str = "application/vnd.chio.proof-room.bundle.v1+json";
 const PROOF_ROOM_GUARD_REPORT_PATH: &str = "artifacts/authority/guard-report.json";
 const PROOF_ROOM_TRUST_ROOTS_PATH: &str = "artifacts/authority/trust-roots.json";
-const PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX_ENV: &str =
-    "CHIO_PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX";
+const PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX_ENV: &str = "CHIO_PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX";
 
 pub(super) fn export_proof_bundle(
     bundle: &Path,
@@ -66,10 +65,7 @@ pub(super) fn export_proof_bundle(
             report["redaction_profile"] =
                 serde_json::Value::String(redaction_profile.as_str().to_string());
         }
-        serde_json::to_writer(
-            &mut stdout,
-            &report,
-        )?;
+        serde_json::to_writer(&mut stdout, &report)?;
         stdout.write_all(b"\n")?;
     } else {
         writeln!(stdout, "exported {} to {}", bundle.display(), out.display())?;
@@ -133,8 +129,11 @@ fn redact_public_proof_archive_entries(
     let mut manifest: serde_json::Value = serde_json::from_slice(&fs::read(&manifest_path)?)?;
     let signature_path = proof_room_signature_ref_path(&manifest)?;
     let redacted_paths = redact_public_manifest_artifacts(&mut manifest)?;
-    let export_signer =
-        prepare_public_bundle_export_signer(&mut entries, &mut manifest, signature_path.as_deref())?;
+    let export_signer = prepare_public_bundle_export_signer(
+        &mut entries,
+        &mut manifest,
+        signature_path.as_deref(),
+    )?;
     let manifest_bytes = pretty_json_line(&manifest)?;
     let signature_bytes = signature_path
         .as_deref()
@@ -178,10 +177,11 @@ fn redact_public_manifest_artifacts(
                 .get("sensitivity_class")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_default();
-            if is_public_sensitivity_class(sensitivity_class) {
+            let path = crate::archive::safe_archive_member_path(path, "proof archive")?;
+            let force_redaction = is_public_privacy_forbidden_path(&path);
+            if !force_redaction && is_public_sensitivity_class(sensitivity_class) {
                 continue;
             }
-            let path = crate::archive::safe_archive_member_path(path, "proof archive")?;
             if artifact
                 .get("participates_in_primary_verdict")
                 .and_then(serde_json::Value::as_bool)
@@ -212,7 +212,9 @@ fn redact_public_manifest_artifacts(
             artifact
                 .get("path")
                 .and_then(serde_json::Value::as_str)
-                .and_then(|path| crate::archive::safe_archive_member_path(path, "proof archive").ok())
+                .and_then(|path| {
+                    crate::archive::safe_archive_member_path(path, "proof archive").ok()
+                })
                 .is_none_or(|path| !redacted_paths.contains(&path))
         });
     }
@@ -224,7 +226,9 @@ fn redact_public_manifest_artifacts(
             artifact
                 .get("path")
                 .and_then(serde_json::Value::as_str)
-                .and_then(|path| crate::archive::safe_archive_member_path(path, "proof archive").ok())
+                .and_then(|path| {
+                    crate::archive::safe_archive_member_path(path, "proof archive").ok()
+                })
                 .is_none_or(|path| !redacted_paths.contains(&path))
         });
     }
@@ -286,7 +290,10 @@ fn required_public_manifest_paths(
         .and_then(serde_json::Value::as_array)
     {
         for negative_case in negative_cases {
-            if let Some(path) = negative_case.get("path").and_then(serde_json::Value::as_str) {
+            if let Some(path) = negative_case
+                .get("path")
+                .and_then(serde_json::Value::as_str)
+            {
                 insert_allowed_member(&mut paths, path)?;
             }
         }
@@ -306,6 +313,15 @@ fn required_public_manifest_paths(
 
 fn is_public_sensitivity_class(sensitivity_class: &str) -> bool {
     sensitivity_class == "public" || sensitivity_class.starts_with("public-")
+}
+
+fn is_public_privacy_forbidden_path(path: &str) -> bool {
+    path == "receipts.ndjson"
+        || path.ends_with("/receipts.ndjson")
+        || path.starts_with("tenants/")
+        || path.contains("/tenants/")
+        || path.starts_with("tenant-bodies/")
+        || path.contains("/tenant-bodies/")
 }
 
 fn prepare_public_bundle_export_signer(
@@ -349,6 +365,7 @@ fn prepare_public_bundle_export_signer(
         entries,
         &transaction_passport_path,
         &evidence_graph_sha256,
+        &keypair,
     )?;
     let verifier_report_sha256 =
         update_export_verifier_report(entries, &verifier_report_path, &evidence_graph_sha256)?;
@@ -374,7 +391,10 @@ fn prepare_public_bundle_export_signer(
             transaction_passport_path.as_str(),
             transaction_passport_sha256.as_str(),
         ),
-        (verifier_report_path.as_str(), verifier_report_sha256.as_str()),
+        (
+            verifier_report_path.as_str(),
+            verifier_report_sha256.as_str(),
+        ),
         (ui_report_path.as_str(), ui_report_sha256.as_str()),
     ] {
         set_manifest_artifact_sha256(manifest, path, sha256)?;
@@ -395,9 +415,7 @@ fn manifest_ref_path(manifest: &serde_json::Value, field: &str) -> Result<String
     crate::archive::safe_archive_member_path(path, "proof archive")
 }
 
-fn proof_room_signature_ref_path(
-    manifest: &serde_json::Value,
-) -> Result<Option<String>, CliError> {
+fn proof_room_signature_ref_path(manifest: &serde_json::Value) -> Result<Option<String>, CliError> {
     manifest
         .get("signature")
         .and_then(|signature| signature.get("signature_ref"))
@@ -435,9 +453,9 @@ fn manifest_artifact_path_exists(manifest: &serde_json::Value, path: &str) -> bo
         .get("artifacts")
         .and_then(serde_json::Value::as_array)
         .is_some_and(|artifacts| {
-            artifacts
-                .iter()
-                .any(|artifact| artifact.get("path").and_then(serde_json::Value::as_str) == Some(path))
+            artifacts.iter().any(|artifact| {
+                artifact.get("path").and_then(serde_json::Value::as_str) == Some(path)
+            })
         })
 }
 
@@ -460,6 +478,15 @@ fn update_export_trust_roots(
     roots[0]["key_id"] = serde_json::Value::String(public_key.clone());
     roots[0]["key_digest"] =
         serde_json::Value::String(chio_core::sha256_hex(public_key.as_bytes()));
+    if !roots.iter().any(|root| {
+        root.get("subject").and_then(serde_json::Value::as_str) == Some(public_key.as_str())
+    }) {
+        roots.push(serde_json::json!({
+            "subject": public_key.clone(),
+            "key_id": public_key.clone(),
+            "key_digest": chio_core::sha256_hex(public_key.as_bytes())
+        }));
+    }
     sign_export_json_artifact(&mut trust_roots, keypair)?;
     *bytes = pretty_json_line(&trust_roots)?;
     Ok(chio_core::sha256_hex(bytes))
@@ -483,9 +510,9 @@ fn sign_export_json_artifact(
     value: &mut serde_json::Value,
     keypair: &chio_core::Keypair,
 ) -> Result<(), CliError> {
-    let object = value.as_object_mut().ok_or_else(|| {
-        CliError::cli_other_error("proof archive artifact must be a JSON object")
-    })?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| CliError::cli_other_error("proof archive artifact must be a JSON object"))?;
     object.remove("signature");
     let (signature, _) = keypair.sign_canonical(value).map_err(|error| {
         CliError::cli_other_error(format!("failed to sign proof archive artifact: {error}"))
@@ -523,11 +550,24 @@ fn update_export_transaction_passport(
     entries: &mut [ProofArchiveEntry],
     transaction_passport_path: &str,
     evidence_graph_sha256: &str,
+    keypair: &chio_core::Keypair,
 ) -> Result<String, CliError> {
     let bytes = archive_entry_bytes_mut(entries, transaction_passport_path)?;
     let mut passport: serde_json::Value = serde_json::from_slice(bytes)?;
     passport["evidence_graph_sha256"] =
         serde_json::Value::String(evidence_graph_sha256.to_string());
+    passport["issuer"] =
+        serde_json::Value::String(format!("did:chio:{}", keypair.public_key().to_hex()));
+    passport["signature"] = serde_json::Value::String(String::new());
+    let typed_passport: chio_control_plane::transaction_passport::TransactionPassport =
+        serde_json::from_value(passport.clone())?;
+    passport["signature"] = serde_json::Value::String(
+        chio_control_plane::transaction_passport::sign_transaction_passport(
+            &typed_passport,
+            keypair,
+        )
+        .map_err(map_proof_error)?,
+    );
     *bytes = pretty_json_line(&passport)?;
     Ok(chio_core::sha256_hex(bytes))
 }
@@ -637,15 +677,14 @@ fn redact_public_bundle_signature(
             serde_json::Value::String(PROOF_ROOM_DSSE_PAYLOAD_TYPE.to_string());
         signature["payloadRef"]["sha256"] =
             serde_json::Value::String(chio_core::sha256_hex(manifest_bytes));
-        let signatures =
-            signature
-                .get_mut("signatures")
-                .and_then(serde_json::Value::as_array_mut)
-                .ok_or_else(|| {
-                    CliError::cli_other_error(
-                        "proof room bundle signature missing signatures array".to_string(),
-                    )
-                })?;
+        let signatures = signature
+            .get_mut("signatures")
+            .and_then(serde_json::Value::as_array_mut)
+            .ok_or_else(|| {
+                CliError::cli_other_error(
+                    "proof room bundle signature missing signatures array".to_string(),
+                )
+            })?;
         signatures.clear();
         signatures.push(serde_json::json!({
             "keyid": keypair.public_key().to_hex(),
@@ -731,7 +770,10 @@ fn public_proof_archive_member_allowlist(
         .and_then(serde_json::Value::as_array)
     {
         for negative_case in negative_cases {
-            if let Some(path) = negative_case.get("path").and_then(serde_json::Value::as_str) {
+            if let Some(path) = negative_case
+                .get("path")
+                .and_then(serde_json::Value::as_str)
+            {
                 insert_allowed_negative_case_members(root, &mut members, path)?;
             }
         }

@@ -21,4 +21,10 @@ pub enum CommerceOrderError {
     PaymentFailed(String),
     #[error("commerce mandate failed: {0}")]
     MandateFailed(String),
+    #[error("commerce provider trust failed: {0}")]
+    ProviderTrustFailed(String),
+    #[error("commerce settlement failed: {0}")]
+    SettlementFailed(String),
+    #[error("commerce coverage failed: {0}")]
+    CoverageFailed(String),
 }

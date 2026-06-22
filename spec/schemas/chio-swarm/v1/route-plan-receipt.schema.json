@@ -14,10 +14,13 @@
     "registrySnapshotHash",
     "bridgeId",
     "protocolTarget",
+    "egressContractId",
     "egressConstraints",
     "attenuationDecision",
     "policyDigest",
-    "expiresAtUnixMs"
+    "expiresAtUnixMs",
+    "issuer",
+    "signature"
   ],
   "properties": {
     "schema": {
@@ -53,6 +56,10 @@
       "type": "string",
       "minLength": 1
     },
+    "egressContractId": {
+      "type": "string",
+      "minLength": 1
+    },
     "egressConstraints": {
       "type": "array",
       "items": {
@@ -70,6 +77,14 @@
     "expiresAtUnixMs": {
       "type": "integer",
       "minimum": 0
+    },
+    "issuer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
     }
   },
   "$defs": {

@@ -173,9 +173,16 @@ pub(crate) fn proof_room_fixture_asset_with_root(
     if asset_path == "verifier-report.json" && fixture.kind == "disclosure-crypto-context" {
         let context_bytes = source.file("verification-context.json", fixture_id)?;
         let report_bytes = source.file("crypto-context-report.json", fixture_id)?;
-        let contents =
-            crypto_context_verified_report_bytes(&context_bytes, &report_bytes, fixture_id)
-                .map_err(|error| (StatusCode::UNPROCESSABLE_ENTITY, error))?;
+        let proof_bytes = source.file("selective-disclosure-proof.json", fixture_id)?;
+        let privacy_profile_bytes = source.file("verifier-privacy-profile.json", fixture_id)?;
+        let contents = crypto_context_verified_report_bytes_with_bbs(
+            &context_bytes,
+            &report_bytes,
+            &proof_bytes,
+            &privacy_profile_bytes,
+            fixture_id,
+        )
+        .map_err(|error| (StatusCode::UNPROCESSABLE_ENTITY, error))?;
         return Ok((contents, fixture_asset_content_type(asset_path)));
     }
     if asset_path == "verifier-report.json" && fixture.kind == "negative-disclosure-crypto-context"
@@ -232,6 +239,7 @@ pub(crate) fn allowed_fixture_asset_paths(
                 &[
                     "verification-context.json",
                     "crypto-context-report.json",
+                    "selective-disclosure-proof.json",
                     "key-state.json",
                     "revocation-snapshot.json",
                     "transparency-inclusion-proof.json",
@@ -240,7 +248,15 @@ pub(crate) fn allowed_fixture_asset_paths(
             )?;
         }
         "negative-disclosure-crypto-context" => {
-            insert_allowed_fixture_asset(&mut allowed, "verification-context.json", fixture_id)?;
+            insert_allowed_fixture_assets(
+                &mut allowed,
+                fixture_id,
+                &[
+                    "verification-context.json",
+                    "selective-disclosure-proof.json",
+                    "verifier-privacy-profile.json",
+                ],
+            )?;
         }
         "transaction-passport" | "negative-transaction-passport" => {
             insert_transaction_fixture_assets(&mut allowed, source, fixture_id)?;
@@ -880,10 +896,16 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
                     ),
                 ));
             }
+            let trust = crate::public_settlement_verifier_trust_from_env().map_err(|error| {
+                (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    format!("proof-room.fixture.public-settlement-invalid: {fixture_id}: {error}"),
+                )
+            })?;
             proof_room_fixture_verified_report_bytes(
                 fixture_id,
                 passport,
-                chio_web3::settlement_proof::verify_public_settlement_proof(&proof_bundle),
+                chio_web3::settlement_proof::verify_public_settlement_proof(&proof_bundle, &trust),
             )
         }
         ProofRoomFixtureReportRoute::StandaloneRisk => proof_room_fixture_standalone_risk_report(
@@ -907,8 +929,13 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
                     &chio_trust_market_context::TrustMarketBundle {
                         passport: passport.clone(),
                         evidence_graph_bytes: evidence_graph_bytes.to_vec(),
+                        root_evidence_graph_bytes: None,
                         verifier_policy_bytes: verifier_policy_bytes.to_vec(),
                         artifacts: artifacts.clone(),
+                        trusted_passport_signer_keys:
+                            crate::transaction_trusted_root_keys_from_env().map_err(|error| {
+                                proof_room_fixture_invalid(fixture_id, "trust-market", error)
+                            })?,
                         trusted_market_authority_keys,
                     },
                 ),
@@ -921,8 +948,17 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
                 &chio_enterprise_export::EnterpriseExportBundle {
                     passport: passport.clone(),
                     evidence_graph_bytes: evidence_graph_bytes.to_vec(),
+                    root_evidence_graph_bytes: None,
                     verifier_policy_bytes: verifier_policy_bytes.to_vec(),
                     artifacts: artifacts.clone(),
+                    trusted_passport_signer_keys: crate::transaction_trusted_root_keys_from_env()
+                        .map_err(|error| {
+                        proof_room_fixture_invalid(fixture_id, "enterprise", error)
+                    })?,
+                    trusted_approval_signer_keys:
+                        crate::enterprise_trusted_approval_signer_keys_from_env().map_err(
+                            |error| proof_room_fixture_invalid(fixture_id, "enterprise", error),
+                        )?,
                 },
             ),
         ),
@@ -934,10 +970,15 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
                     &chio_agent_web_interop::AgentWebInteropBundle {
                         passport: passport.clone(),
                         evidence_graph_bytes: evidence_graph_bytes.to_vec(),
+                        root_evidence_graph_bytes: None,
                         verifier_policy_bytes: verifier_policy_bytes.to_vec(),
                         artifacts: artifacts.clone(),
                     },
-                    &agent_web_trust,
+                    &agent_web_trust.with_trusted_passport_signer_keys(
+                        crate::transaction_trusted_root_keys_from_env().map_err(|error| {
+                            proof_room_fixture_invalid(fixture_id, "agent-web", error)
+                        })?,
+                    ),
                 ),
                 Err(error) => Err(
                     chio_transaction_passport::TransactionPassportError::AgentWebClaimFailed(error),
@@ -947,16 +988,20 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
         ProofRoomFixtureReportRoute::Runtime => {
             let runtime_artifacts = embedded_runtime_artifacts(evidence_graph_bytes, artifacts)
                 .map_err(|error| proof_room_fixture_invalid(fixture_id, "runtime", error))?;
+            let runtime_trust = crate::runtime_trust_from_env()
+                .map_err(|error| proof_room_fixture_invalid(fixture_id, "runtime", error))?;
             proof_room_fixture_verified_report_bytes(
                 fixture_id,
                 passport,
-                chio_transaction_passport::verify_runtime_security_claims(
+                chio_transaction_passport::verify_runtime_security_claims_with_trust(
                     &chio_transaction_passport::RuntimeSecurityBundle {
                         passport: passport.clone(),
                         evidence_graph_bytes: evidence_graph_bytes.to_vec(),
+                        root_evidence_graph_bytes: None,
                         verifier_policy_bytes: verifier_policy_bytes.to_vec(),
                         artifacts: runtime_artifacts,
                     },
+                    &runtime_trust,
                 ),
             )
         }
@@ -1059,9 +1104,16 @@ pub(crate) fn proof_room_crypto_context_rejection_report(
     source: &ProofRoomFixtureSource,
 ) -> Result<(Vec<u8>, &'static str), (StatusCode, String)> {
     let context_bytes = source.file("verification-context.json", fixture_id)?;
-    crypto_context_rejection_report_bytes(&context_bytes, fixture_id)
-        .map(|contents| (contents, "application/json"))
-        .map_err(|error| (StatusCode::UNPROCESSABLE_ENTITY, error))
+    let proof_bytes = source.file("selective-disclosure-proof.json", fixture_id)?;
+    let privacy_profile_bytes = source.file("verifier-privacy-profile.json", fixture_id)?;
+    crypto_context_rejected_report_bytes_with_bbs(
+        &context_bytes,
+        &proof_bytes,
+        &privacy_profile_bytes,
+        fixture_id,
+    )
+    .map(|contents| (contents, "application/json"))
+    .map_err(|error| (StatusCode::UNPROCESSABLE_ENTITY, error))
 }
 
 pub(crate) fn proof_room_workflow_preflight_report(

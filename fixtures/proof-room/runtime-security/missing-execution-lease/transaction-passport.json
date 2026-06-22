@@ -1,1 +1,13 @@
-{"schema":"chio.transaction-passport.v1","id":"runtime-passport-missing-lease","issued_at":"2026-06-10T00:00:00Z","evidence_graph_sha256":"4020022f2e4654a5156ce8ac1f425364407ffd4938fd537cde8fd5a73bcc0520","evidence_graph_path":"evidence-graph.json","verifier_policy_sha256":"e11a5ed0b53c7f77171213c4cb1673edcc3ebb38bd7dd55498ea38dc6309db97","verifier_policy_path":"verifier-policy.json"}
+{
+  "schema": "chio.transaction-passport.v1",
+  "id": "runtime-passport-missing-lease",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "issuer": "did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+  "evidence_graph_sha256": "32c28c47606869e0a0ca2387d047ec17feda111abe4ddb0be8f2814a7c8f58b2",
+  "evidence_graph_path": "evidence-graph.json",
+  "claim_set_sha256": "27941b67907a3f7ca3238c9214866c4ac422f406269ebae6a508c60213e2eb3f",
+  "claim_set_path": "claim-set.json",
+  "verifier_policy_sha256": "e11a5ed0b53c7f77171213c4cb1673edcc3ebb38bd7dd55498ea38dc6309db97",
+  "verifier_policy_path": "verifier-policy.json",
+  "signature": "f8c570177b880c7b35600ffc3f0312e4674bffc7777892984d9cc85302c9f92c6d2dc5337953541986708904921e0c8d355e9faa9d5ebffbad9c8e3520b2ba06"
+}

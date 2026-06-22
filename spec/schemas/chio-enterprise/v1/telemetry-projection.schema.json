@@ -34,7 +34,8 @@
         "event_id": { "type": "string", "minLength": 1 },
         "event_kind": { "type": "string", "minLength": 1 },
         "artifact_ref": { "type": "string", "minLength": 1 },
-        "artifact_sha256": { "$ref": "#/$defs/sha256" }
+        "artifact_sha256": { "$ref": "#/$defs/sha256" },
+        "receipt_ref": { "type": "string", "minLength": 1 }
       }
     }
   }

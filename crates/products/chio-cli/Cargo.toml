@@ -63,7 +63,7 @@ chio-replay-corpus = { workspace = true }
 chio-reputation = { workspace = true }
 chio-runtime = { workspace = true }
 chio-swarm-authority = { workspace = true }
-chio-selective-disclosure = { workspace = true }
+chio-selective-disclosure = { workspace = true, features = ["bbs"] }
 chio-store-sqlite = { workspace = true }
 chio-tee-frame = { workspace = true }
 chio-tool-call-fabric = { workspace = true }

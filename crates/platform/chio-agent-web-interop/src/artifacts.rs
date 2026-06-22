@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use chio_core_types::{PublicKey, Signature};
+use chio_core_types::{canonical_json_bytes, sha256_hex, PublicKey, Signature};
 use chio_transaction_passport::{TransactionPassport, TransactionPassportError};
 
 use super::{
@@ -43,6 +43,7 @@ pub(super) struct AgentWebProofEnvelope {
     pub(super) external_subject_digest: String,
     external_subject_signature_ref: String,
     pub(super) projection_manifest_ref: String,
+    pub(super) projection_manifest_sha256: String,
     pub(super) chio_claim_refs: Vec<String>,
     pub(super) receipt_refs: Vec<String>,
     disclosure_capsule_refs: Vec<String>,
@@ -95,6 +96,10 @@ pub(super) fn validate_envelope(
         ("external_subject_path", &envelope.external_subject_path),
         ("external_subject_digest", &envelope.external_subject_digest),
         ("projection_manifest_ref", &envelope.projection_manifest_ref),
+        (
+            "projection_manifest_sha256",
+            &envelope.projection_manifest_sha256,
+        ),
         ("signature", &envelope.signature),
     ] {
         require_non_empty(value, field)?;
@@ -102,6 +107,7 @@ pub(super) fn validate_envelope(
     if envelope.transaction_passport_ref != passport.id {
         return Err(claim_failed("Agent Web envelope passport mismatch"));
     }
+    validate_content_addressed_envelope_id(envelope)?;
     verify_envelope_signature(envelope, trust)?;
     validate_source_protocol(&envelope.source_protocol)?;
     validate_bundle_relative_path(&envelope.external_subject_path).map_err(|_| {
@@ -112,6 +118,8 @@ pub(super) fn validate_envelope(
     })?;
     validate_sha256_hex(&envelope.external_subject_digest)
         .map_err(|_| claim_failed("invalid external subject digest"))?;
+    validate_sha256_hex(&envelope.projection_manifest_sha256)
+        .map_err(|_| claim_failed("invalid projection manifest digest"))?;
     if envelope.chio_claim_refs.is_empty() {
         return Err(claim_failed("Agent Web envelope must include claim refs"));
     }
@@ -156,12 +164,71 @@ struct AgentWebProofEnvelopeSignaturePayload<'a> {
     external_subject_digest: &'a str,
     external_subject_signature_ref: &'a str,
     projection_manifest_ref: &'a str,
+    projection_manifest_sha256: &'a str,
     chio_claim_refs: &'a [String],
     receipt_refs: &'a [String],
     disclosure_capsule_refs: &'a [String],
     settlement_refs: &'a [String],
     risk_refs: &'a [String],
     limitations: &'a [String],
+}
+
+#[derive(Serialize)]
+struct AgentWebProofEnvelopeIdInput<'a> {
+    schema: &'a str,
+    transaction_passport_ref: &'a str,
+    source_protocol: &'a str,
+    source_protocol_version: &'a str,
+    external_subject: &'a str,
+    external_subject_path: &'a str,
+    external_subject_digest: &'a str,
+    external_subject_signature_ref: &'a str,
+    projection_manifest_ref: &'a str,
+    projection_manifest_sha256: &'a str,
+    chio_claim_refs: &'a [String],
+    receipt_refs: &'a [String],
+    disclosure_capsule_refs: &'a [String],
+    settlement_refs: &'a [String],
+    risk_refs: &'a [String],
+    limitations: &'a [String],
+}
+
+fn validate_content_addressed_envelope_id(
+    envelope: &AgentWebProofEnvelope,
+) -> Result<(), TransactionPassportError> {
+    let expected = content_addressed_envelope_id(envelope)
+        .map_err(|_| claim_failed("Agent Web envelope id is not content-addressed"))?;
+    if envelope.envelope_id != expected {
+        return Err(claim_failed(
+            "Agent Web envelope id is not content-addressed",
+        ));
+    }
+    Ok(())
+}
+
+fn content_addressed_envelope_id(
+    envelope: &AgentWebProofEnvelope,
+) -> Result<String, chio_core_types::Error> {
+    let payload = AgentWebProofEnvelopeIdInput {
+        schema: &envelope.schema,
+        transaction_passport_ref: &envelope.transaction_passport_ref,
+        source_protocol: &envelope.source_protocol,
+        source_protocol_version: &envelope.source_protocol_version,
+        external_subject: &envelope.external_subject,
+        external_subject_path: &envelope.external_subject_path,
+        external_subject_digest: &envelope.external_subject_digest,
+        external_subject_signature_ref: &envelope.external_subject_signature_ref,
+        projection_manifest_ref: &envelope.projection_manifest_ref,
+        projection_manifest_sha256: &envelope.projection_manifest_sha256,
+        chio_claim_refs: &envelope.chio_claim_refs,
+        receipt_refs: &envelope.receipt_refs,
+        disclosure_capsule_refs: &envelope.disclosure_capsule_refs,
+        settlement_refs: &envelope.settlement_refs,
+        risk_refs: &envelope.risk_refs,
+        limitations: &envelope.limitations,
+    };
+    let canonical = canonical_json_bytes(&payload)?;
+    Ok(sha256_hex(&canonical))
 }
 
 fn verify_envelope_signature(
@@ -200,6 +267,7 @@ fn verify_envelope_signature(
         external_subject_digest: &envelope.external_subject_digest,
         external_subject_signature_ref: &envelope.external_subject_signature_ref,
         projection_manifest_ref: &envelope.projection_manifest_ref,
+        projection_manifest_sha256: &envelope.projection_manifest_sha256,
         chio_claim_refs: &envelope.chio_claim_refs,
         receipt_refs: &envelope.receipt_refs,
         disclosure_capsule_refs: &envelope.disclosure_capsule_refs,
@@ -628,8 +696,16 @@ fn validate_oci_ref_subject(
         "rekor_inclusion_status",
         "missing OCI Rekor inclusion status",
     )?;
-    if rekor_inclusion_status != "verified" {
-        return Err(claim_failed("OCI Rekor inclusion was not verified"));
+    if rekor_inclusion_status == "verified" {
+        return Err(claim_failed(
+            "OCI Rekor inclusion must not be self-asserted as verified",
+        ));
+    }
+    if !matches!(
+        rekor_inclusion_status,
+        "advisory" | "claimed" | "unverified"
+    ) {
+        return Err(claim_failed("unsupported OCI Rekor inclusion status"));
     }
     let cache_admission_report_digest = required_json_str(
         value,
@@ -1004,7 +1080,12 @@ fn validate_sigstore_bundle_subject(
         "verification_status",
         "missing Sigstore verification status",
     )?;
-    if verification_status != "verified" {
+    if verification_status == "verified" {
+        return Err(claim_failed(
+            "Sigstore verification status must not be self-asserted as verified",
+        ));
+    }
+    if !matches!(verification_status, "advisory" | "claimed" | "unverified") {
         return Err(claim_failed("unsupported Sigstore verification status"));
     }
     let receipt_refs = value
@@ -1091,8 +1172,10 @@ fn validate_in_toto_statement_subject(
             .map_err(|_| claim_failed(format!("invalid in-toto digest: {field}")))?;
     }
     let signature_count = required_json_u64(value, "signature_count", "missing DSSE signature")?;
-    if signature_count == 0 {
-        return Err(claim_failed("missing DSSE signature"));
+    if signature_count < 2 {
+        return Err(claim_failed(
+            "in-toto statement requires bilateral DSSE signatures",
+        ));
     }
     let receipt_refs = value
         .get("receipt_refs")
@@ -1160,8 +1243,8 @@ fn validate_dsse_envelope_subject(
             .map_err(|_| claim_failed(format!("invalid DSSE digest: {field}")))?;
     }
     let signature_count = required_json_u64(value, "signature_count", "missing DSSE signature")?;
-    if signature_count == 0 {
-        return Err(claim_failed("missing DSSE signature"));
+    if signature_count < 2 {
+        return Err(claim_failed("DSSE envelope requires bilateral signatures"));
     }
     let verification_status = required_json_str(
         value,

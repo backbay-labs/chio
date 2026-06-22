@@ -268,7 +268,7 @@ Chio does not currently claim:
 - automatic coverage binding beyond Chio's documented delegated
   pricing-authority envelope
 - implicit regulated-actor status, automatic external capital dispatch,
-  autonomous insurer pricing, or open-market capital execution beyond Chio's
+  autonomous insurer-rate setting, or open-market capital execution beyond Chio's
   documented live capital-book, custody-neutral instruction,
   simulation-first allocation, and executable reserve-control surface
 

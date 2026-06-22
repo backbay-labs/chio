@@ -6,12 +6,34 @@ pub enum TransactionPassportError {
     UnsupportedSchema(String),
     #[error("invalid transaction passport field {field}: {message}")]
     InvalidPassportField { field: String, message: String },
+    #[error("invalid transaction passport timestamp {field}: {value}: {message}")]
+    InvalidPassportTimestamp {
+        field: String,
+        value: String,
+        message: String,
+    },
+    #[error("transaction passport validity window invalid: {0}")]
+    InvalidPassportValidityWindow(String),
+    #[error("transaction passport not yet valid: not_before {not_before}, now {now}")]
+    PassportNotYetValid { not_before: String, now: String },
+    #[error("transaction passport expired: expires_at {expires_at}, now {now}")]
+    PassportExpired { expires_at: String, now: String },
+    #[error("trusted transaction root keys missing")]
+    MissingTrustedTransactionRootKeys,
+    #[error("transaction passport signer is not trusted")]
+    UntrustedTransactionPassportSigner,
+    #[error("transaction passport signature invalid: {0}")]
+    InvalidPassportSignature(String),
     #[error("invalid evidence graph digest: {0}")]
     InvalidEvidenceGraphDigest(String),
+    #[error("invalid claim set digest: {0}")]
+    InvalidClaimSetDigest(String),
     #[error("invalid verifier policy digest: {0}")]
     InvalidVerifierPolicyDigest(String),
     #[error("unsafe evidence graph path: {0}")]
     UnsafeEvidenceGraphPath(String),
+    #[error("unsafe claim set path: {0}")]
+    UnsafeClaimSetPath(String),
     #[error("unsafe verifier policy path: {0}")]
     UnsafeVerifierPolicyPath(String),
     #[error("invalid evidence graph artifact: {0}")]

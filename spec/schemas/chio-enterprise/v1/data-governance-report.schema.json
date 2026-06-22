@@ -32,7 +32,10 @@
       "uniqueItems": true
     },
     "observed_region": { "type": "string", "minLength": 1 },
-    "retention_class": { "type": "string", "minLength": 1 },
+    "retention_class": {
+      "type": "string",
+      "pattern": "^audit-[0-9]+d$"
+    },
     "legal_hold_status": { "type": "string", "minLength": 1 },
     "redaction_profile_ref": { "type": "string", "minLength": 1 },
     "disclosure_capsule_ref": { "type": "string", "minLength": 1 },

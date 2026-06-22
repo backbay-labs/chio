@@ -110,12 +110,36 @@
       "proof_manifest_ref": "manifest.transaction.evidence_graph_digest_bound"
     },
     {
+      "id": "claim.transaction.evidence_graph_structure_verified",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-transaction/v1/evidence-graph.schema.json",
+      "summary": "The Transaction Passport verifier rejects malformed evidence graphs, dangling graph edges, duplicate node ids, and cyclic graph structure before family-specific verification.",
+      "introduced_in": "transaction-passport-v1",
+      "proof_manifest_ref": "manifest.transaction.evidence_graph_structure_verified"
+    },
+    {
+      "id": "claim.transaction.claim_set_digest_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-transaction/v1/claim-set.schema.json",
+      "summary": "The Transaction Passport verifier binds claim_set_sha256 and claim_set_path to a loaded claim-set artifact and rejects missing or unbound claim inventories.",
+      "introduced_in": "transaction-passport-v1",
+      "proof_manifest_ref": "manifest.transaction.claim_set_digest_bound"
+    },
+    {
       "id": "claim.transaction.policy_digest_bound",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-transaction/v1/verifier-policy.schema.json",
       "summary": "The Transaction Passport verifier loads the bundle-relative verifier policy and rejects the passport if the bytes do not match verifier_policy_sha256.",
       "introduced_in": "transaction-passport-v1",
       "proof_manifest_ref": "manifest.transaction.policy_digest_bound"
+    },
+    {
+      "id": "claim.transaction.omission_policy_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-transaction/v1/transaction-passport.schema.json",
+      "summary": "The Transaction Passport verifier requires every policy-declared omitted claim to be signed into the passport omission policy with a supported omission status.",
+      "introduced_in": "transaction-passport-v1",
+      "proof_manifest_ref": "manifest.transaction.omission_policy_bound"
     },
     {
       "id": "claim.proof_room.verifier_report_bound",
@@ -209,7 +233,7 @@
       "id": "claim.commerce.order_replay_consistent",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-commerce/v1/event-log.schema.json",
-      "summary": "The commerce verifier replays the append-only event log, rejects duplicate events or invalid transitions, and requires the replayed state to match the order context.",
+      "summary": "The commerce verifier replays the append-only event log across the normative commerce states, rejects duplicate events or invalid recovery transitions, requires the replayed terminal state to match the order context, and binds the canonical quote digest used by downstream payment evidence.",
       "introduced_in": "commerce-payments-v1",
       "proof_manifest_ref": "manifest.commerce.order_replay_consistent"
     },
@@ -217,7 +241,7 @@
       "id": "claim.commerce.payment_lifecycle_bound",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-commerce/v1/payment-lifecycle.schema.json",
-      "summary": "The commerce verifier requires PSP-shaped payment lifecycle evidence to bind the same order id, merchant, amount, currency, capture window, fraud outcome, and unresolved recovery posture as the order context.",
+      "summary": "The commerce verifier requires PSP-shaped payment lifecycle evidence to bind the same order id, merchant, amount, currency, capture window, fraud outcome, unresolved recovery posture, and canonical quote digest as the order context.",
       "introduced_in": "commerce-payments-v1",
       "proof_manifest_ref": "manifest.commerce.payment_lifecycle_bound"
     },
@@ -225,9 +249,33 @@
       "id": "claim.commerce.mandate_allowance_bound",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-commerce/v1/mandate-allowance-ledger.schema.json",
-      "summary": "The commerce verifier requires mandate allowance evidence to bind the same order id, merchant, amount, currency, validity window, occurrence limits, AP2 mandate hashes, and ACP-Commerce delegated token hash.",
+      "summary": "The commerce verifier requires mandate allowance evidence to bind the same order id, merchant, amount, currency, canonical quote digest, validity window, occurrence limits, normalized AP2 mandate hashes, an ACP-Commerce delegated token hash, and x402 payment requirements.",
       "introduced_in": "commerce-payments-v1",
       "proof_manifest_ref": "manifest.commerce.mandate_allowance_bound"
+    },
+    {
+      "id": "claim.commerce.admission_gates_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/order-context.schema.json",
+      "summary": "The commerce verifier requires intent, provider admission, provider passport, reputation snapshot, and federation trust bundle evidence to bind the expected order-context refs, paths, digests, subjects, and statuses before later commerce gates can verify.",
+      "introduced_in": "commerce-payments-v1",
+      "proof_manifest_ref": "manifest.commerce.admission_gates_bound"
+    },
+    {
+      "id": "claim.commerce.settlement_lifecycle_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/order-context.schema.json",
+      "summary": "The commerce verifier requires settlement dispatch and reconciliation events to bind the expected settlement packet and reconciliation evidence refs, and requires the settlement packet to carry the order context canonical quote digest.",
+      "introduced_in": "commerce-payments-v1",
+      "proof_manifest_ref": "manifest.commerce.settlement_lifecycle_bound"
+    },
+    {
+      "id": "claim.commerce.order_passport_summary_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/order-passport.schema.json",
+      "summary": "The commerce verifier emits an order passport summary only after recomputing the order-context digest, binding all verified commerce artifact digests, and listing the public-summary disclosure policy with redacted private payment and subject fields.",
+      "introduced_in": "commerce-payments-v1",
+      "proof_manifest_ref": "manifest.commerce.order_passport_summary_bound"
     },
     {
       "id": "claim.workflow.preflight_child_scope_bounded",
@@ -425,7 +473,7 @@
       "id": "claim.public_settlement.order_binding_verified",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json",
-      "summary": "The public settlement verifier requires the proof bundle to bind a transaction passport id and commerce order id before settlement evidence can support commerce proof claims.",
+      "summary": "The public settlement verifier requires the proof bundle to bind the transaction passport, commerce order, chain, settlement reference, settlement tx hash, beneficiary, escrow, and settlement amount before settlement evidence can support commerce proof claims.",
       "introduced_in": "public-settlement-v1",
       "proof_manifest_ref": "manifest.public_settlement.order_binding_verified"
     },
@@ -460,6 +508,14 @@
       "summary": "The public settlement verifier requires an explicit dispute posture for public settlement context instead of treating settlement as complete by transcript alone.",
       "introduced_in": "public-settlement-v1",
       "proof_manifest_ref": "manifest.public_settlement.dispute_posture_bound"
+    },
+    {
+      "id": "claim.public_settlement.trust_market_refs_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json",
+      "summary": "When public settlement evidence carries trust-market context, the verifier requires collateral position, guarantee decision, SLA remedy, and slash authority refs to be present together and non-empty before reporting the trust-market settlement context claim.",
+      "introduced_in": "public-settlement-v1",
+      "proof_manifest_ref": "manifest.public_settlement.trust_market_refs_bound"
     },
     {
       "id": "claim.swarm.task_graph_bound",
@@ -500,6 +556,14 @@
       "summary": "The swarm authority verifier requires join receipts to match graph joins and rejects missing, duplicate, unexpected, or mismatched parent receipt sets.",
       "introduced_in": "swarm-authority-v1",
       "proof_manifest_ref": "manifest.swarm.join_receipt_bound"
+    },
+    {
+      "id": "claim.swarm.terminal_graph_receipt_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-swarm/v1/terminal-graph-receipt.schema.json",
+      "summary": "The swarm authority verifier requires a signed terminal graph receipt that binds completed tasks, join receipts, route-plan receipts, revocation epoch, and budget rollups.",
+      "introduced_in": "swarm-authority-v1",
+      "proof_manifest_ref": "manifest.swarm.terminal_graph_receipt_bound"
     },
     {
       "id": "claim.swarm.budget_pool_bound",

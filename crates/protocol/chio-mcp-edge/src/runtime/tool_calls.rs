@@ -11,6 +11,7 @@ pub struct BridgeMcpToolCallRequest {
     pub arguments: Value,
     pub agent_id: String,
     pub execution_nonce: Option<SignedExecutionNonce>,
+    pub governed_intent: Option<GovernedTransactionIntent>,
     pub model_metadata: Option<ModelMetadata>,
     pub route_selection_metadata: Option<Value>,
     pub peer_supports_chio_tool_streaming: bool,
@@ -123,6 +124,7 @@ pub async fn execute_bridge_mcp_tool_call_async(
         arguments,
         agent_id,
         execution_nonce,
+        governed_intent,
         model_metadata,
         route_selection_metadata,
         peer_supports_chio_tool_streaming,
@@ -136,7 +138,7 @@ pub async fn execute_bridge_mcp_tool_call_async(
         arguments,
         dpop_proof: None,
         execution_nonce,
-        governed_intent: None,
+        governed_intent,
         approval_token: None,
         model_metadata,
         federated_origin_kernel_id: None,
@@ -179,7 +181,7 @@ pub fn execute_bridge_mcp_tool_call(
                 arguments: request.arguments.clone(),
                 dpop_proof: None,
                 execution_nonce: request.execution_nonce.clone(),
-                governed_intent: None,
+                governed_intent: request.governed_intent.clone(),
                 approval_token: None,
                 model_metadata: request.model_metadata.clone(),
                 federated_origin_kernel_id: None,
@@ -295,6 +297,8 @@ impl ChioMcpEdge {
             .unwrap_or_else(|| json!({}));
         let model_metadata = parse_request_model_metadata(id, params)?;
         let execution_nonce = parse_request_execution_nonce(id, params)?;
+        let governed_intent = parse_request_governed_intent(id, params)?;
+        let extra_metadata = parse_request_extra_metadata(id, params)?;
 
         let Some(&tool_index) = self.tool_index.get(tool_name) else {
             return Err(jsonrpc_error(
@@ -342,8 +346,10 @@ impl ChioMcpEdge {
                 server_id: binding.server_id,
                 tool_name: binding.tool_name,
                 arguments,
+                governed_intent,
                 execution_nonce,
                 model_metadata,
+                extra_metadata,
             },
         ))
     }
@@ -356,7 +362,7 @@ impl ChioMcpEdge {
         operation: &ToolCallOperation,
         related_task_id: Option<&str>,
     ) -> ToolCallEdgeOutcome {
-        let operation = SessionOperation::ToolCall(operation.clone());
+        let operation = SessionOperation::ToolCall(Box::new(operation.clone()));
         match self.kernel.evaluate_session_operation(context, &operation) {
             Ok(SessionOperationResponse::ToolCall(response)) => self
                 .tool_result_for_kernel_response(KernelToolResultArgs {

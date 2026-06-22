@@ -76,6 +76,7 @@ pub type SignedRuntimePeerWeights = chio_runtime_core::SignedRuntimePeerWeights;
 pub type SignedRuntimePheromonePolicy = chio_runtime_core::SignedRuntimePheromonePolicy;
 pub type SignedRuntimePheromoneQueryReport = chio_runtime_core::SignedRuntimePheromoneQueryReport;
 pub type SignedRuntimeVerifierTrustBundle = chio_runtime_core::SignedRuntimeVerifierTrustBundle;
+pub type SwarmAuthorityBundle = chio_swarm_authority::SwarmAuthorityBundle;
 pub type TreatyRuntimeArtifactRecord = chio_runtime_core::TreatyRuntimeArtifactRecord;
 pub type WeightsBindingMode = chio_runtime_core::WeightsBindingMode;
 
@@ -132,6 +133,7 @@ pub struct ChioRuntimeAdmissionHook<S> {
     pheromone_query_report: Option<SignedRuntimePheromoneQueryReport>,
     runtime_pheromone_policy: Option<SignedRuntimePheromonePolicy>,
     runtime_peer_weights: Option<SignedRuntimePeerWeights>,
+    swarm_witness_keys: Vec<chio_core_types::PublicKey>,
     fixed_now_unix_ms: Option<u64>,
 }
 
@@ -146,6 +148,7 @@ impl<S> ChioRuntimeAdmissionHook<S> {
             pheromone_query_report: None,
             runtime_pheromone_policy: None,
             runtime_peer_weights: None,
+            swarm_witness_keys: Vec::new(),
             fixed_now_unix_ms: None,
         }
     }
@@ -182,6 +185,15 @@ impl<S> ChioRuntimeAdmissionHook<S> {
     }
 
     #[must_use]
+    pub fn with_swarm_witness_keys(
+        mut self,
+        witness_keys: Vec<chio_core_types::PublicKey>,
+    ) -> Self {
+        self.swarm_witness_keys = witness_keys;
+        self
+    }
+
+    #[must_use]
     pub fn with_fixed_now_unix_ms(mut self, now_unix_ms: u64) -> Self {
         self.fixed_now_unix_ms = Some(now_unix_ms);
         self
@@ -211,6 +223,7 @@ impl<S> ChioRuntimeAdmissionHook<S> {
         {
             hook = hook.with_runtime_pheromone_policy(policy.clone(), peer_weights.clone());
         }
+        hook = hook.with_swarm_witness_keys(self.swarm_witness_keys.clone());
         if let Some(now_unix_ms) = self.fixed_now_unix_ms {
             hook = hook.with_fixed_now_unix_ms(now_unix_ms);
         }

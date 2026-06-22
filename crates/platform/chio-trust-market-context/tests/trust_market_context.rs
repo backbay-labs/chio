@@ -17,6 +17,7 @@ const CLAIM_JURISDICTION_BOUND: &str = "claim.trust_market.jurisdiction_bound";
 const CLAIM_UNSUPPORTED_MARKET_LIMITED: &str =
     "claim.trust_market.unsupported_market_claims_limited";
 const MARKET_AUTHORITY_SEED: [u8; 32] = [59; 32];
+const TRANSACTION_PASSPORT_SIGNATURE_SEED: [u8; 32] = [7; 32];
 
 #[derive(Debug, Clone, Copy)]
 enum TrustMarketCase {
@@ -27,6 +28,7 @@ enum TrustMarketCase {
     AmbiguousTopRank,
     LowerRankOverrideReceiptUnbound,
     LowerRankOverrideReceiptUnavailable,
+    LowerRankOverrideReceiptUntrustedSigner,
     SelectionRankingMissingAvailableCandidate,
     SelectionRankingDuplicateProvider,
     SelectionRankingOrderMismatch,
@@ -58,6 +60,11 @@ enum TrustMarketCase {
     RiskFacilityLifecycleMissingEvidence,
     RiskFacilityLifecycleMissingEvidenceArtifact,
     RiskFacilityLifecycleUnsignedAuthorityEvidence,
+    RiskReserveLedgerReceiptUntrustedSigner,
+    RiskSettlementReceiptUntrustedSigner,
+    RiskSanctionReserveLedgerReceiptUntrustedSigner,
+    RiskSanctionAuthorityReceiptUntrustedSigner,
+    RiskSanctionJurisdictionReceiptUntrustedSigner,
 }
 
 fn json_bytes(value: Value) -> Vec<u8> {
@@ -68,12 +75,27 @@ fn market_authority_keypair() -> Keypair {
     Keypair::from_seed(&MARKET_AUTHORITY_SEED)
 }
 
+fn untrusted_market_authority_keypair() -> Keypair {
+    Keypair::from_seed(&[60; 32])
+}
+
+fn transaction_passport_keypair() -> Keypair {
+    Keypair::from_seed(&TRANSACTION_PASSPORT_SIGNATURE_SEED)
+}
+
+fn sign_transaction_passport(passport: &mut TransactionPassport) {
+    let keypair = transaction_passport_keypair();
+    passport.issuer = format!("did:chio:{}", keypair.public_key().to_hex());
+    passport.signature = String::new();
+    passport.signature = chio_transaction_passport::sign_transaction_passport(passport, &keypair)
+        .test_expect("transaction passport signs");
+}
+
 fn market_authority_key_hex() -> String {
     market_authority_keypair().public_key().to_hex()
 }
 
-fn signed_market_artifact_bytes(mut value: Value) -> Vec<u8> {
-    let keypair = market_authority_keypair();
+fn signed_artifact_bytes_with_key(mut value: Value, keypair: &Keypair) -> Vec<u8> {
     let object = value
         .as_object_mut()
         .test_expect("signed market artifact is an object");
@@ -88,6 +110,28 @@ fn signed_market_artifact_bytes(mut value: Value) -> Vec<u8> {
         keypair.public_key().to_hex()
     ));
     json_bytes(value)
+}
+
+fn signed_market_artifact_bytes(value: Value) -> Vec<u8> {
+    signed_artifact_bytes_with_key(value, &market_authority_keypair())
+}
+
+fn signed_receipt_artifact_bytes(receipt_id: &str, trusted: bool) -> Vec<u8> {
+    let keypair = if trusted {
+        market_authority_keypair()
+    } else {
+        untrusted_market_authority_keypair()
+    };
+    signed_artifact_bytes_with_key(
+        json!({
+            "schema": "chio.receipt.v1",
+            "id": receipt_id,
+            "receipt_id": receipt_id,
+            "issued_at": "2026-06-10T00:00:00Z",
+            "terminal_status": "allowed_executed"
+        }),
+        &keypair,
+    )
 }
 
 fn push_artifact(
@@ -110,10 +154,29 @@ fn push_artifact(
     artifacts.insert(path.to_string(), bytes);
 }
 
+fn push_receipt_artifact(
+    artifacts: &mut BTreeMap<String, Vec<u8>>,
+    graph_nodes: &mut Vec<Value>,
+    receipt_id: &str,
+    trusted: bool,
+) {
+    push_artifact(
+        artifacts,
+        graph_nodes,
+        "receipt",
+        receipt_id,
+        "chio.receipt.v1",
+        &format!("{receipt_id}.json"),
+        signed_receipt_artifact_bytes(receipt_id, trusted),
+    );
+}
+
 fn facility_lifecycle_for_state(final_state: &str, settlement_evidence_ref: &str) -> Value {
+    const POLICY_ID: &str = "risk-policy-facility-market-valid";
     let mut transitions = vec![
         json!({
             "transition_id": "facility-transition-underwriting-ready",
+            "policy_id": POLICY_ID,
             "from_state": "evidence_cold",
             "to_state": "underwriting_ready",
             "authority_receipt_ref": "guarantee-decision",
@@ -121,6 +184,7 @@ fn facility_lifecycle_for_state(final_state: &str, settlement_evidence_ref: &str
         }),
         json!({
             "transition_id": "facility-transition-facility-granted",
+            "policy_id": POLICY_ID,
             "from_state": "underwriting_ready",
             "to_state": "facility_granted",
             "authority_receipt_ref": "guarantee-decision",
@@ -128,6 +192,7 @@ fn facility_lifecycle_for_state(final_state: &str, settlement_evidence_ref: &str
         }),
         json!({
             "transition_id": "facility-transition-reserve-held",
+            "policy_id": POLICY_ID,
             "from_state": "facility_granted",
             "to_state": "reserve_held",
             "authority_receipt_ref": "guarantee-decision",
@@ -135,6 +200,7 @@ fn facility_lifecycle_for_state(final_state: &str, settlement_evidence_ref: &str
         }),
         json!({
             "transition_id": "facility-transition-coverage-bound",
+            "policy_id": POLICY_ID,
             "from_state": "reserve_held",
             "to_state": "coverage_bound",
             "authority_receipt_ref": "adjudication-jurisdiction-receipt",
@@ -144,6 +210,7 @@ fn facility_lifecycle_for_state(final_state: &str, settlement_evidence_ref: &str
     if final_state == "settlement_matched" {
         transitions.push(json!({
             "transition_id": "facility-transition-settlement-matched",
+            "policy_id": POLICY_ID,
             "from_state": "coverage_bound",
             "to_state": "settlement_matched",
             "authority_receipt_ref": "adjudication-jurisdiction-receipt",
@@ -158,10 +225,18 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         schema: "chio.transaction-passport.v1".to_string(),
         id: "passport-trust-market-valid".to_string(),
         issued_at: "2026-06-10T00:00:00Z".to_string(),
+        not_before: None,
+        expires_at: None,
+        issuer: "did:chio:66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a"
+            .to_string(),
         evidence_graph_sha256: String::new(),
         evidence_graph_path: "evidence-graph.json".to_string(),
+        claim_set_sha256: String::new(),
+        claim_set_path: "claim-set.json".to_string(),
         verifier_policy_sha256: String::new(),
         verifier_policy_path: "verifier-policy.json".to_string(),
+        omission_policy: Vec::new(),
+        signature: "0".repeat(128),
     };
 
     let mut artifacts = BTreeMap::new();
@@ -426,10 +501,29 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         sla_performance,
     );
 
+    let uses_hold_receipt_refs = matches!(
+        case,
+        TrustMarketCase::RiskReserveLedgerReceiptUntrustedSigner
+            | TrustMarketCase::RiskSettlementReceiptUntrustedSigner
+    );
+    let uses_sanction_receipt_refs = matches!(
+        case,
+        TrustMarketCase::RiskSanctionReserveLedgerReceiptUntrustedSigner
+            | TrustMarketCase::RiskSanctionAuthorityReceiptUntrustedSigner
+            | TrustMarketCase::RiskSanctionJurisdictionReceiptUntrustedSigner
+    );
     let risk_consumed_units = match case {
+        TrustMarketCase::RiskSanctionReserveLedgerReceiptUntrustedSigner
+        | TrustMarketCase::RiskSanctionAuthorityReceiptUntrustedSigner
+        | TrustMarketCase::RiskSanctionJurisdictionReceiptUntrustedSigner => 1,
         TrustMarketCase::RiskDoubleConsumedReserve
         | TrustMarketCase::RiskOpenAppealReserveRelease => 500,
         _ => 0,
+    };
+    let risk_payout_units = if uses_sanction_receipt_refs {
+        0
+    } else {
+        risk_consumed_units
     };
     let risk_reserve_ledger = match case {
         TrustMarketCase::RiskDoubleConsumedReserve => json!([
@@ -468,7 +562,75 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
                 "settlement_ref": "settlement-market-release"
             }
         ]),
+        TrustMarketCase::RiskReserveLedgerReceiptUntrustedSigner
+        | TrustMarketCase::RiskSettlementReceiptUntrustedSigner => json!([
+            {
+                "entry_id": "reserve-ledger-market-hold",
+                "receipt_ref": "receipt-market-hold",
+                "lane": "hold",
+                "reserve_ref": "reserve-market-valid",
+                "claim_id": "claim-market-hold",
+                "currency": "USD",
+                "units": 1,
+                "settlement_ref": "settlement-market-hold"
+            }
+        ]),
+        TrustMarketCase::RiskSanctionReserveLedgerReceiptUntrustedSigner
+        | TrustMarketCase::RiskSanctionAuthorityReceiptUntrustedSigner
+        | TrustMarketCase::RiskSanctionJurisdictionReceiptUntrustedSigner => json!([
+            {
+                "entry_id": "reserve-ledger-market-slash",
+                "receipt_ref": "receipt-market-slash",
+                "lane": "market_slash",
+                "reserve_ref": "reserve-market-valid",
+                "claim_id": "claim-market-slash",
+                "currency": "USD",
+                "units": 1,
+                "settlement_ref": "settlement-market-slash",
+                "sanction_bridge": {
+                    "bridge_id": "sanction-bridge-market-valid",
+                    "authority_receipt_ref": "authority-market-slash",
+                    "evidence_ref": "provider-selection-report",
+                    "jurisdiction_ref": "jurisdiction-market-slash",
+                    "sanction_subject": provider_subject,
+                    "maximum_slash_units": 1
+                }
+            }
+        ]),
         _ => json!([]),
+    };
+    let risk_sanction_reserve_ledger = match case {
+        TrustMarketCase::RiskSanctionReserveLedgerReceiptUntrustedSigner
+        | TrustMarketCase::RiskSanctionAuthorityReceiptUntrustedSigner
+        | TrustMarketCase::RiskSanctionJurisdictionReceiptUntrustedSigner => json!([
+            {
+                "entry_id": "sanction-reserve-ledger-market-slash",
+                "bridge_id": "sanction-bridge-market-valid",
+                "lane": "market_slash",
+                "receipt_ref": "receipt-market-slash",
+                "reserve_ref": "reserve-market-valid",
+                "claim_id": "claim-market-slash",
+                "currency": "USD",
+                "units": 1,
+                "settlement_ref": "settlement-market-slash",
+                "authority_receipt_ref": "authority-market-slash",
+                "evidence_ref": "provider-selection-report",
+                "jurisdiction_ref": "jurisdiction-market-slash"
+            }
+        ]),
+        _ => json!([]),
+    };
+    let covered_claim_ids = match case {
+        TrustMarketCase::RiskDoubleConsumedReserve => vec!["claim-market-payout"],
+        TrustMarketCase::RiskOpenAppealReserveRelease => vec!["claim-market-open"],
+        TrustMarketCase::RiskReserveLedgerReceiptUntrustedSigner
+        | TrustMarketCase::RiskSettlementReceiptUntrustedSigner => vec!["claim-market-hold"],
+        TrustMarketCase::RiskSanctionReserveLedgerReceiptUntrustedSigner
+        | TrustMarketCase::RiskSanctionAuthorityReceiptUntrustedSigner
+        | TrustMarketCase::RiskSanctionJurisdictionReceiptUntrustedSigner => {
+            vec!["claim-market-slash"]
+        }
+        _ => Vec::new(),
     };
     let facility_state = match case {
         TrustMarketCase::RiskFacilityLifecycleReplayGap
@@ -489,6 +651,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         "risk_state": "reconciled",
         "facility": {
             "facility_id": "facility-market-valid",
+            "policy_id": "risk-policy-facility-market-valid",
             "state": facility_state,
             "capital_currency": "USD",
             "capital_units": 2000,
@@ -503,7 +666,8 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             "currency": "USD",
             "exposure_units": 1000,
             "reserve_ref": "reserve-market-valid",
-            "status": "bound"
+            "status": "bound",
+            "covered_claim_ids": covered_claim_ids
         },
         "reconciliation": {
             "order_id": "order-commerce-001",
@@ -511,8 +675,8 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             "exposure_units": 1000,
             "reserve_units": 500,
             "consumed_reserve_units": risk_consumed_units,
-            "payout_units": risk_consumed_units,
-            "settlement_units": risk_consumed_units,
+            "payout_units": risk_payout_units,
+            "settlement_units": risk_payout_units,
             "status": "balanced"
         },
         "actuarial_evidence": {
@@ -539,6 +703,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             "coverage_statement": "coverage limited to supported exposure"
         },
         "reserve_ledger": risk_reserve_ledger,
+        "sanction_reserve_ledger": risk_sanction_reserve_ledger,
         "verified_claims": ["claim.risk.comptroller_report_bound"]
     });
     if matches!(case, TrustMarketCase::RiskOpenAppealReserveRelease) {
@@ -740,22 +905,26 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
     let beta_rank = match case {
         TrustMarketCase::AmbiguousTopRank
         | TrustMarketCase::LowerRankOverrideReceiptUnbound
-        | TrustMarketCase::LowerRankOverrideReceiptUnavailable => 1,
+        | TrustMarketCase::LowerRankOverrideReceiptUnavailable
+        | TrustMarketCase::LowerRankOverrideReceiptUntrustedSigner => 1,
         _ => 2,
     };
     let beta_total_score = match case {
         TrustMarketCase::SelectionRankingOrderMismatch => 99,
-        TrustMarketCase::LowerRankOverrideReceiptUnavailable => 99,
+        TrustMarketCase::LowerRankOverrideReceiptUnavailable
+        | TrustMarketCase::LowerRankOverrideReceiptUntrustedSigner => 99,
         _ => 81,
     };
     let selected_rank = match case {
         TrustMarketCase::LowerRankOverrideReceiptUnbound
-        | TrustMarketCase::LowerRankOverrideReceiptUnavailable => 2,
+        | TrustMarketCase::LowerRankOverrideReceiptUnavailable
+        | TrustMarketCase::LowerRankOverrideReceiptUntrustedSigner => 2,
         _ => 1,
     };
     let override_receipt_ref = match case {
         TrustMarketCase::LowerRankOverrideReceiptUnbound => "selection-override-receipt-missing",
-        TrustMarketCase::LowerRankOverrideReceiptUnavailable => "selection-override-receipt",
+        TrustMarketCase::LowerRankOverrideReceiptUnavailable
+        | TrustMarketCase::LowerRankOverrideReceiptUntrustedSigner => "selection-override-receipt",
         _ => "",
     };
     let selected_total_score = match case {
@@ -864,11 +1033,39 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             CLAIM_UNSUPPORTED_MARKET_LIMITED,
         ],
     };
+    let claim_set_claims = policy_required_claims
+        .iter()
+        .map(|claim| {
+            json!({
+                "claim_id": claim,
+                "status": "verified",
+                "required_evidence": ["provider-selection-report.json"],
+                "evidence_refs": ["provider-selection-report.json"],
+                "verifier_module": "chio-trust-market-context"
+            })
+        })
+        .collect::<Vec<_>>();
+    let claim_set = json_bytes(json!({
+        "schema": "chio.transaction.claim-set.v1",
+        "id": "claim-set-trust-market-valid",
+        "issued_at": "2026-06-10T00:00:00Z",
+        "claims": claim_set_claims
+    }));
+    let claim_set_sha256 = chio_core_types::sha256_hex(&claim_set);
+    push_artifact(
+        &mut artifacts,
+        &mut graph_nodes,
+        "claim-set",
+        "claim-set",
+        "chio.transaction.claim-set.v1",
+        "claim-set.json",
+        claim_set,
+    );
     let verifier_policy = json_bytes(json!({
         "schema": "chio.transaction.verifier-policy.v1",
         "id": "policy-trust-market-valid",
         "issued_at": "2026-06-10T00:00:00Z",
-        "required_claims": policy_required_claims,
+        "required_claims": policy_required_claims.clone(),
         "omitted_claims": [],
         "unsupported_claims": [
             "claim.market.permissionless_provider_marketplace_operated",
@@ -880,6 +1077,15 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         "max_reputation_import_weight": 30,
         "trusted_market_authority_keys": [market_authority_key_hex()]
     }));
+    push_artifact(
+        &mut artifacts,
+        &mut graph_nodes,
+        "verifier-policy",
+        "verifier-policy",
+        "chio.transaction.verifier-policy.v1",
+        "verifier-policy.json",
+        verifier_policy.clone(),
+    );
 
     if matches!(
         case,
@@ -902,6 +1108,69 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             "role": "receipt"
         }));
     }
+    if matches!(
+        case,
+        TrustMarketCase::LowerRankOverrideReceiptUntrustedSigner
+    ) {
+        push_receipt_artifact(
+            &mut artifacts,
+            &mut graph_nodes,
+            "selection-override-receipt",
+            false,
+        );
+    }
+    if uses_hold_receipt_refs {
+        push_receipt_artifact(
+            &mut artifacts,
+            &mut graph_nodes,
+            "receipt-market-hold",
+            !matches!(
+                case,
+                TrustMarketCase::RiskReserveLedgerReceiptUntrustedSigner
+            ),
+        );
+        push_receipt_artifact(
+            &mut artifacts,
+            &mut graph_nodes,
+            "settlement-market-hold",
+            !matches!(case, TrustMarketCase::RiskSettlementReceiptUntrustedSigner),
+        );
+    }
+    if uses_sanction_receipt_refs {
+        push_receipt_artifact(
+            &mut artifacts,
+            &mut graph_nodes,
+            "receipt-market-slash",
+            !matches!(
+                case,
+                TrustMarketCase::RiskSanctionReserveLedgerReceiptUntrustedSigner
+            ),
+        );
+        push_receipt_artifact(
+            &mut artifacts,
+            &mut graph_nodes,
+            "settlement-market-slash",
+            true,
+        );
+        push_receipt_artifact(
+            &mut artifacts,
+            &mut graph_nodes,
+            "authority-market-slash",
+            !matches!(
+                case,
+                TrustMarketCase::RiskSanctionAuthorityReceiptUntrustedSigner
+            ),
+        );
+        push_receipt_artifact(
+            &mut artifacts,
+            &mut graph_nodes,
+            "jurisdiction-market-slash",
+            !matches!(
+                case,
+                TrustMarketCase::RiskSanctionJurisdictionReceiptUntrustedSigner
+            ),
+        );
+    }
 
     let evidence_graph = json_bytes(json!({
         "schema": "chio.transaction.evidence-graph.v1",
@@ -909,6 +1178,12 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         "issued_at": "2026-06-10T00:00:00Z",
         "nodes": graph_nodes,
         "edges": [
+            {
+                "from": "claim-set",
+                "to": "verifier-policy",
+                "predicate": "binds",
+                "evidence_class": "digest-bound-reference"
+            },
             {
                 "from": "provider-discovery-snapshot",
                 "to": "provider-selection-report",
@@ -948,17 +1223,21 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         ]
     }));
 
-    let passport = TransactionPassport {
+    let mut passport = TransactionPassport {
         evidence_graph_sha256: chio_core_types::sha256_hex(&evidence_graph),
+        claim_set_sha256,
         verifier_policy_sha256: chio_core_types::sha256_hex(&verifier_policy),
         ..passport
     };
+    sign_transaction_passport(&mut passport);
 
     TrustMarketBundle {
         passport,
         evidence_graph_bytes: evidence_graph,
+        root_evidence_graph_bytes: None,
         verifier_policy_bytes: verifier_policy,
         artifacts,
+        trusted_passport_signer_keys: vec![transaction_passport_keypair().public_key()],
         trusted_market_authority_keys: vec![market_authority_keypair().public_key()],
     }
 }
@@ -974,6 +1253,7 @@ fn trust_market_bundle_with_required_claim(claim: &str) -> TrustMarketBundle {
     bundle.verifier_policy_bytes = json_bytes(policy);
     bundle.passport.verifier_policy_sha256 =
         chio_core_types::sha256_hex(&bundle.verifier_policy_bytes);
+    sign_transaction_passport(&mut bundle.passport);
     bundle
 }
 
@@ -995,6 +1275,7 @@ fn update_trust_market_artifact(bundle: &mut TrustMarketBundle, path: &str, valu
     bundle.evidence_graph_bytes = json_bytes(graph);
     bundle.passport.evidence_graph_sha256 =
         chio_core_types::sha256_hex(&bundle.evidence_graph_bytes);
+    sign_transaction_passport(&mut bundle.passport);
 }
 
 #[test]
@@ -1017,6 +1298,19 @@ fn trust_market_context_accepts_marketplace_fixture() {
         .unsupported_claims
         .iter()
         .any(|claim| claim == "claim.market.global_trust_score_published"));
+}
+
+#[test]
+fn trust_market_context_rejects_tampered_transaction_passport_signature() {
+    let mut bundle = trust_market_bundle(TrustMarketCase::Valid);
+    bundle.passport.signature = "00".repeat(64);
+
+    let error = verify_trust_market_context(&bundle)
+        .test_expect_err("trust-market verifier must reject a forged passport root");
+
+    assert!(error
+        .to_string()
+        .contains("transaction passport signature invalid"));
 }
 
 #[test]
@@ -1123,6 +1417,18 @@ fn trust_market_rejects_lower_rank_selection_with_unavailable_override_receipt()
         TrustMarketCase::LowerRankOverrideReceiptUnavailable,
     ))
     .test_expect_err("selection override receipt artifact must be available");
+
+    assert!(error
+        .to_string()
+        .contains("selection override receipt missing"));
+}
+
+#[test]
+fn trust_market_rejects_lower_rank_selection_with_untrusted_override_receipt() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::LowerRankOverrideReceiptUntrustedSigner,
+    ))
+    .test_expect_err("selection override receipt must be signed by a trusted market key");
 
     assert!(error
         .to_string()
@@ -1500,4 +1806,70 @@ fn trust_market_rejects_risk_evidence_ref_without_artifact() {
     assert!(error
         .to_string()
         .contains("risk facility lifecycle evidence missing"));
+}
+
+#[test]
+fn trust_market_rejects_untrusted_risk_reserve_ledger_receipt() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::RiskReserveLedgerReceiptUntrustedSigner,
+    ))
+    .test_expect_err("risk reserve ledger receipt must be signed by a trusted market key");
+
+    assert!(error
+        .to_string()
+        .contains("risk reserve ledger receipt missing"));
+}
+
+#[test]
+fn trust_market_rejects_untrusted_risk_settlement_receipt() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::RiskSettlementReceiptUntrustedSigner,
+    ))
+    .test_expect_err("risk settlement receipt must be signed by a trusted market key");
+
+    assert!(error
+        .to_string()
+        .contains("risk reserve ledger settlement missing"));
+}
+
+#[test]
+fn trust_market_rejects_untrusted_risk_sanction_receipt() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::RiskSanctionReserveLedgerReceiptUntrustedSigner,
+    ))
+    .test_expect_err("risk sanction receipt must be signed by a trusted market key");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("risk reserve ledger receipt missing"),
+        "{error}"
+    );
+}
+
+#[test]
+fn trust_market_rejects_untrusted_risk_sanction_authority_receipt() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::RiskSanctionAuthorityReceiptUntrustedSigner,
+    ))
+    .test_expect_err("risk sanction authority receipt must be signed by a trusted market key");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("risk market slash sanction authority missing"),
+        "{error}"
+    );
+}
+
+#[test]
+fn trust_market_rejects_untrusted_risk_sanction_jurisdiction_receipt() {
+    let error = verify_trust_market_context(&trust_market_bundle(
+        TrustMarketCase::RiskSanctionJurisdictionReceiptUntrustedSigner,
+    ))
+    .test_expect_err("risk sanction jurisdiction receipt must be signed by a trusted market key");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("risk market slash jurisdiction missing"),
+        "{error}"
+    );
 }

@@ -320,19 +320,46 @@ export interface ProofRoomDisclosureCapsule {
   lineage_subgraph_ref?: string
   leakage_ledger_ref?: string
   disclosed_fields?: string[]
-  hidden_predicates?: string[]
+  hidden_predicates?: Array<string | ProofRoomHiddenPredicate>
+}
+
+export interface ProofRoomHiddenPredicate {
+  predicate_id?: string
+  kind?: string
+  field?: string
+  operator?: string
+  operand?: string
+  unit?: string
+  result?: boolean
+  proof_ref?: string
+  projection_slot?: number
 }
 
 export interface ProofRoomLineageNode {
   id?: string
+  kind?: string
   receipt_ref?: string
+  artifact_sha256?: string
+  artifact_schema?: string
+  evidence_class?: string
+  tenant_hash?: string
+  source_table?: string
+  source_id_hash?: string
+  depth?: number
+  parent_ids?: string[]
   disclosure_state?: string
 }
 
 export interface ProofRoomLineageEdge {
+  edge_id?: string
   from?: string
   to?: string
   relation?: string
+  kind?: string
+  evidence_class?: string
+  source_artifact_sha256?: string
+  statement_sha256?: string
+  disclosure_state?: string
 }
 
 export interface ProofRoomLineageRedaction {
@@ -344,6 +371,19 @@ export interface ProofRoomSignedLineageSubgraph {
   schema: 'chio.lineage.signed-subgraph.v1'
   id?: string
   transaction_passport_ref?: string
+  policy_profile_id?: string
+  generated_at?: string
+  audience?: string
+  challenge_nonce?: string
+  frontier_sha256?: string
+  checkpoint_ref?: string
+  checkpoint_inclusion_sha256?: string
+  max_depth?: number
+  required_evidence_class?: string
+  lineage_anchor_ref?: string
+  redaction_map_sha256?: string
+  leakage_ledger_sha256?: string
+  projection_manifest_sha256?: string
   root_receipt_ids?: string[]
   nodes?: ProofRoomLineageNode[]
   edges?: ProofRoomLineageEdge[]
@@ -352,8 +392,19 @@ export interface ProofRoomSignedLineageSubgraph {
 }
 
 export interface ProofRoomLeakageLedgerEntry {
+  entry_id?: string
+  source?: string
   field?: string
   leakage_kind?: string
+  disclosure_kind?: string
+  sensitivity_class?: string
+  value_class?: string
+  reason?: string
+  policy_rule?: string
+  derived_inferences?: string[]
+  cross_tenant_risk?: boolean
+  mitigation?: string
+  score?: number
   allowed_by_profile?: boolean
   residual_inference_note?: string
 }
@@ -363,6 +414,14 @@ export interface ProofRoomLeakageLedger {
   id?: string
   transaction_passport_ref?: string
   privacy_profile_ref?: string
+  policy_profile_id?: string
+  subject_artifact_sha256?: string
+  generated_at?: string
+  audience?: string
+  total_leakage_score?: number
+  max_allowed_leakage_score?: number
+  tenant_leakage_notice_ref?: string
+  accepted?: boolean
   entries?: ProofRoomLeakageLedgerEntry[]
 }
 

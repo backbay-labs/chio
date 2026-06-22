@@ -14,7 +14,8 @@
     "capital_units": 10000,
     "reserve_currency": "USD",
     "reserve_units": 1200,
-    "reserve_ref": "reserve-enterprise-valid"
+    "reserve_ref": "reserve-enterprise-valid",
+    "policy_id": "risk-policy-enterprise-valid"
   },
   "coverage": {
     "coverage_id": "coverage-enterprise-valid",
@@ -44,35 +45,40 @@
       "from_state": "evidence_cold",
       "to_state": "underwriting_ready",
       "authority_receipt_ref": "approval-case",
-      "evidence_ref": "data-governance-report"
+      "evidence_ref": "data-governance-report",
+      "policy_id": "risk-policy-enterprise-valid"
     },
     {
       "transition_id": "facility-transition-facility-granted",
       "from_state": "underwriting_ready",
       "to_state": "facility_granted",
       "authority_receipt_ref": "approval-case",
-      "evidence_ref": "data-governance-report"
+      "evidence_ref": "data-governance-report",
+      "policy_id": "risk-policy-enterprise-valid"
     },
     {
       "transition_id": "facility-transition-reserve-held",
       "from_state": "facility_granted",
       "to_state": "reserve_held",
       "authority_receipt_ref": "approval-case",
-      "evidence_ref": "data-governance-report"
+      "evidence_ref": "data-governance-report",
+      "policy_id": "risk-policy-enterprise-valid"
     },
     {
       "transition_id": "facility-transition-coverage-bound",
       "from_state": "reserve_held",
       "to_state": "coverage_bound",
       "authority_receipt_ref": "approval-case",
-      "evidence_ref": "data-governance-report"
+      "evidence_ref": "data-governance-report",
+      "policy_id": "risk-policy-enterprise-valid"
     },
     {
       "transition_id": "facility-transition-settlement-matched",
       "from_state": "coverage_bound",
       "to_state": "settlement_matched",
       "authority_receipt_ref": "approval-case",
-      "evidence_ref": "evidence-export-bundle"
+      "evidence_ref": "evidence-export-bundle",
+      "policy_id": "risk-policy-enterprise-valid"
     }
   ],
   "actuarial_evidence": {

@@ -455,14 +455,16 @@ async fn filesystem_tool_session_roots_allow_in_root_path() {
         parent_request_id: None,
         progress_token: None,
     };
-    let operation = SessionOperation::ToolCall(ToolCallOperation {
+    let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
         capability: cap,
         server_id: "srv".to_string(),
         tool_name: "filesystem".to_string(),
         arguments: serde_json::json!({"path": "/workspace/project/src/main.rs"}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
-    });
+        extra_metadata: None,
+    }));
 
     let response = kernel
         .evaluate_session_operation(&context, &operation)
@@ -516,14 +518,16 @@ async fn filesystem_tool_session_roots_deny_out_of_root_path() {
         parent_request_id: None,
         progress_token: None,
     };
-    let operation = SessionOperation::ToolCall(ToolCallOperation {
+    let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
         capability: cap,
         server_id: "srv".to_string(),
         tool_name: "filesystem".to_string(),
         arguments: serde_json::json!({"path": "/etc/passwd"}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
-    });
+        extra_metadata: None,
+    }));
 
     let response = kernel
         .evaluate_session_operation(&context, &operation)
@@ -568,14 +572,16 @@ async fn filesystem_tool_session_roots_fail_closed_when_missing() {
         parent_request_id: None,
         progress_token: None,
     };
-    let operation = SessionOperation::ToolCall(ToolCallOperation {
+    let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
         capability: cap,
         server_id: "srv".to_string(),
         tool_name: "filesystem".to_string(),
         arguments: serde_json::json!({"path": "/workspace/project/src/main.rs"}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
-    });
+        extra_metadata: None,
+    }));
 
     let response = kernel
         .evaluate_session_operation(&context, &operation)

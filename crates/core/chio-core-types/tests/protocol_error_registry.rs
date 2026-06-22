@@ -105,6 +105,7 @@ fn protocol_error_registry_has_unique_codes_and_complete_categories() {
         "internal".to_string(),
         "protocol".to_string(),
         "tool".to_string(),
+        "transaction".to_string(),
     ]);
     let listed_categories = registry.categories.into_iter().collect::<BTreeSet<_>>();
     assert_eq!(listed_categories, expected_categories);
@@ -144,6 +145,35 @@ fn protocol_error_registry_has_unique_codes_and_complete_categories() {
     }
 
     assert_eq!(seen_entry_categories, expected_categories);
+}
+
+#[test]
+fn protocol_error_registry_includes_launch_transaction_failures() {
+    let registry: ErrorRegistry = load_json("spec/errors/chio-error-registry.v1.json");
+    let expected = BTreeSet::from([
+        "transaction_passport_schema_unsupported",
+        "transaction_passport_hash_mismatch",
+        "transaction_graph_not_closed",
+        "transaction_graph_cycle",
+        "transaction_required_claim_missing",
+        "transaction_artifact_hash_mismatch",
+        "transaction_identity_not_bound",
+        "transaction_authorization_not_bound",
+        "transaction_receipt_uncheckpointed",
+        "transaction_runtime_proof_rejected",
+        "transaction_buyer_review_rejected",
+        "transaction_settlement_unverified",
+        "transaction_dispute_unbound",
+        "transaction_transparency_preview_not_allowed",
+    ]);
+    let actual = registry
+        .codes
+        .iter()
+        .filter(|entry| entry.category == "transaction")
+        .map(|entry| entry.name.as_str())
+        .collect::<BTreeSet<_>>();
+
+    assert_eq!(actual, expected);
 }
 
 #[test]

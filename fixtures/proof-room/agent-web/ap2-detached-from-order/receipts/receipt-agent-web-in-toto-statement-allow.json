@@ -1,5 +1,5 @@
 {
-  "id": "49416eb3d038e491fbdddc80ce458a909c7c9a31c7501119dd819ace4b23fc85",
+  "id": "1ae31becdc5392359b7f01ef0273b863c12c680160ac97900eadeb0067878854",
   "timestamp": 1770508800,
   "capability_id": "cap-agent-web-fixture",
   "tool_server": "agent-web-sidecar",
@@ -7,9 +7,9 @@
   "action": {
     "parameters": {
       "agent_web_receipt_ref": "receipt-agent-web-in-toto-statement-allow",
-      "content_hash": "d976f03efa2977eecde1648ea69b93814301f8026c24ee424db151338b9d60ce"
+      "content_hash": "b8d28c83faf408ca431f78c572baf77b035b30cad69c4763693547dd7545d41f"
     },
-    "parameter_hash": "66f953168221f4784db2d0052b6ec30c9975b1817eec4929c018d6166cac2f6b"
+    "parameter_hash": "1bfb5a1b7c284c2bc49e1088ef4a20c15e187974fc57eb7968cb4050a0fdc85a"
   },
   "decision": {
     "verdict": "allow"
@@ -18,13 +18,13 @@
   "boundary_class": "prevent",
   "tool_origin": "caller_executed",
   "redaction_mode": "summary",
-  "content_hash": "d976f03efa2977eecde1648ea69b93814301f8026c24ee424db151338b9d60ce",
+  "content_hash": "b8d28c83faf408ca431f78c572baf77b035b30cad69c4763693547dd7545d41f",
   "policy_hash": "1a267f15367cb2e191ad9bb7e2c89d3ef154eb8e6978676f9df5566e4d836bdb",
   "metadata": {
     "agent_web_receipt_ref": "receipt-agent-web-in-toto-statement-allow",
-    "chio_receipt_signing_nonce": "f51d3881a69c57938eb6ff4bae97d67835fe854116fe6372fa877e27da84ecf3"
+    "chio_receipt_signing_nonce": "receipt-agent-web-in-toto-statement-allow"
   },
   "trust_level": "mediated",
-  "kernel_key": "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565",
-  "signature": "ba15a5f6b9758792a4923dc0bc5ea871aa1788317227358183fa72c729be588bf44f017346f1290e43ec75f766c26388a23d47456ff19afd40abd85f3ee01407"
+  "kernel_key": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+  "signature": "f60185b59ce590d130f077efd22c73f3165f65deaacd4641e678a367d3f38ab529f43e725f320bcb16c1a79279b6441fa8d0b45a53c06b2563360921a580fe0c"
 }

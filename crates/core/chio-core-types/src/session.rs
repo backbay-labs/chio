@@ -16,7 +16,10 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::capability::token::CapabilityToken;
-use crate::capability::{governance::ProvenanceEvidenceClass, scope::ModelMetadata};
+use crate::capability::{
+    governance::{GovernedTransactionIntent, ProvenanceEvidenceClass},
+    scope::ModelMetadata,
+};
 use crate::crypto::{canonical_json_bytes, sha256_hex, Keypair, PublicKey, Signature};
 use crate::error::Result;
 use crate::schema_binding::ensure_schema_matches;
@@ -1206,9 +1209,13 @@ pub struct ToolCallOperation {
     pub tool_name: String,
     pub arguments: serde_json::Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub governed_intent: Option<GovernedTransactionIntent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_nonce: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_metadata: Option<ModelMetadata>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra_metadata: Option<serde_json::Value>,
 }
 
 /// Resource metadata exposed through the session layer.
@@ -1475,7 +1482,7 @@ pub struct CompleteOperation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "payload", rename_all = "snake_case")]
 pub enum SessionOperation {
-    ToolCall(ToolCallOperation),
+    ToolCall(Box<ToolCallOperation>),
     CreateMessage(CreateMessageOperation),
     CreateElicitation(CreateElicitationOperation),
     ListRoots,

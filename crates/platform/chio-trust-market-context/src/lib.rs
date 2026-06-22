@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use chio_core_types::PublicKey;
 use chio_transaction_passport::{
-    verify_minimal_passport_artifacts, TransactionPassport, TransactionPassportError,
-    TRANSACTION_VERIFIER_REPORT_SCHEMA_ID,
+    verify_minimal_passport_artifacts, verify_transaction_passport_signature_with_evidence_graph,
+    TransactionPassport, TransactionPassportError, TRANSACTION_VERIFIER_REPORT_SCHEMA_ID,
 };
 
 mod artifacts;
@@ -36,8 +36,10 @@ use policy::parse_policy;
 pub struct TrustMarketBundle {
     pub passport: TransactionPassport,
     pub evidence_graph_bytes: Vec<u8>,
+    pub root_evidence_graph_bytes: Option<Vec<u8>>,
     pub verifier_policy_bytes: Vec<u8>,
     pub artifacts: BTreeMap<String, Vec<u8>>,
+    pub trusted_passport_signer_keys: Vec<PublicKey>,
     pub trusted_market_authority_keys: Vec<PublicKey>,
 }
 
@@ -62,17 +64,31 @@ pub struct TrustMarketVerifierSections {
     pub trust_scorecard_ref: String,
     pub reputation_import_ref: String,
     pub sla_commitment_ref: String,
+    #[serde(skip)]
+    pub sla_remedy_ref: String,
     pub sla_performance_report_ref: String,
     pub risk_comptroller_report_ref: String,
     pub collateral_position_ref: String,
     pub guarantee_decision_ref: String,
     pub adjudication_jurisdiction_ref: String,
+    #[serde(skip)]
+    pub slash_authority_ref: String,
     pub selected_provider_subject: String,
 }
 
 pub fn verify_trust_market_context(
     bundle: &TrustMarketBundle,
 ) -> Result<TrustMarketVerifierReport, TransactionPassportError> {
+    let signed_evidence_graph_bytes = bundle
+        .root_evidence_graph_bytes
+        .as_deref()
+        .unwrap_or(&bundle.evidence_graph_bytes);
+    verify_transaction_passport_signature_with_evidence_graph(
+        &bundle.passport,
+        signed_evidence_graph_bytes,
+        &bundle.evidence_graph_bytes,
+        &bundle.trusted_passport_signer_keys,
+    )?;
     verify_minimal_passport_artifacts(
         &bundle.passport,
         "transaction-passport.json".to_string(),
@@ -169,7 +185,14 @@ pub fn verify_trust_market_context(
         &selection,
         &scorecard,
         &sla,
-        |receipt_ref| bundle_contains_verified_receipt_node_id(bundle, &graph, receipt_ref),
+        |receipt_ref| {
+            bundle_contains_verified_receipt_node_id(
+                bundle,
+                &graph,
+                receipt_ref,
+                &trusted_market_authority_keys,
+            )
+        },
     )?;
     validate_risk_report(
         &bundle.passport,
@@ -216,11 +239,13 @@ pub fn verify_trust_market_context(
             trust_scorecard_ref: scorecard.id,
             reputation_import_ref: reputation_import.id,
             sla_commitment_ref: sla.id,
+            sla_remedy_ref: sla.remedy_policy_ref,
             sla_performance_report_ref: sla_performance.id,
             risk_comptroller_report_ref: risk_report.id,
             collateral_position_ref: collateral.collateral_id,
             guarantee_decision_ref: guarantee.guarantee_id,
             adjudication_jurisdiction_ref: jurisdiction.jurisdiction_id,
+            slash_authority_ref: collateral.slash_authority_ref,
             selected_provider_subject: selection.selected_provider_subject,
         },
     })

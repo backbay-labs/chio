@@ -873,6 +873,70 @@ pub(super) fn parse_request_execution_nonce(
     Ok(Some(execution_nonce.clone()))
 }
 
+pub(super) fn parse_request_governed_intent(
+    id: &Value,
+    params: &Value,
+) -> Result<Option<GovernedTransactionIntent>, Value> {
+    let Some(meta) = params.get("_meta") else {
+        return Ok(None);
+    };
+    let Some(meta) = meta.as_object() else {
+        return Err(jsonrpc_error(
+            id.clone(),
+            JSONRPC_INVALID_PARAMS,
+            "_meta must be an object",
+        ));
+    };
+    let Some(governed_intent) = meta
+        .get("governedIntent")
+        .or_else(|| meta.get("chioGovernedIntent"))
+    else {
+        return Ok(None);
+    };
+
+    serde_json::from_value(governed_intent.clone())
+        .map(Some)
+        .map_err(|_| {
+            jsonrpc_error(
+                id.clone(),
+                JSONRPC_INVALID_PARAMS,
+                "governedIntent must be a Chio governed transaction intent object",
+            )
+        })
+}
+
+pub(super) fn parse_request_extra_metadata(
+    id: &Value,
+    params: &Value,
+) -> Result<Option<Value>, Value> {
+    let Some(meta) = params.get("_meta") else {
+        return Ok(None);
+    };
+    let Some(meta) = meta.as_object() else {
+        return Err(jsonrpc_error(
+            id.clone(),
+            JSONRPC_INVALID_PARAMS,
+            "_meta must be an object",
+        ));
+    };
+    let Some(route_selection) = meta
+        .get("routeSelection")
+        .or_else(|| meta.get("route_selection"))
+        .or_else(|| meta.get("chioRouteSelection"))
+    else {
+        return Ok(None);
+    };
+
+    if !route_selection.is_object() {
+        return Err(jsonrpc_error(
+            id.clone(),
+            JSONRPC_INVALID_PARAMS,
+            "routeSelection must be an object",
+        ));
+    }
+    Ok(Some(json!({ "route_selection": route_selection.clone() })))
+}
+
 pub(super) fn parse_progress_token(
     id: &Value,
     params: &Value,

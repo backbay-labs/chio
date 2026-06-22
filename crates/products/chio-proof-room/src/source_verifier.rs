@@ -4,18 +4,26 @@ pub(crate) fn verify_source_verifier_report(
     bundle_root: &Path,
     transaction_passport_artifact: &VerifiedManifestArtifact,
     actual_report: &serde_json::Value,
+    verify_transaction_passport_signature: bool,
 ) -> Result<(), String> {
     if source_report_requires_family_verification(actual_report) {
         verify_family_source_verifier_report(
             bundle_root,
             transaction_passport_artifact,
             actual_report,
+            verify_transaction_passport_signature,
         )?;
         return Ok(());
     }
-    match verify_transaction_passport_file(bundle_root, &transaction_passport_artifact.path) {
+    match verify_transaction_passport_file_with_options(
+        bundle_root,
+        &transaction_passport_artifact.path,
+        verify_transaction_passport_signature,
+    ) {
         Ok(expected_report) => {
-            if actual_report != &expected_report {
+            if normalized_source_verifier_report(actual_report)
+                != normalized_source_verifier_report(&expected_report)
+            {
                 return Err(
                     "proof-room.report.mismatch: verifier report does not match transaction passport"
                         .to_string(),
@@ -45,12 +53,15 @@ pub(crate) fn verify_family_source_verifier_report(
     bundle_root: &Path,
     transaction_passport_artifact: &VerifiedManifestArtifact,
     actual_report: &serde_json::Value,
+    verify_transaction_passport_signature: bool,
 ) -> Result<(), String> {
-    let expected_report = verify_transaction_passport_family_report(
+    let expected_report = verify_transaction_passport_family_report_with_options(
         bundle_root,
         &transaction_passport_artifact.path,
+        verify_transaction_passport_signature,
     )?;
-    if actual_report != &expected_report
+    if normalized_source_verifier_report(actual_report)
+        != normalized_source_verifier_report(&expected_report)
         && !source_report_matches_unwrapped_single_family(actual_report, &expected_report)
     {
         return Err(
@@ -61,6 +72,83 @@ pub(crate) fn verify_family_source_verifier_report(
     Ok(())
 }
 
+pub(crate) fn normalized_source_verifier_report(report: &serde_json::Value) -> serde_json::Value {
+    let mut normalized = report.clone();
+    let Some(object) = normalized.as_object_mut() else {
+        return normalized;
+    };
+    if object.get("schema").and_then(serde_json::Value::as_str)
+        == Some("chio.transaction.verifier-report.v1")
+        && object.get("verdict").and_then(serde_json::Value::as_str) == Some("verified")
+    {
+        object
+            .entry("accepted".to_string())
+            .or_insert(serde_json::Value::Bool(true));
+        object
+            .entry("state".to_string())
+            .or_insert(serde_json::Value::String("verified".to_string()));
+        let verified_claims = object
+            .get("verified_claims")
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        object
+            .entry("claimResults".to_string())
+            .or_insert_with(|| serde_json::Value::Array(source_claim_results(&verified_claims)));
+        object
+            .entry("checker_provenance".to_string())
+            .or_insert_with(|| {
+                serde_json::Value::Array(source_claim_checker_provenance(&verified_claims))
+            });
+        normalize_claim_order(object);
+    }
+    if let Some(family_reports) = object
+        .get_mut("family_reports")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for family_report in family_reports {
+            *family_report = normalized_source_verifier_report(family_report);
+        }
+    }
+    normalized
+}
+
+fn normalize_claim_order(object: &mut serde_json::Map<String, serde_json::Value>) {
+    if let Some(verified_claims) = object
+        .get_mut("verified_claims")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        verified_claims.sort_by(|left, right| {
+            left.as_str()
+                .unwrap_or_default()
+                .cmp(right.as_str().unwrap_or_default())
+        });
+    }
+    sort_claim_object_array(object, "claimResults");
+    sort_claim_object_array(object, "checker_provenance");
+}
+
+fn sort_claim_object_array(object: &mut serde_json::Map<String, serde_json::Value>, field: &str) {
+    if let Some(values) = object
+        .get_mut(field)
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        values.sort_by(|left, right| {
+            claim_sort_key(left)
+                .cmp(claim_sort_key(right))
+                .then_with(|| left.to_string().cmp(&right.to_string()))
+        });
+    }
+}
+
+fn claim_sort_key(value: &serde_json::Value) -> &str {
+    value
+        .get("claim_id")
+        .or_else(|| value.get("claimId"))
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+}
+
 pub(crate) fn source_report_matches_unwrapped_single_family(
     actual_report: &serde_json::Value,
     expected_report: &serde_json::Value,
@@ -68,7 +156,13 @@ pub(crate) fn source_report_matches_unwrapped_single_family(
     expected_report
         .get("family_reports")
         .and_then(serde_json::Value::as_array)
-        .is_some_and(|reports| reports.len() == 1 && reports.first() == Some(actual_report))
+        .is_some_and(|reports| {
+            reports.len() == 1
+                && reports.first().is_some_and(|report| {
+                    normalized_source_verifier_report(report)
+                        == normalized_source_verifier_report(actual_report)
+                })
+        })
 }
 
 pub(crate) struct SourceVerifierContext {
@@ -128,18 +222,62 @@ pub(crate) const SOURCE_LOCAL_FAMILY_ROUTES: &[SourceLocalFamilyRoute] = &[
     },
 ];
 
+#[cfg(test)]
 pub(crate) fn verify_transaction_passport_family_report(
     bundle_root: &Path,
     path: &Path,
 ) -> Result<serde_json::Value, String> {
-    let context = source_verifier_context(bundle_root, path)?;
+    verify_transaction_passport_family_report_with_options(bundle_root, path, true)
+}
+
+pub(crate) fn verify_transaction_passport_family_report_with_options(
+    bundle_root: &Path,
+    path: &Path,
+    verify_transaction_passport_signature: bool,
+) -> Result<serde_json::Value, String> {
+    let context = source_verifier_context_with_options(
+        bundle_root,
+        path,
+        verify_transaction_passport_signature,
+    )?;
     verify_source_passport_artifact_digests(&context)?;
     let requirements = source_verifier_claim_requirements(&context.verifier_policy_bytes)?;
     let risk_route = source_risk_route(
         &context.evidence_graph_bytes,
         requirements.requires(CLAIM_PREFIX_RISK),
     )?;
+    let routes_trust_market =
+        requirements.requires(CLAIM_PREFIX_TRUST_MARKET) || risk_route.through_trust_market;
+    reject_unrouted_source_claims(&requirements.required_claims, routes_trust_market)?;
     let mut family_reports = Vec::new();
+    let mut expected_public_settlement_trust_market_context = None;
+    if routes_trust_market {
+        let evidence_graph_bytes = source_scoped_evidence_graph_bytes(
+            &context.evidence_graph_bytes,
+            is_trust_market_evidence_graph_node,
+        )?;
+        let passport = source_passport_for_evidence_graph(&context.passport, &evidence_graph_bytes);
+        let trusted_passport_signer_keys = crate::transaction_trusted_root_keys_from_env()
+            .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+        let trusted_market_authority_keys =
+            crate::trust_market_trusted_authority_keys_from_env()
+                .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+        let report = chio_trust_market_context::verify_trust_market_context(
+            &chio_trust_market_context::TrustMarketBundle {
+                passport,
+                evidence_graph_bytes,
+                root_evidence_graph_bytes: Some(context.evidence_graph_bytes.clone()),
+                verifier_policy_bytes: context.verifier_policy_bytes.clone(),
+                artifacts: context.artifacts.clone(),
+                trusted_passport_signer_keys,
+                trusted_market_authority_keys,
+            },
+        )
+        .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+        expected_public_settlement_trust_market_context =
+            Some(public_settlement_trust_market_context_from_trust_market_report(&report));
+        push_source_family_report(&mut family_reports, report)?;
+    }
 
     for route in SOURCE_LOCAL_FAMILY_ROUTES {
         if requirements.requires(route.prefix) {
@@ -148,6 +286,7 @@ pub(crate) fn verify_transaction_passport_family_report(
                 &context,
                 &requirements.required_claims,
                 route,
+                expected_public_settlement_trust_market_context.as_ref(),
             )?;
         }
     }
@@ -157,30 +296,12 @@ pub(crate) fn verify_transaction_passport_family_report(
             &requirements.required_claims,
         )?);
     }
-    if requirements.requires(CLAIM_PREFIX_TRUST_MARKET) || risk_route.through_trust_market {
-        let evidence_graph_bytes = source_scoped_evidence_graph_bytes(
-            &context.evidence_graph_bytes,
-            is_trust_market_evidence_graph_node,
-        )?;
-        let passport = source_passport_for_evidence_graph(&context.passport, &evidence_graph_bytes);
-        let trusted_market_authority_keys =
-            crate::trust_market_trusted_authority_keys_from_env()
-                .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
-        let report = chio_trust_market_context::verify_trust_market_context(
-            &chio_trust_market_context::TrustMarketBundle {
-                passport,
-                evidence_graph_bytes,
-                verifier_policy_bytes: context.verifier_policy_bytes.clone(),
-                artifacts: context.artifacts.clone(),
-                trusted_market_authority_keys,
-            },
-        )
-        .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
-        push_source_family_report(&mut family_reports, report)?;
-    }
     if requirements.requires(CLAIM_PREFIX_AGENT_WEB) {
-        let agent_web_trust = agent_web_verifier_trust_from_env()
+        let trusted_passport_signer_keys = crate::transaction_trusted_root_keys_from_env()
             .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+        let agent_web_trust = agent_web_verifier_trust_from_env()
+            .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?
+            .with_trusted_passport_signer_keys(trusted_passport_signer_keys);
         let evidence_graph_bytes = source_scoped_evidence_graph_bytes(
             &context.evidence_graph_bytes,
             is_agent_web_evidence_graph_node,
@@ -190,6 +311,7 @@ pub(crate) fn verify_transaction_passport_family_report(
             &chio_agent_web_interop::AgentWebInteropBundle {
                 passport,
                 evidence_graph_bytes,
+                root_evidence_graph_bytes: Some(context.evidence_graph_bytes.clone()),
                 verifier_policy_bytes: context.verifier_policy_bytes.clone(),
                 artifacts: context.artifacts.clone(),
             },
@@ -204,12 +326,20 @@ pub(crate) fn verify_transaction_passport_family_report(
             is_enterprise_evidence_graph_node,
         )?;
         let passport = source_passport_for_evidence_graph(&context.passport, &evidence_graph_bytes);
+        let trusted_passport_signer_keys = crate::transaction_trusted_root_keys_from_env()
+            .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+        let trusted_approval_signer_keys =
+            crate::enterprise_trusted_approval_signer_keys_from_env()
+                .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
         let report = chio_enterprise_export::verify_enterprise_export(
             &chio_enterprise_export::EnterpriseExportBundle {
                 passport,
                 evidence_graph_bytes,
+                root_evidence_graph_bytes: Some(context.evidence_graph_bytes.clone()),
                 verifier_policy_bytes: context.verifier_policy_bytes.clone(),
                 artifacts: context.artifacts.clone(),
+                trusted_passport_signer_keys,
+                trusted_approval_signer_keys,
             },
         )
         .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
@@ -218,29 +348,32 @@ pub(crate) fn verify_transaction_passport_family_report(
     if requirements.requires(CLAIM_PREFIX_RUNTIME) {
         let evidence_graph_bytes = source_scoped_evidence_graph_bytes(
             &context.evidence_graph_bytes,
-            is_runtime_evidence_graph_node,
+            is_runtime_source_node,
         )?;
-        let passport = source_passport_for_evidence_graph(&context.passport, &evidence_graph_bytes);
         let artifacts = embedded_runtime_artifacts(&evidence_graph_bytes, &context.artifacts)
             .map_err(|error| format!("proof-room.runtime-invalid: {error}"))?;
-        let report = chio_transaction_passport::verify_runtime_security_claims(
+        let runtime_trust = crate::runtime_trust_from_env()
+            .map_err(|error| format!("proof-room.runtime-invalid: {error}"))?;
+        let report = chio_transaction_passport::verify_runtime_security_claims_with_trust(
             &chio_transaction_passport::RuntimeSecurityBundle {
-                passport,
+                passport: context.passport.clone(),
                 evidence_graph_bytes,
+                root_evidence_graph_bytes: Some(context.evidence_graph_bytes.clone()),
                 verifier_policy_bytes: context.verifier_policy_bytes.clone(),
                 artifacts,
             },
+            &runtime_trust,
         )
         .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
         push_source_family_report(&mut family_reports, report)?;
     }
 
-    if family_reports.len() == 1 {
-        attach_source_runtime_proof_parity_report(&context, &mut family_reports[0])?;
-    }
-
     let mut report = if family_reports.is_empty() {
-        verify_transaction_passport_file(bundle_root, path)?
+        verify_transaction_passport_file_with_options(
+            bundle_root,
+            path,
+            verify_transaction_passport_signature,
+        )?
     } else {
         merge_source_family_verifier_reports(&context, family_reports)
     };
@@ -249,11 +382,39 @@ pub(crate) fn verify_transaction_passport_family_report(
     Ok(report)
 }
 
+fn reject_unrouted_source_claims(
+    required_claims: &[String],
+    routes_trust_market: bool,
+) -> Result<(), String> {
+    for required_claim in required_claims {
+        if required_claim.starts_with(CLAIM_PREFIX_MARKET) && !routes_trust_market {
+            return Err(format!(
+                "proof-room.source-verifier.failed: required proof claim not verified: {required_claim}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn public_settlement_trust_market_context_from_trust_market_report(
+    report: &chio_trust_market_context::TrustMarketVerifierReport,
+) -> chio_web3::settlement_proof::PublicSettlementTrustMarketContext {
+    chio_web3::settlement_proof::PublicSettlementTrustMarketContext {
+        collateral_position_ref: report.trust_market_sections.collateral_position_ref.clone(),
+        guarantee_decision_ref: report.trust_market_sections.guarantee_decision_ref.clone(),
+        sla_remedy_ref: report.trust_market_sections.sla_remedy_ref.clone(),
+        slash_authority_ref: report.trust_market_sections.slash_authority_ref.clone(),
+    }
+}
+
 pub(crate) fn push_source_local_family_report(
     family_reports: &mut Vec<serde_json::Value>,
     context: &SourceVerifierContext,
     required_claims: &[String],
     route: &SourceLocalFamilyRoute,
+    expected_public_settlement_trust_market_context: Option<
+        &chio_web3::settlement_proof::PublicSettlementTrustMarketContext,
+    >,
 ) -> Result<(), String> {
     match route.route {
         ProofRoomFixtureReportRoute::Commerce => {
@@ -305,11 +466,15 @@ pub(crate) fn push_source_local_family_report(
                     context.passport.id, proof_bundle.transaction_passport_id
                 ));
             }
+            let mut trust = crate::public_settlement_verifier_trust_from_env()
+                .map_err(|error| format!("proof-room.public-settlement-invalid: {error}"))?;
+            trust.expected_trust_market_context =
+                expected_public_settlement_trust_market_context.cloned();
             push_source_local_family_result(
                 family_reports,
                 required_claims,
                 route,
-                chio_web3::settlement_proof::verify_public_settlement_proof(&proof_bundle),
+                chio_web3::settlement_proof::verify_public_settlement_proof(&proof_bundle, &trust),
             )
         }
         ProofRoomFixtureReportRoute::StandaloneRisk
@@ -365,9 +530,10 @@ pub(crate) fn source_verifier_report_value<T: serde::Serialize>(
         .map_err(|error| format!("proof-room.source-verifier.report-encode: {error}"))
 }
 
-pub(crate) fn source_verifier_context(
+pub(crate) fn source_verifier_context_with_options(
     bundle_root: &Path,
     path: &Path,
+    verify_transaction_passport_signature: bool,
 ) -> Result<SourceVerifierContext, String> {
     let passport_bytes =
         fs::read(path).map_err(|error| format!("proof-room.passport.unreadable: {error}"))?;
@@ -376,6 +542,15 @@ pub(crate) fn source_verifier_context(
             .map_err(|error| format!("proof-room.passport.invalid-json: {error}"))?;
     chio_transaction_passport::verify_minimal_passport_schema(&passport)
         .map_err(|error| format!("proof-room.passport.invalid: {error}"))?;
+    if verify_transaction_passport_signature {
+        let trusted_root_signer_keys = crate::transaction_trusted_root_keys_from_env()
+            .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+        chio_transaction_passport::verify_transaction_passport_signature(
+            &passport,
+            &trusted_root_signer_keys,
+        )
+        .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+    }
     let passport_dir = path
         .parent()
         .ok_or_else(|| "proof-room.passport.path-invalid".to_string())?;
@@ -527,7 +702,8 @@ pub(crate) fn is_trust_market_evidence_graph_node(node: &serde_json::Value) -> b
     let Some(role) = node.get("role").and_then(serde_json::Value::as_str) else {
         return false;
     };
-    matches!(role, "receipt" | "verifier-policy" | "report") || is_trust_market_artifact_role(role)
+    matches!(role, "claim-set" | "receipt" | "verifier-policy" | "report")
+        || is_trust_market_artifact_role(role)
 }
 
 pub(crate) fn is_trust_market_artifact_role(role: &str) -> bool {
@@ -559,8 +735,12 @@ pub(crate) fn is_agent_web_evidence_graph_node(node: &serde_json::Value) -> bool
     matches!(
         role,
         "agent-web-proof-envelope"
+            | "claim-set"
             | "external-projection-manifest"
             | "external-subject"
+            | "commerce-provider-passport"
+            | "commerce-reputation-snapshot"
+            | "commerce-federation-trust-bundle"
             | "verifier-policy"
             | "report"
     )
@@ -573,6 +753,7 @@ pub(crate) fn is_enterprise_evidence_graph_node(node: &serde_json::Value) -> boo
     matches!(
         role,
         "risk-comptroller-report"
+            | "claim-set"
             | "data-governance-report"
             | "evidence-export-bundle"
             | "telemetry-projection"
@@ -584,17 +765,19 @@ pub(crate) fn is_enterprise_evidence_graph_node(node: &serde_json::Value) -> boo
     )
 }
 
-pub(crate) fn is_runtime_evidence_graph_node(node: &serde_json::Value) -> bool {
+fn is_runtime_source_node(node: &serde_json::Value) -> bool {
     let Some(role) = node.get("role").and_then(serde_json::Value::as_str) else {
         return false;
     };
     let schema = node.get("schema").and_then(serde_json::Value::as_str);
     if role == "receipt" {
-        return schema == Some(RUNTIME_TERMINAL_RECEIPT_SCHEMA);
+        return schema == Some("chio.runtime.terminal-receipt.v1");
     }
     matches!(
         role,
         "advisory-observation"
+            | "claim-set"
+            | "request"
             | "verifier-policy"
             | "execution-lease"
             | "trust-root"
@@ -654,33 +837,49 @@ pub(crate) fn merge_source_family_verifier_reports(
     let mut verified_claims = Vec::new();
     for report in &family_reports {
         for claim in source_report_verified_claims(report) {
-            if seen_claims.insert(claim.clone()) && family_reports.len() > 1 {
+            if seen_claims.insert(claim.clone()) {
                 verified_claims.push(serde_json::Value::String(claim));
             }
         }
     }
-    if family_reports.len() == 1 {
-        verified_claims = seen_claims
-            .into_iter()
-            .map(serde_json::Value::String)
-            .collect();
-    }
+    let claim_results = source_claim_results(&verified_claims);
 
     serde_json::json!({
         "schema": "chio.transaction.verifier-report.v1",
         "id": format!("verifier-report-{}", context.passport.id),
         "issued_at": context.passport.issued_at.clone(),
         "verdict": "verified",
+        "accepted": true,
+        "state": "verified",
         "passport_id": context.passport.id.clone(),
         "passport_path": context.passport_report_path,
         "evidence_graph_sha256": context.passport.evidence_graph_sha256.clone(),
         "evidence_graph_path": context.passport.evidence_graph_path.clone(),
+        "claim_set_sha256": context.passport.claim_set_sha256.clone(),
+        "claim_set_path": context.passport.claim_set_path.clone(),
         "verifier_policy_sha256": context.passport.verifier_policy_sha256.clone(),
         "verifier_policy_path": context.passport.verifier_policy_path.clone(),
         "verified_claims": verified_claims,
+        "claimResults": claim_results,
         "family_reports": family_reports,
         "checker_provenance": source_claim_checker_provenance(&verified_claims),
     })
+}
+
+pub(crate) fn source_claim_results(
+    verified_claims: &[serde_json::Value],
+) -> Vec<serde_json::Value> {
+    verified_claims
+        .iter()
+        .filter_map(serde_json::Value::as_str)
+        .map(|claim_id| {
+            serde_json::json!({
+                "claim_id": claim_id,
+                "status": "verified",
+                "verifier_module": source_checker_for_claim(claim_id)
+            })
+        })
+        .collect()
 }
 
 pub(crate) fn source_claim_checker_provenance(
@@ -771,15 +970,25 @@ pub(crate) fn source_report_verified_claims(report: &serde_json::Value) -> Vec<S
         .unwrap_or_default()
 }
 
-pub(crate) fn verify_transaction_passport_file(
+pub(crate) fn verify_transaction_passport_file_with_options(
     bundle_root: &Path,
     path: &Path,
+    verify_transaction_passport_signature: bool,
 ) -> Result<serde_json::Value, String> {
     let passport_bytes =
         fs::read(path).map_err(|error| format!("proof-room.passport.unreadable: {error}"))?;
     let passport: chio_transaction_passport::TransactionPassport =
         serde_json::from_slice(&passport_bytes)
             .map_err(|error| format!("proof-room.passport.invalid-json: {error}"))?;
+    let trusted_root_signer_keys = crate::transaction_trusted_root_keys_from_env()
+        .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+    if verify_transaction_passport_signature {
+        chio_transaction_passport::verify_transaction_passport_signature(
+            &passport,
+            &trusted_root_signer_keys,
+        )
+        .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+    }
     let passport_dir = path
         .parent()
         .ok_or_else(|| "proof-room.passport.path-invalid".to_string())?;
@@ -797,8 +1006,6 @@ pub(crate) fn verify_transaction_passport_file(
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string_lossy().into_owned());
-    let trusted_root_signer_keys = crate::transaction_trusted_root_keys_from_env()
-        .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
     let report = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
         &passport,
         passport_report_path,
@@ -852,7 +1059,11 @@ pub(crate) fn attach_source_runtime_proof_parity_report(
     let Some(parity_report) = source_runtime_proof_parity_report(context)? else {
         return Ok(());
     };
-    validate_source_runtime_proof_regeneration_artifacts(context)?;
+    let regeneration_hashes = validate_source_runtime_proof_regeneration_artifacts(context)?;
+    ensure_source_runtime_parity_report_binds_regenerated_artifacts(
+        &parity_report,
+        &regeneration_hashes,
+    )?;
     let report_object = report
         .as_object_mut()
         .ok_or_else(|| "proof-room.source-verifier.report-not-object".to_string())?;
@@ -916,7 +1127,7 @@ pub(crate) fn source_runtime_proof_parity_report(
 
 pub(crate) fn validate_source_runtime_proof_regeneration_artifacts(
     context: &SourceVerifierContext,
-) -> Result<(), String> {
+) -> Result<SourceRuntimeProofRegenerationHashes, String> {
     let graph: SourceRuntimeParityEvidenceGraph =
         serde_json::from_slice(&context.evidence_graph_bytes)
             .map_err(|error| format!("proof-room.evidence-graph.invalid-json: {error}"))?;
@@ -970,7 +1181,59 @@ pub(crate) fn validate_source_runtime_proof_regeneration_artifacts(
             workflow_receipt,
         },
     )
-    .map_err(|error| format!("proof-room.runtime-regeneration.invalid: {error}"))
+    .map_err(|error| format!("proof-room.runtime-regeneration.invalid: {error}"))?;
+    Ok(SourceRuntimeProofRegenerationHashes {
+        proof_package_sha256: source_runtime_artifact_canonical_sha256(proof_package)?,
+        verifier_report_sha256: source_runtime_artifact_canonical_sha256(verifier_report)?,
+    })
+}
+
+pub(crate) struct SourceRuntimeProofRegenerationHashes {
+    proof_package_sha256: String,
+    verifier_report_sha256: String,
+}
+
+fn ensure_source_runtime_parity_report_binds_regenerated_artifacts(
+    parity_report: &serde_json::Value,
+    regeneration_hashes: &SourceRuntimeProofRegenerationHashes,
+) -> Result<(), String> {
+    ensure_source_runtime_parity_hash_matches(
+        parity_report,
+        "runtimeProofPackageSha256",
+        &regeneration_hashes.proof_package_sha256,
+        "proof-room.runtime-parity.package-hash-mismatch",
+    )?;
+    ensure_source_runtime_parity_hash_matches(
+        parity_report,
+        "runtimeVerifierReportSha256",
+        &regeneration_hashes.verifier_report_sha256,
+        "proof-room.runtime-parity.verifier-report-hash-mismatch",
+    )
+}
+
+fn ensure_source_runtime_parity_hash_matches(
+    parity_report: &serde_json::Value,
+    field: &str,
+    expected: &str,
+    label: &'static str,
+) -> Result<(), String> {
+    let actual = parity_report
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("proof-room.runtime-parity.missing-field: {field}"))?;
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(format!("{label}: expected {expected}, got {actual}"))
+    }
+}
+
+fn source_runtime_artifact_canonical_sha256(bytes: &[u8]) -> Result<String, String> {
+    let value: serde_json::Value = serde_json::from_slice(bytes)
+        .map_err(|error| format!("proof-room.runtime-regeneration.invalid-json: {error}"))?;
+    let canonical_bytes = chio_core_types::canonical_json_bytes(&value)
+        .map_err(|error| format!("proof-room.runtime-regeneration.canonical-json: {error}"))?;
+    Ok(sha256_hex(&canonical_bytes))
 }
 
 pub(crate) fn source_runtime_graph_artifact_bytes<'a>(

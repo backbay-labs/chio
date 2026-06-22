@@ -225,12 +225,28 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "quote_id": "quote-commerce-001",
         "quote_amount_minor": 1250,
         "quote_currency": "USD",
+        "quote_sha256": "abababababababababababababababababababababababababababababababab",
+        "intent_ref": "intent-commerce-001",
+        "provider_admission_ref": "provider-admission-commerce-001",
+        "provider_passport_ref": "provider-passport-commerce-001",
+        "reputation_snapshot_ref": "reputation-snapshot-commerce-001",
+        "federation_trust_bundle_ref": "federation-trust-bundle-commerce-001",
+        "settlement_packet_ref": "settlement-packet-commerce-001",
+        "reconciliation_ref": "reconciliation-commerce-001",
         "event_log_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         "event_log_path": "commerce/event-log.json",
         "payment_lifecycle_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
         "payment_lifecycle_path": "commerce/payment-lifecycle.json",
         "mandate_ledger_sha256": "0101010101010101010101010101010101010101010101010101010101010101",
         "mandate_ledger_path": "commerce/mandate-allowance-ledger.json",
+        "provider_passport_sha256": "0303030303030303030303030303030303030303030303030303030303030303",
+        "provider_passport_path": "commerce/provider-passport.json",
+        "reputation_snapshot_sha256": "0404040404040404040404040404040404040404040404040404040404040404",
+        "reputation_snapshot_path": "commerce/reputation-snapshot.json",
+        "federation_trust_bundle_sha256": "0505050505050505050505050505050505050505050505050505050505050505",
+        "federation_trust_bundle_path": "commerce/federation-trust-bundle.json",
+        "settlement_packet_sha256": "0202020202020202020202020202020202020202020202020202020202020202",
+        "settlement_packet_path": "commerce/settlement-packet.json",
         "current_state": "settled"
     }));
     let acp_commerce_order_context_digest =
@@ -724,7 +740,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "artifact_type": "application/vnd.chio.guard-runner.v1",
         "subject_digest": "sha256:b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3",
         "sigstore_bundle_digest": "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4",
-        "rekor_inclusion_status": "verified",
+        "rekor_inclusion_status": "advisory",
         "cache_admission_report_digest": "b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5",
         "receipt_refs": ["receipt-agent-web-oci-ref-allow"],
         "mediated_by_chio_receipt": true
@@ -875,7 +891,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "authorization_context_digest": "9a".repeat(32),
         "predicate_type": "https://slsa.dev/provenance/v1",
         "transparency_included": true,
-        "verification_status": "verified",
+        "verification_status": "advisory",
         "receipt_refs": ["receipt-agent-web-sigstore-bundle-allow"],
         "mediated_by_chio_receipt": true
     });
@@ -915,7 +931,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "signer_identity_digest": "a5".repeat(32),
         "verification_material_digest": "a6".repeat(32),
         "authorization_context_digest": "a7".repeat(32),
-        "signature_count": 1,
+        "signature_count": 2,
         "receipt_refs": ["receipt-agent-web-in-toto-statement-allow"],
         "mediated_by_chio_receipt": true
     });
@@ -951,7 +967,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "signer_identity_digest": "c3".repeat(32),
         "verification_material_digest": "c4".repeat(32),
         "authorization_context_digest": "c5".repeat(32),
-        "signature_count": 1,
+        "signature_count": 2,
         "verification_status": "verified",
         "receipt_refs": ["receipt-agent-web-dsse-envelope-allow"],
         "mediated_by_chio_receipt": true
