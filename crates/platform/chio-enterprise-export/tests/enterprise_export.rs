@@ -1987,6 +1987,50 @@ fn enterprise_export_rejects_telemetry_siem_without_receipt() {
 }
 
 #[test]
+fn enterprise_export_rejects_telemetry_schema_only_receipt_ref() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    bundle.artifacts.insert(
+        "schema-only-siem-receipt.json".to_string(),
+        json_bytes(json!({
+            "schema": CHIO_RECEIPT_SCHEMA,
+            "id": "schema-only-siem-receipt"
+        })),
+    );
+    let data_governance = bundle
+        .artifacts
+        .get("data-governance-report.json")
+        .test_expect("data governance artifact exists");
+    let mut telemetry: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("telemetry-projection.json")
+            .test_expect("telemetry artifact exists"),
+    )
+    .test_expect("telemetry artifact parses");
+    telemetry["events"]
+        .as_array_mut()
+        .test_expect("telemetry events are an array")
+        .push(json!({
+            "event_id": "siem-export-event",
+            "event_kind": "siem_export",
+            "artifact_ref": "data-governance-report.json",
+            "artifact_sha256": chio_core_types::sha256_hex(data_governance),
+            "receipt_ref": "schema-only-siem-receipt.json"
+        }));
+    replace_graph_artifact(
+        &mut bundle,
+        "telemetry-projection.json",
+        "telemetry-projection",
+        telemetry,
+    );
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("schema-only telemetry receipt must fail closed");
+
+    assert!(error.to_string().contains("telemetry receipt invalid"));
+}
+
+#[test]
 fn enterprise_export_rejects_control_map_missing_gate() {
     let bundle = enterprise_bundle(EnterpriseCase::ControlMapMissingGate);
 

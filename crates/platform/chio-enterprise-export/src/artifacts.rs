@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use chio_core_types::crypto::{PublicKey, Signature};
+use chio_core_types::receipt::body::ChioReceipt;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -421,12 +422,13 @@ pub(super) fn validate_telemetry_projection(
             let receipt_bytes = bundle.artifacts.get(receipt_ref).ok_or_else(|| {
                 TransactionPassportError::MissingEnterpriseArtifact(receipt_ref.to_string())
             })?;
-            let receipt: serde_json::Value = serde_json::from_slice(receipt_bytes)
+            let receipt: ChioReceipt = serde_json::from_slice(receipt_bytes)
                 .map_err(|_| claim_failed("telemetry receipt invalid"))?;
-            if receipt.get("schema").and_then(serde_json::Value::as_str)
-                != Some(CHIO_RECEIPT_SCHEMA)
-            {
-                return Err(claim_failed("telemetry receipt schema mismatch"));
+            let signature_valid = receipt
+                .verify_signature()
+                .map_err(|_| claim_failed("telemetry receipt signature invalid"))?;
+            if !signature_valid {
+                return Err(claim_failed("telemetry receipt signature invalid"));
             }
         } else if event.event_kind == "siem_export" {
             return Err(claim_failed("telemetry SIEM event missing receipt"));
