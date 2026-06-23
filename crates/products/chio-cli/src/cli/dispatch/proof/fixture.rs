@@ -1732,7 +1732,7 @@ fn add_disclosure_agent_web_crypto_context_material(
         nodes,
         "bbs-projection-manifest",
         "bbs-projection-manifest.json",
-        chio_selective_disclosure::BBS_PROJECTION_MANIFEST_SCHEMA_V2,
+        chio_selective_disclosure::BBS_PROJECTION_MANIFEST_SCHEMA_V1,
         "bbs-projection-manifest",
         &sha256_file(&projection_manifest_path)?,
     );

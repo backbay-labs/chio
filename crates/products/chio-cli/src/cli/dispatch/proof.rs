@@ -2425,7 +2425,7 @@ fn load_required_disclosure_bbs_projection_manifest(
         [node] => load_graph_json_artifact(
             bundle_dir,
             node,
-            chio_selective_disclosure::BBS_PROJECTION_MANIFEST_SCHEMA_V2,
+            chio_selective_disclosure::BBS_PROJECTION_MANIFEST_SCHEMA_V1,
             "disclosure lineage",
         ),
         [] => Err(CliError::cli_other_error(

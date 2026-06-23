@@ -67,7 +67,7 @@ pub const CHIO_DISCLOSURE_CRYPTO_CONTEXT_REPORT_V1_SCHEMA: &str =
     "chio.disclosure.crypto-context-report.v1";
 pub const CHIO_ATTEST_SELECTIVE_DISCLOSURE_PROOF_V1_SCHEMA: &str =
     "chio.attest.selective-disclosure-proof.v1";
-pub const CHIO_BBS_PROJECTION_MANIFEST_V2_SCHEMA: &str = "chio.bbs-projection.manifest.v2";
+pub const CHIO_BBS_PROJECTION_MANIFEST_V1_SCHEMA: &str = "chio.bbs-projection.manifest.v1";
 pub const CHIO_DISCLOSURE_CAPSULE_V1_SCHEMA: &str = "chio.disclosure.capsule.v1";
 pub const CHIO_LINEAGE_SIGNED_SUBGRAPH_V1_SCHEMA: &str = "chio.lineage.signed-subgraph.v1";
 pub const CHIO_DISCLOSURE_LEAKAGE_LEDGER_V1_SCHEMA: &str = "chio.disclosure.leakage-ledger.v1";
@@ -328,7 +328,7 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
         )),
     ),
     (
-        CHIO_BBS_PROJECTION_MANIFEST_V2_SCHEMA,
+        CHIO_BBS_PROJECTION_MANIFEST_V1_SCHEMA,
         Some(("bbs_projection_manifest", "crypto-context-v1")),
     ),
     (

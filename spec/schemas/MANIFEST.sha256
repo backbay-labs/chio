@@ -189,7 +189,7 @@ a3c748be49a7de93b4c9056b898681e38ae2fdf482513f9df346234c60c28533  spec/schemas/c
 7cdb2a308f0e149021ec1ef9751decb10ba94dd1d4373f3f88041eccbbbaf34c  spec/schemas/chio-crypto/v1/verification-context.schema.json
 661b01a8056ed95b151b1c5a547b1234cf14c024cc8357e59b03b19f6f01077c  spec/schemas/chio-disclosure/v1/crypto-context-report.schema.json
 86244a1732a1bf3091a816f19c9fb4e3ce518f467028c089ae66b7b725647684  spec/schemas/chio-disclosure/v1/verifier-privacy-profile.schema.json
-e0e6e6fbcd5e9fc17efc895af257dfef57fbc53deaa517fa790096b057bbe244  spec/schemas/chio-disclosure/v2/bbs-projection-manifest.schema.json
+1b08a45b3e82db19bb35feff74f9ba6c8ce7c5fb3f5d4ed7bd14727901ab482d  spec/schemas/chio-disclosure/v1/bbs-projection-manifest.schema.json
 76db588175d3ee70e0d5518b8a601ed7e6c2f3db76af7d637b8c8ef54905a197  spec/schemas/chio-disclosure/v1/capsule.schema.json
 ffdc4c19cea5d3a471c0645deb4b6aec170a3f32045f16788a40e3438e884a3b  spec/schemas/chio-disclosure/v1/leakage-ledger.schema.json
 34fd1bb006fbd1711a4fc7f7636dda45bb55aefb812790268ac94289dac4f8c7  spec/schemas/chio-disclosure/v1/lineage-verifier-report.schema.json

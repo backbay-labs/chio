@@ -92,7 +92,7 @@ pub struct Projection {
 }
 
 /// Schema for the BBS projection manifest that binds proof slots to policy.
-pub const BBS_PROJECTION_MANIFEST_SCHEMA_V2: &str = "chio.bbs-projection.manifest.v2";
+pub const BBS_PROJECTION_MANIFEST_SCHEMA_V1: &str = "chio.bbs-projection.manifest.v1";
 
 /// Per-slot disclosure policy in a BBS projection manifest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -620,7 +620,7 @@ fn validate_disclosure_set(
 
 pub fn bbs_projection_manifest_from_projection(projection: &Projection) -> BbsProjectionManifest {
     BbsProjectionManifest {
-        schema: BBS_PROJECTION_MANIFEST_SCHEMA_V2.to_string(),
+        schema: BBS_PROJECTION_MANIFEST_SCHEMA_V1.to_string(),
         manifest_id: projection.version.clone(),
         artifact_ref: projection.subject_sha256_hex.clone(),
         canonicalization: "jcs".to_string(),
@@ -651,9 +651,9 @@ pub fn verify_bbs_projection_manifest(
     proof: &SelectiveDisclosureProof,
     manifest: &BbsProjectionManifest,
 ) -> Result<(), SelectiveDisclosureError> {
-    if manifest.schema != BBS_PROJECTION_MANIFEST_SCHEMA_V2 {
+    if manifest.schema != BBS_PROJECTION_MANIFEST_SCHEMA_V1 {
         return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
-            format!("schema expected {BBS_PROJECTION_MANIFEST_SCHEMA_V2}"),
+            format!("schema expected {BBS_PROJECTION_MANIFEST_SCHEMA_V1}"),
         ));
     }
     if manifest.manifest_id != proof.projection_version {

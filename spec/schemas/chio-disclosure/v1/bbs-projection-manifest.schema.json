@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio.world/schemas/chio-disclosure/v2/bbs-projection-manifest.schema.json",
+  "$id": "https://chio.world/schemas/chio-disclosure/v1/bbs-projection-manifest.schema.json",
   "title": "Chio BBS Projection Manifest",
   "type": "object",
   "additionalProperties": false,
@@ -14,7 +14,7 @@
     "hidden_predicates"
   ],
   "properties": {
-    "schema": { "const": "chio.bbs-projection.manifest.v2" },
+    "schema": { "const": "chio.bbs-projection.manifest.v1" },
     "manifest_id": { "type": "string", "minLength": 1 },
     "artifact_ref": { "$ref": "#/$defs/sha256" },
     "canonicalization": { "type": "string", "minLength": 1 },

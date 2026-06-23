@@ -10,7 +10,7 @@
       "renderer_hint": "transaction-passport",
       "schema": "chio.transaction-passport.v1",
       "sensitivity_class": "public",
-      "sha256": "464bc5619847e9e5d91329a0c32c1b28d636e9544e8f641ca2aaf997238f3e86"
+      "sha256": "133ce5501b80b843594c8c46b14947039686ca2041aaf929bb13237336bfc826"
     },
     {
       "artifact_class": "transaction-root",
@@ -21,7 +21,7 @@
       "renderer_hint": "evidence-graph",
       "schema": "chio.transaction.evidence-graph.v1",
       "sensitivity_class": "public",
-      "sha256": "807c18c3abb38c365325847cebf1f9c013c47f2605fa472f87b3e40f2410f94d"
+      "sha256": "99e437fcb397a961002ea1d2360092260cb9f27e243cfa979cb4ebf54d64d70e"
     },
     {
       "artifact_class": "transaction-root",
@@ -54,7 +54,7 @@
       "renderer_hint": "verifier-report",
       "schema": "chio.transaction.verifier-report.v1",
       "sensitivity_class": "public",
-      "sha256": "5862f65422e5a37513234ae231b1affc68105de13fa77352d699d4eebed78ad1"
+      "sha256": "1650c51e199f78b95d6f51e37c91389651aac8e3f3aa12a6260c17cb17e4b55d"
     },
     {
       "artifact_class": "proof-room-display",
@@ -65,7 +65,7 @@
       "renderer_hint": "proof-room-report",
       "schema": "chio.proof-room.verifier-report.v1",
       "sensitivity_class": "public",
-      "sha256": "87f978a24ec158e3725ab6e0bd5b988926733d223ed175072642d71259f1fd33"
+      "sha256": "2ffd1489fa67df10a367e2e0b269f3f021a386fd9f54831804434bb58149ad2d"
     },
     {
       "artifact_class": "authority",
@@ -992,7 +992,7 @@
   "evidence_graph_ref": {
     "path": "roots/evidence-graph.json",
     "schema": "chio.transaction.evidence-graph.v1",
-    "sha256": "807c18c3abb38c365325847cebf1f9c013c47f2605fa472f87b3e40f2410f94d"
+    "sha256": "99e437fcb397a961002ea1d2360092260cb9f27e243cfa979cb4ebf54d64d70e"
   },
   "excluded_artifacts": [],
   "fixture_id": "disclosure-and-agent-web-envelope",
@@ -1146,7 +1146,7 @@
   "proof_room_verifier_report_ref": {
     "path": "ui/proof-room-static/load-report.json",
     "schema": "chio.proof-room.verifier-report.v1",
-    "sha256": "87f978a24ec158e3725ab6e0bd5b988926733d223ed175072642d71259f1fd33"
+    "sha256": "2ffd1489fa67df10a367e2e0b269f3f021a386fd9f54831804434bb58149ad2d"
   },
   "receipt_coverage": [
     {
@@ -1186,11 +1186,11 @@
   "transaction_passport_ref": {
     "path": "roots/transaction-passport.json",
     "schema": "chio.transaction-passport.v1",
-    "sha256": "464bc5619847e9e5d91329a0c32c1b28d636e9544e8f641ca2aaf997238f3e86"
+    "sha256": "133ce5501b80b843594c8c46b14947039686ca2041aaf929bb13237336bfc826"
   },
   "verifier_report_ref": {
     "path": "verifier/report.json",
     "schema": "chio.transaction.verifier-report.v1",
-    "sha256": "5862f65422e5a37513234ae231b1affc68105de13fa77352d699d4eebed78ad1"
+    "sha256": "1650c51e199f78b95d6f51e37c91389651aac8e3f3aa12a6260c17cb17e4b55d"
   }
 }
