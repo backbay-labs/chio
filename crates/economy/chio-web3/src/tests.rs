@@ -1160,6 +1160,45 @@ fn public_settlement_proof_rejects_missing_trusted_signers() {
 }
 
 #[test]
+fn public_settlement_proof_rejects_untrusted_capital_signer() {
+    let bundle = sample_public_settlement_proof_bundle();
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_capital_signer_keys = vec![custodian_keypair().public_key()];
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &trust),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement capital signer key is not trusted")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_untrusted_anchor_kernel() {
+    let bundle = sample_public_settlement_proof_bundle();
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_anchor_kernel_keys = vec![custodian_keypair().public_key()];
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &trust),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement anchor kernel key is not trusted")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_untrusted_beneficiary_identity() {
+    let bundle = sample_public_settlement_proof_bundle();
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_beneficiary_identity_keys = vec![custodian_keypair().public_key()];
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &trust),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement beneficiary identity key is not trusted")
+    ));
+}
+
+#[test]
 fn public_settlement_proof_rejects_missing_chain_allow_list() {
     let bundle = sample_public_settlement_proof_bundle();
     let mut trust = sample_public_settlement_verifier_trust();
