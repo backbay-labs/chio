@@ -216,6 +216,7 @@ SLICES: tuple[ReviewSlice, ...] = (
         (
             "audits/**",
             "compliance/**",
+            "supply-chain/**",
             "tools/knowledge-base/**",
             "releases.toml",
             "deploy/**",
