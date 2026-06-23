@@ -62,6 +62,11 @@ SLSA v1.1 is the current source.
 Sigstore proves runtime authorization.
 EOF
 
+cat > "$work/generic-universal-protocol-fail.md" <<'EOF'
+Chio is the universal protocol for autonomous agents.
+Chio ships a universal-protocol bridge for all agent systems.
+EOF
+
 if ! grep -Fq '"spec/PROTOCOL.md"' "$lint"; then
   echo "release truth default docs do not include spec/PROTOCOL.md" >&2
   exit 1
@@ -142,6 +147,16 @@ grep -q "proof-room.release.copy-forbidden: stale_a2a_version" "$work/rejected-s
 grep -q "proof-room.release.copy-forbidden: unsupported_openapi_32" "$work/rejected-standards-fail.out"
 grep -q "proof-room.release.copy-forbidden: stale_slsa_version" "$work/rejected-standards-fail.out"
 grep -q "proof-room.release.copy-forbidden: sigstore_runtime_authority" "$work/rejected-standards-fail.out"
+
+if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
+  CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \
+  CHIO_PROOF_ROOM_RELEASE_DOCS="$work/generic-universal-protocol-fail.md" \
+  "$lint" >"$work/generic-universal-protocol-fail.out" 2>&1; then
+  echo "generic universal protocol overclaims unexpectedly passed" >&2
+  exit 1
+fi
+grep -q "proof-room.release.copy-forbidden: universal_protocol_overclaim" \
+  "$work/generic-universal-protocol-fail.out"
 
 cp "$truth" "$work/release-truth-extra-field.json"
 python3 - "$work/release-truth-extra-field.json" <<'PY'

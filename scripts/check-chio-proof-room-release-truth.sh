@@ -163,7 +163,11 @@ COPY_STOP_PATTERNS = {
         "insurance pricing claims must stay within actuarial and reserve evidence",
     ),
     "universal_protocol_overclaim": (
-        re.compile(r"\buniversal agent protocol\b", re.IGNORECASE),
+        re.compile(
+            r"(?<![A-Za-z0-9_-])universal(?:[ -]+agent)?[ -]+protocol"
+            r"(?![A-Za-z0-9_-])",
+            re.IGNORECASE,
+        ),
         "Chio is not a replacement for external agent protocols",
     ),
     "native_external_authority_overclaim": (
