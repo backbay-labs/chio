@@ -68,11 +68,13 @@ pub(super) fn request_has_chio_runtime_context(request: &ToolCallRequest) -> boo
         .is_some_and(|context| {
             let retired_admission_key = retired_context_key("Admission");
             let retired_treaty_key = retired_context_key("Treaty");
+            let retired_swarm_key = retired_context_key("Swarm");
             context.contains_key("chioAdmission")
                 || context.contains_key("chioTreaty")
                 || context.contains_key("chioSwarm")
                 || context.contains_key(retired_admission_key.as_str())
                 || context.contains_key(retired_treaty_key.as_str())
+                || context.contains_key(retired_swarm_key.as_str())
         })
 }
 
