@@ -135,6 +135,13 @@ jobs:
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: cargo build --workspace
 
+      - name: Transaction Passport fixture gate
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+          CHIO_BIN: target/debug/chio
+        run: bash ./scripts/check-chio-transaction-passport.sh
+
       - name: Workspace tests
         env:
           CARGO_BUILD_JOBS: "1"

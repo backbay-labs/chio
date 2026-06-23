@@ -65,7 +65,6 @@ const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS: &str =
     "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a";
 const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 pub(crate) const PROOF_SERVE_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
-const PROOF_SERVE_HTTP_WAIT_TIMEOUT: Duration = Duration::from_secs(90);
 const PROOF_SERVE_HTTP_READ_POLL: Duration = Duration::from_millis(200);
 
 pub(crate) fn workspace_root() -> PathBuf {
@@ -333,7 +332,7 @@ fn http_response_has_declared_body(response: &[u8]) -> bool {
 }
 
 pub(crate) fn wait_for_http_body(address: SocketAddr, path: &str) -> String {
-    let deadline = Instant::now() + PROOF_SERVE_HTTP_WAIT_TIMEOUT;
+    let deadline = Instant::now() + Duration::from_secs(90);
     let mut last_error = String::new();
     while Instant::now() < deadline {
         match http_get(address, path) {
@@ -360,7 +359,7 @@ pub(crate) fn wait_for_http_body(address: SocketAddr, path: &str) -> String {
 }
 
 pub(crate) fn wait_for_http_response(address: SocketAddr, path: &str) -> String {
-    let deadline = Instant::now() + PROOF_SERVE_HTTP_WAIT_TIMEOUT;
+    let deadline = Instant::now() + Duration::from_secs(90);
     let mut last_error = String::new();
     while Instant::now() < deadline {
         match http_get(address, path) {
