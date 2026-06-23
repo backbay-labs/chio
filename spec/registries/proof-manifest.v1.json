@@ -2497,10 +2497,6 @@
         },
         {
           "kind": "rust_test",
-          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_public_settlement_trust_market_refs"
-        },
-        {
-          "kind": "rust_test",
           "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_rejects_public_settlement_partial_trust_market_refs"
         },
         {

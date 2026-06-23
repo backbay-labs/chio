@@ -29,7 +29,8 @@ Rules:
 | Commerce | `chio.commerce.order-context.v1` | Replayable order aggregate | Required |
 | Commerce | `chio.commerce.event-log.v1` | Append-only commerce event log | Required |
 | Commerce | `chio.commerce.order-passport.v1` | Reviewer-facing order summary | Required |
-| Commerce | `chio.commerce.provider-admission.v1` | Provider passport, reputation, and federation gate result | Required if commerce fixture uses provider selection |
+| Commerce | `chio.commerce.provider-discovery-snapshot.v1` | Fresh provider candidate set used before admission | Required if marketplace provider selection is claimed |
+| Commerce | `chio.commerce.provider-selection-report.v1` | Provider admission gate result binding discovery, scorecard, reputation, SLA, and selected provider | Required if commerce fixture uses provider selection |
 | Commerce | `chio.commerce.settlement-packet.v1` | Dispatch-ready settlement instruction package | Required if settlement is claimed |
 | Swarm | `chio.swarm.task-graph.v1` | Signed recursive task authority graph | Required for swarm claim |
 | Swarm | `chio.swarm.continuation-token.v1` | Child execution context | Required for swarm claim |
@@ -108,5 +109,5 @@ These third-wave debate candidates are not canonical until the registry owner ac
 | Crypto and trust | `chio.crypto.verification-context.v1`, `chio.trust.key-state.v1`, `chio.trust.revocation-snapshot.v1`, `chio.transparency.inclusion-proof.v1` |
 | Workflow simulation | `chio.workflow.preflight-plan.v1`, `chio.workflow.preflight-report.v1`, `chio.workflow.what-if-delta.v1`, `chio.workflow.rehearsal-run.v1`, `chio.workflow.replay-capsule.v1`, `chio.workflow.model-provider-conformance.v1`, `chio.workflow.approval-gate.v1` |
 | Enterprise evidence | `chio.enterprise.telemetry-projection.v1`, `chio.enterprise.data-governance-report.v1`, `chio.enterprise.policy-pack-manifest.v1`, `chio.enterprise.approval-case.v1`, `chio.enterprise.access-decision-report.v1`, `chio.enterprise.evidence-export-bundle.v1`, `chio.enterprise.control-evidence-map.v1`, `chio.enterprise.incident-review-case.v1`, `chio.enterprise.regulator-review-bundle.v1` |
-| Trust-market context | `chio.commerce.provider-discovery-snapshot.v1`, `chio.commerce.provider-selection-report.v1`, `chio.trust.scorecard-snapshot.v1`, `chio.trust.reputation-import-report.v1`, `chio.commerce.sla-commitment.v1`, `chio.commerce.sla-performance-report.v1`, `chio.risk.collateral-position-report.v1`, `chio.risk.capital-commitment-snapshot.v1`, `chio.risk.guarantee-decision.v1`, `chio.risk.adjudication-jurisdiction-receipt.v1` |
+| Trust-market context | `chio.trust.scorecard-snapshot.v1`, `chio.trust.reputation-import-report.v1`, `chio.commerce.sla-commitment.v1`, `chio.commerce.sla-performance-report.v1`, `chio.risk.collateral-position-report.v1`, `chio.risk.capital-commitment-snapshot.v1`, `chio.risk.guarantee-decision.v1`, `chio.risk.adjudication-jurisdiction-receipt.v1` |
 | Agent Web automation | `chio.agent-web.automation-transcript.v1` only if browser or RPA transcripts become Chio-signed verifier inputs. First webhook, CloudEvents, GraphQL, identity, Kubernetes, and OCI slices should use the existing Agent Web envelope IDs. |

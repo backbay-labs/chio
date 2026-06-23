@@ -44,7 +44,8 @@ Planned artifacts:
 - `chio.commerce.order-context.v1`
 - `chio.commerce.event-log.v1`
 - `chio.commerce.order-passport.v1`
-- `chio.commerce.provider-admission.v1`
+- `chio.commerce.provider-discovery-snapshot.v1`
+- `chio.commerce.provider-selection-report.v1`
 - `chio.commerce.settlement-packet.v1`
 
 ## Recursive Delegation And Swarms
