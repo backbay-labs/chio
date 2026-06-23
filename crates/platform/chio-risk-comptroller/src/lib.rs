@@ -43,6 +43,12 @@ pub struct RiskComptrollerReport {
     verified_claims: Vec<String>,
 }
 
+impl RiskComptrollerReport {
+    pub fn verified_claims(&self) -> &[String] {
+        &self.verified_claims
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RiskEvidenceRefKind {
     AuthorityReceipt,
