@@ -1746,7 +1746,7 @@ fn validate_continuation_token(
         &token.parent_receipt_ids,
         "swarm continuation parent receipt",
     )?;
-    validate_continuation_parent(token, context.edge_set, context.join_by_id)?;
+    validate_continuation_parent(token, child_task, context.edge_set, context.join_by_id)?;
     validate_continuation_route(token, child_task, context.route_by_id)?;
     validate_continuation_budget(token, child_task, context.allocation_by_id)?;
     if token.revocation_epoch_ref != bundle.revocation_epoch.epoch_id {
@@ -1819,11 +1819,18 @@ fn ensure_continuation_issuer_is_pinned(
 
 fn validate_continuation_parent(
     token: &SwarmContinuationToken,
+    child_task: &SwarmGraphNode,
     edge_set: &BTreeSet<(&str, &str)>,
     join_by_id: &BTreeMap<&str, &SwarmJoinReceipt>,
 ) -> Result<(), SwarmAuthorityError> {
     match (&token.parent_task_id, &token.join_receipt_id) {
         (Some(parent_task_id), None) => {
+            if child_task.parent_task_id.as_deref() != Some(parent_task_id.as_str()) {
+                return Err(rejected(format!(
+                    "swarm continuation parent task mismatch: {}",
+                    token.token_id
+                )));
+            }
             if token.parent_receipt_ids.is_empty() {
                 return Err(rejected(format!(
                     "swarm continuation lacks parent receipt: {}",

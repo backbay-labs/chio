@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::error::ChioRuntimeError;
 use crate::hash::canonical_sha256;
@@ -9,7 +9,7 @@ use crate::schema::{
 use crate::types::{
     RuntimeEvidenceManifest, RuntimeProofDrift, RuntimeProofDriftReport, RuntimeProofParityReport,
     RuntimeProofRegenerationInput, RuntimeProofRegenerationReport, RuntimeProofSourceRecord,
-    RuntimeWorkflowRunReport,
+    RuntimeStepEvidence, RuntimeWorkflowRunReport,
 };
 use crate::validation::common::{
     ensure_sha256_hash, validate_acceptance_failure_code, validate_non_empty, validate_state_label,
@@ -298,6 +298,16 @@ pub fn validate_runtime_proof_regeneration_artifacts(
             detail: "runtime proof regeneration source records mismatch".to_string(),
         });
     }
+    if !runtime_proof_source_records_match_steps(
+        &workflow_report.step_evidence,
+        &proof_report.source_records,
+    ) {
+        return Err(ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_source_record_mismatch",
+            detail: "runtime proof regeneration source records do not match workflow steps"
+                .to_string(),
+        });
+    }
     if proof_report.proof_package_sha256.as_deref() != Some(proof_package_sha256.as_str()) {
         return Err(ChioRuntimeError::Rejected {
             code: "runtime_proof_regeneration_package_hash_mismatch",
@@ -350,6 +360,31 @@ fn is_runtime_proof_regeneration_input_schema(schema: &str) -> bool {
 
 fn is_runtime_proof_regeneration_report_schema(schema: &str) -> bool {
     matches!(schema, CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA)
+}
+
+fn runtime_proof_source_records_match_steps(
+    steps: &[RuntimeStepEvidence],
+    source_records: &[RuntimeProofSourceRecord],
+) -> bool {
+    if steps.len() != source_records.len() {
+        return false;
+    }
+
+    let mut records_by_step = BTreeMap::new();
+    for record in source_records {
+        if records_by_step.insert(record.step_index, record).is_some() {
+            return false;
+        }
+    }
+
+    steps.iter().all(|step| {
+        records_by_step.get(&step.step_index).is_some_and(|record| {
+            record.admission_report_sha256 == step.admission_report_sha256
+                && record.tool_receipt_sha256 == step.tool_receipt_sha256
+                && record.bilateral_dsse_sha256 == step.bilateral_dsse_sha256
+                && record.workflow_step_sha256 == step.workflow_step_sha256
+        })
+    })
 }
 
 fn parse_runtime_json<T: serde::de::DeserializeOwned>(

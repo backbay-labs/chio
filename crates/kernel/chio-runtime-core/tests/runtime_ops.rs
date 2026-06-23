@@ -260,6 +260,43 @@ fn runtime_proof_regeneration_artifacts_reject_run_id_mismatch(
     Ok(())
 }
 
+#[test]
+fn runtime_proof_regeneration_artifacts_reject_source_records_spliced_from_workflow_steps(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut artifacts = runtime_proof_regeneration_artifacts("runtime-loopback-7-3")?;
+    let mut workflow_report: RuntimeWorkflowRunReport =
+        serde_json::from_slice(&artifacts.workflow_run_report)?;
+    workflow_report.step_evidence[0].tool_receipt_sha256 = "9".repeat(64);
+    artifacts.workflow_run_report = serde_json::to_vec(&workflow_report)?;
+
+    let mut manifest: RuntimeEvidenceManifest =
+        serde_json::from_slice(&artifacts.evidence_manifest)?;
+    manifest.workflow_run_report_sha256 = canonical_value_sha256(&workflow_report)?;
+    for entry in &mut manifest.entries {
+        if entry.role == "runtime_run_report" {
+            entry.sha256 = sha256_hex(&artifacts.workflow_run_report);
+            entry.byte_count =
+                u64::try_from(artifacts.workflow_run_report.len()).unwrap_or(u64::MAX);
+        }
+    }
+    artifacts.evidence_manifest = serde_json::to_vec(&manifest)?;
+
+    let mut proof_input: RuntimeProofRegenerationInput =
+        serde_json::from_slice(&artifacts.proof_regeneration_input)?;
+    proof_input.workflow_run_report_sha256 = manifest.workflow_run_report_sha256.clone();
+    proof_input.evidence_manifest_sha256 = canonical_value_sha256(&manifest)?;
+    artifacts.proof_regeneration_input = serde_json::to_vec(&proof_input)?;
+
+    match validate_runtime_proof_regeneration_artifacts(artifacts.as_runtime_artifacts()) {
+        Ok(()) => panic!("runtime regeneration artifacts with spliced source records verified"),
+        Err(error) => assert_eq!(
+            error.code(),
+            "runtime_proof_regeneration_source_record_mismatch"
+        ),
+    }
+    Ok(())
+}
+
 struct TestRuntimeProofRegenerationArtifacts {
     proof_regeneration_report: Vec<u8>,
     proof_regeneration_input: Vec<u8>,

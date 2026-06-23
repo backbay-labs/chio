@@ -600,6 +600,107 @@ fn swarm_authority_stage0_rejects_continuation_route_ref_mismatch() -> Result<()
 }
 
 #[test]
+fn swarm_authority_stage0_rejects_continuation_parent_not_declared_on_child(
+) -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    let child_scope = scope_for("commerce", "reserve_budget", 1);
+    let child_scope_hash = scope_hash(&child_scope)?;
+
+    bundle.task_graph.nodes.push(SwarmGraphNode {
+        task_id: "task-grandchild".to_string(),
+        parent_task_id: Some("task-child-a".to_string()),
+        route_plan_ref: Some("route-grandchild".to_string()),
+        continuation_token_ref: Some("continuation-grandchild".to_string()),
+        budget_allocation_ref: Some("budget-grandchild".to_string()),
+        scope_hash: child_scope_hash.clone(),
+        depth: 2,
+    });
+    bundle.task_graph.edges.push(SwarmGraphEdge {
+        from_task_id: "task-child-a".to_string(),
+        to_task_id: "task-grandchild".to_string(),
+        edge_type: "delegates".to_string(),
+    });
+    bundle.task_graph.edges.push(SwarmGraphEdge {
+        from_task_id: "task-child-b".to_string(),
+        to_task_id: "task-grandchild".to_string(),
+        edge_type: "delegates".to_string(),
+    });
+    bundle
+        .task_graph
+        .route_plan_refs
+        .push("route-grandchild".to_string());
+
+    let graph_sha256 = canonical_hash(&bundle.task_graph)?;
+    let mut continuation = continuation_token(
+        "continuation-grandchild",
+        "task-grandchild",
+        "route-grandchild",
+        &graph_sha256,
+        &bundle.revocation_epoch.root_hash,
+    )?;
+    continuation.parent_task_id = Some("task-child-b".to_string());
+    continuation.parent_receipt_ids = vec!["receipt-child-b".to_string()];
+    sign_continuation_token(&mut continuation)?;
+    bundle.continuation_tokens.push(continuation);
+    bundle.route_plan_receipts.push(route_plan_receipt(
+        "route-grandchild",
+        "task-grandchild",
+        "mcp",
+        "mcp://provider-grandchild",
+    )?);
+    bundle.budget_pool.allocations.push(SwarmBudgetAllocation {
+        allocation_id: "budget-grandchild".to_string(),
+        task_id: "task-grandchild".to_string(),
+        dimension_id: "usd_minor".to_string(),
+        state: SwarmBudgetAllocationState::Active,
+        max_units: 2_500,
+        reserved_units: 0,
+        active_units: 2_500,
+        consumed_units: 0,
+        released_units: 0,
+        reversed_units: 0,
+    });
+    bundle.witness_chains.push(witness_chain(
+        "witness-grandchild-from-a",
+        "task-child-a",
+        "task-grandchild",
+        &child_scope_hash,
+        &child_scope_hash,
+        compute_attenuation_witness(&child_scope, &child_scope)?,
+    )?);
+    bundle.witness_chains.push(witness_chain(
+        "witness-grandchild-from-b",
+        "task-child-b",
+        "task-grandchild",
+        &child_scope_hash,
+        &child_scope_hash,
+        compute_attenuation_witness(&child_scope, &child_scope)?,
+    )?);
+    bundle.terminal_receipts[0]
+        .completed_task_ids
+        .push("task-grandchild".to_string());
+    bundle.terminal_receipts[0]
+        .route_plan_receipt_ids
+        .push("route-grandchild".to_string());
+    bundle.terminal_receipts[0].budget_rollups[0].active_units += 2_500;
+    bundle.terminal_receipts[0].budget_rollups[0].total_units += 2_500;
+    sign_terminal_graph_receipt(&mut bundle.terminal_receipts[0])?;
+    refresh_continuation_graph_digests(&mut bundle)?;
+
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
+        Ok(report) => panic!("mismatched continuation parent verified unexpectedly: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("swarm continuation parent task mismatch"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn swarm_authority_stage0_rejects_child_without_continuation_ref() -> Result<(), Box<dyn Error>> {
     let mut bundle = sample_swarm_bundle()?;
     bundle.task_graph.nodes[1].continuation_token_ref = None;
