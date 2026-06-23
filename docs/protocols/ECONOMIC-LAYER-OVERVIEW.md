@@ -754,7 +754,7 @@ when:
    provide tamper-evident proof of payment.
 
 For small, high-frequency settlements between trusted parties, off-chain
-settlement through the kernel's `PaymentAdapter` trait (x402, ACP, or direct
+settlement through the kernel's `PaymentAdapter` trait (x402, ACP-Commerce, or direct
 API) is more appropriate.
 
 ---

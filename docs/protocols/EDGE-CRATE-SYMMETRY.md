@@ -3,7 +3,7 @@
 Design spec for bidirectional protocol bridging. Edge crates bridge
 _outward_: exposing Chio-native tools through a foreign protocol so non-Chio
 clients can discover and invoke them. `chio-mcp-edge` is the reference
-implementation. This document covers A2A and ACP equivalents.
+implementation. This document covers A2A and ACP-Client equivalents.
 
 ## 1. The Composability Gap
 
@@ -12,17 +12,17 @@ implementation. This document covers A2A and ACP equivalents.
 | `chio-mcp-edge` | outward | MCP |
 | `chio-mcp-adapter` | inward | MCP |
 | `chio-a2a-adapter` | inward | A2A |
-| `chio-acp-proxy` | inward | ACP |
+| `chio-acp-proxy` | inward | ACP-Client |
 
 The outward column has only MCP. That means:
 
 - An Chio tool cannot appear in an A2A Agent Card. Agents that speak only
   A2A have no discovery or invocation path.
-- An Chio tool cannot appear in an ACP session. Editors like Zed or
-  JetBrains that speak ACP cannot use it.
+- An Chio tool cannot appear in an ACP-Client session. Editors like Zed or
+  JetBrains that speak ACP-Client cannot use it.
 - Cross-protocol discovery is impossible. A tool registered once should be
   listable via MCP `tools/list`, the A2A Agent Card `skills` array, and
-  ACP command enumeration from the same kernel.
+  ACP-Client command enumeration from the same kernel.
 
 This is not just a product-completeness issue. It is also a runtime-security
 coverage issue: if Chio only exposes or governs MCP-native surfaces cleanly,
@@ -34,7 +34,7 @@ deterministic control.
 - **A2A skills.** `chio-a2a-edge` on HTTPS; remote agents discover via
   Agent Card, invoke with `SendMessage`, kernel runs guards and signs
   receipts.
-- **ACP capabilities.** Editor connects to `chio-acp-edge` over stdio;
+- **ACP-Client capabilities.** Editor connects to `chio-acp-edge` over stdio;
   each authoritative `tool/invoke` triggers a kernel tool invocation with full
   capability validation.
 - **One tool, three surfaces.** Single `ToolManifest` loaded once, three
@@ -159,7 +159,7 @@ pub struct ChioAcpEdge {
 ```
 
 `AcpExposedCommandBinding` pairs an `AcpExposedCommand` with `server_id`
-and `tool_name`. `AcpEdgeSession` tracks the ACP session ID, kernel
+and `tool_name`. `AcpEdgeSession` tracks the ACP-Client session ID, kernel
 session ID, and auth context.
 
 ### 3.2 Tool Definition Translation
@@ -167,11 +167,11 @@ session ID, and auth context.
 `manifest_tool_to_acp_command` maps name, description, `input_schema`
 (as `parameters_schema`), and `has_side_effects` directly.
 
-### 3.3 ACP Protocol Handling
+### 3.3 ACP-Client Protocol Handling
 
-| ACP Method | Edge Behavior |
+| ACP-Client Method | Edge Behavior |
 |------------|---------------|
-| `session/list_capabilities` | Return the truthful authoritative ACP capability surface |
+| `session/list_capabilities` | Return the truthful authoritative ACP-Client capability surface |
 | `session/request_permission` | Capability-aware preview only; does not imply receipt-bearing execution by itself |
 | `tool/invoke` | Blocking authoritative invocation path with Chio receipt metadata |
 | `tool/stream` | Create a deferred authoritative task with receipt-pending metadata |
@@ -179,7 +179,7 @@ session ID, and auth context.
 | `tool/resume` | Resolve a deferred task through the authoritative Chio path and return the terminal result |
 
 ```rust
-The shipped authoritative ACP profile is now blocking `tool/invoke` plus a
+The shipped authoritative ACP-Client profile is now blocking `tool/invoke` plus a
 capability-aware preview surface and a deferred-task lifecycle via
 `tool/stream`, `tool/cancel`, and `tool/resume`. Compatibility passthrough
 helpers remain explicitly non-authoritative and are compiled only when the
@@ -188,7 +188,7 @@ crate's `compatibility-surface` feature is enabled.
 
 ### 3.4 Session Update Notifications
 
-The shipped authoritative ACP profile does not emit receipt-bearing
+The shipped authoritative ACP-Client profile does not emit receipt-bearing
 `session/update` notifications. That richer lifecycle remains future work and
 must not be implied by the current edge surface.
 
@@ -196,12 +196,12 @@ must not be implied by the current edge surface.
 
 `session/request_permission` replaces `chio-acp-proxy`'s allowlist model
 with the kernel's full capability pipeline (guards + budgets). The edge
-maps the ACP permission type to a Chio `Operation` and scope, then
+maps the ACP-Client permission type to a Chio `Operation` and scope, then
 delegates to `kernel.check_capability(...)`.
 
 ### 3.6 Transport
 
-Primary transport is stdio, matching how editors launch ACP agents:
+Primary transport is stdio, matching how editors launch ACP-Client agents:
 
 ```rust
 impl ChioAcpEdge {
@@ -225,7 +225,7 @@ All three edge crates follow the same structural pattern:
 ### 4.1 No Shared `ProtocolEdge` Trait
 
 The protocols have fundamentally different lifecycles (MCP: stateful
-handshake; A2A: stateless HTTP with task-based async; ACP: session-scoped
+handshake; A2A: stateless HTTP with task-based async; ACP-Client: session-scoped
 JSON-RPC). A shared trait would be too abstract to be useful. The pattern
 is documented here; each crate implements it directly.
 
@@ -248,7 +248,7 @@ pub fn iso8601_now() -> String;
 
 ### 4.3 Common Config Shape
 
-| Field | MCP | A2A | ACP |
+| Field | MCP | A2A | ACP-Client |
 |-------|-----|-----|-----|
 | Name | `server_name` | `agent_name` | `agent_name` |
 | Version | `server_version` | `agent_version` | `agent_version` |
@@ -272,11 +272,11 @@ pub enum EdgePublicationFidelity {
 
 Examples:
 
-- A simple JSON request/response tool may be `Lossless` on MCP, A2A, and ACP.
+- A simple JSON request/response tool may be `Lossless` on MCP, A2A, and ACP-Client.
 - A long-running task with partial artifacts may be `Lossless` on MCP/A2A but
-  only `Adapted` on ACP if the editor surface cannot represent the lifecycle
+  only `Adapted` on ACP-Client if the editor surface cannot represent the lifecycle
   cleanly.
-- A tool that depends on interactive ACP permission prompts may be
+- A tool that depends on interactive ACP-Client permission prompts may be
   `Unsupported` on A2A if no honest translation exists.
 
 The registry and discovery surfaces should publish caveats alongside any
@@ -300,7 +300,7 @@ just design guidance:
 
 This same discipline should apply to security claims. Chio should never present
 "discoverable on MCP" as equivalent to "governed across the full runtime path"
-when meaningful A2A, ACP, or native execution paths remain outside the same
+when meaningful A2A, ACP-Client, or native execution paths remain outside the same
 kernel/evidence model.
 
 ## 5. Cross-Protocol Discovery
@@ -312,11 +312,11 @@ of manifests.
 |----------|-------------------|-----------|
 | MCP | `tools/list` JSON-RPC | `chio-mcp-edge` |
 | A2A | `GET /.well-known/agent-card.json` | `chio-a2a-edge` |
-| ACP | `initialize` response | `chio-acp-edge` |
+| ACP-Client | `initialize` response | `chio-acp-edge` |
 
 An optional unified `GET /chio/discover` endpoint (outside the edge crates)
 can aggregate all surfaces into a single JSON response listing each tool
-and its MCP, A2A, and ACP endpoints.
+and its MCP, A2A, and ACP-Client endpoints.
 
 ## 6. Architecture Diagram
 
@@ -327,7 +327,7 @@ MCP Client <--stdio/http--> chio-mcp-edge --+              +-- chio-mcp-adapter 
                                            |              |
 A2A Client <--http/json-->  chio-a2a-edge --+-- Chio Kernel-+-- chio-a2a-adapter <--http-->  A2A Agent
                                            |              |
-ACP Editor <--stdio-->      chio-acp-edge --+              +-- chio-acp-proxy   <--stdio--> ACP Agent
+ACP-Client Editor <--stdio-->      chio-acp-edge --+              +-- chio-acp-proxy   <--stdio--> ACP-Client Agent
                                            |
                                     [guards, budgets,
                                      receipts, caps]
@@ -378,12 +378,12 @@ signed observability to a second major runtime surface.
 
 ### `chio-acp-edge` second.
 
-ACP is newer; the editor ecosystem is still consolidating. `chio-acp-proxy`
+ACP-Client is newer; the editor ecosystem is still consolidating. `chio-acp-proxy`
 provides partial coverage. The edge crate is a cleaner design (acts as the
 agent rather than proxying one) but can wait until A2A edge is stable.
 
-Security rationale: ACP matters because developer-local and workstation-resident
-agents are often the least visible class of runtime behavior. Long term, ACP
+Security rationale: ACP-Client matters because developer-local and workstation-resident
+agents are often the least visible class of runtime behavior. Long term, ACP-Client
 coverage is part of reducing blind spots rather than merely adding another
 integration checkbox.
 

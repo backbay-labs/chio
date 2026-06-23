@@ -268,7 +268,7 @@ Verifier behavior:
 - degraded states may still be operationally useful, but they are not eligible
   for the same compliance assertions
 
-This distinction is especially important for ACP proxy integration and for
+This distinction is especially important for ACP-Client proxy integration and for
 certificate generation.
 
 ---

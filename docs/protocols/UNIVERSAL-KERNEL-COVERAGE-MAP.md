@@ -34,7 +34,7 @@
 
 ```
 PROTOCOL LAYER (shipped)
-  MCP | A2A | ACP | OpenAI | Native | HTTP
+  MCP | A2A | ACP-Client | OpenAI | Native | HTTP
 
 FRAMEWORK LAYER (shipped)
   FastAPI | Django | ASGI | Express | Fastify | Elysia | Gin | Spring Boot

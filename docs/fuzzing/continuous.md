@@ -122,7 +122,7 @@ Target expansion (twelve targets, T8 included):
 | `anchor_bundle_verify`          | anchor proof bundle plus checkpoint records                |
 | `mcp_envelope_decode`           | MCP NDJSON decode plus edge dispatch                     |
 | `a2a_envelope_decode`           | A2A SSE parse plus per-event fan-out                     |
-| `acp_envelope_decode`           | ACP NDJSON plus handle_jsonrpc dispatch                  |
+| `acp_envelope_decode`           | ACP-Client NDJSON plus handle_jsonrpc dispatch                  |
 | `wasm_preinstantiate_validate`  | ComponentBackend, WasmtimeBackend, format detect         |
 | `wit_host_call_boundary`        | GuardRequest/Verdict serde deserialization               |
 | `chio_yaml_parse`               | chio-config YAML loader                                  |

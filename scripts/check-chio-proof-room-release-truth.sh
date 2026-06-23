@@ -68,6 +68,11 @@ REQUIRED_DOCKER_ENDPOINTS = {
 }
 DEFAULT_DOCS = (
     "README.md",
+    "docs",
+    "spec/PROTOCOL.md",
+)
+DEFAULT_CLAIM_DOCS = (
+    "README.md",
     "docs/README.md",
     "docs/start-here",
     "docs/release",
@@ -152,7 +157,14 @@ COPY_STOP_PATTERNS = {
         "external standards must be subordinate evidence, not ambient Chio authority",
     ),
     "every_action_overclaim": (
-        re.compile(r"\bevery action\b", re.IGNORECASE),
+        re.compile(
+            r"\b(?:Chio|authority|proof|receipt|verifi(?:es|able|ed)|binds?)\b.{0,96}"
+            r"\bevery action\b|"
+            r"\bevery action\b.{0,96}"
+            r"\b(?:Chio|authority|proof|receipt|verifi(?:es|able|ed)|binds?)\b|"
+            r"\bevery-action\b",
+            re.IGNORECASE,
+        ),
         "every-action claims require a receipt coverage matrix and exclusions",
     ),
     "insurance_pricing_overclaim": (
@@ -187,12 +199,41 @@ COPY_STOP_PATTERNS = {
         "SLSA launch claims must use the pinned current source",
     ),
     "unsupported_openapi_32": (
-        re.compile(r"\bOpenAPI 3\.2 support\b", re.IGNORECASE),
+        re.compile(
+            r"\bOpenAPI 3\.2(?: [A-Za-z0-9_-]+){0,3} support\b",
+            re.IGNORECASE,
+        ),
         "OpenAPI 3.2 support requires a 3.2 fixture",
     ),
     "sigstore_runtime_authority": (
         re.compile(r"\bSigstore proves runtime authorization\b", re.IGNORECASE),
         "Sigstore can support supply-chain transparency, not Chio runtime authority",
+    ),
+    "webhook_signature_authority": (
+        re.compile(
+            r"\b(?:a )?webhook signature proves Chio authorization\b",
+            re.IGNORECASE,
+        ),
+        "webhook signatures are event evidence, not Chio authorization",
+    ),
+    "oauth_token_capability": (
+        re.compile(r"\bOAuth tokens are Chio capabilities\b", re.IGNORECASE),
+        "OAuth tokens are identity evidence, not Chio capabilities",
+    ),
+    "spiffe_agent_authority": (
+        re.compile(r"\bSPIFFE delegates agent authority\b", re.IGNORECASE),
+        "SPIFFE is workload identity evidence, not agent authority",
+    ),
+    "kubernetes_business_authority": (
+        re.compile(
+            r"\bKubernetes admission proves business transaction authority\b",
+            re.IGNORECASE,
+        ),
+        "Kubernetes admission is infrastructure evidence, not business authority",
+    ),
+    "oci_tag_trust": (
+        re.compile(r"\bOCI tags are trusted artifact references\b", re.IGNORECASE),
+        "OCI evidence must bind digest-pinned references, not mutable tags",
     ),
 }
 
@@ -448,9 +489,9 @@ def verify_docker_quickstart_evidence(truth: dict) -> None:
     validate_registered_schema(schema_entry, evidence_path, "docker-evidence")
 
 
-def configured_docs() -> list[Path]:
+def configured_docs(defaults: tuple[str, ...]) -> list[Path]:
     override = os.environ.get("CHIO_PROOF_ROOM_RELEASE_DOCS")
-    raw_docs = override.split(os.pathsep) if override else list(DEFAULT_DOCS)
+    raw_docs = override.split(os.pathsep) if override else list(defaults)
     return [absolute(Path(raw)) for raw in raw_docs if raw]
 
 
@@ -500,7 +541,7 @@ if truth_doc != bundle_truth_doc:
 truth = truth_doc["truth"]
 verify_docker_quickstart_evidence(truth)
 failures: list[str] = []
-for path, line_no, line in iter_doc_lines(configured_docs()):
+for path, line_no, line in iter_doc_lines(configured_docs(DEFAULT_CLAIM_DOCS)):
     for key, (pattern, guidance) in CLAIM_PATTERNS.items():
         if truth[key]:
             continue
@@ -511,6 +552,7 @@ for path, line_no, line in iter_doc_lines(configured_docs()):
             failures.append(
                 f"{relative(path)}:{line_no}: proof-room.release.unavailable: {key}: {guidance}"
             )
+for path, line_no, line in iter_doc_lines(configured_docs(DEFAULT_DOCS)):
     for key, (pattern, guidance) in COPY_STOP_PATTERNS.items():
         if any(
             not stop_pattern_has_allowed_context(line, match)

@@ -208,7 +208,7 @@ Not every receipt needs on-chain settlement. Use it when:
 - A regulator or auditor requires tamper-evident settlement proof.
 
 For small, high-frequency flows between trusted parties, off-chain
-settlement via the kernel's `PaymentAdapter` (x402, ACP, direct API) is
+settlement via the kernel's `PaymentAdapter` (x402, ACP-Commerce, direct API) is
 more appropriate. `chio-settle` provides adapters for those too, but the
 actual transfer happens off-chain.
 
@@ -596,7 +596,7 @@ access via the Rust crates for code paths that are not yet wrapped.
 | `chio passport oid4vp ...` | OID4VP request and verification flow. | `crates/products/chio-cli/src/cli/types.rs:2324` |
 | `chio reputation local` | Compute a local scorecard. | `crates/products/chio-cli/src/cli/types.rs:2727` |
 | `chio reputation compare` | Compare local corpus against a passport. | `crates/products/chio-cli/src/cli/types.rs:2744` |
-| `chio cert generate / verify / inspect` | ACP session compliance certificates. | `crates/products/chio-cli/src/cli/types.rs:2767` |
+| `chio cert generate / verify / inspect` | ACP-Client session compliance certificates. | `crates/products/chio-cli/src/cli/types.rs:2767` |
 
 ### 10.2 `chio trust` economic export subcommands
 

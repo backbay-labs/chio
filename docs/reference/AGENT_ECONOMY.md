@@ -718,7 +718,7 @@ cost when the configured payment rail is not prepaid.
 
 | Adapter | Rail | Settlement | Notes |
 |---------|------|-----------|-------|
-| `AcpPaymentAdapter` | ACP / Shared Payment Token | Hold + capture | Seller-scoped commerce approvals with explicit `max_amount` bounds and receipt-linked shared payment token evidence. |
+| `AcpPaymentAdapter` | ACP-Commerce / Shared Payment Token | Hold + capture | Seller-scoped commerce approvals with explicit `max_amount` bounds and receipt-linked shared payment token evidence. |
 | `X402PaymentAdapter` | x402 HTTP payment protocol | Prepaid per-request | HTTP 402 negotiation. The adapter settles before retry, so denial can still happen before execution. |
 | `StablecoinPaymentAdapter` | USDC/USDT on EVM chains | Async (block confirmation) | On-chain transfer or hold model. Receipts may carry `pending` settlement state until confirmations land. |
 
@@ -745,7 +745,7 @@ When configured, the kernel follows this rule set:
    `Decision::Allow` and records the failed settlement state plus a recovery
    reference in `FinancialReceiptMetadata`. Reconciliation happens out-of-band.
 
-For operator visibility, Chio preserves x402 and ACP bridge details inside
+For operator visibility, Chio preserves x402 and ACP-Commerce bridge details inside
 `FinancialReceiptMetadata.cost_breakdown.payment`, including the prepaid
 authorization or hold id plus adapter metadata. Governed receipts also preserve
 seller-scoped commerce approval context under `governed_transaction.commerce`.
@@ -1012,7 +1012,7 @@ Spending analytics and anomaly detection.
 - The liability-market posture is now locally qualified end to end across
   curated provider admission, quote/bind, claim/dispute workflow evidence, and
   one bounded payout-and-settlement lane. Chio can now prove the marketplace
-  orchestration layer it claims without implying autonomous insurer pricing,
+  orchestration layer it claims without implying autonomous insurer rate setting,
   open-ended payment rails, cross-network clearing, or permissionless market
   trust.
 - Delegated pricing authority is now explicit instead of implied. Chio issues a
@@ -1200,7 +1200,7 @@ operator-managed sidecar data keyed by `receipt_id`.*
 
 **The economic primitives are implemented in the current pre-release v1 branch.**
 They are available in the current codebase. Earlier work also added governed
-transaction metadata, x402 and ACP bridge integrations, truthful settlement
+transaction metadata, x402 and ACP-Commerce bridge integrations, truthful settlement
 linkage, settlement backlog reporting, and explicit invocation-plus-money
 budget dimensions on operator reports. Broader observability, Stripe-style
 adapters, and cross-org settlement automation remain planned.

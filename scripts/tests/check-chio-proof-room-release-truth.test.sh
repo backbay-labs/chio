@@ -60,6 +60,11 @@ Chio provides A2A v1.0.0 conformance.
 Chio provides OpenAPI 3.2 support.
 SLSA v1.1 is the current source.
 Sigstore proves runtime authorization.
+A webhook signature proves Chio authorization.
+OAuth tokens are Chio capabilities.
+SPIFFE delegates agent authority.
+Kubernetes admission proves business transaction authority.
+OCI tags are trusted artifact references.
 EOF
 
 cat > "$work/generic-universal-protocol-fail.md" <<'EOF'
@@ -72,13 +77,8 @@ if ! grep -Fq '"spec/PROTOCOL.md"' "$lint"; then
   exit 1
 fi
 
-if ! grep -Fq '"docs/start-here"' "$lint"; then
-  echo "release truth default docs do not include recursive start-here docs" >&2
-  exit 1
-fi
-
-if ! grep -Fq '"docs/release"' "$lint"; then
-  echo "release truth default docs do not include recursive release docs" >&2
+if ! grep -Fq '"docs"' "$lint"; then
+  echo "release truth default docs do not include recursive docs" >&2
   exit 1
 fi
 
@@ -147,6 +147,11 @@ grep -q "proof-room.release.copy-forbidden: stale_a2a_version" "$work/rejected-s
 grep -q "proof-room.release.copy-forbidden: unsupported_openapi_32" "$work/rejected-standards-fail.out"
 grep -q "proof-room.release.copy-forbidden: stale_slsa_version" "$work/rejected-standards-fail.out"
 grep -q "proof-room.release.copy-forbidden: sigstore_runtime_authority" "$work/rejected-standards-fail.out"
+grep -q "proof-room.release.copy-forbidden: webhook_signature_authority" "$work/rejected-standards-fail.out"
+grep -q "proof-room.release.copy-forbidden: oauth_token_capability" "$work/rejected-standards-fail.out"
+grep -q "proof-room.release.copy-forbidden: spiffe_agent_authority" "$work/rejected-standards-fail.out"
+grep -q "proof-room.release.copy-forbidden: kubernetes_business_authority" "$work/rejected-standards-fail.out"
+grep -q "proof-room.release.copy-forbidden: oci_tag_trust" "$work/rejected-standards-fail.out"
 
 if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
   CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \

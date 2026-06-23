@@ -222,9 +222,9 @@ Bad candidate framing:
 
 Questions:
 
-- is MCP + A2A + ACP enough to cover the most important near-term runtime
+- is MCP + A2A + ACP-Client enough to cover the most important near-term runtime
   surfaces?
-- how urgent is an OpenAI/native-function surface relative to ACP edge work?
+- how urgent is an OpenAI/native-function surface relative to ACP-Client edge work?
 - should Chio define "native execution surfaces" as a first-class category
   separate from protocol adapters?
 
@@ -249,7 +249,7 @@ Working answer:
 - OpenAPI is the strongest baseline control surface for ordinary HTTP APIs
 - it is not ground truth for all runtime behavior
 - it needs curation, overrides, and side-effect classification
-- it does not replace protocol adapters for ACP/editor surfaces, desktop tools,
+- it does not replace protocol adapters for ACP-Client/editor surfaces, desktop tools,
   or native-function execution
 
 Implication:
@@ -319,7 +319,7 @@ When evaluating Chio or competitors, ask:
 ### Coverage
 
 - What percentage of real agent runtime traffic is actually mediated?
-- Which surfaces are out of scope: MCP, A2A, ACP, native APIs, workstation
+- Which surfaces are out of scope: MCP, A2A, ACP-Client, native APIs, workstation
   tools, SaaS builders?
 - Can agents bypass the control plane by using a different protocol or direct
   API path?
@@ -438,7 +438,7 @@ Why:
   natural-language summaries?
 - Should Chio dynamic governance produce hard denies, soft escalations, or
   signed advisory signals first?
-- Which surfaces are most urgent after MCP: A2A, ACP, or native function
+- Which surfaces are most urgent after MCP: A2A, ACP-Client, or native function
   calling?
 - How should Chio measure real coverage versus perceived coverage in a customer
   deployment?
@@ -460,7 +460,7 @@ Why:
 - design a normalized session-objective / approval / workflow-context model
 - prototype context-aware guard inputs without introducing probabilistic logic
 - design signed advisory risk observations
-- compare ACP and native-function adapters as the next non-MCP priority
+- compare ACP-Client and native-function adapters as the next non-MCP priority
 
 ### Longer-Term
 

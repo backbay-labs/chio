@@ -136,7 +136,7 @@ coordinate, not how agents are authorized or audited.
 ### Stripe Agent Commerce
 
 **What it does.** Stripe's agent commerce stack consists of two distinct
-products. ACP (Agentic Commerce Protocol/Suite) provides Agent Checkout -- a
+products. ACP-Commerce (Agentic Commerce Protocol/Suite) provides Agent Checkout -- a
 hosted payment flow where an agent can present a checkout session to a user --
 along with Shared Payment Tokens (a user authorizes a spending scope, and the
 agent presents the token at checkout). MPP (Machine Payments Protocol,
@@ -387,7 +387,7 @@ systems, not attestation systems.
 
 ## 6. Competitive Matrix
 
-| Dimension | A2A | MCP | ANP | Stripe ACP | AP2 | x402 | IETF AIMS | UCAN | Chio |
+| Dimension | A2A | MCP | ANP | Stripe ACP-Commerce | AP2 | x402 | IETF AIMS | UCAN | Chio |
 |-----------|-----|-----|-----|------------|-----|------|-----------|------|------|
 | **Cryptographic identity** | Partial (signed Agent Cards) | Partial (OAuth 2.1) | Yes (DID) | -- | -- | Yes (wallet) | Yes (SPIFFE) | Yes (DID) | Yes (Ed25519; SPIFFE-compatible ID format) |
 | **Scoped capability tokens** | -- | -- | -- | Partial (payment) | Yes (payment) | -- | Partial (OAuth) | Yes | Yes |
@@ -519,7 +519,7 @@ The competitive landscape splits into three silos:
 
 1. **Communication protocols** (A2A, MCP) define how agents talk but not what
    they are allowed to do or how to prove what they did.
-2. **Payment protocols** (Stripe ACP, AP2, x402) define how agents pay but
+2. **Payment protocols** (Stripe ACP-Commerce, AP2, x402) define how agents pay but
    not what they are authorized to do with what they paid for.
 3. **Identity standards** (AIMS, UCAN, SPIFFE) define who agents are but not
    what scoped authority they hold or how to attest their actions.

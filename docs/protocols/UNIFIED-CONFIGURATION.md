@@ -23,7 +23,7 @@ Normative spec: `spec/CONFIGURATION.md`
 
 ## 1. Problem Statement
 
-Chio supports three protocol adapters -- MCP, A2A, and ACP -- each with its own
+Chio supports three protocol adapters -- MCP, A2A, and ACP-Client -- each with its own
 configuration type, builder API, and field naming conventions:
 
 - `McpAdapterConfig` -- `server_id`, `server_name`, `server_version`, `public_key`
@@ -50,7 +50,7 @@ remaining honest about trust-boundary complexity in larger deployments.
 3. **Default shared key management** -- one keypair path for local and
    single-operator deployments, with a clear upgrade path to richer key
    hierarchies for hosted or federated environments.
-4. **Protocol-specific sections** -- MCP, A2A, and ACP each get their own
+4. **Protocol-specific sections** -- MCP, A2A, and ACP-Client each get their own
    subsection for protocol-specific fields.
 5. **Fail-fast validation** -- the config is fully validated at parse time.
    Missing fields, duplicate IDs, and broken references are caught before any
@@ -173,7 +173,7 @@ edges:
   acp:
     - id: acp-edge-primary
       expose_from: ["mcp-filesystem"]
-      agent_name: "Chio ACP Edge"
+      agent_name: "Chio ACP-Client Edge"
       advertised_capabilities:
         streaming: true
         permissions: true
@@ -410,11 +410,11 @@ pub struct A2aEdgeEntry {
 #[serde(deny_unknown_fields)]
 pub struct AcpEdgeEntry {
     pub id: String,
-    /// Adapter IDs whose tools this edge exposes as ACP capabilities.
+    /// Adapter IDs whose tools this edge exposes as ACP-Client capabilities.
     pub expose_from: Vec<String>,
-    /// Agent name reported in ACP `initialize` response.
+    /// Agent name reported in ACP-Client `initialize` response.
     pub agent_name: String,
-    /// Capabilities advertised to ACP editors.
+    /// Capabilities advertised to ACP-Client editors.
     #[serde(default)]
     pub advertised_capabilities: AcpEdgeCapabilities,
 }
@@ -588,7 +588,7 @@ Error: edges.mcp[0].expose_from references unknown adapter "mcp-typo"
 |----------|----------------|
 | MCP | `id`, `command` |
 | A2A | `id`, `agent_card_url` |
-| ACP | `id`, `command` |
+| ACP-Client | `id`, `command` |
 
 ### Auth completeness
 
@@ -634,14 +634,14 @@ trust/receipt commands. This section specifies the intended future entry point.
    `initialize` handshake, generate the Chio manifest.
 7. For each A2A adapter entry: fetch the agent card, validate partner policy,
    build the transport.
-8. For each ACP adapter entry: build the proxy config with the declared
+8. For each ACP-Client adapter entry: build the proxy config with the declared
    allowed paths and commands.
 9. Register all adapters with the kernel.
 10. For each MCP edge entry: resolve `expose_from` IDs to tool server
     connections, bind the edge to the declared address.
 11. For each A2A edge entry: resolve `expose_from` IDs, generate Agent Card
     with advertised skills and security schemes, bind the HTTP endpoint.
-12. For each ACP edge entry: resolve `expose_from` IDs, build the ACP agent
+12. For each ACP-Client edge entry: resolve `expose_from` IDs, build the ACP-Client agent
     with advertised capabilities, prepare stdio transport.
 13. Start the receipt exporters.
 14. Log the startup summary and begin serving.

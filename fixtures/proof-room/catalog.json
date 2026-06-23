@@ -419,7 +419,7 @@
       "id": "public-settlement-advisory-witness",
       "kind": "negative-transaction-passport",
       "path": "fixtures/proof-room/public-settlement/advisory-witness",
-      "description": "Public settlement fixture rejected when public witness evidence is advisory only"
+      "description": "Public settlement fixture rejected when public witness evidence is advisory mode"
     },
     {
       "id": "agent-web-interop",

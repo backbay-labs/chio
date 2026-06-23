@@ -1,7 +1,7 @@
 # HTTP Framework Integration Strategy
 
 > **Status**: Strategic direction -- approved April 2026.
-> This document defines how Chio extends beyond protocol adapters (MCP, A2A, ACP)
+> This document defines how Chio extends beyond protocol adapters (MCP, A2A, ACP-Client)
 > toward a shared security kernel for supported API surfaces.
 >
 > **Current-state note:** the repo now ships the core HTTP/kernel substrate:
@@ -16,7 +16,7 @@
 ## 1. The Problem: Chio Is Not "Just Another MCP Gateway"
 
 Chio's current adapter surface covers three agent protocols: MCP (tool access),
-A2A (agent-to-agent), and ACP (editor-to-agent). This positions Chio as a
+A2A (agent-to-agent), and ACP-Client (editor-to-agent). This positions Chio as a
 protocol-specific security layer.
 
 But the real surface area is much larger. Agents call APIs. They call FastAPI
@@ -26,7 +26,7 @@ agent protocols, it misses a large share of the practical attack surface.
 
 The strategic move: **one kernel, many substrates**. Chio's capability tokens,
 guard pipeline, and receipt signing should work on HTTP/API surfaces where Chio
-has a clear enforcement or observation boundary, not just MCP/A2A/ACP.
+has a clear enforcement or observation boundary, not just MCP/A2A/ACP-Client.
 
 ## 2. Architecture: Substrates, Not Frameworks
 
@@ -272,7 +272,7 @@ For agent-specific protocol surfaces:
 
 - **MCP**: `chio-mcp-adapter` (existing) -- wraps MCP servers on qualified tool-call paths
 - **A2A**: `chio-a2a-adapter` (existing) -- wraps A2A agents
-- **ACP**: `chio-acp-proxy` (existing) -- proxies ACP sessions
+- **ACP-Client**: `chio-acp-proxy` (existing) -- proxies ACP-Client sessions
 - **OpenAI tool_use**: deferred caller-executed function-tool mediation, no
   present-tense OpenAI adapter package claim
 - **LangChain**: `chio-langchain` (proposed) -- wraps LangChain Tool interface
@@ -497,7 +497,7 @@ the kernel reachable for most developers.
 | OpenAI caller-executed function tools | OpenAI function calling interception | TBD | Deferred until receipt/read-boundary gates and adapter qualification land |
 | `chio-openapi-mcp-bridge` | OpenAPI-to-MCP bridging with Chio governance | `crates/protocol/chio-openapi-mcp-bridge` | In repo |
 | `chio-a2a-edge` | A2A bidirectional bridging | `crates/protocol/chio-a2a-edge` | In repo |
-| `chio-acp-edge` | ACP bidirectional bridging | `crates/protocol/chio-acp-edge` | In repo |
+| `chio-acp-edge` | ACP-Client bidirectional bridging | `crates/protocol/chio-acp-edge` | In repo |
 
 ## 9. Important Constraint
 
@@ -507,7 +507,7 @@ real answer is four modes with one shared kernel:
 - **Zero-code path** (reverse proxy) for fast adoption
 - **Middleware path** (one import) for real coverage
 - **Annotation path** (decorators/config) for least-privilege precision
-- **Protocol adapter path** (MCP/A2A/ACP and future qualified OpenAI caller-executed tools) for agent-native surfaces
+- **Protocol adapter path** (MCP/A2A/ACP-Client and future qualified OpenAI caller-executed tools) for agent-native surfaces
 
 All four modes share the same kernel, the same receipt format, the same
 capability tokens, and the same guard pipeline. The difference is depth of
@@ -515,7 +515,7 @@ context available for policy evaluation.
 
 ## 10. How This Relates to Existing Protocol Adapters
 
-The existing MCP, A2A, and ACP adapters are **Level 3** in this framework.
+The existing MCP, A2A, and ACP-Client adapters are **Level 3** in this framework.
 They are the deepest Chio-owned protocol integrations, but the mediated,
 trace-only, and advisory boundaries still depend on the specific adapter
 surface.

@@ -21,7 +21,7 @@ they have the same epistemic weight:
 
 Where a surface is only proposed, this document now labels it explicitly. In
 particular: `chio mcp serve`, `chio mcp serve-http`, `chio api protect`, the
-HTTP/framework substrate packages, optional ACP kernel-injected signed receipts
+HTTP/framework substrate packages, optional ACP-Client kernel-injected signed receipts
 via `AcpProxy::start_with_kernel` (default standalone proxy path remains
 unsigned), and the receipt dashboard ship today. `chio start --config chio.yaml` and the
 stronger market-position claims remain strategic or proposed rather than
@@ -36,7 +36,7 @@ partner/ecosystem thesis remains future.
 
 **Current defensible claim:** Chio is a cryptographically signed, fail-closed,
 intent-aware governance control plane on the qualified authoritative HTTP, MCP,
-A2A, and ACP surfaces. OpenAI remains deferred until caller-executed function
+A2A, and ACP-Client surfaces. OpenAI remains deferred until caller-executed function
 tool mediation is separately implemented and qualified.
 
 **Strategic thesis:** Chio could become the comptroller of the agent economy --
@@ -75,28 +75,28 @@ A2A added cryptographic identity for card publishers but still has no scoped
 authorization tokens, no capability delegation, and no mechanism to constrain
 what a discovered agent can do beyond transport-layer controls.
 
-### ACP: Editor-to-Agent (Zed Industries)
+### ACP-Client: Editor-to-Agent (Zed Industries)
 
-The LSP for AI. ACP defines how editors and IDEs communicate with coding
+The LSP for AI. ACP-Client defines how editors and IDEs communicate with coding
 agents through a structured JSON-RPC protocol. Permission requests, filesystem
 operations, terminal commands, and session lifecycle flow through a typed
 message contract.
 
-ACP has permission-request semantics but no cryptographic attestation of what
+ACP-Client has permission-request semantics but no cryptographic attestation of what
 the agent actually did, no signed receipts, and no delegation model.
 
 ### The Convergence
 
 Chio's working strategic assumption is that many enterprise agent deployments
 will encounter all three interaction patterns: MCP for tool access, A2A for
-multi-agent coordination, and ACP for developer-facing agent integration. The
+multi-agent coordination, and ACP-Client for developer-facing agent integration. The
 three protocols are complementary, not competitive.
 
 ### The Gap Nobody Fills
 
 No protocol provides cross-protocol cryptographic attestation. An agent that
 reads a database via MCP, delegates a subtask via A2A, and modifies code via
-ACP produces three separate, unlinked, unsigned event streams. There is no
+ACP-Client produces three separate, unlinked, unsigned event streams. There is no
 unified proof of what happened. There is no cross-protocol receipt chain.
 There is no single artifact an auditor, insurer, or regulator can verify.
 
@@ -106,7 +106,7 @@ Chio fills that gap.
 
 ## 3. Chio's Unique Position
 
-Chio is not an alternative to MCP, A2A, or ACP. It is the authorization,
+Chio is not an alternative to MCP, A2A, or ACP-Client. It is the authorization,
 attestation, and audit layer that sits across all three.
 
 ### Chio Is Not Just an MCP Gateway
@@ -122,7 +122,7 @@ That is useful. It is also structurally incomplete:
   full workflow history, delegation ancestry, and cross-step intent than the
   kernel itself can preserve.
 - It only governs the traffic that actually passes through it. Agent actions
-  may migrate to A2A, ACP, native APIs, or framework-specific skill surfaces.
+  may migrate to A2A, ACP-Client, native APIs, or framework-specific skill surfaces.
 - If the market shifts from MCP-heavy integrations toward protocol-mixed or
   native-function architectures, an MCP-only control point secures a shrinking
   fraction of agent behavior.
@@ -158,7 +158,7 @@ market-qualified claim.
                                          \
   A2A Agent   <-->  chio-a2a-adapter  <---+--->  Chio Kernel  --->  Receipt Log
                                          /         |
-  ACP Agent   <-->  chio-acp-proxy    <--/     Guard Pipeline
+  ACP-Client Agent   <-->  chio-acp-proxy    <--/     Guard Pipeline
 ```
 
 Every tool invocation, agent delegation, and code action flows through the
@@ -169,7 +169,7 @@ request.
 ### Current Signed Receipt Posture Across Shipped Protocol Surfaces
 
 The receipt log is protocol-agnostic. An MCP tool call, an A2A task
-delegation, ACP live-path action, and Chio-governed HTTP/API call all use the
+delegation, ACP-Client live-path action, and Chio-governed HTTP/API call all use the
 same signed evidence model: timestamped, capability-bound, and append-only.
 Today that is shipped on the live paths that actually reach the kernel. What is
 still future is the full protocol-to-protocol fabric and literal
@@ -206,9 +206,9 @@ an Azure-only niche. The better contrast is:
   attested lineage and third-party-verifiable evidence, not if it relies on a
   weak competitor caricature.
 
-Cross-protocol signed receipts are now shipped for the live MCP, A2A, ACP, and
+Cross-protocol signed receipts are now shipped for the live MCP, A2A, ACP-Client, and
 HTTP/API substrate paths that execute through the kernel. The remaining gap is
-not ACP receipt promotion itself; it is the more generic orchestration layer
+not ACP-Client receipt promotion itself; it is the more generic orchestration layer
 described in `CROSS-PROTOCOL-BRIDGING.md`, plus broader deployment proof that
 the multi-surface story holds under real operator workloads.
 
@@ -218,11 +218,11 @@ the multi-surface story holds under real operator workloads.
 |------|--------------|-----------------|
 | **Capability tokens** | Attenuated, time-bounded, subject-bound, revocable, with bounded Lean support for attenuation | Shipped in the core model |
 | **Guard evidence** | Composable fail-closed guards with signed evidence capture | Shipped; advanced stateful guards remain planned |
-| **Receipt signing** | Kernel-signed receipts on MCP, A2A, and HTTP/API substrate flows; ACP signed only when `AcpProxy::start_with_kernel` is used (default ACP proxy path remains unsigned) | [In repo] on qualified paths; OpenAI deferred |
+| **Receipt signing** | Kernel-signed receipts on MCP, A2A, and HTTP/API substrate flows; ACP-Client signed only when `AcpProxy::start_with_kernel` is used (default ACP-Client proxy path remains unsigned) | [In repo] on qualified paths; OpenAI deferred |
 | **Merkle commitment** | Append-only receipt log with checkpoint publication | Shipped in the receipt architecture |
 | **Formal verification** | Bounded verified-core model, claim registry, and runtime qualification outside that boundary | Real but not full theorem-prover coverage |
 | **Economic primitives** | Budgets, settlement hooks, and insurance-linked framing in the security path | Mixed: some pieces shipped, broader market story is a strategic bet |
-| **Cross-protocol lineage** | One evidence model spanning MCP, A2A, ACP, HTTP/API substrates, and future native surfaces | Shipped evidence model on current live paths; generic orchestrator and larger-scale operator proof still needed |
+| **Cross-protocol lineage** | One evidence model spanning MCP, A2A, ACP-Client, HTTP/API substrates, and future native surfaces | Shipped evidence model on current live paths; generic orchestrator and larger-scale operator proof still needed |
 
 The adjacent comparison set is broader than one product. Runtime governance
 toolkits, policy engines, API-security platforms, and observability systems all
@@ -243,12 +243,12 @@ shipping surface.
 
 | Item | Rationale | Crate | Status |
 |------|-----------|-------|--------|
-| ACP kernel integration | Promote chio-acp-proxy from unsigned audit entries to signed receipts via optional kernel injection (`start_with_kernel`); default standalone path stays unsigned | `chio-acp-proxy` | [Partial] |
+| ACP-Client kernel integration | Promote chio-acp-proxy from unsigned audit entries to signed receipts via optional kernel injection (`start_with_kernel`); default standalone path stays unsigned | `chio-acp-proxy` | [Partial] |
 | MCP proxy DX polish | The repo already ships `chio mcp serve` and `chio mcp serve-http`; Tier 1 work is simplifying naming, defaults, and docs further, potentially including an `chio proxy` alias | `chio-cli` | |
-| Unified runtime config | Single `chio.yaml` that configures MCP, A2A, and ACP edges with shared policy | `chio-cli` | [Partial -- flat schema shipped, nested schema proposed. See spec/CONFIGURATION.md] |
+| Unified runtime config | Single `chio.yaml` that configures MCP, A2A, and ACP-Client edges with shared policy | `chio-cli` | [Partial -- flat schema shipped, nested schema proposed. See spec/CONFIGURATION.md] |
 | Symlink fix | Workspace symlink resolution for monorepo consumers | `chio-cli` | |
 
-**Why Tier 1 first:** Optional ACP kernel injection is landed, but unsigned
+**Why Tier 1 first:** Optional ACP-Client kernel injection is landed, but unsigned
 standalone mode remains the default, so the remaining Tier 1 work is adoption
 clarity, making kernel-attested deployment the obvious path, and truthful docs
 for proposed entry points that still do not ship.
@@ -264,7 +264,7 @@ These items extend the protocol surface and complete the compliance story.
 | Item | Rationale | Crate | Status |
 |------|-----------|-------|--------|
 | A2A edge crate | Bidirectional bridging: expose Chio tools as A2A Agent Cards | `chio-a2a-edge` | [Shipped] |
-| ACP edge crate | Bidirectional bridging: expose Chio tools as ACP capabilities | `chio-acp-edge` | [Shipped] |
+| ACP-Client edge crate | Bidirectional bridging: expose Chio tools as ACP-Client capabilities | `chio-acp-edge` | [Shipped] |
 | MCP adapter completion | Raise coverage toward 80+ tests (streaming, error paths, edge cases); see section 10 | `chio-mcp-adapter` | [In repo] |
 | Compliance certificate schema/API | Session-scoped compliance artifact schema and kernel issuance/verification API (not issued SOC 2, HIPAA, or EU AI Act certificates) | `chio-kernel` | [Partial] |
 
@@ -418,7 +418,7 @@ every protocol edge.
 
 A tool author writes a tool, signs a manifest, and registers it with Chio.
 The MCP edge exposes it as an MCP tool. The A2A edge publishes it in an
-Agent Card. The ACP edge makes it available to coding agents. One tool
+Agent Card. The ACP-Client edge makes it available to coding agents. One tool
 definition, three protocol surfaces, zero additional work for the author.
 
 ### Federated Capability Exchange
@@ -449,18 +449,18 @@ Chio can honestly claim a stronger breakthrough today:
   control plane with shared executor registry resolution, signed
   route-selection evidence, receipt-bearing multi-hop route execution, and a
   shared lifecycle contract across the qualified authoritative HTTP, MCP,
-  A2A skills, and ACP capabilities. OpenAI tool execution remains deferred
+  A2A skills, and ACP-Client capabilities. OpenAI tool execution remains deferred
   until the v1 receipt and read-boundary gates are merged.
 - Chio ships a cryptographically signed, fail-closed governance kernel and a
   bounded protocol-aware cross-protocol execution fabric across HTTP APIs,
-  MCP, A2A skills, and ACP capabilities
+  MCP, A2A skills, and ACP-Client capabilities
 - the shipped orchestrator now supports explicit metadata-driven qualified
   non-native authoritative bridge execution through registered target
   executors rather than collapsing every authoritative path directly to
   `Native`
 - on the supported authoritative paths, execution is kernel-mediated,
   receipt-bearing, and explicit about lifecycle and fidelity limits, including
-  the authoritative deferred-task mediation Chio now exposes on A2A and ACP
+  the authoritative deferred-task mediation Chio now exposes on A2A and ACP-Client
   public surfaces
 - the repo ships multi-language substrate packages that preserve that kernel
   contract across Python, TypeScript, Go, Rust, JVM, and .NET surfaces
@@ -685,7 +685,7 @@ coverage metrics, see CI reports.
 The MCP adapter is the oldest crate and has the weakest coverage relative to
 its surface area. The gap is concentrated in streaming, error propagation,
 resource template resolution, nested flows, and OAuth token refresh. Closing
-to 80+ tests is a Tier 2 priority. The A2A and ACP crates demonstrate that
+to 80+ tests is a Tier 2 priority. The A2A and ACP-Client crates demonstrate that
 thorough adapter coverage is achievable; the MCP adapter needs the same
 treatment.
 
@@ -696,27 +696,27 @@ treatment.
 Three architectural questions arose during the multi-protocol expansion. All
 three are now resolved with clear rationale.
 
-### ACP Proxy: Boundary Proxy, Not Tool Server
+### ACP-Client Proxy: Boundary Proxy, Not Tool Server
 
-The ACP proxy sits at the boundary between the editor client and the ACP agent.
+The ACP-Client proxy sits at the boundary between the editor client and the ACP-Client agent.
 It is not a tool server. It does not implement tools. It intercepts JSON-RPC
 messages, enforces capability-based access control, and generates audit entries.
 
 The kernel is injected as a service, not embedded as a library. This means the
 proxy can run alongside a Chio kernel that is already managing MCP and A2A
-edges, producing receipts into the same log. The alternative -- making the ACP
+edges, producing receipts into the same log. The alternative -- making the ACP-Client
 proxy a standalone tool server -- would have created a second receipt log and a
 second policy evaluation path, violating the single-kernel invariant.
 
 Note: `chio-acp-proxy` and `chio-acp-edge` serve opposite directions.
-The proxy is an inbound adapter (intercepts an existing ACP session for
+The proxy is an inbound adapter (intercepts an existing ACP-Client session for
 security enforcement). The edge is an outbound adapter (exposes Chio
-tools to ACP editors as if they were native ACP capabilities). The
+tools to ACP-Client editors as if they were native ACP-Client capabilities). The
 "not a tool server" characterization applies to the proxy only.
 
 ### Unified Trait: Lightweight Metadata, Not Behavioral Abstraction
 
-The three adapters (MCP, A2A, ACP) share a common trait surface for metadata:
+The three adapters (MCP, A2A, ACP-Client) share a common trait surface for metadata:
 tool names, descriptions, input schemas, and capability requirements. They do
 not share a behavioral abstraction. Each protocol has distinct transport
 semantics (stdio pipes, HTTP streaming, JSON-RPC bidirectional) that would be
@@ -734,21 +734,21 @@ Every protocol gets two crate surfaces:
 |----------|---------------------------|----------------------------|
 | MCP | `chio-mcp-adapter` | `chio-mcp-edge` |
 | A2A | `chio-a2a-adapter` | `chio-a2a-edge` (Tier 2) |
-| ACP | `chio-acp-proxy` | `chio-acp-edge` (Tier 2) |
+| ACP-Client | `chio-acp-proxy` | `chio-acp-edge` (Tier 2) |
 
 Inbound adapters wrap external protocol servers as Chio tool servers. Outbound
 edges expose Chio-native tools through the external protocol's wire format.
 Bidirectional bridging is what makes Chio a protocol hub rather than a
 protocol consumer. An Chio-native tool registered once is discoverable and
-invocable from MCP clients, A2A agents, and ACP editors simultaneously.
+invocable from MCP clients, A2A agents, and ACP-Client editors simultaneously.
 
 ---
 
 ## The Strategic Thesis
 
-Chio's near-term protocol bet centers on MCP, A2A, and ACP, but the broader
+Chio's near-term protocol bet centers on MCP, A2A, and ACP-Client, but the broader
 strategic view is that agent execution will remain protocol-mixed: MCP, A2A,
-ACP, native APIs, and framework-level tool surfaces will coexist.
+ACP-Client, native APIs, and framework-level tool surfaces will coexist.
 None of these surfaces natively solve authorization, attestation, or non-
 repudiation, because those are not their jobs.
 

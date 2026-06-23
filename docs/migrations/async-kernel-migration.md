@@ -37,7 +37,7 @@ chio-kernel = { version = "...", features = ["legacy-sync"] }
 | `chio-mcp-edge` | async bridge available | Use `execute_bridge_mcp_tool_call_async` from async runtimes. The sync bridge wrapper is retained only for synchronous protocol trait adapters. |
 | `chio-mcp-adapter` | no direct sync kernel call | Native adapter code implements tool-server traits and does not call `evaluate_tool_call_blocking`. |
 | `chio-a2a-edge` | no direct sync kernel call | Kernel-backed paths route through the cross-protocol orchestrator and do not call `evaluate_tool_call_blocking` directly. |
-| `chio-acp-edge` | no direct sync kernel call | ACP edge paths do not call the legacy tool-call shim. |
+| `chio-acp-edge` | no direct sync kernel call | ACP-Client edge paths do not call the legacy tool-call shim. |
 | `chio-acp-proxy` | no direct sync kernel call | Proxy receipt signing uses kernel-backed receipt helpers, not the tool-call shim. |
 | Python SDKs under `sdks/python` | async | SDK clients expose `async def evaluate_tool_call(...)` and integrations await it. |
 
