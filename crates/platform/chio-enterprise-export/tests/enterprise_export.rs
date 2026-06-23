@@ -1612,6 +1612,35 @@ fn enterprise_export_rejects_duplicate_approvers_for_quorum() {
 }
 
 #[test]
+fn enterprise_export_rejects_padded_duplicate_approvers_for_quorum() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    let export_bundle_digest = current_export_bundle_digest(&bundle);
+    replace_graph_artifact(
+        &mut bundle,
+        "approval-case.json",
+        "approval-case",
+        signed_approval_case(json!({
+            "schema": "chio.enterprise.approval-case.v1",
+            "id": "approval-case-enterprise-valid",
+            "issued_at": "2026-06-10T00:00:00Z",
+            "passport_id": "passport-enterprise-valid",
+            "risk_comptroller_report_ref": "risk-comptroller-enterprise-valid",
+            "evidence_export_bundle_digest": export_bundle_digest,
+            "decision": "approved",
+            "decision_subject": "evidence-export",
+            "approvers": ["did:chio:enterprise-reviewer", " did:chio:enterprise-reviewer "],
+            "required_quorum": 2,
+            "expires_at": "2026-06-11T00:00:00Z"
+        })),
+    );
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("padded duplicate approvers must not satisfy quorum");
+
+    assert!(error.to_string().contains("approval quorum not satisfied"));
+}
+
+#[test]
 fn enterprise_export_rejects_blank_approvers() {
     let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
     let export_bundle_digest = current_export_bundle_digest(&bundle);

@@ -488,10 +488,11 @@ pub(super) fn validate_approval_case(
     }
     let mut unique_approvers = BTreeSet::new();
     for approver in &approval.approvers {
-        if approver.trim().is_empty() {
+        let approver = approver.trim();
+        if approver.is_empty() {
             return Err(claim_failed("approval approver identity missing"));
         }
-        unique_approvers.insert(approver.as_str());
+        unique_approvers.insert(approver);
     }
     if approval.required_quorum == 0
         || unique_approvers.len()
