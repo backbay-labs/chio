@@ -1223,6 +1223,51 @@ fn chio_runtime_hook_denies_stale_swarm_continuation_before_dispatch(
 }
 
 #[test]
+fn chio_runtime_hook_denies_swarm_continuation_expired_since_storage(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let mut admission_bundle = bundle();
+    admission_bundle.schema = "chio.runtime.admission-bundle.v1".to_string();
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    admission_bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    admission_bundle.binding.origin_kernel_id = None;
+    let bundle_hash = runtime_admission_bundle_sha256(&admission_bundle)?;
+    store.insert_bundle(admission_bundle)?;
+
+    let mut swarm_bundle = runtime_swarm_bundle(false)?;
+    swarm_bundle.continuation_tokens[0].expires_at_unix_ms = 1_800_000_001_500;
+    swarm_bundle.continuation_tokens[0].signature = sign_swarm_continuation_token(
+        &swarm_bundle.continuation_tokens[0],
+        &swarm_witness_keypair(),
+    )?;
+    store.insert_swarm_authority_bundle(swarm_bundle.clone())?;
+
+    let request =
+        chio_swarm_runtime_request(args, bundle_hash, swarm_runtime_context(&swarm_bundle)?)?;
+    let hook =
+        allowing_chio_policy_hook(store)?.with_swarm_witness_keys(trusted_swarm_witness_keys());
+    let route_metadata = swarm_route_metadata();
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        extra_metadata: Some(&route_metadata),
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_600,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+
+    assert!(!decision.allowed);
+    let metadata = decision
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    assert_eq!(
+        metadata["chio_runtime"]["failure_code"],
+        "chio_swarm_authority_rejected"
+    );
+    Ok(())
+}
+
+#[test]
 fn chio_runtime_hook_denies_swarm_route_metadata_mismatch_before_dispatch(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();
@@ -1314,6 +1359,106 @@ fn chio_runtime_hook_denies_swarm_route_selection_id_mismatch_before_dispatch(
     assert_eq!(
         metadata["chio_runtime"]["failure_code"],
         "chio_swarm_authority_rejected"
+    );
+    Ok(())
+}
+
+#[test]
+fn chio_runtime_hook_denies_incomplete_swarm_route_metadata_before_dispatch(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let mut admission_bundle = bundle();
+    admission_bundle.schema = "chio.runtime.admission-bundle.v1".to_string();
+    admission_bundle.destructive = false;
+    admission_bundle.lease_id = None;
+    admission_bundle.governance_receipt_id = None;
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    admission_bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    admission_bundle.binding.origin_kernel_id = None;
+    let bundle_hash = runtime_admission_bundle_sha256(&admission_bundle)?;
+    store.insert_bundle(admission_bundle)?;
+
+    let swarm_bundle = runtime_swarm_bundle(false)?;
+    store.insert_swarm_authority_bundle(swarm_bundle.clone())?;
+
+    let request =
+        chio_swarm_runtime_request(args, bundle_hash, swarm_runtime_context(&swarm_bundle)?)?;
+    let route_metadata = serde_json::json!({
+        "route": {
+            "bridge": "mcp"
+        }
+    });
+    let hook =
+        allowing_chio_policy_hook(store)?.with_swarm_witness_keys(trusted_swarm_witness_keys());
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        extra_metadata: Some(&route_metadata),
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+
+    assert!(!decision.allowed);
+    let metadata = decision
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    assert_eq!(
+        metadata["chio_runtime"]["failure_code"],
+        "chio_swarm_authority_rejected"
+    );
+    Ok(())
+}
+
+#[test]
+fn chio_runtime_hook_denies_swarm_route_plan_not_bound_to_continuation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let mut admission_bundle = bundle();
+    admission_bundle.schema = "chio.runtime.admission-bundle.v1".to_string();
+    admission_bundle.destructive = false;
+    admission_bundle.lease_id = None;
+    admission_bundle.governance_receipt_id = None;
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    admission_bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    admission_bundle.binding.origin_kernel_id = None;
+    let bundle_hash = runtime_admission_bundle_sha256(&admission_bundle)?;
+    store.insert_bundle(admission_bundle)?;
+
+    let swarm_bundle = runtime_swarm_bundle(false)?;
+    store.insert_swarm_authority_bundle(swarm_bundle.clone())?;
+    let mut swarm_context = swarm_runtime_context(&swarm_bundle)?;
+    swarm_context["routePlanReceipt"] = serde_json::json!({
+        "id": &swarm_bundle.route_plan_receipts[1].route_plan_id,
+        "sha256": canonical_test_hash(&swarm_bundle.route_plan_receipts[1])?
+    });
+
+    let request = chio_swarm_runtime_request(args, bundle_hash, swarm_context)?;
+    let route_metadata = serde_json::json!({
+        "route": {
+            "bridge": "a2a",
+            "protocolTarget": "a2a://provider-runtime",
+            "selectedRoute": "a2a:task-child-b"
+        }
+    });
+    let hook =
+        allowing_chio_policy_hook(store)?.with_swarm_witness_keys(trusted_swarm_witness_keys());
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        extra_metadata: Some(&route_metadata),
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+
+    assert!(!decision.allowed);
+    let metadata = decision
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    assert_eq!(
+        metadata["chio_runtime"]["failure_code"],
+        "chio_swarm_authority_ref_mismatch"
     );
     Ok(())
 }

@@ -1043,7 +1043,23 @@ pub(crate) fn proof_room_fixture_standalone_risk_report(
 ) -> Result<Vec<u8>, (StatusCode, String)> {
     let risk_report = embedded_risk_comptroller_report(evidence_graph_bytes, artifacts)
         .map_err(|error| proof_room_fixture_invalid(fixture_id, "risk", error))?;
+    let risk_report_value = embedded_risk_comptroller_report_value(evidence_graph_bytes, artifacts)
+        .map_err(|error| proof_room_fixture_invalid(fixture_id, "risk", error))?;
     if let Err(error) = chio_risk_comptroller::validate_risk_report(passport, &risk_report) {
+        return proof_room_failed_verifier_report(
+            fixture_id,
+            passport,
+            &proof_room_fixture_verifier_failure_message(fixture_id, error),
+        )
+        .map(|(contents, _)| contents);
+    }
+    let trusted_risk_comptroller_signer_keys =
+        crate::enterprise_trusted_risk_comptroller_signer_keys_from_env()
+            .map_err(|error| proof_room_fixture_invalid(fixture_id, "risk", error))?;
+    if let Err(error) = chio_risk_comptroller::validate_risk_report_signature(
+        &risk_report_value,
+        &trusted_risk_comptroller_signer_keys,
+    ) {
         return proof_room_failed_verifier_report(
             fixture_id,
             passport,

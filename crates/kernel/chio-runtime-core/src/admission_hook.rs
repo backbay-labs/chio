@@ -179,6 +179,7 @@ where
                 reference,
                 &self.swarm_witness_keys,
                 context.extra_metadata,
+                admission_now_unix_ms,
             ) {
                 Ok(verified) => {
                     swarm_continuation_id_to_consume = verified.continuation_id_to_consume;

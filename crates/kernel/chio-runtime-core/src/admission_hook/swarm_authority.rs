@@ -13,16 +13,18 @@ pub(super) fn verify_swarm_authority_reference_from_store<S>(
     reference: &SwarmAuthorityReference,
     trusted_witness_keys: &[PublicKey],
     route_metadata: Option<&serde_json::Value>,
+    now_unix_ms: u64,
 ) -> Result<VerifiedSwarmAuthorityReference, ChioRuntimeError>
 where
     S: RuntimeAdmissionStore,
 {
-    let Some(bundle) = store.swarm_authority_bundle(&reference.task_graph.evidence_id)? else {
+    let Some(mut bundle) = store.swarm_authority_bundle(&reference.task_graph.evidence_id)? else {
         return rejected(
             "missing_chio_swarm_authority_bundle",
             "swarm-bound request referenced authority evidence that is not in the verifier-owned store",
         );
     };
+    bundle.now_unix_ms = now_unix_ms;
     verify_swarm_reference_hashes(&bundle, reference)?;
     let route_plan = find_route_plan(&bundle, &reference.route_plan_receipt.evidence_id)?;
     verify_route_metadata_matches(route_metadata, route_plan)?;
@@ -33,6 +35,12 @@ where
         }
     })?;
     let continuation = find_continuation(&bundle, &reference.continuation_token.evidence_id)?;
+    if continuation.route_plan_receipt_id != reference.route_plan_receipt.evidence_id {
+        return rejected(
+            "chio_swarm_authority_ref_mismatch",
+            "swarm continuation route plan does not match referenced route plan evidence",
+        );
+    }
     Ok(VerifiedSwarmAuthorityReference {
         continuation_id_to_consume: match continuation.mode {
             SwarmContinuationMode::SingleUse => Some(continuation.token_id.clone()),
@@ -113,7 +121,7 @@ fn verify_route_metadata_matches(
             ),
         });
     };
-    if let Some(bridge) = route_metadata_string(
+    let bridge = route_metadata_string(
         route,
         &[
             "bridge",
@@ -121,31 +129,41 @@ fn verify_route_metadata_matches(
             "targetProtocol",
             "selectedTargetProtocol",
         ],
-    ) {
-        if bridge != route_plan.bridge_id {
-            return Err(ChioRuntimeError::Rejected {
-                code: "chio_swarm_authority_rejected",
-                detail: format!(
-                    "swarm route metadata bridge mismatch: expected {}, got {}",
-                    route_plan.bridge_id, bridge
-                ),
-            });
-        }
+    )
+    .ok_or_else(|| ChioRuntimeError::Rejected {
+        code: "chio_swarm_authority_rejected",
+        detail: format!(
+            "swarm route metadata missing bridge for route plan {}",
+            route_plan.route_plan_id
+        ),
+    })?;
+    if bridge != route_plan.bridge_id {
+        return Err(ChioRuntimeError::Rejected {
+            code: "chio_swarm_authority_rejected",
+            detail: format!(
+                "swarm route metadata bridge mismatch: expected {}, got {}",
+                route_plan.bridge_id, bridge
+            ),
+        });
     }
-    if let Some(protocol_target) =
-        route_metadata_string(route, &["protocolTarget", "protocol_target"])
-    {
-        if protocol_target != route_plan.protocol_target {
-            return Err(ChioRuntimeError::Rejected {
-                code: "chio_swarm_authority_rejected",
-                detail: format!(
-                    "swarm route metadata target mismatch: expected {}, got {}",
-                    route_plan.protocol_target, protocol_target
-                ),
-            });
-        }
+    let protocol_target = route_metadata_string(route, &["protocolTarget", "protocol_target"])
+        .ok_or_else(|| ChioRuntimeError::Rejected {
+            code: "chio_swarm_authority_rejected",
+            detail: format!(
+                "swarm route metadata missing protocol target for route plan {}",
+                route_plan.route_plan_id
+            ),
+        })?;
+    if protocol_target != route_plan.protocol_target {
+        return Err(ChioRuntimeError::Rejected {
+            code: "chio_swarm_authority_rejected",
+            detail: format!(
+                "swarm route metadata target mismatch: expected {}, got {}",
+                route_plan.protocol_target, protocol_target
+            ),
+        });
     }
-    if let Some(selected_route) = route_metadata_string(
+    let selected_route = route_metadata_string(
         route,
         &[
             "selectedRoute",
@@ -153,16 +171,22 @@ fn verify_route_metadata_matches(
             "selectedRouteId",
             "selected_route_id",
         ],
-    ) {
-        if selected_route != route_plan.selected_route {
-            return Err(ChioRuntimeError::Rejected {
-                code: "chio_swarm_authority_rejected",
-                detail: format!(
-                    "swarm route metadata selected route mismatch: expected {}, got {}",
-                    route_plan.selected_route, selected_route
-                ),
-            });
-        }
+    )
+    .ok_or_else(|| ChioRuntimeError::Rejected {
+        code: "chio_swarm_authority_rejected",
+        detail: format!(
+            "swarm route metadata missing selected route for route plan {}",
+            route_plan.route_plan_id
+        ),
+    })?;
+    if selected_route != route_plan.selected_route {
+        return Err(ChioRuntimeError::Rejected {
+            code: "chio_swarm_authority_rejected",
+            detail: format!(
+                "swarm route metadata selected route mismatch: expected {}, got {}",
+                route_plan.selected_route, selected_route
+            ),
+        });
     }
     Ok(())
 }

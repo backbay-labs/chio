@@ -445,6 +445,9 @@ fn validate_task_graph(
     require_non_empty(&graph.issuer, "swarm issuer")?;
     require_non_empty(&graph.budget_pool_ref, "swarm budget pool ref")?;
     require_non_empty(&graph.revocation_epoch_ref, "swarm revocation epoch ref")?;
+    if graph.created_at_unix_ms > now_unix_ms {
+        return Err(rejected("swarm task graph is from the future"));
+    }
     if graph.expires_at_unix_ms <= now_unix_ms {
         return Err(rejected("swarm task graph is expired"));
     }

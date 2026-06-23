@@ -1,6 +1,10 @@
 use super::support::*;
 use super::*;
-use crate::embedded_swarm_authority_bundle;
+use crate::{
+    embedded_swarm_authority_bundle, source_verifier_context_with_options,
+    verify_source_standalone_risk_report_with_keys,
+};
+use chio_core_types::PublicKey;
 
 #[test]
 fn swarm_fixture_uses_verification_time_for_freshness() -> Result<(), Box<dyn Error>> {
@@ -462,6 +466,34 @@ fn source_standalone_risk_rejects_tampered_supporting_evidence() -> Result<(), B
     assert!(error
         .to_string()
         .contains("risk facility lifecycle evidence missing"));
+    Ok(())
+}
+
+#[test]
+fn source_standalone_risk_rejects_untrusted_comptroller_signer() -> Result<(), Box<dyn Error>> {
+    configure_proof_room_fixture_trust();
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/enterprise-export/standalone-risk-comptroller");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let passport_path = work.path().join("transaction-passport.json");
+    let context = source_verifier_context_with_options(work.path(), &passport_path, true)?;
+    let untrusted_keys = vec![PublicKey::from_hex(
+        "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+    )?];
+    let result = verify_source_standalone_risk_report_with_keys(
+        &context,
+        &["claim.risk.comptroller_report_bound".to_string()],
+        &untrusted_keys,
+    );
+    let error = result
+        .err()
+        .ok_or("untrusted standalone risk signer unexpectedly verified")?;
+
+    assert!(error
+        .to_string()
+        .contains("risk comptroller report signer untrusted"));
     Ok(())
 }
 

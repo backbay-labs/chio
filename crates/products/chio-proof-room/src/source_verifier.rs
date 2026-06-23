@@ -795,11 +795,34 @@ pub(crate) fn verify_source_standalone_risk_report(
     context: &SourceVerifierContext,
     required_claims: &[String],
 ) -> Result<serde_json::Value, String> {
+    let trusted_risk_comptroller_signer_keys =
+        crate::enterprise_trusted_risk_comptroller_signer_keys_from_env()
+            .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+    verify_source_standalone_risk_report_with_keys(
+        context,
+        required_claims,
+        &trusted_risk_comptroller_signer_keys,
+    )
+}
+
+pub(crate) fn verify_source_standalone_risk_report_with_keys(
+    context: &SourceVerifierContext,
+    required_claims: &[String],
+    trusted_risk_comptroller_signer_keys: &[chio_core_types::PublicKey],
+) -> Result<serde_json::Value, String> {
     let risk_report =
         embedded_risk_comptroller_report(&context.evidence_graph_bytes, &context.artifacts)
             .map_err(|error| format!("proof-room.risk-invalid: {error}"))?;
+    let risk_report_value =
+        embedded_risk_comptroller_report_value(&context.evidence_graph_bytes, &context.artifacts)
+            .map_err(|error| format!("proof-room.risk-invalid: {error}"))?;
     chio_risk_comptroller::validate_risk_report(&context.passport, &risk_report)
         .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+    chio_risk_comptroller::validate_risk_report_signature(
+        &risk_report_value,
+        trusted_risk_comptroller_signer_keys,
+    )
+    .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
     let risk_evidence_graph =
         parse_embedded_evidence_graph(&context.evidence_graph_bytes, "evidence graph")
             .map_err(|error| format!("proof-room.evidence-graph-invalid: {error}"))?;

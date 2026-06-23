@@ -82,6 +82,15 @@ pub(crate) fn embedded_risk_comptroller_report(
     evidence_graph_bytes: &[u8],
     artifacts: &BTreeMap<String, Vec<u8>>,
 ) -> Result<chio_risk_comptroller::RiskComptrollerReport, String> {
+    let value = embedded_risk_comptroller_report_value(evidence_graph_bytes, artifacts)?;
+    serde_json::from_value(value)
+        .map_err(|error| format!("risk comptroller report JSON invalid: {error}"))
+}
+
+pub(crate) fn embedded_risk_comptroller_report_value(
+    evidence_graph_bytes: &[u8],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+) -> Result<serde_json::Value, String> {
     let graph = parse_embedded_evidence_graph(evidence_graph_bytes, "risk evidence graph")?;
     let bytes = embedded_single_role_artifact_bytes(
         &graph.nodes,

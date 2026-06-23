@@ -366,6 +366,22 @@ fn swarm_authority_stage0_rejects_stale_continuation() -> Result<(), Box<dyn Err
 }
 
 #[test]
+fn swarm_authority_stage0_rejects_future_task_graph() -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.task_graph.created_at_unix_ms = NOW_UNIX_MS + 1;
+    refresh_continuation_graph_digests(&mut bundle)?;
+
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
+        Ok(report) => panic!("future swarm task graph verified unexpectedly: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("swarm task graph is from the future"));
+    Ok(())
+}
+
+#[test]
 fn swarm_authority_stage0_rejects_unsigned_continuation_token_json() {
     let unsigned_token = serde_json::json!({
         "schema": CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA,
