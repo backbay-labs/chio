@@ -1514,6 +1514,10 @@ fn build_integrated_runtime_commerce_settlement_agent_web_bundle_for_commerce_or
         &mut policy,
         &settlement_source.join("verifier-policy.json"),
     );
+    remove_required_claim(
+        &mut policy,
+        "claim.public_settlement.trust_market_refs_bound",
+    );
     append_required_claims_from_policy(&mut policy, &agent_web_source.join("verifier-policy.json"));
     write_json(&policy_path, &policy);
     let policy_sha256 = sha256_file(&policy_path);
@@ -2556,6 +2560,13 @@ pub(crate) fn append_required_claims_from_policy(
             required_claims.push(claim.clone());
         }
     }
+}
+
+fn remove_required_claim(policy: &mut serde_json::Value, claim_id: &str) {
+    let required_claims = policy["required_claims"]
+        .as_array_mut()
+        .test_expect("policy required_claims array");
+    required_claims.retain(|claim| claim.as_str() != Some(claim_id));
 }
 
 pub(crate) fn append_graph_artifacts_from_fixture(

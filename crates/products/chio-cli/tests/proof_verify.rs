@@ -1028,7 +1028,7 @@ fn proof_verify_accepts_public_settlement_fixture() {
     assert!(stdout.contains("\"claim.public_settlement.finality_verified\""));
     assert!(stdout.contains("\"claim.public_settlement.oracle_conversion_bound\""));
     assert!(stdout.contains("\"claim.public_settlement.dispute_posture_bound\""));
-    assert!(stdout.contains("\"claim.public_settlement.trust_market_refs_bound\""));
+    assert!(!stdout.contains("\"claim.public_settlement.trust_market_refs_bound\""));
     assert!(stdout.contains("\"trust_market_context\""));
     assert!(stdout.contains("\"collateral_position_ref\":\"collateral-trust-market-valid\""));
     assert!(stdout.contains("\"guarantee_decision_ref\":\"guarantee-trust-market-valid\""));
@@ -1036,7 +1036,7 @@ fn proof_verify_accepts_public_settlement_fixture() {
 }
 
 #[test]
-fn proof_verify_accepts_public_settlement_trust_market_refs() {
+fn proof_verify_reports_public_settlement_trust_market_refs_without_verified_claim() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let source =
         workspace_root().join("fixtures/proof-room/public-settlement/valid-offline-finality");
@@ -1050,6 +1050,16 @@ fn proof_verify_accepts_public_settlement_trust_market_refs() {
         settlement_bundle["sla_remedy_ref"] = serde_json::json!("remedy-policy-market-valid");
         settlement_bundle["slash_authority_ref"] = serde_json::json!("did:chio:slash-authority");
     });
+    set_verifier_policy_required_claims(
+        &bundle_dir,
+        &[
+            "claim.public_settlement.order_binding_verified",
+            "claim.public_settlement.chain_context_verified",
+            "claim.public_settlement.finality_verified",
+            "claim.public_settlement.oracle_conversion_bound",
+            "claim.public_settlement.dispute_posture_bound",
+        ],
+    );
 
     let output = chio_with_transaction_fixture_roots()
         .arg("proof")
@@ -1058,14 +1068,17 @@ fn proof_verify_accepts_public_settlement_trust_market_refs() {
         .output()
         .test_expect("chio command runs");
 
-    assert!(output.status.success());
+    assert!(
+        output.status.success(),
+        "refs-only public settlement proof should verify without earning the trust-market claim\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8(output.stdout).test_expect("stdout is utf8");
     assert!(stdout.contains("\"trust_market_context\""));
     assert!(stdout.contains("\"collateral_position_ref\":\"collateral-trust-market-valid\""));
     assert!(stdout.contains("\"guarantee_decision_ref\":\"guarantee-trust-market-valid\""));
-    assert!(stdout.contains("\"sla_remedy_ref\":\"remedy-policy-market-valid\""));
-    assert!(stdout.contains("\"slash_authority_ref\":\"did:chio:slash-authority\""));
-    assert!(stdout.contains("\"claim.public_settlement.trust_market_refs_bound\""));
+    assert!(!stdout.contains("\"claim.public_settlement.trust_market_refs_bound\""));
 }
 
 #[test]

@@ -1000,8 +1000,15 @@ fn public_settlement_proof_binds_trust_market_refs_when_present() {
     bundle.guarantee_decision_ref = Some("guarantee-trust-market-valid".to_string());
     bundle.sla_remedy_ref = Some("remedy-policy-market-valid".to_string());
     bundle.slash_authority_ref = Some("did:chio:slash-authority".to_string());
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.expected_trust_market_context = Some(PublicSettlementTrustMarketContext {
+        collateral_position_ref: "collateral-trust-market-valid".to_string(),
+        guarantee_decision_ref: "guarantee-trust-market-valid".to_string(),
+        sla_remedy_ref: "remedy-policy-market-valid".to_string(),
+        slash_authority_ref: "did:chio:slash-authority".to_string(),
+    });
 
-    let report = verify_sample_public_settlement_proof(&bundle).unwrap();
+    let report = verify_public_settlement_proof(&bundle, &trust).unwrap();
 
     let trust_market_context = report.trust_market_context.unwrap();
     assert_eq!(
@@ -1021,6 +1028,22 @@ fn public_settlement_proof_binds_trust_market_refs_when_present() {
         "did:chio:slash-authority"
     );
     assert!(report
+        .verified_claims
+        .contains(&CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND.to_string()));
+}
+
+#[test]
+fn public_settlement_proof_reports_trust_market_refs_without_verified_context() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.collateral_position_ref = Some("collateral-trust-market-valid".to_string());
+    bundle.guarantee_decision_ref = Some("guarantee-trust-market-valid".to_string());
+    bundle.sla_remedy_ref = Some("remedy-policy-market-valid".to_string());
+    bundle.slash_authority_ref = Some("did:chio:slash-authority".to_string());
+
+    let report = verify_sample_public_settlement_proof(&bundle).unwrap();
+
+    assert!(report.trust_market_context.is_some());
+    assert!(!report
         .verified_claims
         .contains(&CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND.to_string()));
 }

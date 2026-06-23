@@ -81,6 +81,15 @@ pub struct PublicSettlementProofBundle {
     pub dispute_posture: PublicSettlementDisputePosture,
 }
 
+impl PublicSettlementProofBundle {
+    pub fn has_trust_market_refs(&self) -> bool {
+        self.collateral_position_ref.is_some()
+            || self.guarantee_decision_ref.is_some()
+            || self.sla_remedy_ref.is_some()
+            || self.slash_authority_ref.is_some()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicSettlementOrderBinding {
@@ -303,7 +312,8 @@ pub fn verify_public_settlement_proof(
     validate_finality(bundle)?;
     validate_dispute_posture(bundle)?;
     let trust_market_context = validate_trust_market_refs(bundle)?;
-    validate_expected_trust_market_context(&trust_market_context, trust)?;
+    let trust_market_context_verified =
+        validate_expected_trust_market_context(&trust_market_context, trust)?;
     validate_finality_settlement_state(bundle)?;
     let bond = required_bond_snapshot(bundle)?;
     let block = required_block_snapshot(bundle)?;
@@ -335,7 +345,7 @@ pub fn verify_public_settlement_proof(
         &mut verified_claims,
         CLAIM_PUBLIC_SETTLEMENT_DISPUTE_POSTURE_BOUND,
     );
-    if trust_market_context.is_some() {
+    if trust_market_context_verified {
         push_claim_once(
             &mut verified_claims,
             CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND,
@@ -640,12 +650,10 @@ fn validate_trust_market_refs(
 fn validate_expected_trust_market_context(
     actual: &Option<PublicSettlementTrustMarketContext>,
     trust: &PublicSettlementVerifierTrust,
-) -> Result<(), Web3ContractError> {
-    let Some(expected) = trust.expected_trust_market_context.as_ref() else {
-        return Ok(());
-    };
-    match actual {
-        Some(actual) if actual == expected => Ok(()),
+) -> Result<bool, Web3ContractError> {
+    match (actual, trust.expected_trust_market_context.as_ref()) {
+        (None, None) | (Some(_), None) => Ok(false),
+        (Some(actual), Some(expected)) if actual == expected => Ok(true),
         _ => Err(Web3ContractError::InvalidProof(
             "public settlement trust-market ref mismatch".to_string(),
         )),

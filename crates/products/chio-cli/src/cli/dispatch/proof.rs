@@ -1028,11 +1028,23 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
         &evidence_graph_bytes,
         claim_requirements.requires(CLAIM_PREFIX_RISK),
     )?;
+    let settlement_requires_trust_market_context =
+        if claim_requirements.requires_claim(
+            chio_web3::settlement_proof::CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND,
+        ) {
+            load_public_settlement_proof_bundle_from_graph(bundle_dir, &evidence_graph_bytes)?
+                .has_trust_market_refs()
+        } else {
+            false
+        };
     let disclosure_evidence_present =
         evidence_graph_contains_disclosure_artifacts(&evidence_graph_bytes)?;
     let mut family_reports = Vec::new();
     let mut expected_public_settlement_trust_market_context = None;
-    if claim_requirements.requires(CLAIM_PREFIX_TRUST_MARKET) || risk_route.through_trust_market {
+    if claim_requirements.requires(CLAIM_PREFIX_TRUST_MARKET)
+        || risk_route.through_trust_market
+        || settlement_requires_trust_market_context
+    {
         let trust_market_evidence_graph_bytes = scoped_evidence_graph_bytes(
             &evidence_graph_bytes,
             is_trust_market_evidence_graph_node,

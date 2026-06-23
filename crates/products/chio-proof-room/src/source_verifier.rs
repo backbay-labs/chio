@@ -246,8 +246,22 @@ pub(crate) fn verify_transaction_passport_family_report_with_options(
         &context.evidence_graph_bytes,
         requirements.requires(CLAIM_PREFIX_RISK),
     )?;
-    let routes_trust_market =
-        requirements.requires(CLAIM_PREFIX_TRUST_MARKET) || risk_route.through_trust_market;
+    let settlement_requires_trust_market_context =
+        if requirements.required_claims.iter().any(|claim| {
+            claim == chio_web3::settlement_proof::CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND
+        }) {
+            embedded_public_settlement_proof_bundle(
+                &context.evidence_graph_bytes,
+                &context.artifacts,
+            )
+            .map(|bundle| bundle.has_trust_market_refs())
+            .map_err(|error| format!("proof-room.public-settlement-invalid: {error}"))?
+        } else {
+            false
+        };
+    let routes_trust_market = requirements.requires(CLAIM_PREFIX_TRUST_MARKET)
+        || risk_route.through_trust_market
+        || settlement_requires_trust_market_context;
     reject_unrouted_source_claims(&requirements.required_claims, routes_trust_market)?;
     let mut family_reports = Vec::new();
     let mut expected_public_settlement_trust_market_context = None;
