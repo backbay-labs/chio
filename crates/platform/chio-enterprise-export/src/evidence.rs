@@ -111,6 +111,25 @@ pub(super) fn parse_artifact<T: for<'de> Deserialize<'de>>(
     node: &EnterpriseEvidenceNode,
     expected_schema: &str,
 ) -> Result<T, TransactionPassportError> {
+    let value = parse_artifact_value(bundle, node, expected_schema)?;
+    parse_artifact_from_value(node, value)
+}
+
+pub(super) fn parse_signed_risk_comptroller_report(
+    bundle: &EnterpriseExportBundle,
+    node: &EnterpriseEvidenceNode,
+    trusted_authority_keys: &[chio_core_types::PublicKey],
+) -> Result<chio_risk_comptroller::RiskComptrollerReport, TransactionPassportError> {
+    let value = parse_artifact_value(bundle, node, "chio.risk.comptroller-report.v1")?;
+    chio_risk_comptroller::validate_risk_report_signature(&value, trusted_authority_keys)?;
+    parse_artifact_from_value(node, value)
+}
+
+fn parse_artifact_value(
+    bundle: &EnterpriseExportBundle,
+    node: &EnterpriseEvidenceNode,
+    expected_schema: &str,
+) -> Result<serde_json::Value, TransactionPassportError> {
     validate_node(node)?;
     let bytes = bundle
         .artifacts
@@ -145,6 +164,13 @@ pub(super) fn parse_artifact<T: for<'de> Deserialize<'de>>(
             message: format!("unsupported schema: {schema}"),
         });
     }
+    Ok(value)
+}
+
+fn parse_artifact_from_value<T: for<'de> Deserialize<'de>>(
+    node: &EnterpriseEvidenceNode,
+    value: serde_json::Value,
+) -> Result<T, TransactionPassportError> {
     serde_json::from_value(value).map_err(|error| {
         TransactionPassportError::InvalidEnterpriseArtifact {
             path: node.path.clone(),

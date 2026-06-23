@@ -107,5 +107,6 @@
   "verdict": "verified",
   "verified_claims": [
     "claim.risk.comptroller_report_bound"
-  ]
+  ],
+  "signature": "sig-ed25519:3f0dda81e6abbcc5f17c359df8517177769d2dfff3d4ce942e7ce9a82dfb0db2:9cde3f883f3e05e6c0701965aa8b3f87500cef8f3c611ac08d351c05ead180ac20378931fa568692560931672fd5ca6f8cd14e6ff3b03b4256b4add534f5bd0f"
 }

@@ -46,7 +46,13 @@ pub(super) fn verify_standalone_risk_claim(
     claim_requirements: &VerifierPolicyClaimRequirements,
     passport_report_path: &str,
 ) -> Result<serde_json::Value, CliError> {
-    let risk_report = load_risk_comptroller_report_from_graph(bundle_dir, evidence_graph_bytes)?;
+    let trusted_risk_comptroller_signer_keys =
+        enterprise_trusted_risk_comptroller_signer_keys_from_env()?;
+    let risk_report = load_risk_comptroller_report_from_graph(
+        bundle_dir,
+        evidence_graph_bytes,
+        &trusted_risk_comptroller_signer_keys,
+    )?;
     chio_control_plane::risk_comptroller::validate_risk_report(passport, &risk_report)
         .map_err(map_proof_error)?;
     let risk_evidence_graph = parse_graph_artifact_paths(evidence_graph_bytes)?;
@@ -324,6 +330,7 @@ fn is_trust_market_risk_context_role(role: &str) -> bool {
 fn load_risk_comptroller_report_from_graph(
     bundle_dir: &Path,
     evidence_graph_bytes: &[u8],
+    trusted_authority_keys: &[chio_core_types::PublicKey],
 ) -> Result<chio_control_plane::risk_comptroller::RiskComptrollerReport, CliError> {
     let graph = parse_graph_artifact_paths(evidence_graph_bytes)?;
     let risk_report_nodes = graph_nodes_by_role(&graph.nodes, "risk-comptroller-report");
@@ -360,5 +367,11 @@ fn load_risk_comptroller_report_from_graph(
         )));
     }
 
-    serde_json::from_slice(&bytes).map_err(CliError::from)
+    let value: serde_json::Value = serde_json::from_slice(&bytes)?;
+    chio_control_plane::risk_comptroller::validate_risk_report_signature(
+        &value,
+        trusted_authority_keys,
+    )
+    .map_err(map_proof_error)?;
+    serde_json::from_value(value).map_err(CliError::from)
 }

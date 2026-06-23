@@ -959,6 +959,10 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
                         crate::enterprise_trusted_approval_signer_keys_from_env().map_err(
                             |error| proof_room_fixture_invalid(fixture_id, "enterprise", error),
                         )?,
+                    trusted_risk_comptroller_signer_keys:
+                        crate::enterprise_trusted_risk_comptroller_signer_keys_from_env().map_err(
+                            |error| proof_room_fixture_invalid(fixture_id, "enterprise", error),
+                        )?,
                 },
             ),
         ),

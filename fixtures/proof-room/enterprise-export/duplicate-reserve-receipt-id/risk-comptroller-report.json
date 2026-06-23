@@ -125,5 +125,6 @@
       "units": 600,
       "settlement_ref": "settlement-enterprise-valid"
     }
-  ]
+  ],
+  "signature": "sig-ed25519:3f0dda81e6abbcc5f17c359df8517177769d2dfff3d4ce942e7ce9a82dfb0db2:5f597876c9fd4e5873d92864c90c788a63ea850bcd11b30b1a1edfda59e0d3c87a5fe41222da1efed8cf7c5a9fb37a194f8964e75b830bb34e230a89c750c40a"
 }

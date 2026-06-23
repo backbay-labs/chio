@@ -70,6 +70,10 @@ fn approval_keypair() -> Keypair {
     Keypair::from_seed(&[61u8; 32])
 }
 
+fn risk_comptroller_keypair() -> Keypair {
+    Keypair::from_seed(&[63u8; 32])
+}
+
 fn transaction_passport_keypair() -> Keypair {
     Keypair::from_seed(&TRANSACTION_PASSPORT_SIGNATURE_SEED)
 }
@@ -90,14 +94,20 @@ fn signed_approval_case(value: Value) -> Value {
     signed_approval_case_with_key(value, &approval_keypair())
 }
 
-fn signed_approval_case_with_key(mut value: Value, keypair: &Keypair) -> Value {
+fn signed_approval_case_with_key(value: Value, keypair: &Keypair) -> Value {
+    signed_value_with_key(value, keypair)
+}
+
+fn signed_risk_comptroller_report(value: Value) -> Value {
+    signed_value_with_key(value, &risk_comptroller_keypair())
+}
+
+fn signed_value_with_key(mut value: Value, keypair: &Keypair) -> Value {
     value
         .as_object_mut()
-        .test_expect("approval case is an object")
+        .test_expect("signed artifact is an object")
         .remove("signature");
-    let (signature, _) = keypair
-        .sign_canonical(&value)
-        .test_expect("approval case signs");
+    let (signature, _) = keypair.sign_canonical(&value).test_expect("artifact signs");
     value["signature"] = Value::String(format!(
         "sig-ed25519:{}:{}",
         keypair.public_key().to_hex(),
@@ -884,7 +894,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         } else {
             None
         };
-    let risk_report = json_bytes(risk_report_value);
+    let risk_report = json_bytes(signed_risk_comptroller_report(risk_report_value));
     push_artifact(
         &mut artifacts,
         &mut graph_nodes,
@@ -896,7 +906,8 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
     );
     push_reserve_ledger_ref_artifacts(&mut artifacts, &mut graph_nodes, &reserve_ledger);
     if let Some(secondary_risk_report_value) = secondary_risk_report_value {
-        let secondary_risk_report = json_bytes(secondary_risk_report_value);
+        let secondary_risk_report =
+            json_bytes(signed_risk_comptroller_report(secondary_risk_report_value));
         push_artifact(
             &mut artifacts,
             &mut graph_nodes,
@@ -1322,6 +1333,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         artifacts,
         trusted_passport_signer_keys: vec![transaction_passport_keypair().public_key()],
         trusted_approval_signer_keys: vec![approval_keypair().public_key()],
+        trusted_risk_comptroller_signer_keys: vec![risk_comptroller_keypair().public_key()],
     }
 }
 
@@ -1400,7 +1412,7 @@ fn prepend_unreferenced_risk_report(bundle: &mut EnterpriseExportBundle) {
     risk_report["coverage"]["reserve_ref"] = json!("reserve-enterprise-unreferenced");
     risk_report["reconciliation"]["order_id"] = json!("order-commerce-unreferenced");
 
-    let risk_report_bytes = json_bytes(risk_report);
+    let risk_report_bytes = json_bytes(signed_risk_comptroller_report(risk_report));
     let risk_report_sha256 = chio_core_types::sha256_hex(&risk_report_bytes);
     bundle.artifacts.insert(
         "risk-comptroller-report-unreferenced.json".to_string(),
@@ -1525,6 +1537,35 @@ fn enterprise_export_rejects_tampered_transaction_passport_signature() {
     assert!(error
         .to_string()
         .contains("transaction passport signature invalid"));
+}
+
+#[test]
+fn enterprise_export_rejects_unsigned_risk_comptroller_report() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    let mut risk_report: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("risk-comptroller-report.json")
+            .test_expect("risk report artifact exists"),
+    )
+    .test_expect("risk report parses");
+    risk_report
+        .as_object_mut()
+        .test_expect("risk report is object")
+        .remove("signature");
+    replace_graph_artifact(
+        &mut bundle,
+        "risk-comptroller-report.json",
+        "risk-comptroller-report",
+        risk_report,
+    );
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("unsigned risk comptroller report must not verify");
+
+    assert!(error
+        .to_string()
+        .contains("risk comptroller report signature"));
 }
 
 #[test]

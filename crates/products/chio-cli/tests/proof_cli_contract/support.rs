@@ -51,6 +51,8 @@ const RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS: &str =
     "5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca";
 const ENTERPRISE_FIXTURE_TRUSTED_APPROVAL_KEYS: &str =
     "f95c6a5dff031fac7b1a6a54b6610caeb83b39f7e8a66be16ff5faa4a511ed2d";
+const ENTERPRISE_FIXTURE_TRUSTED_RISK_COMPTROLLER_KEYS: &str =
+    "3f0dda81e6abbcc5f17c359df8517177769d2dfff3d4ce942e7ce9a82dfb0db2";
 const TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS: &str =
     "cf1b37e85dc00aee94f10108b37f151e2a37b3ae2a0cae77521f83488db9c4d7";
 const COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS: &str =
@@ -114,6 +116,10 @@ pub(crate) fn chio_command() -> std::process::Command {
     command.env(
         "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS",
         ENTERPRISE_FIXTURE_TRUSTED_APPROVAL_KEYS,
+    );
+    command.env(
+        "CHIO_ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS",
+        ENTERPRISE_FIXTURE_TRUSTED_RISK_COMPTROLLER_KEYS,
     );
     command.env(
         "CHIO_SWARM_TRUSTED_WITNESS_KEYS",
@@ -2358,9 +2364,10 @@ pub(crate) fn add_standalone_risk_sanction_backed_market_slash(bundle: &Path) {
 
 pub(crate) fn write_standalone_risk_report_and_rehash(
     bundle: &Path,
-    risk_report: serde_json::Value,
+    mut risk_report: serde_json::Value,
 ) {
     let risk_report_path = bundle.join("risk-comptroller-report.json");
+    sign_standalone_risk_report(&mut risk_report);
     write_json(&risk_report_path, &risk_report);
     let risk_report_sha256 = sha256_file(&risk_report_path);
 
@@ -2388,6 +2395,22 @@ pub(crate) fn write_standalone_risk_report_and_rehash(
     refresh_manifest_artifact_ref_if_present(bundle, "risk-comptroller-report.json");
     refresh_standalone_risk_root_artifacts(bundle);
     refresh_standalone_risk_verifier_report(bundle);
+}
+
+fn sign_standalone_risk_report(risk_report: &mut serde_json::Value) {
+    let Some(report) = risk_report.as_object_mut() else {
+        return;
+    };
+    report.remove("signature");
+    let keypair = Keypair::from_seed(&[63u8; 32]);
+    let (signature, _) = keypair
+        .sign_canonical(risk_report)
+        .test_expect("risk comptroller report signs");
+    risk_report["signature"] = serde_json::Value::String(format!(
+        "sig-ed25519:{}:{}",
+        keypair.public_key().to_hex(),
+        signature.to_hex()
+    ));
 }
 
 fn refresh_standalone_risk_root_artifacts(bundle: &Path) {

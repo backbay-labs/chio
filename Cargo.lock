@@ -4234,6 +4234,7 @@ dependencies = [
 name = "chio-risk-comptroller"
 version = "0.1.0"
 dependencies = [
+ "chio-core-types",
  "chio-test-support",
  "chio-transaction-passport",
  "chrono",

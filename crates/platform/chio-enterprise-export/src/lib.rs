@@ -25,7 +25,8 @@ use claims::{
     CLAIM_RISK_COMPTROLLER_REPORT_BOUND, CLAIM_TELEMETRY_PROJECTION_BOUND,
 };
 use evidence::{
-    find_node, find_nodes, parse_artifact, parse_graph, require_node, EnterpriseEvidenceRole,
+    find_node, find_nodes, parse_artifact, parse_graph, parse_signed_risk_comptroller_report,
+    require_node, EnterpriseEvidenceRole,
 };
 use policy::parse_policy;
 
@@ -38,6 +39,7 @@ pub struct EnterpriseExportBundle {
     pub artifacts: BTreeMap<String, Vec<u8>>,
     pub trusted_passport_signer_keys: Vec<PublicKey>,
     pub trusted_approval_signer_keys: Vec<PublicKey>,
+    pub trusted_risk_comptroller_signer_keys: Vec<PublicKey>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -87,7 +89,13 @@ pub fn verify_enterprise_export(
     let policy = parse_policy(&bundle.verifier_policy_bytes)?;
 
     let risk_reports = find_nodes(&graph, EnterpriseEvidenceRole::RiskComptrollerReport)
-        .map(|node| parse_artifact(bundle, node, "chio.risk.comptroller-report.v1"))
+        .map(|node| {
+            parse_signed_risk_comptroller_report(
+                bundle,
+                node,
+                &bundle.trusted_risk_comptroller_signer_keys,
+            )
+        })
         .collect::<Result<Vec<RiskComptrollerReport>, TransactionPassportError>>()?;
     let data_governance_node = require_node(&graph, EnterpriseEvidenceRole::DataGovernanceReport)?;
     let export_bundle_node = require_node(&graph, EnterpriseEvidenceRole::EvidenceExportBundle)?;

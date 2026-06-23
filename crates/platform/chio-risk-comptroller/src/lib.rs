@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use chio_core_types::{PublicKey, Signature};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
@@ -259,6 +260,49 @@ pub fn validate_risk_report(
     validate_risk_coverage_claim_scope(report)?;
     validate_risk_facility_closure(report)?;
     Ok(())
+}
+
+pub fn validate_risk_report_signature(
+    report_value: &serde_json::Value,
+    trusted_authority_keys: &[PublicKey],
+) -> Result<(), TransactionPassportError> {
+    if trusted_authority_keys.is_empty() {
+        return Err(claim_failed("risk comptroller trusted signer keys missing"));
+    }
+    let signature_value = report_value
+        .get("signature")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| claim_failed("risk comptroller report signature missing"))?;
+    let Some(signature_ref) = signature_value.strip_prefix("sig-ed25519:") else {
+        return Err(claim_failed(
+            "risk comptroller report signature unsupported",
+        ));
+    };
+    let Some((public_key_hex, signature_hex)) = signature_ref.split_once(':') else {
+        return Err(claim_failed("risk comptroller report signature malformed"));
+    };
+    require_non_empty(public_key_hex, "risk_comptroller_signature_public_key")?;
+    require_non_empty(signature_hex, "risk_comptroller_signature")?;
+    let public_key = PublicKey::from_hex(public_key_hex)
+        .map_err(|_| claim_failed("risk comptroller report signature public key invalid"))?;
+    if !trusted_authority_keys.contains(&public_key) {
+        return Err(claim_failed("risk comptroller report signer untrusted"));
+    }
+    let signature = Signature::from_hex(signature_hex)
+        .map_err(|_| claim_failed("risk comptroller report signature invalid"))?;
+    let mut signed_value = report_value.clone();
+    signed_value
+        .as_object_mut()
+        .ok_or_else(|| claim_failed("risk comptroller report signature payload invalid"))?
+        .remove("signature");
+    let verified = public_key
+        .verify_canonical(&signed_value, &signature)
+        .map_err(|_| claim_failed("risk comptroller report signature invalid"))?;
+    if verified {
+        Ok(())
+    } else {
+        Err(claim_failed("risk comptroller report signature invalid"))
+    }
 }
 
 pub fn validate_risk_portfolio_reports(

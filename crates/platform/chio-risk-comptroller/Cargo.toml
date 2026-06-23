@@ -13,9 +13,11 @@ name = "chio_risk_comptroller"
 test = false
 
 [dependencies]
+chio-core-types = { workspace = true }
 chio-transaction-passport = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 chio-test-support = { workspace = true }

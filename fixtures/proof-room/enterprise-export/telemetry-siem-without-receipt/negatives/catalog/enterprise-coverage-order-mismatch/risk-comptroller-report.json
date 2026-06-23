@@ -103,5 +103,6 @@
     "currency": "USD",
     "maximum_coverage_units": 5000,
     "coverage_statement": "coverage limited to supported exposure"
-  }
+  },
+  "signature": "sig-ed25519:3f0dda81e6abbcc5f17c359df8517177769d2dfff3d4ce942e7ce9a82dfb0db2:b69cb113cc64195529c5d1bc511028ccdfa03688efde1854a2390c6058b21e910a586cda46002c4650a59263273d23d1f51ea95b823a8a6c6b8a97722027d60d"
 }

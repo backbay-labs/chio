@@ -129,5 +129,6 @@
         "facility_closure"
       ]
     }
-  ]
+  ],
+  "signature": "sig-ed25519:3f0dda81e6abbcc5f17c359df8517177769d2dfff3d4ce942e7ce9a82dfb0db2:1ffd0a030eab7ec04b8b650a2e81eaa348d1e714ec0e6f787363e845513e7612c05aeda6b4bfb1c15279b55249442a19e73a2ebc16f5ba380557cf6cfe705903"
 }

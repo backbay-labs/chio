@@ -49,6 +49,8 @@ const AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV: &str =
 const TRANSACTION_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS";
 const RUNTIME_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_RUNTIME_TRUSTED_ROOT_KEYS";
 const ENTERPRISE_TRUSTED_APPROVAL_KEYS_ENV: &str = "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS";
+const ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS_ENV: &str =
+    "CHIO_ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS";
 const COMMERCE_TRUSTED_PROVIDER_KEYS_ENV: &str = "CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS";
 const TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV: &str = "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS";
 const SWARM_TRUSTED_WITNESS_KEYS_ENV: &str = "CHIO_SWARM_TRUSTED_WITNESS_KEYS";
@@ -172,6 +174,14 @@ fn enterprise_trusted_approval_signer_keys_from_env(
     required_public_keys_from_env(
         ENTERPRISE_TRUSTED_APPROVAL_KEYS_ENV,
         "enterprise approval signer",
+    )
+}
+
+fn enterprise_trusted_risk_comptroller_signer_keys_from_env(
+) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
+    required_public_keys_from_env(
+        ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS_ENV,
+        "enterprise risk comptroller signer",
     )
 }
 
@@ -1112,6 +1122,8 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
                 artifacts,
                 trusted_passport_signer_keys: trusted_transaction_root_keys.clone(),
                 trusted_approval_signer_keys: enterprise_trusted_approval_signer_keys_from_env()?,
+                trusted_risk_comptroller_signer_keys:
+                    enterprise_trusted_risk_comptroller_signer_keys_from_env()?,
             },
         )
         .map_err(map_proof_error)?;

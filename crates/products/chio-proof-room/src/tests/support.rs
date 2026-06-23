@@ -41,6 +41,8 @@ pub(crate) const RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS: &str =
     "5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca";
 pub(crate) const ENTERPRISE_FIXTURE_TRUSTED_APPROVAL_KEYS: &str =
     "f95c6a5dff031fac7b1a6a54b6610caeb83b39f7e8a66be16ff5faa4a511ed2d";
+pub(crate) const ENTERPRISE_FIXTURE_TRUSTED_RISK_COMPTROLLER_KEYS: &str =
+    "3f0dda81e6abbcc5f17c359df8517177769d2dfff3d4ce942e7ce9a82dfb0db2";
 pub(crate) const COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS: &str =
     "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca";
 pub(crate) const TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS: &str =
@@ -88,6 +90,10 @@ pub(crate) fn configure_proof_room_fixture_trust() {
     std::env::set_var(
         "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS",
         ENTERPRISE_FIXTURE_TRUSTED_APPROVAL_KEYS,
+    );
+    std::env::set_var(
+        "CHIO_ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS",
+        ENTERPRISE_FIXTURE_TRUSTED_RISK_COMPTROLLER_KEYS,
     );
     std::env::set_var(
         "CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS",

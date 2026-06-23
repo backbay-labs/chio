@@ -331,6 +331,9 @@ pub(crate) fn verify_transaction_passport_family_report_with_options(
         let trusted_approval_signer_keys =
             crate::enterprise_trusted_approval_signer_keys_from_env()
                 .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+        let trusted_risk_comptroller_signer_keys =
+            crate::enterprise_trusted_risk_comptroller_signer_keys_from_env()
+                .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
         let report = chio_enterprise_export::verify_enterprise_export(
             &chio_enterprise_export::EnterpriseExportBundle {
                 passport,
@@ -340,6 +343,7 @@ pub(crate) fn verify_transaction_passport_family_report_with_options(
                 artifacts: context.artifacts.clone(),
                 trusted_passport_signer_keys,
                 trusted_approval_signer_keys,
+                trusted_risk_comptroller_signer_keys,
             },
         )
         .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;

@@ -80,19 +80,28 @@ fn approval_keypair() -> Keypair {
     Keypair::from_seed(&[61u8; 32])
 }
 
+fn risk_comptroller_keypair() -> Keypair {
+    Keypair::from_seed(&[63u8; 32])
+}
+
 fn approval_approver() -> String {
     format!("did:chio:{}", approval_keypair().public_key().to_hex())
 }
 
-fn signed_approval_case(mut value: Value) -> Value {
+fn signed_approval_case(value: Value) -> Value {
+    signed_value_with_key(value, &approval_keypair())
+}
+
+fn signed_risk_comptroller_report(value: Value) -> Value {
+    signed_value_with_key(value, &risk_comptroller_keypair())
+}
+
+fn signed_value_with_key(mut value: Value, keypair: &Keypair) -> Value {
     value
         .as_object_mut()
-        .test_expect("approval case is an object")
+        .test_expect("signed artifact is an object")
         .remove("signature");
-    let keypair = approval_keypair();
-    let (signature, _) = keypair
-        .sign_canonical(&value)
-        .test_expect("approval case signs");
+    let (signature, _) = keypair.sign_canonical(&value).test_expect("artifact signs");
     value["signature"] = Value::String(format!(
         "sig-ed25519:{}:{}",
         keypair.public_key().to_hex(),
@@ -964,7 +973,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
     ) {
         risk_report_value["coverage"]["beneficiary_subject"] = json!("did:chio:buyer-beneficiary");
     }
-    let risk_report = json_bytes(risk_report_value);
+    let risk_report = json_bytes(signed_risk_comptroller_report(risk_report_value));
     push_artifact(
         &mut artifacts,
         &mut graph_nodes,
@@ -1383,6 +1392,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         artifacts,
         trusted_passport_signer_keys: vec![transaction_passport_keypair().public_key()],
         trusted_approval_signer_keys: vec![approval_keypair().public_key()],
+        trusted_risk_comptroller_signer_keys: vec![risk_comptroller_keypair().public_key()],
     }
 }
 
