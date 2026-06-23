@@ -1,6 +1,12 @@
 use std::path::{Path, PathBuf};
 
 use chio_core_types::crypto::{Keypair, PublicKey};
+use chio_core_types::receipt::{
+    body::{ChioReceipt, ChioReceiptBody},
+    decision::{Decision, ToolCallAction},
+    kinds::{BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin, TrustLevel},
+    metadata::ActorRef,
+};
 use chio_test_support::prelude::*;
 
 fn workspace_root() -> PathBuf {
@@ -49,6 +55,14 @@ fn commerce_provider_trust_signer_key() -> PublicKey {
 
 fn commerce_provider_trust_signer() -> Keypair {
     Keypair::from_seed(&[8u8; 32])
+}
+
+fn commerce_event_authority_receipt_key() -> PublicKey {
+    Keypair::from_seed(&[9u8; 32]).public_key()
+}
+
+fn commerce_event_authority_receipt_signer() -> Keypair {
+    Keypair::from_seed(&[9u8; 32])
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -116,6 +130,7 @@ fn load_bundle(case_name: &str) -> chio_commerce_order::CommerceOrderVerificatio
     let context_bytes = read_fixture(&dir, "order-context.json");
     let mut order_context: chio_commerce_order::CommerceOrderContext =
         serde_json::from_slice(&context_bytes).test_expect("order context parses");
+    let event_log_bytes = read_fixture(&dir, "event-log.json");
     let provider_passport_bytes =
         signed_provider_trust_artifact_bytes(read_fixture(&dir, "provider-passport.json"));
     let reputation_snapshot_bytes =
@@ -128,7 +143,8 @@ fn load_bundle(case_name: &str) -> chio_commerce_order::CommerceOrderVerificatio
 
     chio_commerce_order::CommerceOrderVerificationBundle {
         order_context,
-        event_log_bytes: read_fixture(&dir, "event-log.json"),
+        event_log_bytes: event_log_bytes.clone(),
+        event_authority_receipts: event_authority_receipt_artifacts(&event_log_bytes),
         payment_lifecycle_bytes: read_fixture(&dir, "payment-lifecycle.json"),
         mandate_ledger_bytes: read_fixture(&dir, "mandate-allowance-ledger.json"),
         provider_passport_bytes,
@@ -137,8 +153,83 @@ fn load_bundle(case_name: &str) -> chio_commerce_order::CommerceOrderVerificatio
         settlement_packet_bytes: read_fixture(&dir, "settlement-packet.json"),
         mandate_protocol_payloads: mandate_protocol_payloads(),
         risk_comptroller_report_bytes: None,
+        trusted_event_authority_receipt_kernel_keys: vec![commerce_event_authority_receipt_key()],
         trusted_payment_signer_keys: vec![commerce_payment_signer_key()],
         trusted_provider_trust_signer_keys: vec![commerce_provider_trust_signer_key()],
+    }
+}
+
+fn event_authority_receipt_artifacts(
+    event_log_bytes: &[u8],
+) -> Vec<chio_commerce_order::CommerceEventAuthorityReceiptArtifact> {
+    let event_log: serde_json::Value =
+        serde_json::from_slice(event_log_bytes).test_expect("event log parses");
+    let events = event_log["events"]
+        .as_array()
+        .test_expect("event log events array");
+    events
+        .iter()
+        .map(event_authority_receipt_artifact)
+        .collect()
+}
+
+fn event_authority_receipt_artifact(
+    event: &serde_json::Value,
+) -> chio_commerce_order::CommerceEventAuthorityReceiptArtifact {
+    let receipt_ref = event["authority_receipt_ref"]
+        .as_str()
+        .test_expect("event authority receipt ref")
+        .to_string();
+    let receipt = ChioReceipt::sign(
+        ChioReceiptBody {
+            id: receipt_ref.clone(),
+            timestamp: 1_781_072_000,
+            capability_id: format!("cap-{receipt_ref}"),
+            tool_server: "chio-commerce-order-authority".to_string(),
+            tool_name: event["transition"]
+                .as_str()
+                .test_expect("event transition")
+                .to_string(),
+            action: ToolCallAction::from_parameters(serde_json::json!({
+                "authority_receipt_ref": receipt_ref,
+                "event_id": event["event_id"],
+                "order_id": event["order_id"],
+                "transition": event["transition"],
+            }))
+            .test_expect("authority receipt action hashes"),
+            decision: Some(Decision::Allow),
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: vec![ActorRef {
+                actor_id: event["actor"]
+                    .as_str()
+                    .test_expect("event actor")
+                    .to_string(),
+                actor_kind: Some("agent".to_string()),
+            }],
+            content_hash: event["event_sha256"]
+                .as_str()
+                .test_expect("event digest")
+                .to_string(),
+            policy_hash: sha256_hex(b"chio.commerce.event-authority.v1"),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: TrustLevel::Mediated,
+            tenant_id: None,
+            kernel_key: commerce_event_authority_receipt_key(),
+            bbs_projection_version: None,
+        },
+        &commerce_event_authority_receipt_signer(),
+    )
+    .test_expect("authority receipt signs");
+    let mut receipt_value = serde_json::to_value(receipt).test_expect("receipt serializes");
+    receipt_value["schema"] = serde_json::Value::String("chio.receipt.v1".to_string());
+    chio_commerce_order::CommerceEventAuthorityReceiptArtifact {
+        receipt_ref,
+        receipt_bytes: serde_json::to_vec(&receipt_value).test_expect("receipt JSON serializes"),
     }
 }
 
@@ -212,6 +303,10 @@ fn mutate_event_log_with_sealing(
     }
     bundle.event_log_bytes = serde_json::to_vec(&event_log).test_expect("event log serializes");
     bundle.order_context.event_log_sha256 = sha256_hex(&bundle.event_log_bytes);
+    if seal_events {
+        bundle.event_authority_receipts =
+            event_authority_receipt_artifacts(&bundle.event_log_bytes);
+    }
 }
 
 fn seal_event_log(event_log: &mut serde_json::Value, default_actor: &str) {
@@ -456,6 +551,17 @@ fn commerce_order_replay_accepts_offline_psp_fixture() {
     assert!(report
         .verified_claims
         .contains(&"claim.commerce.order_passport_summary_bound".to_string()));
+}
+
+#[test]
+fn commerce_order_replay_rejects_event_authority_receipt_without_signed_artifact() {
+    let mut bundle = load_bundle("offline-psp-valid");
+    bundle.event_authority_receipts.clear();
+
+    let error = chio_commerce_order::verify_commerce_order(&bundle)
+        .test_expect_err("event authority receipt refs must resolve to trusted signed receipts");
+
+    assert!(error.to_string().contains("authority receipt missing"));
 }
 
 #[test]
@@ -1010,6 +1116,8 @@ fn commerce_order_replay_rejects_double_budget_reservation() {
         let mut duplicate_budget_event = events[budget_event_index].clone();
         duplicate_budget_event["event_id"] =
             serde_json::json!("event-commerce-001-budget-replayed");
+        duplicate_budget_event["authority_receipt_ref"] =
+            serde_json::json!("receipt-budget-replayed-commerce-001");
         duplicate_budget_event["idempotency_key"] =
             serde_json::json!("idem-event-commerce-001-budget-replayed");
         duplicate_budget_event["prior_state"] = serde_json::json!("budget_reserved");

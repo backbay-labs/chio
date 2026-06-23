@@ -17,8 +17,9 @@ pub use ids::{
     COMMERCE_REPUTATION_SNAPSHOT_SCHEMA_ID, COMMERCE_SETTLEMENT_PACKET_SCHEMA_ID,
 };
 pub use types::{
-    CommerceCoverageRequirement, CommerceMandateProtocolPayload, CommerceOrderContext,
-    CommerceOrderPassportReport, CommerceOrderVerificationBundle, CommerceTrustMarketRequirement,
+    CommerceCoverageRequirement, CommerceEventAuthorityReceiptArtifact,
+    CommerceMandateProtocolPayload, CommerceOrderContext, CommerceOrderPassportReport,
+    CommerceOrderVerificationBundle, CommerceTrustMarketRequirement,
 };
 
 use mandate::{validate_mandate_ledger, CommerceMandateLedger};
@@ -104,7 +105,14 @@ pub fn verify_commerce_order(
     let settlement: CommerceSettlementPacket =
         parse_json("settlement packet", &bundle.settlement_packet_bytes)?;
 
-    let replay = replay_event_log(&event_log, &bundle.order_context, &payment, &mandate)?;
+    let replay = replay_event_log(
+        &event_log,
+        &bundle.order_context,
+        &payment,
+        &mandate,
+        &bundle.event_authority_receipts,
+        &bundle.trusted_event_authority_receipt_kernel_keys,
+    )?;
     validate_provider_trust_evidence(
         &bundle.order_context,
         &provider_passport,

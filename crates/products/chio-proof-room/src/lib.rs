@@ -143,6 +143,8 @@ const PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS";
 const PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS";
+const PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS";
 const PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS_ENV: &str = "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS";
 const PUBLIC_SETTLEMENT_MAINNET_BLOCKED_ENV: &str = "CHIO_PUBLIC_SETTLEMENT_MAINNET_BLOCKED";
 const PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS_ENV: &str =
@@ -338,6 +340,10 @@ pub(crate) fn public_settlement_verifier_trust_from_env(
         trusted_beneficiary_identity_keys: required_public_keys_from_env(
             PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS_ENV,
             "public settlement beneficiary identity",
+        )?,
+        trusted_oracle_keys: required_public_keys_from_env(
+            PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS_ENV,
+            "public settlement oracle",
         )?,
         allowed_chain_ids: required_string_list_from_env(
             PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS_ENV,

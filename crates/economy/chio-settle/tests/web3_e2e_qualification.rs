@@ -349,7 +349,10 @@ fn sample_capital_instruction(
             schema: chio_core::credit::CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA.to_string(),
             instruction_id: instruction_id.to_string(),
             issued_at,
-            query: CapitalBookQuery::default(),
+            query: CapitalBookQuery {
+                agent_subject: Some("subject-1".to_string()),
+                ..CapitalBookQuery::default()
+            },
             subject_key: "subject-1".to_string(),
             source_id: "capital-source:facility:facility-1".to_string(),
             source_kind: CapitalBookSourceKind::FacilityCommitment,
@@ -730,7 +733,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         &accounts.beneficiary,
     )
     .await?;
-    let oracle_evidence = build_fx_oracle_evidence(45_000, 15_000).await?;
+    let oracle_evidence = build_fx_oracle_evidence(46_153_846_153_846_153, 15_000).await?;
 
     let dual_amount = MonetaryAmount {
         units: 15_000,

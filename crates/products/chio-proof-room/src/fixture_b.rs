@@ -261,6 +261,8 @@ pub(crate) fn embedded_commerce_order_bundle(
         chio_commerce_order::COMMERCE_EVENT_LOG_SCHEMA_ID,
         "commerce",
     )?;
+    let event_authority_receipts =
+        embedded_commerce_event_authority_receipts(&graph.nodes, artifacts, &event_log_bytes)?;
     let payment_lifecycle_bytes = embedded_artifact_bytes_by_path(
         &graph.nodes,
         artifacts,
@@ -327,6 +329,7 @@ pub(crate) fn embedded_commerce_order_bundle(
     Ok(chio_commerce_order::CommerceOrderVerificationBundle {
         order_context,
         event_log_bytes,
+        event_authority_receipts,
         payment_lifecycle_bytes,
         mandate_ledger_bytes,
         provider_passport_bytes,
@@ -335,9 +338,76 @@ pub(crate) fn embedded_commerce_order_bundle(
         settlement_packet_bytes,
         mandate_protocol_payloads,
         risk_comptroller_report_bytes,
+        trusted_event_authority_receipt_kernel_keys: crate::transaction_trusted_root_keys_from_env(
+        )?,
         trusted_payment_signer_keys: crate::transaction_trusted_root_keys_from_env()?,
         trusted_provider_trust_signer_keys: crate::commerce_trusted_provider_keys_from_env()?,
     })
+}
+
+fn embedded_commerce_event_authority_receipts(
+    nodes: &[ProofRoomEmbeddedEvidenceNode],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    event_log_bytes: &[u8],
+) -> Result<Vec<chio_commerce_order::CommerceEventAuthorityReceiptArtifact>, String> {
+    commerce_event_authority_receipt_refs(event_log_bytes)?
+        .into_iter()
+        .map(|receipt_ref| {
+            let node = select_single_embedded_artifact_node_by_id(
+                nodes,
+                &receipt_ref,
+                CHIO_RECEIPT_SCHEMA,
+                "commerce authority receipt",
+            )?;
+            let receipt_bytes = embedded_artifact_node_bytes(
+                node,
+                artifacts,
+                CHIO_RECEIPT_SCHEMA,
+                "commerce authority receipt",
+            )?;
+            Ok(chio_commerce_order::CommerceEventAuthorityReceiptArtifact {
+                receipt_ref,
+                receipt_bytes,
+            })
+        })
+        .collect()
+}
+
+fn commerce_event_authority_receipt_refs(event_log_bytes: &[u8]) -> Result<Vec<String>, String> {
+    let event_log: serde_json::Value = serde_json::from_slice(event_log_bytes)
+        .map_err(|error| format!("commerce event log JSON invalid: {error}"))?;
+    let events = event_log
+        .get("events")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "commerce event log events must be an array".to_string())?;
+    events
+        .iter()
+        .map(|event| {
+            event
+                .get("authority_receipt_ref")
+                .and_then(serde_json::Value::as_str)
+                .filter(|receipt_ref| !receipt_ref.is_empty())
+                .map(str::to_string)
+                .ok_or_else(|| "commerce event missing authority receipt ref".to_string())
+        })
+        .collect()
+}
+
+fn select_single_embedded_artifact_node_by_id<'a>(
+    nodes: &'a [ProofRoomEmbeddedEvidenceNode],
+    id: &str,
+    expected_schema: &str,
+    label: &str,
+) -> Result<&'a ProofRoomEmbeddedEvidenceNode, String> {
+    let matches: Vec<&ProofRoomEmbeddedEvidenceNode> = nodes
+        .iter()
+        .filter(|node| node.id == id && node.schema == expected_schema)
+        .collect();
+    match matches.as_slice() {
+        [node] => Ok(node),
+        [] => Err(format!("missing {label} artifact id: {id}")),
+        _ => Err(format!("multiple {label} artifact ids: {id}")),
+    }
 }
 
 #[derive(serde::Deserialize)]

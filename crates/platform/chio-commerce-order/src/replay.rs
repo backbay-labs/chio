@@ -1,5 +1,13 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
+use chio_core_types::{
+    crypto::PublicKey,
+    receipt::{
+        body::{ChioReceipt, CHIO_RECEIPT_SCHEMA},
+        decision::Decision,
+        kinds::{BoundaryClass, ReceiptKind, TrustLevel},
+    },
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -8,7 +16,8 @@ use super::error::CommerceOrderError;
 use super::ids::COMMERCE_EVENT_LOG_SCHEMA_ID;
 use super::mandate::CommerceMandateLedger;
 use super::types::{
-    CommerceOrderContext, CommercePaymentLifecycle, CommerceTrustMarketRequirement,
+    CommerceEventAuthorityReceiptArtifact, CommerceOrderContext, CommercePaymentLifecycle,
+    CommerceTrustMarketRequirement,
 };
 use super::validation::{parse_rfc3339_utc, require_non_empty, validate_sha256_hex};
 
@@ -47,8 +56,11 @@ pub(super) fn replay_event_log(
     context: &CommerceOrderContext,
     payment: &CommercePaymentLifecycle,
     mandate: &CommerceMandateLedger,
+    authority_receipts: &[CommerceEventAuthorityReceiptArtifact],
+    trusted_event_authority_receipt_kernel_keys: &[PublicKey],
 ) -> Result<CommerceReplayResult, CommerceOrderError> {
     validate_log_shape(event_log, context)?;
+    let authority_receipts = authority_receipts_by_ref(authority_receipts)?;
 
     let mut seen_event_ids = BTreeSet::new();
     let mut seen_idempotency_keys = BTreeSet::new();
@@ -62,6 +74,11 @@ pub(super) fn replay_event_log(
     let payment_captured_at = parse_rfc3339_utc(&payment.captured_at, "payment captured_at")?;
     for event in &event_log.events {
         let occurred_at = validate_event_shape(event, context)?;
+        validate_event_authority_receipt(
+            event,
+            &authority_receipts,
+            trusted_event_authority_receipt_kernel_keys,
+        )?;
         if let Some(previous_occurred_at) = previous_event_occurred_at.as_ref() {
             if &occurred_at < previous_occurred_at {
                 return Err(CommerceOrderError::ReplayFailed(format!(
@@ -228,6 +245,126 @@ pub(super) fn replay_event_log(
     }
 
     Ok(CommerceReplayResult { current_state })
+}
+
+fn authority_receipts_by_ref(
+    authority_receipts: &[CommerceEventAuthorityReceiptArtifact],
+) -> Result<BTreeMap<&str, ChioReceipt>, CommerceOrderError> {
+    let mut by_ref = BTreeMap::new();
+    for artifact in authority_receipts {
+        require_non_empty(&artifact.receipt_ref, "authority receipt ref")
+            .map_err(CommerceOrderError::ReplayFailed)?;
+        if by_ref.contains_key(artifact.receipt_ref.as_str()) {
+            return Err(CommerceOrderError::ReplayFailed(format!(
+                "duplicate authority receipt artifact: {}",
+                artifact.receipt_ref
+            )));
+        }
+        by_ref.insert(
+            artifact.receipt_ref.as_str(),
+            parse_authority_receipt(artifact)?,
+        );
+    }
+    Ok(by_ref)
+}
+
+fn parse_authority_receipt(
+    artifact: &CommerceEventAuthorityReceiptArtifact,
+) -> Result<ChioReceipt, CommerceOrderError> {
+    let value: serde_json::Value =
+        serde_json::from_slice(&artifact.receipt_bytes).map_err(|error| {
+            CommerceOrderError::ReplayFailed(format!(
+                "authority receipt artifact JSON invalid: {}: {error}",
+                artifact.receipt_ref
+            ))
+        })?;
+    let schema = value
+        .get("schema")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            CommerceOrderError::ReplayFailed(format!(
+                "authority receipt artifact schema missing: {}",
+                artifact.receipt_ref
+            ))
+        })?;
+    if schema != CHIO_RECEIPT_SCHEMA {
+        return Err(CommerceOrderError::UnsupportedSchema {
+            field: "authority receipt",
+            schema: schema.to_string(),
+        });
+    }
+    serde_json::from_value(value).map_err(|error| {
+        CommerceOrderError::ReplayFailed(format!(
+            "authority receipt artifact invalid: {}: {error}",
+            artifact.receipt_ref
+        ))
+    })
+}
+
+fn validate_event_authority_receipt(
+    event: &CommerceOrderEvent,
+    authority_receipts: &BTreeMap<&str, ChioReceipt>,
+    trusted_event_authority_receipt_kernel_keys: &[PublicKey],
+) -> Result<(), CommerceOrderError> {
+    let receipt = authority_receipts
+        .get(event.authority_receipt_ref.as_str())
+        .ok_or_else(|| {
+            CommerceOrderError::ReplayFailed(format!(
+                "authority receipt missing: {}",
+                event.authority_receipt_ref
+            ))
+        })?;
+    if trusted_event_authority_receipt_kernel_keys.is_empty() {
+        return Err(CommerceOrderError::ReplayFailed(
+            "authority receipt kernel trust roots missing".to_string(),
+        ));
+    }
+    if !trusted_event_authority_receipt_kernel_keys.contains(&receipt.kernel_key) {
+        return Err(CommerceOrderError::ReplayFailed(format!(
+            "authority receipt kernel key untrusted: {}",
+            event.authority_receipt_ref
+        )));
+    }
+    let signature_valid = receipt.verify_signature().map_err(|error| {
+        CommerceOrderError::ReplayFailed(format!(
+            "authority receipt signature invalid: {}: {error}",
+            event.authority_receipt_ref
+        ))
+    })?;
+    if !signature_valid {
+        return Err(CommerceOrderError::ReplayFailed(format!(
+            "authority receipt signature invalid: {}",
+            event.authority_receipt_ref
+        )));
+    }
+    if !receipt.action.verify_hash().map_err(|error| {
+        CommerceOrderError::ReplayFailed(format!(
+            "authority receipt action hash invalid: {}: {error}",
+            event.authority_receipt_ref
+        ))
+    })? {
+        return Err(CommerceOrderError::ReplayFailed(format!(
+            "authority receipt action hash invalid: {}",
+            event.authority_receipt_ref
+        )));
+    }
+    if receipt.receipt_kind != ReceiptKind::MediatedDecision
+        || receipt.boundary_class != BoundaryClass::Prevent
+        || receipt.trust_level != TrustLevel::Mediated
+        || receipt.decision != Some(Decision::Allow)
+    {
+        return Err(CommerceOrderError::ReplayFailed(format!(
+            "authority receipt did not authorize event: {}",
+            event.authority_receipt_ref
+        )));
+    }
+    if receipt.content_hash != event.event_sha256 {
+        return Err(CommerceOrderError::ReplayFailed(format!(
+            "authority receipt content hash mismatch: {}",
+            event.event_id
+        )));
+    }
+    Ok(())
 }
 
 fn active_trust_market_requirement(

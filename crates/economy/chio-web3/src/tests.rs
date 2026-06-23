@@ -1,5 +1,5 @@
 use crate::anchors::{
-    checkpoint_statement_body, validate_anchor_inclusion_proof,
+    checkpoint_statement_body, sign_oracle_conversion_evidence, validate_anchor_inclusion_proof,
     validate_oracle_conversion_evidence, verify_anchor_inclusion_proof, AnchorInclusionProof,
     OracleConversionEvidence, Web3ChainAnchorRecord, Web3CheckpointStatement, Web3ReceiptInclusion,
     CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA, CHIO_CHECKPOINT_STATEMENT_SCHEMA,
@@ -69,6 +69,10 @@ fn custodian_keypair() -> Keypair {
 
 fn beneficiary_keypair() -> Keypair {
     Keypair::from_seed(&[13u8; 32])
+}
+
+fn oracle_keypair() -> Keypair {
+    Keypair::from_seed(&[15u8; 32])
 }
 
 fn signed_identity_binding(
@@ -205,7 +209,7 @@ fn sample_trust_profile() -> Web3TrustProfile {
 }
 
 fn sample_oracle_evidence() -> OracleConversionEvidence {
-    OracleConversionEvidence {
+    let mut evidence = OracleConversionEvidence {
         schema: CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA.to_string(),
         base: "ETH".to_string(),
         quote: "USD".to_string(),
@@ -221,7 +225,13 @@ fn sample_oracle_evidence() -> OracleConversionEvidence {
         original_cost_units: 1_000_000_000_000_000,
         original_currency: "ETH".to_string(),
         grant_currency: "USD".to_string(),
+        oracle_public_key: None,
+        signature: None,
+    };
+    if let Err(error) = sign_oracle_conversion_evidence(&mut evidence, &oracle_keypair()) {
+        panic!("sample oracle evidence must sign: {error}");
     }
+    evidence
 }
 
 fn sample_receipt() -> ChioReceipt {
@@ -571,6 +581,7 @@ fn sample_public_settlement_verifier_trust() -> PublicSettlementVerifierTrust {
         trusted_capital_signer_keys: vec![treasury_keypair().public_key()],
         trusted_anchor_kernel_keys: vec![operator_keypair().public_key()],
         trusted_beneficiary_identity_keys: vec![beneficiary_keypair().public_key()],
+        trusted_oracle_keys: vec![oracle_keypair().public_key()],
         allowed_chain_ids: vec!["eip155:8453".to_string()],
         mainnet_blocked: false,
         minimum_confirmations: Some(20),
@@ -915,6 +926,24 @@ fn fx_sensitive_settlement_receipt_requires_oracle_evidence() {
 }
 
 #[test]
+fn timed_out_settlement_receipt_allows_refund_after_execution_window() {
+    let mut receipt = sample_execution_receipt();
+    receipt.lifecycle_state = Web3SettlementLifecycleState::TimedOut;
+    receipt.failure_reason = Some("escrow refunded after deadline".to_string());
+    receipt.reconciled_anchor_proof = None;
+    receipt.observed_execution.observed_at = receipt
+        .dispatch
+        .capital_instruction
+        .body
+        .execution_window
+        .not_after
+        + 1;
+    receipt.issued_at = receipt.observed_execution.observed_at;
+
+    validate_web3_settlement_execution_receipt(&receipt).unwrap();
+}
+
+#[test]
 fn settlement_receipt_rejects_oracle_grant_currency_mismatch() {
     let mut receipt = sample_execution_receipt();
     let oracle_evidence = receipt.oracle_evidence.as_mut().unwrap();
@@ -991,6 +1020,47 @@ fn public_settlement_proof_emits_verifier_report() {
     assert!(report
         .verified_claims
         .contains(&CLAIM_PUBLIC_SETTLEMENT_PUBLIC_WITNESS_VERIFIED.to_string()));
+}
+
+#[test]
+fn public_settlement_proof_rejects_missing_trusted_oracle_keys() {
+    let bundle = sample_public_settlement_proof_bundle();
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_oracle_keys.clear();
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &trust),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("trusted public settlement oracle keys missing")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_untrusted_oracle_signer() {
+    let bundle = sample_public_settlement_proof_bundle();
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_oracle_keys = vec![operator_keypair().public_key()];
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &trust),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("oracle conversion evidence signer key is not trusted")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_tampered_oracle_signature() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    let Some(oracle_evidence) = bundle.settlement_receipt.oracle_evidence.as_mut() else {
+        panic!("sample public settlement proof includes oracle evidence");
+    };
+    oracle_evidence.feed_address = "0x0000000000000000000000000000000000000000".to_string();
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("oracle conversion evidence signature verification failed")
+    ));
 }
 
 #[test]

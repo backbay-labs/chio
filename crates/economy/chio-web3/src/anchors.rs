@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 pub use chio_core_types::oracle::OracleConversionEvidence;
 
 use crate::canonical::canonical_json_bytes;
-use crate::crypto::{PublicKey, Signature};
+use crate::crypto::{Keypair, PublicKey, Signature};
 use crate::error::Web3ContractError;
 use crate::hashing::Hash;
 use crate::identity::{
@@ -154,6 +154,70 @@ pub fn validate_oracle_conversion_evidence(
         )));
     }
     Ok(())
+}
+
+pub fn sign_oracle_conversion_evidence(
+    evidence: &mut OracleConversionEvidence,
+    keypair: &Keypair,
+) -> Result<(), Web3ContractError> {
+    evidence.oracle_public_key = Some(keypair.public_key());
+    evidence.signature = None;
+    let body = oracle_conversion_evidence_signature_body(evidence);
+    let (signature, _) = keypair.sign_canonical(&body).map_err(|error| {
+        Web3ContractError::InvalidProof(format!(
+            "oracle conversion evidence signing failed: {error}"
+        ))
+    })?;
+    evidence.signature = Some(signature);
+    Ok(())
+}
+
+pub fn verify_oracle_conversion_evidence_signature(
+    evidence: &OracleConversionEvidence,
+    trusted_oracle_keys: &[PublicKey],
+) -> Result<(), Web3ContractError> {
+    if trusted_oracle_keys.is_empty() {
+        return Err(Web3ContractError::InvalidProof(
+            "trusted public settlement oracle keys missing".to_string(),
+        ));
+    }
+    let oracle_public_key = evidence.oracle_public_key.as_ref().ok_or_else(|| {
+        Web3ContractError::InvalidProof("oracle conversion evidence signer key missing".to_string())
+    })?;
+    if !trusted_oracle_keys
+        .iter()
+        .any(|trusted_key| trusted_key == oracle_public_key)
+    {
+        return Err(Web3ContractError::InvalidProof(
+            "oracle conversion evidence signer key is not trusted".to_string(),
+        ));
+    }
+    let signature = evidence.signature.as_ref().ok_or_else(|| {
+        Web3ContractError::InvalidProof("oracle conversion evidence signature missing".to_string())
+    })?;
+    let body = oracle_conversion_evidence_signature_body(evidence);
+    let signature_valid = oracle_public_key
+        .verify_canonical(&body, signature)
+        .map_err(|error| {
+            Web3ContractError::InvalidProof(format!(
+                "oracle conversion evidence signature verification failed: {error}"
+            ))
+        })?;
+    if signature_valid {
+        Ok(())
+    } else {
+        Err(Web3ContractError::InvalidProof(
+            "oracle conversion evidence signature verification failed".to_string(),
+        ))
+    }
+}
+
+fn oracle_conversion_evidence_signature_body(
+    evidence: &OracleConversionEvidence,
+) -> OracleConversionEvidence {
+    let mut body = evidence.clone();
+    body.signature = None;
+    body
 }
 
 fn expected_oracle_converted_cost_units(

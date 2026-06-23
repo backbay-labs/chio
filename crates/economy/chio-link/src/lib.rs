@@ -182,6 +182,8 @@ impl ExchangeRate {
             original_cost_units,
             original_currency: original_currency.into(),
             grant_currency: grant_currency.into(),
+            oracle_public_key: None,
+            signature: None,
         })
     }
 }

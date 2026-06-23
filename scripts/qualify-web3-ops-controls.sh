@@ -10,6 +10,7 @@ fi
 
 output_root="target/web3-ops-qualification"
 output_root_abs="$(pwd)/${output_root}"
+cargo_target_dir="${CARGO_TARGET_DIR:-target/chio-web3-ops-qualification}"
 log_path="${output_root}/qualification.log"
 rm -rf "${output_root}"
 mkdir -p "${output_root}"
@@ -21,7 +22,7 @@ run() {
 }
 
 run env CHIO_WEB3_OPS_OUTPUT_DIR="${output_root_abs}" \
-  CARGO_TARGET_DIR=target/chio-web3-ops-qualification \
+  CARGO_TARGET_DIR="${cargo_target_dir}" \
   CARGO_INCREMENTAL=0 \
   CARGO_BUILD_JOBS=1 \
   cargo test -p chio-control-plane --test web3_ops_qualification -- --nocapture --test-threads=1

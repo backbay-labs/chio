@@ -248,6 +248,7 @@ fn validate_trust_market_requirement_shape(
 pub struct CommerceOrderVerificationBundle {
     pub order_context: CommerceOrderContext,
     pub event_log_bytes: Vec<u8>,
+    pub event_authority_receipts: Vec<CommerceEventAuthorityReceiptArtifact>,
     pub payment_lifecycle_bytes: Vec<u8>,
     pub mandate_ledger_bytes: Vec<u8>,
     pub provider_passport_bytes: Vec<u8>,
@@ -256,8 +257,16 @@ pub struct CommerceOrderVerificationBundle {
     pub settlement_packet_bytes: Vec<u8>,
     pub mandate_protocol_payloads: Vec<CommerceMandateProtocolPayload>,
     pub risk_comptroller_report_bytes: Option<Vec<u8>>,
+    pub trusted_event_authority_receipt_kernel_keys: Vec<chio_core_types::crypto::PublicKey>,
     pub trusted_payment_signer_keys: Vec<chio_core_types::crypto::PublicKey>,
     pub trusted_provider_trust_signer_keys: Vec<chio_core_types::crypto::PublicKey>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CommerceEventAuthorityReceiptArtifact {
+    pub receipt_ref: String,
+    pub receipt_bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

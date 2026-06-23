@@ -246,7 +246,10 @@ fn sample_capital_instruction(
             schema: chio_core::credit::CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA.to_string(),
             instruction_id: instruction_id.to_string(),
             issued_at,
-            query: CapitalBookQuery::default(),
+            query: CapitalBookQuery {
+                agent_subject: Some("subject-1".to_string()),
+                ..CapitalBookQuery::default()
+            },
             subject_key: "subject-1".to_string(),
             source_id: "capital-source:facility:facility-1".to_string(),
             source_kind: CapitalBookSourceKind::FacilityCommitment,

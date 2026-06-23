@@ -60,6 +60,8 @@ const PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS";
 const PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS";
+const PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS";
 const PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS_ENV: &str = "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS";
 const PUBLIC_SETTLEMENT_MAINNET_BLOCKED_ENV: &str = "CHIO_PUBLIC_SETTLEMENT_MAINNET_BLOCKED";
 const PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS_ENV: &str =
@@ -275,6 +277,10 @@ fn public_settlement_verifier_trust_from_env(
         trusted_beneficiary_identity_keys: required_public_keys_from_env(
             PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS_ENV,
             "public settlement beneficiary identity",
+        )?,
+        trusted_oracle_keys: required_public_keys_from_env(
+            PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS_ENV,
+            "public settlement oracle",
         )?,
         allowed_chain_ids: required_string_list_from_env(
             PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS_ENV,
@@ -1028,15 +1034,14 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
         &evidence_graph_bytes,
         claim_requirements.requires(CLAIM_PREFIX_RISK),
     )?;
-    let settlement_requires_trust_market_context =
-        if claim_requirements.requires_claim(
-            chio_web3::settlement_proof::CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND,
-        ) {
-            load_public_settlement_proof_bundle_from_graph(bundle_dir, &evidence_graph_bytes)?
-                .has_trust_market_refs()
-        } else {
-            false
-        };
+    let settlement_requires_trust_market_context = if claim_requirements.requires_claim(
+        chio_web3::settlement_proof::CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND,
+    ) {
+        load_public_settlement_proof_bundle_from_graph(bundle_dir, &evidence_graph_bytes)?
+            .has_trust_market_refs()
+    } else {
+        false
+    };
     let disclosure_evidence_present =
         evidence_graph_contains_disclosure_artifacts(&evidence_graph_bytes)?;
     let mut family_reports = Vec::new();
@@ -1071,10 +1076,9 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
         push_family_report(&mut family_reports, report)?;
     }
     for spec in LOCAL_PROOF_FAMILY_SPECS {
-        let evidence_presence_required = matches!(
-            spec.route,
-            LocalProofFamilyRoute::DisclosureLineage
-        ) && disclosure_evidence_present;
+        let evidence_presence_required =
+            matches!(spec.route, LocalProofFamilyRoute::DisclosureLineage)
+                && disclosure_evidence_present;
         if claim_requirements.requires(spec.prefix) || evidence_presence_required {
             push_local_proof_family_report(
                 &mut family_reports,
@@ -1237,8 +1241,8 @@ fn push_local_proof_family_report(
                 trusted_transaction_root_keys,
                 &commerce_trusted_provider_keys_from_env()?,
             )?;
-            let report =
-                chio_commerce_order::verify_commerce_order(&bundle).map_err(map_commerce_proof_error)?;
+            let report = chio_commerce_order::verify_commerce_order(&bundle)
+                .map_err(map_commerce_proof_error)?;
             push_checked_local_family_report(family_reports, claim_requirements, spec, report)
         }
         LocalProofFamilyRoute::DisclosureLineage => {
@@ -1283,14 +1287,8 @@ fn public_settlement_trust_market_context_from_trust_market_report(
     report: &chio_control_plane::trust_market::TrustMarketVerifierReport,
 ) -> chio_web3::settlement_proof::PublicSettlementTrustMarketContext {
     chio_web3::settlement_proof::PublicSettlementTrustMarketContext {
-        collateral_position_ref: report
-            .trust_market_sections
-            .collateral_position_ref
-            .clone(),
-        guarantee_decision_ref: report
-            .trust_market_sections
-            .guarantee_decision_ref
-            .clone(),
+        collateral_position_ref: report.trust_market_sections.collateral_position_ref.clone(),
+        guarantee_decision_ref: report.trust_market_sections.guarantee_decision_ref.clone(),
         sla_remedy_ref: report.trust_market_sections.sla_remedy_ref.clone(),
         slash_authority_ref: report.trust_market_sections.slash_authority_ref.clone(),
     }
@@ -2130,6 +2128,8 @@ fn load_commerce_order_bundle_from_graph(
         chio_commerce_order::COMMERCE_EVENT_LOG_SCHEMA_ID,
         "commerce",
     )?;
+    let event_authority_receipts =
+        load_commerce_event_authority_receipts(bundle_dir, &graph.nodes, &event_log_bytes)?;
     let payment_lifecycle_bytes = load_required_graph_bytes_artifact_by_path(
         bundle_dir,
         &graph.nodes,
@@ -2193,6 +2193,7 @@ fn load_commerce_order_bundle_from_graph(
     Ok(chio_commerce_order::CommerceOrderVerificationBundle {
         order_context,
         event_log_bytes,
+        event_authority_receipts,
         payment_lifecycle_bytes,
         mandate_ledger_bytes,
         provider_passport_bytes,
@@ -2201,9 +2202,83 @@ fn load_commerce_order_bundle_from_graph(
         settlement_packet_bytes,
         mandate_protocol_payloads,
         risk_comptroller_report_bytes,
+        trusted_event_authority_receipt_kernel_keys: trusted_payment_signer_keys.to_vec(),
         trusted_payment_signer_keys: trusted_payment_signer_keys.to_vec(),
         trusted_provider_trust_signer_keys: trusted_provider_trust_signer_keys.to_vec(),
     })
+}
+
+fn load_commerce_event_authority_receipts(
+    bundle_dir: &Path,
+    nodes: &[GraphArtifactNode],
+    event_log_bytes: &[u8],
+) -> Result<Vec<chio_commerce_order::CommerceEventAuthorityReceiptArtifact>, CliError> {
+    commerce_event_authority_receipt_refs(event_log_bytes)?
+        .into_iter()
+        .map(|receipt_ref| {
+            let node = select_required_graph_receipt_node(nodes, &receipt_ref)?;
+            let receipt_bytes = load_graph_bytes_artifact(
+                bundle_dir,
+                node,
+                chio_core_types::receipt::body::CHIO_RECEIPT_SCHEMA,
+                "commerce authority receipt",
+            )?;
+            Ok(chio_commerce_order::CommerceEventAuthorityReceiptArtifact {
+                receipt_ref,
+                receipt_bytes,
+            })
+        })
+        .collect()
+}
+
+fn commerce_event_authority_receipt_refs(event_log_bytes: &[u8]) -> Result<Vec<String>, CliError> {
+    let event_log: serde_json::Value = serde_json::from_slice(event_log_bytes)?;
+    let events = event_log
+        .get("events")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            CliError::cli_other_error(
+                "proof verify: commerce event log events must be an array".to_string(),
+            )
+        })?;
+    events
+        .iter()
+        .map(|event| {
+            event
+                .get("authority_receipt_ref")
+                .and_then(serde_json::Value::as_str)
+                .filter(|receipt_ref| !receipt_ref.is_empty())
+                .map(str::to_string)
+                .ok_or_else(|| {
+                    CliError::cli_other_error(
+                        "proof verify: commerce event missing authority receipt ref".to_string(),
+                    )
+                })
+        })
+        .collect()
+}
+
+fn select_required_graph_receipt_node<'a>(
+    nodes: &'a [GraphArtifactNode],
+    receipt_ref: &str,
+) -> Result<&'a GraphArtifactNode, CliError> {
+    let matches: Vec<&GraphArtifactNode> = nodes
+        .iter()
+        .filter(|node| {
+            node.id.as_deref() == Some(receipt_ref)
+                && node.schema.as_deref()
+                    == Some(chio_core_types::receipt::body::CHIO_RECEIPT_SCHEMA)
+        })
+        .collect();
+    match matches.as_slice() {
+        [node] => Ok(node),
+        [] => Err(CliError::cli_other_error(format!(
+            "proof verify: missing commerce authority receipt artifact: {receipt_ref}",
+        ))),
+        _ => Err(CliError::cli_other_error(format!(
+            "proof verify: multiple commerce authority receipt artifacts: {receipt_ref}",
+        ))),
+    }
 }
 
 fn ensure_required_claims_verified(
@@ -3040,17 +3115,12 @@ fn map_proof_error(
         TransactionPassportError::InvalidEvidenceGraphArtifact(ref message)
             if is_graph_cycle_error(message) =>
         {
-            CliError::registry_error(
-                &TRANSACTION_GRAPH_CYCLE,
-                format!("proof verify: {error}"),
-            )
+            CliError::registry_error(&TRANSACTION_GRAPH_CYCLE, format!("proof verify: {error}"))
         }
-        TransactionPassportError::MissingEvidenceGraphArtifact(_) => {
-            CliError::registry_error(
-                &TRANSACTION_GRAPH_NOT_CLOSED,
-                format!("proof verify: {error}"),
-            )
-        }
+        TransactionPassportError::MissingEvidenceGraphArtifact(_) => CliError::registry_error(
+            &TRANSACTION_GRAPH_NOT_CLOSED,
+            format!("proof verify: {error}"),
+        ),
         TransactionPassportError::InvalidEvidenceGraphArtifact(ref message)
             if is_graph_not_closed_error(message) =>
         {

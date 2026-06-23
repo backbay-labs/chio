@@ -8,7 +8,11 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v pnpm >/dev/null 2>&1; then
+if command -v corepack >/dev/null 2>&1; then
+  pnpm_cmd=(corepack pnpm)
+elif command -v pnpm >/dev/null 2>&1; then
+  pnpm_cmd=(pnpm)
+else
   echo "web3 promotion qualification requires pnpm on PATH" >&2
   exit 1
 fi
@@ -23,9 +27,9 @@ run() {
   "$@" 2>&1 | tee -a "${log_path}"
 }
 
-run pnpm --dir contracts install --frozen-lockfile
-run pnpm --dir contracts compile
-run pnpm --dir contracts qualify:review-prep --output-dir "${output_root}/review-prep"
+run "${pnpm_cmd[@]}" --dir contracts install --frozen-lockfile
+run "${pnpm_cmd[@]}" --dir contracts compile
+run "${pnpm_cmd[@]}" --dir contracts qualify:review-prep --output-dir "${output_root}/review-prep"
 run node contracts/scripts/qualify-promotion.mjs --output-dir "${output_root}"
 run jq empty \
   docs/standards/CHIO_WEB3_DEPLOYMENT_APPROVAL_EXAMPLE.json \

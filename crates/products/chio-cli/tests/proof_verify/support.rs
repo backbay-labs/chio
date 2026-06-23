@@ -40,6 +40,8 @@ const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS: &str =
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS: &str =
     "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ORACLE_KEYS: &str =
+    "d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c";
 
 pub(crate) fn chio_with_agent_web_fixture_secret() -> std::process::Command {
     let mut command = chio_with_transaction_fixture_roots();
@@ -122,6 +124,10 @@ pub(crate) fn chio_with_transaction_fixture_roots() -> std::process::Command {
     command.env(
         "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS",
         PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS,
+    );
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ORACLE_KEYS,
     );
     command.env(
         "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS",

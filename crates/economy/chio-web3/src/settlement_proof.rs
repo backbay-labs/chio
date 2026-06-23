@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::anchors::verify_oracle_conversion_evidence_signature;
 use crate::canonical::canonical_json_bytes;
 use crate::credit::CapitalBookEvidenceKind;
 use crate::crypto::sha256_hex;
@@ -145,6 +146,7 @@ pub struct PublicSettlementVerifierTrust {
     pub trusted_capital_signer_keys: Vec<PublicKey>,
     pub trusted_anchor_kernel_keys: Vec<PublicKey>,
     pub trusted_beneficiary_identity_keys: Vec<PublicKey>,
+    pub trusted_oracle_keys: Vec<PublicKey>,
     pub allowed_chain_ids: Vec<String>,
     pub mainnet_blocked: bool,
     pub minimum_confirmations: Option<u32>,
@@ -335,7 +337,8 @@ pub fn verify_public_settlement_proof(
         &mut verified_claims,
         CLAIM_PUBLIC_SETTLEMENT_FINALITY_VERIFIED,
     );
-    if bundle.settlement_receipt.oracle_evidence.is_some() {
+    if let Some(oracle_evidence) = &bundle.settlement_receipt.oracle_evidence {
+        verify_oracle_conversion_evidence_signature(oracle_evidence, &trust.trusted_oracle_keys)?;
         push_claim_once(
             &mut verified_claims,
             CLAIM_PUBLIC_SETTLEMENT_ORACLE_CONVERSION_BOUND,

@@ -8,7 +8,11 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v pnpm >/dev/null 2>&1; then
+if command -v corepack >/dev/null 2>&1; then
+  pnpm_cmd=(corepack pnpm)
+elif command -v pnpm >/dev/null 2>&1; then
+  pnpm_cmd=(pnpm)
+else
   echo "web3 local qualification requires pnpm on PATH" >&2
   exit 1
 fi
@@ -23,7 +27,7 @@ run() {
   "$@" 2>&1 | tee -a "${log_path}"
 }
 
-run pnpm --dir contracts install --frozen-lockfile
+run "${pnpm_cmd[@]}" --dir contracts install --frozen-lockfile
 run ./scripts/qualify-web3-runtime.sh
 run ./scripts/qualify-web3-promotion.sh
 run ./scripts/qualify-web3-examples.sh

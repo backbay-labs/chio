@@ -1,7 +1,9 @@
 use super::*;
 use chio_core_types::{
     receipt::body::{ChioReceipt, ChioReceiptBody},
-    receipt::decision::ToolCallAction,
+    receipt::decision::{Decision, ToolCallAction},
+    receipt::kinds::{BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin, TrustLevel},
+    receipt::metadata::ActorRef,
     Keypair,
 };
 use std::{collections::BTreeSet, ffi::OsString};
@@ -20,6 +22,7 @@ const RUNTIME_SWARM_LOOPBACK_NOW_UNIX_MS: u64 = 1_800_000_001_000;
 const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 const COMMERCE_PROVIDER_TRUST_SIGNATURE_SEED: [u8; 32] = [8; 32];
 const TRUST_MARKET_AUTHORITY_SIGNATURE_SEED: [u8; 32] = [59; 32];
+const PUBLIC_SETTLEMENT_ORACLE_SIGNATURE_SEED: [u8; 32] = [15; 32];
 const DISCLOSURE_AGENT_WEB_BBS_KEY_MATERIAL: &[u8] = b"chio-proof-disclosure-agent-web-bbs-key";
 const DISCLOSURE_AGENT_WEB_BBS_KEY_INFO: &[u8] = b"chio-proof-disclosure-agent-web";
 const DISCLOSURE_AGENT_WEB_BBS_NONCE: &[u8] = b"nonce-disclosure-agent-web";
@@ -642,6 +645,7 @@ fn generate_commerce_transaction_passport_fixture(out: &Path) -> Result<(), CliE
     copy_dir_contents(&commerce_source, &bundle)?;
     strip_collected_bundle_outputs(&bundle)?;
     merge_public_settlement_fixture(&bundle, &settlement_source)?;
+    add_commerce_event_authority_receipts(&bundle)?;
     add_commerce_terminal_receipts(&bundle)?;
     collect::seal_collected_public_fixture_bundle(
         ProofCollectKind::IoaWeb3,
@@ -653,6 +657,123 @@ fn generate_commerce_transaction_passport_fixture(out: &Path) -> Result<(), CliE
         out.join("verifier-report.json"),
     )?;
     Ok(())
+}
+
+fn add_commerce_event_authority_receipts(bundle: &Path) -> Result<(), CliError> {
+    let event_log_path = bundle.join("event-log.json");
+    let event_log = read_json_value(&event_log_path)?;
+    let events = event_log
+        .get("events")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            CliError::cli_other_error(format!(
+                "commerce event log events missing: {}",
+                event_log_path.display()
+            ))
+        })?;
+    let policy_sha256 = sha256_file(&bundle.join("verifier-policy.json"))?;
+    let receipt_dir = bundle.join("authority-receipts");
+    fs::create_dir_all(&receipt_dir)?;
+
+    let evidence_graph_path = bundle.join("evidence-graph.json");
+    let mut evidence_graph = read_json_value(&evidence_graph_path)?;
+    let nodes = json_array_mut(&mut evidence_graph, "nodes", &evidence_graph_path)?;
+    for event in events {
+        let receipt_ref = event
+            .get("authority_receipt_ref")
+            .and_then(serde_json::Value::as_str)
+            .filter(|receipt_ref| !receipt_ref.is_empty())
+            .ok_or_else(|| {
+                CliError::cli_other_error(format!(
+                    "commerce event missing authority receipt ref: {}",
+                    event_log_path.display()
+                ))
+            })?;
+        let receipt_path = format!("authority-receipts/{receipt_ref}.json");
+        let destination = bundle.join(&receipt_path);
+        write_commerce_event_authority_receipt(&destination, event, &policy_sha256)?;
+        upsert_fixture_graph_node(
+            nodes,
+            receipt_ref,
+            &receipt_path,
+            "chio.receipt.v1",
+            "receipt",
+            &sha256_file(&destination)?,
+        );
+    }
+    write_json_line_file(&evidence_graph_path, &evidence_graph)?;
+    let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
+
+    let passport_path = bundle.join("transaction-passport.json");
+    let mut passport = read_json_value(&passport_path)?;
+    passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
+    write_signed_transaction_passport(&passport_path, passport)?;
+    Ok(())
+}
+
+fn write_commerce_event_authority_receipt(
+    destination: &Path,
+    event: &serde_json::Value,
+    policy_sha256: &str,
+) -> Result<(), CliError> {
+    let receipt_ref = required_event_string(event, "authority_receipt_ref")?;
+    let keypair = Keypair::from_seed(&[7u8; 32]);
+    let receipt = ChioReceipt::sign(
+        ChioReceiptBody {
+            id: receipt_ref.clone(),
+            timestamp: 1_781_072_000,
+            capability_id: format!("cap-{receipt_ref}"),
+            tool_server: "chio-commerce-order-authority".to_string(),
+            tool_name: required_event_string(event, "transition")?,
+            action: ToolCallAction::from_parameters(serde_json::json!({
+                "authority_receipt_ref": receipt_ref,
+                "event_id": event["event_id"],
+                "order_id": event["order_id"],
+                "transition": event["transition"],
+            }))
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "proof fixture commerce authority receipt action hash failed: {error}"
+                ))
+            })?,
+            decision: Some(Decision::Allow),
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: vec![ActorRef {
+                actor_id: required_event_string(event, "actor")?,
+                actor_kind: Some("agent".to_string()),
+            }],
+            content_hash: required_event_string(event, "event_sha256")?,
+            policy_hash: policy_sha256.to_string(),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: TrustLevel::Mediated,
+            tenant_id: None,
+            kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
+        },
+        &keypair,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "proof fixture commerce authority receipt signing failed: {error}"
+        ))
+    })?;
+    let mut receipt_value = serde_json::to_value(receipt)?;
+    receipt_value["schema"] = serde_json::Value::String("chio.receipt.v1".to_string());
+    write_json_line_file(destination, &receipt_value)
+}
+
+fn required_event_string(event: &serde_json::Value, field: &str) -> Result<String, CliError> {
+    event
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| CliError::cli_other_error(format!("commerce event field missing: {field}")))
 }
 
 fn add_commerce_terminal_receipts(bundle: &Path) -> Result<(), CliError> {
@@ -1183,7 +1304,38 @@ fn add_public_settlement_deployment_provenance_to_bundle(bundle: &Path) -> Resul
     let body_hash = public_settlement_witness_body_hash(&witness_body)?;
     settlement_proof["public_witness"] = witness_body;
     settlement_proof["public_witness"]["body_hash"] = serde_json::Value::String(body_hash);
+    sign_public_settlement_oracle_evidence(&mut settlement_proof, &settlement_proof_path)?;
     write_json_line_file(&settlement_proof_path, &settlement_proof)
+}
+
+fn sign_public_settlement_oracle_evidence(
+    settlement_proof: &mut serde_json::Value,
+    settlement_proof_path: &Path,
+) -> Result<(), CliError> {
+    let Some(oracle_evidence) = settlement_proof
+        .pointer_mut("/settlement_receipt/oracle_evidence")
+        .filter(|value| !value.is_null())
+    else {
+        return Ok(());
+    };
+    let mut evidence: chio_web3::anchors::OracleConversionEvidence =
+        serde_json::from_value(oracle_evidence.clone()).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "public settlement oracle evidence invalid: {}: {error}",
+                settlement_proof_path.display()
+            ))
+        })?;
+    chio_web3::anchors::sign_oracle_conversion_evidence(
+        &mut evidence,
+        &Keypair::from_seed(&PUBLIC_SETTLEMENT_ORACLE_SIGNATURE_SEED),
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "public settlement oracle evidence signing failed: {error}"
+        ))
+    })?;
+    *oracle_evidence = serde_json::to_value(evidence).map_err(CliError::from)?;
+    Ok(())
 }
 
 fn set_public_settlement_deployment_contract_package_mismatch(
@@ -1423,9 +1575,7 @@ fn commerce_mandate_protocol_hash_field(protocol: &str, purpose: &str) -> Option
     match (protocol, purpose) {
         ("ap2", "checkout_mandate") => Some("ap2_checkout_mandate_hash"),
         ("ap2", "payment_mandate") => Some("ap2_payment_mandate_hash"),
-        ("acp-commerce", "delegated_payment_token") => {
-            Some("acp_delegated_payment_token_hash")
-        }
+        ("acp-commerce", "delegated_payment_token") => Some("acp_delegated_payment_token_hash"),
         ("x402", "payment_requirements") => Some("x402_payment_requirements_hash"),
         _ => None,
     }

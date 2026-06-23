@@ -252,9 +252,12 @@ pub fn validate_web3_settlement_execution_receipt(
         ));
     }
     let execution_window = &receipt.dispatch.capital_instruction.body.execution_window;
-    if receipt.observed_execution.observed_at < execution_window.not_before
-        || receipt.observed_execution.observed_at > execution_window.not_after
-    {
+    let observed_before_window =
+        receipt.observed_execution.observed_at < execution_window.not_before;
+    let observed_after_window = receipt.observed_execution.observed_at > execution_window.not_after;
+    let timeout_refund_after_deadline =
+        receipt.lifecycle_state == Web3SettlementLifecycleState::TimedOut && observed_after_window;
+    if observed_before_window || (observed_after_window && !timeout_refund_after_deadline) {
         return Err(Web3ContractError::invalid_settlement(
             "observed execution timestamp falls outside dispatch execution window",
         ));
