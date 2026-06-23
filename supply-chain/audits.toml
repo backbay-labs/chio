@@ -895,6 +895,12 @@ criteria = "safe-to-deploy"
 version = "0.22.6"
 notes = "cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked separately."
 
+[[audits.quinn-proto]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "0.11.15"
+notes = "Local cargo-vet review for RUSTSEC-2026-0185 patched transport state-machine dependency. Manifest has no build script, license is MIT OR Apache-2.0, and unsafe usage is confined to bounded QUIC VarInt construction."
+
 [[audits.quote]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
