@@ -2082,6 +2082,47 @@ fn enterprise_export_rejects_control_map_gate_for_wrong_claim() {
 }
 
 #[test]
+fn enterprise_export_rejects_control_map_gate_without_artifact() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    let mut control_map: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("control-evidence-map.json")
+            .test_expect("control map artifact exists"),
+    )
+    .test_expect("control map parses");
+    control_map["controls"][0]["gate_ref"] = json!("fake-data-governance-report");
+    replace_graph_artifact(
+        &mut bundle,
+        "control-evidence-map.json",
+        "control-evidence-map",
+        control_map,
+    );
+
+    let mut graph: Value =
+        serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("evidence graph parses");
+    graph["nodes"]
+        .as_array_mut()
+        .test_expect("evidence graph nodes are an array")
+        .push(json!({
+            "id": "fake-data-governance-report",
+            "schema": "chio.enterprise.data-governance-report.v1",
+            "path": "fake-data-governance-report.json",
+            "sha256": "a".repeat(64),
+            "role": "data-governance-report"
+        }));
+    bundle.evidence_graph_bytes = json_bytes(graph);
+    bundle.passport.evidence_graph_sha256 =
+        chio_core_types::sha256_hex(&bundle.evidence_graph_bytes);
+    sign_transaction_passport(&mut bundle.passport);
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("control map gate must resolve to an artifact");
+
+    assert!(error.to_string().contains("control gate did not run"));
+}
+
+#[test]
 fn enterprise_export_rejects_missing_risk_reserve_state() {
     let bundle = enterprise_bundle(EnterpriseCase::RiskMissingReserve);
 

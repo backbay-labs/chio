@@ -166,7 +166,7 @@ pub fn verify_enterprise_export(
     )?;
     push_claim_once(&mut verified_claims, CLAIM_EXPORT_APPROVAL_BOUND);
 
-    validate_control_map(&graph, &bundle.passport, risk_report, &control_map)?;
+    validate_control_map(bundle, &graph, &bundle.passport, risk_report, &control_map)?;
     push_claim_once(&mut verified_claims, CLAIM_CONTROL_MAP_BOUND);
 
     ensure_required_claims_verified(&policy.required_claims, &verified_claims)?;

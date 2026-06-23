@@ -102,10 +102,6 @@ pub(super) fn require_node(
     })
 }
 
-pub(super) fn graph_contains_node_id(graph: &EnterpriseEvidenceGraph, node_id: &str) -> bool {
-    graph.nodes.iter().any(|node| node.id == node_id)
-}
-
 pub(super) fn parse_artifact<T: for<'de> Deserialize<'de>>(
     bundle: &EnterpriseExportBundle,
     node: &EnterpriseEvidenceNode,

@@ -15,8 +15,7 @@ use chio_transaction_passport::{TransactionPassport, TransactionPassportError};
 pub(super) use chio_risk_comptroller::RiskComptrollerReport;
 
 use super::evidence::{
-    graph_contains_node_id, validate_bundle_relative_path, validate_sha256_hex,
-    EnterpriseEvidenceGraph,
+    validate_bundle_relative_path, validate_sha256_hex, EnterpriseEvidenceGraph,
 };
 use super::EnterpriseExportBundle;
 
@@ -571,6 +570,7 @@ fn approval_signature_body(approval: &ApprovalCase) -> ApprovalCaseSignatureBody
 }
 
 pub(super) fn validate_control_map(
+    bundle: &EnterpriseExportBundle,
     graph: &EnterpriseEvidenceGraph,
     passport: &TransactionPassport,
     risk_report: &RiskComptrollerReport,
@@ -608,10 +608,13 @@ pub(super) fn validate_control_map(
                 control.claim_ref
             )));
         }
-        if !graph_contains_node_id(graph, &control.gate_ref) {
+        let Some(gate_node) = graph.nodes.iter().find(|node| node.id == control.gate_ref) else {
+            return Err(claim_failed("control gate did not run"));
+        };
+        if !graph_node_artifact_matches(bundle, gate_node) {
             return Err(claim_failed("control gate did not run"));
         }
-        if !graph_contains_claim_gate(graph, &control.gate_ref, &control.claim_ref) {
+        if !node_schema_proves_claim(&gate_node.schema, &control.claim_ref) {
             return Err(claim_failed("control gate does not prove cited claim"));
         }
     }
@@ -740,17 +743,6 @@ fn is_enterprise_claim(claim: &str) -> bool {
             | "claim.enterprise.export_approval_bound"
             | "claim.enterprise.control_map_bound"
     )
-}
-
-fn graph_contains_claim_gate(
-    graph: &EnterpriseEvidenceGraph,
-    gate_ref: &str,
-    claim_ref: &str,
-) -> bool {
-    graph
-        .nodes
-        .iter()
-        .any(|node| node.id == gate_ref && node_schema_proves_claim(&node.schema, claim_ref))
 }
 
 fn node_schema_proves_claim(schema: &str, claim_ref: &str) -> bool {
