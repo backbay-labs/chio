@@ -552,7 +552,7 @@ fn proof_doctor_rejects_package_fixture_that_fails_for_wrong_reason() {
     let stdout = String::from_utf8(output.stdout).test_expect("stdout is utf8");
     assert!(stdout.contains("fixture_runtime_stale_revocation"));
     assert!(stdout.contains("transaction passport failed for the wrong reason"));
-    assert!(stdout.contains("revocation freshness stale"));
+    assert!(stdout.contains("proof-room.negative.revocation-freshness-stale"));
 }
 
 #[test]

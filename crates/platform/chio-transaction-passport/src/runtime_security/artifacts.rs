@@ -43,6 +43,8 @@ pub(super) struct RuntimeExecutionLease {
     tool_manifest_digest: String,
     pub(super) sandbox_attestation_ref: String,
     request_digest: String,
+    subject_capability_digest: String,
+    ancestor_capability_digest: String,
     revocation_epoch_ref: Option<String>,
     pub(super) route_plan_receipt_ref: Option<String>,
     pub(super) revocation_freshness_ref: String,
@@ -164,7 +166,10 @@ pub(super) struct RuntimeRevocationFreshnessProof {
     sequence: u64,
     fetched_at: String,
     max_staleness_ms: u64,
+    subject_capability_digest: String,
+    ancestor_capability_digest: String,
     revoked_leaf_result: bool,
+    revoked_ancestor_result: bool,
     signature: String,
 }
 
@@ -239,6 +244,14 @@ pub(super) fn validate_execution_lease(
     for (field, digest) in [
         ("tool_manifest_digest", &lease.tool_manifest_digest),
         ("request_digest", &lease.request_digest),
+        (
+            "subject_capability_digest",
+            &lease.subject_capability_digest,
+        ),
+        (
+            "ancestor_capability_digest",
+            &lease.ancestor_capability_digest,
+        ),
         ("policy_digest", &lease.policy_digest),
     ] {
         validate_digest_field(field, digest)?;
@@ -725,6 +738,8 @@ struct RuntimeExecutionLeaseSignatureBody<'a> {
     tool_manifest_digest: &'a str,
     sandbox_attestation_ref: &'a str,
     request_digest: &'a str,
+    subject_capability_digest: &'a str,
+    ancestor_capability_digest: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     revocation_epoch_ref: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -751,6 +766,8 @@ fn execution_lease_signature_body(
         tool_manifest_digest: &lease.tool_manifest_digest,
         sandbox_attestation_ref: &lease.sandbox_attestation_ref,
         request_digest: &lease.request_digest,
+        subject_capability_digest: &lease.subject_capability_digest,
+        ancestor_capability_digest: &lease.ancestor_capability_digest,
         revocation_epoch_ref: lease.revocation_epoch_ref.as_deref(),
         route_plan_receipt_ref: lease.route_plan_receipt_ref.as_deref(),
         revocation_freshness_ref: &lease.revocation_freshness_ref,
@@ -1029,7 +1046,29 @@ pub(super) fn validate_revocation_freshness(
     require_non_empty(&proof.fetched_at, "fetched_at")?;
     require_non_empty(&proof.signature, "signature")?;
     validate_digest_field("epoch_root", &proof.epoch_root)?;
-    if proof.sequence == 0 || proof.max_staleness_ms == 0 || proof.revoked_leaf_result {
+    validate_digest_field(
+        "revocation freshness subject_capability_digest",
+        &proof.subject_capability_digest,
+    )?;
+    validate_digest_field(
+        "revocation freshness ancestor_capability_digest",
+        &proof.ancestor_capability_digest,
+    )?;
+    if proof.subject_capability_digest != lease.subject_capability_digest {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "revocation freshness subject capability mismatch".to_string(),
+        ));
+    }
+    if proof.ancestor_capability_digest != lease.ancestor_capability_digest {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "revocation freshness ancestor capability mismatch".to_string(),
+        ));
+    }
+    if proof.sequence == 0
+        || proof.max_staleness_ms == 0
+        || proof.revoked_leaf_result
+        || proof.revoked_ancestor_result
+    {
         return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
             "revocation freshness failed".to_string(),
         ));
@@ -1149,7 +1188,10 @@ struct RuntimeRevocationFreshnessSignatureBody<'a> {
     sequence: u64,
     fetched_at: &'a str,
     max_staleness_ms: u64,
+    subject_capability_digest: &'a str,
+    ancestor_capability_digest: &'a str,
     revoked_leaf_result: bool,
+    revoked_ancestor_result: bool,
 }
 
 fn revocation_freshness_signature_body(
@@ -1164,7 +1206,10 @@ fn revocation_freshness_signature_body(
         sequence: proof.sequence,
         fetched_at: &proof.fetched_at,
         max_staleness_ms: proof.max_staleness_ms,
+        subject_capability_digest: &proof.subject_capability_digest,
+        ancestor_capability_digest: &proof.ancestor_capability_digest,
         revoked_leaf_result: proof.revoked_leaf_result,
+        revoked_ancestor_result: proof.revoked_ancestor_result,
     }
 }
 

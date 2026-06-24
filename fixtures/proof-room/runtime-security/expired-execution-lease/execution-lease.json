@@ -1,4 +1,5 @@
 {
+  "ancestor_capability_digest": "8888888888888888888888888888888888888888888888888888888888888888",
   "expires_at": "2026-06-09T23:59:59Z",
   "issued_at": "2026-06-10T00:00:00Z",
   "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
@@ -10,7 +11,8 @@
   "sandbox_attestation_ref": "sandbox-runtime-valid",
   "schema": "chio.runtime.execution-lease.v1",
   "side_effect_class": "network-write",
-  "signature": "0ef325262a496e615abe5ab288d41c2b7dd6e30850b085cb6b8ec5c88d3924fe4e347cd8267954ee77eaa4a3348fd579922bcfc89b1cd5ad6309b7a85a71d30e",
+  "signature": "ddb620a455d59e57d815ee0142430305bbe8ff5752a3d3a5d301b70a20e34c63225f531600c12e492a440e9f1976fd69d84a906d1aa7a5985688bd0ca153d202",
+  "subject_capability_digest": "7777777777777777777777777777777777777777777777777777777777777777",
   "tool_instance_id": "tool-instance-001",
   "tool_manifest_digest": "1111111111111111111111111111111111111111111111111111111111111111",
   "tool_server_id": "did:chio:a87b8a99bd88a69686c994a80b629d8154871aa295540834c01d79f4f916502f"

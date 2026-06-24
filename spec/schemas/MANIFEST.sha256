@@ -206,9 +206,9 @@ a80dcbf85529967e111b684b494635dc8f0b74f2f156cbc22f8658803f6cfa5b  spec/schemas/c
 d7a8edf25878cc391249ebc96595894860b7a729c95628cb0a468da0014ad891  spec/schemas/chio-risk/v1/comptroller-report.schema.json
 c6813fd8a241c39627738173d3df50c287d9c039be7e0a2300728a35ae1d9122  spec/schemas/chio-runtime/v1/attack-simulation-report.schema.json
 067c41106e5f4bf132481d246af84885ef4091acf99e294c23f80b01e9aab816  spec/schemas/chio-runtime/v1/chaos-run-report.schema.json
-ea9b1411bd1ef4dddc4a0b78ca8eb74a817244ee5f186705c34527bbc5d12881  spec/schemas/chio-runtime/v1/execution-lease.schema.json
+40518390b50354bb0f11ac7ca971ea6e9273c5f98fb973a8dd1de12e2f17868e  spec/schemas/chio-runtime/v1/execution-lease.schema.json
 7577259bc4c5bf9526b84ee3d055d064837d518935269c5d583695c0026ea74c  spec/schemas/chio-runtime/v1/policy-activation-receipt.schema.json
-43dd1bc2f4406afa9dab505c2b9c6ebe76853414ae4287c60e5a2ef4b6d1c617  spec/schemas/chio-runtime/v1/revocation-freshness-proof.schema.json
+e8d3ea6dcd8bc33a4844a0608bd4e9a8eb85da94cd559b590f19011058895b49  spec/schemas/chio-runtime/v1/revocation-freshness-proof.schema.json
 c38928e551ab6891e8773184bf19486bbb4a860681851637d9800e8e6635ee83  spec/schemas/chio-runtime/v1/sandbox-attestation.schema.json
 bf11bb1f4dadbd1fd57f14c5e9c983b61d3d13173dacd38b6f3fa8f4f96aabd9  spec/schemas/chio-runtime/v1/terminal-receipt.schema.json
 d187440293d4c5a57cbdf7ec7ae6304051991082156a77ad7985e39bd6085d2c  spec/schemas/chio-runtime/v1/tool-server-ack.schema.json

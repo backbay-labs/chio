@@ -970,16 +970,23 @@ fn check_transaction_passport_rejects(
             &path,
             "transaction passport unexpectedly verified".to_string(),
         ),
-        Err(error) if error.to_string().contains(expected_error) => {
-            passed(id, &path, "transaction passport rejected")
+        Err(error) => {
+            let error_message = error.to_string();
+            let observed = semantic_negative_failure_code(&error_message);
+            if error_message.contains(expected_error)
+                || negative_failure_code_matches(&observed, expected_error)
+            {
+                passed(id, &path, "transaction passport rejected")
+            } else {
+                failed(
+                    id,
+                    &path,
+                    format!(
+                        "transaction passport failed for the wrong reason: expected {expected_error}; observed {observed}: {error}"
+                    ),
+                )
+            }
         }
-        Err(error) => failed(
-            id,
-            &path,
-            format!(
-                "transaction passport failed for the wrong reason: expected {expected_error}; observed {error}"
-            ),
-        ),
     }
 }
 

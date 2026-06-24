@@ -353,6 +353,8 @@ fn sign_runtime_execution_lease(value: &Value, signing_key: &Keypair) -> String 
         "toolManifestDigest": value["tool_manifest_digest"],
         "sandboxAttestationRef": value["sandbox_attestation_ref"],
         "requestDigest": value["request_digest"],
+        "subjectCapabilityDigest": value["subject_capability_digest"],
+        "ancestorCapabilityDigest": value["ancestor_capability_digest"],
         "revocationFreshnessRef": value["revocation_freshness_ref"],
         "policyDigest": value["policy_digest"],
         "nonce": value["nonce"],
@@ -373,6 +375,34 @@ fn sign_runtime_execution_lease(value: &Value, signing_key: &Keypair) -> String 
     signing_key
         .sign_canonical(&body)
         .test_expect("execution lease signs")
+        .0
+        .to_hex()
+}
+
+fn sign_runtime_revocation_freshness_with_fixture_oracle(value: &mut Value) {
+    let signing_key = Keypair::from_seed(&[43u8; 32]);
+    value["oracle_id"] = Value::String(format!("did:chio:{}", signing_key.public_key().to_hex()));
+    value["signature"] = Value::String(sign_runtime_revocation_freshness(value, &signing_key));
+}
+
+fn sign_runtime_revocation_freshness(value: &Value, signing_key: &Keypair) -> String {
+    let body = json!({
+        "schema": "chio.runtime.revocation-freshness-proof-signature.v1",
+        "proofId": value["proof_id"],
+        "oracleId": value["oracle_id"],
+        "epochId": value["epoch_id"],
+        "epochRoot": value["epoch_root"],
+        "sequence": value["sequence"],
+        "fetchedAt": value["fetched_at"],
+        "maxStalenessMs": value["max_staleness_ms"],
+        "subjectCapabilityDigest": value["subject_capability_digest"],
+        "ancestorCapabilityDigest": value["ancestor_capability_digest"],
+        "revokedLeafResult": value["revoked_leaf_result"],
+        "revokedAncestorResult": value["revoked_ancestor_result"],
+    });
+    signing_key
+        .sign_canonical(&body)
+        .test_expect("revocation freshness proof signs")
         .0
         .to_hex()
 }
@@ -2175,6 +2205,42 @@ fn runtime_online_checks_run_for_tool_ack_requirement() {
     assert!(report
         .verified_claims
         .contains(&"claim.runtime.tool_server_ack_bound".to_string()));
+}
+
+#[test]
+fn runtime_security_rejects_revocation_freshness_subject_mismatch() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    update_runtime_artifact(&mut bundle, "revocation-freshness-proof.json", |proof| {
+        proof["subject_capability_digest"] = Value::String("f".repeat(64));
+        sign_runtime_revocation_freshness_with_fixture_oracle(proof);
+    });
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("revocation freshness proof must bind the queried runtime subject");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("revocation freshness subject capability mismatch"),
+        "{error}"
+    );
+}
+
+#[test]
+fn runtime_security_rejects_revocation_freshness_ancestor_mismatch() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    update_runtime_artifact(&mut bundle, "revocation-freshness-proof.json", |proof| {
+        proof["ancestor_capability_digest"] = Value::String("e".repeat(64));
+        sign_runtime_revocation_freshness_with_fixture_oracle(proof);
+    });
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("revocation freshness proof must bind the ancestor chain");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("revocation freshness ancestor capability mismatch"),
+        "{error}"
+    );
 }
 
 #[test]

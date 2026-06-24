@@ -750,6 +750,8 @@ fn sign_runtime_execution_lease(value: &serde_json::Value, keypair: &Keypair) ->
         "toolManifestDigest": value["tool_manifest_digest"],
         "sandboxAttestationRef": value["sandbox_attestation_ref"],
         "requestDigest": value["request_digest"],
+        "subjectCapabilityDigest": value["subject_capability_digest"],
+        "ancestorCapabilityDigest": value["ancestor_capability_digest"],
         "revocationFreshnessRef": value["revocation_freshness_ref"],
         "policyDigest": value["policy_digest"],
         "nonce": value["nonce"],

@@ -1,1 +1,13 @@
-{"claim_set_path":"claim-set.json","claim_set_sha256":"42251f17fb89ff8bb5999a23f76e830f154d761bee7e5b648ca11564b74d5c53","evidence_graph_path":"evidence-graph.json","evidence_graph_sha256":"593726eeb392212b1a98a7a22af07a67766a2b028601caa2587ec7675e898a9e","id":"runtime-passport-denial","issued_at":"2026-06-10T00:00:00Z","issuer":"did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c","schema":"chio.transaction-passport.v1","signature":"1ba462a32ea0288a0ef42523c5fac64bdd684998f0b29d3176d06ef15e1f21bba356752b732c3a75a43a69e3ff7a9294229bd187142f03facc8401319e42e004","verifier_policy_path":"verifier-policy.json","verifier_policy_sha256":"c39e2989da55c8f6dd7af5b25568a72a3fcc8fa1e3683c1e783b9fa042b3c261"}
+{
+  "schema": "chio.transaction-passport.v1",
+  "id": "runtime-passport-denial",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "issuer": "did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+  "evidence_graph_sha256": "8f4c78201285504f2a492f491cabce216efcfdafb59efc8559ba127023cf0d5f",
+  "evidence_graph_path": "evidence-graph.json",
+  "claim_set_sha256": "42251f17fb89ff8bb5999a23f76e830f154d761bee7e5b648ca11564b74d5c53",
+  "claim_set_path": "claim-set.json",
+  "verifier_policy_sha256": "c39e2989da55c8f6dd7af5b25568a72a3fcc8fa1e3683c1e783b9fa042b3c261",
+  "verifier_policy_path": "verifier-policy.json",
+  "signature": "be992bbf13b259bc807b9451c4e9eaea2aba6e0d40821c61fd581b8670bd853410296bff42647f8b21f687e619617319115fe9876df48599563252679f13290d"
+}
