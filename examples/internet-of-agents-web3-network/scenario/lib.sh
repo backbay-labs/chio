@@ -217,6 +217,9 @@ stop_live_topology() {
 run_live_scenario() {
   local bundle_dir="$1"
   local require_base_sepolia="$2"
+  local e2e_report="${3:-}"
+  local promotion_report="${4:-}"
+  local ops_audit="${5:-}"
   local args=(
     --repo-root "${ROOT}"
     --artifact-dir "${bundle_dir}"
@@ -235,6 +238,16 @@ run_live_scenario() {
 
   if [[ "${require_base_sepolia}" == "1" ]]; then
     args+=(--require-base-sepolia-smoke)
+  fi
+
+  if [[ -n "${e2e_report}" ]]; then
+    args+=(--e2e-report "${e2e_report}")
+  fi
+  if [[ -n "${promotion_report}" ]]; then
+    args+=(--promotion-report "${promotion_report}")
+  fi
+  if [[ -n "${ops_audit}" ]]; then
+    args+=(--ops-audit "${ops_audit}")
   fi
 
   uv run --project "${EXAMPLE_ROOT}" python "${EXAMPLE_ROOT}/orchestrate.py" "${args[@]}" \

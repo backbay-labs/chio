@@ -5,6 +5,9 @@ cd "$(dirname "$0")/.."
 
 output_root="target/web3-example-qualification"
 log_path="${output_root}/qualification.log"
+e2e_report="target/web3-e2e-qualification/partner-qualification.json"
+promotion_report="target/web3-promotion-qualification/promotion-qualification.json"
+ops_audit="target/web3-ops-qualification/incident-audit.json"
 mkdir -p "${output_root}"
 : >"${log_path}"
 
@@ -13,8 +16,24 @@ run() {
   "$@" 2>&1 | tee -a "${log_path}"
 }
 
+ensure_report() {
+  local report_path="$1"
+  shift
+  if [[ -s "${report_path}" ]]; then
+    return 0
+  fi
+  run "$@"
+}
+
+ensure_report "${e2e_report}" ./scripts/qualify-web3-e2e.sh
+ensure_report "${promotion_report}" ./scripts/qualify-web3-promotion.sh
+ensure_report "${ops_audit}" ./scripts/qualify-web3-ops-controls.sh
+
 run bash examples/internet-of-agents-web3-network/smoke.sh \
-  --artifact-dir "${output_root}/internet-of-agents-web3-network"
+  --artifact-dir "${output_root}/internet-of-agents-web3-network" \
+  --e2e-report "${e2e_report}" \
+  --promotion-report "${promotion_report}" \
+  --ops-audit "${ops_audit}"
 
 run jq empty \
   "${output_root}/internet-of-agents-web3-network/review-result.json" \
