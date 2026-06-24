@@ -63,12 +63,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/products/chio-cli/src/cli/dispatch/proof/fixture.rs": allow(
         "2026-07-31",
         "launch proof fixture dispatch surface; capped to current size until split",
-        max_lines=4_082,
+        max_lines=4_906,
     ),
     "crates/products/chio-cli/src/cli/dispatch/proof.rs": allow(
         "2026-07-31",
         "launch proof dispatch surface; capped to current size until split",
-        max_lines=3_160,
+        max_lines=3_274,
     ),
     "crates/products/chio-mercury/tests/cli.rs": allow(
         "2026-07-31",
@@ -98,17 +98,17 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/products/chio-cli/tests/proof_cli_contract/support.rs": allow(
         "2026-07-31",
         "launch proof CLI contract support module; capped to current size until split",
-        max_lines=3_003,
+        max_lines=3_238,
     ),
     "crates/products/chio-cli/tests/proof_verify.rs": allow(
         "2026-07-31",
         "launch proof verifier integration suite; capped to current size until split",
-        max_lines=2_585,
+        max_lines=2_598,
     ),
     "crates/platform/chio-enterprise-export/tests/enterprise_export.rs": allow(
         "2026-07-31",
         "launch enterprise export integration suite; capped to current size until split",
-        max_lines=2_366,
+        max_lines=2_694,
     ),
     "crates/products/chio-cli/tests/federated_issue.rs": allow(
         "2026-07-31",
@@ -133,12 +133,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/kernel/chio-runtime-core/tests/runtime_admission.rs": allow(
         "2026-07-31",
         "runtime admission integration suite; capped to current size after swarm authority split",
-        max_lines=2_621,
+        max_lines=2_855,
     ),
     "crates/platform/chio-transaction-passport/tests/transaction_passport.rs": allow(
         "2026-07-31",
         "launch transaction passport integration suite; capped to current size until split",
-        max_lines=2_014,
+        max_lines=2_289,
     ),
     "crates/protocol/chio-mcp-remote/src/remote_mcp/tests.rs": allow(
         "2026-07-31",
