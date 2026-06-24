@@ -29,10 +29,11 @@ use crate::receipt::{
     body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
 };
 use crate::settlement::{
-    validate_web3_settlement_dispatch, validate_web3_settlement_execution_receipt,
-    Web3SettlementDispatchArtifact, Web3SettlementExecutionReceiptArtifact,
-    Web3SettlementLifecycleState, Web3SettlementSupportBoundary,
-    CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA, CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+    settlement_anchor_receipt_content_hash_parts, validate_web3_settlement_dispatch,
+    validate_web3_settlement_execution_receipt, Web3SettlementDispatchArtifact,
+    Web3SettlementExecutionReceiptArtifact, Web3SettlementLifecycleState,
+    Web3SettlementSupportBoundary, CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA,
+    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
 };
 use crate::settlement_proof::{
     public_settlement_witness_body_hash, verify_public_settlement_proof,
@@ -239,6 +240,19 @@ fn sample_receipt() -> ChioReceipt {
 }
 
 fn sample_receipt_with_nonce(nonce: &str) -> ChioReceipt {
+    let content_hash = match settlement_anchor_receipt_content_hash_parts(
+        "receipt-web3-1",
+        "settlement-web3-1",
+        "dispatch-web3-1",
+        "rcpt-web3-1",
+    ) {
+        Ok(hash) => hash,
+        Err(error) => panic!("sample settlement anchor receipt binding must hash: {error}"),
+    };
+    sample_receipt_with_nonce_and_content_hash(nonce, content_hash)
+}
+
+fn sample_receipt_with_nonce_and_content_hash(nonce: &str, content_hash: String) -> ChioReceipt {
     let operator = operator_keypair();
     let parameters = json!({
         "to": "0x2222222222222222222222222222222222222222",
@@ -260,7 +274,7 @@ fn sample_receipt_with_nonce(nonce: &str) -> ChioReceipt {
         tool_origin: Default::default(),
         redaction_mode: Default::default(),
         actor_chain: Vec::new(),
-        content_hash: sha256_hex(b"web3-settlement"),
+        content_hash,
         policy_hash: sha256_hex(b"policy-web3"),
         evidence: vec![],
         metadata: Some(json!({
@@ -933,6 +947,20 @@ fn merkle_settlement_receipt_rejects_unrelated_anchor_receipt() {
         validate_web3_settlement_execution_receipt(&receipt),
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("anchor proof receipt must match governed receipt")
+    ));
+}
+
+#[test]
+fn merkle_settlement_receipt_rejects_anchor_receipt_with_unrelated_content_hash() {
+    let mut receipt = sample_execution_receipt();
+    receipt.reconciled_anchor_proof = Some(sample_anchor_inclusion_proof_for_receipt(
+        sample_receipt_with_nonce_and_content_hash("rcpt-web3-1", sha256_hex(b"other-settlement")),
+    ));
+
+    assert!(matches!(
+        validate_web3_settlement_execution_receipt(&receipt),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("anchor proof receipt content hash must bind settlement execution")
     ));
 }
 

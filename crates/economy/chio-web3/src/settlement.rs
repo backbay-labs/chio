@@ -4,12 +4,14 @@ use crate::anchors::{
     validate_oracle_conversion_evidence, verify_anchor_inclusion_proof, AnchorInclusionProof,
     OracleConversionEvidence,
 };
+use crate::canonical::canonical_json_bytes;
 use crate::capability::scope::MonetaryAmount;
 use crate::credit::{
     CapitalExecutionInstructionAction, CapitalExecutionRailKind, CapitalExecutionReconciledState,
     CreditBondLifecycleState, SignedCapitalExecutionInstruction, SignedCreditBond,
     CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA,
 };
+use crate::crypto::sha256_hex;
 use crate::error::Web3ContractError;
 use crate::receipt::{
     body::ChioReceipt, lineage::SignedExportEnvelope,
@@ -387,7 +389,61 @@ fn validate_anchor_receipt_binding(
             "anchor proof receipt must match governed receipt",
         ));
     }
+    let expected_content_hash = settlement_anchor_receipt_content_hash(receipt)?;
+    if anchor_receipt.content_hash != expected_content_hash {
+        return Err(Web3ContractError::invalid_settlement(
+            "anchor proof receipt content hash must bind settlement execution",
+        ));
+    }
     Ok(())
+}
+
+pub(crate) fn settlement_anchor_receipt_content_hash(
+    receipt: &Web3SettlementExecutionReceiptArtifact,
+) -> Result<String, Web3ContractError> {
+    let governed_receipt_id = receipt
+        .dispatch
+        .capital_instruction
+        .body
+        .governed_receipt_id
+        .as_deref()
+        .ok_or(Web3ContractError::MissingField(
+            "web3_settlement_dispatch.capital_instruction.governed_receipt_id",
+        ))?;
+    settlement_anchor_receipt_content_hash_parts(
+        &receipt.execution_receipt_id,
+        &receipt.settlement_reference,
+        &receipt.dispatch.dispatch_id,
+        governed_receipt_id,
+    )
+}
+
+pub fn settlement_anchor_receipt_content_hash_parts(
+    execution_receipt_id: &str,
+    settlement_reference: &str,
+    dispatch_id: &str,
+    governed_receipt_id: &str,
+) -> Result<String, Web3ContractError> {
+    let body = SettlementAnchorReceiptBinding {
+        execution_receipt_id,
+        settlement_reference,
+        dispatch_id,
+        governed_receipt_id,
+    };
+    let bytes = canonical_json_bytes(&body).map_err(|error| {
+        Web3ContractError::invalid_settlement(format!(
+            "settlement anchor receipt binding canonicalization failed: {error}"
+        ))
+    })?;
+    Ok(sha256_hex(&bytes))
+}
+
+#[derive(Serialize)]
+struct SettlementAnchorReceiptBinding<'a> {
+    execution_receipt_id: &'a str,
+    settlement_reference: &'a str,
+    dispatch_id: &'a str,
+    governed_receipt_id: &'a str,
 }
 
 fn validate_observed_execution_reference(

@@ -320,6 +320,24 @@ fn sample_receipt(
     amount_units: u64,
     beneficiary_address: &str,
 ) -> ChioReceipt {
+    sample_receipt_with_content_hash(
+        keypair,
+        capability_id,
+        receipt_id,
+        amount_units,
+        beneficiary_address,
+        sha256_hex(format!("settlement:{receipt_id}").as_bytes()),
+    )
+}
+
+fn sample_receipt_with_content_hash(
+    keypair: &Keypair,
+    capability_id: &str,
+    receipt_id: &str,
+    amount_units: u64,
+    beneficiary_address: &str,
+    content_hash: String,
+) -> ChioReceipt {
     ChioReceipt::sign(
         ChioReceiptBody {
             id: receipt_id.to_string(),
@@ -340,7 +358,7 @@ fn sample_receipt(
             tool_origin: Default::default(),
             redaction_mode: Default::default(),
             actor_chain: Vec::new(),
-            content_hash: sha256_hex(format!("settlement:{receipt_id}").as_bytes()),
+            content_hash,
             policy_hash: sha256_hex(b"policy:web3"),
             evidence: Vec::new(),
             metadata: None,
@@ -571,12 +589,29 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
     assert!(create_receipt.status);
     let prepared_dispatch = finalize_escrow_dispatch(&prepared_dispatch, &create_receipt)?;
 
-    let receipt = sample_receipt(
+    let execution_receipt_id = "exec-runtime-1";
+    let settlement_reference = "settlement-runtime-1";
+    let governed_receipt_id = prepared_dispatch
+        .dispatch
+        .capital_instruction
+        .body
+        .governed_receipt_id
+        .as_deref()
+        .ok_or("prepared dispatch missing governed receipt id")?;
+    let receipt_content_hash =
+        chio_core::web3::settlement::settlement_anchor_receipt_content_hash_parts(
+            execution_receipt_id,
+            settlement_reference,
+            &prepared_dispatch.dispatch.dispatch_id,
+            governed_receipt_id,
+        )?;
+    let receipt = sample_receipt_with_content_hash(
         &operator_keypair,
         "cap-runtime-1",
-        "rcpt-runtime-1",
+        governed_receipt_id,
         create_amount.units,
         &accounts.beneficiary,
+        receipt_content_hash,
     );
     let canonical_receipt_id = receipt.id.clone();
     let receipt_bytes = canonical_json_bytes(&receipt.body())?;
@@ -641,8 +676,8 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         chio_settle::ExecutionProjectionInput {
             dispatch: &prepared_dispatch.dispatch,
             tx_hash: &merkle_release_tx,
-            execution_receipt_id: "exec-runtime-1".to_string(),
-            settlement_reference: "settlement-runtime-1".to_string(),
+            execution_receipt_id: execution_receipt_id.to_string(),
+            settlement_reference: settlement_reference.to_string(),
             observed_at: Some(merkle_receipt.observed_at),
             observed_amount: create_amount.clone(),
             anchor_proof: Some(&anchor_proof),
