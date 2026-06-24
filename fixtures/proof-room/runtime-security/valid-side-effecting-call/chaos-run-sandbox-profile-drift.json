@@ -1,0 +1,15 @@
+{
+  "actual_verifier_report_digest": "1e6d87f77b6321d77eda439447d033c1dd373c0ae961fb8516a311cba100bb6c",
+  "case_id": "sandbox-profile-drift",
+  "deterministic_seed_digest": "8ae7b3b0a76fe8e10766d928f0ef3aad5beebde7dd6d95b55a11fc4afabf5dd9",
+  "expected_result": "tool ack and passport verification fail",
+  "failure_injected": "tool starts under a different egress or filesystem profile",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runner_version_digest": "156ad368ad5d7aa289d44529cf0e87801871e1f7af3de81b367e6300877a3267",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "schema": "chio.runtime.chaos-run-report.v1",
+  "signature": "4d261ad692b733ca003e79e55f52dd740cf6be76f383a7a273450c68706e2289e77f929a7245637cf02aa49c1e16b0b822d11d69eefcec4d3dde9bc1d3646f0d",
+  "status": "passed"
+}

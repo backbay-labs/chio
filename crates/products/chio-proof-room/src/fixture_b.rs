@@ -594,6 +594,8 @@ pub(crate) fn is_runtime_artifact_role(role: &str) -> bool {
             | "tool-server-ack"
             | "revocation-freshness-proof"
             | "sandbox-attestation"
+            | "runtime-attack-simulation-report"
+            | "runtime-chaos-run-report"
     )
 }
 

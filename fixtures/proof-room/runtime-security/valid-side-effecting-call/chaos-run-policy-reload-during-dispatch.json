@@ -1,0 +1,15 @@
+{
+  "actual_verifier_report_digest": "f4ba1e3b72836f73768966ccbafe2b8301c763b20114842523857d0f4eb4f892",
+  "case_id": "policy-reload-during-dispatch",
+  "deterministic_seed_digest": "261b504ee8de4a469a4b47208b697f88703113f1c93fd3afef73b0c1809082a6",
+  "expected_result": "reject unless reminted or activation receipt proves narrowing",
+  "failure_injected": "policy digest changes after lease mint and before tool ack",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runner_version_digest": "156ad368ad5d7aa289d44529cf0e87801871e1f7af3de81b367e6300877a3267",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "schema": "chio.runtime.chaos-run-report.v1",
+  "signature": "8d89fea6ffb81a27c830722feea493a7f20636737901c1fed1cd274a0f893a6ec965d4d1e95fbf1c6eea7de4380a2f58eced4f52e5f5a37d3cef96274bb0e209",
+  "status": "passed"
+}

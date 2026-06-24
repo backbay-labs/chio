@@ -1,0 +1,15 @@
+{
+  "actual_verifier_report_digest": "318beac590a4873442c080214317b9e1cf1a83fea5268f50f3cd63a79b890524",
+  "case_id": "tool-restart-lost-lease-cache",
+  "deterministic_seed_digest": "48eb5e8429843fb5fe8a115effd189d21d1f4441bab7c8240ff05ca0ba2230e6",
+  "expected_result": "tool verifies durable lease state or rejects",
+  "failure_injected": "tool server restarts between lease mint and execution",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runner_version_digest": "156ad368ad5d7aa289d44529cf0e87801871e1f7af3de81b367e6300877a3267",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "schema": "chio.runtime.chaos-run-report.v1",
+  "signature": "721f6c69f8140225851d800ef52592dd46955c4bfb7045b4ec0336bcfc1db1eee765b08ce996f87223e086a473d8ec94a2062361d5b98cf7bb3d7c9daa10280a",
+  "status": "passed"
+}

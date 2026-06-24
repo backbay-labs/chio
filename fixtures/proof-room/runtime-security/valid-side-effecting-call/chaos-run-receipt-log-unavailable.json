@@ -1,0 +1,15 @@
+{
+  "actual_verifier_report_digest": "32dffcf788cbee133b904235b9bad5cd67f308b38ec9dd8b753a4dc52845c062",
+  "case_id": "receipt-log-unavailable",
+  "deterministic_seed_digest": "6a7c93aa0de4b12c72012118c7f414ac8994fda713672476504ee3c6a836b035",
+  "expected_result": "signed incident receipt or verifier marks totality failed",
+  "failure_injected": "append-only receipt log cannot commit terminal status",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runner_version_digest": "156ad368ad5d7aa289d44529cf0e87801871e1f7af3de81b367e6300877a3267",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "schema": "chio.runtime.chaos-run-report.v1",
+  "signature": "42a4be2fa8aa81c312c0e1f962284fd529181976f760277a03d7a5fdf68b038b994fdad96c5ab929309e61527ce6799d2a4f4ac28b3a1a025b1c172ecfeb760e",
+  "status": "passed"
+}

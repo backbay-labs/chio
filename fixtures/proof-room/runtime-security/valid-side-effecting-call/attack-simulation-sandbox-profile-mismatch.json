@@ -1,0 +1,18 @@
+{
+  "actual_verifier_report_digest": "725bf7e27cffab15d344430eb11967f7020211e3d2108b2a8b76718406d0d062",
+  "attack_class": "sandbox-profile-mismatch",
+  "chaos_knobs": [
+    "sandbox_profile"
+  ],
+  "expected_denial_claim": "claim.runtime.sandbox_matched",
+  "fixture_path": "runtime-security/sandbox-profile-mismatch",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "scenario_id": "attack-sandbox-profile-mismatch",
+  "schema": "chio.runtime.attack-simulation-report.v1",
+  "signature": "88fcbba2551dd5877fdbc72188e62e2d0764d624d2f3c307e647d64e70753fbb35176466a1a387536dca06b4cc36d62875a79b122a829e38c2a6522cbeda4501",
+  "simulator_version_digest": "7b507c9dd41316c67a49d7eb5c33730b7e01843ea2c0d1d495cae1f8a08679d3",
+  "status": "passed"
+}

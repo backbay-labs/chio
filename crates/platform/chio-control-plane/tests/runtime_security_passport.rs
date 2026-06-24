@@ -43,20 +43,18 @@ fn load_runtime_security_fixture(
     let passport = serde_json::from_slice(&passport_bytes).test_expect("passport parses");
     let evidence_graph_bytes = read_file(&dir, "evidence-graph.json");
     let verifier_policy_bytes = read_file(&dir, "verifier-policy.json");
+    let evidence_graph: Value =
+        serde_json::from_slice(&evidence_graph_bytes).test_expect("evidence graph parses");
     let mut artifacts = BTreeMap::new();
-    for artifact_path in [
-        "allow-receipt.json",
-        "request-digest.json",
-        "execution-lease.json",
-        "trust-root.json",
-        "revocation-freshness-proof.json",
-        "sandbox-attestation.json",
-        "tool-server-ack.json",
-        "claim-set.json",
-    ] {
-        let path = dir.join(artifact_path);
-        if path.is_file() {
-            artifacts.insert(artifact_path.to_string(), read_file(&dir, artifact_path));
+    for node in evidence_graph["nodes"]
+        .as_array()
+        .test_expect("evidence graph nodes array")
+    {
+        if let Some(artifact_path) = node.get("path").and_then(Value::as_str) {
+            let path = dir.join(artifact_path);
+            if path.is_file() {
+                artifacts.insert(artifact_path.to_string(), read_file(&dir, artifact_path));
+            }
         }
     }
 

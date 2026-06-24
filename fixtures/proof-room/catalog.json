@@ -44,6 +44,114 @@
       "description": "Runtime security fixture with execution lease and receipt totality evidence"
     },
     {
+      "id": "runtime-attack-simulation-confused-deputy-route-metadata",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for confused deputy route metadata"
+    },
+    {
+      "id": "runtime-attack-simulation-replayed-continuation-token",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for replayed continuation token"
+    },
+    {
+      "id": "runtime-attack-simulation-stale-revocation-epoch",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for stale revocation epoch"
+    },
+    {
+      "id": "runtime-attack-simulation-policy-hot-reload-widening",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for policy hot reload widening"
+    },
+    {
+      "id": "runtime-attack-simulation-advisory-evidence-laundering",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for advisory evidence laundering"
+    },
+    {
+      "id": "runtime-attack-simulation-external-payment-success-laundering",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for external payment success laundering"
+    },
+    {
+      "id": "runtime-attack-simulation-route-plan-registry-downgrade",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for route plan registry downgrade"
+    },
+    {
+      "id": "runtime-attack-simulation-tool-server-bypass-without-kernel-allow",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for tool server bypass without kernel allow"
+    },
+    {
+      "id": "runtime-attack-simulation-missing-denial-receipt",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for missing denial receipt"
+    },
+    {
+      "id": "runtime-attack-simulation-sandbox-profile-mismatch",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for sandbox profile mismatch"
+    },
+    {
+      "id": "runtime-chaos-revocation-oracle-unavailable",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for unavailable revocation oracle"
+    },
+    {
+      "id": "runtime-chaos-receipt-log-unavailable",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for unavailable receipt log"
+    },
+    {
+      "id": "runtime-chaos-policy-reload-during-dispatch",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for policy reload during dispatch"
+    },
+    {
+      "id": "runtime-chaos-duplicate-nonce-race",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for duplicate nonce race"
+    },
+    {
+      "id": "runtime-chaos-tool-restart-lost-lease-cache",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for tool restart with lost lease cache"
+    },
+    {
+      "id": "runtime-chaos-registry-split-brain",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for registry split brain"
+    },
+    {
+      "id": "runtime-chaos-clock-skew-expiry-bypass",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for clock skew expiry bypass"
+    },
+    {
+      "id": "runtime-chaos-sandbox-profile-drift",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for sandbox profile drift"
+    },
+    {
       "id": "runtime-terminal-denial",
       "kind": "transaction-passport",
       "path": "fixtures/proof-room/runtime-security/terminal-denial",

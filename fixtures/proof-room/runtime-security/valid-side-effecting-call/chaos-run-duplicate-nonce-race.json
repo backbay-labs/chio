@@ -1,0 +1,15 @@
+{
+  "actual_verifier_report_digest": "c6578dd965916f23f238279d65366d2aac19f1b18e5ba926060eb0d2554408af",
+  "case_id": "duplicate-nonce-race",
+  "deterministic_seed_digest": "93b757d91d552eb210553b9ba23c87a908e7dfe50f04056993fa2211f10c05c8",
+  "expected_result": "exactly one terminal side-effect status can succeed",
+  "failure_injected": "two concurrent calls consume the same nonce and lease",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runner_version_digest": "156ad368ad5d7aa289d44529cf0e87801871e1f7af3de81b367e6300877a3267",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "schema": "chio.runtime.chaos-run-report.v1",
+  "signature": "8eb4f12d6214548a5407796b7f8603d240c9fa9d0d9d2eb49ebfbbecdf7e919346e845c0c5c33c84972b3e6cefa098aa66d1659069e9fe2b37359d7ab0237301",
+  "status": "passed"
+}

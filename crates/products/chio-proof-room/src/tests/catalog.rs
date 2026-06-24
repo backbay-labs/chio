@@ -141,6 +141,7 @@ async fn proof_room_router_uses_ui_fallback_for_unmanifested_root_paths(
 
 #[tokio::test]
 async fn quickstart_router_serves_fixture_catalog() -> Result<(), Box<dyn Error>> {
+    configure_proof_room_fixture_trust();
     let bundle =
         repo_root()?.join("fixtures/proof-room/first-run/single-call-authority/proof-room-bundle");
     let ui = tempfile::tempdir()?;
@@ -210,6 +211,41 @@ async fn quickstart_router_serves_fixture_catalog() -> Result<(), Box<dyn Error>
                 .iter()
                 .any(|id| id == &public_stage_id),
             "served fixture catalog missing public stage fixture: {public_stage_id}"
+        );
+    }
+    for runtime_assurance_id in [
+        "runtime-attack-simulation-confused-deputy-route-metadata",
+        "runtime-attack-simulation-replayed-continuation-token",
+        "runtime-attack-simulation-stale-revocation-epoch",
+        "runtime-attack-simulation-policy-hot-reload-widening",
+        "runtime-attack-simulation-advisory-evidence-laundering",
+        "runtime-attack-simulation-external-payment-success-laundering",
+        "runtime-attack-simulation-route-plan-registry-downgrade",
+        "runtime-attack-simulation-tool-server-bypass-without-kernel-allow",
+        "runtime-attack-simulation-missing-denial-receipt",
+        "runtime-attack-simulation-sandbox-profile-mismatch",
+        "runtime-chaos-revocation-oracle-unavailable",
+        "runtime-chaos-receipt-log-unavailable",
+        "runtime-chaos-policy-reload-during-dispatch",
+        "runtime-chaos-duplicate-nonce-race",
+        "runtime-chaos-tool-restart-lost-lease-cache",
+        "runtime-chaos-registry-split-brain",
+        "runtime-chaos-clock-skew-expiry-bypass",
+        "runtime-chaos-sandbox-profile-drift",
+    ] {
+        let fixture = available_fixtures
+            .iter()
+            .find(|fixture| fixture["id"] == runtime_assurance_id)
+            .ok_or_else(|| format!("runtime assurance fixture missing: {runtime_assurance_id}"))?;
+        assert_eq!(
+            fixture["verifier_report"]["status"], 200,
+            "{runtime_assurance_id}: {}",
+            fixture["verifier_report"]
+        );
+        assert_eq!(
+            fixture["verifier_report"]["verdict"], "verified",
+            "{runtime_assurance_id}: {}",
+            fixture["verifier_report"]
         );
     }
     let commerce_stage = available_fixtures

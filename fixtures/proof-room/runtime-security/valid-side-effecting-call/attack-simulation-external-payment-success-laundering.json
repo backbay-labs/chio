@@ -1,0 +1,18 @@
+{
+  "actual_verifier_report_digest": "2bf33428a8c06010cb852677c19cb8eeae7b756b4480b114ec0dcbfd855d8908",
+  "attack_class": "external-payment-success-laundering",
+  "chaos_knobs": [
+    "payment_projection"
+  ],
+  "expected_denial_claim": "claim.runtime.external_payment_not_authorization",
+  "fixture_path": "runtime-security/external-payment-success-laundering",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "scenario_id": "attack-external-payment-success-laundering",
+  "schema": "chio.runtime.attack-simulation-report.v1",
+  "signature": "a4c710d8de19625fcd3e0baf3137675abb2c3705740fc14d6c64ef8e7f034635f22f86c17a2d4abb4ba8da3723b7f49de82b2bcc76e25b3453ba6773baa49a02",
+  "simulator_version_digest": "7b507c9dd41316c67a49d7eb5c33730b7e01843ea2c0d1d495cae1f8a08679d3",
+  "status": "passed"
+}

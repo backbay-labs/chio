@@ -1,0 +1,15 @@
+{
+  "actual_verifier_report_digest": "cfeef0a24778c88c297fcfc8b315680581048636717e7177f5488b49e3ca875a",
+  "case_id": "registry-split-brain",
+  "deterministic_seed_digest": "e2c615cab7f5b57294ec80a4a1f048285782058fc3f26f6c695aa1086f254116",
+  "expected_result": "route-plan mismatch fails",
+  "failure_injected": "route-plan receipt uses one registry snapshot and verifier sees another",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runner_version_digest": "156ad368ad5d7aa289d44529cf0e87801871e1f7af3de81b367e6300877a3267",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "schema": "chio.runtime.chaos-run-report.v1",
+  "signature": "961bd2e4db7bda377818800556ca4dedb832bcdbdcf2e23868ea49429075e982b54685b0d3a066de89f753e7f0fa5badc0f933cbcb6d6e627013cd0b1b413e02",
+  "status": "passed"
+}

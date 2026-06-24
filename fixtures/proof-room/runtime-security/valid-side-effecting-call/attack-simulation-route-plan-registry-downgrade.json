@@ -1,0 +1,18 @@
+{
+  "actual_verifier_report_digest": "0633727d3e1a211f253473d37ffc2cd8c95be033d7b81fe2ab7a3993fe777fa0",
+  "attack_class": "route-plan-registry-downgrade",
+  "chaos_knobs": [
+    "registry_snapshot"
+  ],
+  "expected_denial_claim": "claim.runtime.route_plan_registry_snapshot_bound",
+  "fixture_path": "runtime-security/route-plan-registry-downgrade",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "scenario_id": "attack-route-plan-registry-downgrade",
+  "schema": "chio.runtime.attack-simulation-report.v1",
+  "signature": "88a4a59681ae9a5c982c20a3375c624115eb5621de02069aa7af7cbc6f91a97799f3ea66b74667ac0eb5dfa0e42126b204f8341c243a25a480f753271db6e10a",
+  "simulator_version_digest": "7b507c9dd41316c67a49d7eb5c33730b7e01843ea2c0d1d495cae1f8a08679d3",
+  "status": "passed"
+}
