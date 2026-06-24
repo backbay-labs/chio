@@ -254,6 +254,88 @@ fn proof_export_public_redaction_excludes_manifested_receipt_log() {
 }
 
 #[test]
+fn proof_export_admin_full_evidence_v1_preserves_manifested_private_evidence() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let source = proof_room_bundle_fixture();
+    let bundle = tempdir.path().join("proof-room-bundle");
+    copy_dir_all(&source, &bundle).test_expect("copy proof room bundle");
+    let receipt_log_path = "receipts.ndjson";
+    let receipt_log_file = bundle.join(receipt_log_path);
+    std::fs::write(
+        &receipt_log_file,
+        b"{\"schema\":\"chio.receipts.log.v1\",\"tenant_id\":\"tenant-secret\",\"body\":\"raw receipt body\"}\n",
+    )
+    .test_expect("write receipt log");
+    let tenant_body_path = "tenants/tenant-secret/body.json";
+    let tenant_body_file = bundle.join(tenant_body_path);
+    std::fs::create_dir_all(
+        tenant_body_file
+            .parent()
+            .test_expect("tenant body has parent"),
+    )
+    .test_expect("create tenant body dir");
+    std::fs::write(
+        &tenant_body_file,
+        b"{\"schema\":\"chio.tenant.body.v1\",\"tenant_id\":\"tenant-secret\",\"body\":\"private tenant body\"}\n",
+    )
+    .test_expect("write tenant body");
+
+    let manifest_path = bundle.join("manifest.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&manifest_path).test_expect("read manifest"))
+            .test_expect("manifest parses");
+    manifest["artifacts"]
+        .as_array_mut()
+        .test_expect("manifest artifacts array")
+        .push(serde_json::json!({
+            "path": receipt_log_path,
+            "sha256": sha256_file(&receipt_log_file),
+            "schema": "chio.receipts.log.v1",
+            "media_type": "application/json",
+            "artifact_class": "receipt-log",
+            "sensitivity_class": "restricted",
+            "producer": "test-fixture",
+            "participates_in_primary_verdict": false,
+            "renderer_hint": "hidden"
+        }));
+    manifest["artifacts"]
+        .as_array_mut()
+        .test_expect("manifest artifacts array")
+        .push(serde_json::json!({
+            "path": tenant_body_path,
+            "sha256": sha256_file(&tenant_body_file),
+            "schema": "chio.tenant.body.v1",
+            "media_type": "application/json",
+            "artifact_class": "tenant-body",
+            "sensitivity_class": "restricted",
+            "producer": "test-fixture",
+            "participates_in_primary_verdict": false,
+            "renderer_hint": "hidden"
+        }));
+    write_json(&manifest_path, &manifest);
+    refresh_bundle_signature(&bundle);
+
+    let output_file = tempdir.path().join("proof-room-admin-full.tgz");
+    let output = chio(&[
+        "proof",
+        "export",
+        utf8_path(&bundle).as_str(),
+        "--out",
+        utf8_path(&output_file).as_str(),
+        "--redact",
+        "admin-full-evidence-v1",
+    ]);
+
+    assert_success(&output);
+    let members = tgz_member_names(&output_file);
+    assert!(members.contains(receipt_log_path));
+    assert!(members.contains(tenant_body_path));
+
+    let verify = chio(&["proof", "verify", utf8_path(&output_file).as_str()]);
+    assert_success(&verify);
+}
+
+#[test]
 fn proof_export_public_redaction_preserves_collected_catalog_negative_artifacts() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let artifact_dir =

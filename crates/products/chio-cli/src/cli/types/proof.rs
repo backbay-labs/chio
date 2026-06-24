@@ -137,12 +137,14 @@ impl ProofCollectKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub(crate) enum ProofExportRedactProfile {
+    AdminFullEvidenceV1,
     Public,
 }
 
 impl ProofExportRedactProfile {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
+            Self::AdminFullEvidenceV1 => "admin-full-evidence-v1",
             Self::Public => "public",
         }
     }
