@@ -44,10 +44,12 @@ Done when: `cargo build --workspace && cargo test --workspace && cargo clippy --
 - [x] **[fixed]** Workspace clippy gate broken: governed_intent added by-value to ToolCallOperation trips large_enum_variant on SessionOperation enum
       - Confirmed by running clippy first-hand. NOTE: prior finding text called it the 'Operation' enum; the actual enum is SessionOperation. Substance is correct. This breaks the workspace `cargo clippy --wo
       - Evidence: `cargo clippy --workspace -- -D warnings` passed.
-- [ ] **[medium]** Copy lint applies allow-context suppression to stop-patterns, letting hedged launch copy bypass bare-ACP and ambient-authority gates
-      - Allow-context suppression is correct for availability claims but wrong for forbidden-copy stop-patterns: any banned token co-occurring with a common hedge/negation word in the same clause is silently
-- [ ] **[medium]** Release-truth copy lint and its test are not wired into CI, so the new bare-ACP/overclaim gates are unenforced
-      - The substantive copy lint (home of R-T08-09's bare-ACP gate and R-T08-10/R-T08-30 overclaim gates) plus its positive/negative test exist only as runnable artifacts, not enforced checks. Add a CI job t
+- [x] **[fixed]** Copy lint applies allow-context suppression to stop-patterns, letting hedged launch copy bypass bare-ACP and ambient-authority gates
+      - Stop-patterns no longer honor allow-context suppression; hedged ambient-authority and insurer-pricing overclaims fail the release-truth lint.
+      - Evidence: `bash scripts/tests/check-chio-proof-room-release-truth.test.sh`; `bash scripts/check-chio-proof-room-release-truth.sh`.
+- [x] **[fixed]** Release-truth copy lint and its test are not wired into CI, so the new bare-ACP/overclaim gates are unenforced
+      - CI runs `bash ./scripts/check-chio-proof-room-release-truth.sh` and `bash ./scripts/tests/check-chio-proof-room-release-truth.test.sh` in the workspace structural gates.
+      - Evidence: `bash scripts/tests/check-chio-proof-room-release-truth.test.sh`; `.github/workflows/ci.yml`.
 - [ ] **[medium]** Doc/code drift: now-canonical schema IDs still flagged 'not canonical / not implementation constants' in the canonical planning registry
       - Same defect family as R-ARD-53; included for completeness.
 - [x] `git add` the 3 untracked kernel swarm modules + ~238 untracked fixtures/schemas/claim-set files before any commit (commit hazard).
@@ -122,10 +124,12 @@ Done when: a live protocol/kernel executor verifies the swarm authority bundle (
 - [x] **[fixed]** R-T08-07: envelope_id is not content-addressed (RFC 8785) and no canonical-id gate exists
       - Agent Web proof envelopes now recompute envelope_id from canonical JSON over the envelope body excluding envelope_id/signature and reject mismatches before trusting the sidecar.
       - Evidence: `cargo test -p chio-agent-web-interop --test agent_web_interop agent_web_interop_rejects_non_content_addressed_envelope_id`.
-- [ ] **[partially_fixed]** R-T08-09: Bare-ACP copy lint not implemented as an enforced check
-      - Add a runnable lint (script or xtask) wired into CI that scans launch/public docs, fails on bare 'ACP', and passes the disambiguated forms; back it with positive/negative fixtures.
-- [ ] **[partially_fixed]** R-T08-10: Banned-overbroad-claims copy lint (universal-protocol / native-across-all-protocols / SLSA-runtime) not implemented
-      - Implement and CI-wire a banned-phrase copy lint over public/launch docs and README/marketing surfaces, with negative fixtures for each banned phrase and positive fixtures for the sanctioned envelope-n
+- [x] **[fixed]** R-T08-09: Bare-ACP copy lint not implemented as an enforced check
+      - The release-truth copy lint scans README, docs, and `spec/PROTOCOL.md`, rejects bare ACP, and is wired into CI with a positive/negative fixture test.
+      - Evidence: `bash scripts/tests/check-chio-proof-room-release-truth.test.sh`; `bash scripts/check-chio-proof-room-release-truth.sh`.
+- [x] **[fixed]** R-T08-10: Banned-overbroad-claims copy lint (universal-protocol / native-across-all-protocols / SLSA-runtime) not implemented
+      - The release-truth copy lint rejects generic universal-protocol, native-across-all-protocols, stale A2A/OpenAPI/SLSA versions, Sigstore-runtime-authority, and related rejected-standard claims.
+      - Evidence: `bash scripts/tests/check-chio-proof-room-release-truth.test.sh`; `bash scripts/check-chio-proof-room-release-truth.sh`.
 - [x] **[fixed]** R-T08-20: Sigstore/OCI projection treats self-asserted transparency-log inclusion as verified (fail-honest violation)
       - Sigstore and OCI projections now reject external subjects that self-assert verified Rekor/transparency status; the projection remains digest-bound external evidence, not Chio authority.
       - Evidence: `cargo test -p chio-agent-web-interop --test agent_web_interop self_asserted`.
@@ -133,8 +137,9 @@ Done when: a live protocol/kernel executor verifies the swarm authority bundle (
       - Build an aggregating launch gate (CI job) that asserts: every conformance-matrix row has a positive and negative fixture, all source versions/snapshots are pinned, Rekor wording is honest, no bare ACP
 
 ### Artifact Registry Discipline & Integration Contracts
-- [ ] **[open]** R-ARD-52: Copy-lint gate (Contract 10: marketing claims must have backing artifacts/fixtures) is absent
-      - Implement a copy-lint xtask/CI step that parses homepage/marketing copy, extracts claim phrases, and fails the build when a claim has no corresponding enforced claim-registry row + fixture (ideally dr
+- [x] **[fixed]** R-ARD-52: Copy-lint gate (Contract 10: marketing claims must have backing artifacts/fixtures) is absent
+      - The launch acceptance package writes `claims/homepage-copy-map.json` and the focused contract test verifies every homepage copy claim maps to registered claim ids and stage fixtures that actually verify those claims.
+      - Evidence: `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 bash scripts/tests/check-chio-proof-room-launch-acceptance.test.sh`; `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo xtask verify launch-acceptance --out target/proof-room/public-bundle`.
 - [ ] **[open]** R-ARD-53: Candidate Debate Additions promoted to canonical KNOWN constants + registry rows + enforced claims while doc still marks them non-canonical
       - Update artifact-registry.md to move the now-implemented candidates out of 'Candidate Debate Additions' into the Canonical Schema IDs table (recording registry-owner acceptance and crate placement), OR
 
@@ -285,10 +290,12 @@ Done when: a live protocol/kernel executor verifies the swarm authority bundle (
       - Evidence: `bash scripts/tests/check-ioa-web3-transaction-passport-smoke.test.sh`; `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 bash scripts/qualify-web3-examples.sh`.
 
 ### Verification Gates, Proof-Room Acceptance & Launch Copy
-- [ ] **[open]** R-VG-COPY-LINT: D8 copy-lint gate (bare ACP, universal-protocol, unsupported every-action/insurance/pricing, ambient-authority) is not implemented
-      - Add a copy-lint gate (scripts/check-chio-launch-copy.* plus a CI job) that scans launch/homepage copy for banned phrases (bare 'ACP', 'universal protocol', 'replaces every protocol', unbacked 'every a
-- [ ] **[open]** R-VG-HS08: x402/AP2/ACP-Commerce/web3 ambient-authority ban: verifier side enforced, copy/prose side missing
-      - Implement the copy-side gate from R-VG-COPY-LINT to ban ambient/universal external-authority wording; keep the existing verifier-side binding as-is.
+- [x] **[fixed]** R-VG-COPY-LINT: D8 copy-lint gate (bare ACP, universal-protocol, unsupported every-action/insurance/pricing, ambient-authority) is not implemented
+      - The CI-wired release-truth lint rejects bare ACP, universal-protocol, unsupported every-action, insurance-pricing, and ambient-authority wording, including hedged stop-pattern cases.
+      - Evidence: `bash scripts/tests/check-chio-proof-room-release-truth.test.sh`; `bash scripts/check-chio-proof-room-release-truth.sh`.
+- [x] **[fixed]** R-VG-HS08: x402/AP2/ACP-Commerce/web3 ambient-authority ban: verifier side enforced, copy/prose side missing
+      - The copy-side gate rejects x402 and external-protocol universal-authority wording while the verifier-side protocol payload binding remains enforced.
+      - Evidence: `bash scripts/tests/check-chio-proof-room-release-truth.test.sh`; `bash scripts/check-chio-proof-room-release-truth.sh`.
 
 ## Phase 3 - MEDIUM / LOW (completeness, docs, naming, copy-lint)
 - [ ] **[medium/open]** ESC-FIRST-SPRINT-COMMANDS: Required first-sprint command references a nonexistent test name (Roadmap stop-rules, launch ris)
@@ -346,7 +353,8 @@ Done when: a live protocol/kernel executor verifies the swarm authority bundle (
 - [ ] **[medium/open]** R-T08-27: Per-conformance-row positive fixtures and bare-ACP negative not on disk (Agent Web Proof Envelope & Ext)
 - [ ] **[medium/open]** R-T08-28: External-standards source log and Required Refresh Gate not shipped/enforced (Agent Web Proof Envelope & Ext)
 - [ ] **[medium/open]** R-T08-29: Standards-review sign-off gate for standard/compatible/native/universal claims missing (Agent Web Proof Envelope & Ext)
-- [ ] **[medium/open]** R-VG-COPY-MAP: No machine-checked mapping from homepage copy claims to covering fixture/claim ids (Verification Gates, Proof-Room)
+- [x] **[medium/fixed]** R-VG-COPY-MAP: No machine-checked mapping from homepage copy claims to covering fixture/claim ids (Verification Gates, Proof-Room)
+  - `claims/homepage-copy-map.json` is generated by `cargo xtask verify launch-acceptance`, and the contract test rejects unknown claim ids, unknown fixture ids, empty mappings, and claims not verified by the listed fixtures. Evidence: `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 bash scripts/tests/check-chio-proof-room-launch-acceptance.test.sh`.
 - [ ] **[medium/open]** R-VG-HS06: Insurance autonomous-pricing controls enforced via comptroller-report, not the three separately-named schemas (Verification Gates, Proof-Room)
 - [ ] **[medium/open]** RISK-P1-ENTERPRISE-EXPORT: P1: 4 of 9 cited enterprise schema IDs not built (Roadmap stop-rules, launch ris)
 - [ ] **[medium/open]** RISK-P1-MERCHANT-LIFECYCLE: P1: 4 cited standalone commerce schema IDs folded into payment-lifecycle fields (Roadmap stop-rules, launch ris)
@@ -407,10 +415,9 @@ Verified first-hand against live code after the "pin authorities externally" + "
 ### Phase 1/2 additions - new HIGH integrity findings
 - [x] **[HIGH/fixed]** RR2-TM-01: trust-market `chio.receipt.v1` artifacts now verify signatures against pinned market authority keys for selection overrides and risk evidence refs. Added forged/untrusted-signer negatives for override, settlement, reserve ledger, sanction, jurisdiction, and authority receipts. Evidence: `cargo test -p chio-trust-market-context --test trust_market_context`; `cargo test -p chio-control-plane --test trust_market_context`; `cargo clippy -p chio-trust-market-context --test trust_market_context -- -D warnings`.
 - [x] **[HIGH/fixed]** RR2-RISK-01 (= R-T06-13 re-scoped up): transaction-passport verifier now has a non-cyclic external verified-claim hook. Required risk claims fail closed unless supplied by a caller after risk comptroller verification; the CLI supplies that list from family reports after `verify_standalone_risk_claim` / enterprise / trust-market routes. Evidence: `cargo test -p chio-transaction-passport --test transaction_passport root_claim_set_ -- --nocapture`; `cargo test -p chio-cli --test proof_cli_contract`; `cargo clippy -p chio-cli --test proof_cli_contract -- -D warnings`.
-- [ ] **[HIGH]** RR2-COPY (corrects R-T08-09/10/30, R-VG-COPY-LINT, SW-STD-06/12 "not in CI"): the release-truth copy-lint IS in CI (`.github/workflows/ci.yml:86-87`) but is shallow and bypassable:
-      - RR2-COPY-01: allow-context suppression lets a leading hedge void a real stop-pattern hit (`scripts/check-chio-proof-room-release-truth.sh:440-444`). Fix: require the negation to govern the matched span, or drop suppression for COPY_STOP_PATTERNS.
-      - RR2-COPY-02: scans only 2 docs (`:69-71`); add `spec/PROTOCOL.md` + recursive `docs/`.
-      - RR2-COPY-03: catches none of the 7 source-log "Rejected" overclaims; add a stop-pattern per exemplar (A2A v1.0.0, universal-protocol, native-across-all-protocols, SLSA v1.1, OpenAPI 3.2, Sigstore-runtime-authority).
+- [x] **[HIGH/fixed]** RR2-COPY (corrects R-T08-09/10/30, R-VG-COPY-LINT, SW-STD-06/12 "not in CI")
+      - Stop-pattern allow-context suppression is disabled, README/docs/`spec/PROTOCOL.md` are in scope, and the lint has negative fixtures for the rejected-standard overclaims including A2A v1.0.0, universal-protocol, native external authority, SLSA v1.1, OpenAPI 3.2, and Sigstore runtime authority.
+      - Evidence: `bash scripts/tests/check-chio-proof-room-release-truth.test.sh`; `bash scripts/check-chio-proof-room-release-truth.sh`.
 
 ### Phase 2/3 additions - new MEDIUM findings
 - [x] **[medium/fixed]** RR2-DISC-01: disclosure-lineage verification now routes on evidence-graph presence of disclosure artifacts, even when the verifier policy does not require a `claim.disclosure.*` prefix. The CLI rejects a bundle that swaps in a forbidden selective-disclosure proof without relying on policy-required disclosure claims. Evidence: `cargo test -p chio-cli --test proof_verify proof_verify_rejects_disclosure_evidence_failure_without_policy_required_claim -- --nocapture`; `cargo test -p chio-cli --test proof_verify`; `cargo test -p chio-transaction-passport --test transaction_passport`; `cargo test -p chio-core-types --test signed_artifact_schema --test claim_registry_integrity`; `scripts/check-chio-schema-registry.sh`.
