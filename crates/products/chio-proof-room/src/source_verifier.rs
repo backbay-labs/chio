@@ -1249,10 +1249,77 @@ pub(crate) fn validate_source_runtime_proof_regeneration_artifacts(
         },
     )
     .map_err(|error| format!("proof-room.runtime-regeneration.invalid: {error}"))?;
+    ensure_source_runtime_regeneration_records_bind_workflow_steps(
+        proof_regeneration_report,
+        workflow_run_report,
+    )?;
     Ok(SourceRuntimeProofRegenerationHashes {
         proof_package_sha256: source_runtime_artifact_canonical_sha256(proof_package)?,
         verifier_report_sha256: source_runtime_artifact_canonical_sha256(verifier_report)?,
     })
+}
+
+fn ensure_source_runtime_regeneration_records_bind_workflow_steps(
+    proof_regeneration_report: &[u8],
+    workflow_run_report: &[u8],
+) -> Result<(), String> {
+    let proof_report: serde_json::Value = serde_json::from_slice(proof_regeneration_report)
+        .map_err(|error| format!("proof-room.runtime-regeneration.invalid-json: {error}"))?;
+    let workflow_report: serde_json::Value = serde_json::from_slice(workflow_run_report)
+        .map_err(|error| format!("proof-room.runtime-regeneration.invalid-json: {error}"))?;
+    let source_records = proof_report
+        .get("sourceRecords")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "proof-room.runtime-regeneration.source-records-missing".to_string())?;
+    let workflow_steps = workflow_report
+        .get("stepEvidence")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "proof-room.runtime-regeneration.workflow-steps-missing".to_string())?;
+
+    for source_record in source_records {
+        let step_index = source_record
+            .get("stepIndex")
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| {
+                "proof-room.runtime-regeneration.source-record-step-missing".to_string()
+            })?;
+        let workflow_step = workflow_steps
+            .iter()
+            .find(|step| {
+                step.get("stepIndex").and_then(serde_json::Value::as_u64) == Some(step_index)
+            })
+            .ok_or_else(|| {
+                format!("proof-room.runtime-regeneration.source-record-step-unbound: {step_index}")
+            })?;
+        for field in [
+            "admissionReportSha256",
+            "toolReceiptSha256",
+            "bilateralDsseSha256",
+            "workflowStepSha256",
+        ] {
+            let source_value = source_runtime_required_str(source_record, field)?;
+            let workflow_value = source_runtime_required_str(workflow_step, field)?;
+            if source_value != workflow_value {
+                return Err(format!(
+                    "proof-room.runtime-regeneration.source-record-workflow-step-mismatch: step {step_index} {field}"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn source_runtime_required_str<'a>(
+    value: &'a serde_json::Value,
+    field: &str,
+) -> Result<&'a str, String> {
+    value
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            format!("proof-room.runtime-regeneration.source-record-field-missing: {field}")
+        })
 }
 
 pub(crate) struct SourceRuntimeProofRegenerationHashes {

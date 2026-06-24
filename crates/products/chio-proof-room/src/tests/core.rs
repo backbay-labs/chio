@@ -122,6 +122,23 @@ fn source_runtime_parity_requires_regeneration_artifacts() -> Result<(), Box<dyn
 }
 
 #[test]
+fn source_runtime_regeneration_binds_source_records_to_workflow_steps() -> Result<(), Box<dyn Error>>
+{
+    let context = runtime_regeneration_context_with_workflow_step_mismatch()?;
+    let mut report = serde_json::json!({});
+
+    let error = super::attach_source_runtime_proof_parity_report(&context, &mut report)
+        .err()
+        .ok_or("runtime source record with mismatched workflow step unexpectedly verified")?;
+
+    assert!(
+        error.contains("proof-room.runtime-regeneration.source-record-workflow-step-mismatch"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn verifies_single_call_authority_bundle() -> Result<(), Box<dyn Error>> {
     let bundle = repo_root()?.join(
         "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/manifest.json",

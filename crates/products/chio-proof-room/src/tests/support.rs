@@ -187,6 +187,19 @@ pub(crate) fn proof_room_router_with_repo_fixture_root(
 pub(crate) fn runtime_regeneration_context(
     tamper_report: bool,
 ) -> Result<SourceVerifierContext, Box<dyn Error>> {
+    runtime_regeneration_context_with_options(tamper_report, false, false)
+}
+
+pub(crate) fn runtime_regeneration_context_with_workflow_step_mismatch(
+) -> Result<SourceVerifierContext, Box<dyn Error>> {
+    runtime_regeneration_context_with_options(false, true, true)
+}
+
+fn runtime_regeneration_context_with_options(
+    tamper_report: bool,
+    tamper_workflow_step: bool,
+    bind_parity_hashes: bool,
+) -> Result<SourceVerifierContext, Box<dyn Error>> {
     let passport_bytes = fs::read(
         repo_root()?.join("fixtures/proof-room/minimal-passport/valid/transaction-passport.json"),
     )?;
@@ -229,6 +242,11 @@ pub(crate) fn runtime_regeneration_context(
         "checks": ["runtime_regeneration.source_records_bound"]
     });
     let proof_report_sha256 = canonical_json_sha256(&proof_report)?;
+    let workflow_step_sha256 = if tamper_workflow_step {
+        "9".repeat(64)
+    } else {
+        "d".repeat(64)
+    };
     let workflow_report = serde_json::json!({
         "schema": "chio.runtime.workflow-run-report.v1",
         "runId": "runtime-loopback-1",
@@ -245,7 +263,7 @@ pub(crate) fn runtime_regeneration_context(
             "toolReceiptSha256": "b".repeat(64),
             "outputSha256": "e".repeat(64),
             "bilateralDsseSha256": "c".repeat(64),
-            "workflowStepSha256": "d".repeat(64),
+            "workflowStepSha256": workflow_step_sha256,
             "consistencyAnchor": "anchor-1",
             "destructive": false
         }],
@@ -295,10 +313,10 @@ pub(crate) fn runtime_regeneration_context(
         "runId": "runtime-loopback-1",
         "accepted": true,
         "generatedAtUnixMs": 1_800_000_000_000u64,
-        "staticProofPackageSha256": "2".repeat(64),
-        "runtimeProofPackageSha256": "2".repeat(64),
-        "staticVerifierReportSha256": "3".repeat(64),
-        "runtimeVerifierReportSha256": "3".repeat(64),
+        "staticProofPackageSha256": if bind_parity_hashes { proof_package_sha256.clone() } else { "2".repeat(64) },
+        "runtimeProofPackageSha256": if bind_parity_hashes { proof_package_sha256 } else { "2".repeat(64) },
+        "staticVerifierReportSha256": if bind_parity_hashes { verifier_report_sha256.clone() } else { "3".repeat(64) },
+        "runtimeVerifierReportSha256": if bind_parity_hashes { verifier_report_sha256 } else { "3".repeat(64) },
         "comparedFields": ["verified_claims"],
         "mismatches": []
     });
