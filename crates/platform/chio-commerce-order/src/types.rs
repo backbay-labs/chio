@@ -260,6 +260,7 @@ pub struct CommerceOrderVerificationBundle {
     pub trusted_event_authority_receipt_kernel_keys: Vec<chio_core_types::crypto::PublicKey>,
     pub trusted_payment_signer_keys: Vec<chio_core_types::crypto::PublicKey>,
     pub trusted_provider_trust_signer_keys: Vec<chio_core_types::crypto::PublicKey>,
+    pub trusted_risk_comptroller_signer_keys: Vec<chio_core_types::crypto::PublicKey>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

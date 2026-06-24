@@ -2205,6 +2205,8 @@ fn load_commerce_order_bundle_from_graph(
         trusted_event_authority_receipt_kernel_keys: trusted_payment_signer_keys.to_vec(),
         trusted_payment_signer_keys: trusted_payment_signer_keys.to_vec(),
         trusted_provider_trust_signer_keys: trusted_provider_trust_signer_keys.to_vec(),
+        trusted_risk_comptroller_signer_keys:
+            enterprise_trusted_risk_comptroller_signer_keys_from_env()?,
     })
 }
 

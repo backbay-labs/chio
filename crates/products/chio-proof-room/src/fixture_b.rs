@@ -342,6 +342,8 @@ pub(crate) fn embedded_commerce_order_bundle(
         )?,
         trusted_payment_signer_keys: crate::transaction_trusted_root_keys_from_env()?,
         trusted_provider_trust_signer_keys: crate::commerce_trusted_provider_keys_from_env()?,
+        trusted_risk_comptroller_signer_keys:
+            crate::enterprise_trusted_risk_comptroller_signer_keys_from_env()?,
     })
 }
 

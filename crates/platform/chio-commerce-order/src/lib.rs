@@ -87,6 +87,7 @@ pub fn verify_commerce_order(
     let coverage_decision_bound = verify_coverage_requirement(
         &bundle.order_context,
         bundle.risk_comptroller_report_bytes.as_deref(),
+        &bundle.trusted_risk_comptroller_signer_keys,
     )?;
 
     let event_log: CommerceEventLog = parse_json("event log", &bundle.event_log_bytes)?;
@@ -218,6 +219,7 @@ struct CommerceCoverageDecision {
 fn verify_coverage_requirement(
     context: &CommerceOrderContext,
     risk_report_bytes: Option<&[u8]>,
+    trusted_risk_comptroller_signer_keys: &[chio_core_types::PublicKey],
 ) -> Result<bool, CommerceOrderError> {
     let Some(requirement) = &context.coverage_requirement else {
         return Ok(false);
@@ -235,8 +237,19 @@ fn verify_coverage_requirement(
         &requirement.risk_comptroller_report_sha256,
         report_bytes,
     )?;
+    let report_value: serde_json::Value = parse_json("risk comptroller report", report_bytes)?;
+    chio_risk_comptroller::validate_risk_report_signature(
+        &report_value,
+        trusted_risk_comptroller_signer_keys,
+    )
+    .map_err(|error| CommerceOrderError::CoverageFailed(error.to_string()))?;
     let report: CommerceCoverageDecisionReport =
-        parse_json("risk comptroller report", report_bytes)?;
+        serde_json::from_value(report_value).map_err(|error| {
+            CommerceOrderError::InvalidArtifact {
+                field: "risk comptroller report",
+                message: error.to_string(),
+            }
+        })?;
     validate_coverage_decision_report(context, requirement, &report)?;
     Ok(true)
 }

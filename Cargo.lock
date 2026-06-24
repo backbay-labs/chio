@@ -2973,6 +2973,7 @@ name = "chio-commerce-order"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-risk-comptroller",
  "chio-test-support",
  "chrono",
  "hex",

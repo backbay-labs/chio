@@ -65,6 +65,11 @@ fn commerce_event_authority_receipt_signer() -> Keypair {
     Keypair::from_seed(&[9u8; 32])
 }
 
+fn risk_comptroller_signer_key() -> PublicKey {
+    PublicKey::from_hex("3f0dda81e6abbcc5f17c359df8517177769d2dfff3d4ce942e7ce9a82dfb0db2")
+        .test_expect("enterprise risk comptroller signer key parses")
+}
+
 fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
 
@@ -156,6 +161,7 @@ fn load_bundle(case_name: &str) -> chio_commerce_order::CommerceOrderVerificatio
         trusted_event_authority_receipt_kernel_keys: vec![commerce_event_authority_receipt_key()],
         trusted_payment_signer_keys: vec![commerce_payment_signer_key()],
         trusted_provider_trust_signer_keys: vec![commerce_provider_trust_signer_key()],
+        trusted_risk_comptroller_signer_keys: vec![risk_comptroller_signer_key()],
     }
 }
 
@@ -647,6 +653,51 @@ fn commerce_order_replay_accepts_coverage_required_with_bound_risk_report() {
             .coverage_requirement
             .as_ref()
             .map(|requirement| requirement.risk_comptroller_report_sha256.clone())
+    );
+}
+
+#[test]
+fn commerce_order_replay_rejects_forged_risk_comptroller_signature() {
+    let mut bundle = load_bundle("offline-psp-valid");
+    require_enterprise_coverage(&mut bundle);
+    let mut report: serde_json::Value = serde_json::from_slice(
+        bundle
+            .risk_comptroller_report_bytes
+            .as_ref()
+            .test_expect("risk report present"),
+    )
+    .test_expect("risk report parses");
+    let original_signature = report["signature"]
+        .as_str()
+        .test_expect("risk report signature")
+        .to_string();
+    let signature_hex = original_signature
+        .rsplit(':')
+        .next()
+        .test_expect("risk report signature hex");
+    report["signature"] = serde_json::Value::String(format!(
+        "sig-ed25519:{}:{}",
+        Keypair::from_seed(&[61u8; 32]).public_key().to_hex(),
+        signature_hex
+    ));
+    let forged_report_bytes =
+        serde_json::to_vec(&report).test_expect("forged risk report serializes");
+    bundle
+        .order_context
+        .coverage_requirement
+        .as_mut()
+        .test_expect("coverage requirement present")
+        .risk_comptroller_report_sha256 = sha256_hex(&forged_report_bytes);
+    bundle.risk_comptroller_report_bytes = Some(forged_report_bytes);
+
+    let error = chio_commerce_order::verify_commerce_order(&bundle)
+        .test_expect_err("forged risk comptroller report signature must fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("risk comptroller report signer untrusted"),
+        "{error}"
     );
 }
 
