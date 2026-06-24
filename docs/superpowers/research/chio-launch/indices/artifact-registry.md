@@ -64,6 +64,10 @@ Rules:
 
 ## Noncanonical Names To Avoid
 
+Fold decisions:
+
+- `chio.commerce.provider-admission.v1` is not a separate launch schema. Provider admission is represented by `chio.commerce.provider-discovery-snapshot.v1` plus `chio.commerce.provider-selection-report.v1`, and verifiers must bind the selected provider subject, discovery snapshot, scorecard, reputation, SLA, and downstream order context through those two artifacts.
+
 The following names appeared in draft material or early integrated docs and should not be used in canonical plans:
 
 - `chio.transaction_passport.v1`

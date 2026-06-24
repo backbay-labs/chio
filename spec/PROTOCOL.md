@@ -2503,11 +2503,12 @@ shipping evidence plus deterministic operator-visible runtime evaluation:
 - runtime-assurance-aware issuance and governed-execution constraints
 
 The current liability-market claim is intentionally bounded: Chio now proves a
-curated provider-admission, delegated pricing-authority, quote/bind, and
-claim/dispute/adjudication/payout-and-settlement orchestration layer over
-canonical evidence, but not an insurer network, open-ended recovery-clearing
-network, open-ended autonomous pricing beyond the documented bounded authority-
-envelope and rollback lane, or permissionless market.
+curated provider discovery and selection admission flow, delegated
+pricing-authority, quote/bind, and claim/dispute/adjudication/payout-and-
+settlement orchestration layer over canonical evidence, but not an insurer
+network, open-ended recovery-clearing network, open-ended autonomous pricing
+beyond the documented bounded authority-envelope and rollback lane, or
+permissionless market.
 
 External launch, partner, or standards materials should derive claims from this
 protocol document, the release-qualification corpus, and the release audit.
