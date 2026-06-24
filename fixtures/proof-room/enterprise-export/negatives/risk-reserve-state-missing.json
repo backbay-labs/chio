@@ -5,5 +5,5 @@
   "base_fixture": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/transaction-passport.json",
   "fixture_path": "../risk-reserve-state-missing",
   "mutated_artifact": "risk-comptroller-report.json",
-  "expected_failure_code": "risk reserve state missing"
+  "expected_failure_code": "proof-room.negative.risk-reserve-state-missing"
 }

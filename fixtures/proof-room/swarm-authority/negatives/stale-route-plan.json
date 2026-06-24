@@ -4,5 +4,5 @@
   "claim_ref": "claim.swarm.route_plan_bound",
   "base_fixture": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/route-child-a.json",
   "case": "StaleRoutePlan",
-  "expected_failure_code": "swarm route-plan receipt is stale"
+  "expected_failure_code": "proof-room.negative.swarm-route-plan-receipt-is-stale"
 }

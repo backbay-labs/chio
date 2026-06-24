@@ -4,5 +4,5 @@
   "claim_ref": "claim.enterprise.evidence_export_digest_bound",
   "base_fixture": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/transaction-passport.json",
   "case": "ExportDigestMismatch",
-  "expected_failure_code": "export bundle digest mismatch"
+  "expected_failure_code": "proof-room.negative.export-bundle-digest-mismatch"
 }

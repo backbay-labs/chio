@@ -4,5 +4,5 @@
   "claim_ref": "claim.enterprise.telemetry_projection_bound",
   "base_fixture": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/transaction-passport.json",
   "case": "TelemetryPassportMismatch",
-  "expected_failure_code": "telemetry projection passport mismatch"
+  "expected_failure_code": "proof-room.negative.telemetry-projection-passport-mismatch"
 }

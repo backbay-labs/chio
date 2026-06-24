@@ -4,5 +4,5 @@
   "claim_ref": "claim.enterprise.data_governance_bound",
   "base_fixture": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/transaction-passport.json",
   "case": "OverdisclosedPii",
-  "expected_failure_code": "PII field was not redacted"
+  "expected_failure_code": "proof-room.negative.pii-field-was-not-redacted"
 }

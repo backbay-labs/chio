@@ -6,5 +6,5 @@
   "mutation": {
     "kind": "append_tool_server_ack_replay"
   },
-  "expected_failure_code": "reused nonce"
+  "expected_failure_code": "proof-room.negative.reused-nonce"
 }

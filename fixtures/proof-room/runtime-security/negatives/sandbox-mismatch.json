@@ -8,5 +8,5 @@
     "field": "tool_manifest_digest",
     "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
   },
-  "expected_failure_code": "sandbox tool binding mismatch"
+  "expected_failure_code": "proof-room.negative.sandbox-tool-binding-mismatch"
 }

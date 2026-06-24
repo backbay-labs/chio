@@ -4,5 +4,5 @@
   "claim_ref": "claim.runtime.advisory_not_used_as_authorization",
   "base_fixture": "fixtures/proof-room/runtime-security/valid-side-effecting-call/transaction-passport.json",
   "case": "AdvisoryUsedAsAuthorization",
-  "expected_failure_code": "advisory evidence cannot authorize runtime execution"
+  "expected_failure_code": "proof-room.negative.advisory-evidence-cannot-authorize-runtime-execution"
 }

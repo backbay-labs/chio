@@ -4,5 +4,5 @@
   "claim_ref": "claim.swarm.revocation_epoch_bound",
   "base_fixture": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/revocation-epoch.json",
   "case": "RevokedTask",
-  "expected_failure_code": "swarm task is revoked"
+  "expected_failure_code": "proof-room.negative.swarm-task-is-revoked"
 }

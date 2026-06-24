@@ -4,5 +4,5 @@
   "claim_ref": "claim.commerce.order_replay_consistent",
   "base_fixture": "fixtures/proof-room/commerce-payments/offline-psp-valid/transaction-passport.json",
   "case": "QuoteEvidenceMismatch",
-  "expected_failure_code": "quote event missing quote evidence"
+  "expected_failure_code": "proof-room.negative.quote-event-missing-quote-evidence"
 }

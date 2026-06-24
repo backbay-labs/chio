@@ -4,5 +4,5 @@
   "claim_ref": "claim.agent_web.sidecar_not_native_authority",
   "base_fixture": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/transaction-passport.json",
   "case": "SidecarClaimMarkedNative",
-  "expected_failure_code": "sidecar claim presented as native external proof"
+  "expected_failure_code": "proof-room.negative.sidecar-claim-presented-as-native-external-proof"
 }

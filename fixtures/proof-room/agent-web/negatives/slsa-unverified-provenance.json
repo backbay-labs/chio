@@ -4,5 +4,5 @@
   "claim_ref": "claim.agent_web.external_subject_digest_bound",
   "base_fixture": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/transaction-passport.json",
   "case": "SlsaUnverified",
-  "expected_failure_code": "unsupported SLSA verification status"
+  "expected_failure_code": "proof-room.negative.unsupported-slsa-verification-status"
 }

@@ -4,5 +4,5 @@
   "claim_ref": "claim.trust_market.provider_selection_bound",
   "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
   "case": "SelectedProviderAbsent",
-  "expected_failure_code": "selected provider absent from discovery snapshot"
+  "expected_failure_code": "proof-room.negative.selected-provider-absent-from-discovery-snapshot"
 }

@@ -5,5 +5,5 @@
   "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
   "fixture_path": "../unsupported-collateral-source",
   "mutated_artifact": "collateral-position-report.json",
-  "expected_failure_code": "collateral source type unsupported"
+  "expected_failure_code": "proof-room.negative.collateral-source-type-unsupported"
 }

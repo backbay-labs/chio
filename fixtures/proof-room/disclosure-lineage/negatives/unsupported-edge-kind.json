@@ -2,5 +2,5 @@
   "schema": "chio.proof-room.negative-case.v1",
   "id": "unsupported-edge-kind",
   "verifier_entrypoint": "transaction-passport.json",
-  "expected_failure_code": "unsupported lineage edge kind"
+  "expected_failure_code": "proof-room.negative.unsupported-lineage-edge-kind"
 }

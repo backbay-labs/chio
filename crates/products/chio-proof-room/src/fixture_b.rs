@@ -1119,7 +1119,11 @@ pub(crate) fn available_fixture_observed_failure_code(
     report
         .error
         .as_deref()
-        .map(|error| fixture_verifier_domain_error(fixture_id, error).to_string())
+        .map(|error| {
+            crate::bundle_a::stable_negative_failure_code(fixture_verifier_domain_error(
+                fixture_id, error,
+            ))
+        })
         .or_else(|| report.failure_code.clone())
 }
 

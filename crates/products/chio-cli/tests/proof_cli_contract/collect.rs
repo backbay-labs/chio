@@ -342,7 +342,7 @@ fn proof_collect_binds_catalog_semantic_negative_cases() {
     assert!(negative_case
         .get("observed_failure_code")
         .and_then(serde_json::Value::as_str)
-        .is_some_and(|code| code.contains("payment merchant mismatch")));
+        .is_some_and(|code| code.contains("proof-room.negative.payment-merchant-mismatch")));
 
     let serve_output = chio(&[
         "proof",
@@ -515,7 +515,7 @@ fn proof_collect_rejects_catalog_negative_fixture_failure_prefix() {
             "claim_ref": "claim.commerce.payment_lifecycle_bound",
             "base_fixture": "fixtures/proof-room/commerce-payments/offline-psp-valid/transaction-passport.json",
             "case": "PaymentWrongMerchant",
-            "expected_failure_code": "payment merchant"
+            "expected_failure_code": "proof-room.negative.payment-merchant"
         })
         .to_string(),
     )
@@ -557,7 +557,7 @@ fn proof_collect_rejects_catalog_negative_fixture_failure_prefix() {
         &output,
         "catalog negative proof fixture failed for the wrong reason",
     );
-    assert_failure(&output, "payment merchant mismatch");
+    assert_failure(&output, "proof-room.negative.payment-merchant-mismatch");
 }
 
 #[test]
@@ -604,7 +604,7 @@ fn proof_collect_binds_runtime_catalog_semantic_negative_cases() {
     assert!(negative_case
         .get("observed_failure_code")
         .and_then(serde_json::Value::as_str)
-        .is_some_and(|code| code.contains("missing execution lease")));
+        .is_some_and(|code| code.contains("proof-room.negative.missing-execution-lease")));
     let allow_coverage = manifest
         .get("receipt_coverage")
         .and_then(serde_json::Value::as_array)
@@ -678,7 +678,7 @@ fn proof_collect_binds_risk_catalog_semantic_negative_cases() {
     assert!(negative_case
         .get("observed_failure_code")
         .and_then(serde_json::Value::as_str)
-        .is_some_and(|code| code.contains("risk reserve double consumption")));
+        .is_some_and(|code| code.contains("proof-room.negative.risk-reserve-double-consumption")));
 }
 
 #[test]

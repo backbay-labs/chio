@@ -4,5 +4,5 @@
   "claim_ref": "claim.commerce.payment_lifecycle_bound",
   "base_fixture": "fixtures/proof-room/commerce-payments/offline-psp-valid/transaction-passport.json",
   "case": "OpenDisputeCompleted",
-  "expected_failure_code": "unresolved payment recovery state"
+  "expected_failure_code": "proof-room.negative.unresolved-payment-recovery-state"
 }

@@ -4,5 +4,5 @@
   "claim_ref": "claim.swarm.join_receipt_bound",
   "base_fixture": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/join-receipt.json",
   "case": "JoinParentSetMismatch",
-  "expected_failure_code": "swarm join receipt parent set mismatch"
+  "expected_failure_code": "proof-room.negative.swarm-join-receipt-parent-set-mismatch"
 }

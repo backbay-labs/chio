@@ -4,5 +4,5 @@
   "claim_ref": "claim.runtime.execution_lease_valid",
   "base_fixture": "fixtures/proof-room/runtime-security/valid-side-effecting-call/transaction-passport.json",
   "case": "MissingExecutionLease",
-  "expected_failure_code": "missing execution lease"
+  "expected_failure_code": "proof-room.negative.missing-execution-lease"
 }

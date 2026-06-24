@@ -4,5 +4,5 @@
   "claim_ref": "claim.risk.comptroller_report_bound",
   "base_fixture": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/transaction-passport.json",
   "case": "RiskReverseSlashWithoutPriorPenalty",
-  "expected_failure_code": "risk reverse slash missing prior reserve slash"
+  "expected_failure_code": "proof-room.negative.risk-reverse-slash-missing-prior-reserve-slash"
 }

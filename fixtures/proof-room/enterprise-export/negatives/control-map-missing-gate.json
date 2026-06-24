@@ -4,5 +4,5 @@
   "claim_ref": "claim.enterprise.control_map_bound",
   "base_fixture": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/transaction-passport.json",
   "case": "ControlMapMissingGate",
-  "expected_failure_code": "control gate did not run"
+  "expected_failure_code": "proof-room.negative.control-gate-did-not-run"
 }

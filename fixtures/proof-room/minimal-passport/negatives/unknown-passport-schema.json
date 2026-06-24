@@ -4,5 +4,5 @@
   "claim_ref": "claim.transaction.passport_root_verified",
   "base_fixture": "fixtures/proof-room/minimal-passport/valid/transaction-passport.json",
   "case": "UnknownPassportSchema",
-  "expected_failure_code": "unsupported transaction passport schema"
+  "expected_failure_code": "proof-room.negative.unsupported-transaction-passport-schema"
 }

@@ -4,5 +4,5 @@
   "claim_ref": "claim.agent_web.unsupported_claims_limited",
   "base_fixture": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/transaction-passport.json",
   "case": "UnsupportedClaimNotLimited",
-  "expected_failure_code": "unsupported claim was not limited"
+  "expected_failure_code": "proof-room.negative.unsupported-claim-was-not-limited"
 }

@@ -2,5 +2,5 @@
   "schema": "chio.proof-room.negative-case.v1",
   "id": "lineage-depth-regression",
   "verifier_entrypoint": "transaction-passport.json",
-  "expected_failure_code": "lineage node depth not greater than parent"
+  "expected_failure_code": "proof-room.negative.lineage-node-depth-not-greater-than-parent"
 }

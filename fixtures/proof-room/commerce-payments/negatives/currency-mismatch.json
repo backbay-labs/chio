@@ -4,5 +4,5 @@
   "claim_ref": "claim.commerce.payment_lifecycle_bound",
   "base_fixture": "fixtures/proof-room/commerce-payments/offline-psp-valid/transaction-passport.json",
   "case": "CurrencyMismatch",
-  "expected_failure_code": "payment amount or currency mismatch"
+  "expected_failure_code": "proof-room.negative.payment-amount-or-currency-mismatch"
 }

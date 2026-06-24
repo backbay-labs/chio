@@ -104,7 +104,8 @@ fn proof_room_verify_only_writes_doctor_report() -> Result<(), Box<dyn Error>> {
         .ok_or("negative cases missing from doctor report")?;
     assert!(negative_cases.iter().any(|negative_case| {
         negative_case["id"] == "policy-hash-mismatch"
-            && negative_case["observed_failure_code"] == "verifier policy digest mismatch"
+            && negative_case["observed_failure_code"]
+                == "proof-room.negative.verifier-policy-digest-mismatch"
     }));
     let receipt_coverage = report["receipt_coverage"]
         .as_array()

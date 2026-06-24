@@ -5,5 +5,5 @@
   "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
   "fixture_path": "../guarantee-wrong-beneficiary",
   "mutated_artifact": "guarantee-decision.json",
-  "expected_failure_code": "guarantee beneficiary mismatch"
+  "expected_failure_code": "proof-room.negative.guarantee-beneficiary-mismatch"
 }

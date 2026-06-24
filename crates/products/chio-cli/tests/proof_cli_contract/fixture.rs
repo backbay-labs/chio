@@ -1,6 +1,7 @@
 use super::support::*;
 use chio_test_support::prelude::*;
 use std::collections::BTreeSet;
+use std::path::Path;
 
 #[test]
 fn proof_fixture_list_reports_proof_fixtures() {
@@ -167,6 +168,86 @@ fn proof_fixture_list_reports_proof_fixtures() {
             "missing proof fixture id: {expected_fixture_id}"
         );
     }
+}
+
+#[test]
+fn proof_room_negative_fixture_failure_codes_are_dotted() {
+    let root = workspace_root().join("fixtures/proof-room");
+    let mut bad_codes = Vec::new();
+    collect_non_dotted_failure_codes(&root, &mut bad_codes)
+        .test_expect("proof-room fixture tree can be scanned");
+
+    assert!(
+        bad_codes.is_empty(),
+        "expected dotted fixture failure codes, found {} examples: {}",
+        bad_codes.len(),
+        bad_codes
+            .iter()
+            .take(12)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("; ")
+    );
+}
+
+fn collect_non_dotted_failure_codes(
+    path: &Path,
+    bad_codes: &mut Vec<String>,
+) -> std::io::Result<()> {
+    if path.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            collect_non_dotted_failure_codes(&entry?.path(), bad_codes)?;
+        }
+        return Ok(());
+    }
+    if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+        return Ok(());
+    }
+    let bytes = std::fs::read(path)?;
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return Ok(());
+    };
+    collect_non_dotted_failure_codes_in_value(path, &value, bad_codes);
+    Ok(())
+}
+
+fn collect_non_dotted_failure_codes_in_value(
+    path: &Path,
+    value: &serde_json::Value,
+    bad_codes: &mut Vec<String>,
+) {
+    match value {
+        serde_json::Value::Object(object) => {
+            for key in ["expected_failure_code", "observed_failure_code"] {
+                if let Some(code) = object.get(key).and_then(|value| value.as_str()) {
+                    if !is_dotted_fixture_failure_code(code) {
+                        bad_codes.push(format!("{} {key}={code}", path.display()));
+                    }
+                }
+            }
+            for value in object.values() {
+                collect_non_dotted_failure_codes_in_value(path, value, bad_codes);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                collect_non_dotted_failure_codes_in_value(path, value, bad_codes);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn is_dotted_fixture_failure_code(code: &str) -> bool {
+    let base = code.split(':').next().unwrap_or(code);
+    !base.is_empty()
+        && base.contains('.')
+        && !base.chars().any(char::is_whitespace)
+        && base.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '.' | '-' | '_')
+        })
 }
 
 #[test]
@@ -786,7 +867,7 @@ fn proof_fixture_generate_reports_negative_fixture_expected_failure() {
     assert!(report["expected_failure"]
         .as_str()
         .test_expect("fixture generate report includes expected failure")
-        .contains("verifier policy digest mismatch"));
+        .contains("proof-room.negative.verifier-policy-digest-mismatch"));
     let verify_path = report["verify_path"]
         .as_str()
         .test_expect("fixture generate report includes verify path");
@@ -1048,7 +1129,7 @@ fn proof_fixture_generate_rejects_negative_fixture_failure_prefix() {
             "claim_ref": "claim.commerce.payment_lifecycle_bound",
             "base_fixture": "fixtures/proof-room/commerce-payments/offline-psp-valid/transaction-passport.json",
             "case": "PaymentWrongMerchant",
-            "expected_failure_code": "payment merchant"
+            "expected_failure_code": "proof-room.negative.payment-merchant"
         })
         .to_string(),
     )
@@ -1087,7 +1168,7 @@ fn proof_fixture_generate_rejects_negative_fixture_failure_prefix() {
         &output,
         "negative proof fixture failed for the wrong reason",
     );
-    assert_failure(&output, "payment merchant mismatch");
+    assert_failure(&output, "proof-room.negative.payment-merchant-mismatch");
 }
 
 #[test]
@@ -1417,7 +1498,7 @@ fn proof_fixture_generate_copies_runnable_negative_passport_fixtures() {
         (
             "public-settlement-missing-commerce-order-binding",
             "settlement-proof-bundle.json",
-            "public_settlement.commerce_order_id",
+            "missing field",
         ),
         (
             "public-settlement-order-evidence-mismatch",

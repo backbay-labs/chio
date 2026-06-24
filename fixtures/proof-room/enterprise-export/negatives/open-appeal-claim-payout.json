@@ -4,5 +4,5 @@
   "claim_ref": "claim.enterprise.control_map_bound",
   "base_fixture": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/transaction-passport.json",
   "case": "OpenAppealClaimPayout",
-  "expected_failure_code": "risk open appeal blocks reserve action"
+  "expected_failure_code": "proof-room.negative.risk-open-appeal-blocks-reserve-action"
 }

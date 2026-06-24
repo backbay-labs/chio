@@ -4,5 +4,5 @@
   "claim_ref": "claim.agent_web.external_subject_digest_bound",
   "base_fixture": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/transaction-passport.json",
   "case": "SlackFailedProviderResponse",
-  "expected_failure_code": "Slack response was not successful"
+  "expected_failure_code": "proof-room.negative.slack-response-was-not-successful"
 }

@@ -4,5 +4,5 @@
   "claim_ref": "claim.enterprise.control_map_bound",
   "base_fixture": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/transaction-passport.json",
   "case": "CoverageOrderMismatch",
-  "expected_failure_code": "risk coverage order mismatch"
+  "expected_failure_code": "proof-room.negative.risk-coverage-order-mismatch"
 }

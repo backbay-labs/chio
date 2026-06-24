@@ -4,5 +4,5 @@
   "claim_ref": "claim.trust_market.provider_discovery_bound",
   "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
   "case": "StaleDiscovery",
-  "expected_failure_code": "discovery snapshot is stale"
+  "expected_failure_code": "proof-room.negative.discovery-snapshot-is-stale"
 }

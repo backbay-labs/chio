@@ -4,5 +4,5 @@
   "claim_ref": "claim.public_settlement.chain_context_verified",
   "base_fixture": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json",
   "case": "WrongChainId",
-  "expected_failure_code": "settlement chain id mismatch"
+  "expected_failure_code": "proof-room.negative.settlement-chain-id-mismatch"
 }

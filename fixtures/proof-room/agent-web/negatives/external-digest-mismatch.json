@@ -4,5 +4,5 @@
   "claim_ref": "claim.agent_web.external_subject_digest_bound",
   "base_fixture": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/transaction-passport.json",
   "case": "ExternalDigestMismatch",
-  "expected_failure_code": "external subject digest mismatch"
+  "expected_failure_code": "proof-room.negative.external-subject-digest-mismatch"
 }

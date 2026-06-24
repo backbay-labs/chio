@@ -4,5 +4,5 @@
   "claim_ref": "claim.swarm.budget_pool_bound",
   "base_fixture": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/budget-pool.json",
   "case": "BudgetAllocationsExceedPool",
-  "expected_failure_code": "swarm budget allocations exceed pool total"
+  "expected_failure_code": "proof-room.negative.swarm-budget-allocations-exceed-pool-total"
 }

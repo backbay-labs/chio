@@ -4,5 +4,5 @@
   "claim_ref": "claim.enterprise.export_approval_bound",
   "base_fixture": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/transaction-passport.json",
   "case": "MissingApproval",
-  "expected_failure_code": "missing approval case"
+  "expected_failure_code": "proof-room.negative.missing-approval-case"
 }

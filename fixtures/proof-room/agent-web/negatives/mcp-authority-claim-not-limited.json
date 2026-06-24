@@ -4,5 +4,5 @@
   "claim_ref": "claim.agent_web.unsupported_claims_limited",
   "base_fixture": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/transaction-passport.json",
   "case": "McpAuthorityClaimNotLimited",
-  "expected_failure_code": "missing Agent Web unsupported authority limitation: claim.external.mcp_tool_call_is_chio_authority"
+  "expected_failure_code": "proof-room.negative.missing-agent-web-unsupported-authority-limitation"
 }

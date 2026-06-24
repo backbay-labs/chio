@@ -4,5 +4,5 @@
   "claim_ref": "claim.public_settlement.public_witness_verified",
   "base_fixture": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json",
   "case": "AdvisoryWitness",
-  "expected_failure_code": "public settlement witness mode advisory"
+  "expected_failure_code": "proof-room.negative.public-settlement-witness-mode-advisory"
 }

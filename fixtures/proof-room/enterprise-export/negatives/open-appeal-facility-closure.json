@@ -4,5 +4,5 @@
   "claim_ref": "claim.risk.comptroller_report_bound",
   "base_fixture": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/transaction-passport.json",
   "case": "RiskOpenAppealFacilityClosure",
-  "expected_failure_code": "risk open appeal blocks facility closure"
+  "expected_failure_code": "proof-room.negative.risk-open-appeal-blocks-facility-closure"
 }

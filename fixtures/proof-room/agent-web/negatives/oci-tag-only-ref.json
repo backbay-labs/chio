@@ -4,5 +4,5 @@
   "claim_ref": "claim.agent_web.external_subject_digest_bound",
   "base_fixture": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/transaction-passport.json",
   "case": "OciTagOnly",
-  "expected_failure_code": "OCI reference must be digest-pinned"
+  "expected_failure_code": "proof-room.negative.oci-reference-must-be-digest-pinned"
 }

@@ -4,5 +4,5 @@
   "claim_ref": "claim.public_settlement.dispute_posture_bound",
   "base_fixture": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json",
   "case": "RefundedPostureWithoutReversal",
-  "expected_failure_code": "refunded dispute posture requires reversed or timed out settlement"
+  "expected_failure_code": "proof-room.negative.refunded-dispute-posture-requires-reversed-or-timed-out-settlement"
 }

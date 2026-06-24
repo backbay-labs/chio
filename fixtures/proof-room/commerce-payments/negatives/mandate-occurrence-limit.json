@@ -4,5 +4,5 @@
   "claim_ref": "claim.commerce.mandate_allowance_bound",
   "base_fixture": "fixtures/proof-room/commerce-payments/offline-psp-valid/transaction-passport.json",
   "case": "MandateOccurrenceLimit",
-  "expected_failure_code": "mandate occurrence limit exceeded"
+  "expected_failure_code": "proof-room.negative.mandate-occurrence-limit-exceeded"
 }

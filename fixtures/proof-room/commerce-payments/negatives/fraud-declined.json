@@ -4,5 +4,5 @@
   "claim_ref": "claim.commerce.payment_lifecycle_bound",
   "base_fixture": "fixtures/proof-room/commerce-payments/offline-psp-valid/transaction-passport.json",
   "case": "FraudDeclined",
-  "expected_failure_code": "fraud outcome was not accepted"
+  "expected_failure_code": "proof-room.negative.fraud-outcome-was-not-accepted"
 }

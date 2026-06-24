@@ -4,5 +4,5 @@
   "claim_ref": "claim.agent_web.external_subject_digest_bound",
   "base_fixture": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/transaction-passport.json",
   "case": "CalendarTimeRangeMismatch",
-  "expected_failure_code": "Calendar time range changed after approval"
+  "expected_failure_code": "proof-room.negative.calendar-time-range-changed-after-approval"
 }

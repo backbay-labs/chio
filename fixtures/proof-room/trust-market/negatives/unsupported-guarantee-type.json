@@ -5,5 +5,5 @@
   "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
   "fixture_path": "../unsupported-guarantee-type",
   "mutated_artifact": "guarantee-decision.json",
-  "expected_failure_code": "guarantee type unsupported"
+  "expected_failure_code": "proof-room.negative.guarantee-type-unsupported"
 }

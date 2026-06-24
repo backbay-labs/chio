@@ -4,5 +4,5 @@
   "claim_ref": "claim.disclosure.crypto_context_bound",
   "base_fixture": "fixtures/proof-room/disclosure-lineage/valid-lineage-ledger/crypto-context-report.json",
   "case": "ExcessDisclosedField",
-  "expected_failure_code": "crypto context report excess disclosed field"
+  "expected_failure_code": "proof-room.negative.crypto-context-report-excess-disclosed-field"
 }

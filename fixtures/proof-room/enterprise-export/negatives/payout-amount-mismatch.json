@@ -4,5 +4,5 @@
   "claim_ref": "claim.risk.comptroller_report_bound",
   "base_fixture": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/transaction-passport.json",
   "case": "PayoutAmountMismatch",
-  "expected_failure_code": "risk payout settlement mismatch"
+  "expected_failure_code": "proof-room.negative.risk-payout-settlement-mismatch"
 }

@@ -429,8 +429,97 @@ fn semantic_negative_failure_code(error: &str) -> String {
     if code.is_empty() {
         error.to_string()
     } else {
-        code.to_string()
+        stable_negative_failure_code(code)
     }
+}
+
+fn stable_negative_failure_code(code: &str) -> String {
+    let normalized = strip_negative_failure_context(code);
+    if is_dotted_negative_failure_code(normalized) {
+        return normalized.to_string();
+    }
+    let slug = slug_negative_failure_code(normalized);
+    if slug.is_empty() {
+        "proof-room.negative.unknown".to_string()
+    } else {
+        format!("proof-room.negative.{slug}")
+    }
+}
+
+fn strip_negative_failure_context(mut code: &str) -> &str {
+    code = code.trim();
+    for prefix in [
+        "invalid disclosure lineage artifact: ",
+        "proof-room.source-verifier.failed: ",
+        "proof-room.passport.invalid: ",
+        "invalid agent web interop artifact: ",
+        "invalid Agent Web interop artifact: ",
+        "invalid public settlement artifact: ",
+        "invalid enterprise export artifact: ",
+        "invalid trust market artifact: ",
+        "invalid runtime security artifact: ",
+        "runtime security claim failed: ",
+        "invalid evidence graph artifact: ",
+        "minimal governed action evidence invalid: ",
+        "commerce payment failed: ",
+        "commerce mandate failed: ",
+        "commerce event log failed: ",
+        "commerce replay failed: ",
+        "commerce recovery failed: ",
+        "commerce fraud failed: ",
+        "swarm authority invalid: ",
+        "public settlement proof invalid: ",
+        "invalid settlement: ",
+        "invalid proof: ",
+        "agent web interop invalid: ",
+        "agent web claim failed: ",
+        "Agent Web claim failed: ",
+        "enterprise export invalid: ",
+        "enterprise export claim failed: ",
+        "risk comptroller claim failed: ",
+        "trust market context invalid: ",
+        "trust market claim failed: ",
+        "trust-market claim failed: ",
+        "Trust market claim failed: ",
+        "Trust Market claim failed: ",
+    ] {
+        if let Some(stripped) = code.strip_prefix(prefix) {
+            code = stripped.trim();
+        }
+    }
+    if !is_dotted_negative_failure_code(code) {
+        if let Some((base, _detail)) = code.split_once(": ") {
+            code = base.trim();
+        }
+    }
+    code
+}
+
+fn is_dotted_negative_failure_code(code: &str) -> bool {
+    let base = code.split(':').next().unwrap_or(code);
+    !base.is_empty()
+        && base.contains('.')
+        && !base.chars().any(char::is_whitespace)
+        && base.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '.' | '-' | '_')
+        })
+}
+
+fn slug_negative_failure_code(code: &str) -> String {
+    let mut slug = String::new();
+    let mut last_was_separator = false;
+    for character in code.chars().flat_map(char::to_lowercase) {
+        if character.is_ascii_alphanumeric() {
+            slug.push(character);
+            last_was_separator = false;
+        } else if !last_was_separator {
+            slug.push('-');
+            last_was_separator = true;
+        }
+    }
+    slug.trim_matches('-').to_string()
 }
 
 #[path = "proof/archive.rs"]

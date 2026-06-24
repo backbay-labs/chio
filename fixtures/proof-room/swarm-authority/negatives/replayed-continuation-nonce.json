@@ -4,5 +4,5 @@
   "claim_ref": "claim.swarm.continuation_fresh",
   "base_fixture": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/continuation-child-b.json",
   "case": "ReplayedContinuationNonce",
-  "expected_failure_code": "swarm continuation nonce replay"
+  "expected_failure_code": "proof-room.negative.swarm-continuation-nonce-replay"
 }

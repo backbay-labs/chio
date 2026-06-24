@@ -4,5 +4,5 @@
   "claim_ref": "claim.transaction.passport_root_verified",
   "base_fixture": "fixtures/proof-room/minimal-passport/valid/transaction-passport.json",
   "case": "StaleCapability",
-  "expected_failure_code": "capability proof expired before evidence graph issuance"
+  "expected_failure_code": "proof-room.negative.capability-proof-expired-before-evidence-graph-issuance"
 }

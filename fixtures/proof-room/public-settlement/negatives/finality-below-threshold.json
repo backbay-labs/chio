@@ -4,5 +4,5 @@
   "claim_ref": "claim.public_settlement.finality_verified",
   "base_fixture": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json",
   "case": "FinalityBelowThreshold",
-  "expected_failure_code": "settlement finality below threshold"
+  "expected_failure_code": "proof-room.negative.settlement-finality-below-threshold"
 }

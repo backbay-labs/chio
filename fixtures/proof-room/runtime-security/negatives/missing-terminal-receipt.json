@@ -7,5 +7,5 @@
     "kind": "remove_terminal_receipt",
     "artifact": "allow-receipt.json"
   },
-  "expected_failure_code": "missing terminal receipt for execution lease"
+  "expected_failure_code": "proof-room.negative.missing-terminal-receipt-for-execution-lease"
 }

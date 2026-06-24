@@ -4,5 +4,5 @@
   "claim_ref": "claim.swarm.task_graph_bound",
   "base_fixture": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/task-graph.json",
   "case": "GraphCycle",
-  "expected_failure_code": "swarm task graph cycle at task-child-a"
+  "expected_failure_code": "proof-room.negative.swarm-task-graph-cycle-at-task-child-a"
 }

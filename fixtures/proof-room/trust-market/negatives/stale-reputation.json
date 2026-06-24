@@ -5,5 +5,5 @@
   "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
   "fixture_path": "../stale-reputation",
   "mutated_artifact": "trust-scorecard-snapshot.json",
-  "expected_failure_code": "scorecard component evidence is stale"
+  "expected_failure_code": "proof-room.negative.scorecard-component-evidence-is-stale"
 }

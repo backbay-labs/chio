@@ -4,5 +4,5 @@
   "claim_ref": "claim.trust_market.local_scorecard_bound",
   "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
   "case": "ScoreRecomputeMismatch",
-  "expected_failure_code": "scorecard recompute mismatch"
+  "expected_failure_code": "proof-room.negative.scorecard-recompute-mismatch"
 }

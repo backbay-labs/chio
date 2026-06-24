@@ -4,5 +4,5 @@
   "claim_ref": "claim.trust_market.sla_commitment_bound",
   "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
   "case": "SlaWrongOrder",
-  "expected_failure_code": "SLA order mismatch"
+  "expected_failure_code": "proof-room.negative.sla-order-mismatch"
 }

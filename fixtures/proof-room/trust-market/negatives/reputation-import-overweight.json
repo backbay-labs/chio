@@ -4,5 +4,5 @@
   "claim_ref": "claim.trust_market.reputation_import_bound",
   "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
   "case": "ReputationImportOverweight",
-  "expected_failure_code": "reputation import local weight exceeds policy"
+  "expected_failure_code": "proof-room.negative.reputation-import-local-weight-exceeds-policy"
 }

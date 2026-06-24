@@ -4,5 +4,5 @@
   "claim_ref": "claim.public_settlement.dispute_posture_bound",
   "base_fixture": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json",
   "case": "ObservedExecutionOutsideWindow",
-  "expected_failure_code": "observed execution timestamp falls outside dispatch execution window"
+  "expected_failure_code": "proof-room.negative.observed-execution-timestamp-falls-outside-dispatch-execution-window"
 }

@@ -183,7 +183,7 @@ async fn quickstart_router_serves_fixture_catalog() -> Result<(), Box<dyn Error>
     );
     assert_eq!(
         catalog["fixtures"][0]["negative_cases"][0]["observed_failure_code"],
-        "verifier policy digest mismatch"
+        "proof-room.negative.verifier-policy-digest-mismatch"
     );
     let negative_case_ids = catalog["fixtures"][0]["negative_cases"]
         .as_array()
@@ -307,7 +307,7 @@ async fn quickstart_router_serves_fixture_catalog() -> Result<(), Box<dyn Error>
     assert!(commerce_wrong_merchant["observed_failure_code"]
         .as_str()
         .ok_or("commerce wrong merchant observed failure missing")?
-        .contains("payment merchant mismatch"));
+        .contains("proof-room.negative.payment-merchant-mismatch"));
     let agent_web_negative = available_fixtures
         .iter()
         .find(|fixture| fixture["id"] == "agent-web-external-digest-mismatch")

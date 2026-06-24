@@ -8,5 +8,5 @@
     "field": "fetched_at",
     "value": "2026-06-09T23:00:00Z"
   },
-  "expected_failure_code": "revocation freshness stale"
+  "expected_failure_code": "proof-room.negative.revocation-freshness-stale"
 }

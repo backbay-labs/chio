@@ -4,5 +4,5 @@
   "claim_ref": "claim.trust_market.unsupported_market_claims_limited",
   "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
   "case": "RequiredUnsupportedMarketClaim",
-  "expected_failure_code": "unsupported market claim cannot be required"
+  "expected_failure_code": "proof-room.negative.unsupported-market-claim-cannot-be-required"
 }

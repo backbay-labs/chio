@@ -4,5 +4,5 @@
   "claim_ref": "claim.trust_market.jurisdiction_bound",
   "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
   "case": "SlashAuthorityOutsideJurisdiction",
-  "expected_failure_code": "slash authority not bound to jurisdiction"
+  "expected_failure_code": "proof-room.negative.slash-authority-not-bound-to-jurisdiction"
 }
