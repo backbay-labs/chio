@@ -815,11 +815,23 @@ fn rejects_evidence_graph_that_transaction_verifier_rejects() -> Result<(), Box<
     let evidence_graph_path = work.path().join("roots/evidence-graph.json");
     let mut evidence_graph: serde_json::Value =
         serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
+    let allow_receipt_node_id = evidence_graph["nodes"]
+        .as_array()
+        .ok_or("evidence graph nodes missing")?
+        .iter()
+        .find(|node| {
+            node.get("path").and_then(serde_json::Value::as_str)
+                == Some("artifacts/receipts/allow-receipt.json")
+        })
+        .and_then(|node| node.get("id"))
+        .and_then(serde_json::Value::as_str)
+        .ok_or("allow receipt graph node id missing")?
+        .to_string();
     evidence_graph["edges"]
         .as_array_mut()
         .ok_or("evidence graph edges missing")?
         .push(serde_json::json!({
-            "from": "allow-receipt",
+            "from": allow_receipt_node_id,
             "to": "missing-evidence-node",
             "predicate": "binds",
             "evidence_class": "digest-bound-reference"

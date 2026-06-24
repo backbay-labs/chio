@@ -307,21 +307,11 @@ fn rejects_first_run_receipt_signature_mismatch() -> Result<(), Box<dyn Error>> 
     receipt["signature"] = serde_json::Value::String("0".repeat(128));
     fs::write(&receipt_path, json_bytes(&receipt)?)?;
     let receipt_sha256 = sha256_file(&receipt_path)?;
-
-    let evidence_graph_path = work.path().join("roots/evidence-graph.json");
-    let mut evidence_graph: serde_json::Value =
-        serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
-    for node in evidence_graph["nodes"]
-        .as_array_mut()
-        .ok_or("evidence graph nodes missing")?
-    {
-        if node.get("path").and_then(serde_json::Value::as_str)
-            == Some("artifacts/receipts/allow-receipt.json")
-        {
-            node["sha256"] = serde_json::Value::String(receipt_sha256.clone());
-        }
-    }
-    fs::write(&evidence_graph_path, json_bytes(&evidence_graph)?)?;
+    update_evidence_graph_node_hash(
+        work.path(),
+        "artifacts/receipts/allow-receipt.json",
+        &receipt_sha256,
+    )?;
     refresh_source_roots_and_manifest(
         work.path(),
         Some(("artifacts/receipts/allow-receipt.json", receipt_sha256)),
@@ -352,21 +342,11 @@ fn rejects_first_run_receipt_body_forgery_with_rehashed_artifact() -> Result<(),
         serde_json::Value::String("first-run-forged-lease".to_string());
     fs::write(&receipt_path, json_bytes(&receipt)?)?;
     let receipt_sha256 = sha256_file(&receipt_path)?;
-
-    let evidence_graph_path = work.path().join("roots/evidence-graph.json");
-    let mut evidence_graph: serde_json::Value =
-        serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
-    for node in evidence_graph["nodes"]
-        .as_array_mut()
-        .ok_or("evidence graph nodes missing")?
-    {
-        if node.get("path").and_then(serde_json::Value::as_str)
-            == Some("artifacts/receipts/allow-receipt.json")
-        {
-            node["sha256"] = serde_json::Value::String(receipt_sha256.clone());
-        }
-    }
-    fs::write(&evidence_graph_path, json_bytes(&evidence_graph)?)?;
+    update_evidence_graph_node_hash(
+        work.path(),
+        "artifacts/receipts/allow-receipt.json",
+        &receipt_sha256,
+    )?;
     refresh_source_roots_and_manifest(
         work.path(),
         Some(("artifacts/receipts/allow-receipt.json", receipt_sha256)),
@@ -470,21 +450,11 @@ fn rejects_first_run_guard_denial_receipt_mismatch() -> Result<(), Box<dyn Error
         serde_json::Value::String("first-run-single-call-allow".to_string());
     fs::write(&guard_report_path, json_bytes(&guard_report)?)?;
     let guard_report_sha256 = sha256_file(&guard_report_path)?;
-
-    let evidence_graph_path = work.path().join("roots/evidence-graph.json");
-    let mut evidence_graph: serde_json::Value =
-        serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
-    for node in evidence_graph["nodes"]
-        .as_array_mut()
-        .ok_or("evidence graph nodes missing")?
-    {
-        if node.get("path").and_then(serde_json::Value::as_str)
-            == Some("artifacts/authority/guard-report.json")
-        {
-            node["sha256"] = serde_json::Value::String(guard_report_sha256.clone());
-        }
-    }
-    fs::write(&evidence_graph_path, json_bytes(&evidence_graph)?)?;
+    update_evidence_graph_node_hash(
+        work.path(),
+        "artifacts/authority/guard-report.json",
+        &guard_report_sha256,
+    )?;
     refresh_source_roots_and_manifest(
         work.path(),
         Some(("artifacts/authority/guard-report.json", guard_report_sha256)),

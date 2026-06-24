@@ -98,6 +98,10 @@ pub(crate) fn configure_proof_room_fixture_trust() {
         ENTERPRISE_FIXTURE_TRUSTED_RISK_COMPTROLLER_KEYS,
     );
     std::env::set_var(
+        "CHIO_ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS",
+        PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
+    );
+    std::env::set_var(
         "CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS",
         COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS,
     );
@@ -624,21 +628,11 @@ pub(crate) fn remove_guard_report_capability_binding_and_rehash(
         .remove("capability_id");
     fs::write(&guard_report_path, json_bytes(&guard_report)?)?;
     let guard_report_sha256 = sha256_file(&guard_report_path)?;
-
-    let evidence_graph_path = bundle.join("roots/evidence-graph.json");
-    let mut evidence_graph: serde_json::Value =
-        serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
-    for node in evidence_graph["nodes"]
-        .as_array_mut()
-        .ok_or("evidence graph nodes missing")?
-    {
-        if node.get("path").and_then(serde_json::Value::as_str)
-            == Some("artifacts/authority/guard-report.json")
-        {
-            node["sha256"] = serde_json::Value::String(guard_report_sha256.clone());
-        }
-    }
-    fs::write(&evidence_graph_path, json_bytes(&evidence_graph)?)?;
+    update_evidence_graph_node_hash(
+        bundle,
+        "artifacts/authority/guard-report.json",
+        &guard_report_sha256,
+    )?;
     refresh_source_roots_and_manifest(
         bundle,
         Some(("artifacts/authority/guard-report.json", guard_report_sha256)),
@@ -656,19 +650,7 @@ pub(crate) fn add_unexpected_field_to_bundle_artifact_and_rehash(
     fs::write(&artifact_path, json_bytes(&artifact)?)?;
     let artifact_sha256 = sha256_file(&artifact_path)?;
 
-    let evidence_graph_path = bundle.join("roots/evidence-graph.json");
-    let mut evidence_graph: serde_json::Value =
-        serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
-    if let Some(nodes) = evidence_graph["nodes"].as_array_mut() {
-        for node in nodes {
-            if node.get("path").and_then(serde_json::Value::as_str) == Some(artifact_relative_path)
-            {
-                node["sha256"] = serde_json::Value::String(artifact_sha256.clone());
-            }
-        }
-        fs::write(&evidence_graph_path, json_bytes(&evidence_graph)?)?;
-    }
-
+    update_evidence_graph_node_hash(bundle, artifact_relative_path, &artifact_sha256)?;
     refresh_source_roots_and_manifest(bundle, Some((artifact_relative_path, artifact_sha256)))?;
     Ok(())
 }
@@ -703,15 +685,36 @@ pub(crate) fn update_evidence_graph_node_hash(
     let evidence_graph_path = bundle.join("roots/evidence-graph.json");
     let mut evidence_graph: serde_json::Value =
         serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
-    let node = evidence_graph["nodes"]
+    let Some(node) = evidence_graph["nodes"]
         .as_array_mut()
         .ok_or("evidence graph nodes missing")?
         .iter_mut()
         .find(|node| {
             node.get("path").and_then(serde_json::Value::as_str) == Some(artifact_relative_path)
         })
-        .ok_or("evidence graph node missing")?;
+    else {
+        return Ok(());
+    };
+    let old_node_id = node
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or("evidence graph node id missing")?
+        .to_string();
+    node["id"] = serde_json::Value::String(artifact_sha256.to_string());
     node["sha256"] = serde_json::Value::String(artifact_sha256.to_string());
+    if old_node_id != artifact_sha256 {
+        for edge in evidence_graph["edges"]
+            .as_array_mut()
+            .ok_or("evidence graph edges missing")?
+        {
+            if edge.get("from").and_then(serde_json::Value::as_str) == Some(old_node_id.as_str()) {
+                edge["from"] = serde_json::Value::String(artifact_sha256.to_string());
+            }
+            if edge.get("to").and_then(serde_json::Value::as_str) == Some(old_node_id.as_str()) {
+                edge["to"] = serde_json::Value::String(artifact_sha256.to_string());
+            }
+        }
+    }
     fs::write(&evidence_graph_path, json_bytes(&evidence_graph)?)?;
     Ok(())
 }
@@ -728,19 +731,7 @@ pub(crate) fn refresh_source_roots_and_manifest(
         _ => None,
     };
     if let Some(trust_roots_sha256) = &trust_roots_sha256 {
-        let mut evidence_graph: serde_json::Value =
-            serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
-        if let Some(node) = evidence_graph["nodes"]
-            .as_array_mut()
-            .ok_or("evidence graph nodes missing")?
-            .iter_mut()
-            .find(|node| {
-                node.get("path").and_then(serde_json::Value::as_str) == Some(trust_roots_path)
-            })
-        {
-            node["sha256"] = serde_json::Value::String(trust_roots_sha256.clone());
-            fs::write(&evidence_graph_path, json_bytes(&evidence_graph)?)?;
-        }
+        update_evidence_graph_node_hash(bundle, trust_roots_path, trust_roots_sha256)?;
     }
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
     let claim_set_path = bundle.join("roots/claim-set.json");
