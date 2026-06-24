@@ -96,6 +96,7 @@ mod dispatch;
 mod error;
 mod eval_receipt_regen;
 mod fixtures;
+mod launch_acceptance;
 mod qualify;
 mod snippets_subcommand;
 

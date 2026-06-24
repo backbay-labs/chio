@@ -2,9 +2,11 @@
 //! handler functions.
 
 use crate::cli::{
-    self, CheckCommand, CodegenArgs, ErrorsCompat, GenCommand, Lang, QualifyCommand, SnippetsCompat,
+    self, CheckCommand, CodegenArgs, ErrorsCompat, GenCommand, Lang, QualifyCommand,
+    SnippetsCompat, VerifyCommand,
 };
 use crate::fixtures;
+use crate::launch_acceptance;
 use crate::qualify;
 use crate::XtaskError;
 use crate::{crate_paths, eval_receipt_regen};
@@ -39,9 +41,12 @@ pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
         cli::Command::Qualify { command } => match command {
             QualifyCommand::BoundedChio => qualify::run("bounded-chio"),
         },
+        // -- verify group --
+        cli::Command::Verify { command } => match command {
+            VerifyCommand::LaunchAcceptance(args) => launch_acceptance::run(&args),
+        },
         // -- noun-group parents with no implemented leaves (fail closed) --
-        cli::Command::Verify { .. }
-        | cli::Command::Fuzz { .. }
+        cli::Command::Fuzz { .. }
         | cli::Command::Mutants { .. }
         | cli::Command::Release { .. }
         | cli::Command::SupplyChain { .. }

@@ -54,7 +54,7 @@ jobs:
           rustup show active-toolchain
 
       - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler zstd
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
@@ -141,6 +141,13 @@ jobs:
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
           CHIO_BIN: target/debug/chio
         run: bash ./scripts/check-chio-transaction-passport.sh
+
+      - name: Proof Room launch acceptance package
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+          CHIO_BIN: target/debug/chio
+        run: cargo xtask verify launch-acceptance --out target/proof-room/public-bundle
 
       - name: Workspace tests
         env:
