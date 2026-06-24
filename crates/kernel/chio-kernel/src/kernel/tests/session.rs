@@ -375,6 +375,44 @@ fn session_operation_tool_call_tracks_and_clears_inflight() {
 }
 
 #[test]
+fn session_operation_tool_call_malformed_nonce_clears_inflight() {
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
+
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()]).unwrap();
+    kernel.activate_session(&session_id).unwrap();
+
+    let context = make_operation_context(
+        &session_id,
+        "req-malformed-nonce",
+        &agent_kp.public_key().to_hex(),
+    );
+    let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
+        capability: cap,
+        server_id: "srv-a".to_string(),
+        tool_name: "read_file".to_string(),
+        arguments: serde_json::json!({"path": "/app/src/main.rs"}),
+        governed_intent: None,
+        execution_nonce: Some(serde_json::json!("not-a-signed-nonce")),
+        model_metadata: None,
+        extra_metadata: None,
+    }));
+
+    let error = kernel
+        .evaluate_session_operation(&context, &operation)
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("execution_nonce"),
+        "expected execution nonce parse error, got: {error}"
+    );
+    assert!(kernel.session(&session_id).unwrap().inflight().is_empty());
+}
+
+#[test]
 fn session_operation_capability_list_uses_session_snapshot() {
     let kernel = make_kernel(make_config());
     let agent_kp = make_keypair();

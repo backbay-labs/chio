@@ -751,6 +751,12 @@ impl ChioKernel {
                 | SessionOperation::GetPrompt(_)
                 | SessionOperation::Complete(_)
         );
+        let parsed_tool_call_execution_nonce = match operation {
+            SessionOperation::ToolCall(tool_call) => {
+                parse_tool_call_operation_execution_nonce(tool_call)?
+            }
+            _ => None,
+        };
 
         if should_track_inflight {
             self.begin_session_request(context, operation_kind, true)?;
@@ -772,7 +778,7 @@ impl ChioKernel {
                     agent_id: context.agent_id.clone(),
                     arguments: tool_call.arguments.clone(),
                     dpop_proof: None,
-                    execution_nonce: parse_tool_call_operation_execution_nonce(tool_call)?,
+                    execution_nonce: parsed_tool_call_execution_nonce,
                     governed_intent: tool_call.governed_intent.clone(),
                     approval_token: None,
                     model_metadata: tool_call.model_metadata.clone(),
