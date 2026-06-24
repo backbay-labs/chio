@@ -51,6 +51,7 @@ fn play_integrity_verifier_accepts_signed_fixture() -> Result<(), Box<dyn Error>
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &play_integrity_jwks_json(),
+        allow_caller_supplied_jwks: false,
     })?;
 
     assert_eq!(verified.nonce, NONCE);
@@ -64,7 +65,7 @@ fn play_integrity_verifier_accepts_signed_fixture() -> Result<(), Box<dyn Error>
         GOOGLE_PLAY_INTEGRITY_ROOT_KID,
         "chio-play-integrity-fixture-root"
     );
-    assert!(!play_integrity_root_sha256_hex().is_empty());
+    assert!(!play_integrity_root_sha256_hex()?.is_empty());
     Ok(())
 }
 
@@ -77,6 +78,7 @@ fn play_integrity_verifier_rejects_nonce_replay() -> Result<(), Box<dyn Error>> 
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &play_integrity_jwks_json(),
+        allow_caller_supplied_jwks: false,
     })
     .err()
     .ok_or("expected nonce mismatch")?;
@@ -98,6 +100,7 @@ fn play_integrity_verifier_rejects_unrecognized_app() -> Result<(), Box<dyn Erro
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &play_integrity_jwks_json(),
+        allow_caller_supplied_jwks: false,
     })
     .err()
     .ok_or("expected app rejection")?;
@@ -114,6 +117,97 @@ fn receipt_chain_accepts_play_integrity_evidence_shape() -> Result<(), Box<dyn E
     )?;
     assert_eq!(verified.platform, "play_integrity");
     Ok(())
+}
+
+const ATTACKER_KID: &str = "attacker-supplied-kid";
+
+#[test]
+fn play_integrity_pins_jwks_and_ignores_caller_supplied_keys() -> Result<(), Box<dyn Error>> {
+    // The token is signed under an attacker-chosen `kid` and the caller
+    // hands the verifier a JWKS that "trusts" that kid. With
+    // `allow_caller_supplied_jwks: false` (the production behaviour) the
+    // verifier uses the pinned Google JWKS instead, which has no such kid,
+    // so the token is rejected. This is the core pinned-root guarantee: a
+    // caller cannot bring its own verification key.
+    let token = signed_token_with_kid(ATTACKER_KID)?;
+    let attacker_jwks = caller_jwks_for_kid(ATTACKER_KID);
+    let error = verify_play_integrity(PlayIntegrityVerificationInput {
+        token: &token,
+        expected_nonce: NONCE,
+        expected_package_name: PACKAGE,
+        expected_audience: AUDIENCE,
+        jwks_json: &attacker_jwks,
+        allow_caller_supplied_jwks: false,
+    })
+    .err()
+    .ok_or("expected pinned-root rejection of caller-supplied kid")?;
+    match error {
+        AttestationError::PlayIntegrityInvalidToken(message) => assert!(
+            message.contains(ATTACKER_KID),
+            "rejection should reference the missing attacker kid, got {message:?}"
+        ),
+        other => panic!("expected invalid-token rejection, got {other:?}"),
+    }
+    Ok(())
+}
+
+#[test]
+fn play_integrity_caller_supplied_jwks_only_honoured_when_opted_in() -> Result<(), Box<dyn Error>> {
+    // The exact same attacker-kid token + caller JWKS is honoured only when
+    // the caller opts into caller-supplied JWKS (a test/dev-only switch).
+    // This confirms the pinning toggle is the sole difference between the
+    // two paths, and that the production path (above) is strictly the
+    // pinned one.
+    let token = signed_token_with_kid(ATTACKER_KID)?;
+    let attacker_jwks = caller_jwks_for_kid(ATTACKER_KID);
+    let verified = verify_play_integrity(PlayIntegrityVerificationInput {
+        token: &token,
+        expected_nonce: NONCE,
+        expected_package_name: PACKAGE,
+        expected_audience: AUDIENCE,
+        jwks_json: &attacker_jwks,
+        allow_caller_supplied_jwks: true,
+    })?;
+    assert_eq!(verified.nonce, NONCE);
+    Ok(())
+}
+
+fn signed_token_with_kid(kid: &str) -> Result<String, Box<dyn Error>> {
+    let mut header = Header::new(Algorithm::ES256);
+    header.kid = Some(kid.to_string());
+    let claims = TestClaims {
+        nonce: NONCE.to_string(),
+        app_integrity: TestAppIntegrity {
+            app_recognition_verdict: PLAY_RECOGNIZED.to_string(),
+            package_name: PACKAGE.to_string(),
+        },
+        device_integrity: TestDeviceIntegrity {
+            device_recognition_verdict: vec![MEETS_DEVICE_INTEGRITY.to_string()],
+        },
+        aud: AUDIENCE.to_string(),
+        iss: GOOGLE_PLAY_INTEGRITY_ISSUER.to_string(),
+        exp: Some(future_exp()?),
+    };
+    encode(&header, &claims, &play_integrity_encoding_key()?).map_err(Into::into)
+}
+
+// A caller-supplied JWKS that maps `kid` to the (fixture) public key. The
+// pinned path ignores this document entirely; the opt-in path trusts it.
+fn caller_jwks_for_kid(kid: &str) -> String {
+    serde_json::json!({
+        "keys": [
+            {
+                "kty": "EC",
+                "crv": "P-256",
+                "alg": "ES256",
+                "kid": kid,
+                "use": "sig",
+                "x": "w7JAoU_gJbZJvV-zCOvU9yFJq0FNC_edCMRM78P8eQQ",
+                "y": "wQg1EytcsEmGrM70Gb53oluoDbVhCZ3Uq3hHMslHVb4"
+            }
+        ]
+    })
+    .to_string()
 }
 
 fn signed_token(
@@ -156,7 +250,7 @@ fn signed_token_with_exp(
         iss: GOOGLE_PLAY_INTEGRITY_ISSUER.to_string(),
         exp,
     };
-    encode(&header, &claims, &play_integrity_encoding_key()).map_err(Into::into)
+    encode(&header, &claims, &play_integrity_encoding_key()?).map_err(Into::into)
 }
 
 fn signed_token_with_issuer(issuer: &str) -> Result<String, Box<dyn Error>> {
@@ -175,7 +269,7 @@ fn signed_token_with_issuer(issuer: &str) -> Result<String, Box<dyn Error>> {
         iss: issuer.to_string(),
         exp: Some(future_exp()?),
     };
-    encode(&header, &claims, &play_integrity_encoding_key()).map_err(Into::into)
+    encode(&header, &claims, &play_integrity_encoding_key()?).map_err(Into::into)
 }
 
 #[test]
@@ -196,6 +290,7 @@ fn play_integrity_verifier_rejects_expired_token_fail_closed() -> Result<(), Box
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &play_integrity_jwks_json(),
+        allow_caller_supplied_jwks: false,
     })
     .err()
     .ok_or("expected expired-token rejection")?;
@@ -219,6 +314,7 @@ fn play_integrity_verifier_rejects_wrong_issuer() -> Result<(), Box<dyn Error>> 
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &play_integrity_jwks_json(),
+        allow_caller_supplied_jwks: false,
     })
     .err()
     .ok_or("expected issuer rejection")?;
@@ -246,6 +342,7 @@ fn play_integrity_verifier_accepts_future_exp() -> Result<(), Box<dyn Error>> {
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &play_integrity_jwks_json(),
+        allow_caller_supplied_jwks: false,
     })?;
     assert_eq!(verified.nonce, NONCE);
     Ok(())
@@ -260,6 +357,7 @@ fn play_integrity_verifier_rejects_wrong_audience() -> Result<(), Box<dyn Error>
         expected_package_name: PACKAGE,
         expected_audience: "other-audience",
         jwks_json: &play_integrity_jwks_json(),
+        allow_caller_supplied_jwks: false,
     })
     .err()
     .ok_or("expected audience rejection")?;
@@ -303,6 +401,7 @@ fn play_integrity_verifier_rejects_non_es256_asymmetric_algs() -> Result<(), Box
             expected_package_name: PACKAGE,
             expected_audience: AUDIENCE,
             jwks_json: &jwks_json,
+            allow_caller_supplied_jwks: true,
         })
         .err()
         .ok_or("expected unsupported asymmetric algorithm rejection")?;
@@ -316,6 +415,7 @@ fn play_integrity_verifier_rejects_non_es256_asymmetric_algs() -> Result<(), Box
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &jwks_json,
+        allow_caller_supplied_jwks: true,
     })
     .err()
     .ok_or("expected P-384 curve rejection")?;
@@ -336,6 +436,7 @@ fn play_integrity_verifier_rejects_symmetric_alg_downgrade() -> Result<(), Box<d
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &play_integrity_jwks_json(),
+        allow_caller_supplied_jwks: false,
     })
     .err()
     .ok_or("expected algorithm rejection")?;
@@ -370,6 +471,7 @@ fn play_integrity_verifier_rejects_symmetric_jwks_fail_closed() -> Result<(), Bo
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &jwks,
+        allow_caller_supplied_jwks: true,
     })
     .err()
     .ok_or("expected symmetric JWKS rejection")?;

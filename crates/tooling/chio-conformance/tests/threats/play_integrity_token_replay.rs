@@ -39,6 +39,7 @@ fn play_integrity_token_replay_fails_nonce_expiry_and_audience_gates() -> Result
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &play_integrity_jwks_json(),
+        allow_caller_supplied_jwks: false,
     })
     .err()
     .ok_or("expected nonce replay rejection")?;
@@ -51,6 +52,7 @@ fn play_integrity_token_replay_fails_nonce_expiry_and_audience_gates() -> Result
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &play_integrity_jwks_json(),
+        allow_caller_supplied_jwks: false,
     })
     .err()
     .ok_or("expected stale token rejection")?;
@@ -71,6 +73,7 @@ fn play_integrity_token_replay_fails_nonce_expiry_and_audience_gates() -> Result
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &play_integrity_jwks_json(),
+        allow_caller_supplied_jwks: false,
     })
     .err()
     .ok_or("expected audience rejection")?;

@@ -3180,6 +3180,7 @@ version = "0.1.0"
 dependencies = [
  "base64ct",
  "chio-core-types",
+ "chio-custody-hw",
  "chio-revocation-oracle",
  "chrono",
  "coset",

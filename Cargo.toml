@@ -352,7 +352,11 @@ chio-core-types = { path = "crates/core/chio-core-types" }
 chio-credentials = { path = "crates/trust/chio-credentials" }
 chio-credit = { path = "crates/economy/chio-credit" }
 chio-cross-protocol = { path = "crates/protocol/chio-cross-protocol" }
-chio-custody-hw = { path = "crates/trust/chio-custody-hw" }
+# `default-features = false` at the workspace root so consumers can opt out of
+# the `default = ["passkey", "sqlite-store"]` graph (e.g. mobile staticlib and
+# conformance fixtures that must avoid the webauthn-rs/OpenSSL dependencies).
+# Consumers that need the default custody path re-enable the features explicitly.
+chio-custody-hw = { path = "crates/trust/chio-custody-hw", default-features = false }
 chio-data-guards = { path = "crates/guards/chio-data-guards" }
 chio-data-guards-redactors-default = { path = "crates/guards/chio-data-guards/redactors/default" }
 chio-did = { path = "crates/trust/chio-did" }

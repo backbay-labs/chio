@@ -38,6 +38,7 @@ fn mobile_attestation_replay_is_rejected_by_bound_challenges() -> Result<(), Box
         challenge: b"stale-server-challenge",
         app_id: APP_ID,
         previous_counter: Some(0),
+        production: false,
         allow_development_fixture: true,
     })
     .err()
@@ -56,6 +57,7 @@ fn mobile_attestation_replay_is_rejected_by_bound_challenges() -> Result<(), Box
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &play_integrity_jwks_json(),
+        allow_caller_supplied_jwks: false,
     })
     .err()
     .ok_or("expected Play Integrity nonce replay rejection")?;

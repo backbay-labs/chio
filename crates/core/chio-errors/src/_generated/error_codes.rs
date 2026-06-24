@@ -1008,6 +1008,19 @@ pub const CUSTODY_APP_ATTEST_KEY_MISMATCH: ErrorCodeSpec = ErrorCodeSpec {
     consumed_by: &["chio-custody-hw", "chio-kernel-mobile"],
 };
 
+pub const CUSTODY_APP_ATTEST_CREDENTIAL_KEY_MISMATCH: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:custody:app-attest-credential-key-mismatch",
+    domain: Domain::Custody,
+    severity: Severity::Error,
+    summary: "Apple App Attest leaf certificate public key did not match the credential public key in authenticator data (WebAuthn registration step 6).",
+    help: "Reject the attestation; the attested hardware key is not bound to the enrolled credential public key and is denied fail-closed.",
+    string_code: "CHIO-CUSTODY-APP-ATTEST-CREDENTIAL-KEY-MISMATCH",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-custody-hw", "chio-kernel-mobile"],
+};
+
 pub const CUSTODY_APP_ATTEST_COUNTER_ROLLBACK: ErrorCodeSpec = ErrorCodeSpec {
     urn: "urn:chio:error:custody:app-attest-counter-rollback",
     domain: Domain::Custody,
@@ -1266,6 +1279,7 @@ pub static ERROR_CODES: &[ErrorCodeSpec] = &[
     CUSTODY_APP_ATTEST_APP_MISMATCH,
     CUSTODY_APP_ATTEST_CHALLENGE_MISMATCH,
     CUSTODY_APP_ATTEST_KEY_MISMATCH,
+    CUSTODY_APP_ATTEST_CREDENTIAL_KEY_MISMATCH,
     CUSTODY_APP_ATTEST_COUNTER_ROLLBACK,
     CUSTODY_APP_ATTEST_CERT_CHAIN_INVALID,
     CUSTODY_PLAY_INTEGRITY_INVALID_TOKEN,

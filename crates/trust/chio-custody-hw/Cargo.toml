@@ -32,6 +32,17 @@ passkey = ["dep:webauthn-rs", "dep:webauthn-rs-proto"]
 # canonical envelope (the `signature` field is the only differing slot).
 pq = ["chio-core-types/pq"]
 
+# Synthetic mobile-attestation fixtures (the App Attest compact-map shape
+# and caller-supplied Play Integrity JWKS). These bypasses exist only for
+# deterministic tests and local development; they are compiled out of
+# production builds. `cfg(test)` enables them automatically for the crate's
+# own unit/integration tests, and downstream test harnesses opt in with
+# `--features dev-fixtures`. NEVER enable this feature in a shipped binary:
+# it re-introduces the development-fixture App Attest path and lets callers
+# supply their own Play Integrity verification key set instead of the pinned
+# Google root.
+dev-fixtures = []
+
 # SQLite-backed durable stores: the replay-detection `PasskeyNonceStore`
 # AND the `CredentialRevocationOracle` cascade. Re-uses the rusqlite
 # version pinned by the workspace (the same version chio-store-sqlite
@@ -64,6 +75,15 @@ rusqlite = { workspace = true, optional = true }
 serde_json = { workspace = true }
 proptest = { workspace = true }
 rusqlite = { workspace = true }
+# Enable the synthetic mobile-attestation fixtures for this crate's own
+# integration tests. Integration tests link the regular (non-`cfg(test)`)
+# library, so the development-fixture helpers would otherwise be compiled
+# out; this self dev-dependency turns them on under `cargo test` only,
+# without making `dev-fixtures` a default feature of the shipped crate.
+# `default-features = false` so a `--no-default-features` (mobile/staticlib)
+# test profile is not silently re-enabled with `default = ["passkey"]` (and the
+# OpenSSL-backed webauthn-rs graph) via feature unification on this self edge.
+chio-custody-hw = { path = ".", default-features = false, features = ["dev-fixtures"] }
 
 [lints]
 workspace = true

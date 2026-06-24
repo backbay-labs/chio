@@ -695,6 +695,7 @@ pub fn verify_app_attest_evidence(
         challenge: &challenge,
         app_id: &app_id,
         previous_counter,
+        production: true,
         allow_development_fixture: false,
     })
     .map_err(map_attestation_error)?;
@@ -749,6 +750,7 @@ pub fn verify_play_integrity_evidence(
         expected_package_name: &expected_package_name,
         expected_audience: &expected_audience,
         jwks_json: &jwks_json,
+        allow_caller_supplied_jwks: false,
     })
     .map_err(map_attestation_error)?;
 
