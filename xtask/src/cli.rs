@@ -158,7 +158,7 @@ pub enum CheckCommand {
     /// Run a fixture-and-schema gate by facet name.
     Fixtures {
         /// Facet name. Pheromone facets are in ci-gates/pheromone.toml; the
-        /// six `runtime-*` facets are in ci-gates/runtime.toml.
+        /// The `runtime-*` facets are in ci-gates/runtime.toml.
         facet: String,
         /// Schema/metadata validation only; skip cargo tests and orchestration.
         #[arg(long, conflicts_with = "negative_only")]

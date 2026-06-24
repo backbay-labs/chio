@@ -1,5 +1,5 @@
-// Typed handlers for the six chio-runtime facets, ported from
-// `scripts/check-chio-runtime-*.sh`. Included into `fixtures.rs` via `include!`
+// Typed handlers for chio-runtime facets, ported from runtime gate scripts and
+// launch assurance requirements. Included into `fixtures.rs` via `include!`
 // so the handlers share that module's private helpers (ScratchDir, require_cli,
 // run_cargo_test, validate_document, the JSON mutators, canonical_sha256) while
 // keeping each file under the 2000-line hygiene cap.
@@ -892,6 +892,32 @@ fn policy_trust_floor_fixture() -> Value {
             }
         ]
     })
+}
+
+fn handle_attack_simulation(
+    root: &Path,
+    manifest: &RuntimeManifest,
+    facet: &RuntimeFacet,
+    mode: Mode,
+) -> Result<(), XtaskError> {
+    run_runtime_validate_pairs(root, manifest, facet)?;
+    if mode == Mode::SchemaOnly {
+        return Ok(());
+    }
+    run_runtime_cargo_tests(root, facet)
+}
+
+fn handle_chaos(
+    root: &Path,
+    manifest: &RuntimeManifest,
+    facet: &RuntimeFacet,
+    mode: Mode,
+) -> Result<(), XtaskError> {
+    run_runtime_validate_pairs(root, manifest, facet)?;
+    if mode == Mode::SchemaOnly {
+        return Ok(());
+    }
+    run_runtime_cargo_tests(root, facet)
 }
 
 include!("fixtures_runtime_ops.rs");

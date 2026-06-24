@@ -29,12 +29,6 @@ fn read_runtime_negative_case(case_name: &str) -> Value {
     serde_json::from_slice(&bytes).test_expect("negative case fixture parses")
 }
 
-fn expected_failure(case: &Value) -> &str {
-    case["expected_failure_code"]
-        .as_str()
-        .test_expect("negative case has expected failure code")
-}
-
 fn load_runtime_security_fixture(
     case_name: &str,
 ) -> chio_control_plane::transaction_passport::RuntimeSecurityBundle {
@@ -184,14 +178,38 @@ fn update_graph_node_digest(
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("graph parses");
     let nodes = graph["nodes"].as_array_mut().test_expect("graph has nodes");
+    let mut old_id = None;
     for node in nodes {
         if node["path"] == artifact_path {
+            old_id = node["id"].as_str().map(std::string::ToString::to_string);
+            node["id"] = Value::String(digest.to_string());
             node["sha256"] = Value::String(digest.to_string());
-            rebind_graph(bundle, graph);
-            return;
+            break;
         }
     }
-    panic!("graph node exists for {artifact_path}");
+    let old_id = old_id.test_expect("graph node exists for artifact path");
+    if old_id != digest {
+        for edge in graph["edges"].as_array_mut().test_expect("graph has edges") {
+            if edge["from"].as_str() == Some(old_id.as_str()) {
+                edge["from"] = Value::String(digest.to_string());
+            }
+            if edge["to"].as_str() == Some(old_id.as_str()) {
+                edge["to"] = Value::String(digest.to_string());
+            }
+        }
+    }
+    rebind_graph(bundle, graph);
+}
+
+fn graph_node_id_for_path(graph: &Value, artifact_path: &str) -> String {
+    graph["nodes"]
+        .as_array()
+        .test_expect("graph has nodes")
+        .iter()
+        .find(|node| node["path"] == artifact_path)
+        .and_then(|node| node["id"].as_str())
+        .test_expect("graph node id exists for artifact path")
+        .to_string()
 }
 
 fn update_graph_node_schema(
@@ -230,22 +248,23 @@ fn add_runtime_ack_replay(
 
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("graph parses");
+    let receipt_node_id = graph_node_id_for_path(&graph, "allow-receipt.json");
     graph["nodes"]
         .as_array_mut()
         .test_expect("graph has nodes")
         .push(json!({
-            "id": "ack-runtime-replay",
+            "id": replay_digest.clone(),
             "schema": "chio.runtime.tool-server-ack.v1",
             "path": "tool-server-ack-replay.json",
-            "sha256": replay_digest,
+            "sha256": replay_digest.clone(),
             "role": "tool-server-ack"
         }));
     graph["edges"]
         .as_array_mut()
         .test_expect("graph has edges")
         .push(json!({
-            "from": "ack-runtime-replay",
-            "to": "receipt-runtime-valid",
+            "from": replay_digest,
+            "to": receipt_node_id,
             "predicate": "acknowledges",
             "evidence_class": "native-external-proof"
         }));
@@ -270,6 +289,7 @@ fn add_request_digest_binding(
 
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("graph parses");
+    let lease_node_id = graph_node_id_for_path(&graph, "execution-lease.json");
     let nodes = graph["nodes"].as_array_mut().test_expect("graph has nodes");
     let existing_request_ids: Vec<String> = nodes
         .iter()
@@ -278,10 +298,10 @@ fn add_request_digest_binding(
         .collect();
     nodes.retain(|node| node["role"] != "request");
     nodes.push(json!({
-        "id": "request-runtime-valid",
+        "id": request_artifact_digest.clone(),
         "schema": "chio.request.digest.v1",
         "path": "request-digest.json",
-        "sha256": request_artifact_digest,
+        "sha256": request_artifact_digest.clone(),
         "role": "request"
     }));
     graph["edges"]
@@ -298,8 +318,8 @@ fn add_request_digest_binding(
         .as_array_mut()
         .test_expect("graph has edges")
         .push(json!({
-            "from": "request-runtime-valid",
-            "to": "lease-runtime-valid",
+            "from": request_artifact_digest,
+            "to": lease_node_id,
             "predicate": "binds",
             "evidence_class": "digest-bound-reference"
         }));
@@ -345,22 +365,23 @@ fn add_route_plan_binding(
 
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("graph parses");
+    let lease_node_id = graph_node_id_for_path(&graph, "execution-lease.json");
     graph["nodes"]
         .as_array_mut()
         .test_expect("graph has nodes")
         .push(json!({
-            "id": "route-runtime-valid",
+            "id": route_plan_digest.clone(),
             "schema": "chio.swarm.route-plan-receipt.v1",
             "path": "route-plan-receipt.json",
-            "sha256": route_plan_digest,
+            "sha256": route_plan_digest.clone(),
             "role": "swarm-route-plan-receipt"
         }));
     graph["edges"]
         .as_array_mut()
         .test_expect("graph has edges")
         .push(json!({
-            "from": "route-runtime-valid",
-            "to": "lease-runtime-valid",
+            "from": route_plan_digest,
+            "to": lease_node_id,
             "predicate": "binds",
             "evidence_class": "digest-bound-reference"
         }));
@@ -393,22 +414,23 @@ fn add_policy_activation_receipt(
 
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("graph parses");
+    let trust_root_node_id = graph_node_id_for_path(&graph, "trust-root.json");
     graph["nodes"]
         .as_array_mut()
         .test_expect("graph has nodes")
         .push(json!({
-            "id": "policy-activation-runtime-valid",
+            "id": receipt_digest.clone(),
             "schema": "chio.policy.activation-receipt.v1",
             "path": "policy-activation-receipt.json",
-            "sha256": receipt_digest,
+            "sha256": receipt_digest.clone(),
             "role": "policy-activation-receipt"
         }));
     graph["edges"]
         .as_array_mut()
         .test_expect("graph has edges")
         .push(json!({
-            "from": "runtime-trust-root",
-            "to": "policy-activation-runtime-valid",
+            "from": trust_root_node_id,
+            "to": receipt_digest,
             "predicate": "authorizes",
             "evidence_class": "digest-bound-reference"
         }));
@@ -442,22 +464,23 @@ fn add_attack_simulation_report(
 
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("graph parses");
+    let trust_root_node_id = graph_node_id_for_path(&graph, "trust-root.json");
     graph["nodes"]
         .as_array_mut()
         .test_expect("graph has nodes")
         .push(json!({
-            "id": "attack-simulation-runtime-valid",
+            "id": report_digest.clone(),
             "schema": "chio.runtime.attack-simulation-report.v1",
             "path": "attack-simulation-report.json",
-            "sha256": report_digest,
+            "sha256": report_digest.clone(),
             "role": "runtime-attack-simulation-report"
         }));
     graph["edges"]
         .as_array_mut()
         .test_expect("graph has edges")
         .push(json!({
-            "from": "runtime-trust-root",
-            "to": "attack-simulation-runtime-valid",
+            "from": trust_root_node_id,
+            "to": report_digest,
             "predicate": "authorizes",
             "evidence_class": "digest-bound-reference"
         }));
@@ -490,22 +513,23 @@ fn add_chaos_run_report(
 
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("graph parses");
+    let trust_root_node_id = graph_node_id_for_path(&graph, "trust-root.json");
     graph["nodes"]
         .as_array_mut()
         .test_expect("graph has nodes")
         .push(json!({
-            "id": "chaos-run-runtime-valid",
+            "id": report_digest.clone(),
             "schema": "chio.runtime.chaos-run-report.v1",
             "path": "chaos-run-report.json",
-            "sha256": report_digest,
+            "sha256": report_digest.clone(),
             "role": "runtime-chaos-run-report"
         }));
     graph["edges"]
         .as_array_mut()
         .test_expect("graph has edges")
         .push(json!({
-            "from": "runtime-trust-root",
-            "to": "chaos-run-runtime-valid",
+            "from": trust_root_node_id,
+            "to": report_digest,
             "predicate": "authorizes",
             "evidence_class": "digest-bound-reference"
         }));
@@ -582,28 +606,24 @@ fn add_second_runtime_attempt_without_terminal_receipt(
     let artifacts = [
         (
             lease_path,
-            "lease-runtime-second",
             "chio.runtime.execution-lease.v1",
             "execution-lease",
             lease,
         ),
         (
             revocation_path,
-            "revocation-runtime-second",
             "chio.runtime.revocation-freshness-proof.v1",
             "revocation-freshness-proof",
             revocation,
         ),
         (
             sandbox_path,
-            "sandbox-runtime-second",
             "chio.runtime.sandbox-attestation.v1",
             "sandbox-attestation",
             sandbox,
         ),
         (
             ack_path,
-            "ack-runtime-second",
             "chio.runtime.tool-server-ack.v1",
             "tool-server-ack",
             ack,
@@ -612,50 +632,70 @@ fn add_second_runtime_attempt_without_terminal_receipt(
 
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("graph parses");
+    let policy_node_id = graph_node_id_for_path(&graph, "verifier-policy.json");
+    let trust_root_node_id = graph_node_id_for_path(&graph, "trust-root.json");
     let nodes = graph["nodes"].as_array_mut().test_expect("graph has nodes");
-    for (path, id, schema, role, value) in artifacts {
+    let mut new_node_ids = BTreeMap::new();
+    for (path, schema, role, value) in artifacts {
         let bytes = serde_json::to_vec_pretty(&value).test_expect("artifact serializes");
         let digest = sha256_hex(&bytes);
         bundle.artifacts.insert(path.to_string(), bytes);
+        new_node_ids.insert(path, digest.clone());
         nodes.push(json!({
-            "id": id,
+            "id": digest.clone(),
             "schema": schema,
             "path": path,
             "sha256": digest,
             "role": role
         }));
     }
+    let lease_node_id = new_node_ids
+        .get(lease_path)
+        .test_expect("second lease node id")
+        .clone();
+    let revocation_node_id = new_node_ids
+        .get(revocation_path)
+        .test_expect("second revocation node id")
+        .clone();
+    let sandbox_node_id = new_node_ids
+        .get(sandbox_path)
+        .test_expect("second sandbox node id")
+        .clone();
+    let ack_node_id = new_node_ids
+        .get(ack_path)
+        .test_expect("second ack node id")
+        .clone();
     graph["edges"]
         .as_array_mut()
         .test_expect("graph has edges")
         .extend([
             json!({
-                "from": "runtime-policy-valid",
-                "to": "lease-runtime-second",
+                "from": policy_node_id,
+                "to": lease_node_id.clone(),
                 "predicate": "authorizes",
                 "evidence_class": "chio-sidecar-proof"
             }),
             json!({
-                "from": "runtime-trust-root",
-                "to": "lease-runtime-second",
+                "from": trust_root_node_id,
+                "to": lease_node_id.clone(),
                 "predicate": "authorizes",
                 "evidence_class": "digest-bound-reference"
             }),
             json!({
-                "from": "revocation-runtime-second",
-                "to": "lease-runtime-second",
+                "from": revocation_node_id,
+                "to": lease_node_id.clone(),
                 "predicate": "freshens",
                 "evidence_class": "native-external-proof"
             }),
             json!({
-                "from": "sandbox-runtime-second",
-                "to": "lease-runtime-second",
+                "from": sandbox_node_id,
+                "to": lease_node_id.clone(),
                 "predicate": "attests",
                 "evidence_class": "native-external-proof"
             }),
             json!({
-                "from": "ack-runtime-second",
-                "to": "lease-runtime-second",
+                "from": ack_node_id,
+                "to": lease_node_id,
                 "predicate": "acknowledges",
                 "evidence_class": "native-external-proof"
             }),
@@ -983,22 +1023,24 @@ fn advisory_observation_role_cannot_authorize_runtime_execution() {
     let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("graph parses");
+    let advisory_digest = "6666666666666666666666666666666666666666666666666666666666666666";
+    let lease_node_id = graph_node_id_for_path(&graph, "execution-lease.json");
     graph["nodes"]
         .as_array_mut()
         .test_expect("graph has nodes")
         .push(json!({
-            "id": "external-advisory-observation",
+            "id": advisory_digest,
             "schema": "chio.runtime.observation.v1",
             "path": "advisory-observation.json",
-            "sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+            "sha256": advisory_digest,
             "role": "advisory-observation"
         }));
     graph["edges"]
         .as_array_mut()
         .test_expect("graph has edges")
         .push(json!({
-            "from": "external-advisory-observation",
-            "to": "lease-runtime-valid",
+            "from": advisory_digest,
+            "to": lease_node_id,
             "predicate": "authorizes"
         }));
     rebind_graph(&mut bundle, graph);
@@ -1125,7 +1167,6 @@ fn receipt_totality_rejects_allowed_receipt_without_execution_lease_ref() {
 
 #[test]
 fn receipt_totality_rejects_missing_denial_receipt() {
-    let negative_case = read_runtime_negative_case("missing-terminal-receipt");
     let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
     update_policy_required_claims(&mut bundle, vec!["claim.runtime.receipt_totality_complete"]);
     bundle.artifacts.remove("allow-receipt.json");
@@ -1134,7 +1175,11 @@ fn receipt_totality_rejects_missing_denial_receipt() {
     let error = verify_runtime_security_fixture(&bundle)
         .test_expect_err("missing terminal receipt must fail receipt totality");
 
-    assert!(error.to_string().contains(expected_failure(&negative_case)));
+    let error = error.to_string();
+    assert!(
+        error.contains("missing terminal receipt for execution lease"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -1164,13 +1209,13 @@ fn receipt_totality_rejects_second_execution_lease_without_terminal_receipt() {
 
 #[test]
 fn side_effecting_runtime_claim_rejects_reused_nonce() {
-    let negative_case = read_runtime_negative_case("reused-nonce");
     let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
     add_runtime_ack_replay(&mut bundle);
 
     let error = verify_runtime_security_fixture(&bundle).test_expect_err("reused nonce must fail");
 
-    assert!(error.to_string().contains(expected_failure(&negative_case)));
+    let error = error.to_string();
+    assert!(error.contains("reused nonce"), "{error}");
 }
 
 #[test]
@@ -1280,7 +1325,8 @@ fn side_effecting_runtime_claim_rejects_stale_revocation() {
     let error = verify_runtime_security_fixture(&bundle)
         .test_expect_err("stale revocation proof must fail");
 
-    assert!(error.to_string().contains(expected_failure(&negative_case)));
+    let error = error.to_string();
+    assert!(error.contains("revocation freshness stale"), "{error}");
 }
 
 #[test]
@@ -1425,7 +1471,11 @@ fn side_effecting_runtime_claim_rejects_ack_outside_execution_lease() {
     let error =
         verify_runtime_security_fixture(&bundle).test_expect_err("ack outside lease must fail");
 
-    assert!(error.to_string().contains(expected_failure(&negative_case)));
+    let error = error.to_string();
+    assert!(
+        error.contains("acknowledgement outside execution lease"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -1611,7 +1661,8 @@ fn side_effecting_runtime_claim_rejects_sandbox_mismatch() {
     let error =
         verify_runtime_security_fixture(&bundle).test_expect_err("sandbox mismatch must fail");
 
-    assert!(error.to_string().contains(expected_failure(&negative_case)));
+    let error = error.to_string();
+    assert!(error.contains("sandbox tool binding mismatch"), "{error}");
 }
 
 #[test]

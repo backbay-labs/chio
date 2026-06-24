@@ -973,6 +973,8 @@ fn dispatch_runtime_handler(
         "policy" => handle_policy(root, manifest, facet, mode),
         "ops_hardening" => handle_ops_hardening(root, manifest, facet, mode),
         "orchestration" => handle_orchestration(root, manifest, facet, mode),
+        "attack_simulation" => handle_attack_simulation(root, manifest, facet, mode),
+        "chaos" => handle_chaos(root, manifest, facet, mode),
         other => Err(XtaskError::Manifest(format!(
             "unknown runtime facet kind {other}"
         ))),

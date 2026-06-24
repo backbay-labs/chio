@@ -85,6 +85,8 @@ jobs:
         capability:
           - ops-hardening
           - orchestration
+          - attack-simulation
+          - chaos
           - policy
           - proof-parity
           - spine

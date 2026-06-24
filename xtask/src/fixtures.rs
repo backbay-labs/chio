@@ -29,16 +29,19 @@ pub(crate) const MANIFEST_PATH: &str = "ci-gates/pheromone.toml";
 /// Relative path (from the workspace root) of the chio-runtime gate manifest.
 pub(crate) const RUNTIME_MANIFEST_PATH: &str = "ci-gates/runtime.toml";
 
-/// The six chio-runtime facets, consolidated from `scripts/check-chio-runtime-*.sh`.
+/// The eight chio-runtime facets, consolidated from runtime gate scripts and
+/// launch Proof Room runtime assurance requirements.
 /// Compile-time fail-closed enumeration: the runtime manifest must list exactly
 /// these names, and the CLI rejects anything else.
-pub(crate) const RUNTIME_KNOWN_FACETS: [&str; 6] = [
+pub(crate) const RUNTIME_KNOWN_FACETS: [&str; 8] = [
     "runtime-spine-fixtures",
     "runtime-spine",
     "runtime-proof-parity",
     "runtime-policy",
     "runtime-ops-hardening",
     "runtime-orchestration",
+    "runtime-attack-simulation",
+    "runtime-chaos",
 ];
 
 /// The 15 pheromone facets. Compile-time fail-closed enumeration: the manifest
@@ -242,7 +245,7 @@ fn display(path: &Path) -> String {
 // -- Entry point ----------------------------------------------------------
 
 /// Run a fixture-and-schema gate by facet name. Pheromone facets resolve
-/// against `ci-gates/pheromone.toml`; the six chio-runtime facets resolve
+/// against `ci-gates/pheromone.toml`; the chio-runtime facets resolve
 /// against `ci-gates/runtime.toml`. Fail-closed: a facet in neither manifest is
 /// an error, and each manifest must enumerate exactly its known facets before
 /// any gate runs.
@@ -281,7 +284,7 @@ fn assert_runtime_manifest_enumeration(manifest: &RuntimeManifest) -> Result<(),
     expected.sort_unstable();
     if names != expected {
         return Err(XtaskError::Manifest(format!(
-            "runtime manifest must enumerate exactly the 6 known runtime facets, found {names:?}"
+            "runtime manifest must enumerate exactly the 8 known runtime facets, found {names:?}"
         )));
     }
     Ok(())
@@ -1431,8 +1434,33 @@ mod tests {
         expected.sort_unstable();
         assert_eq!(
             names, expected,
-            "runtime manifest must list exactly the six runtime facets"
+            "runtime manifest must list exactly the eight runtime facets"
         );
+    }
+
+    #[test]
+    fn runtime_attack_and_chaos_facets_are_first_class() {
+        let manifest = load_runtime();
+        let workflow_path = runtime_manifest_path()
+            .parent()
+            .and_then(Path::parent)
+            .unwrap_or_else(|| panic!("runtime manifest path has no workspace parent"))
+            .join(".github/workflows/chio-runtime.yml");
+        let workflow = fs::read_to_string(&workflow_path)
+            .unwrap_or_else(|err| panic!("read chio-runtime workflow: {err}"));
+        for name in ["runtime-attack-simulation", "runtime-chaos"] {
+            assert!(
+                manifest.facet_by_name(name).is_some(),
+                "runtime manifest missing {name}"
+            );
+            let matrix_value = name
+                .strip_prefix("runtime-")
+                .unwrap_or_else(|| panic!("runtime facet {name} missing prefix"));
+            assert!(
+                workflow.contains(&format!("- {matrix_value}")),
+                "runtime workflow missing matrix entry {matrix_value}"
+            );
+        }
     }
 
     #[test]
@@ -1473,6 +1501,8 @@ mod tests {
             "policy",
             "ops_hardening",
             "orchestration",
+            "attack_simulation",
+            "chaos",
         ];
         for facet in &manifest.facet {
             assert!(
