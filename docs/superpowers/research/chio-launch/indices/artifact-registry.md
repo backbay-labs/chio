@@ -48,14 +48,14 @@ Rules:
 | Settlement | `chio.oracle-conversion-evidence.v1` | FX or asset conversion evidence | Required if conversion is claimed |
 | Settlement | `chio.public-settlement-verifier-report.v1` | Public settlement verifier report | Required for public settlement claim |
 | Risk | `chio.risk.comptroller-report.v1` | Reconciled risk control-plane projection | Required for risk or insurance claim |
-| Risk | `chio.risk.facility-state-report.v1` | Facility lifecycle replay result | Required for facility claim |
-| Risk | `chio.risk.coverage-decision.v1` | Coverage binding result | Required for insurance claim |
-| Risk | `chio.risk.claim-case-file.v1` | Claim evidence and decision package | Required if claims are shown |
-| Risk | `chio.risk.claim-appeal.v1` | Appeal over adjudication, payout mismatch, settlement mismatch, reserve slash, or closure dispute | Required if appeals can block payout, release, slash, or closure |
-| Risk | `chio.risk.sanction-reserve-ledger.v1` | Reserve slash, market slash, hold, reverse slash, and consumed reserve id ledger | Required for any slashing or reserve-control claim |
-| Risk | `chio.risk.portfolio-reconciliation-report.v1` | Cross-claim facility reconciliation by currency and state | Required for portfolio reserve claim |
-| Risk | `chio.risk.capital-adequacy-report.v1` | Reserve and capital adequacy report | Required for autonomous pricing claim |
-| Risk | `chio.risk.actuarial-backtest-report.v1` | Actuarial model evidence and observed-vs-predicted claim performance | Required for premium adequacy or autonomous pricing claim |
+| Risk | `chio.risk.facility-state-report.v1` | Facility lifecycle replay result | Folded into `chio.risk.comptroller-report.v1` for launch |
+| Risk | `chio.risk.coverage-decision.v1` | Coverage binding result | Folded into `chio.risk.comptroller-report.v1` for launch |
+| Risk | `chio.risk.claim-case-file.v1` | Claim evidence and decision package | Folded into `chio.risk.comptroller-report.v1` for launch |
+| Risk | `chio.risk.claim-appeal.v1` | Appeal over adjudication, payout mismatch, settlement mismatch, reserve slash, or closure dispute | Folded into `chio.risk.comptroller-report.v1` for launch |
+| Risk | `chio.risk.sanction-reserve-ledger.v1` | Reserve slash, market slash, hold, reverse slash, and consumed reserve id ledger | Folded into `chio.risk.comptroller-report.v1` for launch |
+| Risk | `chio.risk.portfolio-reconciliation-report.v1` | Cross-claim facility reconciliation by currency and state | Folded into `chio.risk.comptroller-report.v1` for launch |
+| Risk | `chio.risk.capital-adequacy-report.v1` | Reserve and capital adequacy report | Folded into `chio.risk.comptroller-report.v1` for launch |
+| Risk | `chio.risk.actuarial-backtest-report.v1` | Actuarial model evidence and observed-vs-predicted claim performance | Folded into `chio.risk.comptroller-report.v1` for launch |
 | Proof Room | `chio.proof-room.bundle.v1` | Static proof-room bundle manifest | Required for launch demo |
 | Proof Room | `chio.proof-room.verifier-report.v1` | UI-normalized verifier report | Required for launch demo |
 | Agent Web | `chio.agent-web-proof-envelope.v1` | Detached external proof envelope | Required for interop claim |
@@ -67,6 +67,7 @@ Rules:
 Fold decisions:
 
 - `chio.commerce.provider-admission.v1` is not a separate launch schema. Provider admission is represented by `chio.commerce.provider-discovery-snapshot.v1` plus `chio.commerce.provider-selection-report.v1`, and verifiers must bind the selected provider subject, discovery snapshot, scorecard, reputation, SLA, and downstream order context through those two artifacts.
+- The standalone risk subreport names above are future split points. For launch, `chio.risk.comptroller-report.v1` is the signed artifact and verifiers must enforce facility lifecycle, coverage, claim case, appeal, sanction reserve, portfolio reconciliation, capital adequacy, and actuarial backtest semantics inside that report.
 
 The following names appeared in draft material or early integrated docs and should not be used in canonical plans:
 

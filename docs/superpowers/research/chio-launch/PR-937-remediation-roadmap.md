@@ -304,7 +304,9 @@ Done when: a live protocol/kernel executor verifies the swarm authority bundle (
 - [x] **[medium/fixed]** R-ARD-17: Conditional schema chio.commerce.provider-admission.v1 missing while its trigger (provider selection) is exercised (Artifact Registry Discipline &)
       - The canonical artifact registry now records `chio.commerce.provider-admission.v1` as folded into `chio.commerce.provider-discovery-snapshot.v1` plus `chio.commerce.provider-selection-report.v1`. The protocol wording now names the shipped discovery and selection admission flow instead of a separate provider-admission schema.
       - Evidence: `scripts/check-chio-schema-registry.sh`; `bash scripts/check-chio-proof-room-release-truth.sh`.
-- [ ] **[medium/open]** R-ARD-35: Risk facility/coverage/claim-case/appeal/capital/actuarial folded into comptroller-report; named standalone schema IDs absent (Artifact Registry Discipline &)
+- [x] **[medium/fixed]** R-ARD-35: Risk facility/coverage/claim-case/appeal/capital/actuarial folded into comptroller-report; named standalone schema IDs absent (Artifact Registry Discipline &)
+      - `indices/artifact-registry.md` now records the standalone risk subreport IDs as future split points folded into `chio.risk.comptroller-report.v1` for launch, matching the normative `spec/PROTOCOL.md` comptroller section.
+      - Evidence: `scripts/check-chio-schema-registry.sh`; `bash scripts/check-chio-proof-room-release-truth.sh`.
 - [x] **[medium/fixed]** R-ENT-02: Data-governance named negatives absent; residency/legal-hold enforced but untested; retention-shorter-than-policy not enforceable
       - Enterprise data governance now enforces the shipped audit retention class format and rejects audit retention below 365 days. Added named negatives for observed region outside policy, legal hold blocking export, and retention shorter than policy. The in-memory enterprise test bundle now carries policy-bound facility lifecycle data and pending claim-payout capital instructions so enterprise tests reach their intended gates.
       - Evidence: `cargo test -p chio-enterprise-export --test enterprise_export -- --nocapture`; `scripts/check-chio-schema-registry.sh`.
@@ -328,11 +330,15 @@ Done when: a live protocol/kernel executor verifies the swarm authority bundle (
 - [ ] **[medium/partially_fixed]** R-T04-11: Disclosure fixtures incomplete and under proof-room/ not chio-launch/ (Lineage, Selective Disclosure,)
 - [ ] **[medium/open]** R-T05-11: IOA evidence-promotion deliverable not done (compact anchor proof, no typed AnchorProofBundle in examples) (Public Settlement Passport & W)
 - [ ] **[medium/open]** R-T05-19: Proof Room settlement panel is a flat bundle display, not a verdict-driven explorer (Public Settlement Passport & W)
-- [ ] **[medium/open]** R-T06-03: chio.risk.facility-state-report.v1 not separately registered (folded into comptroller-report.v1) (Risk Comptroller, Facility & I)
+- [x] **[medium/fixed]** R-T06-03: chio.risk.facility-state-report.v1 not separately registered (folded into comptroller-report.v1) (Risk Comptroller, Facility & I)
+      - The canonical artifact registry records facility-state as a launch fold into `chio.risk.comptroller-report.v1`, so no inert standalone schema is required for the current verifier boundary.
+      - Evidence: `scripts/check-chio-schema-registry.sh`; `bash scripts/check-chio-proof-room-release-truth.sh`.
 - [x] **[medium/fixed]** R-T06-04: Facility transitions now bind to `policy_id`; `RiskFacilityState` and every lifecycle transition require a non-empty policy ID, lifecycle replay rejects policy mismatches, and replay derives the path by `from_state` instead of array position. Added missing-policy and reordered-lifecycle tests, refreshed enterprise and trust-market risk fixtures, and re-signed changed trust-market risk reports. Evidence: `cargo test -p chio-risk-comptroller -- --nocapture`, `cargo test -p chio-trust-market-context -- --nocapture`, focused `chio-cli` proof verify and fixture contracts, schema registry, clippy, fmt, and diff checks.
 - [x] **[medium/fixed]** R-T06-07: Appeal blocks enum: schema omitted market_slash while Rust accepted it. `comptroller-report.schema.json` now includes `market_slash` in appeal block values.
 - [x] **[medium/fixed]** R-T06-08: Reserve-ledger lane enum: schema omitted write_off while Rust accepted it. `comptroller-report.schema.json` now includes `write_off` in reserve ledger lane values.
-- [ ] **[medium/open]** R-T06-08-dup-skip (sanction-reserve-ledger schema): R-T06-08-dup-skip (sanction-reserve-ledger schema) (Risk Comptroller, Facility & I)
+- [x] **[medium/fixed]** R-T06-08-dup-skip (sanction-reserve-ledger schema): R-T06-08-dup-skip (sanction-reserve-ledger schema) (Risk Comptroller, Facility & I)
+      - The canonical artifact registry records sanction-reserve-ledger as a launch fold into `chio.risk.comptroller-report.v1`; standalone registration is a future split point.
+      - Evidence: `scripts/check-chio-schema-registry.sh`; `bash scripts/check-chio-proof-room-release-truth.sh`.
 - [ ] **[medium/open]** R-T06-12: Reconciliation/subject invariants narrower than spec (opaque refs, no premium/topology coverage) (Risk Comptroller, Facility & I)
 - [x] **[medium/fixed]** R-T06-13: Transaction Passport root and claim-set verification no longer accepts required `claim.risk.*` claims from the claim-set alone. The transaction-passport verifier exposes an external verified-claim hook, and the CLI passes claims only after the risk comptroller verifier succeeds. Evidence: `cargo test -p chio-transaction-passport --test transaction_passport`; `cargo test -p chio-cli --test proof_cli_contract`; `cargo clippy -p chio-transaction-passport --test transaction_passport -- -D warnings`; `cargo clippy -p chio-cli --test proof_cli_contract -- -D warnings`.
 - [x] **[medium/refuted]** R-T06-20: Subject-mismatch gate covers only coverage + sanction subjects (Risk Comptroller, Facility & I)
@@ -357,7 +363,9 @@ Done when: a live protocol/kernel executor verifies the swarm authority bundle (
 - [ ] **[medium/open]** R-T08-29: Standards-review sign-off gate for standard/compatible/native/universal claims missing (Agent Web Proof Envelope & Ext)
 - [x] **[medium/fixed]** R-VG-COPY-MAP: No machine-checked mapping from homepage copy claims to covering fixture/claim ids (Verification Gates, Proof-Room)
   - `claims/homepage-copy-map.json` is generated by `cargo xtask verify launch-acceptance`, and the contract test rejects unknown claim ids, unknown fixture ids, empty mappings, and claims not verified by the listed fixtures. Evidence: `CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 bash scripts/tests/check-chio-proof-room-launch-acceptance.test.sh`.
-- [ ] **[medium/open]** R-VG-HS06: Insurance autonomous-pricing controls enforced via comptroller-report, not the three separately-named schemas (Verification Gates, Proof-Room)
+- [x] **[medium/fixed]** R-VG-HS06: Insurance autonomous-pricing controls enforced via comptroller-report, not the three separately-named schemas (Verification Gates, Proof-Room)
+      - The launch artifact registry now names the standalone risk and pricing-control schemas as folded into `chio.risk.comptroller-report.v1`, matching the implemented fail-closed verifier boundary instead of requiring dead schemas.
+      - Evidence: `scripts/check-chio-schema-registry.sh`; `bash scripts/check-chio-proof-room-release-truth.sh`.
 - [ ] **[medium/open]** RISK-P1-ENTERPRISE-EXPORT: P1: 4 of 9 cited enterprise schema IDs not built (Roadmap stop-rules, launch ris)
 - [ ] **[medium/open]** RISK-P1-MERCHANT-LIFECYCLE: P1: 4 cited standalone commerce schema IDs folded into payment-lifecycle fields (Roadmap stop-rules, launch ris)
 - [x] **[medium/fixed]** RM-P1B-DOCTOR: Working-tree `chio proof doctor` proof-package evidence now accepts the public proof package fixtures.
@@ -375,7 +383,9 @@ Done when: a live protocol/kernel executor verifies the swarm authority bundle (
 - [ ] **[low/open]** R-ARD-18: Conditional schema chio.commerce.settlement-packet.v1 missing (settlement modeled via web3 bundle instead) (Artifact Registry Discipline &)
 - [x] **[low/fixed]** R-ARD-26: Conditional schema chio.bbs-projection.manifest.v2 absent (Artifact Registry Discipline &). `chio.bbs-projection.manifest.v2` is registered in `spec/schemas/registry.json`, covered by `spec/schemas/MANIFEST.sha256`, present in `KNOWN_SIGNED_ARTIFACT_SCHEMAS`, and consumed by the disclosure verifier.
       - Evidence: `scripts/check-chio-schema-registry.sh`; `CARGO_INCREMENTAL=0 cargo test -p chio-cli --test proof_verify disclosure -- --nocapture`.
-- [ ] **[low/open]** R-ARD-39: Sanction-reserve-ledger and portfolio-reconciliation-report exist as logic but not as standalone canonical schema IDs (Artifact Registry Discipline &)
+- [x] **[low/fixed]** R-ARD-39: Sanction-reserve-ledger and portfolio-reconciliation-report exist as logic but not as standalone canonical schema IDs (Artifact Registry Discipline &)
+      - The canonical artifact registry records both as launch folds into `chio.risk.comptroller-report.v1` and reserves standalone schema IDs for future split artifacts.
+      - Evidence: `scripts/check-chio-schema-registry.sh`; `bash scripts/check-chio-proof-room-release-truth.sh`.
 - [ ] **[low/open]** R-ARD-44: No explicit CLI-vs-ProofRoom verdict parity assertion (parity is structurally satisfied by shared verifier code) (Artifact Registry Discipline &)
 - [x] **[low/fixed]** R-ENT-03: First-slice evidence-export bundle omits the verifier-report role it is explicitly required to export (Enterprise Evidence Export & T)
   - Fix: `evidence-export-bundle.json` now requires and verifies a `verifier_report` artifact role bound to the same passport and a verified verdict. Enterprise fixture generation writes a stable `verifier-report.json` sidecar, inserts the export role, recomputes export digests, re-signs approval cases, and refreshes graph/passport hashes.
