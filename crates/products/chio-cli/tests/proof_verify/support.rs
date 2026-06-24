@@ -1,3 +1,10 @@
+use chio_core_types::{
+    receipt::body::{ChioReceipt, ChioReceiptBody},
+    receipt::decision::{Decision, ToolCallAction},
+    receipt::kinds::{BoundaryClass, ReceiptKind, RedactionMode, ToolOrigin, TrustLevel},
+    receipt::metadata::ActorRef,
+    Keypair,
+};
 use chio_test_support::prelude::*;
 use std::path::PathBuf;
 
@@ -1457,6 +1464,7 @@ pub(crate) fn mutate_commerce_event_log(
             _ => {}
         }
     }
+    refresh_commerce_event_authority_receipts(bundle_dir, &event_log, &mut evidence_graph);
     let evidence_graph_bytes =
         serde_json::to_vec(&evidence_graph).test_expect("serialize evidence graph");
     std::fs::write(&evidence_graph_path, &evidence_graph_bytes).test_expect("write evidence graph");
@@ -1480,6 +1488,122 @@ fn seal_commerce_event_log_events(event_log: &mut serde_json::Value) {
             .test_expect("event log event canonicalizes");
         event["event_sha256"] = serde_json::Value::String(chio_core::sha256_hex(&canonical));
     }
+}
+
+fn refresh_commerce_event_authority_receipts(
+    bundle_dir: &std::path::Path,
+    event_log: &serde_json::Value,
+    evidence_graph: &mut serde_json::Value,
+) {
+    let policy_sha256 = chio_core::sha256_hex(
+        &std::fs::read(bundle_dir.join("verifier-policy.json")).test_expect("read verifier policy"),
+    );
+    let receipt_dir = bundle_dir.join("authority-receipts");
+    std::fs::create_dir_all(&receipt_dir).test_expect("create authority receipts dir");
+    for event in event_log["events"]
+        .as_array()
+        .test_expect("event log events array")
+    {
+        let receipt_ref = event["authority_receipt_ref"]
+            .as_str()
+            .test_expect("event has authority receipt ref");
+        let receipt_path = format!("authority-receipts/{receipt_ref}.json");
+        let destination = bundle_dir.join(&receipt_path);
+        write_commerce_event_authority_receipt(&destination, event, &policy_sha256);
+        upsert_evidence_graph_node(
+            evidence_graph,
+            receipt_ref,
+            &receipt_path,
+            "chio.receipt.v1",
+            "receipt",
+            &chio_core::sha256_hex(
+                &std::fs::read(&destination).test_expect("read authority receipt"),
+            ),
+        );
+    }
+}
+
+fn write_commerce_event_authority_receipt(
+    destination: &std::path::Path,
+    event: &serde_json::Value,
+    policy_sha256: &str,
+) {
+    let receipt_ref = event["authority_receipt_ref"]
+        .as_str()
+        .test_expect("event has authority receipt ref");
+    let keypair = Keypair::from_seed(&TEST_SIGNATURE_SEED);
+    let receipt = ChioReceipt::sign(
+        ChioReceiptBody {
+            id: receipt_ref.to_string(),
+            timestamp: 1_781_072_000,
+            capability_id: format!("cap-{receipt_ref}"),
+            tool_server: "chio-commerce-order-authority".to_string(),
+            tool_name: event["transition"]
+                .as_str()
+                .test_expect("event has transition")
+                .to_string(),
+            action: ToolCallAction::from_parameters(serde_json::json!({
+                "authority_receipt_ref": receipt_ref,
+                "event_id": event["event_id"],
+                "order_id": event["order_id"],
+                "transition": event["transition"],
+            }))
+            .test_expect("commerce authority receipt action hashes"),
+            decision: Some(Decision::Allow),
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: vec![ActorRef {
+                actor_id: event["actor"]
+                    .as_str()
+                    .test_expect("event has actor")
+                    .to_string(),
+                actor_kind: Some("agent".to_string()),
+            }],
+            content_hash: event["event_sha256"]
+                .as_str()
+                .test_expect("event has event sha256")
+                .to_string(),
+            policy_hash: policy_sha256.to_string(),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: TrustLevel::Mediated,
+            tenant_id: None,
+            kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
+        },
+        &keypair,
+    )
+    .test_expect("commerce authority receipt signs");
+    let mut value = serde_json::to_value(receipt).test_expect("commerce receipt serializes");
+    value["schema"] = serde_json::Value::String("chio.receipt.v1".to_string());
+    write_json(destination, &value);
+}
+
+fn upsert_evidence_graph_node(
+    evidence_graph: &mut serde_json::Value,
+    node_id: &str,
+    path: &str,
+    schema: &str,
+    role: &str,
+    sha256: &str,
+) {
+    let nodes = evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("evidence graph nodes");
+    nodes.retain(|node| {
+        node.get("id").and_then(serde_json::Value::as_str) != Some(node_id)
+            && node.get("path").and_then(serde_json::Value::as_str) != Some(path)
+    });
+    nodes.push(serde_json::json!({
+        "id": node_id,
+        "schema": schema,
+        "path": path,
+        "sha256": sha256,
+        "role": role
+    }));
 }
 
 pub(crate) fn mutate_commerce_payment_lifecycle(
