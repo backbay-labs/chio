@@ -202,6 +202,25 @@ impl GovernedUpstreamCallChainProof {
         self.signer.verify_canonical(&body, &self.signature)
     }
 
+    /// Verify the signature AND enforce the validity window in one pass.
+    ///
+    /// Sanctioned entry point when freshness matters: fails closed on expiry /
+    /// not-yet-valid proofs, which the bare
+    /// [`GovernedUpstreamCallChainProof::verify_signature`] does not check. A
+    /// clock is threaded explicitly via `now` (unix seconds).
+    ///
+    /// Fail-closed ordering: the signature is checked FIRST. A proof with an
+    /// invalid signature is rejected before the time window is consulted.
+    /// Returns `Ok(true)` only when the signature verifies and `now` is within
+    /// `[issued_at, expires_at)`.
+    pub fn verify_signature_at(&self, now: u64) -> Result<bool> {
+        if !self.verify_signature()? {
+            return Ok(false);
+        }
+        self.validate_time(now)?;
+        Ok(true)
+    }
+
     #[must_use]
     pub fn is_valid_at(&self, now: u64) -> bool {
         now >= self.issued_at && now < self.expires_at
@@ -377,6 +396,25 @@ impl CallChainContinuationToken {
         )?;
         let body = self.body();
         self.signer.verify_canonical(&body, &self.signature)
+    }
+
+    /// Verify the signature AND enforce the validity window in one pass.
+    ///
+    /// Sanctioned entry point when freshness matters: fails closed on expiry /
+    /// not-yet-valid tokens, which the bare
+    /// [`CallChainContinuationToken::verify_signature`] does not check. A clock
+    /// is threaded explicitly via `now` (unix seconds).
+    ///
+    /// Fail-closed ordering: schema + signature are checked FIRST. A token with
+    /// an invalid signature (or schema) is rejected before the time window is
+    /// consulted. Returns `Ok(true)` only when the signature verifies and `now`
+    /// is within `[issued_at, expires_at)`.
+    pub fn verify_signature_at(&self, now: u64) -> Result<bool> {
+        if !self.verify_signature()? {
+            return Ok(false);
+        }
+        self.validate_time(now)?;
+        Ok(true)
     }
 
     #[must_use]
@@ -842,6 +880,27 @@ impl GovernedApprovalToken {
     pub fn verify_signature(&self) -> Result<bool> {
         let body = self.body();
         self.approver.verify_canonical(&body, &self.signature)
+    }
+
+    /// Verify the signature AND enforce the approval-token validity window in
+    /// one pass.
+    ///
+    /// Sanctioned entry point when freshness matters (settlement lanes that
+    /// must assert approval expiry, per the dependent C2/C3 work): fails closed
+    /// on expiry / not-yet-valid approvals, which the bare
+    /// [`GovernedApprovalToken::verify_signature`] does not check. A clock is
+    /// threaded explicitly via `now` (unix seconds).
+    ///
+    /// Fail-closed ordering: the signature is checked FIRST. An approval with an
+    /// invalid signature is rejected before the time window is consulted.
+    /// Returns `Ok(true)` only when the signature verifies and `now` is within
+    /// `[issued_at, expires_at)`.
+    pub fn verify_signature_at(&self, now: u64) -> Result<bool> {
+        if !self.verify_signature()? {
+            return Ok(false);
+        }
+        self.validate_time(now)?;
+        Ok(true)
     }
 
     #[must_use]
