@@ -355,6 +355,7 @@ pub(crate) fn runtime_regeneration_context(
         passport,
         passport_report_path: String::new(),
         evidence_graph_bytes: json_bytes(&evidence_graph)?,
+        claim_set_bytes: Vec::new(),
         verifier_policy_bytes: Vec::new(),
         artifacts,
     })

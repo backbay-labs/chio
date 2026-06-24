@@ -169,6 +169,7 @@ pub(crate) struct SourceVerifierContext {
     pub(crate) passport: chio_transaction_passport::TransactionPassport,
     pub(crate) passport_report_path: String,
     pub(crate) evidence_graph_bytes: Vec<u8>,
+    pub(crate) claim_set_bytes: Vec<u8>,
     pub(crate) verifier_policy_bytes: Vec<u8>,
     pub(crate) artifacts: BTreeMap<String, Vec<u8>>,
 }
@@ -577,10 +578,14 @@ pub(crate) fn source_verifier_context_with_options(
         .ok_or_else(|| "proof-room.passport.path-invalid".to_string())?;
     let evidence_graph_path =
         resolve_nested_bundle_path(bundle_root, passport_dir, &passport.evidence_graph_path)?;
+    let claim_set_path =
+        resolve_nested_bundle_path(bundle_root, passport_dir, &passport.claim_set_path)?;
     let verifier_policy_path =
         resolve_nested_bundle_path(bundle_root, passport_dir, &passport.verifier_policy_path)?;
     let evidence_graph_bytes = fs::read(&evidence_graph_path)
         .map_err(|error| format!("proof-room.evidence-graph.unreadable: {error}"))?;
+    let claim_set_bytes = fs::read(&claim_set_path)
+        .map_err(|error| format!("proof-room.claim-set.unreadable: {error}"))?;
     let verifier_policy_bytes = fs::read(&verifier_policy_path)
         .map_err(|error| format!("proof-room.verifier-policy.unreadable: {error}"))?;
     chio_transaction_passport::validate_verifier_policy_artifact(&verifier_policy_bytes)
@@ -595,6 +600,7 @@ pub(crate) fn source_verifier_context_with_options(
         passport,
         passport_report_path,
         evidence_graph_bytes,
+        claim_set_bytes,
         verifier_policy_bytes,
         artifacts,
     })
@@ -615,6 +621,14 @@ pub(crate) fn verify_source_passport_artifact_digests(
         return Err(format!(
             "proof-room.source-verifier.failed: verifier policy digest mismatch: expected {}, got {}",
             context.passport.verifier_policy_sha256, verifier_policy_sha256
+        ));
+    }
+
+    let claim_set_sha256 = sha256_hex(&context.claim_set_bytes);
+    if claim_set_sha256 != context.passport.claim_set_sha256 {
+        return Err(format!(
+            "proof-room.source-verifier.failed: evidence graph artifact digest mismatch for {}: expected {}, got {}",
+            context.passport.claim_set_path, context.passport.claim_set_sha256, claim_set_sha256
         ));
     }
     Ok(())
@@ -1042,10 +1056,14 @@ pub(crate) fn verify_transaction_passport_file_with_options(
         .ok_or_else(|| "proof-room.passport.path-invalid".to_string())?;
     let evidence_graph_path =
         resolve_nested_bundle_path(bundle_root, passport_dir, &passport.evidence_graph_path)?;
+    let claim_set_path =
+        resolve_nested_bundle_path(bundle_root, passport_dir, &passport.claim_set_path)?;
     let verifier_policy_path =
         resolve_nested_bundle_path(bundle_root, passport_dir, &passport.verifier_policy_path)?;
     let evidence_graph_bytes = fs::read(&evidence_graph_path)
         .map_err(|error| format!("proof-room.evidence-graph.unreadable: {error}"))?;
+    let claim_set_bytes = fs::read(&claim_set_path)
+        .map_err(|error| format!("proof-room.claim-set.unreadable: {error}"))?;
     let verifier_policy_bytes = fs::read(&verifier_policy_path)
         .map_err(|error| format!("proof-room.verifier-policy.unreadable: {error}"))?;
     let artifacts =
@@ -1069,6 +1087,7 @@ pub(crate) fn verify_transaction_passport_file_with_options(
         passport,
         passport_report_path: String::new(),
         evidence_graph_bytes,
+        claim_set_bytes,
         verifier_policy_bytes,
         artifacts,
     };

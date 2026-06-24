@@ -324,6 +324,33 @@ fn source_verifier_accepts_single_family_cli_report_without_wrapper() -> Result<
     Ok(())
 }
 
+#[test]
+fn source_family_verifier_rejects_tampered_claim_set_artifact() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root
+        .join("fixtures/proof-room/public-stages/commerce-transaction-passport/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let claim_set_path = work.path().join("roots/claim-set.json");
+    let mut claim_set: serde_json::Value = serde_json::from_slice(&fs::read(&claim_set_path)?)?;
+    claim_set["id"] = serde_json::Value::String("claim-set-tampered".to_string());
+    fs::write(&claim_set_path, json_bytes(&claim_set)?)?;
+
+    let passport_path = work.path().join("roots/transaction-passport.json");
+    let error = verify_transaction_passport_family_report(work.path(), &passport_path)
+        .err()
+        .ok_or("tampered claim-set artifact unexpectedly verified")?;
+
+    assert!(
+        error
+            .to_string()
+            .contains("evidence graph artifact digest mismatch for claim-set.json"),
+        "{error}"
+    );
+    Ok(())
+}
+
 #[tokio::test]
 async fn quickstart_router_serves_enterprise_fixture_verifier_report() -> Result<(), Box<dyn Error>>
 {
