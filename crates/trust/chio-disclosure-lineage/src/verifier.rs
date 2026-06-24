@@ -192,6 +192,8 @@ pub fn verify_disclosure_lineage_bundle(
         transaction_passport_ref: bundle.capsule.transaction_passport_ref.clone(),
         lineage_subgraph_ref: bundle.lineage.id.clone(),
         leakage_ledger_ref: bundle.leakage_ledger.id.clone(),
+        crypto_verified: true,
+        privacy_profile_verified: true,
         disclosed_field_count: bundle.capsule.disclosed_fields.len(),
         hidden_predicate_count: bundle.capsule.hidden_predicates.len(),
         verified_claims,

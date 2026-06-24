@@ -1132,6 +1132,7 @@ fn swarm_authority_stage0_rejects_revoked_task() -> Result<(), Box<dyn Error>> {
         .revocation_epoch
         .revoked_task_ids
         .push("task-child-a".to_string());
+    refresh_revocation_epoch_root(&mut bundle)?;
 
     let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("revoked task verified unexpectedly: {report:#?}"),
@@ -1167,7 +1168,28 @@ fn swarm_authority_stage0_rejects_revocation_epoch_root_mismatch() -> Result<(),
     };
     assert!(error
         .to_string()
-        .contains("swarm continuation revocation epoch root mismatch"));
+        .contains("swarm revocation epoch root mismatch"));
+    Ok(())
+}
+
+#[test]
+fn swarm_authority_stage0_rejects_revocation_epoch_list_root_mismatch() -> Result<(), Box<dyn Error>>
+{
+    let mut bundle = sample_swarm_bundle()?;
+    bundle
+        .revocation_epoch
+        .revoked_subjects
+        .push("did:chio:unrelated-subject".to_string());
+
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
+        Ok(report) => {
+            panic!("revocation epoch list root mismatch verified unexpectedly: {report:#?}")
+        }
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("swarm revocation epoch root mismatch"));
     Ok(())
 }
 
@@ -1178,6 +1200,7 @@ fn swarm_authority_stage0_rejects_revoked_authority_subject() -> Result<(), Box<
         .revocation_epoch
         .revoked_subjects
         .push("did:chio:authority".to_string());
+    refresh_revocation_epoch_root(&mut bundle)?;
 
     let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("revoked authority subject verified unexpectedly: {report:#?}"),
@@ -1257,7 +1280,10 @@ fn sample_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
         route_plan_refs: vec!["route-child-a".to_string(), "route-child-b".to_string()],
     };
     let graph_sha256 = canonical_hash(&task_graph)?;
-    let revocation_epoch_root_hash = sha256_hex(b"revocation-root");
+    let empty_revoked_subjects = Vec::<String>::new();
+    let empty_revoked_task_ids = Vec::<String>::new();
+    let revocation_epoch_root_hash =
+        revocation_epoch_root_hash(&empty_revoked_subjects, &empty_revoked_task_ids)?;
 
     let continuation_tokens = vec![
         continuation_token(
@@ -1382,8 +1408,8 @@ fn sample_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
             root_hash: revocation_epoch_root_hash,
             issued_at_unix_ms: NOW_UNIX_MS - 1_000,
             valid_until_unix_ms: NOW_UNIX_MS + 60_000,
-            revoked_subjects: Vec::new(),
-            revoked_task_ids: Vec::new(),
+            revoked_subjects: empty_revoked_subjects,
+            revoked_task_ids: empty_revoked_task_ids,
         },
         terminal_receipts: vec![terminal_graph_receipt()?],
         now_unix_ms: NOW_UNIX_MS,
@@ -1658,6 +1684,39 @@ fn scope_for(server_id: &str, tool_name: &str, max_invocations: u32) -> ChioScop
 
 fn canonical_hash<T: serde::Serialize>(value: &T) -> Result<String, Box<dyn Error>> {
     Ok(sha256_hex(&canonical_json_bytes(value)?))
+}
+
+fn revocation_epoch_root_hash(
+    revoked_subjects: &[String],
+    revoked_task_ids: &[String],
+) -> Result<String, Box<dyn Error>> {
+    let mut subjects = revoked_subjects
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    subjects.sort_unstable();
+    let mut task_ids = revoked_task_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    task_ids.sort_unstable();
+    canonical_hash(&serde_json::json!({
+        "revokedSubjects": subjects,
+        "revokedTaskIds": task_ids,
+    }))
+}
+
+fn refresh_revocation_epoch_root(bundle: &mut SwarmAuthorityBundle) -> Result<(), Box<dyn Error>> {
+    let root_hash = revocation_epoch_root_hash(
+        &bundle.revocation_epoch.revoked_subjects,
+        &bundle.revocation_epoch.revoked_task_ids,
+    )?;
+    bundle.revocation_epoch.root_hash = root_hash.clone();
+    for token in &mut bundle.continuation_tokens {
+        token.revocation_epoch_root_hash = root_hash.clone();
+        sign_continuation_token(token)?;
+    }
+    Ok(())
 }
 
 fn refresh_continuation_graph_digests(

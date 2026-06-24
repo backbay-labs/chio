@@ -405,7 +405,7 @@ fn proof_verify_accepts_runtime_terminal_receipt_under_common_receipts_dir() {
         .as_array_mut()
         .test_expect("evidence graph nodes")
     {
-        if node.get("id").and_then(serde_json::Value::as_str) == Some("receipt-runtime-denial") {
+        if node.get("path").and_then(serde_json::Value::as_str) == Some("denial-receipt.json") {
             node["path"] = serde_json::Value::String("receipts/denial-receipt.json".to_string());
         }
     }
@@ -1285,51 +1285,15 @@ fn proof_verify_rejects_public_settlement_unverified_required_claim() {
         workspace_root().join("fixtures/proof-room/public-settlement/valid-offline-finality");
     let bundle_dir = tempdir.path().join("public-settlement");
     copy_dir_all(&source, &bundle_dir);
-
-    let policy_path = bundle_dir.join("verifier-policy.json");
-    let mut policy: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&policy_path).test_expect("read verifier policy"))
-            .test_expect("parse verifier policy");
-    policy["required_claims"]
-        .as_array_mut()
-        .test_expect("required claims array")
-        .push(serde_json::Value::String(
-            "claim.public_settlement.future_claim_not_emitted".to_string(),
-        ));
-    let policy_bytes = serde_json::to_vec(&policy).test_expect("serialize verifier policy");
-    std::fs::write(&policy_path, &policy_bytes).test_expect("write verifier policy");
-    let policy_digest = chio_core::sha256_hex(&policy_bytes);
-
-    let evidence_graph_path = bundle_dir.join("evidence-graph.json");
-    let mut evidence_graph: serde_json::Value = serde_json::from_slice(
-        &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
-    )
-    .test_expect("parse evidence graph");
-    for node in evidence_graph["nodes"]
-        .as_array_mut()
-        .test_expect("evidence graph nodes")
-    {
-        if node.get("role").and_then(serde_json::Value::as_str) == Some("verifier-policy") {
-            node["sha256"] = serde_json::Value::String(policy_digest.clone());
-        }
-    }
-    let evidence_graph_bytes =
-        serde_json::to_vec(&evidence_graph).test_expect("serialize evidence graph");
-    std::fs::write(&evidence_graph_path, &evidence_graph_bytes).test_expect("write evidence graph");
-    let evidence_graph_digest = chio_core::sha256_hex(&evidence_graph_bytes);
-
-    let passport_path = bundle_dir.join("transaction-passport.json");
-    let mut passport: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
-            .test_expect("parse passport");
-    passport["verifier_policy_sha256"] = serde_json::Value::String(policy_digest);
-    passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_digest);
-    write_json(&passport_path, &passport);
+    add_verifier_policy_required_claim(
+        &bundle_dir,
+        "claim.public_settlement.future_claim_not_emitted",
+    );
 
     let output = chio_with_transaction_fixture_roots()
         .arg("proof")
         .arg("verify")
-        .arg(passport_path)
+        .arg(bundle_dir.join("transaction-passport.json"))
         .output()
         .test_expect("chio command runs");
 
@@ -1908,6 +1872,8 @@ fn proof_verify_accepts_disclosure_lineage_fixture() {
     );
     assert!(stdout.contains("\"verdict\":\"verified\""));
     assert!(stdout.contains("\"capsule_id\":\"disclosure-capsule-valid\""));
+    assert!(stdout.contains("\"crypto_verified\":true"));
+    assert!(stdout.contains("\"privacy_profile_verified\":true"));
     assert!(stdout.contains("\"claim.disclosure.lineage_subgraph_bound\""));
     assert!(stdout.contains("\"claim.disclosure.leakage_ledger_complete\""));
 }

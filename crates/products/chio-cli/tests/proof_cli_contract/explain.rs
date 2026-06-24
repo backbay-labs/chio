@@ -424,14 +424,15 @@ fn proof_explain_reports_receipt_coverage_exclusions_for_matrix_claim() {
         &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
     )
     .test_expect("evidence graph parses");
+    let denial_receipt_sha256 = sha256_file(&artifact_path.join("denial-receipt.json"));
     evidence_graph["nodes"]
         .as_array_mut()
         .test_expect("graph nodes array")
         .push(serde_json::json!({
-            "id": "terminal-denial-receipt",
+            "id": denial_receipt_sha256,
             "schema": "chio.receipt.v1",
             "path": "denial-receipt.json",
-            "sha256": sha256_file(&artifact_path.join("denial-receipt.json")),
+            "sha256": denial_receipt_sha256,
             "role": "receipt"
         }));
     write_json(&evidence_graph_path, &evidence_graph);

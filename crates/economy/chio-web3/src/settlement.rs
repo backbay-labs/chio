@@ -11,7 +11,10 @@ use crate::credit::{
     CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA,
 };
 use crate::error::Web3ContractError;
-use crate::receipt::lineage::SignedExportEnvelope;
+use crate::receipt::{
+    body::ChioReceipt, lineage::SignedExportEnvelope,
+    signing::CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
+};
 use crate::trust_profile::Web3SettlementPath;
 use crate::validation::{ensure_money, ensure_non_empty};
 
@@ -264,6 +267,7 @@ pub fn validate_web3_settlement_execution_receipt(
     }
     if let Some(anchor_proof) = receipt.reconciled_anchor_proof.as_ref() {
         verify_anchor_inclusion_proof(anchor_proof)?;
+        validate_anchor_receipt_binding(receipt, &anchor_proof.receipt)?;
         if let Some(chain_anchor) = anchor_proof.chain_anchor.as_ref() {
             if chain_anchor.chain_id != receipt.dispatch.chain_id {
                 return Err(Web3ContractError::invalid_settlement(
@@ -352,6 +356,37 @@ pub fn validate_web3_settlement_execution_receipt(
         ));
     }
 
+    Ok(())
+}
+
+fn validate_anchor_receipt_binding(
+    receipt: &Web3SettlementExecutionReceiptArtifact,
+    anchor_receipt: &ChioReceipt,
+) -> Result<(), Web3ContractError> {
+    let governed_receipt_id = receipt
+        .dispatch
+        .capital_instruction
+        .body
+        .governed_receipt_id
+        .as_deref()
+        .ok_or(Web3ContractError::MissingField(
+            "web3_settlement_dispatch.capital_instruction.governed_receipt_id",
+        ))?;
+    let Some(receipt_nonce) = anchor_receipt
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get(CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY))
+        .and_then(serde_json::Value::as_str)
+    else {
+        return Err(Web3ContractError::invalid_settlement(
+            "anchor proof receipt must carry signing nonce",
+        ));
+    };
+    if receipt_nonce != governed_receipt_id {
+        return Err(Web3ContractError::invalid_settlement(
+            "anchor proof receipt must match governed receipt",
+        ));
+    }
     Ok(())
 }
 

@@ -159,7 +159,17 @@ pub(super) fn find_node_by_id<'a>(
     graph
         .nodes
         .iter()
-        .find(|node| node.role == role && node.id == id)
+        .find(|node| node.role == role && graph_node_ref_matches(node, id))
+}
+
+fn graph_node_ref_matches(node: &AgentWebEvidenceNode, reference: &str) -> bool {
+    node.id == reference
+        || node.sha256 == reference
+        || node.path == reference
+        || std::path::Path::new(&node.path)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            == Some(reference)
 }
 
 pub(super) fn graph_has_edge(

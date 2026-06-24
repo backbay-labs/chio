@@ -611,6 +611,7 @@ impl ChioKernel {
         client: &mut C,
     ) -> Result<ToolCallResponse, KernelError> {
         self.validate_web3_evidence_prerequisites()?;
+        let execution_nonce = parse_tool_call_operation_execution_nonce(operation)?;
         self.begin_session_request(context, OperationKind::ToolCall, true)?;
 
         let request = ToolCallRequest {
@@ -621,7 +622,7 @@ impl ChioKernel {
             agent_id: context.agent_id.clone(),
             arguments: operation.arguments.clone(),
             dpop_proof: None,
-            execution_nonce: parse_tool_call_operation_execution_nonce(operation)?,
+            execution_nonce,
             governed_intent: operation.governed_intent.clone(),
             approval_token: None,
             model_metadata: operation.model_metadata.clone(),
@@ -670,6 +671,7 @@ impl ChioKernel {
         client: &mut C,
     ) -> Result<ToolCallResponse, KernelError> {
         self.validate_web3_evidence_prerequisites()?;
+        let execution_nonce = parse_tool_call_operation_execution_nonce(operation)?;
         self.begin_session_request(context, OperationKind::ToolCall, true)?;
 
         let request = ToolCallRequest {
@@ -680,7 +682,7 @@ impl ChioKernel {
             agent_id: context.agent_id.clone(),
             arguments: operation.arguments.clone(),
             dpop_proof: None,
-            execution_nonce: parse_tool_call_operation_execution_nonce(operation)?,
+            execution_nonce,
             governed_intent: operation.governed_intent.clone(),
             approval_token: None,
             model_metadata: operation.model_metadata.clone(),

@@ -39,9 +39,7 @@ pub struct TransactionVerifierReport {
     pub id: String,
     pub issued_at: String,
     pub verdict: String,
-    #[serde(default)]
     pub accepted: bool,
-    #[serde(default)]
     pub state: String,
     #[serde(
         default,
@@ -59,11 +57,7 @@ pub struct TransactionVerifierReport {
     pub verifier_policy_path: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub verified_claims: Vec<String>,
-    #[serde(
-        default,
-        rename = "claimResults",
-        skip_serializing_if = "Vec::is_empty"
-    )]
+    #[serde(rename = "claimResults")]
     pub claim_results: Vec<TransactionClaimResult>,
 }
 

@@ -310,21 +310,15 @@ fn evidence_node_for_entry(path: &str, bytes: &[u8]) -> Result<AssembledEvidence
             CliError::cli_other_error(format!("proof assemble artifact missing schema: {path}"))
         })?;
     let role = evidence_role_for_schema(path, schema);
+    let sha256 = chio_core::sha256_hex(bytes);
     Ok(AssembledEvidenceNode {
-        id: evidence_node_id(path),
+        id: sha256.clone(),
         schema: schema.to_string(),
         path: path.to_string(),
-        sha256: chio_core::sha256_hex(bytes),
+        sha256,
         role,
         runtime_binding: runtime_binding_for_artifact(&value),
     })
-}
-
-fn evidence_node_id(path: &str) -> String {
-    path.trim_end_matches(".json")
-        .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '-' })
-        .collect()
 }
 
 fn evidence_role_for_schema(path: &str, schema: &str) -> String {

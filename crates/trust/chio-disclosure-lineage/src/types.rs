@@ -261,6 +261,8 @@ pub struct DisclosureLineageVerifierReport {
     pub transaction_passport_ref: String,
     pub lineage_subgraph_ref: String,
     pub leakage_ledger_ref: String,
+    pub crypto_verified: bool,
+    pub privacy_profile_verified: bool,
     pub disclosed_field_count: usize,
     pub hidden_predicate_count: usize,
     pub verified_claims: Vec<String>,

@@ -19,8 +19,8 @@ use super::types::{
     SwarmBudgetAllocationState, SwarmBudgetFanInReleaseRequest,
     SwarmBudgetFanoutReservationRequest, SwarmBudgetPool, SwarmContinuationToken,
     SwarmContinuationTokenMintRequest, SwarmDelegationWitnessChain, SwarmGraphEdge, SwarmGraphJoin,
-    SwarmGraphNode, SwarmJoinReceipt, SwarmJoinReceiptMintRequest, SwarmRoutePlanReceipt,
-    SwarmTaskGraph, SwarmTerminalBudgetRollup, SwarmTerminalGraphReceipt,
+    SwarmGraphNode, SwarmJoinReceipt, SwarmJoinReceiptMintRequest, SwarmRevocationEpoch,
+    SwarmRoutePlanReceipt, SwarmTaskGraph, SwarmTerminalBudgetRollup, SwarmTerminalGraphReceipt,
     CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA, CHIO_SWARM_BUDGET_POOL_SCHEMA,
     CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA, CHIO_SWARM_JOIN_RECEIPT_SCHEMA,
     CHIO_SWARM_REVOCATION_EPOCH_SCHEMA, CHIO_SWARM_ROUTE_PLAN_RECEIPT_SCHEMA,
@@ -1313,6 +1313,10 @@ fn validate_revocation_epoch(
     if epoch.valid_until_unix_ms <= bundle.now_unix_ms {
         return Err(rejected("swarm revocation epoch is stale"));
     }
+    let computed_root_hash = revocation_epoch_list_root_hash(epoch)?;
+    if computed_root_hash != epoch.root_hash {
+        return Err(rejected("swarm revocation epoch root mismatch"));
+    }
     let mut revoked_subjects = BTreeSet::new();
     for subject in &epoch.revoked_subjects {
         require_non_empty(subject, "swarm revoked subject")?;
@@ -1346,6 +1350,22 @@ fn validate_revocation_epoch(
         }
     }
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RevocationEpochListRoot<'a> {
+    revoked_subjects: Vec<&'a str>,
+    revoked_task_ids: Vec<&'a str>,
+}
+
+fn revocation_epoch_list_root_hash(
+    epoch: &SwarmRevocationEpoch,
+) -> Result<String, SwarmAuthorityError> {
+    canonical_sha256(&RevocationEpochListRoot {
+        revoked_subjects: sorted_strings(&epoch.revoked_subjects),
+        revoked_task_ids: sorted_strings(&epoch.revoked_task_ids),
+    })
 }
 
 fn validate_terminal_graph_receipts(

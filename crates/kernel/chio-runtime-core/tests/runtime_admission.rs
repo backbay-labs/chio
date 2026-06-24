@@ -37,10 +37,11 @@ use chio_runtime_core::{
 };
 use chio_swarm_authority::{
     sign_swarm_continuation_token, sign_swarm_delegation_witness_hop, sign_swarm_join_receipt,
-    sign_swarm_route_plan_receipt, sign_swarm_terminal_graph_receipt, SwarmAuthorityBundle,
-    SwarmBudgetAllocation, SwarmBudgetAllocationState, SwarmBudgetPool, SwarmContinuationMode,
-    SwarmContinuationToken, SwarmDelegationWitnessChain, SwarmDelegationWitnessHop, SwarmGraphEdge,
-    SwarmGraphJoin, SwarmGraphNode, SwarmJoinParentReceipt, SwarmJoinReceipt, SwarmRevocationEpoch,
+    sign_swarm_route_plan_receipt, sign_swarm_terminal_graph_receipt,
+    verify_swarm_authority_bundle, SwarmAuthorityBundle, SwarmBudgetAllocation,
+    SwarmBudgetAllocationState, SwarmBudgetPool, SwarmContinuationMode, SwarmContinuationToken,
+    SwarmDelegationWitnessChain, SwarmDelegationWitnessHop, SwarmGraphEdge, SwarmGraphJoin,
+    SwarmGraphNode, SwarmJoinParentReceipt, SwarmJoinReceipt, SwarmRevocationEpoch,
     SwarmRoutePlanReceipt, SwarmTaskGraph, SwarmTerminalBudgetRollup, SwarmTerminalGraphReceipt,
     CHIO_SWARM_BUDGET_POOL_SCHEMA, CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA,
     CHIO_SWARM_DELEGATION_WITNESS_CHAIN_SCHEMA, CHIO_SWARM_JOIN_RECEIPT_SCHEMA,
@@ -1639,7 +1640,7 @@ fn chio_runtime_hook_denies_replayed_swarm_continuation_before_dispatch(
         local_kernel_id: "kernel.vendor-b".to_string(),
     };
     let first = hook.evaluate(&context)?;
-    assert!(first.allowed);
+    assert!(first.allowed, "{first:#?}");
     let first_metadata = first
         .metadata
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
@@ -1700,8 +1701,8 @@ fn chio_runtime_hook_revalidates_resumable_swarm_continuation_without_replay_den
     let first = hook.evaluate(&context)?;
     let second = hook.evaluate(&context)?;
 
-    assert!(first.allowed);
-    assert!(second.allowed);
+    assert!(first.allowed, "{first:#?}");
+    assert!(second.allowed, "{second:#?}");
     assert!(first
         .metadata
         .as_ref()
@@ -1743,7 +1744,7 @@ fn sqlite_runtime_hook_denies_replayed_swarm_continuation_before_dispatch(
         local_kernel_id: "kernel.vendor-b".to_string(),
     };
     let first = hook.evaluate(&context)?;
-    assert!(first.allowed);
+    assert!(first.allowed, "{first:#?}");
 
     let replay = hook.evaluate(&context)?;
     assert!(!replay.allowed);
@@ -2438,7 +2439,7 @@ fn runtime_swarm_bundle(
     let parent_scope_hash = scope_hash(&parent_scope)?;
     let child_scope_hash = scope_hash(&child_scope)?;
     let scope_subset_proof = compute_attenuation_witness(&parent_scope, &child_scope)?;
-    let revocation_root = sha256_hex(b"runtime-swarm-revocation-root");
+    let revocation_root = runtime_swarm_revocation_root(&[], &[])?;
 
     let mut task_graph = SwarmTaskGraph {
         schema: CHIO_SWARM_TASK_GRAPH_SCHEMA.to_string(),
@@ -2510,7 +2511,7 @@ fn runtime_swarm_bundle(
         &revocation_root,
         stale_continuation,
     )?;
-    let continuation_b = runtime_swarm_continuation(
+    let mut continuation_b = runtime_swarm_continuation(
         "continuation-child-b",
         "task-child-b",
         "route-child-b",
@@ -2524,6 +2525,9 @@ fn runtime_swarm_bundle(
     continuation_a.graph_sha256 = canonical_test_hash(&task_graph)?;
     continuation_a.signature =
         sign_swarm_continuation_token(&continuation_a, &swarm_witness_keypair())?;
+    continuation_b.graph_sha256 = canonical_test_hash(&task_graph)?;
+    continuation_b.signature =
+        sign_swarm_continuation_token(&continuation_b, &swarm_witness_keypair())?;
 
     let witness_chain_a = runtime_swarm_witness_chain(
         "witness-child-a",
@@ -2577,7 +2581,7 @@ fn runtime_swarm_bundle(
     };
     join_receipt.signature = sign_swarm_join_receipt(&join_receipt, &swarm_witness_keypair())?;
 
-    Ok(SwarmAuthorityBundle {
+    let bundle = SwarmAuthorityBundle {
         task_graph,
         continuation_tokens: vec![continuation_a, continuation_b],
         witness_chains: vec![witness_chain_a, witness_chain_b],
@@ -2642,7 +2646,18 @@ fn runtime_swarm_bundle(
         },
         terminal_receipts: vec![runtime_swarm_terminal_graph_receipt()?],
         now_unix_ms: 1_800_000_001_000,
-    })
+    };
+
+    if !stale_continuation {
+        verify_swarm_authority_bundle(&bundle, &trusted_swarm_witness_keys()).map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("runtime swarm fixture invalid: {}", error.runtime_detail()),
+            )
+        })?;
+    }
+
+    Ok(bundle)
 }
 
 fn runtime_swarm_continuation(
@@ -2823,4 +2838,18 @@ fn canonical_test_hash<T: serde::Serialize>(
     value: &T,
 ) -> Result<String, Box<dyn std::error::Error>> {
     Ok(sha256_hex(&canonical_json_bytes(value)?))
+}
+
+fn runtime_swarm_revocation_root(
+    revoked_subjects: &[&str],
+    revoked_task_ids: &[&str],
+) -> Result<String, Box<dyn std::error::Error>> {
+    let mut revoked_subjects = revoked_subjects.to_vec();
+    let mut revoked_task_ids = revoked_task_ids.to_vec();
+    revoked_subjects.sort_unstable();
+    revoked_task_ids.sort_unstable();
+    canonical_test_hash(&serde_json::json!({
+        "revokedSubjects": revoked_subjects,
+        "revokedTaskIds": revoked_task_ids,
+    }))
 }

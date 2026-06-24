@@ -226,15 +226,7 @@ fn proof_verify_runtime_requirement_rejects_advisory_only_runtime_claim() {
         &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
     )
     .test_expect("evidence graph parses");
-    let policy_node = evidence_graph["nodes"]
-        .as_array_mut()
-        .test_expect("graph nodes array")
-        .iter_mut()
-        .find(|node| {
-            node.get("role").and_then(serde_json::Value::as_str) == Some("verifier-policy")
-        })
-        .test_expect("verifier policy graph node");
-    policy_node["sha256"] = serde_json::Value::String(verifier_policy_sha256.clone());
+    refresh_evidence_graph_content_ids(&bundle, &mut evidence_graph);
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
 
@@ -697,12 +689,7 @@ fn proof_verify_delegation_requirement_rejects_root_only_swarm() {
                 )
             })
     });
-    for node in nodes {
-        let Some(path) = node.get("path").and_then(serde_json::Value::as_str) else {
-            continue;
-        };
-        node["sha256"] = serde_json::Value::String(sha256_file(&bundle.join(path)));
-    }
+    refresh_evidence_graph_content_ids(&bundle, &mut evidence_graph);
     let retained_node_ids = evidence_graph["nodes"]
         .as_array()
         .test_expect("evidence graph nodes array")
@@ -793,11 +780,12 @@ fn build_swarm_bundle_with_runtime_parity() -> (tempfile::TempDir, PathBuf) {
     let graph_nodes = evidence_graph["nodes"]
         .as_array_mut()
         .test_expect("graph nodes array");
+    let parity_sha256 = sha256_file(&parity_path);
     graph_nodes.push(serde_json::json!({
-            "id": "runtime-proof-parity-report",
+            "id": parity_sha256,
             "schema": "chio.runtime.proof-parity-report.v1",
             "path": "runtime-proof-parity-report.json",
-            "sha256": sha256_file(&parity_path),
+            "sha256": parity_sha256,
             "role": "runtime-proof-parity-report"
     }));
     for (role, schema, path) in [
@@ -837,14 +825,16 @@ fn build_swarm_bundle_with_runtime_parity() -> (tempfile::TempDir, PathBuf) {
             "runtime-workflow-receipt.json",
         ),
     ] {
+        let sha256 = sha256_file(&bundle.join(path));
         graph_nodes.push(serde_json::json!({
-            "id": role,
+            "id": sha256,
             "schema": schema,
             "path": path,
-            "sha256": sha256_file(&bundle.join(path)),
+            "sha256": sha256,
             "role": role
         }));
     }
+    refresh_evidence_graph_content_ids(&bundle, &mut evidence_graph);
     write_json(&evidence_graph_path, &evidence_graph);
 
     let passport_path = bundle.join("transaction-passport.json");

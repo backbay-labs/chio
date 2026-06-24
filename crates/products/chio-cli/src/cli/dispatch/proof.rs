@@ -51,6 +51,8 @@ const RUNTIME_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_RUNTIME_TRUSTED_ROOT_KEYS";
 const ENTERPRISE_TRUSTED_APPROVAL_KEYS_ENV: &str = "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS";
 const ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS_ENV: &str =
     "CHIO_ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS";
+const ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS_ENV: &str =
+    "CHIO_ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS";
 const COMMERCE_TRUSTED_PROVIDER_KEYS_ENV: &str = "CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS";
 const TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV: &str = "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS";
 const SWARM_TRUSTED_WITNESS_KEYS_ENV: &str = "CHIO_SWARM_TRUSTED_WITNESS_KEYS";
@@ -184,6 +186,14 @@ fn enterprise_trusted_risk_comptroller_signer_keys_from_env(
     required_public_keys_from_env(
         ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS_ENV,
         "enterprise risk comptroller signer",
+    )
+}
+
+fn enterprise_trusted_receipt_kernel_keys_from_env(
+) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
+    required_public_keys_from_env(
+        ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS_ENV,
+        "enterprise receipt kernel",
     )
 }
 
@@ -1137,6 +1147,7 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
                 verifier_policy_bytes: verifier_policy_bytes.clone(),
                 artifacts,
                 trusted_passport_signer_keys: trusted_transaction_root_keys.clone(),
+                trusted_receipt_kernel_keys: enterprise_trusted_receipt_kernel_keys_from_env()?,
                 trusted_approval_signer_keys: enterprise_trusted_approval_signer_keys_from_env()?,
                 trusted_risk_comptroller_signer_keys:
                     enterprise_trusted_risk_comptroller_signer_keys_from_env()?,
@@ -2218,7 +2229,7 @@ fn load_commerce_event_authority_receipts(
     commerce_event_authority_receipt_refs(event_log_bytes)?
         .into_iter()
         .map(|receipt_ref| {
-            let node = select_required_graph_receipt_node(nodes, &receipt_ref)?;
+            let node = select_required_graph_receipt_node(bundle_dir, nodes, &receipt_ref)?;
             let receipt_bytes = load_graph_bytes_artifact(
                 bundle_dir,
                 node,
@@ -2261,15 +2272,18 @@ fn commerce_event_authority_receipt_refs(event_log_bytes: &[u8]) -> Result<Vec<S
 }
 
 fn select_required_graph_receipt_node<'a>(
+    bundle_dir: &Path,
     nodes: &'a [GraphArtifactNode],
     receipt_ref: &str,
 ) -> Result<&'a GraphArtifactNode, CliError> {
+    let receipt_path = format!("authority-receipts/{receipt_ref}.json");
     let matches: Vec<&GraphArtifactNode> = nodes
         .iter()
         .filter(|node| {
-            node.id.as_deref() == Some(receipt_ref)
-                && node.schema.as_deref()
-                    == Some(chio_core_types::receipt::body::CHIO_RECEIPT_SCHEMA)
+            node.schema.as_deref() == Some(chio_core_types::receipt::body::CHIO_RECEIPT_SCHEMA)
+                && (node.path == receipt_path
+                    || graph_receipt_artifact_id_matches(bundle_dir, node, receipt_ref)
+                        .unwrap_or(false))
         })
         .collect();
     match matches.as_slice() {
@@ -2281,6 +2295,19 @@ fn select_required_graph_receipt_node<'a>(
             "proof verify: multiple commerce authority receipt artifacts: {receipt_ref}",
         ))),
     }
+}
+
+fn graph_receipt_artifact_id_matches(
+    bundle_dir: &Path,
+    node: &GraphArtifactNode,
+    receipt_ref: &str,
+) -> Result<bool, CliError> {
+    let bytes = read_graph_artifact(bundle_dir, node)?;
+    let receipt: serde_json::Value = serde_json::from_slice(&bytes).map_err(CliError::from)?;
+    Ok(receipt
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|id| id == receipt_ref))
 }
 
 fn ensure_required_claims_verified(
@@ -2939,7 +2966,7 @@ fn load_agent_web_artifacts_from_graph(
     load_graph_artifacts_matching(bundle_dir, evidence_graph_bytes, |node| {
         is_agent_web_evidence_graph_node_parts(
             &node.role,
-            node.id.as_deref().unwrap_or_default(),
+            &node.path,
             node.schema.as_deref(),
         )
     })
@@ -2967,22 +2994,25 @@ fn is_agent_web_evidence_graph_node(node: &serde_json::Value) -> bool {
     {
         return false;
     }
-    let Some(id) = node.get("id").and_then(serde_json::Value::as_str) else {
+    let Some(path) = node.get("path").and_then(serde_json::Value::as_str) else {
         return false;
     };
     let schema = node.get("schema").and_then(serde_json::Value::as_str);
-    is_agent_web_evidence_graph_node_parts(role, id, schema)
+    is_agent_web_evidence_graph_node_parts(role, path, schema)
 }
 
-fn is_agent_web_evidence_graph_node_parts(role: &str, id: &str, schema: Option<&str>) -> bool {
+fn is_agent_web_evidence_graph_node_parts(role: &str, path: &str, schema: Option<&str>) -> bool {
     if role == "receipt" {
-        return schema == Some("chio.receipt.v1") && is_agent_web_receipt_node(id);
+        return schema == Some("chio.receipt.v1") && is_agent_web_receipt_path(path);
     }
     role == "claim-set" || is_agent_web_artifact_role(role)
 }
 
-fn is_agent_web_receipt_node(id: &str) -> bool {
-    id.starts_with("receipt-agent-web-")
+fn is_agent_web_receipt_path(path: &str) -> bool {
+    Path::new(path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .is_some_and(|path_stem| path_stem.starts_with("receipt-agent-web-"))
 }
 
 fn scoped_evidence_graph_bytes(

@@ -955,6 +955,10 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
                         .map_err(|error| {
                         proof_room_fixture_invalid(fixture_id, "enterprise", error)
                     })?,
+                    trusted_receipt_kernel_keys:
+                        crate::enterprise_trusted_receipt_kernel_keys_from_env().map_err(
+                            |error| proof_room_fixture_invalid(fixture_id, "enterprise", error),
+                        )?,
                     trusted_approval_signer_keys:
                         crate::enterprise_trusted_approval_signer_keys_from_env().map_err(
                             |error| proof_room_fixture_invalid(fixture_id, "enterprise", error),

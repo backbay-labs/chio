@@ -422,6 +422,7 @@ fn proof_export_public_redaction_honors_manifest_ref_paths_and_signature_ref() {
             "public-roots/verifier-policy.json",
         )],
     );
+    refresh_evidence_graph_content_ids(&bundle, &mut evidence_graph);
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
 

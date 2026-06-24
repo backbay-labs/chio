@@ -354,7 +354,21 @@ pub fn validate_transaction_evidence_graph(
     }
     let mut node_ids = Vec::with_capacity(nodes.len());
     for node in nodes {
-        node_ids.push(required_graph_string(node, "id", "evidence graph node id")?);
+        let node_id = required_graph_string(node, "id", "evidence graph node id")?;
+        let node_sha256 = required_graph_string(node, "sha256", "evidence graph node digest")?;
+        validate_sha256_hex(node_sha256).map_err(|_| {
+            TransactionPassportError::InvalidEvidenceGraphArtifact(format!(
+                "invalid evidence graph node digest: {node_sha256}"
+            ))
+        })?;
+        if node_id != node_sha256 {
+            return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+                format!(
+                    "evidence graph node id digest mismatch: expected {node_sha256}, got {node_id}"
+                ),
+            ));
+        }
+        node_ids.push(node_id);
     }
 
     let edges = required_graph_array(&graph, "edges", "evidence graph edges")?;
@@ -402,7 +416,6 @@ pub(super) fn validate_minimal_governed_action_evidence(
         (EvidenceNodeRole::Receipt, "receipt"),
         (EvidenceNodeRole::Capability, "capability"),
         (EvidenceNodeRole::GuardDecision, "guard decision"),
-        (EvidenceNodeRole::Policy, "policy"),
         (EvidenceNodeRole::Request, "request digest"),
         (EvidenceNodeRole::Response, "response digest"),
         (EvidenceNodeRole::TrustRoot, "trust root"),
@@ -428,12 +441,6 @@ pub(super) fn validate_minimal_governed_action_evidence(
             EvidenceNodeRole::Receipt,
             EvidenceEdgePredicate::Authorizes,
             "guard decision authorizes receipt",
-        ),
-        (
-            EvidenceNodeRole::Policy,
-            EvidenceNodeRole::GuardDecision,
-            EvidenceEdgePredicate::Binds,
-            "policy binds guard decision",
         ),
         (
             EvidenceNodeRole::Request,
@@ -471,6 +478,21 @@ pub(super) fn validate_minimal_governed_action_evidence(
                 format!("minimal governed action evidence missing: {label}"),
             ));
         }
+    }
+
+    if governed_policy_anchor_node(graph).is_none() {
+        return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+            "minimal governed action evidence missing: policy".to_string(),
+        ));
+    }
+    if !has_governed_policy_anchor_edge(
+        graph,
+        EvidenceNodeRole::GuardDecision,
+        EvidenceEdgePredicate::Binds,
+    ) {
+        return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+            "minimal governed action evidence missing: policy binds guard decision".to_string(),
+        ));
     }
 
     Ok(())
@@ -589,7 +611,7 @@ pub(super) fn validate_minimal_governed_action_artifact_bindings(
         EvidenceNodeRole::Response,
         "response digest",
     )?;
-    let policy_digest = artifact_digest_for_role(graph, artifacts, EvidenceNodeRole::Policy)?;
+    let policy_digest = artifact_digest_for_governed_policy_anchor(graph, artifacts)?;
     let request_digest = declared_digest(request.sha256.as_deref(), "request digest")?;
     let response_digest = declared_digest(response.sha256.as_deref(), "response digest")?;
     let evidence_graph_issued_at = parse_rfc3339_utc(&graph.issued_at, "evidence graph issued_at")?;
@@ -893,14 +915,16 @@ fn parse_artifact_for_role<T: DeserializeOwned>(
         .map_err(|error| minimal_governed_action_binding_error(format!("invalid {label}: {error}")))
 }
 
-fn artifact_digest_for_role(
+fn artifact_digest_for_governed_policy_anchor(
     graph: &TransactionEvidenceGraph,
     artifacts: &BTreeMap<String, Vec<u8>>,
-    role: EvidenceNodeRole,
 ) -> Result<String, TransactionPassportError> {
-    Ok(super::sha256_hex(artifact_bytes_for_role(
-        graph, artifacts, role,
-    )?))
+    let node = governed_policy_anchor_node(graph).ok_or_else(|| {
+        TransactionPassportError::InvalidEvidenceGraphArtifact(
+            "minimal governed action evidence missing".to_string(),
+        )
+    })?;
+    Ok(super::sha256_hex(artifact_bytes_for_node(node, artifacts)?))
 }
 
 fn artifact_bytes_for_role<'a>(
@@ -913,6 +937,13 @@ fn artifact_bytes_for_role<'a>(
             "minimal governed action evidence missing".to_string(),
         )
     })?;
+    artifact_bytes_for_node(node, artifacts)
+}
+
+fn artifact_bytes_for_node<'a>(
+    node: &EvidenceNode,
+    artifacts: &'a BTreeMap<String, Vec<u8>>,
+) -> Result<&'a [u8], TransactionPassportError> {
     artifacts
         .get(&node.path)
         .map(Vec::as_slice)
@@ -1195,6 +1226,11 @@ fn node_for_role(
     graph.nodes.iter().find(|node| node.role == role)
 }
 
+fn governed_policy_anchor_node(graph: &TransactionEvidenceGraph) -> Option<&EvidenceNode> {
+    node_for_role(graph, EvidenceNodeRole::Policy)
+        .or_else(|| node_for_role(graph, EvidenceNodeRole::VerifierPolicy))
+}
+
 fn has_role_edge(
     graph: &TransactionEvidenceGraph,
     from: EvidenceNodeRole,
@@ -1202,6 +1238,22 @@ fn has_role_edge(
     predicate: EvidenceEdgePredicate,
 ) -> bool {
     let Some(from_node) = node_for_role(graph, from) else {
+        return false;
+    };
+    let Some(to_node) = node_for_role(graph, to) else {
+        return false;
+    };
+    graph.edges.iter().any(|edge| {
+        edge.from == from_node.id && edge.to == to_node.id && edge.predicate == predicate
+    })
+}
+
+fn has_governed_policy_anchor_edge(
+    graph: &TransactionEvidenceGraph,
+    to: EvidenceNodeRole,
+    predicate: EvidenceEdgePredicate,
+) -> bool {
+    let Some(from_node) = governed_policy_anchor_node(graph) else {
         return false;
     };
     let Some(to_node) = node_for_role(graph, to) else {
@@ -1310,6 +1362,14 @@ fn validate_evidence_node(node: &EvidenceNode) -> Result<(), TransactionPassport
             node.sha256
         ))
     })?;
+    if node.id != node.sha256 {
+        return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+            format!(
+                "evidence graph node id digest mismatch: expected {}, got {}",
+                node.sha256, node.id
+            ),
+        ));
+    }
     validate_bundle_relative_path(&node.path).map_err(|_| {
         TransactionPassportError::InvalidEvidenceGraphArtifact(format!(
             "unsafe evidence graph node path: {}",

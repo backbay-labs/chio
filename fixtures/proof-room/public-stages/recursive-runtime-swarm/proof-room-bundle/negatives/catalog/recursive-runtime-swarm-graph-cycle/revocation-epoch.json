@@ -1,1 +1,1 @@
-{"schema":"chio.swarm.revocation-epoch.v1","epochId":"revocation-epoch-swarm-valid","rootHash":"d078a6de838c0d864b579ac35b8de638714961fce5b40cc4e5cd47c9ee41e758","issuedAtUnixMs":1760000000000,"validUntilUnixMs":1800000061000,"revokedSubjects":[],"revokedTaskIds":[]}
+{"epochId":"revocation-epoch-swarm-valid","issuedAtUnixMs":1760000000000,"revokedSubjects":[],"revokedTaskIds":[],"rootHash":"144bab856830b54b1d138a96909cfac3f8c92cd33090cf6918de3949ac9fb5b2","schema":"chio.swarm.revocation-epoch.v1","validUntilUnixMs":1800000061000}

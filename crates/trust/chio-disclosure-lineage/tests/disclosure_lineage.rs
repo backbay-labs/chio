@@ -624,6 +624,8 @@ fn disclosure_lineage_verifies_valid_bundle() -> Result<(), Box<dyn std::error::
     assert_eq!(report.schema, DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1);
     assert_eq!(report.verdict, "verified");
     assert_eq!(report.capsule_id, "disclosure-capsule-valid");
+    assert!(report.crypto_verified);
+    assert!(report.privacy_profile_verified);
     assert!(report
         .verified_claims
         .contains(&"claim.disclosure.lineage_subgraph_bound".to_string()));

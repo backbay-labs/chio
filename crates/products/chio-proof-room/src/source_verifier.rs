@@ -348,6 +348,8 @@ pub(crate) fn verify_transaction_passport_family_report_with_options(
         let trusted_risk_comptroller_signer_keys =
             crate::enterprise_trusted_risk_comptroller_signer_keys_from_env()
                 .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+        let trusted_receipt_kernel_keys = crate::enterprise_trusted_receipt_kernel_keys_from_env()
+            .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
         let report = chio_enterprise_export::verify_enterprise_export(
             &chio_enterprise_export::EnterpriseExportBundle {
                 passport,
@@ -356,6 +358,7 @@ pub(crate) fn verify_transaction_passport_family_report_with_options(
                 verifier_policy_bytes: context.verifier_policy_bytes.clone(),
                 artifacts: context.artifacts.clone(),
                 trusted_passport_signer_keys,
+                trusted_receipt_kernel_keys,
                 trusted_approval_signer_keys,
                 trusted_risk_comptroller_signer_keys,
             },
@@ -745,10 +748,14 @@ pub(crate) fn is_agent_web_evidence_graph_node(node: &serde_json::Value) -> bool
         return false;
     };
     let schema = node.get("schema").and_then(serde_json::Value::as_str);
-    let id = node.get("id").and_then(serde_json::Value::as_str);
     if role == "receipt" {
         return schema == Some(CHIO_RECEIPT_SCHEMA)
-            && id.is_some_and(|id| id.starts_with("receipt-agent-web-"));
+            && node
+                .get("path")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|path| std::path::Path::new(path).file_stem())
+                .and_then(|stem| stem.to_str())
+                .is_some_and(|path_stem| path_stem.starts_with("receipt-agent-web-"));
     }
     matches!(
         role,

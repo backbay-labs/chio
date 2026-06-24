@@ -84,6 +84,10 @@ fn risk_comptroller_keypair() -> Keypair {
     Keypair::from_seed(&[63u8; 32])
 }
 
+fn receipt_kernel_keypair() -> Keypair {
+    Keypair::from_seed(&[23u8; 32])
+}
+
 fn approval_approver() -> String {
     format!("did:chio:{}", approval_keypair().public_key().to_hex())
 }
@@ -187,6 +191,32 @@ fn push_artifact(
         "role": graph_role
     }));
     artifacts.insert(path.to_string(), bytes);
+}
+
+fn normalize_graph_node_ids(graph_nodes: &mut [Value], graph_edges: &mut [Value]) {
+    let mut node_id_map = BTreeMap::new();
+    for node in graph_nodes {
+        let old_id = node["id"]
+            .as_str()
+            .test_expect("graph node id exists")
+            .to_string();
+        let digest = node["sha256"]
+            .as_str()
+            .test_expect("graph node digest exists")
+            .to_string();
+        node["id"] = Value::String(digest.clone());
+        node_id_map.insert(old_id, digest);
+    }
+    for edge in graph_edges {
+        for field in ["from", "to"] {
+            let Some(old_id) = edge[field].as_str() else {
+                continue;
+            };
+            if let Some(new_id) = node_id_map.get(old_id) {
+                edge[field] = Value::String(new_id.clone());
+            }
+        }
+    }
 }
 
 fn push_ref_artifact_if_missing(
@@ -1362,6 +1392,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
             "evidence_class": "chio-sidecar-proof"
         }));
     }
+    normalize_graph_node_ids(&mut graph_nodes, &mut graph_edges);
     let evidence_graph = json_bytes(json!({
         "schema": "chio.transaction.evidence-graph.v1",
         "id": "enterprise-evidence-graph-valid",
@@ -1391,6 +1422,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         verifier_policy_bytes: verifier_policy,
         artifacts,
         trusted_passport_signer_keys: vec![transaction_passport_keypair().public_key()],
+        trusted_receipt_kernel_keys: vec![receipt_kernel_keypair().public_key()],
         trusted_approval_signer_keys: vec![approval_keypair().public_key()],
         trusted_risk_comptroller_signer_keys: vec![risk_comptroller_keypair().public_key()],
     }
@@ -1408,7 +1440,16 @@ fn with_graph_node_schema(
         .test_expect("evidence graph nodes array");
     let node = nodes
         .iter_mut()
-        .find(|node| node.get("id").and_then(Value::as_str) == Some(node_id))
+        .find(|node| {
+            node.get("id").and_then(Value::as_str) == Some(node_id)
+                || node.get("role").and_then(Value::as_str) == Some(node_id)
+                || node
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .and_then(|path| std::path::Path::new(path).file_stem())
+                    .and_then(std::ffi::OsStr::to_str)
+                    == Some(node_id)
+        })
         .test_expect("evidence graph node exists");
     node["schema"] = json!(schema);
     bundle.evidence_graph_bytes = json_bytes(graph);

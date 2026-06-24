@@ -17,9 +17,10 @@ use axum::{
 use tower_http::services::{ServeDir, ServeFile};
 
 use super::{
-    build_proof_room_fixture_catalog, proof_room_fixture_asset, proof_room_fixture_asset_with_root,
-    proof_room_fixture_failure_code, proof_room_fixture_report_status,
-    verify_proof_room_quickstart, ProofRoomError, ProofRoomFixtureCatalog,
+    build_proof_room_fixture_catalog, parse_embedded_evidence_graph, proof_room_fixture_asset,
+    proof_room_fixture_asset_with_root, proof_room_fixture_failure_code,
+    proof_room_fixture_report_status, verify_proof_room_quickstart, ProofRoomError,
+    ProofRoomFixtureCatalog,
 };
 
 #[derive(Debug, Clone)]
@@ -722,7 +723,7 @@ pub fn proof_room_served_bundle_paths(static_root: &Path) -> Result<BTreeSet<Str
                 continue;
             };
             insert_served_bundle_path(&mut paths, path)?;
-            insert_negative_case_directory_paths(static_root, &mut paths, path)?;
+            insert_negative_case_manifest_paths(static_root, &mut paths, path)?;
         }
     }
     Ok(paths)
@@ -754,92 +755,62 @@ fn insert_value_path(
     Ok(())
 }
 
-fn insert_negative_case_directory_paths(
+fn insert_negative_case_manifest_paths(
     static_root: &Path,
     paths: &mut BTreeSet<String>,
     negative_path: &str,
 ) -> Result<(), String> {
     let negative_path = safe_served_bundle_path(negative_path, "proof-room.serve")?;
-    let Some(parent) = Path::new(&negative_path).parent() else {
+    if !negative_path.ends_with("/transaction-passport.json") {
         return Ok(());
     };
-    if parent.as_os_str().is_empty() {
+    let Some((negative_dir, _passport_file)) = negative_path.rsplit_once('/') else {
         return Ok(());
-    }
-    let directory = static_root.join(parent);
-    if directory.is_dir() {
-        insert_served_bundle_paths_under(static_root, &directory, paths)?;
+    };
+    let passport_bytes = fs::read(static_root.join(&negative_path)).map_err(|error| {
+        format!("proof-room.serve.negative-passport-read: {negative_path}: {error}")
+    })?;
+    let passport: chio_transaction_passport::TransactionPassport =
+        serde_json::from_slice(&passport_bytes).map_err(|error| {
+            format!("proof-room.serve.negative-passport-json: {negative_path}: {error}")
+        })?;
+    let evidence_graph_path =
+        negative_case_bundle_member_path(negative_dir, &passport.evidence_graph_path)?;
+    let verifier_policy_path =
+        negative_case_bundle_member_path(negative_dir, &passport.verifier_policy_path)?;
+    insert_served_bundle_path(paths, &evidence_graph_path)?;
+    insert_served_bundle_path(paths, &verifier_policy_path)?;
+
+    let graph_bytes = fs::read(static_root.join(&evidence_graph_path)).map_err(|error| {
+        format!("proof-room.serve.negative-evidence-graph-read: {evidence_graph_path}: {error}")
+    })?;
+    let graph =
+        parse_embedded_evidence_graph(&graph_bytes, "proof-room.serve.negative-evidence-graph")
+            .map_err(|error| {
+                format!(
+                    "proof-room.serve.negative-evidence-graph-json: {evidence_graph_path}: {error}"
+                )
+            })?;
+    for node in graph.nodes {
+        let artifact_path = negative_case_bundle_member_path(negative_dir, &node.path)?;
+        insert_served_bundle_path(paths, &artifact_path)?;
     }
     Ok(())
 }
 
-fn insert_served_bundle_paths_under(
-    static_root: &Path,
-    directory: &Path,
-    paths: &mut BTreeSet<String>,
-) -> Result<(), String> {
-    let mut children = fs::read_dir(directory)
-        .map_err(|error| {
-            format!(
-                "proof-room.serve.read-dir: {}: {error}",
-                directory.display()
-            )
-        })?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| {
-            format!(
-                "proof-room.serve.read-dir: {}: {error}",
-                directory.display()
-            )
-        })?;
-    children.sort_by_key(|child| child.file_name());
-    for child in children {
-        let path = child.path();
-        let file_type = fs::symlink_metadata(&path)
-            .map_err(|error| format!("proof-room.serve.metadata: {}: {error}", path.display()))?
-            .file_type();
-        if file_type.is_dir() {
-            insert_served_bundle_paths_under(static_root, &path, paths)?;
-        } else if file_type.is_file() {
-            let relative = served_relative_path(static_root, &path)?;
-            insert_served_bundle_path(paths, &relative)?;
-        } else {
-            return Err(format!(
-                "proof-room.serve.unsupported-file-type: {}",
-                path.display()
-            ));
-        }
-    }
-    Ok(())
+fn negative_case_bundle_member_path(
+    negative_dir: &str,
+    member_path: &str,
+) -> Result<String, String> {
+    let member_path = safe_served_bundle_path(member_path, "proof-room.serve")?;
+    let path = format!("{negative_dir}/{member_path}");
+    safe_served_bundle_path(&path, "proof-room.serve")
 }
 
 fn insert_served_bundle_path(paths: &mut BTreeSet<String>, path: &str) -> Result<(), String> {
     let path = safe_served_bundle_path(path, "proof-room.serve")?;
     paths.insert(path);
     Ok(())
-}
-
-fn served_relative_path(static_root: &Path, path: &Path) -> Result<String, String> {
-    let static_root = fs::canonicalize(static_root)
-        .map_err(|error| format!("proof-room.serve.root-unreadable: {error}"))?;
-    let resolved = fs::canonicalize(path).map_err(|error| {
-        format!(
-            "proof-room.serve.path-unreadable: {}: {error}",
-            path.display()
-        )
-    })?;
-    if !resolved.starts_with(&static_root) {
-        return Err(format!("proof-room.serve.path-escape: {}", path.display()));
-    }
-    let relative = resolved
-        .strip_prefix(&static_root)
-        .map_err(|error| format!("proof-room.serve.relative-path: {error}"))?;
-    let relative = relative
-        .iter()
-        .map(|part| part.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/");
-    safe_served_bundle_path(&relative, "proof-room.serve")
 }
 
 pub fn resolve_proof_room_served_asset_path(

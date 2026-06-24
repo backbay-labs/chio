@@ -126,6 +126,10 @@ pub(crate) fn chio_command() -> std::process::Command {
         ENTERPRISE_FIXTURE_TRUSTED_RISK_COMPTROLLER_KEYS,
     );
     command.env(
+        "CHIO_ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS",
+        PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
+    );
+    command.env(
         "CHIO_SWARM_TRUSTED_WITNESS_KEYS",
         SWARM_FIXTURE_TRUSTED_WITNESS_KEYS,
     );
@@ -873,13 +877,12 @@ pub(crate) fn refresh_transaction_artifact_digest_at(
     let mut evidence_graph: serde_json::Value =
         serde_json::from_slice(&std::fs::read(evidence_graph_path).test_expect("read graph"))
             .test_expect("graph parses");
-    let graph_nodes = evidence_graph["nodes"]
-        .as_array_mut()
-        .test_expect("graph nodes array");
     let mut refreshed = false;
-    for node in graph_nodes {
+    for node in evidence_graph["nodes"]
+        .as_array()
+        .test_expect("graph nodes array")
+    {
         if node.get("path").and_then(serde_json::Value::as_str) == Some(artifact_path) {
-            node["sha256"] = serde_json::Value::String(sha256_file(&bundle.join(artifact_path)));
             refreshed = true;
         }
     }
@@ -887,6 +890,7 @@ pub(crate) fn refresh_transaction_artifact_digest_at(
         refreshed,
         "transaction evidence graph did not contain {artifact_path}"
     );
+    refresh_evidence_graph_content_ids(bundle, &mut evidence_graph);
     write_json(evidence_graph_path, &evidence_graph);
 
     let mut passport: serde_json::Value =
@@ -894,6 +898,91 @@ pub(crate) fn refresh_transaction_artifact_digest_at(
             .test_expect("passport parses");
     passport["evidence_graph_sha256"] = serde_json::Value::String(sha256_file(evidence_graph_path));
     write_json(passport_path, &passport);
+}
+
+pub(crate) fn refresh_evidence_graph_content_ids(
+    bundle: &Path,
+    evidence_graph: &mut serde_json::Value,
+) {
+    let nodes = evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("graph nodes array");
+    let mut id_remaps = BTreeMap::new();
+    let mut refreshed_nodes = Vec::with_capacity(nodes.len());
+    let mut retained_ids = BTreeSet::new();
+
+    for mut node in std::mem::take(nodes) {
+        let path = node
+            .get("path")
+            .and_then(serde_json::Value::as_str)
+            .map(std::string::ToString::to_string);
+        let old_id = node
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .map(std::string::ToString::to_string);
+        let old_sha256 = node
+            .get("sha256")
+            .and_then(serde_json::Value::as_str)
+            .map(std::string::ToString::to_string);
+        let Some(path) = path else {
+            refreshed_nodes.push(node);
+            continue;
+        };
+        if path.ends_with("evidence-graph.json") {
+            refreshed_nodes.push(node);
+            continue;
+        }
+        let artifact_path = bundle.join(&path);
+        if !artifact_path.is_file() {
+            refreshed_nodes.push(node);
+            continue;
+        }
+
+        let artifact_sha256 = sha256_file(&artifact_path);
+        if let Some(old_id) = old_id {
+            id_remaps.insert(old_id, artifact_sha256.clone());
+        }
+        if let Some(old_sha256) = old_sha256 {
+            id_remaps.insert(old_sha256, artifact_sha256.clone());
+        }
+        node["id"] = serde_json::Value::String(artifact_sha256.clone());
+        node["sha256"] = serde_json::Value::String(artifact_sha256.clone());
+        if retained_ids.insert(artifact_sha256) {
+            refreshed_nodes.push(node);
+        }
+    }
+    *nodes = refreshed_nodes;
+    let node_ids = nodes
+        .iter()
+        .filter_map(|node| node.get("id").and_then(serde_json::Value::as_str))
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>();
+
+    if let Some(edges) = evidence_graph["edges"].as_array_mut() {
+        for edge in &mut *edges {
+            for field in ["from", "to"] {
+                let Some(current) = edge
+                    .get(field)
+                    .and_then(serde_json::Value::as_str)
+                    .map(std::string::ToString::to_string)
+                else {
+                    continue;
+                };
+                if let Some(next) = id_remaps.get(&current) {
+                    edge[field] = serde_json::Value::String(next.clone());
+                }
+            }
+        }
+        edges.retain(|edge| {
+            let Some(from) = edge.get("from").and_then(serde_json::Value::as_str) else {
+                return false;
+            };
+            let Some(to) = edge.get("to").and_then(serde_json::Value::as_str) else {
+                return false;
+            };
+            node_ids.contains(from) && node_ids.contains(to)
+        });
+    }
 }
 
 pub(crate) fn artifact_ref(bundle: &Path, path: &str, schema: &str) -> serde_json::Value {
@@ -1317,16 +1406,6 @@ pub(crate) fn build_runtime_commerce_passport_bundle() -> (tempfile::TempDir, Pa
         serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
             .test_expect("graph parses");
     upsert_claim_set_graph_binding(&mut evidence_graph, &claim_set_sha256);
-    let graph_nodes = evidence_graph["nodes"]
-        .as_array_mut()
-        .test_expect("graph nodes array");
-    for node in graph_nodes.iter_mut() {
-        let Some(path) = node.get("path").and_then(serde_json::Value::as_str) else {
-            continue;
-        };
-        node["sha256"] = serde_json::Value::String(sha256_file(&bundle.join(path)));
-    }
-
     let commerce_graph_path = commerce_source.join("evidence-graph.json");
     let commerce_graph: serde_json::Value = serde_json::from_slice(
         &std::fs::read(&commerce_graph_path).test_expect("read commerce graph"),
@@ -1353,10 +1432,16 @@ pub(crate) fn build_runtime_commerce_passport_bundle() -> (tempfile::TempDir, Pa
             continue;
         }
         let mut node = node.clone();
-        node["sha256"] = serde_json::Value::String(sha256_file(&bundle.join(path)));
-        graph_nodes.push(node);
+        let artifact_sha256 = sha256_file(&bundle.join(path));
+        node["id"] = serde_json::Value::String(artifact_sha256.clone());
+        node["sha256"] = serde_json::Value::String(artifact_sha256);
+        evidence_graph["nodes"]
+            .as_array_mut()
+            .test_expect("graph nodes array")
+            .push(node);
     }
     refresh_commerce_event_authority_receipts(&bundle, &mut evidence_graph, &policy_sha256);
+    refresh_evidence_graph_content_ids(&bundle, &mut evidence_graph);
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
 
@@ -1461,16 +1546,7 @@ pub(crate) fn build_commerce_settlement_passport_bundle() -> (tempfile::TempDir,
         &[("passport-public-settlement-valid", passport_id)],
     );
     refresh_commerce_event_authority_receipts(&bundle, &mut evidence_graph, &policy_sha256);
-
-    for node in evidence_graph["nodes"]
-        .as_array_mut()
-        .test_expect("graph nodes array")
-    {
-        let Some(path) = node.get("path").and_then(serde_json::Value::as_str) else {
-            continue;
-        };
-        node["sha256"] = serde_json::Value::String(sha256_file(&bundle.join(path)));
-    }
+    refresh_evidence_graph_content_ids(&bundle, &mut evidence_graph);
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
 
@@ -1575,16 +1651,7 @@ fn build_integrated_runtime_commerce_settlement_agent_web_bundle_for_commerce_or
     refresh_agent_web_envelopes_for_subjects(&bundle, &mut evidence_graph);
     resign_agent_web_receipts_for_policy(&bundle, &policy_sha256);
     refresh_commerce_event_authority_receipts(&bundle, &mut evidence_graph, &policy_sha256);
-
-    let graph_nodes = evidence_graph["nodes"]
-        .as_array_mut()
-        .test_expect("graph nodes array");
-    for node in graph_nodes.iter_mut() {
-        let Some(path) = node.get("path").and_then(serde_json::Value::as_str) else {
-            continue;
-        };
-        node["sha256"] = serde_json::Value::String(sha256_file(&bundle.join(path)));
-    }
+    refresh_evidence_graph_content_ids(&bundle, &mut evidence_graph);
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
 
@@ -1925,16 +1992,7 @@ pub(crate) fn build_disclosure_agent_web_bundle() -> (tempfile::TempDir, PathBuf
     refresh_signed_lineage_subgraph_digest(&bundle);
     append_graph_artifacts_from_fixture(&bundle, &agent_web_source, &mut evidence_graph, &[]);
     resign_agent_web_receipts_for_policy(&bundle, &policy_sha256);
-
-    for node in evidence_graph["nodes"]
-        .as_array_mut()
-        .test_expect("graph nodes array")
-    {
-        let Some(path) = node.get("path").and_then(serde_json::Value::as_str) else {
-            continue;
-        };
-        node["sha256"] = serde_json::Value::String(sha256_file(&bundle.join(path)));
-    }
+    refresh_evidence_graph_content_ids(&bundle, &mut evidence_graph);
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
 
@@ -2004,12 +2062,23 @@ fn upsert_claim_set_graph_binding(evidence_graph: &mut serde_json::Value, claim_
         .and_then(serde_json::Value::as_str)
         .test_expect("graph has verifier-policy node")
         .to_string();
+    let removed_claim_set_ids = nodes
+        .iter()
+        .filter(|node| {
+            node.get("path").and_then(serde_json::Value::as_str) == Some("claim-set.json")
+        })
+        .filter_map(|node| node.get("id").and_then(serde_json::Value::as_str))
+        .map(std::string::ToString::to_string)
+        .collect::<BTreeSet<_>>();
     nodes.retain(|node| {
-        node.get("id").and_then(serde_json::Value::as_str) != Some("claim-set")
-            && node.get("path").and_then(serde_json::Value::as_str) != Some("claim-set.json")
+        !removed_claim_set_ids.contains(
+            node.get("id")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default(),
+        ) && node.get("path").and_then(serde_json::Value::as_str) != Some("claim-set.json")
     });
     nodes.push(serde_json::json!({
-        "id": "claim-set",
+        "id": claim_set_sha256,
         "path": "claim-set.json",
         "role": "claim-set",
         "schema": "chio.transaction.claim-set.v1",
@@ -2020,14 +2089,18 @@ fn upsert_claim_set_graph_binding(evidence_graph: &mut serde_json::Value, claim_
         .as_array_mut()
         .test_expect("graph edges array");
     edges.retain(|edge| {
-        edge.get("from").and_then(serde_json::Value::as_str) != Some("claim-set")
-            || edge.get("to").and_then(serde_json::Value::as_str)
-                != Some(verifier_policy_node_id.as_str())
-            || edge.get("predicate").and_then(serde_json::Value::as_str) != Some("binds")
+        let from = edge.get("from").and_then(serde_json::Value::as_str);
+        let to = edge.get("to").and_then(serde_json::Value::as_str);
+        let predicate = edge.get("predicate").and_then(serde_json::Value::as_str);
+        !(predicate == Some("binds")
+            && to == Some(verifier_policy_node_id.as_str())
+            && from.is_some_and(|from| {
+                from == claim_set_sha256 || removed_claim_set_ids.contains(from)
+            }))
     });
     edges.push(serde_json::json!({
         "evidence_class": "digest-bound-reference",
-        "from": "claim-set",
+        "from": claim_set_sha256,
         "predicate": "binds",
         "to": verifier_policy_node_id
     }));
@@ -2049,7 +2122,7 @@ fn upsert_graph_node(
             && node.get("path").and_then(serde_json::Value::as_str) != Some(path)
     });
     nodes.push(serde_json::json!({
-        "id": node_id,
+        "id": sha256,
         "schema": schema,
         "path": path,
         "sha256": sha256,
@@ -2124,15 +2197,7 @@ pub(crate) fn build_risk_only_policy_bundle(
     let mut evidence_graph: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
             .test_expect("graph parses");
-    let policy_node = evidence_graph["nodes"]
-        .as_array_mut()
-        .test_expect("graph nodes array")
-        .iter_mut()
-        .find(|node| {
-            node.get("role").and_then(serde_json::Value::as_str) == Some("verifier-policy")
-        })
-        .test_expect("verifier policy graph node");
-    policy_node["sha256"] = serde_json::Value::String(policy_sha256.clone());
+    refresh_evidence_graph_content_ids(&bundle, &mut evidence_graph);
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
     refresh_standalone_risk_root_artifacts(&bundle);
@@ -2203,6 +2268,7 @@ pub(crate) fn build_standalone_risk_only_policy_bundle() -> (tempfile::TempDir, 
         }
     }
     evidence_graph["edges"] = serde_json::Value::Array(Vec::new());
+    refresh_evidence_graph_content_ids(&bundle, &mut evidence_graph);
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
     refresh_standalone_risk_root_artifacts(&bundle);
@@ -2235,6 +2301,7 @@ pub(crate) fn build_enterprise_bundle_with_unrelated_runtime_evidence(
         serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
             .test_expect("graph parses");
     append_graph_artifacts_from_fixture(&bundle, &runtime_source, &mut evidence_graph, &[]);
+    refresh_evidence_graph_content_ids(&bundle, &mut evidence_graph);
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
 
@@ -2253,10 +2320,28 @@ pub(crate) fn remove_standalone_risk_graph_node(bundle: &Path, removed_node_id: 
     let mut evidence_graph: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
             .test_expect("graph parses");
+    let mut removed_aliases = BTreeSet::new();
     evidence_graph["nodes"]
         .as_array_mut()
         .test_expect("graph nodes array")
-        .retain(|node| node.get("id").and_then(serde_json::Value::as_str) != Some(removed_node_id));
+        .retain(|node| {
+            let matches_removed = graph_node_matches_ref(node, removed_node_id);
+            if matches_removed {
+                collect_graph_node_aliases(node, &mut removed_aliases);
+            }
+            !matches_removed
+        });
+    if let Some(edges) = evidence_graph
+        .get_mut("edges")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        edges.retain(|edge| {
+            let from = edge.get("from").and_then(serde_json::Value::as_str);
+            let to = edge.get("to").and_then(serde_json::Value::as_str);
+            !from.is_some_and(|from| removed_aliases.contains(from))
+                && !to.is_some_and(|to| removed_aliases.contains(to))
+        });
+    }
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
 
@@ -2267,6 +2352,39 @@ pub(crate) fn remove_standalone_risk_graph_node(bundle: &Path, removed_node_id: 
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
     write_json(&passport_path, &passport);
     refresh_standalone_risk_root_artifacts(bundle);
+}
+
+fn graph_node_matches_ref(node: &serde_json::Value, reference: &str) -> bool {
+    node.get("id").and_then(serde_json::Value::as_str) == Some(reference)
+        || node.get("sha256").and_then(serde_json::Value::as_str) == Some(reference)
+        || node.get("path").and_then(serde_json::Value::as_str) == Some(reference)
+        || node
+            .get("path")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|path| Path::new(path).file_stem())
+            .and_then(|stem| stem.to_str())
+            == Some(reference)
+}
+
+fn collect_graph_node_aliases(node: &serde_json::Value, aliases: &mut BTreeSet<String>) {
+    for value in [
+        node.get("id").and_then(serde_json::Value::as_str),
+        node.get("sha256").and_then(serde_json::Value::as_str),
+        node.get("path").and_then(serde_json::Value::as_str),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        aliases.insert(value.to_string());
+    }
+    if let Some(path_stem) = node
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|path| Path::new(path).file_stem())
+        .and_then(|stem| stem.to_str())
+    {
+        aliases.insert(path_stem.to_string());
+    }
 }
 
 pub(crate) fn add_standalone_risk_unbound_reserve_ledger(bundle: &Path) {
@@ -2365,19 +2483,11 @@ pub(crate) fn rehash_standalone_risk_graph_artifact(
     node_id: &str,
     artifact_path: &Path,
 ) {
-    let artifact_sha256 = sha256_file(artifact_path);
     let evidence_graph_path = bundle.join("evidence-graph.json");
     let mut evidence_graph: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
             .test_expect("graph parses");
-    for node in evidence_graph["nodes"]
-        .as_array_mut()
-        .test_expect("graph nodes array")
-    {
-        if node.get("id").and_then(serde_json::Value::as_str) == Some(node_id) {
-            node["sha256"] = serde_json::Value::String(artifact_sha256.clone());
-        }
-    }
+    refresh_evidence_graph_content_ids(bundle, &mut evidence_graph);
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
 
@@ -2504,20 +2614,12 @@ pub(crate) fn write_standalone_risk_report_and_rehash(
     let risk_report_path = bundle.join("risk-comptroller-report.json");
     sign_standalone_risk_report(&mut risk_report);
     write_json(&risk_report_path, &risk_report);
-    let risk_report_sha256 = sha256_file(&risk_report_path);
 
     let evidence_graph_path = bundle.join("evidence-graph.json");
     let mut evidence_graph: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
             .test_expect("graph parses");
-    for node in evidence_graph["nodes"]
-        .as_array_mut()
-        .test_expect("graph nodes array")
-    {
-        if node.get("id").and_then(serde_json::Value::as_str) == Some("risk-comptroller-report") {
-            node["sha256"] = serde_json::Value::String(risk_report_sha256.clone());
-        }
-    }
+    refresh_evidence_graph_content_ids(bundle, &mut evidence_graph);
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
 
@@ -2644,6 +2746,19 @@ fn retain_standalone_risk_manifest_claim(bundle: &Path) {
                 | Some("claim.risk.comptroller_report_bound")
         )
     });
+    if let Some(negative_cases) = manifest
+        .get_mut("negative_cases")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        negative_cases.retain(|negative_case| {
+            let expected_failure = negative_case
+                .get("expected_failure_code")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default();
+            expected_failure.starts_with("risk ")
+                || expected_failure == "proof-room.report.hash-mismatch"
+        });
+    }
     write_json(&manifest_path, &manifest);
     refresh_bundle_signature(bundle);
 }
@@ -2710,13 +2825,6 @@ pub(crate) fn append_graph_artifacts_from_fixture(
         &std::fs::read(source.join("evidence-graph.json")).test_expect("read graph"),
     )
     .test_expect("graph parses");
-    let mut existing_ids = evidence_graph["nodes"]
-        .as_array()
-        .test_expect("graph nodes array")
-        .iter()
-        .filter_map(|node| node.get("id").and_then(serde_json::Value::as_str))
-        .map(std::string::ToString::to_string)
-        .collect::<BTreeSet<_>>();
     let mut id_remaps = BTreeMap::new();
     let mut retained_ids = BTreeSet::new();
     for node in source_graph["nodes"]
@@ -2755,12 +2863,10 @@ pub(crate) fn append_graph_artifacts_from_fixture(
         }
 
         let mut node = node.clone();
-        let node_id = unique_graph_node_id(id, &mut existing_ids);
-        if node_id != id {
-            id_remaps.insert(id.to_string(), node_id.clone());
-            node["id"] = serde_json::Value::String(node_id);
-        }
-        node["sha256"] = serde_json::Value::String(sha256_file(&destination_path));
+        let artifact_sha256 = sha256_file(&destination_path);
+        id_remaps.insert(id.to_string(), artifact_sha256.clone());
+        node["id"] = serde_json::Value::String(artifact_sha256.clone());
+        node["sha256"] = serde_json::Value::String(artifact_sha256);
         retained_ids.insert(node["id"].as_str().test_expect("node id").to_string());
         evidence_graph["nodes"]
             .as_array_mut()
@@ -2786,19 +2892,6 @@ pub(crate) fn append_graph_artifacts_from_fixture(
                 .push(edge);
         }
     }
-}
-
-fn unique_graph_node_id(id: &str, existing_ids: &mut BTreeSet<String>) -> String {
-    if existing_ids.insert(id.to_string()) {
-        return id.to_string();
-    }
-    for suffix in 2.. {
-        let candidate = format!("{id}-{suffix}");
-        if existing_ids.insert(candidate.clone()) {
-            return candidate;
-        }
-    }
-    unreachable!("unbounded suffix search returns a graph node id")
 }
 
 pub(crate) fn replace_json_strings_in_graph_artifacts(

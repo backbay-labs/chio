@@ -37,6 +37,8 @@ pub const CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND: &str =
 pub const CLAIM_PUBLIC_SETTLEMENT_PUBLIC_WITNESS_VERIFIED: &str =
     "claim.public_settlement.public_witness_verified";
 
+pub(crate) const MAX_VERIFIED_CACHE_WITNESS_AGE_SECONDS: u64 = 3_600;
+
 #[cfg(test)]
 pub(crate) const PUBLIC_SETTLEMENT_FINALITY_REPORT_STATUSES: &[&str] = &[
     "final",
@@ -537,6 +539,21 @@ fn validate_public_witness(
         return Err(Web3ContractError::InvalidProof(
             "public settlement witness mode advisory".to_string(),
         ));
+    }
+    if witness.mode == PublicSettlementWitnessMode::VerifiedCache {
+        let valid_until = witness
+            .observed_at
+            .checked_add(MAX_VERIFIED_CACHE_WITNESS_AGE_SECONDS)
+            .ok_or_else(|| {
+                Web3ContractError::InvalidProof(
+                    "public settlement verified-cache witness age overflow".to_string(),
+                )
+            })?;
+        if valid_until < bundle.settlement_receipt.observed_execution.observed_at {
+            return Err(Web3ContractError::InvalidProof(
+                "public settlement verified-cache witness is stale".to_string(),
+            ));
+        }
     }
 
     Hash::from_hex(&witness.body_hash)

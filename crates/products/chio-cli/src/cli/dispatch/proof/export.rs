@@ -529,6 +529,7 @@ fn update_export_evidence_graph_optional_node(
 ) -> Result<String, CliError> {
     let bytes = archive_entry_bytes_mut(entries, evidence_graph_path)?;
     let mut evidence_graph: serde_json::Value = serde_json::from_slice(bytes)?;
+    let mut previous_refs = BTreeSet::new();
     let nodes = evidence_graph
         .get_mut("nodes")
         .and_then(serde_json::Value::as_array_mut)
@@ -541,7 +542,29 @@ fn update_export_evidence_graph_optional_node(
     else {
         return Ok(chio_core::sha256_hex(bytes));
     };
+    if let Some(id) = node.get("id").and_then(serde_json::Value::as_str) {
+        previous_refs.insert(id.to_string());
+    }
+    if let Some(previous_sha256) = node.get("sha256").and_then(serde_json::Value::as_str) {
+        previous_refs.insert(previous_sha256.to_string());
+    }
+    node["id"] = serde_json::Value::String(sha256.to_string());
     node["sha256"] = serde_json::Value::String(sha256.to_string());
+    if let Some(edges) = evidence_graph
+        .get_mut("edges")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for edge in edges {
+            for field in ["from", "to"] {
+                let Some(current) = edge.get(field).and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                if previous_refs.contains(current) {
+                    edge[field] = serde_json::Value::String(sha256.to_string());
+                }
+            }
+        }
+    }
     *bytes = pretty_json_line(&evidence_graph)?;
     Ok(chio_core::sha256_hex(bytes))
 }

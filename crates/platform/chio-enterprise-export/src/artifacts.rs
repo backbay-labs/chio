@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, path::Path};
 
 use chio_core_types::crypto::{PublicKey, Signature};
 use chio_core_types::receipt::body::ChioReceipt;
@@ -383,6 +383,7 @@ pub(super) fn validate_telemetry_projection(
     passport: &TransactionPassport,
     risk_report: &RiskComptrollerReport,
     telemetry: &TelemetryProjection,
+    trusted_receipt_kernel_keys: &[PublicKey],
 ) -> Result<(), TransactionPassportError> {
     for (field, value) in [
         ("schema", &telemetry.schema),
@@ -429,6 +430,10 @@ pub(super) fn validate_telemetry_projection(
             if !signature_valid {
                 return Err(claim_failed("telemetry receipt signature invalid"));
             }
+            if !trusted_receipt_kernel_keys.contains(&receipt.kernel_key) {
+                return Err(claim_failed("telemetry receipt signer untrusted"));
+            }
+            validate_telemetry_receipt_binding(event, &receipt)?;
         } else if event.event_kind == "siem_export" {
             return Err(claim_failed("telemetry SIEM event missing receipt"));
         }
@@ -439,6 +444,41 @@ pub(super) fn validate_telemetry_projection(
             return Err(claim_failed(format!(
                 "telemetry projection missing event: {required_event}"
             )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_telemetry_receipt_binding(
+    event: &TelemetryEvent,
+    receipt: &ChioReceipt,
+) -> Result<(), TransactionPassportError> {
+    if receipt.content_hash != event.artifact_sha256 {
+        return Err(claim_failed("telemetry receipt content hash mismatch"));
+    }
+    if receipt.tool_name != event.event_kind {
+        return Err(claim_failed("telemetry receipt action mismatch"));
+    }
+    let action_hash_valid = receipt
+        .action
+        .verify_hash()
+        .map_err(|_| claim_failed("telemetry receipt action invalid"))?;
+    if !action_hash_valid {
+        return Err(claim_failed("telemetry receipt action invalid"));
+    }
+    for (field, expected) in [
+        ("event_id", event.event_id.as_str()),
+        ("artifact_ref", event.artifact_ref.as_str()),
+        ("artifact_sha256", event.artifact_sha256.as_str()),
+    ] {
+        if receipt
+            .action
+            .parameters
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            != Some(expected)
+        {
+            return Err(claim_failed("telemetry receipt action mismatch"));
         }
     }
     Ok(())
@@ -608,7 +648,11 @@ pub(super) fn validate_control_map(
                 control.claim_ref
             )));
         }
-        let Some(gate_node) = graph.nodes.iter().find(|node| node.id == control.gate_ref) else {
+        let Some(gate_node) = graph
+            .nodes
+            .iter()
+            .find(|node| graph_node_ref_matches(bundle, node, &control.gate_ref))
+        else {
             return Err(claim_failed("control gate did not run"));
         };
         if !graph_node_artifact_matches(bundle, gate_node) {
@@ -774,10 +818,42 @@ fn graph_contains_risk_evidence_kind(
     kind: RiskEvidenceRefKind,
 ) -> bool {
     graph.nodes.iter().any(|node| {
-        node.id == evidence_ref
+        graph_node_ref_matches(bundle, node, evidence_ref)
             && risk_evidence_schema_matches_kind(&node.schema, kind)
             && graph_node_artifact_matches(bundle, node)
     })
+}
+
+fn graph_node_ref_matches(
+    bundle: &EnterpriseExportBundle,
+    node: &super::evidence::EnterpriseEvidenceNode,
+    evidence_ref: &str,
+) -> bool {
+    node.id == evidence_ref
+        || node.sha256 == evidence_ref
+        || node.path == evidence_ref
+        || Path::new(&node.path)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            == Some(evidence_ref)
+        || graph_node_artifact_id_matches(bundle, node, evidence_ref)
+}
+
+fn graph_node_artifact_id_matches(
+    bundle: &EnterpriseExportBundle,
+    node: &super::evidence::EnterpriseEvidenceNode,
+    evidence_ref: &str,
+) -> bool {
+    let Some(bytes) = bundle.artifacts.get(&node.path) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(bytes) else {
+        return false;
+    };
+    value
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|id| id == evidence_ref)
 }
 
 fn graph_node_artifact_matches(

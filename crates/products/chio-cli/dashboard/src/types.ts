@@ -1095,6 +1095,59 @@ export interface ProofRoomPublicSettlementProofBundle {
   dispute_snapshot?: ProofRoomSettlementDisputeSnapshot
 }
 
+export interface ProofRoomPublicSettlementVerifierReport {
+  schema: 'chio.public-settlement-verifier-report.v1'
+  id?: string
+  verdict?: string
+  bundle_id?: string
+  transaction_passport_id?: string
+  commerce_order_id?: string
+  recomputed_settlement_state?: string
+  chain_context?: {
+    chain_id?: string
+    settlement_path?: string
+    settlement_reference?: string
+    observed_block_number?: number
+    registry_root?: string
+    escrow_id?: string
+    bond_vault_contract?: string
+    posted_bond_amount?: ProofRoomSettlementAmount
+    minimum_bond_amount?: ProofRoomSettlementAmount
+    block_hash?: string
+    anchor_tx_hash?: string
+    settlement_tx_hash?: string
+    beneficiary_address?: string
+    beneficiary_chio_identity?: string
+  }
+  public_witness?: {
+    witness_id?: string
+    mode?: string
+    body_hash?: string
+    observed_at?: number
+  }
+  finality_decision?: {
+    status?: string
+    required_confirmations?: number
+    observed_confirmations?: number
+  }
+  dispute_context?: {
+    dispute_id?: string
+    posture?: string
+    observed_at?: number
+    challenge_window_secs?: number
+    window_closed_at?: number
+    open_dispute_count?: number
+  }
+  dispute_posture?: string
+  trust_market_context?: {
+    collateral_position_ref?: string
+    guarantee_decision_ref?: string
+    sla_remedy_ref?: string
+    slash_authority_ref?: string
+  }
+  verified_claims?: string[]
+}
+
 export interface ProofRoomAgentWebEnvelope {
   schema: 'chio.agent-web-proof-envelope.v1'
   envelope_id?: string
@@ -1141,6 +1194,7 @@ export interface ProofRoomStaticBundle {
   runtimeEvidence?: ProofRoomRuntimeEvidence
   cryptoContextEvidence?: ProofRoomCryptoContextEvidence
   publicSettlementProof?: ProofRoomPublicSettlementProofBundle
+  publicSettlementVerifierReport?: ProofRoomPublicSettlementVerifierReport
   riskReport?: ProofRoomRiskComptrollerReport
   agentWebProjections?: ProofRoomAgentWebProjection[]
 }

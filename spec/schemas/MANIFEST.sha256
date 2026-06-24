@@ -180,7 +180,7 @@ eacc476342d36db2d42ec1722ec0c11dc8b6e1ce771e27f1cc44748a44d709db  spec/schemas/c
 7d99d5228e2918096d61d9aae77dee7105eb2d21617bdb65cdd15b9e82d4ac09  spec/schemas/chio-transaction/v1/transaction-passport.schema.json
 008aa4f510a98b43529a8b462040066dd5e91161df038490df23e84c07c8651c  spec/schemas/chio-transaction/v1/claim-set.schema.json
 128b044a9649c45971478ae382c04228c86139661ef05e06e11fee8f8bd1d646  spec/schemas/chio-transaction/v1/verifier-policy.schema.json
-728f856d31b21e8262ec0d10d4e016ef141ba4cd9c6bc13550a3b986f400b593  spec/schemas/chio-transaction/v1/verifier-report.schema.json
+e10f3669278dbd52eda1ae3858f030abedc5b7ece25630d272fb2bb6baed1841  spec/schemas/chio-transaction/v1/verifier-report.schema.json
 4646a51a6d23c27f0ba3951923e029ab9568bfa87f1b373ad2b1334be0ca7f62  spec/schemas/chio-workflow/v1/preflight-plan.schema.json
 3374b9d40520b66cae420da1f9c8bb07fed6bfbd62ae918615e2f88b6e1b7700  spec/schemas/chio-workflow/v1/preflight-report.schema.json
 e90c7bc3c555c335559650c71f7fda1e3c13d134a5ff8ceaa0041000536c2ea9  spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json
@@ -192,7 +192,7 @@ a3c748be49a7de93b4c9056b898681e38ae2fdf482513f9df346234c60c28533  spec/schemas/c
 1b08a45b3e82db19bb35feff74f9ba6c8ce7c5fb3f5d4ed7bd14727901ab482d  spec/schemas/chio-disclosure/v1/bbs-projection-manifest.schema.json
 76db588175d3ee70e0d5518b8a601ed7e6c2f3db76af7d637b8c8ef54905a197  spec/schemas/chio-disclosure/v1/capsule.schema.json
 ffdc4c19cea5d3a471c0645deb4b6aec170a3f32045f16788a40e3438e884a3b  spec/schemas/chio-disclosure/v1/leakage-ledger.schema.json
-34fd1bb006fbd1711a4fc7f7636dda45bb55aefb812790268ac94289dac4f8c7  spec/schemas/chio-disclosure/v1/lineage-verifier-report.schema.json
+03fca7289994dec967cbe063b8318b4fa2a75a1db0f149a5a63dbe73a19ba5fb  spec/schemas/chio-disclosure/v1/lineage-verifier-report.schema.json
 d1870a8a3b12f339116f2eaf68589ec10a407b304b0f8dea29f805a9ca80fa6c  spec/schemas/chio-lineage/v1/signed-subgraph.schema.json
 fb931201ed0380c0eece1e1563a6e593c30df0ac5330105b76c5db5875bb048a  spec/schemas/chio-enterprise/v1/approval-case.schema.json
 5c591a8acb0efd1c9b0c93f2873fc7f97fe9f3747bba5a1477073005af6444d6  spec/schemas/chio-enterprise/v1/control-evidence-map.schema.json

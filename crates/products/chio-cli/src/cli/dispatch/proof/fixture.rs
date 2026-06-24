@@ -6,7 +6,10 @@ use chio_core_types::{
     receipt::metadata::ActorRef,
     Keypair,
 };
-use std::{collections::BTreeSet, ffi::OsString};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ffi::OsString,
+};
 
 const PROOF_FIXTURE_ROOT_ENV: &str = "CHIO_PROOF_FIXTURE_ROOT";
 const PROOF_FIXTURE_CATALOG_FILE: &str = "catalog.json";
@@ -23,6 +26,7 @@ const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 const COMMERCE_PROVIDER_TRUST_SIGNATURE_SEED: [u8; 32] = [8; 32];
 const TRUST_MARKET_AUTHORITY_SIGNATURE_SEED: [u8; 32] = [59; 32];
 const PUBLIC_SETTLEMENT_ORACLE_SIGNATURE_SEED: [u8; 32] = [15; 32];
+const RUNTIME_TOOL_SERVER_SIGNATURE_SEED: [u8; 32] = [45; 32];
 const DISCLOSURE_AGENT_WEB_BBS_KEY_MATERIAL: &[u8] = b"chio-proof-disclosure-agent-web-bbs-key";
 const DISCLOSURE_AGENT_WEB_BBS_KEY_INFO: &[u8] = b"chio-proof-disclosure-agent-web";
 const DISCLOSURE_AGENT_WEB_BBS_NONCE: &[u8] = b"nonce-disclosure-agent-web";
@@ -167,6 +171,9 @@ fn generate_proof_fixture(fixture_id: &str, out: &Path, json_output: bool) -> Re
     } else {
         copy_embedded_fixture(installed_fixture_path(&descriptor), out)?;
     }
+    if descriptor.kind == "transaction-passport" {
+        remove_generated_negative_catalog(out)?;
+    }
     normalize_enterprise_risk_lifecycle_replay(&descriptor, out)?;
     normalize_enterprise_claim_payout_capital_instructions(&descriptor, out)?;
     normalize_enterprise_preobserved_capital_instruction(&descriptor, out)?;
@@ -175,6 +182,12 @@ fn generate_proof_fixture(fixture_id: &str, out: &Path, json_output: bool) -> Re
     normalize_enterprise_export_verifier_report_ref(&descriptor, out)?;
     normalize_enterprise_telemetry_passport_mismatch(&descriptor, out)?;
     normalize_disclosure_lineage_bbs_material(&descriptor, out)?;
+    normalize_runtime_reused_nonce_fixture(&descriptor, out)?;
+    normalize_declared_evidence_graph_node_ids(&descriptor, out)?;
+    if descriptor.kind != "negative-transaction-passport" {
+        refresh_proof_room_bundle_source_reports(out)?;
+    }
+    refresh_proof_room_bundle_manifests(out)?;
     if descriptor.kind == "transaction-passport"
         && descriptor.id != RECURSIVE_RUNTIME_SWARM_FIXTURE_ID
     {
@@ -221,6 +234,341 @@ fn generate_proof_fixture(fixture_id: &str, out: &Path, json_output: bool) -> Re
         }
     }
     Ok(())
+}
+
+fn normalize_declared_evidence_graph_node_ids(
+    descriptor: &ProofFixtureDescriptor,
+    out: &Path,
+) -> Result<(), CliError> {
+    let mut evidence_graph_paths = Vec::new();
+    collect_evidence_graph_paths(out, &mut evidence_graph_paths)?;
+    for evidence_graph_path in evidence_graph_paths {
+        let mut evidence_graph = read_json_value(&evidence_graph_path)?;
+        let artifact_root = evidence_graph_artifact_root(&evidence_graph_path)?;
+        refresh_graph_node_hashes(&artifact_root, &mut evidence_graph)?;
+        write_json_line_file(&evidence_graph_path, &evidence_graph)?;
+        let passport_path = evidence_graph_path.with_file_name("transaction-passport.json");
+        if passport_path.is_file()
+            && !preserves_evidence_graph_digest_mismatch(
+                descriptor,
+                out,
+                &evidence_graph_path,
+            )
+        {
+            let mut passport = read_json_value(&passport_path)?;
+            passport["evidence_graph_sha256"] =
+                serde_json::Value::String(sha256_file(&evidence_graph_path)?);
+            write_fixture_signed_transaction_passport(&passport_path, passport)?;
+        }
+    }
+    Ok(())
+}
+
+fn evidence_graph_artifact_root(evidence_graph_path: &Path) -> Result<PathBuf, CliError> {
+    let graph_dir = evidence_graph_path.parent().ok_or_else(|| {
+        CliError::cli_other_error(format!(
+            "proof fixture evidence graph has no parent: {}",
+            evidence_graph_path.display()
+        ))
+    })?;
+    if graph_dir.file_name().and_then(|name| name.to_str()) == Some("roots") {
+        return graph_dir.parent().map(Path::to_path_buf).ok_or_else(|| {
+            CliError::cli_other_error(format!(
+                "proof fixture roots evidence graph has no bundle parent: {}",
+                evidence_graph_path.display()
+            ))
+        });
+    }
+    Ok(graph_dir.to_path_buf())
+}
+
+fn collect_evidence_graph_paths(root: &Path, paths: &mut Vec<PathBuf>) -> Result<(), CliError> {
+    if !root.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            collect_evidence_graph_paths(&path, paths)?;
+        } else if file_type.is_file()
+            && path.file_name().and_then(|name| name.to_str()) == Some("evidence-graph.json")
+        {
+            paths.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn preserves_evidence_graph_digest_mismatch(
+    descriptor: &ProofFixtureDescriptor,
+    out: &Path,
+    evidence_graph_path: &Path,
+) -> bool {
+    if descriptor.id.ends_with("evidence-graph-digest-mismatch") {
+        return true;
+    }
+    evidence_graph_path
+        .strip_prefix(out)
+        .ok()
+        .is_some_and(|relative_path| {
+            relative_path.components().any(|component| {
+                component.as_os_str() == "evidence-graph-digest-mismatch"
+            })
+        })
+}
+
+fn refresh_proof_room_bundle_manifests(root: &Path) -> Result<(), CliError> {
+    let mut manifest_paths = Vec::new();
+    collect_named_file_paths(root, "manifest.json", &mut manifest_paths)?;
+    for manifest_path in manifest_paths {
+        refresh_proof_room_bundle_manifest(&manifest_path)?;
+    }
+    Ok(())
+}
+
+fn remove_generated_negative_catalog(root: &Path) -> Result<(), CliError> {
+    let catalog = root.join("negatives/catalog");
+    if catalog.exists() {
+        fs::remove_dir_all(catalog)?;
+    }
+    Ok(())
+}
+
+fn refresh_proof_room_bundle_source_reports(root: &Path) -> Result<(), CliError> {
+    let mut manifest_paths = Vec::new();
+    collect_named_file_paths(root, "manifest.json", &mut manifest_paths)?;
+    for manifest_path in manifest_paths {
+        let bundle = manifest_path.parent().ok_or_else(|| {
+            CliError::cli_other_error(format!(
+                "proof room manifest has no bundle directory: {}",
+                manifest_path.display()
+            ))
+        })?;
+        refresh_proof_room_bundle_source_report(bundle)?;
+    }
+    Ok(())
+}
+
+fn refresh_proof_room_bundle_source_report(bundle: &Path) -> Result<(), CliError> {
+    let passport_path = bundle.join("roots/transaction-passport.json");
+    let verifier_report_path = bundle.join("verifier/report.json");
+    if !passport_path.is_file() || !verifier_report_path.is_file() {
+        return Ok(());
+    }
+
+    let report = verify_transaction_passport_file(&passport_path)?;
+    write_json_line_file(&verifier_report_path, &report)?;
+    refresh_proof_room_ui_report_source_ref(bundle, &verifier_report_path)
+}
+
+fn refresh_proof_room_ui_report_source_ref(
+    bundle: &Path,
+    verifier_report_path: &Path,
+) -> Result<(), CliError> {
+    let ui_report_path = bundle.join("ui/proof-room-static/load-report.json");
+    if !ui_report_path.is_file() {
+        return Ok(());
+    }
+    let mut ui_report = read_json_value(&ui_report_path)?;
+    ui_report["source_verifier_report_ref"]["sha256"] =
+        serde_json::Value::String(sha256_file(verifier_report_path)?);
+    write_json_line_file(&ui_report_path, &ui_report)
+}
+
+fn collect_named_file_paths(
+    root: &Path,
+    file_name: &str,
+    paths: &mut Vec<PathBuf>,
+) -> Result<(), CliError> {
+    if !root.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        let path = entry.path();
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            collect_named_file_paths(&path, file_name, paths)?;
+        } else if file_type.is_file()
+            && path.file_name().and_then(|name| name.to_str()) == Some(file_name)
+        {
+            paths.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn refresh_proof_room_bundle_manifest(manifest_path: &Path) -> Result<(), CliError> {
+    let bundle = manifest_path.parent().ok_or_else(|| {
+        CliError::cli_other_error(format!(
+            "proof room manifest has no bundle directory: {}",
+            manifest_path.display()
+        ))
+    })?;
+    let mut manifest = read_json_value(manifest_path)?;
+    let original_manifest = manifest.clone();
+    for field in [
+        "transaction_passport_ref",
+        "evidence_graph_ref",
+        "verifier_report_ref",
+        "proof_room_verifier_report_ref",
+    ] {
+        refresh_manifest_artifact_ref(bundle, &mut manifest[field])?;
+    }
+    if let Some(artifacts) = manifest
+        .get_mut("artifacts")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for artifact in artifacts {
+            refresh_manifest_artifact_ref(bundle, artifact)?;
+        }
+    }
+    if manifest == original_manifest {
+        return Ok(());
+    }
+    write_json_line_file(manifest_path, &manifest)?;
+    if bundle.join("bundle-signature.dsse.json").is_file() {
+        let keypair = collect::proof_collect_bundle_signer_from_env()?;
+        collect::write_bundle_signature(bundle, &keypair)?;
+    }
+    Ok(())
+}
+
+fn refresh_manifest_artifact_ref(
+    bundle: &Path,
+    artifact_ref: &mut serde_json::Value,
+) -> Result<(), CliError> {
+    let Some(path) = artifact_ref
+        .get("path")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+    else {
+        return Ok(());
+    };
+    let artifact_path = bundle.join(&path);
+    if !artifact_path.is_file() {
+        return Ok(());
+    }
+    artifact_ref["sha256"] = serde_json::Value::String(sha256_file(&artifact_path)?);
+    Ok(())
+}
+
+fn normalize_runtime_reused_nonce_fixture(
+    _descriptor: &ProofFixtureDescriptor,
+    out: &Path,
+) -> Result<(), CliError> {
+    let mut evidence_graph_paths = Vec::new();
+    collect_evidence_graph_paths(out, &mut evidence_graph_paths)?;
+    for evidence_graph_path in evidence_graph_paths {
+        let Some(bundle) = evidence_graph_path.parent() else {
+            continue;
+        };
+        if !bundle.join("tool-server-ack.json").is_file() {
+            continue;
+        }
+        let evidence_graph = read_json_value(&evidence_graph_path)?;
+        let has_replay_node = json_array(&evidence_graph, "nodes", &evidence_graph_path)?
+            .iter()
+            .any(|node| {
+                node.get("path").and_then(serde_json::Value::as_str)
+                    == Some("tool-server-ack-replay.json")
+                    || node.get("id").and_then(serde_json::Value::as_str)
+                        == Some("ack-runtime-replay")
+            });
+        let is_reused_nonce_case = evidence_graph_path.components().any(|component| {
+            component.as_os_str() == std::ffi::OsStr::new("runtime-reused-nonce")
+                || component.as_os_str() == std::ffi::OsStr::new("reused-nonce")
+        });
+        if has_replay_node || is_reused_nonce_case {
+            normalize_runtime_reused_nonce_bundle(bundle, &evidence_graph_path, evidence_graph)?;
+        }
+    }
+    Ok(())
+}
+
+fn normalize_runtime_reused_nonce_bundle(
+    bundle: &Path,
+    evidence_graph_path: &Path,
+    mut evidence_graph: serde_json::Value,
+) -> Result<(), CliError> {
+    let source_ack_path = bundle.join("tool-server-ack.json");
+    let replay_ack_path = bundle.join("tool-server-ack-replay.json");
+    let mut replay_ack = read_json_value(&source_ack_path)?;
+    replay_ack["ack_id"] = serde_json::Value::String("ack-runtime-replay".to_string());
+    replay_ack["issued_at"] = serde_json::Value::String("2026-06-10T00:00:03Z".to_string());
+    replay_ack["signature"] =
+        serde_json::Value::String(sign_runtime_tool_server_ack(&replay_ack)?);
+    write_json_line_file(&replay_ack_path, &replay_ack)?;
+
+    let replay_sha256 = sha256_file(&replay_ack_path)?;
+    let nodes = json_array_mut(&mut evidence_graph, "nodes", evidence_graph_path)?;
+    let replay_node = if let Some(index) = nodes.iter().position(|node| {
+        node.get("path").and_then(serde_json::Value::as_str)
+            == Some("tool-server-ack-replay.json")
+            || node.get("id").and_then(serde_json::Value::as_str) == Some("ack-runtime-replay")
+    }) {
+        &mut nodes[index]
+    } else {
+        nodes.push(serde_json::json!({
+            "id": replay_sha256,
+            "path": "tool-server-ack-replay.json",
+            "role": "tool-server-ack",
+            "schema": "chio.runtime.tool-server-ack.v1",
+            "sha256": replay_sha256
+        }));
+        nodes
+            .last_mut()
+            .ok_or_else(|| CliError::cli_other_error("runtime replay ack node missing".to_string()))?
+    };
+    let old_id = replay_node
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .map(std::string::ToString::to_string);
+    let old_sha256 = replay_node
+        .get("sha256")
+        .and_then(serde_json::Value::as_str)
+        .map(std::string::ToString::to_string);
+    replay_node["id"] = serde_json::Value::String(replay_sha256.clone());
+    replay_node["path"] = serde_json::Value::String("tool-server-ack-replay.json".to_string());
+    replay_node["sha256"] = serde_json::Value::String(replay_sha256.clone());
+    for edge in json_array_mut(&mut evidence_graph, "edges", evidence_graph_path)? {
+        for field in ["from", "to"] {
+            let Some(current) = edge.get(field).and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            if old_id.as_deref() == Some(current) || old_sha256.as_deref() == Some(current) {
+                edge[field] = serde_json::Value::String(replay_sha256.clone());
+            }
+        }
+    }
+    write_json_line_file(evidence_graph_path, &evidence_graph)?;
+    Ok(())
+}
+
+fn sign_runtime_tool_server_ack(ack: &serde_json::Value) -> Result<String, CliError> {
+    let keypair = Keypair::from_seed(&RUNTIME_TOOL_SERVER_SIGNATURE_SEED);
+    let body = serde_json::json!({
+        "schema": "chio.runtime.tool-server-ack-signature.v1",
+        "ackId": ack["ack_id"],
+        "leaseId": ack["lease_id"],
+        "toolServerId": ack["tool_server_id"],
+        "toolInstanceId": ack["tool_instance_id"],
+        "sandboxAttestationRef": ack["sandbox_attestation_ref"],
+        "nonce": ack["nonce"],
+        "terminalStatus": ack["terminal_status"],
+        "issuedAt": ack["issued_at"],
+    });
+    Ok(keypair
+        .sign_canonical(&body)
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "runtime tool-server acknowledgement signing failed: {error}"
+            ))
+        })?
+        .0
+        .to_hex())
 }
 
 fn proof_fixture_expected_failure(
@@ -609,6 +957,12 @@ pub(super) fn copy_proof_fixture(fixture_id: &str, out: &Path) -> Result<(), Cli
     normalize_enterprise_export_verifier_report_ref(&descriptor, out)?;
     normalize_enterprise_telemetry_passport_mismatch(&descriptor, out)?;
     normalize_disclosure_lineage_bbs_material(&descriptor, out)?;
+    normalize_runtime_reused_nonce_fixture(&descriptor, out)?;
+    normalize_declared_evidence_graph_node_ids(&descriptor, out)?;
+    if descriptor.kind != "negative-transaction-passport" {
+        refresh_proof_room_bundle_source_reports(out)?;
+    }
+    refresh_proof_room_bundle_manifests(out)?;
     Ok(())
 }
 
@@ -701,6 +1055,7 @@ fn add_commerce_event_authority_receipts(bundle: &Path) -> Result<(), CliError> 
             &sha256_file(&destination)?,
         );
     }
+    refresh_graph_node_hashes(bundle, &mut evidence_graph)?;
     write_json_line_file(&evidence_graph_path, &evidence_graph)?;
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
 
@@ -807,6 +1162,7 @@ fn add_commerce_terminal_receipts(bundle: &Path) -> Result<(), CliError> {
             &sha256_file(&receipt_path)?,
         );
     }
+    refresh_graph_node_hashes(bundle, &mut evidence_graph)?;
     write_json_line_file(&evidence_graph_path, &evidence_graph)?;
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
 
@@ -965,6 +1321,7 @@ fn add_runtime_swarm_loopback_evidence(bundle: &Path, temp_root: &Path) -> Resul
         let artifact_sha256 = sha256_file(&destination)?;
         upsert_runtime_swarm_graph_node(nodes, file_name, &schema, role, &artifact_sha256);
     }
+    refresh_graph_node_hashes(bundle, &mut evidence_graph)?;
     write_json_line_file(&evidence_graph_path, &evidence_graph)?;
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
 
@@ -1861,6 +2218,44 @@ fn add_disclosure_agent_web_crypto_context_material(
     write_json_line_file(&report_path, &report)?;
 
     let graph_path = bundle.join("evidence-graph.json");
+    let mut capsule_ids =
+        graph_node_aliases(evidence_graph, &graph_path, "capsule.json", "disclosure-capsule")?;
+    let mut privacy_profile_ids = graph_node_aliases(
+        evidence_graph,
+        &graph_path,
+        "privacy-profile.json",
+        "disclosure-verifier-privacy-profile",
+    )?;
+    let mut report_ids = graph_node_aliases(
+        evidence_graph,
+        &graph_path,
+        "crypto-context-report.json",
+        "disclosure-crypto-context-report",
+    )?;
+    let mut projection_manifest_ids = graph_node_aliases(
+        evidence_graph,
+        &graph_path,
+        "bbs-projection-manifest.json",
+        "bbs-projection-manifest",
+    )?;
+    let mut verification_context_ids = graph_node_aliases(
+        evidence_graph,
+        &graph_path,
+        "verification-context.json",
+        "crypto-verification-context",
+    )?;
+    let mut selective_proof_ids = graph_node_aliases(
+        evidence_graph,
+        &graph_path,
+        "selective-disclosure-proof.json",
+        "selective-disclosure-proof",
+    )?;
+    let mut transparency_ids = graph_node_aliases(
+        evidence_graph,
+        &graph_path,
+        "transparency-inclusion-proof.json",
+        "transparency-inclusion-proof",
+    )?;
     let nodes = json_array_mut(evidence_graph, "nodes", &graph_path)?;
     upsert_fixture_graph_node(
         nodes,
@@ -1910,6 +2305,62 @@ fn add_disclosure_agent_web_crypto_context_material(
         "transparency-inclusion-proof",
         &sha256_file(&transparency_inclusion_path)?,
     );
+    capsule_ids.extend(graph_node_aliases(
+        evidence_graph,
+        &graph_path,
+        "capsule.json",
+        "disclosure-capsule",
+    )?);
+    privacy_profile_ids.extend(graph_node_aliases(
+        evidence_graph,
+        &graph_path,
+        "privacy-profile.json",
+        "disclosure-verifier-privacy-profile",
+    )?);
+    report_ids.extend(graph_node_aliases(
+        evidence_graph,
+        &graph_path,
+        "crypto-context-report.json",
+        "disclosure-crypto-context-report",
+    )?);
+    projection_manifest_ids.extend(graph_node_aliases(
+        evidence_graph,
+        &graph_path,
+        "bbs-projection-manifest.json",
+        "bbs-projection-manifest",
+    )?);
+    verification_context_ids.extend(graph_node_aliases(
+        evidence_graph,
+        &graph_path,
+        "verification-context.json",
+        "crypto-verification-context",
+    )?);
+    selective_proof_ids.extend(graph_node_aliases(
+        evidence_graph,
+        &graph_path,
+        "selective-disclosure-proof.json",
+        "selective-disclosure-proof",
+    )?);
+    transparency_ids.extend(graph_node_aliases(
+        evidence_graph,
+        &graph_path,
+        "transparency-inclusion-proof.json",
+        "transparency-inclusion-proof",
+    )?);
+    let capsule_id = graph_node_primary_id(
+        evidence_graph,
+        &graph_path,
+        "capsule.json",
+        "disclosure-capsule",
+    )?;
+    let edges = json_array_mut(evidence_graph, "edges", &graph_path)?;
+    remove_fixture_graph_edges(edges, &capsule_ids, &privacy_profile_ids, "binds");
+    remove_fixture_graph_edges(edges, &capsule_ids, &report_ids, "binds");
+    remove_fixture_graph_edges_from(edges, &projection_manifest_ids, "defines");
+    remove_fixture_graph_edges_from(edges, &verification_context_ids, "verifies");
+    remove_fixture_graph_edges_from(edges, &transparency_ids, "anchors");
+    upsert_fixture_graph_edge(edges, &capsule_id, "privacy-profile", "binds");
+    upsert_fixture_graph_edge(edges, &capsule_id, "crypto-context-report", "binds");
     upsert_fixture_graph_edge(
         json_array_mut(evidence_graph, "edges", &graph_path)?,
         "bbs-projection-manifest",
@@ -2351,18 +2802,74 @@ fn upsert_claim_set_graph_binding(
     claim_set_sha256: &str,
 ) -> Result<(), CliError> {
     let graph_path = Path::new("evidence-graph.json");
+    let nodes = json_array_mut(evidence_graph, "nodes", graph_path)?;
+    let verifier_policy_ids = nodes
+        .iter()
+        .filter(|node| {
+            node.get("path").and_then(serde_json::Value::as_str) == Some("verifier-policy.json")
+                || node.get("role").and_then(serde_json::Value::as_str)
+                    == Some("verifier-policy")
+        })
+        .flat_map(|node| {
+            [
+                node.get("id").and_then(serde_json::Value::as_str),
+                node.get("sha256").and_then(serde_json::Value::as_str),
+                Some("verifier-policy"),
+            ]
+            .into_iter()
+            .flatten()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+        })
+        .collect::<BTreeSet<_>>();
+    let verifier_policy_sha256 = verifier_policy_ids
+        .iter()
+        .find(|id| id.len() == 64 && id.chars().all(|ch| ch.is_ascii_hexdigit()))
+        .cloned()
+        .unwrap_or_else(|| "verifier-policy".to_string());
+
+    let mut claim_set_ids = BTreeSet::from([
+        "claim-set".to_string(),
+        claim_set_sha256.to_string(),
+    ]);
+    for node in nodes.iter() {
+        if node.get("path").and_then(serde_json::Value::as_str) == Some("claim-set.json")
+            || node.get("role").and_then(serde_json::Value::as_str) == Some("claim-set")
+        {
+            if let Some(id) = node.get("id").and_then(serde_json::Value::as_str) {
+                claim_set_ids.insert(id.to_string());
+            }
+            if let Some(sha256) = node.get("sha256").and_then(serde_json::Value::as_str) {
+                claim_set_ids.insert(sha256.to_string());
+            }
+        }
+    }
     upsert_fixture_graph_node(
-        json_array_mut(evidence_graph, "nodes", graph_path)?,
-        "claim-set",
+        nodes,
+        claim_set_sha256,
         "claim-set.json",
         "chio.transaction.claim-set.v1",
         "claim-set",
         claim_set_sha256,
     );
+    let mut verifier_policy_ids = verifier_policy_ids;
+    verifier_policy_ids.insert(verifier_policy_sha256.clone());
+    json_array_mut(evidence_graph, "edges", graph_path)?.retain(|edge| {
+        if edge.get("predicate").and_then(serde_json::Value::as_str) != Some("binds") {
+            return true;
+        }
+        let Some(from) = edge.get("from").and_then(serde_json::Value::as_str) else {
+            return true;
+        };
+        let Some(to) = edge.get("to").and_then(serde_json::Value::as_str) else {
+            return true;
+        };
+        !(claim_set_ids.contains(from) && verifier_policy_ids.contains(to))
+    });
     upsert_fixture_graph_edge(
         json_array_mut(evidence_graph, "edges", graph_path)?,
-        "claim-set",
-        "verifier-policy",
+        claim_set_sha256,
+        &verifier_policy_sha256,
         "binds",
     );
     Ok(())
@@ -2385,6 +2892,93 @@ fn upsert_fixture_graph_edge(
         "predicate": predicate,
         "to": to
     }));
+}
+
+fn graph_node_aliases(
+    evidence_graph: &serde_json::Value,
+    graph_path: &Path,
+    path: &str,
+    role: &str,
+) -> Result<BTreeSet<String>, CliError> {
+    let aliases = json_array(evidence_graph, "nodes", graph_path)?
+        .iter()
+        .filter(|node| {
+            node.get("path").and_then(serde_json::Value::as_str) == Some(path)
+                || node.get("role").and_then(serde_json::Value::as_str) == Some(role)
+        })
+        .flat_map(|node| {
+            [
+                node.get("id").and_then(serde_json::Value::as_str),
+                node.get("sha256").and_then(serde_json::Value::as_str),
+            ]
+            .into_iter()
+            .flatten()
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+        })
+        .chain([role.to_string()])
+        .collect();
+    Ok(aliases)
+}
+
+fn graph_node_primary_id(
+    evidence_graph: &serde_json::Value,
+    graph_path: &Path,
+    path: &str,
+    role: &str,
+) -> Result<String, CliError> {
+    json_array(evidence_graph, "nodes", graph_path)?
+        .iter()
+        .find(|node| {
+            node.get("path").and_then(serde_json::Value::as_str) == Some(path)
+                || node.get("role").and_then(serde_json::Value::as_str) == Some(role)
+        })
+        .and_then(|node| node.get("id").and_then(serde_json::Value::as_str))
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            CliError::cli_other_error(format!(
+                "proof fixture evidence graph node missing for {path}: {}",
+                graph_path.display()
+            ))
+        })
+}
+
+fn remove_fixture_graph_edges(
+    edges: &mut Vec<serde_json::Value>,
+    from_aliases: &BTreeSet<String>,
+    to_aliases: &BTreeSet<String>,
+    predicate: &str,
+) {
+    edges.retain(|edge| {
+        if edge.get("predicate").and_then(serde_json::Value::as_str) != Some(predicate) {
+            return true;
+        }
+        let Some(from) = edge.get("from").and_then(serde_json::Value::as_str) else {
+            return true;
+        };
+        let Some(to) = edge.get("to").and_then(serde_json::Value::as_str) else {
+            return true;
+        };
+        !(from_aliases.contains(from) && to_aliases.contains(to))
+    });
+}
+
+fn remove_fixture_graph_edges_from(
+    edges: &mut Vec<serde_json::Value>,
+    from_aliases: &BTreeSet<String>,
+    predicate: &str,
+) {
+    edges.retain(|edge| {
+        if edge.get("predicate").and_then(serde_json::Value::as_str) != Some(predicate) {
+            return true;
+        }
+        let Some(from) = edge.get("from").and_then(serde_json::Value::as_str) else {
+            return true;
+        };
+        !from_aliases.contains(from)
+    });
 }
 
 fn write_signed_transaction_passport(
@@ -3813,6 +4407,7 @@ fn append_graph_artifacts_from_fixture(
     let source_graph_path = source.join("evidence-graph.json");
     let source_graph = read_json_value(&source_graph_path)?;
     let source_nodes = json_array(&source_graph, "nodes", &source_graph_path)?.clone();
+    let mut id_remaps = BTreeMap::new();
     let mut retained_ids = BTreeSet::new();
 
     for node in source_nodes {
@@ -3845,22 +4440,33 @@ fn append_graph_artifacts_from_fixture(
         }
 
         let mut node = node;
-        node["sha256"] = serde_json::Value::String(sha256_file(&destination_path)?);
+        let artifact_sha256 = sha256_file(&destination_path)?;
+        id_remaps.insert(id, artifact_sha256.clone());
+        node["id"] = serde_json::Value::String(artifact_sha256.clone());
+        node["sha256"] = serde_json::Value::String(artifact_sha256);
         retained_ids.insert(required_json_string(&node, "id", &source_graph_path)?);
         json_array_mut(evidence_graph, "nodes", &source_graph_path)?.push(node);
     }
 
     let source_edges = json_array(&source_graph, "edges", &source_graph_path)?.clone();
-    let retained_edges = source_edges
-        .into_iter()
-        .filter(|edge| {
-            let from = edge.get("from").and_then(serde_json::Value::as_str);
-            let to = edge.get("to").and_then(serde_json::Value::as_str);
-            from.is_some_and(|from| retained_ids.contains(from))
-                && to.is_some_and(|to| retained_ids.contains(to))
-        })
-        .collect::<Vec<_>>();
-    json_array_mut(evidence_graph, "edges", &source_graph_path)?.extend(retained_edges);
+    for edge in source_edges {
+        let Some(from) = edge.get("from").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let Some(to) = edge.get("to").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let from = id_remaps.get(from).map(String::as_str).unwrap_or(from);
+        let to = id_remaps.get(to).map(String::as_str).unwrap_or(to);
+        let from = from.to_string();
+        let to = to.to_string();
+        if retained_ids.contains(&from) && retained_ids.contains(&to) {
+            let mut edge = edge;
+            edge["from"] = serde_json::Value::String(from);
+            edge["to"] = serde_json::Value::String(to);
+            json_array_mut(evidence_graph, "edges", &source_graph_path)?.push(edge);
+        }
+    }
     Ok(())
 }
 
@@ -3885,6 +4491,8 @@ fn refresh_graph_node_hashes(
     bundle: &Path,
     evidence_graph: &mut serde_json::Value,
 ) -> Result<(), CliError> {
+    let mut id_rewrites = BTreeMap::new();
+    let mut seen_ids = BTreeSet::new();
     for node in json_array_mut(evidence_graph, "nodes", &bundle.join("evidence-graph.json"))? {
         let path = node
             .get("path")
@@ -3895,9 +4503,75 @@ fn refresh_graph_node_hashes(
                     bundle.display()
                 ))
             })?;
-        node["sha256"] = serde_json::Value::String(sha256_file(&bundle.join(path))?);
+        let old_id = node
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                CliError::cli_other_error(format!(
+                    "proof fixture evidence node id missing: {}",
+                    bundle.display()
+                ))
+            })?
+            .to_string();
+        let old_sha256 = node
+            .get("sha256")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string);
+        let mut artifact_path = resolve_graph_artifact_path(bundle, path)?;
+        if path == "policy.json"
+            && node.get("role").and_then(serde_json::Value::as_str) == Some("policy")
+        {
+            if let Ok(verifier_policy_path) =
+                resolve_graph_artifact_path(bundle, "verifier-policy.json")
+            {
+                if sha256_file(&artifact_path)? == sha256_file(&verifier_policy_path)? {
+                    node["path"] =
+                        serde_json::Value::String("verifier-policy.json".to_string());
+                    node["role"] =
+                        serde_json::Value::String("verifier-policy".to_string());
+                    artifact_path = verifier_policy_path;
+                }
+            }
+        }
+        let artifact_sha256 = sha256_file(&artifact_path)?;
+        node["id"] = serde_json::Value::String(artifact_sha256.clone());
+        node["sha256"] = serde_json::Value::String(artifact_sha256.clone());
+        id_rewrites.insert(old_id, artifact_sha256.clone());
+        if let Some(old_sha256) = old_sha256 {
+            id_rewrites.insert(old_sha256, artifact_sha256);
+        }
+    }
+    json_array_mut(evidence_graph, "nodes", &bundle.join("evidence-graph.json"))?.retain(|node| {
+        node.get("id")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|id| seen_ids.insert(id.to_string()))
+    });
+    for edge in json_array_mut(evidence_graph, "edges", &bundle.join("evidence-graph.json"))? {
+        for field in ["from", "to"] {
+            let Some(current) = edge.get(field).and_then(serde_json::Value::as_str) else {
+                continue;
+            };
+            if let Some(rewritten) = id_rewrites.get(current) {
+                edge[field] = serde_json::Value::String(rewritten.clone());
+            }
+        }
     }
     Ok(())
+}
+
+fn resolve_graph_artifact_path(root: &Path, path: &str) -> Result<PathBuf, CliError> {
+    let direct = root.join(path);
+    if direct.is_file() {
+        return Ok(direct);
+    }
+    let roots_artifact = root.join("roots").join(path);
+    if roots_artifact.is_file() {
+        return Ok(roots_artifact);
+    }
+    Err(CliError::cli_other_error(format!(
+        "proof fixture graph artifact missing: {}",
+        direct.display()
+    )))
 }
 
 fn replace_json_string(value: &mut serde_json::Value, from: &str, to: &str) {

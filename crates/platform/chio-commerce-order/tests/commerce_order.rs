@@ -408,6 +408,29 @@ fn mutate_provider_passport_and_resign(
     });
 }
 
+fn mutate_reputation_snapshot(
+    bundle: &mut chio_commerce_order::CommerceOrderVerificationBundle,
+    mutate: impl FnOnce(&mut serde_json::Value),
+) {
+    let mut reputation_snapshot: serde_json::Value =
+        serde_json::from_slice(&bundle.reputation_snapshot_bytes)
+            .test_expect("reputation snapshot parses");
+    mutate(&mut reputation_snapshot);
+    bundle.reputation_snapshot_bytes =
+        serde_json::to_vec(&reputation_snapshot).test_expect("reputation snapshot serializes");
+    bundle.order_context.reputation_snapshot_sha256 = sha256_hex(&bundle.reputation_snapshot_bytes);
+}
+
+fn mutate_reputation_snapshot_and_resign(
+    bundle: &mut chio_commerce_order::CommerceOrderVerificationBundle,
+    mutate: impl FnOnce(&mut serde_json::Value),
+) {
+    mutate_reputation_snapshot(bundle, |reputation_snapshot| {
+        mutate(reputation_snapshot);
+        sign_provider_trust_value(reputation_snapshot);
+    });
+}
+
 fn truncate_to_payment_verified(bundle: &mut chio_commerce_order::CommerceOrderVerificationBundle) {
     mutate_event_log(bundle, |event_log| {
         let events = event_log["events"]
@@ -526,6 +549,42 @@ fn commerce_order_replay_rejects_forged_provider_passport_signature() {
     assert!(error
         .to_string()
         .contains("provider passport signature invalid"));
+}
+
+#[test]
+fn commerce_order_replay_rejects_stale_reputation_snapshot() {
+    let mut bundle = load_bundle("offline-psp-valid");
+    mutate_reputation_snapshot_and_resign(&mut bundle, |reputation_snapshot| {
+        reputation_snapshot["issued_at"] = serde_json::json!("2026-06-08T00:07:59Z");
+    });
+
+    let error = chio_commerce_order::verify_commerce_order(&bundle)
+        .test_expect_err("stale signed reputation snapshots must fail");
+
+    assert!(
+        error
+            .to_string()
+            .contains("reputation snapshot stale for order context"),
+        "{error}"
+    );
+}
+
+#[test]
+fn commerce_order_replay_rejects_zero_reputation_score() {
+    let mut bundle = load_bundle("offline-psp-valid");
+    mutate_reputation_snapshot_and_resign(&mut bundle, |reputation_snapshot| {
+        reputation_snapshot["score_bps"] = serde_json::json!(0);
+    });
+
+    let error = chio_commerce_order::verify_commerce_order(&bundle)
+        .test_expect_err("accepted reputation snapshots must clear the floor");
+
+    assert!(
+        error
+            .to_string()
+            .contains("reputation score below minimum accepted floor"),
+        "{error}"
+    );
 }
 
 #[test]

@@ -126,6 +126,10 @@ fn proof_doctor_command() -> std::process::Command {
         ENTERPRISE_FIXTURE_TRUSTED_RISK_COMPTROLLER_KEYS,
     );
     command.env(
+        "CHIO_ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS",
+        PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
+    );
+    command.env(
         "CHIO_SWARM_TRUSTED_WITNESS_KEYS",
         SWARM_FIXTURE_TRUSTED_WITNESS_KEYS,
     );

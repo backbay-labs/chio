@@ -1344,6 +1344,98 @@ fn tool_call_nested_flow_bridge_propagates_child_cancellation() {
 }
 
 #[test]
+fn tool_call_nested_flow_rejects_malformed_execution_nonce_without_inflight_leak() {
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(NestedFlowServer {
+        id: "nested".to_string(),
+    }));
+
+    let agent_kp = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("nested", "sample_via_client")]),
+        300,
+    );
+    let session_id =
+        match kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()]) {
+            Ok(session_id) => session_id,
+            Err(error) => panic!("session should open: {error}"),
+        };
+    if let Err(error) = kernel.activate_session(&session_id) {
+        panic!("session should activate: {error}");
+    }
+
+    let mut client = MockNestedFlowClient {
+        roots: Vec::new(),
+        sampled_message: CreateMessageResult {
+            role: "assistant".to_string(),
+            content: serde_json::json!({
+                "type": "text",
+                "text": "unused",
+            }),
+            model: "unused".to_string(),
+            stop_reason: None,
+        },
+        elicited_content: make_elicited_content(),
+        cancel_parent_on_create_message: false,
+        cancel_child_on_create_message: false,
+        completed_elicitation_ids: Vec::new(),
+        resource_updates: Vec::new(),
+        resources_list_changed_count: 0,
+    };
+    let context = make_operation_context(
+        &session_id,
+        "nested-tool-malformed-nonce",
+        &agent_kp.public_key().to_hex(),
+    );
+    let operation = ToolCallOperation {
+        capability,
+        server_id: "nested".to_string(),
+        tool_name: "sample_via_client".to_string(),
+        arguments: serde_json::json!({}),
+        governed_intent: None,
+        execution_nonce: Some(serde_json::json!("not-a-signed-execution-nonce")),
+        model_metadata: None,
+        extra_metadata: None,
+    };
+
+    let error = match kernel.evaluate_tool_call_operation_with_nested_flow_client(
+        &context,
+        &operation,
+        &mut client,
+    ) {
+        Ok(_) => panic!("malformed execution_nonce should fail closed"),
+        Err(error) => error,
+    };
+    assert!(
+        format!("{error}").contains("session tool call execution_nonce is malformed"),
+        "unexpected error: {error}"
+    );
+    let no_inflight_request = kernel
+        .session(&session_id)
+        .map(|session| session.inflight().is_empty())
+        .unwrap_or(false);
+    assert!(
+        no_inflight_request,
+        "malformed nonce must not leak inflight state"
+    );
+
+    let retry_error = match kernel.evaluate_tool_call_operation_with_nested_flow_client(
+        &context,
+        &operation,
+        &mut client,
+    ) {
+        Ok(_) => panic!("retry with malformed execution_nonce should still fail closed"),
+        Err(error) => error,
+    };
+    assert!(
+        format!("{retry_error}").contains("session tool call execution_nonce is malformed"),
+        "unexpected retry error: {retry_error}"
+    );
+}
+
+#[test]
 fn tool_call_nested_flow_bridge_filters_resource_notifications_to_session_subscriptions() {
     let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(NestedFlowServer {

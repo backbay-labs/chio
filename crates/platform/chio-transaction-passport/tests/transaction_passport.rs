@@ -62,24 +62,77 @@ fn evidence_graph_schema_allows_swarm_authority_roles() {
 }
 
 #[test]
-fn transaction_verifier_report_schema_allows_machine_result_fields() {
+fn transaction_verifier_report_schema_requires_machine_result_fields() {
     let schema_path =
         workspace_root().join("spec/schemas/chio-transaction/v1/verifier-report.schema.json");
     let schema: Value = serde_json::from_slice(
         &std::fs::read(schema_path).test_expect("verifier report schema reads"),
     )
     .test_expect("verifier report schema parses");
-    let properties = schema
-        .pointer("/properties")
-        .and_then(Value::as_object)
-        .test_expect("verifier report schema properties");
+    let validator =
+        jsonschema::validator_for(&schema).test_expect("verifier report schema compiles");
+    let valid_verified_report = json!({
+        "schema": "chio.transaction.verifier-report.v1",
+        "id": "verifier-report-passport-valid",
+        "issued_at": "2026-06-10T00:00:00Z",
+        "verdict": "verified",
+        "accepted": true,
+        "state": "verified",
+        "passport_id": "passport-valid",
+        "passport_path": "transaction-passport.json",
+        "evidence_graph_sha256": "a".repeat(64),
+        "evidence_graph_path": "evidence-graph.json",
+        "claim_set_sha256": "b".repeat(64),
+        "claim_set_path": "claim-set.json",
+        "verifier_policy_sha256": "c".repeat(64),
+        "verifier_policy_path": "verifier-policy.json",
+        "claimResults": [
+            {
+                "claim_id": "claim.transaction.passport_root_verified",
+                "status": "verified",
+                "verifier_module": "chio.transaction-passport"
+            }
+        ]
+    });
+    assert!(
+        validator.is_valid(&valid_verified_report),
+        "valid verified report rejected"
+    );
 
-    for field in ["accepted", "state", "failureCode", "claimResults"] {
+    for field in ["accepted", "state", "claimResults"] {
+        let mut missing_field = valid_verified_report.clone();
+        missing_field
+            .as_object_mut()
+            .test_expect("verified report object")
+            .remove(field);
         assert!(
-            properties.contains_key(field),
-            "verifier report schema missing {field}"
+            !validator.is_valid(&missing_field),
+            "verifier report schema accepted report missing {field}"
         );
     }
+
+    let mut failed_report = valid_verified_report.clone();
+    failed_report["verdict"] = Value::String("failed".to_string());
+    failed_report["accepted"] = Value::Bool(false);
+    failed_report["state"] = Value::String("failed".to_string());
+    failed_report["failureCode"] = Value::String("CHIO-TRANSACTION-EVIDENCE-DIGEST".to_string());
+    failed_report["claimResults"][0]["status"] = Value::String("failed".to_string());
+    failed_report["claimResults"][0]["failure_reason"] =
+        Value::String("evidence graph digest mismatch".to_string());
+    assert!(
+        validator.is_valid(&failed_report),
+        "valid failed report rejected"
+    );
+
+    let mut failed_without_code = failed_report.clone();
+    failed_without_code
+        .as_object_mut()
+        .test_expect("failed report object")
+        .remove("failureCode");
+    assert!(
+        !validator.is_valid(&failed_without_code),
+        "verifier report schema accepted failed report without failureCode"
+    );
 }
 
 fn runtime_security_fixture_dir(case_name: &str) -> PathBuf {
@@ -159,12 +212,44 @@ fn update_runtime_graph_node_digest(
         .test_expect("runtime graph has nodes");
     for node in nodes {
         if node["path"] == artifact_path {
+            let old_id = node["id"]
+                .as_str()
+                .test_expect("runtime graph node id")
+                .to_string();
+            node["id"] = Value::String(digest.to_string());
             node["sha256"] = Value::String(digest.to_string());
+            for edge in graph["edges"]
+                .as_array_mut()
+                .test_expect("runtime graph has edges")
+            {
+                if edge["from"] == old_id {
+                    edge["from"] = Value::String(digest.to_string());
+                }
+                if edge["to"] == old_id {
+                    edge["to"] = Value::String(digest.to_string());
+                }
+            }
             rebind_runtime_graph(bundle, graph);
             return;
         }
     }
     panic!("runtime graph node exists for {artifact_path}");
+}
+
+fn runtime_graph_node_id(
+    bundle: &chio_transaction_passport::RuntimeSecurityBundle,
+    path: &str,
+) -> String {
+    let graph: Value =
+        serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("runtime graph parses");
+    graph["nodes"]
+        .as_array()
+        .test_expect("runtime graph has nodes")
+        .iter()
+        .find(|node| node["path"] == path)
+        .and_then(|node| node["id"].as_str())
+        .test_expect("runtime graph node id")
+        .to_string()
 }
 
 fn update_runtime_policy_required_claims(
@@ -394,7 +479,7 @@ fn add_unavailable_runtime_receipt_node(
         .as_array_mut()
         .test_expect("runtime graph has nodes")
         .push(json!({
-            "id": "receipt-runtime-denial-missing",
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             "schema": "chio.runtime.terminal-receipt.v1",
             "path": "missing-denial-receipt.json",
             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -438,7 +523,7 @@ fn signed_minimal_passport(
 }
 
 fn valid_evidence_graph_bytes() -> &'static [u8] {
-    br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-minimal-valid","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"claim-set","schema":"chio.transaction.claim-set.v1","path":"claim-set.json","sha256":"ba7948a6ea038b3846c2402ae41a5d122a39133124cb493ddd7a30166b7a6dae","role":"claim-set"},{"id":"verifier-policy","schema":"chio.transaction.verifier-policy.v1","path":"verifier-policy.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"verifier-policy"}],"edges":[{"from":"claim-set","to":"verifier-policy","predicate":"binds","evidence_class":"digest-bound-reference"}]}"#
+    br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-minimal-valid","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"ba7948a6ea038b3846c2402ae41a5d122a39133124cb493ddd7a30166b7a6dae","schema":"chio.transaction.claim-set.v1","path":"claim-set.json","sha256":"ba7948a6ea038b3846c2402ae41a5d122a39133124cb493ddd7a30166b7a6dae","role":"claim-set"},{"id":"1111111111111111111111111111111111111111111111111111111111111111","schema":"chio.transaction.verifier-policy.v1","path":"verifier-policy.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"verifier-policy"}],"edges":[{"from":"ba7948a6ea038b3846c2402ae41a5d122a39133124cb493ddd7a30166b7a6dae","to":"1111111111111111111111111111111111111111111111111111111111111111","predicate":"binds","evidence_class":"digest-bound-reference"}]}"#
 }
 
 fn valid_claim_set_bytes() -> &'static [u8] {
@@ -656,63 +741,63 @@ fn governed_action_evidence_graph_bytes_with_verifier_policy_path(
         "issued_at": "2026-06-10T00:00:00Z",
         "nodes": [
             {
-                "id": "capability-proof",
+                "id": digest("capability-proof.json"),
                 "schema": "chio.capability.proof.v1",
                 "path": "capability-proof.json",
                 "sha256": digest("capability-proof.json"),
                 "role": "capability"
             },
             {
-                "id": "guard-decision",
+                "id": digest("guard-decision.json"),
                 "schema": "chio.guard.decision.v1",
                 "path": "guard-decision.json",
                 "sha256": digest("guard-decision.json"),
                 "role": "guard-decision"
             },
             {
-                "id": "kernel-receipt",
+                "id": digest("kernel-receipt.json"),
                 "schema": "chio.receipt.v1",
                 "path": "kernel-receipt.json",
                 "sha256": digest("kernel-receipt.json"),
                 "role": "receipt"
             },
             {
-                "id": "policy",
+                "id": digest("policy.json"),
                 "schema": "chio.policy.bundle.v1",
                 "path": "policy.json",
                 "sha256": digest("policy.json"),
                 "role": "policy"
             },
             {
-                "id": "request-digest",
+                "id": digest("request-digest.json"),
                 "schema": "chio.request.digest.v1",
                 "path": "request-digest.json",
                 "sha256": digest("request-digest.json"),
                 "role": "request"
             },
             {
-                "id": "response-digest",
+                "id": digest("response-digest.json"),
                 "schema": "chio.response.digest.v1",
                 "path": "response-digest.json",
                 "sha256": digest("response-digest.json"),
                 "role": "response"
             },
             {
-                "id": "trust-root",
+                "id": digest("trust-root.json"),
                 "schema": "chio.trust.root.v1",
                 "path": "trust-root.json",
                 "sha256": digest("trust-root.json"),
                 "role": "trust-root"
             },
             {
-                "id": "claim-set",
+                "id": digest("claim-set.json"),
                 "schema": "chio.transaction.claim-set.v1",
                 "path": "claim-set.json",
                 "sha256": digest("claim-set.json"),
                 "role": "claim-set"
             },
             {
-                "id": "verifier-policy",
+                "id": digest(verifier_policy_path),
                 "schema": "chio.transaction.verifier-policy.v1",
                 "path": verifier_policy_path,
                 "sha256": digest(verifier_policy_path),
@@ -721,50 +806,50 @@ fn governed_action_evidence_graph_bytes_with_verifier_policy_path(
         ],
         "edges": [
             {
-                "from": "capability-proof",
-                "to": "kernel-receipt",
+                "from": digest("capability-proof.json"),
+                "to": digest("kernel-receipt.json"),
                 "predicate": "authorizes",
                 "evidence_class": "digest-bound-reference"
             },
             {
-                "from": "guard-decision",
-                "to": "kernel-receipt",
+                "from": digest("guard-decision.json"),
+                "to": digest("kernel-receipt.json"),
                 "predicate": "authorizes",
                 "evidence_class": "digest-bound-reference"
             },
             {
-                "from": "policy",
-                "to": "guard-decision",
+                "from": digest("policy.json"),
+                "to": digest("guard-decision.json"),
                 "predicate": "binds",
                 "evidence_class": "digest-bound-reference"
             },
             {
-                "from": "request-digest",
-                "to": "kernel-receipt",
+                "from": digest("request-digest.json"),
+                "to": digest("kernel-receipt.json"),
                 "predicate": "binds",
                 "evidence_class": "digest-bound-reference"
             },
             {
-                "from": "response-digest",
-                "to": "kernel-receipt",
+                "from": digest("response-digest.json"),
+                "to": digest("kernel-receipt.json"),
                 "predicate": "binds",
                 "evidence_class": "digest-bound-reference"
             },
             {
-                "from": "trust-root",
-                "to": "capability-proof",
+                "from": digest("trust-root.json"),
+                "to": digest("capability-proof.json"),
                 "predicate": "authorizes",
                 "evidence_class": "digest-bound-reference"
             },
             {
-                "from": "claim-set",
-                "to": "verifier-policy",
+                "from": digest("claim-set.json"),
+                "to": digest(verifier_policy_path),
                 "predicate": "binds",
                 "evidence_class": "digest-bound-reference"
             },
             {
-                "from": "verifier-policy",
-                "to": "kernel-receipt",
+                "from": digest(verifier_policy_path),
+                "to": digest("kernel-receipt.json"),
                 "predicate": "binds",
                 "evidence_class": "digest-bound-reference"
             }
@@ -1033,7 +1118,7 @@ fn transaction_passport_rejects_invalid_evidence_graph_artifact() {
 
 #[test]
 fn transaction_passport_rejects_duplicate_evidence_graph_node_ids() {
-    let evidence_graph_bytes = br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-duplicate-node","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"verifier-policy","schema":"chio.transaction.verifier-policy.v1","path":"verifier-policy.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"verifier-policy"},{"id":"verifier-policy","schema":"chio.receipt.v1","path":"receipt.json","sha256":"2222222222222222222222222222222222222222222222222222222222222222","role":"receipt"}],"edges":[]}"#;
+    let evidence_graph_bytes = br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-duplicate-node","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"1111111111111111111111111111111111111111111111111111111111111111","schema":"chio.transaction.verifier-policy.v1","path":"verifier-policy.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"verifier-policy"},{"id":"1111111111111111111111111111111111111111111111111111111111111111","schema":"chio.receipt.v1","path":"receipt.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"receipt"}],"edges":[]}"#;
 
     let error = passport_error_for_evidence_graph(evidence_graph_bytes);
 
@@ -1044,7 +1129,7 @@ fn transaction_passport_rejects_duplicate_evidence_graph_node_ids() {
 
 #[test]
 fn transaction_passport_rejects_unresolved_evidence_graph_edge_refs() {
-    let evidence_graph_bytes = br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-dangling-edge","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"verifier-policy","schema":"chio.transaction.verifier-policy.v1","path":"verifier-policy.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"verifier-policy"}],"edges":[{"from":"missing-receipt","to":"verifier-policy","predicate":"binds","evidence_class":"digest-bound-reference"}]}"#;
+    let evidence_graph_bytes = br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-dangling-edge","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"1111111111111111111111111111111111111111111111111111111111111111","schema":"chio.transaction.verifier-policy.v1","path":"verifier-policy.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"verifier-policy"}],"edges":[{"from":"missing-receipt","to":"1111111111111111111111111111111111111111111111111111111111111111","predicate":"binds","evidence_class":"digest-bound-reference"}]}"#;
 
     let error = passport_error_for_evidence_graph(evidence_graph_bytes);
 
@@ -1055,7 +1140,7 @@ fn transaction_passport_rejects_unresolved_evidence_graph_edge_refs() {
 
 #[test]
 fn transaction_passport_rejects_cyclic_evidence_graph() {
-    let evidence_graph_bytes = br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-cycle","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"verifier-policy","schema":"chio.transaction.verifier-policy.v1","path":"verifier-policy.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"verifier-policy"},{"id":"receipt","schema":"chio.receipt.v1","path":"receipt.json","sha256":"2222222222222222222222222222222222222222222222222222222222222222","role":"receipt"}],"edges":[{"from":"verifier-policy","to":"receipt","predicate":"binds","evidence_class":"digest-bound-reference"},{"from":"receipt","to":"verifier-policy","predicate":"binds","evidence_class":"digest-bound-reference"}]}"#;
+    let evidence_graph_bytes = br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-cycle","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"1111111111111111111111111111111111111111111111111111111111111111","schema":"chio.transaction.verifier-policy.v1","path":"verifier-policy.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"verifier-policy"},{"id":"2222222222222222222222222222222222222222222222222222222222222222","schema":"chio.receipt.v1","path":"receipt.json","sha256":"2222222222222222222222222222222222222222222222222222222222222222","role":"receipt"}],"edges":[{"from":"1111111111111111111111111111111111111111111111111111111111111111","to":"2222222222222222222222222222222222222222222222222222222222222222","predicate":"binds","evidence_class":"digest-bound-reference"},{"from":"2222222222222222222222222222222222222222222222222222222222222222","to":"1111111111111111111111111111111111111111111111111111111111111111","predicate":"binds","evidence_class":"digest-bound-reference"}]}"#;
 
     let error = passport_error_for_evidence_graph(evidence_graph_bytes);
 
@@ -1066,7 +1151,7 @@ fn transaction_passport_rejects_cyclic_evidence_graph() {
 fn transaction_evidence_graph_rejects_advisory_authority_predicates() {
     for predicate in ["authorizes", "executes", "leases", "attenuates", "settles"] {
         let evidence_graph_bytes = format!(
-            r#"{{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-advisory-{predicate}","issued_at":"2026-06-10T00:00:00Z","nodes":[{{"id":"capability","schema":"chio.capability.proof.v1","path":"capability.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"capability"}},{{"id":"receipt","schema":"chio.receipt.v1","path":"receipt.json","sha256":"2222222222222222222222222222222222222222222222222222222222222222","role":"receipt"}}],"edges":[{{"from":"capability","to":"receipt","predicate":"{predicate}","evidence_class":"advisory-observation"}}]}}"#
+            r#"{{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-advisory-{predicate}","issued_at":"2026-06-10T00:00:00Z","nodes":[{{"id":"1111111111111111111111111111111111111111111111111111111111111111","schema":"chio.capability.proof.v1","path":"capability.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"capability"}},{{"id":"2222222222222222222222222222222222222222222222222222222222222222","schema":"chio.receipt.v1","path":"receipt.json","sha256":"2222222222222222222222222222222222222222222222222222222222222222","role":"receipt"}}],"edges":[{{"from":"1111111111111111111111111111111111111111111111111111111111111111","to":"2222222222222222222222222222222222222222222222222222222222222222","predicate":"{predicate}","evidence_class":"advisory-observation"}}]}}"#
         );
 
         let error = chio_transaction_passport::validate_transaction_evidence_graph(
@@ -1085,7 +1170,7 @@ fn transaction_evidence_graph_rejects_advisory_authority_predicates() {
 
 #[test]
 fn transaction_evidence_graph_rejects_advisory_authority_endpoint() {
-    let evidence_graph_bytes = br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-advisory-node","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"advisory","schema":"chio.external.observation.v1","path":"advisory.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"advisory-observation"},{"id":"receipt","schema":"chio.receipt.v1","path":"receipt.json","sha256":"2222222222222222222222222222222222222222222222222222222222222222","role":"receipt"}],"edges":[{"from":"advisory","to":"receipt","predicate":"authorizes","evidence_class":"digest-bound-reference"}]}"#;
+    let evidence_graph_bytes = br#"{"schema":"chio.transaction.evidence-graph.v1","id":"evidence-graph-advisory-node","issued_at":"2026-06-10T00:00:00Z","nodes":[{"id":"1111111111111111111111111111111111111111111111111111111111111111","schema":"chio.external.observation.v1","path":"advisory.json","sha256":"1111111111111111111111111111111111111111111111111111111111111111","role":"advisory-observation"},{"id":"2222222222222222222222222222222222222222222222222222222222222222","schema":"chio.receipt.v1","path":"receipt.json","sha256":"2222222222222222222222222222222222222222222222222222222222222222","role":"receipt"}],"edges":[{"from":"1111111111111111111111111111111111111111111111111111111111111111","to":"2222222222222222222222222222222222222222222222222222222222222222","predicate":"authorizes","evidence_class":"digest-bound-reference"}]}"#;
 
     let error =
         chio_transaction_passport::validate_transaction_evidence_graph(evidence_graph_bytes)
@@ -1174,6 +1259,85 @@ fn standalone_minimal_passport_accepts_governed_action_evidence() {
         "claim.transaction.passport_root_verified"
     );
     assert_eq!(report.claim_results[0].status, "verified");
+}
+
+#[test]
+fn standalone_minimal_passport_accepts_verifier_policy_as_policy_digest_anchor() {
+    let guard_key = Keypair::from_seed(&[52u8; 32]);
+    let receipt_key = Keypair::from_seed(&[53u8; 32]);
+    let mut artifacts = governed_action_artifacts();
+    let old_policy_digest = sha256_hex(
+        artifacts
+            .get("policy.json")
+            .test_expect("legacy policy artifact exists"),
+    );
+    let verifier_policy_digest = sha256_hex(valid_verifier_policy_bytes());
+    artifacts.insert(
+        "guard-decision.json".to_string(),
+        signed_json_bytes(
+            json!({
+                "schema": "chio.guard.decision.v1",
+                "id": "guard-decision",
+                "capability_id": "cap-tool-read-demo",
+                "policy_sha256": verifier_policy_digest,
+                "decision": "allow",
+                "request_sha256": "a".repeat(64),
+                "response_sha256": "b".repeat(64),
+                "guard_key": guard_key.public_key().to_hex()
+            }),
+            &guard_key,
+        ),
+    );
+    artifacts.insert(
+        "kernel-receipt.json".to_string(),
+        signed_json_bytes(
+            json!({
+                "schema": "chio.receipt.v1",
+                "receipt_id": "receipt-minimal-allow",
+                "capability_id": "cap-tool-read-demo",
+                "guard_decision_id": "guard-decision",
+                "policy_digest": verifier_policy_digest,
+                "request_digest": "a".repeat(64),
+                "response_digest": "b".repeat(64),
+                "terminal_status": "allowed_executed",
+                "kernel_key": receipt_key.public_key().to_hex()
+            }),
+            &receipt_key,
+        ),
+    );
+    let mut evidence_graph: Value =
+        serde_json::from_slice(&governed_action_evidence_graph_bytes(&artifacts))
+            .test_expect("governed action evidence graph parses");
+    evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("governed action evidence graph has nodes")
+        .retain(|node| node["path"] != "policy.json");
+    let edges = evidence_graph["edges"]
+        .as_array_mut()
+        .test_expect("governed action evidence graph has edges");
+    for edge in edges {
+        if edge["from"] == old_policy_digest {
+            edge["from"] = Value::String(verifier_policy_digest.clone());
+        }
+    }
+    artifacts.remove("policy.json");
+    let evidence_graph_bytes =
+        serde_json::to_vec(&evidence_graph).test_expect("evidence graph serializes");
+    let verifier_policy_bytes = valid_verifier_policy_bytes();
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+
+    let report = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect("verifier policy can anchor governed policy digests");
+
+    assert!(report.accepted);
 }
 
 #[test]
@@ -1512,6 +1676,60 @@ fn standalone_minimal_passport_rejects_forged_governed_action_signatures() {
 }
 
 #[test]
+fn standalone_minimal_passport_rejects_evidence_node_id_digest_mismatch() {
+    let artifacts = governed_action_artifacts();
+    let mut evidence_graph: Value =
+        serde_json::from_slice(&governed_action_evidence_graph_bytes(&artifacts))
+            .test_expect("governed action evidence graph parses");
+    let nodes = evidence_graph["nodes"]
+        .as_array_mut()
+        .test_expect("governed action evidence graph has nodes");
+    let capability_node = nodes
+        .iter_mut()
+        .find(|node| node["path"] == "capability-proof.json")
+        .test_expect("capability node exists");
+    let original_id = capability_node["id"]
+        .as_str()
+        .test_expect("capability node id")
+        .to_string();
+    capability_node["id"] = Value::String("capability-proof".to_string());
+    let edges = evidence_graph["edges"]
+        .as_array_mut()
+        .test_expect("governed action evidence graph has edges");
+    for edge in edges {
+        if edge["from"] == original_id {
+            edge["from"] = Value::String("capability-proof".to_string());
+        }
+        if edge["to"] == original_id {
+            edge["to"] = Value::String("capability-proof".to_string());
+        }
+    }
+
+    let evidence_graph_bytes =
+        serde_json::to_vec(&evidence_graph).test_expect("evidence graph serializes");
+    let verifier_policy_bytes = valid_verifier_policy_bytes();
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+
+    let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect_err("standalone minimal passport must reject non-content evidence node id");
+
+    assert!(
+        error
+            .to_string()
+            .contains("evidence graph node id digest mismatch"),
+        "{error}"
+    );
+}
+
+#[test]
 fn standalone_minimal_passport_rejects_self_declared_guard_and_kernel_keys() {
     for (artifact_path, key_field, key_seed, expected_error) in [
         (
@@ -1562,14 +1780,29 @@ fn standalone_minimal_passport_rejects_advisory_authority_edge() {
     let mut evidence_graph: Value =
         serde_json::from_slice(&governed_action_evidence_graph_bytes(&artifacts))
             .test_expect("governed action evidence graph parses");
+    let nodes = evidence_graph["nodes"]
+        .as_array()
+        .test_expect("governed action evidence graph has nodes");
+    let capability_node_id = nodes
+        .iter()
+        .find(|node| node["path"] == "capability-proof.json")
+        .and_then(|node| node["id"].as_str())
+        .test_expect("capability node id")
+        .to_string();
+    let receipt_node_id = nodes
+        .iter()
+        .find(|node| node["path"] == "kernel-receipt.json")
+        .and_then(|node| node["id"].as_str())
+        .test_expect("receipt node id")
+        .to_string();
     let edges = evidence_graph["edges"]
         .as_array_mut()
         .test_expect("governed action evidence graph has edges");
     let authorizing_edge = edges
         .iter_mut()
         .find(|edge| {
-            edge["from"] == "capability-proof"
-                && edge["to"] == "kernel-receipt"
+            edge["from"] == capability_node_id
+                && edge["to"] == receipt_node_id
                 && edge["predicate"] == "authorizes"
         })
         .test_expect("capability authorizes receipt edge exists");
@@ -1812,6 +2045,7 @@ fn runtime_security_rejects_advisory_authorization_by_node_role() {
         .artifacts
         .insert("advisory-observation.json".to_string(), advisory_bytes);
     update_runtime_graph_node_digest(&mut bundle, "advisory-observation.json", &advisory_digest);
+    let advisory_node_id = runtime_graph_node_id(&bundle, "advisory-observation.json");
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("runtime graph parses");
     let edges = graph["edges"]
@@ -1819,7 +2053,7 @@ fn runtime_security_rejects_advisory_authorization_by_node_role() {
         .test_expect("runtime graph has edges");
     let advisory_edge = edges
         .iter_mut()
-        .find(|edge| edge["from"] == "external-advisory-observation")
+        .find(|edge| edge["from"] == advisory_node_id)
         .test_expect("advisory edge exists");
     advisory_edge["evidence_class"] = Value::String("digest-bound-reference".to_string());
     rebind_runtime_graph(&mut bundle, graph);
@@ -1830,6 +2064,46 @@ fn runtime_security_rejects_advisory_authorization_by_node_role() {
 
     assert!(
         error.contains("advisory evidence cannot authorize runtime execution"),
+        "{error}"
+    );
+}
+
+#[test]
+fn runtime_security_rejects_evidence_node_id_digest_mismatch() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    let mut graph: Value =
+        serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("runtime graph parses");
+    let nodes = graph["nodes"]
+        .as_array_mut()
+        .test_expect("runtime graph has nodes");
+    let lease_node = nodes
+        .iter_mut()
+        .find(|node| node["path"] == "execution-lease.json")
+        .test_expect("execution lease node exists");
+    let original_id = lease_node["id"]
+        .as_str()
+        .test_expect("execution lease node id")
+        .to_string();
+    lease_node["id"] = Value::String("execution-lease".to_string());
+    let edges = graph["edges"]
+        .as_array_mut()
+        .test_expect("runtime graph has edges");
+    for edge in edges {
+        if edge["from"] == original_id {
+            edge["from"] = Value::String("execution-lease".to_string());
+        }
+        if edge["to"] == original_id {
+            edge["to"] = Value::String("execution-lease".to_string());
+        }
+    }
+    rebind_runtime_graph(&mut bundle, graph);
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("runtime graph must reject non-content node id");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("evidence graph node id digest mismatch"),
         "{error}"
     );
 }
@@ -1856,6 +2130,7 @@ fn runtime_security_rejects_advisory_runtime_authority_edge_predicates() {
             "advisory-observation.json",
             &advisory_digest,
         );
+        let advisory_node_id = runtime_graph_node_id(&bundle, "advisory-observation.json");
         let mut graph: Value = serde_json::from_slice(&bundle.evidence_graph_bytes)
             .test_expect("runtime graph parses");
         let edges = graph["edges"]
@@ -1863,7 +2138,7 @@ fn runtime_security_rejects_advisory_runtime_authority_edge_predicates() {
             .test_expect("runtime graph has edges");
         let advisory_edge = edges
             .iter_mut()
-            .find(|edge| edge["from"] == "external-advisory-observation")
+            .find(|edge| edge["from"] == advisory_node_id)
             .test_expect("advisory edge exists");
         advisory_edge["predicate"] = Value::String(predicate.to_string());
         advisory_edge["evidence_class"] = Value::String("digest-bound-reference".to_string());

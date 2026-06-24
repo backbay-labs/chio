@@ -268,17 +268,26 @@ fn standalone_risk_evidence_ref_matches(
     evidence_ref: &str,
     kind: chio_control_plane::risk_comptroller::RiskEvidenceRefKind,
 ) -> bool {
-    let Some(node) = nodes
-        .iter()
-        .find(|node| node.id.as_deref() == Some(evidence_ref))
-    else {
-        return false;
-    };
-    let Ok(schema) = graph_node_schema(node, "risk evidence") else {
-        return false;
-    };
-    risk_evidence_schema_matches_kind(schema, kind)
-        && load_graph_bytes_artifact(bundle_dir, node, schema, "risk evidence").is_ok()
+    nodes.iter().any(|node| {
+        if !standalone_risk_evidence_ref_matches_node(node, evidence_ref) {
+            return false;
+        }
+        let Ok(schema) = graph_node_schema(node, "risk evidence") else {
+            return false;
+        };
+        risk_evidence_schema_matches_kind(schema, kind)
+            && load_graph_bytes_artifact(bundle_dir, node, schema, "risk evidence").is_ok()
+    })
+}
+
+fn standalone_risk_evidence_ref_matches_node(node: &GraphArtifactNode, evidence_ref: &str) -> bool {
+    node.id.as_deref() == Some(evidence_ref)
+        || node.sha256.as_deref() == Some(evidence_ref)
+        || node.path == evidence_ref
+        || Path::new(&node.path)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            == Some(evidence_ref)
 }
 
 fn evidence_graph_has_enterprise_risk_context(

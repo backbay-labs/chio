@@ -414,17 +414,45 @@ fn proof_serve_does_not_host_unmanifested_bundle_files() {
         br#"{"schema":"debug-notes.v1","note":"not manifest evidence"}"#,
     )
     .test_expect("write internal debug notes");
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(bundle.join("manifest.json")).test_expect("read manifest"),
+    )
+    .test_expect("manifest parses");
+    let negative_case_path = manifest["negative_cases"]
+        .as_array()
+        .test_expect("negative cases array")
+        .first()
+        .and_then(|negative_case| negative_case.get("path"))
+        .and_then(serde_json::Value::as_str)
+        .test_expect("negative case path");
+    let negative_case_dir = Path::new(negative_case_path)
+        .parent()
+        .test_expect("negative case path has parent");
+    let negative_debug_dir = bundle.join(negative_case_dir);
+    std::fs::write(
+        negative_debug_dir.join("debug-notes.json"),
+        br#"{"schema":"debug-notes.v1","note":"not manifest negative evidence"}"#,
+    )
+    .test_expect("write negative debug notes");
 
     let server = spawn_proof_serve(&bundle, None);
 
     let manifest = wait_for_http_response(server.address, "/manifest.json");
     let internal_file =
         wait_for_http_response(server.address, "/artifacts/internal/debug-notes.json");
+    let negative_internal_file = wait_for_http_response(
+        server.address,
+        &format!("/{}/debug-notes.json", negative_case_dir.display()),
+    );
 
     assert!(manifest.starts_with("HTTP/1.1 200"), "{manifest}");
     assert!(
         !internal_file.starts_with("HTTP/1.1 200"),
         "{internal_file}"
+    );
+    assert!(
+        !negative_internal_file.starts_with("HTTP/1.1 200"),
+        "{negative_internal_file}"
     );
 }
 

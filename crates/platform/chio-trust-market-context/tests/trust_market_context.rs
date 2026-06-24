@@ -171,6 +171,32 @@ fn push_receipt_artifact(
     );
 }
 
+fn normalize_graph_node_ids(graph_nodes: &mut [Value], graph_edges: &mut [Value]) {
+    let mut node_id_map = BTreeMap::new();
+    for node in graph_nodes {
+        let old_id = node["id"]
+            .as_str()
+            .test_expect("graph node id exists")
+            .to_string();
+        let digest = node["sha256"]
+            .as_str()
+            .test_expect("graph node digest exists")
+            .to_string();
+        node["id"] = Value::String(digest.clone());
+        node_id_map.insert(old_id, digest);
+    }
+    for edge in graph_edges {
+        for field in ["from", "to"] {
+            let Some(old_id) = edge[field].as_str() else {
+                continue;
+            };
+            if let Some(new_id) = node_id_map.get(old_id) {
+                edge[field] = Value::String(new_id.clone());
+            }
+        }
+    }
+}
+
 fn facility_lifecycle_for_state(final_state: &str, settlement_evidence_ref: &str) -> Value {
     const POLICY_ID: &str = "risk-policy-facility-market-valid";
     let mut transitions = vec![
@@ -1172,55 +1198,57 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         );
     }
 
+    let mut graph_edges = vec![
+        json!({
+            "from": "claim-set",
+            "to": "verifier-policy",
+            "predicate": "binds",
+            "evidence_class": "digest-bound-reference"
+        }),
+        json!({
+            "from": "provider-discovery-snapshot",
+            "to": "provider-selection-report",
+            "predicate": "binds",
+            "evidence_class": "chio-sidecar-proof"
+        }),
+        json!({
+            "from": "provider-selection-report",
+            "to": "sla-commitment",
+            "predicate": "binds",
+            "evidence_class": "chio-sidecar-proof"
+        }),
+        json!({
+            "from": "provider-selection-report",
+            "to": "risk-comptroller-report",
+            "predicate": "binds",
+            "evidence_class": "chio-sidecar-proof"
+        }),
+        json!({
+            "from": "trust-scorecard-snapshot",
+            "to": "reputation-import-report",
+            "predicate": "derives",
+            "evidence_class": "digest-bound-reference"
+        }),
+        json!({
+            "from": "guarantee-decision",
+            "to": "collateral-position-report",
+            "predicate": "binds",
+            "evidence_class": "chio-sidecar-proof"
+        }),
+        json!({
+            "from": "guarantee-decision",
+            "to": "adjudication-jurisdiction-receipt",
+            "predicate": "binds",
+            "evidence_class": "chio-sidecar-proof"
+        }),
+    ];
+    normalize_graph_node_ids(&mut graph_nodes, &mut graph_edges);
     let evidence_graph = json_bytes(json!({
         "schema": "chio.transaction.evidence-graph.v1",
         "id": "evidence-graph-trust-market-valid",
         "issued_at": "2026-06-10T00:00:00Z",
         "nodes": graph_nodes,
-        "edges": [
-            {
-                "from": "claim-set",
-                "to": "verifier-policy",
-                "predicate": "binds",
-                "evidence_class": "digest-bound-reference"
-            },
-            {
-                "from": "provider-discovery-snapshot",
-                "to": "provider-selection-report",
-                "predicate": "binds",
-                "evidence_class": "chio-sidecar-proof"
-            },
-            {
-                "from": "provider-selection-report",
-                "to": "sla-commitment",
-                "predicate": "binds",
-                "evidence_class": "chio-sidecar-proof"
-            },
-            {
-                "from": "provider-selection-report",
-                "to": "risk-comptroller-report",
-                "predicate": "binds",
-                "evidence_class": "chio-sidecar-proof"
-            },
-            {
-                "from": "trust-scorecard-snapshot",
-                "to": "reputation-import-report",
-                "predicate": "derives",
-                "evidence_class": "digest-bound-reference"
-            },
-            {
-                "from": "guarantee-decision",
-                "to": "collateral-position-report",
-                "predicate": "binds",
-                "evidence_class": "chio-sidecar-proof"
-            },
-            {
-                "from": "guarantee-decision",
-                "to": "adjudication-jurisdiction-receipt",
-                "predicate": "binds",
-                "evidence_class": "chio-sidecar-proof"
-            }
-        ]
+        "edges": graph_edges
     }));
 
     let mut passport = TransactionPassport {
@@ -1264,12 +1292,27 @@ fn update_trust_market_artifact(bundle: &mut TrustMarketBundle, path: &str, valu
 
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("evidence graph parses");
+    let mut old_node_id = None;
     for node in graph["nodes"]
         .as_array_mut()
         .test_expect("evidence graph nodes array")
     {
         if node["path"] == path {
+            old_node_id = node.get("id").and_then(Value::as_str).map(str::to_string);
+            node["id"] = Value::String(digest.clone());
             node["sha256"] = Value::String(digest.clone());
+        }
+    }
+    if let Some(old_node_id) = old_node_id {
+        for edge in graph["edges"]
+            .as_array_mut()
+            .test_expect("evidence graph edges array")
+        {
+            for field in ["from", "to"] {
+                if edge[field].as_str() == Some(old_node_id.as_str()) {
+                    edge[field] = Value::String(digest.clone());
+                }
+            }
         }
     }
     bundle.evidence_graph_bytes = json_bytes(graph);

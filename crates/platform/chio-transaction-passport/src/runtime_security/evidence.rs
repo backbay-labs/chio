@@ -248,7 +248,16 @@ fn validate_node(node: &RuntimeEvidenceNode) -> Result<(), TransactionPassportEr
             "invalid evidence graph node digest: {}",
             node.sha256
         ))
-    })
+    })?;
+    if node.id != node.sha256 {
+        return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+            format!(
+                "evidence graph node id digest mismatch: expected {}, got {}",
+                node.sha256, node.id
+            ),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_edge(edge: &RuntimeEvidenceEdge) -> Result<(), TransactionPassportError> {

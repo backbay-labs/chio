@@ -917,15 +917,13 @@ fn proof_collect_derives_receipt_coverage_for_each_terminal_status() {
     let nodes = evidence_graph["nodes"]
         .as_array_mut()
         .test_expect("graph nodes array");
-    for (node_id, path) in [
-        ("terminal-denial-receipt", "denial-receipt.json"),
-        ("terminal-failure-receipt", "failure-receipt.json"),
-    ] {
+    for path in ["denial-receipt.json", "failure-receipt.json"] {
+        let sha256 = sha256_file(&artifact_path.join(path));
         nodes.push(serde_json::json!({
-            "id": node_id,
+            "id": sha256,
             "schema": "chio.receipt.v1",
             "path": path,
-            "sha256": sha256_file(&artifact_path.join(path)),
+            "sha256": sha256,
             "role": "receipt"
         }));
     }
@@ -1028,14 +1026,15 @@ fn proof_collect_rejects_unsafe_receipt_coverage_node_path() {
         &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
     )
     .test_expect("evidence graph parses");
+    let unsafe_receipt_sha256 = sha256_file(&receipt_path);
     evidence_graph["nodes"]
         .as_array_mut()
         .test_expect("graph nodes array")
         .push(serde_json::json!({
-            "id": "terminal-denial-unsafe-path",
+            "id": unsafe_receipt_sha256,
             "schema": "chio.receipt.v1",
             "path": "receipt%2fescape.json",
-            "sha256": sha256_file(&receipt_path),
+            "sha256": unsafe_receipt_sha256,
             "role": "receipt"
         }));
     write_json(&evidence_graph_path, &evidence_graph);
@@ -1093,14 +1092,15 @@ fn proof_collect_records_receipt_coverage_exclusions_for_missing_terminal_status
         &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
     )
     .test_expect("evidence graph parses");
+    let denial_receipt_sha256 = sha256_file(&artifact_path.join("denial-receipt.json"));
     evidence_graph["nodes"]
         .as_array_mut()
         .test_expect("graph nodes array")
         .push(serde_json::json!({
-            "id": "terminal-denial-receipt",
+            "id": denial_receipt_sha256,
             "schema": "chio.receipt.v1",
             "path": "denial-receipt.json",
-            "sha256": sha256_file(&artifact_path.join("denial-receipt.json")),
+            "sha256": denial_receipt_sha256,
             "role": "receipt"
         }));
     write_json(&evidence_graph_path, &evidence_graph);

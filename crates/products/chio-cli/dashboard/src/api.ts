@@ -37,6 +37,7 @@ import type {
   ProofRoomFixtureCatalogNegativeCase,
   ProofRoomLoadReport,
   ProofRoomPublicSettlementProofBundle,
+  ProofRoomPublicSettlementVerifierReport,
   ProofRoomRiskComptrollerReport,
   ProofRoomStaticBundle,
   ProofRoomWorkflowPreflightEvidence,
@@ -504,6 +505,26 @@ async function readPublicSettlementProof(
   )
 }
 
+function isPublicSettlementVerifierReport(
+  value: unknown,
+): value is ProofRoomPublicSettlementVerifierReport {
+  return typeof value === 'object'
+    && value !== null
+    && (value as { schema?: unknown }).schema === 'chio.public-settlement-verifier-report.v1'
+}
+
+function readPublicSettlementVerifierReport(
+  verifierReport: ProofRoomCanonicalVerifierReport,
+): ProofRoomPublicSettlementVerifierReport | undefined {
+  if (isPublicSettlementVerifierReport(verifierReport)) {
+    return verifierReport
+  }
+  const familyReports = Array.isArray(verifierReport.family_reports)
+    ? verifierReport.family_reports
+    : []
+  return familyReports.find(isPublicSettlementVerifierReport)
+}
+
 async function readAgentWebProjections(
   manifest: ProofRoomBundleManifest,
   sourceLabel: ProofRoomArtifactSourceLabel,
@@ -563,6 +584,7 @@ type ProofRoomBundleEvidence = Pick<
   | 'runtimeEvidence'
   | 'cryptoContextEvidence'
   | 'publicSettlementProof'
+  | 'publicSettlementVerifierReport'
   | 'riskReport'
   | 'agentWebProjections'
 >
@@ -641,6 +663,7 @@ export async function readProofRoomBundleEvidence(
     ...artifactEvidence,
     workflowPreflightEvidence,
     publicSettlementProof,
+    publicSettlementVerifierReport: readPublicSettlementVerifierReport(verifierReport),
     riskReport,
     agentWebProjections,
   }

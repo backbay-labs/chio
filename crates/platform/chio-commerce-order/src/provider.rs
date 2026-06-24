@@ -7,9 +7,13 @@ use super::types::{
     CommerceFederationTrustBundle, CommerceOrderContext, CommerceProviderPassport,
     CommerceReputationSnapshot,
 };
-use super::validation::require_non_empty;
+use super::validation::{parse_rfc3339_utc, require_non_empty};
 use chio_core_types::crypto::{PublicKey, Signature};
+use chrono::{DateTime, Utc};
 use serde::Serialize;
+
+const MAX_PROVIDER_TRUST_EVIDENCE_AGE_SECONDS: i64 = 86_400;
+const MIN_ACCEPTED_REPUTATION_SCORE_BPS: u16 = 1;
 
 pub(super) fn validate_provider_trust_evidence(
     context: &CommerceOrderContext,
@@ -18,18 +22,22 @@ pub(super) fn validate_provider_trust_evidence(
     federation_trust_bundle: &CommerceFederationTrustBundle,
     trusted_provider_trust_signer_keys: &[PublicKey],
 ) -> Result<(), CommerceOrderError> {
+    let context_issued_at = parse_rfc3339_utc(&context.issued_at, "order context issued_at")?;
     validate_provider_passport(
         context,
+        context_issued_at,
         provider_passport,
         trusted_provider_trust_signer_keys,
     )?;
     validate_reputation_snapshot(
         context,
+        context_issued_at,
         reputation_snapshot,
         trusted_provider_trust_signer_keys,
     )?;
     validate_federation_trust_bundle(
         context,
+        context_issued_at,
         federation_trust_bundle,
         trusted_provider_trust_signer_keys,
     )?;
@@ -38,6 +46,7 @@ pub(super) fn validate_provider_trust_evidence(
 
 fn validate_provider_passport(
     context: &CommerceOrderContext,
+    context_issued_at: DateTime<Utc>,
     passport: &CommerceProviderPassport,
     trusted_provider_trust_signer_keys: &[PublicKey],
 ) -> Result<(), CommerceOrderError> {
@@ -77,6 +86,7 @@ fn validate_provider_passport(
             "provider passport missing service families".to_string(),
         ));
     }
+    validate_provider_trust_recency("provider passport", context_issued_at, &passport.issued_at)?;
     verify_provider_trust_signature(
         "provider passport",
         passport,
@@ -88,6 +98,7 @@ fn validate_provider_passport(
 
 fn validate_reputation_snapshot(
     context: &CommerceOrderContext,
+    context_issued_at: DateTime<Utc>,
     reputation: &CommerceReputationSnapshot,
     trusted_provider_trust_signer_keys: &[PublicKey],
 ) -> Result<(), CommerceOrderError> {
@@ -127,6 +138,16 @@ fn validate_reputation_snapshot(
             "reputation score exceeds 10000 bps".to_string(),
         ));
     }
+    if reputation.score_bps < MIN_ACCEPTED_REPUTATION_SCORE_BPS {
+        return Err(CommerceOrderError::ProviderTrustFailed(
+            "reputation score below minimum accepted floor".to_string(),
+        ));
+    }
+    validate_provider_trust_recency(
+        "reputation snapshot",
+        context_issued_at,
+        &reputation.issued_at,
+    )?;
     verify_provider_trust_signature(
         "reputation snapshot",
         reputation,
@@ -138,6 +159,7 @@ fn validate_reputation_snapshot(
 
 fn validate_federation_trust_bundle(
     context: &CommerceOrderContext,
+    context_issued_at: DateTime<Utc>,
     trust_bundle: &CommerceFederationTrustBundle,
     trusted_provider_trust_signer_keys: &[PublicKey],
 ) -> Result<(), CommerceOrderError> {
@@ -174,12 +196,39 @@ fn validate_federation_trust_bundle(
             trust_bundle.status
         )));
     }
+    validate_provider_trust_recency(
+        "federation trust bundle",
+        context_issued_at,
+        &trust_bundle.issued_at,
+    )?;
     verify_provider_trust_signature(
         "federation trust bundle",
         trust_bundle,
         &trust_bundle.signature,
         trusted_provider_trust_signer_keys,
     )?;
+    Ok(())
+}
+
+fn validate_provider_trust_recency(
+    label: &'static str,
+    context_issued_at: DateTime<Utc>,
+    issued_at: &str,
+) -> Result<(), CommerceOrderError> {
+    let issued_at = parse_rfc3339_utc(issued_at, "provider trust issued_at")?;
+    if issued_at > context_issued_at {
+        return Err(CommerceOrderError::ProviderTrustFailed(format!(
+            "{label} issued after order context"
+        )));
+    }
+    let age_seconds = context_issued_at
+        .signed_duration_since(issued_at)
+        .num_seconds();
+    if age_seconds > MAX_PROVIDER_TRUST_EVIDENCE_AGE_SECONDS {
+        return Err(CommerceOrderError::ProviderTrustFailed(format!(
+            "{label} stale for order context"
+        )));
+    }
     Ok(())
 }
 

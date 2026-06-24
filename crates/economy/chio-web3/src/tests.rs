@@ -235,6 +235,10 @@ fn sample_oracle_evidence() -> OracleConversionEvidence {
 }
 
 fn sample_receipt() -> ChioReceipt {
+    sample_receipt_with_nonce("rcpt-web3-1")
+}
+
+fn sample_receipt_with_nonce(nonce: &str) -> ChioReceipt {
     let operator = operator_keypair();
     let parameters = json!({
         "to": "0x2222222222222222222222222222222222222222",
@@ -243,7 +247,7 @@ fn sample_receipt() -> ChioReceipt {
     });
     let action = ToolCallAction::from_parameters(parameters).unwrap();
     let body = ChioReceiptBody {
-        id: "rcpt-web3-1".to_string(),
+        id: nonce.to_string(),
         timestamp: 1_743_292_800,
         capability_id: "cap-web3-1".to_string(),
         tool_server: "chio-settle".to_string(),
@@ -282,8 +286,11 @@ fn sample_receipt() -> ChioReceipt {
 }
 
 fn sample_anchor_inclusion_proof() -> AnchorInclusionProof {
+    sample_anchor_inclusion_proof_for_receipt(sample_receipt())
+}
+
+fn sample_anchor_inclusion_proof_for_receipt(receipt: ChioReceipt) -> AnchorInclusionProof {
     let operator = operator_keypair();
-    let receipt = sample_receipt();
     let receipt_body = receipt.body();
     let receipt_bytes = canonical_json_bytes(&receipt_body).unwrap();
     let tree = MerkleTree::from_leaves(&[receipt_bytes]).unwrap();
@@ -916,6 +923,20 @@ fn merkle_settlement_receipt_rejects_tampered_anchor_signature() {
 }
 
 #[test]
+fn merkle_settlement_receipt_rejects_unrelated_anchor_receipt() {
+    let mut receipt = sample_execution_receipt();
+    receipt.reconciled_anchor_proof = Some(sample_anchor_inclusion_proof_for_receipt(
+        sample_receipt_with_nonce("rcpt-web3-unrelated"),
+    ));
+
+    assert!(matches!(
+        validate_web3_settlement_execution_receipt(&receipt),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("anchor proof receipt must match governed receipt")
+    ));
+}
+
+#[test]
 fn fx_sensitive_settlement_receipt_requires_oracle_evidence() {
     let mut receipt = sample_execution_receipt();
     receipt.oracle_evidence = None;
@@ -1192,6 +1213,27 @@ fn public_settlement_proof_rejects_advisory_public_witness_report() {
         verify_sample_public_settlement_proof(&bundle),
         Err(Web3ContractError::InvalidProof(message))
             if message.contains("public settlement witness mode advisory")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_stale_verified_cache_public_witness_report() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    let settlement_observed_at = bundle.settlement_receipt.observed_execution.observed_at;
+    let witness = bundle
+        .public_witness
+        .as_mut()
+        .expect("sample public settlement proof has witness");
+    witness.observed_at = settlement_observed_at
+        - crate::settlement_proof::MAX_VERIFIED_CACHE_WITNESS_AGE_SECONDS
+        - 1;
+    witness.body_hash =
+        public_settlement_witness_body_hash(witness).expect("sample witness body hashes");
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement verified-cache witness is stale")
     ));
 }
 

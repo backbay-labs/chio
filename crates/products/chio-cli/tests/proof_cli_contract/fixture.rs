@@ -553,6 +553,31 @@ fn proof_fixture_generate_reports_verifiable_disclosure_agent_web_stage_entrypoi
         manifest["source_command"].as_str(),
         Some("chio proof fixture generate disclosure-and-agent-web-envelope")
     );
+    let bundle = out_path.join("proof-room-bundle");
+    let evidence_graph: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(bundle.join("evidence-graph.json"))
+            .test_expect("read generated evidence graph"),
+    )
+    .test_expect("generated evidence graph parses");
+    for node in evidence_graph["nodes"]
+        .as_array()
+        .test_expect("evidence graph nodes array")
+    {
+        let path = node["path"]
+            .as_str()
+            .test_expect("evidence graph node path is string");
+        let artifact_path = bundle.join(path);
+        assert!(
+            artifact_path.exists(),
+            "generated disclosure graph node path missing: {path}"
+        );
+        let artifact_sha256 = sha256_file(&artifact_path);
+        assert_eq!(
+            node["sha256"].as_str(),
+            Some(artifact_sha256.as_str()),
+            "generated disclosure graph node digest mismatch: {path}"
+        );
+    }
 
     let verify_output = chio(&[
         "proof",

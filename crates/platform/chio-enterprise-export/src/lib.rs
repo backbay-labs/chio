@@ -38,6 +38,7 @@ pub struct EnterpriseExportBundle {
     pub verifier_policy_bytes: Vec<u8>,
     pub artifacts: BTreeMap<String, Vec<u8>>,
     pub trusted_passport_signer_keys: Vec<PublicKey>,
+    pub trusted_receipt_kernel_keys: Vec<PublicKey>,
     pub trusted_approval_signer_keys: Vec<PublicKey>,
     pub trusted_risk_comptroller_signer_keys: Vec<PublicKey>,
 }
@@ -154,7 +155,13 @@ pub fn verify_enterprise_export(
     )?;
     push_claim_once(&mut verified_claims, CLAIM_EVIDENCE_EXPORT_DIGEST_BOUND);
 
-    validate_telemetry_projection(bundle, &bundle.passport, risk_report, &telemetry)?;
+    validate_telemetry_projection(
+        bundle,
+        &bundle.passport,
+        risk_report,
+        &telemetry,
+        &bundle.trusted_receipt_kernel_keys,
+    )?;
     push_claim_once(&mut verified_claims, CLAIM_TELEMETRY_PROJECTION_BOUND);
 
     validate_approval_case(

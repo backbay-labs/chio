@@ -45,11 +45,26 @@ pub(crate) fn embedded_risk_evidence_ref_matches(
     evidence_ref: &str,
     kind: chio_risk_comptroller::RiskEvidenceRefKind,
 ) -> bool {
-    let Some(node) = nodes.iter().find(|node| node.id == evidence_ref) else {
-        return false;
-    };
-    risk_evidence_schema_matches_kind(&node.schema, kind)
-        && embedded_artifact_node_bytes(node, artifacts, &node.schema, "risk evidence").is_ok()
+    nodes.iter().any(|node| {
+        if !embedded_graph_ref_matches_node(node, evidence_ref) {
+            return false;
+        }
+        risk_evidence_schema_matches_kind(&node.schema, kind)
+            && embedded_artifact_node_bytes(node, artifacts, &node.schema, "risk evidence").is_ok()
+    })
+}
+
+fn embedded_graph_ref_matches_node(
+    node: &ProofRoomEmbeddedEvidenceNode,
+    evidence_ref: &str,
+) -> bool {
+    node.id == evidence_ref
+        || node.sha256 == evidence_ref
+        || node.path == evidence_ref
+        || std::path::Path::new(&node.path)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            == Some(evidence_ref)
 }
 
 pub(crate) fn is_enterprise_risk_context_role(role: &str) -> bool {
@@ -403,7 +418,7 @@ fn select_single_embedded_artifact_node_by_id<'a>(
 ) -> Result<&'a ProofRoomEmbeddedEvidenceNode, String> {
     let matches: Vec<&ProofRoomEmbeddedEvidenceNode> = nodes
         .iter()
-        .filter(|node| node.id == id && node.schema == expected_schema)
+        .filter(|node| embedded_graph_ref_matches_node(node, id) && node.schema == expected_schema)
         .collect();
     match matches.as_slice() {
         [node] => Ok(node),

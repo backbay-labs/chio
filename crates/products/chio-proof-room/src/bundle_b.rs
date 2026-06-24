@@ -641,7 +641,26 @@ pub(crate) fn update_graph_node_hash_and_rehash(
         .ok_or_else(|| {
             format!("proof-room.negative-case.evidence-graph-node-missing: {artifact_path}")
         })?;
+    let old_node_id = node
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "proof-room.negative-case.evidence-graph-node-id-missing".to_string())?
+        .to_string();
+    node["id"] = serde_json::Value::String(artifact_sha256.to_string());
     node["sha256"] = serde_json::Value::String(artifact_sha256.to_string());
+    if old_node_id != artifact_sha256 {
+        for edge in evidence_graph["edges"]
+            .as_array_mut()
+            .ok_or_else(|| "proof-room.negative-case.evidence-graph-edges-missing".to_string())?
+        {
+            if edge.get("from").and_then(serde_json::Value::as_str) == Some(old_node_id.as_str()) {
+                edge["from"] = serde_json::Value::String(artifact_sha256.to_string());
+            }
+            if edge.get("to").and_then(serde_json::Value::as_str) == Some(old_node_id.as_str()) {
+                edge["to"] = serde_json::Value::String(artifact_sha256.to_string());
+            }
+        }
+    }
     write_json_file(&evidence_graph_path, &evidence_graph)?;
     refresh_roots_and_manifest_after_evidence_graph_change(bundle, manifest)
 }

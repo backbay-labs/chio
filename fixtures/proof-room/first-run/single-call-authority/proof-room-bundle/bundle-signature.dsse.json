@@ -1,14 +1,1 @@
-{
-  "payloadRef": {
-    "path": "manifest.json",
-    "schema": "chio.proof-room.bundle.v1",
-    "sha256": "8c6c339716a5fa68340bfa9bb575ebaac4761a9dc934e3f8175b755d6df7607a"
-  },
-  "payloadType": "application/vnd.chio.proof-room.bundle.v1+json",
-  "signatures": [
-    {
-      "keyid": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-      "sig": "6c28ece82841ec00743bc28a9611544bff7c88b4d83de56e275f12561d92eaede50c2b00f030bfffd8f9e81b1bc20832e7cc709e4b3884f34c285fdca0ad6300"
-    }
-  ]
-}
+{"payloadRef":{"path":"manifest.json","schema":"chio.proof-room.bundle.v1","sha256":"e955a4b01d098214479b70eeba96a231cd331d61bf4e2fb5a3d626f6fb0e3e28"},"payloadType":"application/vnd.chio.proof-room.bundle.v1+json","signatures":[{"keyid":"66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a","sig":"7fa39b4e22766f63ba94b8c07391435d2ded5e9d59c75dcc6f97d43728484d703f1a83f70983c6d07d8ea7f2281013abef08ff7e557f914292839db8ce98fa03"}]}

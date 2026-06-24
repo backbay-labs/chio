@@ -1059,7 +1059,10 @@ fn required_report_string<'a>(
         .ok_or_else(|| CliError::cli_other_error(format!("proof collect report missing {field}")))
 }
 
-fn write_bundle_signature(bundle: &Path, keypair: &chio_core::Keypair) -> Result<(), CliError> {
+pub(super) fn write_bundle_signature(
+    bundle: &Path,
+    keypair: &chio_core::Keypair,
+) -> Result<(), CliError> {
     let manifest_bytes = fs::read(bundle.join("manifest.json"))?;
     let signed_payload = dsse_pre_auth_encoding(PROOF_ROOM_DSSE_PAYLOAD_TYPE, &manifest_bytes);
     let signature = serde_json::json!({

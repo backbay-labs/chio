@@ -2761,6 +2761,52 @@ describe('App operator paths', () => {
         schema: 'chio.public-settlement-verifier-report.v1',
         id: 'public-settlement-verifier-report-web3-settlement-proof-public-valid',
         verdict: 'verified',
+        bundle_id: 'web3-settlement-proof-public-valid',
+        transaction_passport_id: 'passport-public-settlement-valid',
+        commerce_order_id: 'order-public-settlement-valid',
+        recomputed_settlement_state: 'settled',
+        chain_context: {
+          chain_id: 'eip155:8453',
+          settlement_path: 'merkle_proof',
+          settlement_reference: 'settlement-web3-1',
+          observed_block_number: 12345678,
+          registry_root: '0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381',
+          escrow_id: 'escrow-web3-1',
+          bond_vault_contract: '0x1000000000000000000000000000000000000003',
+          posted_bond_amount: {
+            units: 150,
+            currency: 'USD',
+          },
+          minimum_bond_amount: {
+            units: 150,
+            currency: 'USD',
+          },
+          block_hash: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          anchor_tx_hash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          settlement_tx_hash: '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+          beneficiary_address: '0x2222222222222222222222222222222222222222',
+          beneficiary_chio_identity: 'did:chio:91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a',
+        },
+        public_witness: {
+          witness_id: 'public-witness-web3-settlement-proof-public-valid',
+          mode: 'verified_cache',
+          body_hash: '596b565fcf31901fe72aedf144970456ab16da13803d856fdd08cec3906b9a6f',
+          observed_at: 1743293500,
+        },
+        finality_decision: {
+          status: 'final',
+          required_confirmations: 20,
+          observed_confirmations: 24,
+        },
+        dispute_context: {
+          dispute_id: 'dispute-public-settlement-none',
+          posture: 'undisputed',
+          observed_at: 1743293460,
+          challenge_window_secs: 600,
+          window_closed_at: 1743293460,
+          open_dispute_count: 0,
+        },
+        dispute_posture: 'undisputed',
         verified_claims: [
           'claim.public_settlement.finality_verified',
           'claim.public_settlement.dispute_posture_bound',
@@ -2789,6 +2835,11 @@ describe('App operator paths', () => {
     expect(container.textContent).toContain('150 USD')
     expect(container.textContent).toContain('undisputed')
     expect(container.textContent).toContain('chainlink')
+    expect(container.textContent).toContain('Verifier Finality')
+    expect(container.textContent).toContain('final')
+    expect(container.textContent).toContain('verified_cache')
+    expect(container.textContent).toContain('public-witness-web3-settlement-proof-public-valid')
+    expect(container.textContent).toContain('merkle_proof')
     expect(container.textContent).toContain(
       '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
     )

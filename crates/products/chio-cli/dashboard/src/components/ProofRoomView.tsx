@@ -35,6 +35,7 @@ import type {
   ProofRoomManifestClaim,
   ProofRoomNegativeCase,
   ProofRoomPublicSettlementProofBundle,
+  ProofRoomPublicSettlementVerifierReport,
   ProofRoomReceiptCoverage,
   ProofRoomRejectedCheck,
   ProofRoomReportVerdict,
@@ -2114,32 +2115,68 @@ function amountText(amount: ProofRoomSettlementAmount | undefined): string {
 
 function PublicSettlement({
   proof,
+  verifierReport,
 }: {
   proof?: ProofRoomPublicSettlementProofBundle
+  verifierReport?: ProofRoomPublicSettlementVerifierReport
 }) {
-  if (!proof) {
+  if (!proof && !verifierReport) {
     return null
   }
 
-  const receipt = proof.settlement_receipt
-  const chain = proof.chain_snapshot
+  const receipt = proof?.settlement_receipt
+  const chain = proof?.chain_snapshot
   const escrow = chain?.escrow
   const bond = chain?.bond
-  const dispute = proof.dispute_snapshot
+  const dispute = proof?.dispute_snapshot
+  const finality = verifierReport?.finality_decision
+  const witness = verifierReport?.public_witness
+  const verifiedChain = verifierReport?.chain_context
 
   return (
     <section className="proof-room-section">
       <h3>Public Settlement</h3>
       <div className="proof-room-grid">
-        <div className="proof-room-panel">
-          <span className="operator-card-label">Proof Bundle</span>
-          <strong>{proof.bundle_id}</strong>
-          <span>{proof.commerce_order_id}</span>
-          <span>{proof.chain_id}</span>
-          <code>
-            {valueText(proof.observed_confirmations)} of {valueText(proof.required_confirmations)} confirmations
-          </code>
-        </div>
+        {finality ? (
+          <div className="proof-room-panel">
+            <span className="operator-card-label">Verifier Finality</span>
+            <strong>{finality.status}</strong>
+            {verifierReport?.recomputed_settlement_state ? (
+              <span>{verifierReport.recomputed_settlement_state}</span>
+            ) : null}
+            <code>
+              {valueText(finality.observed_confirmations)} of {valueText(finality.required_confirmations)} confirmations
+            </code>
+          </div>
+        ) : null}
+        {witness ? (
+          <div className="proof-room-panel">
+            <span className="operator-card-label">Public Witness</span>
+            <strong>{witness.mode}</strong>
+            {witness.witness_id ? <span>{witness.witness_id}</span> : null}
+            {witness.body_hash ? <code>{witness.body_hash}</code> : null}
+          </div>
+        ) : null}
+        {verifiedChain ? (
+          <div className="proof-room-panel">
+            <span className="operator-card-label">Verified Chain Context</span>
+            <strong>{verifiedChain.settlement_path}</strong>
+            <span>{verifiedChain.settlement_reference}</span>
+            <span>{verifiedChain.chain_id}</span>
+            {verifiedChain.settlement_tx_hash ? <code>{verifiedChain.settlement_tx_hash}</code> : null}
+          </div>
+        ) : null}
+        {proof ? (
+          <div className="proof-room-panel">
+            <span className="operator-card-label">Proof Bundle</span>
+            <strong>{proof.bundle_id}</strong>
+            <span>{proof.commerce_order_id}</span>
+            <span>{proof.chain_id}</span>
+            <code>
+              {valueText(proof.observed_confirmations)} of {valueText(proof.required_confirmations)} confirmations
+            </code>
+          </div>
+        ) : null}
         {receipt ? (
           <div className="proof-room-panel">
             <span className="operator-card-label">Settlement Receipt</span>
@@ -2180,9 +2217,11 @@ function PublicSettlement({
         ) : null}
         <div className="proof-room-panel">
           <span className="operator-card-label">Dispute</span>
-          <strong>{dispute?.posture ?? proof.dispute_posture}</strong>
+          <strong>{dispute?.posture ?? verifierReport?.dispute_context?.posture ?? proof?.dispute_posture}</strong>
           {dispute?.dispute_id ? <span>{dispute.dispute_id}</span> : null}
-          <code>{valueText(dispute?.open_dispute_count)} open disputes</code>
+          <code>
+            {valueText(dispute?.open_dispute_count ?? verifierReport?.dispute_context?.open_dispute_count)} open disputes
+          </code>
         </div>
         {receipt?.oracle_evidence ? (
           <div className="proof-room-panel">
@@ -2519,7 +2558,10 @@ export function ProofRoomView() {
 
       <TrustMarketContext evidence={state.bundle.trustMarketEvidence} />
 
-      <PublicSettlement proof={state.bundle.publicSettlementProof} />
+      <PublicSettlement
+        proof={state.bundle.publicSettlementProof}
+        verifierReport={state.bundle.publicSettlementVerifierReport}
+      />
 
       <section className="proof-room-section">
         <h3>Verifier Report</h3>

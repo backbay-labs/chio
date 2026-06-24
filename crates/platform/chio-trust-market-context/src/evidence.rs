@@ -109,11 +109,11 @@ pub(super) fn require_node(
 pub(super) fn bundle_contains_verified_receipt_node_id(
     bundle: &TrustMarketBundle,
     graph: &TrustMarketEvidenceGraph,
-    node_id: &str,
+    receipt_ref: &str,
     trusted_authority_keys: &[PublicKey],
 ) -> bool {
     let Some(node) = graph.nodes.iter().find(|node| {
-        node.id == node_id
+        risk_evidence_ref_matches_node(node, receipt_ref)
             && node.role == TrustMarketEvidenceRole::Receipt
             && node.schema == CHIO_RECEIPT_SCHEMA
     }) else {
@@ -135,7 +135,13 @@ pub(super) fn bundle_contains_verified_receipt_node_id(
         .get("receipt_id")
         .or_else(|| value.get("id"))
         .and_then(serde_json::Value::as_str);
-    if receipt_id != Some(node_id) {
+    let node_file_stem = std::path::Path::new(&node.path)
+        .file_stem()
+        .and_then(|stem| stem.to_str());
+    if receipt_id != Some(receipt_ref)
+        && receipt_id != Some(node.id.as_str())
+        && receipt_id != node_file_stem
+    {
         return false;
     }
     if value
@@ -156,7 +162,8 @@ pub(super) fn bundle_contains_risk_evidence_kind(
     trusted_authority_keys: &[PublicKey],
 ) -> bool {
     let Some(node) = graph.nodes.iter().find(|node| {
-        node.id == evidence_ref && risk_evidence_schema_matches_kind(&node.schema, kind)
+        risk_evidence_ref_matches_node(node, evidence_ref)
+            && risk_evidence_schema_matches_kind(&node.schema, kind)
     }) else {
         return false;
     };
@@ -173,6 +180,16 @@ pub(super) fn bundle_contains_risk_evidence_kind(
         return false;
     }
     validate_artifact_signature(node, &value, trusted_authority_keys).is_ok()
+}
+
+fn risk_evidence_ref_matches_node(node: &TrustMarketEvidenceNode, evidence_ref: &str) -> bool {
+    node.id == evidence_ref
+        || node.sha256 == evidence_ref
+        || node.path == evidence_ref
+        || std::path::Path::new(&node.path)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            == Some(evidence_ref)
 }
 
 fn risk_evidence_schema_matches_kind(schema: &str, kind: RiskEvidenceRefKind) -> bool {

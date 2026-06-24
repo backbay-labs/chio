@@ -4,7 +4,13 @@ use chio_core_types::crypto::Keypair;
 use chio_test_support::prelude::*;
 use serde_json::{json, Value};
 
-use chio_core_types::receipt::body::CHIO_RECEIPT_SCHEMA;
+use chio_core_types::receipt::{
+    body::{ChioReceipt, ChioReceiptBody, CHIO_RECEIPT_SCHEMA},
+    decision::ToolCallAction,
+    kinds::{
+        BoundaryClass, ObservationOutcome, ReceiptKind, RedactionMode, ToolOrigin, TrustLevel,
+    },
+};
 use chio_enterprise_export::{verify_enterprise_export, EnterpriseExportBundle};
 use chio_transaction_passport::TransactionPassport;
 
@@ -78,6 +84,14 @@ fn transaction_passport_keypair() -> Keypair {
     Keypair::from_seed(&TRANSACTION_PASSPORT_SIGNATURE_SEED)
 }
 
+fn receipt_kernel_keypair() -> Keypair {
+    Keypair::from_seed(&[23u8; 32])
+}
+
+fn untrusted_receipt_kernel_keypair() -> Keypair {
+    Keypair::from_seed(&[24u8; 32])
+}
+
 fn sign_transaction_passport(passport: &mut TransactionPassport) {
     let keypair = transaction_passport_keypair();
     passport.issuer = format!("did:chio:{}", keypair.public_key().to_hex());
@@ -116,6 +130,48 @@ fn signed_value_with_key(mut value: Value, keypair: &Keypair) -> Value {
     value
 }
 
+fn signed_telemetry_receipt(
+    event_id: &str,
+    event_kind: &str,
+    artifact_ref: &str,
+    artifact_sha256: &str,
+    content_hash: &str,
+    keypair: &Keypair,
+) -> ChioReceipt {
+    ChioReceipt::sign(
+        ChioReceiptBody {
+            id: String::new(),
+            timestamp: 1_765_324_800,
+            capability_id: "cap-enterprise-telemetry".to_string(),
+            tool_server: "enterprise-export".to_string(),
+            tool_name: event_kind.to_string(),
+            action: ToolCallAction::from_parameters(json!({
+                "event_id": event_id,
+                "artifact_ref": artifact_ref,
+                "artifact_sha256": artifact_sha256
+            }))
+            .test_expect("telemetry receipt action builds"),
+            decision: None,
+            receipt_kind: ReceiptKind::TraceObservation,
+            boundary_class: BoundaryClass::DetectOnly,
+            observation_outcome: Some(ObservationOutcome::Observed),
+            tool_origin: ToolOrigin::HostExecutedProviderReported,
+            redaction_mode: RedactionMode::Summary,
+            actor_chain: Vec::new(),
+            content_hash: content_hash.to_string(),
+            policy_hash: "0".repeat(64),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: TrustLevel::Verified,
+            tenant_id: None,
+            kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
+        },
+        keypair,
+    )
+    .test_expect("telemetry receipt signs")
+}
+
 fn artifact_ref(role: &str, path: &str, bytes: &[u8]) -> Value {
     json!({
         "role": role,
@@ -149,6 +205,32 @@ fn push_artifact(
         "role": graph_role
     }));
     artifacts.insert(path.to_string(), bytes);
+}
+
+fn normalize_graph_node_ids(graph_nodes: &mut [Value], graph_edges: &mut [Value]) {
+    let mut node_id_map = BTreeMap::new();
+    for node in graph_nodes {
+        let old_id = node["id"]
+            .as_str()
+            .test_expect("graph node id exists")
+            .to_string();
+        let digest = node["sha256"]
+            .as_str()
+            .test_expect("graph node digest exists")
+            .to_string();
+        node["id"] = Value::String(digest.clone());
+        node_id_map.insert(old_id, digest);
+    }
+    for edge in graph_edges {
+        for field in ["from", "to"] {
+            let Some(old_id) = edge[field].as_str() else {
+                continue;
+            };
+            if let Some(new_id) = node_id_map.get(old_id) {
+                edge[field] = Value::String(new_id.clone());
+            }
+        }
+    }
 }
 
 fn push_ref_artifact_if_missing(
@@ -1307,6 +1389,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
             "evidence_class": "chio-sidecar-proof"
         }));
     }
+    normalize_graph_node_ids(&mut graph_nodes, &mut graph_edges);
     let evidence_graph = json_bytes(json!({
         "schema": "chio.transaction.evidence-graph.v1",
         "id": "enterprise-evidence-graph-valid",
@@ -1332,6 +1415,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         verifier_policy_bytes: verifier_policy,
         artifacts,
         trusted_passport_signer_keys: vec![transaction_passport_keypair().public_key()],
+        trusted_receipt_kernel_keys: vec![receipt_kernel_keypair().public_key()],
         trusted_approval_signer_keys: vec![approval_keypair().public_key()],
         trusted_risk_comptroller_signer_keys: vec![risk_comptroller_keypair().public_key()],
     }
@@ -1345,10 +1429,12 @@ fn enterprise_bundle_with_required_claim(claim: &str) -> EnterpriseExportBundle 
         .as_array_mut()
         .test_expect("required claims are an array")
         .push(Value::String(claim.to_string()));
-    bundle.verifier_policy_bytes = json_bytes(policy);
-    bundle.passport.verifier_policy_sha256 =
-        chio_core_types::sha256_hex(&bundle.verifier_policy_bytes);
-    sign_transaction_passport(&mut bundle.passport);
+    replace_graph_artifact(
+        &mut bundle,
+        "verifier-policy.json",
+        "verifier-policy",
+        policy,
+    );
     bundle
 }
 
@@ -1359,23 +1445,113 @@ fn replace_graph_artifact(
     artifact: Value,
 ) {
     let artifact_bytes = json_bytes(artifact);
+    replace_graph_artifact_bytes(bundle, path, node_id, artifact_bytes);
+}
+
+fn replace_graph_artifact_bytes(
+    bundle: &mut EnterpriseExportBundle,
+    path: &str,
+    node_selector: &str,
+    artifact_bytes: Vec<u8>,
+) {
     let artifact_sha256 = chio_core_types::sha256_hex(&artifact_bytes);
-    bundle.artifacts.insert(path.to_string(), artifact_bytes);
+    bundle
+        .artifacts
+        .insert(path.to_string(), artifact_bytes.clone());
+    if path == "verifier-policy.json" {
+        bundle.verifier_policy_bytes = artifact_bytes;
+        bundle.passport.verifier_policy_sha256 = artifact_sha256.clone();
+    }
 
     let mut graph: Value =
         serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("evidence graph parses");
     let nodes = graph["nodes"]
         .as_array_mut()
         .test_expect("evidence graph nodes are an array");
-    let node = nodes
-        .iter_mut()
-        .find(|node| node.get("id").and_then(Value::as_str) == Some(node_id))
-        .test_expect("graph node exists");
-    node["sha256"] = Value::String(artifact_sha256);
+    let old_id = {
+        let node = nodes
+            .iter_mut()
+            .find(|node| {
+                node.get("id").and_then(Value::as_str) == Some(node_selector)
+                    || node.get("role").and_then(Value::as_str) == Some(node_selector)
+                    || node.get("path").and_then(Value::as_str) == Some(path)
+            })
+            .test_expect("graph node exists");
+        let old_id = node["id"]
+            .as_str()
+            .test_expect("graph node id exists")
+            .to_string();
+        node["id"] = Value::String(artifact_sha256.clone());
+        node["sha256"] = Value::String(artifact_sha256.clone());
+        old_id
+    };
+    for edge in graph["edges"]
+        .as_array_mut()
+        .test_expect("evidence graph edges are an array")
+    {
+        if edge["from"] == old_id {
+            edge["from"] = Value::String(artifact_sha256.clone());
+        }
+        if edge["to"] == old_id {
+            edge["to"] = Value::String(artifact_sha256.clone());
+        }
+    }
     bundle.evidence_graph_bytes = json_bytes(graph);
     bundle.passport.evidence_graph_sha256 =
         chio_core_types::sha256_hex(&bundle.evidence_graph_bytes);
     sign_transaction_passport(&mut bundle.passport);
+}
+
+fn add_siem_telemetry_event_with_receipt(
+    bundle: &mut EnterpriseExportBundle,
+    keypair: &Keypair,
+    receipt_content_hash: String,
+) {
+    let event_id = "siem-export-event";
+    let event_kind = "siem_export";
+    let artifact_ref = "data-governance-report.json";
+    let artifact_bytes = bundle
+        .artifacts
+        .get(artifact_ref)
+        .test_expect("data governance artifact exists");
+    let artifact_sha256 = chio_core_types::sha256_hex(artifact_bytes);
+    let receipt = signed_telemetry_receipt(
+        event_id,
+        event_kind,
+        artifact_ref,
+        &artifact_sha256,
+        &receipt_content_hash,
+        keypair,
+    );
+    let receipt_path = "siem-receipt.json";
+    bundle.artifacts.insert(
+        receipt_path.to_string(),
+        json_bytes(serde_json::to_value(receipt).test_expect("receipt serializes")),
+    );
+
+    let mut telemetry: Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("telemetry-projection.json")
+            .test_expect("telemetry artifact exists"),
+    )
+    .test_expect("telemetry artifact parses");
+    telemetry["events"]
+        .as_array_mut()
+        .test_expect("telemetry events are an array")
+        .push(json!({
+            "event_id": event_id,
+            "event_kind": event_kind,
+            "artifact_ref": artifact_ref,
+            "artifact_sha256": artifact_sha256,
+            "receipt_ref": receipt_path
+        }));
+    replace_graph_artifact(
+        bundle,
+        "telemetry-projection.json",
+        "telemetry-projection",
+        telemetry,
+    );
 }
 
 fn current_export_bundle_digest(bundle: &EnterpriseExportBundle) -> String {
@@ -1426,12 +1602,14 @@ fn prepend_unreferenced_risk_report(bundle: &mut EnterpriseExportBundle) {
         .test_expect("evidence graph nodes are an array");
     let risk_node_index = nodes
         .iter()
-        .position(|node| node.get("id").and_then(Value::as_str) == Some("risk-comptroller-report"))
+        .position(|node| {
+            node.get("role").and_then(Value::as_str) == Some("risk-comptroller-report")
+        })
         .test_expect("risk report graph node exists");
     nodes.insert(
         risk_node_index,
         json!({
-            "id": "risk-comptroller-report-unreferenced",
+            "id": risk_report_sha256,
             "schema": "chio.risk.comptroller-report.v1",
             "path": "risk-comptroller-report-unreferenced.json",
             "sha256": risk_report_sha256,
@@ -2060,6 +2238,42 @@ fn enterprise_export_rejects_telemetry_schema_only_receipt_ref() {
 }
 
 #[test]
+fn enterprise_export_rejects_telemetry_signed_untrusted_receipt_ref() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    let artifact_sha256 = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("data-governance-report.json")
+            .test_expect("data governance artifact exists"),
+    );
+    add_siem_telemetry_event_with_receipt(
+        &mut bundle,
+        &untrusted_receipt_kernel_keypair(),
+        artifact_sha256,
+    );
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("untrusted telemetry receipt signer must fail closed");
+
+    assert!(error
+        .to_string()
+        .contains("telemetry receipt signer untrusted"));
+}
+
+#[test]
+fn enterprise_export_rejects_telemetry_receipt_content_hash_mismatch() {
+    let mut bundle = enterprise_bundle(EnterpriseCase::Valid);
+    add_siem_telemetry_event_with_receipt(&mut bundle, &receipt_kernel_keypair(), "f".repeat(64));
+
+    let error = verify_enterprise_export(&bundle)
+        .test_expect_err("telemetry receipt must bind exported artifact digest");
+
+    assert!(error
+        .to_string()
+        .contains("telemetry receipt content hash mismatch"));
+}
+
+#[test]
 fn enterprise_export_rejects_control_map_missing_gate() {
     let bundle = enterprise_bundle(EnterpriseCase::ControlMapMissingGate);
 
@@ -2105,7 +2319,7 @@ fn enterprise_export_rejects_control_map_gate_without_artifact() {
         .as_array_mut()
         .test_expect("evidence graph nodes are an array")
         .push(json!({
-            "id": "fake-data-governance-report",
+            "id": "a".repeat(64),
             "schema": "chio.enterprise.data-governance-report.v1",
             "path": "fake-data-governance-report.json",
             "sha256": "a".repeat(64),
