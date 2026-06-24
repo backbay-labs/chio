@@ -542,3 +542,83 @@ mod tests {
         assert_eq!(fresh, RecordOutcome::Fresh);
     }
 }
+
+#[cfg(all(test, feature = "sqlite-store"))]
+mod sqlite_tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::{PasskeyNonceStore, RecordOutcome, SqlitePasskeyNonceStore};
+
+    fn unique_db_path(prefix: &str) -> std::path::PathBuf {
+        let nonce = match SystemTime::now().duration_since(UNIX_EPOCH) {
+            Ok(d) => d.as_nanos(),
+            Err(e) => panic!("clock before epoch: {e}"),
+        };
+        std::env::temp_dir().join(format!("{prefix}-{nonce}.sqlite3"))
+    }
+
+    #[test]
+    fn sqlite_fresh_then_replay_in_memory() {
+        let store = match SqlitePasskeyNonceStore::open_in_memory() {
+            Ok(s) => s,
+            Err(e) => panic!("open mem: {e}"),
+        };
+        let first = match store.record_if_fresh("cred-1", "nonce-1", 1_000) {
+            Ok(o) => o,
+            Err(e) => panic!("fresh record: {e}"),
+        };
+        assert_eq!(first, RecordOutcome::Fresh);
+        let second = match store.record_if_fresh("cred-1", "nonce-1", 1_000) {
+            Ok(o) => o,
+            Err(e) => panic!("second record: {e}"),
+        };
+        assert_eq!(second, RecordOutcome::Replayed);
+    }
+
+    #[test]
+    fn sqlite_nonce_single_use_survives_reopen() {
+        // The durable store's single-use guarantee must hold across a
+        // process restart: a nonce recorded before a reopen MUST be
+        // detected as a replay after the reopen.
+        let path = unique_db_path("chio-custody-nonce");
+        let path_str = match path.to_str() {
+            Some(s) => s.to_string(),
+            None => panic!("temp path not utf-8"),
+        };
+        {
+            let store = match SqlitePasskeyNonceStore::open(&path_str) {
+                Ok(s) => s,
+                Err(e) => panic!("open: {e}"),
+            };
+            let first = match store.record_if_fresh("cred", "n-1", 4_000) {
+                Ok(o) => o,
+                Err(e) => panic!("first record: {e}"),
+            };
+            assert_eq!(first, RecordOutcome::Fresh);
+        }
+
+        let reopened = match SqlitePasskeyNonceStore::open(&path_str) {
+            Ok(s) => s,
+            Err(e) => panic!("reopen: {e}"),
+        };
+        let replay = match reopened.record_if_fresh("cred", "n-1", 4_000) {
+            Ok(o) => o,
+            Err(e) => panic!("post-reopen record: {e}"),
+        };
+        assert_eq!(
+            replay,
+            RecordOutcome::Replayed,
+            "a nonce recorded before a reopen must be a replay after the reopen"
+        );
+        // A distinct nonce on the same credential is still fresh.
+        let fresh = match reopened.record_if_fresh("cred", "n-2", 4_000) {
+            Ok(o) => o,
+            Err(e) => panic!("distinct nonce after reopen: {e}"),
+        };
+        assert_eq!(fresh, RecordOutcome::Fresh);
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(format!("{path_str}-wal"));
+        let _ = std::fs::remove_file(format!("{path_str}-shm"));
+    }
+}

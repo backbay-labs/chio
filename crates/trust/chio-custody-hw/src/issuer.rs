@@ -100,6 +100,25 @@ pub struct MintResponse {
 /// not wired the corresponding check is skipped; the rate limiter is
 /// wired by default (see [`Self::with_signer`]) so a freshly-constructed
 /// issuer is rate-limited out of the box.
+///
+/// # FAIL-OPEN DEFAULT (read before constructing a production issuer)
+///
+/// The revocation cascade and the replay nonce store are **NOT wired by
+/// default**: a bare [`Self::with_signer`] issuer skips BOTH checks and
+/// will therefore mint for a *revoked* credential and accept a *replayed*
+/// `(credential_id, challenge_nonce)`. The "wired-by-default" guarantee is
+/// feature-level only; it exists once you call [`Self::with_durable_stores`]
+/// (production) or [`Self::with_revocation_oracle`] /
+/// [`Self::with_nonce_store`] (tests / single-process). Construct a
+/// production issuer with [`Self::with_durable_stores`] (or wire both
+/// stores explicitly); a `with_signer`-only issuer is for tests and any
+/// deployment that has *deliberately* moved revocation/replay enforcement
+/// upstream. A deployment that wants the fail-open posture to be an
+/// explicit, fail-closed decision can chain
+/// [`Self::enforce_revocation_replay`] as the final builder step: it
+/// returns [`CustodyError`] (no issuer) unless BOTH gates are wired, so an
+/// accidental fail-open issuer fails loudly at construction instead of
+/// silently minting without revocation/replay enforcement.
 pub struct IssuerService {
     audience: String,
     signer: Arc<dyn SigningBackend>,
@@ -206,10 +225,141 @@ impl IssuerService {
         self
     }
 
+    /// Wire the DURABLE, default-posture stores: a SQLite-backed
+    /// revocation oracle and replay nonce store, both persisted under
+    /// `dir`. This is the wired-by-default path for a production issuer:
+    /// the revocation cascade and the replay-detection state survive an
+    /// issuer restart instead of resetting to empty (which would silently
+    /// re-admit a previously-revoked credential or a previously-seen
+    /// replay nonce after a crash).
+    ///
+    /// Builder-style: returns the issuer with both durable stores wired.
+    /// The two stores live in sibling files under `dir`
+    /// (`revocation.sqlite3` and `nonces.sqlite3`). Tests and
+    /// single-process deployments can instead wire the in-memory stores via
+    /// [`Self::with_revocation_oracle`] / [`Self::with_nonce_store`].
+    ///
+    /// Fail-closed: if either durable store cannot be opened (I/O fault,
+    /// permission error, corrupt schema), this returns
+    /// [`CustodyError`] and NO issuer is produced, so a deployment never
+    /// silently falls back to a non-durable posture.
+    ///
+    /// This is the backward-compatible shape that hides the durable handles
+    /// inside the issuer. When a deployment also needs to call
+    /// `revoke_credential` / `is_revoked` (or share the same revoked-set
+    /// cache across services) on the SAME `Arc` the issuer reads, use
+    /// [`Self::with_durable_stores_handle`] instead: opening
+    /// `revocation.sqlite3` through a SECOND oracle would NOT update this
+    /// issuer's in-RAM cache, so post-startup revocations would not be
+    /// observed by `mint_capability` until the issuer is rebuilt.
+    #[cfg(feature = "sqlite-store")]
+    pub fn with_durable_stores(self, dir: &std::path::Path) -> Result<Self, CustodyError> {
+        // Construct and discard the handle: callers that only want the
+        // wired issuer keep the original signature.
+        let (issuer, _revocation) = self.with_durable_stores_handle(dir)?;
+        Ok(issuer)
+    }
+
+    /// Like [`Self::with_durable_stores`], but ALSO returns the shared
+    /// durable revocation oracle handle so a deployment can query
+    /// `is_revoked` / drive `revoke_credential` on the very same `Arc` the
+    /// issuer consults, or share that single revoked-set cache across
+    /// services.
+    ///
+    /// The returned `Arc<SqliteCredentialRevocationOracle>` is the EXACT
+    /// instance wired into the issuer (cloned, not reopened), so an operator
+    /// revocation made through the handle is observed by `mint_capability`
+    /// immediately, with no reopen and no second in-RAM cache to drift out of
+    /// sync. The nonce store stays encapsulated; only the revocation oracle
+    /// is shareable because it is the handle the operator/control-plane path
+    /// needs.
+    ///
+    /// Same fail-closed contract as [`Self::with_durable_stores`]: if either
+    /// store cannot be opened, this returns [`CustodyError`] and produces
+    /// neither an issuer nor a handle.
+    #[cfg(feature = "sqlite-store")]
+    pub fn with_durable_stores_handle(
+        self,
+        dir: &std::path::Path,
+    ) -> Result<
+        (
+            Self,
+            Arc<crate::revocation::SqliteCredentialRevocationOracle>,
+        ),
+        CustodyError,
+    > {
+        let revocation_path = dir.join("revocation.sqlite3");
+        let nonce_path = dir.join("nonces.sqlite3");
+        let revocation_path = revocation_path.to_str().ok_or_else(|| {
+            CustodyError::Encoding("durable revocation store path is not valid UTF-8".into())
+        })?;
+        let nonce_path = nonce_path.to_str().ok_or_else(|| {
+            CustodyError::Encoding("durable nonce store path is not valid UTF-8".into())
+        })?;
+        let revocation = Arc::new(crate::revocation::SqliteCredentialRevocationOracle::open(
+            revocation_path,
+        )?);
+        let nonces = crate::nonce_store::SqlitePasskeyNonceStore::open(nonce_path)?;
+        let issuer = self
+            .with_revocation_oracle(revocation.clone())
+            .with_nonce_store(Arc::new(nonces));
+        Ok((issuer, revocation))
+    }
+
+    /// Make the FAIL-OPEN DEFAULT an explicit, fail-closed decision at
+    /// construction: assert that BOTH the revocation cascade and the replay
+    /// nonce store are wired, returning [`CustodyError`] (no issuer) if
+    /// either is missing.
+    ///
+    /// A bare [`Self::with_signer`] issuer skips both checks (see the
+    /// type-level "FAIL-OPEN DEFAULT" note); minting against it admits a
+    /// revoked credential and a replayed nonce. Production wiring should be
+    /// [`Self::with_durable_stores`], but a deployment that builds the issuer
+    /// by hand can chain `.enforce_revocation_replay()?` as the final builder
+    /// step to turn an accidental fail-open posture into a loud, fail-closed
+    /// construction error rather than a silent runtime gap. This is purely
+    /// additive (existing call sites that deliberately run a minimal issuer,
+    /// such as tests or deployments that enforce revocation/replay upstream,
+    /// are unaffected unless they opt in to this guard).
+    pub fn enforce_revocation_replay(self) -> Result<Self, CustodyError> {
+        if self.revocation.is_none() {
+            return Err(CustodyError::Encoding(
+                "IssuerService::enforce_revocation_replay: no revocation oracle wired - \
+                 minting would fail open on revocation; wire with_durable_stores or \
+                 with_revocation_oracle"
+                    .into(),
+            ));
+        }
+        if self.nonce_store.is_none() {
+            return Err(CustodyError::Encoding(
+                "IssuerService::enforce_revocation_replay: no replay nonce store wired - \
+                 minting would fail open on replay; wire with_durable_stores or \
+                 with_nonce_store"
+                    .into(),
+            ));
+        }
+        Ok(self)
+    }
+
     /// Configured audience pin for inspection.
     #[must_use]
     pub fn audience(&self) -> &str {
         &self.audience
+    }
+
+    /// Share the wired revocation oracle handle, if any.
+    ///
+    /// Returns the EXACT `Arc<dyn CredentialRevocationOracle>` the issuer
+    /// consults (cloned, not reopened), so an operator path can drive
+    /// `revoke_credential` / read `is_revoked` / enumerate `revoked_closure`
+    /// on the same instance the issuer reads, with no second cache to drift
+    /// out of sync. Returns `None` for a `with_signer`-only issuer that has
+    /// not wired an oracle. For the durable concrete handle (e.g. to share a
+    /// single SQLite-backed revoked-set cache across services), construct
+    /// with [`Self::with_durable_stores_handle`].
+    #[must_use]
+    pub fn revocation_oracle(&self) -> Option<Arc<dyn CredentialRevocationOracle>> {
+        self.revocation.clone()
     }
 
     /// Mint a capability from a verified assertion plus a request.
@@ -513,5 +663,95 @@ mod tests {
             other => panic!("expected RateLimited, got {other:?}"),
         }
         assert_eq!(err.urn(), "urn:chio:error:custody:rate-limited");
+    }
+
+    #[cfg(feature = "sqlite-store")]
+    #[test]
+    fn durable_stores_handle_shares_the_revocation_oracle_with_the_issuer() {
+        // The returned handle must be the SAME instance the issuer reads, so
+        // a revocation driven through the handle is observed by mint_capability
+        // immediately (no reopen, no second in-RAM cache to drift).
+        let dir = std::env::temp_dir().join(format!(
+            "chio-issuer-durable-handle-{}",
+            match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                Ok(d) => d.as_nanos(),
+                Err(e) => panic!("clock before epoch: {e}"),
+            }
+        ));
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            panic!("create temp dir: {e}");
+        }
+
+        let (svc, handle) = match IssuerService::with_signer("urn:chio:audience:kernel", signer(9))
+            .with_durable_stores_handle(&dir)
+        {
+            Ok(pair) => pair,
+            Err(e) => panic!("with_durable_stores_handle: {e}"),
+        };
+
+        let req = MintRequest {
+            audience: "urn:chio:audience:kernel".into(),
+            scope_set: ScopeSet::new(["tool:read"]),
+            challenge_nonce: "dh-1".into(),
+        };
+
+        // Mint succeeds before any revocation.
+        match svc.mint_capability(&verified(), &req, fixed_now()) {
+            Ok(_) => {}
+            Err(e) => panic!("first mint must succeed: {e}"),
+        }
+
+        // Revoke through the SHARED handle; the issuer must observe it.
+        if let Err(e) = handle.revoke_credential("AAAA", 1_000) {
+            panic!("revoke via shared handle: {e}");
+        }
+        let replay = MintRequest {
+            challenge_nonce: "dh-2".into(),
+            ..req.clone()
+        };
+        let err = match svc.mint_capability(&verified(), &replay, fixed_now()) {
+            Ok(_) => panic!("mint after revocation via shared handle MUST fail-closed"),
+            Err(e) => e,
+        };
+        assert!(
+            matches!(err, CustodyError::CredentialRevoked),
+            "a revocation on the shared handle must deny the next mint"
+        );
+
+        // The issuer also exposes the same oracle through the generic accessor.
+        assert!(
+            svc.revocation_oracle().is_some(),
+            "a durable issuer must expose its wired revocation oracle"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn enforce_revocation_replay_rejects_a_fail_open_issuer() {
+        // The fail-open default is explicit: a bare with_signer issuer that
+        // opts in to the guard must be rejected fail-closed at construction
+        // rather than silently minting without revocation/replay checks.
+        let bare = IssuerService::with_signer("urn:chio:audience:kernel", signer(7));
+        assert!(
+            matches!(
+                bare.enforce_revocation_replay(),
+                Err(CustodyError::Encoding(_))
+            ),
+            "an issuer with neither gate wired must be rejected by the guard"
+        );
+
+        // Wiring both gates lets the guard pass.
+        let wired = IssuerService::with_signer("urn:chio:audience:kernel", signer(7))
+            .with_revocation_oracle(Arc::new(
+                crate::revocation::InMemoryCredentialRevocationOracle::new(),
+            ))
+            .with_nonce_store(Arc::new(
+                crate::nonce_store::InMemoryPasskeyNonceStore::new(),
+            ));
+        assert!(
+            wired.enforce_revocation_replay().is_ok(),
+            "an issuer with both gates wired must pass the guard"
+        );
     }
 }

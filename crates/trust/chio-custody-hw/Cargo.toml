@@ -12,7 +12,13 @@ publish = false
 name = "chio_custody_hw"
 
 [features]
-default = ["passkey"]
+# The durable SQLite-backed stores (revocation oracle + nonce store) are
+# the WIRED-BY-DEFAULT custody path: a default build persists revocation
+# and replay state across issuer restarts. Mobile attestation consumers
+# that only need verification (and want to avoid the rusqlite/OpenSSL
+# graph in iOS staticlib builds) disable default features; the in-memory
+# stores remain available for tests and single-process deployments.
+default = ["passkey", "sqlite-store"]
 # Passkey/WebAuthn relying-party verification is enabled for the custody
 # issuer by default. Mobile attestation consumers can disable default
 # features to avoid pulling the OpenSSL-backed webauthn-rs graph into iOS
@@ -26,11 +32,13 @@ passkey = ["dep:webauthn-rs", "dep:webauthn-rs-proto"]
 # canonical envelope (the `signature` field is the only differing slot).
 pq = ["chio-core-types/pq"]
 
-# SQLite-backed durable PasskeyNonceStore. Re-uses the rusqlite version
-# pinned by the workspace (the same version chio-store-sqlite uses) so a
-# deployment can persist the replay-detection store across issuer
-# restarts. Default-off because the in-memory store is sufficient for
-# unit tests and single-process integration tests.
+# SQLite-backed durable stores: the replay-detection `PasskeyNonceStore`
+# AND the `CredentialRevocationOracle` cascade. Re-uses the rusqlite
+# version pinned by the workspace (the same version chio-store-sqlite
+# uses) so a deployment persists both the replay-detection store and the
+# revocation cascade across issuer restarts. ON by default (see the
+# `default` feature); disable default features to fall back to the
+# in-memory stores for unit tests and single-process integration tests.
 sqlite-store = ["dep:rusqlite"]
 
 [dependencies]
