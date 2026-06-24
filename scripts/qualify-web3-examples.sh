@@ -56,7 +56,9 @@ run jq empty \
   "${output_root}/internet-of-agents-web3-network/evidence/cutover-readiness.json" \
   "${output_root}/internet-of-agents-web3-network/contracts/settlement-packet.json" \
   "${output_root}/internet-of-agents-web3-network/contracts/web3-settlement-dispatch.json" \
-  "${output_root}/internet-of-agents-web3-network/contracts/web3-settlement-receipt.json"
+  "${output_root}/internet-of-agents-web3-network/contracts/web3-settlement-receipt.json" \
+  "${output_root}/internet-of-agents-web3-network/transaction-passport/transaction-passport.json" \
+  "${output_root}/internet-of-agents-web3-network/transaction-passport/verifier-report.json"
 
 run jq -e '
   .ok == true
@@ -104,5 +106,11 @@ run jq -e '
   and .adversarial_denial_status.unauthorized_settlement_route == "denied"
   and .adversarial_denial_status.forged_passport == "denied"
 ' "${output_root}/internet-of-agents-web3-network/summary.json" >/dev/null
+
+run jq -e '
+  .schema == "chio.transaction.verifier-report.v1"
+  and .passport_id == "passport-ioa-web3-service-order"
+  and .verdict == "verified"
+' "${output_root}/internet-of-agents-web3-network/transaction-passport/verifier-report.json" >/dev/null
 
 printf 'web3 example qualification complete; log written to %s\n' "${log_path}" | tee -a "${log_path}"

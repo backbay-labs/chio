@@ -53,6 +53,7 @@ trap stop_live_topology EXIT
 start_live_topology "${ARTIFACT_ROOT}"
 run_live_scenario "${ARTIFACT_ROOT}" "${REQUIRE_BASE_SEPOLIA}"
 assert_review_ok "${ARTIFACT_ROOT}"
+verify_transaction_passport "${ARTIFACT_ROOT}"
 
 printf 'scenario 01-web3-service-order passed\n'
 printf 'artifacts: %s\n' "${ARTIFACT_ROOT}"
