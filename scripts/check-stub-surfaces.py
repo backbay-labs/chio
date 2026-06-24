@@ -133,6 +133,16 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "reviewed cfg(test) WebAuthn assertion fixture",
         "2026-12-31",
     ),
+    "crates/trust/chio-custody-hw/src/attestation/google_root.rs": allow(
+        "BAC-567/BAC-601: intentional placeholder-root security warnings; fail "
+        "loudly until the real Google Play Integrity key is provisioned",
+        "2026-12-31",
+    ),
+    "crates/trust/chio-custody-hw/src/attestation/play_integrity.rs": allow(
+        "BAC-567/BAC-601: intentional placeholder-root security warnings; fail "
+        "loudly until the real Google Play Integrity key is provisioned",
+        "2026-12-31",
+    ),
     "crates/protocol/chio-envoy-ext-authz/proto/envoy/config/core/v3/base.proto": allow(
         "protocol fixture text for opaque Envoy fields",
         "2026-12-31",
@@ -313,6 +323,13 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
     ),
     "crates/trust/chio-custody-hw/src/verifier.rs": (
         r"signature are placeholders",
+    ),
+    "crates/trust/chio-custody-hw/src/attestation/google_root.rs": (
+        r"SECURITY / PLACEHOLDER \(BAC-601\)",
+        r"placeholder",
+    ),
+    "crates/trust/chio-custody-hw/src/attestation/play_integrity.rs": (
+        r"SECURITY / PLACEHOLDER \(BAC-601\)",
     ),
     "crates/protocol/chio-envoy-ext-authz/proto/envoy/config/core/v3/base.proto": (
         r"opaque placeholders",

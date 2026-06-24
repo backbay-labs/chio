@@ -578,6 +578,61 @@ impl CapabilityToken {
         Ok(false)
     }
 
+    /// Verify the signature AND enforce the validity window in one pass.
+    ///
+    /// This is the sanctioned entry point when a verifier also needs
+    /// freshness: it fails closed on expiry / not-yet-valid tokens, which
+    /// the bare [`CapabilityToken::verify_signature`] does not check. A clock
+    /// is threaded explicitly via `now` (unix seconds) so there is no hidden
+    /// wall-clock read in this pure check.
+    ///
+    /// Ordering is deliberate and fail-closed: the cryptographic signature is
+    /// checked FIRST. A token with an invalid (or forged) signature is
+    /// rejected before the time window is consulted, so an attacker cannot use
+    /// the error variant to distinguish "expired" from "never validly signed".
+    ///
+    /// Returns `Ok(true)` only when the signature verifies and `now` is within
+    /// `[issued_at, expires_at)`. Returns `Ok(false)` when the signature does
+    /// not verify. Returns [`Error::CapabilityNotYetValid`] /
+    /// [`Error::CapabilityExpired`] when the signature is valid but the token
+    /// is outside its validity window.
+    pub fn verify_signature_at(&self, now: u64) -> Result<bool> {
+        if !self.verify_signature()? {
+            return Ok(false);
+        }
+        self.validate_time(now)?;
+        Ok(true)
+    }
+
+    /// Verify the signature, enforce the `crypto_floor` posture, AND enforce
+    /// the validity window in one pass.
+    ///
+    /// Equivalent to [`CapabilityToken::verify_signature_with_floor`] followed
+    /// by [`CapabilityToken::validate_time`], with the same fail-closed
+    /// ordering: floor + signature are checked before the time window, so a
+    /// floor violation or invalid signature is reported ahead of expiry. A
+    /// clock is threaded explicitly via `now` (unix seconds).
+    ///
+    /// # Errors
+    ///
+    /// Propagates every error of
+    /// [`CapabilityToken::verify_signature_with_floor`]. When the signature
+    /// and floor pass but the token is outside its validity window, the time
+    /// error is surfaced as [`CapabilityFloorVerifyError::Crypto`] wrapping
+    /// [`Error::CapabilityNotYetValid`] / [`Error::CapabilityExpired`].
+    pub fn verify_signature_with_floor_at(
+        &self,
+        floor: CapabilityCryptoFloor,
+        now: u64,
+    ) -> core::result::Result<bool, CapabilityFloorVerifyError> {
+        if !self.verify_signature_with_floor(floor)? {
+            return Ok(false);
+        }
+        self.validate_time(now)
+            .map_err(CapabilityFloorVerifyError::Crypto)?;
+        Ok(true)
+    }
+
     /// Check whether this token is expired at the given unix timestamp.
     #[must_use]
     pub fn is_expired_at(&self, now: u64) -> bool {

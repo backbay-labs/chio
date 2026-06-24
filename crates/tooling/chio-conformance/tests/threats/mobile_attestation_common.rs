@@ -151,7 +151,7 @@ pub fn signed_play_integrity_token(
         iss: GOOGLE_PLAY_INTEGRITY_ISSUER.to_string(),
         exp,
     };
-    encode(&header, &claims, &play_integrity_encoding_key()).map_err(Into::into)
+    encode(&header, &claims, &play_integrity_encoding_key()?).map_err(Into::into)
 }
 
 pub fn future_exp() -> Result<u64, Box<dyn Error>> {
@@ -162,11 +162,27 @@ pub fn future_exp() -> Result<u64, Box<dyn Error>> {
 }
 
 fn cose_key() -> Result<Vec<u8>, Box<dyn Error>> {
+    // COSE EC2 P-256 credential public key: kty(1)=EC2(2), alg(3)=ES256(-7),
+    // crv(-1)=P-256(1), x(-2), y(-3). The coordinates are arbitrary 32-byte
+    // synthetic values; the threat tests only exercise pre-chain rejection
+    // paths, which fire before the leaf-key binding check.
     let value = CborValue::Map(vec![
         (CborValue::Integer(1.into()), CborValue::Integer(2.into())),
         (
             CborValue::Integer(3.into()),
             CborValue::Integer((-7).into()),
+        ),
+        (
+            CborValue::Integer((-1).into()),
+            CborValue::Integer(1.into()),
+        ),
+        (
+            CborValue::Integer((-2).into()),
+            CborValue::Bytes(vec![0x11; 32]),
+        ),
+        (
+            CborValue::Integer((-3).into()),
+            CborValue::Bytes(vec![0x22; 32]),
         ),
     ]);
     let mut bytes = Vec::new();

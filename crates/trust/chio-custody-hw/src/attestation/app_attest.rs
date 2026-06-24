@@ -4,12 +4,20 @@
 //! `fmt`, `authData`, and `attStmt.x5c`. It validates the certificate
 //! chain to the pinned Apple App Attestation root, binds the server
 //! challenge through Apple's nonce extension, checks the app id hash,
-//! enforces counter monotonicity when the caller supplies a prior
-//! counter, and requires the credential id to match the platform key id.
+//! binds the attestation leaf public key to the credential public key in
+//! `authData` (WebAuthn registration step 6), enforces counter
+//! monotonicity when the caller supplies a prior counter, and requires the
+//! credential id to match the platform key id.
 //!
-//! Synthetic fixtures stay available only when the caller explicitly sets
-//! `allow_development_fixture`; production callers should leave that flag
-//! false so compact maps cannot bypass the x5c path.
+//! Production callers set [`AppAttestVerificationInput::production`] so that
+//! the sandbox and development App Attest AAGUIDs are rejected: only the
+//! production environment AAGUID is honoured in a shipped build.
+//!
+//! Synthetic fixtures (the compact-map development shape) are compiled out
+//! of production binaries entirely. They exist only under `cfg(test)` or
+//! the `dev-fixtures` feature, and even then the caller must additionally
+//! set `allow_development_fixture`. In a build without that cfg the
+//! development path is unreachable and fails closed.
 
 use base64ct::{Base64, Base64UrlUnpadded, Encoding};
 use coset::cbor::Value as CborValue;
@@ -38,6 +46,24 @@ pub struct AppAttestVerificationInput<'a> {
     pub challenge: &'a [u8],
     pub app_id: &'a str,
     pub previous_counter: Option<u32>,
+    /// When `true`, only the production App Attest AAGUID is accepted; the
+    /// sandbox and development AAGUIDs are rejected. Shipped callers set
+    /// this so a sandbox-attested key cannot be presented as production
+    /// custody evidence.
+    ///
+    /// SECURITY (BAC-601, should-fix): this is a *runtime-only* switch with no
+    /// `cfg` backstop. A prod binary that constructs this input with
+    /// `production: false` re-enables the sandbox/development AAGUIDs at
+    /// runtime - there is no compile-time guarantee that shipped callers pass
+    /// `true`. Production entry points should hard-code `production: true` (or
+    /// wrap construction in a hardened constructor) rather than threading the
+    /// flag through from request data. Tracked for hardening under BAC-601.
+    pub production: bool,
+    /// Opt-in for the synthetic development-fixture compact-map shape.
+    /// This only has any effect when the crate is compiled with the
+    /// `dev-fixtures` feature or under `cfg(test)`; in a production build
+    /// the development path does not exist and the flag is ignored
+    /// (fails closed).
     pub allow_development_fixture: bool,
 }
 
@@ -72,7 +98,33 @@ pub fn verify_app_attest(
         return verify_webauthn_app_attest(input, &map);
     }
 
-    verify_development_fixture(input, &map)
+    verify_compact_map(input, &map)
+}
+
+/// Dispatch the non-WebAuthn (compact-map) attestation shape.
+///
+/// In production builds the development fixture does not exist, so any
+/// attestation object lacking the WebAuthn `fmt` field is rejected. The
+/// fixture path is only linked under `cfg(test)` or the `dev-fixtures`
+/// feature, and even then requires `allow_development_fixture`.
+#[cfg(any(test, feature = "dev-fixtures"))]
+fn verify_compact_map(
+    input: AppAttestVerificationInput<'_>,
+    map: &[(CborValue, CborValue)],
+) -> Result<VerifiedAppAttest, AttestationError> {
+    verify_development_fixture(input, map)
+}
+
+#[cfg(not(any(test, feature = "dev-fixtures")))]
+fn verify_compact_map(
+    _input: AppAttestVerificationInput<'_>,
+    _map: &[(CborValue, CborValue)],
+) -> Result<VerifiedAppAttest, AttestationError> {
+    Err(AttestationError::InvalidCbor(
+        "attestation object is missing the WebAuthn fmt field; the development \
+         fixture path is not available in production builds"
+            .to_string(),
+    ))
 }
 
 fn verify_webauthn_app_attest(
@@ -85,7 +137,7 @@ fn verify_webauthn_app_attest(
     }
 
     let auth_data = bytes_field(map, "authData")?;
-    let parsed_auth_data = parse_auth_data(auth_data)?;
+    let parsed_auth_data = parse_auth_data(auth_data, input.production)?;
     let expected_app_hash = sha256(input.app_id.as_bytes());
     if parsed_auth_data.app_id_hash != expected_app_hash {
         return Err(AttestationError::AppIdentifierMismatch);
@@ -95,13 +147,22 @@ fn verify_webauthn_app_attest(
     if key_id_bytes != parsed_auth_data.credential_id {
         return Err(AttestationError::KeyIdMismatch);
     }
-    parse_cose_key(parsed_auth_data.credential_public_key)?;
+    let credential_key_point = parse_cose_ec2_point(parsed_auth_data.credential_public_key)?;
 
     let challenge_hash = sha256(input.challenge);
     let expected_nonce = apple_nonce(auth_data, &challenge_hash);
     let att_stmt = map_field(map, "attStmt")?;
     let cert_chain = x5c_field(att_stmt)?;
-    validate_apple_cert_chain(&cert_chain, &expected_nonce)?;
+    let leaf_point = validate_apple_cert_chain(&cert_chain, &expected_nonce)?;
+
+    // WebAuthn registration step 6: the attestation leaf certificate's
+    // public key MUST match the credential public key in authData.
+    // Without this binding an attacker could wrap a legitimately
+    // Apple-signed attestation cert around an attacker-chosen credential
+    // key. The comparison is on the raw EC point (X || Y).
+    if leaf_point != credential_key_point {
+        return Err(AttestationError::CredentialKeyMismatch);
+    }
 
     Ok(VerifiedAppAttest {
         key_id: input.key_id.to_string(),
@@ -116,10 +177,16 @@ fn verify_webauthn_app_attest(
     })
 }
 
+#[cfg(any(test, feature = "dev-fixtures"))]
 fn verify_development_fixture(
     input: AppAttestVerificationInput<'_>,
     map: &[(CborValue, CborValue)],
 ) -> Result<VerifiedAppAttest, AttestationError> {
+    if input.production {
+        return Err(AttestationError::InvalidCbor(
+            "development fixture format is rejected in production".to_string(),
+        ));
+    }
     if !input.allow_development_fixture {
         return Err(AttestationError::InvalidCbor(
             "development fixture format is disabled".to_string(),
@@ -183,7 +250,10 @@ struct ParsedAuthData<'a> {
     credential_public_key: &'a [u8],
 }
 
-fn parse_auth_data(auth_data: &[u8]) -> Result<ParsedAuthData<'_>, AttestationError> {
+fn parse_auth_data(
+    auth_data: &[u8],
+    production: bool,
+) -> Result<ParsedAuthData<'_>, AttestationError> {
     let min_len = AUTH_DATA_HEADER_LEN + AAGUID_LEN + CREDENTIAL_ID_LEN_BYTES;
     if auth_data.len() < min_len {
         return Err(AttestationError::InvalidCbor(format!(
@@ -196,7 +266,7 @@ fn parse_auth_data(auth_data: &[u8]) -> Result<ParsedAuthData<'_>, AttestationEr
     }
     let counter = u32::from_be_bytes([auth_data[33], auth_data[34], auth_data[35], auth_data[36]]);
     let aaguid = &auth_data[AUTH_DATA_HEADER_LEN..AUTH_DATA_HEADER_LEN + AAGUID_LEN];
-    validate_app_attest_aaguid(aaguid)?;
+    validate_app_attest_aaguid(aaguid, production)?;
     let credential_len_offset = AUTH_DATA_HEADER_LEN + AAGUID_LEN;
     let credential_len = u16::from_be_bytes([
         auth_data[credential_len_offset],
@@ -218,19 +288,115 @@ fn parse_auth_data(auth_data: &[u8]) -> Result<ParsedAuthData<'_>, AttestationEr
     })
 }
 
-fn parse_cose_key(bytes: &[u8]) -> Result<(), AttestationError> {
+/// COSE key type identifier for EC2 keys (RFC 8152 `kty` = 2).
+const COSE_KTY_EC2: i128 = 2;
+/// COSE EC2 curve identifier for NIST P-256 (RFC 8152 `crv` = 1).
+const COSE_CRV_P256: i128 = 1;
+/// COSE key parameter labels (RFC 8152 / RFC 9053).
+const COSE_LABEL_KTY: i128 = 1;
+const COSE_LABEL_CRV: i128 = -1;
+const COSE_LABEL_X: i128 = -2;
+const COSE_LABEL_Y: i128 = -3;
+/// Byte length of a single P-256 affine coordinate.
+const P256_COORD_LEN: usize = 32;
+
+/// Parse the credential public key (a COSE EC2 P-256 key) from authData and
+/// return its raw affine point as `X || Y` (64 bytes). The leaf attestation
+/// certificate's public key is compared against this value to satisfy
+/// WebAuthn registration step 6.
+fn parse_cose_ec2_point(bytes: &[u8]) -> Result<[u8; P256_COORD_LEN * 2], AttestationError> {
     let value: CborValue = coset::cbor::de::from_reader(bytes).map_err(|error| {
         AttestationError::InvalidCbor(format!("credential public key: {error}"))
     })?;
-    match value {
-        CborValue::Map(map) if !map.is_empty() => Ok(()),
-        CborValue::Map(_) => Err(AttestationError::InvalidCbor(
-            "credential public key map is empty".to_string(),
-        )),
-        _ => Err(AttestationError::InvalidCbor(
+    let CborValue::Map(map) = value else {
+        return Err(AttestationError::InvalidCbor(
             "credential public key must be a COSE key map".to_string(),
+        ));
+    };
+    if map.is_empty() {
+        return Err(AttestationError::InvalidCbor(
+            "credential public key map is empty".to_string(),
+        ));
+    }
+    if cose_int_label(&map, COSE_LABEL_KTY)? != COSE_KTY_EC2 {
+        return Err(AttestationError::InvalidCbor(
+            "credential public key is not a COSE EC2 key".to_string(),
+        ));
+    }
+    if cose_int_label(&map, COSE_LABEL_CRV)? != COSE_CRV_P256 {
+        return Err(AttestationError::InvalidCbor(
+            "credential public key is not on curve P-256".to_string(),
+        ));
+    }
+    let x = cose_coordinate(&map, COSE_LABEL_X)?;
+    let y = cose_coordinate(&map, COSE_LABEL_Y)?;
+    let mut point = [0_u8; P256_COORD_LEN * 2];
+    point[..P256_COORD_LEN].copy_from_slice(&x);
+    point[P256_COORD_LEN..].copy_from_slice(&y);
+    Ok(point)
+}
+
+fn cose_int_label(map: &[(CborValue, CborValue)], label: i128) -> Result<i128, AttestationError> {
+    match cose_label_value(map, label)? {
+        CborValue::Integer(value) => Ok(i128::from(*value)),
+        _ => Err(AttestationError::InvalidCbor(
+            "COSE key label is not an integer".to_string(),
         )),
     }
+}
+
+fn cose_coordinate(
+    map: &[(CborValue, CborValue)],
+    label: i128,
+) -> Result<[u8; P256_COORD_LEN], AttestationError> {
+    let CborValue::Bytes(bytes) = cose_label_value(map, label)? else {
+        return Err(AttestationError::InvalidCbor(
+            "COSE EC2 coordinate must be a byte string".to_string(),
+        ));
+    };
+    let coordinate: [u8; P256_COORD_LEN] = bytes.as_slice().try_into().map_err(|_| {
+        AttestationError::InvalidCbor(format!(
+            "COSE EC2 coordinate must be {P256_COORD_LEN} bytes"
+        ))
+    })?;
+    Ok(coordinate)
+}
+
+fn cose_label_value(
+    map: &[(CborValue, CborValue)],
+    label: i128,
+) -> Result<&CborValue, AttestationError> {
+    map.iter()
+        .find_map(|(key, value)| match key {
+            CborValue::Integer(found) if i128::from(*found) == label => Some(value),
+            _ => None,
+        })
+        .ok_or(AttestationError::InvalidCbor(
+            "COSE key is missing a required label".to_string(),
+        ))
+}
+
+/// Extract the uncompressed EC point (`X || Y`) from an X.509 leaf
+/// certificate's SubjectPublicKeyInfo. App Attest leaf certs carry a
+/// P-256 key whose subjectPublicKey is `0x04 || X || Y`.
+fn leaf_ec2_point(
+    leaf: &X509Certificate<'_>,
+) -> Result<[u8; P256_COORD_LEN * 2], AttestationError> {
+    let spki = leaf
+        .tbs_certificate
+        .subject_pki
+        .subject_public_key
+        .data
+        .as_ref();
+    let expected_len = 1 + P256_COORD_LEN * 2;
+    if spki.len() != expected_len || spki[0] != 0x04 {
+        return Err(AttestationError::CertificateChainInvalid(
+            "leaf certificate public key is not an uncompressed P-256 point".to_string(),
+        ));
+    }
+    let mut point = [0_u8; P256_COORD_LEN * 2];
+    point.copy_from_slice(&spki[1..]);
+    Ok(point)
 }
 
 fn enforce_counter(previous_counter: Option<u32>, counter: u32) -> Result<(), AttestationError> {
@@ -254,11 +420,18 @@ fn enforce_attestation_counter(
     enforce_counter(previous_counter, counter)
 }
 
-fn validate_app_attest_aaguid(aaguid: &[u8]) -> Result<(), AttestationError> {
-    if aaguid == APP_ATTEST_PRODUCTION_AAGUID
-        || aaguid == APP_ATTEST_SANDBOX_AAGUID
-        || aaguid == APP_ATTEST_DEVELOPMENT_AAGUID
-    {
+fn validate_app_attest_aaguid(aaguid: &[u8], production: bool) -> Result<(), AttestationError> {
+    if aaguid == APP_ATTEST_PRODUCTION_AAGUID {
+        return Ok(());
+    }
+    if aaguid == APP_ATTEST_SANDBOX_AAGUID || aaguid == APP_ATTEST_DEVELOPMENT_AAGUID {
+        if production {
+            return Err(AttestationError::InvalidCbor(
+                "authData AAGUID is a non-production (sandbox/development) App Attest \
+                 environment, which is rejected in production"
+                    .to_string(),
+            ));
+        }
         return Ok(());
     }
     Err(AttestationError::InvalidCbor(
@@ -292,7 +465,7 @@ fn apple_nonce(auth_data: &[u8], challenge_hash: &[u8; 32]) -> [u8; 32] {
 fn validate_apple_cert_chain(
     cert_chain: &[&[u8]],
     expected_nonce: &[u8; 32],
-) -> Result<(), AttestationError> {
+) -> Result<[u8; P256_COORD_LEN * 2], AttestationError> {
     if cert_chain.is_empty() {
         return Err(AttestationError::MissingField("attStmt.x5c"));
     }
@@ -306,6 +479,7 @@ fn validate_apple_cert_chain(
         .ok_or(AttestationError::MissingField("attStmt.x5c"))?;
     validate_cert_time(leaf)?;
     validate_leaf_nonce(leaf, expected_nonce)?;
+    let leaf_point = leaf_ec2_point(leaf)?;
 
     for window in certs.windows(2) {
         let child = &window[0];
@@ -343,7 +517,7 @@ fn validate_apple_cert_chain(
                 "Apple root self-signature failed: {error}"
             ))
         })?;
-        return Ok(());
+        return Ok(leaf_point);
     }
 
     if last.issuer().to_string() != root.subject().to_string() {
@@ -357,7 +531,7 @@ fn validate_apple_cert_chain(
                 "certificate signature to Apple root failed: {error}"
             ))
         })?;
-    Ok(())
+    Ok(leaf_point)
 }
 
 fn parse_cert_chain<'a>(
@@ -473,6 +647,7 @@ fn bytes_field<'a>(
     }
 }
 
+#[cfg(any(test, feature = "dev-fixtures"))]
 fn u32_field(map: &[(CborValue, CborValue)], name: &'static str) -> Result<u32, AttestationError> {
     match field(map, name)? {
         CborValue::Integer(value) => {
@@ -538,4 +713,153 @@ fn field_optional<'a>(
 
 fn sha256(bytes: &[u8]) -> [u8; 32] {
     Sha256::digest(bytes).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cose_ec2_p256(x: &[u8], y: &[u8]) -> Vec<u8> {
+        let value = CborValue::Map(vec![
+            (CborValue::Integer(1.into()), CborValue::Integer(2.into())),
+            (
+                CborValue::Integer(3.into()),
+                CborValue::Integer((-7).into()),
+            ),
+            (
+                CborValue::Integer((-1).into()),
+                CborValue::Integer(1.into()),
+            ),
+            (
+                CborValue::Integer((-2).into()),
+                CborValue::Bytes(x.to_vec()),
+            ),
+            (
+                CborValue::Integer((-3).into()),
+                CborValue::Bytes(y.to_vec()),
+            ),
+        ]);
+        let mut bytes = Vec::new();
+        match coset::cbor::ser::into_writer(&value, &mut bytes) {
+            Ok(()) => bytes,
+            Err(error) => panic!("encode COSE key: {error}"),
+        }
+    }
+
+    #[test]
+    fn parse_cose_ec2_point_extracts_x_then_y() {
+        let x = [0x11_u8; 32];
+        let y = [0x22_u8; 32];
+        let point = match parse_cose_ec2_point(&cose_ec2_p256(&x, &y)) {
+            Ok(point) => point,
+            Err(error) => panic!("expected a parsed point, got {error:?}"),
+        };
+        assert_eq!(&point[..32], &x);
+        assert_eq!(&point[32..], &y);
+    }
+
+    #[test]
+    fn parse_cose_ec2_point_distinguishes_distinct_keys() {
+        // WebAuthn step 6 compares the credential public key against the
+        // attestation leaf key. Two different credential keys must map to
+        // different points so a substituted key is detectable.
+        let a = match parse_cose_ec2_point(&cose_ec2_p256(&[0x01; 32], &[0x02; 32])) {
+            Ok(point) => point,
+            Err(error) => panic!("parse key a: {error:?}"),
+        };
+        let b = match parse_cose_ec2_point(&cose_ec2_p256(&[0x03; 32], &[0x04; 32])) {
+            Ok(point) => point,
+            Err(error) => panic!("parse key b: {error:?}"),
+        };
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn parse_cose_ec2_point_rejects_wrong_curve() {
+        // crv(-1) = P-384(2) instead of P-256(1).
+        let value = CborValue::Map(vec![
+            (CborValue::Integer(1.into()), CborValue::Integer(2.into())),
+            (
+                CborValue::Integer((-1).into()),
+                CborValue::Integer(2.into()),
+            ),
+            (
+                CborValue::Integer((-2).into()),
+                CborValue::Bytes(vec![0x11; 32]),
+            ),
+            (
+                CborValue::Integer((-3).into()),
+                CborValue::Bytes(vec![0x22; 32]),
+            ),
+        ]);
+        let mut bytes = Vec::new();
+        if let Err(error) = coset::cbor::ser::into_writer(&value, &mut bytes) {
+            panic!("encode COSE key: {error}");
+        }
+        assert!(matches!(
+            parse_cose_ec2_point(&bytes),
+            Err(AttestationError::InvalidCbor(_))
+        ));
+    }
+
+    #[test]
+    fn parse_cose_ec2_point_rejects_short_coordinate() {
+        let bytes = cose_ec2_p256(&[0x11; 31], &[0x22; 32]);
+        assert!(matches!(
+            parse_cose_ec2_point(&bytes),
+            Err(AttestationError::InvalidCbor(_))
+        ));
+    }
+
+    #[test]
+    fn parse_cose_ec2_point_rejects_non_ec2_kty() {
+        // kty(1) = OKP(1) instead of EC2(2).
+        let value = CborValue::Map(vec![(
+            CborValue::Integer(1.into()),
+            CborValue::Integer(1.into()),
+        )]);
+        let mut bytes = Vec::new();
+        if let Err(error) = coset::cbor::ser::into_writer(&value, &mut bytes) {
+            panic!("encode COSE key: {error}");
+        }
+        assert!(matches!(
+            parse_cose_ec2_point(&bytes),
+            Err(AttestationError::InvalidCbor(_))
+        ));
+    }
+
+    #[test]
+    fn leaf_ec2_point_rejects_non_p256_certificate() {
+        // The pinned Apple root is a real X.509 cert with a P-384 key, so
+        // its SubjectPublicKeyInfo is not a 65-byte uncompressed P-256
+        // point. `leaf_ec2_point` must reject it rather than mis-bind.
+        let der = match apple_app_attest_root_der() {
+            Ok(der) => der,
+            Err(error) => panic!("decode pinned Apple root: {error:?}"),
+        };
+        let (_, cert) = match X509Certificate::from_der(&der) {
+            Ok(parsed) => parsed,
+            Err(error) => panic!("parse pinned Apple root: {error}"),
+        };
+        assert!(matches!(
+            leaf_ec2_point(&cert),
+            Err(AttestationError::CertificateChainInvalid(_))
+        ));
+    }
+
+    #[test]
+    fn validate_app_attest_aaguid_rejects_sandbox_and_development_in_production() {
+        for aaguid in [APP_ATTEST_SANDBOX_AAGUID, APP_ATTEST_DEVELOPMENT_AAGUID] {
+            assert!(
+                validate_app_attest_aaguid(aaguid, false).is_ok(),
+                "sandbox/development AAGUID should be accepted outside production"
+            );
+            assert!(matches!(
+                validate_app_attest_aaguid(aaguid, true),
+                Err(AttestationError::InvalidCbor(_))
+            ));
+        }
+        // The production AAGUID is always accepted.
+        assert!(validate_app_attest_aaguid(APP_ATTEST_PRODUCTION_AAGUID, true).is_ok());
+    }
 }

@@ -40,6 +40,7 @@ fn device_key_extraction_is_rejected_by_key_and_device_binding() -> Result<(), B
         challenge: CHALLENGE,
         app_id: APP_ID,
         previous_counter: Some(0),
+        production: true,
         allow_development_fixture: false,
     })
     .err()
@@ -58,6 +59,7 @@ fn device_key_extraction_is_rejected_by_key_and_device_binding() -> Result<(), B
         expected_package_name: PACKAGE,
         expected_audience: AUDIENCE,
         jwks_json: &play_integrity_jwks_json(),
+        allow_caller_supplied_jwks: false,
     })
     .err()
     .ok_or("expected downgraded device rejection")?;

@@ -109,7 +109,15 @@ chio-federation = { workspace = true, features = ["demo"] }
 # Portable verifier surface for negotiated-floor capability tests.
 chio-kernel-core = { workspace = true }
 chio-swarm-authority = { workspace = true }
-chio-custody-hw = { workspace = true }
+# `dev-fixtures` exposes the synthetic App Attest compact-map shape and the
+# Play Integrity signer/JWKS helpers that the mobile-attestation threat tests
+# use to mint deterministic adversarial inputs. These bypasses are compiled
+# out of production builds of chio-custody-hw; the threat suite is a
+# test-only consumer, so it opts in here.
+# `default-features = false` so conformance fixtures do not pull the
+# `default = ["passkey"]` WebAuthn/OpenSSL graph the threat tests never use;
+# only `dev-fixtures` is requested.
+chio-custody-hw = { workspace = true, default-features = false, features = ["dev-fixtures"] }
 chio-http-core = { workspace = true }
 chio-http-session = { workspace = true }
 chio-guards = { workspace = true }

@@ -11,6 +11,7 @@ pub use app_attest::{
     verify_app_attest, AppAttestVerificationInput, VerifiedAppAttest, APP_ATTEST_FORMAT,
 };
 pub use errors::AttestationError;
+pub use google_root::assert_play_integrity_root_is_production_ready;
 pub use play_integrity::{
     verify_play_integrity, PlayIntegrityVerificationInput, VerifiedPlayIntegrity,
     MEETS_DEVICE_INTEGRITY, PLAY_RECOGNIZED,

@@ -44,7 +44,8 @@ pub mod signed_artifact;
 mod signer_binding;
 
 pub use canonical::{
-    canonical_json_bytes, canonical_json_string, canonicalize, CanonicalBytes, CanonicalJsonWitness,
+    canonical_json_bytes, canonical_json_bytes_from_str, canonical_json_string,
+    canonical_json_string_from_str, canonicalize, CanonicalBytes, CanonicalJsonWitness,
 };
 pub use crypto::{
     sha256_hex, Ed25519Backend, Keypair, PublicKey, Signature, SigningAlgorithm, SigningBackend,

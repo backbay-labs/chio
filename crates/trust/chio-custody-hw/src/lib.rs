@@ -60,6 +60,8 @@ pub use rate_limit::{
     IssuanceRateLimiter, RateLimitOutcome, RateLimiter, DEFAULT_MAX_PER_WINDOW,
     DEFAULT_WINDOW_SECONDS,
 };
+#[cfg(feature = "sqlite-store")]
+pub use revocation::SqliteCredentialRevocationOracle;
 pub use revocation::{
     credential_revocation_nonce, CredentialRevocationOracle, InMemoryCredentialRevocationOracle,
     CREDENTIAL_REVOCATION_NONCE_VALUE,

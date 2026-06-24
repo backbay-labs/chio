@@ -2,9 +2,23 @@
 //!
 //! # Trust contract
 //!
-//! The verifier takes the current Google JWKS document from the caller,
-//! selects the JWK by token `kid`, validates the JWS under ES256/P-256
-//! key material, and then enforces the Play Integrity
+//! The verifier validates the JWS against a **pinned** Google JWKS rather
+//! than a caller-supplied one: a malicious or compromised caller cannot
+//! swap in its own verification key. The pinned key material lives in
+//! [`super::google_root`]. A caller-supplied JWKS is only honoured when the
+//! crate is built with the `dev-fixtures` feature (or under `cfg(test)`)
+//! and the caller explicitly opts in via
+//! [`PlayIntegrityVerificationInput::allow_caller_supplied_jwks`]; in a
+//! production build that flag has no effect and the pinned JWKS is always
+//! used.
+//!
+//! While the pinned root is still the committed synthetic fixture key
+//! (BAC-601), the production verification path fails CLOSED: it rejects every
+//! token rather than trusting the fixture signer. See `production_pinned_jwks`
+//! and [`super::google_root::assert_play_integrity_root_is_production_ready`].
+//!
+//! The verifier selects the JWK by token `kid`, validates the JWS under
+//! ES256/P-256 key material, and then enforces the Play Integrity
 //! claim contract:
 //!
 //! - `aud` must match `expected_audience`.
@@ -20,7 +34,7 @@ use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
 use super::errors::AttestationError;
-use super::google_root::GOOGLE_PLAY_INTEGRITY_ISSUER;
+use super::google_root::{play_integrity_pinned_jwks_json, GOOGLE_PLAY_INTEGRITY_ISSUER};
 
 pub const PLAY_RECOGNIZED: &str = "PLAY_RECOGNIZED";
 pub const MEETS_DEVICE_INTEGRITY: &str = "MEETS_DEVICE_INTEGRITY";
@@ -31,7 +45,13 @@ pub struct PlayIntegrityVerificationInput<'a> {
     pub expected_nonce: &'a str,
     pub expected_package_name: &'a str,
     pub expected_audience: &'a str,
+    /// Caller-supplied JWKS. Ignored in production: the verifier uses the
+    /// pinned Google JWKS unless the crate is built with `dev-fixtures`
+    /// (or `cfg(test)`) and `allow_caller_supplied_jwks` is `true`.
     pub jwks_json: &'a str,
+    /// Opt-in to verifying against `jwks_json` instead of the pinned JWKS.
+    /// Has no effect in a production build (the pinned JWKS is always used).
+    pub allow_caller_supplied_jwks: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -92,7 +112,8 @@ pub fn verify_play_integrity(
     let kid = header.kid.as_deref().ok_or_else(|| {
         AttestationError::PlayIntegrityInvalidToken("token header is missing kid".to_string())
     })?;
-    let jwks: JwkSet = serde_json::from_str(input.jwks_json)
+    let jwks_source = select_jwks(&input)?;
+    let jwks: JwkSet = serde_json::from_str(&jwks_source)
         .map_err(|error| AttestationError::PlayIntegrityInvalidToken(format!("JWKS: {error}")))?;
     let jwk = jwks.find(kid).ok_or_else(|| {
         AttestationError::PlayIntegrityInvalidToken(format!("JWKS has no key for kid {kid}"))
@@ -144,6 +165,55 @@ pub fn verify_play_integrity(
     })
 }
 
+/// Choose which JWKS to verify against.
+///
+/// Production builds always return the pinned Google JWKS, ignoring any
+/// caller-supplied document. Test/`dev-fixtures` builds may honour a
+/// caller-supplied JWKS when the caller opts in, so deterministic tests can
+/// drive negative cases (symmetric keys, wrong curve, etc.).
+#[cfg(any(test, feature = "dev-fixtures"))]
+fn select_jwks(input: &PlayIntegrityVerificationInput<'_>) -> Result<String, AttestationError> {
+    // Test/`dev-fixtures` builds legitimately pin the synthetic fixture key, so
+    // the production-readiness guard is intentionally NOT enforced here: the
+    // fixture signer is the trust anchor these builds exercise.
+    if input.allow_caller_supplied_jwks {
+        Ok(input.jwks_json.to_string())
+    } else {
+        Ok(play_integrity_pinned_jwks_json())
+    }
+}
+
+#[cfg(not(any(test, feature = "dev-fixtures")))]
+fn select_jwks(_input: &PlayIntegrityVerificationInput<'_>) -> Result<String, AttestationError> {
+    // SECURITY / PLACEHOLDER (BAC-601): the production path pins this JWKS, and
+    // `production_pinned_jwks` fails CLOSED while the committed synthetic fixture
+    // key is still pinned. The earlier `debug_assert!` only fired in debug builds
+    // and was stripped from release, so a release binary would have accepted
+    // tokens minted with the committed fixture private key. This branch is
+    // compiled only in prod builds, so the test/`dev-fixtures` signing path is
+    // unaffected.
+    production_pinned_jwks()
+}
+
+/// Production trust anchor for Play Integrity: the pinned Google JWKS, gated by
+/// the production-readiness guard.
+///
+/// Fails CLOSED (returns [`AttestationError::PlayIntegrityInvalidToken`]) while
+/// the pinned root is still the committed SYNTHETIC FIXTURE key, so a release
+/// build cannot silently trust the fixture signer (BAC-601). Once the real
+/// Google root is provisioned, this returns the pinned JWKS.
+///
+/// This helper is compiled both in production builds (where `select_jwks` calls
+/// it) and under `cfg(test)` (where the fail-closed unit test calls it
+/// directly), so the contract is verifiable without a separate prod-only build.
+#[cfg(any(test, not(feature = "dev-fixtures")))]
+fn production_pinned_jwks() -> Result<String, AttestationError> {
+    if let Err(reason) = super::google_root::assert_play_integrity_root_is_production_ready() {
+        return Err(AttestationError::PlayIntegrityInvalidToken(reason));
+    }
+    Ok(play_integrity_pinned_jwks_json())
+}
+
 fn claim_nonce(claims: &PlayIntegrityClaims) -> Result<&str, AttestationError> {
     match (&claims.nonce, &claims.request_details) {
         (Some(top_level), Some(details)) if top_level != &details.nonce => {
@@ -185,5 +255,38 @@ fn jwk_algorithm(jwk: &Jwk) -> Result<Algorithm, AttestationError> {
         _ => Err(AttestationError::PlayIntegrityInvalidToken(
             "Play Integrity JWKS key must be an ES256 P-256 EC key".to_string(),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn production_path_fails_closed_while_fixture_root_is_pinned() {
+        // SECURITY / PLACEHOLDER (BAC-601): the production trust anchor must
+        // REJECT (not silently trust the fixture signer) while the committed
+        // synthetic fixture key is still pinned. The earlier guard was a
+        // `debug_assert!` stripped from release builds, so this proves the
+        // fail-closed behaviour holds in both debug and release. When the real
+        // Google root is provisioned (kid rotated off the `*-fixture-root`
+        // sentinel) this test needs updating, which is the intended forcing
+        // function.
+        assert!(
+            super::super::google_root::play_integrity_root_is_placeholder(),
+            "pinned root is still the committed fixture key"
+        );
+        let Err(error) = production_pinned_jwks() else {
+            panic!("production path must reject while the fixture root is pinned");
+        };
+        match error {
+            AttestationError::PlayIntegrityInvalidToken(reason) => {
+                assert!(
+                    reason.contains("BAC-601"),
+                    "rejection must reference BAC-601: {reason}"
+                );
+            }
+            other => panic!("expected PlayIntegrityInvalidToken, got {other:?}"),
+        }
     }
 }

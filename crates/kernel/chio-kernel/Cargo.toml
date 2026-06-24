@@ -43,7 +43,10 @@ delegation = ["chio-core-types/delegation"]
 chio-appraisal = { workspace = true }
 chio-core = { workspace = true }
 chio-core-types = { workspace = true }
-chio-custody-hw = { workspace = true }
+# The workspace declares chio-custody-hw with `default-features = false` so
+# mobile/conformance consumers can drop the passkey graph; the kernel needs the
+# default custody path, so it re-enables those features explicitly.
+chio-custody-hw = { workspace = true, features = ["passkey", "sqlite-store"] }
 chio-weights = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 chio-kernel-core = { workspace = true }
