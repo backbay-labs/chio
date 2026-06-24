@@ -844,7 +844,7 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
     match route {
         ProofRoomFixtureReportRoute::Commerce => {
             let commerce_bundle =
-                embedded_commerce_order_bundle(evidence_graph_bytes, artifacts)
+                embedded_commerce_order_bundle(evidence_graph_bytes, artifacts, None)
                     .map_err(|error| proof_room_fixture_invalid(fixture_id, "commerce", error))?;
             proof_room_fixture_verified_report_bytes(
                 fixture_id,

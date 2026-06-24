@@ -266,6 +266,7 @@ pub(crate) fn verify_transaction_passport_family_report_with_options(
     reject_unrouted_source_claims(&requirements.required_claims, routes_trust_market)?;
     let mut family_reports = Vec::new();
     let mut expected_public_settlement_trust_market_context = None;
+    let mut expected_commerce_trust_market_context = None;
     if routes_trust_market {
         let evidence_graph_bytes = source_scoped_evidence_graph_bytes(
             &context.evidence_graph_bytes,
@@ -291,6 +292,9 @@ pub(crate) fn verify_transaction_passport_family_report_with_options(
         .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
         expected_public_settlement_trust_market_context =
             Some(public_settlement_trust_market_context_from_trust_market_report(&report));
+        expected_commerce_trust_market_context = Some(
+            commerce_trust_market_context_from_trust_market_report(&report),
+        );
         push_source_family_report(&mut family_reports, report)?;
     }
 
@@ -302,6 +306,7 @@ pub(crate) fn verify_transaction_passport_family_report_with_options(
                 &requirements.required_claims,
                 route,
                 expected_public_settlement_trust_market_context.as_ref(),
+                expected_commerce_trust_market_context.as_ref(),
             )?;
         }
     }
@@ -429,6 +434,38 @@ fn public_settlement_trust_market_context_from_trust_market_report(
     }
 }
 
+fn commerce_trust_market_context_from_trust_market_report(
+    report: &chio_trust_market_context::TrustMarketVerifierReport,
+) -> chio_commerce_order::CommerceVerifiedTrustMarketContext {
+    chio_commerce_order::CommerceVerifiedTrustMarketContext {
+        provider_discovery_snapshot_ref: report
+            .trust_market_sections
+            .provider_discovery_snapshot_ref
+            .clone(),
+        provider_selection_report_ref: report
+            .trust_market_sections
+            .provider_selection_report_ref
+            .clone(),
+        trust_scorecard_ref: report.trust_market_sections.trust_scorecard_ref.clone(),
+        reputation_import_ref: report.trust_market_sections.reputation_import_ref.clone(),
+        sla_commitment_ref: report.trust_market_sections.sla_commitment_ref.clone(),
+        risk_comptroller_report_ref: report
+            .trust_market_sections
+            .risk_comptroller_report_ref
+            .clone(),
+        collateral_position_ref: report.trust_market_sections.collateral_position_ref.clone(),
+        guarantee_decision_ref: report.trust_market_sections.guarantee_decision_ref.clone(),
+        adjudication_jurisdiction_ref: report
+            .trust_market_sections
+            .adjudication_jurisdiction_ref
+            .clone(),
+        selected_provider_subject: report
+            .trust_market_sections
+            .selected_provider_subject
+            .clone(),
+    }
+}
+
 pub(crate) fn push_source_local_family_report(
     family_reports: &mut Vec<serde_json::Value>,
     context: &SourceVerifierContext,
@@ -437,12 +474,18 @@ pub(crate) fn push_source_local_family_report(
     expected_public_settlement_trust_market_context: Option<
         &chio_web3::settlement_proof::PublicSettlementTrustMarketContext,
     >,
+    expected_commerce_trust_market_context: Option<
+        &chio_commerce_order::CommerceVerifiedTrustMarketContext,
+    >,
 ) -> Result<(), String> {
     match route.route {
         ProofRoomFixtureReportRoute::Commerce => {
-            let bundle =
-                embedded_commerce_order_bundle(&context.evidence_graph_bytes, &context.artifacts)
-                    .map_err(|error| format!("proof-room.commerce-invalid: {error}"))?;
+            let bundle = embedded_commerce_order_bundle(
+                &context.evidence_graph_bytes,
+                &context.artifacts,
+                expected_commerce_trust_market_context,
+            )
+            .map_err(|error| format!("proof-room.commerce-invalid: {error}"))?;
             push_source_local_family_result(
                 family_reports,
                 required_claims,

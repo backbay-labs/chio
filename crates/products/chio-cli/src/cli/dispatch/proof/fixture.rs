@@ -26,6 +26,7 @@ const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 const COMMERCE_PROVIDER_TRUST_SIGNATURE_SEED: [u8; 32] = [8; 32];
 const TRUST_MARKET_AUTHORITY_SIGNATURE_SEED: [u8; 32] = [59; 32];
 const PUBLIC_SETTLEMENT_ORACLE_SIGNATURE_SEED: [u8; 32] = [15; 32];
+const PUBLIC_SETTLEMENT_ANCHOR_SIGNATURE_SEED: [u8; 32] = [7; 32];
 const RUNTIME_TOOL_SERVER_SIGNATURE_SEED: [u8; 32] = [45; 32];
 const DISCLOSURE_AGENT_WEB_BBS_KEY_MATERIAL: &[u8] = b"chio-proof-disclosure-agent-web-bbs-key";
 const DISCLOSURE_AGENT_WEB_BBS_KEY_INFO: &[u8] = b"chio-proof-disclosure-agent-web";
@@ -121,6 +122,20 @@ struct ProofFixtureGenerateReport {
     verifier_report_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     preflight_plan_path: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct ProofFixtureCheckpointStatementBody {
+    schema: String,
+    checkpoint_seq: u64,
+    batch_start_seq: u64,
+    batch_end_seq: u64,
+    tree_size: u64,
+    merkle_root: chio_web3::hashing::Hash,
+    issued_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    previous_checkpoint_sha256: Option<String>,
+    kernel_key: chio_core_types::PublicKey,
 }
 
 pub(super) fn dispatch_proof_fixture(
@@ -1592,6 +1607,7 @@ fn normalize_public_settlement_deployment_provenance(
 fn add_public_settlement_deployment_provenance_to_bundle(bundle: &Path) -> Result<(), CliError> {
     let settlement_proof_path = bundle.join("settlement-proof-bundle.json");
     let mut settlement_proof = read_json_value(&settlement_proof_path)?;
+    reseal_public_settlement_anchor_receipt(&mut settlement_proof, &settlement_proof_path)?;
     let bundle_id = required_json_string(&settlement_proof, "bundle_id", &settlement_proof_path)?;
     let chain_id = required_json_string(&settlement_proof, "chain_id", &settlement_proof_path)?;
     let contract_package_id = required_json_pointer_string(
@@ -1663,6 +1679,167 @@ fn add_public_settlement_deployment_provenance_to_bundle(bundle: &Path) -> Resul
     settlement_proof["public_witness"]["body_hash"] = serde_json::Value::String(body_hash);
     sign_public_settlement_oracle_evidence(&mut settlement_proof, &settlement_proof_path)?;
     write_json_line_file(&settlement_proof_path, &settlement_proof)
+}
+
+fn reseal_public_settlement_anchor_receipt(
+    settlement_proof: &mut serde_json::Value,
+    settlement_proof_path: &Path,
+) -> Result<(), CliError> {
+    if settlement_proof
+        .pointer("/settlement_receipt/reconciled_anchor_proof")
+        .is_none()
+    {
+        return Ok(());
+    }
+    let execution_receipt_id = required_json_pointer_string(
+        settlement_proof,
+        "/settlement_receipt/execution_receipt_id",
+        settlement_proof_path,
+    )?;
+    let settlement_reference = required_json_pointer_string(
+        settlement_proof,
+        "/settlement_receipt/settlement_reference",
+        settlement_proof_path,
+    )?;
+    let dispatch_id = required_json_pointer_string(
+        settlement_proof,
+        "/settlement_receipt/dispatch/dispatch_id",
+        settlement_proof_path,
+    )?;
+    let governed_receipt_id = required_json_pointer_string(
+        settlement_proof,
+        "/settlement_receipt/dispatch/capital_instruction/body/governedReceiptId",
+        settlement_proof_path,
+    )?;
+    let content_hash = chio_web3::settlement::settlement_anchor_receipt_content_hash_parts(
+        &execution_receipt_id,
+        &settlement_reference,
+        &dispatch_id,
+        &governed_receipt_id,
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "public settlement anchor receipt binding failed: {}: {error}",
+            settlement_proof_path.display()
+        ))
+    })?;
+
+    let receipt_pointer = "/settlement_receipt/reconciled_anchor_proof/receipt";
+    let receipt_value = settlement_proof
+        .pointer(receipt_pointer)
+        .ok_or_else(|| {
+            CliError::cli_other_error(format!(
+                "public settlement anchor receipt missing: {}",
+                settlement_proof_path.display()
+            ))
+        })?
+        .clone();
+    let receipt: ChioReceipt = serde_json::from_value(receipt_value).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "public settlement anchor receipt invalid: {}: {error}",
+            settlement_proof_path.display()
+        ))
+    })?;
+    let mut receipt_body = receipt.body();
+    receipt_body.id = governed_receipt_id.clone();
+    receipt_body.content_hash = content_hash;
+    let anchor_keypair = Keypair::from_seed(&PUBLIC_SETTLEMENT_ANCHOR_SIGNATURE_SEED);
+    let signed_receipt = ChioReceipt::sign(receipt_body, &anchor_keypair).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "public settlement anchor receipt signing failed: {}: {error}",
+            settlement_proof_path.display()
+        ))
+    })?;
+    let signed_receipt_body = signed_receipt.body();
+    let receipt_body_bytes =
+        chio_core_types::canonical_json_bytes(&signed_receipt_body).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "public settlement anchor receipt canonicalization failed: {}: {error}",
+                settlement_proof_path.display()
+            ))
+        })?;
+    let tree = chio_web3::merkle::MerkleTree::from_leaves(&[receipt_body_bytes.as_slice()])
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "public settlement anchor receipt Merkle tree failed: {}: {error}",
+                settlement_proof_path.display()
+            ))
+        })?;
+    let merkle_root = tree.root();
+    let checkpoint_seq = required_json_pointer_u64(
+        settlement_proof,
+        "/settlement_receipt/reconciled_anchor_proof/receipt_inclusion/checkpoint_seq",
+        settlement_proof_path,
+    )?;
+    let receipt_inclusion = chio_web3::anchors::Web3ReceiptInclusion {
+        checkpoint_seq,
+        merkle_root,
+        proof: tree.inclusion_proof(0).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "public settlement anchor receipt inclusion failed: {}: {error}",
+                settlement_proof_path.display()
+            ))
+        })?,
+    };
+    let statement_pointer = "/settlement_receipt/reconciled_anchor_proof/checkpoint_statement";
+    let mut statement: chio_web3::anchors::Web3CheckpointStatement = serde_json::from_value(
+        settlement_proof
+            .pointer(statement_pointer)
+            .ok_or_else(|| {
+                CliError::cli_other_error(format!(
+                    "public settlement checkpoint statement missing: {}",
+                    settlement_proof_path.display()
+                ))
+            })?
+            .clone(),
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "public settlement checkpoint statement invalid: {}: {error}",
+            settlement_proof_path.display()
+        ))
+    })?;
+    statement.tree_size = 1;
+    statement.merkle_root = merkle_root;
+    statement.kernel_key = anchor_keypair.public_key();
+    let statement_body = ProofFixtureCheckpointStatementBody {
+        schema: statement.schema.clone(),
+        checkpoint_seq: statement.checkpoint_seq,
+        batch_start_seq: statement.batch_start_seq,
+        batch_end_seq: statement.batch_end_seq,
+        tree_size: statement.tree_size,
+        merkle_root: statement.merkle_root,
+        issued_at: statement.issued_at,
+        previous_checkpoint_sha256: statement.previous_checkpoint_sha256.clone(),
+        kernel_key: statement.kernel_key.clone(),
+    };
+    let (signature, _) = anchor_keypair
+        .sign_canonical(&statement_body)
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "public settlement checkpoint statement signing failed: {}: {error}",
+                settlement_proof_path.display()
+            ))
+        })?;
+    statement.signature = signature;
+
+    *settlement_proof
+        .pointer_mut(receipt_pointer)
+        .ok_or_else(|| {
+            CliError::cli_other_error(format!(
+                "public settlement anchor receipt missing: {}",
+                settlement_proof_path.display()
+            ))
+        })? = serde_json::to_value(signed_receipt).map_err(CliError::from)?;
+    settlement_proof["settlement_receipt"]["reconciled_anchor_proof"]["receipt_inclusion"] =
+        serde_json::to_value(receipt_inclusion).map_err(CliError::from)?;
+    settlement_proof["settlement_receipt"]["reconciled_anchor_proof"]["checkpoint_statement"] =
+        serde_json::to_value(statement).map_err(CliError::from)?;
+    settlement_proof["settlement_receipt"]["reconciled_anchor_proof"]["chain_anchor"]
+        ["anchored_merkle_root"] = serde_json::to_value(merkle_root).map_err(CliError::from)?;
+    settlement_proof["chain_snapshot"]["registry_root"] =
+        serde_json::to_value(merkle_root).map_err(CliError::from)?;
+    Ok(())
 }
 
 fn sign_public_settlement_oracle_evidence(

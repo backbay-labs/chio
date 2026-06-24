@@ -32,6 +32,21 @@ pub struct CommerceTrustMarketRequirement {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
+pub struct CommerceVerifiedTrustMarketContext {
+    pub provider_discovery_snapshot_ref: String,
+    pub provider_selection_report_ref: String,
+    pub trust_scorecard_ref: String,
+    pub reputation_import_ref: String,
+    pub sla_commitment_ref: String,
+    pub risk_comptroller_report_ref: String,
+    pub collateral_position_ref: String,
+    pub guarantee_decision_ref: String,
+    pub adjudication_jurisdiction_ref: String,
+    pub selected_provider_subject: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct CommerceOrderContext {
     pub schema: String,
     pub id: String,
@@ -257,6 +272,7 @@ pub struct CommerceOrderVerificationBundle {
     pub settlement_packet_bytes: Vec<u8>,
     pub mandate_protocol_payloads: Vec<CommerceMandateProtocolPayload>,
     pub risk_comptroller_report_bytes: Option<Vec<u8>>,
+    pub verified_trust_market_context: Option<CommerceVerifiedTrustMarketContext>,
     pub trusted_event_authority_receipt_kernel_keys: Vec<chio_core_types::crypto::PublicKey>,
     pub trusted_payment_signer_keys: Vec<chio_core_types::crypto::PublicKey>,
     pub trusted_provider_trust_signer_keys: Vec<chio_core_types::crypto::PublicKey>,

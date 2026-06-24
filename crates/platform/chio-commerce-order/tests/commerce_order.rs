@@ -158,6 +158,7 @@ fn load_bundle(case_name: &str) -> chio_commerce_order::CommerceOrderVerificatio
         settlement_packet_bytes: read_fixture(&dir, "settlement-packet.json"),
         mandate_protocol_payloads: mandate_protocol_payloads(),
         risk_comptroller_report_bytes: None,
+        verified_trust_market_context: None,
         trusted_event_authority_receipt_kernel_keys: vec![commerce_event_authority_receipt_key()],
         trusted_payment_signer_keys: vec![commerce_payment_signer_key()],
         trusted_provider_trust_signer_keys: vec![commerce_provider_trust_signer_key()],
@@ -471,6 +472,65 @@ fn require_trust_market_context(bundle: &mut chio_commerce_order::CommerceOrderV
             guarantee_decision_ref: "guarantee-trust-market-valid".to_string(),
             adjudication_jurisdiction_ref: "jurisdiction-trust-market-valid".to_string(),
         });
+    bundle.verified_trust_market_context =
+        Some(chio_commerce_order::CommerceVerifiedTrustMarketContext {
+            provider_discovery_snapshot_ref: "discovery-trust-market-valid".to_string(),
+            provider_selection_report_ref: "selection-trust-market-valid".to_string(),
+            trust_scorecard_ref: "scorecard-trust-market-valid".to_string(),
+            reputation_import_ref: "reputation-import-trust-market-valid".to_string(),
+            sla_commitment_ref: "sla-commitment-trust-market-valid".to_string(),
+            risk_comptroller_report_ref: "risk-comptroller-market-valid".to_string(),
+            collateral_position_ref: "collateral-trust-market-valid".to_string(),
+            guarantee_decision_ref: "guarantee-trust-market-valid".to_string(),
+            adjudication_jurisdiction_ref: "jurisdiction-trust-market-valid".to_string(),
+            selected_provider_subject: "did:chio:provider-alpha".to_string(),
+        });
+}
+
+fn add_all_trust_market_context_refs(
+    bundle: &mut chio_commerce_order::CommerceOrderVerificationBundle,
+) {
+    mutate_event_log(bundle, |event_log| {
+        let events = event_log["events"]
+            .as_array_mut()
+            .test_expect("event log has events");
+        for event in events {
+            let next_state = event["next_state"]
+                .as_str()
+                .test_expect("event next_state string")
+                .to_string();
+            let evidence_refs = event["evidence_refs"]
+                .as_array_mut()
+                .test_expect("event has evidence refs");
+            if next_state == "provider_admitted" {
+                for evidence_ref in [
+                    "discovery-trust-market-valid",
+                    "selection-trust-market-valid",
+                    "scorecard-trust-market-valid",
+                    "reputation-import-trust-market-valid",
+                ] {
+                    evidence_refs.push(serde_json::Value::String(evidence_ref.to_string()));
+                }
+            }
+            if [
+                "settlement_packet_assembled",
+                "settlement_dispatched",
+                "settlement_observed",
+                "settlement_reconciled",
+            ]
+            .contains(&next_state.as_str())
+            {
+                for evidence_ref in [
+                    "sla-commitment-trust-market-valid",
+                    "collateral-trust-market-valid",
+                    "guarantee-trust-market-valid",
+                    "jurisdiction-trust-market-valid",
+                ] {
+                    evidence_refs.push(serde_json::Value::String(evidence_ref.to_string()));
+                }
+            }
+        }
+    });
 }
 
 #[test]
@@ -517,6 +577,50 @@ fn commerce_order_replay_rejects_marketplace_settlement_without_trust_market_ref
     assert!(error
         .to_string()
         .contains("settlement event missing trust-market evidence"));
+}
+
+#[test]
+fn commerce_order_replay_rejects_marketplace_refs_without_verified_trust_market_context() {
+    let mut bundle = load_bundle("offline-psp-valid");
+    require_trust_market_context(&mut bundle);
+    add_all_trust_market_context_refs(&mut bundle);
+    bundle.verified_trust_market_context = None;
+
+    let error = chio_commerce_order::verify_commerce_order(&bundle)
+        .test_expect_err("marketplace-mode orders must bind verified trust-market context");
+
+    assert!(error
+        .to_string()
+        .contains("trust-market verifier context missing"));
+}
+
+#[test]
+fn commerce_order_replay_rejects_marketplace_risk_ref_mismatch() {
+    let mut bundle = load_bundle("offline-psp-valid");
+    require_enterprise_coverage(&mut bundle);
+    require_trust_market_context(&mut bundle);
+    add_all_trust_market_context_refs(&mut bundle);
+
+    let error = chio_commerce_order::verify_commerce_order(&bundle)
+        .test_expect_err("marketplace-mode orders must bind coverage and trust-market risk refs");
+
+    assert!(error
+        .to_string()
+        .contains("trust-market risk report ref mismatch"));
+}
+
+#[test]
+fn commerce_order_replay_accepts_marketplace_refs_with_verified_trust_market_context() {
+    let mut bundle = load_bundle("offline-psp-valid");
+    require_trust_market_context(&mut bundle);
+    add_all_trust_market_context_refs(&mut bundle);
+
+    let report = chio_commerce_order::verify_commerce_order(&bundle)
+        .test_expect("verified trust-market context should bind marketplace refs");
+
+    assert!(report
+        .verified_claims
+        .contains(&"claim.commerce.trust_market_context_bound".to_string()));
 }
 
 #[test]

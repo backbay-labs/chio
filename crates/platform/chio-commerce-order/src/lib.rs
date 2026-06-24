@@ -20,6 +20,7 @@ pub use types::{
     CommerceCoverageRequirement, CommerceEventAuthorityReceiptArtifact,
     CommerceMandateProtocolPayload, CommerceOrderContext, CommerceOrderPassportReport,
     CommerceOrderVerificationBundle, CommerceTrustMarketRequirement,
+    CommerceVerifiedTrustMarketContext,
 };
 
 use mandate::{validate_mandate_ledger, CommerceMandateLedger};
@@ -41,6 +42,7 @@ const CLAIM_ADMISSION_GATES_BOUND: &str = "claim.commerce.admission_gates_bound"
 const CLAIM_SETTLEMENT_LIFECYCLE_BOUND: &str = "claim.commerce.settlement_lifecycle_bound";
 const CLAIM_ORDER_PASSPORT_SUMMARY_BOUND: &str = "claim.commerce.order_passport_summary_bound";
 const CLAIM_COVERAGE_DECISION_BOUND: &str = "claim.commerce.coverage_decision_bound";
+const CLAIM_TRUST_MARKET_CONTEXT_BOUND: &str = "claim.commerce.trust_market_context_bound";
 const CLAIM_RISK_COMPTROLLER_REPORT_BOUND: &str = "claim.risk.comptroller_report_bound";
 const RISK_COMPTROLLER_REPORT_SCHEMA_ID: &str = "chio.risk.comptroller-report.v1";
 
@@ -88,6 +90,10 @@ pub fn verify_commerce_order(
         &bundle.order_context,
         bundle.risk_comptroller_report_bytes.as_deref(),
         &bundle.trusted_risk_comptroller_signer_keys,
+    )?;
+    let trust_market_context_bound = verify_trust_market_requirement(
+        &bundle.order_context,
+        bundle.verified_trust_market_context.as_ref(),
     )?;
 
     let event_log: CommerceEventLog = parse_json("event log", &bundle.event_log_bytes)?;
@@ -144,6 +150,9 @@ pub fn verify_commerce_order(
     if coverage_decision_bound {
         verified_claims.push(CLAIM_COVERAGE_DECISION_BOUND.to_string());
     }
+    if trust_market_context_bound {
+        verified_claims.push(CLAIM_TRUST_MARKET_CONTEXT_BOUND.to_string());
+    }
 
     Ok(CommerceOrderPassportReport {
         schema: COMMERCE_ORDER_PASSPORT_SCHEMA_ID.to_string(),
@@ -176,6 +185,90 @@ fn commerce_order_passport_artifact_digests(
             .filter(|requirement| requirement.required)
             .map(|requirement| requirement.risk_comptroller_report_sha256.clone()),
     })
+}
+
+fn verify_trust_market_requirement(
+    context: &CommerceOrderContext,
+    verified_context: Option<&CommerceVerifiedTrustMarketContext>,
+) -> Result<bool, CommerceOrderError> {
+    let Some(requirement) = &context.trust_market_requirement else {
+        return Ok(false);
+    };
+    if !requirement.required {
+        return Ok(false);
+    }
+    let Some(verified_context) = verified_context else {
+        return Err(CommerceOrderError::ReplayFailed(
+            "trust-market verifier context missing".to_string(),
+        ));
+    };
+    for (field, expected, actual) in [
+        (
+            "provider discovery snapshot",
+            &requirement.provider_discovery_snapshot_ref,
+            &verified_context.provider_discovery_snapshot_ref,
+        ),
+        (
+            "provider selection report",
+            &requirement.provider_selection_report_ref,
+            &verified_context.provider_selection_report_ref,
+        ),
+        (
+            "trust scorecard",
+            &requirement.trust_scorecard_ref,
+            &verified_context.trust_scorecard_ref,
+        ),
+        (
+            "reputation import",
+            &requirement.reputation_import_ref,
+            &verified_context.reputation_import_ref,
+        ),
+        (
+            "SLA commitment",
+            &requirement.sla_commitment_ref,
+            &verified_context.sla_commitment_ref,
+        ),
+        (
+            "collateral position",
+            &requirement.collateral_position_ref,
+            &verified_context.collateral_position_ref,
+        ),
+        (
+            "guarantee decision",
+            &requirement.guarantee_decision_ref,
+            &verified_context.guarantee_decision_ref,
+        ),
+        (
+            "adjudication jurisdiction",
+            &requirement.adjudication_jurisdiction_ref,
+            &verified_context.adjudication_jurisdiction_ref,
+        ),
+    ] {
+        if expected != actual {
+            return Err(CommerceOrderError::ReplayFailed(format!(
+                "trust-market {field} ref mismatch"
+            )));
+        }
+    }
+    if verified_context.selected_provider_subject.is_empty() {
+        return Err(CommerceOrderError::ReplayFailed(
+            "trust-market selected provider missing".to_string(),
+        ));
+    }
+    if let Some(coverage_requirement) = context
+        .coverage_requirement
+        .as_ref()
+        .filter(|coverage_requirement| coverage_requirement.required)
+    {
+        if verified_context.risk_comptroller_report_ref
+            != coverage_requirement.risk_comptroller_report_ref
+        {
+            return Err(CommerceOrderError::CoverageFailed(
+                "trust-market risk report ref mismatch".to_string(),
+            ));
+        }
+    }
+    Ok(true)
 }
 
 fn commerce_order_disclosure_policy() -> CommerceOrderDisclosurePolicy {

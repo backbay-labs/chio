@@ -1145,6 +1145,7 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
         evidence_graph_contains_disclosure_artifacts(&evidence_graph_bytes)?;
     let mut family_reports = Vec::new();
     let mut expected_public_settlement_trust_market_context = None;
+    let mut expected_commerce_trust_market_context = None;
     if claim_requirements.requires(CLAIM_PREFIX_TRUST_MARKET)
         || risk_route.through_trust_market
         || settlement_requires_trust_market_context
@@ -1172,6 +1173,8 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
         .map_err(map_proof_error)?;
         expected_public_settlement_trust_market_context =
             Some(public_settlement_trust_market_context_from_trust_market_report(&report));
+        expected_commerce_trust_market_context =
+            Some(commerce_trust_market_context_from_trust_market_report(&report));
         push_family_report(&mut family_reports, report)?;
     }
     for spec in LOCAL_PROOF_FAMILY_SPECS {
@@ -1188,6 +1191,7 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
                 &trusted_transaction_root_keys,
                 spec,
                 expected_public_settlement_trust_market_context.as_ref(),
+                expected_commerce_trust_market_context.as_ref(),
             )?;
         }
     }
@@ -1332,6 +1336,9 @@ fn push_local_proof_family_report(
     expected_public_settlement_trust_market_context: Option<
         &chio_web3::settlement_proof::PublicSettlementTrustMarketContext,
     >,
+    expected_commerce_trust_market_context: Option<
+        &chio_commerce_order::CommerceVerifiedTrustMarketContext,
+    >,
 ) -> Result<(), CliError> {
     match spec.route {
         LocalProofFamilyRoute::Commerce => {
@@ -1340,6 +1347,7 @@ fn push_local_proof_family_report(
                 evidence_graph_bytes,
                 trusted_transaction_root_keys,
                 &commerce_trusted_provider_keys_from_env()?,
+                expected_commerce_trust_market_context,
             )?;
             let report = chio_commerce_order::verify_commerce_order(&bundle)
                 .map_err(map_commerce_proof_error)?;
@@ -1391,6 +1399,47 @@ fn public_settlement_trust_market_context_from_trust_market_report(
         guarantee_decision_ref: report.trust_market_sections.guarantee_decision_ref.clone(),
         sla_remedy_ref: report.trust_market_sections.sla_remedy_ref.clone(),
         slash_authority_ref: report.trust_market_sections.slash_authority_ref.clone(),
+    }
+}
+
+fn commerce_trust_market_context_from_trust_market_report(
+    report: &chio_control_plane::trust_market::TrustMarketVerifierReport,
+) -> chio_commerce_order::CommerceVerifiedTrustMarketContext {
+    chio_commerce_order::CommerceVerifiedTrustMarketContext {
+        provider_discovery_snapshot_ref: report
+            .trust_market_sections
+            .provider_discovery_snapshot_ref
+            .clone(),
+        provider_selection_report_ref: report
+            .trust_market_sections
+            .provider_selection_report_ref
+            .clone(),
+        trust_scorecard_ref: report.trust_market_sections.trust_scorecard_ref.clone(),
+        reputation_import_ref: report
+            .trust_market_sections
+            .reputation_import_ref
+            .clone(),
+        sla_commitment_ref: report.trust_market_sections.sla_commitment_ref.clone(),
+        risk_comptroller_report_ref: report
+            .trust_market_sections
+            .risk_comptroller_report_ref
+            .clone(),
+        collateral_position_ref: report
+            .trust_market_sections
+            .collateral_position_ref
+            .clone(),
+        guarantee_decision_ref: report
+            .trust_market_sections
+            .guarantee_decision_ref
+            .clone(),
+        adjudication_jurisdiction_ref: report
+            .trust_market_sections
+            .adjudication_jurisdiction_ref
+            .clone(),
+        selected_provider_subject: report
+            .trust_market_sections
+            .selected_provider_subject
+            .clone(),
     }
 }
 
@@ -2211,6 +2260,7 @@ fn load_commerce_order_bundle_from_graph(
     evidence_graph_bytes: &[u8],
     trusted_payment_signer_keys: &[chio_core_types::PublicKey],
     trusted_provider_trust_signer_keys: &[chio_core_types::PublicKey],
+    verified_trust_market_context: Option<&chio_commerce_order::CommerceVerifiedTrustMarketContext>,
 ) -> Result<chio_commerce_order::CommerceOrderVerificationBundle, CliError> {
     let graph = parse_graph_artifact_paths(evidence_graph_bytes)?;
     let order_context: chio_commerce_order::CommerceOrderContext =
@@ -2302,6 +2352,7 @@ fn load_commerce_order_bundle_from_graph(
         settlement_packet_bytes,
         mandate_protocol_payloads,
         risk_comptroller_report_bytes,
+        verified_trust_market_context: verified_trust_market_context.cloned(),
         trusted_event_authority_receipt_kernel_keys: trusted_payment_signer_keys.to_vec(),
         trusted_payment_signer_keys: trusted_payment_signer_keys.to_vec(),
         trusted_provider_trust_signer_keys: trusted_provider_trust_signer_keys.to_vec(),
