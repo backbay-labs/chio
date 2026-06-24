@@ -69,10 +69,11 @@ pub use ops::{
 };
 pub use payments::{
     build_x402_payment_requirements, evaluate_circle_nanopayment, prepare_paymaster_compatibility,
-    prepare_transfer_with_authorization, CircleNanopaymentPolicy, Eip3009Domain,
-    Erc4337PaymasterPolicy, PreparedCircleNanopayment, PreparedPaymasterCompatibility,
-    PreparedTransferWithAuthorization, TransferWithAuthorizationInput, X402PaymentRequirements,
-    X402SettlementMode,
+    prepare_transfer_with_authorization, ApprovalBinding, CircleNanopaymentPolicy, Eip3009Domain,
+    Eip3009NonceStore, Erc4337PaymasterPolicy, InMemoryEip3009NonceStore, NonceOutcome,
+    PreparedCircleNanopayment, PreparedPaymasterCompatibility, PreparedTransferWithAuthorization,
+    TransferWithAuthorizationInput, X402PaymentRequirements, X402SettlementMode,
+    DEFAULT_MAX_EIP3009_NONCE_ENTRIES,
 };
 pub use retry::{
     classify_attempt, DeadLetterRecord, RetryDecision, RetryPolicy, DEFAULT_BACKOFF_CAP_MS,
