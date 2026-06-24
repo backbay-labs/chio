@@ -12,6 +12,7 @@ use crate::XtaskError;
 
 const ACCEPTANCE_SCHEMA: &str = "chio.proof-room.launch-acceptance.v1";
 const ACCEPTANCE_REPORT_SCHEMA: &str = "chio.proof-room.launch-acceptance-report.v1";
+const HOMEPAGE_COPY_MAP_SCHEMA: &str = "chio.proof-room.homepage-copy-map.v1";
 const NON_CLAIMS_SCHEMA: &str = "chio.proof-room.non-claims.v1";
 const NEGATIVE_CATALOG_SCHEMA: &str = "chio.proof-room.negative-catalog.v1";
 
@@ -83,6 +84,7 @@ pub(crate) fn run(args: &LaunchAcceptanceArgs) -> Result<(), XtaskError> {
     let stages = copy_and_validate_stages(&root, &out)?;
     copy_roots_from_stage_zero(&root, &out)?;
     copy_claim_registry(&root, &out)?;
+    write_homepage_copy_map(&out)?;
     write_non_claims(&out)?;
     write_negative_catalog(&out, &stages)?;
     copy_static_ui(&root, &out)?;
@@ -231,6 +233,146 @@ fn copy_claim_registry(root: &Path, out: &Path) -> Result<(), XtaskError> {
     )
 }
 
+fn write_homepage_copy_map(out: &Path) -> Result<(), XtaskError> {
+    let copy_map = json!({
+        "schema": HOMEPAGE_COPY_MAP_SCHEMA,
+        "copy_claims": [
+            {
+                "copy_claim": "The trust network for autonomous commerce",
+                "claim_ids": [
+                    "claim.commerce.order_replay_consistent",
+                    "claim.commerce.payment_lifecycle_bound",
+                    "claim.commerce.mandate_allowance_bound",
+                    "claim.commerce.admission_gates_bound",
+                    "claim.commerce.settlement_lifecycle_bound",
+                    "claim.public_settlement.order_binding_verified"
+                ],
+                "fixture_ids": ["commerce-transaction-passport"]
+            },
+            {
+                "copy_claim": "Proof layer",
+                "claim_ids": [
+                    "claim.transaction.passport_root_verified",
+                    "claim.transaction.evidence_graph_digest_bound",
+                    "claim.transaction.policy_digest_bound",
+                    "claim.proof_room.verifier_report_bound"
+                ],
+                "fixture_ids": ["single-call-authority"]
+            },
+            {
+                "copy_claim": "Emerging agent web",
+                "claim_ids": [
+                    "claim.agent_web.external_subject_digest_bound",
+                    "claim.agent_web.projection_manifest_bound",
+                    "claim.agent_web.unsupported_claims_limited",
+                    "claim.agent_web.sidecar_not_native_authority"
+                ],
+                "fixture_ids": ["disclosure-and-agent-web-envelope"]
+            },
+            {
+                "copy_claim": "Every action",
+                "claim_ids": [
+                    "claim.proof_room.receipt_coverage_matrix_bound"
+                ],
+                "fixture_ids": ["single-call-authority"]
+            },
+            {
+                "copy_claim": "Single agent call",
+                "claim_ids": [
+                    "claim.transaction.passport_root_verified",
+                    "claim.transaction.evidence_graph_digest_bound",
+                    "claim.transaction.policy_digest_bound"
+                ],
+                "fixture_ids": ["single-call-authority"]
+            },
+            {
+                "copy_claim": "Multi-swarm coordination",
+                "claim_ids": [
+                    "claim.swarm.task_graph_bound",
+                    "claim.swarm.continuation_fresh",
+                    "claim.swarm.attenuation_witness_chain_bound",
+                    "claim.swarm.route_plan_bound",
+                    "claim.swarm.join_receipt_bound",
+                    "claim.swarm.budget_pool_bound",
+                    "claim.swarm.revocation_epoch_bound"
+                ],
+                "fixture_ids": ["recursive-runtime-swarm"]
+            },
+            {
+                "copy_claim": "Verifiable authority",
+                "claim_ids": [
+                    "claim.transaction.passport_root_verified",
+                    "claim.transaction.policy_digest_bound",
+                    "claim.proof_room.authority_evidence_bound"
+                ],
+                "fixture_ids": ["single-call-authority"]
+            },
+            {
+                "copy_claim": "Recursive delegation",
+                "claim_ids": [
+                    "claim.swarm.continuation_fresh",
+                    "claim.swarm.attenuation_witness_chain_bound",
+                    "claim.swarm.join_receipt_bound",
+                    "claim.swarm.revocation_epoch_bound"
+                ],
+                "fixture_ids": ["recursive-runtime-swarm"]
+            },
+            {
+                "copy_claim": "Lineage",
+                "claim_ids": [
+                    "claim.disclosure.lineage_subgraph_bound",
+                    "claim.disclosure.leakage_ledger_complete"
+                ],
+                "fixture_ids": ["disclosure-and-agent-web-envelope"]
+            },
+            {
+                "copy_claim": "Selective disclosure",
+                "claim_ids": [
+                    "claim.disclosure.crypto_context_bound",
+                    "claim.disclosure.profile_context_policy_enforced",
+                    "claim.disclosure.lineage_subgraph_bound",
+                    "claim.disclosure.leakage_ledger_complete"
+                ],
+                "fixture_ids": ["disclosure-and-agent-web-envelope"]
+            },
+            {
+                "copy_claim": "Settlement context",
+                "claim_ids": [
+                    "claim.public_settlement.order_binding_verified",
+                    "claim.public_settlement.chain_context_verified",
+                    "claim.public_settlement.finality_verified",
+                    "claim.public_settlement.oracle_conversion_bound",
+                    "claim.public_settlement.dispute_posture_bound"
+                ],
+                "fixture_ids": ["commerce-transaction-passport"]
+            },
+            {
+                "copy_claim": "Across trust boundaries",
+                "claim_ids": [
+                    "claim.agent_web.external_subject_digest_bound",
+                    "claim.agent_web.projection_manifest_bound",
+                    "claim.agent_web.unsupported_claims_limited",
+                    "claim.agent_web.sidecar_not_native_authority"
+                ],
+                "fixture_ids": ["disclosure-and-agent-web-envelope"]
+            },
+            {
+                "copy_claim": "Autonomous commerce",
+                "claim_ids": [
+                    "claim.commerce.order_replay_consistent",
+                    "claim.commerce.payment_lifecycle_bound",
+                    "claim.commerce.mandate_allowance_bound",
+                    "claim.commerce.settlement_lifecycle_bound",
+                    "claim.public_settlement.order_binding_verified",
+                    "claim.public_settlement.dispute_posture_bound"
+                ],
+                "fixture_ids": ["commerce-transaction-passport"]
+            }
+        ]
+    });
+    write_json(&out.join("claims/homepage-copy-map.json"), &copy_map)
+}
+
 fn write_non_claims(out: &Path) -> Result<(), XtaskError> {
     let non_claims = json!({
         "schema": NON_CLAIMS_SCHEMA,
@@ -312,6 +454,9 @@ fn acceptance_manifest(git_commit: &str, stages: &[StageEvidence], report_sha256
         "claims": {
             "claim_registry": {
                 "path": "claims/claim-registry.json",
+            },
+            "homepage_copy_map": {
+                "path": "claims/homepage-copy-map.json",
             },
             "non_claims": {
                 "path": "claims/non-claims.json",
