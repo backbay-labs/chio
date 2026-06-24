@@ -11,17 +11,30 @@
 //! - Strings: minimal escaping (only required characters)
 //! - No whitespace between tokens
 
+use alloc::collections::BTreeMap;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 
 use core::cmp::Ordering;
+use core::fmt;
 use core::marker::PhantomData;
 
+use serde::de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::error::{Error, Result};
+
+/// Largest integer magnitude permitted for interoperable JSON exchange
+/// (`2^53 - 1`). RFC 7493 (I-JSON) §2.2 requires integers to fall within
+/// `[-(2^53 - 1), 2^53 - 1]`: although `2^53` itself round-trips through an
+/// IEEE-754 double, it is excluded from the safe range because it shares its
+/// representation with `2^53 + 1`, so consumers cannot distinguish the two.
+/// Magnitudes above this bound cannot be represented exactly by every
+/// conforming consumer and so must be rejected before signing rather than
+/// silently coerced.
+const I_JSON_MAX_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 /// Type-level witness for bytes produced by the canonical JSON serializer.
 ///
@@ -113,6 +126,58 @@ pub fn canonical_json_bytes<T: Serialize>(value: &T) -> Result<Vec<u8>> {
 pub fn canonical_json_string<T: Serialize>(value: &T) -> Result<String> {
     let json_value = serde_json::to_value(value)?;
     canonicalize(&json_value)
+}
+
+/// Strictly parse raw JSON text and canonicalize it to RFC 8785 bytes.
+///
+/// Unlike [`canonical_json_bytes`], which canonicalizes an already-typed Rust
+/// value, this entry point validates *untrusted JSON text* before signing. It
+/// enforces I-JSON / RFC 8785 input constraints that a plain
+/// `serde_json::Value` round-trip would silently paper over:
+///
+/// - **Duplicate object keys are rejected.** `serde_json::Value` collapses
+///   them with last-wins semantics, which lets two distinct payloads
+///   canonicalize to the same bytes (a render-A / sign-B vector). Here a
+///   repeated key is a hard error.
+/// - **Non-I-JSON numbers are rejected.** Integer literals outside the safe
+///   range `[-(2^53 - 1), 2^53 - 1]` cannot be represented losslessly by every
+///   conforming consumer; rather than coerce them to a precision-losing `f64`,
+///   canonicalization fails. Any number token that parses to an integer-valued
+///   `f64` is also rejected: such a token never arrives through serde_json's
+///   exact integer path, so it is either a fractional literal the parser rounded
+///   onto an integer (for example `9007199254740991.1`) or an integer written in
+///   float form (`1.0`, `1e2`). Because the original lexeme cannot be recovered
+///   without serde_json's std-only `raw_value` feature, both are refused so the
+///   signed bytes always reflect the value actually submitted. Integers must be
+///   sent as integer tokens (`100`, not `100.0`).
+/// - **Over-precise fractional numbers are rejected.** A decimal literal that
+///   carries more significant digits than an `f64` can hold (for example
+///   `0.123456789012345678901`) is silently rounded by serde_json onto the
+///   nearest double, which canonicalizes to the same bytes as a different,
+///   shorter literal (`0.12345678901234568`). Signing the rounded value would
+///   resurrect the render-A / sign-B class this API exists to prevent, so any
+///   fractional token whose value does not round-trip exactly through the
+///   strict path is refused. See [`StrictJson::reject_over_precise_numbers`].
+///
+/// Well-formed I-JSON input canonicalizes byte-identically to the typed path,
+/// with the sole exception of integer-valued float tokens, which the typed path
+/// accepts but this stricter entry point rejects for the reason above.
+pub fn canonical_json_bytes_from_str(input: &str) -> Result<Vec<u8>> {
+    canonical_json_string_from_str(input).map(String::into_bytes)
+}
+
+/// Strictly parse raw JSON text and canonicalize it to an RFC 8785 string.
+///
+/// See [`canonical_json_bytes_from_str`] for the validation contract.
+pub fn canonical_json_string_from_str(input: &str) -> Result<String> {
+    let value = StrictJson::from_str(input)?;
+    // `StrictJson::from_str` has already proven `input` is well-formed I-JSON, so
+    // the source text can be scanned for over-precise fractional literals (whose
+    // discarded digits are invisible once parsed to `f64`) before signing.
+    StrictJson::reject_over_precise_numbers(input)?;
+    let mut out = String::new();
+    value.write_canonical(&mut out)?;
+    Ok(out)
 }
 
 /// Canonicalize a `serde_json::Value` to an RFC 8785 string.
@@ -263,6 +328,67 @@ fn canonicalize_f64(v: f64) -> Result<String> {
     Ok(format!("{sign}{mantissa}e{exp_sign}{sci_exp}"))
 }
 
+/// Reject a fractional number token that is not already in shortest canonical form.
+///
+/// Integer-valued tokens (no fractional part, or a `.0`/exponent that resolves to
+/// a whole number) are handled by `visit_f64`'s `fract() == 0.0` guard, so this
+/// only inspects tokens whose value has a genuine fractional component. Such a
+/// token is canonical only when its significant digits are *exactly* the
+/// significant digits of the shortest decimal that round-trips to its `f64` (the
+/// form the canonical writer emits via `ryu`). Any other token either carries
+/// surplus digits the parser silently rounded away, or sits at the same digit
+/// count yet a different value than the shortest rendering (for example
+/// `0.12345678901234567`, which parses to the f64 whose shortest form is
+/// `0.12345678901234566`: identical 17-digit count, different digits). Comparing
+/// only the digit *count* would admit the latter and then sign the rounded value
+/// (render-A / sign-B). Comparing the digit *sequence* fails closed: the token is
+/// accepted only when it is already the shortest round-tripping decimal.
+fn reject_if_over_precise_fractional(token: &str) -> Result<()> {
+    let value: f64 = token
+        .parse()
+        .map_err(|_| Error::CanonicalJson(format!("invalid number token: {token}")))?;
+    // Integer-valued doubles never reach the canonical float path (visit_f64
+    // already refuses them); skip them here so this check is solely about
+    // fractional precision.
+    if !value.is_finite() || value.fract() == 0.0 {
+        return Ok(());
+    }
+
+    let mut buf = ryu::Buffer::new();
+    let shortest = buf.format_finite(value.abs());
+    // The token and the ryu rendering describe the same f64 (the former parsed to
+    // it, the latter rendered from it), so they share magnitude; the only degree
+    // of freedom is the significant-digit sequence. Equal sequences mean the
+    // submitted token is already the shortest round-tripping decimal; any
+    // divergence means precision was lost (or shifted) on parse and the input is
+    // refused fail-closed.
+    if significant_digits(token) != significant_digits(shortest) {
+        return Err(Error::CanonicalJson(format!(
+            "number {token} cannot be signed: it is not the shortest decimal that \
+             round-trips through an f64 and would be silently rounded to {shortest}; \
+             submit the value in its exact shortest double representation"
+        )));
+    }
+    Ok(())
+}
+
+/// Extract the significant decimal digits of a JSON number token, in order.
+///
+/// Only the mantissa (the portion before any `e`/`E`) contributes; leading and
+/// trailing zeros are not significant, so they are stripped. An all-zero or
+/// integer-zero mantissa yields an empty string. The exponent and sign are
+/// ignored because they shift magnitude without adding precision. Comparing the
+/// returned sequences (not merely their lengths) detects tokens whose digit
+/// *count* matches the shortest rendering but whose digit *values* differ.
+fn significant_digits(token: &str) -> String {
+    let mantissa = token.split(['e', 'E']).next().unwrap_or(token);
+    let digits: String = mantissa.chars().filter(|c| c.is_ascii_digit()).collect();
+    digits
+        .trim_start_matches('0')
+        .trim_end_matches('0')
+        .to_string()
+}
+
 /// Parse a float string (as formatted by ryu) into (significant digits, exponent).
 ///
 /// Returns:
@@ -398,6 +524,282 @@ fn escape_json_string(s: &str) -> String {
         }
     }
     result
+}
+
+/// A strictly-validated JSON value tree used by the text-parsing entry points.
+///
+/// It is deserialized directly from JSON tokens (never through
+/// `serde_json::Value`) so that:
+/// - duplicate object keys can be detected and rejected, and
+/// - number literals can be checked against the I-JSON safe range without first
+///   being coerced to a lossy `f64`.
+///
+/// Key insertion order is preserved during parsing; the canonical writer sorts
+/// keys by UTF-16 code unit at emit time, matching the typed path exactly.
+enum StrictJson {
+    Null,
+    Bool(bool),
+    /// An integer literal within the I-JSON safe range, preserved exactly.
+    Int(i64),
+    /// A fractional / exponent number literal, validated as finite.
+    Float(f64),
+    Str(String),
+    Array(Vec<StrictJson>),
+    /// Object entries in insertion order; keys are guaranteed unique.
+    Object(Vec<(String, StrictJson)>),
+}
+
+impl StrictJson {
+    fn from_str(input: &str) -> Result<Self> {
+        let mut de = serde_json::Deserializer::from_str(input);
+        let value = StrictJson::deserialize(&mut de)
+            .map_err(|err| Error::CanonicalJson(format!("invalid I-JSON input: {err}")))?;
+        de.end()
+            .map_err(|err| Error::CanonicalJson(format!("trailing JSON data: {err}")))?;
+        Ok(value)
+    }
+
+    /// Reject fractional number literals carrying more precision than an `f64`.
+    ///
+    /// `visit_f64` only ever sees the already-parsed double, so an over-precise
+    /// fractional lexeme (for example `0.123456789012345678901`) is
+    /// indistinguishable there from the shorter literal it rounds to
+    /// (`0.12345678901234568`): both arrive as the same non-integer `f64` and
+    /// canonicalize to identical bytes. Signing the rounded value would reopen
+    /// the render-A / sign-B class this API exists to close, and serde_json
+    /// exposes no raw lexeme without its std-only `raw_value` feature (which this
+    /// `no_std + alloc` crate cannot enable).
+    ///
+    /// This scans the already-validated source text directly. For every fractional
+    /// number token it parses the value to `f64`, renders that double back to its
+    /// shortest decimal (the form the canonical writer emits via `ryu`), and
+    /// rejects the token when it carries more significant digits than the shortest
+    /// form. Because `ryu` produces the shortest decimal that round-trips to the
+    /// double, any token with extra significant digits necessarily lost precision
+    /// during parsing; a token with the same count round-trips exactly. This is
+    /// the conservative closure: it admits only fractional literals that survive
+    /// the strict path unchanged. The caller invokes it after [`Self::from_str`]
+    /// succeeds, so the input here is guaranteed to be well-formed JSON.
+    fn reject_over_precise_numbers(input: &str) -> Result<()> {
+        let bytes = input.as_bytes();
+        let len = bytes.len();
+        let mut idx = 0;
+        while idx < len {
+            let ch = bytes[idx];
+            if ch == b'"' {
+                // Skip a string literal so digits inside it are never treated as
+                // a number token. Backslash escapes the following byte (including
+                // an escaped quote), so step over the pair.
+                idx += 1;
+                while idx < len {
+                    match bytes[idx] {
+                        b'\\' => idx += 2,
+                        b'"' => {
+                            idx += 1;
+                            break;
+                        }
+                        _ => idx += 1,
+                    }
+                }
+                continue;
+            }
+
+            let starts_number = ch.is_ascii_digit()
+                || (ch == b'-' && idx + 1 < len && bytes[idx + 1].is_ascii_digit());
+            if !starts_number {
+                idx += 1;
+                continue;
+            }
+
+            let start = idx;
+            if ch == b'-' {
+                idx += 1;
+            }
+            while idx < len {
+                match bytes[idx] {
+                    b'0'..=b'9' | b'.' | b'e' | b'E' | b'+' | b'-' => idx += 1,
+                    _ => break,
+                }
+            }
+            // `start..idx` is ASCII, so slicing the original `&str` is valid UTF-8.
+            let token = &input[start..idx];
+            reject_if_over_precise_fractional(token)?;
+        }
+        Ok(())
+    }
+
+    fn write_canonical(&self, out: &mut String) -> Result<()> {
+        match self {
+            StrictJson::Null => out.push_str("null"),
+            StrictJson::Bool(true) => out.push_str("true"),
+            StrictJson::Bool(false) => out.push_str("false"),
+            StrictJson::Int(i) => out.push_str(&i.to_string()),
+            StrictJson::Float(f) => out.push_str(&canonicalize_f64(*f)?),
+            StrictJson::Str(s) => {
+                out.push('"');
+                out.push_str(&escape_json_string(s));
+                out.push('"');
+            }
+            StrictJson::Array(items) => {
+                out.push('[');
+                for (idx, item) in items.iter().enumerate() {
+                    if idx > 0 {
+                        out.push(',');
+                    }
+                    item.write_canonical(out)?;
+                }
+                out.push(']');
+            }
+            StrictJson::Object(entries) => {
+                // RFC 8785: sort object keys by UTF-16 code unit comparison.
+                let mut sorted: Vec<&(String, StrictJson)> = entries.iter().collect();
+                sorted.sort_by(|(a, _), (b, _)| cmp_utf16_code_units(a.as_str(), b.as_str()));
+                out.push('{');
+                for (idx, (key, value)) in sorted.into_iter().enumerate() {
+                    if idx > 0 {
+                        out.push(',');
+                    }
+                    out.push('"');
+                    out.push_str(&escape_json_string(key));
+                    out.push_str("\":");
+                    value.write_canonical(out)?;
+                }
+                out.push('}');
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<'de> Deserialize<'de> for StrictJson {
+    fn deserialize<D>(deserializer: D) -> core::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_any(StrictJsonVisitor)
+    }
+}
+
+struct StrictJsonVisitor;
+
+impl<'de> Visitor<'de> for StrictJsonVisitor {
+    type Value = StrictJson;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a valid I-JSON value")
+    }
+
+    fn visit_bool<E>(self, v: bool) -> core::result::Result<StrictJson, E> {
+        Ok(StrictJson::Bool(v))
+    }
+
+    fn visit_i64<E>(self, v: i64) -> core::result::Result<StrictJson, E>
+    where
+        E: de::Error,
+    {
+        if v.unsigned_abs() > I_JSON_MAX_SAFE_INTEGER {
+            return Err(de::Error::custom(format!(
+                "integer {v} outside I-JSON safe range [-(2^53-1), 2^53-1]"
+            )));
+        }
+        Ok(StrictJson::Int(v))
+    }
+
+    fn visit_u64<E>(self, v: u64) -> core::result::Result<StrictJson, E>
+    where
+        E: de::Error,
+    {
+        if v > I_JSON_MAX_SAFE_INTEGER {
+            return Err(de::Error::custom(format!(
+                "integer {v} outside I-JSON safe range [-(2^53-1), 2^53-1]"
+            )));
+        }
+        // Safe: v <= 2^53 - 1 < i64::MAX.
+        Ok(StrictJson::Int(v as i64))
+    }
+
+    fn visit_f64<E>(self, v: f64) -> core::result::Result<StrictJson, E>
+    where
+        E: de::Error,
+    {
+        if !v.is_finite() {
+            return Err(de::Error::custom("non-finite numbers are not valid JSON"));
+        }
+        // Reject any integer-valued f64. serde_json hands genuine integer
+        // literals (no decimal point or exponent) to visit_i64/visit_u64 via its
+        // exact integer path, so a value arriving here with a zero fractional
+        // part did not come from a faithful integer token. It is one of:
+        //   * a fractional literal whose fractional digits the parser rounded
+        //     away (e.g. 9007199254740991.1 -> 9007199254740991.0, or even a
+        //     small magnitude with enough fraction digits like 140737488355328.01
+        //     -> 140737488355328.0), or
+        //   * an integer literal too large for i64/u64, delivered as an
+        //     already-lossy f64 (e.g. 184467440737095516160), or
+        //   * an integer written in float form (e.g. 1.0, 1e2), which is
+        //     ambiguous with the rounded-fractional case above and could equally
+        //     be a rounded 1.0000...1.
+        // Signing any of these would emit a value the submitter may not have
+        // written (the render-A / sign-B class this API exists to prevent).
+        // Because serde_json (without the std-only `raw_value` feature, which
+        // this no_std + alloc crate cannot enable) exposes no way to recover the
+        // original lexeme, and because the magnitude at which a fractional
+        // collapses to an integer shrinks without bound as the fraction shrinks
+        // (`x.01` collapses near 2^47, `x.0001` lower still), there is no safe
+        // magnitude floor. Rejecting every integer-valued f64 is the only
+        // closure that admits no precision-losing input. Callers that need an
+        // integer must send an integer token (e.g. `100`, not `100.0`/`1e2`).
+        if v.fract() == 0.0 {
+            return Err(de::Error::custom(format!(
+                "number {v} cannot be signed: an integer-valued f64 may be a \
+                 rounded fractional or out-of-range integer literal; send an \
+                 integer token (within +/-(2^53-1)) instead"
+            )));
+        }
+        Ok(StrictJson::Float(v))
+    }
+
+    fn visit_str<E>(self, v: &str) -> core::result::Result<StrictJson, E> {
+        Ok(StrictJson::Str(v.to_string()))
+    }
+
+    fn visit_string<E>(self, v: String) -> core::result::Result<StrictJson, E> {
+        Ok(StrictJson::Str(v))
+    }
+
+    fn visit_none<E>(self) -> core::result::Result<StrictJson, E> {
+        Ok(StrictJson::Null)
+    }
+
+    fn visit_unit<E>(self) -> core::result::Result<StrictJson, E> {
+        Ok(StrictJson::Null)
+    }
+
+    fn visit_seq<A>(self, mut seq: A) -> core::result::Result<StrictJson, A::Error>
+    where
+        A: SeqAccess<'de>,
+    {
+        let mut items = Vec::new();
+        while let Some(item) = seq.next_element()? {
+            items.push(item);
+        }
+        Ok(StrictJson::Array(items))
+    }
+
+    fn visit_map<A>(self, mut map: A) -> core::result::Result<StrictJson, A::Error>
+    where
+        A: MapAccess<'de>,
+    {
+        let mut entries: Vec<(String, StrictJson)> = Vec::new();
+        // Track seen keys to reject duplicates instead of silently de-duping.
+        let mut seen: BTreeMap<String, ()> = BTreeMap::new();
+        while let Some((key, value)) = map.next_entry::<String, StrictJson>()? {
+            if seen.insert(key.clone(), ()).is_some() {
+                return Err(de::Error::custom(format!("duplicate object key: {key:?}")));
+            }
+            entries.push((key, value));
+        }
+        Ok(StrictJson::Object(entries))
+    }
 }
 
 #[cfg(test)]
@@ -676,5 +1078,323 @@ mod tests {
         // The canonical form has no whitespace.
         assert!(!canonical.contains(' '));
         assert!(!canonical.contains('\n'));
+    }
+
+    // --- BAC-555: strict input validation (duplicate keys / non-I-JSON) ---
+
+    #[test]
+    fn strict_rejects_duplicate_keys() {
+        // serde_json::Value would silently keep the last value ("last-wins");
+        // the strict path must reject the input outright.
+        let err = canonical_json_string_from_str(r#"{"a":1,"a":2}"#).unwrap_err();
+        match err {
+            Error::CanonicalJson(msg) => assert!(
+                msg.contains("duplicate object key"),
+                "unexpected message: {msg}"
+            ),
+            other => panic!("expected CanonicalJson error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn strict_rejects_duplicate_keys_nested() {
+        let err = canonical_json_string_from_str(r#"{"outer":{"x":1,"x":2}}"#).unwrap_err();
+        assert!(matches!(err, Error::CanonicalJson(_)));
+    }
+
+    #[test]
+    fn strict_rejects_duplicate_keys_last_wins_collapse_proof() {
+        // Demonstrates the render-A/sign-B vector: two distinct payloads that
+        // collapse to identical bytes via serde_json::Value, both rejected.
+        let payload_a = r#"{"amount":1,"amount":1000000}"#;
+        let collapsed: Value = serde_json::from_str(payload_a).unwrap();
+        // serde_json keeps the last value (1000000), losing the first.
+        assert_eq!(collapsed["amount"], serde_json::json!(1_000_000));
+        // The strict path refuses to canonicalize the ambiguous input.
+        assert!(canonical_json_string_from_str(payload_a).is_err());
+    }
+
+    #[test]
+    fn strict_rejects_integer_literal_beyond_safe_range() {
+        // 2^53 + 1 cannot be represented exactly by an IEEE-754 double; rather
+        // than coerce it to a precision-losing value, reject it.
+        let err = canonical_json_string_from_str("9007199254740993").unwrap_err();
+        assert!(matches!(err, Error::CanonicalJson(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn strict_rejects_huge_integer_literal_that_overflows_u64() {
+        // 184467440737095516160 > u64::MAX, so serde_json delivers it as a lossy
+        // f64. It is integer-valued and far beyond 2^53, so it is rejected.
+        let err = canonical_json_string_from_str("184467440737095516160").unwrap_err();
+        assert!(matches!(err, Error::CanonicalJson(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn strict_rejects_negative_integer_literal_beyond_safe_range() {
+        let err = canonical_json_string_from_str("-9007199254740993").unwrap_err();
+        assert!(matches!(err, Error::CanonicalJson(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn strict_rejects_non_finite_via_overflow() {
+        // 1e400 overflows to +Infinity, which is not valid JSON.
+        let err = canonical_json_string_from_str("1e400").unwrap_err();
+        assert!(matches!(err, Error::CanonicalJson(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn strict_rejects_trailing_data() {
+        let err = canonical_json_string_from_str(r#"{"a":1} garbage"#).unwrap_err();
+        assert!(matches!(err, Error::CanonicalJson(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn strict_accepts_safe_range_boundary() {
+        // 2^53 - 1 is the largest I-JSON safe integer (RFC 7493 §2.2) and must
+        // be accepted.
+        assert_eq!(
+            canonical_json_string_from_str("9007199254740991").unwrap(),
+            "9007199254740991"
+        );
+        assert_eq!(
+            canonical_json_string_from_str("-9007199254740991").unwrap(),
+            "-9007199254740991"
+        );
+    }
+
+    #[test]
+    fn strict_rejects_safe_range_boundary_plus_one() {
+        // 2^53 itself is excluded from the I-JSON safe range: although it round-
+        // trips through an f64, it shares that representation with 2^53 + 1, so a
+        // conforming consumer cannot distinguish them. It must be rejected.
+        let err = canonical_json_string_from_str("9007199254740992").unwrap_err();
+        assert!(matches!(err, Error::CanonicalJson(_)), "got {err:?}");
+        // The negative boundary mirrors it.
+        let err = canonical_json_string_from_str("-9007199254740992").unwrap_err();
+        assert!(matches!(err, Error::CanonicalJson(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn strict_rejects_rounded_fractional_f64() {
+        // serde_json (float_roundtrip) rounds a fractional lexeme near the
+        // precision boundary onto an integer-valued f64: 9007199254740991.1 is
+        // delivered to visit_f64 as 9007199254740991.0. Without rejection it would
+        // canonicalize as the integer 9007199254740991, signing a value the
+        // submitter never wrote (render-A / sign-B). It must be rejected.
+        let err = canonical_json_string_from_str("9007199254740991.1").unwrap_err();
+        assert!(matches!(err, Error::CanonicalJson(_)), "got {err:?}");
+
+        // The collapse is not confined to the 2^53 boundary: with enough
+        // fractional digits a much smaller magnitude also rounds to an integer.
+        // 140737488355328.01 (2^47 + .01) is delivered as 140737488355328.0.
+        let err = canonical_json_string_from_str("140737488355328.01").unwrap_err();
+        assert!(matches!(err, Error::CanonicalJson(_)), "got {err:?}");
+    }
+
+    #[test]
+    fn strict_rejects_integer_valued_float_form() {
+        // An integer written in float form (decimal point or exponent) reaches
+        // visit_f64 as an integer-valued f64, indistinguishable from a rounded
+        // fractional, so it is rejected. Callers must send an integer token.
+        for input in ["1.0", "100.0", "1e2", "0.0", "-5.0", "2.5e1"] {
+            let err = canonical_json_string_from_str(input).unwrap_err();
+            assert!(
+                matches!(err, Error::CanonicalJson(_)),
+                "expected {input} to be rejected, got {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_rejects_over_precise_fractional() {
+        // 0.123456789012345678901 carries more significant digits than an f64 can
+        // hold; serde_json silently rounds it onto the same double as the shorter
+        // 0.12345678901234568, so both would canonicalize to identical bytes. The
+        // strict path must reject the over-precise lexeme so signing reflects only
+        // values that survive the round trip exactly (render-A / sign-B closure).
+        let err = canonical_json_string_from_str(r#"{"x":0.123456789012345678901}"#).unwrap_err();
+        match err {
+            Error::CanonicalJson(msg) => assert!(
+                msg.contains("shortest decimal that round-trips"),
+                "unexpected message: {msg}"
+            ),
+            other => panic!("expected CanonicalJson error, got {other:?}"),
+        }
+
+        // The collapse target itself (the f64's own shortest decimal) is exactly
+        // representable and is still accepted, canonicalizing to the same value.
+        assert_eq!(
+            canonical_json_string_from_str(r#"{"x":0.12345678901234568}"#).unwrap(),
+            r#"{"x":0.12345678901234568}"#
+        );
+
+        // A bare over-precise token (not wrapped in an object) is rejected too,
+        // including pi written past double precision and an over-precise value in
+        // exponential form. Each stays fractional after parsing, so it exercises
+        // the over-precision scan rather than the integer-valued-f64 guard.
+        for input in [
+            "0.123456789012345678901",
+            "3.141592653589793238462643383279",
+            "1.234567890123456789e-3",
+        ] {
+            assert!(
+                canonical_json_string_from_str(input).is_err(),
+                "expected {input} to be rejected as over-precise"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_rejects_same_digit_count_different_value() {
+        // Round-3 Codex P2: the prior check compared only the *count* of
+        // significant digits, so a token whose digit count equals the ryu
+        // shortest rendering but whose digit *value* differs slipped through and
+        // got signed as the rounded form (render-A / sign-B). 0.12345678901234567
+        // parses to the f64 whose shortest decimal is 0.12345678901234566; both
+        // have 17 significant digits. The token is not the shortest round-tripping
+        // decimal, so it must be REJECTED.
+        let err = canonical_json_string_from_str("0.12345678901234567").unwrap_err();
+        match err {
+            Error::CanonicalJson(msg) => assert!(
+                msg.contains("shortest decimal that round-trips"),
+                "unexpected message: {msg}"
+            ),
+            other => panic!("expected CanonicalJson error, got {other:?}"),
+        }
+
+        // The f64's own shortest decimal (...566) IS canonical and is ACCEPTED,
+        // canonicalizing to itself.
+        assert_eq!(
+            canonical_json_string_from_str("0.12345678901234566").unwrap(),
+            "0.12345678901234566"
+        );
+
+        // A couple more cases that the digit-COUNT comparison would have wrongly
+        // accepted. Each token's significant-digit sequence differs from its f64's
+        // shortest rendering, so each must be rejected fail-closed:
+        //   * 0.12345678901234567 -> shortest 0.12345678901234566 (same 17-digit
+        //     count, last digit differs): the canonical render-A/sign-B vector.
+        //   * 0.10000000000000001 -> shortest 0.1 (different count, trailing run
+        //     of zeros the parser folded away).
+        // The first is asserted above; assert the second here as a same-mechanism
+        // (over-precise, diverging digits) companion.
+        for input in ["0.12345678901234567", "0.10000000000000001"] {
+            let err = canonical_json_string_from_str(input).unwrap_err();
+            assert!(
+                matches!(err, Error::CanonicalJson(_)),
+                "expected {input} rejected, got {err:?}"
+            );
+        }
+
+        // Sanity floor: tokens that already equal their shortest form (even though
+        // they look long) stay ACCEPTED, so the fix does not over-reject genuine
+        // canonical doubles.
+        for input in [
+            "0.30000000000000004",
+            "9.999999999999999e-1",
+            "2251799813685247.5",
+        ] {
+            let typed: Value = serde_json::from_str(input).unwrap();
+            assert_eq!(
+                canonical_json_string_from_str(input).unwrap(),
+                canonicalize(&typed).unwrap(),
+                "expected {input} accepted as already-shortest"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_accepts_exactly_representable_fractional() {
+        // A normal fractional whose decimal literal is already the shortest form
+        // that round-trips through an f64 loses no precision and must be accepted,
+        // matching the typed path byte-for-byte. Numbers inside string values must
+        // not be mistaken for over-precise number tokens by the source scan.
+        let input = r#"{"ratio":3.14159,"note":"pi is 3.14159265358979311599796346854"}"#;
+        let typed: Value = serde_json::from_str(input).unwrap();
+        let typed_canonical = canonicalize(&typed).unwrap();
+        assert_eq!(
+            canonical_json_string_from_str(input).unwrap(),
+            typed_canonical
+        );
+    }
+
+    #[test]
+    fn strict_accepts_genuine_fractionals() {
+        // Numbers with a real fractional part keep a non-zero fract() and are
+        // accepted, canonicalized exactly as the typed path would.
+        for input in [
+            "999999999.5",
+            "2251799813685247.5",
+            "1.5",
+            "3.14159",
+            "-0.25",
+        ] {
+            let typed: Value = serde_json::from_str(input).unwrap();
+            let typed_canonical = canonicalize(&typed).unwrap();
+            assert_eq!(
+                canonical_json_string_from_str(input).unwrap(),
+                typed_canonical,
+                "strict path diverged from typed path for {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_matches_typed_path_for_wellformed_ijson() {
+        // For well-formed I-JSON, the strict text path must produce byte-identical
+        // output to the existing typed (serde_json::Value) canonicalizer.
+        let cases = [
+            r#"{"z":1,"a":2,"m":3}"#,
+            r#"{"2":"b","10":"a","a":0}"#,
+            r#"{"outer":{"inner":"value"}}"#,
+            r#"[1,2,3]"#,
+            r#"{"a":{"b":{"c":[1,{"d":true}]}}}"#,
+            r#"{"flag":true,"none":null,"neg":-42,"frac":1.5}"#,
+            r#"{}"#,
+            r#"[]"#,
+            r#""hello \" \\ \n world""#,
+            "null",
+            "true",
+            "3.14159",
+        ];
+        for case in cases {
+            let typed: Value = serde_json::from_str(case).unwrap();
+            let typed_canonical = canonicalize(&typed).unwrap();
+            let strict_canonical = canonical_json_string_from_str(case).unwrap();
+            assert_eq!(
+                strict_canonical, typed_canonical,
+                "strict path diverged from typed path for input: {case}"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_bytes_match_string() {
+        let input = r#"{"z":1,"a":[2,3]}"#;
+        let bytes = canonical_json_bytes_from_str(input).unwrap();
+        let string = canonical_json_string_from_str(input).unwrap();
+        assert_eq!(bytes, string.as_bytes());
+    }
+
+    #[test]
+    fn strict_roundtrips_losslessly() {
+        // A valid typed value canonicalizes deterministically and the canonical
+        // form parses back to the same logical value.
+        let input = r#"{"action":"file_read","path":"/etc/hosts","ts":1710000000,"ok":true}"#;
+        let canonical = canonical_json_string_from_str(input).unwrap();
+        let reparsed: Value = serde_json::from_str(&canonical).unwrap();
+        let original: Value = serde_json::from_str(input).unwrap();
+        assert_eq!(reparsed, original);
+        // Deterministic across repeated calls.
+        assert_eq!(canonical, canonical_json_string_from_str(input).unwrap());
+    }
+
+    #[test]
+    fn strict_preserves_unicode_key_ordering() {
+        // Same UTF-16 code-unit ordering guarantee as the typed path.
+        let input = "{\"\u{e000}\":1,\"\u{10437}\":2}";
+        let strict = canonical_json_string_from_str(input).unwrap();
+        assert_eq!(strict, "{\"\u{10437}\":2,\"\u{e000}\":1}");
     }
 }
