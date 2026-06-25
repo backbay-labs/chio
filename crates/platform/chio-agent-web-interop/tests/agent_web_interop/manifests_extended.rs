@@ -610,7 +610,9 @@ pub(crate) fn add_extended_projection_manifests(builder: &mut AgentWebBundleBuil
     }));
     if matches!(
         case,
-        AgentWebCase::BbsProjection | AgentWebCase::BbsReceiptRefMissing
+        AgentWebCase::BbsProjection
+            | AgentWebCase::BbsSelfAssertedVerified
+            | AgentWebCase::BbsReceiptRefMissing
     ) {
         push_artifact(
             &mut builder.artifacts,

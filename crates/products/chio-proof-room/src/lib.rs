@@ -126,6 +126,10 @@ const CLAIM_PREFIX_COMMERCE: &str = "claim.commerce.";
 const CLAIM_PREFIX_TRANSACTION: &str = "claim.transaction.";
 const CLAIM_PREFIX_MARKET: &str = "claim.market.";
 const AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV: &str = "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET";
+const AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS_ENV: &str =
+    "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS";
+const AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS_ENV: &str =
+    "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS";
 const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS";
 const AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV: &str =
     "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS";
@@ -137,6 +141,9 @@ const ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS_ENV: &str =
 const ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS_ENV: &str =
     "CHIO_ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS";
 const COMMERCE_TRUSTED_PROVIDER_KEYS_ENV: &str = "CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS";
+const COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS_ENV: &str =
+    "CHIO_COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS";
+const COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS_ENV: &str = "CHIO_COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS";
 const TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV: &str = "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS";
 const SWARM_TRUSTED_WITNESS_KEYS_ENV: &str = "CHIO_SWARM_TRUSTED_WITNESS_KEYS";
 const PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS_ENV: &str =
@@ -151,6 +158,8 @@ const PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS_ENV: &str = "CHIO_PUBLIC_SETTLEMENT_AL
 const PUBLIC_SETTLEMENT_MAINNET_BLOCKED_ENV: &str = "CHIO_PUBLIC_SETTLEMENT_MAINNET_BLOCKED";
 const PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS";
+const PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON";
 const PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV: &str =
     "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS";
 const PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS_ENV: &str =
@@ -181,6 +190,9 @@ pub(crate) fn agent_web_verifier_trust_from_env(
             ))
         }
     };
+    if let Some((now_unix_seconds, max_age_seconds)) = standard_webhooks_replay_window_from_env()? {
+        trust = trust.with_standard_webhooks_replay_window(now_unix_seconds, max_age_seconds);
+    }
     match env::var(AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV) {
         Ok(keys) => {
             trust = trust.with_trusted_receipt_kernel_keys(parse_public_keys(
@@ -210,6 +222,37 @@ pub(crate) fn agent_web_verifier_trust_from_env(
         }
     }
     Ok(trust)
+}
+
+fn standard_webhooks_replay_window_from_env() -> Result<Option<(u64, u64)>, String> {
+    match (
+        optional_u64_from_env(AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS_ENV)?,
+        optional_u64_from_env(AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS_ENV)?,
+    ) {
+        (None, None) => Ok(None),
+        (Some(now_unix_seconds), Some(max_age_seconds)) => Ok(Some((
+            now_unix_seconds,
+            max_age_seconds,
+        ))),
+        (None, Some(_)) => Err(format!(
+            "{AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS_ENV} must be set with {AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS_ENV}"
+        )),
+        (Some(_), None) => Err(format!(
+            "{AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS_ENV} must be set with {AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS_ENV}"
+        )),
+    }
+}
+
+fn optional_u64_from_env(env_name: &str) -> Result<Option<u64>, String> {
+    match env::var(env_name) {
+        Ok(value) => value
+            .trim()
+            .parse::<u64>()
+            .map(Some)
+            .map_err(|error| format!("{env_name} must be a u64: {error}")),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(_)) => Err(format!("{env_name} must be valid UTF-8")),
+    }
 }
 
 fn parse_public_keys(
@@ -276,6 +319,22 @@ pub(crate) fn commerce_trusted_provider_keys_from_env(
     required_public_keys_from_env(COMMERCE_TRUSTED_PROVIDER_KEYS_ENV, "commerce provider")
 }
 
+pub(crate) fn commerce_trusted_event_authority_receipt_kernel_keys_from_env(
+) -> Result<Vec<chio_core_types::PublicKey>, String> {
+    required_public_keys_from_env(
+        COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS_ENV,
+        "commerce event authority receipt kernel",
+    )
+}
+
+pub(crate) fn commerce_trusted_payment_signer_keys_from_env(
+) -> Result<Vec<chio_core_types::PublicKey>, String> {
+    required_public_keys_from_env(
+        COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS_ENV,
+        "commerce payment signer",
+    )
+}
+
 fn required_public_keys_from_env(
     env_name: &str,
     label: &str,
@@ -336,6 +395,23 @@ fn optional_u32_from_env(env_name: &str) -> Result<Option<u32>, String> {
     }
 }
 
+fn optional_public_settlement_independent_chain_head_from_env(
+) -> Result<Option<chio_web3::settlement_proof::PublicSettlementIndependentChainHead>, String> {
+    match env::var(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV) {
+        Ok(value) => serde_json::from_str(value.trim())
+            .map(Some)
+            .map_err(|error| {
+                format!(
+                "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV} must be valid JSON: {error}"
+            )
+            }),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(_)) => Err(format!(
+            "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV} must be valid UTF-8"
+        )),
+    }
+}
+
 pub(crate) fn public_settlement_verifier_trust_from_env(
 ) -> Result<chio_web3::settlement_proof::PublicSettlementVerifierTrust, String> {
     Ok(chio_web3::settlement_proof::PublicSettlementVerifierTrust {
@@ -362,6 +438,7 @@ pub(crate) fn public_settlement_verifier_trust_from_env(
         mainnet_blocked: optional_bool_from_env(PUBLIC_SETTLEMENT_MAINNET_BLOCKED_ENV)?,
         minimum_confirmations: optional_u32_from_env(PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS_ENV)?,
         expected_trust_market_context: None,
+        independent_chain_head: optional_public_settlement_independent_chain_head_from_env()?,
     })
 }
 

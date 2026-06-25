@@ -735,6 +735,38 @@ fn proof_fixture_generate_copies_domain_passport_fixture() {
 }
 
 #[test]
+fn proof_fixture_generate_refreshes_agent_web_subject_hashes() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let out_path = tempdir.path().join("agent-web-interop");
+    let out_dir = utf8_path(&out_path);
+
+    let output = chio(&[
+        "proof",
+        "fixture",
+        "generate",
+        "agent-web-interop",
+        "--out",
+        out_dir.as_str(),
+        "--json",
+    ]);
+
+    assert_success(&output);
+    let envelope_path = out_path.join("bbs-envelope.json");
+    let envelope: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&envelope_path).test_expect("read BBS envelope"))
+            .test_expect("BBS envelope parses");
+    assert_eq!(
+        envelope
+            .get("external_subject_digest")
+            .and_then(serde_json::Value::as_str),
+        Some(sha256_file(&out_path.join("external/bbs-receipt-disclosure.json")).as_str())
+    );
+
+    let verify_output = chio(&["proof", "verify", out_dir.as_str()]);
+    assert_success(&verify_output);
+}
+
+#[test]
 fn proof_fixture_generate_outputs_servable_enterprise_bundle() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let out_path = tempdir.path().join("enterprise-autonomous-commerce");

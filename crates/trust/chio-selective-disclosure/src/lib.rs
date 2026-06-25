@@ -17,6 +17,7 @@ use std::collections::HashMap;
 
 mod crypto_context;
 mod encoding;
+mod projection_manifest;
 
 #[cfg(feature = "bbs")]
 use encoding::decode_message_hex;
@@ -45,6 +46,10 @@ pub use crypto_context::{
     CRYPTO_VERIFICATION_CONTEXT_SCHEMA_V1, DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1,
     DISCLOSURE_VERIFIER_PRIVACY_PROFILE_SCHEMA_V1, TRUST_KEY_STATE_SCHEMA_V1,
     TRUST_REVOCATION_SNAPSHOT_SCHEMA_V1,
+};
+pub use projection_manifest::{
+    BbsProjectionDisclosure, BbsProjectionHiddenPredicate, BbsProjectionManifest,
+    BbsProjectionMessageSlot, BBS_PROJECTION_MANIFEST_SCHEMA_V2,
 };
 
 /// Receipt-body projection version used for BBS message vectors.
@@ -89,58 +94,6 @@ pub struct Projection {
     pub version: String,
     pub subject_sha256_hex: String,
     pub messages: Vec<ProjectionMessage>,
-}
-
-/// Schema for the BBS projection manifest that binds proof slots to policy.
-pub const BBS_PROJECTION_MANIFEST_SCHEMA_V1: &str = "chio.bbs-projection.manifest.v1";
-
-/// Per-slot disclosure policy in a BBS projection manifest.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum BbsProjectionDisclosure {
-    Disclosed,
-    Hidden,
-}
-
-/// One message slot in a BBS projection manifest.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BbsProjectionMessageSlot {
-    pub slot: u16,
-    pub field: String,
-    pub encoding: String,
-    pub disclosure: BbsProjectionDisclosure,
-    pub wholesale_only: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub value_sha256: Option<String>,
-}
-
-/// One hidden predicate declared by a BBS projection manifest.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BbsProjectionHiddenPredicate {
-    pub predicate_id: String,
-    pub field: String,
-    pub operator: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub value_sha256: Option<String>,
-}
-
-/// Manifest that makes the BBS slot table explicit and verifier-checkable.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BbsProjectionManifest {
-    pub schema: String,
-    pub manifest_id: String,
-    pub artifact_ref: String,
-    pub canonicalization: String,
-    pub hash_algorithm: String,
-    pub message_slots: Vec<BbsProjectionMessageSlot>,
-    pub hidden_predicates: Vec<BbsProjectionHiddenPredicate>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub issuer_key_ref: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub signature_ref: Option<String>,
 }
 
 /// Schema for a transparency log inclusion proof over the disclosed artifact.
@@ -620,7 +573,7 @@ fn validate_disclosure_set(
 
 pub fn bbs_projection_manifest_from_projection(projection: &Projection) -> BbsProjectionManifest {
     BbsProjectionManifest {
-        schema: BBS_PROJECTION_MANIFEST_SCHEMA_V1.to_string(),
+        schema: BBS_PROJECTION_MANIFEST_SCHEMA_V2.to_string(),
         manifest_id: projection.version.clone(),
         artifact_ref: projection.subject_sha256_hex.clone(),
         canonicalization: "jcs".to_string(),
@@ -631,6 +584,8 @@ pub fn bbs_projection_manifest_from_projection(projection: &Projection) -> BbsPr
             .map(|message| BbsProjectionMessageSlot {
                 slot: message.index,
                 field: message.field.clone(),
+                message_class: projection_message_class(message).to_string(),
+                sensitivity_class: projection_sensitivity_class(message).to_string(),
                 encoding: message.encoding.clone(),
                 disclosure: if message.wholesale_only {
                     BbsProjectionDisclosure::Hidden
@@ -647,13 +602,48 @@ pub fn bbs_projection_manifest_from_projection(projection: &Projection) -> BbsPr
     }
 }
 
+fn projection_message_class(message: &ProjectionMessage) -> &'static str {
+    match message.field.as_str() {
+        "action" => "governed_action",
+        "agent_id" => "agent_identity",
+        "allowed" => "decision_state",
+        "capability_id" => "capability_identifier",
+        "completed_at" | "started_at" | "timestamp" => "timing",
+        "content_hash" | "policy_hash" => "content_integrity",
+        "decision" | "outcome" => "decision_state",
+        "duration_ms" | "total_cost" => "measurement",
+        "evidence" | "metadata" | "steps" => "evidence_digest",
+        "id" | "workflow_id" => "artifact_identity",
+        "kernel_key" => "runtime_assurance",
+        "schema" => "schema_identity",
+        "session_id" | "tenant_id" => "tenant_context",
+        "skill_id" | "skill_version" => "skill_identity",
+        "tool_name" | "tool_server" => "tool_identity",
+        "trust_level" => "trust_state",
+        _ if message.wholesale_only => "wholesale_field",
+        _ => "public_field",
+    }
+}
+
+fn projection_sensitivity_class(message: &ProjectionMessage) -> &'static str {
+    match message.field.as_str() {
+        "capability_id" => "capability_identifier",
+        "tenant_id" | "session_id" => "tenant_context",
+        "tool_name" | "tool_server" => "tool_identity",
+        "completed_at" | "duration_ms" | "started_at" | "timestamp" => "timing",
+        "kernel_key" | "trust_level" => "runtime_assurance",
+        _ if message.wholesale_only => "wholesale_only",
+        _ => "public",
+    }
+}
+
 pub fn verify_bbs_projection_manifest(
     proof: &SelectiveDisclosureProof,
     manifest: &BbsProjectionManifest,
 ) -> Result<(), SelectiveDisclosureError> {
-    if manifest.schema != BBS_PROJECTION_MANIFEST_SCHEMA_V1 {
+    if manifest.schema != BBS_PROJECTION_MANIFEST_SCHEMA_V2 {
         return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
-            format!("schema expected {BBS_PROJECTION_MANIFEST_SCHEMA_V1}"),
+            format!("schema expected {BBS_PROJECTION_MANIFEST_SCHEMA_V2}"),
         ));
     }
     if manifest.manifest_id != proof.projection_version {
@@ -700,9 +690,14 @@ pub fn verify_bbs_projection_manifest(
             ));
         }
         seen_slots.push(slot.slot);
-        if slot.field.trim().is_empty() || slot.encoding.trim().is_empty() {
+        if slot.field.trim().is_empty()
+            || slot.message_class.trim().is_empty()
+            || slot.sensitivity_class.trim().is_empty()
+            || slot.encoding.trim().is_empty()
+        {
             return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
-                "message slot field and encoding must not be empty".to_string(),
+                "message slot field, class, sensitivity, and encoding must not be empty"
+                    .to_string(),
             ));
         }
     }

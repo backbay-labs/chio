@@ -1158,7 +1158,9 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }));
     if matches!(
         case,
-        AgentWebCase::BbsProjection | AgentWebCase::BbsReceiptRefMissing
+        AgentWebCase::BbsProjection
+            | AgentWebCase::BbsSelfAssertedVerified
+            | AgentWebCase::BbsReceiptRefMissing
     ) {
         push_artifact(
             &mut builder.artifacts,

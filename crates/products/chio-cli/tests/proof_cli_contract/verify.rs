@@ -37,6 +37,82 @@ fn proof_verify_requires_commerce_claims_when_requested() {
 }
 
 #[test]
+fn proof_verify_commerce_requires_dedicated_commerce_trust_roots() {
+    let commerce_bundle =
+        workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
+    let commerce_bundle = utf8_path(&commerce_bundle);
+    let mut command = chio_command();
+    command.env_remove("CHIO_COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS");
+    command.env_remove("CHIO_COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS");
+
+    let output = command
+        .args([
+            "proof",
+            "verify",
+            commerce_bundle.as_str(),
+            "--require",
+            "commerce",
+        ])
+        .output()
+        .test_expect("chio command runs");
+
+    assert_failure(
+        &output,
+        "CHIO_COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS must pin trusted commerce event authority receipt kernel keys",
+    );
+}
+
+#[test]
+fn proof_verify_commerce_rejects_untrusted_event_authority_root() {
+    let commerce_bundle =
+        workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
+    let commerce_bundle = utf8_path(&commerce_bundle);
+    let mut command = chio_command();
+    command.env(
+        "CHIO_COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS",
+        "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca",
+    );
+
+    let output = command
+        .args([
+            "proof",
+            "verify",
+            commerce_bundle.as_str(),
+            "--require",
+            "commerce",
+        ])
+        .output()
+        .test_expect("chio command runs");
+
+    assert_failure(&output, "authority receipt kernel key untrusted");
+}
+
+#[test]
+fn proof_verify_commerce_rejects_untrusted_payment_signer_root() {
+    let commerce_bundle =
+        workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
+    let commerce_bundle = utf8_path(&commerce_bundle);
+    let mut command = chio_command();
+    command.env(
+        "CHIO_COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS",
+        "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca",
+    );
+
+    let output = command
+        .args([
+            "proof",
+            "verify",
+            commerce_bundle.as_str(),
+            "--require",
+            "commerce",
+        ])
+        .output()
+        .test_expect("chio command runs");
+
+    assert_failure(&output, "payment signer untrusted");
+}
+
+#[test]
 fn proof_verify_rejects_commerce_payment_wrong_transfer_group() {
     let (_tempdir, bundle) = build_commerce_transfer_group_mismatch_bundle();
     let bundle = utf8_path(&bundle);

@@ -978,7 +978,12 @@ fn validate_bbs_receipt_disclosure_subject(
         "verification_status",
         "missing BBS verification status",
     )?;
-    if verification_status != "verified" {
+    if verification_status == "verified" {
+        return Err(claim_failed(
+            "BBS verification status must not be self-asserted as verified",
+        ));
+    }
+    if !matches!(verification_status, "advisory" | "claimed" | "unverified") {
         return Err(claim_failed("unsupported BBS verification status"));
     }
     let receipt_refs = value

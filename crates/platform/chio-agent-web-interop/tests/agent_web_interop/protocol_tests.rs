@@ -353,6 +353,21 @@ fn agent_web_interop_accepts_bbs_projection() {
 }
 
 #[test]
+fn agent_web_interop_rejects_self_asserted_bbs_verified_status() {
+    let bundle = agent_web_bundle(AgentWebCase::BbsSelfAssertedVerified);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("BBS verification status must not be self-asserted");
+
+    assert!(
+        error
+            .to_string()
+            .contains("BBS verification status must not be self-asserted as verified"),
+        "{error}"
+    );
+}
+
+#[test]
 fn agent_web_interop_rejects_bbs_receipt_disclosure_without_bound_receipt() {
     let bundle = agent_web_bundle(AgentWebCase::BbsReceiptRefMissing);
 

@@ -355,9 +355,9 @@ pub(crate) fn embedded_commerce_order_bundle(
         mandate_protocol_payloads,
         risk_comptroller_report_bytes,
         verified_trust_market_context: verified_trust_market_context.cloned(),
-        trusted_event_authority_receipt_kernel_keys: crate::transaction_trusted_root_keys_from_env(
-        )?,
-        trusted_payment_signer_keys: crate::transaction_trusted_root_keys_from_env()?,
+        trusted_event_authority_receipt_kernel_keys:
+            crate::commerce_trusted_event_authority_receipt_kernel_keys_from_env()?,
+        trusted_payment_signer_keys: crate::commerce_trusted_payment_signer_keys_from_env()?,
         trusted_provider_trust_signer_keys: crate::commerce_trusted_provider_keys_from_env()?,
         trusted_risk_comptroller_signer_keys:
             crate::enterprise_trusted_risk_comptroller_signer_keys_from_env()?,

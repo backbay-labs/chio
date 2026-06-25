@@ -89,6 +89,48 @@ expected_copy_claims = {
     "Across trust boundaries",
     "Autonomous commerce",
 }
+expected_agent_web_protocols = {
+    "a2a",
+    "acp-client",
+    "acp-commerce",
+    "ag-ui",
+    "ap2",
+    "asyncapi",
+    "bbs",
+    "browser-automation",
+    "cloudevents",
+    "dsse",
+    "gmail-api",
+    "google-calendar-api",
+    "graphql-http",
+    "in-toto",
+    "kubernetes-admission",
+    "mcp",
+    "oauth2",
+    "oci",
+    "openapi",
+    "openid-connect",
+    "rpa",
+    "scim",
+    "sd-jwt-vc",
+    "sigstore",
+    "slack",
+    "slsa-provenance",
+    "spiffe",
+    "standard-webhooks",
+    "vc",
+    "x402",
+}
+expected_agent_web_negative_ids = {
+    "agent-web-external-digest-mismatch",
+    "agent-web-missing-required-signature",
+    "agent-web-unsupported-claim-not-limited",
+    "agent-web-sidecar-claim-marked-native",
+    "agent-web-x402-detached-from-order",
+    "agent-web-ap2-detached-from-order",
+    "agent-web-oci-tag-only-ref",
+    "agent-web-slsa-unverified-provenance",
+}
 registered_claims = {
     claim["id"]
     for claim in claim_registry.get("claims", [])
@@ -105,6 +147,21 @@ if {stage["fixture_id"] for stage in report.get("stages", [])} != expected_stage
     raise SystemExit("report stage set mismatch")
 if not non_claims.get("non_claims"):
     raise SystemExit("non-claims are empty")
+agent_web_gate = report.get("agent_web_exit_gate")
+if not isinstance(agent_web_gate, dict):
+    raise SystemExit("acceptance report missing Agent Web exit gate")
+if agent_web_gate.get("verdict") != "verified":
+    raise SystemExit("Agent Web exit gate did not verify")
+if agent_web_gate.get("source_log_path") != "docs/superpowers/research/chio-launch/indices/external-standards-source-log.md":
+    raise SystemExit("Agent Web exit gate missing refreshed source log path")
+if agent_web_gate.get("source_log_status") != "refreshed source log":
+    raise SystemExit("Agent Web exit gate source log was not refreshed")
+if set(agent_web_gate.get("source_protocols", [])) < expected_agent_web_protocols:
+    missing = expected_agent_web_protocols - set(agent_web_gate.get("source_protocols", []))
+    raise SystemExit(f"Agent Web exit gate missing protocols: {sorted(missing)}")
+if set(agent_web_gate.get("negative_case_ids", [])) < expected_agent_web_negative_ids:
+    missing = expected_agent_web_negative_ids - set(agent_web_gate.get("negative_case_ids", []))
+    raise SystemExit(f"Agent Web exit gate missing negatives: {sorted(missing)}")
 if copy_map.get("schema") != "chio.proof-room.homepage-copy-map.v1":
     raise SystemExit("homepage copy map schema mismatch")
 entries = copy_map.get("copy_claims", [])

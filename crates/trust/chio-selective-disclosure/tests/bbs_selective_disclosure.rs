@@ -430,6 +430,37 @@ fn step_record_proof_validates_against_attest_schema() {
 }
 
 #[test]
+fn projection_manifest_uses_v2_slot_class_and_sensitivity() {
+    let ed25519 = Keypair::generate();
+    let receipt = receipt_fixture(&ed25519);
+    let projection = project_receipt_body(&receipt).expect("receipt projection succeeds");
+    let manifest = chio_selective_disclosure::bbs_projection_manifest_from_projection(&projection);
+    let manifest_json = serde_json::to_value(&manifest).expect("serialize projection manifest");
+
+    assert_eq!(
+        manifest_json["schema"], "chio.bbs-projection.manifest.v2",
+        "launch BBS projection manifests must be v2"
+    );
+    for slot in manifest_json["message_slots"]
+        .as_array()
+        .expect("message slots")
+    {
+        assert!(
+            slot["message_class"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty()),
+            "each slot carries a typed message class"
+        );
+        assert!(
+            slot["sensitivity_class"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty()),
+            "each slot carries a sensitivity class"
+        );
+    }
+}
+
+#[test]
 fn projection_manifest_rejects_unproven_hidden_predicates() {
     let ed25519 = Keypair::generate();
     let workflow = workflow_fixture(&ed25519);

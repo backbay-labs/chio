@@ -22,4 +22,14 @@ if ! grep -Fq "CHIO_ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS" "$script"; then
   exit 1
 fi
 
+if ! grep -Fq "CHIO_COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS" "$script"; then
+  echo "check-chio-transaction-passport.test.sh: gate must pin commerce event authority receipt keys" >&2
+  exit 1
+fi
+
+if ! grep -Fq "CHIO_COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS" "$script"; then
+  echo "check-chio-transaction-passport.test.sh: gate must pin commerce payment signer keys" >&2
+  exit 1
+fi
+
 echo "check-chio-transaction-passport.test.sh: transaction passport gate contract passed"

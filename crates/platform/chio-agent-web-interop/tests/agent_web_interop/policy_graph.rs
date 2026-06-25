@@ -631,7 +631,9 @@ pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> Age
     }
     if matches!(
         case,
-        AgentWebCase::BbsProjection | AgentWebCase::BbsReceiptRefMissing
+        AgentWebCase::BbsProjection
+            | AgentWebCase::BbsSelfAssertedVerified
+            | AgentWebCase::BbsReceiptRefMissing
     ) {
         graph_edges.push(json!({
             "from": "bbs-envelope",
@@ -854,6 +856,7 @@ pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> Age
         }
         _ => {}
     }
+    content_address_graph_nodes(&mut builder.graph_nodes, &mut graph_edges);
     let evidence_graph = json_bytes(json!({
         "schema": "chio.transaction.evidence-graph.v1",
         "id": "agent-web-evidence-graph-valid",

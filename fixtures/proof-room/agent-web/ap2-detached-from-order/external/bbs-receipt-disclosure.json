@@ -15,6 +15,6 @@
     "receipt-agent-web-bbs-disclosure-allow"
   ],
   "revealed_messages_digest": "8282828282828282828282828282828282828282828282828282828282828282",
-  "verification_status": "verified",
+  "verification_status": "claimed",
   "verifier_policy_digest": "8686868686868686868686868686868686868686868686868686868686868686"
 }

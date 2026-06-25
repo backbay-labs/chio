@@ -153,6 +153,16 @@ pub struct PublicSettlementVerifierTrust {
     pub mainnet_blocked: bool,
     pub minimum_confirmations: Option<u32>,
     pub expected_trust_market_context: Option<PublicSettlementTrustMarketContext>,
+    pub independent_chain_head: Option<PublicSettlementIndependentChainHead>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicSettlementIndependentChainHead {
+    pub chain_id: String,
+    pub observed_block_number: u64,
+    pub observed_block_hash: String,
+    pub latest_block_number: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -313,6 +323,7 @@ pub fn verify_public_settlement_proof(
     validate_order_binding(bundle)?;
     validate_chain_binding(bundle)?;
     validate_chain_snapshot(bundle)?;
+    validate_independent_chain_head(bundle, trust)?;
     validate_finality(bundle)?;
     validate_dispute_posture(bundle)?;
     let trust_market_context = validate_trust_market_refs(bundle)?;
@@ -879,6 +890,61 @@ fn validate_chain_snapshot(bundle: &PublicSettlementProofBundle) -> Result<(), W
     validate_bond_snapshot(bundle, required_bond_snapshot(bundle)?)?;
     validate_block_snapshot(bundle, required_block_snapshot(bundle)?, chain_anchor)?;
     validate_beneficiary_identity_binding(bundle, required_beneficiary_identity_binding(bundle)?)?;
+    Ok(())
+}
+
+fn validate_independent_chain_head(
+    bundle: &PublicSettlementProofBundle,
+    trust: &PublicSettlementVerifierTrust,
+) -> Result<(), Web3ContractError> {
+    let Some(head) = &trust.independent_chain_head else {
+        return Ok(());
+    };
+    ensure_non_empty(
+        &head.chain_id,
+        "public_settlement.independent_head.chain_id",
+    )?;
+    ensure_non_empty(
+        &head.observed_block_hash,
+        "public_settlement.independent_head.observed_block_hash",
+    )?;
+    Hash::from_hex(&head.observed_block_hash)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    if head.chain_id != bundle.chain_id {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement independent head chain id mismatch".to_string(),
+        ));
+    }
+    if head.observed_block_number != bundle.chain_snapshot.observed_block_number {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement independent head observed block mismatch".to_string(),
+        ));
+    }
+    let block = required_block_snapshot(bundle)?;
+    if head.observed_block_hash != block.block_hash {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement independent head block hash mismatch".to_string(),
+        ));
+    }
+    if head.latest_block_number < head.observed_block_number {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement independent head precedes observed block".to_string(),
+        ));
+    }
+    let independent_confirmations = head
+        .latest_block_number
+        .saturating_sub(head.observed_block_number)
+        .saturating_add(1);
+    if independent_confirmations < u64::from(bundle.required_confirmations) {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement independent head finality below threshold".to_string(),
+        ));
+    }
+    if u64::from(bundle.observed_confirmations) > independent_confirmations {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement observed confirmations exceed independent head".to_string(),
+        ));
+    }
     Ok(())
 }
 

@@ -18,7 +18,7 @@ use chio_core_types::{
 };
 
 const UNSUPPORTED_SCHEMA: &str = "chio.unsupported_future_schema.v999";
-const BBS_PROJECTION_MANIFEST_V1_SCHEMA: &str = "chio.bbs-projection.manifest.v1";
+const BBS_PROJECTION_MANIFEST_V2_SCHEMA: &str = "chio.bbs-projection.manifest.v2";
 const PROOF_ROOM_FIXTURE_CATALOG_SCHEMA: &str = "chio.proof-room.fixture-catalog.v1";
 const PROOF_ROOM_FIXTURE_ROOT_CATALOG_SCHEMA: &str = "chio.proof-room.fixture-root-catalog.v1";
 
@@ -137,13 +137,13 @@ fn public_settlement_anchor_evidence_schemas_are_registered() {
 }
 
 #[test]
-fn bbs_projection_manifest_v1_schema_is_registered() {
+fn bbs_projection_manifest_v2_schema_is_registered() {
     assert!(chio_core_types::is_supported_signed_artifact_schema(
-        BBS_PROJECTION_MANIFEST_V1_SCHEMA
+        BBS_PROJECTION_MANIFEST_V2_SCHEMA
     ));
     assert!(chio_core_types::built_in_signed_artifact_registry()
         .iter()
-        .any(|entry| entry.schema == BBS_PROJECTION_MANIFEST_V1_SCHEMA
+        .any(|entry| entry.schema == BBS_PROJECTION_MANIFEST_V2_SCHEMA
             && entry.artifact_kind == "bbs_projection_manifest"
             && entry.introduced_by == "crypto-context-v1"));
 }

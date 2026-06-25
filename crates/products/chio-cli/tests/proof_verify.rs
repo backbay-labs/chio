@@ -1036,6 +1036,34 @@ fn proof_verify_accepts_public_settlement_fixture() {
 }
 
 #[test]
+fn proof_verify_rejects_public_settlement_reorged_independent_head() {
+    let independent_head = serde_json::json!({
+        "chain_id": "eip155:8453",
+        "observed_block_number": 12_345_678,
+        "observed_block_hash": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "latest_block_number": 12_345_701
+    });
+
+    let output = chio_with_transaction_fixture_roots()
+        .env(
+            "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON",
+            independent_head.to_string(),
+        )
+        .arg("proof")
+        .arg("verify")
+        .arg(public_settlement_fixture_path("valid-offline-finality"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(
+        stderr.contains("public settlement independent head block hash mismatch"),
+        "{stderr}"
+    );
+}
+
+#[test]
 fn proof_verify_reports_public_settlement_trust_market_refs_without_verified_claim() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let source =
@@ -2431,6 +2459,8 @@ fn proof_verify_rejects_disclosure_lineage_wholesale_only_projection_slot() {
             {
                 "slot": 0,
                 "field": "capability_id",
+                "message_class": "capability_identifier",
+                "sensitivity_class": "capability_identifier",
                 "encoding": "S",
                 "disclosure": "disclosed",
                 "wholesale_only": false
@@ -2438,6 +2468,8 @@ fn proof_verify_rejects_disclosure_lineage_wholesale_only_projection_slot() {
             {
                 "slot": 1,
                 "field": "tool_name",
+                "message_class": "tool_identity",
+                "sensitivity_class": "tool_identity",
                 "encoding": "S",
                 "disclosure": "disclosed",
                 "wholesale_only": true

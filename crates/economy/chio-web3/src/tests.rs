@@ -38,12 +38,13 @@ use crate::settlement::{
 use crate::settlement_proof::{
     public_settlement_witness_body_hash, verify_public_settlement_proof,
     PublicSettlementDeploymentProvenance, PublicSettlementDisputePosture,
-    PublicSettlementDisputeSnapshot, PublicSettlementOrderBinding, PublicSettlementProofBundle,
-    PublicSettlementTrustMarketContext, PublicSettlementVerifierTrust, PublicSettlementWitnessMode,
-    PublicSettlementWitnessReport, CHIO_PUBLIC_SETTLEMENT_VERIFIER_REPORT_SCHEMA,
-    CHIO_WEB3_SETTLEMENT_DISPUTE_SCHEMA, CHIO_WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA,
-    CLAIM_PUBLIC_SETTLEMENT_CHAIN_CONTEXT_VERIFIED, CLAIM_PUBLIC_SETTLEMENT_DISPUTE_POSTURE_BOUND,
-    CLAIM_PUBLIC_SETTLEMENT_FINALITY_VERIFIED, CLAIM_PUBLIC_SETTLEMENT_ORACLE_CONVERSION_BOUND,
+    PublicSettlementDisputeSnapshot, PublicSettlementIndependentChainHead,
+    PublicSettlementOrderBinding, PublicSettlementProofBundle, PublicSettlementTrustMarketContext,
+    PublicSettlementVerifierTrust, PublicSettlementWitnessMode, PublicSettlementWitnessReport,
+    CHIO_PUBLIC_SETTLEMENT_VERIFIER_REPORT_SCHEMA, CHIO_WEB3_SETTLEMENT_DISPUTE_SCHEMA,
+    CHIO_WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA, CLAIM_PUBLIC_SETTLEMENT_CHAIN_CONTEXT_VERIFIED,
+    CLAIM_PUBLIC_SETTLEMENT_DISPUTE_POSTURE_BOUND, CLAIM_PUBLIC_SETTLEMENT_FINALITY_VERIFIED,
+    CLAIM_PUBLIC_SETTLEMENT_ORACLE_CONVERSION_BOUND,
     CLAIM_PUBLIC_SETTLEMENT_ORDER_BINDING_VERIFIED,
     CLAIM_PUBLIC_SETTLEMENT_PUBLIC_WITNESS_VERIFIED,
     CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND, PUBLIC_SETTLEMENT_FINALITY_REPORT_STATUSES,
@@ -607,6 +608,7 @@ fn sample_public_settlement_verifier_trust() -> PublicSettlementVerifierTrust {
         mainnet_blocked: false,
         minimum_confirmations: Some(20),
         expected_trust_market_context: None,
+        independent_chain_head: None,
     }
 }
 
@@ -1507,6 +1509,40 @@ fn public_settlement_proof_rejects_inflated_observed_confirmations() {
         Err(Web3ContractError::InvalidProof(message))
             if message.contains("public settlement observed confirmations exceed chain snapshot")
     ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_reorged_snapshot_when_independent_head_disagrees() {
+    let bundle = sample_public_settlement_proof_bundle();
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.independent_chain_head = Some(PublicSettlementIndependentChainHead {
+        chain_id: "eip155:8453".to_string(),
+        observed_block_number: 12_345_678,
+        observed_block_hash: "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            .to_string(),
+        latest_block_number: 12_345_701,
+    });
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &trust),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("public settlement independent head block hash mismatch")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_accepts_matching_independent_head() {
+    let bundle = sample_public_settlement_proof_bundle();
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.independent_chain_head = Some(PublicSettlementIndependentChainHead {
+        chain_id: "eip155:8453".to_string(),
+        observed_block_number: 12_345_678,
+        observed_block_hash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            .to_string(),
+        latest_block_number: 12_345_701,
+    });
+
+    assert!(verify_public_settlement_proof(&bundle, &trust).is_ok());
 }
 
 #[test]

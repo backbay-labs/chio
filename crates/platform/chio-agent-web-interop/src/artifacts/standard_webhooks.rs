@@ -39,6 +39,7 @@ pub(super) fn validate_subject(
     if webhook_id.is_empty() || webhook_timestamp.is_empty() || webhook_signature.is_empty() {
         return Err(claim_failed("missing Standard Webhooks field"));
     }
+    validate_replay_window(webhook_id, webhook_timestamp, trust)?;
     validate_signature_ref(webhook_signature)?;
     validate_signature_ref(envelope_signature_ref)?;
     if webhook_signature != envelope_signature_ref {
@@ -94,4 +95,31 @@ fn verify_signature_ref(
     mac.update(endpoint_url_digest.as_bytes());
     mac.verify_slice(&signature)
         .map_err(|_| claim_failed("invalid Standard Webhooks signature"))
+}
+
+fn validate_replay_window(
+    webhook_id: &str,
+    webhook_timestamp: &str,
+    trust: &AgentWebVerifierTrust,
+) -> Result<(), TransactionPassportError> {
+    let replay_window = trust
+        .standard_webhooks_replay_window()
+        .ok_or_else(|| claim_failed("missing Standard Webhooks replay window"))?;
+    if replay_window.max_age_seconds == 0 {
+        return Err(claim_failed("invalid Standard Webhooks replay window"));
+    }
+    if trust.has_seen_standard_webhooks_id(webhook_id) {
+        return Err(claim_failed("replayed Standard Webhooks id"));
+    }
+    let timestamp = webhook_timestamp
+        .parse::<u64>()
+        .map_err(|_| claim_failed("invalid Standard Webhooks timestamp"))?;
+    if timestamp > replay_window.now_unix_seconds {
+        return Err(claim_failed("future Standard Webhooks timestamp"));
+    }
+    let age = replay_window.now_unix_seconds - timestamp;
+    if age > replay_window.max_age_seconds {
+        return Err(claim_failed("stale Standard Webhooks timestamp"));
+    }
+    Ok(())
 }

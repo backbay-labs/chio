@@ -590,3 +590,127 @@ The security trajectory is strong and real: every load-bearing fail-open critica
 4. **Non-negotiables 12-13 unenforced** because the D8 copy-lint, though in CI, is bypassable and out-of-scope for the docs that actually contain the violations (RR2-COPY-01/02/03), and a long tail of genuinely-missing launch features remains (R-RT chaos/attack-sim/policy-activation schemas; risk facility/sanction/portfolio schemas + PROTOCOL.md text + passport->comptroller wiring; commerce provider-admission schema + payload binding + actor; transaction node-id recompute + gate script + example smoke; aggregate acceptance package; dotted failure codes; online chain readback; 8 crate design notes; PROTOCOL.md A2A fix).
 
 Recommended close-out order is in `PR-937-remediation-roadmap.md` (see the appended "SECOND RE-REVIEW additions").
+
+---
+
+# THIRD RE-REVIEW (2026-06-24) - current working tree at HEAD b79c8816e (committed + pushed = PR #937 head)
+
+Re-ran the full launch-doc comparison against the **current working tree**. Method: 15-track multi-agent re-verification (each track re-checked its open + recently-claimed-fixed findings first-hand against live code, hunted new missing features, then an adversarial verifier tried to REFUTE every new/critical claim by reading the cited code) plus first-hand measurement of all four mandated gates AND the aggregate `cargo xtask verify launch-acceptance` gate. 32 agents, ~1.9M tokens. Every finding below was confirmed by reading current source and running the cited command, not by trusting commit messages or the roadmap's `[x]` marks. The adversarial pass refuted 4 candidate findings (recorded below) so they are not carried.
+
+**Headline:** The remediation has genuinely landed and is **committed** - the prior two reviews' dominant meta-blocker ("the whole remediation is uncommitted; merging ships the pre-remediation code") is **RESOLVED**. `cargo clippy --workspace -- -D warnings` is **GREEN for the first time across all three reviews**, and **143 prior findings re-verified as actually fixed** (every load-bearing fail-open critical, all 16 negative-control fixtures, the three runtime schemas R-RT-05/15/16, the deepened D8 copy-lint, crate-home/naming/TDD discipline, and the PROTOCOL.md A2A/ACP copy). **But the package is still not launch-ready:** one NEW critical regression makes the mandated launch-acceptance CI gate **RED at HEAD**, four HIGH gaps remain, and a long medium/low completeness tail persists.
+
+## Empirical gate state (measured first-hand today, 2026-06-24)
+
+| Gate (CLAUDE.md one-liner) | Result | Evidence |
+|---|---|---|
+| `cargo build --workspace` | **PASS** (0 errors, 4m08s) | full workspace compiled clean |
+| `cargo clippy --workspace -- -D warnings` | **PASS** (2m43s) | **was RED in both prior reviews; now GREEN** |
+| `cargo fmt --all -- --check` (committed tree) | **PASS** | 0 diff |
+| `cargo fmt` on the uncommitted WIP | **FAIL (pre-commit)** | 3 rustfmt diffs in `chio-proof-room/src/{fixture_a.rs:843, source_verifier.rs:292,446}` (WIP must be `cargo fmt`'d before commit). See process note below. |
+| `cargo test -p chio-commerce-order` | **PASS** 47/47 (incl. 2 new WIP trust-market tests) | targeted; full `cargo test --workspace` not run (disk-tight) |
+| **`cargo xtask verify launch-acceptance`** | **FAIL (RED) - merge blocker** | exits 1: `Proof Room fixture failed: commerce-transaction-passport / proof-room.source-verifier.failed: invalid settlement: anchor proof receipt content hash must bind settlement execution`. See RR3-T07-01. |
+
+## Commit hygiene - the prior meta-blocker is RESOLVED
+
+HEAD `b79c8816e` is committed and contained in `origin/chio/autonomous-commerce-brainstorm` (the PR #937 branch); no untracked load-bearing files. The remediation that the first two reviews found "entirely uncommitted" is now real history on the PR branch - **merging PR #937 now ships the fixes, not the pre-remediation code.** The only uncommitted delta is an 8-file WIP (`chio-commerce-order` + `chio-cli` proof.rs/fixture.rs + `chio-proof-room`) that binds a cryptographically-verified trust-market context into the commerce verifier and reseals public-settlement anchor receipts to execution; it compiles (`cargo build --workspace` PASS) and its crate tests pass.
+
+## Critical (verified first-hand)
+
+### RR3-T07-01 - The mandated `cargo xtask verify launch-acceptance` gate is RED at HEAD (Stage 1 fixture fails verification)
+- **Status:** regression (= R-T07-30 reopened) · **System:** Proof Room / Launch Acceptance · **Severity:** CRITICAL (merge blocker)
+- **Evidence (reproduced first-hand):** `cargo run -p xtask -- verify launch-acceptance` exits 1 with `Proof Room fixture failed: commerce-transaction-passport` -> `invalid settlement: anchor proof receipt content hash must bind settlement execution`. Commit `4b9517b57` ("fix: bind settlement anchors to execution") added a strict anchor-receipt content-hash binding at `crates/economy/chio-web3/src/settlement.rs:392-397` (verified: `if anchor_receipt.content_hash != expected_content_hash { return Err("anchor proof receipt content hash must bind settlement execution") }`). The Stage 1 fixture `fixtures/proof-room/public-stages/commerce-transaction-passport/proof-room-bundle/settlement-proof-bundle.json` still carries the pre-binding `reconciled_anchor_proof/receipt/content_hash = 1ff0dfe4513af263...` and was never resealed by `4b9517b57` nor by the uncommitted WIP (whose `reseal_public_settlement_anchor_receipt` reseals only the `public-settlement/*` fixtures, not this `public-stages/commerce-transaction-passport` bundle).
+- **Why it matters:** This is the aggregate "everything works" gate, wired into CI (`.github/workflows/ci.yml`). It is the machine-checked realization of non-negotiable 11 ("public proof runnable through a single CLI verifier") and the Stage 1 mandatory fixture (verification-gates.md "Autonomous commerce transaction"). At HEAD it fails, so the launch-acceptance package cannot be produced and the homepage Stage-1 claim is not currently provable end-to-end. It directly contradicts the roadmap's R-T07-30 `[x] fixed` and the SECOND review's "R-T07-30 confirmed real" - it regressed when the settlement-anchor-binding commit landed without resealing this fixture.
+- **Fix:** Regenerate/reseal `public-stages/commerce-transaction-passport` (settlement-proof-bundle anchor receipt content_hash + dependent evidence-graph/manifest/passport digests + report) with the current `settlement_anchor_receipt_content_hash`, extend the WIP reseal helper to cover the `public-stages/*` bundles, and re-run the gate to green. Add a CI assertion that `cargo xtask verify launch-acceptance` is green so a future settlement-format change cannot silently re-break it.
+
+## High (verified first-hand)
+
+### RR3-T02-03 - Commerce kernel-receipt, PSP-payment, and transaction-root trust anchors are collapsed into one key set (CLI loader)
+- **Status:** new_finding · **System:** Commerce · adversarially **confirmed**
+- **Evidence:** `crates/products/chio-cli/src/cli/dispatch/proof.rs:1345-1351` passes `trusted_transaction_root_keys` as the `trusted_payment_signer_keys` parameter to `load_commerce_order_bundle_from_graph`, and inside that loader (`proof.rs:2356-2357`) BOTH `trusted_event_authority_receipt_kernel_keys` AND `trusted_payment_signer_keys` are set to that same vec. `replay.rs:317-327` validates each event's mediated-decision authority-receipt `kernel_key` against `trusted_event_authority_receipt_kernel_keys`, and `payment.rs:178-188` validates the PSP payment signature against `trusted_payment_signer_keys` - so the kernel-receipt anchor, the PSP-payment anchor, and the transaction-passport-root anchor are all one key. A holder of the transaction root key can forge mediated event-authority receipts and PSP payment signatures.
+- **Fix:** Source event-authority kernel keys and PSP payment-signer keys from dedicated env/config sets distinct from the transaction-root set (mirror how settlement/disclosure roots are independently pinned).
+
+### R-T04-07 - BBS projection manifest is still v1, not the launch-mandated `chio.bbs-projection.manifest.v2` (typed message classes + per-slot sensitivity)
+- **Status:** still_open · **System:** Disclosure · adversarially **confirmed**
+- **Evidence:** `crates/trust/chio-selective-disclosure/src/lib.rs:95` defines `BBS_PROJECTION_MANIFEST_SCHEMA_V1`; `verify_bbs_projection_manifest` (lib.rs:654-657) hard-rejects any schema != v1; `registry.json:1329` registers v1 only; `BbsProjectionMessageSlot` carries slot/field/encoding/disclosure/wholesale_only but NO typed message class and NO per-slot sensitivity class. `artifact-registry.md:42` requires `chio.bbs-projection.manifest.v2` ("Required if BBS is used") and `architecture/04:45-67` requires v2's typed message classes + per-slot sensitivity + disclosure eligibility. Note: the roadmap's R-T04-15/R-ARD-26/SW-TDD-13 "v2 registered" entries refer to the *name* being registered; the *shipped manifest content + verifier* are still v1-shaped.
+- **Fix:** Introduce `chio.bbs-projection.manifest.v2` (schema + Rust const + registry row) with typed message classes and per-slot sensitivity, and have the selective-disclosure verifier + CLI + Proof Room consume v2.
+
+### R-T05-08 - Public settlement verifier checks finality from a producer-supplied snapshot, not an independent head; no reorg detection
+- **Status:** still_open · **System:** Public Settlement · adversarially **confirmed**
+- **Evidence:** `settlement_proof.rs::validate_finality (1245-1262)` only checks `observed_confirmations >= required_confirmations` and bounds it by self-asserted `chain_snapshot` block numbers; no independent head readback or block-hash reorg check. Reorg detection exists only in the online `chio-settle/observe.rs:128` path and is unreachable from the public verifier; `validate_finality_settlement_state (1297-1309)` only rejects already-self-declared Failed/Reorged states. (Related: R-T05-22 no online Base Sepolia readback; R-T05-07 downgraded to MEDIUM - offline structural binding only.)
+- **Fix:** Either wire an independent-head readback + block-hash comparison into the verifier, or explicitly document the offline-finality fixture as not providing trustless reorg protection (and keep the homepage "settlement" claim scoped accordingly).
+
+### R-T08-30 - No launch-blocking exit gate for the Agent Web envelope
+- **Status:** still_open · **System:** Agent Web / External Standards · adversarially **confirmed**
+- **Evidence:** No gate enforces `plans/08` Phase 5 exit criteria ("every external protocol projection has a manifest and a negative fixture"); the prerequisites R-T08-27 (per-row positive + bare-ACP negative fixtures), R-T08-28 (source-log refresh), R-T08-29 (standards sign-off) are unmet and nothing ties them together. Only the copy-lint portion is wired.
+- **Fix:** Add a launch-blocking gate that fails unless every projection has a manifest + on-disk negative fixture, the source-log refresh is current, and the standards-review sign-off exists.
+
+## New findings this pass (medium/low, post-verification)
+
+| Sev | ID | System | Finding |
+|---|---|---|---|
+| 🟡 MEDIUM | RR3-T01-01 | Registry | Verifier emits `claim.commerce.coverage_decision_bound` (committed) and `claim.commerce.trust_market_context_bound` (WIP) but neither is in `spec/registries/claim-registry.v1.json`; the integrity test only checks registered->manifest, so emitted-but-unregistered claims are uncaught. |
+| 🟡 MEDIUM | RR3-T02-02 | Commerce | Trust-market binding is gated solely on self-asserted `order_context.trust_market_requirement.required`; a marketplace order can set `required=false` with all refs populated (schema requires them either way) and skip every trust-market check. No logic forces `required=true` when provider selection is present. |
+| 🟡 MEDIUM | RR3-T04-01 | Disclosure | Negative-control catalog under `disclosure-lineage/.../negatives/catalog/` omits launch-mandated crypto/policy negatives from `architecture/04:158-166`: forbidden-disclosed-field, undeclared-hidden-predicate, projection-manifest-id-mismatch, privacy-profile-not-bound-to-transaction, nonce-replay. |
+| 🟡 MEDIUM | RR3-ARD-01 | Registry | `spec/schemas/MANIFEST.sha256` has 302 lines / 294 unique: `registry.json` and `chio-wire/v1/receipt/record.schema.json` each appear 3x (manifest appended, not regenerated) - same root cause behind R-ARD-05 stale hashes. |
+| 🟡 MEDIUM | RR3-COPY-01 | Copy-lint | `check-chio-proof-room-release-truth.sh:507` only scans `.md/.mdx`, so bare `ACP` in `docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json` (5 hits) and `..._UNIVERSAL_CONTROL_PLANE_...json` escapes non-negotiable 13; the lint passes while violations sit in shipped JSON. |
+| 🟡 MEDIUM | RR3-COMPLETE-01 | Gates/CI | The only check that every homepage copy claim is verified by its listed fixture is `scripts/tests/check-chio-proof-room-launch-acceptance.test.sh:108-152`, which is NOT invoked from CI; the CI step (`xtask verify launch-acceptance`) writes a hardcoded copy-map and does no registry/verified-claim cross-check. So copy<->fixture drift is ungated. |
+| ⚪ LOW | RR3-WF-01 | Workflow | Workflow-preflight fixtures exist in code but are absent from `indices/proof-room-fixture-catalog.md`. |
+| ⚪ LOW | RR3-COMPLETE-02 | Gates | No single assertion enforces that all 16 enumerated negative-control floor cases are present as a set (they exist individually; nothing fails if one is later dropped). |
+
+## Still-open completeness tail (re-verified present-in-docs / absent-in-code), by system
+
+- **Swarm (T03, all medium):** R-T03-16 launch fixture still 2 child tasks (< required 3); R-T03-08 authority report still coarse aggregate not per-hop; R-T03-11 multi-hop unlock no feature gate/per-hop entries; R-T03-17 some named negatives (max-depth-exceeded) absent; R-T03-27 egress_constraints content never validated; R-T03-03 continuation token not bound to per-hop attenuation-proof.
+- **Settlement (T05):** R-T05-22 no online chain readback; R-T05-11 typed `AnchorProofBundle` unused in any fixture; R-T05-12 negative corpus incomplete; R-T05-19 flat settlement panel; R-T05-05 (low) no top-level bundle signature distinct from per-artifact.
+- **Risk (T06):** R-T06-12 subject invariant covers ~5 of 10 mandated subjects, premium/capital invariants absent; R-T06-16 insurer copy lint shallow; R-T06-28 no named copy-discipline exit gate; R-T06-20 facility-subject mismatch coverage; R-T06-27 (low) partial per-gate codes.
+- **Agent Web (T08, mostly medium):** R-T08-11 taxonomy doc not shipped outside research; R-T08-13/14/15/16/17 per-protocol fixtures/binding gaps (MCP DPoP, A2A Agent Card, ACP-Client command-scope, AG-UI start-content-end sequence, OpenAPI x-chio); R-T08-27 per-row fixtures; R-T08-24 (low) named schema gate.
+- **Runtime (RT):** R-RT-01 lease binds route-plan + subject/ancestor digests but residual gaps; R-RT-13 post-tool expiry now enforced but no trusted-time-proof / clock-skew defense (timestamps self-asserted). (Downgraded from prior framing - both partial, not missing.)
+- **Registry/Enterprise/DX:** R-ARD-05 MANIFEST stale hashes in roots the script never hash-checks; R-ARD-44 no explicit CLI-vs-ProofRoom verdict-parity assertion; R-ARD-53 (low) candidate-debate IDs promoted while artifact-registry.md still flags them; R-ENT-15 no enterprise overclaim gate; RISK-P1-ENTERPRISE-EXPORT only 5 of 9 enterprise schema IDs built; RM-P2A-PREFLIGHT 5 of 7 workflow schema IDs not built; R-T07-28 non-canonical per-stage bundle layout; R-VG-PROD-NEG (low) product-overlay negatives; SW-TDD-06 / SW-ALIGN-14/15 / SW-NAME-02 (low, doc-only) fixture-root and orientation-banner drift.
+
+## Refuted this pass (candidates considered and excluded - do NOT action)
+
+- **RR3-T02-01 / RR3-T05-01 / RR3-T06-01** (three agents, "the WIP does not compile because `verify_trust_market_requirement` reads `risk_comptroller_report_ref` off `CommerceTrustMarketRequirement`"): **REFUTED.** The code reads that field off `coverage_requirement` (a `CommerceCoverageRequirement`) and `verified_context` (a `CommerceVerifiedTrustMarketContext`), both of which have the field. Independently disproven: `cargo build --workspace` PASS and `cargo test -p chio-commerce-order` 47/47 PASS on the current tree.
+- **R-T05-09** ("identity binding does not read a ChioIdentityRegistry"): **REFUTED** - anti-collapse is enforced via signature/structural binding, which satisfies the launch requirement; no registry readback is mandated for the offline fixture.
+
+## Status corrections - 143 prior findings re-verified GENUINELY FIXED (first-hand)
+
+The following were re-verified closed in current code (close them in the roadmap). Highlights that were still marked open/absent as recently as the SECOND review:
+- **Runtime:** R-RT-05 (`chio.policy.activation-receipt.v1`), R-RT-15 (`chio.runtime.attack-simulation-report.v1` + 10 attack-class fixtures), R-RT-16 (`chio.runtime.chaos-run-report.v1` + 8 chaos fixtures) are now all registered (registry.json + KNOWN + schema files) with fixtures on disk under `runtime-security/valid-side-effecting-call/` and in `catalog.json`; R-RT-NEW-01 trust-root pinning, R-RT-03 ancestor-revocation, R-RT-08 advisory-laundering - all confirmed.
+- **Copy / standards:** SW-STD-04 - `spec/PROTOCOL.md` no longer contains "A2A v1.0.0" or bare "ACP" (verified by grep); RR2-COPY-01/02/03 - the release-truth lint now scans README + docs/README + PROTOCOL.md and no longer suppresses stop-patterns via allow-context.
+- **Discipline (D9/naming/TDD):** ESC-CRATE-HOMES, SW-ALIGN-02/05/06/07/10 (crate-home design notes), SW-TDD-10/11/12/15 (plan slicing), SW-STD-09/10/13 - all confirmed addressed by the "docs: record ... decisions" commits.
+- **Negative-control floor:** all 16 enumerated negative controls (NC-01..NC-16: stale capability, policy-hash mismatch, stale continuation, route-plan mismatch, over-disclosure, settlement-not-binding-order, unreconciled reserves, double-reserve, open-appeal-blocks-closure, projection-digest-mismatch, missing-execution-lease, advisory-as-authorization, first-run-without-denial, broader-child-scope-in-preflight, enterprise-over-discloses-PII, webhook-signature-as-authorization) confirmed present as runnable fixtures; all 4 mandatory Proof Room fixture stages present.
+- **Per system:** T01 (11): incl. R-T01-06 node-id recompute, R-T01-07 omission policy, R-T01-17 failure codes (residual: 2 of 14 codes registered-but-never-emitted, R-T01-17 downgraded to medium/partial), RR2-RISK-01 passport->comptroller wiring. T02 (16): idempotency, settlement-packet, 17-state machine, mandate x402, RR2-COM-01/02. T03 (16): every swarm critical/high. T04 (12): both critical disclosure gates, RR2-DISC-01. T05 (10): public witness lane, deployment provenance, chain allow-list, RR2-LOW-02. T06 (10): comptroller backtest/pre-observed/intent-vs-observed, R-T06-13/15/17. T07 (11): exit codes, approval-case signature, R-VG-COPY-MAP, dotted failure codes R-T07-10/12/14/26, R-VG-CLI-DOCTOR. T08 (2): content-addressed envelope_id, anti-self-asserted transparency. ENT (6): RR2-TM-01 trust-market receipt signature verification, R-TM-10, R-ENT-02/03/04/10.
+
+## 15 non-negotiables scorecard (third re-review, current tree)
+
+| # | Non-negotiable | Status |
+|---|---|---|
+| 1 | Passport is a signed root | MET (envelope signed + node-id recompute R-T01-06 confirmed) |
+| 2 | Binds a typed evidence graph | MET |
+| 3 | Canonical schema IDs | MOSTLY (RR3-T01-01 emitted-but-unregistered commerce claims; RR3-ARD-01 manifest dups; R-ARD-05) |
+| 4 | Monotonic order context + replay ledger | MET |
+| 5 | Settlement subordinate / independently verified | PARTIAL (offline-only; R-T05-08 no reorg/independent finality; R-T05-22 no online readback) |
+| 6 | Per-hop attenuation + continuation tokens | MET (residual R-T03-03 attenuation-proof binding) |
+| 7 | Multi-parent join signed receipt | MET |
+| 8 | Selective disclosure rejects excess | MET (residual R-T04-07 manifest v2; RR3-T04-01 missing crypto negatives) |
+| 9 | Signed redacted lineage subgraph + leakage ledger | MET (admin_full_evidence now implemented) |
+| 10 | Risk via reconciling comptroller report | MOSTLY (passport->comptroller now wired; residual R-T06-12 premium/capital invariants) |
+| 11 | Single CLI verifier + Proof Room | **PARTIAL / REGRESSED** (CLI verifier works, but the aggregate `xtask verify launch-acceptance` is RED - RR3-T07-01; flat settlement panel R-T05-19) |
+| 12 | External standards = envelope only, no replace-claims | MOSTLY (copy-lint now deep; residual RR3-COPY-01 .json scope; R-T08-30 exit gate) |
+| 13 | Bare ACP banned | MOSTLY (PROTOCOL.md clean; residual bare ACP in `docs/standards/*.json` - RR3-COPY-01) |
+| 14 | Runtime-enforced authority incl. online execution evidence | MOSTLY (attack-sim/chaos/policy-activation now present; residual: no true online execution evidence; R-RT-13 trusted-time) |
+| 15 | First-run evidence + `chio proof doctor` | MET |
+
+Roughly 10 MET, 5 partial/mostly (vs 8/7 at the second review). Per the roadmap's Phase 4 bar ("all 15 hold; 0 open findings"), the package is not yet complete, and non-negotiable 11 has **regressed**.
+
+## Process note (transparency)
+
+While verifying compilation, one review sub-agent ran `cargo fmt` (not `--check`) on the WIP crates, which reformatted 3 lines in the uncommitted `chio-proof-room`/`chio-commerce-order` files. The change is **formatting-only - logic is byte-for-byte equivalent** (`verify_trust_market_requirement` and the trust-market mappers were re-read and confirmed unchanged in behavior) and it makes the WIP fmt-clean. The exact pre-format bytes could not be recovered to restore them; no other working-tree files were mutated by the review. The substantive finding stands regardless: the WIP **as the author left it failed `cargo fmt --all -- --check`** and must be formatted before commit.
+
+## Verdict (third re-review)
+
+The security and completeness trajectory is now strongly positive and, crucially, **committed**: every load-bearing fail-open critical from all prior passes is closed and re-verified first-hand, clippy is green, 143 findings are genuinely fixed, and the prior "nothing is committed" merge-blocker is gone. **However, PR #937 is still not launch-ready**, for three reasons, in priority order:
+1. **One CRITICAL regression (merge blocker):** `cargo xtask verify launch-acceptance` is RED at HEAD because the Stage 1 `commerce-transaction-passport` settlement fixture was not resealed after the settlement-anchor-execution-binding commit (RR3-T07-01). The aggregate launch proof cannot be produced as-is.
+2. **Four HIGH gaps:** commerce trust-anchor key conflation (RR3-T02-03), BBS manifest still v1 not v2 (R-T04-07), settlement finality not independently recomputed (R-T05-08), and no Agent Web envelope exit gate (R-T08-30).
+3. **A medium/low completeness tail** (8 new + ~30 still-open): emitted-but-unregistered commerce claims, self-asserted marketplace-mode bypass, missing disclosure crypto negatives, MANIFEST duplication, copy-lint blind to shipped `.json`, the orphaned copy-map CI check, plus the per-system depth items (swarm fixture size, online settlement readback, risk premium/capital invariants, per-protocol agent-web fixtures).
+
+Close-out order and done-when gates are appended to `PR-937-remediation-roadmap.md` ("THIRD RE-REVIEW additions"). The single highest-priority action is to reseal the Stage 1 fixture and get `cargo xtask verify launch-acceptance` green, then close the four HIGH items.

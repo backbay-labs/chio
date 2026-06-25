@@ -14,7 +14,7 @@
     "hidden_predicates"
   ],
   "properties": {
-    "schema": { "const": "chio.bbs-projection.manifest.v1" },
+    "schema": { "const": "chio.bbs-projection.manifest.v2" },
     "manifest_id": { "type": "string", "minLength": 1 },
     "artifact_ref": { "$ref": "#/$defs/sha256" },
     "canonicalization": { "type": "string", "minLength": 1 },
@@ -36,10 +36,20 @@
     "messageSlot": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["slot", "field", "encoding", "wholesale_only", "disclosure"],
+      "required": [
+        "slot",
+        "field",
+        "message_class",
+        "sensitivity_class",
+        "encoding",
+        "wholesale_only",
+        "disclosure"
+      ],
       "properties": {
         "slot": { "type": "integer", "minimum": 0 },
         "field": { "type": "string", "minLength": 1 },
+        "message_class": { "type": "string", "minLength": 1 },
+        "sensitivity_class": { "type": "string", "minLength": 1 },
         "encoding": { "type": "string", "minLength": 1 },
         "wholesale_only": { "type": "boolean" },
         "disclosure": { "enum": ["disclosed", "hidden"] },

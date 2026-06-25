@@ -9,6 +9,18 @@ use chio_errors::_generated::error_codes::{
 };
 use std::collections::{BTreeMap, BTreeSet};
 
+#[path = "proof/env.rs"]
+mod proof_env;
+use proof_env::{
+    agent_web_verifier_trust_from_env, commerce_trusted_event_authority_receipt_kernel_keys_from_env,
+    commerce_trusted_payment_signer_keys_from_env, commerce_trusted_provider_keys_from_env,
+    enterprise_trusted_approval_signer_keys_from_env,
+    enterprise_trusted_receipt_kernel_keys_from_env,
+    enterprise_trusted_risk_comptroller_signer_keys_from_env, public_settlement_verifier_trust_from_env,
+    runtime_trust_from_env, swarm_trusted_witness_keys_for_bundle,
+    transaction_trusted_root_keys_from_env, trust_market_trusted_authority_keys_from_env,
+};
+
 const REQUIRED_RUNTIME_AUTHORITY_CLAIMS: [&str; 6] = [
     "claim.runtime.execution_lease_valid",
     "claim.runtime.nonce_fresh",
@@ -42,32 +54,6 @@ const STANDALONE_TRANSACTION_VERIFIED_CLAIMS: [&str; 6] = [
     "claim.transaction.policy_digest_bound",
     "claim.transaction.omission_policy_bound",
 ];
-const AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV: &str = "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET";
-const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS";
-const AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV: &str =
-    "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS";
-const TRANSACTION_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS";
-const RUNTIME_TRUSTED_ROOT_KEYS_ENV: &str = "CHIO_RUNTIME_TRUSTED_ROOT_KEYS";
-const ENTERPRISE_TRUSTED_APPROVAL_KEYS_ENV: &str = "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS";
-const ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS_ENV: &str =
-    "CHIO_ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS";
-const ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS_ENV: &str =
-    "CHIO_ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS";
-const COMMERCE_TRUSTED_PROVIDER_KEYS_ENV: &str = "CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS";
-const TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV: &str = "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS";
-const SWARM_TRUSTED_WITNESS_KEYS_ENV: &str = "CHIO_SWARM_TRUSTED_WITNESS_KEYS";
-const PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS_ENV: &str =
-    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS";
-const PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS_ENV: &str =
-    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS";
-const PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS_ENV: &str =
-    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS";
-const PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS_ENV: &str =
-    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS";
-const PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS_ENV: &str = "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS";
-const PUBLIC_SETTLEMENT_MAINNET_BLOCKED_ENV: &str = "CHIO_PUBLIC_SETTLEMENT_MAINNET_BLOCKED";
-const PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS_ENV: &str =
-    "CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS";
 const VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_RUNTIME,
     CLAIM_PREFIX_RISK,
@@ -87,282 +73,6 @@ const PROOF_VERIFY_EXIT_PARSE_OR_SCHEMA_FAILURE: i32 = 30;
 const PROOF_VERIFY_EXIT_NEGATIVE_DID_NOT_FAIL: i32 = 40;
 const PROOF_VERIFY_EXIT_UNSUPPORTED_FEATURE: i32 = 50;
 const PROOF_VERIFY_EXIT_RELEASE_TRUTH_FAILURE: i32 = 60;
-
-fn agent_web_verifier_trust_from_env(
-) -> Result<chio_control_plane::agent_web::AgentWebVerifierTrust, CliError> {
-    let mut trust = match std::env::var(AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV) {
-        Ok(secret) => chio_control_plane::agent_web::AgentWebVerifierTrust::new()
-            .with_standard_webhooks_secret(secret.into_bytes()),
-        Err(std::env::VarError::NotPresent) => {
-            chio_control_plane::agent_web::AgentWebVerifierTrust::new()
-        }
-        Err(std::env::VarError::NotUnicode(_)) => {
-            return Err(CliError::cli_other_error(format!(
-                "{AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV} must be valid UTF-8"
-            )))
-        }
-    };
-    match std::env::var(AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV) {
-        Ok(keys) => {
-            trust = trust.with_trusted_receipt_kernel_keys(parse_public_keys(
-                AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV,
-                &keys,
-            )?);
-        }
-        Err(std::env::VarError::NotPresent) => {}
-        Err(std::env::VarError::NotUnicode(_)) => {
-            return Err(CliError::cli_other_error(format!(
-                "{AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV} must be valid UTF-8"
-            )))
-        }
-    }
-    match std::env::var(AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV) {
-        Ok(keys) => {
-            trust = trust.with_trusted_envelope_sidecar_keys(parse_public_keys(
-                AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV,
-                &keys,
-            )?);
-        }
-        Err(std::env::VarError::NotPresent) => {}
-        Err(std::env::VarError::NotUnicode(_)) => {
-            return Err(CliError::cli_other_error(format!(
-                "{AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV} must be valid UTF-8"
-            )))
-        }
-    }
-    Ok(trust)
-}
-
-fn parse_public_keys(
-    env_name: &str,
-    keys: &str,
-) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
-    if keys.trim().is_empty() {
-        return Err(CliError::cli_other_error(format!(
-            "{env_name} must contain comma-separated public keys"
-        )));
-    }
-
-    keys.split(',')
-        .map(|key| {
-            let key = key.trim();
-            if key.is_empty() {
-                return Err(CliError::cli_other_error(format!(
-                    "{env_name} must not contain empty public keys"
-                )));
-            }
-            chio_core_types::PublicKey::from_hex(key).map_err(|error| {
-                CliError::cli_other_error(format!(
-                    "{env_name} contains invalid public key: {error}"
-                ))
-            })
-        })
-        .collect()
-}
-
-fn trust_market_trusted_authority_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
-    match std::env::var(TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV) {
-        Ok(keys) => parse_public_keys(TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV, &keys),
-        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
-            "{TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV} must pin trusted market authority keys"
-        ))),
-        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
-            "{TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV} must be valid UTF-8"
-        ))),
-    }
-}
-
-fn enterprise_trusted_approval_signer_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
-    required_public_keys_from_env(
-        ENTERPRISE_TRUSTED_APPROVAL_KEYS_ENV,
-        "enterprise approval signer",
-    )
-}
-
-fn enterprise_trusted_risk_comptroller_signer_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
-    required_public_keys_from_env(
-        ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS_ENV,
-        "enterprise risk comptroller signer",
-    )
-}
-
-fn enterprise_trusted_receipt_kernel_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
-    required_public_keys_from_env(
-        ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS_ENV,
-        "enterprise receipt kernel",
-    )
-}
-
-fn required_public_keys_from_env(
-    env_name: &str,
-    label: &str,
-) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
-    match std::env::var(env_name) {
-        Ok(keys) => parse_public_keys(env_name, &keys),
-        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
-            "{env_name} must pin trusted {label} keys"
-        ))),
-        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
-            "{env_name} must be valid UTF-8"
-        ))),
-    }
-}
-
-fn parse_string_list(env_name: &str, values: &str) -> Result<Vec<String>, CliError> {
-    if values.trim().is_empty() {
-        return Err(CliError::cli_other_error(format!(
-            "{env_name} must contain comma-separated values"
-        )));
-    }
-
-    values
-        .split(',')
-        .map(|value| {
-            let value = value.trim();
-            if value.is_empty() {
-                return Err(CliError::cli_other_error(format!(
-                    "{env_name} must not contain empty values"
-                )));
-            }
-            Ok(value.to_string())
-        })
-        .collect()
-}
-
-fn required_string_list_from_env(env_name: &str, label: &str) -> Result<Vec<String>, CliError> {
-    match std::env::var(env_name) {
-        Ok(values) => parse_string_list(env_name, &values),
-        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
-            "{env_name} must pin trusted {label}"
-        ))),
-        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
-            "{env_name} must be valid UTF-8"
-        ))),
-    }
-}
-
-fn optional_bool_from_env(env_name: &str) -> Result<bool, CliError> {
-    match std::env::var(env_name) {
-        Ok(value) => match value.trim() {
-            "1" | "true" | "TRUE" | "True" => Ok(true),
-            "0" | "false" | "FALSE" | "False" => Ok(false),
-            _ => Err(CliError::cli_other_error(format!(
-                "{env_name} must be true or false"
-            ))),
-        },
-        Err(std::env::VarError::NotPresent) => Ok(false),
-        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
-            "{env_name} must be valid UTF-8"
-        ))),
-    }
-}
-
-fn optional_u32_from_env(env_name: &str) -> Result<Option<u32>, CliError> {
-    match std::env::var(env_name) {
-        Ok(value) => value.trim().parse::<u32>().map(Some).map_err(|error| {
-            CliError::cli_other_error(format!("{env_name} must be a u32: {error}"))
-        }),
-        Err(std::env::VarError::NotPresent) => Ok(None),
-        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
-            "{env_name} must be valid UTF-8"
-        ))),
-    }
-}
-
-fn public_settlement_verifier_trust_from_env(
-) -> Result<chio_web3::settlement_proof::PublicSettlementVerifierTrust, CliError> {
-    Ok(chio_web3::settlement_proof::PublicSettlementVerifierTrust {
-        trusted_capital_signer_keys: required_public_keys_from_env(
-            PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS_ENV,
-            "public settlement capital signer",
-        )?,
-        trusted_anchor_kernel_keys: required_public_keys_from_env(
-            PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS_ENV,
-            "public settlement anchor kernel",
-        )?,
-        trusted_beneficiary_identity_keys: required_public_keys_from_env(
-            PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS_ENV,
-            "public settlement beneficiary identity",
-        )?,
-        trusted_oracle_keys: required_public_keys_from_env(
-            PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS_ENV,
-            "public settlement oracle",
-        )?,
-        allowed_chain_ids: required_string_list_from_env(
-            PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS_ENV,
-            "public settlement chain IDs",
-        )?,
-        mainnet_blocked: optional_bool_from_env(PUBLIC_SETTLEMENT_MAINNET_BLOCKED_ENV)?,
-        minimum_confirmations: optional_u32_from_env(PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS_ENV)?,
-        expected_trust_market_context: None,
-    })
-}
-
-fn commerce_trusted_provider_keys_from_env() -> Result<Vec<chio_core_types::PublicKey>, CliError> {
-    match std::env::var(COMMERCE_TRUSTED_PROVIDER_KEYS_ENV) {
-        Ok(keys) => parse_public_keys(COMMERCE_TRUSTED_PROVIDER_KEYS_ENV, &keys),
-        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
-            "{COMMERCE_TRUSTED_PROVIDER_KEYS_ENV} must pin trusted commerce provider keys"
-        ))),
-        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
-            "{COMMERCE_TRUSTED_PROVIDER_KEYS_ENV} must be valid UTF-8"
-        ))),
-    }
-}
-
-fn transaction_trusted_root_keys_from_env() -> Result<Vec<chio_core_types::PublicKey>, CliError> {
-    match std::env::var(TRANSACTION_TRUSTED_ROOT_KEYS_ENV) {
-        Ok(keys) => parse_public_keys(TRANSACTION_TRUSTED_ROOT_KEYS_ENV, &keys),
-        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
-            "{TRANSACTION_TRUSTED_ROOT_KEYS_ENV} must pin trusted transaction root keys"
-        ))),
-        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
-            "{TRANSACTION_TRUSTED_ROOT_KEYS_ENV} must be valid UTF-8"
-        ))),
-    }
-}
-
-fn runtime_trust_from_env(
-) -> Result<chio_control_plane::transaction_passport::RuntimeSecurityTrust, CliError> {
-    let trusted_passport_signer_keys = transaction_trusted_root_keys_from_env()?;
-    let trusted_root_signer_keys = match std::env::var(RUNTIME_TRUSTED_ROOT_KEYS_ENV) {
-        Ok(keys) => parse_public_keys(RUNTIME_TRUSTED_ROOT_KEYS_ENV, &keys),
-        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
-            "{RUNTIME_TRUSTED_ROOT_KEYS_ENV} must pin trusted runtime root keys"
-        ))),
-        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
-            "{RUNTIME_TRUSTED_ROOT_KEYS_ENV} must be valid UTF-8"
-        ))),
-    }?;
-    Ok(
-        chio_control_plane::transaction_passport::RuntimeSecurityTrust {
-            trusted_passport_signer_keys,
-            trusted_root_signer_keys,
-        },
-    )
-}
-
-fn swarm_trusted_witness_keys_from_env() -> Result<Vec<chio_core_types::PublicKey>, CliError> {
-    match std::env::var(SWARM_TRUSTED_WITNESS_KEYS_ENV) {
-        Ok(keys) => parse_public_keys(SWARM_TRUSTED_WITNESS_KEYS_ENV, &keys),
-        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
-            "{SWARM_TRUSTED_WITNESS_KEYS_ENV} must pin trusted swarm witness keys"
-        ))),
-        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
-            "{SWARM_TRUSTED_WITNESS_KEYS_ENV} must be valid UTF-8"
-        ))),
-    }
-}
-
-fn swarm_trusted_witness_keys_for_bundle(
-    _bundle: &chio_swarm_authority::SwarmAuthorityBundle,
-) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
-    swarm_trusted_witness_keys_from_env()
-}
 
 #[derive(Clone, Copy)]
 enum LocalProofFamilyRoute {
@@ -1188,7 +898,6 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
                 &passport,
                 bundle_dir,
                 &evidence_graph_bytes,
-                &trusted_transaction_root_keys,
                 spec,
                 expected_public_settlement_trust_market_context.as_ref(),
                 expected_commerce_trust_market_context.as_ref(),
@@ -1331,7 +1040,6 @@ fn push_local_proof_family_report(
     passport: &chio_control_plane::transaction_passport::TransactionPassport,
     bundle_dir: &Path,
     evidence_graph_bytes: &[u8],
-    trusted_transaction_root_keys: &[chio_core_types::PublicKey],
     spec: &LocalProofFamilySpec,
     expected_public_settlement_trust_market_context: Option<
         &chio_web3::settlement_proof::PublicSettlementTrustMarketContext,
@@ -1345,7 +1053,8 @@ fn push_local_proof_family_report(
             let bundle = load_commerce_order_bundle_from_graph(
                 bundle_dir,
                 evidence_graph_bytes,
-                trusted_transaction_root_keys,
+                &commerce_trusted_event_authority_receipt_kernel_keys_from_env()?,
+                &commerce_trusted_payment_signer_keys_from_env()?,
                 &commerce_trusted_provider_keys_from_env()?,
                 expected_commerce_trust_market_context,
             )?;
@@ -2258,6 +1967,7 @@ fn load_commerce_mandate_protocol_payloads(
 fn load_commerce_order_bundle_from_graph(
     bundle_dir: &Path,
     evidence_graph_bytes: &[u8],
+    trusted_event_authority_receipt_kernel_keys: &[chio_core_types::PublicKey],
     trusted_payment_signer_keys: &[chio_core_types::PublicKey],
     trusted_provider_trust_signer_keys: &[chio_core_types::PublicKey],
     verified_trust_market_context: Option<&chio_commerce_order::CommerceVerifiedTrustMarketContext>,
@@ -2353,7 +2063,8 @@ fn load_commerce_order_bundle_from_graph(
         mandate_protocol_payloads,
         risk_comptroller_report_bytes,
         verified_trust_market_context: verified_trust_market_context.cloned(),
-        trusted_event_authority_receipt_kernel_keys: trusted_payment_signer_keys.to_vec(),
+        trusted_event_authority_receipt_kernel_keys:
+            trusted_event_authority_receipt_kernel_keys.to_vec(),
         trusted_payment_signer_keys: trusted_payment_signer_keys.to_vec(),
         trusted_provider_trust_signer_keys: trusted_provider_trust_signer_keys.to_vec(),
         trusted_risk_comptroller_signer_keys:
@@ -2681,7 +2392,7 @@ fn load_required_disclosure_bbs_projection_manifest(
         [node] => load_graph_json_artifact(
             bundle_dir,
             node,
-            chio_selective_disclosure::BBS_PROJECTION_MANIFEST_SCHEMA_V1,
+            chio_selective_disclosure::BBS_PROJECTION_MANIFEST_SCHEMA_V2,
             "disclosure lineage",
         ),
         [] => Err(CliError::cli_other_error(

@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -50,8 +50,16 @@ pub struct AgentWebVerifierTrust {
     trusted_passport_signer_keys: Vec<PublicKey>,
     default_standard_webhooks_secret: Option<Vec<u8>>,
     standard_webhooks_secrets: BTreeMap<String, Vec<u8>>,
+    standard_webhooks_replay_window: Option<StandardWebhooksReplayWindow>,
+    seen_standard_webhooks_ids: BTreeSet<String>,
     trusted_receipt_kernel_keys: Vec<PublicKey>,
     trusted_envelope_sidecar_keys: Vec<PublicKey>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct StandardWebhooksReplayWindow {
+    pub now_unix_seconds: u64,
+    pub max_age_seconds: u64,
 }
 
 impl AgentWebVerifierTrust {
@@ -82,6 +90,23 @@ impl AgentWebVerifierTrust {
         self
     }
 
+    pub fn with_standard_webhooks_replay_window(
+        mut self,
+        now_unix_seconds: u64,
+        max_age_seconds: u64,
+    ) -> Self {
+        self.standard_webhooks_replay_window = Some(StandardWebhooksReplayWindow {
+            now_unix_seconds,
+            max_age_seconds,
+        });
+        self
+    }
+
+    pub fn with_seen_standard_webhooks_id(mut self, webhook_id: impl Into<String>) -> Self {
+        self.seen_standard_webhooks_ids.insert(webhook_id.into());
+        self
+    }
+
     pub fn with_trusted_receipt_kernel_keys(
         mut self,
         keys: impl IntoIterator<Item = PublicKey>,
@@ -108,6 +133,14 @@ impl AgentWebVerifierTrust {
         } else {
             Some(secret.as_slice())
         }
+    }
+
+    pub(crate) fn standard_webhooks_replay_window(&self) -> Option<&StandardWebhooksReplayWindow> {
+        self.standard_webhooks_replay_window.as_ref()
+    }
+
+    pub(crate) fn has_seen_standard_webhooks_id(&self, webhook_id: &str) -> bool {
+        self.seen_standard_webhooks_ids.contains(webhook_id)
     }
 
     fn trusts_receipt_kernel_key(&self, key: &PublicKey) -> bool {

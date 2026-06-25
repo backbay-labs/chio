@@ -1,5 +1,6 @@
 //! Public Proof Room launch acceptance package assembly.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -15,6 +16,53 @@ const ACCEPTANCE_REPORT_SCHEMA: &str = "chio.proof-room.launch-acceptance-report
 const HOMEPAGE_COPY_MAP_SCHEMA: &str = "chio.proof-room.homepage-copy-map.v1";
 const NON_CLAIMS_SCHEMA: &str = "chio.proof-room.non-claims.v1";
 const NEGATIVE_CATALOG_SCHEMA: &str = "chio.proof-room.negative-catalog.v1";
+const AGENT_WEB_STAGE_ID: &str = "disclosure-and-agent-web-envelope";
+const AGENT_WEB_SOURCE_LOG_PATH: &str =
+    "docs/superpowers/research/chio-launch/indices/external-standards-source-log.md";
+const AGENT_WEB_SOURCE_LOG_STATUS: &str = "Status: refreshed source log";
+const AGENT_WEB_PROJECTION_MANIFEST_SCHEMA: &str = "chio.agent-web.external-projection-manifest.v1";
+const REQUIRED_AGENT_WEB_PROTOCOLS: [&str; 30] = [
+    "a2a",
+    "acp-client",
+    "acp-commerce",
+    "ag-ui",
+    "ap2",
+    "asyncapi",
+    "bbs",
+    "browser-automation",
+    "gmail-api",
+    "cloudevents",
+    "dsse",
+    "google-calendar-api",
+    "graphql-http",
+    "in-toto",
+    "kubernetes-admission",
+    "mcp",
+    "oauth2",
+    "oci",
+    "openapi",
+    "openid-connect",
+    "rpa",
+    "scim",
+    "sd-jwt-vc",
+    "sigstore",
+    "slack",
+    "slsa-provenance",
+    "spiffe",
+    "standard-webhooks",
+    "vc",
+    "x402",
+];
+const REQUIRED_AGENT_WEB_NEGATIVE_IDS: [&str; 8] = [
+    "agent-web-external-digest-mismatch",
+    "agent-web-missing-required-signature",
+    "agent-web-unsupported-claim-not-limited",
+    "agent-web-sidecar-claim-marked-native",
+    "agent-web-x402-detached-from-order",
+    "agent-web-ap2-detached-from-order",
+    "agent-web-oci-tag-only-ref",
+    "agent-web-slsa-unverified-provenance",
+];
 
 const STAGES: [StageSpec; 4] = [
     StageSpec {
@@ -50,6 +98,7 @@ struct StageEvidence {
     transaction_passport_sha256: String,
     evidence_graph_sha256: String,
     negative_cases: Vec<Value>,
+    agent_web_exit_gate: Option<Value>,
 }
 
 struct CommandRecord {
@@ -207,6 +256,12 @@ fn copy_and_validate_stages(root: &Path, out: &Path) -> Result<Vec<StageEvidence
             }
         }
 
+        let agent_web_exit_gate = if spec.fixture_id == AGENT_WEB_STAGE_ID {
+            Some(validate_agent_web_exit_gate(root, &source, negative_cases)?)
+        } else {
+            None
+        };
+
         stages.push(StageEvidence {
             fixture_id: spec.fixture_id,
             output_path: format!("stages/{}/proof-room-bundle", spec.fixture_id),
@@ -216,9 +271,91 @@ fn copy_and_validate_stages(root: &Path, out: &Path) -> Result<Vec<StageEvidence
             transaction_passport_sha256: sha256_file(&transaction_passport_path)?,
             evidence_graph_sha256: sha256_file(&evidence_graph_path)?,
             negative_cases: negative_cases.clone(),
+            agent_web_exit_gate,
         });
     }
     Ok(stages)
+}
+
+fn validate_agent_web_exit_gate(
+    root: &Path,
+    source: &Path,
+    negative_cases: &[Value],
+) -> Result<Value, XtaskError> {
+    let source_log_path = root.join(AGENT_WEB_SOURCE_LOG_PATH);
+    require_file(&source_log_path)?;
+    let source_log = fs::read_to_string(&source_log_path)
+        .map_err(|err| XtaskError::Io(crate::display_path(&source_log_path), err))?;
+    if !source_log.contains(AGENT_WEB_SOURCE_LOG_STATUS) {
+        return Err(XtaskError::Validation(format!(
+            "{}: Agent Web source log is not marked refreshed",
+            crate::display_path(&source_log_path)
+        )));
+    }
+
+    let mut source_protocols = BTreeSet::new();
+    let mut manifest_count = 0usize;
+    for entry in
+        fs::read_dir(source).map_err(|err| XtaskError::Io(crate::display_path(source), err))?
+    {
+        let entry = entry.map_err(|err| XtaskError::Io(crate::display_path(source), err))?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let Some(envelope_stem) = file_name.strip_suffix("-manifest.json") else {
+            continue;
+        };
+        let manifest = read_json(&path)?;
+        if manifest.get("schema").and_then(Value::as_str)
+            != Some(AGENT_WEB_PROJECTION_MANIFEST_SCHEMA)
+        {
+            continue;
+        }
+        let source_protocol = required_json_string(&manifest, "source_protocol", &path)?;
+        required_json_string(&manifest, "source_version", &path)?;
+        require_non_empty_json_array(&manifest, "claim_mapping", &path)?;
+        require_non_empty_json_array(&manifest, "unsupported_claims", &path)?;
+        require_non_empty_json_array(&manifest, "copy_limitations", &path)?;
+
+        let envelope_path = source.join(format!("{envelope_stem}-envelope.json"));
+        require_file(&envelope_path)?;
+        source_protocols.insert(source_protocol.to_string());
+        manifest_count += 1;
+    }
+
+    for protocol in REQUIRED_AGENT_WEB_PROTOCOLS {
+        if !source_protocols.contains(protocol) {
+            return Err(XtaskError::Validation(format!(
+                "Agent Web exit gate missing projection manifest for {protocol}"
+            )));
+        }
+    }
+
+    let negative_ids = negative_cases
+        .iter()
+        .filter_map(|case| case.get("id").and_then(Value::as_str))
+        .collect::<BTreeSet<_>>();
+    for case_id in REQUIRED_AGENT_WEB_NEGATIVE_IDS {
+        if !negative_ids.contains(case_id) {
+            return Err(XtaskError::Validation(format!(
+                "Agent Web exit gate missing negative fixture {case_id}"
+            )));
+        }
+    }
+
+    Ok(json!({
+        "verdict": "verified",
+        "source_log_path": AGENT_WEB_SOURCE_LOG_PATH,
+        "source_log_status": "refreshed source log",
+        "projection_manifest_schema": AGENT_WEB_PROJECTION_MANIFEST_SCHEMA,
+        "manifest_count": manifest_count,
+        "source_protocols": source_protocols.into_iter().collect::<Vec<_>>(),
+        "negative_case_ids": negative_ids.into_iter().collect::<Vec<_>>(),
+    }))
 }
 
 fn copy_roots_from_stage_zero(root: &Path, out: &Path) -> Result<(), XtaskError> {
@@ -431,12 +568,21 @@ fn copy_static_ui(root: &Path, out: &Path) -> Result<(), XtaskError> {
 }
 
 fn acceptance_report(schema_only: bool, git_commit: &str, stages: &[StageEvidence]) -> Value {
+    let agent_web_exit_gate = stages
+        .iter()
+        .find_map(|stage| stage.agent_web_exit_gate.clone())
+        .unwrap_or_else(|| {
+            json!({
+                "verdict": "missing",
+            })
+        });
     json!({
         "schema": ACCEPTANCE_REPORT_SCHEMA,
         "verdict": "verified",
         "mode": if schema_only { "schema-only" } else { "full" },
         "git_commit": git_commit,
         "stages": stages.iter().map(stage_json).collect::<Vec<_>>(),
+        "agent_web_exit_gate": agent_web_exit_gate,
         "negative_case_count": stages
             .iter()
             .map(|stage| stage.negative_cases.len())
@@ -700,6 +846,33 @@ fn read_json(path: &Path) -> Result<Value, XtaskError> {
     let raw =
         fs::read_to_string(path).map_err(|err| XtaskError::Io(crate::display_path(path), err))?;
     serde_json::from_str(&raw).map_err(|err| XtaskError::Json(crate::display_path(path), err))
+}
+
+fn required_json_string<'a>(
+    value: &'a Value,
+    field: &str,
+    path: &Path,
+) -> Result<&'a str, XtaskError> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            XtaskError::Validation(format!(
+                "{}: required string field is missing: {field}",
+                crate::display_path(path)
+            ))
+        })
+}
+
+fn require_non_empty_json_array(value: &Value, field: &str, path: &Path) -> Result<(), XtaskError> {
+    match value.get(field).and_then(Value::as_array) {
+        Some(values) if !values.is_empty() => Ok(()),
+        _ => Err(XtaskError::Validation(format!(
+            "{}: required non-empty array field is missing: {field}",
+            crate::display_path(path)
+        ))),
+    }
 }
 
 fn write_json(path: &Path, value: &Value) -> Result<(), XtaskError> {

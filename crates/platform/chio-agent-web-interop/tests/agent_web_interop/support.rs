@@ -93,6 +93,9 @@ pub(crate) const UNSUPPORTED_X402_AUTHORITY_CLAIM: &str =
     "claim.external.x402_payment_is_chio_authority";
 pub(crate) const STANDARD_WEBHOOKS_WEBHOOK_ID: &str = "msg_agent_web_001";
 pub(crate) const STANDARD_WEBHOOKS_TIMESTAMP: &str = "1770508800";
+pub(crate) const STALE_STANDARD_WEBHOOKS_TIMESTAMP: &str = "1770508200";
+pub(crate) const STANDARD_WEBHOOKS_VERIFIER_NOW: u64 = 1_770_508_860;
+pub(crate) const STANDARD_WEBHOOKS_MAX_AGE_SECONDS: u64 = 300;
 pub(crate) const STANDARD_WEBHOOKS_ENDPOINT_URL_DIGEST: &str =
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 pub(crate) const STANDARD_WEBHOOKS_BODY_DIGEST: &str =
@@ -123,6 +126,10 @@ pub(crate) fn agent_web_fixture_trust() -> AgentWebVerifierTrust {
         .with_standard_webhooks_secret_for(
             STANDARD_WEBHOOKS_WEBHOOK_ID,
             STANDARD_WEBHOOKS_VERIFIER_SECRET.to_vec(),
+        )
+        .with_standard_webhooks_replay_window(
+            STANDARD_WEBHOOKS_VERIFIER_NOW,
+            STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
         )
         .with_trusted_receipt_kernel_keys(trusted_kernel_keys)
         .with_trusted_envelope_sidecar_keys([agent_web_fixture_sidecar_keypair().public_key()])
@@ -162,6 +169,7 @@ pub(crate) fn workspace_root() -> PathBuf {
 pub(crate) fn standard_webhooks_timestamp_for_case(case: AgentWebCase) -> &'static str {
     match case {
         AgentWebCase::MissingWebhookTimestamp => "",
+        AgentWebCase::StaleWebhookTimestamp => STALE_STANDARD_WEBHOOKS_TIMESTAMP,
         _ => STANDARD_WEBHOOKS_TIMESTAMP,
     }
 }
@@ -246,6 +254,7 @@ pub(crate) enum AgentWebCase {
     MalformedWebhookSignature,
     ForgedWebhookSignature,
     MissingWebhookTimestamp,
+    StaleWebhookTimestamp,
     CloudEventsAuthorityClaimNotLimited,
     CloudEventsSpecVersionMismatch,
     GraphqlHttpDraftVersionMissing,
@@ -315,6 +324,7 @@ pub(crate) enum AgentWebCase {
     SlsaProjection,
     SlsaUnverified,
     BbsProjection,
+    BbsSelfAssertedVerified,
     BbsReceiptRefMissing,
     AsyncApiProjection,
     AsyncApiUnsupportedVersion,
@@ -374,6 +384,38 @@ pub(crate) fn push_artifact(
         "role": graph_role
     }));
     artifacts.insert(path.to_string(), bytes);
+}
+
+pub(crate) fn content_address_graph_nodes(graph_nodes: &mut [Value], graph_edges: &mut [Value]) {
+    let rewrites = graph_nodes
+        .iter()
+        .filter_map(|node| {
+            let semantic_id = node.get("id").and_then(Value::as_str)?;
+            let sha256 = node.get("sha256").and_then(Value::as_str)?;
+            Some((semantic_id.to_string(), sha256.to_string()))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    for node in graph_nodes {
+        let sha256 = node
+            .get("sha256")
+            .and_then(Value::as_str)
+            .test_expect("Agent Web graph node has digest")
+            .to_string();
+        node["id"] = Value::String(sha256);
+    }
+
+    for edge in graph_edges {
+        for endpoint in ["from", "to"] {
+            let Some(current) = edge.get(endpoint).and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(rewritten) = rewrites.get(current) else {
+                continue;
+            };
+            edge[endpoint] = Value::String(rewritten.clone());
+        }
+    }
 }
 
 pub(crate) fn sign_agent_web_receipts(
@@ -780,7 +822,25 @@ fn replace_agent_web_json_value(
         .iter_mut()
         .find(|node| node.get("path").and_then(Value::as_str) == Some(relative_path))
         .test_expect("Agent Web evidence graph contains artifact");
-    node["sha256"] = Value::String(updated_digest);
+    let previous_id = node
+        .get("id")
+        .and_then(Value::as_str)
+        .test_expect("Agent Web evidence graph node has id")
+        .to_string();
+    node["sha256"] = Value::String(updated_digest.clone());
+    node["id"] = Value::String(updated_digest.clone());
+
+    let edges = graph
+        .get_mut("edges")
+        .and_then(Value::as_array_mut)
+        .test_expect("Agent Web evidence graph has edges");
+    for edge in edges {
+        for endpoint in ["from", "to"] {
+            if edge.get(endpoint).and_then(Value::as_str) == Some(previous_id.as_str()) {
+                edge[endpoint] = Value::String(updated_digest.clone());
+            }
+        }
+    }
 
     bundle.evidence_graph_bytes = json_bytes(graph);
     bundle.passport.evidence_graph_sha256 =

@@ -1326,7 +1326,7 @@
       "schemaFile": "spec/schemas/chio-disclosure/v1/crypto-context-report.schema.json"
     },
     {
-      "schema": "chio.bbs-projection.manifest.v1",
+      "schema": "chio.bbs-projection.manifest.v2",
       "artifactKind": "bbs_projection_manifest",
       "introducedBy": "crypto-context-v1",
       "schemaFile": "spec/schemas/chio-disclosure/v1/bbs-projection-manifest.schema.json"

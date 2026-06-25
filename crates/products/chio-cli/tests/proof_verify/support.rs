@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 
 pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
     "chio-agent-web-standard-webhooks-fixture-secret-v1";
+const STANDARD_WEBHOOKS_VERIFIER_NOW: &str = "1770508860";
+const STANDARD_WEBHOOKS_MAX_AGE_SECONDS: &str = "300";
 const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
 const PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS: &str = concat!(
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
@@ -63,6 +65,14 @@ pub(crate) fn chio_with_agent_web_fixture_secret() -> std::process::Command {
         STANDARD_WEBHOOKS_VERIFIER_SECRET,
     );
     command.env(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS",
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+    command.env(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS",
+        STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
+    );
+    command.env(
         "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
         AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
     );
@@ -82,6 +92,14 @@ pub(crate) fn chio_with_agent_web_fixture_trust_without_webhooks_secret() -> std
     command.env(
         "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS",
         AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS,
+    );
+    command.env(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS",
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+    command.env(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS",
+        STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
     );
     command.env_remove("CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET");
     command
@@ -564,7 +582,7 @@ pub(crate) fn add_valid_disclosure_selective_disclosure_proof(bundle_dir: &std::
     });
     nodes.push(serde_json::json!({
         "id": "bbs-projection-manifest",
-        "schema": "chio.bbs-projection.manifest.v1",
+        "schema": "chio.bbs-projection.manifest.v2",
         "path": "bbs-projection-manifest.json",
         "sha256": projection_manifest_digest,
         "role": "bbs-projection-manifest"
@@ -623,7 +641,7 @@ pub(crate) fn add_disclosure_bbs_projection_manifest(
         .and_then(serde_json::Value::as_str)
         .test_expect("BBS proof has subject digest");
     let manifest = serde_json::json!({
-        "schema": "chio.bbs-projection.manifest.v1",
+        "schema": "chio.bbs-projection.manifest.v2",
         "manifest_id": "chio.bbs-projection.receipt.v1",
         "artifact_ref": proof_subject,
         "canonicalization": "jcs",
@@ -650,7 +668,7 @@ pub(crate) fn add_disclosure_bbs_projection_manifest(
     });
     nodes.push(serde_json::json!({
         "id": "bbs-projection-manifest",
-        "schema": "chio.bbs-projection.manifest.v1",
+        "schema": "chio.bbs-projection.manifest.v2",
         "path": "bbs-projection-manifest.json",
         "sha256": manifest_digest,
         "role": "bbs-projection-manifest"
@@ -1299,7 +1317,7 @@ pub(crate) fn public_settlement_chain_snapshot_json() -> serde_json::Value {
         "latest_block_number": 12_345_701,
         "max_block_lag": 128,
         "root_registry_address": "0x1000000000000000000000000000000000000001",
-        "registry_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
+        "registry_root": "0xfba90da7db4859cf33cd97a64b2ce07f244c8fcafe51c19ddd67b03c8490c3eb",
         "block": {
             "block_number": 12_345_678,
             "block_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",

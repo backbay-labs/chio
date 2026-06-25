@@ -11,6 +11,15 @@ use std::{
     ffi::OsString,
 };
 
+#[path = "fixture_agent_web.rs"]
+mod fixture_agent_web;
+use fixture_agent_web::{
+    refresh_agent_web_envelopes_for_subjects, resign_agent_web_receipts_for_policy,
+};
+#[path = "fixture_cleanup.rs"]
+mod fixture_cleanup;
+use fixture_cleanup::strip_collected_bundle_outputs;
+
 const PROOF_FIXTURE_ROOT_ENV: &str = "CHIO_PROOF_FIXTURE_ROOT";
 const PROOF_FIXTURE_CATALOG_FILE: &str = "catalog.json";
 const PROOF_FIXTURE_CATALOG_SCHEMA: &str = "chio.proof-room.fixture-root-catalog.v1";
@@ -198,6 +207,7 @@ fn generate_proof_fixture(fixture_id: &str, out: &Path, json_output: bool) -> Re
     normalize_enterprise_telemetry_passport_mismatch(&descriptor, out)?;
     normalize_disclosure_lineage_bbs_material(&descriptor, out)?;
     normalize_runtime_reused_nonce_fixture(&descriptor, out)?;
+    normalize_agent_web_fixture_material(&descriptor, out)?;
     normalize_declared_evidence_graph_node_ids(&descriptor, out)?;
     if descriptor.kind != "negative-transaction-passport" {
         refresh_proof_room_bundle_source_reports(out)?;
@@ -973,12 +983,61 @@ pub(super) fn copy_proof_fixture(fixture_id: &str, out: &Path) -> Result<(), Cli
     normalize_enterprise_telemetry_passport_mismatch(&descriptor, out)?;
     normalize_disclosure_lineage_bbs_material(&descriptor, out)?;
     normalize_runtime_reused_nonce_fixture(&descriptor, out)?;
+    normalize_agent_web_fixture_material(&descriptor, out)?;
     normalize_declared_evidence_graph_node_ids(&descriptor, out)?;
     if descriptor.kind != "negative-transaction-passport" {
         refresh_proof_room_bundle_source_reports(out)?;
     }
     refresh_proof_room_bundle_manifests(out)?;
     Ok(())
+}
+
+fn normalize_agent_web_fixture_material(
+    descriptor: &ProofFixtureDescriptor,
+    out: &Path,
+) -> Result<(), CliError> {
+    if !path_has_component(Path::new(installed_fixture_path(descriptor)), "agent-web") {
+        return Ok(());
+    }
+    if descriptor.id == "agent-web-external-digest-mismatch" {
+        return Ok(());
+    }
+    let mut evidence_graph_paths = Vec::new();
+    collect_evidence_graph_paths(out, &mut evidence_graph_paths)?;
+    for evidence_graph_path in evidence_graph_paths {
+        let artifact_root = evidence_graph_artifact_root(&evidence_graph_path)?;
+        if path_has_component(&artifact_root, "agent-web-external-digest-mismatch") {
+            continue;
+        }
+        let verifier_policy_path = artifact_root.join("verifier-policy.json");
+        if !verifier_policy_path.is_file() {
+            continue;
+        }
+
+        let policy_sha256 = sha256_file(&verifier_policy_path)?;
+        let mut evidence_graph = read_json_value(&evidence_graph_path)?;
+        refresh_agent_web_envelopes_for_subjects(&artifact_root, &mut evidence_graph)?;
+        resign_agent_web_receipts_for_policy(&artifact_root, &policy_sha256)?;
+        refresh_graph_node_hashes(&artifact_root, &mut evidence_graph)?;
+        write_json_line_file(&evidence_graph_path, &evidence_graph)?;
+
+        let passport_path = evidence_graph_path.with_file_name("transaction-passport.json");
+        if passport_path.is_file()
+            && !preserves_evidence_graph_digest_mismatch(descriptor, out, &evidence_graph_path)
+        {
+            let mut passport = read_json_value(&passport_path)?;
+            passport["evidence_graph_sha256"] =
+                serde_json::Value::String(sha256_file(&evidence_graph_path)?);
+            passport["verifier_policy_sha256"] = serde_json::Value::String(policy_sha256);
+            write_fixture_signed_transaction_passport(&passport_path, passport)?;
+        }
+    }
+    Ok(())
+}
+
+fn path_has_component(path: &Path, component: &str) -> bool {
+    path.components()
+        .any(|path_component| path_component.as_os_str().to_str() == Some(component))
 }
 
 fn normalize_disclosure_lineage_bbs_material(
@@ -1275,32 +1334,6 @@ fn add_runtime_swarm_parity_evidence(bundle: &Path) -> Result<(), CliError> {
             )))
         }
         (Ok(()), _) => Ok(()),
-    }
-}
-
-fn strip_collected_bundle_outputs(bundle: &Path) -> Result<(), CliError> {
-    for relative_dir in ["negatives", "roots", "ui", "verifier"] {
-        remove_dir_if_exists(&bundle.join(relative_dir))?;
-    }
-    for relative_file in ["bundle-signature.dsse.json", "manifest.json"] {
-        remove_file_if_exists(&bundle.join(relative_file))?;
-    }
-    Ok(())
-}
-
-fn remove_dir_if_exists(path: &Path) -> Result<(), CliError> {
-    match fs::remove_dir_all(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(CliError::from(error)),
-    }
-}
-
-fn remove_file_if_exists(path: &Path) -> Result<(), CliError> {
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(CliError::from(error)),
     }
 }
 
@@ -2454,7 +2487,7 @@ fn add_disclosure_agent_web_crypto_context_material(
         nodes,
         "bbs-projection-manifest",
         "bbs-projection-manifest.json",
-        chio_selective_disclosure::BBS_PROJECTION_MANIFEST_SCHEMA_V1,
+        chio_selective_disclosure::BBS_PROJECTION_MANIFEST_SCHEMA_V2,
         "bbs-projection-manifest",
         &sha256_file(&projection_manifest_path)?,
     );
@@ -2849,6 +2882,26 @@ pub(super) fn add_disclosure_bbs_material_to_bundle(bundle: &Path) -> Result<(),
     let mut passport = read_json_value(&passport_path)?;
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
     write_signed_transaction_passport(&passport_path, passport)?;
+    sync_transaction_root_artifacts(bundle)?;
+    Ok(())
+}
+
+fn sync_transaction_root_artifacts(bundle: &Path) -> Result<(), CliError> {
+    let roots = bundle.join("roots");
+    if !roots.is_dir() {
+        return Ok(());
+    }
+    for artifact in [
+        "claim-set.json",
+        "evidence-graph.json",
+        "transaction-passport.json",
+        "verifier-policy.json",
+    ] {
+        let source = bundle.join(artifact);
+        if source.is_file() {
+            fs::copy(&source, roots.join(artifact))?;
+        }
+    }
     Ok(())
 }
 
@@ -4308,248 +4361,6 @@ fn set_json_string(value: &mut serde_json::Value, field: &str, replacement: Stri
 fn sha256_json_value(value: &serde_json::Value) -> Result<String, CliError> {
     let bytes = serde_json::to_vec(value)?;
     Ok(chio_core::sha256_hex(&bytes))
-}
-
-fn resign_agent_web_receipts_for_policy(
-    bundle: &Path,
-    policy_sha256: &str,
-) -> Result<(), CliError> {
-    let receipts_dir = bundle.join("receipts");
-    if !receipts_dir.is_dir() {
-        return Ok(());
-    }
-    let keypair = Keypair::from_seed(&[17u8; 32]);
-    for entry in fs::read_dir(&receipts_dir)? {
-        let entry = entry?;
-        let receipt_path = entry.path();
-        if receipt_path.extension().and_then(std::ffi::OsStr::to_str) != Some("json") {
-            continue;
-        }
-        let receipt: ChioReceipt = serde_json::from_slice(&fs::read(&receipt_path)?)?;
-        let Some(receipt_ref) = receipt
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.get("agent_web_receipt_ref"))
-            .and_then(serde_json::Value::as_str)
-        else {
-            continue;
-        };
-        let content_hash = agent_web_receipt_subject_path(receipt_ref)
-            .map(|subject_path| bundle.join(subject_path))
-            .filter(|subject_path| subject_path.is_file())
-            .map(|subject_path| sha256_file(&subject_path))
-            .transpose()?
-            .unwrap_or_else(|| receipt.content_hash.clone());
-        let action = ToolCallAction::from_parameters(serde_json::json!({
-            "agent_web_receipt_ref": receipt_ref,
-            "content_hash": content_hash
-        }))
-        .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "proof fixture Agent Web receipt action hashing failed: {}: {error}",
-                receipt_path.display()
-            ))
-        })?;
-        let body = ChioReceiptBody {
-            id: receipt_ref.to_string(),
-            timestamp: receipt.timestamp,
-            capability_id: receipt.capability_id,
-            tool_server: receipt.tool_server,
-            tool_name: receipt.tool_name,
-            action,
-            decision: receipt.decision,
-            receipt_kind: receipt.receipt_kind,
-            boundary_class: receipt.boundary_class,
-            observation_outcome: receipt.observation_outcome,
-            tool_origin: receipt.tool_origin,
-            redaction_mode: receipt.redaction_mode,
-            actor_chain: receipt.actor_chain,
-            content_hash,
-            policy_hash: policy_sha256.to_string(),
-            evidence: receipt.evidence,
-            metadata: receipt.metadata,
-            trust_level: receipt.trust_level,
-            tenant_id: receipt.tenant_id,
-            kernel_key: keypair.public_key(),
-            bbs_projection_version: receipt.bbs_projection_version,
-        };
-        let signed_receipt = ChioReceipt::sign(body, &keypair).map_err(|error| {
-            CliError::cli_other_error(format!(
-                "proof fixture Agent Web receipt signing failed: {}: {error}",
-                receipt_path.display()
-            ))
-        })?;
-        write_json_line_file(&receipt_path, &signed_receipt)?;
-    }
-    Ok(())
-}
-
-fn refresh_agent_web_envelopes_for_subjects(
-    bundle: &Path,
-    evidence_graph: &mut serde_json::Value,
-) -> Result<(), CliError> {
-    let keypair = Keypair::from_seed(&[17u8; 32]);
-    let public_key = keypair.public_key().to_hex();
-    for node in json_array_mut(evidence_graph, "nodes", &bundle.join("evidence-graph.json"))? {
-        if node.get("role").and_then(serde_json::Value::as_str) != Some("agent-web-proof-envelope")
-        {
-            continue;
-        }
-        let path = node
-            .get("path")
-            .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| {
-                CliError::cli_other_error(format!(
-                    "proof fixture Agent Web envelope path missing: {}",
-                    bundle.display()
-                ))
-            })?
-            .to_string();
-        let envelope_path = bundle.join(&path);
-        let mut envelope = read_json_value(&envelope_path)?;
-        let subject_path =
-            required_json_string(&envelope, "external_subject_path", &envelope_path)?;
-        envelope["external_subject_digest"] =
-            serde_json::Value::String(sha256_file(&bundle.join(subject_path))?);
-        sign_agent_web_envelope_value(&mut envelope, &keypair, &public_key)?;
-        write_json_line_file(&envelope_path, &envelope)?;
-        node["sha256"] = serde_json::Value::String(sha256_file(&envelope_path)?);
-    }
-    Ok(())
-}
-
-fn sign_agent_web_envelope_value(
-    envelope: &mut serde_json::Value,
-    keypair: &Keypair,
-    public_key: &str,
-) -> Result<(), CliError> {
-    envelope["envelope_id"] = serde_json::Value::String(agent_web_envelope_id(envelope)?);
-    let payload = agent_web_envelope_signature_payload(envelope)?;
-    let canonical = chio_core_types::canonical_json_bytes(&payload).map_err(|error| {
-        CliError::cli_other_error(format!(
-            "proof fixture Agent Web envelope signing failed: {error}"
-        ))
-    })?;
-    let signature = keypair.sign(&canonical).to_hex();
-    envelope["signature"] =
-        serde_json::Value::String(format!("sig-ed25519:{public_key}:{signature}"));
-    Ok(())
-}
-
-fn agent_web_envelope_id(envelope: &serde_json::Value) -> Result<String, CliError> {
-    let payload = agent_web_envelope_payload(
-        envelope,
-        &[
-            "schema",
-            "transaction_passport_ref",
-            "source_protocol",
-            "source_protocol_version",
-            "external_subject",
-            "external_subject_path",
-            "external_subject_digest",
-            "external_subject_signature_ref",
-            "projection_manifest_ref",
-            "projection_manifest_sha256",
-            "chio_claim_refs",
-            "receipt_refs",
-            "disclosure_capsule_refs",
-            "settlement_refs",
-            "risk_refs",
-            "limitations",
-        ],
-    )?;
-    let canonical = chio_core_types::canonical_json_bytes(&payload).map_err(|error| {
-        CliError::cli_other_error(format!(
-            "proof fixture Agent Web envelope id failed: {error}"
-        ))
-    })?;
-    Ok(chio_core_types::sha256_hex(&canonical))
-}
-
-fn agent_web_envelope_signature_payload(
-    envelope: &serde_json::Value,
-) -> Result<serde_json::Value, CliError> {
-    agent_web_envelope_payload(
-        envelope,
-        &[
-            "schema",
-            "envelope_id",
-            "transaction_passport_ref",
-            "source_protocol",
-            "source_protocol_version",
-            "external_subject",
-            "external_subject_path",
-            "external_subject_digest",
-            "external_subject_signature_ref",
-            "projection_manifest_ref",
-            "projection_manifest_sha256",
-            "chio_claim_refs",
-            "receipt_refs",
-            "disclosure_capsule_refs",
-            "settlement_refs",
-            "risk_refs",
-            "limitations",
-        ],
-    )
-}
-
-fn agent_web_envelope_payload(
-    envelope: &serde_json::Value,
-    fields: &[&str],
-) -> Result<serde_json::Value, CliError> {
-    let object = envelope.as_object().ok_or_else(|| {
-        CliError::cli_other_error("proof fixture Agent Web envelope is not an object")
-    })?;
-    let mut payload = serde_json::Map::new();
-    for field in fields {
-        let value = object.get(*field).ok_or_else(|| {
-            CliError::cli_other_error(format!(
-                "proof fixture Agent Web envelope missing field: {field}"
-            ))
-        })?;
-        payload.insert((*field).to_string(), value.clone());
-    }
-    Ok(serde_json::Value::Object(payload))
-}
-
-fn agent_web_receipt_subject_path(receipt_id: &str) -> Option<&'static str> {
-    Some(match receipt_id {
-        "receipt-agent-web-webhook-allow" => "external/webhook-delivery.json",
-        "receipt-agent-web-cloudevents-allow" => "external/cloudevent.json",
-        "receipt-agent-web-graphql-mutation-allow" => "external/graphql-operation.json",
-        "receipt-agent-web-mcp-tool-call-allow" => "external/mcp-tool-call.json",
-        "receipt-agent-web-a2a-task-allow" => "external/a2a-task.json",
-        "receipt-agent-web-openapi-operation-allow" => "external/openapi-operation.json",
-        "receipt-agent-web-acp-client-permission-allow" => "external/acp-client-permission.json",
-        "receipt-agent-web-acp-commerce-checkout-allow" => "external/acp-commerce-checkout.json",
-        "receipt-agent-web-ag-ui-event-allow" => "external/ag-ui-event.json",
-        "receipt-agent-web-browser-command-allow" => "external/browser-command.json",
-        "receipt-agent-web-rpa-transcript-allow" => "external/rpa-transcript.json",
-        "receipt-agent-web-email-message-allow" => "external/email-message.json",
-        "receipt-agent-web-calendar-event-allow" => "external/calendar-event.json",
-        "receipt-agent-web-slack-message-allow" => "external/slack-message.json",
-        "receipt-agent-web-oauth2-authorization-allow" => "external/oauth2-authorization.json",
-        "receipt-agent-web-openid-connect-identity-allow" => {
-            "external/openid-connect-identity.json"
-        }
-        "receipt-agent-web-scim-lifecycle-allow" => "external/scim-lifecycle.json",
-        "receipt-agent-web-spiffe-workload-allow" => "external/spiffe-workload-identity.json",
-        "receipt-agent-web-kubernetes-admission-allow" => {
-            "external/kubernetes-admission-review.json"
-        }
-        "receipt-agent-web-oci-ref-allow" => "external/oci-ref.json",
-        "receipt-agent-web-vc-allow" => "external/verifiable-credential.json",
-        "receipt-agent-web-sd-jwt-vc-presentation-allow" => "external/sd-jwt-vc-presentation.json",
-        "receipt-agent-web-bbs-disclosure-allow" => "external/bbs-receipt-disclosure.json",
-        "receipt-agent-web-sigstore-bundle-allow" => "external/sigstore-bundle.json",
-        "receipt-agent-web-in-toto-statement-allow" => "external/in-toto-statement.json",
-        "receipt-agent-web-dsse-envelope-allow" => "external/dsse-envelope.json",
-        "receipt-agent-web-slsa-provenance-allow" => "external/slsa-provenance.json",
-        "receipt-agent-web-asyncapi-message-allow" => "external/asyncapi-message.json",
-        "receipt-agent-web-ap2-mandate-allow" => "external/ap2-mandate-chain.json",
-        "receipt-agent-web-x402-payment-allow" => "external/x402-payment.json",
-        _ => return None,
-    })
 }
 
 fn append_required_claims_from_policy(

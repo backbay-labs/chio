@@ -14,6 +14,12 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
+#[path = "support/archive.rs"]
+mod archive;
+pub(crate) use archive::{
+    tgz_member_names, write_tar_zst_with_symlink_member, write_tgz_with_symlink_member,
+};
+
 pub(crate) const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str =
     "application/vnd.chio.proof-room.bundle.v1+json";
 pub(crate) const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
@@ -25,6 +31,8 @@ const PUBLIC_EXPORT_SIGNATURE_SEED_HEX: &str =
     "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d";
 pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
     "chio-agent-web-standard-webhooks-fixture-secret-v1";
+const STANDARD_WEBHOOKS_VERIFIER_NOW: &str = "1770508860";
+const STANDARD_WEBHOOKS_MAX_AGE_SECONDS: &str = "300";
 pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
     "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de,",
     "4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff,",
@@ -59,6 +67,10 @@ const TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS: &str =
     "cf1b37e85dc00aee94f10108b37f151e2a37b3ae2a0cae77521f83488db9c4d7";
 const COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS: &str =
     "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca";
+const COMMERCE_FIXTURE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS: &str =
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
+const COMMERCE_FIXTURE_TRUSTED_PAYMENT_SIGNER_KEYS: &str =
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS: &str =
     "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS: &str =
@@ -89,21 +101,34 @@ pub(crate) fn chio(args: &[&str]) -> std::process::Output {
 
 pub(crate) fn chio_command() -> std::process::Command {
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_chio"));
-    command.env(
-        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
-        STANDARD_WEBHOOKS_VERIFIER_SECRET,
-    );
-    command.env(
-        "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
-        AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
-    );
-    command.env(
-        "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS",
-        AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS,
-    );
-    command.env(
-        "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS",
-        PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
+    set_envs(
+        &mut command,
+        &[
+            (
+                "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
+                STANDARD_WEBHOOKS_VERIFIER_SECRET,
+            ),
+            (
+                "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS",
+                STANDARD_WEBHOOKS_VERIFIER_NOW,
+            ),
+            (
+                "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS",
+                STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
+            ),
+            (
+                "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
+                AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS,
+            ),
+            (
+                "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS",
+                AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS,
+            ),
+            (
+                "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS",
+                PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
+            ),
+        ],
     );
     command.env(
         "CHIO_PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS",
@@ -113,64 +138,83 @@ pub(crate) fn chio_command() -> std::process::Command {
         "CHIO_TRANSACTION_TRUSTED_ROOT_KEYS",
         transaction_fixture_trusted_root_keys(),
     );
-    command.env(
-        "CHIO_RUNTIME_TRUSTED_ROOT_KEYS",
-        RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS,
-    );
-    command.env(
-        "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS",
-        ENTERPRISE_FIXTURE_TRUSTED_APPROVAL_KEYS,
-    );
-    command.env(
-        "CHIO_ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS",
-        ENTERPRISE_FIXTURE_TRUSTED_RISK_COMPTROLLER_KEYS,
-    );
-    command.env(
-        "CHIO_ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS",
-        PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
-    );
-    command.env(
-        "CHIO_SWARM_TRUSTED_WITNESS_KEYS",
-        SWARM_FIXTURE_TRUSTED_WITNESS_KEYS,
-    );
-    command.env(
-        "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS",
-        TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS,
-    );
-    command.env(
-        "CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS",
-        COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS,
-    );
-    command.env(
-        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS",
-        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS,
-    );
-    command.env(
-        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS",
-        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS,
-    );
-    command.env(
-        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS",
-        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS,
-    );
-    command.env(
-        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS",
-        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ORACLE_KEYS,
-    );
-    command.env(
-        "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS",
-        "eip155:8453,eip155:42161",
-    );
-    command.env("CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS", "1");
-    command.env(
-        "CHIO_PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX",
-        COLLECT_SIGNATURE_SEED_HEX,
-    );
-    command.env(
-        "CHIO_PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX",
-        PUBLIC_EXPORT_SIGNATURE_SEED_HEX,
+    set_envs(
+        &mut command,
+        &[
+            (
+                "CHIO_RUNTIME_TRUSTED_ROOT_KEYS",
+                RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS,
+            ),
+            (
+                "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS",
+                ENTERPRISE_FIXTURE_TRUSTED_APPROVAL_KEYS,
+            ),
+            (
+                "CHIO_ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS",
+                ENTERPRISE_FIXTURE_TRUSTED_RISK_COMPTROLLER_KEYS,
+            ),
+            (
+                "CHIO_ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS",
+                PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
+            ),
+            (
+                "CHIO_SWARM_TRUSTED_WITNESS_KEYS",
+                SWARM_FIXTURE_TRUSTED_WITNESS_KEYS,
+            ),
+            (
+                "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS",
+                TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS,
+            ),
+            (
+                "CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS",
+                COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS,
+            ),
+            (
+                "CHIO_COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS",
+                COMMERCE_FIXTURE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS,
+            ),
+            (
+                "CHIO_COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS",
+                COMMERCE_FIXTURE_TRUSTED_PAYMENT_SIGNER_KEYS,
+            ),
+            (
+                "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS",
+                PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS,
+            ),
+            (
+                "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS",
+                PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS,
+            ),
+            (
+                "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS",
+                PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS,
+            ),
+            (
+                "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS",
+                PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ORACLE_KEYS,
+            ),
+            (
+                "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS",
+                "eip155:8453,eip155:42161",
+            ),
+            ("CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS", "1"),
+            (
+                "CHIO_PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX",
+                COLLECT_SIGNATURE_SEED_HEX,
+            ),
+            (
+                "CHIO_PROOF_EXPORT_BUNDLE_SIGNER_SEED_HEX",
+                PUBLIC_EXPORT_SIGNATURE_SEED_HEX,
+            ),
+        ],
     );
     command
+}
+
+fn set_envs(command: &mut std::process::Command, values: &[(&str, &str)]) {
+    for (name, value) in values {
+        command.env(name, value);
+    }
 }
 
 pub(crate) fn proof_room_fixture_trusted_bundle_signer_keys() -> String {
@@ -434,61 +478,6 @@ pub(crate) fn copy_dir_all(source: &Path, destination: &Path) -> std::io::Result
         }
     }
     Ok(())
-}
-
-#[cfg(unix)]
-pub(crate) fn append_symlink_member<W: Write>(
-    builder: &mut tar::Builder<W>,
-    outside_passport: &Path,
-) {
-    let mut header = tar::Header::new_gnu();
-    header.set_entry_type(tar::EntryType::Symlink);
-    header.set_mode(0o777);
-    header.set_size(0);
-    header.set_cksum();
-    builder
-        .append_link(&mut header, "transaction-passport.json", outside_passport)
-        .test_expect("append symlink member");
-}
-
-#[cfg(unix)]
-pub(crate) fn write_tgz_with_symlink_member(path: &Path, outside_passport: &Path) {
-    let file = std::fs::File::create(path).test_expect("create archive");
-    let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-    let mut builder = tar::Builder::new(encoder);
-    append_symlink_member(&mut builder, outside_passport);
-    builder.finish().test_expect("finish archive");
-    let encoder = builder.into_inner().test_expect("finish encoder");
-    encoder.finish().test_expect("finish gzip");
-}
-
-#[cfg(unix)]
-pub(crate) fn write_tar_zst_with_symlink_member(path: &Path, outside_passport: &Path) {
-    let file = std::fs::File::create(path).test_expect("create archive");
-    let encoder = zstd::stream::write::Encoder::new(file, 0).test_expect("create zstd encoder");
-    let mut builder = tar::Builder::new(encoder);
-    append_symlink_member(&mut builder, outside_passport);
-    builder.finish().test_expect("finish archive");
-    let encoder = builder.into_inner().test_expect("finish encoder");
-    encoder.finish().test_expect("finish zstd");
-}
-
-pub(crate) fn tgz_member_names(path: &Path) -> BTreeSet<String> {
-    let file = std::fs::File::open(path).test_expect("open tgz archive");
-    let decoder = flate2::read::GzDecoder::new(file);
-    let mut archive = tar::Archive::new(decoder);
-    archive
-        .entries()
-        .test_expect("read archive entries")
-        .map(|entry| {
-            entry
-                .test_expect("read archive entry")
-                .path()
-                .test_expect("read archive path")
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect()
 }
 
 pub(crate) fn proof_room_bundle_fixture() -> PathBuf {

@@ -124,6 +124,10 @@ fn agent_web_interop_rejects_standard_webhooks_without_configured_secret() {
     let bundle = agent_web_bundle(AgentWebCase::Valid);
     let trust = chio_agent_web_interop::AgentWebVerifierTrust::new()
         .with_trusted_passport_signer_keys([transaction_passport_keypair().public_key()])
+        .with_standard_webhooks_replay_window(
+            STANDARD_WEBHOOKS_VERIFIER_NOW,
+            STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
+        )
         .with_trusted_envelope_sidecar_keys([agent_web_fixture_sidecar_keypair().public_key()]);
 
     let error = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
@@ -142,6 +146,10 @@ fn agent_web_interop_rejects_receipts_without_trusted_kernel_key() {
         .with_standard_webhooks_secret_for(
             STANDARD_WEBHOOKS_WEBHOOK_ID,
             STANDARD_WEBHOOKS_VERIFIER_SECRET.to_vec(),
+        )
+        .with_standard_webhooks_replay_window(
+            STANDARD_WEBHOOKS_VERIFIER_NOW,
+            STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
         )
         .with_trusted_envelope_sidecar_keys([agent_web_fixture_sidecar_keypair().public_key()]);
 
@@ -430,6 +438,30 @@ fn agent_web_interop_rejects_missing_webhook_timestamp() {
     assert!(error
         .to_string()
         .contains("missing Standard Webhooks timestamp"));
+}
+
+#[test]
+fn agent_web_interop_rejects_stale_webhook_timestamp() {
+    let bundle = agent_web_bundle(AgentWebCase::StaleWebhookTimestamp);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Standard Webhooks timestamp must be inside verifier replay window");
+
+    assert!(error
+        .to_string()
+        .contains("stale Standard Webhooks timestamp"));
+}
+
+#[test]
+fn agent_web_interop_rejects_replayed_webhook_id() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let trust =
+        agent_web_fixture_trust().with_seen_standard_webhooks_id(STANDARD_WEBHOOKS_WEBHOOK_ID);
+
+    let error = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+        .test_expect_err("Standard Webhooks ids must be unique inside the replay window");
+
+    assert!(error.to_string().contains("replayed Standard Webhooks id"));
 }
 
 #[test]

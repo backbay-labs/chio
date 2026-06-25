@@ -835,6 +835,11 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         );
     }
 
+    let bbs_verification_status = if matches!(case, AgentWebCase::BbsSelfAssertedVerified) {
+        "verified"
+    } else {
+        "claimed"
+    };
     let mut bbs_receipt_disclosure_value = json!({
         "object_kind": "bbs_receipt_disclosure",
         "id": "bbs-receipt-disclosure-agent-web-valid",
@@ -849,7 +854,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "authorization_context_digest": "88".repeat(32),
         "disclosure_count": 4,
         "hidden_count": 3,
-        "verification_status": "verified",
+        "verification_status": bbs_verification_status,
         "receipt_refs": ["receipt-agent-web-bbs-disclosure-allow"],
         "mediated_by_chio_receipt": true
     });
@@ -862,7 +867,9 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
     let bbs_receipt_disclosure = json_bytes(bbs_receipt_disclosure_value);
     if matches!(
         case,
-        AgentWebCase::BbsProjection | AgentWebCase::BbsReceiptRefMissing
+        AgentWebCase::BbsProjection
+            | AgentWebCase::BbsSelfAssertedVerified
+            | AgentWebCase::BbsReceiptRefMissing
     ) {
         push_artifact(
             &mut builder.artifacts,

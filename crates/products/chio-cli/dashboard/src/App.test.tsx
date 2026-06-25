@@ -2667,7 +2667,7 @@ describe('App operator paths', () => {
       chain_snapshot: {
         observed_block_number: 12345678,
         latest_block_number: 12345700,
-        registry_root: '0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381',
+        registry_root: '0xfba90da7db4859cf33cd97a64b2ce07f244c8fcafe51c19ddd67b03c8490c3eb',
         escrow: {
           escrow_id: 'escrow-web3-1',
           escrow_contract: '0x1000000000000000000000000000000000000002',
@@ -2770,7 +2770,7 @@ describe('App operator paths', () => {
           settlement_path: 'merkle_proof',
           settlement_reference: 'settlement-web3-1',
           observed_block_number: 12345678,
-          registry_root: '0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381',
+          registry_root: '0xfba90da7db4859cf33cd97a64b2ce07f244c8fcafe51c19ddd67b03c8490c3eb',
           escrow_id: 'escrow-web3-1',
           bond_vault_contract: '0x1000000000000000000000000000000000000003',
           posted_bond_amount: {
