@@ -1,8 +1,11 @@
 use alloc::format;
 use alloc::string::{String, ToString};
+use alloc::vec::Vec;
 
 use serde::{Deserialize, Serialize};
 
+use crate::canonical::{CanonicalBytes, CanonicalJsonWitness};
+use crate::crypto::sha256_hex;
 use crate::error::{Error, Result};
 
 use super::body::{ChioReceiptBody, ChioReceiptIdInput};
@@ -179,5 +182,214 @@ pub(crate) fn validate_bbs_receipt_binding(
             }
             Ok(())
         }
+    }
+}
+
+/// Error raised when a [`ReceiptSigningHandle`] is consumed against a receipt
+/// body whose claimed `content_hash` does not match the hash the signer
+/// recomputed over the bound canonical content.
+///
+/// This is the WYSIWYS ("what you see is what you sign") fail-closed gate: the
+/// signer refuses to bind a signature to a body whose `content_hash` field was
+/// not derived from the exact content the handle was built over. It closes the
+/// render-A / sign-B class of attacks where a caller renders content `A` to a
+/// human but submits a body claiming the hash of content `B`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContentHashMismatch {
+    /// The hash recomputed by the signer over the handle's canonical content.
+    pub recomputed: String,
+    /// The `content_hash` the caller embedded in the receipt body.
+    pub claimed: String,
+}
+
+impl ContentHashMismatch {
+    /// Render a stable, non-secret-bearing description for error surfaces.
+    #[must_use]
+    pub fn message(&self) -> String {
+        format!(
+            "receipt content_hash mismatch: body claimed {} but signer recomputed {} over the bound canonical content",
+            self.claimed, self.recomputed
+        )
+    }
+}
+
+impl From<ContentHashMismatch> for Error {
+    fn from(mismatch: ContentHashMismatch) -> Self {
+        Error::CanonicalJson(mismatch.message())
+    }
+}
+
+/// A one-time, move-only handle that binds a signature to a *specific*
+/// evaluated artifact's canonical content.
+///
+/// # Why this exists (WYSIWYS at the trust boundary)
+///
+/// Today the receipt signer accepts a [`ChioReceiptBody`] whose `content_hash`
+/// is a caller-supplied string and never recomputes it. That lets a caller
+/// render content `A` to a human (and to the audit surface) while handing the
+/// signer a body claiming the hash of content `B` -- a render-A / sign-B
+/// forgery. A signature over such a body says nothing about the content the
+/// human actually saw.
+///
+/// `ReceiptSigningHandle` closes that gap. It is constructed *inside the trust
+/// boundary* from the exact canonical content the producer evaluated; at
+/// construction time it recomputes `content_hash = sha256_hex(canonical_content)`
+/// and stores both the immutable canonical bytes and the authoritative hash.
+/// The signing entrypoints that take a handle then refuse to sign unless the
+/// body's claimed `content_hash` equals the handle's recomputed hash
+/// ([`ContentHashMismatch`], fail-closed).
+///
+/// # One-time semantics
+///
+/// The handle is **move-only** (no `Clone`): the signing entrypoints consume it
+/// by value, so a single handle corresponds to a single signing attempt over a
+/// single evaluated artifact. A producer cannot reuse one handle to back two
+/// different signatures, and cannot smuggle a handle built over content `A`
+/// into a sign call for content `B` -- the recomputed hash is fixed at
+/// construction and the body's claim is checked against it.
+///
+/// # Seam note (follow-up: full `evaluate()` -> `sign()` binding)
+///
+/// In the present change the handle is built from canonical content bytes that
+/// the producer supplies via [`ReceiptSigningHandle::from_content`] /
+/// [`ReceiptSigningHandle::from_canonical_bytes`]. The intended end state is
+/// that `evaluate()` *returns* the handle (so the only way to obtain one is to
+/// have actually run an evaluation, and the bytes are the evaluator's own
+/// canonical output rather than anything the caller chose). Threading the
+/// handle out of `chio-kernel-core::evaluate` and through every adapter's
+/// receipt-construction path is a larger change tracked as a follow-up
+/// (BAC-539 seam). The hash-recompute + refuse-on-mismatch guarantee in this
+/// type already closes the render-A / sign-B regression regardless of that
+/// follow-up, because the signer never trusts the caller's `content_hash`.
+///
+/// # Debug redaction
+///
+/// `Debug` is implemented by hand (not derived) so the raw `content_preimage`
+/// -- which for a value receipt is the exact canonical tool output and can carry
+/// user data or secrets -- never reaches a log line, a `debug_assert!` panic, or
+/// a `{:?}` format. The custom impl prints the recomputed `content_hash` (a
+/// non-secret digest) and the preimage *length* in place of the bytes
+/// themselves. See the `debug_redacts_preimage` test.
+pub struct ReceiptSigningHandle {
+    /// The exact byte preimage the `content_hash` is defined over. For a
+    /// canonical-JSON artifact this is the RFC 8785 serialization; for a
+    /// stream receipt it is the concatenated per-chunk digest preimage the
+    /// kernel hashes (see `chio-kernel`'s `stream_receipt_content`). The
+    /// handle never trusts a caller-asserted hash: `content_hash` below is
+    /// always recomputed from these bytes at construction.
+    content_preimage: Vec<u8>,
+    content_hash: String,
+}
+
+impl core::fmt::Debug for ReceiptSigningHandle {
+    /// Redacted formatter: prints the recomputed `content_hash` (non-secret)
+    /// and the preimage byte length, but NEVER the preimage bytes. The raw
+    /// preimage is the canonical tool output for value receipts and may carry
+    /// user data or secrets, so it must not leak into logs or panic messages.
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter
+            .debug_struct("ReceiptSigningHandle")
+            .field("content_hash", &self.content_hash)
+            .field("content_preimage_len", &self.content_preimage.len())
+            .field("content_preimage", &"<redacted>")
+            .finish()
+    }
+}
+
+impl ReceiptSigningHandle {
+    /// Build a handle by serializing an evaluated artifact to canonical JSON
+    /// and recomputing its content hash.
+    ///
+    /// `content` is the artifact the producer actually evaluated and intends to
+    /// represent to the human (e.g. the tool output, the request projection).
+    /// The handle owns the resulting canonical bytes and the
+    /// `sha256_hex(canonical)` digest; both are fixed for the lifetime of the
+    /// handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `content` cannot be canonicalized.
+    pub fn from_content<T: Serialize>(content: &T) -> Result<Self> {
+        let canonical_content = CanonicalBytes::from_serializable(content)?;
+        Ok(Self::from_canonical_bytes(canonical_content))
+    }
+
+    /// Build a handle directly from already-canonicalized content bytes.
+    ///
+    /// Use this when the producer has computed the canonical bytes through the
+    /// witnessed [`CanonicalBytes`] path already (e.g. a shared evaluation
+    /// buffer) and wants to avoid reserializing. The content hash is recomputed
+    /// here regardless, so the resulting hash is always the signer's own,
+    /// never a caller-asserted value.
+    #[must_use]
+    pub fn from_canonical_bytes(canonical_content: CanonicalBytes<CanonicalJsonWitness>) -> Self {
+        Self::from_content_preimage(canonical_content.into_vec())
+    }
+
+    /// Build a handle from the exact byte preimage the receipt `content_hash`
+    /// is defined over, recomputing the hash here.
+    ///
+    /// Use this on the production kernel signing path, where `content_hash` is
+    /// not always `sha256_hex(canonical_json(value))`: stream receipts hash a
+    /// concatenation of per-chunk digests, and the empty-output receipt hashes
+    /// the literal `null` canonicalization. In every case the kernel already
+    /// holds the exact bytes it hashed; passing them here lets the signer
+    /// recompute the same digest independently and refuse to sign when the
+    /// body's claimed `content_hash` does not match (WYSIWYS, fail-closed).
+    ///
+    /// The hash is recomputed from `preimage` regardless of its shape, so the
+    /// resulting hash is always the signer's own, never a caller assertion.
+    #[must_use]
+    pub fn from_content_preimage(preimage: Vec<u8>) -> Self {
+        let content_hash = sha256_hex(&preimage);
+        Self {
+            content_preimage: preimage,
+            content_hash,
+        }
+    }
+
+    /// The authoritative `content_hash` recomputed by the signer over the bound
+    /// canonical content. This is what the receipt body's `content_hash` must
+    /// equal for signing to proceed.
+    #[must_use]
+    pub fn content_hash(&self) -> &str {
+        &self.content_hash
+    }
+
+    /// Borrow the immutable canonical content bytes bound to this handle.
+    #[must_use]
+    pub fn canonical_content(&self) -> &[u8] {
+        &self.content_preimage
+    }
+
+    /// Fail-closed check that the body's claimed `content_hash` matches the
+    /// hash recomputed over this handle's canonical content.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ContentHashMismatch`] when the body's `content_hash` differs
+    /// from the handle's recomputed hash.
+    pub fn ensure_body_matches(
+        &self,
+        body: &ChioReceiptBody,
+    ) -> core::result::Result<(), ContentHashMismatch> {
+        if body.content_hash == self.content_hash {
+            Ok(())
+        } else {
+            Err(ContentHashMismatch {
+                recomputed: self.content_hash.clone(),
+                claimed: body.content_hash.clone(),
+            })
+        }
+    }
+
+    /// Consume the handle, returning the recomputed hash and canonical bytes.
+    ///
+    /// Consuming by value enforces the one-time semantics: once a handle has
+    /// been turned into a signed receipt (or otherwise unwrapped) it cannot be
+    /// reused to back another signature.
+    #[must_use]
+    pub fn into_parts(self) -> (String, Vec<u8>) {
+        (self.content_hash, self.content_preimage)
     }
 }

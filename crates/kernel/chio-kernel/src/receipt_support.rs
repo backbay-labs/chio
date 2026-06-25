@@ -865,6 +865,7 @@ pub(super) fn receipt_content_for_output(
             Ok(ReceiptContent {
                 content_hash: sha256_hex(&bytes),
                 metadata: None,
+                canonical_content: bytes,
             })
         }
         Some(ToolCallOutput::Stream(stream)) => {
@@ -873,6 +874,7 @@ pub(super) fn receipt_content_for_output(
         None => Ok(ReceiptContent {
             content_hash: sha256_hex(b"null"),
             metadata: None,
+            canonical_content: b"null".to_vec(),
         }),
     }
 }
@@ -905,6 +907,10 @@ fn stream_receipt_content(
                 "chunk_hashes": chunk_hashes,
             }
         })),
+        // The signing-boundary recompute must hash the same preimage this
+        // `content_hash` was derived from: the concatenated per-chunk digests,
+        // not the raw stream payload.
+        canonical_content: combined,
     })
 }
 

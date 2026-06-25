@@ -107,7 +107,8 @@ fn request_keyed_tenant_scope_survives_missing_thread_local_scope() {
                 "path": "/app/src/main.rs",
             }))
             .unwrap(),
-            content_hash: "0".repeat(64),
+            content_hash: chio_core::crypto::sha256_hex(b"tenant-map-content"),
+            canonical_content: b"tenant-map-content".to_vec(),
             metadata: None,
             timestamp: 1_700_000_100,
             trust_level: chio_core::receipt::kinds::TrustLevel::default(),
@@ -229,4 +230,87 @@ fn tenant_id_falls_back_to_oauth_federated_claims() {
 
     assert_eq!(response.verdict, Verdict::Allow);
     assert_eq!(response.receipt.tenant_id.as_deref(), Some("tenant-fed"));
+}
+
+// --- WYSIWYS on the PRODUCTION signing path (BAC-539) ---------------------
+//
+// These tests exercise the live `ChioKernel::build_and_sign_receipt` path --
+// the choke point EVERY production receipt (allow/deny, inline and session)
+// flows through -- not the opt-in `sign_with_handle` API directly. They prove
+// the recompute-and-refuse gate is now wired into production, closing the
+// render-A / sign-B hole end-to-end on the path real signers use.
+
+#[test]
+fn production_build_and_sign_refuses_render_a_sign_b() {
+    let kernel = make_kernel(make_config());
+
+    // The producer renders/evaluates content A but submits a body claiming the
+    // hash of a *different* content B. canonical_content is the bytes the
+    // kernel actually hashed (A); content_hash is the forged claim (hash of B).
+    let content_a = b"content-A-shown-to-the-human".to_vec();
+    let forged_hash_b = chio_core::crypto::sha256_hex(b"content-B-secretly-signed");
+
+    let result = kernel.build_and_sign_receipt(ReceiptParams {
+        request_id: None,
+        capability_id: "cap-wysiwys",
+        tool_name: "read_file",
+        server_id: "srv-a",
+        decision: Decision::Allow,
+        action: ToolCallAction::from_parameters(serde_json::json!({
+            "path": "/app/src/main.rs",
+        }))
+        .unwrap(),
+        content_hash: forged_hash_b,
+        canonical_content: content_a,
+        metadata: None,
+        timestamp: 1_700_000_200,
+        trust_level: chio_core::receipt::kinds::TrustLevel::default(),
+        tenant_id: None,
+    });
+
+    let error = result.expect_err(
+        "production build_and_sign_receipt MUST refuse a content_hash that was not \
+         recomputed from the bound canonical content (render-A/sign-B)",
+    );
+    let message = error.to_string();
+    assert!(
+        message.contains("content_hash mismatch") && message.contains("WYSIWYS"),
+        "unexpected error surfaced for production WYSIWYS refusal: {message}"
+    );
+}
+
+#[test]
+fn production_build_and_sign_accepts_matching_content_hash() {
+    let kernel = make_kernel(make_config());
+
+    // Honest producer: content_hash is sha256_hex of the exact canonical
+    // content the kernel signs over.
+    let content = b"honest-canonical-content".to_vec();
+    let content_hash = chio_core::crypto::sha256_hex(&content);
+
+    let receipt = kernel
+        .build_and_sign_receipt(ReceiptParams {
+            request_id: None,
+            capability_id: "cap-wysiwys-ok",
+            tool_name: "read_file",
+            server_id: "srv-a",
+            decision: Decision::Allow,
+            action: ToolCallAction::from_parameters(serde_json::json!({
+                "path": "/app/src/main.rs",
+            }))
+            .unwrap(),
+            content_hash: content_hash.clone(),
+            canonical_content: content,
+            metadata: None,
+            timestamp: 1_700_000_201,
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
+            tenant_id: None,
+        })
+        .expect("honest content_hash must sign on the production path");
+
+    assert_eq!(receipt.content_hash, content_hash);
+    assert!(
+        receipt.verify_signature().unwrap(),
+        "production WYSIWYS-signed receipt must verify"
+    );
 }

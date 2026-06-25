@@ -26,7 +26,9 @@ use crate::guard::PortableToolCallRequest;
 use crate::normalized::{NormalizedOperation, NormalizedScope, NormalizedToolGrant};
 use crate::receipts::ReceiptSigningError;
 use crate::scope::resolve_matching_grants;
-use crate::{evaluate, sign_receipt, verify_capability, Verdict};
+use crate::{
+    evaluate, sign_receipt, sign_receipt_relaying_trusted_body, verify_capability, Verdict,
+};
 
 fn public_key(seed: u8) -> PublicKey {
     let mut bytes = [seed; 65];
@@ -362,7 +364,10 @@ pub fn public_sign_receipt_rejects_kernel_key_mismatch_before_signing() {
     };
     let body = receipt_body(p384_public_key(11));
 
-    let result = sign_receipt(body, &backend);
+    // Models the body-only relay primitive's kernel-key fast-fail (no content
+    // preimage available to recompute). The production WYSIWYS recompute gate is
+    // proved by the `sign_receipt`/handle tests in `tests/portable_build.rs`.
+    let result = sign_receipt_relaying_trusted_body(body, &backend);
     let rejected = matches!(&result, Err(ReceiptSigningError::KernelKeyMismatch));
     core::mem::forget(result);
     core::mem::forget(backend);
@@ -377,8 +382,61 @@ pub fn public_sign_receipt_accepts_matching_kernel_key() {
     };
     let body = receipt_body(key);
 
-    let receipt =
-        sign_receipt(body, &backend).unwrap_or_else(|_| unreachable!("matching key signs"));
+    let receipt = sign_receipt_relaying_trusted_body(body, &backend)
+        .unwrap_or_else(|_| unreachable!("matching key signs"));
+    assert_eq!(receipt.id, "rcpt-public-kani");
+    assert_eq!(receipt.algorithm, Some(SigningAlgorithm::Ed25519));
+    assert_eq!(receipt.signature, Signature::from_bytes(&[0; 64]));
+    core::mem::forget(receipt);
+    core::mem::forget(backend);
+}
+
+#[kani::proof]
+pub fn public_sign_receipt_refuses_content_hash_mismatch() {
+    // Production WYSIWYS gate (BAC-539): `sign_receipt` recomputes
+    // `sha256_hex(canonical_content)` inside the trust boundary and refuses to
+    // sign when it disagrees with `body.content_hash`. The `receipt_body`
+    // fixture claims `content_hash = "h"`, which is not the SHA-256 of the
+    // canonical preimage below, so the recompute-and-refuse path must fire
+    // BEFORE any signing work (the kernel-key here matches, so the only reason
+    // to refuse is the content-hash mismatch). This also exercises the
+    // `mem::forget(body)` branch on the kani cfg path with the claimed hash
+    // captured before the forget.
+    let key = public_key(12);
+    let backend = DeterministicBackend {
+        public_key: key.clone(),
+    };
+    let body = receipt_body(key);
+    let canonical_content = b"kani-content-preimage-not-h";
+
+    let result = sign_receipt(body, &backend, canonical_content);
+    let refused = matches!(
+        &result,
+        Err(ReceiptSigningError::ContentHashMismatch { .. })
+    );
+    core::mem::forget(result);
+    core::mem::forget(backend);
+    assert!(refused);
+}
+
+#[kani::proof]
+pub fn public_sign_receipt_accepts_matching_content_hash() {
+    // Production WYSIWYS gate accept path (BAC-539): when `body.content_hash`
+    // equals `sha256_hex(canonical_content)`, `sign_receipt` recomputes, agrees,
+    // and routes through to signing. Bind the body's claimed hash to the
+    // canonical preimage so the recompute matches, then assert the signature is
+    // produced. This keeps the production `sign_receipt(body, backend,
+    // canonical_content)` shape under Kani coverage, not just the relay seam.
+    let key = public_key(12);
+    let backend = DeterministicBackend {
+        public_key: key.clone(),
+    };
+    let canonical_content = b"kani-content-preimage";
+    let mut body = receipt_body(key);
+    body.content_hash = chio_core_types::crypto::sha256_hex(canonical_content);
+
+    let receipt = sign_receipt(body, &backend, canonical_content)
+        .unwrap_or_else(|_| unreachable!("matching content hash and key signs"));
     assert_eq!(receipt.id, "rcpt-public-kani");
     assert_eq!(receipt.algorithm, Some(SigningAlgorithm::Ed25519));
     assert_eq!(receipt.signature, Signature::from_bytes(&[0; 64]));

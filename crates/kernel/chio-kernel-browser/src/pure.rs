@@ -7,8 +7,9 @@ use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey, SigningBackend
 use chio_core_types::receipt::{body::chio_receipt_id, body::ChioReceipt, decision::Decision};
 use chio_kernel_core::{
     evaluate_with_full_floor as core_evaluate_with_full_floor, sign_receipt as core_sign_receipt,
-    verify_capability_full, BudgetRegistry, BudgetSplitError, EvaluateInput,
-    InMemoryBudgetRegistry, PortableToolCallRequest,
+    sign_receipt_relaying_trusted_body as core_relay_trusted_body, verify_capability_full,
+    BudgetRegistry, BudgetSplitError, EvaluateInput, InMemoryBudgetRegistry,
+    PortableToolCallRequest,
 };
 
 use crate::wire::{
@@ -114,10 +115,69 @@ pub fn evaluate_pure(
     Ok(EvaluationVerdictJson::from_core(verdict))
 }
 
-/// Pure receipt-signing helper. Builds an `Ed25519Backend` from the
-/// supplied seed (which the wasm binding mints via Web Crypto) and
-/// delegates to `chio_kernel_core::sign_receipt`.
+/// Pure receipt-signing helper. Builds an `Ed25519Backend` from the supplied
+/// seed (which the wasm binding mints via Web Crypto) and signs the body.
+///
+/// WYSIWYS (BAC-539): this is the PUBLIC browser-boundary signer, so it is
+/// fail-closed. The caller MUST carry the canonical content preimage across the
+/// wasm-bindgen boundary (`SignReceiptRequestJson::canonical_content`); the
+/// signer then routes through the production recompute-and-refuse primitive
+/// `chio_kernel_core::sign_receipt`, which recomputes
+/// `sha256_hex(canonical_content)` *inside the signer* and refuses to sign when
+/// it disagrees with `body.content_hash`. That closes the render-A / sign-B
+/// forgery at the browser boundary: a caller can no longer show content A while
+/// putting hash(B) in the body.
+///
+/// When the preimage is absent (`None`), this signer REFUSES (fail-closed)
+/// instead of silently relaying a trusted body. The trusted-body relay is no
+/// longer reachable through the default public signer; callers that genuinely
+/// only forward an already-minted upstream body (the FFI/WASM relay seam tracked
+/// under BAC-601) must call the explicitly named
+/// [`sign_receipt_relaying_trusted_body_pure`] instead.
 pub fn sign_receipt_pure(
+    input: SignReceiptRequestJson,
+    signing_seed: &[u8; 32],
+) -> Result<chio_core_types::receipt::body::ChioReceipt, BindingError> {
+    if signing_seed.iter().all(|byte| *byte == 0) {
+        return Err(BindingError::new(
+            "weak_entropy",
+            "refusing to sign: Web Crypto returned a zero-filled seed (entropy source failed)",
+        ));
+    }
+
+    // Fail-closed: the public signer requires the canonical content preimage so
+    // the recompute-and-refuse gate can run. Without it we cannot prove the body
+    // hashes what the human was shown, so we refuse rather than fall back to the
+    // trusted-body relay (BAC-539 / round-3 review).
+    let canonical_content = input.canonical_content.ok_or_else(|| {
+        BindingError::new(
+            "canonical_content_required",
+            "refusing to sign: canonical content preimage is required for public WYSIWYS signing (use sign_receipt_relaying_trusted_body_pure for the trusted-upstream-body relay seam)",
+        )
+    })?;
+
+    let keypair = Keypair::from_seed(signing_seed);
+    let backend = Ed25519Backend::new(keypair);
+
+    let mut body = input.body;
+    body.kernel_key = backend.public_key();
+
+    core_sign_receipt(body, &backend, &canonical_content)
+        .map_err(|error| BindingError::new("receipt_signing_failed", format_signing(&error)))
+}
+
+/// Trusted-upstream-body relay signer (the BAC-601 seam), NOT the default public
+/// signer.
+///
+/// This is the explicit, auditable forwarding path for callers that only relay
+/// an already-minted upstream body and genuinely cannot carry the content
+/// preimage. It trusts the caller-supplied `body.content_hash` and routes
+/// through `chio_kernel_core::sign_receipt_relaying_trusted_body`, which does NOT
+/// recompute `content_hash`. Because it cannot prove WYSIWYS, it must never be
+/// the default public signer; content-bearing browser callers that construct
+/// receipts at the boundary MUST use [`sign_receipt_pure`] so the recompute gate
+/// runs.
+pub fn sign_receipt_relaying_trusted_body_pure(
     input: SignReceiptRequestJson,
     signing_seed: &[u8; 32],
 ) -> Result<chio_core_types::receipt::body::ChioReceipt, BindingError> {
@@ -134,7 +194,7 @@ pub fn sign_receipt_pure(
     let mut body = input.body;
     body.kernel_key = backend.public_key();
 
-    core_sign_receipt(body, &backend)
+    core_relay_trusted_body(body, &backend)
         .map_err(|error| BindingError::new("receipt_signing_failed", format_signing(&error)))
 }
 
@@ -321,6 +381,21 @@ fn format_signing(error: &chio_kernel_core::ReceiptSigningError) -> String {
     match error {
         chio_kernel_core::ReceiptSigningError::KernelKeyMismatch => {
             "receipt body kernel_key does not match the signing backend".to_string()
+        }
+        // WYSIWYS mismatch (BAC-539). When the browser caller carries the
+        // canonical content preimage (`SignReceiptRequestJson::canonical_content`),
+        // `sign_receipt_pure` routes through `chio_kernel_core::sign_receipt`,
+        // which recomputes `content_hash` inside the signer and produces this
+        // variant on a render-A / sign-B mismatch. Surfaced as a distinct,
+        // fail-closed error string. Callers using the trusted-relay seam with no
+        // preimage will never reach this arm.
+        chio_kernel_core::ReceiptSigningError::ContentHashMismatch {
+            recomputed,
+            claimed,
+        } => {
+            format!(
+                "receipt content_hash mismatch: body claimed {claimed} but signer recomputed {recomputed} over the canonical content (WYSIWYS refused)"
+            )
         }
         chio_kernel_core::ReceiptSigningError::SigningFailed(reason) => {
             let mut out = String::from("receipt signing failed: ");

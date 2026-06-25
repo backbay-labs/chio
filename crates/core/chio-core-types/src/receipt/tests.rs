@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{
-    body::{chio_receipt_id, ChioReceipt, ChioReceiptBody},
+    body::{chio_receipt_id, prepare_receipt_body_for_signing, ChioReceipt, ChioReceiptBody},
     checkpoint::{
         CheckpointPublicationIdentity, CheckpointPublicationIdentityKind,
         CheckpointPublicationTrustAnchorBinding, CheckpointTrustAnchorIdentity,
@@ -37,9 +37,9 @@ use super::{
     metadata::{ActorRef, GuardEvidence, ReceiptAttributionMetadata, ReceiptSemanticFields},
     signing::{
         bind_receipt_signing_nonce, BbsReceiptSignature, ChioReceiptSigningBody,
-        CHIO_RECEIPT_BBS_MESSAGE_COUNT_V1, CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1,
-        CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM, CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA,
-        CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
+        ReceiptSigningHandle, CHIO_RECEIPT_BBS_MESSAGE_COUNT_V1,
+        CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1, CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM,
+        CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA, CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
     },
 };
 use crate::capability::governance::{
@@ -607,6 +607,55 @@ fn receipt_round_trips_bbs_projection_metadata() {
     );
     assert_eq!(restored.bbs_signature.as_ref(), Some(&bbs_signature));
     assert!(restored.verify_signature().unwrap());
+}
+
+#[test]
+fn sign_prepared_with_bbs_using_handle_rejects_render_a_sign_b() {
+    // The BBS path historically bypassed the WYSIWYS recompute-and-refuse gate
+    // that the classical and backend handle signers enforce. A prepared body
+    // whose content_hash claims the hash of content B while the handle is bound
+    // to content A MUST be refused before any signature is produced.
+    let kp = Keypair::generate();
+    let mut body = make_receipt_body(&kp);
+    body.bbs_projection_version = Some(CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1.to_string());
+    body.content_hash = sha256_hex(br#"{"signed":"B"}"#);
+    let prepared = prepare_receipt_body_for_signing(body).unwrap();
+
+    // Handle bound to content A, not the body's claimed hash of B.
+    let handle = ReceiptSigningHandle::from_content_preimage(br#"{"shown":"A"}"#.to_vec());
+
+    let result = ChioReceipt::sign_prepared_with_bbs_using_handle(
+        prepared,
+        &kp,
+        bbs_signature_fixture(),
+        handle,
+    );
+    assert!(
+        result.is_err(),
+        "render-A/sign-B must be refused at the prepared BBS signing boundary"
+    );
+}
+
+#[test]
+fn sign_prepared_with_bbs_using_handle_accepts_matching_content() {
+    let kp = Keypair::generate();
+    let content = br#"{"shown":"A"}"#;
+    let mut body = make_receipt_body(&kp);
+    body.bbs_projection_version = Some(CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1.to_string());
+    body.content_hash = sha256_hex(content);
+    let prepared = prepare_receipt_body_for_signing(body).unwrap();
+
+    let handle = ReceiptSigningHandle::from_content_preimage(content.to_vec());
+
+    let receipt = ChioReceipt::sign_prepared_with_bbs_using_handle(
+        prepared,
+        &kp,
+        bbs_signature_fixture(),
+        handle,
+    )
+    .unwrap();
+    assert!(receipt.verify_signature().unwrap());
+    assert_eq!(receipt.content_hash, sha256_hex(content));
 }
 
 #[test]

@@ -71,6 +71,12 @@ fn fixture_pq_seed() -> [u8; 32] {
     out
 }
 
+/// Canonical content preimage the test bodies bind their `content_hash` to.
+/// `sign_receipt_body_with_backend` recomputes `sha256_hex` over these bytes and
+/// refuses to sign on mismatch (WYSIWYS, BAC-539), so the body built by
+/// [`build_body`] carries exactly `sha256_hex(FIXTURE_CANONICAL_CONTENT)`.
+const FIXTURE_CANONICAL_CONTENT: &[u8] = br#"{"k":"v"}"#;
+
 fn build_body(kernel_key: PublicKey) -> ChioReceiptBody {
     ChioReceiptBody {
         id: "rcpt-test-hybrid".to_string(),
@@ -86,8 +92,7 @@ fn build_body(kernel_key: PublicKey) -> ChioReceiptBody {
         tool_origin: Default::default(),
         redaction_mode: Default::default(),
         actor_chain: Vec::new(),
-        content_hash: "0000000000000000000000000000000000000000000000000000000000000000"
-            .to_string(),
+        content_hash: chio_core::crypto::sha256_hex(FIXTURE_CANONICAL_CONTENT),
         policy_hash: "test-policy".to_string(),
         evidence: Vec::new(),
         metadata: None,
@@ -181,7 +186,9 @@ fn classical_receipt_byte_identical_under_allow_classical() {
     let body = build_body(kp.public_key());
     let body_bytes_pre = canonical_json_bytes(&body).unwrap();
 
-    let receipt = sign_receipt_body_with_backend(body.clone(), backend.as_ref()).unwrap();
+    let receipt =
+        sign_receipt_body_with_backend(body.clone(), backend.as_ref(), FIXTURE_CANONICAL_CONTENT)
+            .unwrap();
     assert_eq!(receipt.kernel_key, kp.public_key());
     assert_eq!(receipt.signature.algorithm(), SigningAlgorithm::Ed25519);
 
@@ -219,7 +226,9 @@ fn hybrid_receipt_round_trip_signs_and_verifies() {
     assert_eq!(hybrid_pk.algorithm(), SigningAlgorithm::Hybrid);
     let body = build_body(hybrid_pk.clone());
 
-    let receipt = sign_receipt_body_with_backend(body.clone(), backend.as_ref()).unwrap();
+    let receipt =
+        sign_receipt_body_with_backend(body.clone(), backend.as_ref(), FIXTURE_CANONICAL_CONTENT)
+            .unwrap();
     assert_eq!(receipt.signature.algorithm(), SigningAlgorithm::Hybrid);
     assert_eq!(receipt.kernel_key.algorithm(), SigningAlgorithm::Hybrid);
 
@@ -253,7 +262,7 @@ fn body_kernel_key_mismatch_rejects_fail_closed() {
     let other = Keypair::generate();
     let body = build_body(other.public_key());
 
-    let err = sign_receipt_body_with_backend(body, backend.as_ref())
+    let err = sign_receipt_body_with_backend(body, backend.as_ref(), FIXTURE_CANONICAL_CONTENT)
         .expect_err("kernel_key mismatch must reject");
     let rendered = format!("{err}");
     assert!(
@@ -277,8 +286,12 @@ fn classical_and_hybrid_canonical_bytes_diverge_only_on_signature() {
     )
     .unwrap();
     let body_classical = build_body(classical_kp.public_key());
-    let receipt_classical =
-        sign_receipt_body_with_backend(body_classical.clone(), backend_classical.as_ref()).unwrap();
+    let receipt_classical = sign_receipt_body_with_backend(
+        body_classical.clone(),
+        backend_classical.as_ref(),
+        FIXTURE_CANONICAL_CONTENT,
+    )
+    .unwrap();
     assert_eq!(
         receipt_classical.signature.algorithm(),
         SigningAlgorithm::Ed25519
@@ -293,8 +306,12 @@ fn classical_and_hybrid_canonical_bytes_diverge_only_on_signature() {
     )
     .unwrap();
     let body_hybrid = build_body(backend_hybrid.public_key());
-    let receipt_hybrid =
-        sign_receipt_body_with_backend(body_hybrid, backend_hybrid.as_ref()).unwrap();
+    let receipt_hybrid = sign_receipt_body_with_backend(
+        body_hybrid,
+        backend_hybrid.as_ref(),
+        FIXTURE_CANONICAL_CONTENT,
+    )
+    .unwrap();
     assert_eq!(
         receipt_hybrid.signature.algorithm(),
         SigningAlgorithm::Hybrid

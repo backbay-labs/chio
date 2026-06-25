@@ -5,6 +5,7 @@
 #[cfg(feature = "bbs")]
 use chio_core_types::receipt::{
     body::prepare_receipt_body_for_signing, body::ChioReceipt, signing::BbsReceiptSignature,
+    signing::ContentHashMismatch, signing::ReceiptSigningHandle,
     signing::CHIO_RECEIPT_BBS_SIGNATURE_ALGORITHM, signing::CHIO_RECEIPT_BBS_SIGNATURE_SCHEMA,
 };
 use chio_core_types::receipt::{body::ChioReceiptBody, kinds::TrustLevel};
@@ -175,6 +176,8 @@ pub enum SelectiveDisclosureError {
     ReceiptBbsSignatureMissing,
     #[error("receipt BBS binding is invalid: {0}")]
     ReceiptBbsBindingInvalid(String),
+    #[error("receipt content_hash does not match the bound canonical content (WYSIWYS): {0}")]
+    ContentHashMismatch(String),
     #[error("issuer {0} is not registered")]
     UnknownIssuer(String),
     #[error("issuer public key does not match registry")]
@@ -745,20 +748,54 @@ pub fn receipt_bbs_signature_from_signed_projection(
 
 /// Sign a receipt body with Ed25519 and embed BBS material over its final
 /// projected receipt body.
+///
+/// WYSIWYS: the `handle` is a one-time [`ReceiptSigningHandle`] bound to the
+/// exact canonical content the producer evaluated. The signer recomputes
+/// `content_hash` over that content and refuses to sign (fail-closed) when the
+/// body's claimed `content_hash` differs, exactly like the classical
+/// ([`ChioReceipt::sign_with_handle`]) and backend
+/// ([`ChioReceipt::sign_with_backend_using_handle`]) signers. This closes the
+/// render-A / sign-B forgery at the BBS / selective-disclosure boundary: a
+/// body claiming the hash of content `B` while the producer rendered content
+/// `A` is rejected before any BBS material is produced.
+///
+/// `prepare_receipt_body_for_signing` does not mutate `content_hash`, so the
+/// gate is checked against the prepared body's `content_hash` and is equivalent
+/// to checking the caller's input.
+///
+/// # Errors
+///
+/// Returns [`SelectiveDisclosureError::ContentHashMismatch`] when the body's
+/// `content_hash` does not equal the hash recomputed over the handle's bound
+/// canonical content; otherwise propagates preparation, projection, BBS, and
+/// Ed25519 signing errors.
 #[cfg(feature = "bbs")]
 pub fn sign_chio_receipt_with_bbs(
     mut body: ChioReceiptBody,
     receipt_keypair: &chio_core_types::crypto::Keypair,
     bbs_keypair: &BbsKeyPair,
+    handle: ReceiptSigningHandle,
 ) -> Result<ChioReceipt, SelectiveDisclosureError> {
     body.bbs_projection_version = Some(PROJECTION_VERSION_RECEIPT_V1.to_string());
     let prepared = prepare_receipt_body_for_signing(body)
         .map_err(|error| SelectiveDisclosureError::CanonicalJson(error.to_string()))?;
+    // Recompute-and-refuse BEFORE producing any BBS material so a render-A /
+    // sign-B body can never yield a BBS signature.
+    handle
+        .ensure_body_matches(&prepared)
+        .map_err(|mismatch: ContentHashMismatch| {
+            SelectiveDisclosureError::ContentHashMismatch(mismatch.message())
+        })?;
     let projection = project_receipt_body(&prepared)?;
     let signed = sign_projection(&projection, bbs_keypair)?;
     let bbs_signature = receipt_bbs_signature_from_signed_projection(&signed);
-    ChioReceipt::sign_prepared_with_bbs(prepared, receipt_keypair, bbs_signature)
-        .map_err(|error| SelectiveDisclosureError::CanonicalJson(error.to_string()))
+    ChioReceipt::sign_prepared_with_bbs_using_handle(
+        prepared,
+        receipt_keypair,
+        bbs_signature,
+        handle,
+    )
+    .map_err(|error| SelectiveDisclosureError::CanonicalJson(error.to_string()))
 }
 
 /// Reconstruct the full signed projection carrier from a receipt-bound BBS

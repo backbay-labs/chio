@@ -141,8 +141,38 @@ impl ChioKernel {
         // so `ChioKernel::new` remains constructible from sync contexts; by the
         // time any caller reaches `sign`, a tokio runtime is necessarily active.
         let signing_keypair = config.keypair.clone();
-        let signing_task =
-            std::sync::Arc::new(signing_task::SigningTaskHandle::spawn(signing_keypair));
+        // BAC-539 round-5: the async signer admits exactly what the inline
+        // signer admits, then bounds queue memory by an AGGREGATE byte budget.
+        //
+        // - Per-request cap = 0 (unlimited). The inline `build_and_sign_receipt`
+        //   path applies NO preimage cap, and `max_stream_total_bytes` limits
+        //   *raw stream bytes*, a different unit from the *preimage bytes* a
+        //   queued request holds (a stream receipt's preimage is the
+        //   concatenation of 64-char per-chunk digests, not the raw payload).
+        //   Comparing a preimage length against `max_stream_total_bytes` would
+        //   falsely reject stream receipts the inline signer accepts (issue 3),
+        //   and a `max_stream_total_bytes == 0` ("unlimited") config must not
+        //   collapse to a 1-byte cap (issue 2). So we disable the per-request
+        //   cap and let the aggregate budget bound memory instead.
+        // - Aggregate budget tracks the configured stream/output max (saturating
+        //   into `usize`), with a non-zero floor so a `0` ("unlimited") stream
+        //   config still bounds queued memory at the documented default rather
+        //   than growing unbounded (issue 1). Always BOUNDED.
+        let configured_stream_max =
+            usize::try_from(config.max_stream_total_bytes).unwrap_or(usize::MAX);
+        let signing_queued_budget = if configured_stream_max == 0 {
+            signing_task::DEFAULT_MAX_SIGNING_QUEUED_BYTES
+        } else {
+            configured_stream_max
+        };
+        let signing_task = std::sync::Arc::new(
+            signing_task::SigningTaskHandle::with_capacity_max_content_and_queued_bytes(
+                signing_keypair,
+                signing_task::DEFAULT_SIGNING_CHANNEL_CAPACITY,
+                /* per-request cap */ 0,
+                signing_queued_budget,
+            ),
+        );
         Self {
             config,
             guards: Vec::new(),
@@ -326,11 +356,18 @@ impl ChioKernel {
     /// inside a tokio runtime; every kernel-internal call site already
     /// does (the `ToolEvaluator` trait methods are async, and so is
     /// the public `evaluate_tool_call` entrypoint).
+    ///
+    /// `canonical_content` is the exact byte preimage `body.content_hash` was
+    /// derived from. The signing task recomputes `sha256_hex(canonical_content)`
+    /// inside the trust boundary and refuses to sign on mismatch (WYSIWYS,
+    /// BAC-539), so this channel path is as fail-closed as the inline
+    /// `build_and_sign_receipt` path.
     pub async fn sign_receipt_via_channel(
         &self,
         body: ChioReceiptBody,
+        canonical_content: Vec<u8>,
     ) -> Result<ChioReceipt, KernelError> {
-        self.signing_task.sign(body).await
+        self.signing_task.sign(body, canonical_content).await
     }
 
     /// Drain the in-flight signing-task queue and join the task. After this

@@ -56,7 +56,7 @@ pub mod wasm;
 pub use clock::BrowserClock;
 pub use pure::{
     decode_seed_hex, evaluate_pure, hex_encode_lower, parse_authority_input, sign_receipt_pure,
-    verify_capability_pure, verify_receipt_pure,
+    sign_receipt_relaying_trusted_body_pure, verify_capability_pure, verify_receipt_pure,
 };
 pub use rng::{WebCryptoRng, WebCryptoRngError};
 pub use wire::{

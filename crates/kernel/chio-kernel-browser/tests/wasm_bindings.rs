@@ -23,7 +23,7 @@ use chio_core_types::capability::{
     scope::{ChioScope, Operation, ToolGrant},
     token::{CapabilityToken, CapabilityTokenBody},
 };
-use chio_core_types::crypto::Keypair;
+use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::{
     body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
 };
@@ -104,12 +104,8 @@ fn evaluate_round_trip() {
     assert_eq!(verdict["matched_grant_index"], 0);
 }
 
-#[wasm_bindgen_test]
-fn sign_receipt_uses_webcrypto_seed() {
-    let seed_hex = mint_signing_seed_hex().expect("mint seed");
-    assert_eq!(seed_hex.len(), 64);
-
-    let body = ChioReceiptBody {
+fn signable_body(content_hash: String) -> ChioReceiptBody {
+    ChioReceiptBody {
         id: "rcpt-wasm-1".to_string(),
         timestamp: ISSUED_AT,
         capability_id: "cap-wasm-1".to_string(),
@@ -123,7 +119,7 @@ fn sign_receipt_uses_webcrypto_seed() {
         tool_origin: Default::default(),
         redaction_mode: Default::default(),
         actor_chain: Vec::new(),
-        content_hash: "0".repeat(64),
+        content_hash,
         policy_hash: "0".repeat(64),
         evidence: vec![],
         metadata: None,
@@ -131,12 +127,41 @@ fn sign_receipt_uses_webcrypto_seed() {
         tenant_id: None,
         kernel_key: Keypair::generate().public_key(),
         bbs_projection_version: None,
-    };
-    let input = serde_json::json!({ "body": body });
+    }
+}
+
+#[wasm_bindgen_test]
+fn sign_receipt_uses_webcrypto_seed() {
+    let seed_hex = mint_signing_seed_hex().expect("mint seed");
+    assert_eq!(seed_hex.len(), 64);
+
+    // WYSIWYS (BAC-539): the PUBLIC wasm signer now requires the
+    // `canonical_content` preimage and recomputes `content_hash` inside the
+    // trust boundary. Supply a matching preimage (a JSON array of `u8`) so the
+    // recompute gate passes; the legacy `{body}`-only shape is no longer valid.
+    let canonical_content = br#"{"shown":"to-the-human"}"#.to_vec();
+    let content_hash = sha256_hex(&canonical_content);
+    let body = signable_body(content_hash);
+    let input = serde_json::json!({ "body": body, "canonical_content": canonical_content });
 
     let receipt_js = sign_receipt(&input.to_string(), &seed_hex).expect("sign_receipt");
     let receipt: chio_core_types::receipt::body::ChioReceipt = from_value(receipt_js).unwrap();
     assert!(receipt.verify_signature().unwrap());
+}
+
+#[wasm_bindgen_test]
+fn sign_receipt_refuses_without_canonical_content() {
+    // WYSIWYS (BAC-539): the legacy `{body}`-only shape (no preimage) must fail
+    // closed so a caller cannot render content A while signing a body claiming
+    // hash(B) by simply omitting the preimage.
+    let seed_hex = mint_signing_seed_hex().expect("mint seed");
+    let body = signable_body("0".repeat(64));
+    let input = serde_json::json!({ "body": body });
+
+    let err = sign_receipt(&input.to_string(), &seed_hex)
+        .expect_err("public signer must refuse without canonical content");
+    let error: serde_json::Value = from_value(err).unwrap();
+    assert_eq!(error["code"], "canonical_content_required");
 }
 
 #[wasm_bindgen_test]

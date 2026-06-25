@@ -18,7 +18,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define CHIO_CPP_KERNEL_FFI_ABI_VERSION 1
+#define CHIO_CPP_KERNEL_FFI_ABI_VERSION 2
 
 #define CHIO_KERNEL_FFI_STATUS_OK 0
 
@@ -67,8 +67,25 @@ void chio_kernel_buffer_free(struct ChioKernelFfiBuffer buffer);
 
 struct ChioKernelFfiResult chio_kernel_evaluate_json(const char *request_json);
 
+/**
+ * PUBLIC WYSIWYS signer (fail-closed). `canonical_content_hex` is the
+ * lowercase-hex preimage `content_hash` was derived from; the signer recomputes
+ * the hash inside the trust boundary and refuses on mismatch (BAC-539). This
+ * does NOT relay a trusted body; use
+ * `chio_kernel_sign_receipt_relaying_trusted_body_json` for the BAC-601 seam.
+ */
 struct ChioKernelFfiResult chio_kernel_sign_receipt_json(const char *body_json,
+                                                         const char *canonical_content_hex,
                                                          const char *signing_seed_hex);
+
+/**
+ * Relay-sign an already-minted, upstream-trusted receipt body (BAC-601 seam;
+ * NOT the default public signer). Trusts the caller-supplied `content_hash` and
+ * does NOT recompute it. Content-bearing callers MUST use
+ * `chio_kernel_sign_receipt_json` instead so the WYSIWYS recompute gate runs.
+ */
+struct ChioKernelFfiResult chio_kernel_sign_receipt_relaying_trusted_body_json(const char *body_json,
+                                                                               const char *signing_seed_hex);
 
 struct ChioKernelFfiResult chio_kernel_verify_capability_json(const char *token_json,
                                                               const char *authority_pub_hex,

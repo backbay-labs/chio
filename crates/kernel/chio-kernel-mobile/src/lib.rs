@@ -79,7 +79,8 @@ use chio_custody_hw::{
 };
 use chio_kernel_core::passport_verify::{verify_passport as core_verify_passport, VerifyError};
 use chio_kernel_core::{
-    evaluate_with_full_floor, sign_receipt as core_sign_receipt, verify_capability_full,
+    evaluate_with_full_floor, sign_receipt as core_sign_receipt,
+    sign_receipt_relaying_trusted_body as core_relay_trusted_body, verify_capability_full,
     BudgetRegistry, BudgetSplitError, CapabilityError, Clock, EvaluateInput, FixedClock, Guard,
     InMemoryBudgetRegistry, PortableToolCallRequest, ReceiptSigningError, Verdict,
 };
@@ -227,6 +228,22 @@ fn decode_hex_argument(label: &str, value: &str) -> Result<Vec<u8>, ChioMobileEr
     hex::decode(trimmed).map_err(|error| ChioMobileError::InvalidHex {
         message: format!("{label}: {error}"),
     })
+}
+
+/// Decode the canonical-content preimage for WYSIWYS signing.
+///
+/// Unlike [`decode_hex_argument`], an empty hex string (or a bare `0x`) decodes
+/// to an empty `Vec<u8>` rather than being rejected. A zero-chunk stream receipt
+/// has an empty-byte canonical preimage, which encodes to the empty hex string;
+/// rejecting it would make valid empty-stream receipts fail closed at the mobile
+/// signer even though their `content_hash` is the sha256 of the empty preimage.
+/// All non-empty values still go through the strict hex decode.
+fn decode_canonical_content_hex(value: &str) -> Result<Vec<u8>, ChioMobileError> {
+    let trimmed = value.strip_prefix("0x").unwrap_or(value);
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    decode_hex_argument("canonical content", value)
 }
 
 fn map_attestation_error(error: AttestationError) -> ChioMobileError {
@@ -391,24 +408,10 @@ pub fn evaluate(request_json: String) -> Result<String, ChioMobileError> {
     })
 }
 
-/// Sign a receipt body with the Ed25519 seed `signing_seed_hex`.
-///
-/// The receipt body's `kernel_key` must equal the public key derived
-/// from the seed; otherwise the kernel-core signer fails fast with
-/// [`ReceiptSigningError::KernelKeyMismatch`].
-///
-/// Returns the signed `ChioReceipt` as JSON so the caller can queue it
-/// for upload to the receipt-log sink.
-pub fn sign_receipt(
-    body_json: String,
-    signing_seed_hex: String,
-) -> Result<String, ChioMobileError> {
-    let body: ChioReceiptBody =
-        serde_json::from_str(&body_json).map_err(|error| ChioMobileError::InvalidJson {
-            message: format!("receipt body: {error}"),
-        })?;
-
-    let seed_bytes = decode_hex_argument("signing seed", &signing_seed_hex)?;
+/// Build a verified `Ed25519Backend` from a lowercase-hex 32-byte seed,
+/// rejecting wrong-length and all-zero seeds fail-closed.
+fn backend_from_seed_hex(signing_seed_hex: &str) -> Result<Ed25519Backend, ChioMobileError> {
+    let seed_bytes = decode_hex_argument("signing seed", signing_seed_hex)?;
     if seed_bytes.len() != 32 {
         return Err(ChioMobileError::InvalidHex {
             message: format!(
@@ -425,14 +428,95 @@ pub fn sign_receipt(
     let mut seed = [0u8; 32];
     seed.copy_from_slice(&seed_bytes);
     let keypair = Keypair::from_seed(&seed);
-    let backend = Ed25519Backend::new(keypair);
+    Ok(Ed25519Backend::new(keypair))
+}
 
-    let receipt = core_sign_receipt(body, &backend).map_err(|error| match error {
+/// Map a kernel-core [`ReceiptSigningError`] onto the mobile FFI error surface.
+fn map_signing_error(error: ReceiptSigningError) -> ChioMobileError {
+    match error {
         ReceiptSigningError::KernelKeyMismatch => ChioMobileError::KernelKeyMismatch {
             message: "receipt body kernel_key does not match the public key derived from the signing seed".to_string(),
         },
+        // WYSIWYS mismatch (BAC-539). The public `sign_receipt` recomputes
+        // `content_hash` over the caller-supplied canonical content preimage
+        // inside the trust boundary and produces this variant on a
+        // render-A / sign-B mismatch. Surfaced as a distinct, fail-closed error.
+        ReceiptSigningError::ContentHashMismatch { recomputed, claimed } => {
+            ChioMobileError::SigningFailed {
+                message: format!(
+                    "receipt content_hash mismatch: body claimed {claimed} but signer recomputed {recomputed} over the canonical content (WYSIWYS refused)"
+                ),
+            }
+        }
         ReceiptSigningError::SigningFailed(msg) => ChioMobileError::SigningFailed { message: msg },
-    })?;
+    }
+}
+
+/// Sign a receipt body with the Ed25519 seed `signing_seed_hex` (PUBLIC WYSIWYS
+/// signer; fail-closed).
+///
+/// WYSIWYS (BAC-539): `canonical_content_hex` is the lowercase-hex encoding of
+/// the exact byte preimage `body.content_hash` was derived from. The signer
+/// recomputes `sha256_hex(canonical_content)` *inside the trust boundary* via
+/// `chio_kernel_core::sign_receipt` and refuses to sign when it disagrees with
+/// `body.content_hash`. This closes the render-A / sign-B forgery at the mobile
+/// boundary: a caller can no longer render content A while signing a body
+/// claiming hash(B). The public signer does NOT relay a trusted body; callers
+/// that only forward an upstream-minted body and cannot carry the preimage must
+/// use [`sign_receipt_relaying_trusted_body`] (the BAC-601 seam).
+///
+/// The receipt body's `kernel_key` must equal the public key derived from the
+/// seed; otherwise the kernel-core signer fails fast with
+/// [`ReceiptSigningError::KernelKeyMismatch`].
+///
+/// Returns the signed `ChioReceipt` as JSON so the caller can queue it
+/// for upload to the receipt-log sink.
+pub fn sign_receipt(
+    body_json: String,
+    canonical_content_hex: String,
+    signing_seed_hex: String,
+) -> Result<String, ChioMobileError> {
+    let body: ChioReceiptBody =
+        serde_json::from_str(&body_json).map_err(|error| ChioMobileError::InvalidJson {
+            message: format!("receipt body: {error}"),
+        })?;
+
+    let canonical_content = decode_canonical_content_hex(&canonical_content_hex)?;
+    let backend = backend_from_seed_hex(&signing_seed_hex)?;
+
+    let receipt =
+        core_sign_receipt(body, &backend, &canonical_content).map_err(map_signing_error)?;
+
+    serde_json::to_string(&receipt).map_err(|error| ChioMobileError::Internal {
+        message: format!("serialize signed receipt: {error}"),
+    })
+}
+
+/// Relay-sign an already-minted, upstream-trusted receipt body (BAC-601 seam).
+///
+/// This is NOT the default public signer. It trusts the caller-supplied
+/// `body.content_hash` and does NOT recompute it, routing through
+/// `chio_kernel_core::sign_receipt_relaying_trusted_body`. It exists only to
+/// forward a body an upstream trusted producer (the kernel) already minted,
+/// where the WYSIWYS recompute already ran. Content-bearing mobile callers that
+/// construct receipts at the boundary MUST use [`sign_receipt`] instead so the
+/// recompute gate runs over the canonical content preimage.
+///
+/// The receipt body's `kernel_key` must equal the public key derived from the
+/// seed; otherwise the kernel-core signer fails fast with
+/// [`ReceiptSigningError::KernelKeyMismatch`].
+pub fn sign_receipt_relaying_trusted_body(
+    body_json: String,
+    signing_seed_hex: String,
+) -> Result<String, ChioMobileError> {
+    let body: ChioReceiptBody =
+        serde_json::from_str(&body_json).map_err(|error| ChioMobileError::InvalidJson {
+            message: format!("receipt body: {error}"),
+        })?;
+
+    let backend = backend_from_seed_hex(&signing_seed_hex)?;
+
+    let receipt = core_relay_trusted_body(body, &backend).map_err(map_signing_error)?;
 
     serde_json::to_string(&receipt).map_err(|error| ChioMobileError::Internal {
         message: format!("serialize signed receipt: {error}"),

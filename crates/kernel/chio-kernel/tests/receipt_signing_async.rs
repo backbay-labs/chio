@@ -72,14 +72,18 @@ fn make_config(keypair: Keypair) -> KernelConfig {
 /// canonical signing bytes (and therefore the resulting signatures) are
 /// distinct across the batch even though the kernel signing key is the
 /// same.
-fn make_body(n: usize, kernel_key: &Keypair) -> ChioReceiptBody {
+/// Returns a signable body together with the exact canonical-content preimage
+/// its `content_hash` was derived from, so the signing-task WYSIWYS recompute
+/// (BAC-539) accepts it.
+fn make_body(n: usize, kernel_key: &Keypair) -> (ChioReceiptBody, Vec<u8>) {
     let nonce = format!("t3-{n:04}");
     let action = ToolCallAction::from_parameters(json!({
         "n": n,
         "label": nonce,
     }))
     .expect("payload canonicalises");
-    let content_hash = sha256_hex(action.parameter_hash.as_bytes());
+    let canonical_content = action.parameter_hash.as_bytes().to_vec();
+    let content_hash = sha256_hex(&canonical_content);
     let policy_hash = sha256_hex(format!("policy:{nonce}").as_bytes());
     // The input body carries the producer's pre-binding id. The signing path
     // (sync `ChioReceipt::sign` and the mpsc-backed `sign_one_with_backend`,
@@ -114,7 +118,7 @@ fn make_body(n: usize, kernel_key: &Keypair) -> ChioReceiptBody {
         bbs_projection_version: None,
     };
     body.id = chio_receipt_id(&body).expect("canonical receipt id computes");
-    body
+    (body, canonical_content)
 }
 
 /// Bind the `chio_receipt_signing_nonce` metadata key to the pre-binding
@@ -176,14 +180,14 @@ async fn mpsc_signing_path_signs_n_receipts_with_valid_signatures() {
     let mut handles = Vec::with_capacity(N);
     for i in 0..N {
         let kernel = Arc::clone(&kernel);
-        let body = make_body(i, &keypair);
+        let (body, canonical_content) = make_body(i, &keypair);
         // The signer binds the signing nonce and recomputes the id before
         // signing, so the emitted id is the post-binding id, not `body.id`.
         let expected_id = expected_signed_id(&body);
         let expected_timestamp = body.timestamp;
         handles.push(tokio::spawn(async move {
             let receipt = kernel
-                .sign_receipt_via_channel(body)
+                .sign_receipt_via_channel(body, canonical_content)
                 .await
                 .expect("mpsc signing should succeed");
             (expected_id, expected_timestamp, receipt)
@@ -296,9 +300,11 @@ async fn mpsc_signing_path_applies_backpressure_at_capacity() {
     let mut handles = Vec::with_capacity(target);
     for i in 0..target {
         let kernel = Arc::clone(&kernel);
-        let body = make_body(i, &keypair);
+        let (body, canonical_content) = make_body(i, &keypair);
         handles.push(tokio::spawn(async move {
-            kernel.sign_receipt_via_channel(body).await
+            kernel
+                .sign_receipt_via_channel(body, canonical_content)
+                .await
         }));
     }
 
@@ -393,9 +399,11 @@ async fn shutdown_drains_in_flight_signing_requests() {
     let mut phase_a_handles = Vec::with_capacity(N);
     for i in 0..N {
         let kernel = Arc::clone(&kernel);
-        let body = make_body(i, &keypair);
+        let (body, canonical_content) = make_body(i, &keypair);
         phase_a_handles.push(tokio::spawn(async move {
-            kernel.sign_receipt_via_channel(body).await
+            kernel
+                .sign_receipt_via_channel(body, canonical_content)
+                .await
         }));
     }
     let mut phase_a_signed = Vec::with_capacity(N);
@@ -418,9 +426,12 @@ async fn shutdown_drains_in_flight_signing_requests() {
     // either gets a signed receipt (drain) or a KernelError::Internal
     // (fail-closed). Any other outcome (panic, hang) fails the test.
     let racing_kernel = Arc::clone(&kernel);
-    let racing_body = make_body(N + 1, &keypair);
-    let racing_producer =
-        tokio::spawn(async move { racing_kernel.sign_receipt_via_channel(racing_body).await });
+    let (racing_body, racing_content) = make_body(N + 1, &keypair);
+    let racing_producer = tokio::spawn(async move {
+        racing_kernel
+            .sign_receipt_via_channel(racing_body, racing_content)
+            .await
+    });
 
     // Initiate shutdown. The 5-second budget is generous: signing one
     // receipt is microseconds, and the shutdown-drain contract bounds
@@ -469,9 +480,10 @@ async fn shutdown_drains_in_flight_signing_requests() {
     // `Err(SendError(_))` immediately. We do NOT check the exact error
     // message string, only that the call resolves quickly with an
     // error.
+    let (post_body, post_content) = make_body(9_999, &keypair);
     let post = tokio::time::timeout(
         Duration::from_secs(1),
-        kernel.sign_receipt_via_channel(make_body(9_999, &keypair)),
+        kernel.sign_receipt_via_channel(post_body, post_content),
     )
     .await
     .expect("post-shutdown sign must resolve, not hang");

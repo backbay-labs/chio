@@ -24,7 +24,7 @@ use super::kinds::{
 use super::metadata::{ActorRef, GuardEvidence, ReceiptSemanticFields};
 use super::signing::{
     bind_receipt_signing_nonce, validate_bbs_receipt_binding, BbsReceiptSignature,
-    ChioReceiptSigningBody,
+    ChioReceiptSigningBody, ReceiptSigningHandle,
 };
 
 /// Current signed receipt schema.
@@ -306,6 +306,56 @@ impl ChioReceipt {
         ))
     }
 
+    /// WYSIWYS receipt signing: recompute `content_hash` inside the trust
+    /// boundary and refuse to sign if the body's claimed hash differs.
+    ///
+    /// The `handle` is a one-time [`ReceiptSigningHandle`] bound to a specific
+    /// evaluated artifact's canonical content. The signer recomputes
+    /// `content_hash` over that content and consumes the handle by value, so a
+    /// signature produced here corresponds to *that* content -- not to an
+    /// arbitrary caller-supplied `content_hash`. This closes the render-A /
+    /// sign-B class of forgeries.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error (fail-closed) when the body's `content_hash` does not
+    /// equal the hash recomputed over the handle's content, when the BBS
+    /// binding is invalid, when `body.kernel_key` does not match `keypair`, or
+    /// when canonical signing fails.
+    pub fn sign_with_handle(
+        body: ChioReceiptBody,
+        keypair: &Keypair,
+        handle: ReceiptSigningHandle,
+    ) -> Result<Self> {
+        // Recompute-and-refuse FIRST, before any signing work, so a hash
+        // mismatch can never produce a signature. `handle` is moved in and not
+        // used afterwards, enforcing one-time consumption per signature.
+        handle.ensure_body_matches(&body)?;
+        Self::sign(body, keypair)
+    }
+
+    /// WYSIWYS receipt signing via an arbitrary [`SigningBackend`].
+    ///
+    /// Behaves like [`ChioReceipt::sign_with_handle`] but routes the signing
+    /// step through a [`SigningBackend`] (the FIPS-capable / platform-keystore
+    /// path used by the WASM and mobile adapters). The `content_hash` recompute
+    /// + refuse-on-mismatch gate runs identically before any signing work.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error (fail-closed) when the body's `content_hash` does not
+    /// equal the hash recomputed over the handle's content, when the BBS
+    /// binding is invalid, when `body.kernel_key` does not match
+    /// `backend.public_key()`, or when canonical signing fails.
+    pub fn sign_with_backend_using_handle(
+        body: ChioReceiptBody,
+        backend: &dyn SigningBackend,
+        handle: ReceiptSigningHandle,
+    ) -> Result<Self> {
+        handle.ensure_body_matches(&body)?;
+        Self::sign_with_backend(body, backend)
+    }
+
     /// Sign a receipt body while binding already-produced BBS material into
     /// the authoritative receipt signature.
     pub fn sign_with_bbs(
@@ -351,6 +401,44 @@ impl ChioReceipt {
             None,
             signature,
         ))
+    }
+
+    /// WYSIWYS BBS receipt signing: recompute `content_hash` inside the trust
+    /// boundary and refuse to sign if the prepared body's claimed hash differs.
+    ///
+    /// This is the BBS/selective-disclosure analogue of
+    /// [`ChioReceipt::sign_with_handle`]. The classical and backend handle
+    /// signers already recompute `content_hash` over a one-time
+    /// [`ReceiptSigningHandle`] and refuse on mismatch; the BBS path
+    /// ([`ChioReceipt::sign_prepared_with_bbs`]) historically bypassed that
+    /// gate, so a BBS receipt could render content `A` while binding a body
+    /// whose `content_hash` claimed `B`. This entrypoint closes that gap.
+    ///
+    /// The `handle` is bound to the exact canonical content the producer
+    /// evaluated. The signer recomputes `content_hash` over that content and
+    /// consumes the handle by value, so a BBS signature produced here
+    /// corresponds to *that* content, not an arbitrary caller-supplied
+    /// `content_hash`. `prepare_receipt_body_for_signing` does not mutate
+    /// `content_hash` (it only binds the nonce and computes the id), so the
+    /// gate runs identically whether the body is checked before or after
+    /// preparation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error (fail-closed) when the body's `content_hash` does not
+    /// equal the hash recomputed over the handle's content, or for any error
+    /// surfaced by [`ChioReceipt::sign_prepared_with_bbs`].
+    pub fn sign_prepared_with_bbs_using_handle(
+        body: ChioReceiptBody,
+        keypair: &Keypair,
+        bbs_signature: BbsReceiptSignature,
+        handle: ReceiptSigningHandle,
+    ) -> Result<Self> {
+        // Recompute-and-refuse FIRST, before any signing work, so a hash
+        // mismatch can never produce a BBS-bound signature. `handle` is moved
+        // in and not used afterwards, enforcing one-time consumption.
+        handle.ensure_body_matches(&body)?;
+        Self::sign_prepared_with_bbs(body, keypair, bbs_signature)
     }
 
     /// Extract the body for re-verification.

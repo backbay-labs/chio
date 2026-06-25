@@ -87,19 +87,25 @@ pub trait ToolEvaluator: Send + Sync {
 
     /// Sign the receipt for the (allow or deny) outcome of a tool call.
     ///
-    /// Accepts a fully-constructed [`ChioReceiptBody`] and returns the signed
+    /// Accepts a fully-constructed [`ChioReceiptBody`] plus the exact byte
+    /// preimage its `content_hash` was derived from, and returns the signed
     /// [`ChioReceipt`]. The default body routes through
     /// `kernel.sign_receipt_via_channel` (the mpsc-backed signing task);
     /// producers wait on bounded backpressure, never on a receipt-log mutex.
     /// The signed receipt is byte-identical to the inline
-    /// `build_and_sign_receipt` path because both delegate to
-    /// `chio_kernel_core::sign_receipt`.
+    /// `build_and_sign_receipt` path, and equally fail-closed: both delegate to
+    /// `chio_kernel_core::sign_receipt_with_handle`, which recomputes
+    /// `content_hash` over `canonical_content` and refuses to sign on mismatch
+    /// (WYSIWYS, BAC-539).
     async fn sign_receipt(
         &self,
         kernel: &ChioKernel,
         body: ChioReceiptBody,
+        canonical_content: Vec<u8>,
     ) -> Result<ChioReceipt, KernelError> {
-        kernel.sign_receipt_via_channel(body).await
+        kernel
+            .sign_receipt_via_channel(body, canonical_content)
+            .await
     }
 }
 

@@ -73,30 +73,52 @@ const FIXTURE_EVALUATE_REQUEST = {
   clock_override_unix_secs: 1_700_000_500,
 };
 
-const FIXTURE_RECEIPT_BODY = {
-  body: {
-    id: "demo-rcpt-1",
-    timestamp: 1_700_000_500,
-    capability_id: "demo-cap-1",
-    tool_server: "srv-a",
-    tool_name: "echo",
-    action: {
-      kind: "parameters",
-      parameters: { msg: "hi" },
+// WYSIWYS (BAC-539): the PUBLIC `sign_receipt` entry point requires the exact
+// `canonical_content` preimage and recomputes `content_hash` inside the signer,
+// refusing on mismatch. The demo therefore renders the content the human sees,
+// derives `content_hash` from it, and ships the preimage as a `u8` array so the
+// recompute gate passes. The legacy `{body}`-only shape (no preimage, zeroed
+// hash) now fails closed with `canonical_content_required`.
+const CANONICAL_CONTENT = new TextEncoder().encode(
+  JSON.stringify({ shown: "to-the-human" }),
+);
+
+function toHex(bytes) {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function buildFixtureReceiptBody() {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", CANONICAL_CONTENT),
+  );
+  return {
+    body: {
+      id: "demo-rcpt-1",
+      timestamp: 1_700_000_500,
+      capability_id: "demo-cap-1",
+      tool_server: "srv-a",
+      tool_name: "echo",
+      action: {
+        kind: "parameters",
+        parameters: { msg: "hi" },
+      },
+      decision: "allow",
+      content_hash: toHex(digest),
+      policy_hash:
+        "0000000000000000000000000000000000000000000000000000000000000000",
+      evidence: [],
+      metadata: null,
+      trust_level: "mediated",
+      tenant_id: null,
+      kernel_key:
+        "0000000000000000000000000000000000000000000000000000000000000000",
     },
-    decision: "allow",
-    content_hash:
-      "0000000000000000000000000000000000000000000000000000000000000000",
-    policy_hash:
-      "0000000000000000000000000000000000000000000000000000000000000000",
-    evidence: [],
-    metadata: null,
-    trust_level: "mediated",
-    tenant_id: null,
-    kernel_key:
-      "0000000000000000000000000000000000000000000000000000000000000000",
-  },
-};
+    // Raw preimage bytes as a `u8` array, matching `SignReceiptRequestJson`.
+    canonical_content: Array.from(CANONICAL_CONTENT),
+  };
+}
 
 $("load").addEventListener("click", async () => {
   try {
@@ -129,15 +151,16 @@ $("evaluate").addEventListener("click", () => {
   }
 });
 
-$("sign").addEventListener("click", () => {
+$("sign").addEventListener("click", async () => {
   if (!fixture) {
     log($("sign-output"), "module not loaded yet");
     return;
   }
   try {
+    const fixtureReceiptBody = await buildFixtureReceiptBody();
     const seed = mint_signing_seed_hex();
     const started = nowMs();
-    const receipt = sign_receipt(JSON.stringify(FIXTURE_RECEIPT_BODY), seed);
+    const receipt = sign_receipt(JSON.stringify(fixtureReceiptBody), seed);
     const elapsed = nowMs() - started;
     log($("sign-output"), {
       elapsed_ms: elapsed,

@@ -5,9 +5,14 @@ use chio_core_types::capability::{
     scope::{ChioScope, Operation, ToolGrant},
     token::CapabilityTokenBody,
 };
+use chio_core_types::crypto::sha256_hex;
+use chio_core_types::receipt::body::ChioReceipt;
+use chio_core_types::receipt::{decision::Decision, decision::ToolCallAction, kinds::TrustLevel};
 use chio_kernel_core::passport_verify::{
     PortablePassportBody, PortablePassportEnvelope, PORTABLE_PASSPORT_SCHEMA,
 };
+use std::ffi::CString;
+
 use serde_json::json;
 
 const ISSUED_AT: u64 = 1_700_000_000;
@@ -403,4 +408,129 @@ fn null_pointer_returns_null_argument_status() {
     assert_eq!(result.status, CHIO_KERNEL_FFI_STATUS_NULL_ARGUMENT);
     assert_eq!(result.error_code, CHIO_KERNEL_FFI_ERROR_INTERNAL);
     chio_kernel_buffer_free(result.data);
+}
+
+fn make_receipt_body_json(keypair: &Keypair, content_hash: String) -> String {
+    let body = ChioReceiptBody {
+        id: "rcpt-cpp-1".to_string(),
+        timestamp: ISSUED_AT,
+        capability_id: "cap-1".to_string(),
+        tool_server: "srv-a".to_string(),
+        tool_name: "echo".to_string(),
+        action: ToolCallAction::from_parameters(json!({"msg": "hi"})).unwrap(),
+        decision: Some(Decision::Allow),
+        receipt_kind: Default::default(),
+        boundary_class: Default::default(),
+        observation_outcome: None,
+        tool_origin: Default::default(),
+        redaction_mode: Default::default(),
+        actor_chain: Vec::new(),
+        content_hash,
+        policy_hash: "0".repeat(64),
+        evidence: vec![],
+        metadata: None,
+        trust_level: TrustLevel::Mediated,
+        tenant_id: None,
+        kernel_key: keypair.public_key(),
+        bbs_projection_version: None,
+    };
+    serde_json::to_string(&body).unwrap()
+}
+
+/// Read a Rust-owned result buffer into an owned `String` and free it.
+fn take_result_string(result: &ChioKernelFfiResult) -> String {
+    if result.data.ptr.is_null() || result.data.len == 0 {
+        return String::new();
+    }
+    // SAFETY: the buffer was produced by `ChioKernelFfiBuffer::from_string`
+    // over UTF-8 bytes with exactly this pointer and length.
+    let bytes = unsafe { std::slice::from_raw_parts(result.data.ptr, result.data.len) };
+    String::from_utf8(bytes.to_vec()).unwrap()
+}
+
+#[test]
+fn ffi_sign_receipt_recompute_accepts_matching_content() {
+    // WYSIWYS (BAC-539): drive the PUBLIC C ABI signer end-to-end. A matching
+    // content+hash pair signs and verifies.
+    let keypair = Keypair::generate();
+    let canonical_content = br#"{"shown":"to-the-human"}"#.to_vec();
+    let content_hash = sha256_hex(&canonical_content);
+    let body_json = make_receipt_body_json(&keypair, content_hash);
+
+    let body_c = CString::new(body_json).unwrap();
+    let content_c = CString::new(hex::encode(&canonical_content)).unwrap();
+    let seed_c = CString::new(keypair.seed_hex()).unwrap();
+
+    let result =
+        chio_kernel_sign_receipt_json(body_c.as_ptr(), content_c.as_ptr(), seed_c.as_ptr());
+    assert_eq!(result.status, CHIO_KERNEL_FFI_STATUS_OK, "status");
+    let signed = take_result_string(&result);
+    chio_kernel_buffer_free(result.data);
+
+    let receipt: ChioReceipt = serde_json::from_str(&signed).unwrap();
+    assert!(receipt.verify_signature().unwrap());
+    assert_eq!(receipt.kernel_key, keypair.public_key());
+}
+
+#[test]
+fn ffi_sign_receipt_refuses_render_a_sign_b() {
+    // WYSIWYS render-A/sign-B regression (BAC-539 / C1) at the C++ ABI boundary.
+    // The body claims hash(B) while the canonical content handed to the public
+    // C ABI signer is A; the recompute-and-refuse gate MUST reject it
+    // fail-closed. Without the fix (relaying the trusted body without
+    // recomputing) the forged receipt would be signed and returned OK.
+    let keypair = Keypair::generate();
+    let content_a = br#"{"shown":"to-the-human"}"#.to_vec();
+    let hash_b = sha256_hex(br#"{"secretly":"signed-instead"}"#);
+    let body_json = make_receipt_body_json(&keypair, hash_b);
+
+    let body_c = CString::new(body_json).unwrap();
+    let content_c = CString::new(hex::encode(&content_a)).unwrap();
+    let seed_c = CString::new(keypair.seed_hex()).unwrap();
+
+    let result =
+        chio_kernel_sign_receipt_json(body_c.as_ptr(), content_c.as_ptr(), seed_c.as_ptr());
+    assert_eq!(result.status, CHIO_KERNEL_FFI_STATUS_ERROR, "must fail");
+    assert_eq!(result.error_code, CHIO_KERNEL_FFI_ERROR_SIGNING_FAILED);
+    let message = take_result_string(&result);
+    chio_kernel_buffer_free(result.data);
+    assert!(message.contains("WYSIWYS refused"), "got: {message}");
+}
+
+#[test]
+fn ffi_sign_receipt_relay_signs_without_preimage() {
+    // The explicitly named relay ABI (BAC-601 seam) forwards a trusted body
+    // without a content preimage; it trusts `content_hash`.
+    let keypair = Keypair::generate();
+    let body_json = make_receipt_body_json(&keypair, "0".repeat(64));
+
+    let body_c = CString::new(body_json).unwrap();
+    let seed_c = CString::new(keypair.seed_hex()).unwrap();
+
+    let result =
+        chio_kernel_sign_receipt_relaying_trusted_body_json(body_c.as_ptr(), seed_c.as_ptr());
+    assert_eq!(result.status, CHIO_KERNEL_FFI_STATUS_OK, "relay status");
+    let signed = take_result_string(&result);
+    chio_kernel_buffer_free(result.data);
+
+    let receipt: ChioReceipt = serde_json::from_str(&signed).unwrap();
+    assert!(receipt.verify_signature().unwrap());
+    assert_eq!(receipt.kernel_key, keypair.public_key());
+}
+
+#[test]
+fn ffi_abi_version_is_two_so_two_arg_clients_fail_closed() {
+    // BAC-539: `chio_kernel_sign_receipt_json` gained a third pointer arg
+    // (`canonical_content_hex`). The ABI version MUST advance from 1 to 2 so an
+    // old 2-arg client that gates on `chio_kernel_ffi_abi_version()` refuses to
+    // link instead of calling the 3-arg symbol with a missing third pointer.
+    assert_eq!(CHIO_CPP_KERNEL_FFI_ABI_VERSION, 2);
+    assert_eq!(chio_kernel_ffi_abi_version(), 2);
+
+    let result = chio_kernel_build_info();
+    assert_eq!(result.status, CHIO_KERNEL_FFI_STATUS_OK);
+    let info = take_result_string(&result);
+    chio_kernel_buffer_free(result.data);
+    let value: serde_json::Value = serde_json::from_str(&info).unwrap();
+    assert_eq!(value["abi_version"], 2);
 }

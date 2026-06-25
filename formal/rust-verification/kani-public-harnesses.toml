@@ -12,6 +12,7 @@ harness_groups = [
   "public resolve_matching_grants path-prefix edges",
   "public evaluate deny edges",
   "public sign_receipt kernel-key mismatch edge",
+  "public sign_receipt WYSIWYS content-hash recompute-and-refuse edge",
   "verify scope intersection associativity (cap-subset transitivity)",
   "verify revocation predicate idempotence",
   "verify single-step delegation attenuation",
@@ -48,7 +49,9 @@ covered_symbols = [
 # canonical-JSON serialise plus Ed25519/P-384 verify path, while the
 # algebraic harnesses model signatures with `model_sign`/`model_verify`
 # and finish in 1-3 seconds. The full sweep is ~2.2 min locally, within
-# the 6-minute PR budget, so all fourteen harnesses land in `lanes.pr`.
+# the 6-minute PR budget, so every harness lands in `lanes.pr` (including the
+# two WYSIWYS `sign_receipt` content-hash recompute harnesses added for
+# BAC-539, which sign over concrete fixtures and finish in seconds).
 #
 # The nightly Kani job runs the union of `lanes.pr` and
 # `lanes.nightly_only`, so moving a harness to `nightly_only` strictly
@@ -65,6 +68,8 @@ harnesses = [
   "public_evaluate_rejects_untrusted_issuer_before_dispatch",
   "public_sign_receipt_rejects_kernel_key_mismatch_before_signing",
   "public_sign_receipt_accepts_matching_kernel_key",
+  "public_sign_receipt_refuses_content_hash_mismatch",
+  "public_sign_receipt_accepts_matching_content_hash",
   "verify_scope_intersection_associative",
   "verify_revocation_predicate_idempotent",
   "verify_delegation_chain_step",

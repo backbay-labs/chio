@@ -5,6 +5,7 @@ use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::{
     body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
+    signing::ReceiptSigningHandle,
 };
 use chio_selective_disclosure::{
     derive_selective_disclosure_proof, derive_selective_disclosure_proof_from_receipt,
@@ -226,12 +227,20 @@ fn receipt_projection_signs_and_proves_disclosed_fields_with_bbs_selective_discl
     assert_eq!(verified.disclosed.len(), 3);
 }
 
+/// Exact byte preimage the receipt fixture's `content_hash` is defined over.
+/// The WYSIWYS handle MUST be built over these bytes for signing to proceed.
+const RECEIPT_FIXTURE_CONTENT_PREIMAGE: &[u8] = b"{\"refund_minor\":25000}";
+
 #[test]
 fn receipt_bound_bbs_signature_drives_selective_disclosure_proofs() {
     let ed25519 = Keypair::generate();
     let bbs_keypair = generate_bbs_keypair(b"chio-bbs-signing-key-material-0007", b"chio").unwrap();
+    // Handle bound to the exact content the body's content_hash claims.
+    let handle =
+        ReceiptSigningHandle::from_content_preimage(RECEIPT_FIXTURE_CONTENT_PREIMAGE.to_vec());
     let receipt =
-        sign_chio_receipt_with_bbs(receipt_fixture(&ed25519), &ed25519, &bbs_keypair).unwrap();
+        sign_chio_receipt_with_bbs(receipt_fixture(&ed25519), &ed25519, &bbs_keypair, handle)
+            .unwrap();
     assert!(receipt.verify_signature().unwrap());
     assert_eq!(
         receipt.body().bbs_projection_version.as_deref(),
@@ -257,6 +266,52 @@ fn receipt_bound_bbs_signature_drives_selective_disclosure_proofs() {
     let verified = verify_selective_disclosure_proof(&proof, &registry_for_key(&bbs_keypair))
         .expect("receipt-bound proof verifies");
     assert_eq!(verified.subject_sha256_hex, projection.subject_sha256_hex);
+}
+
+#[test]
+fn bbs_signing_rejects_render_a_sign_b() {
+    // Regression: the BBS / selective-disclosure signing path must enforce the
+    // same WYSIWYS gate as the classical and backend signers. A body whose
+    // content_hash claims the hash of content B while the producer renders
+    // content A (the handle's bound content) MUST be refused before any BBS
+    // material is produced.
+    let ed25519 = Keypair::generate();
+    let bbs_keypair = generate_bbs_keypair(b"chio-bbs-signing-key-material-0007", b"chio").unwrap();
+
+    let content_a = b"{\"shown\":\"to-the-human\"}";
+    let content_b = b"{\"secretly\":\"signed-instead\"}";
+
+    // Body claims the hash of B; the handle is bound to A.
+    let mut body = receipt_fixture(&ed25519);
+    body.content_hash = sha256_hex(content_b);
+    let handle = ReceiptSigningHandle::from_content_preimage(content_a.to_vec());
+
+    let result = sign_chio_receipt_with_bbs(body, &ed25519, &bbs_keypair, handle);
+    assert!(
+        matches!(
+            result,
+            Err(SelectiveDisclosureError::ContentHashMismatch(_))
+        ),
+        "render-A/sign-B must be refused at the BBS signing boundary, got {result:?}"
+    );
+}
+
+#[test]
+fn bbs_signing_accepts_matching_content_hash() {
+    // Positive counterpart: a body whose content_hash matches the handle's
+    // bound canonical content is accepted and verifies.
+    let ed25519 = Keypair::generate();
+    let bbs_keypair = generate_bbs_keypair(b"chio-bbs-signing-key-material-0007", b"chio").unwrap();
+
+    let content = b"{\"shown\":\"to-the-human\"}";
+    let mut body = receipt_fixture(&ed25519);
+    body.content_hash = sha256_hex(content);
+    let handle = ReceiptSigningHandle::from_content_preimage(content.to_vec());
+
+    let receipt = sign_chio_receipt_with_bbs(body, &ed25519, &bbs_keypair, handle)
+        .expect("matching content+hash is accepted");
+    assert!(receipt.verify_signature().unwrap());
+    assert_eq!(receipt.content_hash, sha256_hex(content));
 }
 
 #[test]
