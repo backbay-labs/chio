@@ -12,6 +12,7 @@ use crate::signer_binding::ensure_keypair_matches_embedded_key;
 use super::caveat::GrantSubsetRelation;
 use super::scope::{ChioScope, Constraint, MonetaryAmount, Operation};
 use super::token::CapabilityToken;
+use super::validation::{validate_parent_relative_budget_share_bps, MAX_BUDGET_SHARE_BPS};
 
 /// Hash of a canonicalized scope, encoded as lowercase SHA-256 hex.
 pub type ScopeHash = String;
@@ -290,6 +291,423 @@ pub fn validate_delegation_chain_with_trust_root(
     Ok(())
 }
 
+/// Returns whether a parent tool grant covers an attenuation step addressed by
+/// `(server_id, tool_name)`.
+///
+/// Wildcard parent grants are honored with the same coverage semantics as
+/// [`super::scope::ToolGrant::is_subset_of`]: a parent grant whose `server_id`
+/// or `tool_name` is `"*"` covers a concrete child step. A concrete-child step
+/// against a `*:*` parent grant is therefore a legitimate narrowing, not a
+/// widening.
+fn parent_grant_covers_target(
+    grant: &super::scope::ToolGrant,
+    server_id: &str,
+    tool_name: &str,
+) -> bool {
+    (grant.server_id == "*" || grant.server_id == server_id)
+        && (grant.tool_name == "*" || grant.tool_name == tool_name)
+}
+
+/// Returns whether an attenuation step's `(server_id, tool_name)` target and a
+/// child tool grant address the same authority, honoring wildcards on EITHER
+/// side.
+///
+/// The reflection check must catch two symmetric under-declaration shapes:
+///
+/// * Wildcard STEP TARGET vs concrete child grant. A `*:*` parent delegates a
+///   concrete `srv-a:tool-x` child while declaring
+///   `RemoveOperation { server_id: "*", tool_name: "*" }`; the concrete child
+///   grant must still be inspected so an un-reflected removal is rejected.
+/// * Concrete STEP TARGET vs wildcard child grant. A `*:*` parent delegates a
+///   `*:*` child while declaring a concrete `srv-a:tool-x` removal; the child
+///   retains that concrete authority through its wildcard grant, so the
+///   wildcard child grant must still be inspected. Otherwise `delegate` signs
+///   the link, yet chio-kernel's declared-attenuation check rejects the token
+///   later (mint and kernel disagree).
+///
+/// A one-directional matcher (matching only when one specific side is wildcard)
+/// misses the other shape and lets an under-declared link through. This matcher
+/// is therefore bidirectional: for each field it matches when EITHER the step
+/// target OR the child grant is `"*"`, or when the two concrete values are
+/// equal. That mirrors the wildcard coverage semantics of
+/// [`super::scope::ToolGrant::is_subset_of`] while keeping the reflection check
+/// fail-closed in both directions.
+fn step_target_covers_child_grant(
+    grant: &super::scope::ToolGrant,
+    step_server_id: &str,
+    step_tool_name: &str,
+) -> bool {
+    (step_server_id == "*" || grant.server_id == "*" || step_server_id == grant.server_id)
+        && (step_tool_name == "*" || grant.tool_name == "*" || step_tool_name == grant.tool_name)
+}
+
+/// Iterate over every parent tool grant that covers an attenuation step's
+/// `(server_id, tool_name)` address.
+///
+/// Steps are addressed by `(server_id, tool_name)`. A step that references a
+/// grant the parent never held is itself a widening (it asserts authority over
+/// a tool outside the parent's scope) and must be rejected fail-closed. Several
+/// parent grants can cover the same concrete target at once: a broad `*:*`
+/// grant and a later concrete `srv-a:tool-x` grant both match. Step validation
+/// therefore considers *all* covering grants rather than only the first, so a
+/// step that narrows against any one of them is accepted (see
+/// [`step_matches_any_covering_grant`]).
+fn covering_parent_grants<'a>(
+    parent: &'a ChioScope,
+    server_id: &'a str,
+    tool_name: &'a str,
+) -> impl Iterator<Item = &'a super::scope::ToolGrant> {
+    parent
+        .grants
+        .iter()
+        .filter(move |grant| parent_grant_covers_target(grant, server_id, tool_name))
+}
+
+/// Accept a step when at least one covering parent grant satisfies the
+/// variant-specific narrowing `predicate`, fail-closed otherwise.
+///
+/// Overlapping parent grants are order-independent: a broad `*:*` grant that
+/// lacks the targeted operation (or cost cap) must not mask a later concrete
+/// grant that holds it. Subset validation already accepts a child grant covered
+/// by *any* parent grant, so step validation mirrors that by checking every
+/// covering grant and accepting if any one of them makes the step a true
+/// narrowing. When no covering grant exists at all, the step targets a tool the
+/// parent never held: reject as a widening.
+fn step_matches_any_covering_grant<F>(
+    parent_scope: &ChioScope,
+    server_id: &str,
+    tool_name: &str,
+    predicate: F,
+    reason: impl FnOnce() -> String,
+) -> Result<()>
+where
+    F: Fn(&super::scope::ToolGrant) -> bool,
+{
+    let mut covered = false;
+    for grant in covering_parent_grants(parent_scope, server_id, tool_name) {
+        covered = true;
+        if predicate(grant) {
+            return Ok(());
+        }
+    }
+    if !covered {
+        return Err(Error::AttenuationViolation {
+            reason: format!(
+                "attenuation step targets tool {server_id}:{tool_name} not present in parent scope"
+            ),
+        });
+    }
+    Err(Error::AttenuationViolation { reason: reason() })
+}
+
+/// Validate that a single attenuation step is a TRUE narrowing of the parent.
+///
+/// Each step is checked reduce-only against the parent capability's scope and
+/// expiry. A step that would widen the parent (raise a cap, target a tool the
+/// parent never held, or extend expiry) is rejected with
+/// [`Error::AttenuationViolation`]. Removing tools, removing operations, and
+/// adding constraints are narrowings by construction, but the targeted grant
+/// must still exist in the parent so a step cannot smuggle in fresh authority.
+///
+/// Steps are validated against *every* covering parent grant rather than only
+/// the first match, so an overlapping `*:*` grant cannot mask a later concrete
+/// grant that legitimately holds the targeted operation or cost cap.
+fn validate_attenuation_step(
+    parent_scope: &ChioScope,
+    parent_expires_at: u64,
+    step: &Attenuation,
+) -> Result<()> {
+    match step {
+        Attenuation::RemoveTool {
+            server_id,
+            tool_name,
+        }
+        | Attenuation::AddConstraint {
+            server_id,
+            tool_name,
+            ..
+        } => {
+            // Removing a tool or adding a constraint is a narrowing; some grant
+            // must cover the target in the parent so the step cannot fabricate
+            // authority. Any covering grant suffices.
+            step_matches_any_covering_grant(
+                parent_scope,
+                server_id,
+                tool_name,
+                |_grant| true,
+                || unreachable!("a covering grant always satisfies the trivial predicate"),
+            )
+        }
+        Attenuation::RemoveOperation {
+            server_id,
+            tool_name,
+            operation,
+        } => step_matches_any_covering_grant(
+            parent_scope,
+            server_id,
+            tool_name,
+            |grant| grant.operations.contains(operation),
+            || {
+                format!(
+                    "attenuation step removes operation {operation:?} from {server_id}:{tool_name} but no covering parent grant holds it"
+                )
+            },
+        ),
+        Attenuation::ReduceBudget {
+            server_id,
+            tool_name,
+            max_invocations,
+        } => step_matches_any_covering_grant(
+            parent_scope,
+            server_id,
+            tool_name,
+            // Parent uncapped (None) accepts any finite child cap: that narrows.
+            |grant| {
+                grant
+                    .max_invocations
+                    .is_none_or(|cap| *max_invocations <= cap)
+            },
+            || {
+                format!(
+                    "attenuation step raises max_invocations for {server_id}:{tool_name} to {max_invocations}, above every covering parent cap"
+                )
+            },
+        ),
+        Attenuation::ReduceCostPerInvocation {
+            server_id,
+            tool_name,
+            max_cost_per_invocation,
+        } => step_matches_any_covering_grant(
+            parent_scope,
+            server_id,
+            tool_name,
+            |grant| {
+                cost_narrows(
+                    grant.max_cost_per_invocation.as_ref(),
+                    max_cost_per_invocation,
+                )
+            },
+            || {
+                format!(
+                    "attenuation step does not narrow max_cost_per_invocation for {server_id}:{tool_name} against any covering parent grant (same currency, not above parent cap required)"
+                )
+            },
+        ),
+        Attenuation::ReduceTotalCost {
+            server_id,
+            tool_name,
+            max_total_cost,
+        } => step_matches_any_covering_grant(
+            parent_scope,
+            server_id,
+            tool_name,
+            |grant| cost_narrows(grant.max_total_cost.as_ref(), max_total_cost),
+            || {
+                format!(
+                    "attenuation step does not narrow max_total_cost for {server_id}:{tool_name} against any covering parent grant (same currency, not above parent cap required)"
+                )
+            },
+        ),
+        Attenuation::ShortenExpiry { new_expires_at } => {
+            if *new_expires_at > parent_expires_at {
+                return Err(Error::AttenuationViolation {
+                    reason: format!(
+                        "attenuation step extends expiry to {new_expires_at}, beyond parent expires_at {parent_expires_at}"
+                    ),
+                });
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Shared reduce-only predicate for the two monetary-cost attenuation steps.
+///
+/// A cost cap narrows only when it is denominated in the same currency as the
+/// parent's cap and does not exceed it. A parent with no cap (`None`) accepts
+/// any child cap as a narrowing.
+fn cost_narrows(parent_cap: Option<&MonetaryAmount>, child_cap: &MonetaryAmount) -> bool {
+    match parent_cap {
+        // Parent uncapped: introducing any finite cap is a narrowing.
+        None => true,
+        Some(parent_cap) => {
+            child_cap.currency == parent_cap.currency && child_cap.units <= parent_cap.units
+        }
+    }
+}
+
+/// Validate every attenuation step against the parent capability, fail-closed.
+///
+/// Returns `Ok(())` only when all steps are true narrowings. The first
+/// widening step short-circuits with an [`Error::AttenuationViolation`].
+fn validate_attenuation_steps(
+    parent_scope: &ChioScope,
+    parent_expires_at: u64,
+    steps: &[Attenuation],
+) -> Result<()> {
+    for step in steps {
+        validate_attenuation_step(parent_scope, parent_expires_at, step)?;
+    }
+    Ok(())
+}
+
+/// Validate that every declared attenuation step is actually reflected in the
+/// resulting child scope and expiry, fail-closed.
+///
+/// `validate_attenuation_steps` proves each step is reduce-only against the
+/// parent, but a step that reduces the parent is not necessarily mirrored by
+/// the child the caller is minting: a receipt could declare
+/// `AddConstraint(MaxLength(8))` while the child grant carries no such
+/// constraint. The kernel's declared-attenuation validation
+/// (`chio-kernel`'s `validate_declared_attenuations`) later rejects such a
+/// child because the signed link and the child scope disagree, so this helper
+/// rejects the same inconsistencies at mint time and never emits an unusable
+/// receipt. The per-variant semantics intentionally mirror the kernel:
+///
+/// * `RemoveTool`: no child grant may still cover the removed tool.
+/// * `RemoveOperation`: no covering child grant may still hold the operation.
+/// * `AddConstraint`: every covering child grant must carry the constraint.
+/// * `ReduceBudget`: every covering child grant must be capped at or below the
+///   declared `max_invocations` (an uncapped child contradicts the step).
+/// * `ReduceCostPerInvocation` / `ReduceTotalCost`: every covering child grant
+///   must be capped, same-currency, and at or below the declared ceiling.
+/// * `ShortenExpiry`: the child expiry must be at or before the declared bound.
+fn validate_steps_reflected_in_child(
+    child_scope: &ChioScope,
+    child_expires_at: u64,
+    steps: &[Attenuation],
+) -> Result<()> {
+    for step in steps {
+        match step {
+            Attenuation::RemoveTool {
+                server_id,
+                tool_name,
+            } => {
+                if child_scope
+                    .grants
+                    .iter()
+                    .any(|grant| step_target_covers_child_grant(grant, server_id, tool_name))
+                {
+                    return Err(Error::AttenuationViolation {
+                        reason: format!(
+                            "declared RemoveTool step for {server_id}:{tool_name} is not reflected in the child scope; the child still grants the removed tool"
+                        ),
+                    });
+                }
+            }
+            Attenuation::RemoveOperation {
+                server_id,
+                tool_name,
+                operation,
+            } => {
+                if child_scope.grants.iter().any(|grant| {
+                    step_target_covers_child_grant(grant, server_id, tool_name)
+                        && grant.operations.contains(operation)
+                }) {
+                    return Err(Error::AttenuationViolation {
+                        reason: format!(
+                            "declared RemoveOperation step ({operation:?}) for {server_id}:{tool_name} is not reflected in the child scope; the child still grants the operation"
+                        ),
+                    });
+                }
+            }
+            Attenuation::AddConstraint {
+                server_id,
+                tool_name,
+                constraint,
+            } => {
+                if child_scope.grants.iter().any(|grant| {
+                    step_target_covers_child_grant(grant, server_id, tool_name)
+                        && !grant.constraints.contains(constraint)
+                }) {
+                    return Err(Error::AttenuationViolation {
+                        reason: format!(
+                            "declared AddConstraint step for {server_id}:{tool_name} is not reflected in the child scope; a covering child grant is missing the constraint"
+                        ),
+                    });
+                }
+            }
+            Attenuation::ReduceBudget {
+                server_id,
+                tool_name,
+                max_invocations,
+            } => {
+                if child_scope.grants.iter().any(|grant| {
+                    step_target_covers_child_grant(grant, server_id, tool_name)
+                        && grant
+                            .max_invocations
+                            .is_none_or(|cap| cap > *max_invocations)
+                }) {
+                    return Err(Error::AttenuationViolation {
+                        reason: format!(
+                            "declared ReduceBudget step ({max_invocations}) for {server_id}:{tool_name} is not reflected in the child scope; a covering child grant exceeds the declared cap"
+                        ),
+                    });
+                }
+            }
+            Attenuation::ReduceCostPerInvocation {
+                server_id,
+                tool_name,
+                max_cost_per_invocation,
+            } => {
+                if child_scope.grants.iter().any(|grant| {
+                    step_target_covers_child_grant(grant, server_id, tool_name)
+                        && !child_cost_within(
+                            grant.max_cost_per_invocation.as_ref(),
+                            max_cost_per_invocation,
+                        )
+                }) {
+                    return Err(Error::AttenuationViolation {
+                        reason: format!(
+                            "declared ReduceCostPerInvocation step for {server_id}:{tool_name} is not reflected in the child scope; a covering child grant exceeds the declared per-invocation ceiling"
+                        ),
+                    });
+                }
+            }
+            Attenuation::ReduceTotalCost {
+                server_id,
+                tool_name,
+                max_total_cost,
+            } => {
+                if child_scope.grants.iter().any(|grant| {
+                    step_target_covers_child_grant(grant, server_id, tool_name)
+                        && !child_cost_within(grant.max_total_cost.as_ref(), max_total_cost)
+                }) {
+                    return Err(Error::AttenuationViolation {
+                        reason: format!(
+                            "declared ReduceTotalCost step for {server_id}:{tool_name} is not reflected in the child scope; a covering child grant exceeds the declared total-cost ceiling"
+                        ),
+                    });
+                }
+            }
+            Attenuation::ShortenExpiry { new_expires_at } => {
+                if child_expires_at > *new_expires_at {
+                    return Err(Error::AttenuationViolation {
+                        reason: format!(
+                            "declared ShortenExpiry step ({new_expires_at}) is not reflected in the child; child expires_at {child_expires_at} is later than the declared bound"
+                        ),
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Returns whether a child cost cap honors a declared `Reduce*Cost` ceiling.
+///
+/// The child grant must be explicitly capped, denominated in the declared
+/// currency, and at or below the declared units. An uncapped child grant
+/// (`None`) does not honor the declared reduction.
+fn child_cost_within(child_cap: Option<&MonetaryAmount>, declared: &MonetaryAmount) -> bool {
+    match child_cap {
+        None => false,
+        Some(child_cap) => {
+            child_cap.currency == declared.currency && child_cap.units <= declared.units
+        }
+    }
+}
+
 /// Validate that a child scope is a valid attenuation of a parent scope.
 ///
 /// Returns Ok(()) if child is a subset of parent. Returns an error otherwise.
@@ -531,6 +949,25 @@ fn validate_delegable_child_scope(parent: &ChioScope, child: &ChioScope) -> Resu
 ///   [`Operation::Delegate`].
 /// * The proposed `child_scope` is not a subset of the parent token's
 ///   scope (rejected by [`validate_attenuation`]).
+/// * Any `attenuation.steps` entry is not a true narrowing of the parent
+///   (raises a cap, targets a tool outside the parent scope, or extends
+///   expiry). Steps are validated reduce-only rather than copied verbatim, and
+///   each is checked against *every* covering parent grant so an overlapping
+///   `*:*` grant cannot mask a concrete grant that holds the targeted
+///   operation or cost cap.
+/// * Any declared step is not actually reflected in `child_scope` /
+///   `child_expires_at` (for example an `AddConstraint` step whose constraint
+///   the child grant omits). This mirrors chio-kernel's declared-attenuation
+///   validation so the helper never emits a receipt whose signed link and child
+///   scope disagree.
+/// * `attenuation.budget_share_bps` exceeds the parent's share. The share is
+///   parent-relative: a child can never claim a larger fraction of the budget
+///   than the parent holds (an absent parent share is treated as 100%). When
+///   the parent holds a share strictly below the 100% ceiling, the child MUST
+///   state an explicit `budget_share_bps`: omission is rejected fail-closed
+///   because downstream admission treats a missing share as the full budget (a
+///   widening). A parent at the full ceiling (`None` or `Some(10_000)`) accepts
+///   an omitted child share as a no-op.
 /// * The requested `child_expires_at` is greater than the parent's
 ///   `expires_at` (rejected as an [`Error::AttenuationViolation`]).
 /// * `delegator_keypair.public_key() != parent.subject` (the mint helper
@@ -573,6 +1010,40 @@ pub fn delegate(
     validate_attenuation(&parent.scope, child_scope)?;
     validate_delegable_child_scope(&parent.scope, child_scope)?;
 
+    // Each attenuation step must be a TRUE narrowing of the parent: previously
+    // the steps were copied onto the signed link verbatim, so a widening step
+    // (raise a cap, target a tool outside the parent, extend expiry) could ride
+    // through unchecked. Validate reduce-only, fail-closed.
+    validate_attenuation_steps(&parent.scope, parent.expires_at, &attenuation.steps)?;
+
+    // `budget_share_bps` is parent-relative: a delegated share is a fraction of
+    // the parent's remaining/granted budget and can never widen it.
+    //
+    // Fail-closed on omission ONLY when the parent is genuinely
+    // budget-attenuated (its share is below the full ceiling). Downstream
+    // delegated-budget admission treats a missing child share as the full
+    // ceiling (MAX_BUDGET_SHARE_BPS, 100%). A parent that itself holds the full
+    // share (`None`, or an explicit `Some(10_000)`) is not narrowed by such an
+    // omission: the child inherits the same 100% the parent already holds, so a
+    // no-op delegation must be allowed. Require an explicit child share only
+    // when the parent's effective share is strictly below the ceiling.
+    match attenuation.budget_share_bps {
+        Some(child_share) => {
+            validate_parent_relative_budget_share_bps(parent.budget_share_bps, child_share)?;
+        }
+        None => {
+            if let Some(parent_share) = parent.budget_share_bps {
+                if parent_share < MAX_BUDGET_SHARE_BPS {
+                    return Err(Error::AttenuationViolation {
+                        reason: alloc::format!(
+                            "parent holds a reduced budget_share_bps {parent_share}; the child must state an explicit budget_share_bps <= {parent_share} (an omitted share would widen to the full budget)"
+                        ),
+                    });
+                }
+            }
+        }
+    }
+
     let child_expires_at = attenuation.child_expires_at.unwrap_or(parent.expires_at);
     if child_expires_at > parent.expires_at {
         return Err(Error::AttenuationViolation {
@@ -583,6 +1054,16 @@ pub fn delegate(
             ),
         });
     }
+
+    // The declared steps must also be reflected in the child the caller is
+    // minting, not merely reduce-only against the parent. Without this, the
+    // mint helper could emit a receipt whose signed link declares an
+    // attenuation that the child scope does not honor; chio-kernel's
+    // declared-attenuation validation would later reject the resulting child
+    // token. Reject the inconsistency here, fail-closed, so the helper never
+    // produces an unusable receipt.
+    validate_steps_reflected_in_child(child_scope, child_expires_at, &attenuation.steps)?;
+
     if signed_at >= parent.expires_at {
         return Err(Error::AttenuationViolation {
             reason: alloc::format!(
