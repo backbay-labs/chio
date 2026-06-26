@@ -66,6 +66,13 @@ pub struct ScopeAttenuation {
     /// `<= parent.expires_at`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub child_expires_at: Option<u64>,
+    /// Optional sub-agent budget share in basis points, interpreted
+    /// *parent-relative*: the child's share is a fraction of the parent's
+    /// remaining/granted budget and can never exceed it. `delegate` enforces
+    /// `child_share <= parent.budget_share_bps` (treating an absent parent
+    /// share as the full 10000 bps) fail-closed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_share_bps: Option<u16>,
 }
 
 impl ScopeAttenuation {
@@ -83,6 +90,7 @@ impl ScopeAttenuation {
         Self {
             steps,
             child_expires_at: None,
+            budget_share_bps: None,
         }
     }
 }

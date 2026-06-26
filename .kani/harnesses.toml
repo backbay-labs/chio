@@ -111,6 +111,20 @@ lane = "pr"
 
 [[harness]]
 crate = "chio-kernel-core"
+harness = "public_sign_receipt_refuses_content_hash_mismatch"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_sign_receipt_accepts_matching_content_hash"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
 harness = "verify_scope_intersection_associative"
 default_unwind = 8
 timeout_secs = 1800

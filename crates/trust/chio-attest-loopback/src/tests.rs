@@ -52,6 +52,7 @@ fn refresh_workflow_step_parent_chain(steps: &mut [StepRecord]) -> Result<(), Ch
 }
 
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
+use chio_core_types::receipt::signing::ReceiptSigningHandle;
 use chio_selective_disclosure::{
     derive_selective_disclosure_proof_from_receipt, sign_chio_receipt_with_bbs,
     BBS_CIPHERSUITE_SHA256, PROJECTION_VERSION_RECEIPT_V1,
@@ -132,7 +133,10 @@ fn receipt_v1_runtime_package() -> (
         let vendor_key = Keypair::from_seed(&vendor.seed);
         let body = receipt_body(vendor, &vendor_key).expect("receipt body builds");
         let receipt = if index == 0 {
-            sign_chio_receipt_with_bbs(body, &vendor_key, &bbs_keypair)
+            // WYSIWYS handle bound to the exact preimage the body's
+            // content_hash is defined over (sha256_hex(vendor.output_label)).
+            let handle = ReceiptSigningHandle::from_content_preimage(vendor.output_label.to_vec());
+            sign_chio_receipt_with_bbs(body, &vendor_key, &bbs_keypair, handle)
                 .expect("receipt signs with BBS")
         } else {
             ChioReceipt::sign(body, &vendor_key).expect("receipt signs")

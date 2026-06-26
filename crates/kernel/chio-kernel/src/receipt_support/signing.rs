@@ -58,28 +58,59 @@ impl KernelCryptoFloor {
     }
 }
 
-/// Sign a [`ChioReceiptBody`] with an arbitrary [`SigningBackend`].
+/// Sign an already-assembled [`ChioReceiptBody`] with an arbitrary
+/// [`SigningBackend`] (classical, hybrid, or PQ), recomputing `content_hash`
+/// inside the trust boundary (WYSIWYS, BAC-539).
 ///
-/// Delegates to `chio_kernel_core::sign_receipt` (the portable signing
-/// kernel) so receipts produced via the hybrid path are byte-identical to
-/// receipts produced via the inline classical path when the same backend
-/// is used. Maps the portable error surface onto [`KernelError`].
+/// Delegates to `chio_kernel_core::sign_receipt`, the production
+/// recompute-and-refuse primitive, so the hybrid signing path is held to the
+/// same WYSIWYS contract as the inline classical path and the mpsc signing
+/// task. `canonical_content` is the exact byte preimage the body's
+/// `content_hash` was derived from (for a value output the RFC 8785 canonical
+/// JSON; for a stream receipt the concatenated per-chunk digest preimage; for an
+/// empty output the literal `null` canonicalization). The signer recomputes
+/// `sha256_hex(canonical_content)` and refuses to sign when it disagrees with
+/// `body.content_hash`, closing the render-A / sign-B forgery on the hybrid path
+/// too rather than leaving it as a caller-hash-trust seam. Receipts produced via
+/// this wrapper are byte-identical to receipts produced via the inline classical
+/// path when the same backend and content are used.
+///
+/// Callers that genuinely cannot carry the content preimage (the thin transport
+/// adapters relaying an already-minted body across an FFI/WASM boundary) must
+/// use `chio_kernel_core::sign_receipt_relaying_trusted_body` directly, which is
+/// the explicit, auditable trusted-relay seam tracked under BAC-601; this
+/// content-bearing kernel wrapper is not that seam.
 ///
 /// # Errors
 ///
-/// Returns [`KernelError::ReceiptSigningFailed`] if the body's `kernel_key`
-/// does not match the backend's public key (fail-closed: the signing path
-/// refuses to issue a signature that would not verify).
+/// Returns [`KernelError::ReceiptSigningFailed`] when:
+/// - the body's claimed `content_hash` does not match
+///   `sha256_hex(canonical_content)` (fail-closed: render-A / sign-B refused), OR
+/// - the body's `kernel_key` does not match the backend's public key
+///   (fail-closed: the signing path refuses to issue a signature that would not
+///   verify), OR
+/// - canonical signing fails.
 pub fn sign_receipt_body_with_backend(
     body: ChioReceiptBody,
     backend: &dyn chio_core::crypto::SigningBackend,
+    canonical_content: &[u8],
 ) -> Result<ChioReceipt, KernelError> {
-    chio_kernel_core::sign_receipt(body, backend).map_err(|error| {
+    chio_kernel_core::sign_receipt(body, backend, canonical_content).map_err(|error| {
         use chio_kernel_core::ReceiptSigningError;
         let message = match error {
             ReceiptSigningError::KernelKeyMismatch => {
                 "kernel signing key does not match receipt body kernel_key".to_string()
             }
+            // WYSIWYS mismatch (BAC-539): the body claimed a `content_hash` the
+            // signer could not reproduce from `canonical_content`, so the
+            // signature is refused fail-closed.
+            ReceiptSigningError::ContentHashMismatch {
+                recomputed,
+                claimed,
+            } => format!(
+                "receipt content_hash mismatch: body claimed {claimed} but signer \
+                 recomputed {recomputed} over the canonical content (WYSIWYS refused)"
+            ),
             ReceiptSigningError::SigningFailed(reason) => reason,
         };
         KernelError::ReceiptSigningFailed(message)
@@ -132,6 +163,24 @@ pub struct SignedHybridReceipt {
 /// shared by every downstream consumer (storage, lineage anchor, federation
 /// cosign).
 ///
+/// # WYSIWYS recompute (BAC-539)
+///
+/// `canonical_content` is the exact byte preimage the body's `content_hash` was
+/// derived from (the same preimage the classical sibling
+/// [`sign_receipt_body_with_backend`] takes). Before any cryptographic work this
+/// helper recomputes `sha256_hex(canonical_content)` inside the trust boundary
+/// and refuses to sign when it disagrees with `body.content_hash`
+/// ([`KernelError::ReceiptSigningFailed`], fail-closed). The check reuses the
+/// canonical WYSIWYS gate ([`ReceiptSigningHandle`]) so this shared-canonical
+/// hybrid/PQ path is held to the same recompute-and-refuse contract as the
+/// inline classical path, the mpsc signing task, and `sign_receipt_body_with_backend`.
+/// This closes the render-A / sign-B forgery on the shared-canonical entrypoint
+/// rather than leaving it as a caller-hash-trust seam. Callers that genuinely
+/// cannot carry the content preimage must use
+/// `chio_kernel_core::sign_receipt_relaying_trusted_body` (the explicit
+/// trusted-relay seam, BAC-601); this content-bearing kernel wrapper is not that
+/// seam.
+///
 /// # Authoritative signing input
 ///
 /// The bytes signed are the canonical JSON encoding of the
@@ -164,6 +213,8 @@ pub struct SignedHybridReceipt {
 /// # Errors
 ///
 /// Returns [`KernelError::ReceiptSigningFailed`] when:
+/// - the body's claimed `content_hash` does not match
+///   `sha256_hex(canonical_content)` (fail-closed: render-A / sign-B refused), OR
 /// - `body.kernel_key` does not match the backend's public key, OR
 /// - `body` fails semantic validation (see
 ///   [`chio_core::receipt::body::ChioReceiptBody::validate_signable_semantics`]),
@@ -175,6 +226,7 @@ pub struct SignedHybridReceipt {
 pub fn sign_receipt_body_hybrid_canonical(
     body: ChioReceiptBody,
     backend: &dyn chio_core::crypto::SigningBackend,
+    canonical_content: &[u8],
 ) -> Result<SignedHybridReceipt, KernelError> {
     use chio_core::crypto::{
         canonical_json_shared_bytes, sign_shared_canonical_with_backend, PublicKey,
@@ -182,6 +234,30 @@ pub fn sign_receipt_body_hybrid_canonical(
     use chio_core::receipt::{
         body::chio_receipt_id, signing::bind_receipt_signing_nonce, signing::ChioReceiptSigningBody,
     };
+
+    // WYSIWYS recompute-and-refuse FIRST, inside the trust boundary, before any
+    // kernel-key check or cryptographic work (BAC-539). We recompute
+    // `sha256_hex(canonical_content)` over the BORROWED preimage and refuse to
+    // sign when it disagrees with the caller-supplied `body.content_hash`. This
+    // is the same recompute-and-refuse gate `chio_kernel_core::sign_receipt`
+    // applies (also from the borrowed slice), so the shared-canonical hybrid/PQ
+    // path can no longer render content A while signing a body claiming the hash
+    // of content B.
+    //
+    // BAC-539 round-5 (issue 4): hash the borrowed slice directly instead of
+    // cloning it into a `ReceiptSigningHandle` via `to_vec()`. The preimage can
+    // be up to the configured stream/output max (256 MiB); a transient clone
+    // here doubled peak memory for no benefit, since the handle's only role on
+    // this path is the recompute-and-compare the borrowed-slice form does
+    // identically.
+    let recomputed = chio_core::crypto::sha256_hex(canonical_content);
+    if recomputed != body.content_hash {
+        return Err(KernelError::ReceiptSigningFailed(format!(
+            "receipt content_hash mismatch: body claimed {} but signer recomputed {} \
+             over the canonical content (WYSIWYS refused)",
+            body.content_hash, recomputed
+        )));
+    }
 
     // Fail-closed kernel-key match BEFORE any cryptographic work. Mirrors
     // `chio_kernel_core::sign_receipt` so the byte-identity contract holds
@@ -376,4 +452,102 @@ pub fn kernel_signing_backend(
         });
     }
     Ok(Box::new(Ed25519Backend::new(classical_keypair)))
+}
+
+#[cfg(test)]
+mod borrowed_preimage_tests {
+    //! BAC-539 round-5 (issue 4): the hybrid/PQ shared-canonical path recomputes
+    //! `sha256_hex(canonical_content)` from the BORROWED preimage slice (no
+    //! `to_vec()` clone) before any signing work, so render-A / sign-B is still
+    //! refused fail-closed. These run under a classical Ed25519 backend so they
+    //! exercise the borrowed-slice recompute without the `pq` feature (the
+    //! helper accepts any `SigningBackend`).
+    use chio_core::crypto::{Ed25519Backend, Keypair};
+    use chio_core::receipt::body::ChioReceiptBody;
+    use chio_core::receipt::decision::{Decision, ToolCallAction};
+    use chio_core::receipt::kinds::TrustLevel;
+
+    use super::sign_receipt_body_hybrid_canonical;
+    use crate::KernelError;
+
+    const PREIMAGE: &[u8] = br#"{"q":"borrowed-preimage"}"#;
+
+    fn seed() -> [u8; 32] {
+        let raw = b"chio-borrowed-preimage-test-seed";
+        let mut out = [0u8; 32];
+        out.copy_from_slice(raw);
+        out
+    }
+
+    fn body_for(kernel_key: chio_core::crypto::PublicKey, content_hash: String) -> ChioReceiptBody {
+        ChioReceiptBody {
+            id: "rcpt-borrowed-preimage".to_string(),
+            timestamp: 1_700_000_010,
+            capability_id: "cap-borrowed".to_string(),
+            tool_server: "audit-server".to_string(),
+            tool_name: "report".to_string(),
+            action: ToolCallAction::from_parameters(serde_json::json!({"q": "borrowed-preimage"}))
+                .expect("action canonicalises"),
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
+            content_hash,
+            policy_hash: "policy-borrowed".to_string(),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: TrustLevel::Mediated,
+            tenant_id: None,
+            kernel_key,
+            bbs_projection_version: None,
+        }
+    }
+
+    #[test]
+    fn borrowed_hash_path_signs_matching_body() {
+        // A body whose claimed `content_hash` matches the borrowed preimage must
+        // sign: the borrowed-slice recompute agrees, so the (previously cloned)
+        // hash check still admits the legitimate receipt.
+        let kp = Keypair::from_seed(&seed());
+        let backend = Ed25519Backend::new(kp.clone());
+        let body = body_for(kp.public_key(), chio_core::crypto::sha256_hex(PREIMAGE));
+
+        let signed = sign_receipt_body_hybrid_canonical(body, &backend, PREIMAGE)
+            .expect("matching body must sign through the borrowed-slice recompute path");
+        assert!(
+            signed
+                .receipt
+                .kernel_key
+                .verify(signed.canonical.as_bytes(), &signed.receipt.signature),
+            "produced signature must verify over the exact signed bytes"
+        );
+    }
+
+    #[test]
+    fn borrowed_hash_path_refuses_render_a_sign_b() {
+        // WYSIWYS (BAC-539): the body binds `content_hash` to PREIMAGE but the
+        // signer is handed a DIFFERENT preimage. The borrowed-slice recompute
+        // must disagree and refuse, proving the clone-free hash check still
+        // recomputes-and-refuses (issue 4 must not weaken the gate).
+        let kp = Keypair::from_seed(&seed());
+        let backend = Ed25519Backend::new(kp.clone());
+        let body = body_for(kp.public_key(), chio_core::crypto::sha256_hex(PREIMAGE));
+        let attacker_preimage = br#"{"q":"a-different-thing"}"#;
+
+        let err = sign_receipt_body_hybrid_canonical(body, &backend, attacker_preimage)
+            .expect_err("render-A / sign-B must fail closed on the borrowed-slice path");
+        match err {
+            KernelError::ReceiptSigningFailed(message) => {
+                assert!(
+                    message.contains("content_hash mismatch")
+                        && message.contains("WYSIWYS refused"),
+                    "expected WYSIWYS content-hash mismatch diagnostic, got {message}"
+                );
+            }
+            other => panic!("expected ReceiptSigningFailed, got {other:?}"),
+        }
+    }
 }

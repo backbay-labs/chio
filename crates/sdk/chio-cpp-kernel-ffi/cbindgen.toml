@@ -40,6 +40,7 @@ include = [
   "chio_kernel_buffer_free",
   "chio_kernel_evaluate_json",
   "chio_kernel_sign_receipt_json",
+  "chio_kernel_sign_receipt_relaying_trusted_body_json",
   "chio_kernel_verify_capability_json",
   "chio_kernel_verify_passport_json",
 ]

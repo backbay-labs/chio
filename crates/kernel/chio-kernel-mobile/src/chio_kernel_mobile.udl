@@ -44,12 +44,20 @@ namespace chio_kernel_mobile {
     [Throws=ChioMobileError]
     string evaluate(string request_json);
 
-    // Sign a receipt body with the given Ed25519 signing seed.
+    // Sign a receipt body with the given Ed25519 signing seed
+    // (PUBLIC WYSIWYS signer; fail-closed).
     //
     // `body_json` is the canonical JSON of a ChioReceiptBody. The
     // receipt body MUST set `kernel_key` to the public key that
     // corresponds to `signing_seed_hex`; otherwise the signing pipeline
     // fails fast with ChioMobileError.KernelKeyMismatch.
+    //
+    // `canonical_content_hex` (BAC-539) is the lowercase-hex encoding of
+    // the exact byte preimage `content_hash` was derived from. The signer
+    // recomputes the hash inside the trust boundary and refuses to sign on
+    // mismatch (ChioMobileError.SigningFailed), closing render-A / sign-B.
+    // This signer does NOT relay a trusted body; callers that only forward
+    // an upstream-minted body must use sign_receipt_relaying_trusted_body.
     //
     // `signing_seed_hex` is a 32-byte Ed25519 seed, lowercase hex,
     // with optional `0x` prefix.
@@ -58,7 +66,17 @@ namespace chio_kernel_mobile {
     // upload to the operator's receipt-log sink when connectivity
     // returns (see bindings/README.md for the offline-sync pattern).
     [Throws=ChioMobileError]
-    string sign_receipt(string body_json, string signing_seed_hex);
+    string sign_receipt(string body_json, string canonical_content_hex, string signing_seed_hex);
+
+    // Relay-sign an already-minted, upstream-trusted receipt body
+    // (BAC-601 seam; NOT the default public signer).
+    //
+    // Trusts the caller-supplied `content_hash` and does NOT recompute it.
+    // Use only to forward a body an upstream trusted producer already minted
+    // (where the WYSIWYS recompute already ran). Content-bearing callers MUST
+    // use sign_receipt instead so the recompute gate runs.
+    [Throws=ChioMobileError]
+    string sign_receipt_relaying_trusted_body(string body_json, string signing_seed_hex);
 
     // Verify a capability token against a trusted-issuer key.
     //

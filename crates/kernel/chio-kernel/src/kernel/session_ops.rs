@@ -270,6 +270,7 @@ impl ChioKernel {
             },
             action,
             content_hash: receipt_content.content_hash,
+            canonical_content: receipt_content.canonical_content,
             metadata: merge_metadata_objects(
                 Some(serde_json::json!({
                     "resource": {

@@ -9,7 +9,7 @@ use chio_core_types::receipt::{
     body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
     kinds::TrustLevel,
 };
-use chio_kernel_mobile::sign_receipt;
+use chio_kernel_mobile::sign_receipt_relaying_trusted_body;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -91,7 +91,10 @@ fn sign_fixture_receipt(fixture: &ReceiptFixture) -> Result<ChioReceipt, Box<dyn
         bbs_projection_version: None,
     };
 
-    let signed_json = sign_receipt(
+    // The oracle fixtures carry only `content_hash`, not the content preimage,
+    // so they model the trusted-upstream-body relay seam (BAC-601). Route
+    // through the explicit relay signer rather than the public WYSIWYS signer.
+    let signed_json = sign_receipt_relaying_trusted_body(
         serde_json::to_string(&body)?,
         fixture.kernel_seed_hex.clone(),
     )?;

@@ -15,7 +15,9 @@ use chio_core::receipt::{
     body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
     kinds::TrustLevel,
 };
-use chio_kernel::KernelError;
+// `DEFAULT_MAX_STREAM_TOTAL_BYTES` is consumed by the `#[path]`-included
+// `signing_task.rs` via `crate::DEFAULT_MAX_STREAM_TOTAL_BYTES`.
+use chio_kernel::{KernelError, DEFAULT_MAX_STREAM_TOTAL_BYTES};
 use serde_json::json;
 
 #[allow(dead_code)]
@@ -31,16 +33,20 @@ fn make_keypair() -> Keypair {
     Keypair::from_seed(&KERNEL_SEED)
 }
 
-fn make_body(n: usize, kernel_key: &Keypair) -> ChioReceiptBody {
+/// Returns a signable body together with the exact canonical-content preimage
+/// its `content_hash` was derived from, so the signing-task WYSIWYS recompute
+/// (BAC-539) accepts it.
+fn make_body(n: usize, kernel_key: &Keypair) -> (ChioReceiptBody, Vec<u8>) {
     let nonce = format!("crash-{n:04}");
     let action = ToolCallAction::from_parameters(json!({
         "n": n,
         "label": nonce,
     }))
     .expect("payload canonicalises");
-    let content_hash = sha256_hex(action.parameter_hash.as_bytes());
+    let canonical_content = action.parameter_hash.as_bytes().to_vec();
+    let content_hash = sha256_hex(&canonical_content);
     let policy_hash = sha256_hex(format!("policy:{nonce}").as_bytes());
-    ChioReceiptBody {
+    let body = ChioReceiptBody {
         id: format!("rcpt-{nonce}"),
         timestamp: 1_700_100_000 + (n as u64),
         capability_id: format!("cap-{nonce}"),
@@ -62,7 +68,8 @@ fn make_body(n: usize, kernel_key: &Keypair) -> ChioReceiptBody {
         tenant_id: None,
         kernel_key: kernel_key.public_key(),
         bbs_projection_version: None,
-    }
+    };
+    (body, canonical_content)
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -73,15 +80,18 @@ async fn aborted_signing_task_fails_closed_without_hanging() {
         1,
     ));
 
+    let (body1, content1) = make_body(1, &keypair);
     let queued = handle
-        .try_sign(make_body(1, &keypair))
+        .try_sign(body1, content1)
         .expect("first request queues before task runs");
     assert!(handle.is_spawned());
 
     let blocked_handle = Arc::clone(&handle);
     let blocked_keypair = keypair.clone();
-    let blocked_producer =
-        tokio::spawn(async move { blocked_handle.sign(make_body(2, &blocked_keypair)).await });
+    let blocked_producer = tokio::spawn(async move {
+        let (body2, content2) = make_body(2, &blocked_keypair);
+        blocked_handle.sign(body2, content2).await
+    });
 
     handle.abort_for_crash_recovery_test();
 
@@ -102,10 +112,10 @@ async fn aborted_signing_task_fails_closed_without_hanging() {
         "blocked producer should fail closed after abort"
     );
 
-    let post_abort =
-        tokio::time::timeout(Duration::from_secs(1), handle.sign(make_body(3, &keypair)))
-            .await
-            .expect("post-abort producer resolves without hanging");
+    let (body3, content3) = make_body(3, &keypair);
+    let post_abort = tokio::time::timeout(Duration::from_secs(1), handle.sign(body3, content3))
+        .await
+        .expect("post-abort producer resolves without hanging");
     assert!(
         post_abort.is_err(),
         "post-abort signing should fail closed, got Ok(_)"

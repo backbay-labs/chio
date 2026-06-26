@@ -362,6 +362,12 @@ pub(crate) fn extract_tenant_id_from_auth_context(
 pub(crate) struct ReceiptContent {
     pub(crate) content_hash: String,
     pub(crate) metadata: Option<serde_json::Value>,
+    /// The exact byte preimage `content_hash` was computed over, carried so the
+    /// signing boundary can independently recompute the hash and refuse to sign
+    /// on mismatch (WYSIWYS, BAC-539). For value outputs this is the RFC 8785
+    /// canonical JSON; for streams the concatenated per-chunk digest preimage;
+    /// for the empty output the literal `null` canonicalization.
+    pub(crate) canonical_content: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -817,7 +823,11 @@ impl ChioKernel {
     /// Receipt body construction continues to flow through the existing
     /// inline path (`build_and_sign_receipt`); callers that opt in to
     /// hybrid signing pass the returned backend through
-    /// [`crate::sign_receipt_body_with_backend`] before persistence.
+    /// [`crate::sign_receipt_body_with_backend`] (along with the canonical
+    /// content preimage the body's `content_hash` was derived from) before
+    /// persistence, so the hybrid path recomputes `content_hash` inside the
+    /// trust boundary and is WYSIWYS fail-closed (BAC-539) just like the inline
+    /// classical path.
     ///
     /// # Errors
     ///
@@ -1511,6 +1521,11 @@ pub(crate) struct ReceiptParams<'a> {
     decision: Decision,
     action: ToolCallAction,
     content_hash: String,
+    /// Byte preimage `content_hash` was computed over. The signing boundary
+    /// recomputes `sha256_hex(canonical_content)` and refuses to sign when it
+    /// disagrees with `content_hash` (WYSIWYS, BAC-539). Always sourced from
+    /// the matching [`ReceiptContent::canonical_content`].
+    canonical_content: Vec<u8>,
     metadata: Option<serde_json::Value>,
     timestamp: u64,
     /// Strength of kernel mediation for this evaluation. Defaults to

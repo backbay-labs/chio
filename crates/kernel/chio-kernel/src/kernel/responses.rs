@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 
 use chio_core::{
     receipt::kinds::BoundaryClass, receipt::kinds::ReceiptKind, receipt::kinds::RedactionMode,
-    receipt::kinds::ToolOrigin,
+    receipt::kinds::ToolOrigin, receipt::signing::ReceiptSigningHandle,
 };
 use chio_log_redact::redacted;
 
@@ -134,6 +134,7 @@ impl ChioKernel {
                 },
                 action,
                 content_hash: receipt_content.content_hash,
+                canonical_content: receipt_content.canonical_content,
                 metadata,
                 timestamp,
                 trust_level: chio_core::receipt::kinds::TrustLevel::default(),
@@ -283,6 +284,7 @@ impl ChioKernel {
             },
             action,
             content_hash: receipt_content.content_hash,
+            canonical_content: receipt_content.canonical_content,
             metadata: merge_metadata_objects(
                 merge_metadata_objects(
                     receipt_attribution_metadata(cap, Some(charge.grant_index)),
@@ -892,6 +894,7 @@ impl ChioKernel {
             },
             action,
             content_hash: receipt_content.content_hash,
+            canonical_content: receipt_content.canonical_content,
             metadata: merge_metadata_objects(
                 merge_metadata_objects(
                     merge_metadata_objects(receipt_content.metadata, request_metadata),
@@ -1056,6 +1059,7 @@ impl ChioKernel {
             },
             action,
             content_hash: receipt_content.content_hash,
+            canonical_content: receipt_content.canonical_content,
             metadata: merge_metadata_objects(
                 merge_metadata_objects(
                     merge_metadata_objects(receipt_content.metadata, request_metadata),
@@ -1129,6 +1133,7 @@ impl ChioKernel {
             },
             action,
             content_hash: receipt_content.content_hash,
+            canonical_content: receipt_content.canonical_content,
             metadata: merge_metadata_objects(
                 merge_metadata_objects(
                     merge_metadata_objects(receipt_content.metadata, request_metadata),
@@ -1224,6 +1229,7 @@ impl ChioKernel {
             },
             action,
             content_hash: receipt_content.content_hash,
+            canonical_content: receipt_content.canonical_content,
             metadata: merge_metadata_objects(
                 merge_metadata_objects(
                     merge_metadata_objects(receipt_content.metadata, request_metadata),
@@ -1328,6 +1334,7 @@ impl ChioKernel {
             decision: Decision::Allow,
             action,
             content_hash: receipt_content.content_hash,
+            canonical_content: receipt_content.canonical_content,
             metadata,
             timestamp,
             trust_level: chio_core::receipt::kinds::TrustLevel::default(),
@@ -1412,6 +1419,7 @@ impl ChioKernel {
             },
             action,
             content_hash: receipt_content.content_hash,
+            canonical_content: receipt_content.canonical_content,
             metadata,
             timestamp,
             trust_level: chio_core::receipt::kinds::TrustLevel::default(),
@@ -1603,6 +1611,15 @@ impl ChioKernel {
             bbs_projection_version: None,
         };
 
+        // WYSIWYS: bind the signature to the exact content this receipt's
+        // `content_hash` was derived from. The handle recomputes
+        // `sha256_hex(canonical_content)` and the signing primitive refuses to
+        // sign if it disagrees with `body.content_hash`, closing the
+        // render-A / sign-B hole on the production path (BAC-539). The
+        // canonical_content is the same preimage `receipt_content_for_output`
+        // hashed to produce `content_hash`.
+        let handle = ReceiptSigningHandle::from_content_preimage(params.canonical_content);
+
         // Delegate the pure signing step to chio-kernel-core so the portable
         // TCB stays in one place. The full kernel still owns body construction
         // (tenant scope resolution, policy_hash injection, evidence assembly)
@@ -1610,16 +1627,23 @@ impl ChioKernel {
         //
         // Verified-core boundary note:
         // `formal/proof-manifest.toml` includes this shell method only for the
-        // direct call into `chio_kernel_core::sign_receipt`. Receipt body
-        // assembly, metadata shaping, and persistence remain operational-shell
-        // behavior outside the current bounded proof claim.
+        // direct call into `chio_kernel_core::sign_receipt_with_handle`. Receipt
+        // body assembly, metadata shaping, and persistence remain
+        // operational-shell behavior outside the current bounded proof claim.
         let backend = chio_core::crypto::Ed25519Backend::new(self.config.keypair.clone());
-        chio_kernel_core::sign_receipt(body, &backend).map_err(|error| {
+        chio_kernel_core::sign_receipt_with_handle(body, &backend, handle).map_err(|error| {
             use chio_kernel_core::ReceiptSigningError;
             let message = match error {
                 ReceiptSigningError::KernelKeyMismatch => {
                     "kernel signing key does not match receipt body kernel_key".to_string()
                 }
+                ReceiptSigningError::ContentHashMismatch {
+                    recomputed,
+                    claimed,
+                } => format!(
+                    "receipt content_hash mismatch: body claimed {claimed} but signer \
+                     recomputed {recomputed} over the canonical content (WYSIWYS refused)"
+                ),
                 ReceiptSigningError::SigningFailed(reason) => reason,
             };
             KernelError::ReceiptSigningFailed(message)

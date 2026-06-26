@@ -19,7 +19,14 @@
 //!   I/O, no budget mutation, no revocation lookup.
 //! - [`verify_capability`] -- offline capability verification used by tools
 //!   that only need to inspect a token (no scope, no revocation).
-//! - [`sign_receipt`] -- sign an `ChioReceiptBody` with a `SigningBackend`.
+//! - [`sign_receipt`] -- WYSIWYS signing: recompute `content_hash` over the
+//!   supplied canonical content inside the trust boundary and refuse on
+//!   mismatch (fail-closed). The production signing primitive.
+//! - [`sign_receipt_with_handle`] -- WYSIWYS signing bound to a one-time,
+//!   move-only signing handle (the strongest API; cannot be replayed).
+//! - [`sign_receipt_relaying_trusted_body`] -- body-only relay that trusts the
+//!   caller `content_hash`; for transport adapters that cannot hold the content
+//!   preimage (mobile/browser/cpp-ffi). Explicit, auditable trust seam (BAC-601).
 //! - [`Clock`] / [`Rng`] -- abstract trait boundaries for time/entropy so
 //!   adapters on wasm/mobile can inject platform clocks and CSPRNGs.
 //!
@@ -94,7 +101,9 @@ pub use passport_verify::{
     verify_parsed_passport, verify_passport, PortablePassportBody, PortablePassportEnvelope,
     VerifiedPassport, VerifyError, PORTABLE_PASSPORT_SCHEMA,
 };
-pub use receipts::{sign_receipt, ReceiptSigningError};
+pub use receipts::{
+    sign_receipt, sign_receipt_relaying_trusted_body, sign_receipt_with_handle, ReceiptSigningError,
+};
 #[cfg(feature = "revocation-view")]
 pub use revocation_view::{
     RevocationSnapshot, RevocationView, RevocationViewError, RevocationViewSubject,

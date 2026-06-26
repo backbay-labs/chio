@@ -27,8 +27,9 @@ use chio_kernel_core::passport_verify::{
     PortablePassportBody, PortablePassportEnvelope, PORTABLE_PASSPORT_SCHEMA,
 };
 use chio_kernel_mobile::{
-    attest_app_attest, attest_play_integrity, evaluate, sign_receipt, verify_app_attest_evidence,
-    verify_capability, verify_capability_with_context, verify_mobile_receipt, verify_passport,
+    attest_app_attest, attest_play_integrity, evaluate, sign_receipt,
+    sign_receipt_relaying_trusted_body, verify_app_attest_evidence, verify_capability,
+    verify_capability_with_context, verify_mobile_receipt, verify_passport,
     verify_play_integrity_evidence, ChioMobileError,
 };
 
@@ -108,6 +109,10 @@ fn oversubscribed_budget_snapshot(parent_id: &str) -> serde_json::Value {
 }
 
 fn make_receipt_body(keypair: &Keypair) -> ChioReceiptBody {
+    make_receipt_body_with_content_hash(keypair, "0".repeat(64))
+}
+
+fn make_receipt_body_with_content_hash(keypair: &Keypair, content_hash: String) -> ChioReceiptBody {
     ChioReceiptBody {
         id: "rcpt-ffi-1".to_string(),
         timestamp: ISSUED_AT,
@@ -122,7 +127,7 @@ fn make_receipt_body(keypair: &Keypair) -> ChioReceiptBody {
         tool_origin: Default::default(),
         redaction_mode: Default::default(),
         actor_chain: Vec::new(),
-        content_hash: "0".repeat(64),
+        content_hash,
         policy_hash: "0".repeat(64),
         evidence: vec![],
         metadata: None,
@@ -313,25 +318,83 @@ fn evaluate_rejects_bad_trusted_hex() {
 
 #[test]
 fn sign_receipt_roundtrip_and_verifies() {
+    // WYSIWYS (BAC-539): the public signer recomputes content_hash over the
+    // canonical content preimage. A matching content+hash pair signs and
+    // verifies.
     let keypair = Keypair::generate();
-    let body = make_receipt_body(&keypair);
+    let canonical_content = br#"{"shown":"to-the-human"}"#.to_vec();
+    let content_hash = chio_core_types::crypto::sha256_hex(&canonical_content);
+    let body = make_receipt_body_with_content_hash(&keypair, content_hash);
     let body_json = serde_json::to_string(&body).unwrap();
     let seed_hex = keypair.seed_hex();
 
-    let signed_json = sign_receipt(body_json, seed_hex).expect("sign receipt");
+    let signed_json =
+        sign_receipt(body_json, hex::encode(&canonical_content), seed_hex).expect("sign receipt");
     let receipt: ChioReceipt = serde_json::from_str(&signed_json).expect("parse signed receipt");
     assert!(receipt.verify_signature().unwrap());
     assert_eq!(receipt.kernel_key, keypair.public_key());
 }
 
 #[test]
-fn sign_receipt_rejects_kernel_key_mismatch() {
-    let keypair_body = Keypair::generate();
-    let keypair_signer = Keypair::generate();
-    let body = make_receipt_body(&keypair_body);
+fn sign_receipt_accepts_empty_preimage_stream_receipt() {
+    // BAC-539: a zero-chunk stream receipt has an empty-byte canonical preimage,
+    // which encodes to the empty hex string. The public mobile signer must NOT
+    // reject the empty preimage: `body.content_hash` is sha256 of those empty
+    // bytes, so the WYSIWYS recompute gate passes and the receipt signs.
+    let keypair = Keypair::generate();
+    let canonical_content: Vec<u8> = Vec::new();
+    let content_hash = chio_core_types::crypto::sha256_hex(&canonical_content);
+    let body = make_receipt_body_with_content_hash(&keypair, content_hash);
     let body_json = serde_json::to_string(&body).unwrap();
 
-    let err = sign_receipt(body_json, keypair_signer.seed_hex()).unwrap_err();
+    // Empty preimage -> empty canonical-content hex string.
+    let signed_json = sign_receipt(body_json, String::new(), keypair.seed_hex())
+        .expect("empty-preimage stream receipt must sign");
+    let receipt: ChioReceipt = serde_json::from_str(&signed_json).expect("parse signed receipt");
+    assert!(receipt.verify_signature().unwrap());
+    assert_eq!(receipt.kernel_key, keypair.public_key());
+}
+
+#[test]
+fn sign_receipt_refuses_render_a_sign_b() {
+    // WYSIWYS render-A/sign-B regression (BAC-539 / C1): the body claims
+    // hash(B) while the canonical content handed to the public signer is A.
+    // The recompute-and-refuse gate inside `chio_kernel_core::sign_receipt`
+    // MUST reject this fail-closed. Without the fix (relaying the trusted body
+    // without recomputing) this forgery would be signed.
+    let keypair = Keypair::generate();
+    let content_a = br#"{"shown":"to-the-human"}"#.to_vec();
+    let hash_b = chio_core_types::crypto::sha256_hex(br#"{"secretly":"signed-instead"}"#);
+    let body = make_receipt_body_with_content_hash(&keypair, hash_b);
+    let body_json = serde_json::to_string(&body).unwrap();
+
+    let err = sign_receipt(body_json, hex::encode(&content_a), keypair.seed_hex())
+        .expect_err("render-A/sign-B must be refused");
+    match err {
+        ChioMobileError::SigningFailed { message } => {
+            assert!(message.contains("WYSIWYS refused"), "got: {message}");
+        }
+        other => panic!("expected SigningFailed (WYSIWYS), got {other:?}"),
+    }
+}
+
+#[test]
+fn sign_receipt_rejects_kernel_key_mismatch() {
+    // Use matching content+hash so the recompute gate passes and the kernel-key
+    // check (which runs after recompute) is what fires.
+    let keypair_body = Keypair::generate();
+    let keypair_signer = Keypair::generate();
+    let canonical_content = br#"{"shown":"to-the-human"}"#.to_vec();
+    let content_hash = chio_core_types::crypto::sha256_hex(&canonical_content);
+    let body = make_receipt_body_with_content_hash(&keypair_body, content_hash);
+    let body_json = serde_json::to_string(&body).unwrap();
+
+    let err = sign_receipt(
+        body_json,
+        hex::encode(&canonical_content),
+        keypair_signer.seed_hex(),
+    )
+    .unwrap_err();
     match err {
         ChioMobileError::KernelKeyMismatch { .. } => {}
         other => panic!("expected KernelKeyMismatch, got {other:?}"),
@@ -341,10 +404,17 @@ fn sign_receipt_rejects_kernel_key_mismatch() {
 #[test]
 fn sign_receipt_rejects_bad_seed_hex() {
     let keypair = Keypair::generate();
-    let body = make_receipt_body(&keypair);
+    let canonical_content = br#"{"shown":"to-the-human"}"#.to_vec();
+    let content_hash = chio_core_types::crypto::sha256_hex(&canonical_content);
+    let body = make_receipt_body_with_content_hash(&keypair, content_hash);
     let body_json = serde_json::to_string(&body).unwrap();
 
-    let err = sign_receipt(body_json, "not-hex-seed".to_string()).unwrap_err();
+    let err = sign_receipt(
+        body_json,
+        hex::encode(&canonical_content),
+        "not-hex-seed".to_string(),
+    )
+    .unwrap_err();
     match err {
         ChioMobileError::InvalidHex { .. } => {}
         other => panic!("expected InvalidHex, got {other:?}"),
@@ -355,7 +425,9 @@ fn sign_receipt_rejects_bad_seed_hex() {
 fn sign_receipt_rejects_zero_seed() {
     let zero_seed = [0u8; 32];
     let keypair = Keypair::from_seed(&zero_seed);
-    let body = make_receipt_body(&keypair);
+    let canonical_content = br#"{"shown":"to-the-human"}"#.to_vec();
+    let content_hash = chio_core_types::crypto::sha256_hex(&canonical_content);
+    let body = make_receipt_body_with_content_hash(&keypair, content_hash);
     let body_json_result = serde_json::to_string(&body);
     assert!(
         body_json_result.is_ok(),
@@ -363,7 +435,7 @@ fn sign_receipt_rejects_zero_seed() {
     );
     let body_json = body_json_result.unwrap_or_default();
 
-    let result = sign_receipt(body_json, "00".repeat(32));
+    let result = sign_receipt(body_json, hex::encode(&canonical_content), "00".repeat(32));
     assert!(
         matches!(result, Err(ChioMobileError::WeakEntropy { .. })),
         "zero seed must return WeakEntropy"
@@ -371,6 +443,21 @@ fn sign_receipt_rejects_zero_seed() {
     if let Err(ChioMobileError::WeakEntropy { message }) = result {
         assert!(message.contains("all-zero Ed25519 seed"));
     }
+}
+
+#[test]
+fn sign_receipt_relaying_trusted_body_signs_without_preimage() {
+    // The explicitly named relay seam (BAC-601) is the only path that forwards
+    // a trusted body without a content preimage; it trusts `content_hash`.
+    let keypair = Keypair::generate();
+    let body = make_receipt_body(&keypair);
+    let body_json = serde_json::to_string(&body).unwrap();
+
+    let signed_json = sign_receipt_relaying_trusted_body(body_json, keypair.seed_hex())
+        .expect("relay seam signs an upstream-trusted body");
+    let receipt: ChioReceipt = serde_json::from_str(&signed_json).expect("parse signed receipt");
+    assert!(receipt.verify_signature().unwrap());
+    assert_eq!(receipt.kernel_key, keypair.public_key());
 }
 
 #[test]
