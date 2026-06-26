@@ -4110,6 +4110,7 @@ dependencies = [
  "chio-commerce-order",
  "chio-core-types",
  "chio-disclosure-lineage",
+ "chio-egress-contract",
  "chio-enterprise-export",
  "chio-risk-comptroller",
  "chio-runtime-proof-parity",

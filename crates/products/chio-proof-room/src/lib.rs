@@ -10,6 +10,7 @@ use std::{
 
 use axum::http::StatusCode;
 use chio_core_types::{PublicKey, Signature};
+use chio_egress_contract::HttpEgressContract;
 use sha2::{Digest, Sha256};
 
 mod bundle_a;
@@ -470,19 +471,30 @@ fn fetch_public_settlement_independent_chain_head_from_rpc(
             "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} must not be empty"
         ));
     }
+    let egress_contract = public_settlement_rpc_egress_contract(url)?;
+    // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: blocking verifier RPC egress is
+    // guarded by public_settlement_rpc_egress_contract and per-call checks.
     let client = reqwest::blocking::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
         .timeout(Duration::from_secs(10))
         .build()
         .map_err(|error| {
             format!("{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} HTTP client failed: {error}")
         })?;
     let latest_block_number = parse_json_rpc_hex_u64(
-        &public_settlement_rpc_call(&client, url, "eth_blockNumber", serde_json::json!([]))?,
+        &public_settlement_rpc_call(
+            &client,
+            &egress_contract,
+            url,
+            "eth_blockNumber",
+            serde_json::json!([]),
+        )?,
         "eth_blockNumber result",
     )?;
     let observed_block_number = proof_bundle.chain_snapshot.observed_block_number;
     let observed_block = public_settlement_rpc_call(
         &client,
+        &egress_contract,
         url,
         "eth_getBlockByNumber",
         serde_json::json!([format!("0x{observed_block_number:x}"), false]),
@@ -500,12 +512,56 @@ fn fetch_public_settlement_independent_chain_head_from_rpc(
     )
 }
 
+fn public_settlement_rpc_egress_contract(url: &str) -> Result<HttpEgressContract, String> {
+    let parsed = reqwest::Url::parse(url).map_err(|error| {
+        format!("{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} must be a valid URL: {error}")
+    })?;
+    let host = parsed.host_str().ok_or_else(|| {
+        format!("{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} must include a host")
+    })?;
+    let normalized_host = if host.contains(':') && !host.starts_with('[') {
+        format!("[{}]", host.to_ascii_lowercase())
+    } else {
+        host.trim_end_matches('.').to_ascii_lowercase()
+    };
+    let authority = match parsed.port() {
+        Some(port) => format!("{normalized_host}:{port}"),
+        None => normalized_host,
+    };
+    let mut allowed_schemes = BTreeSet::new();
+    allowed_schemes.insert(parsed.scheme().to_ascii_lowercase());
+    let mut allowed_authority_set = BTreeSet::new();
+    allowed_authority_set.insert(authority);
+    let contract = HttpEgressContract {
+        tenant_egress_namespace: "proof.public-settlement.rpc".to_string(),
+        allowed_schemes,
+        allowed_authority_set,
+        deny_loopback: true,
+        deny_link_local: true,
+        deny_ipv6_ula: true,
+        max_redirect_chain: 0,
+        max_response_bytes: 1024 * 1024,
+    };
+    contract.validate().map_err(|error| {
+        format!(
+            "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} rejected by HttpEgressContract: {error}"
+        )
+    })?;
+    Ok(contract)
+}
+
 fn public_settlement_rpc_call(
     client: &reqwest::blocking::Client,
+    egress_contract: &HttpEgressContract,
     url: &str,
     method: &str,
     params: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    egress_contract.enforce_url_with_dns(url, 0).map_err(|error| {
+        format!(
+            "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} rejected by HttpEgressContract: {error}"
+        )
+    })?;
     let response = client
         .post(url)
         .json(&serde_json::json!({
@@ -514,6 +570,8 @@ fn public_settlement_rpc_call(
             "method": method,
             "params": params,
         }))
+        // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: blocking verifier RPC egress
+        // is guarded by public_settlement_rpc_egress_contract and per-call checks.
         .send()
         .map_err(|error| {
             format!("{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} failed: {error}")
@@ -524,7 +582,28 @@ fn public_settlement_rpc_call(
             "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} returned HTTP {status}"
         ));
     }
-    let body = response.json::<serde_json::Value>().map_err(|error| {
+    if let Some(content_length) = response.content_length() {
+        egress_contract
+            .enforce_response_bytes(content_length)
+            .map_err(|error| {
+                format!(
+                    "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} response rejected by HttpEgressContract: {error}"
+                )
+            })?;
+    }
+    let body_bytes = response.bytes().map_err(|error| {
+        format!(
+            "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} returned invalid JSON: {error}"
+        )
+    })?;
+    egress_contract
+        .enforce_response_bytes(body_bytes.len() as u64)
+        .map_err(|error| {
+            format!(
+                "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} response rejected by HttpEgressContract: {error}"
+            )
+        })?;
+    let body = serde_json::from_slice::<serde_json::Value>(&body_bytes).map_err(|error| {
         format!(
             "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} returned invalid JSON: {error}"
         )
