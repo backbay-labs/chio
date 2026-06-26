@@ -53,6 +53,160 @@ fn agent_web_interop_rejects_slack_failed_provider_response() {
 }
 
 #[test]
+fn agent_web_interop_rejects_ag_ui_without_start_content_end_sequence() {
+    let mut bundle = agent_web_bundle(AgentWebCase::AgUiProjection);
+    replace_agent_web_json_artifact(&mut bundle, "external/ag-ui-event.json", |subject| {
+        subject
+            .as_object_mut()
+            .test_expect("AG-UI subject is an object")
+            .remove("event_sequence");
+    });
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/ag-ui-event.json")
+            .test_expect("AG-UI subject exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "ag-ui-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = serde_json::json!(subject_digest);
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("AG-UI projection must bind a start-content-end event sequence");
+
+    assert!(error.to_string().contains("missing AG-UI event sequence"));
+}
+
+#[test]
+fn agent_web_interop_rejects_mcp_without_dpop_binding() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    replace_agent_web_json_artifact(&mut bundle, "external/mcp-tool-call.json", |subject| {
+        subject
+            .as_object_mut()
+            .test_expect("MCP subject is an object")
+            .remove("dpop_proof_digest");
+    });
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/mcp-tool-call.json")
+            .test_expect("MCP subject exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "mcp-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = serde_json::json!(subject_digest);
+    });
+
+    let error =
+        verify_agent_web_interop(&bundle).test_expect_err("MCP projection must bind DPoP proof");
+
+    assert!(error.to_string().contains("missing MCP DPoP proof digest"));
+}
+
+#[test]
+fn agent_web_interop_rejects_a2a_without_message_send_binding() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    replace_agent_web_json_artifact(&mut bundle, "external/a2a-task.json", |subject| {
+        subject
+            .as_object_mut()
+            .test_expect("A2A subject is an object")
+            .remove("message_send_digest");
+    });
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/a2a-task.json")
+            .test_expect("A2A subject exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "a2a-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = serde_json::json!(subject_digest);
+    });
+
+    let error =
+        verify_agent_web_interop(&bundle).test_expect_err("A2A projection must bind message/send");
+
+    assert!(error
+        .to_string()
+        .contains("missing A2A message/send digest"));
+}
+
+#[test]
+fn agent_web_interop_rejects_acp_client_without_path_scope() {
+    let mut bundle = agent_web_bundle(AgentWebCase::AcpClientProjection);
+    replace_agent_web_json_artifact(
+        &mut bundle,
+        "external/acp-client-permission.json",
+        |subject| {
+            subject
+                .as_object_mut()
+                .test_expect("ACP-Client subject is an object")
+                .remove("file_path_scope_digest");
+        },
+    );
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/acp-client-permission.json")
+            .test_expect("ACP-Client subject exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "acp-client-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = serde_json::json!(subject_digest);
+    });
+    replace_agent_web_receipt_for_subject(
+        &mut bundle,
+        "receipts/receipt-agent-web-acp-client-permission-allow.json",
+        "receipt-agent-web-acp-client-permission-allow",
+        &subject_digest,
+    );
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("ACP-Client projection must bind file path scope");
+
+    assert!(
+        error
+            .to_string()
+            .contains("missing ACP-Client file path scope digest"),
+        "{error}"
+    );
+}
+
+#[test]
+fn agent_web_interop_rejects_acp_client_unsigned_audit_path_as_receipt() {
+    let mut bundle = agent_web_bundle(AgentWebCase::AcpClientProjection);
+    replace_agent_web_json_artifact(
+        &mut bundle,
+        "external/acp-client-permission.json",
+        |subject| {
+            subject["evidence_path_kind"] = serde_json::json!("unsigned-audit");
+        },
+    );
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/acp-client-permission.json")
+            .test_expect("ACP-Client subject exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "acp-client-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = serde_json::json!(subject_digest);
+    });
+    replace_agent_web_receipt_for_subject(
+        &mut bundle,
+        "receipts/receipt-agent-web-acp-client-permission-allow.json",
+        "receipt-agent-web-acp-client-permission-allow",
+        &subject_digest,
+    );
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("ACP-Client projection must use a signed receipt path");
+
+    assert!(
+        error
+            .to_string()
+            .contains("ACP-Client unsigned audit path cannot satisfy signed receipt projection"),
+        "{error}"
+    );
+}
+
+#[test]
 fn agent_web_interop_accepts_oauth2_projection() {
     let bundle = agent_web_bundle(AgentWebCase::OAuth2Projection);
 
@@ -477,6 +631,140 @@ fn agent_web_interop_rejects_in_toto_single_signature_count() {
         error
             .to_string()
             .contains("in-toto statement requires bilateral DSSE signatures"),
+        "{error}"
+    );
+}
+
+#[test]
+fn agent_web_interop_rejects_in_toto_non_bilateral_predicate() {
+    let mut bundle = agent_web_bundle(AgentWebCase::InTotoProjection);
+    replace_agent_web_json_artifact(
+        &mut bundle,
+        "external/in-toto-statement.json",
+        |statement| {
+            statement["predicate_type"] =
+                serde_json::json!("https://chio.dev/predicates/agent-web-invocation/v1");
+        },
+    );
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/in-toto-statement.json")
+            .test_expect("in-toto statement exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "in-toto-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = serde_json::json!(subject_digest);
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("in-toto statement must use the bilateral invocation predicate");
+
+    assert!(
+        error
+            .to_string()
+            .contains("unsupported in-toto bilateral predicate type"),
+        "{error}"
+    );
+}
+
+#[test]
+fn agent_web_interop_rejects_in_toto_missing_peer_pin() {
+    let mut bundle = agent_web_bundle(AgentWebCase::InTotoProjection);
+    replace_agent_web_json_artifact(
+        &mut bundle,
+        "external/in-toto-statement.json",
+        |statement| {
+            statement
+                .as_object_mut()
+                .test_expect("in-toto statement is object")
+                .remove("peer_pin_digest");
+        },
+    );
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/in-toto-statement.json")
+            .test_expect("in-toto statement exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "in-toto-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = serde_json::json!(subject_digest);
+    });
+
+    let error =
+        verify_agent_web_interop(&bundle).test_expect_err("in-toto statement must bind peer pins");
+
+    assert!(
+        error
+            .to_string()
+            .contains("missing in-toto peer pin digest"),
+        "{error}"
+    );
+}
+
+#[test]
+fn agent_web_interop_rejects_in_toto_missing_policy_summary() {
+    let mut bundle = agent_web_bundle(AgentWebCase::InTotoProjection);
+    replace_agent_web_json_artifact(
+        &mut bundle,
+        "external/in-toto-statement.json",
+        |statement| {
+            statement
+                .as_object_mut()
+                .test_expect("in-toto statement is object")
+                .remove("policy_summary_digest");
+        },
+    );
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/in-toto-statement.json")
+            .test_expect("in-toto statement exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "in-toto-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = serde_json::json!(subject_digest);
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("in-toto statement must bind policy summaries");
+
+    assert!(
+        error
+            .to_string()
+            .contains("missing in-toto policy summary digest"),
+        "{error}"
+    );
+}
+
+#[test]
+fn agent_web_interop_rejects_in_toto_missing_capability_lease() {
+    let mut bundle = agent_web_bundle(AgentWebCase::InTotoProjection);
+    replace_agent_web_json_artifact(
+        &mut bundle,
+        "external/in-toto-statement.json",
+        |statement| {
+            statement
+                .as_object_mut()
+                .test_expect("in-toto statement is object")
+                .remove("capability_lease_ref");
+        },
+    );
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/in-toto-statement.json")
+            .test_expect("in-toto statement exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "in-toto-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = serde_json::json!(subject_digest);
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("in-toto statement must bind a capability lease");
+
+    assert!(
+        error
+            .to_string()
+            .contains("missing in-toto capability lease ref"),
         "{error}"
     );
 }

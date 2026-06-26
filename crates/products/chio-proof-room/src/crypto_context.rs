@@ -40,7 +40,14 @@ pub fn crypto_context_verified_report_bytes_with_bbs(
             "proof-room.fixture.crypto-context-report-invalid: {fixture_id}: unsupported schema"
         ));
     }
-    chio_disclosure_lineage::verify_crypto_context_report_signature(&report).map_err(|error| {
+    let trust = crate::disclosure_lineage_verifier_trust_from_env().map_err(|error| {
+        format!("proof-room.fixture.crypto-context-report-invalid: {fixture_id}: {error}")
+    })?;
+    chio_disclosure_lineage::verify_crypto_context_report_signature_with_trust(
+        &report,
+        trust.trusted_crypto_context_report_signer_keys(),
+    )
+    .map_err(|error| {
         format!("proof-room.fixture.crypto-context-report-invalid: {fixture_id}: {error}")
     })?;
     if report.verdict != chio_disclosure_lineage::DisclosureContextVerdict::Verified {
@@ -86,13 +93,18 @@ pub fn crypto_context_verified_report_bytes_with_bbs(
             .map(|check| check.code.as_str())
             .collect::<Vec<_>>()
             .join(", ");
+        if rejected_codes == "disclosure_context_nonce_replayed" {
+            return Err(format!(
+                "proof-room.negative.disclosure-context-nonce-replayed: {fixture_id}"
+            ));
+        }
         return Err(format!(
             "proof-room.fixture.crypto-context-invalid: {fixture_id}: {rejected_codes}"
         ));
     }
     if report.projection_manifest_ref != recomputed.projection_manifest_ref {
         return Err(format!(
-            "proof-room.fixture.crypto-context-report-invalid: {fixture_id}: projection manifest ref mismatch"
+            "proof-room.negative.disclosure-crypto-report-projection-manifest-ref-mismatch: {fixture_id}"
         ));
     }
     ensure_same_string_set(

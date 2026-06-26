@@ -8,7 +8,8 @@ use super::super::error::TransactionPassportError;
 use super::super::ids::{
     POLICY_ACTIVATION_RECEIPT_SCHEMA_ID, RUNTIME_ATTACK_SIMULATION_REPORT_SCHEMA_ID,
     RUNTIME_CHAOS_RUN_REPORT_SCHEMA_ID, RUNTIME_TOOL_SERVER_ACK_SCHEMA_ID,
-    SWARM_ROUTE_PLAN_RECEIPT_SCHEMA_ID,
+    RUNTIME_TRUSTED_TIME_PROOF_SCHEMA_ID, SWARM_BUDGET_POOL_SCHEMA_ID,
+    SWARM_JOIN_RECEIPT_SCHEMA_ID, SWARM_ROUTE_PLAN_RECEIPT_SCHEMA_ID, SWARM_TASK_GRAPH_SCHEMA_ID,
 };
 use super::super::validation::validate_bundle_relative_path;
 use super::super::validation::validate_sha256_hex;
@@ -24,6 +25,8 @@ const RUNTIME_SANDBOX_ATTESTATION_SIGNATURE_SCHEMA: &str =
 const RUNTIME_TERMINAL_RECEIPT_SIGNATURE_SCHEMA: &str =
     "chio.runtime.terminal-receipt-signature.v1";
 const RUNTIME_TOOL_SERVER_ACK_SIGNATURE_SCHEMA: &str = "chio.runtime.tool-server-ack-signature.v1";
+const RUNTIME_TRUSTED_TIME_PROOF_SIGNATURE_SCHEMA: &str =
+    "chio.runtime.trusted-time-proof-signature.v1";
 const POLICY_ACTIVATION_RECEIPT_SIGNATURE_SCHEMA: &str =
     "chio.policy.activation-receipt-signature.v1";
 const RUNTIME_ATTACK_SIMULATION_REPORT_SIGNATURE_SCHEMA: &str =
@@ -38,11 +41,20 @@ const SWARM_ROUTE_PLAN_RECEIPT_SIGNATURE_SCHEMA: &str =
 pub(super) struct RuntimeExecutionLease {
     schema: String,
     pub(super) lease_id: String,
+    subject_agent: String,
     tool_server_id: String,
     tool_instance_id: String,
     tool_manifest_digest: String,
     pub(super) sandbox_attestation_ref: String,
+    capability_digest: String,
     request_digest: String,
+    response_policy_digest: String,
+    task_graph_digest: String,
+    child_task_id: String,
+    parent_receipt_ref: String,
+    join_receipt_ref: String,
+    budget_pool_ref: String,
+    budget_allocation_ref: String,
     subject_capability_digest: String,
     ancestor_capability_digest: String,
     revocation_epoch_ref: Option<String>,
@@ -138,6 +150,114 @@ pub(super) struct RuntimeRoutePlanReceipt {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct RuntimeTaskGraph {
+    schema: String,
+    graph_id: String,
+    root_transaction_ref: String,
+    planner_subject: String,
+    issuer: String,
+    signature: String,
+    created_at_unix_ms: u64,
+    expires_at_unix_ms: u64,
+    max_depth: u64,
+    max_fanout: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    multi_hop_witness_chains: Option<bool>,
+    nodes: Vec<RuntimeTaskGraphNode>,
+    edges: Vec<RuntimeTaskGraphEdge>,
+    joins: Vec<RuntimeTaskGraphJoin>,
+    budget_pool_ref: String,
+    revocation_epoch_ref: String,
+    route_plan_refs: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RuntimeTaskGraphNode {
+    task_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    parent_task_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    route_plan_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    continuation_token_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    budget_allocation_ref: Option<String>,
+    scope_hash: String,
+    depth: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RuntimeTaskGraphEdge {
+    from_task_id: String,
+    to_task_id: String,
+    edge_type: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RuntimeTaskGraphJoin {
+    join_id: String,
+    parent_task_ids: Vec<String>,
+    next_task_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct RuntimeBudgetPool {
+    schema: String,
+    pool_id: String,
+    graph_id: String,
+    currency: String,
+    total_units: u64,
+    allocations: Vec<RuntimeBudgetAllocation>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RuntimeBudgetAllocation {
+    allocation_id: String,
+    task_id: String,
+    dimension_id: String,
+    state: String,
+    max_units: u64,
+    reserved_units: u64,
+    active_units: u64,
+    consumed_units: u64,
+    released_units: u64,
+    reversed_units: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct RuntimeJoinReceipt {
+    schema: String,
+    join_id: String,
+    graph_id: String,
+    chain_id: String,
+    parent_set_hash: String,
+    dag_ordinal: u64,
+    hlc_unix_ms: u64,
+    parent_task_receipts: Vec<RuntimeParentTaskReceipt>,
+    expected_parent_receipt_ids: Vec<String>,
+    actual_parent_receipt_ids: Vec<String>,
+    join_predicate: String,
+    result_digest: String,
+    next_task_id: String,
+    issuer: String,
+    signature: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RuntimeParentTaskReceipt {
+    task_id: String,
+    receipt_id: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RuntimeTrustRoot {
     schema: String,
@@ -206,6 +326,20 @@ pub(super) struct RuntimeToolServerAck {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(super) struct RuntimeTrustedTimeProof {
+    schema: String,
+    proof_id: String,
+    lease_id: String,
+    ack_id: String,
+    observed_at: String,
+    max_clock_skew_ms: u64,
+    time_source_id: String,
+    issuer: String,
+    signature: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct RuntimeTerminalReceipt {
     schema: String,
     receipt_id: String,
@@ -228,10 +362,16 @@ pub(super) fn validate_execution_lease(
     for (field, value) in [
         ("schema", &lease.schema),
         ("lease_id", &lease.lease_id),
+        ("subject_agent", &lease.subject_agent),
         ("tool_server_id", &lease.tool_server_id),
         ("tool_instance_id", &lease.tool_instance_id),
         ("sandbox_attestation_ref", &lease.sandbox_attestation_ref),
         ("revocation_freshness_ref", &lease.revocation_freshness_ref),
+        ("child_task_id", &lease.child_task_id),
+        ("parent_receipt_ref", &lease.parent_receipt_ref),
+        ("join_receipt_ref", &lease.join_receipt_ref),
+        ("budget_pool_ref", &lease.budget_pool_ref),
+        ("budget_allocation_ref", &lease.budget_allocation_ref),
         ("nonce", &lease.nonce),
         ("side_effect_class", &lease.side_effect_class),
         ("issued_at", &lease.issued_at),
@@ -243,7 +383,10 @@ pub(super) fn validate_execution_lease(
     }
     for (field, digest) in [
         ("tool_manifest_digest", &lease.tool_manifest_digest),
+        ("capability_digest", &lease.capability_digest),
         ("request_digest", &lease.request_digest),
+        ("response_policy_digest", &lease.response_policy_digest),
+        ("task_graph_digest", &lease.task_graph_digest),
         (
             "subject_capability_digest",
             &lease.subject_capability_digest,
@@ -269,9 +412,12 @@ pub(super) fn validate_execution_lease(
     if let Some(revocation_epoch_ref) = lease.revocation_epoch_ref.as_deref() {
         require_non_empty(revocation_epoch_ref, "revocation_epoch_ref")?;
     }
-    if let Some(route_plan_receipt_ref) = lease.route_plan_receipt_ref.as_deref() {
-        require_non_empty(route_plan_receipt_ref, "route_plan_receipt_ref")?;
-    }
+    let route_plan_receipt_ref = lease.route_plan_receipt_ref.as_deref().ok_or_else(|| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease route plan receipt missing".to_string(),
+        )
+    })?;
+    require_non_empty(route_plan_receipt_ref, "route_plan_receipt_ref")?;
     if let Some(max_invocations) = lease.max_invocations {
         if max_invocations != 1 {
             return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
@@ -289,6 +435,322 @@ pub(super) fn validate_execution_lease(
     validate_execution_lease_trust_root(lease, trusted_roots, trusted_root_signer_keys)?;
     verify_execution_lease_signature(lease)?;
     Ok(())
+}
+
+pub(super) struct ExecutionLeaseContext<'a> {
+    pub(super) task_graph_sha256: &'a str,
+    pub(super) task_graph: &'a RuntimeTaskGraph,
+    pub(super) route_plan: &'a RuntimeRoutePlanReceipt,
+    pub(super) budget_pool: &'a RuntimeBudgetPool,
+    pub(super) join_receipt: &'a RuntimeJoinReceipt,
+    pub(super) trusted_roots: &'a [&'a RuntimeTrustRoot],
+    pub(super) trusted_root_signer_keys: &'a [PublicKey],
+}
+
+pub(super) fn validate_execution_lease_context(
+    lease: &RuntimeExecutionLease,
+    context: ExecutionLeaseContext<'_>,
+) -> Result<(), TransactionPassportError> {
+    let ExecutionLeaseContext {
+        task_graph_sha256,
+        task_graph,
+        route_plan,
+        budget_pool,
+        join_receipt,
+        trusted_roots,
+        trusted_root_signer_keys,
+    } = context;
+    if task_graph.schema != SWARM_TASK_GRAPH_SCHEMA_ID {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "task graph schema mismatch".to_string(),
+        ));
+    }
+    for (field, value) in [
+        ("task graph id", &task_graph.graph_id),
+        (
+            "task graph root transaction",
+            &task_graph.root_transaction_ref,
+        ),
+        ("task graph planner subject", &task_graph.planner_subject),
+        ("task graph issuer", &task_graph.issuer),
+        ("task graph signature", &task_graph.signature),
+        ("task graph budget pool ref", &task_graph.budget_pool_ref),
+        (
+            "task graph revocation epoch ref",
+            &task_graph.revocation_epoch_ref,
+        ),
+    ] {
+        require_non_empty(value, field)?;
+    }
+    if task_graph.expires_at_unix_ms <= task_graph.created_at_unix_ms {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "task graph expired before creation".to_string(),
+        ));
+    }
+    if task_graph.max_fanout == 0 {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "task graph max fanout must be positive".to_string(),
+        ));
+    }
+    if task_graph.max_depth == 0 && task_graph.nodes.iter().any(|node| node.depth > 0) {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "task graph max depth does not cover child tasks".to_string(),
+        ));
+    }
+    if task_graph.multi_hop_witness_chains == Some(true) && task_graph.max_depth < 2 {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "task graph multi-hop setting requires depth".to_string(),
+        ));
+    }
+    for route_plan_ref in &task_graph.route_plan_refs {
+        require_non_empty(route_plan_ref, "task graph route plan ref")?;
+    }
+    for edge in &task_graph.edges {
+        require_non_empty(&edge.from_task_id, "task graph edge from")?;
+        require_non_empty(&edge.to_task_id, "task graph edge to")?;
+        require_non_empty(&edge.edge_type, "task graph edge type")?;
+    }
+    for join in &task_graph.joins {
+        require_non_empty(&join.join_id, "task graph join id")?;
+        require_non_empty(&join.next_task_id, "task graph join next task")?;
+        if join.parent_task_ids.is_empty() {
+            return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                "task graph join parent tasks missing".to_string(),
+            ));
+        }
+        for parent_task_id in &join.parent_task_ids {
+            require_non_empty(parent_task_id, "task graph join parent task")?;
+        }
+    }
+    if task_graph_sha256 != lease.task_graph_digest {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease task graph digest mismatch".to_string(),
+        ));
+    }
+    ensure_runtime_identity_is_trusted(
+        "task graph issuer",
+        &task_graph.issuer,
+        trusted_roots,
+        trusted_root_signer_keys,
+    )?;
+    verify_task_graph_signature(task_graph)?;
+    if !task_graph
+        .route_plan_refs
+        .iter()
+        .any(|route_plan_ref| route_plan_ref == &route_plan.route_plan_id)
+    {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease route plan not listed in task graph".to_string(),
+        ));
+    }
+    if route_plan.graph_id != task_graph.graph_id {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease route plan graph mismatch".to_string(),
+        ));
+    }
+    if route_plan.task_id != lease.child_task_id {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease child task mismatch".to_string(),
+        ));
+    }
+    let task = task_graph
+        .nodes
+        .iter()
+        .find(|node| node.task_id == lease.child_task_id)
+        .ok_or_else(|| {
+            TransactionPassportError::RuntimeSecurityClaimFailed(
+                "execution lease child task missing from task graph".to_string(),
+            )
+        })?;
+    require_non_empty(&task.scope_hash, "task graph child scope hash")?;
+    validate_digest_field("task graph child scope hash", &task.scope_hash)?;
+    if task.depth == 0 || task.parent_task_id.as_deref().is_none() {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease child task missing parent".to_string(),
+        ));
+    }
+    if task.depth > task_graph.max_depth {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease child task exceeds graph depth".to_string(),
+        ));
+    }
+    if let Some(continuation_token_ref) = task.continuation_token_ref.as_deref() {
+        require_non_empty(continuation_token_ref, "task graph continuation token ref")?;
+    }
+    if task.route_plan_ref.as_deref() != Some(route_plan.route_plan_id.as_str()) {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease child task route plan mismatch".to_string(),
+        ));
+    }
+    if task.budget_allocation_ref.as_deref() != Some(lease.budget_allocation_ref.as_str()) {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease child task budget allocation mismatch".to_string(),
+        ));
+    }
+    if budget_pool.schema != SWARM_BUDGET_POOL_SCHEMA_ID {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "budget pool schema mismatch".to_string(),
+        ));
+    }
+    require_non_empty(&budget_pool.currency, "budget pool currency")?;
+    if budget_pool.total_units == 0 {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "budget pool total units missing".to_string(),
+        ));
+    }
+    if budget_pool.pool_id != lease.budget_pool_ref {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease budget pool mismatch".to_string(),
+        ));
+    }
+    if budget_pool.pool_id != task_graph.budget_pool_ref
+        || budget_pool.graph_id != task_graph.graph_id
+    {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease budget pool task graph mismatch".to_string(),
+        ));
+    }
+    let allocation = budget_pool
+        .allocations
+        .iter()
+        .find(|allocation| allocation.allocation_id == lease.budget_allocation_ref)
+        .ok_or_else(|| {
+            TransactionPassportError::RuntimeSecurityClaimFailed(
+                "execution lease budget allocation missing".to_string(),
+            )
+        })?;
+    if allocation.task_id != lease.child_task_id {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease budget allocation task mismatch".to_string(),
+        ));
+    }
+    require_non_empty(&allocation.dimension_id, "budget allocation dimension")?;
+    if allocation.max_units == 0 {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease budget allocation max units missing".to_string(),
+        ));
+    }
+    if allocation.reserved_units
+        + allocation.active_units
+        + allocation.consumed_units
+        + allocation.released_units
+        + allocation.reversed_units
+        > allocation.max_units
+    {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease budget allocation exceeds max units".to_string(),
+        ));
+    }
+    if !matches!(allocation.state.as_str(), "reserved" | "active") {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease budget allocation is not active".to_string(),
+        ));
+    }
+    if join_receipt.schema != SWARM_JOIN_RECEIPT_SCHEMA_ID {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "join receipt schema mismatch".to_string(),
+        ));
+    }
+    for (field, value) in [
+        ("join receipt chain id", &join_receipt.chain_id),
+        (
+            "join receipt parent set hash",
+            &join_receipt.parent_set_hash,
+        ),
+        ("join receipt predicate", &join_receipt.join_predicate),
+        ("join receipt result digest", &join_receipt.result_digest),
+        ("join receipt issuer", &join_receipt.issuer),
+        ("join receipt signature", &join_receipt.signature),
+    ] {
+        require_non_empty(value, field)?;
+    }
+    validate_digest_field(
+        "join receipt parent set hash",
+        &join_receipt.parent_set_hash,
+    )?;
+    validate_digest_field("join receipt result digest", &join_receipt.result_digest)?;
+    verify_join_receipt_signature(join_receipt)?;
+    if join_receipt.dag_ordinal == 0 || join_receipt.hlc_unix_ms == 0 {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "join receipt ordering fields missing".to_string(),
+        ));
+    }
+    if join_receipt.join_id != lease.join_receipt_ref {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease join receipt mismatch".to_string(),
+        ));
+    }
+    if join_receipt.graph_id != task_graph.graph_id {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease join receipt graph mismatch".to_string(),
+        ));
+    }
+    if join_receipt.next_task_id != lease.child_task_id {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease join receipt child task mismatch".to_string(),
+        ));
+    }
+    if join_receipt.expected_parent_receipt_ids != join_receipt.actual_parent_receipt_ids
+        || !join_receipt
+            .actual_parent_receipt_ids
+            .iter()
+            .any(|receipt_id| receipt_id == &lease.parent_receipt_ref)
+    {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease parent receipt mismatch".to_string(),
+        ));
+    }
+    if !join_receipt.parent_task_receipts.iter().any(|receipt| {
+        receipt.receipt_id == lease.parent_receipt_ref
+            && receipt.task_id == task.parent_task_id.as_deref().unwrap_or_default()
+    }) {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease parent task receipt missing".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn verify_join_receipt_signature(
+    receipt: &RuntimeJoinReceipt,
+) -> Result<(), TransactionPassportError> {
+    let public_key = self_certifying_public_key(&receipt.issuer, "join receipt issuer")?;
+    let signature = Signature::from_hex(&receipt.signature).map_err(|error| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+            "join receipt signature invalid: {error}"
+        ))
+    })?;
+    let verified = public_key
+        .verify_canonical(&join_receipt_signature_body(receipt)?, &signature)
+        .map_err(|error| {
+            TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+                "join receipt signature invalid: {error}"
+            ))
+        })?;
+    if verified {
+        Ok(())
+    } else {
+        Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "join receipt signature invalid".to_string(),
+        ))
+    }
+}
+
+fn join_receipt_signature_body(
+    receipt: &RuntimeJoinReceipt,
+) -> Result<serde_json::Value, TransactionPassportError> {
+    let mut body = serde_json::to_value(receipt).map_err(|error| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+            "join receipt signature body invalid: {error}"
+        ))
+    })?;
+    let object = body.as_object_mut().ok_or_else(|| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(
+            "join receipt signature body invalid".to_string(),
+        )
+    })?;
+    object.remove("signature");
+    Ok(body)
 }
 
 pub(super) fn validate_request_digest_binding(
@@ -728,16 +1190,61 @@ fn verify_execution_lease_signature(
     }
 }
 
+fn verify_task_graph_signature(
+    task_graph: &RuntimeTaskGraph,
+) -> Result<(), TransactionPassportError> {
+    let public_key = self_certifying_public_key(&task_graph.issuer, "task graph issuer")?;
+    let signature = Signature::from_hex(&task_graph.signature).map_err(|error| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+            "task graph signature invalid: {error}"
+        ))
+    })?;
+    let mut body = serde_json::to_value(task_graph).map_err(|error| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+            "task graph signature body invalid: {error}"
+        ))
+    })?;
+    let object = body.as_object_mut().ok_or_else(|| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(
+            "task graph signature body invalid".to_string(),
+        )
+    })?;
+    object.remove("signature");
+    let verified = public_key
+        .verify_canonical(&body, &signature)
+        .map_err(|error| {
+            TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+                "task graph signature invalid: {error}"
+            ))
+        })?;
+    if verified {
+        Ok(())
+    } else {
+        Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "task graph signature invalid".to_string(),
+        ))
+    }
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeExecutionLeaseSignatureBody<'a> {
     schema: &'static str,
     lease_id: &'a str,
+    subject_agent: &'a str,
     tool_server_id: &'a str,
     tool_instance_id: &'a str,
     tool_manifest_digest: &'a str,
     sandbox_attestation_ref: &'a str,
+    capability_digest: &'a str,
     request_digest: &'a str,
+    response_policy_digest: &'a str,
+    task_graph_digest: &'a str,
+    child_task_id: &'a str,
+    parent_receipt_ref: &'a str,
+    join_receipt_ref: &'a str,
+    budget_pool_ref: &'a str,
+    budget_allocation_ref: &'a str,
     subject_capability_digest: &'a str,
     ancestor_capability_digest: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -761,11 +1268,20 @@ fn execution_lease_signature_body(
     RuntimeExecutionLeaseSignatureBody {
         schema: RUNTIME_EXECUTION_LEASE_SIGNATURE_SCHEMA,
         lease_id: &lease.lease_id,
+        subject_agent: &lease.subject_agent,
         tool_server_id: &lease.tool_server_id,
         tool_instance_id: &lease.tool_instance_id,
         tool_manifest_digest: &lease.tool_manifest_digest,
         sandbox_attestation_ref: &lease.sandbox_attestation_ref,
+        capability_digest: &lease.capability_digest,
         request_digest: &lease.request_digest,
+        response_policy_digest: &lease.response_policy_digest,
+        task_graph_digest: &lease.task_graph_digest,
+        child_task_id: &lease.child_task_id,
+        parent_receipt_ref: &lease.parent_receipt_ref,
+        join_receipt_ref: &lease.join_receipt_ref,
+        budget_pool_ref: &lease.budget_pool_ref,
+        budget_allocation_ref: &lease.budget_allocation_ref,
         subject_capability_digest: &lease.subject_capability_digest,
         ancestor_capability_digest: &lease.ancestor_capability_digest,
         revocation_epoch_ref: lease.revocation_epoch_ref.as_deref(),
@@ -1370,6 +1886,57 @@ pub(super) fn validate_tool_server_ack(
     Ok(())
 }
 
+pub(super) fn validate_trusted_time_proof(
+    lease: &RuntimeExecutionLease,
+    ack: &RuntimeToolServerAck,
+    proof: &RuntimeTrustedTimeProof,
+    trusted_roots: &[&RuntimeTrustRoot],
+    trusted_root_signer_keys: &[PublicKey],
+) -> Result<(), TransactionPassportError> {
+    if proof.schema != RUNTIME_TRUSTED_TIME_PROOF_SCHEMA_ID {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "trusted time proof schema mismatch".to_string(),
+        ));
+    }
+    for (field, value) in [
+        ("proof_id", &proof.proof_id),
+        ("lease_id", &proof.lease_id),
+        ("ack_id", &proof.ack_id),
+        ("observed_at", &proof.observed_at),
+        ("time_source_id", &proof.time_source_id),
+        ("issuer", &proof.issuer),
+        ("signature", &proof.signature),
+    ] {
+        require_non_empty(value, field)?;
+    }
+    if proof.lease_id != lease.lease_id || proof.ack_id != ack.ack_id {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "trusted time proof acknowledgement mismatch".to_string(),
+        ));
+    }
+    let lease_issued_at = parse_rfc3339_utc(&lease.issued_at, "execution lease issued_at")?;
+    let lease_expires_at = parse_rfc3339_utc(&lease.expires_at, "execution lease expires_at")?;
+    let observed_at = parse_rfc3339_utc(&proof.observed_at, "trusted time observed_at")?;
+    if proof.max_clock_skew_ms > 30_000 {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "trusted time proof clock skew bound too wide".to_string(),
+        ));
+    }
+    if observed_at < lease_issued_at || observed_at > lease_expires_at {
+        return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "trusted time proof outside execution lease".to_string(),
+        ));
+    }
+    ensure_runtime_identity_is_trusted(
+        "trusted time issuer",
+        &proof.issuer,
+        trusted_roots,
+        trusted_root_signer_keys,
+    )?;
+    verify_trusted_time_proof_signature(proof)?;
+    Ok(())
+}
+
 fn verify_tool_server_ack_signature(
     ack: &RuntimeToolServerAck,
 ) -> Result<(), TransactionPassportError> {
@@ -1391,6 +1958,31 @@ fn verify_tool_server_ack_signature(
     } else {
         Err(TransactionPassportError::RuntimeSecurityClaimFailed(
             "tool-server acknowledgement signature invalid".to_string(),
+        ))
+    }
+}
+
+fn verify_trusted_time_proof_signature(
+    proof: &RuntimeTrustedTimeProof,
+) -> Result<(), TransactionPassportError> {
+    let public_key = self_certifying_public_key(&proof.issuer, "trusted time issuer")?;
+    let signature = Signature::from_hex(&proof.signature).map_err(|error| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+            "trusted time proof signature invalid: {error}"
+        ))
+    })?;
+    let verified = public_key
+        .verify_canonical(&trusted_time_proof_signature_body(proof), &signature)
+        .map_err(|error| {
+            TransactionPassportError::RuntimeSecurityClaimFailed(format!(
+                "trusted time proof signature invalid: {error}"
+            ))
+        })?;
+    if verified {
+        Ok(())
+    } else {
+        Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+            "trusted time proof signature invalid".to_string(),
         ))
     }
 }
@@ -1422,6 +2014,34 @@ fn tool_server_ack_signature_body(
         nonce: &ack.nonce,
         terminal_status: &ack.terminal_status,
         issued_at: &ack.issued_at,
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeTrustedTimeProofSignatureBody<'a> {
+    schema: &'static str,
+    proof_id: &'a str,
+    lease_id: &'a str,
+    ack_id: &'a str,
+    observed_at: &'a str,
+    max_clock_skew_ms: u64,
+    time_source_id: &'a str,
+    issuer: &'a str,
+}
+
+fn trusted_time_proof_signature_body(
+    proof: &RuntimeTrustedTimeProof,
+) -> RuntimeTrustedTimeProofSignatureBody<'_> {
+    RuntimeTrustedTimeProofSignatureBody {
+        schema: RUNTIME_TRUSTED_TIME_PROOF_SIGNATURE_SCHEMA,
+        proof_id: &proof.proof_id,
+        lease_id: &proof.lease_id,
+        ack_id: &proof.ack_id,
+        observed_at: &proof.observed_at,
+        max_clock_skew_ms: proof.max_clock_skew_ms,
+        time_source_id: &proof.time_source_id,
+        issuer: &proof.issuer,
     }
 }
 

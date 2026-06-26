@@ -336,11 +336,11 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
     let mut artifacts = BTreeMap::new();
     let mut graph_nodes = Vec::new();
 
-    let reserve_units = match case {
+    let reserve_units: u64 = match case {
         EnterpriseCase::RiskMissingReserve => 0,
         _ => 1_200,
     };
-    let capital_units = match case {
+    let capital_units: u64 = match case {
         EnterpriseCase::RiskExposureExceedsCapital => 4_000,
         EnterpriseCase::RiskCapitalAdequacyBreach => 5_500,
         _ => 10_000,
@@ -349,7 +349,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         EnterpriseCase::RiskCoverageSubjectMismatch => "did:chio:buyer-other",
         _ => "did:chio:buyer-enterprise",
     };
-    let consumed_reserve_units = match case {
+    let consumed_reserve_units: u64 = match case {
         EnterpriseCase::RiskReverseSlashNetReconciled => 400,
         EnterpriseCase::RiskDoubleConsumedReserve
         | EnterpriseCase::RiskMarketSlashFacilityReserve
@@ -371,7 +371,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         EnterpriseCase::RiskMultipleCoveredClaimPayouts => 1_200,
         _ => 0,
     };
-    let payout_units = match case {
+    let payout_units: u64 = match case {
         EnterpriseCase::RiskMarketSlashFacilityReserve
         | EnterpriseCase::RiskMarketSlashWithSanctionBridge
         | EnterpriseCase::RiskMarketSlashMissingSanctionReserveLedger
@@ -954,6 +954,31 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
             "exposure_units": 5_000,
             "reserve_ref": "reserve-enterprise-valid",
             "status": "bound"
+        },
+        "premium": {
+            "premium_id": "premium-enterprise-valid",
+            "quote_ref": "data-governance-report",
+            "coverage_id": "coverage-enterprise-valid",
+            "order_id": "order-commerce-001",
+            "subject": coverage_subject,
+            "currency": "USD",
+            "coverage_exposure_units": 5_000,
+            "quoted_premium_units": 50,
+            "bound_premium_units": 50,
+            "collected_premium_units": 0,
+            "status": "bound"
+        },
+        "capital_decomposition": {
+            "decomposition_id": "capital-decomposition-enterprise-valid",
+            "source_kind": "facility_commitment",
+            "source_ref": "approval-case",
+            "currency": "USD",
+            "committed_units": capital_units,
+            "held_units": reserve_units,
+            "drawn_units": 0,
+            "disbursed_units": payout_units,
+            "impaired_units": 0,
+            "available_units": capital_units.saturating_sub(reserve_units + payout_units)
         },
         "reconciliation": {
             "order_id": "order-commerce-001",

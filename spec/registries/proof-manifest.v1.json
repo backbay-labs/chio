@@ -920,6 +920,56 @@
       ]
     },
     {
+      "id": "manifest.commerce.coverage_decision_bound",
+      "claim_ref": "claim.commerce.coverage_decision_bound",
+      "introduced_by": "commerce-payments-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_accepts_coverage_required_with_bound_risk_report"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_coverage_required_without_risk_report"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_marketplace_risk_ref_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/open-appeal-claim-payout/risk-comptroller-report.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.commerce.trust_market_context_bound",
+      "claim_ref": "claim.commerce.trust_market_context_bound",
+      "introduced_by": "commerce-payments-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_accepts_marketplace_refs_with_verified_trust_market_context"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_marketplace_refs_without_verified_trust_market_context"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_trust_market_refs_with_required_false"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_marketplace_selected_provider_subject_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/offline-psp-valid/order-context.json"
+        }
+      ]
+    },
+    {
       "id": "manifest.workflow.preflight_child_scope_bounded",
       "claim_ref": "claim.workflow.preflight_child_scope_bounded",
       "introduced_by": "workflow-preflight-v1",
@@ -2417,6 +2467,14 @@
         {
           "kind": "negative_fixture",
           "ref": "fixtures/proof-room/public-settlement/negatives/finality-below-threshold.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/public-settlement/negatives/missing-independent-head.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/public-settlement/negatives/independent-head-block-hash-mismatch.json"
         },
         {
           "kind": "negative_fixture",

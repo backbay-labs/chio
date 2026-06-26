@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
+use chio_core_types::PublicKey;
 use chio_risk_comptroller::{
-    validate_risk_portfolio_reports, validate_risk_report, RiskComptrollerReport,
+    validate_risk_portfolio_reports, validate_risk_report, validate_signed_risk_report,
+    RiskComptrollerReport,
 };
 use chio_test_support::prelude::*;
 use chio_transaction_passport::TransactionPassport;
@@ -48,6 +50,19 @@ fn assert_risk_report_schema_accepts(report: &serde_json::Value) {
         errors.is_empty(),
         "risk comptroller schema rejected verified report:\n{errors}"
     );
+}
+
+fn risk_report_signer_key(report: &serde_json::Value) -> PublicKey {
+    let signature = report["signature"]
+        .as_str()
+        .test_expect("risk report signature");
+    let Some(signature_ref) = signature.strip_prefix("sig-ed25519:") else {
+        panic!("risk report signature uses supported prefix");
+    };
+    let Some((public_key_hex, _)) = signature_ref.split_once(':') else {
+        panic!("risk report signature includes public key");
+    };
+    PublicKey::from_hex(public_key_hex).test_expect("risk report signer key parses")
 }
 
 fn sanction_backed_market_slash_report_value() -> serde_json::Value {
@@ -115,10 +130,60 @@ fn set_claim_payout_capital_instruction(report: &mut serde_json::Value) {
             "reconciled_state": "not_observed"
         }
     ]);
+    refresh_premium_binding(report);
+    refresh_capital_decomposition(report);
+}
+
+fn refresh_premium_binding(report: &mut serde_json::Value) {
+    let exposure_units = report["coverage"]["exposure_units"]
+        .as_u64()
+        .test_expect("coverage exposure units");
+    let premium_units = exposure_units.div_ceil(100).max(1);
+    report["premium"]["coverage_id"] = report["coverage"]["coverage_id"].clone();
+    report["premium"]["order_id"] = report["order_id"].clone();
+    report["premium"]["subject"] = report["coverage"]["subject"].clone();
+    report["premium"]["currency"] = report["coverage"]["currency"].clone();
+    report["premium"]["coverage_exposure_units"] = serde_json::json!(exposure_units);
+    report["premium"]["quoted_premium_units"] = serde_json::json!(premium_units);
+    report["premium"]["bound_premium_units"] = serde_json::json!(premium_units);
+    if report["premium"]["status"].as_str() == Some("collected") {
+        report["premium"]["collected_premium_units"] = serde_json::json!(premium_units);
+    }
+}
+
+fn refresh_capital_decomposition(report: &mut serde_json::Value) {
+    let committed_units = report["facility"]["capital_units"]
+        .as_u64()
+        .test_expect("facility capital units");
+    let held_units = report["facility"]["reserve_units"]
+        .as_u64()
+        .test_expect("facility reserve units");
+    let settlement_units = report["reconciliation"]["settlement_units"]
+        .as_u64()
+        .test_expect("settlement units");
+    let payout_units = report["reconciliation"]["payout_units"]
+        .as_u64()
+        .test_expect("payout units");
+    let drawn_units = if settlement_units == 0 {
+        payout_units
+    } else {
+        0
+    };
+    let disbursed_units = settlement_units;
+    let deductions = held_units
+        .checked_add(drawn_units)
+        .and_then(|units| units.checked_add(disbursed_units))
+        .test_expect("capital deductions do not overflow");
+    report["capital_decomposition"]["committed_units"] = serde_json::json!(committed_units);
+    report["capital_decomposition"]["held_units"] = serde_json::json!(held_units);
+    report["capital_decomposition"]["drawn_units"] = serde_json::json!(drawn_units);
+    report["capital_decomposition"]["disbursed_units"] = serde_json::json!(disbursed_units);
+    report["capital_decomposition"]["available_units"] =
+        serde_json::json!(committed_units.saturating_sub(deductions));
 }
 
 #[test]
-fn verified_enterprise_risk_report_matches_public_schema() {
+fn risk_comptroller_valid_fixture_passes() {
     let passport = enterprise_passport("valid-autonomous-commerce");
     let report_value = enterprise_risk_report_value("valid-autonomous-commerce");
     let report: RiskComptrollerReport =
@@ -126,6 +191,70 @@ fn verified_enterprise_risk_report_matches_public_schema() {
 
     validate_risk_report(&passport, &report).test_expect("risk report verifies");
     assert_risk_report_schema_accepts(&report_value);
+    let projection = serde_json::json!({
+        "risk_state": report_value["risk_state"],
+        "facility_state": report_value["facility"]["state"],
+        "coverage_status": report_value["coverage"]["status"],
+        "premium_status": report_value["premium"]["status"],
+        "reconciliation_status": report_value["reconciliation"]["status"],
+        "capital_available_units": report_value["capital_decomposition"]["available_units"],
+    });
+    assert_eq!(
+        projection,
+        serde_json::json!({
+            "risk_state": "reconciled",
+            "facility_state": "settlement_matched",
+            "coverage_status": "bound",
+            "premium_status": "collected",
+            "reconciliation_status": "balanced",
+            "capital_available_units": 8800,
+        })
+    );
+}
+
+#[test]
+fn signed_risk_report_rejects_untrusted_comptroller_signer() {
+    let passport = enterprise_passport("valid-autonomous-commerce");
+    let report_value = enterprise_risk_report_value("valid-autonomous-commerce");
+    let untrusted_key =
+        PublicKey::from_hex("ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c")
+            .test_expect("untrusted key parses");
+
+    let error = validate_signed_risk_report(&passport, &report_value, &[untrusted_key])
+        .test_expect_err("risk report signer must be pinned externally");
+
+    assert!(error
+        .to_string()
+        .contains("risk comptroller report signer untrusted"));
+}
+
+#[test]
+fn signed_risk_report_returns_report_after_signature_verification() {
+    let passport = enterprise_passport("valid-autonomous-commerce");
+    let report_value = enterprise_risk_report_value("valid-autonomous-commerce");
+    let trusted_key = risk_report_signer_key(&report_value);
+
+    let report = validate_signed_risk_report(&passport, &report_value, &[trusted_key])
+        .test_expect("signed risk report verifies");
+
+    assert_eq!(report.id, "risk-comptroller-enterprise-valid");
+}
+
+#[test]
+fn report_rejects_bound_coverage_without_premium_binding() {
+    let passport = enterprise_passport("valid-autonomous-commerce");
+    let mut report_value = enterprise_risk_report_value("valid-autonomous-commerce");
+    report_value
+        .as_object_mut()
+        .test_expect("risk report is object")
+        .remove("premium");
+    let report: RiskComptrollerReport =
+        serde_json::from_value(report_value).test_expect("risk report reparses");
+
+    let error = validate_risk_report(&passport, &report)
+        .test_expect_err("bound coverage must cite premium binding");
+
+    assert!(error.to_string().contains("risk premium binding missing"));
 }
 
 #[test]

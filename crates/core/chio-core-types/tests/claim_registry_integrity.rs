@@ -162,6 +162,51 @@ fn transaction_passport_required_claim_rows_are_registered() {
 }
 
 #[test]
+fn commerce_order_emitted_claim_rows_are_registered() {
+    let root = workspace_root();
+    let claim_registry = read_json(&root.join("spec/registries/claim-registry.v1.json"));
+    let proof_manifest = read_json(&root.join("spec/registries/proof-manifest.v1.json"));
+    let claim_ids = claim_registry["claims"]
+        .as_array()
+        .test_expect("claim registry has claims array")
+        .iter()
+        .filter_map(|claim| claim.get("id").and_then(serde_json::Value::as_str))
+        .collect::<BTreeSet<_>>();
+    let manifest_claim_refs = proof_manifest["manifests"]
+        .as_array()
+        .test_expect("proof manifest has manifests array")
+        .iter()
+        .filter_map(|manifest| {
+            manifest
+                .get("claim_ref")
+                .and_then(serde_json::Value::as_str)
+        })
+        .collect::<BTreeSet<_>>();
+    let source =
+        std::fs::read_to_string(root.join("crates/platform/chio-commerce-order/src/lib.rs"))
+            .test_expect("commerce verifier source is readable");
+    let emitted_claims = source
+        .split('"')
+        .filter(|part| part.starts_with("claim."))
+        .collect::<BTreeSet<_>>();
+
+    assert!(
+        !emitted_claims.is_empty(),
+        "commerce verifier should emit registered claims"
+    );
+    for claim in emitted_claims {
+        assert!(
+            claim_ids.contains(claim),
+            "commerce verifier emits unregistered claim: {claim}"
+        );
+        assert!(
+            manifest_claim_refs.contains(claim),
+            "commerce verifier emits claim without proof manifest: {claim}"
+        );
+    }
+}
+
+#[test]
 fn public_settlement_claims_reference_positive_fixture() {
     assert_proof_manifests_reference_positive_fixture(
         "public-settlement-v1",
@@ -177,6 +222,83 @@ fn swarm_authority_claims_reference_positive_fixture() {
         "fixtures/proof-room/swarm-authority/",
         "swarm authority",
     );
+}
+
+#[test]
+fn third_wave_launch_schema_boundary_matches_registry_owner_acceptance() {
+    let root = workspace_root();
+    let schema_registry = read_json(&root.join("spec/schemas/registry.json"));
+    let artifact_registry = std::fs::read_to_string(
+        root.join("docs/superpowers/research/chio-launch/indices/artifact-registry.md"),
+    )
+    .test_expect("artifact registry is readable");
+    let registered_schemas = schema_registry["artifacts"]
+        .as_array()
+        .test_expect("schema registry has artifacts array")
+        .iter()
+        .filter_map(|entry| entry.get("schema").and_then(serde_json::Value::as_str))
+        .collect::<BTreeSet<_>>();
+    let known_signed_schemas = chio_core_types::KNOWN_SIGNED_ARTIFACT_SCHEMAS
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+
+    let accepted_schemas = [
+        "chio.commerce.payment-lifecycle.v1",
+        "chio.commerce.mandate-allowance-ledger.v1",
+        "chio.workflow.preflight-plan.v1",
+        "chio.workflow.preflight-report.v1",
+        "chio.enterprise.telemetry-projection.v1",
+        "chio.enterprise.data-governance-report.v1",
+        "chio.enterprise.approval-case.v1",
+        "chio.enterprise.evidence-export-bundle.v1",
+        "chio.enterprise.control-evidence-map.v1",
+    ];
+    let candidate_schemas = [
+        "chio.commerce.dispute-recovery-ledger.v1",
+        "chio.commerce.fraud-assessment.v1",
+        "chio.commerce.currency-liquidity-ledger.v1",
+        "chio.commerce.recurring-agent-commerce.v1",
+        "chio.workflow.what-if-delta.v1",
+        "chio.workflow.rehearsal-run.v1",
+        "chio.workflow.replay-capsule.v1",
+        "chio.workflow.model-provider-conformance.v1",
+        "chio.workflow.approval-gate.v1",
+        "chio.enterprise.policy-pack-manifest.v1",
+        "chio.enterprise.access-decision-report.v1",
+        "chio.enterprise.incident-review-case.v1",
+        "chio.enterprise.regulator-review-bundle.v1",
+    ];
+
+    for schema in accepted_schemas {
+        assert!(
+            registered_schemas.contains(schema),
+            "accepted third-wave schema is not registered: {schema}"
+        );
+        assert!(
+            known_signed_schemas.contains(schema),
+            "accepted third-wave schema is not a known signed artifact: {schema}"
+        );
+        assert!(
+            artifact_registry.contains(schema),
+            "artifact registry omits accepted third-wave schema: {schema}"
+        );
+    }
+
+    for schema in candidate_schemas {
+        assert!(
+            !registered_schemas.contains(schema),
+            "candidate third-wave schema registered without registry-owner promotion: {schema}"
+        );
+        assert!(
+            !known_signed_schemas.contains(schema),
+            "candidate third-wave schema signed without registry-owner promotion: {schema}"
+        );
+        assert!(
+            artifact_registry.contains(schema),
+            "artifact registry must keep third-wave candidate visible for scope review: {schema}"
+        );
+    }
 }
 
 #[test]

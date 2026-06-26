@@ -16,6 +16,12 @@ The homepage promise is not a narrow runtime attestation story. It says Chio is 
 
 If any of those stay as isolated demos, the copy overclaims. If they are joined by a signed Transaction Passport and a public verifier, the copy becomes defensible.
 
+## Naming Decision
+
+Transaction Passport is the canonical launch proof root. It is distinct from an Agent Passport, which identifies or presents an agent, buyer, provider, or workload. Agent Passport artifacts can appear as evidence inside the Transaction Passport graph, but they do not replace the transaction root.
+
+Transaction Passport is also distinct from a proof package or Proof Room bundle. A package or bundle is a transport and review layout around artifacts. The Transaction Passport is the signed artifact whose evidence graph, claim set, policy, and verifier report determine whether the launch claim is accepted.
+
 ## Campaign Outputs
 
 | Area | Raw agent research | Architecture outline | Build plan | Launch role |

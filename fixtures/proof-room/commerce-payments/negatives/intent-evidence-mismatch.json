@@ -1,0 +1,8 @@
+{
+  "schema": "chio.commerce.negative-fixture.v1",
+  "id": "intent-evidence-mismatch",
+  "claim_ref": "claim.commerce.order_replay_consistent",
+  "base_fixture": "fixtures/proof-room/commerce-payments/offline-psp-valid/transaction-passport.json",
+  "case": "IntentEvidenceMismatch",
+  "expected_failure_code": "proof-room.negative.intent-event-missing-intent-evidence"
+}

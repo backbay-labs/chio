@@ -90,6 +90,7 @@ fn transaction_verifier_report_schema_requires_machine_result_fields() {
         "claim_set_path": "claim-set.json",
         "verifier_policy_sha256": "c".repeat(64),
         "verifier_policy_path": "verifier-policy.json",
+        "transparencyState": "not_present",
         "claimResults": [
             {
                 "claim_id": "claim.transaction.passport_root_verified",
@@ -103,7 +104,7 @@ fn transaction_verifier_report_schema_requires_machine_result_fields() {
         "valid verified report rejected"
     );
 
-    for field in ["accepted", "state", "claimResults"] {
+    for field in ["accepted", "state", "transparencyState", "claimResults"] {
         let mut missing_field = valid_verified_report.clone();
         missing_field
             .as_object_mut()
@@ -270,6 +271,26 @@ fn claim_set_with_risk_claim_bytes() -> Vec<u8> {
 
 fn verifier_policy_with_omission_bytes() -> Vec<u8> {
     br#"{"schema":"chio.transaction.verifier-policy.v1","id":"verifier-policy-with-omission","issued_at":"2026-06-10T00:00:00Z","required_claims":["claim.transaction.passport_root_verified"],"omitted_claims":["claim.transaction.settlement_finality_verified"]}"#.to_vec()
+}
+
+fn verifier_policy_with_rich_gates(gates: Value) -> Vec<u8> {
+    let mut policy = json!({
+        "schema": "chio.transaction.verifier-policy.v1",
+        "id": "verifier-policy-rich-gates",
+        "issued_at": "2026-06-10T00:00:00Z",
+        "required_claims": ["claim.transaction.passport_root_verified"],
+        "omitted_claims": []
+    });
+    let policy_object = policy
+        .as_object_mut()
+        .test_expect("rich verifier policy is an object");
+    for (key, value) in gates
+        .as_object()
+        .test_expect("rich verifier policy gates are an object")
+    {
+        policy_object.insert(key.clone(), value.clone());
+    }
+    serde_json::to_vec(&policy).test_expect("rich verifier policy serializes")
 }
 
 #[derive(Clone, Copy)]
@@ -944,6 +965,95 @@ fn standalone_minimal_passport_accepts_governed_action_evidence() {
 }
 
 #[test]
+fn standalone_minimal_passport_preserves_nonbinary_claim_result_statuses() {
+    let mut artifacts = governed_action_artifacts();
+    let claim_set_bytes = serde_json::to_vec(&json!({
+        "schema": "chio.transaction.claim-set.v1",
+        "id": "claim-set-status-inventory",
+        "issued_at": "2026-06-10T00:00:00Z",
+        "claims": [
+            {
+                "claim_id": "claim.transaction.passport_root_verified",
+                "status": "verified",
+                "required_evidence": ["transaction-passport.json", "evidence-graph.json", "verifier-policy.json"],
+                "evidence_refs": ["transaction-passport.json", "evidence-graph.json", "verifier-policy.json"],
+                "verifier_module": "chio-transaction-passport::minimal"
+            },
+            {
+                "claim_id": "claim.transaction.settlement_finality_verified",
+                "status": "omitted",
+                "required_evidence": ["settlement-proof-bundle.json"],
+                "evidence_refs": [],
+                "verifier_module": "chio-transaction-passport::minimal"
+            },
+            {
+                "claim_id": "claim.external.vc_wallet_native_authority",
+                "status": "unsupported",
+                "required_evidence": ["external-projection-manifest.json"],
+                "evidence_refs": [],
+                "verifier_module": "chio-agent-web-interop"
+            },
+            {
+                "claim_id": "claim.transaction.buyer_review_rejected",
+                "status": "failed",
+                "required_evidence": ["buyer-review.json"],
+                "evidence_refs": ["buyer-review.json"],
+                "failure_reason": "buyer review rejected by verifier policy",
+                "verifier_module": "chio-transaction-passport::minimal"
+            }
+        ]
+    }))
+    .test_expect("claim set serializes");
+    artifacts.insert("claim-set.json".to_string(), claim_set_bytes.clone());
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let verifier_policy_bytes = valid_verifier_policy_bytes();
+    let mut passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
+    passport.claim_set_sha256 = sha256_hex(&claim_set_bytes);
+    passport.signature = chio_transaction_passport::sign_transaction_passport(
+        &passport,
+        &Keypair::from_seed(&[54u8; 32]),
+    )
+    .test_expect("standalone transaction passport resigns");
+
+    let report = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect("standalone verifier should preserve claim result statuses");
+
+    let statuses: BTreeMap<String, String> = report
+        .claim_results
+        .iter()
+        .map(|result| (result.claim_id.clone(), result.status.clone()))
+        .collect();
+    assert_eq!(
+        statuses.get("claim.transaction.passport_root_verified"),
+        Some(&"verified".to_string())
+    );
+    assert_eq!(
+        statuses.get("claim.transaction.settlement_finality_verified"),
+        Some(&"omitted".to_string())
+    );
+    assert_eq!(
+        statuses.get("claim.external.vc_wallet_native_authority"),
+        Some(&"unsupported".to_string())
+    );
+    assert_eq!(
+        statuses.get("claim.transaction.buyer_review_rejected"),
+        Some(&"failed".to_string())
+    );
+    assert_eq!(
+        report.verified_claims,
+        vec!["claim.transaction.passport_root_verified".to_string()]
+    );
+}
+
+#[test]
 fn standalone_minimal_passport_accepts_verifier_policy_as_policy_digest_anchor() {
     let guard_key = Keypair::from_seed(&[52u8; 32]);
     let receipt_key = Keypair::from_seed(&[53u8; 32]);
@@ -1542,6 +1652,166 @@ fn standalone_minimal_passport_rejects_unregistered_transaction_claim() {
 }
 
 #[test]
+fn standalone_minimal_passport_rejects_policy_disallowed_issuer() {
+    let mut artifacts = governed_action_artifacts();
+    let allowed_key = Keypair::from_seed(&[72u8; 32]);
+    let verifier_policy_bytes = verifier_policy_with_rich_gates(json!({
+        "accepted_passport_issuers": [
+            format!("did:chio:{}", allowed_key.public_key().to_hex())
+        ]
+    }));
+    artifacts.insert(
+        "verifier-policy.json".to_string(),
+        verifier_policy_bytes.clone(),
+    );
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
+
+    let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect_err("verifier policy issuer allowlist must fail closed");
+
+    assert!(
+        error
+            .to_string()
+            .contains("passport issuer not accepted by verifier policy"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_missing_policy_required_role() {
+    let mut artifacts = governed_action_artifacts();
+    let verifier_policy_bytes = verifier_policy_with_rich_gates(json!({
+        "required_evidence_roles": ["public-settlement-proof-bundle"]
+    }));
+    artifacts.insert(
+        "verifier-policy.json".to_string(),
+        verifier_policy_bytes.clone(),
+    );
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
+
+    let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect_err("verifier policy required evidence role must fail closed");
+
+    assert!(
+        error.to_string().contains(
+            "missing verifier policy required evidence role: public-settlement-proof-bundle"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_policy_transparency_state_mismatch() {
+    let mut artifacts = governed_action_artifacts();
+    let verifier_policy_bytes = verifier_policy_with_rich_gates(json!({
+        "accepted_transparency_states": ["trust_anchored"]
+    }));
+    artifacts.insert(
+        "verifier-policy.json".to_string(),
+        verifier_policy_bytes.clone(),
+    );
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
+
+    let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect_err("verifier policy transparency state must fail closed");
+
+    assert!(
+        error
+            .to_string()
+            .contains("transparency state not accepted by verifier policy: not_present"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_report_surfaces_transparency_state() {
+    let mut artifacts = governed_action_artifacts();
+    let verifier_policy_bytes = verifier_policy_with_rich_gates(json!({
+        "accepted_transparency_states": ["not_present"]
+    }));
+    artifacts.insert(
+        "verifier-policy.json".to_string(),
+        verifier_policy_bytes.clone(),
+    );
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
+
+    let report = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect("verifier policy accepted transparency state passes");
+
+    assert_eq!(report.transparency_state, "not_present");
+    let report_json = serde_json::to_value(&report).test_expect("report serializes");
+    assert_eq!(report_json["transparencyState"], "not_present");
+}
+
+#[test]
+fn root_claim_set_rejects_policy_required_commerce_state_without_claim() {
+    let mut artifacts = governed_action_artifacts();
+    let verifier_policy_bytes = verifier_policy_with_rich_gates(json!({
+        "required_commerce_states": ["settled"]
+    }));
+    artifacts.insert(
+        "verifier-policy.json".to_string(),
+        verifier_policy_bytes.clone(),
+    );
+    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let passport =
+        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, &verifier_policy_bytes);
+
+    let error = chio_transaction_passport::verify_passport_root_and_claim_set_artifacts(
+        &passport,
+        "transaction-passport.json".to_string(),
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &artifacts,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect_err("commerce-state policy gate must require settlement claim");
+
+    assert!(
+        error.to_string().contains(
+            "claim set missing required claim: claim.commerce.settlement_lifecycle_bound"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
 fn standalone_minimal_passport_rejects_governed_action_mismatch() {
     let mut artifacts = governed_action_artifacts();
     artifacts.insert(
@@ -1846,6 +2116,10 @@ fn runtime_online_checks_run_for_tool_ack_requirement() {
         lease["policy_digest"] = Value::String(policy_digest.clone());
         sign_runtime_lease_with_fixture_authority(lease);
     });
+    update_runtime_artifact(&mut bundle, "route-plan-receipt.json", |route_plan| {
+        route_plan["policyDigest"] = Value::String(policy_digest.clone());
+        sign_runtime_route_plan_with_fixture_authority(route_plan);
+    });
     update_runtime_artifact(&mut bundle, "allow-receipt.json", |receipt| {
         receipt["policy_digest"] = Value::String(policy_digest);
         sign_runtime_terminal_receipt_with_fixture_kernel(receipt);
@@ -1857,6 +2131,126 @@ fn runtime_online_checks_run_for_tool_ack_requirement() {
     assert!(report
         .verified_claims
         .contains(&"claim.runtime.tool_server_ack_bound".to_string()));
+}
+
+#[test]
+fn runtime_security_rejects_execution_lease_without_route_plan_receipt() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    update_runtime_artifact(&mut bundle, "execution-lease.json", |lease| {
+        lease
+            .as_object_mut()
+            .test_expect("execution lease is object")
+            .remove("route_plan_receipt_ref");
+        sign_runtime_lease_with_fixture_authority(lease);
+    });
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("side-effecting execution lease must bind a route-plan receipt");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("execution lease route plan receipt missing"),
+        "{error}"
+    );
+}
+
+#[test]
+fn runtime_security_rejects_execution_lease_without_task_graph_binding() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    remove_runtime_graph_nodes_by_role(&mut bundle, "swarm-task-graph");
+    bundle.artifacts.remove("task-graph.json");
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("side-effecting execution lease must bind a task graph");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("missing task graph for execution lease"),
+        "{error}"
+    );
+}
+
+#[test]
+fn runtime_security_rejects_execution_lease_without_budget_pool_binding() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    remove_runtime_graph_nodes_by_role(&mut bundle, "swarm-budget-pool");
+    bundle.artifacts.remove("budget-pool.json");
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("side-effecting execution lease must bind a budget pool");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("missing budget pool for execution lease"),
+        "{error}"
+    );
+}
+
+#[test]
+fn runtime_security_rejects_execution_lease_without_join_receipt_binding() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    remove_runtime_graph_nodes_by_role(&mut bundle, "swarm-join-receipt");
+    bundle.artifacts.remove("join-receipt.json");
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("side-effecting execution lease must bind a join receipt");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("missing join receipt for execution lease"),
+        "{error}"
+    );
+}
+
+#[test]
+fn runtime_security_rejects_tampered_join_receipt_signature() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    update_runtime_artifact(&mut bundle, "join-receipt.json", |join_receipt| {
+        sign_runtime_join_receipt_with_fixture_authority(join_receipt);
+        join_receipt["resultDigest"] = Value::String(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+        );
+    });
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("side-effecting execution lease must verify join receipt signature");
+    let error = error.to_string();
+
+    assert!(error.contains("join receipt signature invalid"), "{error}");
+}
+
+#[test]
+fn runtime_security_rejects_tool_ack_without_trusted_time_proof() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    remove_runtime_graph_nodes_by_role(&mut bundle, "trusted-time-proof");
+    bundle.artifacts.remove("trusted-time-proof.json");
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("tool entry time must be bound by trusted time proof");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("missing trusted time proof for tool acknowledgement"),
+        "{error}"
+    );
+}
+
+#[test]
+fn runtime_security_rejects_trusted_time_after_lease_expiry() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    update_runtime_artifact(&mut bundle, "trusted-time-proof.json", |proof| {
+        proof["observed_at"] = Value::String("2026-06-10T00:06:00Z".to_string());
+        sign_runtime_trusted_time_with_fixture_authority(proof);
+    });
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("trusted time proof must decide post-tool-entry expiry");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("trusted time proof outside execution lease"),
+        "{error}"
+    );
 }
 
 #[test]

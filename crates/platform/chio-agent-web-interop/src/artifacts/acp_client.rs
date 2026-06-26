@@ -52,7 +52,59 @@ pub(super) fn validate_subject(
     if bridge_fidelity == "unsupported" && permission_decision == "allow" {
         return Err(claim_failed("unsupported ACP-Client bridge allowed"));
     }
+    let jsonrpc_method = required_json_str(value, "jsonrpc_method", "missing ACP-Client method")?;
+    if !matches!(
+        jsonrpc_method,
+        "session/request_permission"
+            | "fs/read_text_file"
+            | "fs/write_text_file"
+            | "terminal/create"
+            | "session/update"
+    ) {
+        return Err(claim_failed("unsupported ACP-Client method"));
+    }
+    let receipt_id = required_json_str(value, "chio_receipt_id", "missing ACP-Client receipt id")?;
+    if !envelope
+        .receipt_refs
+        .iter()
+        .any(|receipt_ref| receipt_ref == receipt_id)
+    {
+        return Err(claim_failed(
+            "ACP-Client receipt id is not bound by proof envelope",
+        ));
+    }
+    let evidence_path_kind = required_json_str(
+        value,
+        "evidence_path_kind",
+        "missing ACP-Client evidence path kind",
+    )?;
+    if evidence_path_kind == "unsigned-audit" {
+        return Err(claim_failed(
+            "ACP-Client unsigned audit path cannot satisfy signed receipt projection",
+        ));
+    }
+    if evidence_path_kind != "signed-receipt" {
+        return Err(claim_failed("unsupported ACP-Client evidence path kind"));
+    }
     for (field, message) in [
+        ("jsonrpc_id_digest", "missing ACP-Client JSON-RPC id digest"),
+        ("params_digest", "missing ACP-Client params digest"),
+        (
+            "permission_request_digest",
+            "missing ACP-Client permission request digest",
+        ),
+        (
+            "file_path_scope_digest",
+            "missing ACP-Client file path scope digest",
+        ),
+        (
+            "terminal_command_scope_digest",
+            "missing ACP-Client terminal command scope digest",
+        ),
+        (
+            "receipt_signature_digest",
+            "missing ACP-Client receipt signature digest",
+        ),
         (
             "source_envelope_digest",
             "missing ACP-Client source envelope digest",

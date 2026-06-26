@@ -15,6 +15,17 @@ const STANDALONE_TRANSACTION_REQUIRED_CLAIMS: &[&str] = &[
     "claim.transaction.omission_policy_bound",
 ];
 
+const TRANSPARENCY_STATES: &[&str] = &["trust_anchored", "transparency_preview", "not_present"];
+
+const COMMERCE_STATE_CLAIMS: &[(&str, &str)] = &[
+    ("authorized", "claim.commerce.order_replay_consistent"),
+    ("fulfilled", "claim.commerce.order_replay_consistent"),
+    ("settled", "claim.commerce.settlement_lifecycle_bound"),
+    ("disputed", "claim.commerce.settlement_lifecycle_bound"),
+    ("refunded", "claim.commerce.payment_lifecycle_bound"),
+];
+const COMMERCE_STATES: &[&str] = &["authorized", "fulfilled", "settled", "disputed", "refunded"];
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct TransactionVerifierPolicy {
@@ -29,15 +40,47 @@ pub(super) struct TransactionVerifierPolicy {
     max_reputation_import_weight: Option<u64>,
     #[serde(default)]
     trusted_market_authority_keys: Vec<String>,
+    #[serde(default)]
+    accepted_passport_issuers: Vec<String>,
+    #[serde(default)]
+    required_evidence_roles: Vec<String>,
+    #[serde(default)]
+    accepted_transparency_states: Vec<String>,
+    #[serde(default)]
+    required_commerce_states: Vec<String>,
 }
 
 impl TransactionVerifierPolicy {
-    pub(super) fn required_claims(&self) -> &[String] {
-        &self.required_claims
-    }
-
     pub(super) fn omitted_claims(&self) -> &[String] {
         &self.omitted_claims
+    }
+
+    pub(super) fn accepted_passport_issuers(&self) -> &[String] {
+        &self.accepted_passport_issuers
+    }
+
+    pub(super) fn required_evidence_roles(&self) -> &[String] {
+        &self.required_evidence_roles
+    }
+
+    pub(super) fn accepted_transparency_states(&self) -> &[String] {
+        &self.accepted_transparency_states
+    }
+
+    pub(super) fn effective_required_claims(&self) -> Vec<String> {
+        let mut claims = self.required_claims.clone();
+        let mut seen = claims.iter().cloned().collect::<BTreeSet<_>>();
+        for state in &self.required_commerce_states {
+            if let Some((_, claim)) = COMMERCE_STATE_CLAIMS
+                .iter()
+                .find(|(candidate, _)| *candidate == state.as_str())
+            {
+                if seen.insert((*claim).to_string()) {
+                    claims.push((*claim).to_string());
+                }
+            }
+        }
+        claims
     }
 }
 
@@ -70,6 +113,21 @@ pub(super) fn validate_verifier_policy(
         &policy.trusted_market_authority_keys,
         "trusted_market_authority_keys",
     )?;
+    validate_string_list(
+        &policy.accepted_passport_issuers,
+        "accepted_passport_issuers",
+    )?;
+    validate_string_list(&policy.required_evidence_roles, "required_evidence_roles")?;
+    validate_enum_list(
+        &policy.accepted_transparency_states,
+        "accepted_transparency_states",
+        TRANSPARENCY_STATES,
+    )?;
+    validate_enum_list(
+        &policy.required_commerce_states,
+        "required_commerce_states",
+        COMMERCE_STATES,
+    )?;
     Ok(())
 }
 
@@ -100,14 +158,37 @@ fn validate_claim_list(
     claims: &[String],
     field: &'static str,
 ) -> Result<(), TransactionPassportError> {
+    validate_string_list(claims, field)
+}
+
+fn validate_string_list(
+    values: &[String],
+    field: &'static str,
+) -> Result<(), TransactionPassportError> {
     let mut seen = BTreeSet::new();
-    for claim in claims {
-        require_non_empty(claim, field).map_err(|error| {
+    for value in values {
+        require_non_empty(value, field).map_err(|error| {
             TransactionPassportError::InvalidVerifierPolicyArtifact(error.to_string())
         })?;
-        if !seen.insert(claim) {
+        if !seen.insert(value) {
             return Err(TransactionPassportError::InvalidVerifierPolicyArtifact(
-                format!("duplicate verifier policy claim in {field}: {claim}"),
+                format!("duplicate verifier policy value in {field}: {value}"),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_enum_list(
+    values: &[String],
+    field: &'static str,
+    allowed: &[&str],
+) -> Result<(), TransactionPassportError> {
+    validate_string_list(values, field)?;
+    for value in values {
+        if !allowed.contains(&value.as_str()) {
+            return Err(TransactionPassportError::InvalidVerifierPolicyArtifact(
+                format!("unsupported verifier policy value in {field}: {value}"),
             ));
         }
     }

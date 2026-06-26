@@ -978,6 +978,12 @@
       "schemaFile": "spec/schemas/chio-runtime/v1/tool-server-ack.schema.json"
     },
     {
+      "schema": "chio.runtime.trusted-time-proof.v1",
+      "artifactKind": "runtime_trusted_time_proof",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-runtime/v1/trusted-time-proof.schema.json"
+    },
+    {
       "schema": "chio.runtime.terminal-receipt.v1",
       "artifactKind": "runtime_terminal_receipt",
       "introducedBy": "runtime-security-v1",

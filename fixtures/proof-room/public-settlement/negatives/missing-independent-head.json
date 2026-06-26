@@ -1,0 +1,11 @@
+{
+  "schema": "chio.public-settlement.negative-fixture.v1",
+  "id": "missing-independent-head",
+  "claim_ref": "claim.public_settlement.finality_verified",
+  "base_fixture": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json",
+  "case": "MissingIndependentHead",
+  "expected_failure_code": "proof-room.negative.public-settlement-independent-head-missing",
+  "verifier_context": {
+    "public_settlement_independent_chain_head": "missing"
+  }
+}

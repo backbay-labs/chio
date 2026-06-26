@@ -13,6 +13,7 @@
     "continuationCount",
     "joinCount",
     "routeCount",
+    "hopReports",
     "verifiedClaims"
   ],
   "properties": {
@@ -45,6 +46,78 @@
     "routeCount": {
       "type": "integer",
       "minimum": 0
+    },
+    "hopReports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "childTaskId",
+          "continuationTokenId",
+          "witnessHopCount",
+          "multiHopWitnessEnabled",
+          "routePlanReceiptId",
+          "budgetAllocationId",
+          "authorityVerified",
+          "attenuationVerified",
+          "lineageVerified",
+          "routeVerified",
+          "budgetVerified"
+        ],
+        "properties": {
+          "childTaskId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "parentTaskId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "joinReceiptId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "continuationTokenId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "witnessChainId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "witnessHopCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "multiHopWitnessEnabled": {
+            "type": "boolean"
+          },
+          "routePlanReceiptId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "budgetAllocationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "authorityVerified": {
+            "const": true
+          },
+          "attenuationVerified": {
+            "const": true
+          },
+          "lineageVerified": {
+            "const": true
+          },
+          "routeVerified": {
+            "const": true
+          },
+          "budgetVerified": {
+            "const": true
+          }
+        }
+      }
     },
     "verifiedClaims": {
       "type": "array",

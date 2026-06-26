@@ -4,7 +4,7 @@ use crate::anchors::verify_oracle_conversion_evidence_signature;
 use crate::canonical::canonical_json_bytes;
 use crate::credit::CapitalBookEvidenceKind;
 use crate::crypto::sha256_hex;
-use crate::crypto::PublicKey;
+use crate::crypto::{PublicKey, Signature};
 use crate::error::Web3ContractError;
 use crate::hashing::Hash;
 use crate::identity::{
@@ -37,6 +37,7 @@ pub const CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND: &str =
 pub const CLAIM_PUBLIC_SETTLEMENT_PUBLIC_WITNESS_VERIFIED: &str =
     "claim.public_settlement.public_witness_verified";
 
+const PUBLIC_SETTLEMENT_BUNDLE_SIGNATURE_ALGORITHM: &str = "ed25519-rfc8785-v1";
 pub(crate) const MAX_VERIFIED_CACHE_WITNESS_AGE_SECONDS: u64 = 3_600;
 
 #[cfg(test)]
@@ -82,6 +83,8 @@ pub struct PublicSettlementProofBundle {
     pub required_confirmations: u32,
     pub observed_confirmations: u32,
     pub dispute_posture: PublicSettlementDisputePosture,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bundle_signature: Option<PublicSettlementBundleSignature>,
 }
 
 impl PublicSettlementProofBundle {
@@ -95,10 +98,20 @@ impl PublicSettlementProofBundle {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct PublicSettlementBundleSignature {
+    pub algorithm: String,
+    pub signer_key: String,
+    pub signature: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PublicSettlementOrderBinding {
     pub transaction_passport_id: String,
     pub commerce_order_id: String,
     pub chain_id: String,
+    pub settlement_rail_id: String,
+    pub custody_provider_id: String,
     pub settlement_reference: String,
     pub settlement_tx_hash: String,
     pub beneficiary_address: String,
@@ -145,6 +158,7 @@ pub enum PublicSettlementWitnessMode {
 
 #[derive(Debug, Clone, Default)]
 pub struct PublicSettlementVerifierTrust {
+    pub trusted_bundle_signer_keys: Vec<PublicKey>,
     pub trusted_capital_signer_keys: Vec<PublicKey>,
     pub trusted_anchor_kernel_keys: Vec<PublicKey>,
     pub trusted_beneficiary_identity_keys: Vec<PublicKey>,
@@ -154,6 +168,7 @@ pub struct PublicSettlementVerifierTrust {
     pub minimum_confirmations: Option<u32>,
     pub expected_trust_market_context: Option<PublicSettlementTrustMarketContext>,
     pub independent_chain_head: Option<PublicSettlementIndependentChainHead>,
+    pub verifier_now_unix_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -316,6 +331,7 @@ pub fn verify_public_settlement_proof(
     trust: &PublicSettlementVerifierTrust,
 ) -> Result<PublicSettlementVerifierReport, Web3ContractError> {
     validate_bundle_header(bundle)?;
+    validate_public_settlement_bundle_signature(bundle, trust)?;
     validate_web3_settlement_execution_receipt(&bundle.settlement_receipt)?;
     validate_public_settlement_trust(bundle, trust)?;
     validate_public_settlement_verifier_policy(bundle, trust)?;
@@ -333,7 +349,8 @@ pub fn verify_public_settlement_proof(
     let bond = required_bond_snapshot(bundle)?;
     let block = required_block_snapshot(bundle)?;
     let chain_anchor = required_chain_anchor(bundle)?;
-    let public_witness = validate_public_witness(bundle, chain_anchor)?;
+    let public_witness =
+        validate_public_witness(bundle, chain_anchor, trust.verifier_now_unix_seconds)?;
     let beneficiary_binding = required_beneficiary_identity_binding(bundle)?;
     let dispute_snapshot = required_dispute_snapshot(bundle)?;
 
@@ -419,6 +436,76 @@ pub fn verify_public_settlement_proof(
         trust_market_context,
         verified_claims,
     })
+}
+
+fn validate_public_settlement_bundle_signature(
+    bundle: &PublicSettlementProofBundle,
+    trust: &PublicSettlementVerifierTrust,
+) -> Result<(), Web3ContractError> {
+    let signature = bundle.bundle_signature.as_ref().ok_or_else(|| {
+        Web3ContractError::InvalidProof("public settlement bundle signature missing".to_string())
+    })?;
+    if signature.algorithm != PUBLIC_SETTLEMENT_BUNDLE_SIGNATURE_ALGORITHM {
+        return Err(Web3ContractError::InvalidProof(format!(
+            "public settlement bundle signature algorithm unsupported: {}",
+            signature.algorithm
+        )));
+    }
+    ensure_non_empty(
+        &signature.signer_key,
+        "public_settlement.bundle_signature.signer_key",
+    )?;
+    ensure_non_empty(
+        &signature.signature,
+        "public_settlement.bundle_signature.signature",
+    )?;
+    if trust.trusted_bundle_signer_keys.is_empty() {
+        return Err(Web3ContractError::InvalidProof(
+            "trusted public settlement bundle signer keys missing".to_string(),
+        ));
+    }
+    let signer = PublicKey::from_hex(&signature.signer_key).map_err(|error| {
+        Web3ContractError::InvalidProof(format!(
+            "public settlement bundle signer key invalid: {error}"
+        ))
+    })?;
+    let signer_hex = signer.to_hex();
+    if !trust
+        .trusted_bundle_signer_keys
+        .iter()
+        .any(|trusted| trusted.to_hex() == signer_hex)
+    {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement bundle signer key is not trusted".to_string(),
+        ));
+    }
+    let signature = Signature::from_hex(&signature.signature).map_err(|error| {
+        Web3ContractError::InvalidProof(format!(
+            "public settlement bundle signature invalid: {error}"
+        ))
+    })?;
+    let body = public_settlement_bundle_signature_body(bundle);
+    if !signer
+        .verify_canonical(&body, &signature)
+        .map_err(|error| {
+            Web3ContractError::InvalidProof(format!(
+                "public settlement bundle signature canonicalization failed: {error}"
+            ))
+        })?
+    {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement bundle signature verification failed".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn public_settlement_bundle_signature_body(
+    bundle: &PublicSettlementProofBundle,
+) -> PublicSettlementProofBundle {
+    let mut body = bundle.clone();
+    body.bundle_signature = None;
+    body
 }
 
 fn validate_deployment_provenance(
@@ -512,6 +599,7 @@ fn validate_deployment_provenance(
 fn validate_public_witness(
     bundle: &PublicSettlementProofBundle,
     chain_anchor: &crate::anchors::Web3ChainAnchorRecord,
+    verifier_now_unix_seconds: Option<u64>,
 ) -> Result<PublicSettlementWitnessContext, Web3ContractError> {
     let witness = bundle.public_witness.as_ref().ok_or_else(|| {
         Web3ContractError::InvalidProof("public settlement witness report missing".to_string())
@@ -552,6 +640,16 @@ fn validate_public_witness(
         ));
     }
     if witness.mode == PublicSettlementWitnessMode::VerifiedCache {
+        let verifier_now = verifier_now_unix_seconds.ok_or_else(|| {
+            Web3ContractError::InvalidProof(
+                "public settlement verified-cache verifier time missing".to_string(),
+            )
+        })?;
+        if witness.observed_at > verifier_now {
+            return Err(Web3ContractError::InvalidProof(
+                "public settlement verified-cache witness is from the future".to_string(),
+            ));
+        }
         let valid_until = witness
             .observed_at
             .checked_add(MAX_VERIFIED_CACHE_WITNESS_AGE_SECONDS)
@@ -560,7 +658,7 @@ fn validate_public_witness(
                     "public settlement verified-cache witness age overflow".to_string(),
                 )
             })?;
-        if valid_until < bundle.settlement_receipt.observed_execution.observed_at {
+        if valid_until < verifier_now {
             return Err(Web3ContractError::InvalidProof(
                 "public settlement verified-cache witness is stale".to_string(),
             ));
@@ -683,7 +781,10 @@ fn validate_expected_trust_market_context(
     trust: &PublicSettlementVerifierTrust,
 ) -> Result<bool, Web3ContractError> {
     match (actual, trust.expected_trust_market_context.as_ref()) {
-        (None, None) | (Some(_), None) => Ok(false),
+        (None, None) => Ok(false),
+        (Some(_), None) => Err(Web3ContractError::InvalidProof(
+            "public settlement trust-market context missing".to_string(),
+        )),
         (Some(actual), Some(expected)) if actual == expected => Ok(true),
         _ => Err(Web3ContractError::InvalidProof(
             "public settlement trust-market ref mismatch".to_string(),
@@ -897,9 +998,9 @@ fn validate_independent_chain_head(
     bundle: &PublicSettlementProofBundle,
     trust: &PublicSettlementVerifierTrust,
 ) -> Result<(), Web3ContractError> {
-    let Some(head) = &trust.independent_chain_head else {
-        return Ok(());
-    };
+    let head = trust.independent_chain_head.as_ref().ok_or_else(|| {
+        Web3ContractError::InvalidProof("public settlement independent head missing".to_string())
+    })?;
     ensure_non_empty(
         &head.chain_id,
         "public_settlement.independent_head.chain_id",
@@ -1240,6 +1341,14 @@ fn validate_order_binding_tuple(
             &binding.chain_id,
         ),
         (
+            "public_settlement.order_binding.settlement_rail_id",
+            &binding.settlement_rail_id,
+        ),
+        (
+            "public_settlement.order_binding.custody_provider_id",
+            &binding.custody_provider_id,
+        ),
+        (
             "public_settlement.order_binding.settlement_reference",
             &binding.settlement_reference,
         ),
@@ -1265,6 +1374,7 @@ fn validate_order_binding_tuple(
 
     let dispatch = &bundle.settlement_receipt.dispatch;
     let observed = &bundle.settlement_receipt.observed_execution;
+    let rail = &dispatch.capital_instruction.body.rail;
     if binding.transaction_passport_id != bundle.transaction_passport_id {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement order binding passport mismatch".to_string(),
@@ -1278,6 +1388,16 @@ fn validate_order_binding_tuple(
     if binding.chain_id != bundle.chain_id {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement order binding chain mismatch".to_string(),
+        ));
+    }
+    if binding.settlement_rail_id != rail.rail_id {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement order binding rail mismatch".to_string(),
+        ));
+    }
+    if binding.custody_provider_id != rail.custody_provider_id {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement order binding custody provider mismatch".to_string(),
         ));
     }
     if binding.settlement_reference != bundle.settlement_receipt.settlement_reference {

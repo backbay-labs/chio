@@ -101,6 +101,13 @@ while IFS= read -r line; do
     continue
   fi
 
+  # The launch disclosure surface intentionally ships a v2 BBS projection
+  # manifest so typed message classes and per-slot sensitivity are explicit.
+  # Keep this exemption limited to that exact manifest schema and its constants.
+  if [[ "$text" =~ chio\.bbs-projection\.manifest\.v2|BBS_PROJECTION_MANIFEST_SCHEMA_V2|BBS_PROJECTION_MANIFEST_V2_SCHEMA ]]; then
+    continue
+  fi
+
   # Attest bilateral-cosign / 3-vendor proof-package fixtures embed
   # workflow-receipt slices keyed at v2 as fixture data; the canonical
   # Chio-owned workflow-receipt schema (spec/WORKFLOW.md) remains v1.

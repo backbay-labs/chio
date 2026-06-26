@@ -4,6 +4,8 @@ Branch: `research/chio-launch-trust-network`
 Scope: research and planning only
 Confidence: high for current-source observations, moderate for implementation sizing, low for final product naming until the homepage copy is landed in-repo.
 
+Supersede marker: canonical schema IDs and product names are governed by `../indices/artifact-registry.md`, `../indices/decision-ledger.md`, and `../architecture/01-transaction-passport-system.md`. Older draft names in this file, including transaction proof-package variants, are source notes and must not override `chio.transaction-passport.v1` as the launch root.
+
 ## Contract
 
 Treat the launch copy as binding: Chio is the proof layer and trust network for autonomous commerce. The local README already says Chio proves what agents were allowed to do, what it cost, and what happened, with a signed capability-bound receipt for every decision (`README.md:34-44`). The vision document says the winning protocol is the one that proves what happened when agents did things that mattered, and frames Chio as the authorization, attestation, proof, and evidence layer for auditable, insurable, trustworthy agent operations (`docs/start-here/VISION.md:392-399`).

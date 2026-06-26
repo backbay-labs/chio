@@ -1,0 +1,16 @@
+{
+  "object_kind": "graphql_http_operation",
+  "id": "graphql-operation-agent-web-valid",
+  "endpoint_url_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "method": "POST",
+  "media_type": "application/json",
+  "schema_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "operation_type": "mutation",
+  "operation_name": "CreateAgentOrder",
+  "document_digest": "abababababababababababababababababababababababababababababababab",
+  "variables_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "response_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "status_code": 200,
+  "response_has_errors": true,
+  "response_error_digest": "4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e"
+}

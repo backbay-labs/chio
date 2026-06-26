@@ -52,8 +52,11 @@ pub(super) fn collect_proof_bundle(
 ) -> Result<(), CliError> {
     match kind {
         ProofCollectKind::AgentWebEnvelope
+        | ProofCollectKind::BuyerPackage
         | ProofCollectKind::DisclosureAgentWebEnvelope
+        | ProofCollectKind::Evidence
         | ProofCollectKind::IoaWeb3
+        | ProofCollectKind::Replay
         | ProofCollectKind::TransactionPassport
         | ProofCollectKind::RuntimeSpine => {
             fixture::copy_dir_contents(artifact_dir, out)?;
@@ -125,13 +128,21 @@ fn enforce_collect_kind_requirements(
         ProofCollectKind::AgentWebEnvelope => {
             ensure_verified_claim_family(report, "external-envelope", "claim.agent_web.")
         }
+        ProofCollectKind::BuyerPackage => {
+            ensure_verified_claim_family(report, "delegation", "claim.swarm.")?;
+            ensure_runtime_parity_verified(report)
+        }
         ProofCollectKind::DisclosureAgentWebEnvelope => {
             ensure_verified_claim_family(report, "disclosure", "claim.disclosure.")?;
             ensure_verified_claim_family(report, "external-envelope", "claim.agent_web.")
         }
+        ProofCollectKind::Evidence => Ok(()),
         ProofCollectKind::IoaWeb3 => {
             ensure_verified_claim_family(report, "commerce", "claim.commerce.")?;
             ensure_verified_claim_family(report, "settlement", "claim.public_settlement.")
+        }
+        ProofCollectKind::Replay => {
+            ensure_verified_claim_family(report, "commerce", "claim.commerce.")
         }
         ProofCollectKind::TransactionPassport => Ok(()),
         ProofCollectKind::RuntimeSpine => {
@@ -173,6 +184,12 @@ fn write_collected_proof_room_bundle(
         "verifier-policy.json",
     ] {
         fs::copy(bundle.join(artifact), bundle.join("roots").join(artifact))?;
+    }
+    if bundle.join("order-passport.json").is_file() {
+        fs::copy(
+            bundle.join("order-passport.json"),
+            bundle.join("roots/order-passport.json"),
+        )?;
     }
 
     let passport_id = required_report_string(verifier_report, "passport_id")?;
@@ -320,25 +337,18 @@ fn collected_verifier_report(
     }
 
     let passport = read_collected_transaction_passport(bundle)?;
-    let verdict = required_report_string(&report, "verdict")?;
-    let verified_claims = report_verified_claims(&report);
-    let mut collected_report = serde_json::json!({
-        "schema": "chio.transaction.verifier-report.v1",
-        "id": format!("verifier-report-{}", passport.id),
-        "issued_at": passport.issued_at,
-        "verdict": verdict,
-        "passport_id": passport.id,
-        "passport_path": "transaction-passport.json",
-        "evidence_graph_sha256": passport.evidence_graph_sha256,
-        "evidence_graph_path": passport.evidence_graph_path,
-        "claim_set_sha256": passport.claim_set_sha256,
-        "claim_set_path": passport.claim_set_path,
-        "verifier_policy_sha256": passport.verifier_policy_sha256,
-        "verifier_policy_path": passport.verifier_policy_path,
-        "verified_claims": verified_claims,
-        "family_reports": [report]
-    });
-    attach_checker_provenance(&mut collected_report);
+    let evidence_graph_bytes = fs::read(bundle.join(&passport.evidence_graph_path))?;
+    let transparency_state =
+        chio_control_plane::transaction_passport::transaction_evidence_graph_transparency_state(
+            &evidence_graph_bytes,
+        )
+        .map_err(map_proof_error)?;
+    let mut collected_report = merge_family_verifier_reports(
+        &passport,
+        "transaction-passport.json".to_string(),
+        vec![report],
+        &transparency_state,
+    );
     if let Some(parity_report) = collected_report["family_reports"][0]
         .get("runtime_proof_parity_report")
         .cloned()
@@ -489,32 +499,41 @@ fn write_catalog_negative_cases(
             fs::remove_dir_all(&destination)?;
         }
         fixture::copy_proof_fixture(&descriptor.id, &destination)?;
-        if descriptor.id.starts_with("disclosure-lineage-") {
+        if descriptor.id.starts_with("disclosure-lineage-")
+            && !fixture::is_generated_disclosure_negative_fixture_id(&descriptor.id)
+        {
             fixture::add_disclosure_bbs_material_to_bundle(&destination)?;
         }
         let passport_path = destination.join("transaction-passport.json");
         let expected_failure = fixture::proof_fixture_negative_expected_failure(&descriptor)?;
-        let observed_failure = match verify_transaction_passport_file(&passport_path) {
-            Ok(_) => {
-                return Err(CliError::cli_other_error(format!(
-                    "catalog negative proof fixture unexpectedly verified: {}",
-                    descriptor.id
-                )));
-            }
-            Err(error) => semantic_negative_failure_code(&error.to_string()),
-        };
+        let observed_failure =
+            fixture::with_proof_fixture_negative_verifier_context(&descriptor, || {
+                match verify_transaction_passport_file(&passport_path) {
+                    Ok(_) => Err(CliError::cli_other_error(format!(
+                        "catalog negative proof fixture unexpectedly verified: {}",
+                        descriptor.id
+                    ))),
+                    Err(error) => Ok(semantic_negative_failure_code(&error.to_string())),
+                }
+            })?;
         if !negative_failure_code_matches(&observed_failure, &expected_failure) {
             return Err(CliError::cli_other_error(format!(
                 "catalog negative proof fixture failed for the wrong reason: {}: expected {}, got {}",
                 descriptor.id, expected_failure, observed_failure
             )));
         }
-        cases.push(serde_json::json!({
+        let mut case = serde_json::json!({
             "id": descriptor.id,
             "path": format!("negatives/catalog/{}/transaction-passport.json", descriptor.id),
             "expected_failure_code": expected_failure,
             "observed_failure_code": observed_failure
-        }));
+        });
+        if let Some(verifier_context) =
+            fixture::proof_fixture_negative_verifier_context(&descriptor)?
+        {
+            case["verifier_context"] = verifier_context;
+        }
+        cases.push(case);
     }
     Ok(cases)
 }

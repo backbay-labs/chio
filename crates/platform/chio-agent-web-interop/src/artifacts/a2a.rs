@@ -35,9 +35,36 @@ pub(super) fn validate_subject(
     }
     for (field, message) in [
         ("agent_card_digest", "missing A2A agent card digest"),
+        (
+            "agent_card_schema_digest",
+            "missing A2A Agent Card schema digest",
+        ),
+        ("agent_card_url_digest", "missing A2A Agent Card URL digest"),
+        ("skill_id_digest", "missing A2A skill id digest"),
+        ("interface_url_digest", "missing A2A interface URL digest"),
+        ("context_id_digest", "missing A2A context id digest"),
         ("task_input_digest", "missing A2A task input digest"),
         ("task_state_digest", "missing A2A task state digest"),
+        ("message_parts_digest", "missing A2A message parts digest"),
+        ("message_send_digest", "missing A2A message/send digest"),
         ("result_digest", "missing A2A result digest"),
+        (
+            "metadata_chio_skill_selector_digest",
+            "missing A2A Chio skill selector metadata digest",
+        ),
+        ("task_artifacts_digest", "missing A2A task artifacts digest"),
+        (
+            "streaming_lifecycle_digest",
+            "missing A2A streaming lifecycle digest",
+        ),
+        (
+            "cancel_lifecycle_digest",
+            "missing A2A cancel lifecycle digest",
+        ),
+        (
+            "push_notification_config_digest",
+            "missing A2A push notification config digest",
+        ),
         (
             "authorization_context_digest",
             "missing A2A authorization context digest",

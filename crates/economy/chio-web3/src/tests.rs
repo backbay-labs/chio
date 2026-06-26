@@ -37,10 +37,11 @@ use crate::settlement::{
 };
 use crate::settlement_proof::{
     public_settlement_witness_body_hash, verify_public_settlement_proof,
-    PublicSettlementDeploymentProvenance, PublicSettlementDisputePosture,
-    PublicSettlementDisputeSnapshot, PublicSettlementIndependentChainHead,
-    PublicSettlementOrderBinding, PublicSettlementProofBundle, PublicSettlementTrustMarketContext,
-    PublicSettlementVerifierTrust, PublicSettlementWitnessMode, PublicSettlementWitnessReport,
+    PublicSettlementBundleSignature, PublicSettlementDeploymentProvenance,
+    PublicSettlementDisputePosture, PublicSettlementDisputeSnapshot,
+    PublicSettlementIndependentChainHead, PublicSettlementOrderBinding,
+    PublicSettlementProofBundle, PublicSettlementTrustMarketContext, PublicSettlementVerifierTrust,
+    PublicSettlementWitnessMode, PublicSettlementWitnessReport,
     CHIO_PUBLIC_SETTLEMENT_VERIFIER_REPORT_SCHEMA, CHIO_WEB3_SETTLEMENT_DISPUTE_SCHEMA,
     CHIO_WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA, CLAIM_PUBLIC_SETTLEMENT_CHAIN_CONTEXT_VERIFIED,
     CLAIM_PUBLIC_SETTLEMENT_DISPUTE_POSTURE_BOUND, CLAIM_PUBLIC_SETTLEMENT_FINALITY_VERIFIED,
@@ -75,6 +76,10 @@ fn beneficiary_keypair() -> Keypair {
 
 fn oracle_keypair() -> Keypair {
     Keypair::from_seed(&[15u8; 32])
+}
+
+fn settlement_bundle_keypair() -> Keypair {
+    treasury_keypair()
 }
 
 fn signed_identity_binding(
@@ -446,6 +451,73 @@ fn sample_capital_instruction() -> SignedCapitalExecutionInstruction {
     .unwrap()
 }
 
+fn sample_active_bond() -> crate::credit::SignedCreditBond {
+    let signed_bond = crate::credit::SignedCreditBond::sign(
+        crate::credit::CreditBondArtifact {
+            schema: crate::credit::CREDIT_BOND_ARTIFACT_SCHEMA.to_string(),
+            bond_id: "bond-web3-1".to_string(),
+            issued_at: 1_743_292_700,
+            expires_at: 1_743_293_900,
+            lifecycle_state: crate::credit::CreditBondLifecycleState::Active,
+            supersedes_bond_id: None,
+            report: crate::credit::CreditBondReport {
+                schema: crate::credit::CREDIT_BOND_REPORT_SCHEMA.to_string(),
+                generated_at: 1_743_292_700,
+                filters: crate::credit::ExposureLedgerQuery {
+                    agent_subject: Some("subject-1".to_string()),
+                    ..crate::credit::ExposureLedgerQuery::default()
+                },
+                exposure: crate::credit::ExposureLedgerSummary {
+                    matching_receipts: 1,
+                    returned_receipts: 1,
+                    matching_decisions: 0,
+                    returned_decisions: 0,
+                    active_decisions: 0,
+                    superseded_decisions: 0,
+                    actionable_receipts: 0,
+                    pending_settlement_receipts: 0,
+                    failed_settlement_receipts: 0,
+                    currencies: vec!["USD".to_string()],
+                    mixed_currency_book: false,
+                    truncated_receipts: false,
+                    truncated_decisions: false,
+                },
+                scorecard: crate::credit::CreditScorecardSummary {
+                    matching_receipts: 1,
+                    returned_receipts: 1,
+                    matching_decisions: 0,
+                    returned_decisions: 0,
+                    currencies: vec!["USD".to_string()],
+                    mixed_currency_book: false,
+                    confidence: crate::credit::CreditScorecardConfidence::High,
+                    band: crate::credit::CreditScorecardBand::Prime,
+                    overall_score: 0.95,
+                    anomaly_count: 0,
+                    probationary: false,
+                },
+                disposition: crate::credit::CreditBondDisposition::Hold,
+                prerequisites: crate::credit::CreditBondPrerequisites {
+                    active_facility_required: false,
+                    active_facility_met: true,
+                    runtime_assurance_met: true,
+                    certification_required: false,
+                    certification_met: true,
+                    currency_coherent: true,
+                },
+                support_boundary: crate::credit::CreditBondSupportBoundary::default(),
+                latest_facility_id: Some("facility-web3-1".to_string()),
+                terms: None,
+                findings: Vec::new(),
+            },
+        },
+        &treasury_keypair(),
+    );
+    match signed_bond {
+        Ok(bond) => bond,
+        Err(error) => panic!("sample active bond signs: {error}"),
+    }
+}
+
 fn resign_dispatch_capital_instruction(dispatch: &mut Web3SettlementDispatchArtifact) {
     dispatch.capital_instruction = SignedCapitalExecutionInstruction::sign(
         dispatch.capital_instruction.body.clone(),
@@ -521,7 +593,7 @@ fn sample_execution_receipt() -> Web3SettlementExecutionReceiptArtifact {
 }
 
 fn sample_public_settlement_proof_bundle() -> PublicSettlementProofBundle {
-    PublicSettlementProofBundle {
+    let mut bundle = PublicSettlementProofBundle {
         schema: CHIO_WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA.to_string(),
         bundle_id: "public-settlement-proof-web3-1".to_string(),
         transaction_passport_id: "passport-public-settlement-1".to_string(),
@@ -541,7 +613,23 @@ fn sample_public_settlement_proof_bundle() -> PublicSettlementProofBundle {
         required_confirmations: 20,
         observed_confirmations: 24,
         dispute_posture: PublicSettlementDisputePosture::Undisputed,
-    }
+        bundle_signature: None,
+    };
+    sign_sample_public_settlement_bundle(&mut bundle);
+    bundle
+}
+
+fn sign_sample_public_settlement_bundle(bundle: &mut PublicSettlementProofBundle) {
+    bundle.bundle_signature = None;
+    let keypair = settlement_bundle_keypair();
+    let Ok((signature, _)) = keypair.sign_canonical(bundle) else {
+        panic!("sample public settlement bundle signs")
+    };
+    bundle.bundle_signature = Some(PublicSettlementBundleSignature {
+        algorithm: "ed25519-rfc8785-v1".to_string(),
+        signer_key: keypair.public_key().to_hex(),
+        signature: signature.to_hex(),
+    });
 }
 
 fn sample_public_settlement_deployment_provenance() -> PublicSettlementDeploymentProvenance {
@@ -586,6 +674,8 @@ fn sample_public_settlement_order_binding() -> PublicSettlementOrderBinding {
         transaction_passport_id: "passport-public-settlement-1".to_string(),
         commerce_order_id: "order-public-settlement-1".to_string(),
         chain_id: "eip155:8453".to_string(),
+        settlement_rail_id: "base-mainnet-usdc".to_string(),
+        custody_provider_id: custodian_keypair().public_key().to_hex(),
         settlement_reference: "settlement-web3-1".to_string(),
         settlement_tx_hash: "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
             .to_string(),
@@ -600,6 +690,7 @@ fn sample_public_settlement_order_binding() -> PublicSettlementOrderBinding {
 
 fn sample_public_settlement_verifier_trust() -> PublicSettlementVerifierTrust {
     PublicSettlementVerifierTrust {
+        trusted_bundle_signer_keys: vec![settlement_bundle_keypair().public_key()],
         trusted_capital_signer_keys: vec![treasury_keypair().public_key()],
         trusted_anchor_kernel_keys: vec![operator_keypair().public_key()],
         trusted_beneficiary_identity_keys: vec![beneficiary_keypair().public_key()],
@@ -608,14 +699,23 @@ fn sample_public_settlement_verifier_trust() -> PublicSettlementVerifierTrust {
         mainnet_blocked: false,
         minimum_confirmations: Some(20),
         expected_trust_market_context: None,
-        independent_chain_head: None,
+        independent_chain_head: Some(PublicSettlementIndependentChainHead {
+            chain_id: "eip155:8453".to_string(),
+            observed_block_number: 12_345_678,
+            observed_block_hash:
+                "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
+            latest_block_number: 12_345_701,
+        }),
+        verifier_now_unix_seconds: Some(1_743_293_860),
     }
 }
 
 fn verify_sample_public_settlement_proof(
     bundle: &PublicSettlementProofBundle,
 ) -> Result<crate::settlement_proof::PublicSettlementVerifierReport, Web3ContractError> {
-    verify_public_settlement_proof(bundle, &sample_public_settlement_verifier_trust())
+    let mut signed_bundle = bundle.clone();
+    sign_sample_public_settlement_bundle(&mut signed_bundle);
+    verify_public_settlement_proof(&signed_bundle, &sample_public_settlement_verifier_trust())
 }
 
 fn sample_public_settlement_dispute_snapshot() -> PublicSettlementDisputeSnapshot {
@@ -1128,6 +1228,7 @@ fn public_settlement_proof_binds_trust_market_refs_when_present() {
         sla_remedy_ref: "remedy-policy-market-valid".to_string(),
         slash_authority_ref: "did:chio:slash-authority".to_string(),
     });
+    sign_sample_public_settlement_bundle(&mut bundle);
 
     let report = verify_public_settlement_proof(&bundle, &trust).unwrap();
 
@@ -1154,19 +1255,18 @@ fn public_settlement_proof_binds_trust_market_refs_when_present() {
 }
 
 #[test]
-fn public_settlement_proof_reports_trust_market_refs_without_verified_context() {
+fn public_settlement_proof_rejects_trust_market_refs_without_verified_context() {
     let mut bundle = sample_public_settlement_proof_bundle();
     bundle.collateral_position_ref = Some("collateral-trust-market-valid".to_string());
     bundle.guarantee_decision_ref = Some("guarantee-trust-market-valid".to_string());
     bundle.sla_remedy_ref = Some("remedy-policy-market-valid".to_string());
     bundle.slash_authority_ref = Some("did:chio:slash-authority".to_string());
 
-    let report = verify_sample_public_settlement_proof(&bundle).unwrap();
-
-    assert!(report.trust_market_context.is_some());
-    assert!(!report
-        .verified_claims
-        .contains(&CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND.to_string()));
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement trust-market context missing")
+    ));
 }
 
 #[test]
@@ -1196,6 +1296,7 @@ fn public_settlement_proof_rejects_trust_market_ref_mismatch_against_expected_co
         sla_remedy_ref: "remedy-policy-market-valid".to_string(),
         slash_authority_ref: "did:chio:different-slash-authority".to_string(),
     });
+    sign_sample_public_settlement_bundle(&mut bundle);
 
     assert!(matches!(
         verify_public_settlement_proof(&bundle, &trust),
@@ -1268,6 +1369,26 @@ fn public_settlement_proof_rejects_stale_verified_cache_public_witness_report() 
 }
 
 #[test]
+fn public_settlement_proof_rejects_verified_cache_stale_at_verifier_time() {
+    let bundle = sample_public_settlement_proof_bundle();
+    let witness_observed_at = bundle
+        .public_witness
+        .as_ref()
+        .expect("sample public settlement proof has witness")
+        .observed_at;
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.verifier_now_unix_seconds = Some(
+        witness_observed_at + crate::settlement_proof::MAX_VERIFIED_CACHE_WITNESS_AGE_SECONDS + 1,
+    );
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &trust),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement verified-cache witness is stale")
+    ));
+}
+
+#[test]
 fn public_settlement_proof_rejects_public_witness_body_hash_mismatch() {
     let mut bundle = sample_public_settlement_proof_bundle();
     bundle
@@ -1320,7 +1441,44 @@ fn public_settlement_proof_rejects_missing_trusted_signers() {
     assert!(matches!(
         verify_public_settlement_proof(&bundle, &trust),
         Err(Web3ContractError::InvalidProof(message))
-            if message.contains("trusted public settlement capital signer keys missing")
+            if message.contains("trusted public settlement bundle signer keys missing")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_missing_bundle_signature() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.bundle_signature = None;
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &sample_public_settlement_verifier_trust()),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement bundle signature missing")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_untrusted_bundle_signer() {
+    let bundle = sample_public_settlement_proof_bundle();
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_bundle_signer_keys = vec![custodian_keypair().public_key()];
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &trust),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement bundle signer key is not trusted")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_tampered_bundle_signature_body() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.observed_confirmations += 1;
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &sample_public_settlement_verifier_trust()),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement bundle signature verification failed")
     ));
 }
 
@@ -1423,6 +1581,7 @@ fn public_settlement_proof_rejects_wrong_chain_id() {
     bundle.deployment_provenance.as_mut().unwrap().chain_id = bundle.chain_id.clone();
     let mut trust = sample_public_settlement_verifier_trust();
     trust.allowed_chain_ids.push("eip155:42161".to_string());
+    sign_sample_public_settlement_bundle(&mut bundle);
 
     assert!(matches!(
         verify_public_settlement_proof(&bundle, &trust),
@@ -1445,6 +1604,20 @@ fn public_settlement_proof_rejects_tampered_capital_instruction_signature() {
         verify_sample_public_settlement_proof(&bundle),
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("capital instruction signature verification failed")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_tampered_bond_signature() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    let mut bond = sample_active_bond();
+    bond.body.expires_at = 1_743_294_000;
+    bundle.settlement_receipt.dispatch.bond = Some(bond);
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("credit bond signature verification failed")
     ));
 }
 
@@ -1486,11 +1659,43 @@ fn public_settlement_proof_rejects_order_binding_settlement_tx_mismatch() {
 }
 
 #[test]
+fn public_settlement_proof_rejects_order_binding_rail_mismatch() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle
+        .settlement_receipt
+        .dispatch
+        .capital_instruction
+        .body
+        .rail
+        .rail_id = "base-mainnet-unapproved-rail".to_string();
+    resign_dispatch_capital_instruction(&mut bundle.settlement_receipt.dispatch);
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("public settlement order binding rail mismatch")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_order_binding_custody_provider_mismatch() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.order_binding.custody_provider_id = operator_keypair().public_key().to_hex();
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("public settlement order binding custody provider mismatch")
+    ));
+}
+
+#[test]
 fn public_settlement_proof_rejects_finality_below_threshold() {
     let mut bundle = sample_public_settlement_proof_bundle();
     bundle.observed_confirmations = 19;
     let mut trust = sample_public_settlement_verifier_trust();
     trust.minimum_confirmations = None;
+    sign_sample_public_settlement_bundle(&mut bundle);
 
     assert!(matches!(
         verify_public_settlement_proof(&bundle, &trust),
@@ -1507,7 +1712,20 @@ fn public_settlement_proof_rejects_inflated_observed_confirmations() {
     assert!(matches!(
         verify_sample_public_settlement_proof(&bundle),
         Err(Web3ContractError::InvalidProof(message))
-            if message.contains("public settlement observed confirmations exceed chain snapshot")
+            if message.contains("public settlement observed confirmations exceed independent head")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_missing_independent_head() {
+    let bundle = sample_public_settlement_proof_bundle();
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.independent_chain_head = None;
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &trust),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement independent head missing")
     ));
 }
 

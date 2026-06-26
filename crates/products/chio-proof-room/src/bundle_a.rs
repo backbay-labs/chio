@@ -203,6 +203,7 @@ pub(crate) fn verify_negative_cases(
             ));
         }
         let negative_path = resolve_proof_room_bundle_path(bundle_root, &negative_case.path)?;
+        let _env_overrides = negative_case.verifier_context.apply();
         let error = match verify_negative_case_path(
             bundle_root,
             &negative_path,

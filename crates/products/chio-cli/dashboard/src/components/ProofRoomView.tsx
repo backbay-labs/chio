@@ -2113,6 +2113,30 @@ function amountText(amount: ProofRoomSettlementAmount | undefined): string {
   return `${valueText(amount.units)} ${amount.currency ?? ''}`.trim()
 }
 
+function settlementFinalityText(
+  observedConfirmations: number | undefined,
+  requiredConfirmations: number | undefined,
+): string {
+  const observed = valueText(observedConfirmations)
+  const required = valueText(requiredConfirmations)
+  if (!observed && !required) {
+    return ''
+  }
+  return `${observed || '0'} of ${required || '0'} confirmations`
+}
+
+function settlementChainText(
+  chainId: string | undefined,
+  blockNumber: number | undefined,
+  registryRoot: string | undefined,
+): string {
+  return [
+    chainId,
+    blockNumber === undefined ? undefined : `block ${blockNumber}`,
+    registryRoot,
+  ].filter(hasNonEmptyString).join(' ')
+}
+
 function PublicSettlement({
   proof,
   verifierReport,
@@ -2132,10 +2156,75 @@ function PublicSettlement({
   const finality = verifierReport?.finality_decision
   const witness = verifierReport?.public_witness
   const verifiedChain = verifierReport?.chain_context
+  const comparisonRows = [
+    {
+      label: 'Verified finality',
+      verified: settlementFinalityText(
+        finality?.observed_confirmations,
+        finality?.required_confirmations,
+      ),
+      supplied: settlementFinalityText(
+        proof?.observed_confirmations,
+        proof?.required_confirmations,
+      ),
+      suppliedLabel: 'Supplied finality',
+    },
+    {
+      label: 'Verified chain',
+      verified: settlementChainText(
+        verifiedChain?.chain_id,
+        verifiedChain?.observed_block_number,
+        verifiedChain?.registry_root,
+      ),
+      supplied: settlementChainText(
+        proof?.chain_id,
+        chain?.observed_block_number,
+        chain?.registry_root,
+      ),
+      suppliedLabel: 'Supplied chain',
+    },
+    {
+      label: 'Verified settlement reference',
+      verified: verifiedChain?.settlement_reference ?? '',
+      supplied: receipt?.settlement_reference ?? '',
+      suppliedLabel: 'Supplied settlement reference',
+    },
+    {
+      label: 'Verified settlement state',
+      verified: verifierReport?.recomputed_settlement_state ?? '',
+      supplied: receipt?.lifecycle_state ?? '',
+      suppliedLabel: 'Supplied settlement state',
+    },
+  ].filter((row) => row.verified || row.supplied)
 
   return (
     <section className="proof-room-section">
       <h3>Public Settlement</h3>
+      {comparisonRows.length > 0 ? (
+        <div className="proof-room-table-wrap">
+          <table className="receipt-table proof-room-table">
+            <thead>
+              <tr>
+                <th>Verifier Check</th>
+                <th>Verified</th>
+                <th>Supplied</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparisonRows.map((row) => (
+                <tr key={row.label}>
+                  <td>{row.label}</td>
+                  <td>{row.verified}</td>
+                  <td>
+                    <span>{row.suppliedLabel}</span>
+                    {row.supplied ? <code>{row.supplied}</code> : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
       <div className="proof-room-grid">
         {finality ? (
           <div className="proof-room-panel">

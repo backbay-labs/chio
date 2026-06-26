@@ -103,6 +103,7 @@
             "report",
             "execution-lease",
             "tool-server-ack",
+            "trusted-time-proof",
             "revocation-freshness-proof",
             "sandbox-attestation",
             "advisory-observation",

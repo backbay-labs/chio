@@ -62,9 +62,13 @@
     },
     "egressConstraints": {
       "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
       "items": {
         "type": "string",
-        "minLength": 1
+        "enum": [
+          "deny-private-network"
+        ]
       }
     },
     "attenuationDecision": {

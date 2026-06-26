@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::error::Error;
 
 use chio_core_types::capability::attenuation::{compute_attenuation_witness, scope_hash};
@@ -6,9 +7,10 @@ use chio_core_types::crypto::{canonical_json_bytes, sha256_hex, Keypair, PublicK
 use chio_swarm_authority::{
     mint_swarm_continuation_token, mint_swarm_join_receipt, release_swarm_budget_fanin,
     reserve_swarm_budget_fanout, sign_swarm_continuation_token, sign_swarm_delegation_witness_hop,
-    sign_swarm_join_receipt, sign_swarm_route_plan_receipt, sign_swarm_terminal_graph_receipt,
-    verify_swarm_authority_bundle, SwarmAuthorityBundle, SwarmBudgetAllocation,
-    SwarmBudgetAllocationState, SwarmBudgetFanInReleaseRequest, SwarmBudgetFanoutAllocationRequest,
+    sign_swarm_join_receipt, sign_swarm_revocation_epoch, sign_swarm_route_plan_receipt,
+    sign_swarm_task_graph, sign_swarm_terminal_graph_receipt, verify_swarm_authority_bundle,
+    SwarmAuthorityBundle, SwarmBudgetAllocation, SwarmBudgetAllocationState,
+    SwarmBudgetFanInReleaseRequest, SwarmBudgetFanoutAllocationRequest,
     SwarmBudgetFanoutReservationRequest, SwarmBudgetPool, SwarmContinuationMode,
     SwarmContinuationToken, SwarmContinuationTokenMintRequest, SwarmDelegationWitnessChain,
     SwarmDelegationWitnessHop, SwarmGraphEdge, SwarmGraphJoin, SwarmGraphNode,
@@ -63,6 +65,28 @@ fn swarm_authority_stage0_verifies_valid_bundle() -> Result<(), Box<dyn Error>> 
     assert!(report
         .verified_claims
         .contains(&CLAIM_SWARM_TERMINAL_GRAPH_RECEIPT_BOUND.to_string()));
+    assert_eq!(report.hop_reports.len(), 2);
+    for child_task_id in ["task-child-a", "task-child-b"] {
+        let hop = report
+            .hop_reports
+            .iter()
+            .find(|hop| hop.child_task_id == child_task_id)
+            .ok_or("missing per-hop verifier report")?;
+        assert!(hop.authority_verified);
+        assert!(hop.attenuation_verified);
+        assert!(hop.lineage_verified);
+        assert!(hop.route_verified);
+        assert!(hop.budget_verified);
+        assert_eq!(hop.parent_task_id.as_deref(), Some("task-root"));
+        assert_eq!(
+            hop.continuation_token_id,
+            format!("continuation-{}", child_task_id.trim_start_matches("task-"))
+        );
+        assert_eq!(
+            hop.witness_chain_id.as_deref(),
+            Some(format!("witness-{}", child_task_id.trim_start_matches("task-")).as_str())
+        );
+    }
     Ok(())
 }
 
@@ -81,6 +105,8 @@ fn swarm_authority_mints_signed_continuation_token() -> Result<(), Box<dyn Error
             graph_sha256,
             route_plan_receipt_id: "route-child-a".to_string(),
             budget_allocation_id: "budget-child-a".to_string(),
+            witness_chain_ref: Some(bundle.witness_chains[0].chain_id.clone()),
+            witness_chain_sha256: Some(canonical_hash(&bundle.witness_chains[0])?),
             revocation_epoch_ref: "revocation-epoch-swarm-valid".to_string(),
             revocation_epoch_root_hash: bundle.revocation_epoch.root_hash.clone(),
             session_anchor_ref: "session-anchor-swarm-valid".to_string(),
@@ -478,6 +504,7 @@ fn swarm_authority_stage0_rejects_join_continuation_parent_receipt_mismatch(
         "route-join-root",
         &graph_sha256,
         &bundle.revocation_epoch.root_hash,
+        None,
     )?;
     continuation.parent_task_id = None;
     continuation.join_receipt_id = Some("join-child-results".to_string());
@@ -653,6 +680,7 @@ fn swarm_authority_stage0_rejects_continuation_parent_not_declared_on_child(
         "route-grandchild",
         &graph_sha256,
         &bundle.revocation_epoch.root_hash,
+        None,
     )?;
     continuation.parent_task_id = Some("task-child-b".to_string());
     continuation.parent_receipt_ids = vec!["receipt-child-b".to_string()];
@@ -752,6 +780,7 @@ fn swarm_authority_stage0_rejects_continuation_budget_ref_mismatch() -> Result<(
 fn swarm_authority_stage0_rejects_witness_child_scope_mismatch() -> Result<(), Box<dyn Error>> {
     let mut bundle = sample_swarm_bundle()?;
     bundle.witness_chains[0].hops[0].child_scope_hash = sha256_hex(b"wrong-child-scope");
+    refresh_continuation_graph_digests(&mut bundle)?;
 
     let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("witness mismatch verified unexpectedly: {report:#?}"),
@@ -760,6 +789,67 @@ fn swarm_authority_stage0_rejects_witness_child_scope_mismatch() -> Result<(), B
     assert!(error
         .to_string()
         .contains("swarm witness child scope mismatch"));
+    Ok(())
+}
+
+#[test]
+fn swarm_authority_stage0_rejects_continuation_witness_chain_binding_mismatch(
+) -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.witness_chains[0].chain_id = "witness-child-a-rebound".to_string();
+    sign_witness_chain(&mut bundle.witness_chains[0])?;
+
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
+        Ok(report) => panic!("continuation witness binding mismatch verified: {report:#?}"),
+        Err(error) => error,
+    };
+
+    assert!(
+        error
+            .to_string()
+            .contains("swarm continuation witness chain mismatch"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn swarm_authority_stage0_rejects_multi_hop_without_feature_gate() -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    set_child_a_multi_hop_witness(&mut bundle)?;
+    refresh_continuation_graph_digests(&mut bundle)?;
+
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
+        Ok(report) => panic!("ungated multi-hop witness verified: {report:#?}"),
+        Err(error) => error,
+    };
+
+    assert!(
+        error
+            .to_string()
+            .contains("swarm multi-hop witness chain feature gate missing"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn swarm_authority_stage0_accepts_multi_hop_with_feature_gate() -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.task_graph.multi_hop_witness_chains = true;
+    set_child_a_multi_hop_witness(&mut bundle)?;
+    refresh_continuation_graph_digests(&mut bundle)?;
+
+    let report = verify_swarm_authority_bundle(&bundle, &trusted_witness_keys())?;
+    let hop = report
+        .hop_reports
+        .iter()
+        .find(|hop| hop.child_task_id == "task-child-a")
+        .ok_or("missing task-child-a hop report")?;
+
+    assert_eq!(hop.witness_hop_count, 2);
+    assert!(hop.multi_hop_witness_enabled);
+    assert!(hop.attenuation_verified);
     Ok(())
 }
 
@@ -817,6 +907,7 @@ proptest! {
 fn swarm_authority_stage0_rejects_tampered_witness_signature() -> Result<(), Box<dyn Error>> {
     let mut bundle = sample_swarm_bundle()?;
     bundle.witness_chains[0].hops[0].witness_signature = "sig-tampered-witness-child-a".to_string();
+    refresh_continuation_graph_digests(&mut bundle)?;
 
     let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("tampered witness signature verified unexpectedly: {report:#?}"),
@@ -831,6 +922,7 @@ fn swarm_authority_stage0_rejects_tampered_witness_signature() -> Result<(), Box
 #[test]
 fn swarm_authority_stage0_rejects_disconnected_witness_hops() -> Result<(), Box<dyn Error>> {
     let mut bundle = sample_swarm_bundle()?;
+    bundle.task_graph.multi_hop_witness_chains = true;
     let parent_scope = scope_for("commerce", "reserve_budget", 3);
     let intermediate_scope = scope_for("commerce", "reserve_budget", 2);
     let child_scope = scope_for("commerce", "reserve_budget", 1);
@@ -865,6 +957,7 @@ fn swarm_authority_stage0_rejects_disconnected_witness_hops() -> Result<(), Box<
         },
     ];
     sign_witness_chain(&mut bundle.witness_chains[0])?;
+    refresh_continuation_graph_digests(&mut bundle)?;
 
     let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
         Ok(report) => panic!("disconnected witness hops verified unexpectedly: {report:#?}"),
@@ -905,6 +998,40 @@ fn swarm_authority_stage0_rejects_rejected_route_plan() -> Result<(), Box<dyn Er
     assert!(error
         .to_string()
         .contains("swarm route-plan attenuation was not accepted"));
+    Ok(())
+}
+
+#[test]
+fn swarm_authority_stage0_rejects_empty_route_plan_egress_constraints() -> Result<(), Box<dyn Error>>
+{
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.route_plan_receipts[0].egress_constraints.clear();
+    sign_route_plan_receipt(&mut bundle.route_plan_receipts[0])?;
+
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
+        Ok(report) => panic!("empty egress constraints verified unexpectedly: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("swarm route-plan egress constraints missing"));
+    Ok(())
+}
+
+#[test]
+fn swarm_authority_stage0_rejects_unsupported_route_plan_egress_constraint(
+) -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.route_plan_receipts[0].egress_constraints = vec!["allow-private-network".to_string()];
+    sign_route_plan_receipt(&mut bundle.route_plan_receipts[0])?;
+
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
+        Ok(report) => panic!("unsupported egress constraint verified unexpectedly: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("unsupported swarm route-plan egress constraint"));
     Ok(())
 }
 
@@ -977,19 +1104,14 @@ fn swarm_authority_stage0_rejects_join_parent_task_receipt_mapping_mismatch(
 }
 
 #[test]
-fn swarm_authority_stage0_rejects_join_parent_task_receipt_swapped_mapping(
-) -> Result<(), Box<dyn Error>> {
+fn swarm_authority_stage0_accepts_reordered_join_parent_task_receipts() -> Result<(), Box<dyn Error>>
+{
     let mut bundle = sample_swarm_bundle()?;
     bundle.join_receipts[0].parent_task_receipts.swap(0, 1);
     sign_join_receipt(&mut bundle.join_receipts[0])?;
 
-    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
-        Ok(report) => panic!("join parent task receipt swapped mapping verified: {report:#?}"),
-        Err(error) => error,
-    };
-    assert!(error
-        .to_string()
-        .contains("swarm join receipt parent task receipts mismatch"));
+    let report = verify_swarm_authority_bundle(&bundle, &trusted_witness_keys())?;
+    assert_eq!(report.verdict, "verified");
     Ok(())
 }
 
@@ -1194,12 +1316,33 @@ fn swarm_authority_stage0_rejects_revocation_epoch_list_root_mismatch() -> Resul
 }
 
 #[test]
+fn swarm_authority_stage0_rejects_unsigned_revocation_epoch_list_reseal(
+) -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle
+        .revocation_epoch
+        .revoked_subjects
+        .push("did:chio:unrelated-subject".to_string());
+    refresh_revocation_epoch_root(&mut bundle)?;
+    bundle.revocation_epoch.signature = "0".repeat(128);
+
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
+        Ok(report) => panic!("unsigned revocation epoch reseal verified unexpectedly: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("swarm revocation epoch signature invalid"));
+    Ok(())
+}
+
+#[test]
 fn swarm_authority_stage0_rejects_revoked_authority_subject() -> Result<(), Box<dyn Error>> {
     let mut bundle = sample_swarm_bundle()?;
     bundle
         .revocation_epoch
         .revoked_subjects
-        .push("did:chio:authority".to_string());
+        .push(witness_issuer());
     refresh_revocation_epoch_root(&mut bundle)?;
 
     let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
@@ -1209,6 +1352,27 @@ fn swarm_authority_stage0_rejects_revoked_authority_subject() -> Result<(), Box<
     assert!(error
         .to_string()
         .contains("swarm authority subject is revoked"));
+    Ok(())
+}
+
+#[test]
+fn swarm_authority_stage0_rejects_task_graph_tampering_after_continuations_are_resealed(
+) -> Result<(), Box<dyn Error>> {
+    let mut bundle = sample_swarm_bundle()?;
+    bundle.task_graph.max_fanout += 1;
+    let graph_sha256 = canonical_hash(&bundle.task_graph)?;
+    for token in &mut bundle.continuation_tokens {
+        token.graph_sha256 = graph_sha256.clone();
+        sign_continuation_token(token)?;
+    }
+
+    let error = match verify_swarm_authority_bundle(&bundle, &trusted_witness_keys()) {
+        Ok(report) => panic!("tampered swarm task graph verified unexpectedly: {report:#?}"),
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("swarm task graph signature invalid"));
     Ok(())
 }
 
@@ -1224,11 +1388,13 @@ fn sample_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
         graph_id: "swarm-graph-proof-valid".to_string(),
         root_transaction_ref: "passport-swarm-valid".to_string(),
         planner_subject: "did:chio:planner".to_string(),
-        issuer: "did:chio:authority".to_string(),
+        issuer: witness_issuer(),
+        signature: String::new(),
         created_at_unix_ms: NOW_UNIX_MS - 1_000,
         expires_at_unix_ms: NOW_UNIX_MS + 60_000,
         max_depth: 2,
         max_fanout: 2,
+        multi_hop_witness_chains: false,
         nodes: vec![
             SwarmGraphNode {
                 task_id: "task-root".to_string(),
@@ -1279,30 +1445,12 @@ fn sample_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
         revocation_epoch_ref: "revocation-epoch-swarm-valid".to_string(),
         route_plan_refs: vec!["route-child-a".to_string(), "route-child-b".to_string()],
     };
+    sign_task_graph(&mut task_graph)?;
     let graph_sha256 = canonical_hash(&task_graph)?;
     let empty_revoked_subjects = Vec::<String>::new();
     let empty_revoked_task_ids = Vec::<String>::new();
     let revocation_epoch_root_hash =
         revocation_epoch_root_hash(&empty_revoked_subjects, &empty_revoked_task_ids)?;
-
-    let continuation_tokens = vec![
-        continuation_token(
-            "continuation-child-a",
-            "task-child-a",
-            "route-child-a",
-            &graph_sha256,
-            &revocation_epoch_root_hash,
-        )?,
-        continuation_token(
-            "continuation-child-b",
-            "task-child-b",
-            "route-child-b",
-            &graph_sha256,
-            &revocation_epoch_root_hash,
-        )?,
-    ];
-    task_graph.nodes[1].continuation_token_ref = Some(continuation_tokens[0].token_id.clone());
-    task_graph.nodes[2].continuation_token_ref = Some(continuation_tokens[1].token_id.clone());
 
     let witness_chains = vec![
         witness_chain(
@@ -1322,6 +1470,26 @@ fn sample_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
             witness,
         )?,
     ];
+    let continuation_tokens = vec![
+        continuation_token(
+            "continuation-child-a",
+            "task-child-a",
+            "route-child-a",
+            &graph_sha256,
+            &revocation_epoch_root_hash,
+            Some(&witness_chains[0]),
+        )?,
+        continuation_token(
+            "continuation-child-b",
+            "task-child-b",
+            "route-child-b",
+            &graph_sha256,
+            &revocation_epoch_root_hash,
+            Some(&witness_chains[1]),
+        )?,
+    ];
+    task_graph.nodes[1].continuation_token_ref = Some(continuation_tokens[0].token_id.clone());
+    task_graph.nodes[2].continuation_token_ref = Some(continuation_tokens[1].token_id.clone());
 
     let mut join_receipts = vec![SwarmJoinReceipt {
         schema: CHIO_SWARM_JOIN_RECEIPT_SCHEMA.to_string(),
@@ -1360,7 +1528,7 @@ fn sample_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
     }];
     sign_join_receipt(&mut join_receipts[0])?;
 
-    Ok(SwarmAuthorityBundle {
+    let mut bundle = SwarmAuthorityBundle {
         task_graph,
         continuation_tokens,
         witness_chains,
@@ -1410,40 +1578,52 @@ fn sample_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
             valid_until_unix_ms: NOW_UNIX_MS + 60_000,
             revoked_subjects: empty_revoked_subjects,
             revoked_task_ids: empty_revoked_task_ids,
+            issuer: witness_issuer(),
+            signature: String::new(),
         },
         terminal_receipts: vec![terminal_graph_receipt()?],
         now_unix_ms: NOW_UNIX_MS,
-    })
+    };
+    sign_revocation_epoch(&mut bundle.revocation_epoch)?;
+    Ok(bundle)
 }
 
 fn root_only_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
     let root_scope_hash = scope_hash(&scope_for("commerce", "reserve_budget", 1))?;
-    Ok(SwarmAuthorityBundle {
-        task_graph: SwarmTaskGraph {
-            schema: CHIO_SWARM_TASK_GRAPH_SCHEMA.to_string(),
-            graph_id: "swarm-graph-root-only".to_string(),
-            root_transaction_ref: "passport-swarm-root-only".to_string(),
-            planner_subject: "did:chio:planner".to_string(),
-            issuer: "did:chio:authority".to_string(),
-            created_at_unix_ms: NOW_UNIX_MS - 1_000,
-            expires_at_unix_ms: NOW_UNIX_MS + 60_000,
-            max_depth: 1,
-            max_fanout: 1,
-            nodes: vec![SwarmGraphNode {
-                task_id: "task-root".to_string(),
-                parent_task_id: None,
-                route_plan_ref: None,
-                continuation_token_ref: None,
-                budget_allocation_ref: None,
-                scope_hash: root_scope_hash,
-                depth: 0,
-            }],
-            edges: Vec::new(),
-            joins: Vec::new(),
-            budget_pool_ref: "budget-pool-swarm-root-only".to_string(),
-            revocation_epoch_ref: "revocation-epoch-swarm-root-only".to_string(),
-            route_plan_refs: Vec::new(),
-        },
+    let mut task_graph = SwarmTaskGraph {
+        schema: CHIO_SWARM_TASK_GRAPH_SCHEMA.to_string(),
+        graph_id: "swarm-graph-root-only".to_string(),
+        root_transaction_ref: "passport-swarm-root-only".to_string(),
+        planner_subject: "did:chio:planner".to_string(),
+        issuer: witness_issuer(),
+        signature: String::new(),
+        created_at_unix_ms: NOW_UNIX_MS - 1_000,
+        expires_at_unix_ms: NOW_UNIX_MS + 60_000,
+        max_depth: 1,
+        max_fanout: 1,
+        multi_hop_witness_chains: false,
+        nodes: vec![SwarmGraphNode {
+            task_id: "task-root".to_string(),
+            parent_task_id: None,
+            route_plan_ref: None,
+            continuation_token_ref: None,
+            budget_allocation_ref: None,
+            scope_hash: root_scope_hash,
+            depth: 0,
+        }],
+        edges: Vec::new(),
+        joins: Vec::new(),
+        budget_pool_ref: "budget-pool-swarm-root-only".to_string(),
+        revocation_epoch_ref: "revocation-epoch-swarm-root-only".to_string(),
+        route_plan_refs: Vec::new(),
+    };
+    sign_task_graph(&mut task_graph)?;
+    let empty_revoked_subjects = Vec::<String>::new();
+    let empty_revoked_task_ids = Vec::<String>::new();
+    let revocation_epoch_root_hash =
+        revocation_epoch_root_hash(&empty_revoked_subjects, &empty_revoked_task_ids)?;
+    let mut bundle = SwarmAuthorityBundle {
+        task_graph,
         continuation_tokens: Vec::new(),
         witness_chains: Vec::new(),
         join_receipts: Vec::new(),
@@ -1459,15 +1639,19 @@ fn root_only_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
         revocation_epoch: SwarmRevocationEpoch {
             schema: CHIO_SWARM_REVOCATION_EPOCH_SCHEMA.to_string(),
             epoch_id: "revocation-epoch-swarm-root-only".to_string(),
-            root_hash: sha256_hex(b"revocation-root-only"),
+            root_hash: revocation_epoch_root_hash,
             issued_at_unix_ms: NOW_UNIX_MS - 1_000,
             valid_until_unix_ms: NOW_UNIX_MS + 60_000,
-            revoked_subjects: Vec::new(),
-            revoked_task_ids: Vec::new(),
+            revoked_subjects: empty_revoked_subjects,
+            revoked_task_ids: empty_revoked_task_ids,
+            issuer: witness_issuer(),
+            signature: String::new(),
         },
         terminal_receipts: Vec::new(),
         now_unix_ms: NOW_UNIX_MS,
-    })
+    };
+    sign_revocation_epoch(&mut bundle.revocation_epoch)?;
+    Ok(bundle)
 }
 
 fn continuation_token(
@@ -1476,7 +1660,10 @@ fn continuation_token(
     route_plan_receipt_id: &str,
     graph_sha256: &str,
     revocation_epoch_root_hash: &str,
+    witness_chain: Option<&SwarmDelegationWitnessChain>,
 ) -> Result<SwarmContinuationToken, Box<dyn Error>> {
+    let witness_chain_ref = witness_chain.map(|chain| chain.chain_id.clone());
+    let witness_chain_sha256 = witness_chain.map(canonical_hash).transpose()?;
     let mut token = SwarmContinuationToken {
         schema: CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA.to_string(),
         token_id: token_id.to_string(),
@@ -1488,6 +1675,8 @@ fn continuation_token(
         graph_sha256: graph_sha256.to_string(),
         route_plan_receipt_id: route_plan_receipt_id.to_string(),
         budget_allocation_id: format!("budget-{}", child_task_id.trim_start_matches("task-")),
+        witness_chain_ref,
+        witness_chain_sha256,
         revocation_epoch_ref: "revocation-epoch-swarm-valid".to_string(),
         revocation_epoch_root_hash: revocation_epoch_root_hash.to_string(),
         session_anchor_ref: "session-anchor-swarm-valid".to_string(),
@@ -1507,6 +1696,11 @@ fn sign_continuation_token(token: &mut SwarmContinuationToken) -> Result<(), Box
     Ok(())
 }
 
+fn sign_task_graph(graph: &mut SwarmTaskGraph) -> Result<(), Box<dyn Error>> {
+    graph.signature = sign_swarm_task_graph(graph, &witness_keypair())?;
+    Ok(())
+}
+
 fn sign_join_receipt(receipt: &mut SwarmJoinReceipt) -> Result<(), Box<dyn Error>> {
     receipt.signature = sign_swarm_join_receipt(receipt, &witness_keypair())?;
     Ok(())
@@ -1521,6 +1715,11 @@ fn sign_terminal_graph_receipt(
     receipt: &mut SwarmTerminalGraphReceipt,
 ) -> Result<(), Box<dyn Error>> {
     receipt.signature = sign_swarm_terminal_graph_receipt(receipt, &witness_keypair())?;
+    Ok(())
+}
+
+fn sign_revocation_epoch(epoch: &mut SwarmRevocationEpoch) -> Result<(), Box<dyn Error>> {
+    epoch.signature = sign_swarm_revocation_epoch(epoch, &witness_keypair())?;
     Ok(())
 }
 
@@ -1581,6 +1780,44 @@ fn witness_chain(
     };
     sign_witness_chain(&mut chain)?;
     Ok(chain)
+}
+
+fn set_child_a_multi_hop_witness(bundle: &mut SwarmAuthorityBundle) -> Result<(), Box<dyn Error>> {
+    let parent_scope = scope_for("commerce", "reserve_budget", 3);
+    let intermediate_scope = scope_for("commerce", "reserve_budget", 2);
+    let child_scope = scope_for("commerce", "reserve_budget", 1);
+    let parent_scope_hash = scope_hash(&parent_scope)?;
+    let intermediate_scope_hash = scope_hash(&intermediate_scope)?;
+    let child_scope_hash = scope_hash(&child_scope)?;
+
+    bundle.witness_chains[0].hops = vec![
+        SwarmDelegationWitnessHop {
+            parent_capability_digest: sha256_hex(b"parent-capability"),
+            child_capability_digest: sha256_hex(b"intermediate-capability"),
+            parent_scope_hash: parent_scope_hash.clone(),
+            child_scope_hash: intermediate_scope_hash.clone(),
+            attenuation_rule_id: "rule-subset-tool-invocation".to_string(),
+            scope_subset_proof: compute_attenuation_witness(&parent_scope, &intermediate_scope)?,
+            expires_at_unix_ms: NOW_UNIX_MS + 60_000,
+            issuer: witness_issuer(),
+            policy_digest: sha256_hex(b"swarm-policy"),
+            witness_signature: String::new(),
+        },
+        SwarmDelegationWitnessHop {
+            parent_capability_digest: sha256_hex(b"intermediate-capability"),
+            child_capability_digest: sha256_hex(b"task-child-a"),
+            parent_scope_hash: intermediate_scope_hash,
+            child_scope_hash,
+            attenuation_rule_id: "rule-subset-tool-invocation".to_string(),
+            scope_subset_proof: compute_attenuation_witness(&intermediate_scope, &child_scope)?,
+            expires_at_unix_ms: NOW_UNIX_MS + 60_000,
+            issuer: witness_issuer(),
+            policy_digest: sha256_hex(b"swarm-policy"),
+            witness_signature: String::new(),
+        },
+    ];
+    sign_witness_chain(&mut bundle.witness_chains[0])?;
+    Ok(())
 }
 
 fn sign_witness_chain(chain: &mut SwarmDelegationWitnessChain) -> Result<(), Box<dyn Error>> {
@@ -1712,6 +1949,7 @@ fn refresh_revocation_epoch_root(bundle: &mut SwarmAuthorityBundle) -> Result<()
         &bundle.revocation_epoch.revoked_task_ids,
     )?;
     bundle.revocation_epoch.root_hash = root_hash.clone();
+    sign_revocation_epoch(&mut bundle.revocation_epoch)?;
     for token in &mut bundle.continuation_tokens {
         token.revocation_epoch_root_hash = root_hash.clone();
         sign_continuation_token(token)?;
@@ -1722,9 +1960,25 @@ fn refresh_revocation_epoch_root(bundle: &mut SwarmAuthorityBundle) -> Result<()
 fn refresh_continuation_graph_digests(
     bundle: &mut SwarmAuthorityBundle,
 ) -> Result<(), Box<dyn Error>> {
+    sign_task_graph(&mut bundle.task_graph)?;
     let graph_sha256 = canonical_hash(&bundle.task_graph)?;
+    let mut witness_bindings = BTreeMap::new();
+    for chain in &bundle.witness_chains {
+        witness_bindings.insert(
+            (chain.parent_task_id.as_str(), chain.child_task_id.as_str()),
+            (chain.chain_id.clone(), canonical_hash(chain)?),
+        );
+    }
     for token in &mut bundle.continuation_tokens {
         token.graph_sha256 = graph_sha256.clone();
+        if let Some(parent_task_id) = token.parent_task_id.as_deref() {
+            if let Some((chain_id, chain_sha256)) =
+                witness_bindings.get(&(parent_task_id, token.child_task_id.as_str()))
+            {
+                token.witness_chain_ref = Some(chain_id.clone());
+                token.witness_chain_sha256 = Some(chain_sha256.clone());
+            }
+        }
         sign_continuation_token(token)?;
     }
     Ok(())

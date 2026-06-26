@@ -47,10 +47,13 @@ pub struct SwarmTaskGraph {
     pub root_transaction_ref: String,
     pub planner_subject: String,
     pub issuer: String,
+    pub signature: String,
     pub created_at_unix_ms: u64,
     pub expires_at_unix_ms: u64,
     pub max_depth: u32,
     pub max_fanout: u32,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub multi_hop_witness_chains: bool,
     pub nodes: Vec<SwarmGraphNode>,
     pub edges: Vec<SwarmGraphEdge>,
     pub joins: Vec<SwarmGraphJoin>,
@@ -106,6 +109,10 @@ pub struct SwarmContinuationToken {
     pub graph_sha256: String,
     pub route_plan_receipt_id: String,
     pub budget_allocation_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub witness_chain_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub witness_chain_sha256: Option<String>,
     pub revocation_epoch_ref: String,
     pub revocation_epoch_root_hash: String,
     pub session_anchor_ref: String,
@@ -128,6 +135,8 @@ pub struct SwarmContinuationTokenMintRequest {
     pub graph_sha256: String,
     pub route_plan_receipt_id: String,
     pub budget_allocation_id: String,
+    pub witness_chain_ref: Option<String>,
+    pub witness_chain_sha256: Option<String>,
     pub revocation_epoch_ref: String,
     pub revocation_epoch_root_hash: String,
     pub session_anchor_ref: String,
@@ -302,6 +311,8 @@ pub struct SwarmRevocationEpoch {
     pub valid_until_unix_ms: u64,
     pub revoked_subjects: Vec<String>,
     pub revoked_task_ids: Vec<String>,
+    pub issuer: String,
+    pub signature: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -347,5 +358,32 @@ pub struct SwarmAuthorityVerifierReport {
     pub continuation_count: usize,
     pub join_count: usize,
     pub route_count: usize,
+    pub hop_reports: Vec<SwarmAuthorityHopReport>,
     pub verified_claims: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SwarmAuthorityHopReport {
+    pub child_task_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_task_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub join_receipt_id: Option<String>,
+    pub continuation_token_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub witness_chain_id: Option<String>,
+    pub witness_hop_count: usize,
+    pub multi_hop_witness_enabled: bool,
+    pub route_plan_receipt_id: String,
+    pub budget_allocation_id: String,
+    pub authority_verified: bool,
+    pub attenuation_verified: bool,
+    pub lineage_verified: bool,
+    pub route_verified: bool,
+    pub budget_verified: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }

@@ -201,6 +201,16 @@ pub fn validate_web3_settlement_dispatch(
             ))
         })?;
     if let Some(bond) = dispatch.bond.as_ref() {
+        let signature_valid = bond.verify_signature().map_err(|error| {
+            Web3ContractError::invalid_settlement(format!(
+                "credit bond signature verification failed: {error}"
+            ))
+        })?;
+        if !signature_valid {
+            return Err(Web3ContractError::invalid_settlement(
+                "credit bond signature verification failed",
+            ));
+        }
         if bond.body.lifecycle_state != CreditBondLifecycleState::Active {
             return Err(Web3ContractError::invalid_settlement(
                 "web3 settlement dispatch requires an active bond when bond backing is present",

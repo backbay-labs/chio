@@ -82,7 +82,7 @@ Good shape:
 
 ```text
 Add `crates/chio-commerce/tests/order_replay.rs::quote_amount_drift_rejected` using
-`fixtures/chio-launch/commerce/invalid-quote-amount-drift/event-log.json`.
+`fixtures/proof-room/commerce/invalid-quote-amount-drift/event-log.json`.
 Run it and capture the failure. Then implement only the replay check needed to
 make that test pass.
 ```
@@ -105,16 +105,16 @@ The plans often put fixtures in launch qualification phases. That is backwards f
 
 Recommended fixture root:
 
-- `fixtures/chio-launch/transaction/minimal-valid/`
-- `fixtures/chio-launch/transaction/invalid-policy-digest-mismatch/`
-- `fixtures/chio-launch/commerce/completed-valid/`
-- `fixtures/chio-launch/commerce/invalid-quote-order-mismatch/`
-- `fixtures/chio-launch/swarm/valid-three-child-one-join/`
-- `fixtures/chio-launch/swarm/invalid-stale-continuation-token/`
-- `fixtures/chio-launch/disclosure/invalid-excess-disclosure/`
-- `fixtures/chio-launch/settlement/invalid-wrong-order-id/`
-- `fixtures/chio-launch/risk/invalid-double-consumed-reserve/`
-- `fixtures/chio-launch/envelope/mcp-invalid-external-digest/`
+- `fixtures/proof-room/transaction/minimal-valid/`
+- `fixtures/proof-room/transaction/invalid-policy-digest-mismatch/`
+- `fixtures/proof-room/commerce/completed-valid/`
+- `fixtures/proof-room/commerce/invalid-quote-order-mismatch/`
+- `fixtures/proof-room/swarm/valid-three-child-one-join/`
+- `fixtures/proof-room/swarm/invalid-stale-continuation-token/`
+- `fixtures/proof-room/disclosure/invalid-excess-disclosure/`
+- `fixtures/proof-room/settlement/invalid-wrong-order-id/`
+- `fixtures/proof-room/risk/invalid-double-consumed-reserve/`
+- `fixtures/proof-room/envelope/mcp-invalid-external-digest/`
 
 ### 6. Negative cases are sometimes not semantically real
 
@@ -396,7 +396,7 @@ Backlog:
 
 1. Freeze canonical schema IDs in `docs/superpowers/research/chio-launch/indices/artifact-registry.md`.
 2. Add a schema-root decision note: existing checked root versus new `spec/schemas/chio-transaction/v1/` plus script update.
-3. Add a launch fixture layout contract under `fixtures/chio-launch/README.md`.
+3. Add a launch fixture layout contract under `fixtures/proof-room/README.md`.
 4. Add a verifier report verdict vocabulary.
 5. Add claim ID naming rules and first claim registry rows.
 6. Add a registry gate command that checks schema registry, manifest hashes, and signed-artifact constants.
@@ -550,7 +550,7 @@ Files:
 Red step:
 
 ```bash
-cargo test -p chio-core-types --test signed_artifact_schema transaction_passport_schemas_are_known
+cargo test -p chio-core-types --test signed_artifact_schema governed_action_evidence_schemas_are_registered
 scripts/check-chio-schema-registry.sh
 ```
 
@@ -571,10 +571,10 @@ Files:
 - `crates/chio-control-plane/src/transaction_passport.rs`
 - `crates/chio-control-plane/src/lib.rs`
 - `crates/chio-control-plane/tests/transaction_passport.rs`
-- `fixtures/chio-launch/transaction/minimal-valid/transaction-passport.json`
-- `fixtures/chio-launch/transaction/minimal-valid/evidence-graph.json`
-- `fixtures/chio-launch/transaction/invalid-evidence-graph-digest/transaction-passport.json`
-- `fixtures/chio-launch/transaction/invalid-evidence-graph-digest/evidence-graph.json`
+- `fixtures/proof-room/transaction/minimal-valid/transaction-passport.json`
+- `fixtures/proof-room/transaction/minimal-valid/evidence-graph.json`
+- `fixtures/proof-room/transaction/invalid-evidence-graph-digest/transaction-passport.json`
+- `fixtures/proof-room/transaction/invalid-evidence-graph-digest/evidence-graph.json`
 
 Red step:
 
@@ -621,8 +621,8 @@ Files:
 - `crates/chio-commerce/src/event.rs`
 - `crates/chio-commerce/src/replay.rs`
 - `crates/chio-commerce/tests/order_replay.rs`
-- `fixtures/chio-launch/commerce/invalid-quote-order-mismatch/event-log.json`
-- `fixtures/chio-launch/commerce/valid-completed/event-log.json`
+- `fixtures/proof-room/commerce/invalid-quote-order-mismatch/event-log.json`
+- `fixtures/proof-room/commerce/valid-completed/event-log.json`
 
 Red step:
 
@@ -644,7 +644,7 @@ Files:
 
 - `crates/chio-federation/src/continuation.rs`
 - `crates/chio-federation/tests/continuation_token.rs`
-- `fixtures/chio-launch/swarm/invalid-reused-token/task-graph.json`
+- `fixtures/proof-room/swarm/invalid-reused-token/task-graph.json`
 
 Red step:
 
@@ -667,7 +667,7 @@ Files:
 - `crates/chio-selective-disclosure/src/lib.rs`
 - `crates/chio-selective-disclosure/tests/bbs_selective_disclosure.rs`
 - `spec/schemas/chio-attest/v1/disclosure-privacy-profile.schema.json`
-- `fixtures/chio-launch/disclosure/invalid-excess-disclosure/capsule.json`
+- `fixtures/proof-room/disclosure/invalid-excess-disclosure/capsule.json`
 
 Red step:
 
@@ -689,7 +689,7 @@ Files:
 
 - `crates/chio-settle/src/proof_bundle.rs`
 - `crates/chio-settle/tests/public_settlement_proof.rs`
-- `fixtures/chio-launch/settlement/invalid-wrong-order-id/proof-bundle.json`
+- `fixtures/proof-room/settlement/invalid-wrong-order-id/proof-bundle.json`
 
 Red step:
 
@@ -711,7 +711,7 @@ Files:
 
 - `crates/chio-credit/src/risk_reports.rs`
 - `crates/chio-credit/tests/risk_comptroller.rs`
-- `fixtures/chio-launch/risk/invalid-double-consumed-reserve/risk-report.json`
+- `fixtures/proof-room/risk/invalid-double-consumed-reserve/risk-report.json`
 
 Red step:
 
@@ -733,8 +733,8 @@ Files:
 
 - `crates/chio-mcp-edge/src/proof_envelope.rs`
 - `crates/chio-mcp-edge/tests/proof_envelope.rs`
-- `fixtures/chio-launch/envelope/mcp-valid/envelope.json`
-- `fixtures/chio-launch/envelope/mcp-invalid-external-digest/envelope.json`
+- `fixtures/proof-room/envelope/mcp-valid/envelope.json`
+- `fixtures/proof-room/envelope/mcp-invalid-external-digest/envelope.json`
 
 Red step:
 

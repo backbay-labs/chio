@@ -10,6 +10,7 @@
     "rootTransactionRef",
     "plannerSubject",
     "issuer",
+    "signature",
     "createdAtUnixMs",
     "expiresAtUnixMs",
     "maxDepth",
@@ -41,6 +42,10 @@
       "type": "string",
       "minLength": 1
     },
+    "signature": {
+      "type": "string",
+      "minLength": 1
+    },
     "createdAtUnixMs": {
       "type": "integer",
       "minimum": 0
@@ -56,6 +61,9 @@
     "maxFanout": {
       "type": "integer",
       "minimum": 1
+    },
+    "multiHopWitnessChains": {
+      "type": "boolean"
     },
     "nodes": {
       "type": "array",

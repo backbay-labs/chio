@@ -12,6 +12,21 @@ Create the canonical public proof root for Chio launch.
 
 This plan creates verifier-facing signed artifacts. Before any verifier accepts them, follow `../indices/artifact-registry.md` and `../architecture/09-integration-contracts.md`: schema files, `spec/schemas/registry.json`, `spec/schemas/MANIFEST.sha256`, checked schema-root coverage, Rust signed-artifact constants or generated successor, claim registry rows, proof-manifest rows, positive fixtures, and unknown-schema negative fixtures.
 
+## Implementation Slices
+
+| Slice | Scope | Done when |
+| --- | --- | --- |
+| TP-0A | Register Transaction Passport, evidence graph, claim set, policy, and report schemas. | Registry, manifest, Rust allowlist, and unknown-schema negative pass. |
+| TP-0B | Freeze canonical JSON, digest, signature, validity-window, and omission-policy rules. | Tampered root, stale root, and missing omission-policy negatives reject. |
+| TP-0C | Add schema and fixture coverage for duplicate ids, graph cycles, unresolved refs, and unsupported claim statuses. | Schema and verifier tests fail closed for every invalid graph shape. |
+| TP-0D | Define claim registry and proof-manifest rows for standalone transaction claims. | Every emitted standalone claim is registered and evidence-backed. |
+| TP-1A | Verify signed passport root and pinned issuer keys. | Forged or unpinned root signer rejects before graph trust. |
+| TP-1B | Verify evidence graph closure and node digests. | Node id, path, schema, role, and digest drift reject. |
+| TP-1C | Verify claim-set inventory and preserve per-claim status rows. | Reports enumerate verified, failed, omitted, and unsupported claim results. |
+| TP-1D | Verify verifier-policy gates for issuers, required roles, transparency, commerce state, and omitted claims. | Invalid policy rejects at load and missing required evidence denies. |
+| TP-1E | Assemble deterministic roots from explicit input artifacts only. | Rebuilding from the same inputs produces identical root hashes. |
+| TP-1F | Expose CLI verify, explain, collect, and Proof Room report output. | CLI and Proof Room verdicts match on valid and invalid fixtures. |
+
 ## Phase 0 - Spec And Schemas
 
 Tasks:

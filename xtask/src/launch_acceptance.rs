@@ -20,7 +20,12 @@ const AGENT_WEB_STAGE_ID: &str = "disclosure-and-agent-web-envelope";
 const AGENT_WEB_SOURCE_LOG_PATH: &str =
     "docs/superpowers/research/chio-launch/indices/external-standards-source-log.md";
 const AGENT_WEB_SOURCE_LOG_STATUS: &str = "Status: refreshed source log";
+const AGENT_WEB_STANDARDS_SIGNOFF_PATH: &str =
+    "docs/standards/CHIO_AGENT_WEB_STANDARDS_SIGNOFF.json";
+const AGENT_WEB_STANDARDS_SIGNOFF_SCHEMA: &str = "chio.agent-web.standards-signoff.v1";
 const AGENT_WEB_PROJECTION_MANIFEST_SCHEMA: &str = "chio.agent-web.external-projection-manifest.v1";
+const REQUIRED_AGENT_WEB_SIGNOFF_TERMS: [&str; 4] =
+    ["standard", "compatible", "native", "universal"];
 const REQUIRED_AGENT_WEB_PROTOCOLS: [&str; 30] = [
     "a2a",
     "acp-client",
@@ -63,6 +68,15 @@ const REQUIRED_AGENT_WEB_NEGATIVE_IDS: [&str; 8] = [
     "agent-web-oci-tag-only-ref",
     "agent-web-slsa-unverified-provenance",
 ];
+const REQUIRED_PRODUCT_OVERLAY_NEGATIVE_IDS: [&str; 3] = [
+    "product-private-credential-required",
+    "product-plugin-cached-verdict",
+    "product-playground-unsupported-claim",
+];
+const PRODUCT_OVERLAY_NEGATIVE_SCHEMA: &str = "chio.proof-room.product-overlay-negative.v1";
+const PRODUCT_OVERLAY_NEGATIVE_ROOT: &str = "fixtures/proof-room/product-overlays/negatives";
+const DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS: &str =
+    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa";
 
 const STAGES: [StageSpec; 4] = [
     StageSpec {
@@ -95,6 +109,8 @@ struct StageEvidence {
     source_path: String,
     manifest_sha256: String,
     verifier_report_sha256: String,
+    verifier_report_verdict: String,
+    proof_room_verdict: String,
     transaction_passport_sha256: String,
     evidence_graph_sha256: String,
     negative_cases: Vec<Value>,
@@ -135,7 +151,8 @@ pub(crate) fn run(args: &LaunchAcceptanceArgs) -> Result<(), XtaskError> {
     copy_claim_registry(&root, &out)?;
     write_homepage_copy_map(&out)?;
     write_non_claims(&out)?;
-    write_negative_catalog(&out, &stages)?;
+    write_negative_catalog(&root, &out, &stages)?;
+    write_stage_bundle_layout_companions(&out)?;
     copy_static_ui(&root, &out)?;
 
     let git_commit = required_stdout(&root, "git", &["rev-parse", "HEAD"])?;
@@ -193,15 +210,18 @@ fn copy_and_validate_stages(root: &Path, out: &Path) -> Result<Vec<StageEvidence
         }
         let manifest_path = source.join("manifest.json");
         let verifier_report_path = source.join("verifier/report.json");
+        let proof_room_report_path = source.join("ui/proof-room-static/load-report.json");
         let transaction_passport_path = source.join("roots/transaction-passport.json");
         let evidence_graph_path = source.join("roots/evidence-graph.json");
         require_file(&manifest_path)?;
         require_file(&verifier_report_path)?;
+        require_file(&proof_room_report_path)?;
         require_file(&transaction_passport_path)?;
         require_file(&evidence_graph_path)?;
 
         let manifest = read_json(&manifest_path)?;
         let report = read_json(&verifier_report_path)?;
+        let proof_room_report = read_json(&proof_room_report_path)?;
         let fixture_id = manifest
             .get("fixture_id")
             .and_then(Value::as_str)
@@ -224,10 +244,21 @@ fn copy_and_validate_stages(root: &Path, out: &Path) -> Result<Vec<StageEvidence
                 crate::display_path(&manifest_path)
             )));
         }
-        if report.get("verdict").and_then(Value::as_str) != Some("verified") {
+        let verifier_report_verdict =
+            required_json_string(&report, "verdict", &verifier_report_path)?.to_string();
+        let proof_room_verdict =
+            required_json_string(&proof_room_report, "verdict", &proof_room_report_path)?
+                .to_string();
+        if verifier_report_verdict != "verified" {
             return Err(XtaskError::Validation(format!(
                 "{}: verifier report did not verify",
                 crate::display_path(&verifier_report_path)
+            )));
+        }
+        if proof_room_verdict != verifier_report_verdict {
+            return Err(XtaskError::Validation(format!(
+                "{}: Proof Room verdict {proof_room_verdict} does not match verifier report verdict {verifier_report_verdict}",
+                crate::display_path(&proof_room_report_path)
             )));
         }
 
@@ -268,6 +299,8 @@ fn copy_and_validate_stages(root: &Path, out: &Path) -> Result<Vec<StageEvidence
             source_path: spec.source.to_string(),
             manifest_sha256: sha256_file(&manifest_path)?,
             verifier_report_sha256: sha256_file(&verifier_report_path)?,
+            verifier_report_verdict,
+            proof_room_verdict,
             transaction_passport_sha256: sha256_file(&transaction_passport_path)?,
             evidence_graph_sha256: sha256_file(&evidence_graph_path)?,
             negative_cases: negative_cases.clone(),
@@ -292,6 +325,7 @@ fn validate_agent_web_exit_gate(
             crate::display_path(&source_log_path)
         )));
     }
+    let signoff = validate_agent_web_standards_signoff(root)?;
 
     let mut source_protocols = BTreeSet::new();
     let mut manifest_count = 0usize;
@@ -351,11 +385,84 @@ fn validate_agent_web_exit_gate(
         "verdict": "verified",
         "source_log_path": AGENT_WEB_SOURCE_LOG_PATH,
         "source_log_status": "refreshed source log",
+        "standards_signoff_path": AGENT_WEB_STANDARDS_SIGNOFF_PATH,
+        "standards_signoff_status": signoff.status,
+        "standards_signoff_terms": signoff.terms,
         "projection_manifest_schema": AGENT_WEB_PROJECTION_MANIFEST_SCHEMA,
         "manifest_count": manifest_count,
         "source_protocols": source_protocols.into_iter().collect::<Vec<_>>(),
         "negative_case_ids": negative_ids.into_iter().collect::<Vec<_>>(),
     }))
+}
+
+struct AgentWebStandardsSignoff {
+    status: String,
+    terms: Vec<String>,
+}
+
+fn validate_agent_web_standards_signoff(
+    root: &Path,
+) -> Result<AgentWebStandardsSignoff, XtaskError> {
+    let path = root.join(AGENT_WEB_STANDARDS_SIGNOFF_PATH);
+    require_file(&path)?;
+    let signoff = read_json(&path)?;
+    if signoff.get("schema").and_then(Value::as_str) != Some(AGENT_WEB_STANDARDS_SIGNOFF_SCHEMA) {
+        return Err(XtaskError::Validation(format!(
+            "{}: unsupported Agent Web standards sign-off schema",
+            crate::display_path(&path)
+        )));
+    }
+    let source_log_path = required_json_string(&signoff, "source_log_path", &path)?;
+    if source_log_path != AGENT_WEB_SOURCE_LOG_PATH {
+        return Err(XtaskError::Validation(format!(
+            "{}: Agent Web standards sign-off source log mismatch",
+            crate::display_path(&path)
+        )));
+    }
+    let status = required_json_string(&signoff, "status", &path)?.to_string();
+    if status != "approved" {
+        return Err(XtaskError::Validation(format!(
+            "{}: Agent Web standards sign-off is not approved",
+            crate::display_path(&path)
+        )));
+    }
+    let terms = signoff
+        .get("terms")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            XtaskError::Validation(format!(
+                "{}: Agent Web standards sign-off terms missing",
+                crate::display_path(&path)
+            ))
+        })?
+        .iter()
+        .map(|term| {
+            term.as_str()
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| {
+                    XtaskError::Validation(format!(
+                        "{}: Agent Web standards sign-off term must be a string",
+                        crate::display_path(&path)
+                    ))
+                })
+        })
+        .collect::<Result<BTreeSet<_>, _>>()?;
+    for term in REQUIRED_AGENT_WEB_SIGNOFF_TERMS {
+        if !terms.contains(term) {
+            return Err(XtaskError::Validation(format!(
+                "{}: Agent Web standards sign-off missing term {term}",
+                crate::display_path(&path)
+            )));
+        }
+    }
+    require_non_empty_json_array(&signoff, "checked_public_surfaces", &path)?;
+    Ok(AgentWebStandardsSignoff {
+        status,
+        terms: REQUIRED_AGENT_WEB_SIGNOFF_TERMS
+            .iter()
+            .map(|term| (*term).to_string())
+            .collect(),
+    })
 }
 
 fn copy_roots_from_stage_zero(root: &Path, out: &Path) -> Result<(), XtaskError> {
@@ -382,6 +489,9 @@ fn write_homepage_copy_map(out: &Path) -> Result<(), XtaskError> {
                     "claim.commerce.mandate_allowance_bound",
                     "claim.commerce.admission_gates_bound",
                     "claim.commerce.settlement_lifecycle_bound",
+                    "claim.commerce.trust_market_context_bound",
+                    "claim.trust_market.provider_discovery_bound",
+                    "claim.trust_market.provider_selection_bound",
                     "claim.public_settlement.order_binding_verified"
                 ],
                 "fixture_ids": ["commerce-transaction-passport"]
@@ -499,6 +609,7 @@ fn write_homepage_copy_map(out: &Path) -> Result<(), XtaskError> {
                     "claim.commerce.order_replay_consistent",
                     "claim.commerce.payment_lifecycle_bound",
                     "claim.commerce.mandate_allowance_bound",
+                    "claim.commerce.trust_market_context_bound",
                     "claim.commerce.settlement_lifecycle_bound",
                     "claim.public_settlement.order_binding_verified",
                     "claim.public_settlement.dispute_posture_bound"
@@ -535,7 +646,11 @@ fn write_non_claims(out: &Path) -> Result<(), XtaskError> {
     write_json(&out.join("claims/non-claims.json"), &non_claims)
 }
 
-fn write_negative_catalog(out: &Path, stages: &[StageEvidence]) -> Result<(), XtaskError> {
+fn write_negative_catalog(
+    root: &Path,
+    out: &Path,
+    stages: &[StageEvidence],
+) -> Result<(), XtaskError> {
     let mut cases = Vec::new();
     for stage in stages {
         for case in &stage.negative_cases {
@@ -549,11 +664,113 @@ fn write_negative_catalog(out: &Path, stages: &[StageEvidence]) -> Result<(), Xt
             cases.push(enriched);
         }
     }
+    cases.extend(product_overlay_negative_cases(root)?);
     let catalog = json!({
         "schema": NEGATIVE_CATALOG_SCHEMA,
         "cases": cases,
     });
     write_json(&out.join("negatives/catalog.json"), &catalog)
+}
+
+fn product_overlay_negative_cases(root: &Path) -> Result<Vec<Value>, XtaskError> {
+    let dir = root.join(PRODUCT_OVERLAY_NEGATIVE_ROOT);
+    if !dir.is_dir() {
+        return Err(XtaskError::Validation(format!(
+            "product overlay negative fixture root is missing: {}",
+            crate::display_path(&dir)
+        )));
+    }
+    let mut entries = fs::read_dir(&dir)
+        .map_err(|err| XtaskError::Io(crate::display_path(&dir), err))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| XtaskError::Io(crate::display_path(&dir), err))?;
+    entries.sort_by_key(|entry| entry.path());
+
+    let mut cases = Vec::new();
+    let mut ids = BTreeSet::new();
+    for entry in entries {
+        let path = entry.path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+            continue;
+        }
+        let mut case = read_json(&path)?;
+        if case.get("schema").and_then(Value::as_str) != Some(PRODUCT_OVERLAY_NEGATIVE_SCHEMA) {
+            return Err(XtaskError::Validation(format!(
+                "{}: schema is not {PRODUCT_OVERLAY_NEGATIVE_SCHEMA}",
+                crate::display_path(&path)
+            )));
+        }
+        let id = required_json_string(&case, "id", &path)?.to_string();
+        required_json_string(&case, "expected_failure_code", &path)?;
+        required_json_string(&case, "observed_failure_code", &path)?;
+        if !ids.insert(id.clone()) {
+            return Err(XtaskError::Validation(format!(
+                "duplicate product overlay negative id: {id}"
+            )));
+        }
+        let Some(object) = case.as_object_mut() else {
+            return Err(XtaskError::Validation(format!(
+                "{}: product overlay negative is not an object",
+                crate::display_path(&path)
+            )));
+        };
+        object.insert(
+            "stage".to_string(),
+            Value::String("product-overlays".to_string()),
+        );
+        object.insert(
+            "path".to_string(),
+            Value::String(format!(
+                "{PRODUCT_OVERLAY_NEGATIVE_ROOT}/{}.json",
+                path.file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .unwrap_or(&id)
+            )),
+        );
+        cases.push(case);
+    }
+
+    let missing = REQUIRED_PRODUCT_OVERLAY_NEGATIVE_IDS
+        .iter()
+        .filter(|id| !ids.contains(**id))
+        .copied()
+        .collect::<Vec<_>>();
+    if !missing.is_empty() {
+        return Err(XtaskError::Validation(format!(
+            "product overlay negative fixtures missing: {}",
+            missing.join(", ")
+        )));
+    }
+    Ok(cases)
+}
+
+fn write_stage_bundle_layout_companions(out: &Path) -> Result<(), XtaskError> {
+    for stage in STAGES {
+        let bundle = out
+            .join("stages")
+            .join(stage.fixture_id)
+            .join("proof-room-bundle");
+        let claims = bundle.join("claims");
+        fs::create_dir_all(&claims)
+            .map_err(|err| XtaskError::Io(crate::display_path(&claims), err))?;
+        copy_file(
+            &out.join("claims/claim-registry.json"),
+            &claims.join("claim-registry.json"),
+        )?;
+        copy_file(
+            &out.join("claims/non-claims.json"),
+            &claims.join("non-claims.json"),
+        )?;
+        let verifier_report = bundle.join("verifier/report.json");
+        require_file(&verifier_report)?;
+        let report_sha256 = sha256_file(&verifier_report)?;
+        write_unsigned_dsse(
+            &bundle.join("verifier/report.dsse.json"),
+            "application/vnd.chio.transaction.verifier-report.v1+json",
+            &report_sha256,
+        )?;
+    }
+    Ok(())
 }
 
 fn copy_static_ui(root: &Path, out: &Path) -> Result<(), XtaskError> {
@@ -648,6 +865,9 @@ fn stage_json(stage: &StageEvidence) -> Value {
         "output_path": stage.output_path,
         "manifest_sha256": stage.manifest_sha256,
         "verifier_report_sha256": stage.verifier_report_sha256,
+        "verifier_report_verdict": stage.verifier_report_verdict,
+        "proof_room_verdict": stage.proof_room_verdict,
+        "verdict_parity": "verified",
         "transaction_passport_sha256": stage.transaction_passport_sha256,
         "evidence_graph_sha256": stage.evidence_graph_sha256,
         "negative_case_count": stage.negative_cases.len(),
@@ -698,6 +918,14 @@ fn run_fixture_verifier_gate(root: &Path) -> Result<CommandRecord, XtaskError> {
         .arg(&script)
         .current_dir(root)
         .env("CARGO_INCREMENTAL", "0")
+        .env(
+            "CHIO_DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS",
+            DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS,
+        )
+        .env(
+            "CHIO_DISCLOSURE_TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_KEYS",
+            DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS,
+        )
         .output()
         .map_err(|err| XtaskError::Io(crate::display_path(&script), err))?;
     let record = CommandRecord {

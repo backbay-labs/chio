@@ -330,6 +330,10 @@ pub fn verify_minimal_passport_artifacts(
         .map_err(|error| {
             TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
         })?;
+    let evidence_graph_value: Value =
+        serde_json::from_slice(evidence_graph_bytes).map_err(|error| {
+            TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
+        })?;
     validate_evidence_graph(&evidence_graph)?;
     validate_claim_set_node_binding(
         &evidence_graph,
@@ -343,8 +347,12 @@ pub fn verify_minimal_passport_artifacts(
         })?;
     validate_verifier_policy(&verifier_policy)?;
     validate_passport_omission_policy(passport, &verifier_policy)?;
+    enforce_verifier_policy_gates(passport, &verifier_policy, &evidence_graph_value)?;
+    let transparency_state =
+        evidence_graph_transparency_state(evidence_graph_nodes(&evidence_graph_value)?);
 
-    Ok(TransactionVerifierReport::verified(passport, passport_path))
+    Ok(TransactionVerifierReport::verified(passport, passport_path)
+        .with_transparency_state(transparency_state))
 }
 
 pub fn verify_passport_root_and_claim_set_artifacts(
@@ -376,6 +384,42 @@ pub fn verify_passport_root_and_claim_set_artifacts_with_external_claims(
     externally_verified_claims: &[String],
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
     verify_transaction_passport_signature(passport, trusted_root_signer_keys)?;
+    verify_passport_root_and_claim_set_artifacts_bound(
+        passport,
+        passport_path,
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        artifacts,
+        externally_verified_claims,
+    )
+}
+
+pub fn verify_passport_root_and_claim_set_artifacts_unchecked_signature_with_external_claims(
+    passport: &TransactionPassport,
+    passport_path: String,
+    evidence_graph_bytes: &[u8],
+    verifier_policy_bytes: &[u8],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    externally_verified_claims: &[String],
+) -> Result<TransactionVerifierReport, TransactionPassportError> {
+    verify_passport_root_and_claim_set_artifacts_bound(
+        passport,
+        passport_path,
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        artifacts,
+        externally_verified_claims,
+    )
+}
+
+fn verify_passport_root_and_claim_set_artifacts_bound(
+    passport: &TransactionPassport,
+    passport_path: String,
+    evidence_graph_bytes: &[u8],
+    verifier_policy_bytes: &[u8],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    externally_verified_claims: &[String],
+) -> Result<TransactionVerifierReport, TransactionPassportError> {
     let claim_results = verify_signed_root_graph_binding(
         passport,
         evidence_graph_bytes,
@@ -383,8 +427,19 @@ pub fn verify_passport_root_and_claim_set_artifacts_with_external_claims(
         artifacts,
         externally_verified_claims,
     )?;
+    let transparency_state = transaction_evidence_graph_transparency_state(evidence_graph_bytes)?;
     Ok(TransactionVerifierReport::verified(passport, passport_path)
+        .with_transparency_state(transparency_state)
         .with_claim_results(claim_results))
+}
+
+pub fn transaction_evidence_graph_transparency_state(
+    evidence_graph_bytes: &[u8],
+) -> Result<String, TransactionPassportError> {
+    let evidence_graph: Value = serde_json::from_slice(evidence_graph_bytes).map_err(|error| {
+        TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
+    })?;
+    Ok(evidence_graph_transparency_state(evidence_graph_nodes(&evidence_graph)?).to_string())
 }
 
 fn verify_signed_root_graph_binding(
@@ -420,6 +475,8 @@ fn verify_signed_root_graph_binding(
         TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
     })?;
     validate_root_graph_schema(&evidence_graph)?;
+    enforce_verifier_policy_gates(passport, &verifier_policy, &evidence_graph)?;
+    let effective_required_claims = verifier_policy.effective_required_claims();
     let nodes = evidence_graph_nodes(&evidence_graph)?;
     let claim_set_path = validate_root_graph_node_binding(
         nodes,
@@ -436,7 +493,7 @@ fn verify_signed_root_graph_binding(
     validate_claim_set_bytes(
         artifacts,
         &claim_set_path,
-        verifier_policy.required_claims(),
+        &effective_required_claims,
         externally_verified_claims,
     )
 }
@@ -525,6 +582,83 @@ fn graph_node_string<'a>(
                 "evidence graph node {field} must not be empty"
             ))
         })
+}
+
+fn enforce_verifier_policy_gates(
+    passport: &TransactionPassport,
+    policy: &TransactionVerifierPolicy,
+    evidence_graph: &Value,
+) -> Result<(), TransactionPassportError> {
+    if !policy.accepted_passport_issuers().is_empty()
+        && !policy
+            .accepted_passport_issuers()
+            .iter()
+            .any(|issuer| verifier_policy_issuer_matches(issuer, &passport.issuer))
+    {
+        return Err(TransactionPassportError::InvalidVerifierPolicyArtifact(
+            "passport issuer not accepted by verifier policy".to_string(),
+        ));
+    }
+
+    let nodes = evidence_graph_nodes(evidence_graph)?;
+    for required_role in policy.required_evidence_roles() {
+        if !nodes.iter().any(|node| {
+            node.get("role")
+                .and_then(Value::as_str)
+                .is_some_and(|role| role == required_role)
+        }) {
+            return Err(TransactionPassportError::InvalidVerifierPolicyArtifact(
+                format!("missing verifier policy required evidence role: {required_role}"),
+            ));
+        }
+    }
+
+    let transparency_state = evidence_graph_transparency_state(nodes);
+    if !policy.accepted_transparency_states().is_empty()
+        && !policy
+            .accepted_transparency_states()
+            .iter()
+            .any(|state| state == transparency_state)
+    {
+        return Err(TransactionPassportError::InvalidVerifierPolicyArtifact(
+            format!("transparency state not accepted by verifier policy: {transparency_state}"),
+        ));
+    }
+
+    Ok(())
+}
+
+fn verifier_policy_issuer_matches(accepted_issuer: &str, passport_issuer: &str) -> bool {
+    accepted_issuer == passport_issuer
+        || issuer_key_part(accepted_issuer) == issuer_key_part(passport_issuer)
+}
+
+fn issuer_key_part(issuer: &str) -> &str {
+    issuer.strip_prefix("did:chio:").unwrap_or(issuer)
+}
+
+fn evidence_graph_transparency_state(nodes: &[Value]) -> &'static str {
+    let mut has_transparency_preview = false;
+    for node in nodes {
+        let role = node.get("role").and_then(Value::as_str).unwrap_or_default();
+        let schema = node
+            .get("schema")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if role == "transparency-inclusion-proof"
+            || schema == "chio.transparency.inclusion-proof.v1"
+        {
+            return "trust_anchored";
+        }
+        if role.contains("transparency") || schema.contains("transparency") {
+            has_transparency_preview = true;
+        }
+    }
+    if has_transparency_preview {
+        "transparency_preview"
+    } else {
+        "not_present"
+    }
 }
 
 fn validate_claim_set_bytes(
@@ -787,6 +921,7 @@ pub fn verify_standalone_minimal_passport_artifacts(
             TransactionPassportError::InvalidVerifierPolicyArtifact(error.to_string())
         })?;
     validate_standalone_transaction_claims(&verifier_policy)?;
+    let effective_required_claims = verifier_policy.effective_required_claims();
     let evidence_graph: TransactionEvidenceGraph = serde_json::from_slice(evidence_graph_bytes)
         .map_err(|error| {
             TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
@@ -803,11 +938,7 @@ pub fn verify_standalone_minimal_passport_artifacts(
         &passport.verifier_policy_sha256,
     )?;
     validate_evidence_graph_artifact_bytes(&evidence_graph, artifacts)?;
-    validate_claim_set_artifact_bindings(
-        &evidence_graph,
-        artifacts,
-        verifier_policy.required_claims(),
-    )?;
+    validate_claim_set_artifact_bindings(&evidence_graph, artifacts, &effective_required_claims)?;
     validate_minimal_governed_action_artifact_bindings(
         &evidence_graph,
         artifacts,
@@ -816,7 +947,7 @@ pub fn verify_standalone_minimal_passport_artifacts(
     let claim_results = validate_claim_set_bytes(
         artifacts,
         &passport.claim_set_path,
-        verifier_policy.required_claims(),
+        &effective_required_claims,
         &[],
     )?;
     Ok(report.with_claim_results(claim_results))

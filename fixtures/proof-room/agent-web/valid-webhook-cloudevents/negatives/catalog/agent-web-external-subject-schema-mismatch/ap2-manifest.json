@@ -1,0 +1,53 @@
+{
+  "claim_mapping": [
+    {
+      "claim_ref": "claim.agent_web.external_subject_digest_bound",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "claim_ref": "claim.agent_web.projection_manifest_bound",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.unsupported_claims_limited",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.sidecar_not_native_authority",
+      "evidence_class": "chio-sidecar-proof"
+    }
+  ],
+  "copy_limitations": [
+    "AP2 mandate evidence is digest-bound payment authorization evidence, not Chio capability authority."
+  ],
+  "digest_algorithm": "sha256",
+  "external_fields_not_used": [
+    "mandate_signature_as_chio_authority"
+  ],
+  "external_fields_used": [
+    "transaction_passport_ref",
+    "order_id",
+    "credential_format",
+    "checkout_mandate_digest",
+    "payment_mandate_digest",
+    "payment_instrument_digest",
+    "transaction_context_digest",
+    "agent_mode",
+    "status",
+    "chio_mandate_receipt_ref"
+  ],
+  "projection_id": "projection-ap2-valid",
+  "requires_external_signature": false,
+  "schema": "chio.agent-web.external-projection-manifest.v1",
+  "sidecar_fields": [
+    "transaction_passport_ref",
+    "receipt_refs",
+    "chio_claim_refs"
+  ],
+  "signature_algorithm": "none",
+  "source_protocol": "ap2",
+  "source_version": "0.2",
+  "unsupported_claims": [
+    "claim.external.ap2_mandate_is_chio_authority"
+  ]
+}

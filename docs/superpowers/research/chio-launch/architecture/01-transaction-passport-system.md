@@ -12,6 +12,10 @@ Chio has many proof primitives: receipts, capability validation, policy hashes, 
 
 The Transaction Passport is that artifact.
 
+It is not an Agent Passport. Agent Passports identify or present agents, buyers, providers, or workloads, and the evidence graph can reference them as subject evidence. The Transaction Passport is the signed transaction root over those and other artifacts.
+
+It is not a proof package. A proof package or Proof Room bundle is a transport and review layout. The Transaction Passport is the verifier-owned root artifact that commits to the evidence graph, claim set, policy, and signed verification result for one transaction.
+
 ## Core Artifact
 
 `chio.transaction-passport.v1` is a signed root over a typed evidence graph.

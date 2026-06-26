@@ -138,7 +138,15 @@ pub fn verify_commerce_order(
         &payment,
         &bundle.trusted_payment_signer_keys,
     )?;
-    validate_settlement_packet(&bundle.order_context, &payment, &settlement)?;
+    validate_settlement_packet(
+        &bundle.order_context,
+        &payment,
+        &settlement,
+        &bundle.event_authority_receipts,
+        &bundle.trusted_event_authority_receipt_kernel_keys,
+        replay.settlement_dispatch_receipt_ref.as_deref(),
+        replay.settlement_dispatch_event_sha256.as_deref(),
+    )?;
     let mut verified_claims = vec![
         CLAIM_ORDER_REPLAY_CONSISTENT.to_string(),
         CLAIM_PAYMENT_LIFECYCLE_BOUND.to_string(),
@@ -253,6 +261,11 @@ fn verify_trust_market_requirement(
     if verified_context.selected_provider_subject.is_empty() {
         return Err(CommerceOrderError::ReplayFailed(
             "trust-market selected provider missing".to_string(),
+        ));
+    }
+    if verified_context.selected_provider_subject != context.merchant_subject {
+        return Err(CommerceOrderError::ReplayFailed(
+            "trust-market selected provider subject mismatch".to_string(),
         ));
     }
     if let Some(coverage_requirement) = context

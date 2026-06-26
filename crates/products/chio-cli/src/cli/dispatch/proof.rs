@@ -14,6 +14,7 @@ mod proof_env;
 use proof_env::{
     agent_web_verifier_trust_from_env, commerce_trusted_event_authority_receipt_kernel_keys_from_env,
     commerce_trusted_payment_signer_keys_from_env, commerce_trusted_provider_keys_from_env,
+    disclosure_lineage_verifier_trust_from_env,
     enterprise_trusted_approval_signer_keys_from_env,
     enterprise_trusted_receipt_kernel_keys_from_env,
     enterprise_trusted_risk_comptroller_signer_keys_from_env, public_settlement_verifier_trust_from_env,
@@ -299,6 +300,25 @@ pub(crate) fn dispatch_proof(command: ProofCommands, json_output: bool) -> Resul
     }
 }
 
+pub(crate) fn dispatch_commerce(
+    command: CommerceCommands,
+    json_output: bool,
+) -> Result<(), CliError> {
+    match command {
+        CommerceCommands::Verify { path, out } => {
+            match verify_transaction_passport_with_label(
+                &path,
+                out.as_deref(),
+                &[ProofVerifyRequirement::Commerce],
+                Some(("claim.commerce.", "chio commerce verify")),
+            ) {
+                Ok(()) => Ok(()),
+                Err(error) => exit_proof_verify_error(error, json_output),
+            }
+        }
+    }
+}
+
 fn exit_proof_verify_error(error: CliError, json_output: bool) -> ! {
     let exit_code = proof_verify_exit_code(&error);
     let mut stderr = std::io::stderr();
@@ -310,7 +330,10 @@ fn proof_verify_exit_code(error: &CliError) -> i32 {
     let report = error.report();
     let code = report.code.as_str();
     let message = report.message.as_str();
-    if proof_verify_required_claim_failed(message) {
+    if code == TRANSACTION_REQUIRED_CLAIM_MISSING.urn
+        || code == TRANSACTION_REQUIRED_CLAIM_MISSING.string_code
+        || proof_verify_required_claim_failed(message)
+    {
         return PROOF_VERIFY_EXIT_REQUIRED_CLAIM_FAILED;
     }
     if proof_verify_integrity_failed(code, message) {
@@ -493,6 +516,15 @@ fn verify_transaction_passport(
     out: Option<&Path>,
     requirements: &[ProofVerifyRequirement],
 ) -> Result<(), CliError> {
+    verify_transaction_passport_with_label(path, out, requirements, None)
+}
+
+fn verify_transaction_passport_with_label(
+    path: &Path,
+    out: Option<&Path>,
+    requirements: &[ProofVerifyRequirement],
+    report_label: Option<(&str, &str)>,
+) -> Result<(), CliError> {
     let archive_root = archive::extract_proof_archive(path)?;
     let input_path = match archive_root.as_ref() {
         Some(archive_root) => archive_root.path(),
@@ -500,7 +532,7 @@ fn verify_transaction_passport(
     };
     verify_proof_room_bundle_if_present(input_path)?;
     let passport_path = resolve_proof_passport_path(input_path)?;
-    let report = match verify_transaction_passport_file(&passport_path) {
+    let mut report = match verify_transaction_passport_file(&passport_path) {
         Ok(report) => report,
         Err(error) => {
             if let Some(out) = out {
@@ -510,6 +542,9 @@ fn verify_transaction_passport(
         }
     };
     enforce_proof_verify_requirements(input_path, &report, requirements)?;
+    if let Some((claim_prefix, verifier_label)) = report_label {
+        relabel_report_claim_verifier(&mut report, claim_prefix, verifier_label);
+    }
 
     if let Some(out) = out {
         write_proof_verify_report_output(out, &report)?;
@@ -519,6 +554,43 @@ fn verify_transaction_passport(
     serde_json::to_writer(&mut stdout, &report)?;
     stdout.write_all(b"\n")?;
     Ok(())
+}
+
+fn relabel_report_claim_verifier(
+    report: &mut serde_json::Value,
+    claim_prefix: &str,
+    verifier_label: &str,
+) {
+    if let Some(claim_results) = report
+        .get_mut("claimResults")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for claim_result in claim_results {
+            if claim_result
+                .get("claim_id")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|claim_id| claim_id.starts_with(claim_prefix))
+            {
+                claim_result["verifier_module"] =
+                    serde_json::Value::String(verifier_label.to_string());
+            }
+        }
+    }
+
+    if let Some(checker_provenance) = report
+        .get_mut("checker_provenance")
+        .and_then(serde_json::Value::as_array_mut)
+    {
+        for checker in checker_provenance {
+            if checker
+                .get("claim_id")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|claim_id| claim_id.starts_with(claim_prefix))
+            {
+                checker["checker"] = serde_json::Value::String(verifier_label.to_string());
+            }
+        }
+    }
 }
 
 fn write_failed_transaction_report_output(
@@ -967,7 +1039,7 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
         )?;
         push_family_report(&mut family_reports, report)?;
     }
-    if claim_requirements.requires(CLAIM_PREFIX_COMMERCE) {
+    if !family_reports.is_empty() {
         let root_claim_set_artifacts =
             load_root_claim_set_artifacts(bundle_dir, &evidence_graph_bytes)?;
         let externally_verified_claims = verified_claims_from_family_reports(&family_reports);
@@ -983,6 +1055,11 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
         .map_err(map_proof_error)?;
     }
     ensure_integrated_commerce_settlement_order_binding(&family_reports)?;
+    let transparency_state =
+        chio_control_plane::transaction_passport::transaction_evidence_graph_transparency_state(
+            &evidence_graph_bytes,
+        )
+        .map_err(map_proof_error)?;
     let mut report = if family_reports.is_empty() {
         let artifacts =
             load_standalone_evidence_graph_artifacts(bundle_dir, &evidence_graph_bytes)?;
@@ -1002,6 +1079,7 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
             &passport,
             passport_report_path,
             family_reports,
+            &transparency_state,
         ))
     }?;
     attach_runtime_proof_parity_report(bundle_dir, &evidence_graph_bytes, &mut report)?;
@@ -1060,6 +1138,7 @@ fn push_local_proof_family_report(
             )?;
             let report = chio_commerce_order::verify_commerce_order(&bundle)
                 .map_err(map_commerce_proof_error)?;
+            ensure_graph_bound_commerce_order_passport(bundle_dir, evidence_graph_bytes, &report)?;
             push_checked_local_family_report(family_reports, claim_requirements, spec, report)
         }
         LocalProofFamilyRoute::DisclosureLineage => {
@@ -1068,7 +1147,11 @@ fn push_local_proof_family_report(
                 evidence_graph_bytes,
                 claim_requirements.requires_claim(CLAIM_DISCLOSURE_CRYPTO_CONTEXT_BOUND),
             )?;
-            let report = chio_selective_disclosure::verify_disclosure_lineage_bundle(&bundle)
+            let trust = disclosure_lineage_verifier_trust_from_env()?;
+            let report =
+                chio_selective_disclosure::verify_disclosure_lineage_bundle_with_trust(
+                    &bundle, &trust,
+                )
                 .map_err(|error| CliError::cli_other_error(format!("proof verify: {error}")))?;
             push_checked_local_family_report(family_reports, claim_requirements, spec, report)
         }
@@ -1083,7 +1166,7 @@ fn push_local_proof_family_report(
         LocalProofFamilyRoute::PublicSettlement => {
             let proof_bundle =
                 load_public_settlement_proof_bundle_from_graph(bundle_dir, evidence_graph_bytes)?;
-            let mut trust = public_settlement_verifier_trust_from_env()?;
+            let mut trust = public_settlement_verifier_trust_from_env(&proof_bundle)?;
             trust.expected_trust_market_context =
                 expected_public_settlement_trust_market_context.cloned();
             if proof_bundle.transaction_passport_id != passport.id {
@@ -1098,6 +1181,29 @@ fn push_local_proof_family_report(
             push_checked_local_family_report(family_reports, claim_requirements, spec, report)
         }
     }
+}
+
+fn ensure_graph_bound_commerce_order_passport(
+    bundle_dir: &Path,
+    evidence_graph_bytes: &[u8],
+    report: &chio_commerce_order::CommerceOrderPassportReport,
+) -> Result<(), CliError> {
+    let graph = parse_graph_artifact_paths(evidence_graph_bytes)?;
+    let order_passport_bytes = load_required_graph_bytes_artifact(
+        bundle_dir,
+        &graph.nodes,
+        "commerce-order-passport",
+        chio_commerce_order::COMMERCE_ORDER_PASSPORT_SCHEMA_ID,
+        "commerce order passport",
+    )?;
+    let graph_bound_passport: chio_commerce_order::CommerceOrderPassportReport =
+        serde_json::from_slice(&order_passport_bytes).map_err(CliError::from)?;
+    if &graph_bound_passport != report {
+        return Err(CliError::cli_other_error(
+            "proof verify: commerce order passport artifact mismatch".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn public_settlement_trust_market_context_from_trust_market_report(
@@ -1233,6 +1339,7 @@ fn merge_family_verifier_reports(
     passport: &chio_control_plane::transaction_passport::TransactionPassport,
     passport_report_path: String,
     family_reports: Vec<serde_json::Value>,
+    transparency_state: &str,
 ) -> serde_json::Value {
     let mut seen_claims = BTreeSet::new();
     let mut verified_claims = Vec::new();
@@ -1266,6 +1373,7 @@ fn merge_family_verifier_reports(
         "claim_set_path": passport.claim_set_path.clone(),
         "verifier_policy_sha256": passport.verifier_policy_sha256.clone(),
         "verifier_policy_path": passport.verifier_policy_path.clone(),
+        "transparencyState": transparency_state,
         "verified_claims": verified_claims,
         "claimResults": claim_results,
         "family_reports": family_reports,
@@ -2300,6 +2408,7 @@ fn load_disclosure_lineage_bundle_from_graph(
                     &privacy_profile,
                 )?;
             ensure_disclosure_selective_disclosure_proof_matches_context(
+                &capsule,
                 &proof,
                 &projection_manifest,
                 transparency_inclusion.as_ref(),
@@ -2435,6 +2544,7 @@ fn load_required_disclosure_transparency_inclusion_proof_for_anchored_context(
 }
 
 fn ensure_disclosure_selective_disclosure_proof_matches_context(
+    capsule: &chio_selective_disclosure::DisclosureCapsule,
     proof: &chio_selective_disclosure::SelectiveDisclosureProof,
     projection_manifest: &chio_selective_disclosure::BbsProjectionManifest,
     transparency_inclusion: Option<&chio_selective_disclosure::TransparencyInclusionProof>,
@@ -2442,6 +2552,7 @@ fn ensure_disclosure_selective_disclosure_proof_matches_context(
     profile: &chio_selective_disclosure::DisclosureVerifierPrivacyProfile,
     report: &chio_selective_disclosure::DisclosureCryptoContextReport,
 ) -> Result<(), CliError> {
+    ensure_projection_manifest_declares_capsule_hidden_predicates(capsule, projection_manifest)?;
     chio_selective_disclosure::verify_bbs_projection_manifest(proof, projection_manifest)
         .map_err(|error| CliError::cli_other_error(format!("proof verify: {error}")))?;
     if let Some(inclusion) = transparency_inclusion {
@@ -2493,7 +2604,7 @@ fn ensure_disclosure_selective_disclosure_proof_matches_context(
             .map(|check| check.code.as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        let message = format!("proof verify: disclosure crypto context rejected: {rejected_codes}");
+        let message = format!("proof verify: {rejected_codes}: disclosure crypto context rejected");
         return if is_transparency_preview_not_allowed_error(&rejected_codes) {
             Err(CliError::registry_error(
                 &TRANSACTION_TRANSPARENCY_PREVIEW_NOT_ALLOWED,
@@ -2524,6 +2635,81 @@ fn ensure_disclosure_selective_disclosure_proof_matches_context(
         &report.disclosed_fields,
         &recomputed.disclosed_fields,
     )?;
+    Ok(())
+}
+
+fn ensure_projection_manifest_declares_capsule_hidden_predicates(
+    capsule: &chio_selective_disclosure::DisclosureCapsule,
+    projection_manifest: &chio_selective_disclosure::BbsProjectionManifest,
+) -> Result<(), CliError> {
+    let declared = projection_manifest
+        .hidden_predicates
+        .iter()
+        .map(|predicate| (predicate.predicate_id.as_str(), predicate))
+        .collect::<BTreeMap<_, _>>();
+    if declared.len() != projection_manifest.hidden_predicates.len() {
+        return Err(CliError::cli_other_error(
+            "proof verify: disclosure projection manifest has duplicate hidden predicates"
+                .to_string(),
+        ));
+    }
+    for predicate in &capsule.hidden_predicates {
+        let Some(declared_predicate) = declared.get(predicate.predicate_id.as_str()) else {
+            return Err(CliError::cli_other_error(format!(
+                "proof verify: disclosure hidden predicate missing from projection manifest: {}",
+                predicate.predicate_id
+            )));
+        };
+        if declared_predicate.field != predicate.field {
+            return Err(CliError::cli_other_error(format!(
+                "proof verify: disclosure hidden predicate field mismatch with projection manifest: {}",
+                predicate.predicate_id
+            )));
+        }
+        if declared_predicate.operator != predicate.operator {
+            return Err(CliError::cli_other_error(format!(
+                "proof verify: disclosure hidden predicate operator mismatch with projection manifest: {}",
+                predicate.predicate_id
+            )));
+        }
+        let projection_slot = u16::try_from(predicate.projection_slot).map_err(|_| {
+            CliError::cli_other_error(format!(
+                "proof verify: disclosure hidden predicate projection slot out of range: {}",
+                predicate.predicate_id
+            ))
+        })?;
+        let Some(slot) = projection_manifest
+            .message_slots
+            .iter()
+            .find(|slot| slot.slot == projection_slot)
+        else {
+            return Err(CliError::cli_other_error(format!(
+                "proof verify: disclosure hidden predicate projection slot missing from projection manifest: {}",
+                predicate.predicate_id
+            )));
+        };
+        if slot.field != predicate.field {
+            return Err(CliError::cli_other_error(format!(
+                "proof verify: disclosure hidden predicate projection slot field mismatch with projection manifest: {}",
+                predicate.predicate_id
+            )));
+        }
+        if slot.disclosure != chio_selective_disclosure::BbsProjectionDisclosure::Hidden {
+            return Err(CliError::cli_other_error(format!(
+                "proof verify: disclosure hidden predicate projection slot is not hidden in projection manifest: {}",
+                predicate.predicate_id
+            )));
+        }
+        if let Some(expected_value_sha256) = declared_predicate.value_sha256.as_deref() {
+            let actual_value_sha256 = chio_core::sha256_hex(predicate.operand.as_bytes());
+            if expected_value_sha256 != actual_value_sha256 {
+                return Err(CliError::cli_other_error(format!(
+                    "proof verify: disclosure hidden predicate value hash mismatch with projection manifest: {}",
+                    predicate.predicate_id
+                )));
+            }
+        }
+    }
     Ok(())
 }
 
@@ -2724,9 +2910,17 @@ fn is_runtime_artifact_role(role: &str) -> bool {
     matches!(
         role,
         "execution-lease"
+            | "policy-activation-receipt"
             | "tool-server-ack"
+            | "trusted-time-proof"
             | "revocation-freshness-proof"
             | "sandbox-attestation"
+            | "swarm-task-graph"
+            | "swarm-budget-pool"
+            | "swarm-join-receipt"
+            | "swarm-route-plan-receipt"
+            | "runtime-attack-simulation-report"
+            | "runtime-chaos-run-report"
     )
 }
 
@@ -2793,6 +2987,7 @@ fn is_enterprise_artifact_role(role: &str) -> bool {
             | "telemetry-projection"
             | "approval-case"
             | "control-evidence-map"
+            | "adjudication-jurisdiction-receipt"
     )
 }
 
@@ -2852,18 +3047,11 @@ fn is_agent_web_evidence_graph_node(node: &serde_json::Value) -> bool {
     is_agent_web_evidence_graph_node_parts(role, path, schema)
 }
 
-fn is_agent_web_evidence_graph_node_parts(role: &str, path: &str, schema: Option<&str>) -> bool {
+fn is_agent_web_evidence_graph_node_parts(role: &str, _path: &str, schema: Option<&str>) -> bool {
     if role == "receipt" {
-        return schema == Some("chio.receipt.v1") && is_agent_web_receipt_path(path);
+        return schema == Some("chio.receipt.v1");
     }
     role == "claim-set" || is_agent_web_artifact_role(role)
-}
-
-fn is_agent_web_receipt_path(path: &str) -> bool {
-    Path::new(path)
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .is_some_and(|path_stem| path_stem.starts_with("receipt-agent-web-"))
 }
 
 fn scoped_evidence_graph_bytes(
@@ -2932,6 +3120,7 @@ fn is_trust_market_artifact_role(role: &str) -> bool {
     matches!(
         role,
         "provider-discovery-snapshot"
+            | "receipt"
             | "provider-selection-report"
             | "trust-scorecard-snapshot"
             | "reputation-import-report"
@@ -3122,4 +3311,39 @@ fn is_graph_cycle_error(message: &str) -> bool {
 fn is_required_claim_missing_error(message: &str) -> bool {
     message.starts_with("claim set missing required claim: ")
         || message.starts_with("claim set required claim was not verified: ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn agent_web_receipt_scope_uses_schema_not_fixture_filename() {
+        assert!(is_agent_web_evidence_graph_node_parts(
+            "receipt",
+            "receipts/webhook-allow.json",
+            Some("chio.receipt.v1"),
+        ));
+    }
+
+    #[test]
+    fn enterprise_artifact_loader_includes_retained_jurisdiction_receipts() {
+        assert!(is_enterprise_evidence_graph_role(
+            "adjudication-jurisdiction-receipt"
+        ));
+        assert!(is_enterprise_artifact_role(
+            "adjudication-jurisdiction-receipt"
+        ));
+    }
+
+    #[test]
+    fn trust_market_artifact_loader_includes_retained_receipts() {
+        assert!(is_trust_market_evidence_graph_role("receipt"));
+        assert!(is_trust_market_artifact_role("receipt"));
+    }
+
+    #[test]
+    fn runtime_artifact_loader_includes_policy_activation_receipt() {
+        assert!(is_runtime_artifact_role("policy-activation-receipt"));
+    }
 }

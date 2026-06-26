@@ -28,13 +28,14 @@ use encoding::{
 
 pub use chio_disclosure_lineage::{
     compute_signed_lineage_subgraph_digest, sign_crypto_context_report, sign_lineage_subgraph,
-    verify_disclosure_lineage_bundle, DisclosureCapsule, DisclosureHiddenPredicate,
+    verify_crypto_context_report_signature_with_trust, verify_disclosure_lineage_bundle,
+    verify_disclosure_lineage_bundle_with_trust, DisclosureCapsule, DisclosureHiddenPredicate,
     DisclosureLeakageLedger, DisclosureLeakageLedgerEntry, DisclosureLineageBundle,
-    DisclosureLineageError, DisclosureLineageVerifierReport, DisclosureProfileLeakageBudget,
-    DisclosureSensitivityClass, DisclosureSignedLineageEdge, DisclosureSignedLineageNode,
-    DisclosureSignedLineageRedaction, SignedLineageSubgraph, DISCLOSURE_CAPSULE_SCHEMA_V1,
-    DISCLOSURE_LEAKAGE_LEDGER_SCHEMA_V1, DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1,
-    LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
+    DisclosureLineageError, DisclosureLineageVerifierReport, DisclosureLineageVerifierTrust,
+    DisclosureProfileLeakageBudget, DisclosureSensitivityClass, DisclosureSignedLineageEdge,
+    DisclosureSignedLineageNode, DisclosureSignedLineageRedaction, SignedLineageSubgraph,
+    DISCLOSURE_CAPSULE_SCHEMA_V1, DISCLOSURE_LEAKAGE_LEDGER_SCHEMA_V1,
+    DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1, LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
 };
 #[cfg(feature = "bbs")]
 pub use crypto_context::verify_selective_disclosure_with_context;
@@ -587,12 +588,15 @@ pub fn bbs_projection_manifest_from_projection(projection: &Projection) -> BbsPr
                 message_class: projection_message_class(message).to_string(),
                 sensitivity_class: projection_sensitivity_class(message).to_string(),
                 encoding: message.encoding.clone(),
-                disclosure: if message.wholesale_only {
+                disclosure: if message.wholesale_only
+                    || exact_timing_direct_disclosure_field(&message.field)
+                {
                     BbsProjectionDisclosure::Hidden
                 } else {
                     BbsProjectionDisclosure::Disclosed
                 },
-                wholesale_only: message.wholesale_only,
+                wholesale_only: message.wholesale_only
+                    || exact_timing_direct_disclosure_field(&message.field),
                 value_sha256: None,
             })
             .collect(),
@@ -637,6 +641,10 @@ fn projection_sensitivity_class(message: &ProjectionMessage) -> &'static str {
     }
 }
 
+fn exact_timing_direct_disclosure_field(field: &str) -> bool {
+    field == "duration_ms"
+}
+
 pub fn verify_bbs_projection_manifest(
     proof: &SelectiveDisclosureProof,
     manifest: &BbsProjectionManifest,
@@ -671,12 +679,6 @@ pub fn verify_bbs_projection_manifest(
             "message slot count does not match proof message count".to_string(),
         ));
     }
-    if !manifest.hidden_predicates.is_empty() {
-        return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
-            "hidden predicates require cryptographic predicate proof".to_string(),
-        ));
-    }
-
     let mut seen_slots = Vec::with_capacity(manifest.message_slots.len());
     for slot in &manifest.message_slots {
         if usize::from(slot.slot) >= proof.message_count {
@@ -700,6 +702,34 @@ pub fn verify_bbs_projection_manifest(
                     .to_string(),
             ));
         }
+        if exact_timing_direct_disclosure_field(&slot.field)
+            && slot.disclosure == BbsProjectionDisclosure::Disclosed
+        {
+            return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+                format!(
+                    "exact timing field {} cannot be directly disclosed",
+                    slot.field
+                ),
+            ));
+        }
+    }
+
+    let mut seen_predicates = Vec::with_capacity(manifest.hidden_predicates.len());
+    for predicate in &manifest.hidden_predicates {
+        if predicate.predicate_id.trim().is_empty()
+            || predicate.field.trim().is_empty()
+            || predicate.operator.trim().is_empty()
+        {
+            return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+                "hidden predicate id, field, and operator must not be empty".to_string(),
+            ));
+        }
+        if seen_predicates.contains(&predicate.predicate_id) {
+            return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+                format!("duplicate hidden predicate {}", predicate.predicate_id),
+            ));
+        }
+        seen_predicates.push(predicate.predicate_id.clone());
     }
 
     for disclosed in &proof.disclosed {
@@ -722,6 +752,24 @@ pub fn verify_bbs_projection_manifest(
         if slot.encoding != disclosed.encoding {
             return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
                 format!("slot {} encoding does not match proof", disclosed.index),
+            ));
+        }
+    }
+    for slot in manifest
+        .message_slots
+        .iter()
+        .filter(|slot| slot.disclosure == BbsProjectionDisclosure::Disclosed)
+    {
+        if !proof
+            .disclosed
+            .iter()
+            .any(|disclosed| disclosed.index == slot.slot)
+        {
+            return Err(SelectiveDisclosureError::ProjectionManifestInvalid(
+                format!(
+                    "slot {} is marked disclosed but missing from proof",
+                    slot.slot
+                ),
             ));
         }
     }
@@ -789,7 +837,7 @@ pub fn verify_transparency_inclusion_proof(
         index /= 2;
         width = width.div_ceil(2);
     }
-    if index != 0 {
+    if index != 0 || width != 1 {
         return Err(SelectiveDisclosureError::TransparencyInclusionInvalid(
             "inclusion path did not reach the root".to_string(),
         ));

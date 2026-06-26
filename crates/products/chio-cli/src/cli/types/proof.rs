@@ -114,11 +114,28 @@ pub(crate) enum ProofCommands {
     },
 }
 
+#[derive(Subcommand)]
+pub(crate) enum CommerceCommands {
+    /// Verify a commerce Transaction Passport proof bundle.
+    Verify {
+        /// Proof bundle directory, exported archive, or transaction-passport.json path.
+        #[arg(value_name = "PATH")]
+        path: PathBuf,
+
+        /// Write the verifier report to this JSON file.
+        #[arg(long, value_name = "FILE")]
+        out: Option<PathBuf>,
+    },
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub(crate) enum ProofCollectKind {
     AgentWebEnvelope,
+    BuyerPackage,
     DisclosureAgentWebEnvelope,
+    Evidence,
     IoaWeb3,
+    Replay,
     TransactionPassport,
     RuntimeSpine,
 }
@@ -127,8 +144,11 @@ impl ProofCollectKind {
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::AgentWebEnvelope => "agent-web-envelope",
+            Self::BuyerPackage => "buyer-package",
             Self::DisclosureAgentWebEnvelope => "disclosure-agent-web-envelope",
+            Self::Evidence => "evidence",
             Self::IoaWeb3 => "ioa-web3",
+            Self::Replay => "replay",
             Self::TransactionPassport => "transaction-passport",
             Self::RuntimeSpine => "runtime-spine",
         }

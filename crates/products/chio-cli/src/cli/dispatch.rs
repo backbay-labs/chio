@@ -22,7 +22,7 @@ mod settle_arena;
 use api_mcp::{dispatch_api, dispatch_mcp};
 use certify_cert::{dispatch_cert, dispatch_certify};
 use did_passport::{dispatch_did, dispatch_passport};
-use proof::dispatch_proof;
+use proof::{dispatch_commerce, dispatch_proof};
 use receipt_evidence::{dispatch_evidence, dispatch_receipt};
 use reputation_guard::{dispatch_conformance, dispatch_guard, dispatch_reputation};
 use settle_arena::{dispatch_arena, dispatch_settle};
@@ -98,6 +98,7 @@ pub(crate) fn run() {
         Commands::Did { command } => dispatch_did(command, json_output),
         Commands::Passport { command } => dispatch_passport(command, json_output, receipt_db, budget_db, control_url, control_token),
         Commands::Proof { command } => dispatch_proof(command, json_output),
+        Commands::Commerce { command } => dispatch_commerce(command, json_output),
         Commands::Workflow { command } => dispatch_workflow(command, json_output),
         Commands::Cert { command } => dispatch_cert(command, json_output, authority_seed_file),
         Commands::Reputation { command } => dispatch_reputation(command, json_output, receipt_db, budget_db, authority_seed_file, control_url, control_token),

@@ -45,8 +45,25 @@ cat > "$work/launch-copy-fail.md" <<'EOF'
 Chio has ACP support and makes x402 a universal Chio authority for every action.
 EOF
 
+mkdir -p "$work/json-docs"
+cat > "$work/json-docs/standards.json" <<'EOF'
+{
+  "summary": "Chio ships ACP authority."
+}
+EOF
+
 cat > "$work/hedged-launch-copy-fail.md" <<'EOF'
 Chio ships autonomous insurer pricing, but not as a regulated insurer.
+EOF
+
+cat > "$work/autonomous-insurer-fail.md" <<'EOF'
+Chio is an autonomous insurer.
+Chio operates autonomous insurance for agent commerce.
+EOF
+
+cat > "$work/enterprise-overclaim-fail.md" <<'EOF'
+Chio automatically propagates enterprise identity into every artifact.
+Chio proves enterprise compliance automatically for governed workflows.
 EOF
 
 cat > "$work/hedged-stop-pattern-fail.md" <<'EOF'
@@ -70,6 +87,11 @@ EOF
 cat > "$work/generic-universal-protocol-fail.md" <<'EOF'
 Chio is the universal protocol for autonomous agents.
 Chio ships a universal-protocol bridge for all agent systems.
+EOF
+
+cat > "$work/chain-authority-overclaim-fail.md" <<'EOF'
+On-chain evidence proves Chio settlement authority.
+Chain evidence authorizes Chio settlement release decisions.
 EOF
 
 if ! grep -Fq '"spec/PROTOCOL.md"' "$lint"; then
@@ -118,12 +140,40 @@ grep -q "proof-room.release.copy-forbidden: every_action_overclaim" "$work/launc
 
 if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
   CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \
+  CHIO_PROOF_ROOM_RELEASE_DOCS="$work/json-docs" \
+  "$lint" >"$work/json-standards-fail.out" 2>&1; then
+  echo "JSON standards overclaims unexpectedly passed" >&2
+  exit 1
+fi
+grep -q "proof-room.release.copy-forbidden: bare_acp" "$work/json-standards-fail.out"
+
+if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
+  CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \
   CHIO_PROOF_ROOM_RELEASE_DOCS="$work/hedged-launch-copy-fail.md" \
   "$lint" >"$work/hedged-launch-copy-fail.out" 2>&1; then
   echo "hedged launch copy overclaim unexpectedly passed" >&2
   exit 1
 fi
 grep -q "proof-room.release.copy-forbidden: insurance_pricing_overclaim" "$work/hedged-launch-copy-fail.out"
+
+if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
+  CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \
+  CHIO_PROOF_ROOM_RELEASE_DOCS="$work/autonomous-insurer-fail.md" \
+  "$lint" >"$work/autonomous-insurer-fail.out" 2>&1; then
+  echo "autonomous insurer overclaim unexpectedly passed" >&2
+  exit 1
+fi
+grep -q "proof-room.release.copy-forbidden: autonomous_insurer_overclaim" "$work/autonomous-insurer-fail.out"
+
+if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
+  CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \
+  CHIO_PROOF_ROOM_RELEASE_DOCS="$work/enterprise-overclaim-fail.md" \
+  "$lint" >"$work/enterprise-overclaim-fail.out" 2>&1; then
+  echo "enterprise overclaim unexpectedly passed" >&2
+  exit 1
+fi
+grep -q "proof-room.release.copy-forbidden: enterprise_overclaim" \
+  "$work/enterprise-overclaim-fail.out"
 
 if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
   CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \
@@ -162,6 +212,23 @@ if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
 fi
 grep -q "proof-room.release.copy-forbidden: universal_protocol_overclaim" \
   "$work/generic-universal-protocol-fail.out"
+
+if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
+  CHIO_PROOF_ROOM_BUNDLE_RELEASE_TRUTH="$bundle_truth" \
+  CHIO_PROOF_ROOM_RELEASE_DOCS="$work/chain-authority-overclaim-fail.md" \
+  "$lint" >"$work/chain-authority-overclaim-fail.out" 2>&1; then
+  echo "chain-evidence authority overclaims unexpectedly passed" >&2
+  exit 1
+fi
+grep -q "proof-room.release.copy-forbidden: chain_evidence_authority" \
+  "$work/chain-authority-overclaim-fail.out"
+
+grep -q \
+  "Chio settlement authority comes from signed Chio receipts" \
+  "$repo_root/docs/standards/CHIO_SETTLE_PROFILE.md"
+grep -q \
+  "Chain evidence is subordinate observation" \
+  "$repo_root/docs/standards/CHIO_SETTLE_PROFILE.md"
 
 cp "$truth" "$work/release-truth-extra-field.json"
 python3 - "$work/release-truth-extra-field.json" <<'PY'

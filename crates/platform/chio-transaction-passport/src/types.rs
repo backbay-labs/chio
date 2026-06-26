@@ -55,6 +55,8 @@ pub struct TransactionVerifierReport {
     pub claim_set_path: String,
     pub verifier_policy_sha256: String,
     pub verifier_policy_path: String,
+    #[serde(default = "default_transparency_state", rename = "transparencyState")]
+    pub transparency_state: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub verified_claims: Vec<String>,
     #[serde(rename = "claimResults")]
@@ -94,6 +96,7 @@ impl TransactionVerifierReport {
             claim_set_path: passport.claim_set_path.clone(),
             verifier_policy_sha256: passport.verifier_policy_sha256.clone(),
             verifier_policy_path: passport.verifier_policy_path.clone(),
+            transparency_state: default_transparency_state(),
             verified_claims: Vec::new(),
             claim_results: Vec::new(),
         }
@@ -122,6 +125,7 @@ impl TransactionVerifierReport {
             claim_set_path: passport.claim_set_path.clone(),
             verifier_policy_sha256: passport.verifier_policy_sha256.clone(),
             verifier_policy_path: passport.verifier_policy_path.clone(),
+            transparency_state: "unknown".to_string(),
             verified_claims: Vec::new(),
             claim_results: vec![TransactionClaimResult {
                 claim_id: "claim.transaction.passport_root_verified".to_string(),
@@ -139,6 +143,12 @@ impl TransactionVerifierReport {
     }
 
     #[must_use]
+    pub fn with_transparency_state(mut self, transparency_state: impl Into<String>) -> Self {
+        self.transparency_state = transparency_state.into();
+        self
+    }
+
+    #[must_use]
     pub fn with_claim_results(mut self, claim_results: Vec<TransactionClaimResult>) -> Self {
         let mut verified_claims = Vec::new();
         for result in &claim_results {
@@ -150,4 +160,8 @@ impl TransactionVerifierReport {
         self.claim_results = claim_results;
         self
     }
+}
+
+fn default_transparency_state() -> String {
+    "not_present".to_string()
 }

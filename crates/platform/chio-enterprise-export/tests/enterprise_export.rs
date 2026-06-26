@@ -382,11 +382,11 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
     let mut artifacts = BTreeMap::new();
     let mut graph_nodes = Vec::new();
 
-    let reserve_units = match case {
+    let reserve_units: u64 = match case {
         EnterpriseCase::RiskMissingReserve => 0,
         _ => 1_200,
     };
-    let capital_units = match case {
+    let capital_units: u64 = match case {
         EnterpriseCase::RiskExposureExceedsCapital => 4_000,
         EnterpriseCase::RiskCapitalAdequacyBreach => 5_500,
         _ => 10_000,
@@ -395,7 +395,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         EnterpriseCase::RiskCoverageSubjectMismatch => "did:chio:buyer-other",
         _ => "did:chio:buyer-enterprise",
     };
-    let consumed_reserve_units = match case {
+    let consumed_reserve_units: u64 = match case {
         EnterpriseCase::RiskReverseSlashNetReconciled => 400,
         EnterpriseCase::RiskDoubleConsumedReserve
         | EnterpriseCase::RiskMarketSlashFacilityReserve
@@ -413,7 +413,7 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
         | EnterpriseCase::RiskClaimOutsideCoverage => 600,
         _ => 0,
     };
-    let payout_units = match case {
+    let payout_units: u64 = match case {
         EnterpriseCase::RiskMarketSlashFacilityReserve
         | EnterpriseCase::RiskMarketSlashWithSanctionBridge
         | EnterpriseCase::RiskMarketSlashMissingJurisdiction
@@ -913,6 +913,31 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
             "reserve_ref": "reserve-enterprise-valid",
             "status": "bound"
         },
+        "premium": {
+            "premium_id": "premium-enterprise-valid",
+            "quote_ref": "data-governance-report",
+            "coverage_id": "coverage-enterprise-valid",
+            "order_id": "order-commerce-001",
+            "subject": coverage_subject,
+            "currency": "USD",
+            "coverage_exposure_units": 5_000,
+            "quoted_premium_units": 50,
+            "bound_premium_units": 50,
+            "collected_premium_units": 0,
+            "status": "bound"
+        },
+        "capital_decomposition": {
+            "decomposition_id": "capital-decomposition-enterprise-valid",
+            "source_kind": "facility_commitment",
+            "source_ref": "approval-case",
+            "currency": "USD",
+            "committed_units": capital_units,
+            "held_units": reserve_units,
+            "drawn_units": 0,
+            "disbursed_units": payout_units,
+            "impaired_units": 0,
+            "available_units": capital_units.saturating_sub(reserve_units + payout_units)
+        },
         "reconciliation": {
             "order_id": "order-commerce-001",
             "currency": "USD",
@@ -971,6 +996,8 @@ fn enterprise_bundle(case: EnterpriseCase) -> EnterpriseExportBundle {
             value["coverage"]["coverage_id"] = json!("coverage-enterprise-secondary");
             value["coverage"]["order_id"] = json!("order-commerce-002");
             value["coverage"]["reserve_ref"] = json!("reserve-enterprise-secondary");
+            value["premium"]["coverage_id"] = json!("coverage-enterprise-secondary");
+            value["premium"]["order_id"] = json!("order-commerce-002");
             value["reconciliation"]["order_id"] = json!("order-commerce-002");
             Some(value)
         } else {
@@ -1586,6 +1613,9 @@ fn prepend_unreferenced_risk_report(bundle: &mut EnterpriseExportBundle) {
     risk_report["coverage"]["subject"] = json!("did:chio:buyer-unreferenced");
     risk_report["coverage"]["covered_claim_ids"] = json!(["claim-enterprise-unreferenced"]);
     risk_report["coverage"]["reserve_ref"] = json!("reserve-enterprise-unreferenced");
+    risk_report["premium"]["coverage_id"] = json!("coverage-enterprise-unreferenced");
+    risk_report["premium"]["order_id"] = json!("order-commerce-unreferenced");
+    risk_report["premium"]["subject"] = json!("did:chio:buyer-unreferenced");
     risk_report["reconciliation"]["order_id"] = json!("order-commerce-unreferenced");
 
     let risk_report_bytes = json_bytes(signed_risk_comptroller_report(risk_report));

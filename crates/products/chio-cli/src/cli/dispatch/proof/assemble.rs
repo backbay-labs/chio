@@ -48,11 +48,20 @@ struct AssembledEvidenceNode {
 struct RuntimeArtifactBinding {
     lease_id: Option<String>,
     request_digest: Option<String>,
+    route_plan_receipt_ref: Option<String>,
+    route_plan_id: Option<String>,
+    task_graph_digest: Option<String>,
+    budget_pool_ref: Option<String>,
+    budget_pool_id: Option<String>,
+    join_receipt_ref: Option<String>,
+    join_id: Option<String>,
     revocation_freshness_ref: Option<String>,
     sandbox_attestation_ref: Option<String>,
     revocation_proof_id: Option<String>,
     sandbox_attestation_id: Option<String>,
     ack_lease_id: Option<String>,
+    ack_id: Option<String>,
+    trusted_time_ack_id: Option<String>,
     receipt_execution_lease_ref: Option<String>,
 }
 
@@ -354,7 +363,12 @@ fn evidence_role_for_schema(path: &str, schema: &str) -> String {
         "chio.runtime.revocation-freshness-proof.v1" => "revocation-freshness-proof".to_string(),
         "chio.runtime.sandbox-attestation.v1" => "sandbox-attestation".to_string(),
         "chio.runtime.tool-server-ack.v1" => "tool-server-ack".to_string(),
+        "chio.runtime.trusted-time-proof.v1" => "trusted-time-proof".to_string(),
         "chio.runtime.advisory-observation.v1" => "advisory-observation".to_string(),
+        "chio.swarm.task-graph.v1" => "swarm-task-graph".to_string(),
+        "chio.swarm.budget-pool.v1" => "swarm-budget-pool".to_string(),
+        "chio.swarm.join-receipt.v1" => "swarm-join-receipt".to_string(),
+        "chio.swarm.route-plan-receipt.v1" => "swarm-route-plan-receipt".to_string(),
         "chio.enterprise.data-governance-report.v1" => "data-governance-report".to_string(),
         "chio.enterprise.evidence-export-bundle.v1" => "evidence-export-bundle".to_string(),
         "chio.enterprise.telemetry-projection.v1" => "telemetry-projection".to_string(),
@@ -373,11 +387,20 @@ fn runtime_binding_for_artifact(value: &serde_json::Value) -> RuntimeArtifactBin
         lease_id: string_field(value, "lease_id"),
         request_digest: string_field(value, "request_digest")
             .or_else(|| string_field(value, "sha256")),
+        route_plan_receipt_ref: string_field(value, "route_plan_receipt_ref"),
+        route_plan_id: string_field(value, "routePlanId"),
+        task_graph_digest: string_field(value, "task_graph_digest"),
+        budget_pool_ref: string_field(value, "budget_pool_ref"),
+        budget_pool_id: string_field(value, "poolId"),
+        join_receipt_ref: string_field(value, "join_receipt_ref"),
+        join_id: string_field(value, "joinId"),
         revocation_freshness_ref: string_field(value, "revocation_freshness_ref"),
         sandbox_attestation_ref: string_field(value, "sandbox_attestation_ref"),
         revocation_proof_id: string_field(value, "proof_id"),
         sandbox_attestation_id: string_field(value, "attestation_id"),
         ack_lease_id: string_field(value, "lease_id"),
+        ack_id: string_field(value, "ack_id"),
+        trusted_time_ack_id: string_field(value, "ack_id"),
         receipt_execution_lease_ref: string_field(value, "execution_lease_ref"),
     }
 }
@@ -461,6 +484,53 @@ fn assemble_runtime_edges(nodes: &[AssembledEvidenceNode]) -> Vec<AssembledEvide
                 evidence_class: "digest-bound-reference",
             });
         }
+        if let Some(route_plan) = nodes.iter().find(|node| {
+            node.role == "swarm-route-plan-receipt"
+                && node.runtime_binding.route_plan_id.as_deref()
+                    == lease.runtime_binding.route_plan_receipt_ref.as_deref()
+        }) {
+            edges.push(AssembledEvidenceEdge {
+                from: route_plan.id.clone(),
+                to: lease.id.clone(),
+                predicate: "binds",
+                evidence_class: "native-external-proof",
+            });
+        }
+        if let Some(task_graph) = nodes.iter().find(|node| {
+            node.role == "swarm-task-graph"
+                && Some(node.sha256.as_str()) == lease.runtime_binding.task_graph_digest.as_deref()
+        }) {
+            edges.push(AssembledEvidenceEdge {
+                from: task_graph.id.clone(),
+                to: lease.id.clone(),
+                predicate: "binds",
+                evidence_class: "native-external-proof",
+            });
+        }
+        if let Some(budget_pool) = nodes.iter().find(|node| {
+            node.role == "swarm-budget-pool"
+                && node.runtime_binding.budget_pool_id.as_deref()
+                    == lease.runtime_binding.budget_pool_ref.as_deref()
+        }) {
+            edges.push(AssembledEvidenceEdge {
+                from: budget_pool.id.clone(),
+                to: lease.id.clone(),
+                predicate: "binds",
+                evidence_class: "native-external-proof",
+            });
+        }
+        if let Some(join_receipt) = nodes.iter().find(|node| {
+            node.role == "swarm-join-receipt"
+                && node.runtime_binding.join_id.as_deref()
+                    == lease.runtime_binding.join_receipt_ref.as_deref()
+        }) {
+            edges.push(AssembledEvidenceEdge {
+                from: join_receipt.id.clone(),
+                to: lease.id.clone(),
+                predicate: "binds",
+                evidence_class: "native-external-proof",
+            });
+        }
         if let Some(revocation) = nodes.iter().find(|node| {
             node.role == "revocation-freshness-proof"
                 && node.runtime_binding.revocation_proof_id.as_deref()
@@ -505,6 +575,18 @@ fn assemble_runtime_edges(nodes: &[AssembledEvidenceNode]) -> Vec<AssembledEvide
                     predicate: "acknowledges",
                     evidence_class: "native-external-proof",
                 });
+                for trusted_time in nodes.iter().filter(|node| {
+                    node.role == "trusted-time-proof"
+                        && node.runtime_binding.trusted_time_ack_id.as_deref()
+                            == ack.runtime_binding.ack_id.as_deref()
+                }) {
+                    edges.push(AssembledEvidenceEdge {
+                        from: trusted_time.id.clone(),
+                        to: ack.id.clone(),
+                        predicate: "binds",
+                        evidence_class: "native-external-proof",
+                    });
+                }
             }
         }
     }

@@ -12,6 +12,22 @@ Turn autonomous commerce from example logic into a verifier-grade order context.
 
 Commerce artifacts that appear in a Transaction Passport or verifier report must pass the registry acceptance contract in `../indices/artifact-registry.md` and `../architecture/09-integration-contracts.md`. Do not call an order context, event log, provider admission report, settlement packet, or order passport supported until registry, manifest, constants, claim/proof rows, positive fixture, and unknown-schema negative fixture exist.
 
+## Implementation Slices
+
+| Slice | Scope | Done when |
+| --- | --- | --- |
+| COM-0A | Freeze order-context, event-log, order-passport, provider-discovery, provider-selection, settlement-packet, mandate, and payment schemas. | Registry, manifest, Rust allowlist, and schema negatives pass. |
+| COM-0B | Define the monotonic commerce state machine and event invariants. | Unknown, reordered, duplicate, and illegal transitions reject. |
+| COM-0C | Add public copy and protocol-name lint for commerce claims, including ACP-Commerce. | Bare `ACP` and unsupported autonomous-commerce claims fail release truth. |
+| COM-1A | Implement deterministic event replay to materialized order state. | Valid fixture reaches terminal state and replay output is stable. |
+| COM-1B | Bind idempotency, actor, amount, currency, merchant, and digest fields per event. | Duplicate hold, wrong actor, wrong merchant, and amount drift reject. |
+| COM-1C | Emit the commerce verifier report and claim rows. | Verified commerce claims are registered and report lines name the commerce verifier. |
+| COM-2A | Enforce runtime commerce admission before payment or settlement dispatch. | Missing provider, quote, mandate, budget, or payment evidence denies. |
+| COM-3A | Add AP2 mandate projection verifier. | AP2 digest, order, amount, and merchant mismatch negatives reject. |
+| COM-3B | Add x402 payment projection verifier. | x402 requirement, payer, seller, amount, and receipt mismatch negatives reject. |
+| COM-3C | Add ACP-Commerce delegated-payment projection verifier. | Wrong seller, expired token, and order drift negatives reject. |
+| COM-3D | Bind web3 settlement proof to order context. | Settlement without order binding or wrong settlement packet rejects. |
+
 ## Phase 0 - Contract Freeze
 
 Tasks:

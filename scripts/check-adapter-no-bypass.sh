@@ -33,6 +33,42 @@ checks = [
     },
 ]
 
+swarm_runtime_route_plan_contract = [
+    {
+        "file": "crates/kernel/chio-runtime-core/src/admission_hook/swarm_ref.rs",
+        "required": [
+            "routePlanReceipt",
+            "routePlanReceiptSha256",
+            "required_swarm_evidence_ref",
+        ],
+    },
+    {
+        "file": "crates/kernel/chio-runtime-core/src/admission_hook/swarm_authority.rs",
+        "required": [
+            "verify_swarm_authority_reference_from_store",
+            "verify_route_metadata_matches",
+            "verify_swarm_authority_bundle",
+            "continuation.route_plan_receipt_id != reference.route_plan_receipt.evidence_id",
+        ],
+    },
+    {
+        "file": "crates/kernel/chio-runtime-core/src/admission_hook.rs",
+        "required": [
+            "verify_swarm_authority_reference_from_store",
+            "consume_swarm_continuation",
+            "admission_now_unix_ms",
+        ],
+    },
+    {
+        "file": "crates/kernel/chio-kernel/src/kernel/validation.rs",
+        "required": [
+            "NoopBudgetRegistry",
+            "admit_capability_budget",
+            "signature first, admit last",
+        ],
+    },
+]
+
 failures = []
 process_lifecycle_spawns = {
     Path("crates/protocol/chio-acp-proxy/src/transport.rs"):
@@ -53,6 +89,16 @@ for check in checks:
     for required in check["required"]:
         if required not in text:
             failures.append(f"{path} missing mediation marker: {required}")
+
+for check in swarm_runtime_route_plan_contract:
+    path = Path(check["file"])
+    if not path.exists():
+        failures.append(f"missing swarm route-plan enforcement file: {path}")
+        continue
+    text = path.read_text(encoding="utf-8")
+    for required in check["required"]:
+        if required not in text:
+            failures.append(f"{path} missing swarm route-plan marker: {required}")
 
 adapter_roots = set()
 for crate in Path("crates").glob("*/chio-*"):

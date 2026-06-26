@@ -19,6 +19,7 @@
     "claim_set_path",
     "verifier_policy_sha256",
     "verifier_policy_path",
+    "transparencyState",
     "claimResults"
   ],
   "allOf": [
@@ -60,6 +61,10 @@
     "claim_set_path": { "$ref": "#/$defs/bundleRelativePath" },
     "verifier_policy_sha256": { "$ref": "#/$defs/sha256" },
     "verifier_policy_path": { "$ref": "#/$defs/bundleRelativePath" },
+    "transparencyState": {
+      "type": "string",
+      "enum": ["trust_anchored", "transparency_preview", "not_present", "unknown"]
+    },
     "verified_claims": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 },

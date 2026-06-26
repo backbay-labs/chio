@@ -17,7 +17,8 @@
     "allowed",
     "payload_digest",
     "receipt_digest",
-    "authorization_context_digest"
+    "authorization_context_digest",
+    "event_sequence"
   ],
   "external_fields_not_used": [
     "ui_event_as_chio_authority"

@@ -19,6 +19,15 @@ Confidence: high for gate logic, moderate for current implementation status.
 | Enterprise export gate | Proves evidence export obeyed classification, residency, retention, legal hold, approval, and redaction rules. | Reject export or mark it noncompliant with policy. |
 | Public proof gate | Proves a third party can run the verifier and reproduce the verdict. | Block launch proof publication. |
 
+## Alignment Gates
+
+| Gate | Required proof artifacts | Failure mode |
+| --- | --- | --- |
+| Source alignment gate | `indices/external-standards-source-log.md`, `docs/standards/CHIO_AGENT_WEB_STANDARDS_SIGNOFF.json`, and the release-truth lint output. | Block public standards or compatibility claims until the cited source, claim wording, and sign-off agree. |
+| Composition alignment gate | `indices/source-map.md`, crate-local `DESIGN.md` boundary notes, and `indices/artifact-registry.md` fold or split decisions. | Block new crate or schema-boundary claims until the durable ownership boundary is documented. |
+| Integration alignment gate | `indices/proof-room-fixture-catalog.md`, `spec/registries/proof-manifest.v1.json`, verifier reports, and `claims/homepage-copy-map.json`. | Block launch proof publication until each public claim maps to a fixture-backed verifier result. |
+| Protocol alignment gate | `spec/PROTOCOL.md`, `spec/schemas/registry.json`, `spec/schemas/MANIFEST.sha256`, and protocol conformance or qualification matrices. | Block protocol authority claims until the normative spec, schemas, manifests, and conformance evidence match. |
+
 ## Homepage Copy To Required Proof
 
 | Copy claim | Required proof | Minimum launch artifact |

@@ -1,12 +1,14 @@
 use chio_core_types::{sha256_hex, Keypair};
 use chio_selective_disclosure::{
     compute_signed_lineage_subgraph_digest, sign_crypto_context_report, sign_lineage_subgraph,
-    verify_disclosure_lineage_bundle, DisclosureCapsule, DisclosureContextVerdict,
+    verify_disclosure_lineage_bundle_with_trust, DisclosureCapsule, DisclosureContextVerdict,
     DisclosureCryptoContextReport, DisclosureHiddenPredicate, DisclosureLeakageLedger,
-    DisclosureLeakageLedgerEntry, DisclosureLineageBundle, DisclosureProfileLeakageBudget,
-    DisclosureSensitivityClass, DisclosureSignedLineageEdge, DisclosureSignedLineageNode,
-    DisclosureSignedLineageRedaction, DisclosureVerifierPrivacyProfile, SignedLineageSubgraph,
-    TransparencyState, DISCLOSURE_CAPSULE_SCHEMA_V1, DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1,
+    DisclosureLeakageLedgerEntry, DisclosureLineageBundle, DisclosureLineageError,
+    DisclosureLineageVerifierReport, DisclosureLineageVerifierTrust,
+    DisclosureProfileLeakageBudget, DisclosureSensitivityClass, DisclosureSignedLineageEdge,
+    DisclosureSignedLineageNode, DisclosureSignedLineageRedaction,
+    DisclosureVerifierPrivacyProfile, SignedLineageSubgraph, TransparencyState,
+    DISCLOSURE_CAPSULE_SCHEMA_V1, DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1,
     DISCLOSURE_LEAKAGE_LEDGER_SCHEMA_V1, DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1,
     DISCLOSURE_VERIFIER_PRIVACY_PROFILE_SCHEMA_V1, LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
 };
@@ -244,6 +246,19 @@ fn lineage_signer() -> Keypair {
     Keypair::from_seed(&[29u8; 32])
 }
 
+fn disclosure_lineage_trust() -> DisclosureLineageVerifierTrust {
+    let signer = lineage_signer().public_key();
+    DisclosureLineageVerifierTrust::new()
+        .with_trusted_lineage_signer_keys(vec![signer.clone()])
+        .with_trusted_crypto_context_report_signer_keys(vec![signer])
+}
+
+fn verify_bundle(
+    bundle: &DisclosureLineageBundle,
+) -> Result<DisclosureLineageVerifierReport, DisclosureLineageError> {
+    verify_disclosure_lineage_bundle_with_trust(bundle, &disclosure_lineage_trust())
+}
+
 fn digest(value: &str) -> String {
     sha256_hex(value.as_bytes())
 }
@@ -297,7 +312,7 @@ fn amount_cap_hidden_predicate() -> DisclosureHiddenPredicate {
 fn disclosure_lineage_verifies_valid_bundle() -> Result<(), Box<dyn std::error::Error>> {
     let bundle = valid_bundle()?;
 
-    let report = verify_disclosure_lineage_bundle(&bundle)?;
+    let report = verify_bundle(&bundle)?;
 
     assert_eq!(report.schema, DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1);
     assert_eq!(report.verdict, "verified");
@@ -325,7 +340,7 @@ fn disclosure_lineage_rejects_disclosed_field_absent_from_ledger() {
         .retain(|entry| entry.field != "tool_name");
     bundle.leakage_ledger.total_leakage_score = 6;
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("missing leakage ledger entry must fail"),
         Err(error) => error,
     };
@@ -345,7 +360,7 @@ fn disclosure_lineage_rejects_crypto_context_artifact_ref_mismatch() {
     };
     report.artifact_ref = "disclosure-capsule-other".to_string();
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("crypto context artifact mismatch must fail"),
         Err(error) => error,
     };
@@ -365,7 +380,7 @@ fn disclosure_lineage_rejects_crypto_context_missing_disclosed_field() {
     };
     report.disclosed_fields.retain(|field| field != "tool_name");
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("crypto context missing disclosed field must fail"),
         Err(error) => error,
     };
@@ -382,7 +397,7 @@ fn disclosure_lineage_rejects_unknown_lineage_root() {
     };
     bundle.lineage.root_receipt_ids = vec!["receipt-missing".to_string()];
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("unknown lineage root must fail"),
         Err(error) => error,
     };

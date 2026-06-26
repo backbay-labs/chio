@@ -3,6 +3,48 @@
 Status: research index
 Confidence: moderate. This file maps the agent campaign's repo observations, but it is not a fresh full-code audit.
 
+## Compose-First Outcome
+
+The launch implementation remains compose-first. The first implementation
+home is still the existing protocol, economy, trust, platform, and product
+crate that already owns the behavior. A new crate is accepted only when the
+launch verifier boundary became durable enough to need its own tests, schemas,
+and owner note.
+
+Accepted PR #937 extraction boundaries:
+
+- Transaction Passport: `crates/platform/chio-transaction-passport/DESIGN.md`
+  documents the verifier root over existing receipt, policy, runtime, and
+  evidence graph data.
+- Commerce order context: `crates/platform/chio-commerce-order/DESIGN.md`
+  documents the replay verifier over existing market, payment, settlement, and
+  mandate evidence.
+- Swarm authority: `crates/kernel/chio-swarm-authority/DESIGN.md` documents
+  the offline verifier surface while runtime admission stays in the kernel and
+  runtime paths.
+- Disclosure lineage: `crates/trust/chio-disclosure-lineage/DESIGN.md`
+  documents the disclosure verifier boundary over selective disclosure and
+  lineage evidence.
+- Risk comptroller: `crates/platform/chio-risk-comptroller/DESIGN.md`
+  documents the report verifier over underwriting, credit, capital, and
+  settlement evidence.
+- Agent Web interop: `crates/platform/chio-agent-web-interop/DESIGN.md`
+  documents projection verification over existing protocol adapters.
+- Enterprise export: `crates/platform/chio-enterprise-export/DESIGN.md`
+  documents evidence export verification over SIEM, telemetry, control, and
+  disclosure sources.
+- Trust-market context: `crates/platform/chio-trust-market-context/DESIGN.md`
+  documents marketplace context verification over market, reputation, credit,
+  governance, and settlement sources.
+- Proof Room product: `crates/products/chio-proof-room/DESIGN.md` documents
+  the product binary boundary. It consumes verifier outputs and does not own
+  proof semantics.
+
+The rows below preserve the original source mapping and now distinguish
+implemented durable homes from remaining launch gaps. Future work should update
+this file when a schema or crate boundary moves, folds into an existing owner,
+or is explicitly scoped out.
+
 ## Proof, Receipts, And Passports
 
 Existing assets:
@@ -14,9 +56,9 @@ Existing assets:
 
 Launch gap:
 
-- No canonical `chio.transaction-passport.v1` artifact.
-- No typed evidence graph root that joins receipts, lineages, policies, disclosures, commerce state, settlement state, and risk state.
-- No one-command verifier that emits a buyer-readable report for the complete transaction.
+- Remaining gaps are verifier-policy breadth, graph inspectability, and
+  completeness of named negative fixtures. The root, evidence graph, claim-set,
+  policy digest, and one-command verifier surfaces are implemented.
 
 Planned artifacts:
 
@@ -24,6 +66,9 @@ Planned artifacts:
 - `chio.transaction.evidence-graph.v1`
 - `chio.transaction.verifier-policy.v1`
 - `chio.transaction.verifier-report.v1`
+
+Durable home: `crates/platform/chio-transaction-passport` plus `chio-cli`
+commands for collection, verification, explanation, serving, and export.
 
 ## Commerce And Settlement
 
@@ -35,9 +80,10 @@ Existing assets:
 
 Launch gap:
 
-- No canonical order context or replay ledger.
-- Settlement observer evidence can explain what happened after the fact, but it should not be the sole gate for dispatch.
-- Provider passport, reputation, federation, budget, quote, mandate, and settlement facts are not yet one fail-closed commerce state machine.
+- Remaining gaps are commerce replay depth, dedicated provider-admission
+  schema policy, and broader payment projection fixtures. Order context, event
+  replay, mandate, payment lifecycle, risk binding, and settlement binding have
+  dedicated verifier surfaces.
 
 Planned artifacts:
 
@@ -48,6 +94,9 @@ Planned artifacts:
 - `chio.commerce.provider-selection-report.v1`
 - `chio.commerce.settlement-packet.v1`
 
+Durable home: `crates/platform/chio-commerce-order`, composed with economy,
+market, credit, settlement, and risk evidence.
+
 ## Recursive Delegation And Swarms
 
 Existing assets:
@@ -57,10 +106,10 @@ Existing assets:
 
 Launch gap:
 
-- Recursive delegation is not yet represented as a graph-level authority contract.
-- Multi-hop attenuation needs explicit per-hop witnesses.
-- Deferred task resume needs fresh continuation validation, revocation epoch checks, and live budget allocation.
-- Route metadata is observability, not authority.
+- Remaining gaps are deeper fan-out conformance and observability detail.
+  Recursive delegation, continuation validation, witness-chain binding,
+  revocation epoch checks, route-plan receipts, and budget lease checks now
+  have dedicated verifier coverage.
 
 Planned artifacts:
 
@@ -71,6 +120,9 @@ Planned artifacts:
 - `chio.swarm.route-plan-receipt.v1`
 - `chio.swarm.budget-pool.v1`
 
+Durable home: `crates/kernel/chio-swarm-authority`, with runtime admission
+enforcement in kernel and runtime paths.
+
 ## Lineage And Selective Disclosure
 
 Existing assets:
@@ -80,10 +132,10 @@ Existing assets:
 
 Launch gap:
 
-- Kernel runtime does not consistently emit BBS-signed runtime receipts.
-- Projection v1 is too thin and has spec/implementation divergence risk.
-- Evidence export is a full audit package, not a privacy disclosure package.
-- Verifier policy cannot yet reject excess disclosure or evaluate hidden predicates.
+- Remaining gaps are runtime BBS mode depth and privacy export packaging.
+  BBS projection manifest v2, signed lineage, disclosure capsule, leakage
+  ledger, crypto context, hidden predicate, and excess disclosure verifier
+  paths are implemented for the launch proof surface.
 
 Planned artifacts:
 
@@ -92,6 +144,9 @@ Planned artifacts:
 - `chio.lineage.signed-subgraph.v1`
 - `chio.disclosure.leakage-ledger.v1`
 - `chio.disclosure.verifier-privacy-profile.v1`
+
+Durable homes: `crates/trust/chio-selective-disclosure` and
+`crates/trust/chio-disclosure-lineage`.
 
 ## Public Runtime And Web3 Proof
 
@@ -102,9 +157,10 @@ Existing assets:
 
 Launch gap:
 
-- Public web3 proof must recompute chain state from anchored evidence, not trust a demo transcript.
-- Registry roots, escrow state, bond state, transaction hashes, block/finality, oracle conversion evidence, and dispute posture need one proof bundle.
-- Chio identities and EVM addresses must be separated and bound by explicit proofs.
+- Remaining gaps are online readback scope and richer Proof Room settlement
+  exploration. The launch fixture now requires independent head evidence,
+  block-hash reorg checks, anchor proof bundles, settlement execution binding,
+  and top-level bundle signatures.
 
 Planned artifacts:
 
@@ -112,6 +168,8 @@ Planned artifacts:
 - `chio.anchor-proof-bundle.v1`
 - `chio.oracle-conversion-evidence.v1`
 - `chio.public-settlement-verifier-report.v1`
+
+Durable home: existing `crates/economy/chio-web3` and settlement fixtures.
 
 ## Risk, Comptroller, And Insurance
 
@@ -121,10 +179,11 @@ Existing assets:
 
 Launch gap:
 
-- No canonical risk comptroller report.
-- Facility lifecycle must be the launch contract for insurance and reserve behavior.
-- Claim payout, reserve release, reserve slash, and market slash must not accidentally spend the same reserve twice.
-- Autonomous insurer pricing claims require actuarial backtests and capital adequacy evidence.
+- Remaining gaps are standalone risk schema fold documentation and a few
+  premium or capital invariant refinements. The comptroller report, facility
+  lifecycle replay, reserve lanes, appeals, sanction reserve ledger, actuarial
+  evidence, insurance copy bounds, and capital adequacy checks are implemented
+  in the launch verifier path.
 
 Planned artifacts:
 
@@ -138,6 +197,9 @@ Planned artifacts:
 - `chio.risk.capital-adequacy-report.v1`
 - `chio.risk.actuarial-backtest-report.v1`
 
+Durable home: `crates/platform/chio-risk-comptroller`, composed with credit,
+underwriting, appraisal, settlement, and trust-market evidence.
+
 ## Proof Room And Developer Experience
 
 Existing assets:
@@ -146,8 +208,10 @@ Existing assets:
 
 Launch gap:
 
-- A launch reviewer needs one command and one visual room, not a treasure hunt.
-- Release/package truth is currently a risk: public artifacts must reflect actual package and release state.
+- Remaining gaps are product-overlay negatives and some layout polish. The
+  launch reviewer path has `chio proof` commands, Proof Room rendering, doctor,
+  release-truth linting, Docker quickstart support, and aggregate launch
+  acceptance packaging.
 
 Planned artifacts:
 
@@ -161,6 +225,9 @@ Planned artifacts:
 - `chio.proof-room.bundle.v1`
 - `chio.proof-room.verifier-report.v1`
 
+Durable homes: `crates/products/chio-cli` for proof commands and
+`crates/products/chio-proof-room` for product serving and static bundle checks.
+
 ## External Standards
 
 Existing assets:
@@ -170,9 +237,10 @@ Existing assets:
 
 Launch gap:
 
-- There is no single external "Agent Web Proof Envelope" standard to cite as if it already exists.
-- The acronym `ACP` is ambiguous and should be qualified every time.
-- Chio should project proof into protocol-specific metadata or sidecar references without pretending external protocols natively enforce Chio authority.
+- Remaining gaps are per-protocol fixture breadth. The proof envelope,
+  projection manifest, interop verifier report, copy lint, source-log refresh,
+  standards sign-off, and external protocol exit gate are implemented without
+  treating external protocols as Chio authority.
 
 Planned artifacts:
 
@@ -180,3 +248,6 @@ Planned artifacts:
 - `chio.agent-web.external-projection-manifest.v1`
 - `chio.agent-web.interop-verifier-report.v1`
 - copy lint banning ambiguous external-standard claims.
+
+Durable home: `crates/platform/chio-agent-web-interop`, composed with existing
+protocol adapters and bounded sidecar evidence.

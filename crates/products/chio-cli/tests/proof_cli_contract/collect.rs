@@ -100,6 +100,67 @@ fn proof_collect_outputs_servable_bundle_for_passport_artifacts() {
 }
 
 #[test]
+fn proof_collect_accepts_launch_documented_collection_kinds() {
+    let cases = [
+        (
+            "evidence",
+            "fixtures/proof-room/minimal-passport/valid",
+            None,
+            "claim.transaction.passport_root_verified",
+        ),
+        (
+            "replay",
+            "fixtures/proof-room/commerce-payments/offline-psp-valid",
+            Some("commerce"),
+            "claim.commerce.order_replay_consistent",
+        ),
+        (
+            "buyer-package",
+            "fixtures/proof-room/public-stages/recursive-runtime-swarm/proof-room-bundle",
+            Some("delegation"),
+            "claim.swarm.route_plan_bound",
+        ),
+    ];
+
+    for (kind, fixture_path, requirement, claim_id) in cases {
+        let tempdir = tempfile::tempdir().test_expect("tempdir");
+        let artifact_dir = workspace_root().join(fixture_path);
+        let out_path = tempdir.path().join(format!("collected-{kind}"));
+        let output = chio(&[
+            "proof",
+            "collect",
+            "--kind",
+            kind,
+            "--artifact-dir",
+            utf8_path(&artifact_dir).as_str(),
+            "--out",
+            utf8_path(&out_path).as_str(),
+            "--json",
+        ]);
+
+        assert_success(&output);
+        let report: serde_json::Value =
+            serde_json::from_slice(&output.stdout).test_expect("collect report parses");
+        assert_eq!(
+            report.get("kind").and_then(serde_json::Value::as_str),
+            Some(kind)
+        );
+
+        let out_dir = utf8_path(&out_path);
+        let mut verify_args = vec!["proof", "verify", out_dir.as_str()];
+        if let Some(requirement) = requirement {
+            verify_args.extend(["--require", requirement]);
+        }
+        let verify = chio(&verify_args);
+        assert_success(&verify);
+        assert!(
+            stdout(verify).contains(claim_id),
+            "{kind} collection should preserve {claim_id}"
+        );
+    }
+}
+
+#[test]
 fn proof_collect_binds_bundle_signature_to_manifest_trust_roots() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let artifact_dir = workspace_root().join("fixtures/proof-room/minimal-passport/valid");
@@ -836,7 +897,12 @@ fn proof_assemble_outputs_runtime_security_bundle_verifiable_by_runtime_requirem
         "allow-receipt.json",
         "request-digest.json",
         "execution-lease.json",
+        "task-graph.json",
+        "budget-pool.json",
+        "join-receipt.json",
+        "route-plan-receipt.json",
         "trust-root.json",
+        "trusted-time-proof.json",
         "revocation-freshness-proof.json",
         "sandbox-attestation.json",
         "tool-server-ack.json",

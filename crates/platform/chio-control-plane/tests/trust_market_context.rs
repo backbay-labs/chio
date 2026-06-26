@@ -106,6 +106,35 @@ fn push_artifact(
     artifacts.insert(path.to_string(), bytes);
 }
 
+fn normalize_graph_node_ids(graph_nodes: &mut [Value], graph_edges: &mut [Value]) {
+    let mut rewritten_ids = BTreeMap::new();
+    for node in graph_nodes {
+        let Some(current_id) = node.get("id").and_then(Value::as_str).map(str::to_string) else {
+            continue;
+        };
+        let Some(sha256) = node
+            .get("sha256")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        node["id"] = Value::String(sha256.clone());
+        rewritten_ids.insert(current_id, sha256);
+    }
+    for edge in graph_edges {
+        for field in ["from", "to"] {
+            let Some(current_id) = edge.get(field).and_then(Value::as_str).map(str::to_string)
+            else {
+                continue;
+            };
+            if let Some(rewritten_id) = rewritten_ids.get(&current_id) {
+                edge[field] = Value::String(rewritten_id.clone());
+            }
+        }
+    }
+}
+
 fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
     let passport = TransactionPassport {
         schema: "chio.transaction-passport.v1".to_string(),
@@ -351,7 +380,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         sla_performance,
     );
 
-    let risk_consumed_units = match case {
+    let risk_consumed_units: u64 = match case {
         TrustMarketCase::RiskDoubleConsumedReserve
         | TrustMarketCase::RiskOpenAppealReserveRelease => 500,
         _ => 0,
@@ -429,6 +458,31 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             "exposure_units": 1000,
             "reserve_ref": "reserve-market-valid",
             "status": "bound"
+        },
+        "premium": {
+            "premium_id": "premium-market-valid",
+            "quote_ref": "provider-selection-report",
+            "coverage_id": "coverage-market-valid",
+            "order_id": "order-commerce-001",
+            "subject": provider_subject,
+            "currency": "USD",
+            "coverage_exposure_units": 1000,
+            "quoted_premium_units": 10,
+            "bound_premium_units": 10,
+            "collected_premium_units": 0,
+            "status": "bound"
+        },
+        "capital_decomposition": {
+            "decomposition_id": "capital-decomposition-market-valid",
+            "source_kind": "facility_commitment",
+            "source_ref": "adjudication-jurisdiction-receipt",
+            "currency": "USD",
+            "committed_units": 2000,
+            "held_units": 500,
+            "drawn_units": 0,
+            "disbursed_units": risk_consumed_units,
+            "impaired_units": 0,
+            "available_units": 2000_u64.saturating_sub(500 + risk_consumed_units)
         },
         "reconciliation": {
             "order_id": "order-commerce-001",
@@ -798,55 +852,58 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         verifier_policy.clone(),
     );
 
+    let mut graph_edges = vec![
+        json!({
+            "from": "claim-set",
+            "to": "verifier-policy",
+            "predicate": "binds",
+            "evidence_class": "digest-bound-reference"
+        }),
+        json!({
+            "from": "provider-discovery-snapshot",
+            "to": "provider-selection-report",
+            "predicate": "binds",
+            "evidence_class": "chio-sidecar-proof"
+        }),
+        json!({
+            "from": "provider-selection-report",
+            "to": "sla-commitment",
+            "predicate": "binds",
+            "evidence_class": "chio-sidecar-proof"
+        }),
+        json!({
+            "from": "provider-selection-report",
+            "to": "risk-comptroller-report",
+            "predicate": "binds",
+            "evidence_class": "chio-sidecar-proof"
+        }),
+        json!({
+            "from": "trust-scorecard-snapshot",
+            "to": "reputation-import-report",
+            "predicate": "derives",
+            "evidence_class": "digest-bound-reference"
+        }),
+        json!({
+            "from": "guarantee-decision",
+            "to": "collateral-position-report",
+            "predicate": "binds",
+            "evidence_class": "chio-sidecar-proof"
+        }),
+        json!({
+            "from": "guarantee-decision",
+            "to": "adjudication-jurisdiction-receipt",
+            "predicate": "binds",
+            "evidence_class": "chio-sidecar-proof"
+        }),
+    ];
+    normalize_graph_node_ids(&mut graph_nodes, &mut graph_edges);
+
     let evidence_graph = json_bytes(json!({
         "schema": "chio.transaction.evidence-graph.v1",
         "id": "evidence-graph-trust-market-valid",
         "issued_at": "2026-06-10T00:00:00Z",
         "nodes": graph_nodes,
-        "edges": [
-            {
-                "from": "claim-set",
-                "to": "verifier-policy",
-                "predicate": "binds",
-                "evidence_class": "digest-bound-reference"
-            },
-            {
-                "from": "provider-discovery-snapshot",
-                "to": "provider-selection-report",
-                "predicate": "binds",
-                "evidence_class": "chio-sidecar-proof"
-            },
-            {
-                "from": "provider-selection-report",
-                "to": "sla-commitment",
-                "predicate": "binds",
-                "evidence_class": "chio-sidecar-proof"
-            },
-            {
-                "from": "provider-selection-report",
-                "to": "risk-comptroller-report",
-                "predicate": "binds",
-                "evidence_class": "chio-sidecar-proof"
-            },
-            {
-                "from": "trust-scorecard-snapshot",
-                "to": "reputation-import-report",
-                "predicate": "derives",
-                "evidence_class": "digest-bound-reference"
-            },
-            {
-                "from": "guarantee-decision",
-                "to": "collateral-position-report",
-                "predicate": "binds",
-                "evidence_class": "chio-sidecar-proof"
-            },
-            {
-                "from": "guarantee-decision",
-                "to": "adjudication-jurisdiction-receipt",
-                "predicate": "binds",
-                "evidence_class": "chio-sidecar-proof"
-            }
-        ]
+        "edges": graph_edges
     }));
 
     let mut passport = TransactionPassport {

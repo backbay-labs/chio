@@ -50,6 +50,15 @@ These sources came from the third-wave interop debate. They widen Agent Web proj
 | Google Workspace APIs | https://developers.google.com/workspace/drive/api/guides/about-sdk ; https://developers.google.com/workspace/gmail/api/guides ; https://developers.google.com/workspace/calendar/api/guides/overview | Provider connector evidence for Drive, Gmail, and Calendar objects, methods, scopes, and response digests. |
 | Mail and calendar formats | https://www.rfc-editor.org/rfc/rfc5322.html ; https://www.rfc-editor.org/rfc/rfc5545.html ; https://www.rfc-editor.org/rfc/rfc8621.html | RFC 5322, iCalendar, and JMAP Mail can provide message or event object digests where implemented. |
 
+## Standards Wording Precision
+
+Use these terms consistently in launch copy and standards-facing docs:
+
+- `aligns with`: Chio solves a related problem or uses a comparable data shape, but does not claim wire compatibility or conformance.
+- `projects into`: Chio emits a bounded external view, envelope, sidecar, digest binding, or credential projection from Chio receipt or Transaction Passport truth.
+- `compatible with`: Chio can interoperate with the named protocol surface for the explicitly documented subset and fixture coverage.
+- `conforms to`: Chio has a normative conformance basis for the named version, including cited source, parser or verifier behavior, and passing fixtures. Do not use this term for draft, preview, or shape-only support.
+
 ## Launch Copy Constraints
 
 Allowed:

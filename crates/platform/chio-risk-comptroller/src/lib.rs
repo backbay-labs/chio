@@ -30,8 +30,12 @@ pub struct RiskComptrollerReport {
     facility_lifecycle: Vec<RiskFacilityTransition>,
     coverage: RiskCoverageBinding,
     reconciliation: RiskReconciliation,
+    #[serde(default)]
+    premium: Option<RiskPremiumBinding>,
     actuarial_evidence: RiskActuarialEvidence,
     insurance_copy: RiskInsuranceCopy,
+    #[serde(default)]
+    capital_decomposition: Option<RiskCapitalDecomposition>,
     #[serde(default)]
     capital_instructions: Vec<RiskCapitalInstruction>,
     #[serde(default)]
@@ -146,6 +150,41 @@ struct RiskInsuranceCopy {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct RiskPremiumBinding {
+    premium_id: String,
+    quote_ref: String,
+    coverage_id: String,
+    order_id: String,
+    subject: String,
+    currency: String,
+    coverage_exposure_units: u64,
+    quoted_premium_units: u64,
+    bound_premium_units: u64,
+    collected_premium_units: u64,
+    #[serde(default)]
+    observed_payment_ref: Option<String>,
+    #[serde(default)]
+    settlement_ref: Option<String>,
+    status: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RiskCapitalDecomposition {
+    decomposition_id: String,
+    source_kind: String,
+    source_ref: String,
+    currency: String,
+    committed_units: u64,
+    held_units: u64,
+    drawn_units: u64,
+    disbursed_units: u64,
+    impaired_units: u64,
+    available_units: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RiskCapitalInstruction {
     instruction_id: String,
     reserve_entry_id: String,
@@ -254,7 +293,9 @@ pub fn validate_risk_report(
     validate_risk_facility_state(&report.facility, &report.facility_lifecycle)?;
     validate_risk_coverage_binding(report, &report.coverage)?;
     validate_risk_reconciliation(report, &report.reconciliation)?;
+    validate_risk_premium_binding(report)?;
     validate_risk_actuarial_limits(report, &report.actuarial_evidence, &report.insurance_copy)?;
+    validate_risk_capital_decomposition(report)?;
     validate_risk_claim_appeals(report, &report.appeals)?;
     validate_risk_reserve_ledger(report, &report.reserve_ledger)?;
     validate_risk_sanction_reserve_ledger(
@@ -266,6 +307,18 @@ pub fn validate_risk_report(
     validate_risk_coverage_claim_scope(report)?;
     validate_risk_facility_closure(report)?;
     Ok(())
+}
+
+pub fn validate_signed_risk_report(
+    passport: &TransactionPassport,
+    report_value: &serde_json::Value,
+    trusted_authority_keys: &[PublicKey],
+) -> Result<RiskComptrollerReport, TransactionPassportError> {
+    validate_risk_report_signature(report_value, trusted_authority_keys)?;
+    let report: RiskComptrollerReport = serde_json::from_value(report_value.clone())
+        .map_err(|error| claim_failed(error.to_string()))?;
+    validate_risk_report(passport, &report)?;
+    Ok(report)
 }
 
 pub fn validate_risk_report_signature(
@@ -426,6 +479,31 @@ pub fn validate_risk_evidence_refs(
         RiskEvidenceRefKind::SupportingEvidence,
     ) {
         return Err(claim_failed("risk actuarial evidence missing"));
+    }
+    let Some(premium) = report.premium.as_ref() else {
+        return Err(claim_failed("risk premium binding missing"));
+    };
+    if !contains_ref(&premium.quote_ref, RiskEvidenceRefKind::SupportingEvidence) {
+        return Err(claim_failed("risk premium quote evidence missing"));
+    }
+    if let Some(observed_payment_ref) = premium.observed_payment_ref.as_ref() {
+        if !contains_ref(
+            observed_payment_ref,
+            RiskEvidenceRefKind::SupportingEvidence,
+        ) {
+            return Err(claim_failed("risk premium payment evidence missing"));
+        }
+    }
+    if let Some(settlement_ref) = premium.settlement_ref.as_ref() {
+        if !contains_ref(settlement_ref, RiskEvidenceRefKind::Settlement) {
+            return Err(claim_failed("risk premium settlement evidence missing"));
+        }
+    }
+    let Some(capital) = report.capital_decomposition.as_ref() else {
+        return Err(claim_failed("risk capital decomposition missing"));
+    };
+    if !contains_ref(&capital.source_ref, RiskEvidenceRefKind::AuthorityReceipt) {
+        return Err(claim_failed("risk capital source evidence missing"));
     }
     for entry in &report.reserve_ledger {
         if !contains_ref(
@@ -757,6 +835,109 @@ fn validate_risk_reconciliation(
     }
     if reconciliation.status != "balanced" {
         return Err(claim_failed("risk reconciliation is not balanced"));
+    }
+    Ok(())
+}
+
+fn validate_risk_premium_binding(
+    report: &RiskComptrollerReport,
+) -> Result<(), TransactionPassportError> {
+    let Some(premium) = report.premium.as_ref() else {
+        return Err(claim_failed("risk premium binding missing"));
+    };
+    for (field, value) in [
+        ("premium_id", &premium.premium_id),
+        ("premium_quote_ref", &premium.quote_ref),
+        ("premium_coverage_id", &premium.coverage_id),
+        ("premium_order_id", &premium.order_id),
+        ("premium_subject", &premium.subject),
+        ("premium_currency", &premium.currency),
+        ("premium_status", &premium.status),
+    ] {
+        require_non_empty(value, field)?;
+    }
+    if premium.coverage_id != report.coverage.coverage_id {
+        return Err(claim_failed("risk premium coverage mismatch"));
+    }
+    if premium.order_id != report.order_id {
+        return Err(claim_failed("risk premium order mismatch"));
+    }
+    if premium.subject != report.coverage.subject {
+        return Err(claim_failed("risk premium subject mismatch"));
+    }
+    if premium.currency != report.coverage.currency {
+        return Err(claim_failed("risk premium currency mismatch"));
+    }
+    if premium.coverage_exposure_units != report.coverage.exposure_units {
+        return Err(claim_failed("risk premium exposure mismatch"));
+    }
+    if premium.quoted_premium_units == 0 || premium.bound_premium_units == 0 {
+        return Err(claim_failed("risk premium units missing"));
+    }
+    if premium.bound_premium_units != premium.quoted_premium_units {
+        return Err(claim_failed("risk premium quote mismatch"));
+    }
+    match premium.status.as_str() {
+        "bound" => {
+            if premium.collected_premium_units != 0 {
+                return Err(claim_failed("risk premium collection mismatch"));
+            }
+        }
+        "collected" => {
+            if premium.collected_premium_units != premium.bound_premium_units {
+                return Err(claim_failed("risk premium collection mismatch"));
+            }
+            if optional_non_empty(
+                premium.observed_payment_ref.as_ref(),
+                "premium_observed_payment_ref",
+            )?
+            .is_none()
+                && optional_non_empty(premium.settlement_ref.as_ref(), "premium_settlement_ref")?
+                    .is_none()
+            {
+                return Err(claim_failed("risk premium collection evidence missing"));
+            }
+        }
+        _ => return Err(claim_failed("risk premium status unsupported")),
+    }
+    Ok(())
+}
+
+fn validate_risk_capital_decomposition(
+    report: &RiskComptrollerReport,
+) -> Result<(), TransactionPassportError> {
+    let Some(capital) = report.capital_decomposition.as_ref() else {
+        return Err(claim_failed("risk capital decomposition missing"));
+    };
+    for (field, value) in [
+        ("capital_decomposition_id", &capital.decomposition_id),
+        ("capital_decomposition_source_kind", &capital.source_kind),
+        ("capital_decomposition_source_ref", &capital.source_ref),
+        ("capital_decomposition_currency", &capital.currency),
+    ] {
+        require_non_empty(value, field)?;
+    }
+    if capital.source_kind != "facility_commitment" {
+        return Err(claim_failed("risk capital source unsupported"));
+    }
+    if capital.currency != report.facility.capital_currency {
+        return Err(claim_failed("risk capital currency mismatch"));
+    }
+    if capital.committed_units != report.facility.capital_units {
+        return Err(claim_failed("risk capital committed mismatch"));
+    }
+    if capital.held_units != report.facility.reserve_units {
+        return Err(claim_failed("risk capital held mismatch"));
+    }
+    let deductions = capital
+        .held_units
+        .checked_add(capital.drawn_units)
+        .and_then(|units| units.checked_add(capital.disbursed_units))
+        .and_then(|units| units.checked_add(capital.impaired_units))
+        .ok_or_else(|| claim_failed("risk capital decomposition overflow"))?;
+    let expected_available_units = capital.committed_units.saturating_sub(deductions);
+    if capital.available_units != expected_available_units {
+        return Err(claim_failed("risk capital available mismatch"));
     }
     Ok(())
 }

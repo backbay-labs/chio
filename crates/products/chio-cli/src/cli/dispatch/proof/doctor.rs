@@ -1,4 +1,5 @@
 use super::*;
+use std::ffi::OsString;
 use std::path::Component;
 
 const PROOF_DOCTOR_REPORT_SCHEMA: &str = "chio.proof.doctor-report.v1";
@@ -14,6 +15,12 @@ const DOCKER_QUICKSTART_BUNDLE_PATH: &str =
 const DOCKER_QUICKSTART_DOCTOR_REPORT_PATH: &str = "/opt/chio/proof-doctor-report.json";
 const DOCKER_QUICKSTART_EVIDENCE_SOURCE: &str =
     "scripts/check-chio-proof-room-docker-quickstart.sh";
+const PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON";
+const PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL";
+const PUBLIC_SETTLEMENT_REORGED_INDEPENDENT_CHAIN_HEAD_JSON: &str =
+    "{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"latest_block_number\":12345701}";
 const REQUIRED_DOCKER_ENDPOINTS: &[(&str, &str)] = &[
     ("/manifest.json", "chio.proof-room.bundle.v1"),
     (
@@ -44,12 +51,16 @@ struct ProofDoctorReport {
     schema: &'static str,
     scenario: &'static str,
     verdict: &'static str,
+    check_count: usize,
+    failed_count: usize,
+    diagnostic_codes: Vec<String>,
     checks: Vec<ProofDoctorCheck>,
 }
 
 #[derive(Debug, serde::Serialize)]
 struct ProofDoctorCheck {
     id: String,
+    code: String,
     status: &'static str,
     path: String,
     message: String,
@@ -71,6 +82,68 @@ struct ProofPackageFixture {
 #[derive(serde::Deserialize)]
 struct ProofPackageNegativeCase {
     expected_failure_code: String,
+    #[serde(default)]
+    verifier_context: ProofPackageVerifierContext,
+}
+
+#[derive(Default, serde::Deserialize)]
+struct ProofPackageVerifierContext {
+    #[serde(default)]
+    public_settlement_independent_chain_head: Option<PublicSettlementIndependentChainHeadContext>,
+}
+
+#[derive(Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum PublicSettlementIndependentChainHeadContext {
+    Missing,
+    BlockHashMismatch,
+}
+
+struct EnvVarOverride {
+    name: &'static str,
+    previous: Option<OsString>,
+}
+
+impl EnvVarOverride {
+    fn remove(name: &'static str) -> Self {
+        let previous = std::env::var_os(name);
+        std::env::remove_var(name);
+        Self { name, previous }
+    }
+
+    fn set(name: &'static str, value: &'static str) -> Self {
+        let previous = std::env::var_os(name);
+        std::env::set_var(name, value);
+        Self { name, previous }
+    }
+}
+
+impl Drop for EnvVarOverride {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => std::env::set_var(self.name, value),
+            None => std::env::remove_var(self.name),
+        }
+    }
+}
+
+impl ProofPackageVerifierContext {
+    fn apply(&self) -> Vec<EnvVarOverride> {
+        match self.public_settlement_independent_chain_head {
+            Some(PublicSettlementIndependentChainHeadContext::Missing) => vec![
+                EnvVarOverride::remove(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV),
+                EnvVarOverride::remove(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV),
+            ],
+            Some(PublicSettlementIndependentChainHeadContext::BlockHashMismatch) => vec![
+                EnvVarOverride::set(
+                    PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV,
+                    PUBLIC_SETTLEMENT_REORGED_INDEPENDENT_CHAIN_HEAD_JSON,
+                ),
+                EnvVarOverride::remove(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV),
+            ],
+            None => Vec::new(),
+        }
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -81,7 +154,16 @@ struct EnterpriseExportNegativeCase {
 }
 
 impl ProofDoctorReport {
-    fn new(scenario: &'static str, checks: Vec<ProofDoctorCheck>) -> Self {
+    fn new(scenario: &'static str, mut checks: Vec<ProofDoctorCheck>) -> Self {
+        for check in &mut checks {
+            check.code = proof_doctor_diagnostic_code(scenario, &check.id);
+        }
+        let check_count = checks.len();
+        let failed_count = checks
+            .iter()
+            .filter(|check| check.status == "failed")
+            .count();
+        let diagnostic_codes = checks.iter().map(|check| check.code.clone()).collect();
         let verdict = if checks.iter().any(|check| check.status == "failed") {
             "failed"
         } else {
@@ -92,12 +174,45 @@ impl ProofDoctorReport {
             schema: PROOF_DOCTOR_REPORT_SCHEMA,
             scenario,
             verdict,
+            check_count,
+            failed_count,
+            diagnostic_codes,
             checks,
         }
     }
 
     fn failed(&self) -> bool {
         self.checks.iter().any(|check| check.status == "failed")
+    }
+}
+
+fn proof_doctor_diagnostic_code(scenario: &str, check_id: &str) -> String {
+    format!(
+        "proof.doctor.{}.{}",
+        proof_doctor_diagnostic_segment(scenario),
+        proof_doctor_diagnostic_segment(check_id)
+    )
+}
+
+fn proof_doctor_diagnostic_segment(value: &str) -> String {
+    let mut segment = String::with_capacity(value.len());
+    let mut previous_was_separator = false;
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() {
+            segment.push(character.to_ascii_lowercase());
+            previous_was_separator = false;
+        } else if !previous_was_separator && !segment.is_empty() {
+            segment.push('-');
+            previous_was_separator = true;
+        }
+    }
+    while segment.ends_with('-') {
+        segment.pop();
+    }
+    if segment.is_empty() {
+        "unknown".to_string()
+    } else {
+        segment
     }
 }
 
@@ -518,6 +633,16 @@ const PUBLIC_SETTLEMENT_CHECKS: &[TransactionPassportCheckSpec] = &[
         id: "public_settlement_refunded_posture_without_reversal",
         fixture: "refunded-posture-without-reversal",
         expected_error: Some("refunded dispute posture requires reversed or timed out settlement"),
+    },
+    TransactionPassportCheckSpec {
+        id: "public_settlement_missing_independent_head",
+        fixture: "missing-independent-head",
+        expected_error: Some("public settlement independent head missing"),
+    },
+    TransactionPassportCheckSpec {
+        id: "public_settlement_independent_head_block_hash_mismatch",
+        fixture: "independent-head-block-hash-mismatch",
+        expected_error: Some("public settlement independent head block hash mismatch"),
     },
 ];
 
@@ -964,6 +1089,11 @@ fn check_transaction_passport_rejects(
 ) -> ProofDoctorCheck {
     let id = id.into();
     let path = dir.join("transaction-passport.json");
+    let env_overrides = match negative_verifier_context_for_fixture_dir(dir) {
+        Ok(context) => context.apply(),
+        Err(error) => return failed(id, dir, error),
+    };
+    let _env_overrides = env_overrides;
     match super::verify_transaction_passport_file(&path) {
         Ok(_) => failed(
             id,
@@ -988,6 +1118,27 @@ fn check_transaction_passport_rejects(
             }
         }
     }
+}
+
+fn negative_verifier_context_for_fixture_dir(
+    dir: &Path,
+) -> Result<ProofPackageVerifierContext, String> {
+    let Some(fixture_name) = dir.file_name().and_then(|name| name.to_str()) else {
+        return Ok(ProofPackageVerifierContext::default());
+    };
+    let Some(family_root) = dir.parent() else {
+        return Ok(ProofPackageVerifierContext::default());
+    };
+    let metadata_path = family_root
+        .join("negatives")
+        .join(format!("{fixture_name}.json"));
+    if !metadata_path.is_file() {
+        return Ok(ProofPackageVerifierContext::default());
+    }
+    let value = read_json(&metadata_path)?;
+    let negative_case: ProofPackageNegativeCase = serde_json::from_value(value)
+        .map_err(|error| format!("invalid negative fixture metadata: {error}"))?;
+    Ok(negative_case.verifier_context)
 }
 
 fn check_workflow_preflight_accepts(id: impl Into<String>, path: &Path) -> ProofDoctorCheck {
@@ -1506,6 +1657,7 @@ fn read_json(path: &Path) -> Result<serde_json::Value, String> {
 fn passed(id: impl Into<String>, path: &Path, message: &str) -> ProofDoctorCheck {
     ProofDoctorCheck {
         id: id.into(),
+        code: String::new(),
         status: "passed",
         path: path.to_string_lossy().into_owned(),
         message: message.to_string(),
@@ -1515,6 +1667,7 @@ fn passed(id: impl Into<String>, path: &Path, message: &str) -> ProofDoctorCheck
 fn failed(id: impl Into<String>, path: &Path, message: String) -> ProofDoctorCheck {
     ProofDoctorCheck {
         id: id.into(),
+        code: String::new(),
         status: "failed",
         path: path.to_string_lossy().into_owned(),
         message,

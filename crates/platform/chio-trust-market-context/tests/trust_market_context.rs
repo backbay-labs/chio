@@ -538,7 +538,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             | TrustMarketCase::RiskSanctionAuthorityReceiptUntrustedSigner
             | TrustMarketCase::RiskSanctionJurisdictionReceiptUntrustedSigner
     );
-    let risk_consumed_units = match case {
+    let risk_consumed_units: u64 = match case {
         TrustMarketCase::RiskSanctionReserveLedgerReceiptUntrustedSigner
         | TrustMarketCase::RiskSanctionAuthorityReceiptUntrustedSigner
         | TrustMarketCase::RiskSanctionJurisdictionReceiptUntrustedSigner => 1,
@@ -546,7 +546,7 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
         | TrustMarketCase::RiskOpenAppealReserveRelease => 500,
         _ => 0,
     };
-    let risk_payout_units = if uses_sanction_receipt_refs {
+    let risk_payout_units: u64 = if uses_sanction_receipt_refs {
         0
     } else {
         risk_consumed_units
@@ -694,6 +694,31 @@ fn trust_market_bundle(case: TrustMarketCase) -> TrustMarketBundle {
             "reserve_ref": "reserve-market-valid",
             "status": "bound",
             "covered_claim_ids": covered_claim_ids
+        },
+        "premium": {
+            "premium_id": "premium-market-valid",
+            "quote_ref": "provider-selection-report",
+            "coverage_id": "coverage-market-valid",
+            "order_id": "order-commerce-001",
+            "subject": provider_subject,
+            "currency": "USD",
+            "coverage_exposure_units": 1000,
+            "quoted_premium_units": 10,
+            "bound_premium_units": 10,
+            "collected_premium_units": 0,
+            "status": "bound"
+        },
+        "capital_decomposition": {
+            "decomposition_id": "capital-decomposition-market-valid",
+            "source_kind": "facility_commitment",
+            "source_ref": "adjudication-jurisdiction-receipt",
+            "currency": "USD",
+            "committed_units": 2000,
+            "held_units": 500,
+            "drawn_units": 0,
+            "disbursed_units": risk_consumed_units,
+            "impaired_units": 0,
+            "available_units": 2000_u64.saturating_sub(500 + risk_consumed_units)
         },
         "reconciliation": {
             "order_id": "order-commerce-001",

@@ -1147,8 +1147,12 @@ fn validate_in_toto_statement_subject(
     }
     let predicate_type =
         required_json_str(value, "predicate_type", "missing in-toto predicate type")?;
-    if !predicate_type.starts_with("https://chio.dev/predicates/") {
-        return Err(claim_failed("unsupported in-toto predicate type"));
+    if !matches!(
+        predicate_type,
+        "https://in-toto.io/attestation/bilateral-cosign-invocation/v1"
+            | "chio.bilateral-cosign-invocation.v1"
+    ) {
+        return Err(claim_failed("unsupported in-toto bilateral predicate type"));
     }
     for (field, message) in [
         ("dsse_envelope_digest", "missing DSSE envelope digest"),
@@ -1171,11 +1175,21 @@ fn validate_in_toto_statement_subject(
             "authorization_context_digest",
             "missing in-toto authorization context digest",
         ),
+        ("peer_pin_digest", "missing in-toto peer pin digest"),
+        (
+            "policy_summary_digest",
+            "missing in-toto policy summary digest",
+        ),
     ] {
         let digest = required_json_str(value, field, message)?;
         validate_sha256_hex(digest)
             .map_err(|_| claim_failed(format!("invalid in-toto digest: {field}")))?;
     }
+    required_json_str(
+        value,
+        "capability_lease_ref",
+        "missing in-toto capability lease ref",
+    )?;
     let signature_count = required_json_u64(value, "signature_count", "missing DSSE signature")?;
     if signature_count < 2 {
         return Err(claim_failed(

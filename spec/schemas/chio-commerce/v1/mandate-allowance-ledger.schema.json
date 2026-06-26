@@ -44,7 +44,7 @@
     "x402_payment_requirements_hash": { "$ref": "#/$defs/sha256" },
     "protocol_projections": {
       "type": "array",
-      "minItems": 4,
+      "minItems": 5,
       "items": { "$ref": "#/$defs/protocolProjection" }
     }
   },

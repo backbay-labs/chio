@@ -175,23 +175,24 @@ fn validate_protocol_projections(
         (
             "ap2",
             "checkout_mandate",
-            mandate.ap2_checkout_mandate_hash.as_str(),
+            Some(mandate.ap2_checkout_mandate_hash.as_str()),
         ),
         (
             "ap2",
             "payment_mandate",
-            mandate.ap2_payment_mandate_hash.as_str(),
+            Some(mandate.ap2_payment_mandate_hash.as_str()),
         ),
         (
             "acp-commerce",
             "delegated_payment_token",
-            mandate.acp_delegated_payment_token_hash.as_str(),
+            Some(mandate.acp_delegated_payment_token_hash.as_str()),
         ),
         (
             "x402",
             "payment_requirements",
-            mandate.x402_payment_requirements_hash.as_str(),
+            Some(mandate.x402_payment_requirements_hash.as_str()),
         ),
+        ("chio", "authority_projection", None),
     ];
     let mut seen = HashSet::new();
     validate_protocol_payloads(protocol_payloads)?;
@@ -258,10 +259,12 @@ fn validate_protocol_projections(
                     "mandate projection missing: {protocol}/{purpose}"
                 ))
             })?;
-        if projection.digest != digest {
-            return Err(CommerceOrderError::MandateFailed(format!(
-                "mandate projection digest mismatch: {protocol}/{purpose}"
-            )));
+        if let Some(digest) = digest {
+            if projection.digest != digest {
+                return Err(CommerceOrderError::MandateFailed(format!(
+                    "mandate projection digest mismatch: {protocol}/{purpose}"
+                )));
+            }
         }
         let payload = protocol_payloads
             .iter()

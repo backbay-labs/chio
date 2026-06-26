@@ -93,15 +93,6 @@ pub(crate) fn is_trust_market_risk_context_role(role: &str) -> bool {
     )
 }
 
-pub(crate) fn embedded_risk_comptroller_report(
-    evidence_graph_bytes: &[u8],
-    artifacts: &BTreeMap<String, Vec<u8>>,
-) -> Result<chio_risk_comptroller::RiskComptrollerReport, String> {
-    let value = embedded_risk_comptroller_report_value(evidence_graph_bytes, artifacts)?;
-    serde_json::from_value(value)
-        .map_err(|error| format!("risk comptroller report JSON invalid: {error}"))
-}
-
 pub(crate) fn embedded_risk_comptroller_report_value(
     evidence_graph_bytes: &[u8],
     artifacts: &BTreeMap<String, Vec<u8>>,
@@ -553,6 +544,19 @@ pub(crate) fn embedded_disclosure_lineage_bundle(
             "disclosure crypto context",
         )
         .map_err(|error| format!("missing BBS proof material: {error}"))?;
+        let projection_manifest_bytes = embedded_single_role_artifact_bytes(
+            &graph.nodes,
+            artifacts,
+            "bbs-projection-manifest",
+            chio_selective_disclosure::BBS_PROJECTION_MANIFEST_SCHEMA_V2,
+            "disclosure crypto context",
+        )
+        .map_err(|error| format!("missing BBS proof material: {error}"))?;
+        verify_embedded_disclosure_projection_manifest(
+            &capsule,
+            &proof_bytes,
+            &projection_manifest_bytes,
+        )?;
         let privacy_profile_bytes = embedded_single_role_artifact_bytes(
             &graph.nodes,
             artifacts,
@@ -578,6 +582,47 @@ pub(crate) fn embedded_disclosure_lineage_bundle(
         leakage_ledger,
         crypto_context_report,
     })
+}
+
+fn verify_embedded_disclosure_projection_manifest(
+    capsule: &chio_disclosure_lineage::DisclosureCapsule,
+    proof_bytes: &[u8],
+    projection_manifest_bytes: &[u8],
+) -> Result<(), String> {
+    type SelectiveDisclosureProof = chio_selective_disclosure::SelectiveDisclosureProof;
+
+    let proof =
+        serde_json::from_slice::<SelectiveDisclosureProof>(proof_bytes).map_err(|error| {
+            format!(
+            "proof-room.fixture.crypto-context-proof-invalid: source-disclosure-lineage: {error}"
+        )
+        })?;
+    let projection_manifest: chio_selective_disclosure::BbsProjectionManifest =
+        serde_json::from_slice(projection_manifest_bytes).map_err(|error| {
+            format!(
+                "proof-room.fixture.projection-manifest-invalid: source-disclosure-lineage: {error}"
+            )
+        })?;
+    let declared = projection_manifest
+        .hidden_predicates
+        .iter()
+        .map(|predicate| predicate.predicate_id.as_str())
+        .collect::<BTreeSet<_>>();
+    for predicate in &capsule.hidden_predicates {
+        if !declared.contains(predicate.predicate_id.as_str()) {
+            return Err(format!(
+                "proof-room.negative.disclosure-hidden-predicate-missing-from-projection-manifest: source-disclosure-lineage: {}",
+                predicate.predicate_id
+            ));
+        }
+    }
+    chio_selective_disclosure::verify_bbs_projection_manifest(&proof, &projection_manifest).map_err(
+        |error| {
+            format!(
+                "proof-room.fixture.projection-manifest-invalid: source-disclosure-lineage: {error}"
+            )
+        },
+    )
 }
 
 pub(crate) fn embedded_runtime_artifacts(
@@ -611,8 +656,13 @@ pub(crate) fn is_runtime_artifact_role(role: &str) -> bool {
             | "execution-lease"
             | "trust-root"
             | "tool-server-ack"
+            | "trusted-time-proof"
             | "revocation-freshness-proof"
             | "sandbox-attestation"
+            | "swarm-task-graph"
+            | "swarm-budget-pool"
+            | "swarm-join-receipt"
+            | "swarm-route-plan-receipt"
             | "runtime-attack-simulation-report"
             | "runtime-chaos-run-report"
     )

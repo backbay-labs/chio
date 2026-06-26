@@ -4121,6 +4121,7 @@ dependencies = [
  "chio-workflow-preflight",
  "hex",
  "jsonschema",
+ "reqwest 0.13.2",
  "serde",
  "serde_json",
  "sha2 0.10.9",

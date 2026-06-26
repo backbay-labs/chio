@@ -277,7 +277,7 @@ Add this row to `Default homes`:
 Add this row to `Phase 0 Team Shape`:
 
 ```markdown
-| DX launch slice | first-run evidence contract, proof doctor diagnostics, release truth gate, docs quickstart command log | `chio-cli` proof dispatch, `examples/docker`, `fixtures/chio-launch`, static viewer harness, docs quickstart paths |
+| DX launch slice | first-run evidence contract, proof doctor diagnostics, release truth gate, docs quickstart command log | `chio-cli` proof dispatch, `examples/docker`, `fixtures/proof-room`, static viewer harness, docs quickstart paths |
 ```
 
 Add this subsection after `First Sprint Stop Rule`:
@@ -323,7 +323,7 @@ Create or modify:
 - `crates/chio-cli/src/cli/dispatch.rs`
 - `crates/chio-cli/src/cli/dispatch/proof.rs`
 - `crates/chio-cli/tests/proof_doctor.rs`
-- `fixtures/chio-launch/minimal-passport/first-run-evidence/`
+- `fixtures/proof-room/minimal-passport/first-run-evidence/`
 - `docs/start-here/PROOF_ROOM_QUICKSTART.md`
 - `scripts/check-chio-proof-room-release-truth.sh`
 - `scripts/tests/check-chio-proof-room-release-truth.test.sh`
@@ -379,7 +379,7 @@ Allowed paths:
 - `crates/chio-cli/src/cli/dispatch.rs`
 - `crates/chio-cli/src/cli/dispatch/proof.rs`
 - `crates/chio-cli/tests/proof_doctor.rs`
-- `fixtures/chio-launch/minimal-passport/first-run-evidence/`
+- `fixtures/proof-room/minimal-passport/first-run-evidence/`
 - `docs/start-here/PROOF_ROOM_QUICKSTART.md`
 - `scripts/check-chio-proof-room-release-truth.sh`
 - `scripts/tests/check-chio-proof-room-release-truth.test.sh`

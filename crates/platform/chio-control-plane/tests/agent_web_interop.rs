@@ -21,6 +21,8 @@ use serde_json::Value;
 const STANDARD_WEBHOOKS_WEBHOOK_ID: &str = "msg_agent_web_001";
 const STANDARD_WEBHOOKS_VERIFIER_SECRET: &[u8] =
     b"chio-agent-web-standard-webhooks-fixture-secret-v1";
+const STANDARD_WEBHOOKS_VERIFIER_NOW: u64 = 1_770_508_860;
+const STANDARD_WEBHOOKS_MAX_AGE_SECONDS: u64 = 300;
 const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: [&str; 5] = [
     "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de",
     "4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff",
@@ -92,6 +94,10 @@ fn agent_web_fixture_trust() -> AgentWebVerifierTrust {
             STANDARD_WEBHOOKS_WEBHOOK_ID,
             STANDARD_WEBHOOKS_VERIFIER_SECRET.to_vec(),
         )
+        .with_standard_webhooks_replay_window(
+            STANDARD_WEBHOOKS_VERIFIER_NOW,
+            STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
+        )
         .with_trusted_receipt_kernel_keys(trusted_kernel_keys)
         .with_trusted_envelope_sidecar_keys(trusted_sidecar_keys)
 }
@@ -152,7 +158,25 @@ fn replace_agent_web_artifact(
         .iter_mut()
         .find(|node| node.get("path").and_then(Value::as_str) == Some(relative_path))
         .test_expect("evidence graph contains mutated artifact node");
+    let previous_id = node
+        .get("id")
+        .and_then(Value::as_str)
+        .test_expect("evidence graph node has id")
+        .to_string();
+    node["id"] = Value::String(updated_digest.clone());
     node["sha256"] = Value::String(updated_digest.clone());
+    for edge in graph
+        .get_mut("edges")
+        .and_then(Value::as_array_mut)
+        .test_expect("evidence graph has mutable edges")
+    {
+        if edge.get("from").and_then(Value::as_str) == Some(previous_id.as_str()) {
+            edge["from"] = Value::String(updated_digest.clone());
+        }
+        if edge.get("to").and_then(Value::as_str) == Some(previous_id.as_str()) {
+            edge["to"] = Value::String(updated_digest.clone());
+        }
+    }
     let updated_graph = serde_json::to_vec(&graph).test_expect("updated evidence graph serializes");
     bundle.passport.evidence_graph_sha256 = chio_core::sha256_hex(&updated_graph);
     bundle.evidence_graph_bytes = updated_graph;
@@ -171,7 +195,7 @@ fn resign_agent_web_receipt_for_subject_digest(
         .test_expect("agent web receipt exists");
     let receipt: ChioReceipt =
         serde_json::from_slice(receipt_bytes).test_expect("agent web receipt parses");
-    let keypair = Keypair::generate();
+    let keypair = Keypair::from_seed(&[17u8; 32]);
     let mut body = receipt.body();
     body.content_hash = subject_digest.to_string();
     body.kernel_key = keypair.public_key();
@@ -396,7 +420,11 @@ fn assert_agent_web_rejects_unsupported_manifest_version(
     let error = verify_agent_web_fixture(&bundle)
         .test_expect_err("unsupported source protocol version must fail closed");
 
-    assert!(error.to_string().contains(expected_message));
+    let error_message = error.to_string();
+    assert!(
+        error_message.contains(expected_message),
+        "expected error containing {expected_message:?}, got {error_message:?}"
+    );
 }
 
 fn assert_agent_web_rejects_unsupported_protocol_field_version(
@@ -438,7 +466,11 @@ fn assert_agent_web_rejects_unsupported_protocol_field_version(
     let error = verify_agent_web_fixture(&bundle)
         .test_expect_err("unsupported source protocol version must fail closed");
 
-    assert!(error.to_string().contains(expected_message));
+    let error_message = error.to_string();
+    assert!(
+        error_message.contains(expected_message),
+        "expected error containing {expected_message:?}, got {error_message:?}"
+    );
 }
 
 #[test]

@@ -5,7 +5,8 @@ use serde::Serialize;
 
 use crate::error::SwarmAuthorityError;
 use crate::types::{
-    SwarmContinuationToken, SwarmJoinReceipt, SwarmRoutePlanReceipt, SwarmTerminalGraphReceipt,
+    SwarmContinuationToken, SwarmJoinReceipt, SwarmRevocationEpoch, SwarmRoutePlanReceipt,
+    SwarmTaskGraph, SwarmTerminalGraphReceipt,
 };
 
 pub(super) fn require_same_graph(
@@ -64,6 +65,25 @@ pub(super) fn canonical_sha256<T: Serialize>(value: &T) -> Result<String, SwarmA
     Ok(sha256_hex(&bytes))
 }
 
+pub(super) fn task_graph_signature_body(
+    graph: &SwarmTaskGraph,
+) -> Result<serde_json::Value, SwarmAuthorityError> {
+    let mut body = serde_json::to_value(graph).map_err(|error| {
+        rejected(format!(
+            "swarm task graph signature body invalid: {}: {error}",
+            graph.graph_id
+        ))
+    })?;
+    let object = body.as_object_mut().ok_or_else(|| {
+        rejected(format!(
+            "swarm task graph signature body invalid: {}",
+            graph.graph_id
+        ))
+    })?;
+    object.remove("signature");
+    Ok(body)
+}
+
 pub(super) fn continuation_token_signature_body(
     token: &SwarmContinuationToken,
 ) -> Result<serde_json::Value, SwarmAuthorityError> {
@@ -115,6 +135,25 @@ pub(super) fn route_plan_signature_body(
         rejected(format!(
             "swarm route-plan signature body invalid: {}",
             receipt.route_plan_id
+        ))
+    })?;
+    object.remove("signature");
+    Ok(body)
+}
+
+pub(super) fn revocation_epoch_signature_body(
+    epoch: &SwarmRevocationEpoch,
+) -> Result<serde_json::Value, SwarmAuthorityError> {
+    let mut body = serde_json::to_value(epoch).map_err(|error| {
+        rejected(format!(
+            "swarm revocation epoch signature body invalid: {}: {error}",
+            epoch.epoch_id
+        ))
+    })?;
+    let object = body.as_object_mut().ok_or_else(|| {
+        rejected(format!(
+            "swarm revocation epoch signature body invalid: {}",
+            epoch.epoch_id
         ))
     })?;
     object.remove("signature");

@@ -9,6 +9,11 @@ maps Chio's current repository assets to external standards and defines the
 proof-envelope work needed before Chio can make an honest "Agent Web" interop
 claim.
 
+Orientation note: this raw draft is an input, not the launch authority for
+standards names or versions. Use `../indices/external-standards-source-log.md`
+for current standards pins and `../architecture/08-agent-web-proof-envelope-system.md`
+for the accepted Agent Web Proof Envelope boundary.
+
 Confidence:
 
 - High for local repository asset inventory because it is based on current

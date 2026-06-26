@@ -121,6 +121,12 @@ fn validate_witness_chain(
             chain.chain_id
         )));
     }
+    if chain.hops.len() > 1 && !bundle.task_graph.multi_hop_witness_chains {
+        return Err(rejected(format!(
+            "swarm multi-hop witness chain feature gate missing: {}",
+            chain.chain_id
+        )));
+    }
     let mut previous_hop: Option<&SwarmDelegationWitnessHop> = None;
     for hop in &chain.hops {
         validate_witness_hop(bundle, chain, hop, trusted_witness_issuer_keys)?;

@@ -11,5 +11,14 @@
   "arguments_digest": "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
   "client_session_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
   "agent_id_digest": "dededededededededededededededededededededededededededededededede",
-  "authorization_context_digest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+  "authorization_context_digest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+  "jsonrpc_method": "session/request_permission",
+  "jsonrpc_id_digest": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+  "params_digest": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "permission_request_digest": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+  "file_path_scope_digest": "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+  "terminal_command_scope_digest": "a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4",
+  "chio_receipt_id": "receipt-agent-web-acp-client-permission-allow",
+  "evidence_path_kind": "signed-receipt",
+  "receipt_signature_digest": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
 }

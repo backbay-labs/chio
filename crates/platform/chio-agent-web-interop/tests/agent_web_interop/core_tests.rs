@@ -594,6 +594,88 @@ fn agent_web_interop_accepts_openapi_projection() {
 }
 
 #[test]
+fn agent_web_interop_accepts_openapi_30_projection() {
+    let mut bundle = agent_web_bundle(AgentWebCase::OpenApiProjection);
+    replace_agent_web_json_artifact(&mut bundle, "openapi-manifest.json", |manifest| {
+        manifest["source_version"] = json!("3.0.3");
+    });
+    let manifest_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("openapi-manifest.json")
+            .test_expect("OpenAPI manifest exists"),
+    );
+    replace_agent_web_envelope_artifact(&mut bundle, "openapi-envelope.json", |envelope| {
+        envelope["source_protocol_version"] = json!("3.0.3");
+        envelope["projection_manifest_sha256"] = json!(manifest_digest);
+    });
+
+    let report =
+        verify_agent_web_interop(&bundle).test_expect("OpenAPI 3.0 projection should verify");
+
+    assert!(report
+        .projections
+        .iter()
+        .any(|projection| projection.source_protocol == "openapi"));
+}
+
+#[test]
+fn agent_web_interop_rejects_openapi_without_proof_envelope_profile() {
+    let mut bundle = agent_web_bundle(AgentWebCase::OpenApiProjection);
+    mutate_openapi_subject_and_bound_receipt(&mut bundle, |subject| {
+        subject
+            .as_object_mut()
+            .test_expect("OpenAPI subject is an object")
+            .remove("x_chio_proof_envelope_profile");
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("OpenAPI projection must bind x-chio proof-envelope profile");
+
+    assert!(
+        error
+            .to_string()
+            .contains("missing OpenAPI proof-envelope profile"),
+        "{error}"
+    );
+}
+
+#[test]
+fn agent_web_interop_rejects_openapi_redirect_followed() {
+    let mut bundle = agent_web_bundle(AgentWebCase::OpenApiProjection);
+    mutate_openapi_subject_and_bound_receipt(&mut bundle, |subject| {
+        subject["redirect_followed"] = json!(true);
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("OpenAPI projection must reject followed redirects");
+
+    assert!(
+        error.to_string().contains("OpenAPI redirect was followed"),
+        "{error}"
+    );
+}
+
+#[test]
+fn agent_web_interop_rejects_openapi_response_size_exceeded() {
+    let mut bundle = agent_web_bundle(AgentWebCase::OpenApiProjection);
+    mutate_openapi_subject_and_bound_receipt(&mut bundle, |subject| {
+        subject["response_size_bytes"] = json!(2_000_000_u64);
+        subject["max_response_size_bytes"] = json!(1_000_000_u64);
+    });
+
+    let error =
+        verify_agent_web_interop(&bundle).test_expect_err("OpenAPI response size must be bounded");
+
+    assert!(
+        error
+            .to_string()
+            .contains("OpenAPI response exceeded size bound"),
+        "{error}"
+    );
+}
+
+#[test]
 fn agent_web_interop_rejects_unsupported_openapi_version() {
     let bundle = agent_web_bundle(AgentWebCase::OpenApiUnsupportedVersion);
 
@@ -635,6 +717,28 @@ fn agent_web_interop_rejects_openapi_failed_status() {
             .to_string()
             .contains("OpenAPI response status was not successful"),
         "{error}"
+    );
+}
+
+fn mutate_openapi_subject_and_bound_receipt(
+    bundle: &mut chio_agent_web_interop::AgentWebInteropBundle,
+    mutate: impl FnOnce(&mut serde_json::Value),
+) {
+    replace_agent_web_json_artifact(bundle, "external/openapi-operation.json", mutate);
+    let subject_digest = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("external/openapi-operation.json")
+            .test_expect("OpenAPI subject exists"),
+    );
+    replace_agent_web_envelope_artifact(bundle, "openapi-envelope.json", |envelope| {
+        envelope["external_subject_digest"] = json!(subject_digest);
+    });
+    replace_agent_web_receipt_for_subject(
+        bundle,
+        "receipts/receipt-agent-web-openapi-operation-allow.json",
+        "receipt-agent-web-openapi-operation-allow",
+        &subject_digest,
     );
 }
 

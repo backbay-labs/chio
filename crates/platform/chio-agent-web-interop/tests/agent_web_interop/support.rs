@@ -803,6 +803,19 @@ pub(crate) fn replace_agent_web_envelope_artifact(
     replace_agent_web_json_value(bundle, relative_path, value);
 }
 
+pub(crate) fn replace_agent_web_receipt_for_subject(
+    bundle: &mut AgentWebInteropBundle,
+    relative_path: &str,
+    receipt_ref: &str,
+    subject_digest: &str,
+) {
+    let policy_hash = bundle.passport.verifier_policy_sha256.clone();
+    let bytes = signed_agent_web_receipt_bytes(receipt_ref, subject_digest, &policy_hash, true);
+    let value: Value =
+        serde_json::from_slice(&bytes).test_expect("Agent Web receipt artifact parses");
+    replace_agent_web_json_value(bundle, relative_path, value);
+}
+
 fn replace_agent_web_json_value(
     bundle: &mut AgentWebInteropBundle,
     relative_path: &str,

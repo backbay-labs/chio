@@ -14,5 +14,25 @@
   "allowed": true,
   "payload_digest": "4444444444444444444444444444444444444444444444444444444444444444",
   "receipt_digest": "5555555555555555555555555555555555555555555555555555555555555555",
-  "authorization_context_digest": "6666666666666666666666666666666666666666666666666666666666666666"
+  "authorization_context_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+  "event_sequence": [
+    {
+      "phase": "start",
+      "event_id": "evt-agent-web-checkout-001:start",
+      "payload_digest": "6767676767676767676767676767676767676767676767676767676767676767",
+      "receipt_digest": "6868686868686868686868686868686868686868686868686868686868686868"
+    },
+    {
+      "phase": "content",
+      "event_id": "evt-agent-web-checkout-001:content",
+      "payload_digest": "6969696969696969696969696969696969696969696969696969696969696969",
+      "receipt_digest": "6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+    },
+    {
+      "phase": "end",
+      "event_id": "evt-agent-web-checkout-001:end",
+      "payload_digest": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+      "receipt_digest": "6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c"
+    }
+  ]
 }

@@ -1,0 +1,15 @@
+{
+  "acr": "urn:enterprise:assurance:phishing-resistant",
+  "amr_digest": "9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f",
+  "audience_digest": "9999999999999999999999999999999999999999999999999999999999999999",
+  "authentication_time": "2026-06-10T00:00:00Z",
+  "chio_identity_receipt_ref": "receipt-agent-web-openid-connect-identity-allow",
+  "id": "openid-connect-identity-agent-web-valid",
+  "id_token_verification_report_digest": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+  "issuer": "https://issuer.enterprise.example",
+  "mediated_by_chio_receipt": true,
+  "nonce_digest": "9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e9e",
+  "object_kind": "openid_connect_identity",
+  "subject_digest": "9898989898989898989898989898989898989898989898989898989898989898",
+  "token_status": "verified"
+}

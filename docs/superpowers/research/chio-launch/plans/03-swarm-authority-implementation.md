@@ -12,6 +12,26 @@ Make recursive delegation and multi-swarm coordination verifier-grade.
 
 Swarm artifacts are authority artifacts, not log decoration. Any task graph, continuation token, witness chain, join receipt, route-plan receipt, or budget pool accepted by a verifier must be registered through `../indices/artifact-registry.md` and `../architecture/09-integration-contracts.md` before code treats it as supported.
 
+## Implementation Slices
+
+| Slice | Scope | Done when |
+| --- | --- | --- |
+| SWARM-0A | Register task graph, continuation token, witness chain, join receipt, route-plan receipt, revocation epoch, and budget pool schemas. | Registry, manifest, Rust allowlist, and unknown-schema negatives pass. |
+| SWARM-0B | Validate task graph ids, parent links, edge predicates, route refs, and graph expiry. | Cycle, duplicate task id, missing parent, and stale graph negatives reject. |
+| SWARM-0C | Emit per-child verifier report rows for task, route, witness, token, budget, and revocation evidence. | Reports answer each child authority question without aggregate-only verdicts. |
+| SWARM-1A | Verify per-hop witness signatures against externally pinned witness keys. | Missing, stale, broadened, or untrusted witness rejects. |
+| SWARM-1B | Enforce attenuation scope subset and egress constraints. | Child broader than parent and unsupported egress constraints reject. |
+| SWARM-2A | Mint continuation tokens bound to graph, child task, parent receipt, route plan, budget lease, revocation epoch, and nonce. | Any binding mismatch rejects. |
+| SWARM-2B | Persist single-use token consumption for side-effecting child work. | Reuse after side effect rejects in runtime admission. |
+| SWARM-3A | Verify multi-parent join receipts before fan-in continuation. | Missing, duplicate, unexpected, or raw-parent fan-in rejects. |
+| SWARM-4A | Verify signed route-plan receipts. | Route, registry snapshot, bridge id, and egress drift reject. |
+| SWARM-4B | Require route plans for MCP dispatch. | Route-plan-less MCP child execution is denied. |
+| SWARM-4C | Require route plans for A2A dispatch. | Route-plan-less A2A child execution is denied. |
+| SWARM-4D | Require route plans for ACP-Client dispatch. | Route-plan-less ACP-Client child execution is denied. |
+| SWARM-4E | Require route plans for HTTP and OpenAPI dispatch. | Route-plan-less HTTP or OpenAPI child execution is denied. |
+| SWARM-4F | Require route plans for OpenAI provider dispatch. | Route-plan-less provider child execution is denied. |
+| SWARM-4G | Require route plans for local nested dispatch. | Route-plan-less local child execution is denied. |
+
 ## Phase 0 - Spec And Types
 
 Tasks:

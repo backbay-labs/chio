@@ -92,6 +92,15 @@ The shipped operator surface is explicit and narrow:
   runtime, but they are documented separately and do not change the core
   dispatch or settlement authority model
 
+## Authority Boundary
+
+Chio settlement authority comes from signed Chio receipts and pinned verifier
+policy. Chain evidence is subordinate observation: it can corroborate
+publication, finality, balances, and receipt inclusion, but it cannot replace
+kernel receipts, widen verifier policy, or turn a payment protocol artifact into
+authorization. Public copy must label chain data as evidence, readback, or
+observation unless the signed Chio verifier report also accepts the bound claim.
+
 ## Related Interop Surfaces
 
 `chio-settle` interoperates with additional bounded overlays that were tracked

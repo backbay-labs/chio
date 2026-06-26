@@ -278,6 +278,30 @@
       "description": "Commerce payment fixture rejected when mandate usage exceeds the occurrence limit"
     },
     {
+      "id": "commerce-intent-evidence-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/intent-evidence-mismatch",
+      "description": "Commerce payment fixture rejected when the intent event does not bind intent evidence"
+    },
+    {
+      "id": "commerce-provider-admission-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/provider-admission-mismatch",
+      "description": "Commerce payment fixture rejected when the provider event does not bind provider admission evidence"
+    },
+    {
+      "id": "commerce-settlement-packet-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/settlement-packet-mismatch",
+      "description": "Commerce payment fixture rejected when the settlement event does not bind settlement packet evidence"
+    },
+    {
+      "id": "commerce-reconciliation-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/reconciliation-mismatch",
+      "description": "Commerce payment fixture rejected when the reconciliation event does not bind reconciliation evidence"
+    },
+    {
       "id": "workflow-preflight-valid",
       "kind": "workflow-preflight",
       "path": "fixtures/proof-room/workflow-preflight/valid-child-scope",
@@ -350,6 +374,12 @@
       "description": "Recursive swarm authority fixture rejected when a route-plan receipt names a mismatched selected route"
     },
     {
+      "id": "recursive-runtime-swarm-egress-constraint-unsupported",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/swarm-authority/egress-constraint-unsupported",
+      "description": "Recursive swarm authority fixture rejected when a route-plan receipt names an unsupported egress constraint"
+    },
+    {
       "id": "recursive-runtime-swarm-witness-child-scope-mismatch",
       "kind": "negative-transaction-passport",
       "path": "fixtures/proof-room/swarm-authority/witness-child-scope-mismatch",
@@ -378,6 +408,36 @@
       "kind": "negative-transaction-passport",
       "path": "fixtures/proof-room/disclosure-lineage/excess-disclosed-field",
       "description": "Disclosure lineage fixture rejected when the crypto context report discloses fields outside the capsule"
+    },
+    {
+      "id": "disclosure-lineage-forbidden-disclosed-field",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/forbidden-disclosed-field",
+      "description": "Disclosure lineage fixture rejected when a disclosed field is forbidden by the privacy profile"
+    },
+    {
+      "id": "disclosure-lineage-undeclared-hidden-predicate",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/undeclared-hidden-predicate",
+      "description": "Disclosure lineage fixture rejected when a hidden predicate is not declared by the projection manifest"
+    },
+    {
+      "id": "disclosure-lineage-projection-manifest-id-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/projection-manifest-id-mismatch",
+      "description": "Disclosure lineage fixture rejected when the crypto report references a different projection manifest"
+    },
+    {
+      "id": "disclosure-lineage-privacy-profile-not-bound-to-transaction",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/privacy-profile-not-bound-to-transaction",
+      "description": "Disclosure lineage fixture rejected when the privacy profile is not bound to the transaction passport"
+    },
+    {
+      "id": "disclosure-lineage-nonce-replay",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/nonce-replay",
+      "description": "Disclosure lineage fixture rejected when the crypto context reuses a nonce"
     },
     {
       "id": "disclosure-lineage-unsupported-edge-kind",
@@ -528,6 +588,18 @@
       "kind": "negative-transaction-passport",
       "path": "fixtures/proof-room/public-settlement/advisory-witness",
       "description": "Public settlement fixture rejected when public witness evidence is advisory mode"
+    },
+    {
+      "id": "public-settlement-missing-independent-head",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/missing-independent-head",
+      "description": "Public settlement fixture rejected when no independent chain head is pinned"
+    },
+    {
+      "id": "public-settlement-independent-head-block-hash-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/independent-head-block-hash-mismatch",
+      "description": "Public settlement fixture rejected when independent chain head block hash disagrees with the settlement snapshot"
     },
     {
       "id": "agent-web-interop",

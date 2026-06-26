@@ -17,6 +17,12 @@ Rules:
 4. Put new signed artifacts in `spec/schemas/registry.json` before any verifier accepts them.
 5. Treat raw agent draft and review names as source notes. The canonical names below supersede draft and review naming drift.
 
+Naming decision:
+
+- `chio.transaction-passport.v1` is the canonical signed launch proof root.
+- Agent Passport artifacts are identity, credential, or presentation evidence. They may be graph nodes inside a Transaction Passport, but they are not the transaction proof root.
+- Proof packages and Proof Room bundles are packaging and review surfaces. They can carry a Transaction Passport, but they are not canonical schema names for the root artifact.
+
 ## Canonical Schema IDs
 
 | Domain | Canonical schema ID | Role | Registry requirement |
@@ -103,16 +109,29 @@ Every plan that creates a verifier-facing signed artifact must include:
 9. a negative unknown-schema fixture;
 10. a verifier path that rejects unknown schema IDs before trusting the artifact body.
 
-## Candidate Debate Additions
+## Accepted Third-Wave Additions
 
-These third-wave debate candidates are not canonical until the registry owner accepts them. They should be used for planning and scoping, not implementation constants.
+Registry-owner acceptance: PR #937 launch remediation.
+
+The following third-wave debate artifacts have been promoted from planning candidates to canonical launch schema IDs. They are registered in `spec/schemas/registry.json`, reachable from `KNOWN_SIGNED_ARTIFACT_SCHEMAS`, and owned by the listed crate homes.
+
+| Domain | Canonical schema IDs | Crate home | Acceptance note |
+| --- | --- | --- | --- |
+| Runtime security | `chio.runtime.execution-lease.v1`, `chio.runtime.tool-server-ack.v1`, `chio.runtime.revocation-freshness-proof.v1`, `chio.runtime.sandbox-attestation.v1`, `chio.policy.activation-receipt.v1`, `chio.runtime.attack-simulation-report.v1`, `chio.runtime.chaos-run-report.v1` | `crates/kernel/chio-runtime-core`, `crates/kernel/chio-runtime-proof-parity`, `crates/products/chio-proof-room` | Canonical launch runtime and attack-fixture artifacts. |
+| Commerce payments | `chio.commerce.payment-lifecycle.v1`, `chio.commerce.mandate-allowance-ledger.v1` | `crates/platform/chio-commerce-order`, `crates/products/chio-cli` | Canonical launch payment and external-projection binding artifacts. |
+| Crypto and trust | `chio.crypto.verification-context.v1`, `chio.trust.key-state.v1`, `chio.trust.revocation-snapshot.v1`, `chio.transparency.inclusion-proof.v1` | `crates/trust/chio-selective-disclosure`, `crates/products/chio-proof-room` | Canonical launch disclosure verification context artifacts. |
+| Workflow simulation | `chio.workflow.preflight-plan.v1`, `chio.workflow.preflight-report.v1` | `crates/platform/chio-workflow-preflight`, `crates/products/chio-cli` | Canonical launch preflight artifacts. |
+| Enterprise evidence | `chio.enterprise.telemetry-projection.v1`, `chio.enterprise.data-governance-report.v1`, `chio.enterprise.approval-case.v1`, `chio.enterprise.evidence-export-bundle.v1`, `chio.enterprise.control-evidence-map.v1` | `crates/platform/chio-enterprise-export`, `crates/products/chio-cli` | Canonical launch enterprise export artifacts. |
+| Trust-market context | `chio.trust.scorecard-snapshot.v1`, `chio.trust.reputation-import-report.v1`, `chio.commerce.sla-commitment.v1`, `chio.commerce.sla-performance-report.v1`, `chio.risk.collateral-position-report.v1`, `chio.risk.guarantee-decision.v1`, `chio.risk.adjudication-jurisdiction-receipt.v1` | `crates/platform/chio-trust-market-context`, `crates/platform/chio-commerce-order` | Canonical launch trust-market and risk-context artifacts. |
+
+## Remaining Candidate Debate Additions
+
+The following third-wave debate candidates are not canonical until the registry owner accepts them. They should be used for planning and scoping, not implementation constants.
 
 | Domain | Candidate schema IDs |
 | --- | --- |
-| Runtime security | `chio.runtime.execution-lease.v1`, `chio.runtime.tool-server-ack.v1`, `chio.runtime.revocation-freshness-proof.v1`, `chio.runtime.sandbox-attestation.v1`, `chio.policy.activation-receipt.v1`, `chio.runtime.attack-simulation-report.v1`, `chio.runtime.chaos-run-report.v1` |
-| Commerce payments | `chio.commerce.payment-lifecycle.v1`, `chio.commerce.mandate-allowance-ledger.v1`, `chio.commerce.dispute-recovery-ledger.v1`, `chio.commerce.fraud-assessment.v1`, `chio.commerce.currency-liquidity-ledger.v1`, `chio.commerce.recurring-agent-commerce.v1` |
-| Crypto and trust | `chio.crypto.verification-context.v1`, `chio.trust.key-state.v1`, `chio.trust.revocation-snapshot.v1`, `chio.transparency.inclusion-proof.v1` |
-| Workflow simulation | `chio.workflow.preflight-plan.v1`, `chio.workflow.preflight-report.v1`, `chio.workflow.what-if-delta.v1`, `chio.workflow.rehearsal-run.v1`, `chio.workflow.replay-capsule.v1`, `chio.workflow.model-provider-conformance.v1`, `chio.workflow.approval-gate.v1` |
-| Enterprise evidence | `chio.enterprise.telemetry-projection.v1`, `chio.enterprise.data-governance-report.v1`, `chio.enterprise.policy-pack-manifest.v1`, `chio.enterprise.approval-case.v1`, `chio.enterprise.access-decision-report.v1`, `chio.enterprise.evidence-export-bundle.v1`, `chio.enterprise.control-evidence-map.v1`, `chio.enterprise.incident-review-case.v1`, `chio.enterprise.regulator-review-bundle.v1` |
-| Trust-market context | `chio.trust.scorecard-snapshot.v1`, `chio.trust.reputation-import-report.v1`, `chio.commerce.sla-commitment.v1`, `chio.commerce.sla-performance-report.v1`, `chio.risk.collateral-position-report.v1`, `chio.risk.capital-commitment-snapshot.v1`, `chio.risk.guarantee-decision.v1`, `chio.risk.adjudication-jurisdiction-receipt.v1` |
+| Commerce payments | `chio.commerce.dispute-recovery-ledger.v1`, `chio.commerce.fraud-assessment.v1`, `chio.commerce.currency-liquidity-ledger.v1`, `chio.commerce.recurring-agent-commerce.v1` |
+| Workflow simulation | `chio.workflow.what-if-delta.v1`, `chio.workflow.rehearsal-run.v1`, `chio.workflow.replay-capsule.v1`, `chio.workflow.model-provider-conformance.v1`, `chio.workflow.approval-gate.v1` |
+| Enterprise evidence | `chio.enterprise.policy-pack-manifest.v1`, `chio.enterprise.access-decision-report.v1`, `chio.enterprise.incident-review-case.v1`, `chio.enterprise.regulator-review-bundle.v1` |
+| Trust-market context | `chio.risk.capital-commitment-snapshot.v1` |
 | Agent Web automation | `chio.agent-web.automation-transcript.v1` only if browser or RPA transcripts become Chio-signed verifier inputs. First webhook, CloudEvents, GraphQL, identity, Kubernetes, and OCI slices should use the existing Agent Web envelope IDs. |

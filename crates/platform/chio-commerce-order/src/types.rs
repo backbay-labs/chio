@@ -181,6 +181,11 @@ impl CommerceOrderContext {
         if let Some(requirement) = &self.trust_market_requirement {
             if requirement.required {
                 validate_trust_market_requirement_shape(requirement)?;
+            } else if trust_market_requirement_has_refs(requirement) {
+                return Err(CommerceOrderError::InvalidArtifact {
+                    field: "order context trust market requirement",
+                    message: "trust-market refs cannot disable verifier".to_string(),
+                });
             }
         }
         Ok(())
@@ -256,6 +261,21 @@ fn validate_trust_market_requirement_shape(
         })?;
     }
     Ok(())
+}
+
+fn trust_market_requirement_has_refs(requirement: &CommerceTrustMarketRequirement) -> bool {
+    [
+        requirement.provider_discovery_snapshot_ref.as_str(),
+        requirement.provider_selection_report_ref.as_str(),
+        requirement.trust_scorecard_ref.as_str(),
+        requirement.reputation_import_ref.as_str(),
+        requirement.sla_commitment_ref.as_str(),
+        requirement.collateral_position_ref.as_str(),
+        requirement.guarantee_decision_ref.as_str(),
+        requirement.adjudication_jurisdiction_ref.as_str(),
+    ]
+    .iter()
+    .any(|value| !value.is_empty())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

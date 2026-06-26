@@ -278,6 +278,22 @@
       "proof_manifest_ref": "manifest.commerce.order_passport_summary_bound"
     },
     {
+      "id": "claim.commerce.coverage_decision_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/order-context.schema.json",
+      "summary": "The commerce verifier emits the coverage decision claim only when the order context requires coverage, the risk comptroller report digest matches the context, the report signature verifies against trusted risk comptroller keys, and the report binds the same order id, coverage id, currency, and verified risk claim.",
+      "introduced_in": "commerce-payments-v1",
+      "proof_manifest_ref": "manifest.commerce.coverage_decision_bound"
+    },
+    {
+      "id": "claim.commerce.trust_market_context_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/order-context.schema.json",
+      "summary": "The commerce verifier emits the trust-market context claim only when marketplace refs are required, every provider and settlement ref matches the verified trust-market context, the selected provider matches the order merchant, and refs cannot self-disable the verifier with required=false.",
+      "introduced_in": "commerce-payments-v1",
+      "proof_manifest_ref": "manifest.commerce.trust_market_context_bound"
+    },
+    {
       "id": "claim.workflow.preflight_child_scope_bounded",
       "status": "enforced",
       "schema_artifact": "spec/schemas/chio-workflow/v1/preflight-report.schema.json",

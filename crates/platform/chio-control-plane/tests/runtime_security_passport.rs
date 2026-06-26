@@ -331,61 +331,32 @@ fn add_route_plan_binding(
     route_plan_id: &str,
 ) {
     update_artifact(bundle, "execution-lease.json", |lease| {
-        lease["route_plan_receipt_ref"] = Value::String("route-runtime-valid".to_string());
+        lease["route_plan_receipt_ref"] = Value::String("route-lease-runtime-valid".to_string());
         sign_runtime_lease_with_fixture_authority(lease);
     });
     let route_plan_signing_key = Keypair::from_seed(&[46u8; 32]);
-    let mut route_plan = json!({
-        "schema": "chio.swarm.route-plan-receipt.v1",
-        "routePlanId": route_plan_id,
-        "graphId": "runtime-route-graph-valid",
-        "taskId": "task-runtime-valid",
-        "selectedRoute": "mcp:tool-runtime-valid",
-        "candidateSetDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "registrySnapshotHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "bridgeId": "mcp",
-        "protocolTarget": "mcp://tool-runtime-valid",
-        "egressContractId": "egress-runtime-valid",
-        "egressConstraints": ["deny-private-network"],
-        "attenuationDecision": "accepted",
-        "policyDigest": bundle.passport.verifier_policy_sha256,
-        "expiresAtUnixMs": 1780000000000_u64,
-        "issuer": format!("did:chio:{}", route_plan_signing_key.public_key().to_hex())
-    });
-    route_plan["signature"] = Value::String(sign_runtime_route_plan(
-        &route_plan,
-        &route_plan_signing_key,
-    ));
-    let route_plan_bytes =
-        serde_json::to_vec_pretty(&route_plan).test_expect("route plan serializes");
-    let route_plan_digest = sha256_hex(&route_plan_bytes);
-    bundle
-        .artifacts
-        .insert("route-plan-receipt.json".to_string(), route_plan_bytes);
-
-    let mut graph: Value =
-        serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("graph parses");
-    let lease_node_id = graph_node_id_for_path(&graph, "execution-lease.json");
-    graph["nodes"]
-        .as_array_mut()
-        .test_expect("graph has nodes")
-        .push(json!({
-            "id": route_plan_digest.clone(),
+    let policy_digest = bundle.passport.verifier_policy_sha256.clone();
+    update_artifact(bundle, "route-plan-receipt.json", |route_plan| {
+        *route_plan = json!({
             "schema": "chio.swarm.route-plan-receipt.v1",
-            "path": "route-plan-receipt.json",
-            "sha256": route_plan_digest.clone(),
-            "role": "swarm-route-plan-receipt"
-        }));
-    graph["edges"]
-        .as_array_mut()
-        .test_expect("graph has edges")
-        .push(json!({
-            "from": route_plan_digest,
-            "to": lease_node_id,
-            "predicate": "binds",
-            "evidence_class": "digest-bound-reference"
-        }));
-    rebind_graph(bundle, graph);
+            "routePlanId": route_plan_id,
+            "graphId": "runtime-route-graph-valid",
+            "taskId": "runtime-tool-call",
+            "selectedRoute": "mcp:runtime-tool-call",
+            "candidateSetDigest": "3333333333333333333333333333333333333333333333333333333333333333",
+            "registrySnapshotHash": "4444444444444444444444444444444444444444444444444444444444444444",
+            "bridgeId": "mcp",
+            "protocolTarget": "mcp://runtime-tool",
+            "egressContractId": "mcp:egress-contract-runtime-valid",
+            "egressConstraints": ["deny-private-network"],
+            "attenuationDecision": "accepted",
+            "policyDigest": policy_digest,
+            "expiresAtUnixMs": 1800000300000_u64,
+            "issuer": format!("did:chio:{}", route_plan_signing_key.public_key().to_hex())
+        });
+        route_plan["signature"] =
+            Value::String(sign_runtime_route_plan(route_plan, &route_plan_signing_key));
+    });
 }
 
 fn add_policy_activation_receipt(
@@ -755,11 +726,22 @@ fn sign_execution_lease(value: &Value, keypair: &Keypair) -> String {
     let mut body = json!({
         "schema": "chio.runtime.execution-lease-signature.v1",
         "leaseId": value["lease_id"],
+        "subjectAgent": value["subject_agent"],
         "toolServerId": value["tool_server_id"],
         "toolInstanceId": value["tool_instance_id"],
         "toolManifestDigest": value["tool_manifest_digest"],
         "sandboxAttestationRef": value["sandbox_attestation_ref"],
+        "capabilityDigest": value["capability_digest"],
         "requestDigest": value["request_digest"],
+        "responsePolicyDigest": value["response_policy_digest"],
+        "taskGraphDigest": value["task_graph_digest"],
+        "childTaskId": value["child_task_id"],
+        "parentReceiptRef": value["parent_receipt_ref"],
+        "joinReceiptRef": value["join_receipt_ref"],
+        "budgetPoolRef": value["budget_pool_ref"],
+        "budgetAllocationRef": value["budget_allocation_ref"],
+        "subjectCapabilityDigest": value["subject_capability_digest"],
+        "ancestorCapabilityDigest": value["ancestor_capability_digest"],
         "revocationFreshnessRef": value["revocation_freshness_ref"],
         "policyDigest": value["policy_digest"],
         "nonce": value["nonce"],
@@ -1240,7 +1222,7 @@ fn side_effecting_runtime_claim_rejects_request_digest_mismatch() {
 #[test]
 fn side_effecting_runtime_claim_accepts_bound_route_plan_receipt() {
     let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
-    add_route_plan_binding(&mut bundle, "route-runtime-valid");
+    add_route_plan_binding(&mut bundle, "route-lease-runtime-valid");
 
     let report = verify_runtime_security_fixture(&bundle)
         .test_expect("execution lease should accept the bound route plan receipt");

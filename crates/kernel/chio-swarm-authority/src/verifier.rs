@@ -8,15 +8,16 @@ mod witness;
 use util::{
     canonical_sha256, continuation_token_signature_body, join_receipt_signature_body, rejected,
     require_non_empty, require_same_graph, require_sha256, require_unique_strings,
-    route_plan_signature_body, sorted_strings, terminal_graph_receipt_signature_body,
+    revocation_epoch_signature_body, route_plan_signature_body, sorted_strings,
+    task_graph_signature_body, terminal_graph_receipt_signature_body,
 };
 use witness::{
     validate_witness_chains, witness_issuer_public_key, witness_signature_body, DID_CHIO_PREFIX,
 };
 
 use super::types::{
-    SwarmAuthorityBundle, SwarmAuthorityVerifierReport, SwarmBudgetAllocation,
-    SwarmBudgetAllocationState, SwarmBudgetFanInReleaseRequest,
+    SwarmAuthorityBundle, SwarmAuthorityHopReport, SwarmAuthorityVerifierReport,
+    SwarmBudgetAllocation, SwarmBudgetAllocationState, SwarmBudgetFanInReleaseRequest,
     SwarmBudgetFanoutReservationRequest, SwarmBudgetPool, SwarmContinuationToken,
     SwarmContinuationTokenMintRequest, SwarmDelegationWitnessChain, SwarmGraphEdge, SwarmGraphJoin,
     SwarmGraphNode, SwarmJoinReceipt, SwarmJoinReceiptMintRequest, SwarmRevocationEpoch,
@@ -37,6 +38,7 @@ pub fn verify_swarm_authority_bundle(
 ) -> Result<SwarmAuthorityVerifierReport, SwarmAuthorityError> {
     require_trusted_witness_issuer_keys(trusted_witness_issuer_keys)?;
     validate_task_graph(&bundle.task_graph, bundle.now_unix_ms)?;
+    verify_task_graph_signature(&bundle.task_graph, trusted_witness_issuer_keys)?;
     require_signed_swarm_delegation_evidence(bundle)?;
     let graph_sha256 = canonical_sha256(&bundle.task_graph)?;
     let task_by_id = task_index(&bundle.task_graph)?;
@@ -45,7 +47,7 @@ pub fn verify_swarm_authority_bundle(
         validate_route_plan_receipts(bundle, &task_by_id, trusted_witness_issuer_keys)?;
     let join_by_id = validate_join_receipts(bundle, &task_by_id, trusted_witness_issuer_keys)?;
     let allocation_by_id = validate_budget_pool(bundle, &task_by_id)?;
-    validate_revocation_epoch(bundle, &task_by_id)?;
+    validate_revocation_epoch(bundle, &task_by_id, trusted_witness_issuer_keys)?;
     validate_terminal_graph_receipts(
         bundle,
         &task_by_id,
@@ -82,6 +84,7 @@ pub fn verify_swarm_authority_bundle(
     verified_claims.push(CLAIM_SWARM_BUDGET_POOL_BOUND.to_string());
     verified_claims.push(CLAIM_SWARM_REVOCATION_EPOCH_BOUND.to_string());
     verified_claims.push(CLAIM_SWARM_TERMINAL_GRAPH_RECEIPT_BOUND.to_string());
+    let hop_reports = swarm_authority_hop_reports(bundle)?;
 
     Ok(SwarmAuthorityVerifierReport {
         schema: CHIO_SWARM_AUTHORITY_VERIFIER_REPORT_SCHEMA.to_string(),
@@ -95,8 +98,59 @@ pub fn verify_swarm_authority_bundle(
         continuation_count: bundle.continuation_tokens.len(),
         join_count: bundle.join_receipts.len(),
         route_count: bundle.route_plan_receipts.len(),
+        hop_reports,
         verified_claims,
     })
+}
+
+fn swarm_authority_hop_reports(
+    bundle: &SwarmAuthorityBundle,
+) -> Result<Vec<SwarmAuthorityHopReport>, SwarmAuthorityError> {
+    let mut continuation_by_id = BTreeMap::new();
+    for token in &bundle.continuation_tokens {
+        continuation_by_id.insert(token.token_id.as_str(), token);
+    }
+    let mut witness_chain_by_id = BTreeMap::new();
+    for chain in &bundle.witness_chains {
+        witness_chain_by_id.insert(chain.chain_id.as_str(), chain);
+    }
+    let mut reports = Vec::new();
+    for node in &bundle.task_graph.nodes {
+        let Some(continuation_token_ref) = node.continuation_token_ref.as_deref() else {
+            continue;
+        };
+        let token = continuation_by_id
+            .get(continuation_token_ref)
+            .copied()
+            .ok_or_else(|| {
+                rejected(format!(
+                    "missing swarm continuation token: {continuation_token_ref}"
+                ))
+            })?;
+        let witness_hop_count = token
+            .witness_chain_ref
+            .as_deref()
+            .and_then(|chain_id| witness_chain_by_id.get(chain_id))
+            .map(|chain| chain.hops.len())
+            .unwrap_or(0);
+        reports.push(SwarmAuthorityHopReport {
+            child_task_id: node.task_id.clone(),
+            parent_task_id: token.parent_task_id.clone(),
+            join_receipt_id: token.join_receipt_id.clone(),
+            continuation_token_id: token.token_id.clone(),
+            witness_chain_id: token.witness_chain_ref.clone(),
+            witness_hop_count,
+            multi_hop_witness_enabled: bundle.task_graph.multi_hop_witness_chains,
+            route_plan_receipt_id: token.route_plan_receipt_id.clone(),
+            budget_allocation_id: token.budget_allocation_id.clone(),
+            authority_verified: true,
+            attenuation_verified: true,
+            lineage_verified: true,
+            route_verified: true,
+            budget_verified: true,
+        });
+    }
+    Ok(reports)
 }
 
 fn require_signed_swarm_delegation_evidence(
@@ -145,6 +199,29 @@ pub fn sign_swarm_delegation_witness_hop(
     Ok(signature.to_hex())
 }
 
+pub fn sign_swarm_task_graph(
+    graph: &SwarmTaskGraph,
+    keypair: &Keypair,
+) -> Result<String, SwarmAuthorityError> {
+    let issuer_public_key = witness_issuer_public_key(&graph.issuer).map_err(|error| {
+        rejected(format!(
+            "swarm task graph issuer public key invalid: {}",
+            error.runtime_detail()
+        ))
+    })?;
+    if issuer_public_key != keypair.public_key() {
+        return Err(rejected(format!(
+            "swarm task graph signer does not match issuer: {}",
+            graph.graph_id
+        )));
+    }
+    let body = task_graph_signature_body(graph)?;
+    let (signature, _canonical) = keypair
+        .sign_canonical(&body)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    Ok(signature.to_hex())
+}
+
 pub fn sign_swarm_continuation_token(
     token: &SwarmContinuationToken,
     keypair: &Keypair,
@@ -178,6 +255,23 @@ pub fn mint_swarm_continuation_token(
             request.token_id
         )));
     }
+    if request.parent_task_id.is_some() {
+        match (&request.witness_chain_ref, &request.witness_chain_sha256) {
+            (Some(witness_chain_ref), Some(witness_chain_sha256)) => {
+                require_non_empty(witness_chain_ref, "swarm continuation witness chain ref")?;
+                require_sha256(
+                    witness_chain_sha256,
+                    "swarm continuation witness chain digest",
+                )?;
+            }
+            _ => {
+                return Err(rejected(format!(
+                    "swarm continuation witness chain binding missing: {}",
+                    request.token_id
+                )));
+            }
+        }
+    }
     let issuer = format!("{DID_CHIO_PREFIX}{}", keypair.public_key().to_hex());
     let mut token = SwarmContinuationToken {
         schema: CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA.to_string(),
@@ -190,6 +284,8 @@ pub fn mint_swarm_continuation_token(
         graph_sha256: request.graph_sha256,
         route_plan_receipt_id: request.route_plan_receipt_id,
         budget_allocation_id: request.budget_allocation_id,
+        witness_chain_ref: request.witness_chain_ref,
+        witness_chain_sha256: request.witness_chain_sha256,
         revocation_epoch_ref: request.revocation_epoch_ref,
         revocation_epoch_root_hash: request.revocation_epoch_root_hash,
         session_anchor_ref: request.session_anchor_ref,
@@ -406,6 +502,29 @@ pub fn sign_swarm_route_plan_receipt(
     Ok(signature.to_hex())
 }
 
+pub fn sign_swarm_revocation_epoch(
+    epoch: &SwarmRevocationEpoch,
+    keypair: &Keypair,
+) -> Result<String, SwarmAuthorityError> {
+    let issuer_public_key = witness_issuer_public_key(&epoch.issuer).map_err(|error| {
+        rejected(format!(
+            "swarm revocation epoch issuer public key invalid: {}",
+            error.runtime_detail()
+        ))
+    })?;
+    if issuer_public_key != keypair.public_key() {
+        return Err(rejected(format!(
+            "swarm revocation epoch signer does not match issuer: {}",
+            epoch.epoch_id
+        )));
+    }
+    let body = revocation_epoch_signature_body(epoch)?;
+    let (signature, _canonical) = keypair
+        .sign_canonical(&body)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    Ok(signature.to_hex())
+}
+
 pub fn sign_swarm_terminal_graph_receipt(
     receipt: &SwarmTerminalGraphReceipt,
     keypair: &Keypair,
@@ -443,6 +562,7 @@ fn validate_task_graph(
     require_non_empty(&graph.root_transaction_ref, "swarm root transaction ref")?;
     require_non_empty(&graph.planner_subject, "swarm planner subject")?;
     require_non_empty(&graph.issuer, "swarm issuer")?;
+    require_non_empty(&graph.signature, "swarm task graph signature")?;
     require_non_empty(&graph.budget_pool_ref, "swarm budget pool ref")?;
     require_non_empty(&graph.revocation_epoch_ref, "swarm revocation epoch ref")?;
     if graph.created_at_unix_ms > now_unix_ms {
@@ -468,6 +588,55 @@ fn validate_task_graph(
     validate_edge_depths(graph, &task_by_id)?;
     validate_graph_limits(graph)?;
     Ok(())
+}
+
+fn verify_task_graph_signature(
+    graph: &SwarmTaskGraph,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    let public_key = witness_issuer_public_key(&graph.issuer)?;
+    ensure_task_graph_issuer_is_pinned(graph, &public_key, trusted_witness_issuer_keys)?;
+    let signature = Signature::from_hex(&graph.signature).map_err(|error| {
+        rejected(format!(
+            "swarm task graph signature invalid: {}: {error}",
+            graph.graph_id
+        ))
+    })?;
+    let body = task_graph_signature_body(graph)?;
+    let verified = public_key
+        .verify_canonical(&body, &signature)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    if verified {
+        Ok(())
+    } else {
+        Err(rejected(format!(
+            "swarm task graph signature invalid: {}",
+            graph.graph_id
+        )))
+    }
+}
+
+fn ensure_task_graph_issuer_is_pinned(
+    graph: &SwarmTaskGraph,
+    public_key: &PublicKey,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    if trusted_witness_issuer_keys.is_empty() {
+        return Err(rejected(
+            "trusted swarm witness keys missing: CHIO_SWARM_TRUSTED_WITNESS_KEYS must pin trusted swarm witness keys",
+        ));
+    }
+    if trusted_witness_issuer_keys
+        .iter()
+        .any(|trusted_key| trusted_key == public_key)
+    {
+        Ok(())
+    } else {
+        Err(rejected(format!(
+            "swarm task graph issuer is not trusted: {}",
+            graph.graph_id
+        )))
+    }
 }
 
 fn task_index(
@@ -742,6 +911,7 @@ fn validate_route_plan_receipts<'a>(
         require_non_empty(&route.bridge_id, "swarm route bridge id")?;
         require_non_empty(&route.protocol_target, "swarm route protocol target")?;
         require_non_empty(&route.egress_contract_id, "swarm route egress contract id")?;
+        validate_route_plan_egress_constraints(route)?;
         validate_route_plan_target(route)?;
         require_non_empty(
             &route.attenuation_decision,
@@ -787,6 +957,31 @@ fn validate_route_plan_receipts<'a>(
         }
     }
     Ok(routes)
+}
+
+fn validate_route_plan_egress_constraints(
+    route: &SwarmRoutePlanReceipt,
+) -> Result<(), SwarmAuthorityError> {
+    if route.egress_constraints.is_empty() {
+        return Err(rejected(format!(
+            "swarm route-plan egress constraints missing: {}",
+            route.route_plan_id
+        )));
+    }
+    require_unique_strings(
+        &route.egress_constraints,
+        "swarm route-plan egress constraint",
+    )?;
+    for constraint in &route.egress_constraints {
+        require_non_empty(constraint, "swarm route-plan egress constraint")?;
+        if constraint != "deny-private-network" {
+            return Err(rejected(format!(
+                "unsupported swarm route-plan egress constraint: {}",
+                constraint
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn validate_route_plan_target(route: &SwarmRoutePlanReceipt) -> Result<(), SwarmAuthorityError> {
@@ -970,16 +1165,16 @@ fn validate_join_parent_task_receipts(
     let mut task_ids = Vec::with_capacity(receipt.parent_task_receipts.len());
     let mut receipt_ids = Vec::with_capacity(receipt.parent_task_receipts.len());
     let expected_actual_pairs = expected_actual_parent_receipt_pairs(receipt, graph_join);
-    for (index, parent) in receipt.parent_task_receipts.iter().enumerate() {
+    let expected_actual_pair_set = expected_actual_pairs
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    for parent in &receipt.parent_task_receipts {
         require_non_empty(&parent.task_id, "swarm join parent task receipt task")?;
         require_non_empty(&parent.receipt_id, "swarm join parent task receipt receipt")?;
-        let Some((expected_task_id, expected_receipt_id)) = expected_actual_pairs.get(index) else {
-            return Err(rejected(format!(
-                "swarm join receipt parent task receipts mismatch: {}",
-                receipt.join_id
-            )));
-        };
-        if parent.task_id != *expected_task_id || parent.receipt_id != *expected_receipt_id {
+        if !expected_actual_pair_set
+            .contains(&(parent.task_id.as_str(), parent.receipt_id.as_str()))
+        {
             return Err(rejected(format!(
                 "swarm join receipt parent task receipts mismatch: {}",
                 receipt.join_id
@@ -1291,6 +1486,7 @@ fn validate_budget_allocation_units(
 fn validate_revocation_epoch(
     bundle: &SwarmAuthorityBundle,
     task_by_id: &BTreeMap<&str, &SwarmGraphNode>,
+    trusted_witness_issuer_keys: &[PublicKey],
 ) -> Result<(), SwarmAuthorityError> {
     let epoch = &bundle.revocation_epoch;
     if epoch.schema != CHIO_SWARM_REVOCATION_EPOCH_SCHEMA {
@@ -1317,6 +1513,7 @@ fn validate_revocation_epoch(
     if computed_root_hash != epoch.root_hash {
         return Err(rejected("swarm revocation epoch root mismatch"));
     }
+    verify_revocation_epoch_signature(epoch, trusted_witness_issuer_keys)?;
     let mut revoked_subjects = BTreeSet::new();
     for subject in &epoch.revoked_subjects {
         require_non_empty(subject, "swarm revoked subject")?;
@@ -1350,6 +1547,42 @@ fn validate_revocation_epoch(
         }
     }
     Ok(())
+}
+
+fn verify_revocation_epoch_signature(
+    epoch: &SwarmRevocationEpoch,
+    trusted_witness_issuer_keys: &[PublicKey],
+) -> Result<(), SwarmAuthorityError> {
+    require_non_empty(&epoch.issuer, "swarm revocation epoch issuer")?;
+    require_non_empty(&epoch.signature, "swarm revocation epoch signature")?;
+    let public_key = witness_issuer_public_key(&epoch.issuer)?;
+    if trusted_witness_issuer_keys
+        .iter()
+        .all(|trusted| trusted != &public_key)
+    {
+        return Err(rejected(format!(
+            "swarm revocation epoch issuer is not pinned: {}",
+            epoch.epoch_id
+        )));
+    }
+    let signature = Signature::from_hex(&epoch.signature).map_err(|error| {
+        rejected(format!(
+            "swarm revocation epoch signature invalid: {}: {error}",
+            epoch.epoch_id
+        ))
+    })?;
+    let body = revocation_epoch_signature_body(epoch)?;
+    let verified = public_key
+        .verify_canonical(&body, &signature)
+        .map_err(|error| SwarmAuthorityError::Canonical(error.to_string()))?;
+    if verified {
+        Ok(())
+    } else {
+        Err(rejected(format!(
+            "swarm revocation epoch signature invalid: {}",
+            epoch.epoch_id
+        )))
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -1774,6 +2007,7 @@ fn validate_continuation_token(
         "swarm continuation parent receipt",
     )?;
     validate_continuation_parent(token, child_task, context.edge_set, context.join_by_id)?;
+    validate_continuation_witness_chain(token, bundle)?;
     validate_continuation_route(token, child_task, context.route_by_id)?;
     validate_continuation_budget(token, child_task, context.allocation_by_id)?;
     if token.revocation_epoch_ref != bundle.revocation_epoch.epoch_id {
@@ -1789,6 +2023,62 @@ fn validate_continuation_token(
     if token.revocation_epoch_root_hash != bundle.revocation_epoch.root_hash {
         return Err(rejected(format!(
             "swarm continuation revocation epoch root mismatch: {}",
+            token.token_id
+        )));
+    }
+    Ok(())
+}
+
+fn validate_continuation_witness_chain(
+    token: &SwarmContinuationToken,
+    bundle: &SwarmAuthorityBundle,
+) -> Result<(), SwarmAuthorityError> {
+    let Some(parent_task_id) = token.parent_task_id.as_deref() else {
+        if token.witness_chain_ref.is_some() || token.witness_chain_sha256.is_some() {
+            return Err(rejected(format!(
+                "swarm continuation witness chain binding without parent task: {}",
+                token.token_id
+            )));
+        }
+        return Ok(());
+    };
+    let witness_chain_ref = token.witness_chain_ref.as_deref().ok_or_else(|| {
+        rejected(format!(
+            "swarm continuation witness chain binding missing: {}",
+            token.token_id
+        ))
+    })?;
+    require_non_empty(witness_chain_ref, "swarm continuation witness chain ref")?;
+    let witness_chain_sha256 = token.witness_chain_sha256.as_deref().ok_or_else(|| {
+        rejected(format!(
+            "swarm continuation witness chain digest missing: {}",
+            token.token_id
+        ))
+    })?;
+    require_sha256(
+        witness_chain_sha256,
+        "swarm continuation witness chain digest",
+    )?;
+    let chain = bundle
+        .witness_chains
+        .iter()
+        .find(|chain| chain.chain_id == witness_chain_ref)
+        .ok_or_else(|| {
+            rejected(format!(
+                "swarm continuation witness chain mismatch: {}",
+                token.token_id
+            ))
+        })?;
+    if chain.parent_task_id != parent_task_id || chain.child_task_id != token.child_task_id {
+        return Err(rejected(format!(
+            "swarm continuation witness chain mismatch: {}",
+            token.token_id
+        )));
+    }
+    let actual_sha256 = canonical_sha256(chain)?;
+    if actual_sha256 != witness_chain_sha256 {
+        return Err(rejected(format!(
+            "swarm continuation witness chain digest mismatch: {}",
             token.token_id
         )));
     }

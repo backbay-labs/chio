@@ -370,6 +370,12 @@ pub(crate) enum Commands {
         command: ProofCommands,
     },
 
+    /// Verify commerce proof bundles and payment evidence.
+    Commerce {
+        #[command(subcommand)]
+        command: CommerceCommands,
+    },
+
     /// Validate read-only workflow planning evidence before dispatch.
     Workflow {
         #[command(subcommand)]

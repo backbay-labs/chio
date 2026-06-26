@@ -4,14 +4,18 @@
   "source_protocol": "mcp",
   "source_version": "2025-11-25",
   "external_fields_used": [
+    "arguments_digest",
+    "authorization_context_digest",
+    "authorization_server_metadata_digest",
+    "dpop_proof_digest",
+    "proof_envelope_resource_read_digest",
+    "protected_resource_metadata_digest",
     "protocol_version",
-    "transport",
+    "result_digest",
     "server_identity_digest",
     "session_id_digest",
     "tool_name",
-    "arguments_digest",
-    "result_digest",
-    "authorization_context_digest"
+    "transport"
   ],
   "external_fields_not_used": [
     "tool_annotations_as_authority"

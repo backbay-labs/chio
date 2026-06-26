@@ -857,10 +857,16 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
                 embedded_disclosure_lineage_bundle(evidence_graph_bytes, artifacts).map_err(
                     |error| proof_room_fixture_invalid(fixture_id, "disclosure-lineage", error),
                 )?;
+            let trust = crate::disclosure_lineage_verifier_trust_from_env().map_err(|error| {
+                proof_room_fixture_invalid(fixture_id, "disclosure-lineage", error)
+            })?;
             proof_room_fixture_verified_report_bytes(
                 fixture_id,
                 passport,
-                chio_disclosure_lineage::verify_disclosure_lineage_bundle(&disclosure_bundle),
+                chio_disclosure_lineage::verify_disclosure_lineage_bundle_with_trust(
+                    &disclosure_bundle,
+                    &trust,
+                ),
             )
         }
         ProofRoomFixtureReportRoute::Swarm => {
@@ -896,12 +902,47 @@ pub(crate) fn proof_room_fixture_route_report_bytes(
                     ),
                 ));
             }
-            let trust = crate::public_settlement_verifier_trust_from_env().map_err(|error| {
-                (
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                    format!("proof-room.fixture.public-settlement-invalid: {fixture_id}: {error}"),
+            let mut trust = crate::public_settlement_verifier_trust_from_env(&proof_bundle)
+                .map_err(|error| {
+                    (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        format!(
+                            "proof-room.fixture.public-settlement-invalid: {fixture_id}: {error}"
+                        ),
+                    )
+                })?;
+            if proof_bundle.has_trust_market_refs() {
+                let trust_market_evidence_graph_bytes = source_scoped_evidence_graph_bytes(
+                    evidence_graph_bytes,
+                    is_trust_market_evidence_graph_node,
                 )
-            })?;
+                .map_err(|error| proof_room_fixture_invalid(fixture_id, "trust-market", error))?;
+                let trust_market_passport = source_passport_for_evidence_graph(
+                    passport,
+                    &trust_market_evidence_graph_bytes,
+                );
+                let trusted_market_authority_keys =
+                    crate::trust_market_trusted_authority_keys_from_env().map_err(|error| {
+                        proof_room_fixture_invalid(fixture_id, "trust-market", error)
+                    })?;
+                let report = chio_trust_market_context::verify_trust_market_context(
+                    &chio_trust_market_context::TrustMarketBundle {
+                        passport: trust_market_passport,
+                        evidence_graph_bytes: trust_market_evidence_graph_bytes,
+                        root_evidence_graph_bytes: Some(evidence_graph_bytes.to_vec()),
+                        verifier_policy_bytes: verifier_policy_bytes.to_vec(),
+                        artifacts: artifacts.clone(),
+                        trusted_passport_signer_keys:
+                            crate::transaction_trusted_root_keys_from_env().map_err(|error| {
+                                proof_room_fixture_invalid(fixture_id, "trust-market", error)
+                            })?,
+                        trusted_market_authority_keys,
+                    },
+                )
+                .map_err(|error| proof_room_fixture_invalid(fixture_id, "trust-market", error))?;
+                trust.expected_trust_market_context =
+                    Some(public_settlement_trust_market_context_from_trust_market_report(&report));
+            }
             proof_room_fixture_verified_report_bytes(
                 fixture_id,
                 passport,
@@ -1045,32 +1086,26 @@ pub(crate) fn proof_room_fixture_standalone_risk_report(
     evidence_graph_bytes: &[u8],
     artifacts: &BTreeMap<String, Vec<u8>>,
 ) -> Result<Vec<u8>, (StatusCode, String)> {
-    let risk_report = embedded_risk_comptroller_report(evidence_graph_bytes, artifacts)
-        .map_err(|error| proof_room_fixture_invalid(fixture_id, "risk", error))?;
     let risk_report_value = embedded_risk_comptroller_report_value(evidence_graph_bytes, artifacts)
         .map_err(|error| proof_room_fixture_invalid(fixture_id, "risk", error))?;
-    if let Err(error) = chio_risk_comptroller::validate_risk_report(passport, &risk_report) {
-        return proof_room_failed_verifier_report(
-            fixture_id,
-            passport,
-            &proof_room_fixture_verifier_failure_message(fixture_id, error),
-        )
-        .map(|(contents, _)| contents);
-    }
     let trusted_risk_comptroller_signer_keys =
         crate::enterprise_trusted_risk_comptroller_signer_keys_from_env()
             .map_err(|error| proof_room_fixture_invalid(fixture_id, "risk", error))?;
-    if let Err(error) = chio_risk_comptroller::validate_risk_report_signature(
+    let risk_report = match chio_risk_comptroller::validate_signed_risk_report(
+        passport,
         &risk_report_value,
         &trusted_risk_comptroller_signer_keys,
     ) {
-        return proof_room_failed_verifier_report(
-            fixture_id,
-            passport,
-            &proof_room_fixture_verifier_failure_message(fixture_id, error),
-        )
-        .map(|(contents, _)| contents);
-    }
+        Ok(report) => report,
+        Err(error) => {
+            return proof_room_failed_verifier_report(
+                fixture_id,
+                passport,
+                &proof_room_fixture_verifier_failure_message(fixture_id, error),
+            )
+            .map(|(contents, _)| contents);
+        }
+    };
     let risk_evidence_graph = parse_embedded_evidence_graph(evidence_graph_bytes, "evidence graph")
         .map_err(|error| proof_room_fixture_invalid(fixture_id, "evidence-graph", error))?;
     match chio_risk_comptroller::validate_risk_evidence_refs(&risk_report, |evidence_ref, kind| {
@@ -1121,6 +1156,17 @@ pub(crate) fn proof_room_fixture_invalid(
         StatusCode::UNPROCESSABLE_ENTITY,
         format!("proof-room.fixture.{label}-invalid: {fixture_id}: {error}"),
     )
+}
+
+fn public_settlement_trust_market_context_from_trust_market_report(
+    report: &chio_trust_market_context::TrustMarketVerifierReport,
+) -> chio_web3::settlement_proof::PublicSettlementTrustMarketContext {
+    chio_web3::settlement_proof::PublicSettlementTrustMarketContext {
+        collateral_position_ref: report.trust_market_sections.collateral_position_ref.clone(),
+        guarantee_decision_ref: report.trust_market_sections.guarantee_decision_ref.clone(),
+        sla_remedy_ref: report.trust_market_sections.sla_remedy_ref.clone(),
+        slash_authority_ref: report.trust_market_sections.slash_authority_ref.clone(),
+    }
 }
 
 pub(crate) fn proof_room_crypto_context_rejection_report(

@@ -17,8 +17,10 @@ pub use ids::{
     TRANSACTION_VERIFIER_REPORT_SCHEMA_ID,
 };
 pub use minimal::{
-    sign_transaction_passport, verify_minimal_passport_artifacts, verify_minimal_passport_schema,
+    sign_transaction_passport, transaction_evidence_graph_transparency_state,
+    verify_minimal_passport_artifacts, verify_minimal_passport_schema,
     verify_minimal_passport_schema_at, verify_passport_root_and_claim_set_artifacts,
+    verify_passport_root_and_claim_set_artifacts_unchecked_signature_with_external_claims,
     verify_passport_root_and_claim_set_artifacts_with_external_claims,
     verify_standalone_minimal_passport_artifacts, verify_transaction_passport_signature,
     verify_transaction_passport_signature_with_evidence_graph,

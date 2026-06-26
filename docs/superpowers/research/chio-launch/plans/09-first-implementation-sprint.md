@@ -32,12 +32,12 @@ Create or modify these paths:
 - Modify: `crates/chio-cli/src/cli/dispatch.rs`
 - Create: `crates/chio-cli/src/cli/dispatch/proof.rs`
 - Create: `crates/chio-cli/tests/proof_verify.rs`
-- Create: `fixtures/chio-launch/minimal-passport/valid/transaction-passport.json`
-- Create: `fixtures/chio-launch/minimal-passport/valid/evidence-graph.json`
-- Create: `fixtures/chio-launch/minimal-passport/valid/verifier-policy.json`
-- Create: `fixtures/chio-launch/minimal-passport/invalid-policy-digest-mismatch/transaction-passport.json`
-- Create: `fixtures/chio-launch/minimal-passport/invalid-policy-digest-mismatch/evidence-graph.json`
-- Create: `fixtures/chio-launch/minimal-passport/invalid-policy-digest-mismatch/verifier-policy.json`
+- Create: `fixtures/proof-room/minimal-passport/valid/transaction-passport.json`
+- Create: `fixtures/proof-room/minimal-passport/valid/evidence-graph.json`
+- Create: `fixtures/proof-room/minimal-passport/valid/verifier-policy.json`
+- Create: `fixtures/proof-room/minimal-passport/invalid-policy-digest-mismatch/transaction-passport.json`
+- Create: `fixtures/proof-room/minimal-passport/invalid-policy-digest-mismatch/evidence-graph.json`
+- Create: `fixtures/proof-room/minimal-passport/invalid-policy-digest-mismatch/verifier-policy.json`
 
 Both `chio-control-plane` and `chio-cli` already have `chio-test-support` in dev-dependencies. Use `use chio_test_support::prelude::*;` in new tests rather than `.unwrap()` or `.expect()`.
 
@@ -51,7 +51,7 @@ Create or extend `crates/chio-core-types/tests/signed_artifact_schema.rs` with a
 use chio_test_support::prelude::*;
 
 #[test]
-fn transaction_passport_schemas_are_known() {
+fn governed_action_evidence_schemas_are_registered() {
     assert!(chio_core_types::is_supported_signed_artifact_schema(
         "chio.transaction-passport.v1"
     ));
@@ -72,7 +72,7 @@ fn transaction_passport_schemas_are_known() {
 Run:
 
 ```bash
-cargo test -p chio-core-types --test signed_artifact_schema transaction_passport_schemas_are_known
+cargo test -p chio-core-types --test signed_artifact_schema governed_action_evidence_schemas_are_registered
 ```
 
 Expected: fail because the schema constants are not accepted.
@@ -86,7 +86,7 @@ Add minimal JSON schemas with required `schema`, `id`, `issued_at`, digest field
 Run:
 
 ```bash
-cargo test -p chio-core-types --test signed_artifact_schema transaction_passport_schemas_are_known
+cargo test -p chio-core-types --test signed_artifact_schema governed_action_evidence_schemas_are_registered
 scripts/check-chio-schema-registry.sh
 ```
 
@@ -241,7 +241,7 @@ fn proof_verify_accepts_minimal_passport_fixture() {
         .and_then(|crates_dir| crates_dir.parent())
         .test_expect("workspace root is parent of crates/chio-cli");
     let fixture = workspace_root.join(
-        "fixtures/chio-launch/minimal-passport/valid/transaction-passport.json",
+        "fixtures/proof-room/minimal-passport/valid/transaction-passport.json",
     );
 
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_chio"))

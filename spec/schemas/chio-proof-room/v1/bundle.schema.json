@@ -240,7 +240,18 @@
         "id": { "type": "string", "minLength": 1 },
         "path": { "$ref": "#/$defs/bundleRelativePath" },
         "expected_failure_code": { "type": "string", "minLength": 1 },
-        "observed_failure_code": { "type": "string", "minLength": 1 }
+        "observed_failure_code": { "type": "string", "minLength": 1 },
+        "verifier_context": { "$ref": "#/$defs/negativeVerifierContext" }
+      }
+    },
+    "negativeVerifierContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "public_settlement_independent_chain_head": {
+          "enum": ["missing", "block_hash_mismatch"]
+        }
       }
     },
     "advisoryArtifact": {

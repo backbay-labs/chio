@@ -1,0 +1,9 @@
+{
+  "schema": "chio.proof-room.product-overlay-negative.v1",
+  "id": "product-playground-unsupported-claim",
+  "surface": "read-only-playground",
+  "description": "A playground claim unsupported by a verifier report must remain rejected.",
+  "expected_failure_code": "proof-room.playground.unsupported-claim",
+  "observed_failure_code": "proof-room.playground.unsupported-claim",
+  "checker": "cargo xtask verify launch-acceptance"
+}

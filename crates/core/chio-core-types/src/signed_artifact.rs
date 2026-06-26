@@ -78,6 +78,7 @@ pub const CHIO_TRANSPARENCY_INCLUSION_PROOF_V1_SCHEMA: &str =
 pub const CHIO_POLICY_ACTIVATION_RECEIPT_V1_SCHEMA: &str = "chio.policy.activation-receipt.v1";
 pub const CHIO_RUNTIME_EXECUTION_LEASE_V1_SCHEMA: &str = "chio.runtime.execution-lease.v1";
 pub const CHIO_RUNTIME_TOOL_SERVER_ACK_V1_SCHEMA: &str = "chio.runtime.tool-server-ack.v1";
+pub const CHIO_RUNTIME_TRUSTED_TIME_PROOF_V1_SCHEMA: &str = "chio.runtime.trusted-time-proof.v1";
 pub const CHIO_RUNTIME_REVOCATION_FRESHNESS_PROOF_V1_SCHEMA: &str =
     "chio.runtime.revocation-freshness-proof.v1";
 pub const CHIO_RUNTIME_SANDBOX_ATTESTATION_V1_SCHEMA: &str = "chio.runtime.sandbox-attestation.v1";
@@ -365,6 +366,10 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_RUNTIME_TOOL_SERVER_ACK_V1_SCHEMA,
         Some(("runtime_tool_server_ack", "runtime-security-v1")),
+    ),
+    (
+        CHIO_RUNTIME_TRUSTED_TIME_PROOF_V1_SCHEMA,
+        Some(("runtime_trusted_time_proof", "runtime-security-v1")),
     ),
     (
         CHIO_RUNTIME_REVOCATION_FRESHNESS_PROOF_V1_SCHEMA,

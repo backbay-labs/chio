@@ -16,7 +16,7 @@
     "schema": { "const": "chio.commerce.protocol-payload.v1" },
     "protocol": {
       "type": "string",
-      "enum": ["ap2", "acp-commerce", "x402"]
+      "enum": ["ap2", "acp-commerce", "x402", "chio"]
     },
     "purpose": { "type": "string", "minLength": 1 },
     "order_id": { "type": "string", "minLength": 1 },

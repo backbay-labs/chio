@@ -849,6 +849,49 @@ mod cli_entrypoint_tests {
     }
 
     #[test]
+    fn chio_attest_buyer_verify_rejection_uses_transaction_failure_code()
+    -> Result<(), Box<dyn Error>> {
+        let tempdir = tempfile::tempdir()?;
+        let package_path = tempdir.path().join("buyer-review-package.json");
+        let trust_bundle_path = tempdir.path().join("trust-bundle.json");
+        let context_path = tempdir.path().join("verification-context.json");
+        let report_path = tempdir.path().join("buyer-review-report.json");
+
+        std::fs::write(
+            &package_path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "schema": chio_attest_buyer::CHIO_ATTEST_BUYER_ATTESTATION_REVIEW_PACKAGE_SCHEMA,
+                "packageId": "buyer-review:transaction-code",
+                "packetId": "buyer-packet:transaction-code",
+                "buyerId": "did:chio:buyer",
+                "generatedAtUnixMs": 1_766_000_000_000_u64,
+                "artifacts": []
+            }))?,
+        )?;
+        std::fs::write(&trust_bundle_path, "{}")?;
+        std::fs::write(&context_path, "{}")?;
+
+        let error = cmd_chio_attest_buyer_verify(
+            &package_path,
+            &trust_bundle_path,
+            &context_path,
+            &report_path,
+        )
+        .expect_err("missing buyer review artifacts must reject");
+        let rendered = render_error_json(&error)?;
+        assert_eq!(
+            rendered["code"],
+            "urn:chio:error:transaction:buyer-review-rejected"
+        );
+        assert!(rendered["message"]
+            .as_str()
+            .expect("buyer review rejection message")
+            .contains("chio_attest_buyer_review_missing_artifact_role"));
+
+        Ok(())
+    }
+
+    #[test]
     fn chio_attest_buyer_verify_packet_surface_parses() {
         let cli = parse_cli([
             "chio",

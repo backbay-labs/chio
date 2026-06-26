@@ -16,8 +16,10 @@
     "facility",
     "coverage",
     "reconciliation",
+    "premium",
     "actuarial_evidence",
     "insurance_copy",
+    "capital_decomposition",
     "verified_claims"
   ],
   "properties": {
@@ -174,6 +176,38 @@
         "status": { "const": "balanced" }
       }
     },
+    "premium": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "premium_id",
+        "quote_ref",
+        "coverage_id",
+        "order_id",
+        "subject",
+        "currency",
+        "coverage_exposure_units",
+        "quoted_premium_units",
+        "bound_premium_units",
+        "collected_premium_units",
+        "status"
+      ],
+      "properties": {
+        "premium_id": { "type": "string", "minLength": 1 },
+        "quote_ref": { "type": "string", "minLength": 1 },
+        "coverage_id": { "type": "string", "minLength": 1 },
+        "order_id": { "type": "string", "minLength": 1 },
+        "subject": { "type": "string", "minLength": 1 },
+        "currency": { "type": "string", "minLength": 1 },
+        "coverage_exposure_units": { "type": "integer", "minimum": 1 },
+        "quoted_premium_units": { "type": "integer", "minimum": 1 },
+        "bound_premium_units": { "type": "integer", "minimum": 1 },
+        "collected_premium_units": { "type": "integer", "minimum": 0 },
+        "observed_payment_ref": { "type": "string", "minLength": 1 },
+        "settlement_ref": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["bound", "collected"] }
+      }
+    },
     "actuarial_evidence": {
       "type": "object",
       "additionalProperties": false,
@@ -243,6 +277,34 @@
         "currency": { "type": "string", "minLength": 1 },
         "maximum_coverage_units": { "type": "integer", "minimum": 1 },
         "coverage_statement": { "type": "string", "minLength": 1 }
+      }
+    },
+    "capital_decomposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decomposition_id",
+        "source_kind",
+        "source_ref",
+        "currency",
+        "committed_units",
+        "held_units",
+        "drawn_units",
+        "disbursed_units",
+        "impaired_units",
+        "available_units"
+      ],
+      "properties": {
+        "decomposition_id": { "type": "string", "minLength": 1 },
+        "source_kind": { "const": "facility_commitment" },
+        "source_ref": { "type": "string", "minLength": 1 },
+        "currency": { "type": "string", "minLength": 1 },
+        "committed_units": { "type": "integer", "minimum": 1 },
+        "held_units": { "type": "integer", "minimum": 0 },
+        "drawn_units": { "type": "integer", "minimum": 0 },
+        "disbursed_units": { "type": "integer", "minimum": 0 },
+        "impaired_units": { "type": "integer", "minimum": 0 },
+        "available_units": { "type": "integer", "minimum": 0 }
       }
     },
     "capital_instructions": {

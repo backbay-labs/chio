@@ -12,6 +12,23 @@ Make risk, facility, and insurance context auditable enough to remain in the lau
 
 Risk reports that affect public launch claims are verifier-facing artifacts. The risk comptroller report, facility state report, coverage decision, claim case file, appeal, sanction/reserve ledger, portfolio reconciliation report, capital adequacy report, and actuarial backtest report must use `../indices/artifact-registry.md` names and satisfy `../architecture/09-integration-contracts.md` before launch copy can cite them.
 
+## Implementation Slices
+
+| Slice | Scope | Done when |
+| --- | --- | --- |
+| RISK-0A | Freeze bounded launch copy for auditable risk-finance context and block autonomous-insurer overclaims. | Release-truth lint rejects unsupported insurance, pricing, and capital claims. |
+| RISK-0B | Register the comptroller report and record folded standalone risk schema decisions. | Registry, manifest, fold notes, and unknown-schema negatives pass. |
+| RISK-0C | Emit risk claim rows for coverage, facility, claim, appeal, reserve, payout, settlement, capital, and actuarial evidence. | Every emitted risk claim is registered and evidence-backed. |
+| FAC-1A | Implement facility lifecycle replay states. | Invalid transition, missing capital, claim-outside-coverage, and unreconciled-close negatives reject. |
+| FAC-1B | Bind facility transitions to authority receipts, policy ids, subjects, currency, and order refs. | Subject, currency, policy, and order drift reject. |
+| LEDGER-1A | Split reserve release, claim payout, reserve slash, market slash, and write-off lanes. | Double consumption and market-slash facility-reserve reuse reject. |
+| LEDGER-1B | Add appeal gates for payout, reserve release, slash, write-off, and closure. | Open appeal blocks release, payout, slash, write-off, and closure. |
+| RISK-2A | Bind the comptroller report into the Transaction Passport verifier path. | Required risk claims fail closed unless the report verifies. |
+| RISK-2B | Bind coverage decision into commerce order context. | Commerce order requiring coverage cannot complete without verified coverage. |
+| RISK-3A | Implement actuarial backtest as a separately checked report section or folded evidence block. | Pricing support rejects without a passing backtest. |
+| RISK-3B | Implement capital adequacy and premium invariants. | Capital below threshold and premium invariant mismatch reject. |
+| RISK-3C | Implement portfolio reconciliation by subject, currency, state, and reserve lane. | Mixed-currency, unreconciled, and subject-mismatch negatives reject. |
+
 ## Phase 0 - Scope And Claim Freeze
 
 Tasks:

@@ -406,8 +406,8 @@ Files likely touched, based on the execution-slicing review:
 - `crates/chio-selective-disclosure/src/encoding.rs`
 - `crates/chio-selective-disclosure/tests/bbs_selective_disclosure.rs`
 - `spec/schemas/chio-attest/v1/disclosure-privacy-profile.schema.json`
-- `fixtures/chio-launch/disclosure/valid-capsule/capsule.json`
-- `fixtures/chio-launch/disclosure/invalid-excess-disclosure/capsule.json`
+- `fixtures/proof-room/disclosure/valid-capsule/capsule.json`
+- `fixtures/proof-room/disclosure/invalid-excess-disclosure/capsule.json`
 
 Minimum implementation behavior:
 

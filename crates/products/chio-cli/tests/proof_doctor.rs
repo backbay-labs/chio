@@ -6,6 +6,8 @@ const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str = "application/vnd.chio.proof-room.bund
 const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
 const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
     "chio-agent-web-standard-webhooks-fixture-secret-v1";
+const STANDARD_WEBHOOKS_VERIFIER_NOW: &str = "1770508860";
+const STANDARD_WEBHOOKS_MAX_AGE_SECONDS: &str = "300";
 const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
     "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de,",
     "4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff,",
@@ -41,7 +43,13 @@ const TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS: &str =
     "cf1b37e85dc00aee94f10108b37f151e2a37b3ae2a0cae77521f83488db9c4d7";
 const COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS: &str =
     "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca";
+const COMMERCE_FIXTURE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS: &str =
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
+const COMMERCE_FIXTURE_TRUSTED_PAYMENT_SIGNER_KEYS: &str =
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS: &str =
+    "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BUNDLE_SIGNER_KEYS: &str =
     "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS: &str =
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
@@ -49,6 +57,10 @@ const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS: &str =
     "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ORACLE_KEYS: &str =
     "d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c";
+const PUBLIC_SETTLEMENT_FIXTURE_INDEPENDENT_CHAIN_HEAD_JSON: &str =
+    "{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"latest_block_number\":12345701}";
+const DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS: &str =
+    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa";
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -92,6 +104,14 @@ fn proof_doctor_command() -> std::process::Command {
     command.env(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
         STANDARD_WEBHOOKS_VERIFIER_SECRET,
+    );
+    command.env(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS",
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+    command.env(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS",
+        STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
     );
     command.env(
         "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
@@ -142,8 +162,28 @@ fn proof_doctor_command() -> std::process::Command {
         COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS,
     );
     command.env(
+        "CHIO_COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS",
+        COMMERCE_FIXTURE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS,
+    );
+    command.env(
+        "CHIO_COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS",
+        COMMERCE_FIXTURE_TRUSTED_PAYMENT_SIGNER_KEYS,
+    );
+    command.env(
+        "CHIO_DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS",
+        DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS,
+    );
+    command.env(
+        "CHIO_DISCLOSURE_TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_KEYS",
+        DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS,
+    );
+    command.env(
         "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS",
         PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS,
+    );
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BUNDLE_SIGNER_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BUNDLE_SIGNER_KEYS,
     );
     command.env(
         "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS",
@@ -162,6 +202,14 @@ fn proof_doctor_command() -> std::process::Command {
         "eip155:8453,eip155:42161",
     );
     command.env("CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS", "1");
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON",
+        PUBLIC_SETTLEMENT_FIXTURE_INDEPENDENT_CHAIN_HEAD_JSON,
+    );
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS",
+        "1743293560",
+    );
     command
 }
 
@@ -228,6 +276,46 @@ fn proof_doctor_defaults_to_single_call_authority_when_scenario_is_omitted() {
     assert_eq!(report["schema"], "chio.proof.doctor-report.v1");
     assert_eq!(report["scenario"], "single-call-authority");
     assert_eq!(report["verdict"], "passed");
+}
+
+#[test]
+fn proof_doctor_report_carries_stable_diagnostic_codes() {
+    let output = run_proof_doctor(&workspace_root());
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).test_expect("stdout is utf8");
+    let report: serde_json::Value =
+        serde_json::from_str(&stdout).test_expect("doctor report parses");
+
+    let checks = report["checks"].as_array().test_expect("checks array");
+    let diagnostic_codes = report["diagnostic_codes"]
+        .as_array()
+        .test_expect("diagnostic codes array");
+
+    assert_eq!(
+        report["check_count"].as_u64().test_expect("check count"),
+        checks.len() as u64
+    );
+    assert_eq!(report["failed_count"], 0);
+    assert_eq!(diagnostic_codes.len(), checks.len());
+
+    let diagnostic_code_set = diagnostic_codes
+        .iter()
+        .map(|code| code.as_str().test_expect("diagnostic code string"))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(diagnostic_code_set.len(), checks.len());
+
+    for check in checks {
+        let code = check["code"].as_str().test_expect("check code");
+        assert!(
+            code.starts_with("proof.doctor.single-call-authority."),
+            "unexpected diagnostic code: {code}"
+        );
+        assert!(
+            diagnostic_code_set.contains(code),
+            "top-level diagnostic code list missing {code}"
+        );
+    }
 }
 
 #[test]

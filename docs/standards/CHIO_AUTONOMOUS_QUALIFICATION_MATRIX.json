@@ -10,7 +10,7 @@
       ],
       "expected_outcome": "pass",
       "observed_outcome": "pass",
-      "notes": "The autonomous pricing decision references underwriting, reputation, capital, and web3 evidence while staying inside signed authority ceilings."
+      "notes": "The autonomous pricing decision references underwriting, reputation, capital, and settlement evidence while staying inside signed ceilings."
     },
     {
       "id": "capital-optimization",

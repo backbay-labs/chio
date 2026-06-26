@@ -7,7 +7,7 @@ use chio_core_types::{
     receipt::decision::ToolCallAction,
     Keypair,
 };
-use std::{ffi::OsStr, fs, path::Path};
+use std::{collections::BTreeMap, ffi::OsStr, fs, path::Path};
 
 pub(super) fn resign_agent_web_receipts_for_policy(
     bundle: &Path,
@@ -83,12 +83,46 @@ pub(super) fn resign_agent_web_receipts_for_policy(
     Ok(())
 }
 
+pub(super) fn normalize_agent_web_bilateral_in_toto_statement(
+    bundle: &Path,
+) -> Result<(), CliError> {
+    let statement_path = bundle.join("external/in-toto-statement.json");
+    if !statement_path.is_file() {
+        return Ok(());
+    }
+    let mut statement = read_json_value(&statement_path)?;
+    let object = statement.as_object_mut().ok_or_else(|| {
+        CliError::cli_other_error(format!(
+            "proof fixture in-toto statement is not an object: {}",
+            statement_path.display()
+        ))
+    })?;
+    object.insert(
+        "predicate_type".to_string(),
+        serde_json::Value::String("chio.bilateral-cosign-invocation.v1".to_string()),
+    );
+    object.insert(
+        "peer_pin_digest".to_string(),
+        serde_json::Value::String("a8".repeat(32)),
+    );
+    object.insert(
+        "policy_summary_digest".to_string(),
+        serde_json::Value::String("a9".repeat(32)),
+    );
+    object.insert(
+        "capability_lease_ref".to_string(),
+        serde_json::Value::String("lease-agent-web-in-toto-bilateral".to_string()),
+    );
+    write_json_line_file(&statement_path, &statement)
+}
+
 pub(super) fn refresh_agent_web_envelopes_for_subjects(
     bundle: &Path,
     evidence_graph: &mut serde_json::Value,
 ) -> Result<(), CliError> {
     let keypair = Keypair::from_seed(&[17u8; 32]);
     let public_key = keypair.public_key().to_hex();
+    let projection_manifest_paths = agent_web_projection_manifest_paths(bundle, evidence_graph)?;
     for node in json_array_mut(evidence_graph, "nodes", &bundle.join("evidence-graph.json"))? {
         if node.get("role").and_then(serde_json::Value::as_str) != Some("agent-web-proof-envelope")
         {
@@ -110,11 +144,47 @@ pub(super) fn refresh_agent_web_envelopes_for_subjects(
             required_json_string(&envelope, "external_subject_path", &envelope_path)?;
         envelope["external_subject_digest"] =
             serde_json::Value::String(sha256_file(&bundle.join(subject_path))?);
+        let manifest_ref = required_json_string(&envelope, "projection_manifest_ref", &envelope_path)?;
+        let manifest_path = projection_manifest_paths
+            .get(&manifest_ref)
+            .map(String::as_str)
+            .ok_or_else(|| {
+                CliError::cli_other_error(format!(
+                    "proof fixture Agent Web projection manifest missing for ref: {manifest_ref}"
+                ))
+            })?;
+        envelope["projection_manifest_sha256"] =
+            serde_json::Value::String(sha256_file(&bundle.join(manifest_path))?);
         sign_agent_web_envelope_value(&mut envelope, &keypair, &public_key)?;
         write_json_line_file(&envelope_path, &envelope)?;
         node["sha256"] = serde_json::Value::String(sha256_file(&envelope_path)?);
     }
     Ok(())
+}
+
+fn agent_web_projection_manifest_paths(
+    bundle: &Path,
+    evidence_graph: &serde_json::Value,
+) -> Result<BTreeMap<String, String>, CliError> {
+    let mut manifests = BTreeMap::new();
+    let Some(nodes) = evidence_graph.get("nodes").and_then(serde_json::Value::as_array) else {
+        return Ok(manifests);
+    };
+    for node in nodes {
+        if node.get("role").and_then(serde_json::Value::as_str)
+            != Some("external-projection-manifest")
+        {
+            continue;
+        }
+        let Some(path) = node.get("path").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let manifest_path = bundle.join(path);
+        let manifest = read_json_value(&manifest_path)?;
+        let projection_id = required_json_string(&manifest, "projection_id", &manifest_path)?;
+        manifests.insert(projection_id.to_string(), path.to_string());
+    }
+    Ok(manifests)
 }
 
 fn sign_agent_web_envelope_value(

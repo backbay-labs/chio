@@ -98,6 +98,10 @@ chio proof export <bundle-dir> --out FILE [--redact PROFILE]
 chio proof doctor [--scenario <fixture-id>]
 ```
 
+Supported `proof collect` kinds are `evidence`, `replay`, `buyer-package`,
+`transaction-passport`, `ioa-web3`, `agent-web-envelope`,
+`disclosure-agent-web-envelope`, and `runtime-spine`.
+
 Lower-level commands may remain, but launch docs should point to `chio proof`.
 
 ## Stage 0: Single Call Authority
@@ -219,6 +223,22 @@ Required negative fixtures:
 - ambiguous `ACP` copy;
 - x402 detached from order;
 - required transparency proof not verified.
+
+## Workflow Preflight Fixtures
+
+Workflow preflight fixtures live under `fixtures/proof-room/workflow-preflight/` and are exposed by `chio proof fixture list`.
+
+| Fixture id | Path | Expected verdict | Coverage |
+| --- | --- | --- | --- |
+| `workflow-preflight-valid` | `fixtures/proof-room/workflow-preflight/valid-child-scope` | accepts | Child task stays within the parent scope before live authority is available. |
+| `workflow-preflight-broader-child-scope` | `fixtures/proof-room/workflow-preflight/broader-child-scope` | rejects | Child task requests authority outside the parent scope. |
+| `workflow-preflight-planning-artifact-claims-authority` | `fixtures/proof-room/workflow-preflight/planning-artifact-claims-authority` | rejects | Planning-only artifact claims live authority. |
+
+Acceptance evidence:
+
+- `chio proof fixture generate workflow-preflight-valid --out DIR` writes a runnable `preflight-plan.json`;
+- `chio workflow preflight --plan DIR/preflight-plan.json` accepts the valid fixture;
+- the broader-scope and planning-authority fixtures reject with verifier-visible reasons.
 
 ## Risk Fixture Floor
 

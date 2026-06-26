@@ -1,0 +1,8 @@
+{
+  "schema": "chio.commerce.negative-fixture.v1",
+  "id": "provider-admission-mismatch",
+  "claim_ref": "claim.commerce.provider_admission_bound",
+  "base_fixture": "fixtures/proof-room/commerce-payments/offline-psp-valid/transaction-passport.json",
+  "case": "ProviderAdmissionMismatch",
+  "expected_failure_code": "proof-room.negative.provider-event-missing-provider-admission-evidence"
+}

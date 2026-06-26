@@ -4,6 +4,16 @@
   "title": "Chio Swarm Continuation Token",
   "type": "object",
   "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "required": ["parentTaskId"]
+      },
+      "then": {
+        "required": ["witnessChainRef", "witnessChainSha256"]
+      }
+    }
+  ],
   "required": [
     "schema",
     "tokenId",
@@ -64,6 +74,13 @@
     "budgetAllocationId": {
       "type": "string",
       "minLength": 1
+    },
+    "witnessChainRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "witnessChainSha256": {
+      "$ref": "#/$defs/digest"
     },
     "revocationEpochRef": {
       "type": "string",

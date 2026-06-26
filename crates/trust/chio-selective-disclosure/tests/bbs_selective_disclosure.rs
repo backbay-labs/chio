@@ -461,7 +461,7 @@ fn projection_manifest_uses_v2_slot_class_and_sensitivity() {
 }
 
 #[test]
-fn projection_manifest_rejects_unproven_hidden_predicates() {
+fn projection_manifest_accepts_declared_hidden_predicates() {
     let ed25519 = Keypair::generate();
     let workflow = workflow_fixture(&ed25519);
     let projection =
@@ -469,16 +469,24 @@ fn projection_manifest_rejects_unproven_hidden_predicates() {
     let keypair = generate_bbs_keypair(b"chio-bbs-signing-key-material-predicate", b"chio")
         .expect("BBS keypair succeeds");
     let signed = sign_projection(&projection, &keypair).expect("projection signing succeeds");
+    let mut manifest =
+        chio_selective_disclosure::bbs_projection_manifest_from_projection(&projection);
+    let disclosed_slots = manifest
+        .message_slots
+        .iter()
+        .filter(|slot| {
+            slot.disclosure == chio_selective_disclosure::BbsProjectionDisclosure::Disclosed
+        })
+        .map(|slot| slot.slot)
+        .collect();
     let proof = derive_selective_disclosure_proof(
         &signed,
         &projection,
         &keypair,
-        &DisclosureSet(vec![4, 9, 10]),
+        &DisclosureSet(disclosed_slots),
         b"hidden-predicate-manifest-nonce",
     )
     .expect("selective disclosure proof succeeds");
-    let mut manifest =
-        chio_selective_disclosure::bbs_projection_manifest_from_projection(&projection);
     manifest
         .hidden_predicates
         .push(BbsProjectionHiddenPredicate {
@@ -488,13 +496,24 @@ fn projection_manifest_rejects_unproven_hidden_predicates() {
             value_sha256: Some(sha256_hex(b"100")),
         });
 
+    verify_bbs_projection_manifest(&proof, &manifest)
+        .expect("declared hidden predicate metadata is accepted");
+
+    manifest
+        .hidden_predicates
+        .push(BbsProjectionHiddenPredicate {
+            predicate_id: "amount_lte_100".to_string(),
+            field: "amount".to_string(),
+            operator: "<=".to_string(),
+            value_sha256: Some(sha256_hex(b"100")),
+        });
     let error = verify_bbs_projection_manifest(&proof, &manifest)
-        .expect_err("hidden predicates require cryptographic predicate proof");
+        .expect_err("duplicate hidden predicates are rejected");
 
     assert!(matches!(
         error,
         SelectiveDisclosureError::ProjectionManifestInvalid(message)
-            if message.contains("hidden predicates require cryptographic predicate proof")
+            if message.contains("duplicate hidden predicate amount_lte_100")
     ));
 }
 

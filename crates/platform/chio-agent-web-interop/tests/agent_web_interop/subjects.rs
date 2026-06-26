@@ -102,7 +102,11 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "tool_name": "create_order",
         "arguments_digest": "5656565656565656565656565656565656565656565656565656565656565656",
         "result_digest": "7878787878787878787878787878787878787878787878787878787878787878",
-        "authorization_context_digest": "9090909090909090909090909090909090909090909090909090909090909090"
+        "authorization_context_digest": "9090909090909090909090909090909090909090909090909090909090909090",
+        "protected_resource_metadata_digest": "9191919191919191919191919191919191919191919191919191919191919191",
+        "authorization_server_metadata_digest": "9292929292929292929292929292929292929292929292929292929292929292",
+        "dpop_proof_digest": "9393939393939393939393939393939393939393939393939393939393939393",
+        "proof_envelope_resource_read_digest": "9494949494949494949494949494949494949494949494949494949494949494"
     }));
     push_artifact(
         &mut builder.artifacts,
@@ -125,10 +129,22 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "task_id": "task-a2a-agent-web-001",
         "message_id": "message-a2a-agent-web-001",
         "agent_card_digest": "1313131313131313131313131313131313131313131313131313131313131313",
+        "agent_card_schema_digest": "5858585858585858585858585858585858585858585858585858585858585858",
+        "agent_card_url_digest": "5959595959595959595959595959595959595959595959595959595959595959",
+        "skill_id_digest": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+        "interface_url_digest": "5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+        "context_id_digest": "5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c",
         "task_input_digest": "2424242424242424242424242424242424242424242424242424242424242424",
         "task_state": a2a_task_state,
         "task_state_digest": "3535353535353535353535353535353535353535353535353535353535353535",
+        "message_parts_digest": "5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d",
+        "message_send_digest": "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
         "result_digest": "4646464646464646464646464646464646464646464646464646464646464646",
+        "metadata_chio_skill_selector_digest": "5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f",
+        "task_artifacts_digest": "6060606060606060606060606060606060606060606060606060606060606060",
+        "streaming_lifecycle_digest": "6161616161616161616161616161616161616161616161616161616161616161",
+        "cancel_lifecycle_digest": "6262626262626262626262626262626262626262626262626262626262626262",
+        "push_notification_config_digest": "6363636363636363636363636363636363636363636363636363636363636363",
         "authorization_context_digest": "5757575757575757575757575757575757575757575757575757575757575757"
     }));
     push_artifact(
@@ -153,12 +169,22 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "object_kind": "openapi_operation",
         "id": "openapi-operation-agent-web-valid",
         "spec_digest": "6868686868686868686868686868686868686868686868686868686868686868",
+        "openapi_document_id_digest": "a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6",
+        "server_url_digest": "a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7",
         "operation_id": "createAgentOrder",
         "method": "POST",
         "path_template": "/orders",
+        "path_parameters_digest": "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8",
         "request_digest": "7979797979797979797979797979797979797979797979797979797979797979",
         "response_digest": "8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a",
         "status_code": openapi_status_code,
+        "x_chio_proof_envelope_profile": "chio.agent-web-proof-envelope.v1",
+        "x_chio_receipt_binding_digest": "a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9",
+        "x_chio_evidence_profile_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "egress_contract_digest": "abababababababababababababababababababababababababababababababab",
+        "redirect_followed": false,
+        "response_size_bytes": 4096,
+        "max_response_size_bytes": 1048576,
         "authorization_context_digest": "9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b",
         "chio_operation_receipt_ref": openapi_receipt_ref
     }));
@@ -193,6 +219,15 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "requires_permission": true,
         "permission_decision": acp_client_permission_decision,
         "bridge_fidelity": "lossless",
+        "jsonrpc_method": "session/request_permission",
+        "jsonrpc_id_digest": "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+        "params_digest": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "permission_request_digest": "a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2",
+        "file_path_scope_digest": "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3",
+        "terminal_command_scope_digest": "a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4",
+        "chio_receipt_id": "receipt-agent-web-acp-client-permission-allow",
+        "evidence_path_kind": "signed-receipt",
+        "receipt_signature_digest": "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
         "source_envelope_digest": "acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac",
         "arguments_digest": "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
         "client_session_digest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
@@ -299,7 +334,27 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "allowed": ag_ui_allowed,
         "payload_digest": "4444444444444444444444444444444444444444444444444444444444444444",
         "receipt_digest": "5555555555555555555555555555555555555555555555555555555555555555",
-        "authorization_context_digest": "6666666666666666666666666666666666666666666666666666666666666666"
+        "authorization_context_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+        "event_sequence": [
+            {
+                "phase": "start",
+                "event_id": "evt-agent-web-checkout-001:start",
+                "payload_digest": "6767676767676767676767676767676767676767676767676767676767676767",
+                "receipt_digest": "6868686868686868686868686868686868686868686868686868686868686868"
+            },
+            {
+                "phase": "content",
+                "event_id": "evt-agent-web-checkout-001:content",
+                "payload_digest": "6969696969696969696969696969696969696969696969696969696969696969",
+                "receipt_digest": "6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+            },
+            {
+                "phase": "end",
+                "event_id": "evt-agent-web-checkout-001:end",
+                "payload_digest": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+                "receipt_digest": "6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c"
+            }
+        ]
     }));
     if matches!(
         case,
@@ -929,7 +984,7 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "id": "in-toto-statement-agent-web-valid",
         "statement_type": "https://in-toto.io/Statement/v1",
         "payload_type": "application/vnd.in-toto+json",
-        "predicate_type": "https://chio.dev/predicates/agent-web-invocation/v1",
+        "predicate_type": "chio.bilateral-cosign-invocation.v1",
         "dsse_envelope_digest": "a0".repeat(32),
         "payload_digest": "a1".repeat(32),
         "subject_digest": "a2".repeat(32),
@@ -938,6 +993,9 @@ pub(crate) fn add_external_subject_artifacts(builder: &mut AgentWebBundleBuilder
         "signer_identity_digest": "a5".repeat(32),
         "verification_material_digest": "a6".repeat(32),
         "authorization_context_digest": "a7".repeat(32),
+        "peer_pin_digest": "a8".repeat(32),
+        "policy_summary_digest": "a9".repeat(32),
+        "capability_lease_ref": "lease-agent-web-in-toto-bilateral",
         "signature_count": 2,
         "receipt_refs": ["receipt-agent-web-in-toto-statement-allow"],
         "mediated_by_chio_receipt": true

@@ -37,11 +37,11 @@ use chio_runtime_core::{
 };
 use chio_swarm_authority::{
     sign_swarm_continuation_token, sign_swarm_delegation_witness_hop, sign_swarm_join_receipt,
-    sign_swarm_route_plan_receipt, sign_swarm_terminal_graph_receipt,
-    verify_swarm_authority_bundle, SwarmAuthorityBundle, SwarmBudgetAllocation,
-    SwarmBudgetAllocationState, SwarmBudgetPool, SwarmContinuationMode, SwarmContinuationToken,
-    SwarmDelegationWitnessChain, SwarmDelegationWitnessHop, SwarmGraphEdge, SwarmGraphJoin,
-    SwarmGraphNode, SwarmJoinParentReceipt, SwarmJoinReceipt, SwarmRevocationEpoch,
+    sign_swarm_revocation_epoch, sign_swarm_route_plan_receipt, sign_swarm_task_graph,
+    sign_swarm_terminal_graph_receipt, verify_swarm_authority_bundle, SwarmAuthorityBundle,
+    SwarmBudgetAllocation, SwarmBudgetAllocationState, SwarmBudgetPool, SwarmContinuationMode,
+    SwarmContinuationToken, SwarmDelegationWitnessChain, SwarmDelegationWitnessHop, SwarmGraphEdge,
+    SwarmGraphJoin, SwarmGraphNode, SwarmJoinParentReceipt, SwarmJoinReceipt, SwarmRevocationEpoch,
     SwarmRoutePlanReceipt, SwarmTaskGraph, SwarmTerminalBudgetRollup, SwarmTerminalGraphReceipt,
     CHIO_SWARM_BUDGET_POOL_SCHEMA, CHIO_SWARM_CONTINUATION_TOKEN_SCHEMA,
     CHIO_SWARM_DELEGATION_WITNESS_CHAIN_SCHEMA, CHIO_SWARM_JOIN_RECEIPT_SCHEMA,
@@ -2446,11 +2446,13 @@ fn runtime_swarm_bundle(
         graph_id: "swarm-graph-runtime".to_string(),
         root_transaction_ref: "passport-runtime".to_string(),
         planner_subject: "did:chio:planner".to_string(),
-        issuer: "did:chio:authority".to_string(),
+        issuer: swarm_witness_issuer(),
+        signature: String::new(),
         created_at_unix_ms: 1_800_000_000_000,
         expires_at_unix_ms: 1_800_003_600_000,
         max_depth: 1,
         max_fanout: 2,
+        multi_hop_witness_chains: false,
         nodes: vec![
             SwarmGraphNode {
                 task_id: "task-root".to_string(),
@@ -2501,6 +2503,7 @@ fn runtime_swarm_bundle(
         revocation_epoch_ref: "revocation-epoch-runtime".to_string(),
         route_plan_refs: vec!["route-child-a".to_string(), "route-child-b".to_string()],
     };
+    task_graph.signature = sign_swarm_task_graph(&task_graph, &swarm_witness_keypair())?;
     let graph_sha256 = canonical_test_hash(&task_graph)?;
     let mut continuation_a = runtime_swarm_continuation(
         "continuation-child-a",
@@ -2522,6 +2525,7 @@ fn runtime_swarm_bundle(
     )?;
     task_graph.nodes[1].continuation_token_ref = Some(continuation_a.token_id.clone());
     task_graph.nodes[2].continuation_token_ref = Some(continuation_b.token_id.clone());
+    task_graph.signature = sign_swarm_task_graph(&task_graph, &swarm_witness_keypair())?;
     continuation_a.graph_sha256 = canonical_test_hash(&task_graph)?;
     continuation_a.signature =
         sign_swarm_continuation_token(&continuation_a, &swarm_witness_keypair())?;
@@ -2543,6 +2547,14 @@ fn runtime_swarm_bundle(
         &child_scope_hash,
         scope_subset_proof,
     )?;
+    continuation_a.witness_chain_ref = Some(witness_chain_a.chain_id.clone());
+    continuation_a.witness_chain_sha256 = Some(canonical_test_hash(&witness_chain_a)?);
+    continuation_a.signature =
+        sign_swarm_continuation_token(&continuation_a, &swarm_witness_keypair())?;
+    continuation_b.witness_chain_ref = Some(witness_chain_b.chain_id.clone());
+    continuation_b.witness_chain_sha256 = Some(canonical_test_hash(&witness_chain_b)?);
+    continuation_b.signature =
+        sign_swarm_continuation_token(&continuation_b, &swarm_witness_keypair())?;
 
     let mut join_receipt = SwarmJoinReceipt {
         schema: CHIO_SWARM_JOIN_RECEIPT_SCHEMA.to_string(),
@@ -2580,6 +2592,20 @@ fn runtime_swarm_bundle(
         signature: String::new(),
     };
     join_receipt.signature = sign_swarm_join_receipt(&join_receipt, &swarm_witness_keypair())?;
+
+    let mut revocation_epoch = SwarmRevocationEpoch {
+        schema: CHIO_SWARM_REVOCATION_EPOCH_SCHEMA.to_string(),
+        epoch_id: "revocation-epoch-runtime".to_string(),
+        root_hash: revocation_root,
+        issued_at_unix_ms: 1_800_000_000_000,
+        valid_until_unix_ms: 1_800_003_600_000,
+        revoked_subjects: Vec::new(),
+        revoked_task_ids: Vec::new(),
+        issuer: swarm_witness_issuer(),
+        signature: String::new(),
+    };
+    revocation_epoch.signature =
+        sign_swarm_revocation_epoch(&revocation_epoch, &swarm_witness_keypair())?;
 
     let bundle = SwarmAuthorityBundle {
         task_graph,
@@ -2635,15 +2661,7 @@ fn runtime_swarm_bundle(
                 },
             ],
         },
-        revocation_epoch: SwarmRevocationEpoch {
-            schema: CHIO_SWARM_REVOCATION_EPOCH_SCHEMA.to_string(),
-            epoch_id: "revocation-epoch-runtime".to_string(),
-            root_hash: revocation_root,
-            issued_at_unix_ms: 1_800_000_000_000,
-            valid_until_unix_ms: 1_800_003_600_000,
-            revoked_subjects: Vec::new(),
-            revoked_task_ids: Vec::new(),
-        },
+        revocation_epoch,
         terminal_receipts: vec![runtime_swarm_terminal_graph_receipt()?],
         now_unix_ms: 1_800_000_001_000,
     };
@@ -2680,6 +2698,8 @@ fn runtime_swarm_continuation(
         graph_sha256: graph_sha256.to_string(),
         route_plan_receipt_id: route_plan_receipt_id.to_string(),
         budget_allocation_id: budget_allocation_id.to_string(),
+        witness_chain_ref: None,
+        witness_chain_sha256: None,
         revocation_epoch_ref: "revocation-epoch-runtime".to_string(),
         revocation_epoch_root_hash: revocation_epoch_root_hash.to_string(),
         session_anchor_ref: "session-anchor-runtime".to_string(),

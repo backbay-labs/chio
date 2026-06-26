@@ -73,6 +73,8 @@ fn proof_fixture_list_reports_proof_fixtures() {
         "public-settlement-refunded-posture-without-reversal",
         "public-settlement-deployment-provenance-mismatch",
         "public-settlement-advisory-witness",
+        "public-settlement-missing-independent-head",
+        "public-settlement-independent-head-block-hash-mismatch",
         "public-settlement-wrong-chain-id",
         "agent-web-interop",
         "agent-web-external-digest-mismatch",
@@ -116,6 +118,10 @@ fn proof_fixture_list_reports_proof_fixtures() {
         "commerce-currency-mismatch",
         "commerce-payment-amount-mismatch",
         "commerce-mandate-occurrence-limit",
+        "commerce-intent-evidence-mismatch",
+        "commerce-provider-admission-mismatch",
+        "commerce-settlement-packet-mismatch",
+        "commerce-reconciliation-mismatch",
         "enterprise-coverage-subject-mismatch",
         "enterprise-risk-reserve-state-missing",
         "enterprise-settlement-counterparty-mismatch",
@@ -143,6 +149,11 @@ fn proof_fixture_list_reports_proof_fixtures() {
         "disclosure-lineage-missing-ledger-entry",
         "disclosure-lineage-unknown-lineage-root",
         "disclosure-lineage-excess-disclosed-field",
+        "disclosure-lineage-forbidden-disclosed-field",
+        "disclosure-lineage-undeclared-hidden-predicate",
+        "disclosure-lineage-projection-manifest-id-mismatch",
+        "disclosure-lineage-privacy-profile-not-bound-to-transaction",
+        "disclosure-lineage-nonce-replay",
         "disclosure-lineage-unsupported-edge-kind",
         "disclosure-lineage-missing-parent",
         "disclosure-lineage-node-digest-mismatch",
@@ -190,6 +201,31 @@ fn proof_room_negative_fixture_failure_codes_are_dotted() {
     );
 }
 
+#[test]
+fn proof_room_risk_negative_failure_codes_cover_launch_gates() {
+    let root = workspace_root().join("fixtures/proof-room");
+    let mut codes = BTreeSet::new();
+    collect_fixture_failure_codes(&root, &mut codes)
+        .test_expect("proof-room fixture tree can be scanned");
+
+    for expected in [
+        "proof-room.negative.risk-reserve-state-missing",
+        "proof-room.negative.risk-coverage-currency-mismatch",
+        "proof-room.negative.risk-coverage-subject-mismatch",
+        "proof-room.negative.risk-reserve-double-consumption",
+        "proof-room.negative.risk-market-slash-requires-sanction-bridge",
+        "proof-room.negative.risk-open-appeal-blocks-reserve-action",
+        "proof-room.negative.risk-payout-preobserved-instruction",
+        "proof-room.negative.risk-payout-settlement-mismatch",
+        "proof-room.negative.risk-actuarial-backtest-breach",
+    ] {
+        assert!(
+            codes.contains(expected),
+            "missing launch risk failure code {expected}"
+        );
+    }
+}
+
 fn collect_non_dotted_failure_codes(
     path: &Path,
     bad_codes: &mut Vec<String>,
@@ -208,6 +244,24 @@ fn collect_non_dotted_failure_codes(
         return Ok(());
     };
     collect_non_dotted_failure_codes_in_value(path, &value, bad_codes);
+    Ok(())
+}
+
+fn collect_fixture_failure_codes(path: &Path, codes: &mut BTreeSet<String>) -> std::io::Result<()> {
+    if path.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            collect_fixture_failure_codes(&entry?.path(), codes)?;
+        }
+        return Ok(());
+    }
+    if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+        return Ok(());
+    }
+    let bytes = std::fs::read(path)?;
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return Ok(());
+    };
+    collect_fixture_failure_codes_in_value(&value, codes);
     Ok(())
 }
 
@@ -238,6 +292,27 @@ fn collect_non_dotted_failure_codes_in_value(
     }
 }
 
+fn collect_fixture_failure_codes_in_value(value: &serde_json::Value, codes: &mut BTreeSet<String>) {
+    match value {
+        serde_json::Value::Object(object) => {
+            for key in ["expected_failure_code", "observed_failure_code"] {
+                if let Some(code) = object.get(key).and_then(|value| value.as_str()) {
+                    codes.insert(code.to_string());
+                }
+            }
+            for value in object.values() {
+                collect_fixture_failure_codes_in_value(value, codes);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                collect_fixture_failure_codes_in_value(value, codes);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn is_dotted_fixture_failure_code(code: &str) -> bool {
     let base = code.split(':').next().unwrap_or(code);
     !base.is_empty()
@@ -248,6 +323,36 @@ fn is_dotted_fixture_failure_code(code: &str) -> bool {
                 || character.is_ascii_digit()
                 || matches!(character, '.' | '-' | '_')
         })
+}
+
+fn collect_risk_reports_missing_financial_invariants(
+    path: &Path,
+    missing_reports: &mut Vec<String>,
+) -> std::io::Result<()> {
+    if path.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            collect_risk_reports_missing_financial_invariants(&entry?.path(), missing_reports)?;
+        }
+        return Ok(());
+    }
+    if path.file_name().and_then(|file_name| file_name.to_str())
+        != Some("risk-comptroller-report.json")
+        && !path
+            .file_name()
+            .and_then(|file_name| file_name.to_str())
+            .is_some_and(|file_name| {
+                file_name.starts_with("risk-comptroller-report-") && file_name.ends_with(".json")
+            })
+    {
+        return Ok(());
+    }
+    let bytes = std::fs::read(path)?;
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).test_expect("risk comptroller report parses");
+    if value.get("premium").is_none() || value.get("capital_decomposition").is_none() {
+        missing_reports.push(path.display().to_string());
+    }
+    Ok(())
 }
 
 #[test]
@@ -273,6 +378,34 @@ fn proof_fixture_generate_reports_verifiable_single_call_authority_entrypoint() 
     let verify_path = report["verify_path"]
         .as_str()
         .test_expect("fixture generate report includes verify path");
+    let bundle = out_path.join("proof-room-bundle");
+    let signature: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(bundle.join("bundle-signature.dsse.json"))
+            .test_expect("read generated bundle signature"),
+    )
+    .test_expect("generated bundle signature parses");
+    assert_eq!(
+        signature["payloadRef"]["sha256"].as_str(),
+        Some(sha256_file(&bundle.join("manifest.json")).as_str())
+    );
+    let verifier_report: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(bundle.join("verifier/report.json"))
+            .test_expect("read generated verifier report"),
+    )
+    .test_expect("generated verifier report parses");
+    assert_eq!(
+        verifier_report["transparencyState"], "not_present",
+        "generated fixture transaction report must expose transparency state"
+    );
+    let top_level_report: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(out_path.join("verifier-report.json"))
+            .test_expect("read generated top-level verifier report"),
+    )
+    .test_expect("generated top-level verifier report parses");
+    assert_eq!(
+        top_level_report["transparencyState"], "not_present",
+        "generated top-level transaction report must expose transparency state"
+    );
     let verify_output = chio(&["proof", "verify", verify_path]);
 
     assert_success(&verify_output);
@@ -328,6 +461,41 @@ fn proof_fixture_generate_reports_verifiable_commerce_transaction_stage_entrypoi
         manifest["source_command"].as_str(),
         Some("chio proof fixture generate commerce-transaction-passport")
     );
+    assert!(
+        out_path
+            .join("proof-room-bundle/anchor-proof-bundle.json")
+            .exists(),
+        "commerce stage should ship the typed anchor proof bundle artifact"
+    );
+    assert!(
+        out_path
+            .join("proof-room-bundle/order-passport.json")
+            .exists(),
+        "commerce stage should ship the graph-bound order passport artifact"
+    );
+    assert!(
+        out_path
+            .join("proof-room-bundle/roots/order-passport.json")
+            .exists(),
+        "commerce stage roots should ship the graph-bound order passport artifact"
+    );
+    let artifacts = manifest["artifacts"]
+        .as_array()
+        .test_expect("commerce stage artifacts array");
+    assert!(
+        artifacts.iter().any(|artifact| {
+            artifact["path"] == "anchor-proof-bundle.json"
+                && artifact["schema"] == "chio.anchor-proof-bundle.v1"
+                && artifact["renderer_hint"] == "anchor-proof-bundle"
+        }),
+        "commerce stage manifest should expose the typed anchor proof bundle artifact"
+    );
+    let evidence_graph: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(out_path.join("proof-room-bundle/evidence-graph.json"))
+            .test_expect("read generated commerce evidence graph"),
+    )
+    .test_expect("generated commerce evidence graph parses");
+    assert_commerce_mandate_projects_to_chio_authority_projection(&evidence_graph);
     let receipt_coverage = manifest["receipt_coverage"]
         .as_array()
         .test_expect("commerce stage receipt coverage array");
@@ -635,6 +803,27 @@ fn proof_fixture_generate_reports_verifiable_disclosure_agent_web_stage_entrypoi
         Some("chio proof fixture generate disclosure-and-agent-web-envelope")
     );
     let bundle = out_path.join("proof-room-bundle");
+    let in_toto_statement: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(bundle.join("external/in-toto-statement.json"))
+            .test_expect("read generated in-toto statement"),
+    )
+    .test_expect("generated in-toto statement parses");
+    assert_eq!(
+        in_toto_statement
+            .get("predicate_type")
+            .and_then(serde_json::Value::as_str),
+        Some("chio.bilateral-cosign-invocation.v1")
+    );
+    for required_field in [
+        "peer_pin_digest",
+        "policy_summary_digest",
+        "capability_lease_ref",
+    ] {
+        assert!(
+            in_toto_statement.get(required_field).is_some(),
+            "generated in-toto statement missing {required_field}"
+        );
+    }
     let evidence_graph: serde_json::Value = serde_json::from_slice(
         &std::fs::read(bundle.join("evidence-graph.json"))
             .test_expect("read generated evidence graph"),
@@ -696,6 +885,8 @@ fn proof_fixture_generate_copies_domain_passport_fixture() {
     assert!(out_path.join("transaction-passport.json").exists());
     assert!(out_path.join("evidence-graph.json").exists());
     assert!(out_path.join("order-context.json").exists());
+    assert!(out_path.join("order-passport.json").exists());
+    assert!(out_path.join("roots/order-passport.json").exists());
     let stdout = stdout(output);
     assert!(stdout.contains("\"fixture_id\":\"commerce-offline-psp\""));
     let report: serde_json::Value =
@@ -782,6 +973,15 @@ fn proof_fixture_generate_outputs_servable_enterprise_bundle() {
         "--json",
     ]);
     assert_success(&output);
+
+    let mut missing_financial_invariants = Vec::new();
+    collect_risk_reports_missing_financial_invariants(&out_path, &mut missing_financial_invariants)
+        .test_expect("scan generated enterprise risk reports");
+    assert!(
+        missing_financial_invariants.is_empty(),
+        "generated risk reports missing financial invariants: {}",
+        missing_financial_invariants.join(", ")
+    );
 
     let disclosure_report: serde_json::Value = serde_json::from_slice(
         &std::fs::read(out_path.join("disclosure-capsule.json"))
@@ -1508,6 +1708,11 @@ fn proof_fixture_generate_copies_runnable_negative_passport_fixtures() {
             "swarm route-plan selected route bridge mismatch",
         ),
         (
+            "recursive-runtime-swarm-egress-constraint-unsupported",
+            "route-child-a.json",
+            "unsupported swarm route-plan egress constraint",
+        ),
+        (
             "recursive-runtime-swarm-witness-child-scope-mismatch",
             "witness-child-a.json",
             "swarm witness child scope mismatch",
@@ -1556,6 +1761,16 @@ fn proof_fixture_generate_copies_runnable_negative_passport_fixtures() {
             "public-settlement-advisory-witness",
             "settlement-proof-bundle.json",
             "public settlement witness mode advisory",
+        ),
+        (
+            "public-settlement-missing-independent-head",
+            "settlement-proof-bundle.json",
+            "public settlement independent head missing",
+        ),
+        (
+            "public-settlement-independent-head-block-hash-mismatch",
+            "settlement-proof-bundle.json",
+            "public settlement independent head block hash mismatch",
         ),
         (
             "agent-web-external-digest-mismatch",
@@ -1918,7 +2133,72 @@ fn proof_fixture_generate_copies_runnable_negative_passport_fixtures() {
         let stdout = stdout(output);
         assert!(stdout.contains(&format!("\"fixture_id\":\"{fixture_id}\"")));
 
-        let verify_output = chio(&["proof", "verify", out_dir.as_str()]);
+        let mut verify_command = chio_command();
+        if fixture_id == "public-settlement-missing-independent-head" {
+            verify_command.env_remove("CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON");
+            verify_command.env_remove("CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL");
+        } else if fixture_id == "public-settlement-independent-head-block-hash-mismatch" {
+            verify_command.env(
+                "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON",
+                "{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"latest_block_number\":12345701}",
+            );
+            verify_command.env_remove("CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL");
+        }
+        let verify_output = verify_command
+            .args(["proof", "verify", out_dir.as_str()])
+            .output()
+            .test_expect("chio command runs");
         assert_failure(&verify_output, expected_failure);
     }
+}
+
+fn assert_commerce_mandate_projects_to_chio_authority_projection(
+    evidence_graph: &serde_json::Value,
+) {
+    let mandate_ids = graph_node_ids_for_path(evidence_graph, "mandate-allowance-ledger.json");
+    let chio_projection_ids = graph_node_ids_for_path(
+        evidence_graph,
+        "protocol-payloads/chio-authority-projection.json",
+    );
+
+    assert!(
+        !mandate_ids.is_empty(),
+        "commerce evidence graph should include mandate ledger node ids"
+    );
+    assert!(
+        !chio_projection_ids.is_empty(),
+        "commerce evidence graph should include Chio authority projection node ids"
+    );
+
+    let edges = evidence_graph["edges"]
+        .as_array()
+        .test_expect("commerce evidence graph edges array");
+    assert!(
+        edges.iter().any(|edge| {
+            edge["predicate"] == "projects-to"
+                && edge["from"]
+                    .as_str()
+                    .is_some_and(|from| mandate_ids.contains(from))
+                && edge["to"]
+                    .as_str()
+                    .is_some_and(|to| chio_projection_ids.contains(to))
+        }),
+        "commerce mandate ledger must project to the Chio authority projection payload"
+    );
+}
+
+fn graph_node_ids_for_path(evidence_graph: &serde_json::Value, path: &str) -> BTreeSet<String> {
+    evidence_graph["nodes"]
+        .as_array()
+        .test_expect("commerce evidence graph nodes array")
+        .iter()
+        .filter(|node| node["path"] == path)
+        .flat_map(|node| {
+            [
+                node["id"].as_str().map(str::to_owned),
+                node["sha256"].as_str().map(str::to_owned),
+            ]
+        })
+        .flatten()
+        .collect()
 }

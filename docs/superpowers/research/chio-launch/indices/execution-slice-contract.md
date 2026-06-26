@@ -69,7 +69,7 @@ The first sprint is not complete because schemas exist. It is complete only when
 Required first-sprint commands:
 
 ```bash
-cargo test -p chio-core-types --test signed_artifact_schema transaction_passport_schemas_are_known
+cargo test -p chio-core-types --test signed_artifact_schema governed_action_evidence_schemas_are_registered
 scripts/check-chio-schema-registry.sh
 cargo test -p chio-control-plane --test transaction_passport
 cargo test -p chio-cli --test proof_verify

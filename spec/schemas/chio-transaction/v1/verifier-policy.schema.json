@@ -33,6 +33,32 @@
       "type": "array",
       "items": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
       "uniqueItems": true
+    },
+    "accepted_passport_issuers": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "required_evidence_roles": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "accepted_transparency_states": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["trust_anchored", "transparency_preview", "not_present"]
+      },
+      "uniqueItems": true
+    },
+    "required_commerce_states": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["authorized", "fulfilled", "settled", "disputed", "refunded"]
+      },
+      "uniqueItems": true
     }
   }
 }

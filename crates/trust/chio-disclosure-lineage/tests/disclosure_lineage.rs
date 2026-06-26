@@ -1,12 +1,14 @@
 use chio_core_types::{sha256_hex, Keypair};
 use chio_disclosure_lineage::{
     compute_signed_lineage_subgraph_digest, sign_crypto_context_report, sign_lineage_subgraph,
-    verify_disclosure_lineage_bundle, DisclosureCapsule, DisclosureContextVerdict,
+    verify_disclosure_lineage_bundle_with_trust, DisclosureCapsule, DisclosureContextVerdict,
     DisclosureCryptoContextReport, DisclosureHiddenPredicate, DisclosureLeakageLedger,
-    DisclosureLeakageLedgerEntry, DisclosureLineageBundle, DisclosureProfileLeakageBudget,
-    DisclosureSensitivityClass, DisclosureSignedLineageEdge, DisclosureSignedLineageNode,
-    DisclosureSignedLineageRedaction, DisclosureVerifierPrivacyProfile, SignedLineageSubgraph,
-    TransparencyState, DISCLOSURE_CAPSULE_SCHEMA_V1, DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1,
+    DisclosureLeakageLedgerEntry, DisclosureLineageBundle, DisclosureLineageError,
+    DisclosureLineageVerifierReport, DisclosureLineageVerifierTrust,
+    DisclosureProfileLeakageBudget, DisclosureSensitivityClass, DisclosureSignedLineageEdge,
+    DisclosureSignedLineageNode, DisclosureSignedLineageRedaction,
+    DisclosureVerifierPrivacyProfile, SignedLineageSubgraph, TransparencyState,
+    DISCLOSURE_CAPSULE_SCHEMA_V1, DISCLOSURE_CRYPTO_CONTEXT_REPORT_SCHEMA_V1,
     DISCLOSURE_LEAKAGE_LEDGER_SCHEMA_V1, DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1,
     DISCLOSURE_VERIFIER_PRIVACY_PROFILE_SCHEMA_V1, LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1,
 };
@@ -244,6 +246,19 @@ fn lineage_signer() -> Keypair {
     Keypair::from_seed(&[29u8; 32])
 }
 
+fn disclosure_lineage_trust() -> DisclosureLineageVerifierTrust {
+    let signer = lineage_signer().public_key();
+    DisclosureLineageVerifierTrust::new()
+        .with_trusted_lineage_signer_keys(vec![signer.clone()])
+        .with_trusted_crypto_context_report_signer_keys(vec![signer])
+}
+
+fn verify_bundle(
+    bundle: &DisclosureLineageBundle,
+) -> Result<DisclosureLineageVerifierReport, DisclosureLineageError> {
+    verify_disclosure_lineage_bundle_with_trust(bundle, &disclosure_lineage_trust())
+}
+
 fn digest(value: &str) -> String {
     sha256_hex(value.as_bytes())
 }
@@ -311,7 +326,7 @@ fn disclosure_lineage_rejects_privacy_profile_disclosed_field_budget_exceeded() 
     };
     bundle.privacy_profile.leakage_budget.max_disclosed_fields = 1;
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("privacy profile leakage budget breach must fail"),
         Err(error) => error,
     };
@@ -331,7 +346,7 @@ fn disclosure_lineage_rejects_disclosed_field_without_sensitivity_class() {
         .sensitivity_classes
         .retain(|sensitivity_class| sensitivity_class.class_id != "tool_identity");
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("unclassified disclosed field must fail"),
         Err(error) => error,
     };
@@ -348,7 +363,7 @@ fn disclosure_lineage_rejects_privacy_profile_transaction_ref_mismatch() {
     };
     bundle.privacy_profile.transaction_passport_ref = "passport-disclosure-other".to_string();
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("privacy profile transaction mismatch must fail"),
         Err(error) => error,
     };
@@ -383,7 +398,7 @@ fn disclosure_lineage_accepts_empty_leakage_ledger_without_disclosed_facts() {
         },
     );
 
-    let report = match verify_disclosure_lineage_bundle(&bundle) {
+    let report = match verify_bundle(&bundle) {
         Ok(report) => report,
         Err(error) => panic!("empty leakage ledger without disclosures should verify: {error}"),
     };
@@ -399,7 +414,7 @@ fn disclosure_lineage_rejects_leakage_entry_unknown_sensitivity_class() {
     };
     bundle.leakage_ledger.entries[0].sensitivity_class = "unclassified".to_string();
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("unknown leakage sensitivity class must fail"),
         Err(error) => error,
     };
@@ -416,7 +431,7 @@ fn disclosure_lineage_rejects_leakage_total_score_mismatch() {
     };
     bundle.leakage_ledger.total_leakage_score = 1;
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("leakage score mismatch must fail"),
         Err(error) => error,
     };
@@ -434,7 +449,7 @@ fn disclosure_lineage_rejects_lineage_depth_not_greater_than_parent() {
     bundle.lineage.nodes[1].depth = 0;
     resign_lineage(&mut bundle);
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("lineage depth regression must fail"),
         Err(error) => error,
     };
@@ -456,7 +471,7 @@ fn disclosure_lineage_rejects_lineage_frontier_digest_mismatch() {
     ));
     resign_lineage(&mut bundle);
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("lineage frontier mismatch must fail"),
         Err(error) => error,
     };
@@ -474,7 +489,7 @@ fn disclosure_lineage_rejects_node_evidence_below_floor() {
     bundle.lineage.required_evidence_class = "verified".to_string();
     resign_lineage(&mut bundle);
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("lineage evidence below floor must fail"),
         Err(error) => error,
     };
@@ -491,7 +506,7 @@ fn disclosure_lineage_rejects_sensitive_leakage_without_residual_note() {
     };
     bundle.leakage_ledger.entries[2].residual_inference_note = None;
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("sensitive leakage without residual note must fail"),
         Err(error) => error,
     };
@@ -508,7 +523,7 @@ fn disclosure_lineage_rejects_unsupported_hidden_predicate_kind() {
     };
     bundle.capsule.hidden_predicates[0].kind = "zk_range".to_string();
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("unsupported hidden predicate kind must fail"),
         Err(error) => error,
     };
@@ -525,7 +540,7 @@ fn disclosure_lineage_rejects_hidden_predicate_projection_slot_mismatch() {
     };
     bundle.capsule.hidden_predicates[0].projection_slot = 99;
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("hidden predicate projection slot mismatch must fail"),
         Err(error) => error,
     };
@@ -543,7 +558,7 @@ fn disclosure_lineage_rejects_unsupported_lineage_node_kind() {
     bundle.lineage.nodes[0].kind = "untyped_receipt".to_string();
     resign_lineage(&mut bundle);
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("unsupported lineage node kind must fail"),
         Err(error) => error,
     };
@@ -561,7 +576,7 @@ fn disclosure_lineage_rejects_unsupported_lineage_edge_kind() {
     bundle.lineage.edges[0].kind = "ambiguous_relation".to_string();
     resign_lineage(&mut bundle);
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("unsupported lineage edge kind must fail"),
         Err(error) => error,
     };
@@ -605,7 +620,7 @@ fn disclosure_lineage_rejects_field_forbidden_by_privacy_profile() {
         },
     );
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("privacy profile forbidden disclosure must fail"),
         Err(error) => error,
     };
@@ -619,7 +634,7 @@ fn disclosure_lineage_rejects_field_forbidden_by_privacy_profile() {
 fn disclosure_lineage_verifies_valid_bundle() -> Result<(), Box<dyn std::error::Error>> {
     let bundle = valid_bundle()?;
 
-    let report = verify_disclosure_lineage_bundle(&bundle)?;
+    let report = verify_bundle(&bundle)?;
 
     assert_eq!(report.schema, DISCLOSURE_LINEAGE_VERIFIER_REPORT_SCHEMA_V1);
     assert_eq!(report.verdict, "verified");
@@ -636,6 +651,25 @@ fn disclosure_lineage_verifies_valid_bundle() -> Result<(), Box<dyn std::error::
         .verified_claims
         .contains(&"claim.disclosure.crypto_context_bound".to_string()));
     Ok(())
+}
+
+#[test]
+fn disclosure_lineage_rejects_without_pinned_signer_keys() {
+    let Ok(bundle) = valid_bundle() else {
+        panic!("valid bundle fixture should build");
+    };
+
+    let error = match verify_disclosure_lineage_bundle_with_trust(
+        &bundle,
+        &DisclosureLineageVerifierTrust::new(),
+    ) {
+        Ok(_) => panic!("disclosure lineage must reject without pinned signer keys"),
+        Err(error) => error,
+    };
+
+    assert!(error
+        .to_string()
+        .contains("lineage subgraph signer untrusted"));
 }
 
 #[test]
@@ -720,7 +754,7 @@ fn disclosure_lineage_rejects_disclosed_field_absent_from_ledger() {
         .retain(|entry| entry.field != "tool_name");
     bundle.leakage_ledger.total_leakage_score = 6;
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("missing leakage ledger entry must fail"),
         Err(error) => error,
     };
@@ -741,7 +775,7 @@ fn disclosure_lineage_rejects_derived_fact_absent_from_ledger() {
         .retain(|entry| entry.field != "derived.crypto.presentation_timing");
     bundle.leakage_ledger.total_leakage_score = 6;
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("missing derived leakage fact must fail"),
         Err(error) => error,
     };
@@ -761,7 +795,7 @@ fn disclosure_lineage_rejects_crypto_context_artifact_ref_mismatch() {
     };
     report.artifact_ref = "disclosure-capsule-other".to_string();
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("crypto context artifact mismatch must fail"),
         Err(error) => error,
     };
@@ -785,7 +819,7 @@ fn disclosure_lineage_rejects_projection_manifest_ref_mismatch() {
     };
     report.signature = Some(signature);
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("projection manifest mismatch must fail"),
         Err(error) => error,
     };
@@ -805,7 +839,7 @@ fn disclosure_lineage_rejects_crypto_context_missing_disclosed_field() {
     };
     report.disclosed_fields.retain(|field| field != "tool_name");
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("crypto context missing disclosed field must fail"),
         Err(error) => error,
     };
@@ -825,7 +859,7 @@ fn disclosure_lineage_rejects_crypto_context_excess_disclosed_field() {
     };
     report.disclosed_fields.push("customer_email".to_string());
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("crypto context excess disclosed field must fail"),
         Err(error) => error,
     };
@@ -847,7 +881,7 @@ fn disclosure_lineage_rejects_crypto_context_unsupported_claim() {
         .verified_claims
         .push("claim.disclosure.unregistered_crypto_context_claim".to_string());
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("unsupported crypto context claim must fail"),
         Err(error) => error,
     };
@@ -867,7 +901,7 @@ fn disclosure_lineage_rejects_unsigned_crypto_context_report() {
     };
     report.signature = None;
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("unsigned crypto context report must fail"),
         Err(error) => error,
     };
@@ -887,7 +921,7 @@ fn disclosure_lineage_rejects_recomputed_digest_only_signature() {
     };
     bundle.lineage.signature = format!("sig-sha256:{digest}");
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("recomputed digest-only signature must fail"),
         Err(error) => error,
     };
@@ -906,7 +940,7 @@ fn disclosure_lineage_rejects_untrusted_lineage_signer() {
     };
     bundle.lineage.signature = signature;
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("untrusted lineage signer must fail"),
         Err(error) => error,
     };
@@ -923,7 +957,7 @@ fn disclosure_lineage_rejects_unknown_lineage_root() {
     };
     bundle.lineage.root_receipt_ids = vec!["receipt-missing".to_string()];
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("unknown lineage root must fail"),
         Err(error) => error,
     };
@@ -948,7 +982,7 @@ fn disclosure_lineage_rejects_root_receipt_ref_mismatch() {
     };
     bundle.lineage.signature = signature;
 
-    let error = match verify_disclosure_lineage_bundle(&bundle) {
+    let error = match verify_bundle(&bundle) {
         Ok(_) => panic!("lineage root receipt ref mismatch must fail"),
         Err(error) => error,
     };

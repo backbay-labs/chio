@@ -108,6 +108,37 @@ pub(super) fn update_runtime_graph_node_digest(
     panic!("runtime graph node exists for {artifact_path}");
 }
 
+pub(super) fn remove_runtime_graph_nodes_by_role(
+    bundle: &mut chio_transaction_passport::RuntimeSecurityBundle,
+    role: &str,
+) {
+    let mut graph: Value =
+        serde_json::from_slice(&bundle.evidence_graph_bytes).test_expect("runtime graph parses");
+    let nodes = graph["nodes"]
+        .as_array_mut()
+        .test_expect("runtime graph has nodes");
+    let removed_ids = nodes
+        .iter()
+        .filter(|node| node["role"] == role)
+        .map(|node| {
+            node["id"]
+                .as_str()
+                .test_expect("runtime graph node id")
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    nodes.retain(|node| node["role"] != role);
+    graph["edges"]
+        .as_array_mut()
+        .test_expect("runtime graph has edges")
+        .retain(|edge| {
+            let from = edge["from"].as_str().unwrap_or_default();
+            let to = edge["to"].as_str().unwrap_or_default();
+            !removed_ids.iter().any(|id| id == from || id == to)
+        });
+    rebind_runtime_graph(bundle, graph);
+}
+
 pub(super) fn runtime_graph_node_id(
     bundle: &chio_transaction_passport::RuntimeSecurityBundle,
     path: &str,
@@ -220,11 +251,20 @@ pub(super) fn sign_runtime_execution_lease(value: &Value, signing_key: &Keypair)
     let mut body = json!({
         "schema": "chio.runtime.execution-lease-signature.v1",
         "leaseId": value["lease_id"],
+        "subjectAgent": value["subject_agent"],
         "toolServerId": value["tool_server_id"],
         "toolInstanceId": value["tool_instance_id"],
         "toolManifestDigest": value["tool_manifest_digest"],
         "sandboxAttestationRef": value["sandbox_attestation_ref"],
+        "capabilityDigest": value["capability_digest"],
         "requestDigest": value["request_digest"],
+        "responsePolicyDigest": value["response_policy_digest"],
+        "taskGraphDigest": value["task_graph_digest"],
+        "childTaskId": value["child_task_id"],
+        "parentReceiptRef": value["parent_receipt_ref"],
+        "joinReceiptRef": value["join_receipt_ref"],
+        "budgetPoolRef": value["budget_pool_ref"],
+        "budgetAllocationRef": value["budget_allocation_ref"],
         "subjectCapabilityDigest": value["subject_capability_digest"],
         "ancestorCapabilityDigest": value["ancestor_capability_digest"],
         "revocationFreshnessRef": value["revocation_freshness_ref"],
@@ -247,6 +287,79 @@ pub(super) fn sign_runtime_execution_lease(value: &Value, signing_key: &Keypair)
     signing_key
         .sign_canonical(&body)
         .test_expect("execution lease signs")
+        .0
+        .to_hex()
+}
+
+pub(super) fn sign_runtime_route_plan_with_fixture_authority(value: &mut Value) {
+    let signing_key = Keypair::from_seed(&[46u8; 32]);
+    value["issuer"] = Value::String(format!("did:chio:{}", signing_key.public_key().to_hex()));
+    value["signature"] = Value::String(sign_runtime_route_plan(value, &signing_key));
+}
+
+fn sign_runtime_route_plan(value: &Value, signing_key: &Keypair) -> String {
+    let body = json!({
+        "schema": "chio.swarm.route-plan-receipt-signature.v1",
+        "routePlanId": value["routePlanId"],
+        "graphId": value["graphId"],
+        "taskId": value["taskId"],
+        "selectedRoute": value["selectedRoute"],
+        "candidateSetDigest": value["candidateSetDigest"],
+        "registrySnapshotHash": value["registrySnapshotHash"],
+        "bridgeId": value["bridgeId"],
+        "protocolTarget": value["protocolTarget"],
+        "egressContractId": value["egressContractId"],
+        "egressConstraints": value["egressConstraints"],
+        "attenuationDecision": value["attenuationDecision"],
+        "policyDigest": value["policyDigest"],
+        "expiresAtUnixMs": value["expiresAtUnixMs"],
+        "issuer": value["issuer"],
+    });
+    signing_key
+        .sign_canonical(&body)
+        .test_expect("runtime route plan signs")
+        .0
+        .to_hex()
+}
+
+pub(super) fn sign_runtime_join_receipt_with_fixture_authority(value: &mut Value) {
+    let signing_key = Keypair::from_seed(&[46u8; 32]);
+    value["issuer"] = Value::String(format!("did:chio:{}", signing_key.public_key().to_hex()));
+    value["signature"] = Value::String(sign_runtime_join_receipt(value, &signing_key));
+}
+
+fn sign_runtime_join_receipt(value: &Value, signing_key: &Keypair) -> String {
+    let mut body = value.clone();
+    body.as_object_mut()
+        .test_expect("runtime join receipt is object")
+        .remove("signature");
+    signing_key
+        .sign_canonical(&body)
+        .test_expect("runtime join receipt signs")
+        .0
+        .to_hex()
+}
+
+pub(super) fn sign_runtime_trusted_time_with_fixture_authority(value: &mut Value) {
+    let signing_key = Keypair::from_seed(&[46u8; 32]);
+    value["issuer"] = Value::String(format!("did:chio:{}", signing_key.public_key().to_hex()));
+    value["signature"] = Value::String(sign_runtime_trusted_time(value, &signing_key));
+}
+
+pub(super) fn sign_runtime_trusted_time(value: &Value, signing_key: &Keypair) -> String {
+    let body = json!({
+        "schema": "chio.runtime.trusted-time-proof-signature.v1",
+        "proofId": value["proof_id"],
+        "leaseId": value["lease_id"],
+        "ackId": value["ack_id"],
+        "observedAt": value["observed_at"],
+        "maxClockSkewMs": value["max_clock_skew_ms"],
+        "timeSourceId": value["time_source_id"],
+        "issuer": value["issuer"],
+    });
+    signing_key
+        .sign_canonical(&body)
+        .test_expect("runtime trusted time proof signs")
         .0
         .to_hex()
 }

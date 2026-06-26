@@ -26,7 +26,6 @@ pub fn verify_passport_root_claim_set_and_risk_report(
     bundle: &TransactionPassportRiskVerificationBundle,
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
     let risk_report = graph_bound_signed_risk_report(bundle)?;
-    chio_risk_comptroller::validate_risk_report(&bundle.passport, &risk_report)?;
     verify_passport_root_and_claim_set_artifacts_with_external_claims(
         &bundle.passport,
         bundle.passport_path.clone(),
@@ -88,11 +87,11 @@ fn graph_bound_signed_risk_report(
     }
     let value: serde_json::Value =
         serde_json::from_slice(bytes).map_err(|error| risk_failed(error.to_string()))?;
-    chio_risk_comptroller::validate_risk_report_signature(
+    chio_risk_comptroller::validate_signed_risk_report(
+        &bundle.passport,
         &value,
         &bundle.trusted_risk_comptroller_signer_keys,
-    )?;
-    serde_json::from_value(value).map_err(|error| risk_failed(error.to_string()))
+    )
 }
 
 fn invalid_graph(message: String) -> TransactionPassportError {

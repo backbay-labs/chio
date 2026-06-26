@@ -24,6 +24,7 @@ use chio_credentials::{
 };
 use chio_credentials::{TrustTier, synthesize_trust_tier};
 use chio_did::DidChio;
+use chio_errors::_generated::error_codes::TRANSACTION_RECEIPT_UNCHECKPOINTED;
 use chio_kernel::{
     ComplianceReport, ComplianceScoreConfig, ComplianceScoreInputs, EmaBaselineState,
     EvidenceChildReceiptScope, EvidenceExportQuery, behavioral_anomaly_score, compliance_score,
@@ -605,10 +606,13 @@ fn build_attestation_evidence(
         )));
     }
     if require_checkpoints && !bundle.uncheckpointed_receipts.is_empty() {
-        return Err(CliError::policy_error(format!(
+        return Err(CliError::registry_error(
+            &TRANSACTION_RECEIPT_UNCHECKPOINTED,
+            format!(
             "passport creation requires checkpoint coverage, but {} selected receipt(s) are uncheckpointed",
             bundle.uncheckpointed_receipts.len()
-        )));
+            ),
+        ));
     }
 
     Ok(ChioCredentialEvidence {

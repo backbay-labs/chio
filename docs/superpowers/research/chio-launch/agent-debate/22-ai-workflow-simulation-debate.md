@@ -420,8 +420,8 @@ Proposed files:
 - `crates/chio-cli/src/cli/types.rs`
 - `crates/chio-cli/src/cli/dispatch/workflow.rs`
 - `crates/chio-cli/src/cli/dispatch.rs`
-- `fixtures/chio-launch/workflow/preflight-valid-scope-subset/plan.json`
-- `fixtures/chio-launch/workflow/preflight-invalid-broader-child-scope/plan.json`
+- `fixtures/proof-room/workflow/preflight-valid-scope-subset/plan.json`
+- `fixtures/proof-room/workflow/preflight-invalid-broader-child-scope/plan.json`
 - `docs/superpowers/research/chio-launch/indices/proof-room-fixture-catalog.md`
 
 Red step:

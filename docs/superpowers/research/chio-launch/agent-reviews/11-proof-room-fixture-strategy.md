@@ -39,7 +39,7 @@ Purpose: prove that Chio mediates one action and fails closed.
 
 Required positive artifacts:
 
-- `transaction-passport.json` with schema `chio.transaction_passport.v1`.
+- `transaction-passport.json` with schema `chio.transaction-passport.v1`.
 - `evidence-graph.json` with the action node, capability node, policy node, guard node, receipt node, and trust-root node.
 - `receipts/allow.ndjson` with one signed allow receipt.
 - `capabilities/allow-capability.json`.
@@ -276,7 +276,7 @@ proof-room-bundle/
 
 `manifest.json` is the authenticated inventory. It must include:
 
-- `schema: "chio.proof_room_bundle.v1"`.
+- `schema: "chio.proof-room.bundle.v1"`.
 - `bundle_id`.
 - `fixture_id`.
 - `stage`.
@@ -505,7 +505,7 @@ Final launch pass criteria:
 
 The first implementation pass should not build every tab. It should build the verifier contract first:
 
-1. Define `chio.proof_room_bundle.v1`, `ProofManifest`, `ProofClaim`, `ProofDenial`, and `ProofVerificationReport`.
+1. Define `chio.proof-room.bundle.v1`, `ProofManifest`, `ProofClaim`, `ProofDenial`, and `ProofVerificationReport`.
 2. Add fixture generation for `single-call-authority`.
 3. Wrap IOA web3 output into `commerce-transaction-passport`.
 4. Wrap runtime harness output into `recursive-runtime-swarm`.

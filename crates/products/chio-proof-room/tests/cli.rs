@@ -22,6 +22,8 @@ const TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS: &str = concat!(
 );
 const RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS: &str =
     "5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca";
+const DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS: &str =
+    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa";
 
 #[test]
 fn proof_room_help_succeeds() -> Result<(), Box<dyn Error>> {
@@ -69,6 +71,14 @@ fn proof_room_verify_only_writes_doctor_report() -> Result<(), Box<dyn Error>> {
         .env(
             "CHIO_RUNTIME_TRUSTED_ROOT_KEYS",
             RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS,
+        )
+        .env(
+            "CHIO_DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS",
+            DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS,
+        )
+        .env(
+            "CHIO_DISCLOSURE_TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_KEYS",
+            DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS,
         )
         .args([
             "--bundle",

@@ -1,0 +1,8 @@
+{
+  "schema": "chio.swarm-authority.negative-fixture.v1",
+  "id": "egress-constraint-unsupported",
+  "claim_ref": "claim.swarm.route_plan_bound",
+  "base_fixture": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/route-child-a.json",
+  "case": "EgressConstraintUnsupported",
+  "expected_failure_code": "proof-room.negative.unsupported-swarm-route-plan-egress-constraint"
+}

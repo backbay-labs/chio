@@ -1,5 +1,14 @@
 use super::*;
 
+const STANDALONE_TRANSACTION_VERIFIED_CLAIMS: [&str; 6] = [
+    "claim.transaction.passport_root_verified",
+    "claim.transaction.evidence_graph_digest_bound",
+    "claim.transaction.evidence_graph_structure_verified",
+    "claim.transaction.claim_set_digest_bound",
+    "claim.transaction.policy_digest_bound",
+    "claim.transaction.omission_policy_bound",
+];
+
 pub(crate) fn verify_source_verifier_report(
     bundle_root: &Path,
     transaction_passport_artifact: &VerifiedManifestArtifact,
@@ -402,7 +411,12 @@ pub(crate) fn verify_transaction_passport_family_report_with_options(
             verify_transaction_passport_signature,
         )?
     } else {
-        merge_source_family_verifier_reports(&context, family_reports)
+        verify_source_root_claim_set_artifacts(
+            &context,
+            &family_reports,
+            verify_transaction_passport_signature,
+        )?;
+        merge_source_family_verifier_reports(&context, family_reports)?
     };
     ensure_source_policy_required_claims_verified(&requirements.required_claims, &report)?;
     attach_source_runtime_proof_parity_report(&context, &mut report)?;
@@ -499,11 +513,15 @@ pub(crate) fn push_source_local_family_report(
                 &context.artifacts,
             )
             .map_err(|error| format!("proof-room.disclosure-lineage-invalid: {error}"))?;
+            let trust = crate::disclosure_lineage_verifier_trust_from_env()
+                .map_err(|error| format!("proof-room.disclosure-lineage-invalid: {error}"))?;
             push_source_local_family_result(
                 family_reports,
                 required_claims,
                 route,
-                chio_disclosure_lineage::verify_disclosure_lineage_bundle(&bundle),
+                chio_disclosure_lineage::verify_disclosure_lineage_bundle_with_trust(
+                    &bundle, &trust,
+                ),
             )
         }
         ProofRoomFixtureReportRoute::Swarm => {
@@ -531,7 +549,7 @@ pub(crate) fn push_source_local_family_report(
                     context.passport.id, proof_bundle.transaction_passport_id
                 ));
             }
-            let mut trust = crate::public_settlement_verifier_trust_from_env()
+            let mut trust = crate::public_settlement_verifier_trust_from_env(&proof_bundle)
                 .map_err(|error| format!("proof-room.public-settlement-invalid: {error}"))?;
             trust.expected_trust_market_context =
                 expected_public_settlement_trust_market_context.cloned();
@@ -788,6 +806,7 @@ pub(crate) fn is_trust_market_artifact_role(role: &str) -> bool {
     matches!(
         role,
         "provider-discovery-snapshot"
+            | "receipt"
             | "provider-selection-report"
             | "trust-scorecard-snapshot"
             | "reputation-import-report"
@@ -806,13 +825,7 @@ pub(crate) fn is_agent_web_evidence_graph_node(node: &serde_json::Value) -> bool
     };
     let schema = node.get("schema").and_then(serde_json::Value::as_str);
     if role == "receipt" {
-        return schema == Some(CHIO_RECEIPT_SCHEMA)
-            && node
-                .get("path")
-                .and_then(serde_json::Value::as_str)
-                .and_then(|path| std::path::Path::new(path).file_stem())
-                .and_then(|stem| stem.to_str())
-                .is_some_and(|path_stem| path_stem.starts_with("receipt-agent-web-"));
+        return schema == Some(CHIO_RECEIPT_SCHEMA);
     }
     matches!(
         role,
@@ -861,11 +874,19 @@ fn is_runtime_source_node(node: &serde_json::Value) -> bool {
             | "claim-set"
             | "request"
             | "verifier-policy"
+            | "policy-activation-receipt"
             | "execution-lease"
             | "trust-root"
             | "tool-server-ack"
+            | "trusted-time-proof"
             | "revocation-freshness-proof"
             | "sandbox-attestation"
+            | "swarm-task-graph"
+            | "swarm-budget-pool"
+            | "swarm-join-receipt"
+            | "swarm-route-plan-receipt"
+            | "runtime-attack-simulation-report"
+            | "runtime-chaos-run-report"
     )
 }
 
@@ -888,15 +909,11 @@ pub(crate) fn verify_source_standalone_risk_report_with_keys(
     required_claims: &[String],
     trusted_risk_comptroller_signer_keys: &[chio_core_types::PublicKey],
 ) -> Result<serde_json::Value, String> {
-    let risk_report =
-        embedded_risk_comptroller_report(&context.evidence_graph_bytes, &context.artifacts)
-            .map_err(|error| format!("proof-room.risk-invalid: {error}"))?;
     let risk_report_value =
         embedded_risk_comptroller_report_value(&context.evidence_graph_bytes, &context.artifacts)
             .map_err(|error| format!("proof-room.risk-invalid: {error}"))?;
-    chio_risk_comptroller::validate_risk_report(&context.passport, &risk_report)
-        .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
-    chio_risk_comptroller::validate_risk_report_signature(
+    let risk_report = chio_risk_comptroller::validate_signed_risk_report(
+        &context.passport,
         &risk_report_value,
         trusted_risk_comptroller_signer_keys,
     )
@@ -937,19 +954,21 @@ pub(crate) fn verify_source_standalone_risk_report_with_keys(
 pub(crate) fn merge_source_family_verifier_reports(
     context: &SourceVerifierContext,
     family_reports: Vec<serde_json::Value>,
-) -> serde_json::Value {
-    let mut seen_claims = BTreeSet::new();
-    let mut verified_claims = Vec::new();
-    for report in &family_reports {
-        for claim in source_report_verified_claims(report) {
-            if seen_claims.insert(claim.clone()) {
-                verified_claims.push(serde_json::Value::String(claim));
-            }
-        }
-    }
+) -> Result<serde_json::Value, String> {
+    let verified_claim_ids = source_family_verified_claims(&family_reports);
+    let verified_claims = verified_claim_ids
+        .iter()
+        .cloned()
+        .map(serde_json::Value::String)
+        .collect::<Vec<_>>();
     let claim_results = source_claim_results(&verified_claims);
+    let transparency_state =
+        chio_transaction_passport::transaction_evidence_graph_transparency_state(
+            &context.evidence_graph_bytes,
+        )
+        .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
 
-    serde_json::json!({
+    Ok(serde_json::json!({
         "schema": "chio.transaction.verifier-report.v1",
         "id": format!("verifier-report-{}", context.passport.id),
         "issued_at": context.passport.issued_at.clone(),
@@ -964,11 +983,62 @@ pub(crate) fn merge_source_family_verifier_reports(
         "claim_set_path": context.passport.claim_set_path.clone(),
         "verifier_policy_sha256": context.passport.verifier_policy_sha256.clone(),
         "verifier_policy_path": context.passport.verifier_policy_path.clone(),
+        "transparencyState": transparency_state,
         "verified_claims": verified_claims,
         "claimResults": claim_results,
         "family_reports": family_reports,
         "checker_provenance": source_claim_checker_provenance(&verified_claims),
-    })
+    }))
+}
+
+pub(crate) fn verify_source_root_claim_set_artifacts(
+    context: &SourceVerifierContext,
+    family_reports: &[serde_json::Value],
+    verify_transaction_passport_signature: bool,
+) -> Result<(), String> {
+    let externally_verified_claims = source_family_verified_claims(family_reports);
+    let mut root_artifacts = BTreeMap::new();
+    root_artifacts.insert(
+        context.passport.claim_set_path.clone(),
+        context.claim_set_bytes.clone(),
+    );
+    if verify_transaction_passport_signature {
+        let trusted_root_signer_keys = crate::transaction_trusted_root_keys_from_env()
+            .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+        chio_transaction_passport::verify_passport_root_and_claim_set_artifacts_with_external_claims(
+            &context.passport,
+            context.passport_report_path.clone(),
+            &context.evidence_graph_bytes,
+            &context.verifier_policy_bytes,
+            &root_artifacts,
+            &trusted_root_signer_keys,
+            &externally_verified_claims,
+        )
+    } else {
+        chio_transaction_passport::verify_passport_root_and_claim_set_artifacts_unchecked_signature_with_external_claims(
+            &context.passport,
+            context.passport_report_path.clone(),
+            &context.evidence_graph_bytes,
+            &context.verifier_policy_bytes,
+            &root_artifacts,
+            &externally_verified_claims,
+        )
+    }
+    .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+    Ok(())
+}
+
+pub(crate) fn source_family_verified_claims(family_reports: &[serde_json::Value]) -> Vec<String> {
+    let mut seen_claims = BTreeSet::new();
+    let mut verified_claims = Vec::new();
+    for report in family_reports {
+        for claim in source_report_verified_claims(report) {
+            if seen_claims.insert(claim.clone()) {
+                verified_claims.push(claim);
+            }
+        }
+    }
+    verified_claims
 }
 
 pub(crate) fn source_claim_results(
@@ -1049,15 +1119,39 @@ pub(crate) fn ensure_source_policy_required_claims_verified(
     required_claims: &[String],
     report: &serde_json::Value,
 ) -> Result<(), String> {
-    let verified_claims = source_report_verified_claims(report);
     for required_claim in required_claims {
-        if !verified_claims.iter().any(|claim| claim == required_claim) {
+        if !source_report_verifies_required_claim(report, required_claim) {
             return Err(format!(
                 "proof-room.source-verifier.failed: required proof claim not verified: {required_claim}"
             ));
         }
     }
     Ok(())
+}
+
+pub(crate) fn source_report_verifies_required_claim(
+    report: &serde_json::Value,
+    required_claim: &str,
+) -> bool {
+    source_report_verified_claims(report)
+        .iter()
+        .any(|claim| claim == required_claim)
+        || source_transaction_report_verifies_claim(report, required_claim)
+}
+
+fn source_transaction_report_verifies_claim(
+    report: &serde_json::Value,
+    required_claim: &str,
+) -> bool {
+    STANDALONE_TRANSACTION_VERIFIED_CLAIMS.contains(&required_claim)
+        && report
+            .get("schema")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|schema| schema == "chio.transaction.verifier-report.v1")
+        && report
+            .get("verdict")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|verdict| verdict == "verified")
 }
 
 pub(crate) fn source_report_verified_claims(report: &serde_json::Value) -> Vec<String> {
@@ -1291,7 +1385,7 @@ pub(crate) fn validate_source_runtime_proof_regeneration_artifacts(
             workflow_receipt,
         },
     )
-    .map_err(|error| format!("proof-room.runtime-regeneration.invalid: {error}"))?;
+    .map_err(source_runtime_regeneration_error)?;
     ensure_source_runtime_regeneration_records_bind_workflow_steps(
         proof_regeneration_report,
         workflow_run_report,
@@ -1300,6 +1394,18 @@ pub(crate) fn validate_source_runtime_proof_regeneration_artifacts(
         proof_package_sha256: source_runtime_artifact_canonical_sha256(proof_package)?,
         verifier_report_sha256: source_runtime_artifact_canonical_sha256(verifier_report)?,
     })
+}
+
+fn source_runtime_regeneration_error(
+    error: chio_runtime_proof_parity::RuntimeProofParityError,
+) -> String {
+    if error.code() == "runtime_proof_regeneration_workflow_step_evidence_mismatch" {
+        return format!(
+            "proof-room.runtime-regeneration.source-record-workflow-step-mismatch: {}",
+            error.detail()
+        );
+    }
+    format!("proof-room.runtime-regeneration.invalid: {error}")
 }
 
 fn ensure_source_runtime_regeneration_records_bind_workflow_steps(

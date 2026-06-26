@@ -1,0 +1,28 @@
+{
+  "schema": "chio.enterprise.data-governance-report.v1",
+  "id": "data-governance-enterprise-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "passport_id": "passport-enterprise-valid",
+  "risk_comptroller_report_ref": "risk-comptroller-enterprise-valid",
+  "allowed_regions": [
+    "US"
+  ],
+  "observed_region": "US",
+  "retention_class": "audit-365d",
+  "legal_hold_status": "not_held",
+  "redaction_profile_ref": "redaction-profile-enterprise-valid",
+  "disclosure_capsule_ref": "disclosure-report-enterprise-valid",
+  "leakage_ledger_ref": "leakage-ledger-enterprise-valid",
+  "field_classifications": [
+    {
+      "field": "customer_email",
+      "classification": "pii",
+      "export_action": "redacted"
+    },
+    {
+      "field": "order_id",
+      "classification": "business",
+      "export_action": "disclosed"
+    }
+  ]
+}

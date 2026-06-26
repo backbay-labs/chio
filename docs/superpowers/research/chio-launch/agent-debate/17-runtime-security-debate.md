@@ -63,7 +63,7 @@ The launch package needs nine additional runtime capabilities:
 | Policy hot reload | Define policy activation receipts and in-flight authority rules. A hot reload can narrow immediately, but cannot silently widen existing continuation tokens or leases. | Passport verifier policy digest proves what was checked later. It does not prove which policy was active at dispatch during reload races. | `chio-policy`, `chio-kernel-core`, `chio-runtime-core`. |
 | Sandbox attestation | Add `chio.runtime.sandbox-attestation.v1` with tool image or binary digest, sandbox profile digest, guard bundle digest, egress profile, process instance id, and attestation signer. | Route-plan receipts bind protocol targets and egress constraints, but not the actual isolation state of the tool server that executed the request. | `chio-runtime-harness`, `chio-tee` or local harness first, then `chio-kernel-core`. |
 | Attack simulation | Add adversarial scenario reports that are consumed as evidence, not kept as informal test logs. | Negative fixtures are listed, but there is no explicit attack simulation artifact that proves confused-deputy, replay, downgrade, and laundering attacks were run. | `chio-adversarial-suite`, `chio-runtime-harness`, fixture catalog. |
-| Chaos fixtures | Add deterministic chaos runs for revocation outage, log outage, policy reload during dispatch, duplicate nonce race, tool restart, registry split brain, and clock skew. | Launch proof needs to show fail-closed behavior under partial failure, not only clean verifier rejection of malformed artifacts. | `chio-runtime-harness`, `tests/e2e`, `fixtures/chio-launch/runtime-security`. |
+| Chaos fixtures | Add deterministic chaos runs for revocation outage, log outage, policy reload during dispatch, duplicate nonce race, tool restart, registry split brain, and clock skew. | Launch proof needs to show fail-closed behavior under partial failure, not only clean verifier rejection of malformed artifacts. | `chio-runtime-harness`, `tests/e2e`, `fixtures/proof-room/runtime-security`. |
 
 ## Execution Lease Contract
 
@@ -409,9 +409,9 @@ Suggested file scope:
 - Create: `spec/schemas/chio-runtime/v1/sandbox-attestation.schema.json`
 - Create: `crates/chio-control-plane/tests/runtime_security_passport.rs`
 - Modify: `crates/chio-control-plane/src/transaction_passport.rs`
-- Create: `fixtures/chio-launch/runtime-security/valid-side-effecting-call/transaction-passport.json`
-- Create: `fixtures/chio-launch/runtime-security/missing-execution-lease/transaction-passport.json`
-- Create: `fixtures/chio-launch/runtime-security/advisory-used-as-authorization/transaction-passport.json`
+- Create: `fixtures/proof-room/runtime-security/valid-side-effecting-call/transaction-passport.json`
+- Create: `fixtures/proof-room/runtime-security/missing-execution-lease/transaction-passport.json`
+- Create: `fixtures/proof-room/runtime-security/advisory-used-as-authorization/transaction-passport.json`
 
 First failing test:
 

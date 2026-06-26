@@ -1,0 +1,11 @@
+{
+  "schema": "chio.public-settlement.negative-fixture.v1",
+  "id": "independent-head-block-hash-mismatch",
+  "claim_ref": "claim.public_settlement.finality_verified",
+  "base_fixture": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json",
+  "case": "IndependentHeadBlockHashMismatch",
+  "expected_failure_code": "proof-room.negative.public-settlement-independent-head-block-hash-mismatch",
+  "verifier_context": {
+    "public_settlement_independent_chain_head": "block_hash_mismatch"
+  }
+}

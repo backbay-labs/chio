@@ -156,6 +156,16 @@ COPY_STOP_PATTERNS = {
         ),
         "external standards must be subordinate evidence, not ambient Chio authority",
     ),
+    "chain_evidence_authority": (
+        re.compile(
+            r"\b(?:on-chain|chain) evidence\b.{0,96}"
+            r"\b(?:proves|authorizes|grants|creates|widens)\b.{0,96}"
+            r"\b(?:Chio settlement authority|Chio settlement "
+            r"(?:release|dispatch|decision)s?)\b",
+            re.IGNORECASE,
+        ),
+        "chain evidence is supporting evidence, not Chio settlement authority",
+    ),
     "every_action_overclaim": (
         re.compile(
             r"\b(?:Chio|authority|proof|receipt|verifi(?:es|able|ed)|binds?)\b.{0,96}"
@@ -173,6 +183,24 @@ COPY_STOP_PATTERNS = {
             re.IGNORECASE,
         ),
         "insurance pricing claims must stay within actuarial and reserve evidence",
+    ),
+    "autonomous_insurer_overclaim": (
+        re.compile(
+            r"\bChio\b.{0,64}\b(?:is|runs|operates|provides|ships)\b.{0,64}"
+            r"\b(?:an?\s+)?autonomous\s+(?:insurer|insurance)\b",
+            re.IGNORECASE,
+        ),
+        "Chio provides bounded risk evidence, not autonomous insurer authority",
+    ),
+    "enterprise_overclaim": (
+        re.compile(
+            r"\bChio\b.{0,96}\b(?:automatically|proves|guarantees)\b.{0,96}"
+            r"\benterprise\s+(?:identity|compliance|audit|governance)\b|"
+            r"\bChio\b.{0,96}\benterprise\s+(?:identity|compliance|audit|governance)"
+            r"\b.{0,96}\b(?:automatically|proves|guarantees)\b",
+            re.IGNORECASE,
+        ),
+        "enterprise claims must stay bounded to verifier evidence and explicit policy",
     ),
     "universal_protocol_overclaim": (
         re.compile(
@@ -504,7 +532,7 @@ def iter_doc_lines(paths: list[Path]):
     for path in paths:
         if path.is_dir():
             children = sorted(
-                child for child in path.rglob("*") if child.suffix in {".md", ".mdx"}
+                child for child in path.rglob("*") if child.suffix in {".json", ".md", ".mdx"}
             )
         else:
             children = [path]

@@ -12,6 +12,11 @@ if ! grep -Fq "verify launch-acceptance" "$repo_root/.github/workflows/ci.yml"; 
   exit 1
 fi
 
+if ! grep -Fq "scripts/tests/check-chio-proof-room-launch-acceptance.test.sh" "$repo_root/.github/workflows/ci.yml"; then
+  echo "launch-acceptance CI contract gate missing: check-chio-proof-room-launch-acceptance.test.sh" >&2
+  exit 1
+fi
+
 (
   cd "$repo_root"
   CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}" \
@@ -47,6 +52,15 @@ for stage in \
     echo "launch-acceptance missing stage bundle: $stage" >&2
     exit 1
   fi
+  for path in \
+    "$out/stages/$stage/proof-room-bundle/claims/claim-registry.json" \
+    "$out/stages/$stage/proof-room-bundle/claims/non-claims.json" \
+    "$out/stages/$stage/proof-room-bundle/verifier/report.dsse.json"; do
+    if [[ ! -s "$path" ]]; then
+      echo "launch-acceptance stage bundle missing canonical companion: $path" >&2
+      exit 1
+    fi
+  done
 done
 
 if [[ ! -s "$out/negatives/catalog.json" ]]; then
@@ -54,12 +68,13 @@ if [[ ! -s "$out/negatives/catalog.json" ]]; then
   exit 1
 fi
 
-python3 - "$out" <<'PY'
+python3 - "$out" "$repo_root" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
+repo = Path(sys.argv[2])
 manifest = json.loads((root / "manifest.json").read_text())
 report = json.loads((root / "verifier/report.json").read_text())
 non_claims = json.loads((root / "claims/non-claims.json").read_text())
@@ -67,6 +82,22 @@ copy_map = json.loads((root / "claims/homepage-copy-map.json").read_text())
 negative_catalog = json.loads((root / "negatives/catalog.json").read_text())
 tool_versions = json.loads((root / "verifier/tool-versions.json").read_text())
 claim_registry = json.loads((root / "claims/claim-registry.json").read_text())
+
+nested_source_catalogs = sorted(
+    repo.glob("fixtures/proof-room/**/negatives/catalog/*/negatives/catalog")
+)
+if nested_source_catalogs:
+    print("launch-acceptance nested source negative catalogs:", file=sys.stderr)
+    for path in nested_source_catalogs:
+        print(f"- {path.relative_to(repo)}", file=sys.stderr)
+    sys.exit(1)
+
+nested_output_catalogs = sorted(root.glob("**/negatives/catalog/*/negatives/catalog"))
+if nested_output_catalogs:
+    print("launch-acceptance nested output negative catalogs:", file=sys.stderr)
+    for path in nested_output_catalogs:
+        print(f"- {path.relative_to(root)}", file=sys.stderr)
+    sys.exit(1)
 
 expected_stages = {
     "single-call-authority",
@@ -131,10 +162,75 @@ expected_agent_web_negative_ids = {
     "agent-web-oci-tag-only-ref",
     "agent-web-slsa-unverified-provenance",
 }
+expected_disclosure_negative_ids = {
+    "disclosure-lineage-forbidden-disclosed-field",
+    "disclosure-lineage-undeclared-hidden-predicate",
+    "disclosure-lineage-projection-manifest-id-mismatch",
+    "disclosure-lineage-privacy-profile-not-bound-to-transaction",
+    "disclosure-lineage-nonce-replay",
+}
+expected_swarm_negative_ids = {
+    "recursive-runtime-swarm-route-plan-mismatch",
+    "recursive-runtime-swarm-egress-constraint-unsupported",
+}
+expected_product_negative_ids = {
+    "product-private-credential-required",
+    "product-plugin-cached-verdict",
+    "product-playground-unsupported-claim",
+}
+expected_commerce_trust_network_claims = {
+    "claim.commerce.trust_market_context_bound",
+    "claim.trust_market.provider_discovery_bound",
+    "claim.trust_market.provider_selection_bound",
+}
+expected_negative_control_floor = {
+    "NC-01 stale capability": ("catalog", "stale-capability"),
+    "NC-02 policy hash mismatch": ("catalog", "policy-hash-mismatch"),
+    "NC-03 stale continuation": ("catalog", "recursive-runtime-swarm-stale-continuation"),
+    "NC-04 route plan mismatch": ("catalog", "recursive-runtime-swarm-route-plan-mismatch"),
+    "NC-05 over disclosure": ("catalog", "disclosure-lineage-excess-disclosed-field"),
+    "NC-06 settlement not binding order": ("catalog", "public-settlement-missing-commerce-order-binding"),
+    "NC-07 unreconciled reserves": (
+        "path",
+        "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/negatives/catalog/enterprise-risk-reserve-state-missing/transaction-passport.json",
+    ),
+    "NC-08 double reserve": (
+        "path",
+        "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/negatives/catalog/enterprise-double-consumed-reserve/transaction-passport.json",
+    ),
+    "NC-09 open appeal blocks closure": (
+        "path",
+        "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/negatives/catalog/enterprise-open-appeal-facility-closure/transaction-passport.json",
+    ),
+    "NC-10 projection digest mismatch": ("catalog", "agent-web-external-digest-mismatch"),
+    "NC-11 missing execution lease": (
+        "path",
+        "fixtures/proof-room/runtime-security/negatives/missing-execution-lease.json",
+    ),
+    "NC-12 advisory as authorization": (
+        "path",
+        "fixtures/proof-room/runtime-security/advisory-used-as-authorization/transaction-passport.json",
+    ),
+    "NC-13 first run without denial": ("catalog", "missing-denial-receipt"),
+    "NC-14 broader child scope in preflight": (
+        "path",
+        "fixtures/proof-room/workflow-preflight/broader-child-scope/preflight-plan.json",
+    ),
+    "NC-15 enterprise over discloses PII": (
+        "path",
+        "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/negatives/catalog/enterprise-pii-overdisclosure/transaction-passport.json",
+    ),
+    "NC-16 webhook signature as authorization": ("catalog", "agent-web-unsupported-claim-not-limited"),
+}
 registered_claims = {
     claim["id"]
     for claim in claim_registry.get("claims", [])
     if isinstance(claim, dict) and isinstance(claim.get("id"), str)
+}
+negative_catalog_ids = {
+    case["id"]
+    for case in negative_catalog.get("cases", [])
+    if isinstance(case, dict) and isinstance(case.get("id"), str)
 }
 
 if manifest.get("schema") != "chio.proof-room.launch-acceptance.v1":
@@ -145,6 +241,44 @@ if report.get("verdict") != "verified":
     raise SystemExit("acceptance report did not verify")
 if {stage["fixture_id"] for stage in report.get("stages", [])} != expected_stages:
     raise SystemExit("report stage set mismatch")
+recursive_task_graph = json.loads(
+    (
+        root
+        / "stages/recursive-runtime-swarm/proof-room-bundle/task-graph.json"
+    ).read_text()
+)
+recursive_child_tasks = [
+    node
+    for node in recursive_task_graph.get("nodes", [])
+    if isinstance(node, dict) and node.get("parentTaskId")
+]
+if len(recursive_child_tasks) < 3:
+    raise SystemExit("recursive-runtime-swarm stage must include at least 3 child tasks")
+commerce_stage_report = json.loads(
+    (
+        root
+        / "stages/commerce-transaction-passport/proof-room-bundle/verifier/report.json"
+    ).read_text()
+)
+commerce_stage_claims = set(commerce_stage_report.get("verified_claims", []))
+commerce_stage_claims.update(
+    claim.get("claim_id")
+    for claim in commerce_stage_report.get("claimResults", [])
+    if claim.get("status") == "verified"
+)
+if not expected_commerce_trust_network_claims <= commerce_stage_claims:
+    missing = expected_commerce_trust_network_claims - commerce_stage_claims
+    raise SystemExit(
+        f"commerce-transaction-passport stage missing trust-network claims: {sorted(missing)}"
+    )
+for stage in report.get("stages", []):
+    fixture_id = stage.get("fixture_id")
+    if stage.get("verifier_report_verdict") != "verified":
+        raise SystemExit(f"stage verifier verdict missing or unverified: {fixture_id}")
+    if stage.get("proof_room_verdict") != "verified":
+        raise SystemExit(f"stage Proof Room verdict missing or unverified: {fixture_id}")
+    if stage.get("verdict_parity") != "verified":
+        raise SystemExit(f"stage CLI-vs-Proof Room verdict parity missing: {fixture_id}")
 if not non_claims.get("non_claims"):
     raise SystemExit("non-claims are empty")
 agent_web_gate = report.get("agent_web_exit_gate")
@@ -156,12 +290,27 @@ if agent_web_gate.get("source_log_path") != "docs/superpowers/research/chio-laun
     raise SystemExit("Agent Web exit gate missing refreshed source log path")
 if agent_web_gate.get("source_log_status") != "refreshed source log":
     raise SystemExit("Agent Web exit gate source log was not refreshed")
+if agent_web_gate.get("standards_signoff_path") != "docs/standards/CHIO_AGENT_WEB_STANDARDS_SIGNOFF.json":
+    raise SystemExit("Agent Web exit gate missing standards sign-off path")
+if agent_web_gate.get("standards_signoff_status") != "approved":
+    raise SystemExit("Agent Web exit gate standards sign-off was not approved")
+if set(agent_web_gate.get("standards_signoff_terms", [])) != {"standard", "compatible", "native", "universal"}:
+    raise SystemExit("Agent Web exit gate standards sign-off terms mismatch")
 if set(agent_web_gate.get("source_protocols", [])) < expected_agent_web_protocols:
     missing = expected_agent_web_protocols - set(agent_web_gate.get("source_protocols", []))
     raise SystemExit(f"Agent Web exit gate missing protocols: {sorted(missing)}")
 if set(agent_web_gate.get("negative_case_ids", [])) < expected_agent_web_negative_ids:
     missing = expected_agent_web_negative_ids - set(agent_web_gate.get("negative_case_ids", []))
     raise SystemExit(f"Agent Web exit gate missing negatives: {sorted(missing)}")
+if not expected_disclosure_negative_ids <= negative_catalog_ids:
+    missing = expected_disclosure_negative_ids - negative_catalog_ids
+    raise SystemExit(f"launch acceptance missing disclosure negatives: {sorted(missing)}")
+if not expected_swarm_negative_ids <= negative_catalog_ids:
+    missing = expected_swarm_negative_ids - negative_catalog_ids
+    raise SystemExit(f"launch acceptance missing swarm negatives: {sorted(missing)}")
+if not expected_product_negative_ids <= negative_catalog_ids:
+    missing = expected_product_negative_ids - negative_catalog_ids
+    raise SystemExit(f"launch acceptance missing product-overlay negatives: {sorted(missing)}")
 if copy_map.get("schema") != "chio.proof-room.homepage-copy-map.v1":
     raise SystemExit("homepage copy map schema mismatch")
 entries = copy_map.get("copy_claims", [])
@@ -206,6 +355,14 @@ for entry in entries:
         )
 if len(negative_catalog.get("cases", [])) < 4:
     raise SystemExit("negative catalog is too thin")
+missing_negative_controls = []
+for label, (kind, value) in expected_negative_control_floor.items():
+    if kind == "catalog" and value not in negative_catalog_ids:
+        missing_negative_controls.append(f"{label}: {value}")
+    if kind == "path" and not (repo / value).is_file():
+        missing_negative_controls.append(f"{label}: {value}")
+if missing_negative_controls:
+    raise SystemExit(f"negative-control floor missing cases: {missing_negative_controls}")
 if not tool_versions.get("git_commit"):
     raise SystemExit("tool versions missing git commit")
 PY

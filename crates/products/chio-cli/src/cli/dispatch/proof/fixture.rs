@@ -14,7 +14,8 @@ use std::{
 #[path = "fixture_agent_web.rs"]
 mod fixture_agent_web;
 use fixture_agent_web::{
-    refresh_agent_web_envelopes_for_subjects, resign_agent_web_receipts_for_policy,
+    normalize_agent_web_bilateral_in_toto_statement, refresh_agent_web_envelopes_for_subjects,
+    resign_agent_web_receipts_for_policy,
 };
 #[path = "fixture_cleanup.rs"]
 mod fixture_cleanup;
@@ -23,9 +24,11 @@ use fixture_cleanup::strip_collected_bundle_outputs;
 const PROOF_FIXTURE_ROOT_ENV: &str = "CHIO_PROOF_FIXTURE_ROOT";
 const PROOF_FIXTURE_CATALOG_FILE: &str = "catalog.json";
 const PROOF_FIXTURE_CATALOG_SCHEMA: &str = "chio.proof-room.fixture-root-catalog.v1";
+const SINGLE_CALL_AUTHORITY_FIXTURE_ID: &str = "single-call-authority";
 const COMMERCE_TRANSACTION_PASSPORT_FIXTURE_ID: &str = "commerce-transaction-passport";
 const COMMERCE_TRANSACTION_PASSPORT_FIXTURE_SOURCE: &str =
     "generated:commerce-payments/offline-psp-valid+public-settlement/valid-offline-finality";
+const COMMERCE_TRANSACTION_TRUST_MARKET_SOURCE: &str = "trust-market/valid-marketplace-context";
 const DISCLOSURE_AGENT_WEB_FIXTURE_ID: &str = "disclosure-and-agent-web-envelope";
 const DISCLOSURE_AGENT_WEB_FIXTURE_SOURCE: &str =
     "generated:disclosure-lineage/valid-lineage-ledger+agent-web/valid-webhook-cloudevents";
@@ -34,12 +37,44 @@ const RUNTIME_SWARM_LOOPBACK_NOW_UNIX_MS: u64 = 1_800_000_001_000;
 const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 const COMMERCE_PROVIDER_TRUST_SIGNATURE_SEED: [u8; 32] = [8; 32];
 const TRUST_MARKET_AUTHORITY_SIGNATURE_SEED: [u8; 32] = [59; 32];
+const ENTERPRISE_RISK_COMPTROLLER_SIGNATURE_SEED: [u8; 32] = [63; 32];
+const PUBLIC_SETTLEMENT_BUNDLE_SIGNATURE_SEED: [u8; 32] = [9; 32];
+const PUBLIC_SETTLEMENT_BUNDLE_SIGNATURE_ALGORITHM: &str = "ed25519-rfc8785-v1";
 const PUBLIC_SETTLEMENT_ORACLE_SIGNATURE_SEED: [u8; 32] = [15; 32];
 const PUBLIC_SETTLEMENT_ANCHOR_SIGNATURE_SEED: [u8; 32] = [7; 32];
+const PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON";
+const PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL";
+const PUBLIC_SETTLEMENT_ANCHOR_PROOF_BUNDLE_PATH: &str = "anchor-proof-bundle.json";
+const CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA: &str = "chio.anchor-proof-bundle.v1";
+const SOLANA_MEMO_PROGRAM_ID: &str = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+const PUBLIC_SETTLEMENT_REORGED_INDEPENDENT_CHAIN_HEAD_JSON: &str =
+    "{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"latest_block_number\":12345701}";
 const RUNTIME_TOOL_SERVER_SIGNATURE_SEED: [u8; 32] = [45; 32];
+const RUNTIME_JOIN_RECEIPT_SIGNATURE_SEED: [u8; 32] = [46; 32];
 const DISCLOSURE_AGENT_WEB_BBS_KEY_MATERIAL: &[u8] = b"chio-proof-disclosure-agent-web-bbs-key";
 const DISCLOSURE_AGENT_WEB_BBS_KEY_INFO: &[u8] = b"chio-proof-disclosure-agent-web";
 const DISCLOSURE_AGENT_WEB_BBS_NONCE: &[u8] = b"nonce-disclosure-agent-web";
+const DISCLOSURE_NEGATIVE_CASES: &[(&str, &str)] = &[
+    (
+        "forbidden-disclosed-field",
+        "disclosure-lineage-forbidden-disclosed-field",
+    ),
+    (
+        "undeclared-hidden-predicate",
+        "disclosure-lineage-undeclared-hidden-predicate",
+    ),
+    (
+        "projection-manifest-id-mismatch",
+        "disclosure-lineage-projection-manifest-id-mismatch",
+    ),
+    (
+        "privacy-profile-not-bound-to-transaction",
+        "disclosure-lineage-privacy-profile-not-bound-to-transaction",
+    ),
+    ("nonce-replay", "disclosure-lineage-nonce-replay"),
+];
 const DISCLOSURE_DERIVED_LEAKAGE_FACTS: &[(&str, &str)] = &[
     ("derived.crypto.issuer_status", "runtime_assurance"),
     ("derived.crypto.revocation_freshness", "runtime_assurance"),
@@ -113,6 +148,68 @@ struct ProofFixtureNegativeCase {
     expected_failure_code: String,
     #[serde(default)]
     claim_ref: Option<String>,
+    #[serde(default)]
+    verifier_context: ProofFixtureVerifierContext,
+}
+
+#[derive(Default, serde::Deserialize, serde::Serialize)]
+struct ProofFixtureVerifierContext {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    public_settlement_independent_chain_head: Option<PublicSettlementIndependentChainHeadContext>,
+}
+
+#[derive(Clone, Copy, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum PublicSettlementIndependentChainHeadContext {
+    Missing,
+    BlockHashMismatch,
+}
+
+struct EnvVarOverride {
+    name: &'static str,
+    previous: Option<OsString>,
+}
+
+impl EnvVarOverride {
+    fn remove(name: &'static str) -> Self {
+        let previous = std::env::var_os(name);
+        std::env::remove_var(name);
+        Self { name, previous }
+    }
+
+    fn set(name: &'static str, value: &'static str) -> Self {
+        let previous = std::env::var_os(name);
+        std::env::set_var(name, value);
+        Self { name, previous }
+    }
+}
+
+impl Drop for EnvVarOverride {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => std::env::set_var(self.name, value),
+            None => std::env::remove_var(self.name),
+        }
+    }
+}
+
+impl ProofFixtureVerifierContext {
+    fn apply(&self) -> Vec<EnvVarOverride> {
+        match self.public_settlement_independent_chain_head {
+            Some(PublicSettlementIndependentChainHeadContext::Missing) => vec![
+                EnvVarOverride::remove(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV),
+                EnvVarOverride::remove(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV),
+            ],
+            Some(PublicSettlementIndependentChainHeadContext::BlockHashMismatch) => vec![
+                EnvVarOverride::set(
+                    PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV,
+                    PUBLIC_SETTLEMENT_REORGED_INDEPENDENT_CHAIN_HEAD_JSON,
+                ),
+                EnvVarOverride::remove(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV),
+            ],
+            None => Vec::new(),
+        }
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -189,13 +286,16 @@ fn generate_proof_fixture(fixture_id: &str, out: &Path, json_output: bool) -> Re
         generate_disclosure_agent_web_fixture(out)?;
     } else if descriptor.id == RECURSIVE_RUNTIME_SWARM_FIXTURE_ID {
         generate_recursive_runtime_swarm_fixture(out)?;
+    } else if let Some((case, _id)) = disclosure_negative_case_for_descriptor(&descriptor) {
+        copy_disclosure_negative_fixture(case, out)?;
     } else if let Some(root) = installed_fixture_root() {
         let source = installed_fixture_source(&root, &descriptor)?;
         copy_dir_contents(&source, out)?;
     } else {
         copy_embedded_fixture(installed_fixture_path(&descriptor), out)?;
     }
-    if descriptor.kind == "transaction-passport" {
+    if descriptor.kind == "transaction-passport" || descriptor.kind == "negative-transaction-passport"
+    {
         remove_generated_negative_catalog(out)?;
     }
     normalize_enterprise_risk_lifecycle_replay(&descriptor, out)?;
@@ -206,8 +306,11 @@ fn generate_proof_fixture(fixture_id: &str, out: &Path, json_output: bool) -> Re
     normalize_enterprise_export_verifier_report_ref(&descriptor, out)?;
     normalize_enterprise_telemetry_passport_mismatch(&descriptor, out)?;
     normalize_disclosure_lineage_bbs_material(&descriptor, out)?;
+    normalize_runtime_join_receipt_signature(&descriptor, out)?;
     normalize_runtime_reused_nonce_fixture(&descriptor, out)?;
     normalize_agent_web_fixture_material(&descriptor, out)?;
+    normalize_commerce_mandate_projection_edges(out)?;
+    normalize_commerce_order_passport_binding(&descriptor, out)?;
     normalize_declared_evidence_graph_node_ids(&descriptor, out)?;
     if descriptor.kind != "negative-transaction-passport" {
         refresh_proof_room_bundle_source_reports(out)?;
@@ -285,6 +388,38 @@ fn normalize_declared_evidence_graph_node_ids(
                 serde_json::Value::String(sha256_file(&evidence_graph_path)?);
             write_fixture_signed_transaction_passport(&passport_path, passport)?;
         }
+    }
+    Ok(())
+}
+
+fn normalize_commerce_mandate_projection_edges(out: &Path) -> Result<(), CliError> {
+    let mut evidence_graph_paths = Vec::new();
+    collect_evidence_graph_paths(out, &mut evidence_graph_paths)?;
+    for evidence_graph_path in evidence_graph_paths {
+        let mut evidence_graph = read_json_value(&evidence_graph_path)?;
+        let Some(mandate_id) = graph_node_primary_id_by_path(
+            &evidence_graph,
+            &evidence_graph_path,
+            "mandate-allowance-ledger.json",
+        )?
+        else {
+            continue;
+        };
+        let Some(chio_projection_id) = graph_node_primary_id_by_path(
+            &evidence_graph,
+            &evidence_graph_path,
+            "protocol-payloads/chio-authority-projection.json",
+        )?
+        else {
+            continue;
+        };
+        upsert_fixture_graph_edge(
+            json_array_mut(&mut evidence_graph, "edges", &evidence_graph_path)?,
+            &mandate_id,
+            &chio_projection_id,
+            "projects-to",
+        );
+        write_json_line_file(&evidence_graph_path, &evidence_graph)?;
     }
     Ok(())
 }
@@ -450,11 +585,24 @@ fn refresh_proof_room_bundle_manifest(manifest_path: &Path) -> Result<(), CliErr
             refresh_manifest_artifact_ref(bundle, artifact)?;
         }
     }
-    if manifest == original_manifest {
-        return Ok(());
+    if manifest != original_manifest {
+        write_json_line_file(manifest_path, &manifest)?;
     }
-    write_json_line_file(manifest_path, &manifest)?;
-    if bundle.join("bundle-signature.dsse.json").is_file() {
+    refresh_proof_room_bundle_signature_if_stale(bundle)
+}
+
+fn refresh_proof_room_bundle_signature_if_stale(bundle: &Path) -> Result<(), CliError> {
+    let signature_path = bundle.join("bundle-signature.dsse.json");
+    if signature_path.is_file() {
+        let signature = read_json_value(&signature_path)?;
+        let expected_sha256 = sha256_file(&bundle.join("manifest.json"))?;
+        let actual_sha256 = signature
+            .get("payloadRef")
+            .and_then(|payload_ref| payload_ref.get("sha256"))
+            .and_then(serde_json::Value::as_str);
+        if actual_sha256 == Some(expected_sha256.as_str()) {
+            return Ok(());
+        }
         let keypair = collect::proof_collect_bundle_signer_from_env()?;
         collect::write_bundle_signature(bundle, &keypair)?;
     }
@@ -511,6 +659,58 @@ fn normalize_runtime_reused_nonce_fixture(
         }
     }
     Ok(())
+}
+
+fn normalize_runtime_join_receipt_signature(
+    descriptor: &ProofFixtureDescriptor,
+    out: &Path,
+) -> Result<(), CliError> {
+    if !installed_fixture_path(descriptor).starts_with("runtime-security/") {
+        return Ok(());
+    }
+    let join_receipt_path = out.join("join-receipt.json");
+    if !join_receipt_path.is_file() {
+        return Ok(());
+    }
+    let mut join_receipt = read_json_value(&join_receipt_path)?;
+    if join_receipt
+        .get("schema")
+        .and_then(serde_json::Value::as_str)
+        != Some("chio.swarm.join-receipt.v1")
+    {
+        return Ok(());
+    }
+    sign_runtime_join_receipt(&mut join_receipt)?;
+    write_json_line_file(&join_receipt_path, &join_receipt)
+}
+
+fn sign_runtime_join_receipt(join_receipt: &mut serde_json::Value) -> Result<(), CliError> {
+    let keypair = Keypair::from_seed(&RUNTIME_JOIN_RECEIPT_SIGNATURE_SEED);
+    let public_key = keypair.public_key().to_hex();
+    join_receipt["issuer"] = serde_json::Value::String(format!("did:chio:{public_key}"));
+    let signature = runtime_join_receipt_signature(join_receipt, &keypair)?;
+    join_receipt["signature"] = serde_json::Value::String(signature);
+    Ok(())
+}
+
+fn runtime_join_receipt_signature(
+    join_receipt: &serde_json::Value,
+    keypair: &Keypair,
+) -> Result<String, CliError> {
+    let mut body = join_receipt.clone();
+    let object = body.as_object_mut().ok_or_else(|| {
+        CliError::cli_other_error("runtime join receipt signature body invalid".to_string())
+    })?;
+    object.remove("signature");
+    Ok(keypair
+        .sign_canonical(&body)
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "runtime join receipt signing failed: {error}"
+            ))
+        })?
+        .0
+        .to_hex())
 }
 
 fn normalize_runtime_reused_nonce_bundle(
@@ -636,7 +836,9 @@ fn negative_transaction_passport_expected_failure(
     descriptor: &ProofFixtureDescriptor,
     verify_path: &Path,
 ) -> Result<Option<String>, CliError> {
-    let expected_failure = proof_fixture_negative_expected_failure(descriptor)?;
+    let negative_case = proof_fixture_negative_case(descriptor)?;
+    let expected_failure = negative_case.expected_failure_code;
+    let _env_overrides = negative_case.verifier_context.apply();
     match verify_transaction_passport_file(verify_path) {
         Ok(_) => Err(CliError::cli_other_error(format!(
             "negative proof fixture unexpectedly verified: {}",
@@ -665,6 +867,30 @@ pub(super) fn proof_fixture_negative_claim_ref(
     descriptor: &ProofFixtureDescriptor,
 ) -> Result<Option<String>, CliError> {
     Ok(proof_fixture_negative_case(descriptor)?.claim_ref)
+}
+
+pub(super) fn proof_fixture_negative_verifier_context(
+    descriptor: &ProofFixtureDescriptor,
+) -> Result<Option<serde_json::Value>, CliError> {
+    let negative_case = proof_fixture_negative_case(descriptor)?;
+    let value = serde_json::to_value(negative_case.verifier_context).map_err(CliError::from)?;
+    if value
+        .as_object()
+        .is_some_and(|object| !object.is_empty())
+    {
+        Ok(Some(value))
+    } else {
+        Ok(None)
+    }
+}
+
+pub(super) fn with_proof_fixture_negative_verifier_context<T>(
+    descriptor: &ProofFixtureDescriptor,
+    f: impl FnOnce() -> Result<T, CliError>,
+) -> Result<T, CliError> {
+    let negative_case = proof_fixture_negative_case(descriptor)?;
+    let _env_overrides = negative_case.verifier_context.apply();
+    f()
 }
 
 fn proof_fixture_negative_case(
@@ -848,6 +1074,7 @@ fn proof_fixture_generated_verifier_report_path(
         return Some(out.join("verifier-report.json"));
     }
     match descriptor.kind.as_str() {
+        "proof-room" => Some(out.join("verifier-report.json")),
         "transaction-passport" => Some(out.join("verifier/report.json")),
         "negative-disclosure-crypto-context" => Some(out.join("verifier-report.json")),
         _ => None,
@@ -859,6 +1086,20 @@ fn write_generated_verifier_report(
     out: &Path,
     verifier_report_path: &Path,
 ) -> Result<(), CliError> {
+    if descriptor.id == SINGLE_CALL_AUTHORITY_FIXTURE_ID {
+        let valid_passport = proof_fixture_source_root()
+            .join("minimal-passport/valid/transaction-passport.json");
+        let report = verify_transaction_passport_file(&valid_passport)?;
+        write_json_line_file(verifier_report_path, &report)?;
+        return Ok(());
+    }
+    if descriptor.kind == "proof-room" {
+        let source_report_path = out.join("proof-room-bundle/verifier/report.json");
+        if source_report_path.is_file() {
+            fs::copy(source_report_path, verifier_report_path)?;
+        }
+        return Ok(());
+    }
     if descriptor.kind != "negative-disclosure-crypto-context" {
         return Ok(());
     }
@@ -959,6 +1200,10 @@ fn disclosure_agent_web_fixture_descriptor() -> ProofFixtureDescriptor {
 
 pub(super) fn copy_proof_fixture(fixture_id: &str, out: &Path) -> Result<(), CliError> {
     let descriptor = proof_fixture(fixture_id)?;
+    if let Some((case, _id)) = disclosure_negative_case_for_descriptor(&descriptor) {
+        copy_disclosure_negative_fixture(case, out)?;
+        return Ok(());
+    }
     if descriptor.id == COMMERCE_TRANSACTION_PASSPORT_FIXTURE_ID {
         return generate_commerce_transaction_passport_fixture(out);
     }
@@ -982,13 +1227,163 @@ pub(super) fn copy_proof_fixture(fixture_id: &str, out: &Path) -> Result<(), Cli
     normalize_enterprise_export_verifier_report_ref(&descriptor, out)?;
     normalize_enterprise_telemetry_passport_mismatch(&descriptor, out)?;
     normalize_disclosure_lineage_bbs_material(&descriptor, out)?;
+    normalize_runtime_join_receipt_signature(&descriptor, out)?;
     normalize_runtime_reused_nonce_fixture(&descriptor, out)?;
     normalize_agent_web_fixture_material(&descriptor, out)?;
+    normalize_commerce_mandate_projection_edges(out)?;
+    normalize_commerce_order_passport_binding(&descriptor, out)?;
     normalize_declared_evidence_graph_node_ids(&descriptor, out)?;
     if descriptor.kind != "negative-transaction-passport" {
         refresh_proof_room_bundle_source_reports(out)?;
     }
     refresh_proof_room_bundle_manifests(out)?;
+    Ok(())
+}
+
+fn disclosure_negative_case_for_descriptor(
+    descriptor: &ProofFixtureDescriptor,
+) -> Option<(&'static str, &'static str)> {
+    DISCLOSURE_NEGATIVE_CASES
+        .iter()
+        .copied()
+        .find(|(_case, id)| descriptor.id == *id)
+}
+
+pub(super) fn is_generated_disclosure_negative_fixture_id(fixture_id: &str) -> bool {
+    DISCLOSURE_NEGATIVE_CASES
+        .iter()
+        .any(|(_case, id)| fixture_id == *id)
+}
+
+fn copy_disclosure_negative_fixture(case: &str, out: &Path) -> Result<(), CliError> {
+    if path_exists_or_is_symlink(out)? {
+        return Err(CliError::cli_other_error(format!(
+            "proof output directory already exists: {}",
+            out.display()
+        )));
+    }
+    let source = proof_fixture_source_root().join("disclosure-lineage/valid-lineage-ledger");
+    copy_dir_contents(&source, out)?;
+    strip_collected_bundle_outputs(out)?;
+    normalize_disclosure_lineage_bbs_material_for_bundle(out)?;
+    apply_disclosure_negative_case(out, case)?;
+    sync_transaction_root_artifacts(out)?;
+    Ok(())
+}
+
+fn apply_disclosure_negative_case(bundle: &Path, case: &str) -> Result<(), CliError> {
+    match case {
+        "forbidden-disclosed-field" => {
+            let path = bundle.join("privacy-profile.json");
+            let mut profile = read_json_value(&path)?;
+            append_unique_json_strings(
+                &mut profile,
+                "forbidden_disclosed_fields",
+                &["tool_name".to_string()],
+            )?;
+            write_json_line_file(&path, &profile)?;
+            refresh_disclosure_negative_graph_and_passport(bundle)
+        }
+        "undeclared-hidden-predicate" => {
+            let path = bundle.join("bbs-projection-manifest.json");
+            let mut manifest = read_json_value(&path)?;
+            manifest["hidden_predicates"] = serde_json::Value::Array(Vec::new());
+            write_json_line_file(&path, &manifest)?;
+            refresh_disclosure_negative_graph_and_passport(bundle)
+        }
+        "projection-manifest-id-mismatch" => {
+            let capsule_path = bundle.join("capsule.json");
+            let mut capsule = read_json_value(&capsule_path)?;
+            capsule["projection_manifest_ref"] =
+                serde_json::Value::String("chio.bbs-projection.other.v1".to_string());
+            write_json_line_file(&capsule_path, &capsule)?;
+
+            let report_path = bundle.join("crypto-context-report.json");
+            let mut report = read_json_value(&report_path)?;
+            report["projection_manifest_ref"] =
+                serde_json::Value::String("chio.bbs-projection.other.v1".to_string());
+            sign_disclosure_crypto_report_json(&mut report)?;
+            write_json_line_file(&report_path, &report)?;
+            refresh_disclosure_negative_graph_and_passport(bundle)
+        }
+        "privacy-profile-not-bound-to-transaction" => {
+            let path = bundle.join("privacy-profile.json");
+            let mut profile = read_json_value(&path)?;
+            profile["transaction_passport_ref"] =
+                serde_json::Value::String("passport-disclosure-other".to_string());
+            write_json_line_file(&path, &profile)?;
+            refresh_disclosure_negative_graph_and_passport(bundle)
+        }
+        "nonce-replay" => {
+            let context_path = bundle.join("verification-context.json");
+            let mut context = read_json_value(&context_path)?;
+            context["nonce_replay_status"] = serde_json::Value::String("replayed".to_string());
+            write_json_line_file(&context_path, &context)?;
+            refresh_disclosure_negative_graph_and_passport(bundle)
+        }
+        _ => Err(CliError::cli_other_error(format!(
+            "unknown disclosure negative fixture case: {case}"
+        ))),
+    }
+}
+
+fn normalize_disclosure_lineage_bbs_material_for_bundle(bundle: &Path) -> Result<(), CliError> {
+    if bundle.join("capsule.json").is_file() && bundle.join("crypto-context-report.json").is_file()
+    {
+        add_disclosure_bbs_material_to_bundle_with_fixture_signer(bundle)?;
+    }
+    Ok(())
+}
+
+fn add_disclosure_bbs_material_to_bundle_with_fixture_signer(bundle: &Path) -> Result<(), CliError> {
+    let evidence_graph_path = bundle.join("evidence-graph.json");
+    let mut evidence_graph = read_json_value(&evidence_graph_path)?;
+    add_disclosure_agent_web_crypto_context_material(bundle, &mut evidence_graph)?;
+    refresh_signed_lineage_subgraph_digest(bundle)?;
+    refresh_graph_node_hashes(bundle, &mut evidence_graph)?;
+    write_json_line_file(&evidence_graph_path, &evidence_graph)?;
+    let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
+
+    let passport_path = bundle.join("transaction-passport.json");
+    let mut passport = read_json_value(&passport_path)?;
+    passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
+    write_fixture_signed_transaction_passport(&passport_path, passport)?;
+    sync_transaction_root_artifacts(bundle)?;
+    Ok(())
+}
+
+fn refresh_disclosure_negative_graph_and_passport(bundle: &Path) -> Result<(), CliError> {
+    let evidence_graph_path = bundle.join("evidence-graph.json");
+    let mut evidence_graph = read_json_value(&evidence_graph_path)?;
+    refresh_graph_node_hashes(bundle, &mut evidence_graph)?;
+    write_json_line_file(&evidence_graph_path, &evidence_graph)?;
+    let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
+    let passport_path = bundle.join("transaction-passport.json");
+    let mut passport = read_json_value(&passport_path)?;
+    passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
+    write_fixture_signed_transaction_passport(&passport_path, passport)
+}
+
+fn sign_disclosure_crypto_report_json(report: &mut serde_json::Value) -> Result<(), CliError> {
+    report["signature"] = serde_json::Value::Null;
+    let mut typed_report: chio_selective_disclosure::DisclosureCryptoContextReport =
+        serde_json::from_value(report.clone()).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "proof fixture crypto context report parse failed: {error}"
+            ))
+        })?;
+    typed_report.signature = Some(
+        chio_selective_disclosure::sign_crypto_context_report(
+            &typed_report,
+            &Keypair::from_seed(&DISCLOSURE_LINEAGE_SIGNATURE_SEED),
+        )
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "proof fixture crypto context report signing failed: {error}"
+            ))
+        })?,
+    );
+    *report = serde_json::to_value(typed_report).map_err(CliError::from)?;
     Ok(())
 }
 
@@ -1016,6 +1411,7 @@ fn normalize_agent_web_fixture_material(
 
         let policy_sha256 = sha256_file(&verifier_policy_path)?;
         let mut evidence_graph = read_json_value(&evidence_graph_path)?;
+        normalize_agent_web_bilateral_in_toto_statement(&artifact_root)?;
         refresh_agent_web_envelopes_for_subjects(&artifact_root, &mut evidence_graph)?;
         resign_agent_web_receipts_for_policy(&artifact_root, &policy_sha256)?;
         refresh_graph_node_hashes(&artifact_root, &mut evidence_graph)?;
@@ -1044,6 +1440,9 @@ fn normalize_disclosure_lineage_bbs_material(
     descriptor: &ProofFixtureDescriptor,
     out: &Path,
 ) -> Result<(), CliError> {
+    if disclosure_negative_case_for_descriptor(descriptor).is_some() {
+        return Ok(());
+    }
     if descriptor.kind != "transaction-passport"
         && descriptor.kind != "negative-transaction-passport"
     {
@@ -1069,12 +1468,17 @@ fn generate_commerce_transaction_passport_fixture(out: &Path) -> Result<(), CliE
     let fixture_root = proof_fixture_source_root();
     let commerce_source = fixture_root.join("commerce-payments/offline-psp-valid");
     let settlement_source = fixture_root.join("public-settlement/valid-offline-finality");
+    let trust_market_source = fixture_root.join(COMMERCE_TRANSACTION_TRUST_MARKET_SOURCE);
     let bundle = out.join("proof-room-bundle");
     copy_dir_contents(&commerce_source, &bundle)?;
     strip_collected_bundle_outputs(&bundle)?;
     merge_public_settlement_fixture(&bundle, &settlement_source)?;
+    merge_commerce_trust_market_fixture(&bundle, &trust_market_source)?;
     add_commerce_event_authority_receipts(&bundle)?;
     add_commerce_terminal_receipts(&bundle)?;
+    normalize_commerce_mandate_projection_edges(&bundle)?;
+    refresh_commerce_order_passport_bundle(&bundle)?;
+    normalize_declared_evidence_graph_node_ids(&commerce_transaction_passport_fixture_descriptor(), &bundle)?;
     collect::seal_collected_public_fixture_bundle(
         ProofCollectKind::IoaWeb3,
         &bundle,
@@ -1085,6 +1489,464 @@ fn generate_commerce_transaction_passport_fixture(out: &Path) -> Result<(), CliE
         out.join("verifier-report.json"),
     )?;
     Ok(())
+}
+
+fn merge_commerce_trust_market_fixture(
+    bundle: &Path,
+    trust_market_source: &Path,
+) -> Result<(), CliError> {
+    let order_context_path = bundle.join("order-context.json");
+    let mut order_context = read_json_value(&order_context_path)?;
+    let order_id = required_json_string(&order_context, "order_id", &order_context_path)?;
+    let selected_provider_subject =
+        required_json_string(&order_context, "merchant_subject", &order_context_path)?;
+
+    let passport_path = bundle.join("transaction-passport.json");
+    let mut passport = read_json_value(&passport_path)?;
+    let passport_id = required_json_string(&passport, "id", &passport_path)?;
+    let issued_at = required_json_string(&passport, "issued_at", &passport_path)?;
+
+    let policy_path = bundle.join("verifier-policy.json");
+    let mut policy = read_json_value(&policy_path)?;
+    merge_trust_market_policy_fields(
+        &mut policy,
+        &trust_market_source.join("verifier-policy.json"),
+    )?;
+    append_required_claims_from_policy(
+        &mut policy,
+        &trust_market_source.join("verifier-policy.json"),
+    )?;
+    write_json_line_file(&policy_path, &policy)?;
+    let policy_sha256 = sha256_file(&policy_path)?;
+
+    let trust_market_replacements = [
+        ("passport-trust-market-valid", passport_id.as_str()),
+        ("order-commerce-001", order_id.as_str()),
+        ("did:chio:provider-alpha", selected_provider_subject.as_str()),
+    ];
+    let evidence_graph_path = bundle.join("evidence-graph.json");
+    let mut evidence_graph = read_json_value(&evidence_graph_path)?;
+    append_graph_artifacts_from_fixture(
+        bundle,
+        trust_market_source,
+        &mut evidence_graph,
+        &trust_market_replacements,
+    )?;
+    resign_trust_market_graph_artifacts(bundle, &evidence_graph)?;
+
+    order_context["trust_market_requirement"] = serde_json::json!({
+        "required": true,
+        "provider_discovery_snapshot_ref": "discovery-trust-market-valid",
+        "provider_selection_report_ref": "selection-trust-market-valid",
+        "trust_scorecard_ref": "scorecard-trust-market-valid",
+        "reputation_import_ref": "reputation-import-trust-market-valid",
+        "sla_commitment_ref": "sla-commitment-trust-market-valid",
+        "collateral_position_ref": "collateral-trust-market-valid",
+        "guarantee_decision_ref": "guarantee-trust-market-valid",
+        "adjudication_jurisdiction_ref": "jurisdiction-trust-market-valid"
+    });
+    add_commerce_trust_market_evidence_refs_to_event_log(bundle)?;
+    order_context["event_log_sha256"] =
+        serde_json::Value::String(sha256_file(&bundle.join("event-log.json"))?);
+    write_json_line_file(&order_context_path, &order_context)?;
+
+    add_public_stage_settlement_trust_market_refs(bundle, trust_market_source)?;
+    let claim_set_sha256 = refresh_claim_set_for_policy(bundle, &passport_id, &issued_at, &policy)?;
+    upsert_claim_set_graph_binding(&mut evidence_graph, &claim_set_sha256)?;
+    refresh_graph_node_hashes(bundle, &mut evidence_graph)?;
+    write_json_line_file(&evidence_graph_path, &evidence_graph)?;
+    let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
+
+    passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
+    passport["claim_set_sha256"] = serde_json::Value::String(claim_set_sha256);
+    passport["claim_set_path"] = serde_json::Value::String("claim-set.json".to_string());
+    passport["verifier_policy_sha256"] = serde_json::Value::String(policy_sha256);
+    write_signed_transaction_passport(&passport_path, passport)?;
+    Ok(())
+}
+
+fn add_public_stage_settlement_trust_market_refs(
+    bundle: &Path,
+    trust_market_source: &Path,
+) -> Result<(), CliError> {
+    let settlement_proof_path = bundle.join("settlement-proof-bundle.json");
+    if !settlement_proof_path.is_file() {
+        return Ok(());
+    }
+
+    let collateral_path = trust_market_source.join("collateral-position-report.json");
+    let collateral = read_json_value(&collateral_path)?;
+    let guarantee_path = trust_market_source.join("guarantee-decision.json");
+    let guarantee = read_json_value(&guarantee_path)?;
+    let sla_path = trust_market_source.join("sla-commitment.json");
+    let sla = read_json_value(&sla_path)?;
+
+    let mut settlement_proof = read_json_value(&settlement_proof_path)?;
+    settlement_proof["collateral_position_ref"] = serde_json::Value::String(
+        required_json_string(&collateral, "collateral_id", &collateral_path)?,
+    );
+    settlement_proof["guarantee_decision_ref"] = serde_json::Value::String(
+        required_json_string(&guarantee, "guarantee_id", &guarantee_path)?,
+    );
+    settlement_proof["sla_remedy_ref"] =
+        serde_json::Value::String(required_json_string(&sla, "remedy_policy_ref", &sla_path)?);
+    settlement_proof["slash_authority_ref"] = serde_json::Value::String(required_json_string(
+        &collateral,
+        "slash_authority_ref",
+        &collateral_path,
+    )?);
+    sign_public_settlement_proof_bundle(&mut settlement_proof, &settlement_proof_path)?;
+    write_json_line_file(&settlement_proof_path, &settlement_proof)
+}
+
+fn normalize_commerce_order_passport_binding(
+    descriptor: &ProofFixtureDescriptor,
+    out: &Path,
+) -> Result<(), CliError> {
+    if !out.join("evidence-graph.json").is_file() || !out.join("order-context.json").is_file() {
+        return Ok(());
+    }
+    if descriptor.id == "commerce-offline-psp" {
+        strip_collected_bundle_outputs(out)?;
+        return refresh_commerce_order_passport_bundle(out);
+    }
+    if descriptor.kind == "negative-transaction-passport" && descriptor.id.starts_with("commerce-")
+    {
+        return refresh_commerce_negative_order_passport_binding(out);
+    }
+    Ok(())
+}
+
+fn refresh_commerce_order_passport_bundle(bundle: &Path) -> Result<(), CliError> {
+    let evidence_graph_path = bundle.join("evidence-graph.json");
+    let mut evidence_graph = read_json_value(&evidence_graph_path)?;
+    refresh_commerce_order_passport_graph_binding(bundle, &mut evidence_graph)?;
+    refresh_graph_node_hashes(bundle, &mut evidence_graph)?;
+    write_json_line_file(&evidence_graph_path, &evidence_graph)?;
+    let passport_path = bundle.join("transaction-passport.json");
+    if passport_path.is_file() {
+        let mut passport = read_json_value(&passport_path)?;
+        passport["evidence_graph_sha256"] =
+            serde_json::Value::String(sha256_file(&evidence_graph_path)?);
+        write_fixture_signed_transaction_passport(&passport_path, passport)?;
+    }
+    Ok(())
+}
+
+fn refresh_commerce_negative_order_passport_binding(bundle: &Path) -> Result<(), CliError> {
+    let order_passport_path = bundle.join("order-passport.json");
+    if !order_passport_path.is_file() {
+        let source = proof_fixture_source_root().join(
+            "commerce-payments/offline-psp-valid/order-passport.json",
+        );
+        if source.is_file() {
+            fs::copy(source, &order_passport_path)?;
+        } else {
+            return Ok(());
+        }
+    }
+    let evidence_graph_path = bundle.join("evidence-graph.json");
+    let mut evidence_graph = read_json_value(&evidence_graph_path)?;
+    let order_passport_sha256 = sha256_file(&order_passport_path)?;
+    upsert_fixture_graph_node(
+        json_array_mut(&mut evidence_graph, "nodes", &evidence_graph_path)?,
+        "commerce-order-passport",
+        "order-passport.json",
+        chio_commerce_order::COMMERCE_ORDER_PASSPORT_SCHEMA_ID,
+        "commerce-order-passport",
+        &order_passport_sha256,
+    );
+    refresh_graph_node_hashes(bundle, &mut evidence_graph)?;
+    write_json_line_file(&evidence_graph_path, &evidence_graph)?;
+    let passport_path = bundle.join("transaction-passport.json");
+    if passport_path.is_file() {
+        let mut passport = read_json_value(&passport_path)?;
+        passport["evidence_graph_sha256"] =
+            serde_json::Value::String(sha256_file(&evidence_graph_path)?);
+        write_fixture_signed_transaction_passport(&passport_path, passport)?;
+    }
+    Ok(())
+}
+
+fn refresh_commerce_order_passport_graph_binding(
+    bundle: &Path,
+    evidence_graph: &mut serde_json::Value,
+) -> Result<(), CliError> {
+    let evidence_graph_bytes = serde_json::to_vec(evidence_graph)?;
+    let graph = parse_graph_artifact_paths(&evidence_graph_bytes)?;
+    let order_context: chio_commerce_order::CommerceOrderContext =
+        load_required_graph_json_artifact(
+            bundle,
+            &graph.nodes,
+            "commerce-order-context",
+            chio_commerce_order::COMMERCE_ORDER_CONTEXT_SCHEMA_ID,
+            "commerce fixture",
+        )?;
+    let event_log_bytes = load_required_graph_bytes_artifact_by_path(
+        bundle,
+        &graph.nodes,
+        &order_context.event_log_path,
+        chio_commerce_order::COMMERCE_EVENT_LOG_SCHEMA_ID,
+        "commerce fixture",
+    )?;
+    let event_authority_receipts =
+        load_commerce_event_authority_receipts(bundle, &graph.nodes, &event_log_bytes)?;
+    let payment_lifecycle_bytes = load_required_graph_bytes_artifact_by_path(
+        bundle,
+        &graph.nodes,
+        &order_context.payment_lifecycle_path,
+        chio_commerce_order::COMMERCE_PAYMENT_LIFECYCLE_SCHEMA_ID,
+        "commerce fixture",
+    )?;
+    let mandate_ledger_bytes = load_required_graph_bytes_artifact_by_path(
+        bundle,
+        &graph.nodes,
+        &order_context.mandate_ledger_path,
+        chio_commerce_order::COMMERCE_MANDATE_ALLOWANCE_LEDGER_SCHEMA_ID,
+        "commerce fixture",
+    )?;
+    let mandate_protocol_payloads =
+        load_commerce_mandate_protocol_payloads(bundle, &graph.nodes, &mandate_ledger_bytes)?;
+    let provider_passport_bytes = load_required_graph_bytes_artifact_by_path(
+        bundle,
+        &graph.nodes,
+        &order_context.provider_passport_path,
+        chio_commerce_order::COMMERCE_PROVIDER_PASSPORT_SCHEMA_ID,
+        "commerce fixture",
+    )?;
+    let reputation_snapshot_bytes = load_required_graph_bytes_artifact_by_path(
+        bundle,
+        &graph.nodes,
+        &order_context.reputation_snapshot_path,
+        chio_commerce_order::COMMERCE_REPUTATION_SNAPSHOT_SCHEMA_ID,
+        "commerce fixture",
+    )?;
+    let federation_trust_bundle_bytes = load_required_graph_bytes_artifact_by_path(
+        bundle,
+        &graph.nodes,
+        &order_context.federation_trust_bundle_path,
+        chio_commerce_order::COMMERCE_FEDERATION_TRUST_BUNDLE_SCHEMA_ID,
+        "commerce fixture",
+    )?;
+    let settlement_packet_bytes = load_required_graph_bytes_artifact_by_path(
+        bundle,
+        &graph.nodes,
+        &order_context.settlement_packet_path,
+        chio_commerce_order::COMMERCE_SETTLEMENT_PACKET_SCHEMA_ID,
+        "commerce fixture",
+    )?;
+    let risk_comptroller_report_bytes = if let Some(requirement) = order_context
+        .coverage_requirement
+        .as_ref()
+        .filter(|requirement| requirement.required)
+    {
+        Some(load_required_graph_bytes_artifact_by_path(
+            bundle,
+            &graph.nodes,
+            &requirement.risk_comptroller_report_path,
+            "chio.risk.comptroller-report.v1",
+            "commerce fixture",
+        )?)
+    } else {
+        None
+    };
+    let commerce_authority_key = Keypair::from_seed(&[7u8; 32]).public_key();
+    let report = chio_commerce_order::verify_commerce_order(
+        &chio_commerce_order::CommerceOrderVerificationBundle {
+            order_context: order_context.clone(),
+            event_log_bytes,
+            event_authority_receipts,
+            payment_lifecycle_bytes,
+            mandate_ledger_bytes,
+            provider_passport_bytes,
+            reputation_snapshot_bytes,
+            federation_trust_bundle_bytes,
+            settlement_packet_bytes,
+            mandate_protocol_payloads,
+            risk_comptroller_report_bytes,
+            verified_trust_market_context: fixture_commerce_trust_market_context(
+                bundle,
+                &order_context,
+            )?,
+            trusted_event_authority_receipt_kernel_keys: vec![commerce_authority_key.clone()],
+            trusted_payment_signer_keys: vec![commerce_authority_key],
+            trusted_provider_trust_signer_keys: vec![
+                Keypair::from_seed(&COMMERCE_PROVIDER_TRUST_SIGNATURE_SEED).public_key(),
+            ],
+            trusted_risk_comptroller_signer_keys: vec![
+                Keypair::from_seed(&ENTERPRISE_RISK_COMPTROLLER_SIGNATURE_SEED).public_key(),
+            ],
+        },
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "proof fixture commerce order passport generation failed: {error}"
+        ))
+    })?;
+    let order_passport_path = bundle.join("order-passport.json");
+    write_json_line_file(&order_passport_path, &serde_json::to_value(report)?)?;
+    let order_passport_sha256 = sha256_file(&order_passport_path)?;
+    upsert_fixture_graph_node(
+        json_array_mut(evidence_graph, "nodes", &bundle.join("evidence-graph.json"))?,
+        "commerce-order-passport",
+        "order-passport.json",
+        chio_commerce_order::COMMERCE_ORDER_PASSPORT_SCHEMA_ID,
+        "commerce-order-passport",
+        &order_passport_sha256,
+    );
+    Ok(())
+}
+
+fn fixture_commerce_trust_market_context(
+    bundle: &Path,
+    order_context: &chio_commerce_order::CommerceOrderContext,
+) -> Result<Option<chio_commerce_order::CommerceVerifiedTrustMarketContext>, CliError> {
+    let Some(requirement) = order_context
+        .trust_market_requirement
+        .as_ref()
+        .filter(|requirement| requirement.required)
+    else {
+        return Ok(None);
+    };
+    let risk_comptroller_report_ref =
+        optional_json_string(&bundle.join("risk-comptroller-report.json"), "id")?
+            .unwrap_or_else(|| "risk-comptroller-market-valid".to_string());
+    let selected_provider_subject =
+        optional_json_string(&bundle.join("provider-selection-report.json"), "selected_provider_subject")?
+            .unwrap_or_else(|| order_context.merchant_subject.clone());
+    Ok(Some(
+        chio_commerce_order::CommerceVerifiedTrustMarketContext {
+            provider_discovery_snapshot_ref: requirement.provider_discovery_snapshot_ref.clone(),
+            provider_selection_report_ref: requirement.provider_selection_report_ref.clone(),
+            trust_scorecard_ref: requirement.trust_scorecard_ref.clone(),
+            reputation_import_ref: requirement.reputation_import_ref.clone(),
+            sla_commitment_ref: requirement.sla_commitment_ref.clone(),
+            risk_comptroller_report_ref,
+            collateral_position_ref: requirement.collateral_position_ref.clone(),
+            guarantee_decision_ref: requirement.guarantee_decision_ref.clone(),
+            adjudication_jurisdiction_ref: requirement.adjudication_jurisdiction_ref.clone(),
+            selected_provider_subject,
+        },
+    ))
+}
+
+fn optional_json_string(path: &Path, field: &str) -> Result<Option<String>, CliError> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+    Ok(read_json_value(path)?
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string))
+}
+
+fn merge_trust_market_policy_fields(
+    policy: &mut serde_json::Value,
+    trust_market_policy_path: &Path,
+) -> Result<(), CliError> {
+    let trust_market_policy = read_json_value(trust_market_policy_path)?;
+    for field in [
+        "unsupported_claims",
+        "max_reputation_import_weight",
+        "trusted_market_authority_keys",
+    ] {
+        if let Some(value) = trust_market_policy.get(field) {
+            policy[field] = value.clone();
+        }
+    }
+    Ok(())
+}
+
+fn add_commerce_trust_market_evidence_refs_to_event_log(bundle: &Path) -> Result<(), CliError> {
+    let event_log_path = bundle.join("event-log.json");
+    let mut event_log = read_json_value(&event_log_path)?;
+    let events = json_array_mut(&mut event_log, "events", &event_log_path)?;
+    for event in events {
+        let next_state = required_json_string(event, "next_state", &event_log_path)?;
+        let evidence_refs = json_array_mut(event, "evidence_refs", &event_log_path)?;
+        if next_state == "provider_admitted" {
+            append_unique_evidence_refs(
+                evidence_refs,
+                &[
+                    "discovery-trust-market-valid",
+                    "selection-trust-market-valid",
+                    "scorecard-trust-market-valid",
+                    "reputation-import-trust-market-valid",
+                ],
+            );
+        }
+        if is_commerce_settlement_lifecycle_state(&next_state) {
+            append_unique_evidence_refs(
+                evidence_refs,
+                &[
+                    "sla-commitment-trust-market-valid",
+                    "collateral-trust-market-valid",
+                    "guarantee-trust-market-valid",
+                    "jurisdiction-trust-market-valid",
+                ],
+            );
+        }
+        seal_commerce_event(event)?;
+    }
+    write_json_line_file(&event_log_path, &event_log)
+}
+
+fn append_unique_evidence_refs(values: &mut Vec<serde_json::Value>, refs: &[&str]) {
+    for evidence_ref in refs {
+        if !values
+            .iter()
+            .any(|value| value.as_str() == Some(*evidence_ref))
+        {
+            values.push(serde_json::Value::String((*evidence_ref).to_string()));
+        }
+    }
+}
+
+fn is_commerce_settlement_lifecycle_state(state: &str) -> bool {
+    matches!(
+        state,
+        "settlement_packet_assembled"
+            | "settlement_dispatched"
+            | "settlement_observed"
+            | "settlement_reconciled"
+    )
+}
+
+fn resign_trust_market_graph_artifacts(
+    bundle: &Path,
+    evidence_graph: &serde_json::Value,
+) -> Result<(), CliError> {
+    for node in json_array(evidence_graph, "nodes", &bundle.join("evidence-graph.json"))? {
+        let Some(schema) = node.get("schema").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        if !is_trust_market_signed_artifact_schema(schema) {
+            continue;
+        }
+        let path = required_json_string(node, "path", &bundle.join("evidence-graph.json"))?;
+        let artifact_path = bundle.join(path);
+        let mut artifact = read_json_value(&artifact_path)?;
+        sign_trust_market_artifact(&mut artifact)?;
+        write_json_line_file(&artifact_path, &artifact)?;
+    }
+    Ok(())
+}
+
+fn is_trust_market_signed_artifact_schema(schema: &str) -> bool {
+    matches!(
+        schema,
+        "chio.commerce.provider-discovery-snapshot.v1"
+            | "chio.commerce.provider-selection-report.v1"
+            | "chio.trust.scorecard-snapshot.v1"
+            | "chio.trust.reputation-import-report.v1"
+            | "chio.commerce.sla-commitment.v1"
+            | "chio.commerce.sla-performance-report.v1"
+            | "chio.risk.comptroller-report.v1"
+            | "chio.risk.collateral-position-report.v1"
+            | "chio.risk.guarantee-decision.v1"
+            | "chio.risk.adjudication-jurisdiction-receipt.v1"
+    )
 }
 
 fn add_commerce_event_authority_receipts(bundle: &Path) -> Result<(), CliError> {
@@ -1589,6 +2451,11 @@ fn merge_public_settlement_fixture(
         &[("passport-public-settlement-valid", &passport_id)],
     )?;
     add_public_settlement_deployment_provenance_to_bundle(bundle)?;
+    upsert_public_settlement_anchor_proof_bundle_graph_node(
+        bundle,
+        &mut evidence_graph,
+        &evidence_graph_path,
+    )?;
     refresh_graph_node_hashes(bundle, &mut evidence_graph)?;
     write_json_line_file(&evidence_graph_path, &evidence_graph)?;
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
@@ -1617,6 +2484,7 @@ fn normalize_public_settlement_deployment_provenance(
         return Ok(());
     }
 
+    strip_standalone_public_settlement_trust_market_refs(out)?;
     add_public_settlement_deployment_provenance_to_bundle(out)?;
     if descriptor.id == "public-settlement-deployment-provenance-mismatch" {
         set_public_settlement_deployment_contract_package_mismatch(out)?;
@@ -1626,6 +2494,11 @@ fn normalize_public_settlement_deployment_provenance(
     }
     let evidence_graph_path = out.join("evidence-graph.json");
     let mut evidence_graph = read_json_value(&evidence_graph_path)?;
+    upsert_public_settlement_anchor_proof_bundle_graph_node(
+        out,
+        &mut evidence_graph,
+        &evidence_graph_path,
+    )?;
     refresh_graph_node_hashes(out, &mut evidence_graph)?;
     write_json_line_file(&evidence_graph_path, &evidence_graph)?;
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
@@ -1635,6 +2508,22 @@ fn normalize_public_settlement_deployment_provenance(
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
     write_signed_transaction_passport(&passport_path, passport)?;
     Ok(())
+}
+
+fn strip_standalone_public_settlement_trust_market_refs(bundle: &Path) -> Result<(), CliError> {
+    let settlement_proof_path = bundle.join("settlement-proof-bundle.json");
+    let mut settlement_proof = read_json_value(&settlement_proof_path)?;
+    let object = settlement_proof.as_object_mut().ok_or_else(|| {
+        CliError::cli_other_error(format!(
+            "public settlement proof bundle must be an object: {}",
+            settlement_proof_path.display()
+        ))
+    })?;
+    object.remove("collateral_position_ref");
+    object.remove("guarantee_decision_ref");
+    object.remove("sla_remedy_ref");
+    object.remove("slash_authority_ref");
+    write_json_line_file(&settlement_proof_path, &settlement_proof)
 }
 
 fn add_public_settlement_deployment_provenance_to_bundle(bundle: &Path) -> Result<(), CliError> {
@@ -1711,7 +2600,118 @@ fn add_public_settlement_deployment_provenance_to_bundle(bundle: &Path) -> Resul
     settlement_proof["public_witness"] = witness_body;
     settlement_proof["public_witness"]["body_hash"] = serde_json::Value::String(body_hash);
     sign_public_settlement_oracle_evidence(&mut settlement_proof, &settlement_proof_path)?;
-    write_json_line_file(&settlement_proof_path, &settlement_proof)
+    sign_public_settlement_proof_bundle(&mut settlement_proof, &settlement_proof_path)?;
+    write_json_line_file(&settlement_proof_path, &settlement_proof)?;
+    write_public_settlement_anchor_proof_bundle(bundle, &settlement_proof, &settlement_proof_path)
+}
+
+fn sign_public_settlement_proof_bundle(
+    settlement_proof: &mut serde_json::Value,
+    settlement_proof_path: &Path,
+) -> Result<(), CliError> {
+    settlement_proof
+        .as_object_mut()
+        .ok_or_else(|| {
+            CliError::cli_other_error(format!(
+                "public settlement proof bundle must be an object: {}",
+                settlement_proof_path.display()
+            ))
+        })?
+        .remove("bundle_signature");
+    let keypair = Keypair::from_seed(&PUBLIC_SETTLEMENT_BUNDLE_SIGNATURE_SEED);
+    let typed_bundle: chio_web3::settlement_proof::PublicSettlementProofBundle =
+        serde_json::from_value(settlement_proof.clone()).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "public settlement proof bundle invalid before signing: {}: {error}",
+                settlement_proof_path.display()
+            ))
+        })?;
+    let (signature, _) = keypair.sign_canonical(&typed_bundle).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "public settlement proof bundle signing failed: {}: {error}",
+            settlement_proof_path.display()
+        ))
+    })?;
+    settlement_proof["bundle_signature"] = serde_json::json!({
+        "algorithm": PUBLIC_SETTLEMENT_BUNDLE_SIGNATURE_ALGORITHM,
+        "signer_key": keypair.public_key().to_hex(),
+        "signature": signature.to_hex()
+    });
+    Ok(())
+}
+
+fn write_public_settlement_anchor_proof_bundle(
+    bundle: &Path,
+    settlement_proof: &serde_json::Value,
+    settlement_proof_path: &Path,
+) -> Result<(), CliError> {
+    let primary_proof = settlement_proof
+        .pointer("/settlement_receipt/reconciled_anchor_proof")
+        .ok_or_else(|| {
+            CliError::cli_other_error(format!(
+                "public settlement anchor proof missing: {}",
+                settlement_proof_path.display()
+            ))
+        })?
+        .clone();
+    let checkpoint_seq = required_json_pointer_u64(
+        &primary_proof,
+        "/checkpoint_statement/checkpoint_seq",
+        settlement_proof_path,
+    )?;
+    let merkle_root = required_json_pointer_string(
+        &primary_proof,
+        "/checkpoint_statement/merkle_root",
+        settlement_proof_path,
+    )?;
+    let issued_at = required_json_pointer_u64(
+        &primary_proof,
+        "/checkpoint_statement/issued_at",
+        settlement_proof_path,
+    )?;
+    let anchor_bundle = serde_json::json!({
+        "schema": CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA,
+        "primary_proof": primary_proof,
+        "secondary_lanes": ["solana_memo"],
+        "solana_anchor": {
+            "chain_id": "solana:mainnet-beta",
+            "operator_pubkey": "7xKXtg2CW9Q4hN7kD6A6tVWyQGm9Xxq6u9rY2T6yQkZp",
+            "memo_program_id": SOLANA_MEMO_PROGRAM_ID,
+            "tx_signature": "5W8D7gF9w3mP2nL6e1c4k7T9y2V6a1b3s5d7f9g2h4j6k8m1n3p5q7r9t1u3v5w7",
+            "slot": 310_045_221_u64,
+            "block_time": 1_743_600_000_u64,
+            "memo_data": format!("Chio:{checkpoint_seq}:{merkle_root}:{issued_at}"),
+            "anchored_merkle_root": merkle_root,
+            "anchored_checkpoint_seq": checkpoint_seq
+        },
+        "note": "Synthetic Solana memo lane fixture proving the typed anchor bundle shape."
+    });
+    write_json_line_file(
+        &bundle.join(PUBLIC_SETTLEMENT_ANCHOR_PROOF_BUNDLE_PATH),
+        &anchor_bundle,
+    )
+}
+
+fn upsert_public_settlement_anchor_proof_bundle_graph_node(
+    bundle: &Path,
+    evidence_graph: &mut serde_json::Value,
+    evidence_graph_path: &Path,
+) -> Result<(), CliError> {
+    let anchor_bundle_path = bundle.join(PUBLIC_SETTLEMENT_ANCHOR_PROOF_BUNDLE_PATH);
+    if !anchor_bundle_path.is_file() {
+        return Ok(());
+    }
+    let sha256 = sha256_file(&anchor_bundle_path)?;
+    let nodes = json_array_mut(evidence_graph, "nodes", evidence_graph_path)?;
+    upsert_fixture_graph_node(
+        nodes,
+        "anchor-proof-bundle",
+        PUBLIC_SETTLEMENT_ANCHOR_PROOF_BUNDLE_PATH,
+        CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA,
+        "anchor-proof-bundle",
+        &sha256,
+    );
+    Ok(())
 }
 
 fn reseal_public_settlement_anchor_receipt(
@@ -1912,6 +2912,7 @@ fn set_public_settlement_deployment_contract_package_mismatch(
     let mut settlement_proof = read_json_value(&settlement_proof_path)?;
     settlement_proof["deployment_provenance"]["contract_package_id"] =
         serde_json::Value::String("chio.unreviewed-web3-contracts".to_string());
+    sign_public_settlement_proof_bundle(&mut settlement_proof, &settlement_proof_path)?;
     write_json_line_file(&settlement_proof_path, &settlement_proof)
 }
 
@@ -1928,6 +2929,7 @@ fn set_public_settlement_witness_mode_advisory(bundle: &Path) -> Result<(), CliE
         })?,
     )?;
     settlement_proof["public_witness"]["body_hash"] = serde_json::Value::String(body_hash);
+    sign_public_settlement_proof_bundle(&mut settlement_proof, &settlement_proof_path)?;
     write_json_line_file(&settlement_proof_path, &settlement_proof)
 }
 
@@ -2221,6 +3223,7 @@ fn merge_agent_web_fixture(bundle: &Path, agent_web_source: &Path) -> Result<(),
     refresh_signed_lineage_subgraph_digest(bundle)?;
     add_disclosure_agent_web_crypto_context_material(bundle, &mut evidence_graph)?;
     append_graph_artifacts_from_fixture(bundle, agent_web_source, &mut evidence_graph, &[])?;
+    normalize_agent_web_bilateral_in_toto_statement(bundle)?;
     refresh_agent_web_envelopes_for_subjects(bundle, &mut evidence_graph)?;
     resign_agent_web_receipts_for_policy(bundle, &policy_sha256)?;
     refresh_graph_node_hashes(bundle, &mut evidence_graph)?;
@@ -2255,7 +3258,8 @@ fn add_disclosure_agent_web_crypto_context_material(
     capsule["projection_manifest_ref"] = serde_json::Value::String(
         chio_selective_disclosure::PROJECTION_VERSION_RECEIPT_V1.to_string(),
     );
-    capsule["hidden_predicates"] = disclosure_hidden_predicates_json(&hidden_predicates);
+    capsule["hidden_predicates"] =
+        disclosure_hidden_predicates_json(&hidden_predicates, disclosed_fields.len());
     write_json_line_file(&capsule_path, &capsule)?;
     let capsule_sha256 = sha256_file(&capsule_path)?;
 
@@ -2269,10 +3273,12 @@ fn add_disclosure_agent_web_crypto_context_material(
     let projection = chio_selective_disclosure::Projection {
         version: chio_selective_disclosure::PROJECTION_VERSION_RECEIPT_V1.to_string(),
         subject_sha256_hex: capsule_sha256.clone(),
-        messages: disclosure_projection_messages(&disclosed_fields)?,
+        messages: disclosure_projection_messages(&disclosed_fields, &hidden_predicates)?,
     };
-    let projection_manifest =
+    let mut projection_manifest =
         chio_selective_disclosure::bbs_projection_manifest_from_projection(&projection);
+    projection_manifest.hidden_predicates =
+        disclosure_projection_hidden_predicates(&hidden_predicates);
     let projection_manifest_path = bundle.join("bbs-projection-manifest.json");
     write_json_line_file(&projection_manifest_path, &projection_manifest)?;
     let signed_projection = chio_selective_disclosure::sign_projection(&projection, &bbs_keypair)
@@ -2663,16 +3669,22 @@ fn disclosure_hidden_predicate_ids(
     Ok(predicates)
 }
 
-fn disclosure_hidden_predicates_json(hidden_predicates: &[String]) -> serde_json::Value {
+fn disclosure_hidden_predicates_json(
+    hidden_predicates: &[String],
+    first_hidden_projection_slot: usize,
+) -> serde_json::Value {
     serde_json::Value::Array(
         hidden_predicates
             .iter()
-            .map(|predicate| disclosure_hidden_predicate_json(predicate))
+            .enumerate()
+            .map(|(index, predicate)| {
+                disclosure_hidden_predicate_json(predicate, first_hidden_projection_slot + index)
+            })
             .collect(),
     )
 }
 
-fn disclosure_hidden_predicate_json(predicate: &str) -> serde_json::Value {
+fn disclosure_hidden_predicate_json(predicate: &str, projection_slot: usize) -> serde_json::Value {
     if predicate == "amount_lte_100" {
         return serde_json::json!({
             "predicate_id": "amount_lte_100",
@@ -2683,7 +3695,7 @@ fn disclosure_hidden_predicate_json(predicate: &str) -> serde_json::Value {
             "unit": "USD",
             "result": true,
             "proof_ref": "selective-disclosure-proof",
-            "projection_slot": 2
+            "projection_slot": projection_slot
         });
     }
     serde_json::json!({
@@ -2695,8 +3707,32 @@ fn disclosure_hidden_predicate_json(predicate: &str) -> serde_json::Value {
         "unit": "unsupported",
         "result": false,
         "proof_ref": "unsupported",
-        "projection_slot": 0
+        "projection_slot": projection_slot
     })
+}
+
+fn disclosure_projection_hidden_predicates(
+    predicates: &[String],
+) -> Vec<chio_selective_disclosure::BbsProjectionHiddenPredicate> {
+    predicates
+        .iter()
+        .map(|predicate| {
+            if predicate == "amount_lte_100" {
+                return chio_selective_disclosure::BbsProjectionHiddenPredicate {
+                    predicate_id: "amount_lte_100".to_string(),
+                    field: "amount".to_string(),
+                    operator: "<=".to_string(),
+                    value_sha256: Some(chio_core::sha256_hex(b"100")),
+                };
+            }
+            chio_selective_disclosure::BbsProjectionHiddenPredicate {
+                predicate_id: predicate.clone(),
+                field: predicate.clone(),
+                operator: "unsupported".to_string(),
+                value_sha256: None,
+            }
+        })
+        .collect()
 }
 
 fn push_sensitivity_field(
@@ -2907,8 +3943,9 @@ fn sync_transaction_root_artifacts(bundle: &Path) -> Result<(), CliError> {
 
 fn disclosure_projection_messages(
     fields: &[String],
+    hidden_predicates: &[String],
 ) -> Result<Vec<chio_selective_disclosure::ProjectionMessage>, CliError> {
-    fields
+    let mut messages = fields
         .iter()
         .enumerate()
         .map(|(index, field)| {
@@ -2925,7 +3962,35 @@ fn disclosure_projection_messages(
                 wholesale_only: false,
             })
         })
-        .collect()
+        .collect::<Result<Vec<chio_selective_disclosure::ProjectionMessage>, CliError>>()?;
+
+    for predicate in hidden_predicates {
+        if let Some((field, value)) = disclosure_hidden_predicate_projection_message(predicate) {
+            let index = u16::try_from(messages.len()).map_err(|_| {
+                CliError::cli_other_error(
+                    "proof fixture disclosure field index exceeds u16".to_string(),
+                )
+            })?;
+            messages.push(chio_selective_disclosure::ProjectionMessage {
+                index,
+                field: field.to_string(),
+                encoding: "S".to_string(),
+                bytes_hex: hex::encode(value),
+                wholesale_only: true,
+            });
+        }
+    }
+
+    Ok(messages)
+}
+
+fn disclosure_hidden_predicate_projection_message(
+    predicate: &str,
+) -> Option<(&'static str, &'static [u8])> {
+    match predicate {
+        "amount_lte_100" => Some(("amount", b"100")),
+        _ => None,
+    }
 }
 
 fn disclosure_indices(count: usize) -> Result<Vec<u16>, CliError> {
@@ -3175,6 +4240,19 @@ fn graph_node_primary_id(
         })
 }
 
+fn graph_node_primary_id_by_path(
+    evidence_graph: &serde_json::Value,
+    graph_path: &Path,
+    path: &str,
+) -> Result<Option<String>, CliError> {
+    Ok(json_array(evidence_graph, "nodes", graph_path)?
+        .iter()
+        .find(|node| node.get("path").and_then(serde_json::Value::as_str) == Some(path))
+        .and_then(|node| node.get("id").and_then(serde_json::Value::as_str))
+        .filter(|id| !id.is_empty())
+        .map(str::to_string))
+}
+
 fn remove_fixture_graph_edges(
     edges: &mut Vec<serde_json::Value>,
     from_aliases: &BTreeSet<String>,
@@ -3259,58 +4337,99 @@ fn normalize_enterprise_risk_lifecycle_replay(
         return Ok(());
     }
     let is_trust_market_fixture = installed_path.starts_with("trust-market/");
-    let risk_report_path = out.join("risk-comptroller-report.json");
-    if !risk_report_path.is_file() {
+    let risk_report_paths = enterprise_risk_report_paths(out)?;
+    if risk_report_paths.is_empty() {
         return Ok(());
     }
-    let mut risk_report = read_json_value(&risk_report_path)?;
-    let policy_id = risk_policy_id_for_report(&risk_report);
-    let mut changed = ensure_enterprise_risk_policy_binding(&mut risk_report, &policy_id);
-    if risk_report
-        .get("facility_lifecycle")
-        .and_then(serde_json::Value::as_array)
-        .is_some_and(|lifecycle| !lifecycle.is_empty())
-    {
-    } else {
+    let mut primary_risk_report_sha256 = None;
+    for risk_report_path in risk_report_paths {
+        let mut risk_report = read_json_value(&risk_report_path)?;
+        let policy_id = risk_policy_id_for_report(&risk_report);
+        let mut changed = ensure_enterprise_risk_policy_binding(&mut risk_report, &policy_id);
+        changed |= ensure_enterprise_risk_financial_invariants(&mut risk_report);
         if risk_report
-            .get("coverage")
-            .and_then(|coverage| coverage.get("status"))
-            .and_then(serde_json::Value::as_str)
-            == Some("bound")
-            && risk_report
+            .get("facility_lifecycle")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|lifecycle| !lifecycle.is_empty())
+        {
+        } else {
+            if risk_report
+                .get("coverage")
+                .and_then(|coverage| coverage.get("status"))
+                .and_then(serde_json::Value::as_str)
+                == Some("bound")
+                && risk_report
+                    .get("facility")
+                    .and_then(|facility| facility.get("state"))
+                    .and_then(serde_json::Value::as_str)
+                    == Some("reserve_held")
+            {
+                risk_report["facility"]["state"] =
+                    serde_json::Value::String("coverage_bound".to_string());
+            }
+            let facility_state = risk_report
                 .get("facility")
                 .and_then(|facility| facility.get("state"))
                 .and_then(serde_json::Value::as_str)
-                == Some("reserve_held")
+                .unwrap_or_default();
+            let lifecycle = enterprise_risk_lifecycle_for_state(facility_state);
+            if !lifecycle.is_empty() {
+                risk_report["facility_lifecycle"] = serde_json::Value::Array(lifecycle);
+                ensure_enterprise_risk_policy_binding(&mut risk_report, &policy_id);
+                changed = true;
+            }
+        }
+        if changed {
+            if is_trust_market_fixture {
+                sign_trust_market_artifact(&mut risk_report)?;
+            } else {
+                sign_enterprise_risk_comptroller_report(&mut risk_report)?;
+            }
+            write_json_line_file(&risk_report_path, &risk_report)?;
+        }
+        if risk_report_path.file_name().and_then(|name| name.to_str())
+            == Some("risk-comptroller-report.json")
         {
-            risk_report["facility"]["state"] =
-                serde_json::Value::String("coverage_bound".to_string());
-        }
-        let facility_state = risk_report
-            .get("facility")
-            .and_then(|facility| facility.get("state"))
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default();
-        let lifecycle = enterprise_risk_lifecycle_for_state(facility_state);
-        if !lifecycle.is_empty() {
-            risk_report["facility_lifecycle"] = serde_json::Value::Array(lifecycle);
-            ensure_enterprise_risk_policy_binding(&mut risk_report, &policy_id);
-            changed = true;
+            primary_risk_report_sha256 = Some(sha256_file(&risk_report_path)?);
         }
     }
-    if changed {
-        if is_trust_market_fixture {
-            sign_trust_market_artifact(&mut risk_report)?;
-        }
-        write_json_line_file(&risk_report_path, &risk_report)?;
+    if let Some(risk_report_sha256) = primary_risk_report_sha256 {
+        rebind_enterprise_risk_report_digest_refs(out, &risk_report_sha256)?;
     }
-    let risk_report_sha256 = sha256_file(&risk_report_path)?;
-    rebind_enterprise_risk_report_digest_refs(out, &risk_report_sha256)?;
     if descriptor.id != "enterprise-export-bundle-digest-mismatch" {
         refresh_enterprise_export_bundle_digest(out)?;
     }
 
     refresh_enterprise_graph_and_passport(out)?;
+    Ok(())
+}
+
+fn enterprise_risk_report_paths(out: &Path) -> Result<Vec<std::path::PathBuf>, CliError> {
+    let mut paths = Vec::new();
+    collect_enterprise_risk_report_paths(out, &mut paths)?;
+    paths.sort();
+    Ok(paths)
+}
+
+fn collect_enterprise_risk_report_paths(
+    path: &Path,
+    paths: &mut Vec<std::path::PathBuf>,
+) -> Result<(), CliError> {
+    if path.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            collect_enterprise_risk_report_paths(&entry?.path(), paths)?;
+        }
+        return Ok(());
+    }
+    if !path.is_file() {
+        return Ok(());
+    }
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return Ok(());
+    };
+    if file_name.starts_with("risk-comptroller-report") && file_name.ends_with(".json") {
+        paths.push(path.to_path_buf());
+    }
     Ok(())
 }
 
@@ -3377,6 +4496,105 @@ fn ensure_enterprise_risk_policy_binding(
         }
     }
     changed
+}
+
+fn ensure_enterprise_risk_financial_invariants(risk_report: &mut serde_json::Value) -> bool {
+    let report_id = risk_report_string(risk_report, &["id"]);
+    let coverage_id = risk_report_string(risk_report, &["coverage", "coverage_id"]);
+    let order_id = risk_report_string(risk_report, &["order_id"]);
+    let subject = risk_report_string(risk_report, &["coverage", "subject"]);
+    let currency = risk_report_string(risk_report, &["coverage", "currency"]);
+    let exposure_units = risk_report_u64(risk_report, &["coverage", "exposure_units"]);
+    let premium_units = exposure_units.div_ceil(100).max(1);
+    let is_market_context = report_id.contains("-market-");
+    let mut premium = serde_json::json!({
+        "premium_id": format!("premium-{coverage_id}"),
+        "quote_ref": if is_market_context {
+            "provider-selection-report"
+        } else {
+            "data-governance-report"
+        },
+        "coverage_id": coverage_id,
+        "order_id": order_id,
+        "subject": subject,
+        "currency": currency,
+        "coverage_exposure_units": exposure_units,
+        "quoted_premium_units": premium_units,
+        "bound_premium_units": premium_units,
+        "collected_premium_units": if is_market_context { 0 } else { premium_units },
+        "status": if is_market_context { "bound" } else { "collected" }
+    });
+    if !is_market_context {
+        premium["observed_payment_ref"] = serde_json::Value::String("evidence-export-bundle".into());
+    }
+
+    let committed_units = risk_report_u64(risk_report, &["facility", "capital_units"]);
+    let held_units = risk_report_u64(risk_report, &["facility", "reserve_units"]);
+    let settlement_units = risk_report_u64(risk_report, &["reconciliation", "settlement_units"]);
+    let payout_units = risk_report_u64(risk_report, &["reconciliation", "payout_units"]);
+    let drawn_units = if settlement_units == 0 { payout_units } else { 0 };
+    let disbursed_units = settlement_units;
+    let deductions = held_units
+        .saturating_add(drawn_units)
+        .saturating_add(disbursed_units);
+    let source_ref = risk_report
+        .get("facility_lifecycle")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|transitions| transitions.first())
+        .and_then(|transition| transition.get("authority_receipt_ref"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|source_ref| !source_ref.is_empty())
+        .unwrap_or("approval-case");
+    let capital_decomposition = serde_json::json!({
+        "decomposition_id": format!(
+            "capital-decomposition-{}",
+            risk_report_string(risk_report, &["facility", "facility_id"])
+        ),
+        "source_kind": "facility_commitment",
+        "source_ref": source_ref,
+        "currency": risk_report_string(risk_report, &["facility", "capital_currency"]),
+        "committed_units": committed_units,
+        "held_units": held_units,
+        "drawn_units": drawn_units,
+        "disbursed_units": disbursed_units,
+        "impaired_units": 0,
+        "available_units": committed_units.saturating_sub(deductions)
+    });
+
+    let mut changed = false;
+    if risk_report.get("premium") != Some(&premium) {
+        risk_report["premium"] = premium;
+        changed = true;
+    }
+    if risk_report.get("capital_decomposition") != Some(&capital_decomposition) {
+        risk_report["capital_decomposition"] = capital_decomposition;
+        changed = true;
+    }
+    changed
+}
+
+fn risk_report_string(risk_report: &serde_json::Value, path: &[&str]) -> String {
+    risk_report_path_value(risk_report, path)
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn risk_report_u64(risk_report: &serde_json::Value, path: &[&str]) -> u64 {
+    risk_report_path_value(risk_report, path)
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or_default()
+}
+
+fn risk_report_path_value<'a>(
+    risk_report: &'a serde_json::Value,
+    path: &[&str],
+) -> Option<&'a serde_json::Value> {
+    let mut value = risk_report;
+    for segment in path {
+        value = value.get(*segment)?;
+    }
+    Some(value)
 }
 
 fn normalize_enterprise_claim_payout_capital_instructions(
@@ -3450,6 +4668,7 @@ fn normalize_enterprise_claim_payout_capital_instructions(
     }
 
     risk_report["capital_instructions"] = serde_json::Value::Array(capital_instructions);
+    sign_enterprise_risk_comptroller_report(&mut risk_report)?;
     write_json_line_file(&risk_report_path, &risk_report)?;
     let risk_report_sha256 = sha256_file(&risk_report_path)?;
     rebind_enterprise_risk_report_digest_refs(out, &risk_report_sha256)?;
@@ -3532,6 +4751,7 @@ fn normalize_enterprise_preobserved_capital_instruction(
             "observed_execution_ref": "claim-payout-wire-preobserved"
         }
     ]);
+    sign_enterprise_risk_comptroller_report(&mut risk_report)?;
     write_json_line_file(&risk_report_path, &risk_report)?;
     let risk_report_sha256 = sha256_file(&risk_report_path)?;
     rebind_enterprise_risk_report_digest_refs(out, &risk_report_sha256)?;
@@ -3830,6 +5050,31 @@ fn sign_enterprise_approval_case(approval_case: &mut serde_json::Value) -> Resul
         ))
     })?;
     approval_case["signature"] = serde_json::Value::String(format!(
+        "sig-ed25519:{}:{}",
+        keypair.public_key().to_hex(),
+        signature.to_hex()
+    ));
+    Ok(())
+}
+
+fn sign_enterprise_risk_comptroller_report(
+    risk_report: &mut serde_json::Value,
+) -> Result<(), CliError> {
+    if !risk_report.is_object() {
+        return Err(CliError::cli_other_error(
+            "proof fixture risk comptroller report must be a JSON object",
+        ));
+    }
+    if let Some(fields) = risk_report.as_object_mut() {
+        fields.remove("signature");
+    }
+    let keypair = Keypair::from_seed(&ENTERPRISE_RISK_COMPTROLLER_SIGNATURE_SEED);
+    let (signature, _) = keypair.sign_canonical(risk_report).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "proof fixture risk comptroller report signing failed: {error}"
+        ))
+    })?;
+    risk_report["signature"] = serde_json::Value::String(format!(
         "sig-ed25519:{}:{}",
         keypair.public_key().to_hex(),
         signature.to_hex()

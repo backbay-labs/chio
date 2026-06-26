@@ -18,7 +18,8 @@
     "dispute_snapshot",
     "required_confirmations",
     "observed_confirmations",
-    "dispute_posture"
+    "dispute_posture",
+    "bundle_signature"
   ],
   "properties": {
     "schema": { "const": "chio.web3-settlement-proof-bundle.v1" },
@@ -48,9 +49,26 @@
         "appealed",
         "closed"
       ]
-    }
+    },
+    "bundle_signature": { "$ref": "#/$defs/bundleSignature" }
   },
   "$defs": {
+    "bundleSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "signer_key", "signature"],
+      "properties": {
+        "algorithm": { "const": "ed25519-rfc8785-v1" },
+        "signer_key": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{64}$"
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{128}$"
+        }
+      }
+    },
     "chainId": {
       "type": "string",
       "pattern": "^[a-z0-9]+:[A-Za-z0-9._-]+$"
@@ -71,6 +89,8 @@
         "transaction_passport_id",
         "commerce_order_id",
         "chain_id",
+        "settlement_rail_id",
+        "custody_provider_id",
         "settlement_reference",
         "settlement_tx_hash",
         "beneficiary_address",
@@ -81,6 +101,8 @@
         "transaction_passport_id": { "type": "string", "minLength": 1 },
         "commerce_order_id": { "type": "string", "minLength": 1 },
         "chain_id": { "$ref": "#/$defs/chainId" },
+        "settlement_rail_id": { "type": "string", "minLength": 1 },
+        "custody_provider_id": { "type": "string", "minLength": 1 },
         "settlement_reference": { "type": "string", "minLength": 1 },
         "settlement_tx_hash": {
           "type": "string",

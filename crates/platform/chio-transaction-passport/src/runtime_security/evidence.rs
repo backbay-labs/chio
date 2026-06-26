@@ -37,10 +37,18 @@ pub(super) enum RuntimeEvidenceRole {
     PolicyActivationReceipt,
     ExecutionLease,
     ToolServerAck,
+    TrustedTimeProof,
     RevocationFreshnessProof,
     SandboxAttestation,
     RuntimeAttackSimulationReport,
     RuntimeChaosRunReport,
+    #[serde(rename = "swarm-task-graph")]
+    SwarmTaskGraph,
+    #[serde(rename = "swarm-budget-pool")]
+    SwarmBudgetPool,
+    #[serde(rename = "swarm-join-receipt")]
+    SwarmJoinReceipt,
+    #[serde(rename = "swarm-route-plan-receipt")]
     SwarmRoutePlanReceipt,
     AdvisoryObservation,
     ClaimSet,
@@ -175,6 +183,62 @@ pub(super) fn bound_route_plan_nodes<'a>(
     })
 }
 
+pub(super) fn bound_task_graph_nodes<'a>(
+    graph: &'a RuntimeEvidenceGraph,
+    lease_node: &'a RuntimeEvidenceNode,
+) -> impl Iterator<Item = &'a RuntimeEvidenceNode> + 'a {
+    graph.nodes.iter().filter(move |node| {
+        node.role == RuntimeEvidenceRole::SwarmTaskGraph
+            && graph.edges.iter().any(|edge| {
+                edge.from == node.id
+                    && edge.to == lease_node.id
+                    && matches!(edge.predicate, EvidenceEdgePredicate::Binds)
+            })
+    })
+}
+
+pub(super) fn bound_budget_pool_nodes<'a>(
+    graph: &'a RuntimeEvidenceGraph,
+    lease_node: &'a RuntimeEvidenceNode,
+) -> impl Iterator<Item = &'a RuntimeEvidenceNode> + 'a {
+    graph.nodes.iter().filter(move |node| {
+        node.role == RuntimeEvidenceRole::SwarmBudgetPool
+            && graph.edges.iter().any(|edge| {
+                edge.from == node.id
+                    && edge.to == lease_node.id
+                    && matches!(edge.predicate, EvidenceEdgePredicate::Binds)
+            })
+    })
+}
+
+pub(super) fn bound_join_receipt_nodes<'a>(
+    graph: &'a RuntimeEvidenceGraph,
+    lease_node: &'a RuntimeEvidenceNode,
+) -> impl Iterator<Item = &'a RuntimeEvidenceNode> + 'a {
+    graph.nodes.iter().filter(move |node| {
+        node.role == RuntimeEvidenceRole::SwarmJoinReceipt
+            && graph.edges.iter().any(|edge| {
+                edge.from == node.id
+                    && edge.to == lease_node.id
+                    && matches!(edge.predicate, EvidenceEdgePredicate::Binds)
+            })
+    })
+}
+
+pub(super) fn bound_trusted_time_nodes<'a>(
+    graph: &'a RuntimeEvidenceGraph,
+    ack_node: &'a RuntimeEvidenceNode,
+) -> impl Iterator<Item = &'a RuntimeEvidenceNode> + 'a {
+    graph.nodes.iter().filter(move |node| {
+        node.role == RuntimeEvidenceRole::TrustedTimeProof
+            && graph.edges.iter().any(|edge| {
+                edge.from == node.id
+                    && edge.to == ack_node.id
+                    && matches!(edge.predicate, EvidenceEdgePredicate::Binds)
+            })
+    })
+}
+
 pub(super) fn trust_root_authorizes_lease(
     graph: &RuntimeEvidenceGraph,
     trust_root_node: &RuntimeEvidenceNode,
@@ -185,6 +249,10 @@ pub(super) fn trust_root_authorizes_lease(
             && edge.to == lease_node.id
             && matches!(edge.predicate, EvidenceEdgePredicate::Authorizes)
     })
+}
+
+pub(super) fn node_sha256(node: &RuntimeEvidenceNode) -> &str {
+    &node.sha256
 }
 
 pub(super) fn parse_artifact<T: for<'de> Deserialize<'de>>(

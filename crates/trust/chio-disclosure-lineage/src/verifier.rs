@@ -19,10 +19,6 @@ const CLAIM_DISCLOSURE_CRYPTO_CONTEXT_BOUND: &str = "claim.disclosure.crypto_con
 const CLAIM_DISCLOSURE_PROFILE_CONTEXT_POLICY_ENFORCED: &str =
     "claim.disclosure.profile_context_policy_enforced";
 const LINEAGE_SIGNATURE_PREFIX: &str = "sig-ed25519:";
-const TRUSTED_LINEAGE_SIGNER_PUBLIC_KEYS: &[&str] =
-    &["e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"];
-const TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_PUBLIC_KEYS: &[&str] =
-    &["e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa"];
 const LINEAGE_NODE_KINDS: &[&str] = &[
     "receipt",
     "capability_snapshot",
@@ -76,6 +72,36 @@ struct SupportedHiddenPredicate {
     unit: &'static str,
     proof_ref: &'static str,
     projection_slot: u32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct DisclosureLineageVerifierTrust {
+    trusted_lineage_signer_keys: Vec<PublicKey>,
+    trusted_crypto_context_report_signer_keys: Vec<PublicKey>,
+}
+
+impl DisclosureLineageVerifierTrust {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_trusted_lineage_signer_keys(mut self, keys: Vec<PublicKey>) -> Self {
+        self.trusted_lineage_signer_keys = keys;
+        self
+    }
+
+    pub fn with_trusted_crypto_context_report_signer_keys(mut self, keys: Vec<PublicKey>) -> Self {
+        self.trusted_crypto_context_report_signer_keys = keys;
+        self
+    }
+
+    pub fn trusted_lineage_signer_keys(&self) -> &[PublicKey] {
+        &self.trusted_lineage_signer_keys
+    }
+
+    pub fn trusted_crypto_context_report_signer_keys(&self) -> &[PublicKey] {
+        &self.trusted_crypto_context_report_signer_keys
+    }
 }
 
 #[derive(Serialize)]
@@ -168,9 +194,16 @@ fn lineage_subgraph_digest_material(
 pub fn verify_disclosure_lineage_bundle(
     bundle: &DisclosureLineageBundle,
 ) -> Result<DisclosureLineageVerifierReport, DisclosureLineageError> {
+    verify_disclosure_lineage_bundle_with_trust(bundle, &DisclosureLineageVerifierTrust::new())
+}
+
+pub fn verify_disclosure_lineage_bundle_with_trust(
+    bundle: &DisclosureLineageBundle,
+    trust: &DisclosureLineageVerifierTrust,
+) -> Result<DisclosureLineageVerifierReport, DisclosureLineageError> {
     validate_capsule(&bundle.capsule)?;
     validate_privacy_profile(&bundle.privacy_profile)?;
-    validate_lineage(&bundle.lineage)?;
+    validate_lineage(&bundle.lineage, trust)?;
     validate_leakage_ledger(&bundle.leakage_ledger, &bundle.privacy_profile)?;
     validate_bundle_bindings(bundle)?;
     validate_privacy_profile_policy(&bundle.capsule, &bundle.privacy_profile)?;
@@ -180,7 +213,10 @@ pub fn verify_disclosure_lineage_bundle(
         CLAIM_DISCLOSURE_LEAKAGE_LEDGER_COMPLETE.to_string(),
     ];
     if let Some(report) = &bundle.crypto_context_report {
-        verify_crypto_context_report_signature(report)?;
+        verify_crypto_context_report_signature_with_trust(
+            report,
+            trust.trusted_crypto_context_report_signer_keys(),
+        )?;
         verified_claims.extend(report.verified_claims.iter().cloned());
     }
 
@@ -229,7 +265,10 @@ fn validate_capsule(capsule: &DisclosureCapsule) -> Result<(), DisclosureLineage
     Ok(())
 }
 
-fn validate_lineage(lineage: &SignedLineageSubgraph) -> Result<(), DisclosureLineageError> {
+fn validate_lineage(
+    lineage: &SignedLineageSubgraph,
+    trust: &DisclosureLineageVerifierTrust,
+) -> Result<(), DisclosureLineageError> {
     if lineage.schema != LINEAGE_SIGNED_SUBGRAPH_SCHEMA_V1 {
         return Err(invalid(format!(
             "unsupported signed lineage subgraph schema: {}",
@@ -391,13 +430,14 @@ fn validate_lineage(lineage: &SignedLineageSubgraph) -> Result<(), DisclosureLin
     if actual_digest != lineage.subgraph_sha256 {
         return Err(invalid("lineage subgraph digest mismatch"));
     }
-    verify_lineage_signature(lineage, &actual_digest)?;
+    verify_lineage_signature(lineage, &actual_digest, trust.trusted_lineage_signer_keys())?;
     Ok(())
 }
 
 fn verify_lineage_signature(
     lineage: &SignedLineageSubgraph,
     digest: &str,
+    trusted_signer_keys: &[PublicKey],
 ) -> Result<(), DisclosureLineageError> {
     let signature = lineage
         .signature
@@ -408,8 +448,7 @@ fn verify_lineage_signature(
     };
     let public_key = PublicKey::from_hex(public_key)
         .map_err(|error| invalid(format!("lineage subgraph signer invalid: {error}")))?;
-    let public_key_hex = public_key.to_hex();
-    if !TRUSTED_LINEAGE_SIGNER_PUBLIC_KEYS.contains(&public_key_hex.as_str()) {
+    if !is_trusted_public_key(&public_key, trusted_signer_keys) {
         return Err(invalid("lineage subgraph signer untrusted"));
     }
     let signature = Signature::from_hex(signature)
@@ -424,6 +463,13 @@ fn verify_lineage_signature(
 pub fn verify_crypto_context_report_signature(
     report: &DisclosureCryptoContextReport,
 ) -> Result<(), DisclosureLineageError> {
+    verify_crypto_context_report_signature_with_trust(report, &[])
+}
+
+pub fn verify_crypto_context_report_signature_with_trust(
+    report: &DisclosureCryptoContextReport,
+    trusted_signer_keys: &[PublicKey],
+) -> Result<(), DisclosureLineageError> {
     let signature = report
         .signature
         .as_deref()
@@ -434,8 +480,7 @@ pub fn verify_crypto_context_report_signature(
     };
     let public_key = PublicKey::from_hex(public_key)
         .map_err(|error| invalid(format!("crypto context report signer invalid: {error}")))?;
-    let public_key_hex = public_key.to_hex();
-    if !TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_PUBLIC_KEYS.contains(&public_key_hex.as_str()) {
+    if !is_trusted_public_key(&public_key, trusted_signer_keys) {
         return Err(invalid("crypto context report signer untrusted"));
     }
     let signature = Signature::from_hex(signature)
@@ -451,6 +496,13 @@ pub fn verify_crypto_context_report_signature(
         ));
     }
     Ok(())
+}
+
+fn is_trusted_public_key(public_key: &PublicKey, trusted_signer_keys: &[PublicKey]) -> bool {
+    let public_key_hex = public_key.to_hex();
+    trusted_signer_keys
+        .iter()
+        .any(|trusted| trusted.to_hex() == public_key_hex)
 }
 
 fn validate_lineage_edges(

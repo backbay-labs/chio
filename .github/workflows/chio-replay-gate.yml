@@ -62,6 +62,11 @@ jobs:
         run: |
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources
           for attempt in 1 2 3; do
             if timeout 180s sudo apt-get update \
                 && timeout 180s sudo apt-get install -y protobuf-compiler; then
@@ -304,6 +309,11 @@ jobs:
         run: |
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources
           for attempt in 1 2 3; do
             if timeout 180s sudo apt-get update \
                 && timeout 180s sudo apt-get install -y protobuf-compiler; then
@@ -365,6 +375,11 @@ jobs:
         run: |
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources
           for attempt in 1 2 3; do
             if timeout 180s sudo apt-get update \
                 && timeout 180s sudo apt-get install -y protobuf-compiler; then
@@ -418,6 +433,11 @@ jobs:
         run: |
           set -euo pipefail
           export DEBIAN_FRONTEND=noninteractive
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources
           for attempt in 1 2 3; do
             if timeout 180s sudo apt-get update \
                 && timeout 180s sudo apt-get install -y protobuf-compiler; then

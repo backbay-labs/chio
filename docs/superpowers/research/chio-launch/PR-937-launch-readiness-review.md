@@ -714,3 +714,118 @@ The security and completeness trajectory is now strongly positive and, crucially
 3. **A medium/low completeness tail** (8 new + ~30 still-open): emitted-but-unregistered commerce claims, self-asserted marketplace-mode bypass, missing disclosure crypto negatives, MANIFEST duplication, copy-lint blind to shipped `.json`, the orphaned copy-map CI check, plus the per-system depth items (swarm fixture size, online settlement readback, risk premium/capital invariants, per-protocol agent-web fixtures).
 
 Close-out order and done-when gates are appended to `PR-937-remediation-roadmap.md` ("THIRD RE-REVIEW additions"). The single highest-priority action is to reseal the Stage 1 fixture and get `cargo xtask verify launch-acceptance` green, then close the four HIGH items.
+
+---
+
+# FOURTH RE-REVIEW (2026-06-25) - current working tree at HEAD 3931b972f + ~579-file WIP
+
+Re-ran the launch-doc comparison after the other agent advanced the branch by two commits (`06f0b3ec4` "fix: bind commerce proofs to trust market context", `3931b972f` "fix: close launch remediation gates") plus a large ~579-file uncommitted WIP. The other agent marked **every** THIRD RE-REVIEW finding `[x] fixed` in the roadmap. Method: 14-track **strictly read-only** multi-agent re-verification (Explore agents, no Edit/Write, no git/cargo mutation - I ran all gates myself) with adversarial refutation, plus first-hand measurement of all four mandated gates AND the aggregate `cargo xtask verify launch-acceptance`. 22 agents. Every claim was checked against current source; the adversarial pass refuted 4 candidate findings (recorded below).
+
+**Headline:** The other agent did substantial, real work and **most of the THIRD backlog is genuinely closed** (verified first-hand: bbs-projection.manifest.v2, the 5 disclosure crypto negatives, independent settlement-head + reorg rejection, the Agent Web envelope exit gate + source-log/sign-off gates, commerce key separation + marketplace-mode fail-closed, registered commerce claims, copy-lint JSON scope). **But the package is still NOT launch-ready, and three of the `[x] fixed` claims are not reproducible.** Most importantly, the mandated **`cargo xtask verify launch-acceptance` gate is STILL RED** (the THIRD critical RR3-T07-01 is only half-closed): the Stage 1 commerce settlement bundle was correctly resealed, but a new fail-closed disclosure requirement was added without wiring it into the gate, so the failure simply moved downstream.
+
+## Empirical gate state (measured first-hand today, 2026-06-25)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| `cargo build --workspace` | **PASS** (0 errors) | full workspace compiled |
+| `cargo clippy --workspace -- -D warnings` | **PASS** | clean |
+| `cargo fmt --all -- --check` | **FAIL (RED)** | 4 WIP files unformatted: `chio-proof-room/src/lib.rs:345`, `chio-disclosure-lineage/src/verifier.rs:90`, `chio-disclosure-lineage/tests/disclosure_lineage.rs:4`, `chio-selective-disclosure/tests/disclosure_lineage.rs:4`. Merge-blocker per CLAUDE.md. (RR4-FMT-01) |
+| **`cargo xtask verify launch-acceptance`** | **FAIL (RED) - merge blocker** | exit 1: `proof-room.disclosure-lineage-invalid: disclosure crypto context invalid: ... CHIO_DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS must pin trusted disclosure lineage signer keys`. The transaction-passport schema/catalog stage now PASSES (30 positive, 114 negative, 4 proof-room). See RR4-LAUNCHACC-01. |
+
+## Critical (verified first-hand by running the gate)
+
+### RR4-LAUNCHACC-01 - `cargo xtask verify launch-acceptance` is still RED; RR3-T07-01 only half-closed (the failure moved, it did not clear)
+- **Status:** regression / RR3-T07-01 not green · **System:** Proof Room / Launch Acceptance · **Severity:** CRITICAL (merge blocker)
+- **Evidence (reproduced first-hand):** `cargo run -p xtask -- verify launch-acceptance` exits 1. The Stage 1 reseal the other agent shipped is real (`fixtures/proof-room/public-stages/commerce-transaction-passport/.../settlement-proof-bundle.json` anchor `content_hash` is now `5e74c65e...`, not the stale `1ff0dfe4...`, and the commerce/settlement stage passes). But the gate now fails at the **disclosure-lineage stage** because the WIP added a new fail-closed requirement - `CHIO_DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS` (introduced in `crates/products/chio-cli/src/cli/dispatch/proof/env.rs:28` and `crates/products/chio-proof-room/src/lib.rs:150`; **0 occurrences at committed HEAD `3931b972f`**, so it is WIP-new) - and `xtask/src/launch_acceptance.rs` never sets that env key (grep confirms no `CHIO_DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS` / `set_var` in the xtask).
+- **Why it matters:** This is the aggregate launch proof and a CI step. The disclosure hardening itself is correct (fail-closed pinning of disclosure-lineage signer keys), but landing it without threading the key into the gate flow leaves non-negotiable 11 unmet on the current tree. The roadmap's `[x] RR3-T07-01: launch acceptance is green` is **not reproducible** - it is either stale (run before the disclosure WIP) or was run with the key set in a local shell.
+- **Fix:** Thread the disclosure-lineage trusted signer key into `xtask/src/launch_acceptance.rs` (mirror how it pins transaction roots / settlement keys / commerce keys), regenerate the public bundle, and confirm `cargo xtask verify launch-acceptance` exits 0. Add a CI assertion that the command is green so the next added fail-closed requirement cannot silently re-break it.
+
+## High / medium (verified)
+
+### RR4-FMT-01 - `cargo fmt --all -- --check` is RED on the WIP
+- **Status:** new_finding (gate) · **Severity:** HIGH (merge blocker per CLAUDE.md). 4 uncommitted files unformatted (see table). Fix: `cargo fmt --all` before commit.
+
+### R-T01-17 (re-scoped, confirmed still partial) - two transaction failure codes are registered but emitted by NO production path
+- **Status:** still_open (the roadmap's `[x] emitted by production CLI paths` is overstated) · **Severity:** MEDIUM (registered-but-dead codes; discipline gap, not fail-open - the adversarial verifier rated it HIGH).
+- **Evidence:** `transaction_receipt_uncheckpointed` and `transaction_buyer_review_rejected` exist in `spec/errors/chio-error-registry.v1.json` and are validated by `protocol_error_registry.rs`, but `rg` across all non-test `crates/*/src/` returns **zero** emit sites for either code. The cited passing tests exercise registry structure / buyer-verify rejection mapping, not a production verifier emitting these two codes.
+- **Fix:** wire the two codes into the actual rejection paths (or mark them reserved and drop them from the "must emit" set).
+
+### RR4-ARD-01 - registry-check script does not hash-verify `registry.json` / `MANIFEST.sha256` self-hash; RR3-ARD-01 + R-ARD-05 only partially fixed
+- **Status:** new_finding (corrects the roadmap's `[x] RR3-ARD-01 (+ R-ARD-05) fixed`) · **Severity:** MEDIUM (adversarially downgraded from HIGH).
+- **Evidence:** `scripts/check-chio-schema-registry.sh:95-106` hashes each `chio-*` schema file against its MANIFEST entry, but never computes `sha256(spec/schemas/registry.json)` to compare against the MANIFEST entry (line 294), never self-hashes `MANIFEST.sha256`, and leaves some `chio-wire/*` roots outside the actively-scanned set. So the "roots are now hash-verified" claim is not met. (`claim-set.v1` schema presence IS confirmed - that part of R-ARD-05 is real.)
+- **Fix:** add explicit `registry.json` and `MANIFEST.sha256` self-hash checks (fail-closed on mismatch) plus the uncovered `chio-wire` roots.
+
+### RR4-COMPLETE-01 - SW-ALIGN-14 still open: four named alignment gates not added to verification-gates.md
+- **Status:** still_open · **Severity:** MEDIUM (adversarially downgraded from HIGH). No `alignment gate` rows exist in `indices/verification-gates.md`. Fix: add the four alignment-gate rows with their required proof artifacts.
+
+## Still-open completeness tail (re-verified present-in-docs / absent-in-code at HEAD+WIP)
+
+- **Settlement (T05):** R-T05-05 (no top-level DSSE, per-artifact only), R-T05-11 (typed `AnchorProofBundle` unused in any fixture), R-T05-12 (negative corpus missing reorg/independent-head-mismatch cases), R-T05-19 (flat settlement panel).
+- **Agent Web (T08):** R-T08-11 (taxonomy doc outside research); per-protocol fixtures/binding R-T08-13/14/15/16/17/24/27 remain (the exit GATE now exists, but the underlying per-row fixtures it is meant to enforce are still thin).
+- **Transaction/Registry:** R-T01-04 (verifier-policy gating surface), RR4-ARD-02 (MANIFEST.sha256 not byte-deterministic), RR4-ARD-03 (low), R-ARD-44/53.
+- **Swarm (T03):** R-T03-03 (continuation<->attenuation-proof binding), R-T03-08 (per-hop 5-question report), R-T03-11 (multi-hop unlock feature gate), R-T03-16 (launch fixture still 2 child tasks < 3), R-T03-27 (egress_constraints content validation).
+- **Risk (T06):** R-T06-12 (premium/capital invariants + only ~5 of 10 subjects), R-T06-27 (full 15-gate codes), R-T06-28 (named copy-discipline exit gate).
+- **Runtime (RT):** R-RT-01 (lease task-graph/budget/parent-receipt bindings), R-RT-13 (no trusted-time-proof / clock-skew defense; timestamps self-asserted).
+- **DX / preflight / enterprise (WFENT):** R-T07-04 (collect evidence/replay/buyer-package kinds), R-T07-28 (non-canonical standalone commerce bundle layout), R-VG-PROD-NEG (product-overlay negatives), RM-P2A-PREFLIGHT (workflow schema IDs), R-ENT-15, RISK-P1-ENTERPRISE-EXPORT.
+- **Docs:** RR4-COMPLETE-02 / SW-ALIGN-15 (source-map compose-first, low), SW-TDD-06 (fixtures/chio-launch refs), SW-NAME-02.
+
+## Refuted this pass (candidates considered and excluded - do NOT action)
+
+- **R-T05-08 "the WIP REQUIRES an independent chain head, breaking offline verification"**: REFUTED. Requiring `independent_chain_head` (WIP `settlement_proof.rs:915-917`, was optional at HEAD) is the correct fail-closed hardening that *closes* the THIRD-review R-T05-08; the offline fixture provides the head and the settlement stage of `launch-acceptance` passes. (The gate RED is the disclosure key, not this.)
+- **R-T04-14 admin_full_evidence_v1 "incomplete"**: REFUTED - the export mode is implemented.
+- **R-T05-07** (offline structural binding) and **R-T03-17** (named negatives "missing"): REFUTED - acceptable / fixtures present.
+
+## Status corrections - THIRD-review findings re-verified GENUINELY FIXED since the last pass
+
+Verified first-hand as closed (close in the roadmap): **R-T04-07** (`chio.bbs-projection.manifest.v2` registered + required by the verifier + typed `message_class`/`sensitivity_class` slots), **RR3-T04-01** (all 5 disclosure crypto negatives on disk + cataloged + enforced), **R-T04-10** (report separates `crypto_verified` from `privacy_profile_verified`), **R-T05-08** (independent chain head + block-hash reorg rejection now required), **R-T08-28** (source-log Required Refresh Gate), **R-T08-29** (standards-review sign-off gate + `docs/standards/CHIO_AGENT_WEB_STANDARDS_SIGNOFF.json`), **R-T08-30** (Agent Web launch-blocking exit gate now blocks on manifest + negative + source-log + sign-off), **RR3-T01-01** (`claim.commerce.coverage_decision_bound` + `claim.commerce.trust_market_context_bound` registered + emitted-claim-is-registered test), **RR3-T02-02** (trust-market refs with `required=false` fail closed), **RR3-T02-03** (event-authority kernel keys + PSP payment-signer keys pinned from dedicated env sets distinct from the transaction root, with forged-signer negatives for both), **RR3-COPY-01** (release-truth lint scans `docs/standards/*.json`; bare-ACP hits qualified), **R-T06-16** (insurer copy lint), **R-T06-20** (subject-mismatch coverage), **RR3-COMPLETE-01/02** + **RR3-WF-01** (launch-acceptance test asserts the 16-case negative-control floor as a set + the 5 disclosure negatives + workflow-preflight catalog; CI invokes both xtask and the contract test), and the **RR3-T07-01 Stage 1 reseal** itself (the bundle is correctly resealed - the residual is only the disclosure-key wiring in RR4-LAUNCHACC-01).
+
+## 15 non-negotiables scorecard (fourth re-review)
+
+Net change vs THIRD: #8 (selective disclosure) and #12 (external standards) strengthened to MET (bbs v2 + the Agent Web exit/sign-off gates); #5 (settlement) improved (independent head + reorg now enforced). #11 (single CLI verifier + Proof Room) **remains PARTIAL/REGRESSED** because `cargo xtask verify launch-acceptance` is still RED (RR4-LAUNCHACC-01). Roughly 11 MET / 4 partial, but the aggregate launch gate must be green before #11 can be claimed.
+
+## Process note (transparency)
+
+This pass was run strictly read-only: review agents had no Edit/Write and were forbidden git/cargo mutation; I ran all gate commands myself; and I installed local `pre-commit`/`pre-push` guard hooks for the duration to prevent a repeat of the THIRD round's unauthorized commit/push. After synthesis I removed the guard hooks; the working tree was left exactly as the other agent had it (verified: HEAD unchanged at `3931b972f`, the WIP file set unchanged) plus this review's doc edits.
+
+## Verdict (fourth re-review)
+
+Real, verifiable progress: the THIRD-review backlog is largely closed and was re-confirmed first-hand, and several non-negotiables strengthened. **But PR #937 is still not mergeable / launch-ready**, for three reasons:
+1. **The mandated `cargo xtask verify launch-acceptance` gate is still RED** (RR4-LAUNCHACC-01) - the new disclosure-lineage signer-key requirement was not wired into the gate flow, so RR3-T07-01 is only half-closed. This is the single highest-priority fix.
+2. **`cargo fmt --all -- --check` is RED** (RR4-FMT-01) - a one-command merge-blocker.
+3. **Three `[x] fixed` claims are not reproducible** (RR4-LAUNCHACC-01 launch-acceptance green; R-T01-17 codes emitted by production; RR4-ARD-01 registry roots hash-verified), plus a medium/low completeness tail.
+
+Close-out order and done-when gates are appended to `PR-937-remediation-roadmap.md` ("FOURTH RE-REVIEW additions").
+
+---
+
+# LIVE RECONCILIATION ADDENDUM (2026-06-26)
+
+This addendum reconciles the FOURTH RE-REVIEW red-gate statements above with the current local WIP. It does not change the finding methodology. It records only live evidence from the same checkout after the remediation work that followed the fourth review.
+
+## Current Gate State
+
+| Gate | Live result | Evidence |
+|---|---|---|
+| `cargo run -p xtask -- verify launch-acceptance --out target/proof-room/public-bundle` | **PASS** | wrote `target/proof-room/public-bundle` and `target/proof-room/public-bundle.tar.zst` |
+| `bash scripts/tests/check-chio-proof-room-launch-acceptance.test.sh` | **PASS** | launch acceptance package contract passed |
+| `cargo fmt --all -- --check` | **PASS** | no formatting diff |
+| `bash scripts/check-chio-schema-registry.sh` | **PASS** | `OK Chio schema registry metadata` |
+| `bash scripts/tests/check-chio-schema-registry.test.sh` | **PASS** | schema registry script contract passed |
+| `bash scripts/check-chio-owned-v1-only.sh` | **PASS** | no Chio-owned pre-release remnants found |
+| `bash scripts/tests/check-agent-web-proof-envelope-schema.test.sh` | **PASS** | Agent Web proof-envelope schema gate passed |
+| `bash scripts/check-chio-proof-room-release-truth.sh` | **PASS** | `OK Proof Room release truth` |
+| `bash scripts/tests/check-chio-proof-room-release-truth.test.sh` | **PASS** | release truth positives and negatives passed |
+| `cargo test -p chio-cli --test proof_doctor -- --nocapture` | **PASS** | 30 passed |
+| `git diff --check` | **PASS** | no whitespace errors |
+
+## Status Corrections
+
+- **RR4-LAUNCHACC-01 is closed in the current WIP.** `xtask/src/launch_acceptance.rs` now pins the disclosure-lineage trusted signer keys, and the aggregate launch-acceptance command exits 0.
+- **RR4-FMT-01 is closed in the current WIP.** The formatting gate exits 0.
+- **R-T01-17 is closed in the current WIP.** `transaction_receipt_uncheckpointed` and `transaction_buyer_review_rejected` now have production CLI emit paths and passing focused tests.
+- **RR4-ARD-01 is closed in the current WIP.** The schema-registry script now verifies deterministic manifest roots, including registry and manifest self-check coverage.
+- **RR4-COMPLETE-01 is closed in the current WIP.** The source, composition, integration, and protocol alignment gates are present in `indices/verification-gates.md`.
+
+## Remaining Merge Blocker
+
+The live source blocker is now process-only: `RR2-COMMIT` remains open because this session is explicitly forbidden to commit, push, stash, or reset. The PR remote and GitHub CI still reflect `HEAD 3931b972f`, while the green evidence above is in the local tracked WIP. Do not treat the stale red-gate text above as current for this checkout; do not mark the PR mergeable until the user authorizes an intentional commit and push, then CI is rerun on the pushed head.

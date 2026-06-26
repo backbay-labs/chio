@@ -1,9 +1,11 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    env, fs,
+    env,
+    ffi::OsString,
+    fs,
     path::{Path, PathBuf},
     process,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use axum::http::StatusCode;
@@ -52,6 +54,7 @@ const PROOF_ROOM_RECEIPT_EVIDENCE_SCHEMA: &str = "chio.proof-room.receipt-eviden
 const TRANSACTION_REQUEST_DIGEST_SCHEMA: &str = "chio.request.digest.v1";
 const TRANSACTION_RESPONSE_DIGEST_SCHEMA: &str = "chio.response.digest.v1";
 const RUNTIME_TERMINAL_RECEIPT_SCHEMA: &str = "chio.runtime.terminal-receipt.v1";
+const RUNTIME_TRUSTED_TIME_PROOF_SCHEMA: &str = "chio.runtime.trusted-time-proof.v1";
 const PROOF_ROOM_SIGNATURE_KIND: &str = "detached-dsse";
 const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str = "application/vnd.chio.proof-room.bundle.v1+json";
 const PROOF_ROOM_BUNDLE_SCHEMA_JSON: &str = include_str!(concat!(
@@ -102,6 +105,10 @@ const RUNTIME_TERMINAL_RECEIPT_SCHEMA_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../spec/schemas/chio-runtime/v1/terminal-receipt.schema.json"
 ));
+const RUNTIME_TRUSTED_TIME_PROOF_SCHEMA_JSON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../spec/schemas/chio-runtime/v1/trusted-time-proof.schema.json"
+));
 const PROOF_FIXTURE_CATALOG_SCHEMA: &str = "chio.proof-room.fixture-root-catalog.v1";
 const PROOF_FIXTURE_CATALOG_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -146,6 +153,10 @@ const COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS_ENV: &str =
 const COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS_ENV: &str = "CHIO_COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS";
 const TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV: &str = "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS";
 const SWARM_TRUSTED_WITNESS_KEYS_ENV: &str = "CHIO_SWARM_TRUSTED_WITNESS_KEYS";
+const DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS_ENV: &str =
+    "CHIO_DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS";
+const DISCLOSURE_TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_KEYS_ENV: &str =
+    "CHIO_DISCLOSURE_TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_KEYS";
 const PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS";
 const PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS_ENV: &str =
@@ -154,12 +165,20 @@ const PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS";
 const PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS";
+const PUBLIC_SETTLEMENT_TRUSTED_BUNDLE_SIGNER_KEYS_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BUNDLE_SIGNER_KEYS";
 const PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS_ENV: &str = "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS";
 const PUBLIC_SETTLEMENT_MAINNET_BLOCKED_ENV: &str = "CHIO_PUBLIC_SETTLEMENT_MAINNET_BLOCKED";
 const PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS";
 const PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON";
+const PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL";
+const PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS";
+const PUBLIC_SETTLEMENT_REORGED_INDEPENDENT_CHAIN_HEAD_JSON: &str =
+    "{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"latest_block_number\":12345701}";
 const PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV: &str =
     "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS";
 const PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS_ENV: &str =
@@ -335,6 +354,21 @@ pub(crate) fn commerce_trusted_payment_signer_keys_from_env(
     )
 }
 
+pub(crate) fn disclosure_lineage_verifier_trust_from_env(
+) -> Result<chio_disclosure_lineage::DisclosureLineageVerifierTrust, String> {
+    Ok(
+        chio_disclosure_lineage::DisclosureLineageVerifierTrust::new()
+            .with_trusted_lineage_signer_keys(required_public_keys_from_env(
+                DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS_ENV,
+                "disclosure lineage signer",
+            )?)
+            .with_trusted_crypto_context_report_signer_keys(required_public_keys_from_env(
+                DISCLOSURE_TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_KEYS_ENV,
+                "disclosure crypto context report signer",
+            )?),
+    )
+}
+
 fn required_public_keys_from_env(
     env_name: &str,
     label: &str,
@@ -396,8 +430,9 @@ fn optional_u32_from_env(env_name: &str) -> Result<Option<u32>, String> {
 }
 
 fn optional_public_settlement_independent_chain_head_from_env(
+    proof_bundle: &chio_web3::settlement_proof::PublicSettlementProofBundle,
 ) -> Result<Option<chio_web3::settlement_proof::PublicSettlementIndependentChainHead>, String> {
-    match env::var(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV) {
+    let head_from_json = match env::var(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV) {
         Ok(value) => serde_json::from_str(value.trim())
             .map(Some)
             .map_err(|error| {
@@ -409,12 +444,132 @@ fn optional_public_settlement_independent_chain_head_from_env(
         Err(env::VarError::NotUnicode(_)) => Err(format!(
             "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV} must be valid UTF-8"
         )),
+    }?;
+    if head_from_json.is_some() {
+        return Ok(head_from_json);
+    }
+
+    match env::var(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV) {
+        Ok(value) => {
+            fetch_public_settlement_independent_chain_head_from_rpc(value.trim(), proof_bundle)
+                .map(Some)
+        }
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(_)) => Err(format!(
+            "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} must be valid UTF-8"
+        )),
     }
 }
 
+fn fetch_public_settlement_independent_chain_head_from_rpc(
+    url: &str,
+    proof_bundle: &chio_web3::settlement_proof::PublicSettlementProofBundle,
+) -> Result<chio_web3::settlement_proof::PublicSettlementIndependentChainHead, String> {
+    if url.is_empty() {
+        return Err(format!(
+            "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} must not be empty"
+        ));
+    }
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|error| {
+            format!("{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} HTTP client failed: {error}")
+        })?;
+    let latest_block_number = parse_json_rpc_hex_u64(
+        &public_settlement_rpc_call(&client, url, "eth_blockNumber", serde_json::json!([]))?,
+        "eth_blockNumber result",
+    )?;
+    let observed_block_number = proof_bundle.chain_snapshot.observed_block_number;
+    let observed_block = public_settlement_rpc_call(
+        &client,
+        url,
+        "eth_getBlockByNumber",
+        serde_json::json!([format!("0x{observed_block_number:x}"), false]),
+    )?;
+    let observed_block_hash =
+        required_json_rpc_string(&observed_block, "hash", "eth_getBlockByNumber result")?;
+
+    Ok(
+        chio_web3::settlement_proof::PublicSettlementIndependentChainHead {
+            chain_id: proof_bundle.chain_id.clone(),
+            observed_block_number,
+            observed_block_hash: observed_block_hash.to_string(),
+            latest_block_number,
+        },
+    )
+}
+
+fn public_settlement_rpc_call(
+    client: &reqwest::blocking::Client,
+    url: &str,
+    method: &str,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let response = client
+        .post(url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": method,
+            "params": params,
+        }))
+        .send()
+        .map_err(|error| {
+            format!("{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} failed: {error}")
+        })?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!(
+            "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} returned HTTP {status}"
+        ));
+    }
+    let body = response.json::<serde_json::Value>().map_err(|error| {
+        format!(
+            "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} returned invalid JSON: {error}"
+        )
+    })?;
+    if let Some(error) = body.get("error") {
+        return Err(format!(
+            "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} returned JSON-RPC error: {error}"
+        ));
+    }
+    body.get("result").cloned().ok_or_else(|| {
+        format!(
+            "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} response missing result"
+        )
+    })
+}
+
+fn parse_json_rpc_hex_u64(value: &serde_json::Value, label: &str) -> Result<u64, String> {
+    let raw = value
+        .as_str()
+        .ok_or_else(|| format!("{label} must be a hex string"))?;
+    let hex = raw
+        .strip_prefix("0x")
+        .ok_or_else(|| format!("{label} must start with 0x"))?;
+    u64::from_str_radix(hex, 16).map_err(|error| format!("{label} is not a u64: {error}"))
+}
+
+fn required_json_rpc_string<'a>(
+    value: &'a serde_json::Value,
+    field: &str,
+    label: &str,
+) -> Result<&'a str, String> {
+    value
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("{label}.{field} must be a string"))
+}
+
 pub(crate) fn public_settlement_verifier_trust_from_env(
+    proof_bundle: &chio_web3::settlement_proof::PublicSettlementProofBundle,
 ) -> Result<chio_web3::settlement_proof::PublicSettlementVerifierTrust, String> {
     Ok(chio_web3::settlement_proof::PublicSettlementVerifierTrust {
+        trusted_bundle_signer_keys: required_public_keys_from_env(
+            PUBLIC_SETTLEMENT_TRUSTED_BUNDLE_SIGNER_KEYS_ENV,
+            "public settlement bundle signer",
+        )?,
         trusted_capital_signer_keys: required_public_keys_from_env(
             PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS_ENV,
             "public settlement capital signer",
@@ -438,7 +593,12 @@ pub(crate) fn public_settlement_verifier_trust_from_env(
         mainnet_blocked: optional_bool_from_env(PUBLIC_SETTLEMENT_MAINNET_BLOCKED_ENV)?,
         minimum_confirmations: optional_u32_from_env(PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS_ENV)?,
         expected_trust_market_context: None,
-        independent_chain_head: optional_public_settlement_independent_chain_head_from_env()?,
+        independent_chain_head: optional_public_settlement_independent_chain_head_from_env(
+            proof_bundle,
+        )?,
+        verifier_now_unix_seconds: optional_u64_from_env(
+            PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS_ENV,
+        )?,
     })
 }
 
@@ -687,6 +847,68 @@ struct ProofRoomNegativeCase {
     expected_failure_code: String,
     #[serde(default)]
     observed_failure_code: Option<String>,
+    #[serde(default)]
+    verifier_context: ProofRoomVerifierContext,
+}
+
+#[derive(Debug, Default, serde::Deserialize, serde::Serialize)]
+struct ProofRoomVerifierContext {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    public_settlement_independent_chain_head: Option<PublicSettlementIndependentChainHeadContext>,
+}
+
+#[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum PublicSettlementIndependentChainHeadContext {
+    Missing,
+    BlockHashMismatch,
+}
+
+struct EnvVarOverride {
+    name: &'static str,
+    previous: Option<OsString>,
+}
+
+impl EnvVarOverride {
+    fn remove(name: &'static str) -> Self {
+        let previous = env::var_os(name);
+        env::remove_var(name);
+        Self { name, previous }
+    }
+
+    fn set(name: &'static str, value: &'static str) -> Self {
+        let previous = env::var_os(name);
+        env::set_var(name, value);
+        Self { name, previous }
+    }
+}
+
+impl Drop for EnvVarOverride {
+    fn drop(&mut self) {
+        match &self.previous {
+            Some(value) => env::set_var(self.name, value),
+            None => env::remove_var(self.name),
+        }
+    }
+}
+
+impl ProofRoomVerifierContext {
+    fn apply(&self) -> Vec<EnvVarOverride> {
+        match self.public_settlement_independent_chain_head {
+            Some(PublicSettlementIndependentChainHeadContext::Missing) => vec![
+                EnvVarOverride::remove(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV),
+                EnvVarOverride::remove(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV),
+            ],
+            Some(PublicSettlementIndependentChainHeadContext::BlockHashMismatch) => vec![
+                EnvVarOverride::set(
+                    PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV,
+                    PUBLIC_SETTLEMENT_REORGED_INDEPENDENT_CHAIN_HEAD_JSON,
+                ),
+                EnvVarOverride::remove(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV),
+            ],
+            None => Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -806,6 +1028,17 @@ struct ProofRoomCatalogLoadReport {
 
 pub fn verify_proof_room_bundle(manifest_path: &Path) -> Result<(), ProofRoomError> {
     verify_proof_room_bundle_inner(manifest_path).map_err(ProofRoomError::Validation)
+}
+
+pub fn build_proof_room_source_verifier_report(
+    bundle_root: &Path,
+    transaction_passport_path: &Path,
+) -> Result<serde_json::Value, String> {
+    source_verifier::verify_transaction_passport_family_report_with_options(
+        bundle_root,
+        transaction_passport_path,
+        true,
+    )
 }
 
 pub fn validate_proof_room_bundle_relative_path(relative_path: &str) -> Result<(), String> {

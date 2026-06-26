@@ -34,6 +34,19 @@ pub(super) fn validate_subject(
             "authorization_context_digest",
             "missing MCP authorization context digest",
         ),
+        (
+            "protected_resource_metadata_digest",
+            "missing MCP protected-resource metadata digest",
+        ),
+        (
+            "authorization_server_metadata_digest",
+            "missing MCP authorization-server metadata digest",
+        ),
+        ("dpop_proof_digest", "missing MCP DPoP proof digest"),
+        (
+            "proof_envelope_resource_read_digest",
+            "missing MCP proof-envelope resource read digest",
+        ),
     ] {
         let digest = required_json_str(value, field, message)?;
         validate_sha256_hex(digest)

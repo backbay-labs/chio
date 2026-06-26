@@ -12,6 +12,8 @@ pub(crate) const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
 pub(crate) const TEST_RECEIPT_SEED: [u8; 32] = [23; 32];
 pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
     "chio-agent-web-standard-webhooks-fixture-secret-v1";
+pub(crate) const STANDARD_WEBHOOKS_VERIFIER_NOW: &str = "1770508860";
+pub(crate) const STANDARD_WEBHOOKS_MAX_AGE_SECONDS: &str = "300";
 pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
     "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de,",
     "4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff,",
@@ -53,17 +55,31 @@ pub(crate) const TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS: &str =
     "cf1b37e85dc00aee94f10108b37f151e2a37b3ae2a0cae77521f83488db9c4d7";
 pub(crate) const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS: &str =
     "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618";
+pub(crate) const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BUNDLE_SIGNER_KEYS: &str =
+    "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618";
 pub(crate) const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS: &str =
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
 pub(crate) const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS: &str =
     "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a";
 pub(crate) const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ORACLE_KEYS: &str =
     "d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c";
+pub(crate) const PUBLIC_SETTLEMENT_FIXTURE_INDEPENDENT_CHAIN_HEAD_JSON: &str =
+    "{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"latest_block_number\":12345701}";
+pub(crate) const DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS: &str =
+    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa";
 
 pub(crate) fn configure_agent_web_fixture_secret() {
     std::env::set_var(
         "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
         STANDARD_WEBHOOKS_VERIFIER_SECRET,
+    );
+    std::env::set_var(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS",
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+    std::env::set_var(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS",
+        STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
     );
     std::env::set_var(
         "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
@@ -118,6 +134,14 @@ pub(crate) fn configure_proof_room_fixture_trust() {
         COMMERCE_FIXTURE_TRUSTED_PAYMENT_SIGNER_KEYS,
     );
     std::env::set_var(
+        "CHIO_DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS",
+        DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS,
+    );
+    std::env::set_var(
+        "CHIO_DISCLOSURE_TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_KEYS",
+        DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS,
+    );
+    std::env::set_var(
         "CHIO_SWARM_TRUSTED_WITNESS_KEYS",
         SWARM_FIXTURE_TRUSTED_WITNESS_KEYS,
     );
@@ -128,6 +152,10 @@ pub(crate) fn configure_proof_room_fixture_trust() {
     std::env::set_var(
         "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS",
         PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS,
+    );
+    std::env::set_var(
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BUNDLE_SIGNER_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BUNDLE_SIGNER_KEYS,
     );
     std::env::set_var(
         "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS",
@@ -146,6 +174,14 @@ pub(crate) fn configure_proof_room_fixture_trust() {
         "eip155:8453,eip155:42161",
     );
     std::env::set_var("CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS", "1");
+    std::env::set_var(
+        "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON",
+        PUBLIC_SETTLEMENT_FIXTURE_INDEPENDENT_CHAIN_HEAD_JSON,
+    );
+    std::env::set_var(
+        "CHIO_PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS",
+        "1743293560",
+    );
 }
 
 pub(crate) fn proof_room_fixture_trusted_bundle_signer_keys() -> String {
@@ -873,23 +909,13 @@ pub(crate) fn add_required_claim_to_verifier_policy(
     let verifier_policy_sha256 = sha256_file(&verifier_policy_path)?;
     let trust_roots_sha256 = trust_test_bundle_signer(bundle)?;
 
+    update_evidence_graph_node_hash(bundle, "verifier-policy.json", &verifier_policy_sha256)?;
+    update_evidence_graph_node_hash(
+        bundle,
+        "artifacts/authority/trust-roots.json",
+        &trust_roots_sha256,
+    )?;
     let evidence_graph_path = bundle.join("roots/evidence-graph.json");
-    let mut evidence_graph: serde_json::Value =
-        serde_json::from_slice(&fs::read(&evidence_graph_path)?)?;
-    for node in evidence_graph["nodes"]
-        .as_array_mut()
-        .ok_or("evidence graph nodes missing")?
-    {
-        if node.get("path").and_then(serde_json::Value::as_str) == Some("verifier-policy.json") {
-            node["sha256"] = serde_json::Value::String(verifier_policy_sha256.clone());
-        }
-        if node.get("path").and_then(serde_json::Value::as_str)
-            == Some("artifacts/authority/trust-roots.json")
-        {
-            node["sha256"] = serde_json::Value::String(trust_roots_sha256.clone());
-        }
-    }
-    fs::write(&evidence_graph_path, json_bytes(&evidence_graph)?)?;
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path)?;
 
     let passport_path = bundle.join("roots/transaction-passport.json");

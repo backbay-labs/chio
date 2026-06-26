@@ -9,5 +9,15 @@
   "request_digest": "7979797979797979797979797979797979797979797979797979797979797979",
   "response_digest": "8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a",
   "spec_digest": "6868686868686868686868686868686868686868686868686868686868686868",
-  "status_code": 201
+  "status_code": 201,
+  "openapi_document_id_digest": "a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6",
+  "server_url_digest": "a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7",
+  "path_parameters_digest": "a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8",
+  "x_chio_proof_envelope_profile": "chio.agent-web-proof-envelope.v1",
+  "x_chio_receipt_binding_digest": "a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9",
+  "x_chio_evidence_profile_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "egress_contract_digest": "abababababababababababababababababababababababababababababababab",
+  "redirect_followed": false,
+  "response_size_bytes": 4096,
+  "max_response_size_bytes": 1048576
 }

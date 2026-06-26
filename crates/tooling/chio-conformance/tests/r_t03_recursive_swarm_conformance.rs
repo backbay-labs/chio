@@ -32,6 +32,9 @@ fn recursive_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
             fixture_artifact::<SwarmContinuationToken>(include_str!(
                 "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/continuation-child-b.json"
             ))?,
+            fixture_artifact::<SwarmContinuationToken>(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/continuation-child-c.json"
+            ))?,
         ],
         witness_chains: vec![
             fixture_artifact::<SwarmDelegationWitnessChain>(include_str!(
@@ -39,6 +42,9 @@ fn recursive_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
             ))?,
             fixture_artifact::<SwarmDelegationWitnessChain>(include_str!(
                 "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/witness-child-b.json"
+            ))?,
+            fixture_artifact::<SwarmDelegationWitnessChain>(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/witness-child-c.json"
             ))?,
         ],
         join_receipts: vec![fixture_artifact::<SwarmJoinReceipt>(include_str!(
@@ -50,6 +56,9 @@ fn recursive_swarm_bundle() -> Result<SwarmAuthorityBundle, Box<dyn Error>> {
             ))?,
             fixture_artifact::<SwarmRoutePlanReceipt>(include_str!(
                 "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/route-child-b.json"
+            ))?,
+            fixture_artifact::<SwarmRoutePlanReceipt>(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/route-child-c.json"
             ))?,
         ],
         budget_pool: fixture_artifact::<SwarmBudgetPool>(include_str!(

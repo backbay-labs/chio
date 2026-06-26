@@ -1,0 +1,7 @@
+{
+  "schema": "chio.proof-room.negative-case.v1",
+  "id": "nonce-replay",
+  "claim_ref": "claim.disclosure.crypto_context_bound",
+  "verifier_entrypoint": "transaction-passport.json",
+  "expected_failure_code": "proof-room.negative.disclosure-context-nonce-replayed"
+}

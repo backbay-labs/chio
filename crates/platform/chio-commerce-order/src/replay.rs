@@ -49,6 +49,8 @@ struct CommerceOrderEvent {
 
 pub(super) struct CommerceReplayResult {
     pub(super) current_state: String,
+    pub(super) settlement_dispatch_event_sha256: Option<String>,
+    pub(super) settlement_dispatch_receipt_ref: Option<String>,
 }
 
 pub(super) fn replay_event_log(
@@ -71,6 +73,8 @@ pub(super) fn replay_event_log(
     let mut mandate_bound_at = None;
     let mut budget_reserved_at = None;
     let mut previous_event_occurred_at = None;
+    let mut settlement_dispatch_event_sha256 = None;
+    let mut settlement_dispatch_receipt_ref = None;
     let payment_captured_at = parse_rfc3339_utc(&payment.captured_at, "payment captured_at")?;
     for event in &event_log.events {
         let occurred_at = validate_event_shape(event, context)?;
@@ -215,6 +219,10 @@ pub(super) fn replay_event_log(
                 require_settlement_trust_market_refs(event, requirement)?;
             }
         }
+        if event.next_state == "settlement_dispatched" {
+            settlement_dispatch_event_sha256 = Some(event.event_sha256.clone());
+            settlement_dispatch_receipt_ref = Some(event.authority_receipt_ref.clone());
+        }
         if event.next_state == "settlement_reconciled"
             && !event.evidence_refs.contains(&context.reconciliation_ref)
         {
@@ -244,7 +252,11 @@ pub(super) fn replay_event_log(
         )));
     }
 
-    Ok(CommerceReplayResult { current_state })
+    Ok(CommerceReplayResult {
+        current_state,
+        settlement_dispatch_event_sha256,
+        settlement_dispatch_receipt_ref,
+    })
 }
 
 fn authority_receipts_by_ref(

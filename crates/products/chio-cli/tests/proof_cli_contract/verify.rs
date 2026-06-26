@@ -1,5 +1,6 @@
 use super::support::*;
-use chio_core::{canonical_json_bytes, sha256_hex};
+use chio_core::{canonical_json_bytes, sha256_hex, Keypair};
+use chio_swarm_authority::{sign_swarm_task_graph, SwarmTaskGraph};
 use chio_test_support::prelude::*;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -154,11 +155,17 @@ fn proof_verify_rejects_commerce_claim_set_required_claim_not_verified() {
     passport["claim_set_sha256"] = serde_json::Value::String(claim_set_sha256);
     write_json(&passport_path, &passport);
 
-    let bundle = utf8_path(&bundle);
+    let transaction_input_dir = report_dir.path().join("transaction-input");
+    copy_dir_all(&bundle, &transaction_input_dir).test_expect("copy transaction input");
+    let transaction_manifest = transaction_input_dir.join("manifest.json");
+    if transaction_manifest.is_file() {
+        std::fs::remove_file(transaction_manifest).test_expect("remove proof room manifest");
+    }
+    let passport_input = utf8_path(&transaction_input_dir.join("transaction-passport.json"));
     let output = chio(&[
         "proof",
         "verify",
-        bundle.as_str(),
+        passport_input.as_str(),
         "--require",
         "commerce",
         "--out",
@@ -215,6 +222,48 @@ fn proof_verify_wraps_single_family_domain_report_with_machine_result_fields() {
         report["family_reports"][0]["schema"],
         "chio.commerce.order-passport.v1"
     );
+}
+
+#[test]
+fn commerce_verify_exposes_dedicated_commerce_report_surface() {
+    let fixture = workspace_root().join("fixtures/proof-room/commerce-payments/offline-psp-valid");
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let out = tempdir.path().join("commerce-report.json");
+
+    let output = chio(&[
+        "commerce",
+        "verify",
+        utf8_path(&fixture).as_str(),
+        "--out",
+        utf8_path(&out).as_str(),
+    ]);
+
+    assert_success(&output);
+    let report: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&out).test_expect("commerce report was written"))
+            .test_expect("commerce report parses");
+    assert_json_schema_accepts(
+        "spec/schemas/chio-transaction/v1/verifier-report.schema.json",
+        &report,
+    );
+    assert_eq!(report["schema"], "chio.transaction.verifier-report.v1");
+    assert_eq!(report["verdict"], "verified");
+    assert_eq!(report["accepted"], true);
+    assert!(report["verified_claims"]
+        .as_array()
+        .test_expect("verified claims array")
+        .iter()
+        .any(|claim| claim.as_str() == Some("claim.commerce.order_replay_consistent")));
+    assert!(report["claimResults"]
+        .as_array()
+        .test_expect("claim results array")
+        .iter()
+        .any(|claim| {
+            claim
+                .get("verifier_module")
+                .and_then(serde_json::Value::as_str)
+                == Some("chio commerce verify")
+        }));
 }
 
 #[test]
@@ -297,6 +346,19 @@ fn proof_verify_runtime_requirement_rejects_advisory_only_runtime_claim() {
     write_json(&verifier_policy_path, &verifier_policy);
     let verifier_policy_sha256 = sha256_file(&verifier_policy_path);
 
+    let passport_path = bundle.join("transaction-passport.json");
+    let mut passport: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
+            .test_expect("passport parses");
+    let claim_set_sha256 = refresh_claim_set_for_policy(
+        &bundle,
+        passport["id"].as_str().test_expect("passport has id"),
+        passport["issued_at"]
+            .as_str()
+            .test_expect("passport has issued_at"),
+        &verifier_policy,
+    );
+
     let evidence_graph_path = bundle.join("evidence-graph.json");
     let mut evidence_graph: serde_json::Value = serde_json::from_slice(
         &std::fs::read(&evidence_graph_path).test_expect("read evidence graph"),
@@ -306,13 +368,20 @@ fn proof_verify_runtime_requirement_rejects_advisory_only_runtime_claim() {
     write_json(&evidence_graph_path, &evidence_graph);
     let evidence_graph_sha256 = sha256_file(&evidence_graph_path);
 
-    let passport_path = bundle.join("transaction-passport.json");
-    let mut passport: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(&passport_path).test_expect("read passport"))
-            .test_expect("passport parses");
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
+    passport["claim_set_sha256"] = serde_json::Value::String(claim_set_sha256);
+    passport["claim_set_path"] = serde_json::Value::String("claim-set.json".to_string());
     passport["verifier_policy_sha256"] = serde_json::Value::String(verifier_policy_sha256);
     write_json(&passport_path, &passport);
+    sync_proof_room_transaction_roots(&bundle);
+    retain_proof_room_manifest_claims(
+        &bundle,
+        &[
+            "claim.transaction.passport_root_verified",
+            "claim.proof_room.verifier_report_bound",
+            "claim.runtime.advisory_not_used_as_authorization",
+        ],
+    );
 
     let output = chio(&[
         "proof",
@@ -723,6 +792,7 @@ fn proof_verify_delegation_requirement_rejects_root_only_swarm() {
     task_graph["edges"] = serde_json::json!([]);
     task_graph["joins"] = serde_json::json!([]);
     task_graph["routePlanRefs"] = serde_json::json!([]);
+    sign_swarm_task_graph_value(&mut task_graph);
     write_json(&task_graph_path, &task_graph);
 
     let budget_pool_path = bundle.join("budget-pool.json");
@@ -803,6 +873,14 @@ fn proof_verify_delegation_requirement_rejects_root_only_swarm() {
     ]);
 
     assert_failure(&output, "signed swarm delegation evidence missing");
+}
+
+fn sign_swarm_task_graph_value(task_graph: &mut serde_json::Value) {
+    let mut graph: SwarmTaskGraph =
+        serde_json::from_value(task_graph.clone()).test_expect("task graph decodes");
+    graph.signature = sign_swarm_task_graph(&graph, &Keypair::from_seed(&[31u8; 32]))
+        .test_expect("task graph signs");
+    *task_graph = serde_json::to_value(graph).test_expect("task graph encodes");
 }
 
 #[test]

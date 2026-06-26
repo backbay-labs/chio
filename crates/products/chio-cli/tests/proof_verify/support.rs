@@ -14,6 +14,10 @@ pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
 const STANDARD_WEBHOOKS_VERIFIER_NOW: &str = "1770508860";
 const STANDARD_WEBHOOKS_MAX_AGE_SECONDS: &str = "300";
 const TEST_SIGNATURE_SEED: [u8; 32] = [7; 32];
+const COLLECT_SIGNATURE_SEED: [u8; 32] = [11; 32];
+const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str = "application/vnd.chio.proof-room.bundle.v1+json";
+const PUBLIC_SETTLEMENT_BUNDLE_SIGNATURE_SEED: [u8; 32] = [9; 32];
+const PUBLIC_SETTLEMENT_BUNDLE_SIGNATURE_ALGORITHM: &str = "ed25519-rfc8785-v1";
 const PROOF_ROOM_SHIPPED_BUNDLE_SIGNER_KEYS: &str = concat!(
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,",
     "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a"
@@ -36,6 +40,11 @@ const TRANSACTION_FIXTURE_TRUSTED_ROOT_KEYS: &str = concat!(
 );
 const RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS: &str =
     "5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca";
+const PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS: &str = concat!(
+    "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,",
+    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa,",
+    "a6d2455ea3a5771aba9fcb037924114c92f9f325049f6b4269e739d9048bb869"
+);
 const ENTERPRISE_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS: &str = concat!(
     "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc,",
     "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa,",
@@ -47,9 +56,15 @@ const ENTERPRISE_FIXTURE_TRUSTED_RISK_COMPTROLLER_KEYS: &str =
     "3f0dda81e6abbcc5f17c359df8517177769d2dfff3d4ce942e7ce9a82dfb0db2";
 const COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS: &str =
     "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca";
+const COMMERCE_FIXTURE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS: &str =
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
+const COMMERCE_FIXTURE_TRUSTED_PAYMENT_SIGNER_KEYS: &str =
+    "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
 const TRUST_MARKET_FIXTURE_TRUSTED_AUTHORITY_KEYS: &str =
     "cf1b37e85dc00aee94f10108b37f151e2a37b3ae2a0cae77521f83488db9c4d7";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS: &str =
+    "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BUNDLE_SIGNER_KEYS: &str =
     "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS: &str =
     "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c";
@@ -57,6 +72,10 @@ const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS: &str =
     "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ORACLE_KEYS: &str =
     "d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c";
+const PUBLIC_SETTLEMENT_FIXTURE_INDEPENDENT_CHAIN_HEAD_JSON: &str =
+    "{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"latest_block_number\":12345701}";
+const DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS: &str =
+    "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa";
 
 pub(crate) fn chio_with_agent_web_fixture_secret() -> std::process::Command {
     let mut command = chio_with_transaction_fixture_roots();
@@ -129,6 +148,10 @@ pub(crate) fn chio_with_transaction_fixture_roots() -> std::process::Command {
         RUNTIME_FIXTURE_TRUSTED_ROOT_KEYS,
     );
     command.env(
+        "CHIO_PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS",
+        PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
+    );
+    command.env(
         "CHIO_ENTERPRISE_TRUSTED_APPROVAL_KEYS",
         ENTERPRISE_FIXTURE_TRUSTED_APPROVAL_KEYS,
     );
@@ -145,12 +168,32 @@ pub(crate) fn chio_with_transaction_fixture_roots() -> std::process::Command {
         COMMERCE_FIXTURE_TRUSTED_PROVIDER_KEYS,
     );
     command.env(
+        "CHIO_COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS",
+        COMMERCE_FIXTURE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS,
+    );
+    command.env(
+        "CHIO_COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS",
+        COMMERCE_FIXTURE_TRUSTED_PAYMENT_SIGNER_KEYS,
+    );
+    command.env(
+        "CHIO_DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS",
+        DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS,
+    );
+    command.env(
+        "CHIO_DISCLOSURE_TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_KEYS",
+        DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS,
+    );
+    command.env(
         "CHIO_SWARM_TRUSTED_WITNESS_KEYS",
         SWARM_FIXTURE_TRUSTED_WITNESS_KEYS,
     );
     command.env(
         "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS",
         PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS,
+    );
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BUNDLE_SIGNER_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BUNDLE_SIGNER_KEYS,
     );
     command.env(
         "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS",
@@ -169,6 +212,14 @@ pub(crate) fn chio_with_transaction_fixture_roots() -> std::process::Command {
         "eip155:8453,eip155:42161",
     );
     command.env("CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS", "1");
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON",
+        PUBLIC_SETTLEMENT_FIXTURE_INDEPENDENT_CHAIN_HEAD_JSON,
+    );
+    command.env(
+        "CHIO_PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS",
+        "1743293560",
+    );
     command
 }
 
@@ -467,6 +518,13 @@ pub(crate) fn add_valid_disclosure_selective_disclosure_proof(bundle_dir: &std::
                 bytes_hex: hex::encode(b"read_refund_case"),
                 wholesale_only: false,
             },
+            chio_selective_disclosure::ProjectionMessage {
+                index: 2,
+                field: "amount".to_string(),
+                encoding: "S".to_string(),
+                bytes_hex: hex::encode(b"100"),
+                wholesale_only: true,
+            },
         ],
     };
     let signed = chio_selective_disclosure::sign_projection(&projection, &keypair)
@@ -508,8 +566,33 @@ pub(crate) fn add_valid_disclosure_selective_disclosure_proof(bundle_dir: &std::
         &std::fs::read(bundle_dir.join("transparency-inclusion-proof.json"))
             .test_expect("read transparency inclusion proof"),
     );
-    let projection_manifest =
+    let mut projection_manifest =
         chio_selective_disclosure::bbs_projection_manifest_from_projection(&projection);
+    let capsule: serde_json::Value =
+        serde_json::from_slice(&capsule_bytes).test_expect("parse disclosure capsule");
+    if capsule
+        .get("hidden_predicates")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|predicate| {
+            predicate
+                .get("predicate_id")
+                .and_then(serde_json::Value::as_str)
+                == Some("amount_lte_100")
+        })
+    {
+        projection_manifest.hidden_predicates.push(
+            chio_selective_disclosure::BbsProjectionHiddenPredicate {
+                predicate_id: "amount_lte_100".to_string(),
+                field: "amount".to_string(),
+                operator: "<=".to_string(),
+                value_sha256: Some(
+                    "ad57366865126e55649ecb23ae1d48887544976efea46a48eb5d85a6eeb4d306".to_string(),
+                ),
+            },
+        );
+    }
     let projection_manifest_bytes =
         serde_json::to_vec(&projection_manifest).test_expect("serialize BBS projection manifest");
     std::fs::write(
@@ -630,8 +713,9 @@ pub(crate) fn add_valid_disclosure_selective_disclosure_proof(bundle_dir: &std::
 
 pub(crate) fn add_disclosure_bbs_projection_manifest(
     bundle_dir: &std::path::Path,
-    message_slots: serde_json::Value,
+    mut message_slots: serde_json::Value,
 ) {
+    add_valid_disclosure_selective_disclosure_proof(bundle_dir);
     let proof_path = bundle_dir.join("selective-disclosure-proof.json");
     let proof: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&proof_path).test_expect("read BBS proof"))
@@ -640,6 +724,46 @@ pub(crate) fn add_disclosure_bbs_projection_manifest(
         .get("subject_sha256_hex")
         .and_then(serde_json::Value::as_str)
         .test_expect("BBS proof has subject digest");
+    let capsule_path = bundle_dir.join("capsule.json");
+    let capsule: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&capsule_path).test_expect("read capsule"))
+            .test_expect("parse capsule");
+    append_disclosure_hidden_projection_slots(&mut message_slots, &capsule);
+    let hidden_predicates = capsule
+        .get("hidden_predicates")
+        .and_then(serde_json::Value::as_array)
+        .map(|predicates| {
+            predicates
+                .iter()
+                .map(|predicate| {
+                    let predicate_id = predicate
+                        .get("predicate_id")
+                        .and_then(serde_json::Value::as_str)
+                        .test_expect("hidden predicate id");
+                    if predicate_id == "amount_lte_100" {
+                        serde_json::json!({
+                            "predicate_id": "amount_lte_100",
+                            "field": "amount",
+                            "operator": "<=",
+                            "value_sha256": "ad57366865126e55649ecb23ae1d48887544976efea46a48eb5d85a6eeb4d306"
+                        })
+                    } else {
+                        serde_json::json!({
+                            "predicate_id": predicate_id,
+                            "field": predicate
+                                .get("field")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or(predicate_id),
+                            "operator": predicate
+                                .get("operator")
+                                .and_then(serde_json::Value::as_str)
+                                .unwrap_or("unsupported")
+                        })
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     let manifest = serde_json::json!({
         "schema": "chio.bbs-projection.manifest.v2",
         "manifest_id": "chio.bbs-projection.receipt.v1",
@@ -647,7 +771,7 @@ pub(crate) fn add_disclosure_bbs_projection_manifest(
         "canonicalization": "jcs",
         "hash_algorithm": "sha-256",
         "message_slots": message_slots,
-        "hidden_predicates": []
+        "hidden_predicates": hidden_predicates
     });
     let manifest_path = bundle_dir.join("bbs-projection-manifest.json");
     write_json(&manifest_path, &manifest);
@@ -694,6 +818,42 @@ pub(crate) fn add_disclosure_bbs_projection_manifest(
         "evidence_graph_sha256",
         chio_core::sha256_hex(&evidence_graph_bytes),
     );
+}
+
+fn append_disclosure_hidden_projection_slots(
+    message_slots: &mut serde_json::Value,
+    capsule: &serde_json::Value,
+) {
+    let Some(slots) = message_slots.as_array_mut() else {
+        return;
+    };
+    let has_amount_slot = slots.iter().any(|slot| {
+        slot.get("slot").and_then(serde_json::Value::as_u64) == Some(2)
+            && slot.get("field").and_then(serde_json::Value::as_str) == Some("amount")
+    });
+    let declares_amount_predicate = capsule
+        .get("hidden_predicates")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|predicate| {
+            predicate
+                .get("predicate_id")
+                .and_then(serde_json::Value::as_str)
+                == Some("amount_lte_100")
+        });
+    if declares_amount_predicate && !has_amount_slot {
+        slots.push(serde_json::json!({
+            "slot": 2,
+            "field": "amount",
+            "message_class": "wholesale_field",
+            "sensitivity_class": "wholesale_only",
+            "encoding": "S",
+            "disclosure": "hidden",
+            "wholesale_only": true,
+            "value_sha256": "ad57366865126e55649ecb23ae1d48887544976efea46a48eb5d85a6eeb4d306"
+        }));
+    }
 }
 
 pub(crate) fn add_bad_disclosure_transparency_inclusion_proof(bundle_dir: &std::path::Path) {
@@ -1003,6 +1163,80 @@ fn write_verifier_policy_and_refresh_digests(
     let policy_digest = chio_core::sha256_hex(&policy_bytes);
     refresh_evidence_graph_verifier_policy_digest(bundle_dir, &policy_digest);
     set_passport_digest(bundle_dir, "verifier_policy_sha256", policy_digest);
+    refresh_manifest_artifact_ref_if_present(bundle_dir, "verifier-policy.json");
+    refresh_manifest_artifact_ref_if_present(bundle_dir, "evidence-graph.json");
+    refresh_manifest_artifact_ref_if_present(bundle_dir, "transaction-passport.json");
+}
+
+fn refresh_manifest_artifact_ref_if_present(bundle_dir: &std::path::Path, artifact_path: &str) {
+    if !bundle_dir.join("manifest.json").is_file() {
+        return;
+    }
+    refresh_manifest_artifact_ref(bundle_dir, artifact_path);
+}
+
+fn refresh_manifest_artifact_ref(bundle_dir: &std::path::Path, artifact_path: &str) {
+    let artifact_sha256 = chio_core::sha256_hex(
+        &std::fs::read(bundle_dir.join(artifact_path)).test_expect("read artifact"),
+    );
+    let manifest_path = bundle_dir.join("manifest.json");
+    let mut manifest: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&manifest_path).test_expect("read manifest"))
+            .test_expect("manifest parses");
+    match artifact_path {
+        "transaction-passport.json" => {
+            manifest["transaction_passport_ref"]["sha256"] =
+                serde_json::Value::String(artifact_sha256.clone());
+        }
+        "evidence-graph.json" => {
+            manifest["evidence_graph_ref"]["sha256"] =
+                serde_json::Value::String(artifact_sha256.clone());
+        }
+        _ => {}
+    }
+    for artifact in manifest["artifacts"]
+        .as_array_mut()
+        .test_expect("manifest artifacts array")
+    {
+        if artifact.get("path").and_then(serde_json::Value::as_str) == Some(artifact_path) {
+            artifact["sha256"] = serde_json::Value::String(artifact_sha256.clone());
+        }
+    }
+    std::fs::write(&manifest_path, json_bytes(manifest)).test_expect("write manifest");
+    refresh_bundle_signature(bundle_dir);
+}
+
+fn refresh_bundle_signature(bundle_dir: &std::path::Path) {
+    let signature_path = bundle_dir.join("bundle-signature.dsse.json");
+    if !signature_path.is_file() {
+        return;
+    }
+    let mut signature: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&signature_path).test_expect("read signature"))
+            .test_expect("signature parses");
+    let manifest_bytes =
+        std::fs::read(bundle_dir.join("manifest.json")).test_expect("read manifest");
+    let signed_payload = dsse_pre_auth_encoding(PROOF_ROOM_DSSE_PAYLOAD_TYPE, &manifest_bytes);
+    let keypair = chio_core::Keypair::from_seed(&COLLECT_SIGNATURE_SEED);
+    signature["payloadRef"]["sha256"] =
+        serde_json::Value::String(chio_core::sha256_hex(&manifest_bytes));
+    signature["signatures"][0]["keyid"] = serde_json::Value::String(keypair.public_key().to_hex());
+    signature["signatures"][0]["sig"] =
+        serde_json::Value::String(keypair.sign(&signed_payload).to_hex());
+    std::fs::write(signature_path, json_bytes(signature)).test_expect("write signature");
+}
+
+fn dsse_pre_auth_encoding(payload_type: &str, payload: &[u8]) -> Vec<u8> {
+    let mut encoded = Vec::new();
+    encoded.extend_from_slice(b"DSSEv1 ");
+    encoded.extend_from_slice(payload_type.len().to_string().as_bytes());
+    encoded.push(b' ');
+    encoded.extend_from_slice(payload_type.as_bytes());
+    encoded.push(b' ');
+    encoded.extend_from_slice(payload.len().to_string().as_bytes());
+    encoded.push(b' ');
+    encoded.extend_from_slice(payload);
+    encoded
 }
 
 fn refresh_evidence_graph_verifier_policy_digest(
@@ -1279,6 +1513,7 @@ pub(crate) fn mutate_public_settlement_bundle(
     )
     .test_expect("parse settlement proof bundle");
     mutate(&mut settlement_bundle);
+    sign_public_settlement_bundle_value(&mut settlement_bundle);
     let settlement_bundle_bytes =
         serde_json::to_vec(&settlement_bundle).test_expect("serialize settlement proof bundle");
     std::fs::write(&settlement_bundle_path, &settlement_bundle_bytes)
@@ -1308,6 +1543,25 @@ pub(crate) fn mutate_public_settlement_bundle(
         "evidence_graph_sha256",
         chio_core::sha256_hex(&evidence_graph_bytes),
     );
+}
+
+fn sign_public_settlement_bundle_value(settlement_bundle: &mut serde_json::Value) {
+    settlement_bundle
+        .as_object_mut()
+        .test_expect("settlement proof bundle object")
+        .remove("bundle_signature");
+    let typed_bundle: chio_web3::settlement_proof::PublicSettlementProofBundle =
+        serde_json::from_value(settlement_bundle.clone())
+            .test_expect("typed public settlement proof bundle");
+    let keypair = Keypair::from_seed(&PUBLIC_SETTLEMENT_BUNDLE_SIGNATURE_SEED);
+    let (signature, _) = keypair
+        .sign_canonical(&typed_bundle)
+        .test_expect("sign public settlement proof bundle");
+    settlement_bundle["bundle_signature"] = serde_json::json!({
+        "algorithm": PUBLIC_SETTLEMENT_BUNDLE_SIGNATURE_ALGORITHM,
+        "signer_key": keypair.public_key().to_hex(),
+        "signature": signature.to_hex()
+    });
 }
 
 pub(crate) fn public_settlement_chain_snapshot_json() -> serde_json::Value {

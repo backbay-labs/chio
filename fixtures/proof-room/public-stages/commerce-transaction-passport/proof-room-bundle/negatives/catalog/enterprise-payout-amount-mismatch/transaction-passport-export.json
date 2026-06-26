@@ -1,0 +1,9 @@
+{
+  "id": "transaction-passport-export-enterprise-valid",
+  "artifact_kind": "transaction_passport_export",
+  "schema_ref": "chio.transaction-passport.v1",
+  "passport_id": "passport-enterprise-valid",
+  "evidence_graph_path": "evidence-graph.json",
+  "verifier_policy_path": "verifier-policy.json",
+  "redaction_profile_ref": "redaction-profile-enterprise-valid"
+}

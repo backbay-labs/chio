@@ -5,10 +5,10 @@
   "claimLevel": "bounded_protocol_aware_execution_fabric",
   "decision": "bounded_claim_qualified_use_universal_control_plane_gate_for_stronger_claim",
   "qualifiedClaim": {
-    "summary": "Chio ships a cryptographically signed, fail-closed governance kernel and a bounded protocol-aware cross-protocol execution fabric across HTTP APIs, MCP, A2A skills, and ACP capabilities. OpenAI tool execution remains deferred until separately implemented and qualified.",
+    "summary": "Chio ships a cryptographically signed, fail-closed governance kernel and a bounded protocol-aware cross-protocol execution fabric across HTTP APIs, MCP, A2A skills, and ACP-Client capabilities. OpenAI tool execution remains deferred until separately implemented and qualified.",
     "constraints": [
       "Only the supported authoritative paths are claim-eligible.",
-      "Lifecycle and bridge-fidelity limits remain explicit on published surfaces, including the deferred-task A2A/ACP authoritative lifecycle path.",
+      "Lifecycle and bridge-fidelity limits remain explicit on published surfaces, including the deferred-task A2A/ACP-Client authoritative lifecycle path.",
       "Compatibility helpers are non-authoritative and non-claim-eligible.",
       "Protocol selection is explicit and registry-backed for supported targets, but the claim does not imply a universal multi-hop fabric or proved market-control position."
     ]
@@ -98,7 +98,7 @@
     },
     {
       "id": "LIFE-02",
-      "summary": "ACP authoritative mediation now exposes preview plus blocking invoke and deferred-task stream/cancel/resume lifecycle semantics on the authoritative path.",
+      "summary": "ACP-Client authoritative mediation now exposes preview plus blocking invoke and deferred-task stream/cancel/resume lifecycle semantics on the authoritative path.",
       "witnesses": [
         "crates/protocol/chio-acp-edge/src/lib.rs"
       ]

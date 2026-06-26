@@ -1,7 +1,8 @@
 use super::support::*;
 use super::*;
 use crate::{
-    embedded_swarm_authority_bundle, source_verifier_context_with_options,
+    embedded_swarm_authority_bundle, ensure_source_policy_required_claims_verified,
+    is_agent_web_evidence_graph_node, source_verifier_context_with_options,
     verify_source_standalone_risk_report_with_keys,
 };
 use chio_core_types::PublicKey;
@@ -349,6 +350,80 @@ fn source_family_verifier_rejects_tampered_claim_set_artifact() -> Result<(), Bo
         "{error}"
     );
     Ok(())
+}
+
+#[test]
+fn source_family_verifier_rejects_claim_set_required_claim_not_verified(
+) -> Result<(), Box<dyn Error>> {
+    configure_proof_room_fixture_trust();
+    let root = repo_root()?;
+    let source = root
+        .join("fixtures/proof-room/public-stages/commerce-transaction-passport/proof-room-bundle");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let claim_set_path = work.path().join("roots/claim-set.json");
+    let mut claim_set: serde_json::Value = serde_json::from_slice(&fs::read(&claim_set_path)?)?;
+    let claims = claim_set["claims"]
+        .as_array_mut()
+        .ok_or("claim set claims missing")?;
+    let claim = claims
+        .iter_mut()
+        .find(|claim| {
+            claim.get("claim_id").and_then(serde_json::Value::as_str)
+                == Some("claim.commerce.order_replay_consistent")
+        })
+        .ok_or("commerce replay claim missing")?;
+    claim["status"] = serde_json::Value::String("omitted".to_string());
+    fs::write(&claim_set_path, json_bytes(&claim_set)?)?;
+
+    let claim_set_sha256 = sha256_file(&claim_set_path)?;
+    update_evidence_graph_node_hash(work.path(), "claim-set.json", &claim_set_sha256)?;
+    refresh_source_roots_and_manifest(work.path(), Some(("claim-set.json", claim_set_sha256)))?;
+
+    let passport_path = work.path().join("roots/transaction-passport.json");
+    let error = verify_transaction_passport_family_report(work.path(), &passport_path)
+        .err()
+        .ok_or("claim set with omitted required claim unexpectedly verified")?;
+
+    assert!(
+        error
+            .to_string()
+            .contains("claim set required claim was not verified"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
+fn source_family_required_claims_accept_verified_transaction_root_claims(
+) -> Result<(), Box<dyn Error>> {
+    let report = serde_json::json!({
+        "schema": "chio.transaction.verifier-report.v1",
+        "verdict": "verified",
+        "verified_claims": ["claim.commerce.order_replay_consistent"]
+    });
+    let required_claims = vec![
+        "claim.transaction.passport_root_verified".to_string(),
+        "claim.commerce.order_replay_consistent".to_string(),
+    ];
+
+    ensure_source_policy_required_claims_verified(&required_claims, &report)
+        .map_err(|error| format!("verified transaction root claim rejected: {error}"))?;
+    Ok(())
+}
+
+#[test]
+fn source_agent_web_receipt_scope_uses_schema_not_fixture_filename() {
+    let node = serde_json::json!({
+        "id": "receipt-webhook-allow",
+        "schema": "chio.receipt.v1",
+        "path": "receipts/webhook-allow.json",
+        "sha256": "4b53ccf5a08beb7e3331e90d6f782b6b2dc77ba29d1324481802ade3c775fba4",
+        "role": "receipt"
+    });
+
+    assert!(is_agent_web_evidence_graph_node(&node));
 }
 
 #[tokio::test]
@@ -818,6 +893,22 @@ fn rejects_source_report_for_unhandled_market_required_claim() -> Result<(), Box
     copy_dir_all(&source, work.path())?;
 
     add_required_claim_to_verifier_policy(work.path(), "claim.market.not_routed")?;
+    let claim_set_path = work.path().join("roots/claim-set.json");
+    let mut claim_set: serde_json::Value = serde_json::from_slice(&fs::read(&claim_set_path)?)?;
+    claim_set["claims"]
+        .as_array_mut()
+        .ok_or("claim set claims missing")?
+        .push(serde_json::json!({
+            "claim_id": "claim.market.not_routed",
+            "status": "verified",
+            "verifier_module": "chio proof verify",
+            "evidence_refs": ["transaction-passport.json"],
+            "required_evidence": ["transaction-passport.json"]
+        }));
+    fs::write(&claim_set_path, json_bytes(&claim_set)?)?;
+    let claim_set_sha256 = sha256_file(&claim_set_path)?;
+    update_evidence_graph_node_hash(work.path(), "claim-set.json", &claim_set_sha256)?;
+    refresh_source_roots_and_manifest(work.path(), Some(("claim-set.json", claim_set_sha256)))?;
 
     let error = verify_proof_room_bundle(&work.path().join("manifest.json"))
         .err()

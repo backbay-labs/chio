@@ -9,8 +9,9 @@ use super::ids::{
     RUNTIME_ATTACK_SIMULATION_REPORT_SCHEMA_ID, RUNTIME_CHAOS_RUN_REPORT_SCHEMA_ID,
     RUNTIME_EXECUTION_LEASE_SCHEMA_ID, RUNTIME_REVOCATION_FRESHNESS_PROOF_SCHEMA_ID,
     RUNTIME_SANDBOX_ATTESTATION_SCHEMA_ID, RUNTIME_TERMINAL_RECEIPT_SCHEMA_ID,
-    RUNTIME_TOOL_SERVER_ACK_SCHEMA_ID, SWARM_ROUTE_PLAN_RECEIPT_SCHEMA_ID,
-    TRANSACTION_RUNTIME_SECURITY_REPORT_SCHEMA_ID,
+    RUNTIME_TOOL_SERVER_ACK_SCHEMA_ID, RUNTIME_TRUSTED_TIME_PROOF_SCHEMA_ID,
+    SWARM_BUDGET_POOL_SCHEMA_ID, SWARM_JOIN_RECEIPT_SCHEMA_ID, SWARM_ROUTE_PLAN_RECEIPT_SCHEMA_ID,
+    SWARM_TASK_GRAPH_SCHEMA_ID, TRANSACTION_RUNTIME_SECURITY_REPORT_SCHEMA_ID,
 };
 use super::minimal::verify_passport_root_and_claim_set_artifacts;
 use super::types::TransactionPassport;
@@ -22,14 +23,16 @@ mod policy;
 
 use artifacts::{
     validate_allow_receipt, validate_attack_simulation_report, validate_chaos_run_report,
-    validate_execution_lease, validate_nonce_uniqueness, validate_policy_activation_receipt,
-    validate_request_digest_binding, validate_revocation_freshness,
-    validate_revocation_freshness_at_ack, validate_route_plan_receipt,
-    validate_sandbox_attestation, validate_terminal_receipt, validate_tool_server_ack,
-    RuntimeAttackSimulationReport, RuntimeChaosRunReport, RuntimeExecutionLease,
-    RuntimePolicyActivationReceipt, RuntimeRequestDigest, RuntimeRevocationFreshnessProof,
-    RuntimeRoutePlanReceipt, RuntimeSandboxAttestation, RuntimeTerminalReceipt,
-    RuntimeToolServerAck, RuntimeTrustRoot,
+    validate_execution_lease, validate_execution_lease_context, validate_nonce_uniqueness,
+    validate_policy_activation_receipt, validate_request_digest_binding,
+    validate_revocation_freshness, validate_revocation_freshness_at_ack,
+    validate_route_plan_receipt, validate_sandbox_attestation, validate_terminal_receipt,
+    validate_tool_server_ack, validate_trusted_time_proof, ExecutionLeaseContext,
+    RuntimeAttackSimulationReport, RuntimeBudgetPool, RuntimeChaosRunReport, RuntimeExecutionLease,
+    RuntimeJoinReceipt, RuntimePolicyActivationReceipt, RuntimeRequestDigest,
+    RuntimeRevocationFreshnessProof, RuntimeRoutePlanReceipt, RuntimeSandboxAttestation,
+    RuntimeTaskGraph, RuntimeTerminalReceipt, RuntimeToolServerAck, RuntimeTrustRoot,
+    RuntimeTrustedTimeProof,
 };
 use claims::{
     push_claim_once, CLAIM_ADVISORY_NOT_AUTHORIZATION, CLAIM_EXECUTION_LEASE_VALID,
@@ -37,9 +40,10 @@ use claims::{
     CLAIM_TOOL_ACK_BOUND,
 };
 use evidence::{
-    bound_request_nodes, bound_route_plan_nodes, ensure_no_advisory_authorization,
-    leased_receipt_nodes, nodes_by_role, parse_artifact, parse_graph, trust_root_authorizes_lease,
-    RuntimeEvidenceGraph, RuntimeEvidenceRole,
+    bound_budget_pool_nodes, bound_join_receipt_nodes, bound_request_nodes, bound_route_plan_nodes,
+    bound_task_graph_nodes, bound_trusted_time_nodes, ensure_no_advisory_authorization,
+    leased_receipt_nodes, node_sha256, nodes_by_role, parse_artifact, parse_graph,
+    trust_root_authorizes_lease, RuntimeEvidenceGraph, RuntimeEvidenceRole,
 };
 use policy::parse_policy;
 
@@ -261,12 +265,12 @@ fn verify_allowed_execution_attempts(
         RuntimeEvidenceRole::SandboxAttestation,
         RUNTIME_SANDBOX_ATTESTATION_SCHEMA_ID,
     )?;
-    let acks: Vec<RuntimeToolServerAck> = parse_artifacts_by_role(
-        bundle,
-        graph,
-        RuntimeEvidenceRole::ToolServerAck,
-        RUNTIME_TOOL_SERVER_ACK_SCHEMA_ID,
-    )?;
+    let acks: Vec<_> = nodes_by_role(graph, RuntimeEvidenceRole::ToolServerAck)
+        .map(|node| {
+            parse_artifact(bundle, node, RUNTIME_TOOL_SERVER_ACK_SCHEMA_ID)
+                .map(|ack: RuntimeToolServerAck| (node, ack))
+        })
+        .collect::<Result<_, _>>()?;
     let trust_roots: Vec<_> = nodes_by_role(graph, RuntimeEvidenceRole::TrustRoot)
         .map(|node| parse_artifact(bundle, node, "chio.trust.root.v1").map(|root| (node, root)))
         .collect::<Result<Vec<_>, _>>()?;
@@ -339,31 +343,88 @@ fn verify_allowed_execution_attempts(
             }
         };
         validate_request_digest_binding(lease, request)?;
-        if lease.route_plan_receipt_ref.is_some() {
-            let route_plans: Vec<RuntimeRoutePlanReceipt> =
-                bound_route_plan_nodes(graph, lease_node)
-                    .map(|node| parse_artifact(bundle, node, SWARM_ROUTE_PLAN_RECEIPT_SCHEMA_ID))
-                    .collect::<Result<_, _>>()?;
-            let route_plan = match route_plans.as_slice() {
-                [route_plan] => route_plan,
-                [] => {
-                    return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
-                        "missing route plan receipt for execution lease".to_string(),
-                    ));
-                }
-                _ => {
-                    return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
-                        "multiple route plan receipts for execution lease".to_string(),
-                    ));
-                }
-            };
-            validate_route_plan_receipt(
-                lease,
+        let route_plans: Vec<RuntimeRoutePlanReceipt> = bound_route_plan_nodes(graph, lease_node)
+            .map(|node| parse_artifact(bundle, node, SWARM_ROUTE_PLAN_RECEIPT_SCHEMA_ID))
+            .collect::<Result<_, _>>()?;
+        let route_plan = match route_plans.as_slice() {
+            [route_plan] => route_plan,
+            [] => {
+                return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                    "missing route plan receipt for execution lease".to_string(),
+                ));
+            }
+            _ => {
+                return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                    "multiple route plan receipts for execution lease".to_string(),
+                ));
+            }
+        };
+        validate_route_plan_receipt(
+            lease,
+            route_plan,
+            &authorizing_trust_roots,
+            &trust.trusted_root_signer_keys,
+        )?;
+        let task_graph_nodes: Vec<_> = bound_task_graph_nodes(graph, lease_node).collect();
+        let task_graph_node = match task_graph_nodes.as_slice() {
+            [task_graph_node] => *task_graph_node,
+            [] => {
+                return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                    "missing task graph for execution lease".to_string(),
+                ));
+            }
+            _ => {
+                return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                    "multiple task graphs for execution lease".to_string(),
+                ));
+            }
+        };
+        let task_graph: RuntimeTaskGraph =
+            parse_artifact(bundle, task_graph_node, SWARM_TASK_GRAPH_SCHEMA_ID)?;
+        let budget_pools: Vec<RuntimeBudgetPool> = bound_budget_pool_nodes(graph, lease_node)
+            .map(|node| parse_artifact(bundle, node, SWARM_BUDGET_POOL_SCHEMA_ID))
+            .collect::<Result<_, _>>()?;
+        let budget_pool = match budget_pools.as_slice() {
+            [budget_pool] => budget_pool,
+            [] => {
+                return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                    "missing budget pool for execution lease".to_string(),
+                ));
+            }
+            _ => {
+                return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                    "multiple budget pools for execution lease".to_string(),
+                ));
+            }
+        };
+        let join_receipts: Vec<RuntimeJoinReceipt> = bound_join_receipt_nodes(graph, lease_node)
+            .map(|node| parse_artifact(bundle, node, SWARM_JOIN_RECEIPT_SCHEMA_ID))
+            .collect::<Result<_, _>>()?;
+        let join_receipt = match join_receipts.as_slice() {
+            [join_receipt] => join_receipt,
+            [] => {
+                return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                    "missing join receipt for execution lease".to_string(),
+                ));
+            }
+            _ => {
+                return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                    "multiple join receipts for execution lease".to_string(),
+                ));
+            }
+        };
+        validate_execution_lease_context(
+            lease,
+            ExecutionLeaseContext {
+                task_graph_sha256: node_sha256(task_graph_node),
+                task_graph: &task_graph,
                 route_plan,
-                &authorizing_trust_roots,
-                &trust.trusted_root_signer_keys,
-            )?;
-        }
+                budget_pool,
+                join_receipt,
+                trusted_roots: &authorizing_trust_roots,
+                trusted_root_signer_keys: &trust.trusted_root_signer_keys,
+            },
+        )?;
 
         let revocation = revocations
             .iter()
@@ -395,18 +456,42 @@ fn verify_allowed_execution_attempts(
             &trust.trusted_root_signer_keys,
         )?;
 
-        let ack = acks
+        let (ack_node, ack) = acks
             .iter()
-            .find(|ack| ack.lease_id == lease.lease_id)
+            .find(|(_, ack)| ack.lease_id == lease.lease_id)
             .ok_or_else(|| {
                 TransactionPassportError::RuntimeSecurityClaimFailed(
                     "missing tool-server acknowledgement for execution lease".to_string(),
                 )
             })?;
+        let trusted_time_proofs: Vec<RuntimeTrustedTimeProof> =
+            bound_trusted_time_nodes(graph, ack_node)
+                .map(|node| parse_artifact(bundle, node, RUNTIME_TRUSTED_TIME_PROOF_SCHEMA_ID))
+                .collect::<Result<_, _>>()?;
+        let trusted_time_proof = match trusted_time_proofs.as_slice() {
+            [trusted_time_proof] => trusted_time_proof,
+            [] => {
+                return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                    "missing trusted time proof for tool acknowledgement".to_string(),
+                ));
+            }
+            _ => {
+                return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
+                    "multiple trusted time proofs for tool acknowledgement".to_string(),
+                ));
+            }
+        };
         validate_tool_server_ack(
             lease,
             sandbox,
             ack,
+            &authorizing_trust_roots,
+            &trust.trusted_root_signer_keys,
+        )?;
+        validate_trusted_time_proof(
+            lease,
+            ack,
+            trusted_time_proof,
             &authorizing_trust_roots,
             &trust.trusted_root_signer_keys,
         )?;

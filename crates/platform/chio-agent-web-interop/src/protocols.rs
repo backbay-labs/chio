@@ -267,6 +267,9 @@ pub(super) fn required_unsupported_claims(source_protocol: &str) -> &'static [&'
 }
 
 pub(super) fn is_supported_source_version(source_protocol: &str, source_version: &str) -> bool {
+    if source_protocol == "openapi" {
+        return source_version.starts_with("3.0.") || source_version.starts_with("3.1.");
+    }
     source_protocol_spec(source_protocol)
         .map(|spec| spec.supported_source_versions.contains(&source_version))
         .unwrap_or(false)

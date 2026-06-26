@@ -6,5 +6,5 @@
     "category": "runtime_terminal_allow",
     "terminal_status": "denied_guard_request"
   },
-  "expected_failure_code": "proof-room.receipt-coverage.status-mismatch: runtime_terminal_allow"
+  "expected_failure_code": "proof-room.receipt-coverage.status-mismatch"
 }

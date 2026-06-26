@@ -802,8 +802,13 @@ async fn quickstart_router_generates_verifier_report_from_configured_fixture_roo
         )
         .await?;
 
-    assert_eq!(response.status(), StatusCode::OK);
+    let status = response.status();
     let body = to_bytes(response.into_body(), 1024 * 1024).await?;
+    eprintln!(
+        "public-settlement fixture response: {status} {}",
+        String::from_utf8_lossy(&body)
+    );
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
     let report: serde_json::Value = serde_json::from_slice(&body)?;
     assert_eq!(report["schema"], "chio.workflow.preflight-report.v1");
     assert_eq!(report["verdict"], "accepted");
@@ -1099,7 +1104,7 @@ async fn quickstart_router_serves_swarm_fixture_verifier_report() -> Result<(), 
         .find(|family_report| family_report["schema"] == "chio.swarm.authority-verifier-report.v1")
         .ok_or("swarm family report missing")?;
     assert_eq!(family_report["graphId"], "swarm-graph-proof-valid");
-    assert_eq!(family_report["taskCount"], 3);
+    assert_eq!(family_report["taskCount"], 4);
     Ok(())
 }
 
