@@ -488,7 +488,6 @@ pub(crate) fn wait_for_http_response(address: SocketAddr, path: &str) -> String 
 }
 
 fn proof_serve_lock() -> MutexGuard<'static, ()> {
-    // ponytail: global lock for CI runner socket pressure, split serve tests if runtime matters.
     static PROOF_SERVE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     match PROOF_SERVE_LOCK.get_or_init(|| Mutex::new(())).lock() {
         Ok(lock) => lock,
