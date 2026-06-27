@@ -13,7 +13,7 @@ use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 #[path = "support/archive.rs"]
@@ -354,6 +354,7 @@ pub(crate) struct ChildGuard {
 
 pub(crate) struct RunningProofServe {
     _guard: ChildGuard,
+    _serve_lock: MutexGuard<'static, ()>,
     pub(crate) address: SocketAddr,
 }
 
@@ -485,7 +486,17 @@ pub(crate) fn wait_for_http_response(address: SocketAddr, path: &str) -> String 
     panic!("timed out waiting for {path}: {last_error}");
 }
 
+fn proof_serve_lock() -> MutexGuard<'static, ()> {
+    // ponytail: global lock for CI runner socket pressure, split serve tests if runtime matters.
+    static PROOF_SERVE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    PROOF_SERVE_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .test_expect("proof serve lock")
+}
+
 pub(crate) fn spawn_proof_serve(bundle: &Path, ui_dir: Option<&Path>) -> RunningProofServe {
+    let serve_lock = proof_serve_lock();
     let mut command = chio_command();
     if let Some(ui_dir) = ui_dir {
         command.env("CHIO_PROOF_ROOM_UI_DIR", ui_dir);
@@ -517,6 +528,7 @@ pub(crate) fn spawn_proof_serve(bundle: &Path, ui_dir: Option<&Path>) -> Running
     assert_ne!(address.port(), 0);
     RunningProofServe {
         _guard: ChildGuard { child },
+        _serve_lock: serve_lock,
         address,
     }
 }

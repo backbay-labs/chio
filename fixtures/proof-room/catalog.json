@@ -368,6 +368,12 @@
       "description": "Recursive swarm authority fixture rejected when a route-plan receipt is stale"
     },
     {
+      "id": "recursive-runtime-swarm-max-depth-exceeded",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/swarm-authority/max-depth-exceeded",
+      "description": "Recursive swarm authority fixture rejected when a task exceeds the graph max depth"
+    },
+    {
       "id": "recursive-runtime-swarm-route-plan-mismatch",
       "kind": "negative-transaction-passport",
       "path": "fixtures/proof-room/swarm-authority/route-plan-mismatch",

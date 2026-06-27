@@ -1035,10 +1035,7 @@ fn proof_verify_accepts_public_settlement_fixture() {
     assert!(stdout.contains("\"claim.public_settlement.oracle_conversion_bound\""));
     assert!(stdout.contains("\"claim.public_settlement.dispute_posture_bound\""));
     assert!(!stdout.contains("\"claim.public_settlement.trust_market_refs_bound\""));
-    assert!(stdout.contains("\"trust_market_context\""));
-    assert!(stdout.contains("\"collateral_position_ref\":\"collateral-trust-market-valid\""));
-    assert!(stdout.contains("\"guarantee_decision_ref\":\"guarantee-trust-market-valid\""));
-    assert!(stdout.contains("\"slash_authority_ref\":\"did:chio:slash-authority\""));
+    assert!(!stdout.contains("\"trust_market_context\""));
 }
 
 #[test]
@@ -1070,7 +1067,7 @@ fn proof_verify_rejects_public_settlement_reorged_independent_head() {
 }
 
 #[test]
-fn proof_verify_rejects_public_settlement_online_head_readback_reorg() {
+fn proof_verify_rejects_public_settlement_loopback_online_head_readback() {
     let rpc_url = start_public_settlement_rpc(
         "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
     );
@@ -1085,10 +1082,7 @@ fn proof_verify_rejects_public_settlement_online_head_readback_reorg() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
-    assert!(
-        stderr.contains("public settlement independent head block hash mismatch"),
-        "{stderr}"
-    );
+    assert!(stderr.contains("loopback egress target denied"), "{stderr}");
 }
 
 #[test]
@@ -1174,7 +1168,7 @@ fn read_http_request(stream: &mut std::net::TcpStream) -> String {
 }
 
 #[test]
-fn proof_verify_reports_public_settlement_trust_market_refs_without_verified_claim() {
+fn proof_verify_rejects_public_settlement_trust_market_refs_without_configured_context() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let source =
         workspace_root().join("fixtures/proof-room/public-settlement/valid-offline-finality");
@@ -1207,26 +1201,27 @@ fn proof_verify_reports_public_settlement_trust_market_refs_without_verified_cla
         .test_expect("chio command runs");
 
     assert!(
-        output.status.success(),
-        "refs-only public settlement proof should verify without earning the trust-market claim\nstdout:\n{}\nstderr:\n{}",
+        !output.status.success(),
+        "refs without configured trust-market context should fail closed\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let stdout = String::from_utf8(output.stdout).test_expect("stdout is utf8");
-    assert!(stdout.contains("\"trust_market_context\""));
-    assert!(stdout.contains("\"collateral_position_ref\":\"collateral-trust-market-valid\""));
-    assert!(stdout.contains("\"guarantee_decision_ref\":\"guarantee-trust-market-valid\""));
-    assert!(!stdout.contains("\"claim.public_settlement.trust_market_refs_bound\""));
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(
+        stderr.contains("public settlement trust-market context missing"),
+        "{stderr}"
+    );
 }
 
 #[test]
 fn proof_verify_rejects_public_settlement_partial_trust_market_refs() {
     assert_public_settlement_mutation_rejected(
         |settlement_bundle| {
-            settlement_bundle
-                .as_object_mut()
-                .test_expect("settlement bundle object")
-                .remove("collateral_position_ref");
+            settlement_bundle["guarantee_decision_ref"] =
+                serde_json::json!("guarantee-trust-market-valid");
+            settlement_bundle["sla_remedy_ref"] = serde_json::json!("remedy-policy-market-valid");
+            settlement_bundle["slash_authority_ref"] =
+                serde_json::json!("did:chio:slash-authority");
         },
         "public settlement trust-market refs incomplete",
     );

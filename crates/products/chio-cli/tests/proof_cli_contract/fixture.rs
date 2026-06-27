@@ -54,6 +54,7 @@ fn proof_fixture_list_reports_proof_fixtures() {
         "recursive-runtime-swarm-replayed-continuation-nonce",
         "recursive-runtime-swarm-revoked-task",
         "recursive-runtime-swarm-stale-route-plan",
+        "recursive-runtime-swarm-max-depth-exceeded",
         "recursive-runtime-swarm-witness-child-scope-mismatch",
         "disclosure-lineage-ledger",
         "crypto-context-valid-bbs",
@@ -1701,6 +1702,11 @@ fn proof_fixture_generate_copies_runnable_negative_passport_fixtures() {
             "recursive-runtime-swarm-stale-route-plan",
             "route-child-a.json",
             "swarm route-plan receipt is stale",
+        ),
+        (
+            "recursive-runtime-swarm-max-depth-exceeded",
+            "task-graph.json",
+            "swarm task exceeds max depth",
         ),
         (
             "recursive-runtime-swarm-route-plan-mismatch",
