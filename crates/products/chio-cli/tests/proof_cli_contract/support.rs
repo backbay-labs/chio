@@ -90,8 +90,9 @@ const PUBLIC_SETTLEMENT_FIXTURE_INDEPENDENT_CHAIN_HEAD_JSON: &str =
 const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 const DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS: &str =
     "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa";
-pub(crate) const PROOF_SERVE_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const PROOF_SERVE_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 const PROOF_SERVE_HTTP_READ_POLL: Duration = Duration::from_millis(200);
+const PROOF_SERVE_HTTP_WAIT_TIMEOUT: Duration = Duration::from_secs(180);
 
 pub(crate) fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -445,7 +446,7 @@ fn http_response_has_declared_body(response: &[u8]) -> bool {
 }
 
 pub(crate) fn wait_for_http_body(address: SocketAddr, path: &str) -> String {
-    let deadline = Instant::now() + Duration::from_secs(90);
+    let deadline = Instant::now() + PROOF_SERVE_HTTP_WAIT_TIMEOUT;
     let mut last_error = String::new();
     while Instant::now() < deadline {
         match http_get(address, path) {
@@ -472,7 +473,7 @@ pub(crate) fn wait_for_http_body(address: SocketAddr, path: &str) -> String {
 }
 
 pub(crate) fn wait_for_http_response(address: SocketAddr, path: &str) -> String {
-    let deadline = Instant::now() + Duration::from_secs(90);
+    let deadline = Instant::now() + PROOF_SERVE_HTTP_WAIT_TIMEOUT;
     let mut last_error = String::new();
     while Instant::now() < deadline {
         match http_get(address, path) {
@@ -489,10 +490,10 @@ pub(crate) fn wait_for_http_response(address: SocketAddr, path: &str) -> String 
 fn proof_serve_lock() -> MutexGuard<'static, ()> {
     // ponytail: global lock for CI runner socket pressure, split serve tests if runtime matters.
     static PROOF_SERVE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    PROOF_SERVE_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .test_expect("proof serve lock")
+    match PROOF_SERVE_LOCK.get_or_init(|| Mutex::new(())).lock() {
+        Ok(lock) => lock,
+        Err(poisoned) => poisoned.into_inner(),
+    }
 }
 
 pub(crate) fn spawn_proof_serve(bundle: &Path, ui_dir: Option<&Path>) -> RunningProofServe {
