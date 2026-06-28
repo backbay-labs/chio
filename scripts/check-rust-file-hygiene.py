@@ -13,6 +13,8 @@ import sys
 
 PRODUCTION_LIMIT = 2_000
 LIB_ROOT_LIMIT = 1_000
+WARN_LIMIT = 1_200
+LIB_WARN_LIMIT = 900
 TEST_LIMIT = 2_000
 SUMMARY_LIMIT = 25
 WIRE_GENERATED_PREFIX = "crates/core/chio-core-types/src/_generated/"
@@ -384,6 +386,24 @@ def inspect_file(root: Path, path: str) -> RustFile:
     )
 
 
+def warning_for_file(file: RustFile) -> str | None:
+    if file.category != "production":
+        return None
+    if is_lib_root(file.path):
+        if LIB_WARN_LIMIT < file.lines <= LIB_ROOT_LIMIT:
+            return (
+                f"warning: {file.path} has {file.lines} lines, "
+                f"warn limit is {LIB_WARN_LIMIT}"
+            )
+        return None
+    if WARN_LIMIT < file.lines <= PRODUCTION_LIMIT:
+        return (
+            f"warning: {file.path} has {file.lines} lines, "
+            f"warn limit is {WARN_LIMIT}"
+        )
+    return None
+
+
 def print_summary(files: list[RustFile]) -> None:
     categories = ["generated", "production", "test", "example"]
     print("Rust file hygiene summary")
@@ -429,6 +449,20 @@ def main() -> int:
 
     files = [inspect_file(root, path) for path in paths]
     print_summary(files)
+
+    warnings = [
+        warning
+        for warning in (
+            warning_for_file(file) for file in sorted(files, key=lambda item: item.path)
+        )
+        if warning is not None
+    ]
+    if warnings:
+        print(
+            f"\nRust file hygiene warnings: {len(warnings)} files exceed warning limits"
+        )
+        for warning in warnings:
+            print(warning)
 
     failures: list[str] = []
     for file in sorted(files, key=lambda candidate: candidate.path):

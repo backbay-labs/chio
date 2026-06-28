@@ -107,6 +107,20 @@ assert_rc "$(run_checker "$pass_case" "$work/pass.out" "$work/pass.err")" 0 \
 grep -F "generated top" "$work/pass.out" >/dev/null
 grep -F "test top" "$work/pass.out" >/dev/null
 
+warn_production="$work/warn-production"
+init_case "$warn_production"
+write_lines "$warn_production/crates/chio-small/src/main.rs" 1201
+write_lines "$warn_production/crates/chio-small/src/lib.rs" 901
+track_case "$warn_production"
+assert_rc "$(run_checker "$warn_production" "$work/warn-production.out" "$work/warn-production.err")" 0 \
+  "soft-limit production and lib root files warn without failing"
+grep -F "warning: crates/chio-small/src/lib.rs has 901 lines, warn limit is 900" \
+  "$work/warn-production.out" >/dev/null
+grep -F "warning: crates/chio-small/src/main.rs has 1201 lines, warn limit is 1200" \
+  "$work/warn-production.out" >/dev/null
+grep -F "Rust file hygiene warnings: 2 files exceed warning limits" \
+  "$work/warn-production.out" >/dev/null
+
 large_test="$work/large-test"
 init_case "$large_test"
 write_lines "$large_test/crates/chio-small/src/main.rs" 25
