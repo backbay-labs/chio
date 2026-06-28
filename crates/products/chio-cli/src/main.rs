@@ -122,7 +122,7 @@ mod runtime_trust_reports;
 #[path = "cli/trust_commands.rs"]
 mod trust_commands_cli;
 pub(crate) use trust_commands_cli::*;
-#[path = "cli/session.rs"]
+#[path = "cli/session/mod.rs"]
 mod session_cli;
 pub(crate) use session_cli::*;
 #[path = "cli/conformance.rs"]
