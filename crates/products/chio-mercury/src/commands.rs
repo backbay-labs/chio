@@ -96,6 +96,7 @@ use chio_store_sqlite::SqliteReceiptStore;
 use chrono::Utc;
 use serde::Serialize;
 
+mod account_delivery;
 mod portfolio_program_lane;
 mod portfolio_revenue_boundary_lane;
 mod program_family_lane;
@@ -105,6 +106,12 @@ mod second_portfolio_program_lane;
 mod selective_account_activation_support;
 mod third_program_lane;
 
+use account_delivery::export_delivery_continuity;
+pub use account_delivery::{
+    cmd_mercury_delivery_continuity_export, cmd_mercury_delivery_continuity_validate,
+    cmd_mercury_selective_account_activation_export,
+    cmd_mercury_selective_account_activation_validate,
+};
 use portfolio_program_lane::export_portfolio_program;
 pub use portfolio_program_lane::{
     cmd_mercury_portfolio_program_export, cmd_mercury_portfolio_program_validate,
@@ -218,4 +225,3 @@ const MERCURY_CHANNEL_BOUNDARY_OWNER: &str = "mercury-channel-boundary";
 include!("commands/shared.rs");
 include!("commands/assurance_release.rs");
 include!("commands/core_cli.rs");
-include!("commands/account_delivery.rs");
