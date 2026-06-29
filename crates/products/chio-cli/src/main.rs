@@ -103,7 +103,7 @@ use chio_types::{
 #[path = "cli/doctor.rs"]
 mod doctor_cli;
 pub(crate) use doctor_cli::*;
-#[path = "cli/dispatch.rs"]
+#[path = "cli/dispatch/mod.rs"]
 mod dispatch_cli;
 #[cfg(test)]
 pub(crate) use dispatch_cli::{cmd_chio_attest_runtime_quote_verify, write_cli_error};
@@ -1320,14 +1320,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_federation_treaty_dispatch_uses_chio_handlers() {
-        let dispatch = include_str!("cli/dispatch.rs");
-        let treaty_dispatch = dispatch
-            .split("fn dispatch_chio_treaty_command")
-            .nth(1)
-            .expect("dispatch_chio_treaty_command exists")
-            .split("fn dispatch_chio_attest_command")
-            .next()
-            .expect("dispatch_chio_treaty_command has following function");
+        let treaty_dispatch = include_str!("cli/dispatch/federation.rs");
 
         assert!(treaty_dispatch.contains("cmd_chio_federation_treaty_intersect("));
         assert!(treaty_dispatch.contains("cmd_chio_federation_treaty_admit("));
@@ -1375,7 +1368,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_federation_authority_dispatch_uses_chio_handlers() {
-        let dispatch = include_str!("cli/dispatch.rs");
+        let dispatch = include_str!("cli/dispatch/federation.rs");
         let authority_dispatch = dispatch
             .split("fn dispatch_chio_authority_command")
             .nth(1)
@@ -1394,7 +1387,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_federation_dispatch_uses_chio_command_types() {
-        let dispatch = include_str!("cli/dispatch.rs");
+        let dispatch = include_str!("cli/dispatch/federation.rs");
         let authority_dispatch = dispatch
             .split("fn dispatch_chio_authority_command")
             .nth(1)
@@ -1405,10 +1398,7 @@ mod cli_entrypoint_tests {
         let treaty_dispatch = dispatch
             .split("fn dispatch_chio_treaty_command")
             .nth(1)
-            .expect("dispatch_chio_treaty_command exists")
-            .split("fn dispatch_chio_attest_command")
-            .next()
-            .expect("dispatch_chio_treaty_command has following function");
+            .expect("dispatch_chio_treaty_command exists");
 
         assert!(authority_dispatch.contains("command: ChioAuthorityCommands"));
         assert!(authority_dispatch.contains("ChioAuthorityCommands::"));
@@ -1419,14 +1409,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_runtime_signing_dispatch_uses_chio_handlers() {
-        let dispatch = include_str!("cli/dispatch.rs");
-        let runtime_dispatch = dispatch
-            .split("fn dispatch_chio_runtime_command")
-            .nth(1)
-            .expect("dispatch_chio_runtime_command exists")
-            .split("fn dispatch_chio_pheromone_command")
-            .next()
-            .expect("dispatch_chio_runtime_command has following function");
+        let runtime_dispatch = include_str!("cli/dispatch/runtime.rs");
 
         assert!(runtime_dispatch.contains("cmd_chio_runtime_sign_trust_input("));
         assert!(runtime_dispatch.contains("cmd_chio_runtime_sign_policy("));
@@ -1437,28 +1420,14 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_runtime_dispatch_uses_only_native_names() {
-        let dispatch = include_str!("cli/dispatch.rs");
-        let runtime_dispatch = dispatch
-            .split("fn dispatch_chio_runtime_command")
-            .nth(1)
-            .expect("dispatch_chio_runtime_command exists")
-            .split("fn dispatch_chio_pheromone_command")
-            .next()
-            .expect("dispatch_chio_runtime_command has following function");
+        let runtime_dispatch = include_str!("cli/dispatch/runtime.rs");
 
         assert_no_retired_surface_name("runtime dispatch", runtime_dispatch);
     }
 
     #[test]
     fn chio_runtime_dispatch_uses_chio_command_types() {
-        let dispatch = include_str!("cli/dispatch.rs");
-        let runtime_dispatch = dispatch
-            .split("fn dispatch_chio_runtime_command")
-            .nth(1)
-            .expect("dispatch_chio_runtime_command exists")
-            .split("fn dispatch_chio_pheromone_command")
-            .next()
-            .expect("dispatch_chio_runtime_command has following function");
+        let runtime_dispatch = include_str!("cli/dispatch/runtime.rs");
 
         assert!(runtime_dispatch.contains("command: ChioRuntimeCommands"));
         assert!(runtime_dispatch.contains("ChioRuntimePolicyCommands::"));
@@ -1510,14 +1479,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_pheromone_core_relay_dispatch_uses_chio_handlers() {
-        let dispatch = include_str!("cli/dispatch.rs");
-        let pheromone_dispatch = dispatch
-            .split("fn dispatch_chio_pheromone_command")
-            .nth(1)
-            .expect("dispatch_chio_pheromone_command exists")
-            .split("fn cmd_chio_attest_supply_chain_verify")
-            .next()
-            .expect("dispatch_chio_pheromone_command has following function");
+        let pheromone_dispatch = include_str!("cli/dispatch/pheromone.rs");
 
         let chio_handlers = [
             "cmd_chio_pheromone_relay_lint(",
@@ -1581,14 +1543,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_pheromone_dispatch_uses_chio_command_types() {
-        let dispatch = include_str!("cli/dispatch.rs");
-        let pheromone_dispatch = dispatch
-            .split("fn dispatch_chio_pheromone_command")
-            .nth(1)
-            .expect("dispatch_chio_pheromone_command exists")
-            .split("fn cmd_chio_attest_supply_chain_verify")
-            .next()
-            .expect("dispatch_chio_pheromone_command has following function");
+        let pheromone_dispatch = include_str!("cli/dispatch/pheromone.rs");
 
         assert!(pheromone_dispatch.contains("command: ChioPheromoneCommands"));
         assert!(pheromone_dispatch.contains("ChioPheromoneCommands::"));
@@ -1609,14 +1564,7 @@ mod cli_entrypoint_tests {
 
     #[test]
     fn chio_pheromone_remaining_relay_dispatch_uses_chio_handlers() {
-        let dispatch = include_str!("cli/dispatch.rs");
-        let pheromone_dispatch = dispatch
-            .split("fn dispatch_chio_pheromone_command")
-            .nth(1)
-            .expect("dispatch_chio_pheromone_command exists")
-            .split("fn cmd_chio_attest_supply_chain_verify")
-            .next()
-            .expect("dispatch_chio_pheromone_command has following function");
+        let pheromone_dispatch = include_str!("cli/dispatch/pheromone.rs");
 
         let chio_handlers = [
             "cmd_chio_pheromone_relay_alert_evaluate(",
