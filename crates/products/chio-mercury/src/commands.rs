@@ -223,11 +223,25 @@ const MERCURY_COMMERCIAL_REVIEW_OWNER: &str = "mercury-commercial-review";
 const MERCURY_CHANNEL_BOUNDARY_OWNER: &str = "mercury-channel-boundary";
 
 mod assurance_release;
+mod core_cli;
 mod shared;
 use assurance_release::{
     export_assurance_suite, export_broader_distribution, export_controlled_adoption,
     export_embedded_oem, export_reference_distribution, export_release_readiness,
     export_trust_network,
 };
+use core_cli::export_governance_workbench;
+pub use core_cli::{
+    cmd_mercury_assurance_suite_export, cmd_mercury_assurance_suite_validate,
+    cmd_mercury_broader_distribution_export, cmd_mercury_broader_distribution_validate,
+    cmd_mercury_controlled_adoption_export, cmd_mercury_controlled_adoption_validate,
+    cmd_mercury_downstream_review_export, cmd_mercury_downstream_review_validate,
+    cmd_mercury_embedded_oem_export, cmd_mercury_embedded_oem_validate,
+    cmd_mercury_governance_workbench_export, cmd_mercury_governance_workbench_validate,
+    cmd_mercury_inquiry_export, cmd_mercury_pilot_export, cmd_mercury_proof_export,
+    cmd_mercury_reference_distribution_export, cmd_mercury_reference_distribution_validate,
+    cmd_mercury_release_readiness_export, cmd_mercury_release_readiness_validate,
+    cmd_mercury_supervised_live_export, cmd_mercury_supervised_live_qualify,
+    cmd_mercury_trust_network_export, cmd_mercury_trust_network_validate, cmd_mercury_verify,
+};
 use shared::*;
-include!("commands/core_cli.rs");
