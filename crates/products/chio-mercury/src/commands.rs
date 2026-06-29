@@ -222,7 +222,12 @@ const MERCURY_PORTFOLIO_REVENUE_BOUNDARY_OWNER: &str = "mercury-portfolio-revenu
 const MERCURY_COMMERCIAL_REVIEW_OWNER: &str = "mercury-commercial-review";
 const MERCURY_CHANNEL_BOUNDARY_OWNER: &str = "mercury-channel-boundary";
 
+mod assurance_release;
 mod shared;
+use assurance_release::{
+    export_assurance_suite, export_broader_distribution, export_controlled_adoption,
+    export_embedded_oem, export_reference_distribution, export_release_readiness,
+    export_trust_network,
+};
 use shared::*;
-include!("commands/assurance_release.rs");
 include!("commands/core_cli.rs");
