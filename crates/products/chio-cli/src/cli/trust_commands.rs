@@ -20,6 +20,6 @@ pub(crate) use underwriting::*;
 mod runtime_attestation;
 pub(crate) use runtime_attestation::*;
 
-#[path = "trust/receipt.rs"]
+#[path = "trust/receipt/mod.rs"]
 mod receipt;
 pub(crate) use receipt::*;
