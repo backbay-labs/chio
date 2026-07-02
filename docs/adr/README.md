@@ -27,3 +27,4 @@ Current ADR set:
 12. [ADR-0012 Current V1 Manifest Event-Action Planning](ADR-0012-current-v1-manifest-event-actions.md)
 13. [ADR-0013 Async Receipt Durability](ADR-0013-async-receipt-durability.md)
 14. [ADR-0014 Iroh As Federation Transport (Deferred To Year-2)](ADR-0014-iroh-federation-transport.md)
+15. [ADR-0015 Anti-JELLY Escrow Circuit Breakers](ADR-0015-anti-jelly-escrow-circuit-breakers.md)
