@@ -237,8 +237,16 @@ if manifest.get("schema") != "chio.proof-room.launch-acceptance.v1":
     raise SystemExit("manifest schema mismatch")
 if {stage["fixture_id"] for stage in manifest.get("stages", [])} != expected_stages:
     raise SystemExit("manifest stage set mismatch")
-if report.get("verdict") != "verified":
-    raise SystemExit("acceptance report did not verify")
+# This contract test assembles the package with --schema-only, which skips
+# the fixture verifier gate. A schema-only report must fail closed and never
+# claim "verified"; the full-run "verified" verdict is exercised by the CI
+# step that runs cargo xtask verify launch-acceptance without --schema-only.
+if report.get("mode") != "schema-only":
+    raise SystemExit("acceptance report mode mismatch: expected schema-only")
+if report.get("verdict") == "verified":
+    raise SystemExit("schema-only acceptance report must not claim verified")
+if report.get("verdict") != "schema-only-unverified":
+    raise SystemExit("schema-only acceptance report verdict mismatch")
 if {stage["fixture_id"] for stage in report.get("stages", [])} != expected_stages:
     raise SystemExit("report stage set mismatch")
 recursive_task_graph = json.loads(
