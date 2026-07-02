@@ -1,3 +1,5 @@
 node_modules/
 dist/
 *.tsbuildinfo
+packages/mobile/build/
+packages/create-chio-app/templates/
