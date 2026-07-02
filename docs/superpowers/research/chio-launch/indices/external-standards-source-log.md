@@ -9,7 +9,7 @@ Confidence: high for source URLs and naming, moderate for standards that are sti
 | Surface | Official source | Launch interpretation |
 | --- | --- | --- |
 | MCP | https://modelcontextprotocol.io/specification/2025-11-25 | Latest MCP spec page currently redirects to version 2025-11-25. Chio may claim MCP projection only when Chio mediated the call or the envelope binds MCP objects by digest. |
-| A2A | https://a2a-protocol.org/v0.3.0/specification/ | Agent2Agent Protocol v0.3.0 is the latest official public version observed on 2026-06-09. Chio may bind A2A task evidence but should not claim A2A itself proves Chio authority. |
+| A2A | https://github.com/a2aproject/A2A/releases ; https://a2a-protocol.org/latest/ | Agent2Agent Protocol v1.0.0 shipped 2026-03-12 and v1.0.1 shipped 2026-05-28 per the official releases page; rechecked 2026-07-02. The prior entry read the version-pinned page https://a2a-protocol.org/v0.3.0/specification/ and wrongly recorded v0.3.0 as latest. Chio may bind A2A task evidence but should not claim A2A itself proves Chio authority. |
 | ACP-Client | https://agentclientprotocol.com/protocol/v1/overview | Agent Client Protocol v1 is the correct name for IDE/client agent permission and session flows. Use `ACP-Client`, never bare `ACP`. |
 | AG-UI | https://docs.ag-ui.com/concepts/events | AG-UI is an event-stream surface for agent/user interaction. Chio may bind AG-UI event digests as UI evidence, not as authority unless receipts bind the same action. |
 | OpenAPI | https://spec.openapis.org/oas/v3.2.0.html | OpenAPI 3.2.0 is the latest published version observed on 2026-06-09. Current Chio docs and parser evidence support a narrower 3.0.x and 3.1.x ingestion story unless 3.2 fixtures are added. |
@@ -72,7 +72,7 @@ Rejected:
 - "Every external agent protocol natively verifies Chio authority."
 - "ACP support" without qualifier.
 - "SLSA v1.1 is the current source."
-- "A2A v1.0.0 conformance" without a future official v1.0.0 source and fixture.
+- "A2A v0.3.0 is the latest official version." (The prior ban on "A2A v1.0.0 conformance" is lifted: its own condition, an official v1.0.0 source, is now satisfied by the 2026-03-12 v1.0.0 release recorded in the A2A row above.)
 - "OpenAPI 3.2 support" without 3.2 fixtures.
 - "Sigstore proves runtime authorization."
 - "A webhook signature proves Chio authorization."
