@@ -1573,7 +1573,6 @@ pub(crate) mod delegation;
 mod construction;
 // Tool-call and plan evaluation path, including the long-form evaluation
 // cores.
-#[path = "evaluation.rs"]
 mod evaluation;
 // Capability and budget validation.
 #[path = "validation.rs"]
