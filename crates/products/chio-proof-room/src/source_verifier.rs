@@ -968,13 +968,25 @@ pub(crate) fn merge_source_family_verifier_reports(
         )
         .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
 
+    // Fail closed: derive the merged verdict from the family reports rather
+    // than hardcoding "verified". Correctness must not rely solely on every
+    // family verifier returning Err on failure; an Ok-but-rejected family
+    // report must downgrade the merge. Mirrors xtask launch_acceptance
+    // overall_verdict (derive, do not assume).
+    let all_families_verified = family_reports.iter().all(source_family_report_is_verified);
+    let (verdict, accepted, state) = if all_families_verified {
+        ("verified", true, "verified")
+    } else {
+        ("rejected", false, "rejected")
+    };
+
     Ok(serde_json::json!({
         "schema": "chio.transaction.verifier-report.v1",
         "id": format!("verifier-report-{}", context.passport.id),
         "issued_at": context.passport.issued_at.clone(),
-        "verdict": "verified",
-        "accepted": true,
-        "state": "verified",
+        "verdict": verdict,
+        "accepted": accepted,
+        "state": state,
         "passport_id": context.passport.id.clone(),
         "passport_path": context.passport_report_path,
         "evidence_graph_sha256": context.passport.evidence_graph_sha256.clone(),
@@ -989,6 +1001,25 @@ pub(crate) fn merge_source_family_verifier_reports(
         "family_reports": family_reports,
         "checker_provenance": source_claim_checker_provenance(&verified_claims),
     }))
+}
+
+/// A family report counts as verified only when its own verdict is "verified"
+/// and any accepted/state fields it carries are affirmative. Some family
+/// reports (for example standalone risk) omit accepted/state, so those are
+/// treated as satisfied when absent but must be positive when present. Fail
+/// closed: anything short of an affirmative family verdict is not verified.
+fn source_family_report_is_verified(report: &serde_json::Value) -> bool {
+    let verdict_verified =
+        report.get("verdict").and_then(serde_json::Value::as_str) == Some("verified");
+    let accepted_ok = match report.get("accepted") {
+        Some(value) => value.as_bool() == Some(true),
+        None => true,
+    };
+    let state_ok = match report.get("state") {
+        Some(value) => value.as_str() == Some("verified"),
+        None => true,
+    };
+    verdict_verified && accepted_ok && state_ok
 }
 
 pub(crate) fn verify_source_root_claim_set_artifacts(

@@ -450,10 +450,21 @@ fn ensure_source_records_bind_workflow_step_evidence(
             "bilateralDsseSha256",
             "workflowStepSha256",
         ] {
-            let Some(source_value) = source_record.get(field).and_then(Value::as_str) else {
-                continue;
-            };
-            if workflow_step.get(field).and_then(Value::as_str) != Some(source_value) {
+            // Fail closed: a source record (or workflow step) that omits or
+            // blanks a binding hash must be denied, not skipped. This matches
+            // the strict proof-room re-implementation
+            // (source_runtime_required_str), which denies missing/empty fields.
+            let source_value = required_non_empty_str(
+                source_record,
+                field,
+                "runtime_proof_regeneration_source_record_hash_missing",
+            )?;
+            let workflow_value = required_non_empty_str(
+                workflow_step,
+                field,
+                "runtime_proof_regeneration_workflow_step_hash_missing",
+            )?;
+            if source_value != workflow_value {
                 return rejected(
                     "runtime_proof_regeneration_workflow_step_evidence_mismatch",
                     format!(
@@ -777,6 +788,29 @@ mod tests {
     }
 
     #[test]
+    fn rejects_source_record_missing_binding_hash_field() {
+        let artifacts = runtime_regeneration_artifacts(RegenerationArtifactOptions {
+            omit_source_record_hash_field: Some("toolReceiptSha256"),
+            ..RegenerationArtifactOptions::default()
+        });
+
+        let error =
+            match validate_runtime_proof_regeneration_artifacts(artifacts.as_runtime_artifacts()) {
+                Ok(()) => {
+                    panic!("source record missing a binding hash field unexpectedly verified")
+                }
+                Err(error) => error,
+            };
+
+        // The shared crate must DENY a missing/empty binding hash rather than
+        // silently skip it (fail closed), matching the strict proof-room path.
+        assert_eq!(
+            error.code(),
+            "runtime_proof_regeneration_source_record_hash_missing"
+        );
+    }
+
+    #[test]
     fn rejects_accepted_regeneration_report_failure_code() {
         let artifacts = runtime_regeneration_artifacts(RegenerationArtifactOptions {
             proof_report_failure_code: Some("runtime_regeneration_failed"),
@@ -856,6 +890,7 @@ mod tests {
         proof_report_failure_code: Option<&'a str>,
         workflow_report_failure_code: Option<&'a str>,
         workflow_step_record_index: Option<u64>,
+        omit_source_record_hash_field: Option<&'a str>,
     }
 
     impl Default for RegenerationArtifactOptions<'_> {
@@ -868,6 +903,7 @@ mod tests {
                 proof_report_failure_code: None,
                 workflow_report_failure_code: None,
                 workflow_step_record_index: Some(0),
+                omit_source_record_hash_field: None,
             }
         }
     }
@@ -917,9 +953,18 @@ mod tests {
         let proof_package_sha256 = test_canonical_value_sha256(&proof_package);
         let verifier_report_sha256 = test_canonical_value_sha256(&verifier_report);
         let workflow_receipt_sha256 = test_canonical_value_sha256(&workflow_receipt);
-        let source_record = serde_json::json!({
-            "stepIndex": 0
+        let mut source_record = serde_json::json!({
+            "stepIndex": 0,
+            "admissionReportSha256": "1".repeat(64),
+            "toolReceiptSha256": "2".repeat(64),
+            "bilateralDsseSha256": "3".repeat(64),
+            "workflowStepSha256": "4".repeat(64)
         });
+        if let Some(field) = options.omit_source_record_hash_field {
+            if let Some(object) = source_record.as_object_mut() {
+                object.remove(field);
+            }
+        }
         let mut proof_report = serde_json::json!({
             "schema": CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA,
             "runId": options.proof_report_run_id,
@@ -942,7 +987,11 @@ mod tests {
         });
         if let Some(step_index) = options.workflow_step_record_index {
             workflow_report["stepEvidence"] = serde_json::json!([{
-                "stepIndex": step_index
+                "stepIndex": step_index,
+                "admissionReportSha256": "1".repeat(64),
+                "toolReceiptSha256": "2".repeat(64),
+                "bilateralDsseSha256": "3".repeat(64),
+                "workflowStepSha256": "4".repeat(64)
             }]);
         }
         if let Some(failure_code) = options.workflow_report_failure_code {
