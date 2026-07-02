@@ -24,7 +24,7 @@ chio-agent-web-interop = { workspace = true }
 chio-commerce-order = { workspace = true }
 chio-core-types = { workspace = true }
 chio-disclosure-lineage = { workspace = true }
-chio-egress-contract = { workspace = true }
+chio-egress-contract = { workspace = true, features = ["reqwest-egress"] }
 chio-enterprise-export = { workspace = true }
 chio-risk-comptroller = { workspace = true }
 chio-runtime-proof-parity = { workspace = true }
