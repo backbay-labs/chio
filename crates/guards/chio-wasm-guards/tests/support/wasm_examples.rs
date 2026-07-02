@@ -38,7 +38,32 @@ pub fn load_rust_example_wasm(package_name: &str, artifact_name: &str) -> Vec<u8
     })
 }
 
+/// Verify the `wasm32-unknown-unknown` rustup target is installed before
+/// shelling out to cargo, so a missing target fails with one actionable
+/// message instead of a nested cargo-build panic.
+///
+/// If `rustup` itself cannot be queried (not installed, or a non-rustup
+/// toolchain), the check is skipped and the subsequent cargo build reports
+/// any target problem directly.
+fn preflight_wasm_target() {
+    let output = Command::new("rustup")
+        .args(["target", "list", "--installed"])
+        .output();
+    if let Ok(out) = output {
+        if out.status.success() {
+            let installed = String::from_utf8_lossy(&out.stdout);
+            if !installed
+                .lines()
+                .any(|line| line.trim() == "wasm32-unknown-unknown")
+            {
+                panic!("wasm32-unknown-unknown target is not installed; run: rustup target add wasm32-unknown-unknown");
+            }
+        }
+    }
+}
+
 fn build_rust_example(package_name: &str) {
+    preflight_wasm_target();
     let root = repo_root();
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let status = Command::new(cargo)
