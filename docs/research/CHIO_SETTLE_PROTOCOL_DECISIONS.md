@@ -6,11 +6,13 @@ Authors: Engineering
 Prerequisite: CHIO_SETTLE_RESEARCH.md, CHIO_ANCHOR_RESEARCH.md, CHIO_LINK_RESEARCH.md
 
 > Realization status (2026-04-02): these decisions are now realized by the
-> shipped `arc-settle` runtime and official contract package. The authoritative
+> shipped `chio-settle` runtime and official contract package. The authoritative
 > runtime boundary is [CHIO_SETTLE_PROFILE.md](../standards/CHIO_SETTLE_PROFILE.md).
 > Several research names were superseded in implementation: `ArcReceiptVerifier`
-> converged into `IArcRootRegistry`, and `ArcSettleRegistry` converged into
-> `IArcIdentityRegistry`.
+> converged into `IChioRootRegistry`, and `ArcSettleRegistry` converged into
+> `IChioIdentityRegistry`. Identifiers in the body of this document (`did:arc`,
+> `arc.*` schema IDs, `Arc*` contract names) are pre-rename history; the
+> shipped equivalents are `did:chio`, `chio.*`, and `Chio*` contracts.
 
 ---
 

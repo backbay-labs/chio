@@ -138,7 +138,7 @@ fn install_priced_guard_run_call_one_iou_one_settlement() {
     )
     .expect("write catalog");
 
-    // 1) Drive `arc guard market install` from the binary's main entry
+    // 1) Drive `chio guard market install` from the binary's main entry
     //    using the same shape the dispatch layer assembles. We invoke
     //    the binary in-process by spawning the chio binary built by
     //    cargo via env vars. The simpler path here is to exercise the
