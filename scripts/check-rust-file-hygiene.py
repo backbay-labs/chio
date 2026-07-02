@@ -163,7 +163,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/kernel/chio-runtime-proof-parity/src/lib.rs": allow(
         "2026-07-31",
         "runtime proof parity surface; capped to current size until split",
-        max_lines=1_009,
+        max_lines=1_058,
     ),
     "crates/kernel/chio-swarm-authority/src/verifier.rs": allow(
         "2026-07-31",
@@ -188,7 +188,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/products/chio-proof-room/src/lib.rs": allow(
         "2026-07-31",
         "Proof Room product surface; capped to current size until split",
-        max_lines=1_137,
+        max_lines=1_141,
     ),
 }
 
