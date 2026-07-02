@@ -11,7 +11,7 @@
       "transport": "http",
       "authority": "trust_control_service",
       "witnesses": [
-        "crates/kernel/chio-kernel/src/operator_report.rs",
+        "crates/kernel/chio-kernel/src/operator_report/",
         "crates/platform/chio-control-plane/src/trust_control/receipt_handlers.rs",
         "crates/products/chio-cli/tests/receipt_query.rs"
       ]
@@ -42,7 +42,7 @@
       "transport": "http_and_cli",
       "authority": "trust_control_service",
       "witnesses": [
-        "crates/kernel/chio-kernel/src/operator_report.rs",
+        "crates/kernel/chio-kernel/src/operator_report/",
         "crates/products/chio-cli/tests/receipt_query.rs"
       ]
     },
@@ -66,4 +66,3 @@
     "Promotion outside the operator boundary still requires qualification bundles and explicit service-auth governance."
   ]
 }
-

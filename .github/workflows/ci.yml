@@ -83,6 +83,8 @@ jobs:
           ./scripts/check-release-inputs.sh
           ./scripts/check-workspace-layering.sh
           python3 scripts/check-review-slices.py
+          python3 scripts/check-mutants-examine-globs.py
+          bash scripts/tests/check-mutants-examine-globs.test.sh
           python3 scripts/check-rust-public-surface.py
           bash scripts/tests/check-rust-public-surface.test.sh
           python3 scripts/check-architecture-docs.py
@@ -92,6 +94,8 @@ jobs:
           bash ./scripts/tests/check-http-egress-contract.test.sh
           bash ./scripts/check-chio-proof-room-release-truth.sh
           bash ./scripts/tests/check-chio-proof-room-release-truth.test.sh
+          bash ./scripts/check-chio-schema-registry.sh
+          bash ./scripts/tests/check-chio-schema-registry.test.sh
           bash ./scripts/check-agent-web-proof-envelope-schema.sh
           bash ./scripts/tests/check-agent-web-proof-envelope-schema.test.sh
 

@@ -103,6 +103,17 @@ assert_rc "$(run_checker "$untracked_production_fail" "$work/untracked-productio
 grep -F "crates/chio-demo/src/lib.rs:2" \
   "$work/untracked-production-fail.err" >/dev/null
 
+session_split_allow="$work/session-split-allow"
+init_case "$session_split_allow"
+write_file "$session_split_allow/crates/products/chio-cli/src/cli/session/test_support.rs" \
+  "serde_json::json!({" \
+  "  \"stub\": true," \
+  "})"
+track_case "$session_split_allow"
+assert_rc "$(run_checker "$session_split_allow" "$work/session-split-allow.out" "$work/session-split-allow.err")" 0 \
+  "split session test support stub payload is allowlisted"
+grep -F "Stub-surface check passed" "$work/session-split-allow.out" >/dev/null
+
 federation_bbs_stub="$work/federation-bbs-stub"
 init_case "$federation_bbs_stub"
 write_file "$federation_bbs_stub/crates/trust/chio-federation/src/selective_disclosure.rs" \
@@ -128,7 +139,7 @@ grep -F "production stub-surface hit is not allowlisted" \
 
 guard_unrelated="$work/guard-unrelated"
 init_case "$guard_unrelated"
-write_file "$guard_unrelated/crates/products/chio-cli/src/guard.rs" \
+write_file "$guard_unrelated/crates/products/chio-cli/src/guard/new.rs" \
   "// Replace this stub with real policy logic before shipping." \
   "pub fn unrelated() { /* TODO: unrelated production work */ }"
 track_case "$guard_unrelated"
