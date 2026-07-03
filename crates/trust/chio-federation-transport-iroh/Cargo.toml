@@ -19,8 +19,16 @@ chio-pheromone-relay = { workspace = true }
 # server + the insecure_skip_verify dev path). iroh-gossip / iroh-blobs are the lanes
 # phase (section 3.3/3.4), not this foundation.
 iroh = { version = "1.0", default-features = false, features = ["tls-ring"] }
+# lanes phase: gossip fan-out (lane c) + content-addressed catch-up (module catchup).
+iroh-gossip = "0.101"
+iroh-blobs = "0.103"
+chio-federation = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+blake3 = "1"
 
 [dev-dependencies]
 tokio = { workspace = true }
