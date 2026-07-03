@@ -22,8 +22,8 @@ class ChioASGIConfig:
     receipt_header:
         Response header name for the Chio receipt ID (default ``X-Chio-Receipt``).
     fail_open:
-        Legacy option retained for source compatibility. Current v1 always
-        fails closed when the sidecar is unreachable.
+        Reserved no-op option. The middleware always fails closed when the
+        sidecar is unreachable.
     """
 
     sidecar_url: str = "http://127.0.0.1:9090"

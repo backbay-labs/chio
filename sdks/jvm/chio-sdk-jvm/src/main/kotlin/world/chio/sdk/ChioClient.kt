@@ -250,8 +250,7 @@ class ChioClient
             return parser.treeToValue(node, VerifyReceiptResponse::class.java)
         }
 
-        /** Deprecated single-name alias for one-release compat. */
-        @Deprecated("Use verifyHttpReceipt", ReplaceWith("verifyHttpReceipt(receipt)"))
+        /** Short-name alias for callers that already use Chio as the package context. */
         fun verifyReceipt(receipt: HttpReceipt): VerifyReceiptResponse = verifyHttpReceipt(receipt)
 
         /**
@@ -327,7 +326,7 @@ class ChioClient
                 return out
             }
 
-            /** Shim for legacy chio-spring-boot callers. */
+            /** Default base URL shared with the Spring Boot integration. */
             const val DEFAULT_BASE_URL: String = SidecarPaths.DEFAULT_BASE_URL
         }
 

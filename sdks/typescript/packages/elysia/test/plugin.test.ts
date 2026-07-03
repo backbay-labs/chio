@@ -50,7 +50,7 @@ describe("chio elysia plugin", () => {
     expect(body.error).toBe("chio_sidecar_unreachable");
   });
 
-  it("fails closed when legacy onSidecarError is allow", async () => {
+  it("fails closed when reserved onSidecarError is allow", async () => {
     const app = new Elysia()
       .use(
         chio({

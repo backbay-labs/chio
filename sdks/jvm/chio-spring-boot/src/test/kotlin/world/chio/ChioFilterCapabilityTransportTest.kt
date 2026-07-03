@@ -103,7 +103,7 @@ class ChioFilterCapabilityTransportTest {
     }
 
     @Test
-    fun `legacy fail-open setting still fails closed`() {
+    fun `reserved fail-open setting still fails closed`() {
         val filter =
             ChioFilter(
                 ChioFilterConfig(

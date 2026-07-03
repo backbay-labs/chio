@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   re-emits the synthetic `<name>__var_kw_spillover__` keys for
   positional-only-vs-kwarg spillover collisions to preserve the v0.2
   wire shape. v0.4 will deprecate the synthetic-key emission with a
-  one-release migration window. Dependency bumped to
+  migration guidance. Dependency bumped to
   `chio-adapter-base>=0.2.0,<0.3`.
 - fix: the bind_and_redact helper hardening landed in
   `chio-adapter-base 0.2.0` covers every prefect-side edge case the

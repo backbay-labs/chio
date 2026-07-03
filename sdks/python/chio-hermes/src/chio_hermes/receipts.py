@@ -11,14 +11,14 @@ audit store. Tamper-evident long-term storage lives in the sidecar's
 
 The byte-level helpers (``canonical_dumps``, ``append_jsonl``) and the
 in-memory queue/deque mechanics live in
-:mod:`chio_adapter_base.receipts` as of chio-hermes 0.1.1; this module
-is a thin Hermes-aware wrapper that resolves the JSONL log path from
+:mod:`chio_adapter_base.receipts`; this module is a thin Hermes-aware
+wrapper that resolves the JSONL log path from
 ``HERMES_HOME`` / ``hermes_constants.get_hermes_home`` and keeps the
 chio-hermes 0.1.0 surface intact: ``ReceiptBuffer``, ``append_jsonl``,
 ``_canonical_dumps``, ``_resolve_log_path``,
-``DEFAULT_RECEIPT_BUFFER_MAX``. The deprecated names will be removed
-in chio-hermes 0.2.0; new code should import directly from
-``chio_adapter_base.receipts``.
+``DEFAULT_RECEIPT_BUFFER_MAX``. New code should import directly from
+``chio_adapter_base.receipts`` when it does not need Hermes path
+resolution.
 """
 
 from __future__ import annotations
@@ -72,11 +72,11 @@ def _resolve_log_path() -> Path:
     return home / "logs" / "chio-receipts.jsonl"
 
 
-def _receipts_deprecation_warn(symbol: str, replacement: str) -> None:
+def _receipts_compat_warn(symbol: str, replacement: str) -> None:
     warnings.warn(
         (
-            f"chio_hermes.receipts.{symbol} is deprecated; "
-            f"use {replacement}. Will be removed in chio-hermes 0.2.0."
+            f"chio_hermes.receipts.{symbol} is a compatibility alias; "
+            f"prefer {replacement}."
         ),
         DeprecationWarning,
         stacklevel=3,
@@ -84,13 +84,13 @@ def _receipts_deprecation_warn(symbol: str, replacement: str) -> None:
 
 
 def _canonical_dumps(record: dict[str, Any]) -> bytes:
-    """Deprecated. Use ``chio_adapter_base.receipts.canonical_dumps`` instead.
+    """Compatibility alias for ``chio_adapter_base.receipts.canonical_dumps``.
 
     Kept as a thin shim because external callers and at least one
     in-tree test imported the underscore name directly. Behaviour is
     byte-identical to the canonical helper.
     """
-    _receipts_deprecation_warn(
+    _receipts_compat_warn(
         "_canonical_dumps", "chio_adapter_base.receipts.canonical_dumps"
     )
     return _adapter_base_canonical_dumps(record)

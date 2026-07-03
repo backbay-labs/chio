@@ -3,8 +3,8 @@
 1. The chio-hermes shim functions (``_redact_args``, ``_sanitised_env``,
    etc.) delegate to ``chio_adapter_base`` rather than running their own
    copy of the logic.
-2. The deprecated chio-hermes module-level names emit a
-   :class:`DeprecationWarning` exactly once per call.
+2. The chio-hermes module-level compatibility aliases emit a warning exactly
+   once per call.
 3. The chio-adapter-base canonical imports work from inside the
    chio-hermes virtualenv (i.e. the dependency is wired correctly).
 """
@@ -116,7 +116,7 @@ def test_redact_args_delegates_to_adapter_base(
 def test_post_tool_call_uses_adapter_base_redact_directly(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The internal call site must NOT route through the deprecated shim.
+    """The internal call site must NOT route through the compatibility alias.
 
     If ``make_post_tool_call`` called ``_redact_args`` we would see a
     DeprecationWarning fire from chio-hermes' own hook execution path,

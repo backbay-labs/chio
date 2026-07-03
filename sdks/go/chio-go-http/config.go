@@ -18,8 +18,8 @@ type Config struct {
 	// TimeoutSeconds is the HTTP timeout for sidecar calls. Default: 5.
 	TimeoutSeconds int
 
-	// OnSidecarError is a legacy option retained for source compatibility.
-	// Current v1 always fails closed when the sidecar is unreachable.
+	// OnSidecarError is a reserved no-op option. The middleware always fails
+	// closed when the sidecar is unreachable.
 	OnSidecarError string
 
 	// IdentityExtractor extracts caller identity from an HTTP request.
@@ -82,8 +82,8 @@ func WithTimeout(seconds int) Option {
 	}
 }
 
-// WithOnSidecarError records the legacy sidecar-error preference. Current v1
-// always fails closed regardless of this value.
+// WithOnSidecarError records a reserved sidecar-error preference. The
+// middleware always fails closed regardless of this value.
 func WithOnSidecarError(behavior string) Option {
 	return func(c *Config) {
 		c.OnSidecarError = behavior

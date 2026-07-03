@@ -187,7 +187,7 @@ export interface EvaluateResponse {
   evidence: GuardEvidence[];
 }
 
-/** Explicit passthrough state reserved for legacy callers. */
+/** Explicit passthrough state reserved for degraded-state integrations. */
 export interface ChioPassthrough {
   mode: "allow_without_receipt";
   error: typeof CHIO_ERROR_CODES.SIDECAR_UNREACHABLE;
@@ -220,7 +220,7 @@ export interface ChioConfig {
    */
   routePatternResolver?: RoutePatternResolver | undefined;
 
-  /** Legacy option. Current middleware always denies sidecar errors. */
+  /** Reserved no-op option. The middleware always denies sidecar errors. */
   onSidecarError?: "deny" | "allow" | undefined;
 
   /**

@@ -24,12 +24,11 @@ from chio_adapter_base.security import (
     _ENV_DENY_SUFFIXES as _ADAPTER_BASE_ENV_DENY_SUFFIXES,
 )
 
-# The seven security primitives below are now sourced from
-# :mod:`chio_adapter_base.security`. The chio-hermes module-level
-# names are kept as backwards-compat shims (deprecated)
-# so external consumers that imported
-# ``chio_hermes.executors._sanitised_env`` etc. keep working for one
-# release. Internal call sites here use the canonical imports.
+# The seven security primitives below are sourced from
+# :mod:`chio_adapter_base.security`. The chio-hermes module-level names
+# remain compatibility aliases for consumers that import
+# ``chio_hermes.executors._sanitised_env`` etc. Internal call sites here
+# use the canonical imports.
 from chio_adapter_base.security import (
     DEFAULT_SHELL_TIMEOUT as _ADAPTER_BASE_DEFAULT_SHELL_TIMEOUT,
 )
@@ -54,11 +53,11 @@ _ENV_DENY_SUFFIXES: tuple[str, ...] = _ADAPTER_BASE_ENV_DENY_SUFFIXES
 _ENV_DENY_EXACT: frozenset[str] = _ADAPTER_BASE_ENV_DENY_EXACT
 
 
-def _exec_deprecation_warn(symbol: str, replacement: str) -> None:
+def _exec_compat_warn(symbol: str, replacement: str) -> None:
     warnings.warn(
         (
-            f"chio_hermes.executors.{symbol} is deprecated; "
-            f"use {replacement}. Will be removed in chio-hermes 0.2.0."
+            f"chio_hermes.executors.{symbol} is a compatibility alias; "
+            f"prefer {replacement}."
         ),
         DeprecationWarning,
         stacklevel=3,
@@ -66,16 +65,16 @@ def _exec_deprecation_warn(symbol: str, replacement: str) -> None:
 
 
 def _is_denied_env(name: str) -> bool:
-    """Deprecated. Use ``chio_adapter_base.security.sanitised_env`` instead."""
-    _exec_deprecation_warn(
+    """Compatibility alias for ``chio_adapter_base.security.sanitised_env``."""
+    _exec_compat_warn(
         "_is_denied_env", "chio_adapter_base.security.sanitised_env"
     )
     return _adapter_base_is_denied_env(name)
 
 
 def _sanitised_env() -> dict[str, str]:
-    """Deprecated. Use ``chio_adapter_base.security.sanitised_env`` instead."""
-    _exec_deprecation_warn(
+    """Compatibility alias for ``chio_adapter_base.security.sanitised_env``."""
+    _exec_compat_warn(
         "_sanitised_env", "chio_adapter_base.security.sanitised_env"
     )
     return _adapter_base_sanitised_env()
@@ -112,8 +111,8 @@ def shell_timeout() -> int:
 
 
 def _resolve_within(path: str, root: Path) -> Path:
-    """Deprecated. Use ``chio_adapter_base.security.resolve_within`` instead."""
-    _exec_deprecation_warn(
+    """Compatibility alias for ``chio_adapter_base.security.resolve_within``."""
+    _exec_compat_warn(
         "_resolve_within", "chio_adapter_base.security.resolve_within"
     )
     return _resolve_within_impl(path, root)
@@ -132,8 +131,8 @@ def _resolve_within_impl(path: str, root: Path) -> Path:
 def _drain_stream_to_cap(
     stream: Any, cap: int
 ) -> tuple[bytearray, bool]:
-    """Deprecated. ``chio_adapter_base.security.BoundedSubprocess`` owns this loop."""
-    _exec_deprecation_warn(
+    """Compatibility alias for the adapter-base bounded subprocess loop."""
+    _exec_compat_warn(
         "_drain_stream_to_cap",
         "chio_adapter_base.security.BoundedSubprocess",
     )
@@ -149,14 +148,14 @@ def _run_subprocess(
     timeout: int,
     stdin: str | None = None,
 ) -> dict[str, Any]:
-    """Deprecated. Use ``chio_adapter_base.security.BoundedSubprocess.run`` instead.
+    """Compatibility alias for ``chio_adapter_base.security.BoundedSubprocess.run``.
 
-    Returns the legacy chio-hermes dict shape (``{"argv", "returncode",
-    "stdout", "stderr", "output_truncated"?}``); the new
+    Returns the chio-hermes dict shape (``{"argv", "returncode",
+    "stdout", "stderr", "output_truncated"?}``); the canonical
     :class:`BoundedSubprocessResult` dataclass exposes the same fields,
     but external callers that pattern-match on the dict keep working.
     """
-    _exec_deprecation_warn(
+    _exec_compat_warn(
         "_run_subprocess", "chio_adapter_base.security.BoundedSubprocess"
     )
     return _run_subprocess_impl(argv, cwd=cwd, timeout=timeout, stdin=stdin)
@@ -340,13 +339,13 @@ async def git_run_executor(
 
 
 def _harden_git_run_argv(argv: list[str]) -> list[str]:
-    """Deprecated. Use ``chio_adapter_base.security.harden_git_argv`` instead.
+    """Compatibility alias for ``chio_adapter_base.security.harden_git_argv``.
 
     The canonical implementation returns a NEW list (never mutates the
     input). The chio-hermes shim preserved the same contract; callers
     that captured the result keep working unchanged.
     """
-    _exec_deprecation_warn(
+    _exec_compat_warn(
         "_harden_git_run_argv", "chio_adapter_base.security.harden_git_argv"
     )
     return _adapter_base_harden_git_argv(argv)

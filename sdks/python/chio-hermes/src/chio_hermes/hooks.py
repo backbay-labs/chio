@@ -143,23 +143,20 @@ def _truncate_receipt_result(
     return head, True
 
 
-# Backwards-compat shims for the in-tree redaction helpers. The canonical
-# implementations now live in :mod:`chio_adapter_base.redact`. Internal
-# call sites within chio-hermes use :data:`_DEFAULT_REDACTION_POLICY`
-# directly so they do not trigger the deprecation warning. External
-# consumers that imported ``chio_hermes.hooks._BODY_REDACT_FIELDS`` or
-# ``chio_hermes.hooks._redact_args`` keep working for one release; both
-# will be removed in chio-hermes 0.2.0.
+# Compatibility aliases for the in-tree redaction helpers. The canonical
+# implementations live in :mod:`chio_adapter_base.redact`. Internal call
+# sites within chio-hermes use :data:`_DEFAULT_REDACTION_POLICY` directly
+# so they do not trigger the compatibility warning.
 
 _DEFAULT_REDACTION_POLICY: RedactionPolicy = RedactionPolicy.chio_default()
 """Module-private policy used by the post-tool-call hook."""
 
 
-def _deprecation_warn(symbol: str, replacement: str) -> None:
+def _compat_warn(symbol: str, replacement: str) -> None:
     warnings.warn(
         (
-            f"chio_hermes.hooks.{symbol} is deprecated; "
-            f"use {replacement}. Will be removed in chio-hermes 0.2.0."
+            f"chio_hermes.hooks.{symbol} is a compatibility alias; "
+            f"prefer {replacement}."
         ),
         DeprecationWarning,
         stacklevel=3,
@@ -175,7 +172,7 @@ class _BodyRedactFieldsShim(dict):
     """
 
     def _warn(self) -> None:
-        _deprecation_warn(
+        _compat_warn(
             "_BODY_REDACT_FIELDS",
             "chio_adapter_base.redact.RedactionPolicy.chio_default",
         )
@@ -201,8 +198,8 @@ _BODY_REDACT_FIELDS: _BodyRedactFieldsShim = _BodyRedactFieldsShim(
 def _redact_args(
     tool_name: str | None, args: dict[str, Any]
 ) -> dict[str, Any]:
-    """Deprecated. Use ``chio_adapter_base.redact.redact_args`` instead."""
-    _deprecation_warn(
+    """Compatibility alias for ``chio_adapter_base.redact.redact_args``."""
+    _compat_warn(
         "_redact_args", "chio_adapter_base.redact.redact_args"
     )
     return _adapter_base_redact_args(

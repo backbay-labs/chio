@@ -1,6 +1,6 @@
 /**
- * Deprecated thin shim so chio-spring-boot users keep compiling while
- * migrating to world.chio.sdk.ChioClient. Removed in 0.2.0.
+ * Thin wrapper so chio-spring-boot users can use world.chio.sdk.ChioClient
+ * without duplicating the HTTP client logic.
  */
 package world.chio
 
@@ -8,12 +8,6 @@ import world.chio.sdk.ChioClient
 import world.chio.sdk.SidecarPaths
 import java.time.Duration
 
-@Deprecated(
-    "Use world.chio.sdk.ChioClient directly",
-    ReplaceWith(
-        "world.chio.sdk.ChioClient(baseUrl, java.time.Duration.ofSeconds(timeoutSeconds))",
-    ),
-)
 class ChioSidecarClient
     @JvmOverloads
     constructor(
@@ -37,5 +31,5 @@ class ChioSidecarClient
         }
     }
 
-/** Legacy exception alias. Prefer world.chio.sdk.errors.ChioError. */
+/** Exception alias for Spring Boot integration callers. */
 typealias ChioSidecarException = world.chio.sdk.errors.ChioError

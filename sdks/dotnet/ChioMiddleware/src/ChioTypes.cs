@@ -344,7 +344,7 @@ public class VerifyReceiptResponse
 }
 
 /// <summary>
-/// Legacy degraded state marker. Current v1 middleware always fails closed.
+/// Reserved degraded state marker. The middleware always fails closed.
 /// </summary>
 public class ChioPassthrough
 {
