@@ -5,18 +5,34 @@
 //! [`PheromoneDepositGossip`] frames over an iroh-gossip swarm, one swarm per
 //! treaty.
 //!
-//! ## Topic derivation (one-topic-per-treaty is MANDATORY for confidentiality)
+//! ## Topic derivation (one-topic-per-treaty gives ROUTING separation)
 //!
 //! `TopicId = blake3("chio-pheromone-gossip/v1\x00" || treaty_id_bytes)`, where
 //! `treaty_id_bytes` is the canonical UTF-8 of the existing `String` treaty id
 //! (ADAPTER-SPEC 4.1). A gossip topic is one swarm where every member sees every
-//! other member's wire traffic, so the membership set IS the confidentiality
-//! boundary. Binding `TopicId` one-to-one to a treaty makes that boundary exactly
-//! the treaty's subscription set, and cross-treaty leakage is structurally
-//! impossible (different treaty, different swarm, different `TopicId`). The
-//! `TopicId` is deterministic and therefore NOT a secret: it grants no access on
-//! its own. Membership is still gated UPSTREAM by the accept-time
-//! [`DirectoryGate`](crate::admission::DirectoryGate) + issuer-signed directory.
+//! other member's wire traffic. Binding `TopicId` one-to-one to a treaty means
+//! each treaty's traffic rides its OWN swarm: this is ROUTING separation
+//! (different treaty, different swarm, different `TopicId`), which keeps one
+//! treaty's frames off another treaty's wire by default.
+//!
+//! This is NOT, by itself, treaty-scoped ACCESS CONTROL, and must not be
+//! overclaimed as such. The `TopicId` is deterministic and therefore NOT a
+//! secret; it grants no access on its own, but it withholds none either. Swarm
+//! admission is gated UPSTREAM by the accept-time
+//! [`DirectoryGate`](crate::admission::DirectoryGate), which is FEDERATION-GLOBAL,
+//! not treaty-scoped: it admits an operator to the federation, not to a specific
+//! treaty. So a globally-admitted operator that is NOT a party to a treaty can
+//! still compute that treaty's (non-secret) `TopicId` and join its swarm. True
+//! treaty-scoped access control would require a PER-TREATY membership gate (the
+//! accept-time gate checking treaty membership, not merely federation admission).
+//!
+//! TODO(iroh-transport): add a per-treaty membership gate at accept time so swarm
+//! admission is scoped to the treaty's party set, upgrading this routing
+//! separation into enforced treaty-scoped access control. Until then the
+//! DELIVERED guarantee is exactly: (1) routing separation (above), plus (2) a
+//! receive-side swarm/treaty binding, so a frame carrying a foreign `treaty_id`
+//! is rejected on this swarm even if its deposit self-signature is valid (see
+//! [`FanoutTopic::recv_verified`] and [`FanoutError::TreatyMismatch`]).
 //!
 //! ## The load-bearing correctness property: `delivered_from` is NOT the author
 //!
@@ -119,6 +135,18 @@ pub enum FanoutError {
     /// `delivered_from` irrelevant to authorship.
     #[error("deposit self-signature is invalid")]
     DepositSignatureInvalid,
+    /// A received frame's `treaty_id` did not match the treaty this swarm
+    /// carries. Fail-closed: a frame minted for a different treaty is rejected on
+    /// this swarm even if its deposit self-signature is valid, binding swarm
+    /// delivery to the treaty the topic promises (the routing-separation property
+    /// in the module docs).
+    #[error("frame treaty_id `{got}` does not match this swarm's treaty `{expected}`")]
+    TreatyMismatch {
+        /// The treaty this swarm (topic) is bound to.
+        expected: String,
+        /// The `treaty_id` carried by the received frame.
+        got: String,
+    },
     /// Canonical JSON serialization failed while reconstructing the deposit
     /// signing preimage.
     #[error("canonical json error: {0}")]
@@ -242,6 +270,42 @@ where
     Ok(frame)
 }
 
+/// Decode a raw gossip payload, ENFORCE the swarm/treaty binding against
+/// `expected_treaty`, then origin-verify it. This is the pure core of
+/// [`FanoutTopic::recv_verified`], factored out so the swarm/treaty binding is
+/// unit-testable without a live swarm.
+///
+/// Fail-closed order: decode, then reject with [`FanoutError::TreatyMismatch`]
+/// BEFORE any signature work if the frame's `treaty_id` is not `expected_treaty`
+/// (a frame minted for a different treaty is rejected on this swarm even if its
+/// deposit self-signature is valid), then run [`verify_fanout_frame`].
+///
+/// # Errors
+/// [`FanoutError::Codec`] on malformed JSON, [`FanoutError::TreatyMismatch`]
+/// when the frame is bound to a different treaty, else any error from
+/// [`verify_fanout_frame`].
+fn decode_bind_treaty_and_verify<R>(
+    content: &[u8],
+    expected_treaty: &str,
+    origin_keys: &R,
+    policy: &PheromoneTransitPolicy,
+    now_unix_ms: u64,
+) -> Result<PheromoneDepositGossip, FanoutError>
+where
+    R: OriginKeyResolver + ?Sized,
+{
+    let frame: PheromoneDepositGossip =
+        serde_json::from_slice(content).map_err(|error| FanoutError::Codec(error.to_string()))?;
+    if frame.treaty_id != expected_treaty {
+        return Err(FanoutError::TreatyMismatch {
+            expected: expected_treaty.to_string(),
+            got: frame.treaty_id,
+        });
+    }
+    verify_fanout_frame(&frame, origin_keys, policy, now_unix_ms)?;
+    Ok(frame)
+}
+
 /// Serialize a frame for broadcast, enforcing the [`MAX_GOSSIP_MESSAGE_SIZE`] cap
 /// BEFORE it reaches the wire.
 ///
@@ -267,7 +331,11 @@ pub fn encode_fanout_frame(frame: &PheromoneDepositGossip) -> Result<Bytes, Fano
 /// (validation.rs:154-171), which are `pub(crate)` and so cannot be called from
 /// here. The preimage is the deposit body with `cost_commitment` cleared, encoded
 /// as canonical JSON; this reproduces that byte-for-byte. It MUST stay in step
-/// with the canonical functions.
+/// with the canonical functions. The guard test
+/// `lane_verifies_a_real_chio_pheromone_deposit_signature` pins this copy to the
+/// normative signer: it signs a real deposit with `chio_pheromone::sign_deposit`
+/// and asserts this function accepts it, so a canonicalization change in
+/// `chio_pheromone` fails loudly here instead of silently diverging.
 fn verify_deposit_self_signature(
     frame: &PheromoneDepositGossip,
     origin_key: &PublicKey,
@@ -408,10 +476,18 @@ impl FanoutTopic {
         }
     }
 
-    /// Await the next payload AND origin-verify it end-to-end: decode, run the
+    /// Await the next payload AND verify it end-to-end: decode, ENFORCE the
+    /// swarm/treaty binding (reject a frame whose `treaty_id` is not this swarm's
+    /// treaty, even if its deposit self-signature is valid), run the
     /// transport-independent frame verifier, and verify the deposit's OWN
     /// self-signature against the origin's resolved key. `delivered_from` is
     /// never consulted. `now_unix_ms` is supplied by the caller per receive.
+    ///
+    /// The swarm/treaty binding is what turns topic-per-treaty ROUTING separation
+    /// into a hard receive-side check: a globally-admitted operator can compute a
+    /// foreign treaty's (non-secret) `TopicId` and inject frames onto this swarm,
+    /// but any frame carrying a different `treaty_id` is rejected here with
+    /// [`FanoutError::TreatyMismatch`] (see the module docs).
     ///
     /// Returns `None` when the topic stream is closed; otherwise the verified
     /// frame or the verification error (a rejected frame over best-effort gossip
@@ -429,8 +505,9 @@ impl FanoutTopic {
             Ok(message) => message,
             Err(error) => return Some(Err(error)),
         };
-        Some(decode_and_verify_fanout_frame(
+        Some(decode_bind_treaty_and_verify(
             &message.content,
+            &self.treaty_id,
             origin_keys,
             policy,
             now_unix_ms,
@@ -653,6 +730,70 @@ mod tests {
 
         let result = encode_fanout_frame(&frame);
         assert!(matches!(result, Err(FanoutError::MessageTooLarge { .. })));
+    }
+
+    #[test]
+    fn frame_from_a_foreign_treaty_is_rejected_on_this_swarm() {
+        // F2 (fail-open fix): a frame minted for treaty-beta, carrying a fully
+        // VALID deposit self-signature, is injected onto the alpha swarm. Routing
+        // separation alone does not stop this (a globally-admitted operator can
+        // compute the non-secret beta TopicId), so the RECEIVE side must bind the
+        // swarm to its treaty and reject the foreign frame.
+        let author = Keypair::from_seed(&[7; 32]);
+        let beta_frame =
+            signed_direct_frame(&author, AUTHOR, "did:chio:hub", "treaty-beta", NAMESPACE);
+        let policy = live_policy(NAMESPACE);
+        let keys = StaticOriginKeys::new().with(AUTHOR, author.public_key());
+        let content = encode_fanout_frame(&beta_frame).expect("encodes under cap");
+
+        // Sanity: the frame's OWN signature and origin verification are valid, so
+        // the rejection below is purely the swarm/treaty binding, not a bad sig.
+        decode_and_verify_fanout_frame(&content, &keys, &policy, NOW)
+            .expect("beta frame's own deposit self-signature and origin verify are valid");
+
+        // Received on the alpha swarm (self.treaty_id = TREATY_ALPHA): rejected.
+        let result = decode_bind_treaty_and_verify(&content, TREATY_ALPHA, &keys, &policy, NOW);
+        assert!(
+            matches!(
+                result,
+                Err(FanoutError::TreatyMismatch { ref expected, ref got })
+                    if expected == TREATY_ALPHA && got == "treaty-beta"
+            ),
+            "a valid-signature frame bound to treaty-beta must be rejected on the alpha swarm, got {result:?}"
+        );
+
+        // And a matching-treaty frame on the same swarm still passes the binding.
+        let alpha_frame =
+            signed_direct_frame(&author, AUTHOR, "did:chio:hub", TREATY_ALPHA, NAMESPACE);
+        let alpha_content = encode_fanout_frame(&alpha_frame).expect("encodes under cap");
+        decode_bind_treaty_and_verify(&alpha_content, TREATY_ALPHA, &keys, &policy, NOW)
+            .expect("an alpha-treaty frame is accepted on the alpha swarm");
+    }
+
+    #[test]
+    fn lane_verifies_a_real_chio_pheromone_deposit_signature() {
+        // F3 guard: pin this lane's hand-copied signing preimage (clear
+        // cost_commitment + canonical JSON) to the NORMATIVE signer. We build a
+        // real deposit with chio_pheromone::sign_deposit and assert this lane's
+        // verify_deposit_self_signature accepts it. If chio_pheromone changes its
+        // canonicalization (deposit_signature_body / canonical_json), this test
+        // fails loudly here instead of the copy silently diverging and rejecting
+        // otherwise-valid deposits.
+        let author = Keypair::from_seed(&[7; 32]);
+        let deposit = sign_deposit(deposit_body(AUTHOR, TREATY_ALPHA, NAMESPACE), &author).unwrap();
+        let frame = frame_over(deposit, AUTHOR, "did:chio:hub", TREATY_ALPHA);
+
+        verify_deposit_self_signature(&frame, &author.public_key())
+            .expect("lane preimage matches chio_pheromone::sign_deposit canonicalization");
+
+        // A one-byte tamper of a signed field must then fail closed, proving the
+        // acceptance above is the real signature check and not a no-op.
+        let mut tampered = frame;
+        tampered.deposit.body.confidence = 0.123_456;
+        assert!(matches!(
+            verify_deposit_self_signature(&tampered, &author.public_key()),
+            Err(FanoutError::DepositSignatureInvalid)
+        ));
     }
 
     #[test]

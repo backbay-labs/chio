@@ -846,4 +846,132 @@ mod tests {
 
         router.shutdown().await.ok();
     }
+
+    // -- Driving the REAL per-frame verifier over loopback QUIC --
+    //
+    // The `CannedReportHandler` above proves the wire path and the accept-time
+    // gate, but (like a stub) it never runs the verifier. Wiring the actual
+    // `PheromoneBatchHandler` is not possible here without a Cargo.toml change:
+    // `RelayBatchReceiver::receive_batch` returns
+    // `chio_pheromone_runtime::PheromoneReceiveReport`, and chio-pheromone-runtime
+    // is neither a (dev-)dependency of this crate nor re-exported by any current
+    // dependency, so no `RelayBatchReceiver` double (real OR recording) can even
+    // name its return type. So instead this handler resolves the sender through
+    // the REAL admission gate (exactly as `PheromoneBatchHandler::handle` does)
+    // and feeds that gate-resolved kernel_id - never an attacker value - into the
+    // REAL `verify_pheromone_gossip_batch` (pheromone_gossip.rs:236/244), the same
+    // per-frame verifier the production handler runs behind the receiver seam.
+    // This drives the verifier the canned stub skips, over genuine QUIC.
+
+    #[derive(Debug, Clone)]
+    struct VerifyingBatchHandler {
+        gate: DirectoryGate,
+        policy: Arc<PheromoneTransitPolicy>,
+        recipient_kernel_id: String,
+        now_unix_ms: u64,
+    }
+
+    impl ProtocolHandler for VerifyingBatchHandler {
+        async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+            // The one transport-sourced value, resolved exactly as the real
+            // handler does. Everything else feeds the unchanged verifier.
+            let sender = resolve_authenticated_sender(&self.gate, &conn.remote_id())
+                .map_err(AcceptError::from_err)?;
+            let (mut send, mut recv) = conn.accept_bi().await?;
+            let raw = read_len_delimited(&mut recv)
+                .await
+                .map_err(AcceptError::from_err)?;
+            let batch: PheromoneGossipBatch =
+                serde_json::from_slice(&raw).map_err(AcceptError::from_err)?;
+
+            let context = PheromoneGossipBatchVerificationContext {
+                now_unix_ms: self.now_unix_ms,
+                recipient_kernel_id: self.recipient_kernel_id.clone(),
+                authenticated_sender_kernel_id: sender.clone(),
+            };
+            let accepted = verify_pheromone_gossip_batch(&batch, &self.policy, &context).is_ok();
+
+            let report = serde_json::json!({
+                "schema": "chio.pheromone-receive-report.v1",
+                "accepted": accepted,
+                "authenticatedSenderKernelId": sender,
+            });
+            let bytes = serde_json::to_vec(&report).map_err(AcceptError::from_err)?;
+            write_len_delimited(&mut send, &bytes)
+                .await
+                .map_err(AcceptError::from_err)?;
+            send.finish()?;
+            conn.closed().await;
+            Ok(())
+        }
+    }
+
+    fn verifying_handler(gate: DirectoryGate) -> VerifyingBatchHandler {
+        VerifyingBatchHandler {
+            gate,
+            policy: Arc::new(live_policy()),
+            recipient_kernel_id: RECIPIENT.to_string(),
+            now_unix_ms: NOW,
+        }
+    }
+
+    #[tokio::test]
+    async fn real_verifier_accepts_admitted_senders_own_batch_over_quic() {
+        let dialer_seed = 24u8;
+        // The gate resolves the dialer endpoint to did:chio:bob.
+        let gate = verified_gate("did:chio:bob", 1, dialer_seed, false);
+        let acceptor = bind_endpoint(25, Some(gate.clone())).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_PHEROMONE_BATCH, verifying_handler(gate))
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(dialer_seed, None).await;
+        // Batch authored by did:chio:bob == the gate-resolved authenticated sender.
+        let batch = direct_batch("did:chio:bob");
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(15),
+            deliver_batch_over_iroh(&dialer, acceptor_addr, &batch),
+        )
+        .await
+        .expect("delivery completes before timeout")
+        .expect("delivery round-trips");
+        assert!(
+            outcome.accepted,
+            "the real verifier, fed the gate-resolved sender, accepts the admitted sender's own batch"
+        );
+
+        router.shutdown().await.ok();
+    }
+
+    #[tokio::test]
+    async fn real_verifier_rejects_batch_whose_author_is_not_the_authenticated_sender_over_quic() {
+        let dialer_seed = 26u8;
+        // The dialer endpoint is admitted, resolving to did:chio:bob...
+        let gate = verified_gate("did:chio:bob", 1, dialer_seed, false);
+        let acceptor = bind_endpoint(27, Some(gate.clone())).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_PHEROMONE_BATCH, verifying_handler(gate))
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(dialer_seed, None).await;
+        // ...but the batch's gossiping_peer_kernel_id is did:chio:mallory, not the
+        // gate-resolved did:chio:bob. The REAL verifier's :236 check fails closed,
+        // so the transport CANNOT launder an attacker-chosen author.
+        let batch = direct_batch("did:chio:mallory");
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(15),
+            deliver_batch_over_iroh(&dialer, acceptor_addr, &batch),
+        )
+        .await
+        .expect("delivery completes before timeout")
+        .expect("delivery round-trips");
+        assert!(
+            !outcome.accepted,
+            "a batch whose gossiping_peer != the authenticated sender must be rejected by the real verifier"
+        );
+
+        router.shutdown().await.ok();
+    }
 }

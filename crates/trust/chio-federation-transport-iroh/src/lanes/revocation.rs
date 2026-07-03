@@ -441,6 +441,11 @@ impl ProtocolHandler for RevocationHandler {
         write_frame(&mut send, &response)
             .await
             .map_err(AcceptError::from_err)?;
+        // Keep the connection open until the dialer has read the finished
+        // response and closed, so the finished stream is not reset on drop
+        // (mirrors the pheromone lane; without this the response can be lost as
+        // "connection lost" on real QUIC).
+        conn.closed().await;
         Ok(())
     }
 }
@@ -916,5 +921,134 @@ mod tests {
             RevocationLaneRequest::Push(batch) => assert!(batch.validate_envelope().is_ok()),
             other => panic!("unexpected variant: {other:?}"),
         }
+    }
+
+    // -- End-to-end over real loopback QUIC, driving the REAL RevocationHandler --
+    //
+    // The deterministic tests above drive `verify_batch` / `handle_request` in
+    // isolation. These bind two endpoints over loopback QUIC, mount the REAL
+    // `RevocationHandler` on its ALPN, and push through the genuine `accept()`
+    // path: transport auth -> directory `authorize` -> pinned-signer verify ->
+    // sink merge. A forged-signer root is rejected ON THE WIRE and reaches
+    // NOTHING (the sink stays empty), proving the real handler fails closed.
+
+    use iroh::endpoint::presets;
+    use iroh::protocol::Router;
+    use iroh::EndpointAddr;
+    use iroh::TransportAddr;
+    use std::time::Duration;
+
+    async fn bind_endpoint(seed: u8) -> Endpoint {
+        Endpoint::builder(presets::Minimal)
+            .secret_key(SecretKey::from_bytes(&[seed; 32]))
+            .bind_addr("127.0.0.1:0")
+            .expect("loopback bind address parses")
+            .bind()
+            .await
+            .expect("endpoint binds on loopback")
+    }
+
+    fn direct_addr(endpoint: &Endpoint) -> EndpointAddr {
+        EndpointAddr::from_parts(
+            endpoint.id(),
+            endpoint.bound_sockets().into_iter().map(TransportAddr::Ip),
+        )
+    }
+
+    /// Drive the client half by hand (the shipped `push_batch_over_iroh` takes a
+    /// bare `EndpointId` and needs discovery to resolve; on raw loopback we dial a
+    /// full `EndpointAddr`). Reuses the lane's own `write_frame` / `read_frame`
+    /// so the wire codec under test is the real one.
+    async fn push_batch_over_quic(
+        dialer: &Endpoint,
+        acceptor: EndpointAddr,
+        batch: RevocationGossipBatch,
+    ) -> RevocationLaneResponse {
+        let conn = dialer
+            .connect(acceptor, ALPN_REVOCATION_ROOT)
+            .await
+            .expect("dialer connects to acceptor over loopback");
+        let (mut send, mut recv) = conn.open_bi().await.expect("open bi stream");
+        write_frame(&mut send, &RevocationLaneRequest::Push(batch))
+            .await
+            .expect("write push request");
+        let response: RevocationLaneResponse =
+            read_frame(&mut recv).await.expect("read lane response");
+        conn.close(0u32.into(), b"ok");
+        response
+    }
+
+    #[tokio::test]
+    async fn real_handler_accepts_pinned_signer_over_quic() {
+        let dialer_seed = 20u8;
+        let dialer_ep = endpoint_from_seed(dialer_seed);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = verified_directory("did:chio:peer", dialer_seed);
+        let signer_dir = signers(vec![("oracle-a", dialer_ep, &oracle)]);
+        let (handler, sink) = handler(directory, signer_dir);
+
+        let acceptor = bind_endpoint(21).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_REVOCATION_ROOT, handler)
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(dialer_seed).await;
+        let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        let response = tokio::time::timeout(
+            Duration::from_secs(15),
+            push_batch_over_quic(&dialer, acceptor_addr, batch(vec![frame])),
+        )
+        .await
+        .expect("push completes before timeout");
+
+        match response {
+            RevocationLaneResponse::PushAccepted { merged_epochs } => {
+                assert_eq!(merged_epochs, vec![5]);
+            }
+            other => panic!("expected PushAccepted, got {other:?}"),
+        }
+        assert_eq!(*sink.merged.lock().unwrap(), vec![5]);
+        router.shutdown().await.ok();
+    }
+
+    #[tokio::test]
+    async fn real_handler_rejects_forged_signer_root_before_merge_over_quic() {
+        let dialer_seed = 20u8;
+        let dialer_ep = endpoint_from_seed(dialer_seed);
+        // Pinned "oracle-a" holds SEED_A and is bound to the dialer endpoint, so
+        // the admission gate and the transport-origin pin BOTH pass; the batch is
+        // signed by an IMPOSTOR that claims "oracle-a" but holds SEED_B.
+        // Authenticity must fail closed on the wire, before any merge.
+        let pinned = signer("oracle-a", SEED_A);
+        let impostor = signer("oracle-a", SEED_B);
+        let directory = verified_directory("did:chio:peer", dialer_seed);
+        let signer_dir = signers(vec![("oracle-a", dialer_ep, &pinned)]);
+        let (handler, sink) = handler(directory, signer_dir);
+
+        let acceptor = bind_endpoint(22).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_REVOCATION_ROOT, handler)
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(dialer_seed).await;
+        let forged = RevocationRootGossip::from_signed(signed_root(&impostor, 5), NOW);
+        let response = tokio::time::timeout(
+            Duration::from_secs(15),
+            push_batch_over_quic(&dialer, acceptor_addr, batch(vec![forged])),
+        )
+        .await
+        .expect("push completes before timeout");
+
+        match response {
+            RevocationLaneResponse::Rejected { code, .. } => {
+                assert_eq!(code, "bad-signature");
+            }
+            other => panic!("expected Rejected(bad-signature), got {other:?}"),
+        }
+        // Fail-closed: the forged root reached the sink NOWHERE (nothing merged).
+        assert!(sink.merged.lock().unwrap().is_empty());
+        router.shutdown().await.ok();
     }
 }
