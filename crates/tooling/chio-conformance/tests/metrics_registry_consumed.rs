@@ -169,6 +169,21 @@ fn assert_prometheus_counter_sample(
     Ok(())
 }
 
+/// Parse the numeric value of one fully-qualified Prometheus series line, given
+/// its exact `name{labels} ` prefix. Unlike [`prometheus_counter_sample`] this is
+/// not bound to a single metric name, so the iroh-transport gate can read back
+/// gauge and per-lane counter series from the rendered body.
+fn prometheus_series_sample(body: &str, series_prefix: &str) -> Result<u64, Box<dyn Error>> {
+    for line in body.lines() {
+        if let Some(value) = line.strip_prefix(series_prefix) {
+            return value.trim().parse::<u64>().map_err(|error| {
+                format!("invalid Prometheus sample for {series_prefix}: {error}").into()
+            });
+        }
+    }
+    Err(format!("missing Prometheus series {series_prefix}").into())
+}
+
 fn capability_for_tool(
     issuer: &Keypair,
     subject: &Keypair,
@@ -895,7 +910,7 @@ fn iroh_transport_bundle(
 }
 
 #[test]
-fn iroh_transport_emits_admission_and_verify_failure_families() -> Result<(), Box<dyn Error>> {
+fn iroh_transport_emits_admission_verify_and_accept_open_families() -> Result<(), Box<dyn Error>> {
     use chio_federation_transport_iroh::admission::DirectoryGate;
     use chio_federation_transport_iroh::metrics;
     use std::sync::Arc;
@@ -956,7 +971,46 @@ fn iroh_transport_emits_admission_and_verify_failure_families() -> Result<(), Bo
         "the identity verify failure must advance through verify_bundle"
     );
 
+    // accept_open is a gauge, so a post-hoc counter snapshot cannot prove it: it
+    // is bumped by AcceptOpenGuard::enter and decremented on drop, so it reads 0
+    // once a handler completes. Drive it through the EXACT production mechanism
+    // (the AcceptOpenGuard RAII every lane accept handler binds) and assert the
+    // RENDER reflects the live in-flight value, not a constant zero line. The
+    // real loopback-QUIC accept in iroh_transport_lane_and_outbox_families_emit
+    // also enters this guard on the hot path (transiently); this check is the
+    // deterministic non-zero-sample proof.
+    let open_series = format!("{CHIO_FEDERATION_TRANSPORT_ACCEPT_OPEN}{{lane=\"fanout\"}} ");
+    {
+        let _open = metrics::AcceptOpenGuard::enter(metrics::LANE_FANOUT);
+        let held = metrics::render_iroh_transport_metrics_prometheus();
+        assert!(
+            prometheus_series_sample(&held, &open_series)? >= 1,
+            "accept_open must render a non-zero in-flight sample while a real guard is held"
+        );
+    }
+    // Dropped: the guard is 1:1 with a handler, so the gauge falls back to 0.
+    let released = metrics::render_iroh_transport_metrics_prometheus();
+    assert_eq!(
+        prometheus_series_sample(&released, &open_series)?,
+        0,
+        "accept_open must fall back to zero once the guard drops"
+    );
+
     // The rendered body must carry every registered iroh-transport family name.
+    // Five of the seven families now get a REAL non-zero count check:
+    //   - admission_total / verify_failures_total: driven above.
+    //   - accept_open: driven above (gauge, via the production guard).
+    //   - lane_total / accept_duration_seconds: driven over real loopback QUIC in
+    //     iroh_transport_lane_and_outbox_families_emit.
+    //   - outbox_total: driven via drain_outbox_over_iroh in that same test.
+    // catchup_epoch_gap_total is the one family checked here by name only: its
+    // non-zero runtime emission is authoritatively proven by the crate's own
+    // emission unit test `chio_federation_transport_iroh::catchup::tests::
+    // epoch_gap_bumps_gap_counter_and_is_still_rejected`, which drives the real
+    // order_check gap path and asserts catchup_epoch_gap_total advances. Driving
+    // it here would require replicating the full signed-epoch-root catch-up
+    // harness (an oracle-signed root run with an injected gap over blobs), which
+    // is the heavy multi-root harness the guidance permits deferring.
     let body = metrics::render_iroh_transport_metrics_prometheus();
     for name in [
         CHIO_FEDERATION_TRANSPORT_ADMISSION_TOTAL,
@@ -972,5 +1026,205 @@ fn iroh_transport_emits_admission_and_verify_failure_families() -> Result<(), Bo
     assert!(body.contains("outcome=\"reject\""));
     assert!(body.contains("seam=\"identity\",reason=\"outside-validity-window\""));
     assert!(body.contains("chio_federation_transport_accept_duration_seconds_bucket"));
+    Ok(())
+}
+
+/// A no-op verified-root sink. The loopback driver sends a malformed frame, so
+/// the handler fails closed at the codec seam and this is never invoked; it only
+/// exists so a real [`RevocationHandler`] can be constructed by the gate.
+#[derive(Debug)]
+struct NoopRootSink;
+
+impl chio_federation_transport_iroh::lanes::revocation::RevocationRootSink for NoopRootSink {
+    fn merge_root(
+        &self,
+        _signed: &chio_revocation_oracle::SignedEpochRoot,
+    ) -> Result<(), chio_federation_transport_iroh::lanes::revocation::RevocationLaneError> {
+        Ok(())
+    }
+}
+
+/// An empty catch-up history that serves no roots (same rationale as
+/// [`NoopRootSink`]: present only so the handler can be built).
+#[derive(Debug)]
+struct EmptyCatchupHistory;
+
+impl chio_federation::revocation_gossip::RevocationCatchupHistory for EmptyCatchupHistory {
+    fn signed_root_at(&self, _epoch: u64) -> Option<chio_revocation_oracle::SignedEpochRoot> {
+        None
+    }
+}
+
+/// Bind a minimal loopback iroh endpoint the way the crate's own lane tests do.
+async fn bind_loopback_endpoint(seed: u8) -> Result<iroh::Endpoint, Box<dyn Error>> {
+    iroh::Endpoint::builder(iroh::endpoint::presets::Minimal)
+        .secret_key(iroh::SecretKey::from_bytes(&[seed; 32]))
+        .bind_addr("127.0.0.1:0")
+        .map_err(|error| format!("loopback bind address must parse: {error}"))?
+        .bind()
+        .await
+        .map_err(|error| format!("endpoint must bind on loopback: {error}").into())
+}
+
+/// Sum the four per-outcome `lane_total` series for one lane.
+fn revocation_lane_total() -> u64 {
+    use chio_federation_transport_iroh::metrics;
+    [
+        metrics::LANE_OUTCOME_ACCEPT,
+        metrics::LANE_OUTCOME_REJECT,
+        metrics::LANE_OUTCOME_BUSY,
+        metrics::LANE_OUTCOME_TIMEOUT,
+    ]
+    .iter()
+    .map(|outcome| metrics::lane_total(metrics::LANE_REVOCATION, outcome))
+    .sum()
+}
+
+/// Drive the remaining iroh federation-transport families through their real
+/// public production paths so the gate count-checks them the way it already does
+/// for admission_total and verify_failures_total:
+///
+/// - `lane_total` + `accept_duration_seconds`: a real [`RevocationHandler`]
+///   accept over loopback QUIC. The admitted dialer sends a malformed frame, so
+///   the handler fails closed at the codec seam, records `lane_total{...reject}`
+///   and observes an `accept_duration_seconds` sample (and enters the
+///   `accept_open` gauge transiently on the same hot path), exactly as
+///   production does.
+/// - `outbox_total`: [`drain_outbox_over_iroh`] over a real durable outbox with
+///   an unresolvable recipient, which folds into the fail-closed retry path.
+#[tokio::test]
+async fn iroh_transport_lane_and_outbox_families_emit() -> Result<(), Box<dyn Error>> {
+    use chio_federation_transport_iroh::lanes::pheromone::{
+        drain_outbox_over_iroh, enqueue_batch_for_delivery,
+    };
+    use chio_federation_transport_iroh::lanes::revocation::{
+        RevocationHandler, ALPN_REVOCATION_ROOT,
+    };
+    use chio_federation_transport_iroh::metrics;
+    use iroh::protocol::Router;
+    use iroh::{EndpointAddr, TransportAddr};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    // -- lane_total + accept_duration_seconds over a real loopback-QUIC accept --
+
+    let dialer_seed = 10u8;
+    let (bundle, trust) = iroh_transport_bundle(dialer_seed)?;
+    let directory = Arc::new(
+        bundle
+            .verify_bundle(&trust)
+            .map_err(|error| format!("bundle must verify: {error:?}"))?,
+    );
+    let handler = RevocationHandler::new(
+        directory,
+        Arc::new(EmptyCatchupHistory)
+            as Arc<dyn chio_federation::revocation_gossip::RevocationCatchupHistory + Send + Sync>,
+        Arc::new(NoopRootSink)
+            as Arc<dyn chio_federation_transport_iroh::lanes::revocation::RevocationRootSink>,
+        "did:chio:responder",
+    );
+
+    let acceptor = bind_loopback_endpoint(21).await?;
+    let router = Router::builder(acceptor)
+        .accept(ALPN_REVOCATION_ROOT, handler)
+        .spawn();
+    let acceptor_addr = EndpointAddr::from_parts(
+        router.endpoint().id(),
+        router
+            .endpoint()
+            .bound_sockets()
+            .into_iter()
+            .map(TransportAddr::Ip),
+    );
+
+    let before_lane = revocation_lane_total();
+    let before_duration = metrics::accept_duration_count(metrics::LANE_REVOCATION);
+
+    let dialer = bind_loopback_endpoint(dialer_seed).await?;
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let conn = dialer
+            .connect(acceptor_addr, ALPN_REVOCATION_ROOT)
+            .await
+            .map_err(|error| format!("dialer must connect over loopback: {error}"))?;
+        let (mut send, _recv) = conn
+            .open_bi()
+            .await
+            .map_err(|error| format!("dialer must open a bi stream: {error}"))?;
+        // A deliberately malformed frame: the handler reads it to end and fails
+        // closed at serde decode (RevocationLaneError::Codec), driving the reject
+        // accounting without needing any signed-root harness.
+        send.write_all(b"not-a-valid-revocation-lane-frame")
+            .await
+            .map_err(|error| format!("dialer must write the frame: {error}"))?;
+        send.finish()
+            .map_err(|error| format!("dialer must finish the send half: {error}"))?;
+        // The handler records lane_total{reject} and closes only AFTER serve()
+        // returns Err, so observing the close bounds the recording.
+        conn.closed().await;
+        Ok::<(), Box<dyn Error>>(())
+    })
+    .await
+    .map_err(|_| "revocation loopback exchange timed out")??;
+
+    // The handler records on its own accept task; poll the monotonic counters
+    // (bounded, so a lost happens-before race fails, it never hangs).
+    let mut lane_moved = false;
+    for _ in 0..150 {
+        if revocation_lane_total() > before_lane
+            && metrics::accept_duration_count(metrics::LANE_REVOCATION) > before_duration
+        {
+            lane_moved = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    router.shutdown().await.ok();
+    assert!(
+        lane_moved,
+        "a real revocation accept must advance lane_total and accept_duration_seconds"
+    );
+
+    // -- outbox_total via the real durable-outbox drain --
+
+    let store = chio_pheromone_relay::SqlitePheromoneRelayStore::open_in_memory()
+        .map_err(|error| format!("outbox store must open: {error}"))?;
+    let batch = chio_federation::pheromone_gossip::PheromoneGossipBatch {
+        schema: chio_federation::pheromone_gossip::PHEROMONE_GOSSIP_BATCH_SCHEMA.to_string(),
+        recipient_kernel_id: "did:chio:recipient".to_string(),
+        treaty_id: "treaty:metrics-gate".to_string(),
+        frames: Vec::new(),
+        flushed_at_unix_ms: 2_000_000,
+    };
+    enqueue_batch_for_delivery(
+        &store,
+        "did:chio:sender",
+        "did:chio:recipient",
+        "treaty:metrics-gate",
+        &batch,
+        2_000_000,
+    )?;
+
+    let outbox_endpoint = bind_loopback_endpoint(30).await?;
+    let before_retry = metrics::outbox_total(metrics::OUTBOX_RETRIED);
+    // An unresolvable recipient folds into the fail-closed retry path; no live
+    // peer is dialed, so this drives outbox_total deterministically.
+    let report = drain_outbox_over_iroh(
+        &store,
+        &outbox_endpoint,
+        |_recipient: &str| -> Option<EndpointAddr> { None },
+        "did:chio:sender",
+        2_000_000,
+        10,
+    )
+    .await?;
+    assert_eq!(
+        report.retried, 1,
+        "the unresolvable recipient must fold into exactly one retry"
+    );
+    assert!(
+        metrics::outbox_total(metrics::OUTBOX_RETRIED) > before_retry,
+        "the outbox retry must advance outbox_total through drain_outbox_over_iroh"
+    );
+
     Ok(())
 }

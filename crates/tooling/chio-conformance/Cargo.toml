@@ -186,6 +186,16 @@ chio-metrics-spec = { workspace = true }
 # the directory fixture needs.
 chio-federation-transport-iroh = { workspace = true }
 iroh = { version = "1.0", default-features = false, features = ["tls-ring"] }
+# The metrics conformance gate also count-checks the remaining iroh
+# federation-transport families through their real public production paths:
+# `chio-pheromone-relay` supplies the `SqlitePheromoneRelayStore` outbox the
+# `drain_outbox_over_iroh` helper drains (driving `outbox_total`), and
+# `chio-revocation-oracle` supplies the `SignedEpochRoot` type the stub
+# `RevocationRootSink` / `RevocationCatchupHistory` seams name so a real
+# `RevocationHandler` accept can be driven over loopback QUIC (driving
+# `lane_total` and `accept_duration_seconds`).
+chio-pheromone-relay = { workspace = true }
+chio-revocation-oracle = { workspace = true }
 wat = "1.246"
 # tee_quote_forgery threat-evidence test imports chio-tee-frame to
 # drive validate_signed and verify_tenant_sig deny branches with forged
