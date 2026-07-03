@@ -99,9 +99,9 @@ pub struct SignerBinding {
 /// [`VerifiedDirectory::signer_directory`](crate::identity::VerifiedDirectory::signer_directory).
 /// The duplicate-`signer_id` and `signer_id`-vs-key consistency rules are enforced
 /// during bundle verification (consistent by construction, since the verifier is
-/// built from the same `signer_id`). The [`from_bindings`](Self::from_bindings)
-/// constructor is retained for explicit / test construction and re-checks both
-/// rules fail-closed.
+/// built from the same `signer_id`). The `from_bindings` constructor is
+/// crate-internal (test / explicit construction only) and re-checks both rules
+/// fail-closed; production directories come solely from `verify_bundle`.
 #[derive(Debug, Clone, Default)]
 pub struct VerifiedSignerDirectory {
     by_signer: HashMap<String, SignerBinding>,
@@ -113,7 +113,12 @@ impl VerifiedSignerDirectory {
     /// Rejects a duplicate `signer_id` fail-closed and rejects a binding whose
     /// pinned verifier `signer_id` disagrees with its map key (the two identify
     /// the same signer and must not drift).
-    pub fn from_bindings(
+    // Retained as a crate-internal explicit/test constructor (used by the unit
+    // tests below). Production directories come solely from `verify_bundle` via
+    // `from_verified_map`, so this has no non-test caller: allow dead_code rather
+    // than expose it publicly again.
+    #[allow(dead_code)]
+    pub(crate) fn from_bindings(
         bindings: impl IntoIterator<Item = (String, SignerBinding)>,
     ) -> Result<Self, RevocationLaneError> {
         let mut by_signer: HashMap<String, SignerBinding> = HashMap::new();
