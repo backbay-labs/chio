@@ -1,9 +1,668 @@
 //! Lane c: cross-operator fan-out over iroh-gossip per-treaty topics.
-//! ADAPTER-SPEC section 4 row (c) + 4.1. TopicId = blake3("chio-<lane>/v1\x00" ||
-//! treaty_id). Payloads MUST be self-signed and origin-verified from the payload
-//! alone (gossip `delivered_from` is the forwarding NEIGHBOR, not the author).
 //!
-// TODO(phase 2, lane c): implement.
+//! ADAPTER-SPEC section 4 row (c) + 4.1. This is the one genuinely many-to-many
+//! surface (reputation clearing, transit-hub re-gossip). It carries
+//! [`PheromoneDepositGossip`] frames over an iroh-gossip swarm, one swarm per
+//! treaty.
+//!
+//! ## Topic derivation (one-topic-per-treaty is MANDATORY for confidentiality)
+//!
+//! `TopicId = blake3("chio-pheromone-gossip/v1\x00" || treaty_id_bytes)`, where
+//! `treaty_id_bytes` is the canonical UTF-8 of the existing `String` treaty id
+//! (ADAPTER-SPEC 4.1). A gossip topic is one swarm where every member sees every
+//! other member's wire traffic, so the membership set IS the confidentiality
+//! boundary. Binding `TopicId` one-to-one to a treaty makes that boundary exactly
+//! the treaty's subscription set, and cross-treaty leakage is structurally
+//! impossible (different treaty, different swarm, different `TopicId`). The
+//! `TopicId` is deterministic and therefore NOT a secret: it grants no access on
+//! its own. Membership is still gated UPSTREAM by the accept-time
+//! [`DirectoryGate`](crate::admission::DirectoryGate) + issuer-signed directory.
+//!
+//! ## The load-bearing correctness property: `delivered_from` is NOT the author
+//!
+//! In gossip, [`Message::delivered_from`](iroh_gossip::api::Message) is the
+//! forwarding NEIGHBOR that relayed the frame, NOT the original author
+//! (empirically observed: node C reports `delivered_from = B` for a message A
+//! authored, ADAPTER-SPEC 4 row (c)). Therefore this lane MUST NOT reuse the
+//! `authenticated_sender == author` equality the direct lanes (a/b) rely on, and
+//! MUST NOT call
+//! [`verify_pheromone_gossip_frame_for_batch`](chio_federation::pheromone_gossip)
+//! (which would demand `gossiping_peer_kernel_id == authenticated_sender`, false
+//! over any relay hop).
+//!
+//! Instead, every received payload is origin-verified FROM THE PAYLOAD ALONE:
+//! 1. the transport-independent
+//!    [`verify_pheromone_gossip_frame`] (namespace, policy liveness, origin ==
+//!    deposit author, transit-chain integrity), and
+//! 2. the embedded deposit's OWN self-signature, verified against the origin
+//!    operator's passport key resolved from a trusted directory (NEVER from
+//!    `delivered_from`).
+//!
+//! Neither step consults the transport sender. `delivered_from` is never an input
+//! to verification (see [`verify_fanout_frame`] and
+//! [`decode_and_verify_fanout_frame`], whose signatures do not even accept it).
 
-/// Reserved for lane c. Present so the module tree compiles while the lane team builds.
-pub fn reserved() {}
+use std::collections::HashMap;
+
+use bytes::Bytes;
+use chio_core_types::canonical_json_bytes;
+use chio_core_types::PublicKey;
+use chio_federation::pheromone_gossip::verify_pheromone_gossip_frame;
+use chio_federation::pheromone_gossip::PheromoneDepositGossip;
+use chio_federation::pheromone_gossip::PheromoneGossipError;
+use chio_federation::pheromone_gossip::PheromoneTransitPolicy;
+use iroh::EndpointId;
+use iroh_gossip::api::Event;
+use iroh_gossip::api::GossipReceiver;
+use iroh_gossip::api::GossipSender;
+use iroh_gossip::api::Message;
+use iroh_gossip::Gossip;
+use iroh_gossip::TopicId;
+use n0_future::StreamExt;
+
+/// Domain-separation label for the pheromone fan-out gossip surface (ADAPTER-SPEC
+/// 4.1). Versioned `/v1`; distinct from other gossip surfaces so lanes never
+/// collide on the same `TopicId`.
+pub const PHEROMONE_FANOUT_TOPIC_LABEL: &str = "chio-pheromone-gossip/v1";
+
+/// Working cap on a single gossip payload. Mirrors iroh-gossip's
+/// `DEFAULT_MAX_MESSAGE_SIZE` (ADAPTER-SPEC 7). A [`PheromoneDepositGossip`] with
+/// a long transit chain can exceed this; such payloads must be referenced
+/// out-of-band (bulk over the blob lane), never squeezed past the cap.
+pub const MAX_GOSSIP_MESSAGE_SIZE: usize = 4096;
+
+/// Derive the per-surface gossip topic for a treaty (ADAPTER-SPEC 4.1):
+/// `TopicId = blake3(label || 0x00 || treaty_id_bytes)`. Deterministic and
+/// coordination-free; the 32-byte BLAKE3 digest is used verbatim as the
+/// `TopicId`.
+#[must_use]
+pub fn topic_for_treaty(label: &str, treaty_id: &str) -> TopicId {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(label.as_bytes());
+    hasher.update(b"\x00");
+    hasher.update(treaty_id.as_bytes());
+    TopicId::from_bytes(*hasher.finalize().as_bytes())
+}
+
+/// The pheromone fan-out topic for a treaty, under
+/// [`PHEROMONE_FANOUT_TOPIC_LABEL`]. This is the one-topic-per-treaty binding that
+/// is the confidentiality boundary.
+#[must_use]
+pub fn pheromone_topic_for_treaty(treaty_id: &str) -> TopicId {
+    topic_for_treaty(PHEROMONE_FANOUT_TOPIC_LABEL, treaty_id)
+}
+
+/// Errors raised by the fan-out lane. Every payload-verification variant is a hard
+/// reject; over best-effort gossip a rejected frame is DROPPED, not answered
+/// (ADAPTER-SPEC 4 row (c)). Fail-closed: verification yields the frame only when
+/// every check passes.
+#[derive(Debug, thiserror::Error)]
+pub enum FanoutError {
+    /// A serialized frame exceeded [`MAX_GOSSIP_MESSAGE_SIZE`]; caught BEFORE
+    /// broadcast so an oversized frame never hits the wire.
+    #[error("gossip payload of {size} bytes exceeds the {max}-byte max_message_size")]
+    MessageTooLarge {
+        /// Serialized size of the offending payload.
+        size: usize,
+        /// The enforced cap.
+        max: usize,
+    },
+    /// JSON encode/decode of a gossip frame failed.
+    #[error("gossip frame json codec error: {0}")]
+    Codec(String),
+    /// No verifying key is bound to the payload's origin kernel id in the trusted
+    /// resolver. Fail-closed: an unresolvable author is rejected, never trusted.
+    #[error("no verifying key is bound to origin kernel {0}")]
+    UnknownOrigin(String),
+    /// The embedded deposit's OWN self-signature did not verify against the
+    /// origin operator's resolved passport key. This is the check that makes
+    /// `delivered_from` irrelevant to authorship.
+    #[error("deposit self-signature is invalid")]
+    DepositSignatureInvalid,
+    /// Canonical JSON serialization failed while reconstructing the deposit
+    /// signing preimage.
+    #[error("canonical json error: {0}")]
+    Canonical(String),
+    /// Transport-independent frame verification failed
+    /// ([`verify_pheromone_gossip_frame`]).
+    #[error(transparent)]
+    Frame(PheromoneGossipError),
+    /// The underlying iroh-gossip subscribe/join/broadcast/receive failed.
+    #[error("gossip transport error: {0}")]
+    Gossip(String),
+}
+
+/// Resolves an origin operator's passport verifying key from its `kernel_id`.
+///
+/// The fan-out lane verifies the embedded deposit's OWN signature against this
+/// key. The key MUST come from a trusted directory (the passport admission set,
+/// mirroring `PheromoneValidationContext.passports`), and is resolved by the
+/// payload's `origin_kernel_id`. It is NEVER derived from the gossip transport:
+/// `Message::delivered_from` is the forwarding neighbor, not the author.
+pub trait OriginKeyResolver {
+    /// The origin operator's passport verifying key, or `None` (fail-closed) when
+    /// no admitted operator is bound to `origin_kernel_id`.
+    fn verifying_key(&self, origin_kernel_id: &str) -> Option<PublicKey>;
+}
+
+/// A simple in-memory [`OriginKeyResolver`] backed by a `kernel_id -> PublicKey`
+/// map. Callers populate it from the trusted passport admission set for the
+/// treaty's swarm.
+#[derive(Debug, Clone, Default)]
+pub struct StaticOriginKeys {
+    keys: HashMap<String, PublicKey>,
+}
+
+impl StaticOriginKeys {
+    /// An empty resolver (resolves nothing; every origin is unknown/rejected).
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Bind `kernel_id` to its passport verifying key (builder style).
+    #[must_use]
+    pub fn with(mut self, kernel_id: impl Into<String>, key: PublicKey) -> Self {
+        self.keys.insert(kernel_id.into(), key);
+        self
+    }
+
+    /// Bind `kernel_id` to its passport verifying key.
+    pub fn insert(&mut self, kernel_id: impl Into<String>, key: PublicKey) {
+        self.keys.insert(kernel_id.into(), key);
+    }
+}
+
+impl OriginKeyResolver for StaticOriginKeys {
+    fn verifying_key(&self, origin_kernel_id: &str) -> Option<PublicKey> {
+        self.keys.get(origin_kernel_id).cloned()
+    }
+}
+
+/// Origin-verify a fan-out frame FROM THE PAYLOAD ALONE. This is the whole point
+/// of the lane: it never consults the gossip transport sender.
+///
+/// Order (fail-closed, cheapest checks first):
+/// 1. [`verify_pheromone_gossip_frame`]: schema, `origin_kernel_id ==
+///    deposit.body.kernel_id`, subject namespace, policy liveness, and
+///    transit-chain integrity. It takes NO transport-sender identity. Running it
+///    first also PINS the origin to the deposit author, so the key resolved next
+///    is bound to the deposit's own signer.
+/// 2. Resolve the AUTHOR key from `frame.origin_kernel_id` (the signed payload),
+///    NEVER from `delivered_from`.
+/// 3. Verify the deposit's OWN self-signature against that key.
+///
+/// # Errors
+/// Returns [`FanoutError::Frame`] on frame verification failure,
+/// [`FanoutError::UnknownOrigin`] when the origin has no bound key, and
+/// [`FanoutError::DepositSignatureInvalid`] when the self-signature does not
+/// verify.
+pub fn verify_fanout_frame<R>(
+    frame: &PheromoneDepositGossip,
+    origin_keys: &R,
+    policy: &PheromoneTransitPolicy,
+    now_unix_ms: u64,
+) -> Result<(), FanoutError>
+where
+    R: OriginKeyResolver + ?Sized,
+{
+    // (1) Transport-independent frame verification. Pins origin == deposit author.
+    verify_pheromone_gossip_frame(frame, policy, now_unix_ms).map_err(FanoutError::Frame)?;
+
+    // (2) Resolve the author key from the PAYLOAD origin, never `delivered_from`.
+    let origin_key = origin_keys
+        .verifying_key(&frame.origin_kernel_id)
+        .ok_or_else(|| FanoutError::UnknownOrigin(frame.origin_kernel_id.clone()))?;
+
+    // (3) Verify the deposit's OWN self-signature against that key.
+    verify_deposit_self_signature(frame, &origin_key)
+}
+
+/// Decode a raw gossip payload and origin-verify it via [`verify_fanout_frame`].
+///
+/// This is what a receive loop calls on `Message::content`. Note the signature
+/// takes only the payload bytes: `delivered_from` is structurally absent, so it
+/// cannot leak into the authorship decision.
+///
+/// # Errors
+/// Returns [`FanoutError::Codec`] on malformed JSON, else any error from
+/// [`verify_fanout_frame`].
+pub fn decode_and_verify_fanout_frame<R>(
+    content: &[u8],
+    origin_keys: &R,
+    policy: &PheromoneTransitPolicy,
+    now_unix_ms: u64,
+) -> Result<PheromoneDepositGossip, FanoutError>
+where
+    R: OriginKeyResolver + ?Sized,
+{
+    let frame: PheromoneDepositGossip =
+        serde_json::from_slice(content).map_err(|error| FanoutError::Codec(error.to_string()))?;
+    verify_fanout_frame(&frame, origin_keys, policy, now_unix_ms)?;
+    Ok(frame)
+}
+
+/// Serialize a frame for broadcast, enforcing the [`MAX_GOSSIP_MESSAGE_SIZE`] cap
+/// BEFORE it reaches the wire.
+///
+/// # Errors
+/// Returns [`FanoutError::Codec`] on serialization failure and
+/// [`FanoutError::MessageTooLarge`] when the serialized frame exceeds the cap.
+pub fn encode_fanout_frame(frame: &PheromoneDepositGossip) -> Result<Bytes, FanoutError> {
+    let bytes = serde_json::to_vec(frame).map_err(|error| FanoutError::Codec(error.to_string()))?;
+    if bytes.len() > MAX_GOSSIP_MESSAGE_SIZE {
+        return Err(FanoutError::MessageTooLarge {
+            size: bytes.len(),
+            max: MAX_GOSSIP_MESSAGE_SIZE,
+        });
+    }
+    Ok(Bytes::from(bytes))
+}
+
+/// Reconstruct the exact preimage `chio-pheromone` signs and verify the deposit's
+/// own signature against `origin_key`.
+///
+/// The normative signing/verification lives in
+/// `chio_pheromone::validation::{verify_deposit_signature, deposit_signature_body}`
+/// (validation.rs:154-171), which are `pub(crate)` and so cannot be called from
+/// here. The preimage is the deposit body with `cost_commitment` cleared, encoded
+/// as canonical JSON; this reproduces that byte-for-byte. It MUST stay in step
+/// with the canonical functions.
+fn verify_deposit_self_signature(
+    frame: &PheromoneDepositGossip,
+    origin_key: &PublicKey,
+) -> Result<(), FanoutError> {
+    let mut signed_body = frame.deposit.body.clone();
+    signed_body.cost_commitment = None;
+    let canonical = canonical_json_bytes(&signed_body)
+        .map_err(|error| FanoutError::Canonical(error.to_string()))?;
+    if origin_key.verify(&canonical, &frame.deposit.signature) {
+        Ok(())
+    } else {
+        Err(FanoutError::DepositSignatureInvalid)
+    }
+}
+
+/// The fan-out lane: a handle to the shared iroh-gossip protocol.
+///
+/// The gossip protocol is spawned once
+/// (`Gossip::builder().spawn(endpoint.clone())`, which implements
+/// `ProtocolHandler`) and mounted on the router under `iroh_gossip::ALPN`
+/// (`Router::builder(ep).accept(iroh_gossip::ALPN, gossip.clone()).spawn()`);
+/// gossip owns its ALPN, so this lane does not invent one. Membership of every
+/// topic swarm is gated UPSTREAM by the accept-time
+/// [`DirectoryGate`](crate::admission::DirectoryGate) installed via
+/// `Endpoint::builder(..).hooks(gate)`.
+#[derive(Debug, Clone)]
+pub struct FanoutLane {
+    gossip: Gossip,
+}
+
+impl FanoutLane {
+    /// Wrap an already-spawned, router-mounted [`Gossip`] handle.
+    #[must_use]
+    pub fn new(gossip: Gossip) -> Self {
+        Self { gossip }
+    }
+
+    /// The underlying gossip handle.
+    #[must_use]
+    pub fn gossip(&self) -> &Gossip {
+        &self.gossip
+    }
+
+    /// Subscribe to and join the per-treaty topic swarm, returning the split
+    /// sender/receiver handle.
+    ///
+    /// `bootstrap` are already-admitted `EndpointId`s to dial into the swarm (the
+    /// directory gate rejects any unadmitted endpoint at handshake, so bootstraps
+    /// that are not directory-bound simply fail to connect). The topic is derived
+    /// deterministically from `treaty_id` via [`pheromone_topic_for_treaty`].
+    ///
+    /// # Errors
+    /// Returns [`FanoutError::Gossip`] if the subscribe/join fails.
+    pub async fn subscribe_treaty(
+        &self,
+        treaty_id: &str,
+        bootstrap: Vec<EndpointId>,
+    ) -> Result<FanoutTopic, FanoutError> {
+        let topic_id = pheromone_topic_for_treaty(treaty_id);
+        let (sender, receiver) = self
+            .gossip
+            .subscribe_and_join(topic_id, bootstrap)
+            .await
+            .map_err(|error| FanoutError::Gossip(error.to_string()))?
+            .split();
+        Ok(FanoutTopic {
+            treaty_id: treaty_id.to_string(),
+            topic_id,
+            sender,
+            receiver,
+        })
+    }
+}
+
+/// A joined per-treaty gossip topic: one swarm = one treaty = the confidentiality
+/// boundary (ADAPTER-SPEC 4.1).
+#[derive(Debug)]
+pub struct FanoutTopic {
+    treaty_id: String,
+    topic_id: TopicId,
+    sender: GossipSender,
+    receiver: GossipReceiver,
+}
+
+impl FanoutTopic {
+    /// The treaty this swarm carries.
+    #[must_use]
+    pub fn treaty_id(&self) -> &str {
+        &self.treaty_id
+    }
+
+    /// The deterministic topic id for this swarm.
+    #[must_use]
+    pub fn topic_id(&self) -> TopicId {
+        self.topic_id
+    }
+
+    /// A cheap clone of the broadcast sender, for broadcasting concurrently with a
+    /// receive loop (the receiver borrows `&mut self`).
+    #[must_use]
+    pub fn sender(&self) -> GossipSender {
+        self.sender.clone()
+    }
+
+    /// Broadcast a self-signed frame to the treaty swarm, enforcing the
+    /// [`MAX_GOSSIP_MESSAGE_SIZE`] cap first.
+    ///
+    /// The frame MUST already carry a valid deposit self-signature: peers verify
+    /// it origin-only on receive and DROP anything that fails.
+    ///
+    /// # Errors
+    /// Returns [`FanoutError::MessageTooLarge`] / [`FanoutError::Codec`] from
+    /// encoding, or [`FanoutError::Gossip`] if the broadcast fails.
+    pub async fn broadcast(&self, frame: &PheromoneDepositGossip) -> Result<(), FanoutError> {
+        let payload = encode_fanout_frame(frame)?;
+        self.sender
+            .broadcast(payload)
+            .await
+            .map_err(|error| FanoutError::Gossip(error.to_string()))
+    }
+
+    /// Await the next gossip PAYLOAD from the swarm, mapping the membership
+    /// (`NeighborUp`/`NeighborDown`) and `Lagged` events away.
+    ///
+    /// Returns the raw [`Message`]. The caller MUST verify it with
+    /// [`decode_and_verify_fanout_frame`] and MUST NOT treat
+    /// [`Message::delivered_from`] (the forwarding NEIGHBOR) as the author.
+    /// Returns `None` when the topic stream is closed.
+    pub async fn next_payload(&mut self) -> Option<Result<Message, FanoutError>> {
+        loop {
+            match self.receiver.next().await {
+                Some(Ok(Event::Received(message))) => return Some(Ok(message)),
+                // NeighborUp / NeighborDown / Lagged are not payloads.
+                Some(Ok(_)) => continue,
+                Some(Err(error)) => return Some(Err(FanoutError::Gossip(error.to_string()))),
+                None => return None,
+            }
+        }
+    }
+
+    /// Await the next payload AND origin-verify it end-to-end: decode, run the
+    /// transport-independent frame verifier, and verify the deposit's OWN
+    /// self-signature against the origin's resolved key. `delivered_from` is
+    /// never consulted. `now_unix_ms` is supplied by the caller per receive.
+    ///
+    /// Returns `None` when the topic stream is closed; otherwise the verified
+    /// frame or the verification error (a rejected frame over best-effort gossip
+    /// is surfaced so the caller can log-and-drop it).
+    pub async fn recv_verified<R>(
+        &mut self,
+        origin_keys: &R,
+        policy: &PheromoneTransitPolicy,
+        now_unix_ms: u64,
+    ) -> Option<Result<PheromoneDepositGossip, FanoutError>>
+    where
+        R: OriginKeyResolver + ?Sized,
+    {
+        let message = match self.next_payload().await? {
+            Ok(message) => message,
+            Err(error) => return Some(Err(error)),
+        };
+        Some(decode_and_verify_fanout_frame(
+            &message.content,
+            origin_keys,
+            policy,
+            now_unix_ms,
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use super::*;
+    use chio_core_types::Keypair;
+    use chio_federation::pheromone_gossip::PheromoneDepositGossip;
+    use chio_federation::pheromone_gossip::PheromoneTransitPolicy;
+    use chio_federation::pheromone_gossip::PHEROMONE_GOSSIP_SCHEMA;
+    use chio_federation::pheromone_gossip::PHEROMONE_TRANSIT_POLICY_SCHEMA;
+    use chio_pheromone::sign_deposit;
+    use chio_pheromone::PheromoneDeposit;
+    use chio_pheromone::PheromoneDepositBody;
+    use chio_pheromone::Severity;
+    use chio_pheromone::PHEROMONE_DEPOSIT_SCHEMA;
+    use iroh::SecretKey;
+    use iroh_gossip::api::Message;
+    use iroh_gossip::proto::DeliveryScope;
+
+    const NOW: u64 = 1_700_000_000_000;
+    const NAMESPACE: &str = "chio/agents";
+    const TREATY_ALPHA: &str = "treaty-alpha";
+    const AUTHOR: &str = "did:chio:author";
+
+    fn endpoint_from_seed(seed: u8) -> EndpointId {
+        SecretKey::from_bytes(&[seed; 32]).public()
+    }
+
+    fn deposit_body(kernel_id: &str, treaty: &str, namespace: &str) -> PheromoneDepositBody {
+        PheromoneDepositBody {
+            schema: PHEROMONE_DEPOSIT_SCHEMA.to_string(),
+            kernel_id: kernel_id.to_string(),
+            agent_passport_key_hash: "passport-key-hash".to_string(),
+            agent_passport_jwk_thumbprint: "passport-thumbprint".to_string(),
+            subject_class: "malicious-tool".to_string(),
+            subject_class_namespace: namespace.to_string(),
+            indicator: serde_json::json!({ "kind": "observation" }),
+            severity: Severity::High,
+            confidence: 0.8,
+            timestamp_unix_ms: NOW,
+            decay_half_life_secs: 3600.0,
+            evaporation_floor: None,
+            nonce: "nonce-1".to_string(),
+            treaty_scope: vec![treaty.to_string()],
+            cost_commitment: None,
+            workflow_context: None,
+        }
+    }
+
+    /// A direct (non-relay) frame authored + self-signed by `author`.
+    fn signed_direct_frame(
+        author: &Keypair,
+        author_kernel: &str,
+        gossiping_peer: &str,
+        treaty: &str,
+        namespace: &str,
+    ) -> PheromoneDepositGossip {
+        let deposit = sign_deposit(deposit_body(author_kernel, treaty, namespace), author).unwrap();
+        frame_over(deposit, author_kernel, gossiping_peer, treaty)
+    }
+
+    fn frame_over(
+        deposit: PheromoneDeposit,
+        origin: &str,
+        gossiping_peer: &str,
+        treaty: &str,
+    ) -> PheromoneDepositGossip {
+        PheromoneDepositGossip {
+            schema: PHEROMONE_GOSSIP_SCHEMA.to_string(),
+            deposit,
+            origin_kernel_id: origin.to_string(),
+            gossiping_peer_kernel_id: gossiping_peer.to_string(),
+            treaty_id: treaty.to_string(),
+            ts_unix_ms: NOW,
+            transit_chain: None,
+        }
+    }
+
+    fn live_policy(namespace: &str) -> PheromoneTransitPolicy {
+        PheromoneTransitPolicy {
+            schema: PHEROMONE_TRANSIT_POLICY_SCHEMA.to_string(),
+            accepted_hubs: Vec::new(),
+            allowed_ingress_treaties: Vec::new(),
+            allowed_egress_treaties: Vec::new(),
+            allowed_subject_class_namespaces: vec![namespace.to_string()],
+            valid_from_unix_ms: NOW - 1,
+            valid_until_unix_ms: NOW + 1_000_000,
+            max_hops: 4,
+            required_action_class_id: "action".to_string(),
+            pinned_ladder_refs: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn valid_self_signed_frame_is_accepted() {
+        let author = Keypair::from_seed(&[7; 32]);
+        // gossiping_peer is deliberately a re-gossiping HUB, not the author: the
+        // fan-out lane does not require gossiping_peer == author (unlike lanes a/b).
+        let frame = signed_direct_frame(&author, AUTHOR, "did:chio:hub", TREATY_ALPHA, NAMESPACE);
+        let policy = live_policy(NAMESPACE);
+        let keys = StaticOriginKeys::new().with(AUTHOR, author.public_key());
+
+        verify_fanout_frame(&frame, &keys, &policy, NOW).expect("valid self-signed frame accepted");
+
+        // And through the full receive shape (mirrors the gossip PoC loop): the
+        // frame arrives forwarded by some neighbor, then decode + verify accepts.
+        let content = encode_fanout_frame(&frame).expect("encodes under cap");
+        let neighbor = endpoint_from_seed(42);
+        let event = Event::Received(Message {
+            content,
+            scope: DeliveryScope::Neighbors,
+            delivered_from: neighbor,
+        });
+        match event {
+            Event::Received(message) => {
+                let verified =
+                    decode_and_verify_fanout_frame(&message.content, &keys, &policy, NOW)
+                        .expect("received frame verifies");
+                assert_eq!(verified.origin_kernel_id, AUTHOR);
+            }
+            other => panic!("expected Received, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bad_deposit_signature_rejected_even_from_admitted_neighbor() {
+        let author = Keypair::from_seed(&[7; 32]);
+        // A fully-trusted, admitted neighbor: it has its own passport key in the
+        // resolver and its own admitted transport endpoint. It forwards A's frame.
+        let neighbor = Keypair::from_seed(&[8; 32]);
+        let neighbor_endpoint = endpoint_from_seed(43);
+
+        let mut frame = signed_direct_frame(
+            &author,
+            AUTHOR,
+            "did:chio:neighbor",
+            TREATY_ALPHA,
+            NAMESPACE,
+        );
+        // Tamper a signed-but-frame-irrelevant field AFTER signing: the frame-level
+        // checks still pass, but the deposit self-signature no longer matches.
+        frame.deposit.body.confidence = 0.123_456;
+
+        let policy = live_policy(NAMESPACE);
+        let keys = StaticOriginKeys::new()
+            .with(AUTHOR, author.public_key())
+            .with("did:chio:neighbor", neighbor.public_key());
+
+        // Delivered by the admitted neighbor. `delivered_from` is a genuine,
+        // trusted swarm member, yet it does NOT launder the tampered payload.
+        let content = encode_fanout_frame(&frame).expect("encodes under cap");
+        let event = Event::Received(Message {
+            content,
+            scope: DeliveryScope::Neighbors,
+            delivered_from: neighbor_endpoint,
+        });
+        match event {
+            Event::Received(message) => {
+                let result = decode_and_verify_fanout_frame(&message.content, &keys, &policy, NOW);
+                assert!(
+                    matches!(result, Err(FanoutError::DepositSignatureInvalid)),
+                    "tampered payload must be rejected regardless of the admitted forwarder, got {result:?}"
+                );
+            }
+            other => panic!("expected Received, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_origin_is_rejected() {
+        let author = Keypair::from_seed(&[7; 32]);
+        let frame = signed_direct_frame(&author, AUTHOR, "did:chio:hub", TREATY_ALPHA, NAMESPACE);
+        let policy = live_policy(NAMESPACE);
+        // Empty resolver: the origin has no bound key, so authorship is unresolvable.
+        let keys = StaticOriginKeys::new();
+
+        let result = verify_fanout_frame(&frame, &keys, &policy, NOW);
+        assert!(matches!(result, Err(FanoutError::UnknownOrigin(_))));
+    }
+
+    #[test]
+    fn topic_derivation_is_deterministic_and_distinct_per_treaty() {
+        let alpha_1 = pheromone_topic_for_treaty(TREATY_ALPHA);
+        let alpha_2 = pheromone_topic_for_treaty(TREATY_ALPHA);
+        let beta = pheromone_topic_for_treaty("treaty-beta");
+
+        // Deterministic for the same treaty, distinct across treaties.
+        assert_eq!(alpha_1, alpha_2);
+        assert_ne!(alpha_1, beta);
+
+        // A different domain-separation label yields a different topic for the same
+        // treaty (no cross-surface collision).
+        let other_surface = topic_for_treaty("chio-trust-fanout/v1", TREATY_ALPHA);
+        assert_ne!(alpha_1, other_surface);
+
+        // Exact digest: blake3(label || 0x00 || treaty) used verbatim.
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(PHEROMONE_FANOUT_TOPIC_LABEL.as_bytes());
+        hasher.update(b"\x00");
+        hasher.update(TREATY_ALPHA.as_bytes());
+        let expected = TopicId::from_bytes(*hasher.finalize().as_bytes());
+        assert_eq!(alpha_1, expected);
+    }
+
+    #[test]
+    fn oversized_frame_is_rejected_before_broadcast() {
+        let author = Keypair::from_seed(&[7; 32]);
+        let mut body = deposit_body(AUTHOR, TREATY_ALPHA, NAMESPACE);
+        // A large indicator pushes the serialized frame past the ~4 KiB cap.
+        body.indicator = serde_json::json!({ "blob": "x".repeat(5_000) });
+        let deposit = sign_deposit(body, &author).unwrap();
+        let frame = frame_over(deposit, AUTHOR, "did:chio:hub", TREATY_ALPHA);
+
+        let result = encode_fanout_frame(&frame);
+        assert!(matches!(result, Err(FanoutError::MessageTooLarge { .. })));
+    }
+
+    #[test]
+    fn small_frame_encodes_under_cap() {
+        let author = Keypair::from_seed(&[7; 32]);
+        let frame = signed_direct_frame(&author, AUTHOR, "did:chio:hub", TREATY_ALPHA, NAMESPACE);
+        let payload = encode_fanout_frame(&frame).expect("encodes");
+        assert!(payload.len() <= MAX_GOSSIP_MESSAGE_SIZE);
+        // Round-trips back to an equal frame.
+        let decoded: PheromoneDepositGossip = serde_json::from_slice(&payload).unwrap();
+        assert_eq!(decoded, frame);
+    }
+}

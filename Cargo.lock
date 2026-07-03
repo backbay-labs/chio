@@ -3579,12 +3579,15 @@ name = "chio-federation-transport-iroh"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "bytes",
  "chio-core-types",
  "chio-federation",
+ "chio-pheromone",
  "chio-pheromone-relay",
  "iroh",
  "iroh-blobs",
  "iroh-gossip",
+ "n0-future",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
