@@ -40,7 +40,7 @@ mcp_tool, secret_leak, patch_integrity, internal_network, agent_velocity,
 velocity, data_flow, behavioral_sequence, behavioral_profile,
 response_sanitization, advisory + anomaly + data_transfer_advisory,
 jailbreak, jailbreak_detector, prompt_injection, computer_use,
-input_injection, remote_desktop, spider_sense, browser_automation,
+input_injection, remote_desktop, embedding_anomaly, browser_automation,
 code_execution, content_review, memory_governance, post_invocation
 pipeline). `chio-data-guards` adds 4 (`SqlQueryGuard`
 (`crates/guards/chio-data-guards/src/sql_guard.rs:29`), result, vector,

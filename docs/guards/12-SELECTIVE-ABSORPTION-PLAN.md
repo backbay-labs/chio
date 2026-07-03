@@ -181,7 +181,7 @@ filesystem, shell, egress, and policy guards should never block on external
 I/O.
 
 But the guards being absorbed (threat intel, external ML classifiers,
-SpiderSense with remote embedding APIs) DO call external services. Without
+EmbeddingAnomaly with remote embedding APIs) DO call external services. Without
 resilience patterns, a single external API timeout blocks the entire guard
 pipeline.
 
@@ -382,7 +382,7 @@ Four threat intel guards in `async_guards/threat_intel/`:
 | `VirusTotalGuard` | VirusTotal v3 | File hashes and URLs against VT database. Configurable `min_detections` threshold. |
 | `SafeBrowsingGuard` | Google Safe Browsing v4 | URLs against Google's threat lists (malware, social engineering, unwanted software). |
 | `SnykGuard` | Snyk API | Dependency vulnerability scanning. Severity thresholds (Low/Medium/High/Critical). |
-| `SpiderSenseGuard` | OpenAI Embeddings API | Behavioral anomaly detection via cosine similarity against pattern database. |
+| `EmbeddingAnomalyGuard` | OpenAI Embeddings API | Behavioral anomaly detection via cosine similarity against pattern database. |
 
 All implement the `AsyncGuard` trait and use:
 - `HttpRequestPolicy` for request filtering
@@ -496,7 +496,7 @@ crates/guards/chio-guards/src/
       snyk.rs
 ```
 
-SpiderSense is NOT in this list -- it is covered in doc 06 as a native
+EmbeddingAnomaly is NOT in this list -- it is covered in doc 06 as a native
 sync guard (embedding comparison is local, not an external API call,
 unless using remote embedding APIs).
 
@@ -582,7 +582,7 @@ After this document, the full upstream porting plan is documented:
 |------|-----|--------|
 | JailbreakGuard | 06 | Covered |
 | PromptInjectionGuard | 06 | Covered |
-| SpiderSense | 06 | Covered |
+| EmbeddingAnomaly | 06 | Covered |
 | InstructionHierarchyEnforcer | 06 | Covered |
 | ComputerUseGuard | 08 | Covered |
 | InputInjectionCapabilityGuard | 08 | Covered |

@@ -24,7 +24,7 @@
 //! | 7 | `PathAllowlistGuard`       | `rules.path_allowlist` |
 //! | 8 | `PromptInjectionGuard`     | `extensions.detection.prompt_injection`|
 //! | 9 | `JailbreakGuard`           | `extensions.detection.jailbreak` |
-//! |10 | `SpiderSenseGuard`         | `extensions.detection.threat_intel` |
+//! |10 | `EmbeddingAnomalyGuard`         | `extensions.detection.threat_intel` |
 //! |11 | `InternalNetworkGuard`     | `rules.egress` (SSRF companion) |
 //! |12 | `AgentVelocityGuard`       | `extensions.origins.profiles[].budgets` |
 

@@ -1,4 +1,4 @@
-//! SpiderSense embedding detector - cosine-similarity anomaly detection.
+//! EmbeddingAnomaly embedding detector - cosine-similarity anomaly detection.
 //!
 //! Wrapped in Chio's synchronous [`chio_kernel::Guard`] trait.
 //!
@@ -18,11 +18,11 @@
 //! 3. Otherwise the guard returns [`Verdict::Allow`] (no embedding → no
 //!    signal; the guard does not try to hash text into a pseudo-embedding
 //!    because downstream consumers rely on explicit embeddings from the
-//!    upstream SpiderSense model).
+//!    upstream EmbeddingAnomaly model).
 //!
 //! Fail-closed semantics:
 //!
-//! - malformed pattern JSON at construction time → [`SpiderSenseError`];
+//! - malformed pattern JSON at construction time → [`EmbeddingAnomalyError`];
 //! - non-finite values in a request embedding → [`Verdict::Deny`];
 //! - embedding-dimension mismatch with the pattern DB → [`Verdict::Deny`];
 //! - cosine norm collapse (zero vector) → similarity score `0.0` (not
@@ -57,9 +57,9 @@ pub enum AmbiguousPolicy {
     Deny,
 }
 
-/// Errors from [`SpiderSenseGuard`] construction.
+/// Errors from [`EmbeddingAnomalyGuard`] construction.
 #[derive(Debug, Error)]
-pub enum SpiderSenseError {
+pub enum EmbeddingAnomalyError {
     /// Pattern JSON failed to parse.
     #[error("pattern database parse error: {0}")]
     Parse(String),
@@ -74,10 +74,10 @@ pub enum SpiderSenseError {
     Io(String),
 }
 
-/// Configuration for [`SpiderSenseGuard`].
+/// Configuration for [`EmbeddingAnomalyGuard`].
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct SpiderSenseConfig {
+pub struct EmbeddingAnomalyConfig {
     /// Cosine similarity threshold.  Scores ≥ `threshold + ambiguity_band`
     /// are denied; scores ≤ `threshold - ambiguity_band` are allowed.
     #[serde(default = "default_threshold")]
@@ -103,7 +103,7 @@ fn default_top_k() -> usize {
     DEFAULT_TOP_K
 }
 
-impl Default for SpiderSenseConfig {
+impl Default for EmbeddingAnomalyConfig {
     fn default() -> Self {
         Self {
             similarity_threshold: DEFAULT_SIMILARITY_THRESHOLD,
@@ -121,7 +121,7 @@ pub struct PatternEntry {
     pub id: String,
     /// Threat category (e.g., `prompt_injection`, `data_exfiltration`).
     pub category: String,
-    /// SpiderSense stage (perception / cognition / action / feedback).
+    /// EmbeddingAnomaly stage (perception / cognition / action / feedback).
     pub stage: String,
     /// Human-readable label.
     pub label: String,
@@ -131,45 +131,45 @@ pub struct PatternEntry {
 
 /// Immutable pattern database loaded at construction time.
 #[derive(Clone, Debug)]
-pub struct PatternDb {
+pub struct EmbeddingAnomalyPatternDb {
     entries: Arc<Vec<PatternEntry>>,
     dim: usize,
 }
 
-impl PatternDb {
+impl EmbeddingAnomalyPatternDb {
     /// Parse a JSON array of [`PatternEntry`] values.  Validates:
     ///
     /// - array is non-empty;
     /// - all embeddings share the same non-zero dimensionality;
     /// - every embedding value is finite.
-    pub fn from_json(json: &str) -> Result<Self, SpiderSenseError> {
+    pub fn from_json(json: &str) -> Result<Self, EmbeddingAnomalyError> {
         let entries: Vec<PatternEntry> =
-            serde_json::from_str(json).map_err(|e| SpiderSenseError::Parse(e.to_string()))?;
+            serde_json::from_str(json).map_err(|e| EmbeddingAnomalyError::Parse(e.to_string()))?;
         Self::from_entries(entries)
     }
 
     /// Build from an explicit entry vector (convenience for tests).
-    pub fn from_entries(entries: Vec<PatternEntry>) -> Result<Self, SpiderSenseError> {
+    pub fn from_entries(entries: Vec<PatternEntry>) -> Result<Self, EmbeddingAnomalyError> {
         if entries.is_empty() {
-            return Err(SpiderSenseError::Invalid(
+            return Err(EmbeddingAnomalyError::Invalid(
                 "pattern database must contain at least one entry".into(),
             ));
         }
         let dim = entries[0].embedding.len();
         if dim == 0 {
-            return Err(SpiderSenseError::Invalid(
+            return Err(EmbeddingAnomalyError::Invalid(
                 "pattern embeddings must be non-empty".into(),
             ));
         }
         for (i, entry) in entries.iter().enumerate() {
             if entry.embedding.len() != dim {
-                return Err(SpiderSenseError::Invalid(format!(
+                return Err(EmbeddingAnomalyError::Invalid(format!(
                     "dimension mismatch at index {i}: expected {dim}, got {}",
                     entry.embedding.len()
                 )));
             }
             if let Some(j) = entry.embedding.iter().position(|v| !v.is_finite()) {
-                return Err(SpiderSenseError::Invalid(format!(
+                return Err(EmbeddingAnomalyError::Invalid(format!(
                     "entry {i} has non-finite embedding value at dimension {j}"
                 )));
             }
@@ -196,28 +196,31 @@ impl PatternDb {
     }
 }
 
-/// SpiderSense embedding detector guard.
-pub struct SpiderSenseGuard {
-    db: PatternDb,
+/// EmbeddingAnomaly embedding detector guard.
+pub struct EmbeddingAnomalyGuard {
+    db: EmbeddingAnomalyPatternDb,
     upper: f64,
     lower: f64,
     top_k: usize,
     ambiguous_policy: AmbiguousPolicy,
 }
 
-impl SpiderSenseGuard {
+impl EmbeddingAnomalyGuard {
     /// Build a guard from a pattern database and configuration.
-    pub fn new(db: PatternDb, config: SpiderSenseConfig) -> Result<Self, SpiderSenseError> {
+    pub fn new(
+        db: EmbeddingAnomalyPatternDb,
+        config: EmbeddingAnomalyConfig,
+    ) -> Result<Self, EmbeddingAnomalyError> {
         if !config.similarity_threshold.is_finite()
             || !(0.0..=1.0).contains(&config.similarity_threshold)
         {
-            return Err(SpiderSenseError::Config(format!(
+            return Err(EmbeddingAnomalyError::Config(format!(
                 "similarity_threshold must be finite in [0.0, 1.0], got {}",
                 config.similarity_threshold
             )));
         }
         if !config.ambiguity_band.is_finite() || !(0.0..=1.0).contains(&config.ambiguity_band) {
-            return Err(SpiderSenseError::Config(format!(
+            return Err(EmbeddingAnomalyError::Config(format!(
                 "ambiguity_band must be finite in [0.0, 1.0], got {}",
                 config.ambiguity_band
             )));
@@ -225,12 +228,12 @@ impl SpiderSenseGuard {
         let upper = config.similarity_threshold + config.ambiguity_band;
         let lower = config.similarity_threshold - config.ambiguity_band;
         if !(0.0..=1.0).contains(&upper) || !(0.0..=1.0).contains(&lower) {
-            return Err(SpiderSenseError::Config(format!(
+            return Err(EmbeddingAnomalyError::Config(format!(
                 "threshold ± band must stay inside [0.0, 1.0]; got lower={lower:.3}, upper={upper:.3}"
             )));
         }
         if config.top_k == 0 {
-            return Err(SpiderSenseError::Config("top_k must be ≥ 1".into()));
+            return Err(EmbeddingAnomalyError::Config("top_k must be ≥ 1".into()));
         }
         Ok(Self {
             db,
@@ -242,15 +245,15 @@ impl SpiderSenseGuard {
     }
 
     /// Convenience: build from a JSON pattern database string and defaults.
-    pub fn from_json(json: &str) -> Result<Self, SpiderSenseError> {
-        let db = PatternDb::from_json(json)?;
-        Self::new(db, SpiderSenseConfig::default())
+    pub fn from_json(json: &str) -> Result<Self, EmbeddingAnomalyError> {
+        let db = EmbeddingAnomalyPatternDb::from_json(json)?;
+        Self::new(db, EmbeddingAnomalyConfig::default())
     }
 
     /// Read a pattern database from a JSON file on disk.
-    pub fn from_json_file(path: &str) -> Result<Self, SpiderSenseError> {
+    pub fn from_json_file(path: &str) -> Result<Self, EmbeddingAnomalyError> {
         let data = std::fs::read_to_string(path)
-            .map_err(|e| SpiderSenseError::Io(format!("{path}: {e}")))?;
+            .map_err(|e| EmbeddingAnomalyError::Io(format!("{path}: {e}")))?;
         Self::from_json(&data)
     }
 
@@ -310,7 +313,7 @@ impl SpiderSenseGuard {
     }
 }
 
-impl Guard for SpiderSenseGuard {
+impl Guard for EmbeddingAnomalyGuard {
     fn name(&self) -> &str {
         "spider-sense"
     }
@@ -428,8 +431,8 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
 mod tests {
     use super::*;
 
-    fn sample_db() -> PatternDb {
-        PatternDb::from_json(
+    fn sample_db() -> EmbeddingAnomalyPatternDb {
+        EmbeddingAnomalyPatternDb::from_json(
             r#"[
                 {"id":"a","category":"x","stage":"perception","label":"l","embedding":[1.0,0.0,0.0]},
                 {"id":"b","category":"y","stage":"action","label":"l","embedding":[0.0,1.0,0.0]}
@@ -451,8 +454,8 @@ mod tests {
     #[test]
     fn pattern_db_rejects_empty() {
         assert!(matches!(
-            PatternDb::from_json("[]"),
-            Err(SpiderSenseError::Invalid(_))
+            EmbeddingAnomalyPatternDb::from_json("[]"),
+            Err(EmbeddingAnomalyError::Invalid(_))
         ));
     }
 
@@ -463,15 +466,15 @@ mod tests {
             {"id":"b","category":"y","stage":"s","label":"l","embedding":[1.0]}
         ]"#;
         assert!(matches!(
-            PatternDb::from_json(json),
-            Err(SpiderSenseError::Invalid(_))
+            EmbeddingAnomalyPatternDb::from_json(json),
+            Err(EmbeddingAnomalyError::Invalid(_))
         ));
     }
 
     #[test]
     fn guard_denies_identical_vector() {
-        let guard =
-            SpiderSenseGuard::new(sample_db(), SpiderSenseConfig::default()).expect("build");
+        let guard = EmbeddingAnomalyGuard::new(sample_db(), EmbeddingAnomalyConfig::default())
+            .expect("build");
         let score = guard.score(&[1.0, 0.0, 0.0]);
         assert!((score - 1.0).abs() < 1e-9);
         assert!(matches!(guard.verdict_for(score), Verdict::Deny));
@@ -479,8 +482,8 @@ mod tests {
 
     #[test]
     fn guard_allows_orthogonal_vector() {
-        let guard =
-            SpiderSenseGuard::new(sample_db(), SpiderSenseConfig::default()).expect("build");
+        let guard = EmbeddingAnomalyGuard::new(sample_db(), EmbeddingAnomalyConfig::default())
+            .expect("build");
         let score = guard.score(&[0.0, 0.0, 1.0]);
         assert!(score.abs() < 1e-9);
         assert!(matches!(guard.verdict_for(score), Verdict::Allow));
@@ -488,8 +491,8 @@ mod tests {
 
     #[test]
     fn guard_dim_mismatch_denies() {
-        let guard =
-            SpiderSenseGuard::new(sample_db(), SpiderSenseConfig::default()).expect("build");
+        let guard = EmbeddingAnomalyGuard::new(sample_db(), EmbeddingAnomalyConfig::default())
+            .expect("build");
         let score = guard.score(&[1.0, 0.0]);
         assert_eq!(score, 0.0);
         assert!(matches!(guard.verdict_for(score), Verdict::Allow));
@@ -497,21 +500,21 @@ mod tests {
 
     #[test]
     fn guard_nan_score_denies() {
-        let guard =
-            SpiderSenseGuard::new(sample_db(), SpiderSenseConfig::default()).expect("build");
+        let guard = EmbeddingAnomalyGuard::new(sample_db(), EmbeddingAnomalyConfig::default())
+            .expect("build");
         assert!(matches!(guard.verdict_for(f64::NAN), Verdict::Deny));
     }
 
     #[test]
     fn ambiguous_respects_policy() {
         let db = sample_db();
-        let config = SpiderSenseConfig {
+        let config = EmbeddingAnomalyConfig {
             similarity_threshold: 0.5,
             ambiguity_band: 0.1,
             top_k: 5,
             ambiguous_policy: AmbiguousPolicy::Deny,
         };
-        let guard = SpiderSenseGuard::new(db, config).unwrap();
+        let guard = EmbeddingAnomalyGuard::new(db, config).unwrap();
         // score between 0.4 and 0.6 → Deny under this policy
         assert!(matches!(guard.verdict_for(0.5), Verdict::Deny));
     }
@@ -540,10 +543,10 @@ mod tests {
     #[test]
     fn reject_bad_config() {
         let db = sample_db();
-        let bad = SpiderSenseConfig {
+        let bad = EmbeddingAnomalyConfig {
             similarity_threshold: 1.5,
-            ..SpiderSenseConfig::default()
+            ..EmbeddingAnomalyConfig::default()
         };
-        assert!(SpiderSenseGuard::new(db, bad).is_err());
+        assert!(EmbeddingAnomalyGuard::new(db, bad).is_err());
     }
 }

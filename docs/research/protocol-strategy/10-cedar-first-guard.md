@@ -52,7 +52,7 @@ journal state.
 | `memory_governance.rs` | 378 | Medium | R/W quotas over memory namespace |
 | `content_review.rs` | 535 | Medium | Per-category content rules |
 | `agent_velocity.rs`, `velocity.rs`, `data_flow.rs`, `behavioral_sequence.rs`, `behavioral_profile.rs` | 324-647 each | Low | Stateful over session journal |
-| `jailbreak.rs`, `jailbreak_detector.rs`, `prompt_injection.rs`, `spider_sense.rs`, `secret_leak.rs`, `response_sanitization.rs` | 366-1608 each | Low | ML / heuristic / entropy scoring |
+| `jailbreak.rs`, `jailbreak_detector.rs`, `prompt_injection.rs`, `embedding_anomaly.rs`, `secret_leak.rs`, `response_sanitization.rs` | 366-1608 each | Low | ML / heuristic / entropy scoring |
 | `post_invocation.rs`, `advisory.rs` | 359, 862 | Low | Pipeline plumbing |
 
 ### `chio-data-guards/src/`

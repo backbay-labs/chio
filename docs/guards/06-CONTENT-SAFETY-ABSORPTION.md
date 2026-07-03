@@ -15,7 +15,7 @@ Source modules in the upstream guard suite:
 | `guards/prompt_injection.rs` | `PromptInjectionGuard` | 265 | `hygiene.rs`, `text_utils.rs` |
 | `jailbreak.rs` | `JailbreakDetector` (ML tier) | 1257 | `text_utils.rs`, `hush_core::sha256` |
 | `hygiene.rs` | `detect_prompt_injection_with_limit` | 446 | `text_utils.rs`, `hush_core::sha256` |
-| `spider_sense.rs` | `SpiderSenseDetector` | 720 | None (pure, WASM-compatible) |
+| `embedding_anomaly.rs` | `EmbeddingAnomalyDetector` | 720 | None (pure, WASM-compatible) |
 | `instruction_hierarchy.rs` | `InstructionHierarchyEnforcer` | 1549 | `text_utils.rs` |
 
 ---
@@ -109,12 +109,12 @@ zero-width characters were stripped during canonicalization.
 fingerprints with count tracking. Prevents log/alert spam when the same
 injection payload appears across multiple sources.
 
-### 1.3 SpiderSenseDetector
+### 1.3 EmbeddingAnomalyDetector
 
-**Module** (`spider_sense.rs`): Pure synchronous embedding similarity
+**Module** (`embedding_anomaly.rs`): Pure synchronous embedding similarity
 screening. No I/O, no feature gates, WASM-compatible.
 
-**PatternDb**: In-memory database of pre-computed embedding vectors. Each entry
+**EmbeddingAnomalyPatternDb**: In-memory database of pre-computed embedding vectors. Each entry
 has an `id`, `category` (e.g., `"prompt_injection"`, `"data_exfiltration"`),
 `stage` (perception/cognition/action/feedback), `label`, and `embedding:
 Vec<f32>`. Loaded from JSON. Validates consistent dimensionality and finite
@@ -189,7 +189,7 @@ The actual detection logic is already sync:
   `detect()` method only adds optional `LlmJudge` calls and `SessionStore`
   load/persist. The `detect_sync()` method already exists.
 - `detect_prompt_injection_with_limit()` is fully synchronous.
-- `SpiderSenseDetector::screen()` is fully synchronous.
+- `EmbeddingAnomalyDetector::screen()` is fully synchronous.
 - `InstructionHierarchyEnforcer::enforce_inner()` is synchronous (both
   `enforce()` and `enforce_sync()` delegate to it).
 
@@ -263,8 +263,8 @@ receipt's evidence field. The warn threshold becomes a separate
 | SHA-256 fingerprinting of raw input | Deduplication and audit trail |
 | Data hygiene (no raw text in signals/details) | Privacy and security requirement |
 | LRU detection cache (fingerprint-keyed) | Performance |
-| `SpiderSenseDetector` (cosine similarity screening) | Pure, WASM-compatible, no dependencies |
-| `PatternDb` format and validation | Existing pattern databases can be reused |
+| `EmbeddingAnomalyDetector` (cosine similarity screening) | Pure, WASM-compatible, no dependencies |
+| `EmbeddingAnomalyPatternDb` format and validation | Existing pattern databases can be reused |
 | Instruction hierarchy conflict detection (regex-based) | HIR-001 through HIR-009 patterns |
 | Instruction hierarchy marker wrapping | Content isolation |
 | Session risk aggregation with decay | Multi-turn grooming detection |
@@ -299,22 +299,22 @@ receipt's evidence field. The warn threshold becomes a separate
 
 ---
 
-## 4. SpiderSense and External ML Classifiers
+## 4. EmbeddingAnomaly and External ML Classifiers
 
-### 4.1 SpiderSense in Chio
+### 4.1 EmbeddingAnomaly in Chio
 
-SpiderSense is already WASM-compatible and sync. Two integration paths:
+EmbeddingAnomaly is already WASM-compatible and sync. Two integration paths:
 
 **Option A: Native guard in `chio-guards`**
 
 ```rust
-pub struct SpiderSenseGuard {
-    detector: SpiderSenseDetector,
+pub struct EmbeddingAnomalyGuard {
+    detector: EmbeddingAnomalyDetector,
     /// Argument key containing the pre-computed embedding vector.
     embedding_key: String,
 }
 
-impl Guard for SpiderSenseGuard {
+impl Guard for EmbeddingAnomalyGuard {
     fn name(&self) -> &str { "spider-sense" }
 
     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError> {
@@ -334,7 +334,7 @@ tool call arguments. The guard itself does no inference.
 
 **Option B: WASM guard**
 
-Compile `SpiderSenseDetector` + `PatternDb` into a `.wasm` module. The
+Compile `EmbeddingAnomalyDetector` + `EmbeddingAnomalyPatternDb` into a `.wasm` module. The
 pattern database is embedded in the WASM binary or loaded via a host
 function. The WASM guard receives the embedding vector in the `GuardRequest`
 and returns allow/deny.
@@ -511,17 +511,17 @@ guards but produces `AdvisorySignal` values instead of `Verdict::Deny`.
 Plugs into the existing `AdvisoryPipeline` and can be promoted to denial
 via `PromotionPolicy`.
 
-### 5.5 SpiderSenseGuard
+### 5.5 EmbeddingAnomalyGuard
 
 ```rust
-// chio-guards/src/spider_sense.rs
+// chio-guards/src/embedding_anomaly.rs
 
-pub struct SpiderSenseGuard {
-    detector: SpiderSenseDetector,
+pub struct EmbeddingAnomalyGuard {
+    detector: EmbeddingAnomalyDetector,
     embedding_key: String,
 }
 
-impl Guard for SpiderSenseGuard {
+impl Guard for EmbeddingAnomalyGuard {
     fn name(&self) -> &str { "spider-sense" }
     fn evaluate(&self, ctx: &GuardContext) -> Result<Verdict, KernelError>;
 }
@@ -535,13 +535,13 @@ impl Guard for SpiderSenseGuard {
 |-------|--------|------|--------|-------------|
 | Linear model weights | JSON (8 floats) | < 1 KB | Inline defaults in `LinearModelConfig` | `JailbreakDetector` ML layer |
 | Heuristic regex patterns | Compiled at startup via `OnceLock` | N/A (code) | Inline in source | `JailbreakDetector`, `PromptInjectionGuard`, `InstructionHierarchyEnforcer` |
-| SpiderSense pattern DB | JSON array of `PatternEntry` | Variable (depends on embedding dim and entry count) | User-provided file or embedded resource | `SpiderSenseDetector` |
+| EmbeddingAnomaly pattern DB | JSON array of `PatternEntry` | Variable (depends on embedding dim and entry count) | User-provided file or embedded resource | `EmbeddingAnomalyDetector` |
 | External classifier config | `chio.yaml` fields | N/A | Operator config | Host function for external classifiers (v2) |
 
 **No binary model files are required for v1.** The linear model weights are
 8 floating-point numbers with sensible defaults. The heuristic and
 statistical layers are pure code. The only external data file is the
-SpiderSense pattern database, which is optional and user-provided.
+EmbeddingAnomaly pattern database, which is optional and user-provided.
 
 ### 6.1 Text canonicalization module
 
@@ -584,7 +584,7 @@ This requires adding `unicode-normalization` to `chio-guards/Cargo.toml`.
 
 ### Phase 3: Embedding and external (P2)
 
-6. **SpiderSenseGuard** -- Port `spider_sense.rs` as native guard. Already
+6. **EmbeddingAnomalyGuard** -- Port `embedding_anomaly.rs` as native guard. Already
    sync and WASM-compatible; mainly needs the `Guard` trait wrapper and
    embedding key extraction.
 
@@ -612,7 +612,7 @@ crates/guards/chio-guards/src/
   jailbreak.rs                    (new: JailbreakGuard + JailbreakDetector)
   prompt_injection.rs             (new: PromptInjectionGuard + detection)
   instruction_hierarchy.rs        (new: InstructionHierarchyGuard, conflict detection only)
-  spider_sense.rs                 (new: SpiderSenseGuard + SpiderSenseDetector + PatternDb)
+  embedding_anomaly.rs                 (new: EmbeddingAnomalyGuard + EmbeddingAnomalyDetector + EmbeddingAnomalyPatternDb)
   advisory.rs                     (extend: add ContentSafetyAdvisoryGuard)
 ```
 
@@ -641,7 +641,7 @@ across multiple modules when the detection logic is small enough to inline.
    `SessionJournal`, or should it be stateless (single-message conflict
    detection only)?
 
-4. **Pattern database distribution**: How should SpiderSense pattern databases
+4. **Pattern database distribution**: How should EmbeddingAnomaly pattern databases
    be distributed? Options: embedded in the binary, loaded from a config path,
    fetched from a registry.
 

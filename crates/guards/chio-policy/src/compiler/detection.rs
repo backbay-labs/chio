@@ -9,7 +9,8 @@ use crate::models::{
 use chio_guards::{
     jailbreak::{DetectorConfig as JailbreakDetectorConfig, JailbreakGuardConfig},
     prompt_injection::PromptInjectionConfig,
-    JailbreakGuard, PatternDb, PromptInjectionGuard, SpiderSenseConfig, SpiderSenseGuard,
+    EmbeddingAnomalyConfig, EmbeddingAnomalyGuard, EmbeddingAnomalyPatternDb, JailbreakGuard,
+    PromptInjectionGuard,
 };
 
 // ---------------------------------------------------------------------------
@@ -44,7 +45,7 @@ pub(super) fn compile_detection_guards(
         }
     }
 
-    // 10. detection.threat_intel -> SpiderSenseGuard
+    // 10. detection.threat_intel -> EmbeddingAnomalyGuard
     if let Some(threat_intel) = &detection.threat_intel {
         if threat_intel.enabled.unwrap_or(true) {
             builder.add(threat_intel_guard_from(threat_intel, source_dir)?);
@@ -113,7 +114,7 @@ pub(super) fn jailbreak_config_from(
 fn threat_intel_guard_from(
     threat_intel: &ThreatIntelDetection,
     source_dir: Option<&Path>,
-) -> Result<SpiderSenseGuard, CompileError> {
+) -> Result<EmbeddingAnomalyGuard, CompileError> {
     let pattern_db_path = threat_intel.pattern_db.as_deref().ok_or_else(|| {
         CompileError::Invalid(
             "detection.threat_intel.pattern_db is required when enabled".to_string(),
@@ -128,14 +129,14 @@ fn threat_intel_guard_from(
             resolved_pattern_db_path.display()
         ))
     })?;
-    let pattern_db = PatternDb::from_json(&pattern_db_json).map_err(|error| {
+    let pattern_db = EmbeddingAnomalyPatternDb::from_json(&pattern_db_json).map_err(|error| {
         CompileError::Invalid(format!(
             "invalid detection.threat_intel.pattern_db '{pattern_db_path}' (resolved to '{}'): {error}",
             resolved_pattern_db_path.display()
         ))
     })?;
 
-    let mut config = SpiderSenseConfig::default();
+    let mut config = EmbeddingAnomalyConfig::default();
     if let Some(similarity_threshold) = threat_intel.similarity_threshold {
         config.similarity_threshold = similarity_threshold;
     }
@@ -143,7 +144,7 @@ fn threat_intel_guard_from(
         config.top_k = top_k;
     }
 
-    SpiderSenseGuard::new(pattern_db, config).map_err(|error| {
+    EmbeddingAnomalyGuard::new(pattern_db, config).map_err(|error| {
         CompileError::Invalid(format!(
             "invalid detection.threat_intel configuration: {error}"
         ))

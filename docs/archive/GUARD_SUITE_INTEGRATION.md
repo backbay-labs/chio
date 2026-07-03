@@ -46,7 +46,7 @@ chio-core (types, crypto, merkle, canonical JSON)
   |     |-- Guard product (imports chio-core + chio-kernel as workspace deps)
   |           |-- adds: 6 application-layer guards (Jailbreak, PromptInjection,
   |           |         ComputerUse, InputInjectionCapability,
-  |           |         RemoteDesktopSideChannel, SpiderSense)
+  |           |         RemoteDesktopSideChannel, EmbeddingAnomaly)
   |           |-- adds: broker-specific HTTP adapters around shared Chio DPoP
   |           |-- adds: SIEM exporters (Splunk, Elastic, Datadog, Sumo Logic,
   |           |         Webhooks, Alerting)
@@ -363,7 +363,7 @@ protocol specification. They remain exclusively in the guard product.
 | `ComputerUseGuard`             | the upstream `guards/computer_use.rs`              | CUA-specific policy (screenshot, click, type)      |
 | `InputInjectionCapabilityGuard`| the upstream `guards/input_injection_capability.rs` | Desktop input event filtering                      |
 | `RemoteDesktopSideChannelGuard`| the upstream `guards/remote_desktop_side_channel.rs`| RDP/VNC side-channel detection                     |
-| `SpiderSense`                  | the upstream `spider_sense.rs`                     | Behavioral anomaly scoring                         |
+| `EmbeddingAnomaly`                  | the upstream `embedding_anomaly.rs`                     | Behavioral anomaly scoring                         |
 | `CustomGuardRegistry`          | the upstream `guards/custom.rs`                    | User-defined guard loading via WASM/plugin         |
 
 ### Async Guard Runtime

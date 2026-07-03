@@ -532,14 +532,14 @@ allowlist. Actions without postcondition probes denied in strict mode.
 File transfer exceeding size limit denied. Unknown channels denied
 (fail-closed).
 
-### 5.4 SpiderSense Embedding Detector [SHIPPED 8593a9b]
+### 5.4 EmbeddingAnomaly Embedding Detector [SHIPPED 8593a9b]
 
 **What**: Port cosine similarity anomaly detection. Sync guard using
 pre-computed pattern database.
 
 **Files**:
-- `crates/guards/chio-guards/src/spider_sense.rs` (new)
-- `crates/guards/chio-guards/data/spider_sense_patterns.json` (new: pattern DB)
+- `crates/guards/chio-guards/src/embedding_anomaly.rs` (new)
+- `crates/guards/chio-guards/data/embedding_anomaly_patterns.json` (new: pattern DB)
 
 **Source**: the prior internal guard library
 **Refs**: `docs/guards/06-CONTENT-SAFETY-ABSORPTION.md` section 1.3, 4.1
@@ -1605,7 +1605,7 @@ All design docs produced during this planning cycle, organized by topic:
 
 | Doc | Phase | Topic |
 |-----|-------|-------|
-| `06-CONTENT-SAFETY-ABSORPTION.md` | 3 | Jailbreak, prompt injection, SpiderSense |
+| `06-CONTENT-SAFETY-ABSORPTION.md` | 3 | Jailbreak, prompt injection, EmbeddingAnomaly |
 | `07-OUTPUT-SANITIZER-ABSORPTION.md` | 3 | PII redaction, watermarking |
 | `08-DESKTOP-CUA-GUARD-ABSORPTION.md` | 5 | Computer use, input injection, RDP |
 | `09-POLICY-ENGINE-ABSORPTION.md` | 5 | Policy compiler, rulesets |

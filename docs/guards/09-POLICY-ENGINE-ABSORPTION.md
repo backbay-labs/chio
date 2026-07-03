@@ -39,7 +39,7 @@ The `guards` field is a flat struct of `Option<T>` for each guard type:
 `forbidden_path`, `path_allowlist`, `egress_allowlist`, `secret_leak`,
 `patch_integrity`, `shell_command`, `mcp_tool`, `prompt_injection`,
 `jailbreak`, `computer_use`, `remote_desktop_side_channel`,
-`input_injection_capability`, plus feature-gated `spider_sense` and a
+`input_injection_capability`, plus feature-gated `embedding_anomaly` and a
 `custom` vec for plugin guards.
 
 ### 1.2 Validation
@@ -739,7 +739,7 @@ The upstream native schema versions:
 |---------|---------------|
 | 1.1.0 | Baseline: forbidden_path, egress, secret_leak, patch_integrity, shell_command, mcp_tool, prompt_injection, jailbreak |
 | 1.2.0 | path_allowlist, posture extension |
-| 1.3.0 | spider_sense (threat intel) |
+| 1.3.0 | embedding_anomaly (threat intel) |
 | 1.4.0 | origins extension |
 | 1.5.0 | broker extension, custom guards with async config |
 
