@@ -47,12 +47,45 @@ const PY_MAX_MODULE_SIZE: usize = 40 * 1024 * 1024;
 /// initialization, so we raise the default 16 MiB limit.
 const PY_MAX_MEMORY: usize = 64 * 1024 * 1024;
 
-/// Load the Python-compiled tool-gate guard WASM binary.
-fn load_py_guard_wasm() -> Vec<u8> {
-    let path = format!(
+/// Path to the Python-compiled tool-gate guard WASM binary.
+fn py_guard_wasm_path() -> String {
+    format!(
         "{}/../../../sdks/guard/chio-guard-py/dist/tool-gate.wasm",
         env!("CARGO_MANIFEST_DIR"),
-    );
+    )
+}
+
+/// Returns true if the Python guard WASM binary exists on disk.
+///
+/// The `componentize-py` build pipeline requires an external toolchain that
+/// may not be installed, and the `dist/` artifact is gitignored. Tests that
+/// need the binary are skipped when it is absent.
+fn py_guard_wasm_exists() -> bool {
+    std::path::Path::new(&py_guard_wasm_path()).exists()
+}
+
+/// Skip the current test (with an actionable message) when the Python guard
+/// WASM binary has not been built.
+macro_rules! skip_if_no_py_wasm {
+    () => {
+        if !py_guard_wasm_exists() {
+            eprintln!(
+                "SKIPPED: Python guard WASM not found at {}. \
+                 Build it with componentize-py: \
+                 cd sdks/guard/chio-guard-py && ./scripts/build-guard.sh",
+                py_guard_wasm_path()
+            );
+            return;
+        }
+    };
+}
+
+/// Load the Python-compiled tool-gate guard WASM binary.
+///
+/// Panics if the binary is not found. Call `py_guard_wasm_exists()` first
+/// to check availability, or use the `skip_if_no_py_wasm!` macro.
+fn load_py_guard_wasm() -> Vec<u8> {
+    let path = py_guard_wasm_path();
     std::fs::read(&path).unwrap_or_else(|e| {
         panic!(
             "Missing .wasm at {path}: {e}. Build with: \
@@ -98,6 +131,7 @@ fn load_py_backend() -> Box<dyn WasmGuardAbi> {
 
 #[test]
 fn py_guard_detected_as_component() {
+    skip_if_no_py_wasm!();
     let bytes = load_py_guard_wasm();
     let format = detect_wasm_format(&bytes).unwrap();
     assert!(
@@ -112,6 +146,7 @@ fn py_guard_detected_as_component() {
 
 #[test]
 fn py_guard_loads_via_component_backend() {
+    skip_if_no_py_wasm!();
     let wasm_bytes = load_py_guard_wasm();
     let engine = create_shared_engine().unwrap();
 
@@ -142,6 +177,7 @@ fn py_guard_loads_via_component_backend() {
 
 #[test]
 fn py_guard_allows_safe_tool() {
+    skip_if_no_py_wasm!();
     let mut backend = load_py_backend();
     let verdict = backend.evaluate(&make_request("read_file")).unwrap();
     assert!(
@@ -152,6 +188,7 @@ fn py_guard_allows_safe_tool() {
 
 #[test]
 fn py_guard_denies_dangerous_tool() {
+    skip_if_no_py_wasm!();
     let mut backend = load_py_backend();
     let verdict = backend.evaluate(&make_request("dangerous_tool")).unwrap();
     assert!(
@@ -171,6 +208,7 @@ fn py_guard_denies_dangerous_tool() {
 
 #[test]
 fn py_guard_denies_rm_rf() {
+    skip_if_no_py_wasm!();
     let mut backend = load_py_backend();
     let verdict = backend.evaluate(&make_request("rm_rf")).unwrap();
     assert!(
@@ -181,6 +219,7 @@ fn py_guard_denies_rm_rf() {
 
 #[test]
 fn py_guard_denies_drop_database() {
+    skip_if_no_py_wasm!();
     let mut backend = load_py_backend();
     let verdict = backend.evaluate(&make_request("drop_database")).unwrap();
     assert!(

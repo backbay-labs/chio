@@ -3,7 +3,7 @@
 This directory holds the per-mutant cargo-mutants output for the
 `chio-weights` crate (the model-card trust-boundary surface: signed
 weights cards, cosign bundle helper, kernel binding refusal,
-`arc bind --card`). The seed measurement closes the chio-weights
+`chio bind --card`). The seed measurement closes the chio-weights
 BASELINE-GAP row.
 
 ## Run metadata

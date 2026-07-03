@@ -58,7 +58,7 @@ pub enum SigningState {
     UnsignedSignerStubbed { algorithm: String },
 }
 
-/// The pinned-frontier artifact written by `arc lineage pin`.
+/// The pinned-frontier artifact written by `chio lineage pin`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnchoredFrontier {
     pub schema_version: String,

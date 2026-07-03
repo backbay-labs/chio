@@ -75,6 +75,9 @@ const REQUIRED_PRODUCT_OVERLAY_NEGATIVE_IDS: [&str; 3] = [
 ];
 const PRODUCT_OVERLAY_NEGATIVE_SCHEMA: &str = "chio.proof-room.product-overlay-negative.v1";
 const PRODUCT_OVERLAY_NEGATIVE_ROOT: &str = "fixtures/proof-room/product-overlays/negatives";
+const VERDICT_VERIFIED: &str = "verified";
+const VERDICT_FAILED: &str = "failed";
+const VERDICT_SCHEMA_ONLY_UNVERIFIED: &str = "schema-only-unverified";
 const DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS: &str =
     "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa";
 
@@ -179,6 +182,19 @@ pub(crate) fn run(args: &LaunchAcceptanceArgs) -> Result<(), XtaskError> {
         "application/vnd.chio.proof-room.launch-acceptance-report.v1+json",
         &report_sha256,
     )?;
+    // Fail closed: a report that did not fully verify must not become an
+    // acceptance package. The report stays on disk for debugging, but no
+    // manifest or archive is produced and the command exits non-zero.
+    let report_verdict = report
+        .get("verdict")
+        .and_then(Value::as_str)
+        .unwrap_or(VERDICT_FAILED);
+    if report_verdict == VERDICT_FAILED {
+        return Err(XtaskError::Validation(format!(
+            "launch acceptance verdict is {VERDICT_FAILED}; see {}",
+            crate::display_path(&out.join("verifier/report.json"))
+        )));
+    }
 
     let manifest = acceptance_manifest(&git_commit, &stages, &report_sha256);
     write_json(&out.join("manifest.json"), &manifest)?;
@@ -784,18 +800,66 @@ fn copy_static_ui(root: &Path, out: &Path) -> Result<(), XtaskError> {
     crate::copy_dir_recursive(&dist, &out.join("ui/proof-room-static"))
 }
 
-fn acceptance_report(schema_only: bool, git_commit: &str, stages: &[StageEvidence]) -> Value {
-    let agent_web_exit_gate = stages
+fn agent_web_exit_gate_json(stages: &[StageEvidence]) -> Value {
+    stages
         .iter()
         .find_map(|stage| stage.agent_web_exit_gate.clone())
         .unwrap_or_else(|| {
             json!({
                 "verdict": "missing",
             })
-        });
+        })
+}
+
+/// Per-stage parity between the CLI verifier report and the Proof Room load
+/// report. Only two identical "verified" verdicts count as parity; anything
+/// else fails closed.
+fn stage_verdict_parity(stage: &StageEvidence) -> &'static str {
+    if stage.verifier_report_verdict == VERDICT_VERIFIED
+        && stage.proof_room_verdict == stage.verifier_report_verdict
+    {
+        VERDICT_VERIFIED
+    } else {
+        VERDICT_FAILED
+    }
+}
+
+/// Aggregate verdict derived from actual gate execution. Schema-only runs
+/// skip the fixture verifier gate, so they can never claim "verified"; a
+/// missing or unverified Agent Web exit gate or any stage parity failure
+/// downgrades the verdict to "failed" regardless of mode.
+fn overall_verdict(
+    schema_only: bool,
+    stages: &[StageEvidence],
+    agent_web_exit_gate: &Value,
+) -> &'static str {
+    let gate_verified =
+        agent_web_exit_gate.get("verdict").and_then(Value::as_str) == Some(VERDICT_VERIFIED);
+    let stage_ids = stages
+        .iter()
+        .map(|stage| stage.fixture_id)
+        .collect::<BTreeSet<_>>();
+    let stages_complete = STAGES
+        .iter()
+        .all(|spec| stage_ids.contains(spec.fixture_id));
+    let stages_verified = stages
+        .iter()
+        .all(|stage| stage_verdict_parity(stage) == VERDICT_VERIFIED);
+    if !(gate_verified && stages_complete && stages_verified) {
+        VERDICT_FAILED
+    } else if schema_only {
+        VERDICT_SCHEMA_ONLY_UNVERIFIED
+    } else {
+        VERDICT_VERIFIED
+    }
+}
+
+fn acceptance_report(schema_only: bool, git_commit: &str, stages: &[StageEvidence]) -> Value {
+    let agent_web_exit_gate = agent_web_exit_gate_json(stages);
+    let verdict = overall_verdict(schema_only, stages, &agent_web_exit_gate);
     json!({
         "schema": ACCEPTANCE_REPORT_SCHEMA,
-        "verdict": "verified",
+        "verdict": verdict,
         "mode": if schema_only { "schema-only" } else { "full" },
         "git_commit": git_commit,
         "stages": stages.iter().map(stage_json).collect::<Vec<_>>(),
@@ -867,7 +931,7 @@ fn stage_json(stage: &StageEvidence) -> Value {
         "verifier_report_sha256": stage.verifier_report_sha256,
         "verifier_report_verdict": stage.verifier_report_verdict,
         "proof_room_verdict": stage.proof_room_verdict,
-        "verdict_parity": "verified",
+        "verdict_parity": stage_verdict_parity(stage),
         "transaction_passport_sha256": stage.transaction_passport_sha256,
         "evidence_graph_sha256": stage.evidence_graph_sha256,
         "negative_case_count": stage.negative_cases.len(),
@@ -1187,6 +1251,133 @@ fn required_stdout(root: &Path, program: &str, args: &[&str]) -> Result<String, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_stage(spec: &StageSpec, agent_web_exit_gate: Option<Value>) -> StageEvidence {
+        StageEvidence {
+            fixture_id: spec.fixture_id,
+            output_path: format!("stages/{}/proof-room-bundle", spec.fixture_id),
+            source_path: spec.source.to_string(),
+            manifest_sha256: "0".repeat(64),
+            verifier_report_sha256: "1".repeat(64),
+            verifier_report_verdict: VERDICT_VERIFIED.to_string(),
+            proof_room_verdict: VERDICT_VERIFIED.to_string(),
+            transaction_passport_sha256: "2".repeat(64),
+            evidence_graph_sha256: "3".repeat(64),
+            negative_cases: vec![json!({ "id": "example-negative" })],
+            agent_web_exit_gate,
+        }
+    }
+
+    fn verified_stages() -> Vec<StageEvidence> {
+        STAGES
+            .iter()
+            .map(|spec| {
+                let gate = if spec.fixture_id == AGENT_WEB_STAGE_ID {
+                    Some(json!({ "verdict": VERDICT_VERIFIED }))
+                } else {
+                    None
+                };
+                test_stage(spec, gate)
+            })
+            .collect()
+    }
+
+    fn report_verdict(report: &Value) -> &str {
+        report
+            .get("verdict")
+            .and_then(Value::as_str)
+            .unwrap_or("<missing>")
+    }
+
+    #[test]
+    fn full_run_report_verdict_is_verified() {
+        let stages = verified_stages();
+        let report = acceptance_report(false, "abc123", &stages);
+        assert_eq!(report_verdict(&report), VERDICT_VERIFIED);
+        assert_eq!(report.get("mode").and_then(Value::as_str), Some("full"));
+        let stage_entries = report
+            .get("stages")
+            .and_then(Value::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        assert_eq!(stage_entries.len(), STAGES.len());
+        for stage in stage_entries {
+            assert_eq!(
+                stage.get("verdict_parity").and_then(Value::as_str),
+                Some(VERDICT_VERIFIED)
+            );
+        }
+    }
+
+    #[test]
+    fn schema_only_report_verdict_is_not_verified() {
+        let stages = verified_stages();
+        let report = acceptance_report(true, "abc123", &stages);
+        assert_eq!(report_verdict(&report), VERDICT_SCHEMA_ONLY_UNVERIFIED);
+        assert_eq!(
+            report.get("mode").and_then(Value::as_str),
+            Some("schema-only")
+        );
+        assert_ne!(report_verdict(&report), VERDICT_VERIFIED);
+    }
+
+    #[test]
+    fn missing_agent_web_exit_gate_downgrades_verdict() {
+        let stages = STAGES
+            .iter()
+            .map(|spec| test_stage(spec, None))
+            .collect::<Vec<_>>();
+        for schema_only in [false, true] {
+            let report = acceptance_report(schema_only, "abc123", &stages);
+            assert_eq!(report_verdict(&report), VERDICT_FAILED);
+            assert_eq!(
+                report
+                    .get("agent_web_exit_gate")
+                    .and_then(|gate| gate.get("verdict"))
+                    .and_then(Value::as_str),
+                Some("missing")
+            );
+        }
+    }
+
+    #[test]
+    fn failed_agent_web_exit_gate_downgrades_verdict() {
+        let stages = STAGES
+            .iter()
+            .map(|spec| {
+                let gate = if spec.fixture_id == AGENT_WEB_STAGE_ID {
+                    Some(json!({ "verdict": VERDICT_FAILED }))
+                } else {
+                    None
+                };
+                test_stage(spec, gate)
+            })
+            .collect::<Vec<_>>();
+        let report = acceptance_report(false, "abc123", &stages);
+        assert_eq!(report_verdict(&report), VERDICT_FAILED);
+    }
+
+    #[test]
+    fn stage_verdict_parity_mismatch_downgrades_verdict() {
+        let mut stages = verified_stages();
+        if let Some(stage) = stages.first_mut() {
+            stage.proof_room_verdict = VERDICT_FAILED.to_string();
+        }
+        assert_eq!(
+            stages.first().map(stage_verdict_parity),
+            Some(VERDICT_FAILED)
+        );
+        let report = acceptance_report(false, "abc123", &stages);
+        assert_eq!(report_verdict(&report), VERDICT_FAILED);
+    }
+
+    #[test]
+    fn missing_stage_downgrades_verdict() {
+        let mut stages = verified_stages();
+        stages.retain(|stage| stage.fixture_id != STAGES[0].fixture_id);
+        let report = acceptance_report(false, "abc123", &stages);
+        assert_eq!(report_verdict(&report), VERDICT_FAILED);
+    }
 
     #[test]
     fn reset_output_dir_rejects_workspace_root() {

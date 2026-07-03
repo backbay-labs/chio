@@ -35,7 +35,7 @@ chio-core = { workspace = true }
 chio-core-types = { workspace = true }
 chio-credentials = { workspace = true }
 chio-data-guards = { workspace = true }
-chio-egress-contract = { workspace = true }
+chio-egress-contract = { workspace = true, features = ["reqwest-egress"] }
 chio-errors = { workspace = true }
 chio-did = { workspace = true }
 chio-external-guards = { workspace = true }

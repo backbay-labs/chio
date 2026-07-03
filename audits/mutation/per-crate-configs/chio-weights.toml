@@ -5,7 +5,7 @@
 # chio-policy, chio-credentials, chio-attest-verify, chio-kernel-core,
 # chio-guards, chio-anchor). The crate is the model-card trust-boundary
 # surface (signed weights cards, cosign bundle helper, kernel binding
-# refusal, arc bind --card) and IS a trust-boundary surface: a malformed
+# refusal, chio bind --card) and IS a trust-boundary surface: a malformed
 # `weights_hash`, an out-of-set
 # capability scope, or a banned tool intersection MUST cause the
 # kernel to refuse a provider bind. Mutation kill on this crate is

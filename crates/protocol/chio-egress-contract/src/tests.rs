@@ -629,4 +629,119 @@ mod reqwest_egress_tests {
             .enforce_url_with_dns("http://localhost:8080/health", 0)
             .expect("localhost remains available for explicit loopback contracts");
     }
+
+    // Regression (DNS rebinding / TOCTOU): a host whose resolution yields a
+    // loopback address must be refused by the pinned egress path before any
+    // socket is opened. The address-class check and the connect share one
+    // resolution, so a rebinding answer cannot pass the check with a global IP
+    // and then connect to a loopback/private target. deny_loopback stays on;
+    // the production denial is never weakened.
+    #[tokio::test]
+    async fn send_with_contract_refuses_loopback_resolving_host_before_connect() {
+        let (addr, observation_rx, handle) = spawn_optional_response_server(|_| {
+            "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".to_string()
+        });
+        let mut contract =
+            HttpEgressContract::permissive_for_tests(&format!("localhost:{}", addr.port()));
+        contract.deny_loopback = true;
+        let client = client_builder_with_contract(&contract)
+            .build()
+            .expect("build client");
+        let request = client
+            .get(format!("http://localhost:{}/head", addr.port()))
+            .build()
+            .expect("build request");
+
+        let error = send_with_contract(&contract, &client, request)
+            .await
+            .expect_err("loopback-resolving host must fail closed");
+        assert!(
+            matches!(error, HttpEgressError::LoopbackDenied { .. }),
+            "unexpected error: {error}"
+        );
+
+        let observation = observation_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("server observation");
+        assert!(
+            observation.is_none(),
+            "pinned egress path opened a socket to a loopback target"
+        );
+        handle.join().expect("join server");
+    }
+
+    // Regression (response byte cap): a chunked response with no Content-Length
+    // must be capped while streaming. The running byte counter aborts shortly
+    // after the ceiling is crossed rather than buffering the whole body, so an
+    // oversized (or effectively unbounded) response cannot exhaust memory.
+    #[tokio::test]
+    async fn send_with_contract_aborts_oversized_chunked_body_mid_stream() {
+        const MAX_RESPONSE_BYTES: u64 = 64 * 1024;
+        const CHUNK_BYTES: usize = 16 * 1024;
+        // The server intends to stream 4 MiB with no Content-Length; the cap
+        // must fire on a small prefix and never buffer the whole body.
+        const TOTAL_CHUNKS: usize = 256;
+        let total_body_bytes = (CHUNK_BYTES * TOTAL_CHUNKS) as u64;
+
+        let addr = spawn_streaming_chunked_server(CHUNK_BYTES, TOTAL_CHUNKS);
+        let mut contract = HttpEgressContract::permissive_for_tests(&authority(addr));
+        contract.max_response_bytes = MAX_RESPONSE_BYTES;
+        let client = client_builder_with_contract(&contract)
+            .build()
+            .expect("build client");
+        let request = client
+            .get(format!("http://{}/stream", authority(addr)))
+            .build()
+            .expect("build request");
+
+        let error = send_with_contract(&contract, &client, request)
+            .await
+            .expect_err("oversized chunked body must be rejected");
+        let HttpEgressError::ResponseTooLarge { observed, max } = error else {
+            panic!("unexpected error: {error}");
+        };
+        assert_eq!(max, MAX_RESPONSE_BYTES);
+        assert!(
+            observed > MAX_RESPONSE_BYTES,
+            "observed {observed} should exceed the ceiling"
+        );
+        // The read aborts on a bounded prefix (a handful of chunks past the
+        // ceiling), not after the whole 4 MiB body is buffered into memory.
+        assert!(
+            observed < total_body_bytes / 8,
+            "observed {observed} indicates the whole {total_body_bytes}-byte body was buffered before the cap fired"
+        );
+        // The server thread is intentionally detached: it blocks writing the
+        // remaining body once the client aborts, and unblocks when the runtime
+        // drops the connection at test teardown. Joining it here would block the
+        // current-thread reactor and deadlock.
+    }
+
+    // Streams a chunked response (no Content-Length) of `total_chunks` chunks.
+    // The thread is detached and tolerates the client closing the connection
+    // once the byte ceiling fires, so an oversized body never requires the test
+    // to read the whole stream.
+    fn spawn_streaming_chunked_server(chunk_bytes: usize, total_chunks: usize) -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        let addr = listener.local_addr().expect("read local addr");
+        thread::spawn(move || {
+            let Ok((mut stream, _)) = listener.accept() else {
+                return;
+            };
+            let _ = read_http_request(&mut stream);
+            let headers =
+                "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n";
+            if stream.write_all(headers.as_bytes()).is_err() {
+                return;
+            }
+            let chunk = format!("{:x}\r\n{}\r\n", chunk_bytes, "a".repeat(chunk_bytes));
+            for _ in 0..total_chunks {
+                if stream.write_all(chunk.as_bytes()).is_err() {
+                    return;
+                }
+            }
+            let _ = stream.write_all(b"0\r\n\r\n");
+        });
+        addr
+    }
 }

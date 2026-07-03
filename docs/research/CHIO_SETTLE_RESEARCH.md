@@ -6,15 +6,18 @@ Authors: Engineering
 Reviewer: Technical Review
 
 > Realization status (2026-04-02): this document fed the shipped bounded
-> `arc-settle` runtime, but the authoritative runtime boundary is now
+> `chio-settle` runtime, but the authoritative runtime boundary is now
 > [CHIO_SETTLE_PROFILE.md](../standards/CHIO_SETTLE_PROFILE.md) plus
 > [CHIO_WEB3_PROFILE.md](../standards/CHIO_WEB3_PROFILE.md). Several research
 > names were superseded in implementation: the shared Merkle-root contract is
-> `IArcRootRegistry`, the operator-binding contract is
-> `IArcIdentityRegistry`, and the official contract package is mostly
+> `IChioRootRegistry`, the operator-binding contract is
+> `IChioIdentityRegistry`, and the official contract package is mostly
 > immutable with the identity registry as the one owner-managed mutable
-> exception. For shipped behavior, prefer `crates/arc-settle/`, `contracts/`,
-> and the checked-in standards or release docs over this draft's open options.
+> exception. For shipped behavior, prefer `crates/economy/chio-settle/`,
+> `contracts/`, and the checked-in standards or release docs over this draft's
+> open options. Identifiers in the body of this document (`did:arc`, `arc.*`
+> schema IDs, `Arc*` contract names) are pre-rename history; the shipped
+> equivalents are `did:chio`, `chio.*`, and `Chio*` contracts.
 
 ---
 

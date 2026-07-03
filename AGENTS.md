@@ -39,6 +39,12 @@ cargo clippy --workspace -- -D warnings
 cargo fmt --all -- --check
 ```
 
+### Toolchain prerequisites
+
+- **`wasm32-unknown-unknown` target** (required for `chio-wasm-guards` tests): `rustup target add wasm32-unknown-unknown`. The test harness compiles Rust example guards to WASM on first run.
+- **`componentize-py`** (optional, Python guard tests): builds the gitignored `sdks/guard/chio-guard-py/dist/tool-gate.wasm` via `cd sdks/guard/chio-guard-py && ./scripts/build-guard.sh`. Tests skip gracefully when the artifact is absent.
+- **TinyGo + wasi-virt** (optional, Go guard tests): builds `sdks/guard/chio-guard-go/dist/tool-gate.wasm` via `cd sdks/guard/chio-guard-go && ./scripts/build-guard.sh`. Tests skip gracefully when the artifact is absent.
+
 ## Conventions
 
 - **Fail-closed**: errors during evaluation deny access. Invalid policies reject at load time.

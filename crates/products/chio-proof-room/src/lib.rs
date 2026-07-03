@@ -472,18 +472,8 @@ fn fetch_public_settlement_independent_chain_head_from_rpc(
         ));
     }
     let egress_contract = public_settlement_rpc_egress_contract(url)?;
-    // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: blocking verifier RPC egress is
-    // guarded by public_settlement_rpc_egress_contract and per-call checks.
-    let client = reqwest::blocking::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|error| {
-            format!("{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} HTTP client failed: {error}")
-        })?;
     let latest_block_number = parse_json_rpc_hex_u64(
         &public_settlement_rpc_call(
-            &client,
             &egress_contract,
             url,
             "eth_blockNumber",
@@ -493,7 +483,6 @@ fn fetch_public_settlement_independent_chain_head_from_rpc(
     )?;
     let observed_block_number = proof_bundle.chain_snapshot.observed_block_number;
     let observed_block = public_settlement_rpc_call(
-        &client,
         &egress_contract,
         url,
         "eth_getBlockByNumber",
@@ -551,30 +540,20 @@ fn public_settlement_rpc_egress_contract(url: &str) -> Result<HttpEgressContract
 }
 
 fn public_settlement_rpc_call(
-    client: &reqwest::blocking::Client,
     egress_contract: &HttpEgressContract,
     url: &str,
     method: &str,
     params: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    egress_contract.enforce_url_with_dns(url, 0).map_err(|error| {
-        format!(
-            "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} rejected by HttpEgressContract: {error}"
-        )
-    })?;
-    let response = client
-        .post(url)
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": method,
-            "params": params,
-        }))
-        // CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST: blocking verifier RPC egress
-        // is guarded by public_settlement_rpc_egress_contract and per-call checks.
-        .send()
-        .map_err(|error| {
-            format!("{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} failed: {error}")
+    let request_body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": method,
+        "params": params,
+    });
+    let response =
+        dispatch_public_settlement_rpc(egress_contract, url, &request_body).map_err(|reason| {
+            format!("{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} {reason}")
         })?;
     let status = response.status();
     if !status.is_success() {
@@ -582,28 +561,7 @@ fn public_settlement_rpc_call(
             "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} returned HTTP {status}"
         ));
     }
-    if let Some(content_length) = response.content_length() {
-        egress_contract
-            .enforce_response_bytes(content_length)
-            .map_err(|error| {
-                format!(
-                    "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} response rejected by HttpEgressContract: {error}"
-                )
-            })?;
-    }
-    let body_bytes = response.bytes().map_err(|error| {
-        format!(
-            "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} returned invalid JSON: {error}"
-        )
-    })?;
-    egress_contract
-        .enforce_response_bytes(body_bytes.len() as u64)
-        .map_err(|error| {
-            format!(
-                "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} response rejected by HttpEgressContract: {error}"
-            )
-        })?;
-    let body = serde_json::from_slice::<serde_json::Value>(&body_bytes).map_err(|error| {
+    let body = serde_json::from_slice::<serde_json::Value>(response.body()).map_err(|error| {
         format!(
             "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} returned invalid JSON: {error}"
         )
@@ -617,6 +575,52 @@ fn public_settlement_rpc_call(
         format!(
             "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} {method} response missing result"
         )
+    })
+}
+
+/// Dispatch one settlement JSON-RPC POST through the pinned-DNS egress helper.
+///
+/// The helper (`chio_egress_contract::send_with_contract`) resolves the target
+/// once through a contract-backed resolver and connects to that same
+/// resolution, so a rebinding host cannot pass the address-class check with a
+/// global IP and then connect to a loopback/private address. It also enforces
+/// the response byte ceiling while streaming, so an oversized chunked body
+/// aborts before the whole response is buffered. Redirects are denied
+/// (`client_builder_with_contract` sets `Policy::none`).
+///
+/// The helper is async while this verifier path is synchronous, so the request
+/// runs on a dedicated current-thread runtime. A fresh thread keeps this
+/// correct whether or not the caller already runs inside a tokio runtime.
+fn dispatch_public_settlement_rpc(
+    egress_contract: &HttpEgressContract,
+    url: &str,
+    request_body: &serde_json::Value,
+) -> Result<chio_egress_contract::ContractResponse, String> {
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                let runtime = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|error| format!("HTTP runtime failed: {error}"))?;
+                runtime.block_on(async {
+                    let client =
+                        chio_egress_contract::client_builder_with_contract(egress_contract)
+                            .timeout(Duration::from_secs(10))
+                            .build()
+                            .map_err(|error| format!("HTTP client failed: {error}"))?;
+                    let request = client
+                        .post(url)
+                        .json(request_body)
+                        .build()
+                        .map_err(|error| format!("request build failed: {error}"))?;
+                    chio_egress_contract::send_with_contract(egress_contract, &client, request)
+                        .await
+                        .map_err(|error| format!("rejected by HttpEgressContract: {error}"))
+                })
+            })
+            .join()
+            .map_err(|_| "settlement RPC dispatch thread panicked".to_string())?
     })
 }
 

@@ -1,6 +1,6 @@
 # A2A Adapter Guide
 
-`chio-a2a-adapter` is the first Chio bridge for the A2A v0.3.0 protocol. It is
+`chio-a2a-adapter` is the first Chio bridge for the A2A v1.0.0 protocol. It is
 intentionally thin: discover an Agent Card, select a supported interface, map
 advertised A2A skills into Chio tools, and execute blocking or streaming A2A
 message operations through the normal Chio kernel guard and receipt pipeline.
@@ -42,7 +42,7 @@ message operations through the normal Chio kernel guard and receipt pipeline.
 
 ## Honest Boundary
 
-A2A v0.3.0 does not define a native `skillId` selector inside `SendMessage`.
+A2A v1.0.0 does not define a native `skillId` selector inside `SendMessage`.
 The adapter therefore does **not** pretend that skill routing is a core A2A
 field. Instead, it injects an adapter-local convention into top-level request
 metadata:

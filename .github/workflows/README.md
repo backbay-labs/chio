@@ -116,7 +116,7 @@ So MSRV test coverage is uneven:
 Do not describe the MSRV job as testing the full workspace; it builds the full
 workspace and tests it with the carveouts above.
 
-> Note (firmware/console): the arc workspace is Rust-only; the firmware and
+> Note (firmware/console): the Chio workspace is Rust-only; the firmware and
 > console build pipelines referenced by BAC-609 live in their own repos and
 > are out of scope for this workflow.
 

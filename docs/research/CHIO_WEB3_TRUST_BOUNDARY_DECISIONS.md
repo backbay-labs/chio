@@ -3,7 +3,7 @@
 Status: **Decision record**
 Date: 2026-03-30
 Authors: Protocol Architecture
-Scope: arc-anchor, arc-settle, arc-link
+Scope: chio-anchor, chio-settle, chio-link
 
 > Realization status (2026-04-02): these decisions are now realized across
 > [CHIO_WEB3_PROFILE.md](../standards/CHIO_WEB3_PROFILE.md),
@@ -11,7 +11,10 @@ Scope: arc-anchor, arc-settle, arc-link
 > [CHIO_ANCHOR_PROFILE.md](../standards/CHIO_ANCHOR_PROFILE.md), and
 > [CHIO_SETTLE_PROFILE.md](../standards/CHIO_SETTLE_PROFILE.md). Where the
 > research used older contract names or left choices open, the shipped names
-> and boundaries in those profiles supersede this document.
+> and boundaries in those profiles supersede this document. Identifiers in the
+> body of this document (`did:arc`, `arc.*` schema IDs, `Arc*` contract names)
+> are pre-rename history; the shipped equivalents are `did:chio`, `chio.*`,
+> and `Chio*` contracts.
 
 ---
 

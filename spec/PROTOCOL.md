@@ -67,7 +67,7 @@ The shipped v1 contract covers:
 - `did:chio`
 - Agent Passport artifacts and verifier-policy distribution
 - federated evidence export/import and cross-org delegation continuation
-- A2A v0.3.0 consumption through `chio-a2a-adapter` only where receipt
+- A2A v1.0.0 consumption through `chio-a2a-adapter` only where receipt
   authority is backed by a live kernel authorization receipt
 - signed certification checks plus operator-scoped registry and discovery-network
   surfaces
@@ -101,6 +101,11 @@ The shipped v1 contract covers:
 - one machine-readable public identity-profile, wallet-directory entry,
   wallet-routing manifest, and identity-interop qualification artifact family
   for the bounded public identity network
+- one bounded Proof Room presentation surface (`chio proof serve`, section
+  8.5) plus a machine-readable proof-room bundle, verifier-report,
+  fixture-catalog, receipt-evidence, and first-run evidence artifact family;
+  Proof Room artifacts render verified evidence and cannot widen signed Chio
+  truth or capability scope
 
 The shipped v1 contract does not claim:
 
@@ -707,6 +712,35 @@ The current pre-release v1 receipt envelope is `ChioReceipt` from
 | `algorithm` | Optional envelope hint (`ed25519`, `p256`, or `p384`); verification dispatches off the signature prefix, not this field |
 | `signature` | Algorithm-aware hex signature over canonical JSON of `ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }`. The schema regex is `^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$`: bare 128-hex for Ed25519, `p256:<DER hex>` for P-256, or `p384:<DER hex>` for P-384 |
 
+### WYSIWYS Signing Invariant
+
+Receipt signing is WYSIWYS (what you see is what you sign). The production
+signing primitive (`chio_kernel_core::receipts::sign_receipt`) takes the
+canonical content preimage alongside the receipt body: the RFC 8785 canonical
+JSON for a value output, the concatenated per-chunk digest preimage for a
+stream receipt, or the literal `null` canonicalization for an empty output.
+The signer recomputes `content_hash` from that preimage inside its own trust
+boundary and MUST NOT trust the caller's asserted `content_hash`. When the
+recomputed hash disagrees with the body's claimed `content_hash`, signing
+MUST fail closed (`ContentHashMismatch`); the recompute runs before the
+kernel-key check and before any signing work, so a mismatched body can never
+reach the signer. This closes the render-A / sign-B forgery: a caller cannot
+render content `A` while submitting a body that claims the hash of content
+`B`.
+
+One explicit exception exists. `sign_receipt_relaying_trusted_body` is the
+auditable trusted-relay seam for thin FFI and WASM transport adapters (mobile
+FFI, browser WASM, C++ FFI) that receive an already-minted, serialized
+receipt body across their boundary and therefore do not hold the content
+preimage. That entrypoint trusts the caller-supplied `content_hash` while
+still enforcing the kernel-key match. It MUST NOT be used on any path that
+holds the evaluated content; every such path MUST call `sign_receipt` (or the
+one-time-handle variant that delegates to it) so the recompute-and-refuse
+check applies. Threading the preimage across the FFI/WASM boundary so those
+adapters can recompute too is tracked as follow-up work (BAC-601); until
+then, this seam is the single place where caller-asserted `content_hash` is
+trusted, rather than that trust being a silent default.
+
 ### Receipt Identity And DAG
 
 `chio.receipt.v1` is content-addressed. The authoritative receipt identity is
@@ -968,6 +1002,17 @@ The admission reference binds the child dispatch to:
 - the revocation epoch id and root hash
 - the budget pool allocation or lease
 
+The signed task graph carries explicit structural ceilings: a `maxDepth`
+bound on task depth and a `maxFanout` bound on per-parent delegation fan-out
+(`SwarmTaskGraph` in `crates/kernel/chio-swarm-authority/src/types.rs`). The
+admission verifier enforces both ceilings over the whole graph: any node
+whose depth exceeds `maxDepth`, and any parent whose outgoing edge count
+exceeds `maxFanout`, rejects the bundle. Edge depth arithmetic is also
+checked: every edge target MUST sit at exactly the parent depth plus one, and
+depth overflow is a rejection, not a wraparound. Because the ceilings are
+part of the signed graph, a planner cannot widen recursion or fan-out after
+issuance without invalidating the graph signature.
+
 Continuation tokens are signed by a pinned witness key and bind graph,
 route-plan, budget-allocation, revocation-epoch, nonce, and mode. `SingleUse`
 continuations are reserved before dispatch and cannot be replayed through the
@@ -985,6 +1030,15 @@ Allocations carry dimension id, state, reserved units, active units, consumed
 units, released units, and reversed units. Admission rejects inactive or
 replayed allocations, and terminal graph receipts reconcile the final rollup
 against the budget pool.
+
+Offline proof-bundle verification (`chio proof verify`) requires signed swarm
+delegation evidence and rejects a root-only swarm proof fail-closed. Even when
+the task graph, budget pool, and revocation epoch are otherwise valid and
+signed, a bundle whose continuation-token or delegation-witness-chain roles are
+empty is denied (`signed swarm delegation evidence missing`); the verifier
+emits no swarm claim for a bundle it rejects. Absent delegation evidence is a
+denial, not a suppressed-claim acceptance, consistent with the fail-closed rule
+that incomplete swarm authority is denied rather than partially trusted.
 
 The bounded conformance surface for this release covers recursive-delegation
 positive fixtures, generated malformed graph, budget, epoch, route, and
@@ -1249,6 +1303,7 @@ The repository ships these primary runtime entrypoints:
 - `chio mcp serve-http`
 - `chio trust serve`
 - `chio receipt explain`
+- `chio proof serve` -- static Proof Room server over a collected and verified proof bundle (section 8.5)
 - `chio api protect` -- reverse proxy that enforces Chio policy over an HTTP API using an OpenAPI spec
 - `chio cert generate` -- generate TLS or signing certificates for Chio operator use
 - `chio cert verify` -- verify a certificate chain or signing material against Chio trust roots
@@ -1329,12 +1384,94 @@ in `chio-link` (Chainlink, Pyth, sequencer), `chio-siem` (webhook, Splunk,
 Elasticsearch, Sumo Logic, Datadog, OCSF, alerting backends), the
 `chio-a2a-adapter` ureq dispatch helpers, the `chio-openapi-mcp-bridge`
 dispatcher invocation, and the `chio-mcp-remote` introspection-bearer
-verifier. A workspace lint at `scripts/check-http-egress-contract.sh`
+verifier. Two public-settlement verifier surfaces added after the initial
+rollout also belong to this inventory: the `chio-cli` proof verifier's
+independent-chain JSON-RPC caller
+(`crates/products/chio-cli/src/cli/dispatch/proof/env.rs`) and the Proof
+Room upload verifier's equivalent caller
+(`crates/products/chio-proof-room/src/lib.rs`). Both derive a
+single-authority `HttpEgressContract` from
+`CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL` (tenant namespace
+`proof.public-settlement.rpc`, redirects disabled, `max_redirect_chain` of
+zero, `max_response_bytes` of 1 MiB) and enforce it on every JSON-RPC call.
+A workspace lint at `scripts/check-http-egress-contract.sh`
 catches regressions; a self-test at
 `scripts/tests/check-http-egress-contract.test.sh` proves the lint accepts
 wired callers and rejects bare reqwest dispatch. Five standalone SSRF
 negative-conformance tests in `crates/tooling/chio-conformance/tests/ssrf_*.rs`
 exercise the failure paths through real production callers.
+
+For reqwest-based callers that cannot route dispatch through
+`send_with_contract`, the lint defines a second sanctioned enforcement mode:
+the `CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST:` classification marker. A comment
+carrying that marker on, or within four lines above, a flagged client
+construction or dispatch line classifies the site, and the lint accepts it.
+The marker is a classification, not an exemption: a classified caller MUST
+still enforce the contract manually. Concretely, it MUST run `enforce_url`
+(or `enforce_url_with_dns`) against the target URL before dispatch, MUST
+disable automatic HTTP-client redirects so the `max_redirect_chain` ceiling
+cannot be bypassed inside the client, and MUST run `enforce_response_bytes`
+against the declared `Content-Length` when present and against the buffered
+response body before parsing it. Caveat: because these callers buffer the
+response before the byte-cap check, `max_response_bytes` bounds what a
+classified caller accepts, not what the transport transfers; a peer that
+omits or understates `Content-Length` can still cause the full oversized
+body to be read into memory before rejection. Unmarked direct reqwest
+dispatch remains a lint failure. The two public-settlement RPC callers above
+use this classified mode.
+
+### 8.5 Proof Room
+
+`chio proof serve` serves a static, read-only Proof Room over a collected
+proof bundle. The router
+(`crates/products/chio-proof-room/src/server.rs`) exposes `/` (a redirect
+into the Proof Room UI view), `/manifest.json`, `/artifacts/*`,
+`/negatives/*`, `/roots/*`, `/ui/*`, and `/verifier/*`, plus the fixture
+catalog, trusted-bundle-signer, fixture-asset, and upload-verification
+endpoints. Served bundle paths are pinned to the manifest's declared
+artifact set; requests outside that set are rejected rather than resolved
+against the filesystem.
+
+The Proof Room artifact family is defined by the eleven schemas in
+`spec/schemas/chio-proof-room/v1/`. The three load-bearing artifact kinds
+are:
+
+- Bundle (`chio.proof-room.bundle.v1`, `bundle.schema.json`): the signed
+  bundle manifest. It binds a bundle id, fixture id, stage, source commit,
+  branch, and command, the Chio version and schema-version inventory, the
+  transaction-passport and evidence-graph references, the source and Proof
+  Room verifier-report references, the served artifact list, rendered
+  claims, a receipt-coverage matrix, explicit negative cases, advisory and
+  excluded artifact declarations, and a detached DSSE signature
+  (payload type `application/vnd.chio.proof-room.bundle.v1+json`). All of
+  those fields are required, and unknown schema identifiers are rejected.
+- Verifier report (`chio.proof-room.verifier-report.v1`,
+  `verifier-report.schema.json`): the Proof-Room-level verdict over one
+  bundle. It records the verdict, bundle and fixture ids, a reference to
+  the source verifier report it projects, the UI verdict source, and the
+  rendered claims. It is a presentation-plane projection: the source
+  verifier report and the signed receipts underneath remain the
+  authoritative truth, and a Proof Room verdict MUST NOT be treated as
+  stronger than the verified bundle signature, pinned trusted signer keys,
+  and underlying signed evidence it binds.
+- Fixture catalog (`chio.proof-room.fixture-catalog.v1`,
+  `fixture-catalog.schema.json`, plus
+  `chio.proof-room.fixture-root-catalog.v1`): the enumeration of fixture
+  bundles a Proof Room instance may serve. Catalog entries are advisory
+  discovery data; listing a fixture does not verify it.
+
+The remaining schemas type the evidence payloads a bundle may carry:
+`chio.proof-room.receipt-evidence.v1`,
+`chio.proof.docker-quickstart-evidence.v1`, `chio.proof.release-truth.v1`,
+and the `chio.proof.first-run.*.v1` capability-proof, guard-report,
+trust-roots, and command-log family.
+
+Proof Room semantics are fail-closed and presentation-scoped. Serving,
+listing, or rendering Proof Room artifacts creates no authorization and
+does not widen signed Chio truth or capability scope. The upload-verify
+endpoint re-verifies a submitted bundle against pinned trusted signer keys
+and the schema set above before reporting a verdict; verification failures
+deny.
 
 ## 9. Trust-Control Contract
 
@@ -2363,6 +2500,39 @@ It is not permissionless settlement routing, automatic dispute adjudication,
 cross-chain fund movement, gas sponsorship, or a claim that Chio itself is the
 custodian or regulated insurer.
 
+The shipped public-settlement proof surface is likewise explicit rather than
+ambient. It consists of two artifacts defined in
+`crates/economy/chio-web3/src/settlement_proof.rs`.
+`chio.web3-settlement-proof-bundle.v1` binds one transaction passport and
+commerce order to a validated
+`chio.web3-settlement-execution-receipt.v1`, an order binding, a chain
+snapshot (escrow state plus optional bond, block, and beneficiary
+identity-binding snapshots), optional public-witness and dispute snapshots,
+optional trust-market references, required and observed confirmation counts,
+a dispute posture, and an optional detached `ed25519-rfc8785-v1` bundle
+signature. `chio.public-settlement-verifier-report.v1` is the typed verdict
+that `verify_public_settlement_proof` emits over such a bundle: it carries
+the recomputed settlement state, chain, public-witness, finality, and
+dispute context, optional trust-market context, and the explicit
+`claim.public_settlement.*` verified-claim list. Verification requires an
+independent chain head: finality MUST be checked against a chain
+observation that does not come from the bundle itself, and a missing
+independent head rejects the bundle. Verifier surfaces accept that head
+either as pinned JSON (`CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON`,
+which takes precedence) or through the bounded independent-chain recheck
+lane: when `CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL` is set, the
+`chio proof` verifier and the Proof Room upload verifier fetch
+`eth_blockNumber` plus the observed block header via `eth_getBlockByNumber`
+over the section 8.4 egress contract and require chain-id,
+observed-block-number, and block-hash agreement with the bundle, an
+independent head at or beyond the observed block, and independent
+confirmations at or above the bundle's required threshold that are not
+exceeded by the bundle's observed confirmations. A missing, mismatched, or
+under-confirmed independent head rejects the bundle fail-closed; the
+recheck lane never widens acceptance beyond the pinned verifier trust
+policy (trusted signer keys, allowed chain ids, mainnet blocking, and
+minimum-confirmation floors).
+
 The shipped bounded web3-operations surface is explicitly scoped.
 It consists of one `CHIO_WEB3_OPERATIONS_PROFILE.md`, one anchor runtime-report
 example, one settlement runtime-report example, one operations qualification
@@ -2907,7 +3077,7 @@ admission.
 
 ## 11. A2A Adapter Contract
 
-`chio-a2a-adapter` is a thin bridge for A2A v0.3.0, not a new A2A wire
+`chio-a2a-adapter` is a thin bridge for A2A v1.0.0, not a new A2A wire
 standard.
 
 The current shipped behavior includes:

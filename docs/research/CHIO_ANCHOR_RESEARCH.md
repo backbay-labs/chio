@@ -4,11 +4,15 @@
 > Status: **Draft / Research Only** -- no implementation code.
 >
 > Realization status (2026-04-02): this document fed the shipped bounded
-> `arc-anchor` runtime, but the authoritative runtime boundary is now
+> `chio-anchor` runtime, but the authoritative runtime boundary is now
 > [CHIO_ANCHOR_PROFILE.md](../standards/CHIO_ANCHOR_PROFILE.md) plus
 > [CHIO_WEB3_PROFILE.md](../standards/CHIO_WEB3_PROFILE.md). For shipped proof
 > bundles, discovery artifacts, and qualification claims, prefer the checked-in
-> `ARC_ANCHOR_*` standards artifacts and the `crates/arc-anchor/` runtime.
+> `docs/standards/CHIO_ANCHOR_*` standards artifacts and the
+> `crates/economy/chio-anchor/` runtime. Identifiers in the body of this
+> document (`did:arc`, `arc.*` schema IDs, `Arc*` contract names) are
+> pre-rename history; the shipped equivalents are `did:chio`, `chio.*`, and
+> `Chio*` contracts.
 
 ---
 

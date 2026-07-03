@@ -9,6 +9,7 @@ everything in this tree is supporting material organized by audience.
 - [Progressive Tutorial](start-here/PROGRESSIVE_TUTORIAL.md) - walk through Chio from scratch
 - [Native Adoption Guide](start-here/NATIVE_ADOPTION_GUIDE.md) - how to adopt Chio in a production service
 - [Vision](start-here/VISION.md) - what Chio is for and why
+- [Proof Room Quickstart](start-here/PROOF_ROOM_QUICKSTART.md) - run the checked-in Proof Room fixture bundle locally or via Docker
 - [Historical v2 Migration Draft](start-here/MIGRATION_GUIDE_V2.md) - archived internal draft notes, not current protocol guidance
 
 ## Large document status
@@ -91,7 +92,7 @@ The primary live release documents. Auditors and operators start here.
 
 ### Interop and adapters
 
-- [A2A Adapter Guide](reference/A2A_ADAPTER_GUIDE.md) - thin Chio bridge for the A2A v0.3.0 protocol
+- [A2A Adapter Guide](reference/A2A_ADAPTER_GUIDE.md) - thin Chio bridge for the A2A v1.0.0 protocol
 - [Chio Certify Guide](reference/CHIO_CERTIFY_GUIDE.md) - certification layer that signs conformance evidence into pass/fail artifacts
 - [Credential Interop Guide](reference/CREDENTIAL_INTEROP_GUIDE.md) - narrow portable-credential interop and public identity-network contracts
 - [Economic Interop Guide](reference/ECONOMIC_INTEROP_GUIDE.md) - makes governed receipts legible to IAM, finance, and partner systems
@@ -110,7 +111,7 @@ The primary live release documents. Auditors and operators start here.
 
 - Canonical spec: [spec/PROTOCOL.md](../spec/PROTOCOL.md)
 - [Architecture notes](architecture/) - [Final Architecture](architecture/CHIO_FINAL_ARCHITECTURE.md), [Runtime Boundaries](architecture/CHIO_RUNTIME_BOUNDARIES.md), [Workspace Structure](architecture/WORKSPACE_STRUCTURE.md)
-- [Architecture Decision Records](adr/README.md) - numbered ADRs (ADR-0001 through ADR-0013)
+- [Architecture Decision Records](adr/README.md) - numbered ADRs (ADR-0001 through ADR-0014)
 - [Protocol integration notes](protocols/) - framework, transport, and ecosystem integration designs (Temporal, LangGraph, Envoy, AWS Lambda, K8s, and more), plus the [Strategic Vision](protocols/STRATEGIC-VISION.md) and [Trust Model and Key Management](protocols/TRUST-MODEL-AND-KEY-MANAGEMENT.md)
 - [Standards profiles](standards/) - qualification profiles and JSON conformance matrices (anchor, federation, automation, extension, bounded operational profile, cross-protocol matrix)
 
@@ -137,6 +138,7 @@ The primary live release documents. Auditors and operators start here.
 ## Products built on Chio
 
 - [Chio-Wall documentation suite](chio-wall/README.md) - companion product recording tool-boundary control evidence for information-domain separation
+- [Proof Room](start-here/PROOF_ROOM_QUICKSTART.md) - companion product that verifies a Chio proof bundle and serves its dashboard, with the displayed verdict bound to the bundle's verifier report
 
 ## Operations and planning
 

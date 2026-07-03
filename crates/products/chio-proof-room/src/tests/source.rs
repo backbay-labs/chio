@@ -2,8 +2,8 @@ use super::support::*;
 use super::*;
 use crate::{
     embedded_swarm_authority_bundle, ensure_source_policy_required_claims_verified,
-    is_agent_web_evidence_graph_node, source_verifier_context_with_options,
-    verify_source_standalone_risk_report_with_keys,
+    is_agent_web_evidence_graph_node, merge_source_family_verifier_reports,
+    source_verifier_context_with_options, verify_source_standalone_risk_report_with_keys,
 };
 use chio_core_types::PublicKey;
 
@@ -596,6 +596,39 @@ fn source_standalone_risk_rejects_untrusted_comptroller_signer() -> Result<(), B
     assert!(error
         .to_string()
         .contains("risk comptroller report signer untrusted"));
+    Ok(())
+}
+
+#[test]
+fn merge_source_family_reports_rejects_ok_but_unverified_family_report(
+) -> Result<(), Box<dyn Error>> {
+    let context = runtime_regeneration_context(false)?;
+    // An Ok (non-error) family report whose own verdict is not "verified"
+    // must downgrade the merged report; the merge must not hardcode verified.
+    let rejected_family_report = serde_json::json!({
+        "schema": "chio.transaction.verifier-report.v1",
+        "id": "verifier-report-rejected-family",
+        "verdict": "failed",
+        "accepted": false,
+        "state": "failed",
+        "verified_claims": []
+    });
+
+    let merged = merge_source_family_verifier_reports(&context, vec![rejected_family_report])?;
+
+    assert_ne!(
+        merged.get("verdict").and_then(serde_json::Value::as_str),
+        Some("verified"),
+        "merge must not report verified when a family report is not verified"
+    );
+    assert_eq!(
+        merged.get("accepted").and_then(serde_json::Value::as_bool),
+        Some(false)
+    );
+    assert_ne!(
+        merged.get("state").and_then(serde_json::Value::as_str),
+        Some("verified")
+    );
     Ok(())
 }
 
