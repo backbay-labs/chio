@@ -474,7 +474,7 @@ fn ffi_sign_receipt_recompute_accepts_matching_content() {
 
 #[test]
 fn ffi_sign_receipt_refuses_render_a_sign_b() {
-    // WYSIWYS render-A/sign-B regression (C1) at the C++ ABI boundary.
+    // WYSIWYS render-A/sign-B regression at the C++ ABI boundary.
     // The body claims hash(B) while the canonical content handed to the public
     // C ABI signer is A; the recompute-and-refuse gate MUST reject it
     // fail-closed. Without the fix (relaying the trusted body without

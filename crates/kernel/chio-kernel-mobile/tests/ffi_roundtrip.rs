@@ -357,7 +357,7 @@ fn sign_receipt_accepts_empty_preimage_stream_receipt() {
 
 #[test]
 fn sign_receipt_refuses_render_a_sign_b() {
-    // WYSIWYS render-A/sign-B regression (C1): the body claims
+    // WYSIWYS render-A/sign-B regression: the body claims
     // hash(B) while the canonical content handed to the public signer is A.
     // The recompute-and-refuse gate inside `chio_kernel_core::sign_receipt`
     // MUST reject this fail-closed. Without the fix (relaying the trusted body

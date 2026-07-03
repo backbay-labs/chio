@@ -38,7 +38,7 @@ fn good_token() -> Value {
         },
         "issued_at": 1_710_000_000_u64,
         "expires_at": 1_710_000_600_u64,
-        // 128 hex chars = legacy Ed25519 signature length.
+        // 128 hex chars = Ed25519 signature length.
         "signature": "aa".repeat(64)
     })
 }

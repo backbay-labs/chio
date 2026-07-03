@@ -236,8 +236,7 @@ fn metadata_relay_alert_assurance(fixture_dir: &Path) -> Result<(), XtaskError> 
 /// Committed-fixture invariants for the assurance-export facet beyond the
 /// negative corpus: the committed `export-bundle/manifest.json` must have the
 /// right schema, a canonical 64-hex source package hash, no forbidden safety
-/// claims, and only safe artifact paths free of secret markers. The consolidated
-/// handler had checked only the negative-case IDs.
+/// claims, and only safe artifact paths free of secret markers.
 fn metadata_relay_alert_assurance_export(fixture_dir: &Path) -> Result<(), XtaskError> {
     let manifest = load_json(&fixture_dir.join("export-bundle/manifest.json"))?;
     if str_field(&manifest, "schema")

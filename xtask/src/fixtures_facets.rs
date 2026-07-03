@@ -266,8 +266,7 @@ fn metadata_runtime(_root: &Path, fixture_dir: &Path) -> Result<(), XtaskError> 
     }
     // The runtime policy admission must bind the verifier-owned recipient and
     // authenticated sender, carry admitted passport material, and pin exactly one
-    // scarcity policy with the canonical runtime/scarcity hashes. The consolidated
-    // handler had reduced this to "is a signed envelope".
+    // scarcity policy with the canonical runtime/scarcity hashes.
     let admission = policy_envelope
         .get("body")
         .and_then(|b| b.get("admission"))

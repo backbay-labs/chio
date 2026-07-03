@@ -536,7 +536,7 @@ async fn shutdown_before_send_rejects_request_no_post_shutdown_enqueue() {
     }
 
     // An oversized request after shutdown must also be refused (the oversized
-    // inline fallback honours the same shutdown exclusion), proving hole-1's
+    // inline fallback honours the same shutdown exclusion), proving the
     // fallback does not become a post-shutdown bypass.
     let late_oversized = vec![0x03u8; 8 * 1024];
     let late_oversized_body = body_for_content(&keypair, &late_oversized);

@@ -83,7 +83,7 @@ fn receipt_explain_bilateral_renders_dual_dsse_and_inspection_trace() {
             "bilateral", // sentinel receipt_id; the bilateral path is keyed off --input-file shape
             "--input-file",
             fixture.to_str().unwrap(),
-            // The flag is `--inspect-bilateral`. The legacy spelling
+            // The flag is `--inspect-bilateral`. The alias
             // (`--explain-bilateral`) is retained as a clap alias on the
             // parent enum (see types.rs).
             "--inspect-bilateral",

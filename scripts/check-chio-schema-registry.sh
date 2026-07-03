@@ -172,7 +172,7 @@ for entry in registry.get("artifacts", []):
     status = entry.get("status")
 
     if schema_file.startswith("spec/schemas/chio/"):
-        errors.append(f"{schema_id} points at retired schema root {schema_file}")
+        errors.append(f"{schema_id} points at inactive schema root {schema_file}")
         continue
 
     if schema_file.startswith(checked_chio_schema_roots):
@@ -193,7 +193,7 @@ for schema_root in checked_chio_schema_roots:
             errors.append(f"Chio schema {rel} is absent from MANIFEST.sha256 or has stale hash")
         schema_text = schema_path.read_text(encoding="utf-8")
         if '"$ref"' in schema_text and "../../chio/" in schema_text:
-            errors.append(f"Chio schema {rel} references legacy chio schema paths")
+            errors.append(f"Chio schema {rel} references inactive chio schema paths")
 
 for schema_root in checked_active_chio_schema_text_roots:
     for schema_path in sorted((root / schema_root).glob("**/*.schema.json")):

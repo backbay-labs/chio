@@ -151,7 +151,7 @@ fn sign_receipt_uses_webcrypto_seed() {
 
 #[wasm_bindgen_test]
 fn sign_receipt_refuses_without_canonical_content() {
-    // WYSIWYS: the legacy `{body}`-only shape (no preimage) must fail
+    // WYSIWYS: a `{body}`-only shape (no preimage) must fail
     // closed so a caller cannot render content A while signing a body claiming
     // hash(B) by omitting the preimage.
     let seed_hex = mint_signing_seed_hex().expect("mint seed");

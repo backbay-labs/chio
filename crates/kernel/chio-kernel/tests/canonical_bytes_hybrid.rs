@@ -8,10 +8,10 @@
 //!    the canonical JSON byte buffer once and returns it alongside the
 //!    signed receipt; downstream consumers receive the exact bytes the
 //!    backend signed.
-//! 2. **Byte-identity with the legacy classical entrypoint.** Under the
+//! 2. **Byte-identity with the classical entrypoint.** Under the
 //!    classical [`Ed25519Backend`] path the canonical bytes returned by
 //!    the new hybrid-canonical helper are byte-identical to the bytes
-//!    the legacy `sign_receipt_body_with_backend` flow signs. This is
+//!    the `sign_receipt_body_with_backend` flow signs. This is
 //!    the byte-equivalence guarantee.
 //! 3. **Hybrid round-trip verifies against the shared bytes.** The
 //!    [`HybridBackend`] signs the shared canonical buffer; the
@@ -107,7 +107,7 @@ fn build_body(kernel_key: PublicKey) -> ChioReceiptBody {
 fn shared_canonical_bytes_match_classical_signing_path() {
     // Contract 2: the canonical buffer the hybrid-canonical helper
     // emits under a classical backend is byte-identical to the buffer
-    // the legacy classical entrypoint signs. Deployments
+    // the classical entrypoint signs. Deployments
     // see no byte drift when they switch to the canonical-bytes-aware
     // entrypoint.
     let kp = Keypair::from_seed(&fixture_classical_seed());
@@ -135,7 +135,7 @@ fn shared_canonical_bytes_match_classical_signing_path() {
         wrapper_bytes.as_slice(),
         "shared CanonicalBytes drifted from authoritative ChioReceiptSigningBody bytes"
     );
-    // The signed receipt is byte-identical to the legacy receipt: the
+    // The signed receipt is byte-identical to the classical receipt: the
     // hybrid path and classical path produce the same signed envelope
     // when fed the same body and Ed25519 backend (Ed25519 signatures
     // are deterministic per RFC 8032).

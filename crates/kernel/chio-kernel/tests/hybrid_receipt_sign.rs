@@ -178,7 +178,7 @@ fn pq_required_with_seed_constructs_hybrid_backend() {
 #[test]
 fn classical_receipt_byte_identical_under_allow_classical() {
     // Byte-identity contract: receipts signed under `allow_classical`
-    // serialize byte-for-byte the same as the legacy classical path.
+    // serialize byte-for-byte the same as the classical path.
     let kp = Keypair::generate();
     let backend =
         kernel_signing_backend(KernelCryptoFloor::AllowClassical, kp.clone(), None).unwrap();
