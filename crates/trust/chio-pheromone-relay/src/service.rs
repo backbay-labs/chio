@@ -201,12 +201,25 @@ pub trait RelayBatchReceiver: Send + Sync {
     ) -> Result<PheromoneReceiveReport, PheromoneRelayError>;
 }
 
+/// Optional process-wide metrics hook whose Prometheus output is appended to the
+/// relay `/metrics` body.
+///
+/// DEPLOYABILITY (iroh DUAL transport): the iroh federation-transport metric
+/// families live in `chio-federation-transport-iroh`, which already depends on
+/// this crate. Naming that crate here would be a dependency cycle, so this crate
+/// never references it. Instead the serving binary (`chio-cli`) injects a callback
+/// that renders those process-global families, and [`handle_metrics`] appends the
+/// callback output to its own Prometheus body. `None` (the default) keeps the
+/// `/metrics` response byte-identical to the pre-hook behavior.
+pub type ExtraMetricsHook = Arc<dyn Fn() -> String + Send + Sync>;
+
 #[derive(Clone)]
 pub struct PheromoneRelayService {
     config: PheromoneRelayConfig,
     directory: PeerDirectory,
     receiver: Arc<dyn RelayBatchReceiver>,
     store: Arc<SqlitePheromoneRelayStore>,
+    extra_metrics: Option<ExtraMetricsHook>,
 }
 
 impl PheromoneRelayService {
@@ -222,7 +235,22 @@ impl PheromoneRelayService {
             directory,
             receiver,
             store,
+            extra_metrics: None,
         }
+    }
+
+    /// Attach an optional extra-metrics hook whose Prometheus output is appended to
+    /// the relay `/metrics` body.
+    ///
+    /// Additive by construction: callers that never invoke this keep the default
+    /// `None` and the `/metrics` response is byte-identical. Used to expose the
+    /// iroh federation-transport metric families on the live relay `/metrics`
+    /// surface WITHOUT this crate depending on the iroh transport crate (which
+    /// already depends on this crate, so such a dependency would be a cycle).
+    #[must_use]
+    pub fn with_extra_metrics_hook(mut self, hook: ExtraMetricsHook) -> Self {
+        self.extra_metrics = Some(hook);
+        self
     }
 
     pub async fn serve(self, listener: tokio::net::TcpListener) -> Result<(), PheromoneRelayError> {
@@ -367,11 +395,15 @@ async fn handle_metrics(
         .store
         .relay_metrics_snapshot(&service.config.local_kernel_id, now)
         .map_err(|error| relay_http_error(&service, error))?;
-    Ok((
-        [(header::CONTENT_TYPE, "text/plain; version=0.0.4")],
-        snapshot.render(RelayMetricsFormat::Prometheus),
-    )
-        .into_response())
+    let mut body = snapshot.render(RelayMetricsFormat::Prometheus);
+    if let Some(extra_metrics) = service.extra_metrics.as_ref() {
+        // Append the injected metric families (e.g. the iroh federation-transport
+        // process-global families) on the SAME scrape surface. Additive: with no
+        // hook set this branch is skipped and the body is unchanged.
+        body.push('\n');
+        body.push_str(&extra_metrics());
+    }
+    Ok(([(header::CONTENT_TYPE, "text/plain; version=0.0.4")], body).into_response())
 }
 
 async fn handle_batch_relay(

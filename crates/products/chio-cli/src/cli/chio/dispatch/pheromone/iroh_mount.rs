@@ -137,6 +137,11 @@ pub(crate) struct IrohMount {
     pub(crate) router: Router,
     /// This endpoint's authenticated id (for the startup log line).
     pub(crate) endpoint_id: EndpointId,
+    /// The socket address(es) the endpoint actually bound. With the default
+    /// `--iroh-bind-addr 0.0.0.0:0` the OS assigns an ephemeral port, so this is
+    /// the ONLY place the operator can learn the reachable port; it is logged at
+    /// startup and returned here so it is observable + assertable in tests.
+    pub(crate) bound_sockets: Vec<SocketAddr>,
     /// The lane labels actually mounted (for the startup log line).
     pub(crate) enabled_lanes: Vec<&'static str>,
 }
@@ -386,6 +391,10 @@ pub(crate) async fn build_iroh_router(
             CliError::cli_other_error(format!("Chio iroh transport endpoint bind: {error}"))
         })?;
     let endpoint_id = endpoint.id();
+    // Capture the ACTUAL bound socket(s) before the endpoint is moved into the
+    // router. With the default ephemeral port this is the operator's only way to
+    // learn the reachable address to configure on peers.
+    let bound_sockets = endpoint.bound_sockets();
 
     // The shared clock the handler stamps received batches with.
     let now_fn: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(unix_now_ms);
@@ -396,6 +405,7 @@ pub(crate) async fn build_iroh_router(
     Ok(IrohMount {
         router,
         endpoint_id,
+        bound_sockets,
         enabled_lanes,
     })
 }
@@ -638,6 +648,18 @@ mod tests {
             .await
             .expect("mount builder succeeds with a valid directory + gate");
         assert_eq!(mount.enabled_lanes, vec!["pheromone"]);
+        // DEPLOYABILITY: the mount returns the ACTUAL bound socket(s). Binding on
+        // loopback port 0, the OS must have assigned a concrete, non-zero port the
+        // operator can log + hand to peers.
+        assert!(
+            !mount.bound_sockets.is_empty(),
+            "mount must report at least one bound socket"
+        );
+        assert!(
+            mount.bound_sockets.iter().all(|socket| socket.port() != 0),
+            "an ephemeral bind must resolve to a concrete non-zero port: {:?}",
+            mount.bound_sockets
+        );
         let acceptor_addr = direct_addr(mount.router.endpoint());
 
         // An unadmitted (unbound) endpoint is rejected at the admission gate (403 at

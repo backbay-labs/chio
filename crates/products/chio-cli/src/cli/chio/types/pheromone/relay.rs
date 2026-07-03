@@ -103,7 +103,13 @@ pub(crate) enum ChioPheromoneRelayCommands {
         #[arg(long, value_name = "PATH")]
         iroh_transport_key: Option<PathBuf>,
 
-        /// Socket address the iroh endpoint binds. Default 0.0.0.0:0 (ephemeral port).
+        /// Socket address the iroh endpoint binds. Default 0.0.0.0:0 (ephemeral
+        /// port) is convenient for a quick DUAL trial, but a random port cannot be
+        /// found by peers under the default RelayMode::Disabled. For a DURABLE
+        /// deployment set a STABLE address here and pair it with a discovery
+        /// mechanism / --iroh-relay-url so peers can reach a fixed EndpointId at a
+        /// fixed address. The actual bound address(es) + EndpointId are logged at
+        /// startup (tracing target "chio.iroh.transport").
         #[arg(long, value_name = "ADDR", default_value = "0.0.0.0:0")]
         iroh_bind_addr: String,
 

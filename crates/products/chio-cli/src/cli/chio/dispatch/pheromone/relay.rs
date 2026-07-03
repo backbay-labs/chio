@@ -218,7 +218,7 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         (inputs, receiver, relay_store.clone())
     });
     let relay_limits = relay_service_limits_for_profile(profile);
-    let service = chio_pheromone_relay::PheromoneRelayService::new(
+    let mut service = chio_pheromone_relay::PheromoneRelayService::new(
         chio_pheromone_relay::PheromoneRelayConfig {
             local_kernel_id: peer_directory.local_kernel_id().to_string(),
             profile,
@@ -233,6 +233,18 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         receiver,
         relay_store,
     );
+    // DEPLOYABILITY (opt-in, DUAL): when the iroh transport is mounted, expose its
+    // process-global metric families on the SAME live relay /metrics endpoint for
+    // the whole process lifetime (not just a shutdown-time debug snapshot). The
+    // hook is a plain render function pointer; chio-pheromone-relay never depends
+    // on the iroh transport crate (that would be a dependency cycle) - it only
+    // calls the injected callback. With --iroh-enable off, iroh_mount_plan is None,
+    // so no hook is attached and the /metrics response is byte-for-byte unchanged.
+    if iroh_mount_plan.is_some() {
+        service = service.with_extra_metrics_hook(std::sync::Arc::new(
+            iroh_transport_metrics_prometheus as fn() -> String,
+        ));
+    }
     let address = listen.parse::<std::net::SocketAddr>().map_err(|error| {
         CliError::cli_other_error(format!("Chio pheromone relay listen address: {error}"))
     })?;
@@ -248,11 +260,20 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         let iroh_mount = match iroh_mount_plan {
             Some((inputs, receiver, relay_store)) => {
                 let mount = build_iroh_router(inputs, receiver, relay_store).await?;
+                // DEPLOYABILITY: print the ACTUAL bound address(es) + the EndpointId
+                // (short + full) + the enabled lanes so the operator knows exactly
+                // what to configure on peers. With the default ephemeral
+                // --iroh-bind-addr this is the only place the reachable port surfaces.
                 tracing::info!(
                     target: "chio.iroh.transport",
                     endpoint_id = %mount.endpoint_id,
+                    endpoint_id_short = %mount.endpoint_id.fmt_short(),
+                    bound_sockets = ?mount.bound_sockets,
                     lanes = ?mount.enabled_lanes,
-                    "iroh federation-transport mounted alongside the HTTP relay (DUAL, opt-in --iroh-enable)"
+                    "iroh federation-transport mounted alongside the HTTP relay (DUAL, opt-in \
+                     --iroh-enable); configure peers with this EndpointId and one of the bound \
+                     socket addresses (for a durable deployment set a stable --iroh-bind-addr \
+                     plus discovery/--iroh-relay-url)"
                 );
                 Some(mount)
             }
@@ -268,15 +289,10 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
             .await
             .map_err(|error| CliError::cli_other_error(format!("Chio pheromone relay: {error}")));
         if let Some(mount) = iroh_mount {
-            // Final iroh federation-transport metrics snapshot for post-mortem. The
-            // render surface (chio_federation_transport_iroh::metrics) is process
-            // global; the clean production hook is to concatenate this onto the
-            // relay's own /metrics exporter in chio-pheromone-relay's service.rs.
-            tracing::debug!(
-                target: "chio.iroh.transport",
-                metrics = %iroh_transport_metrics_prometheus(),
-                "iroh federation-transport final metrics snapshot"
-            );
+            // The live iroh federation-transport metrics are scraped on the relay's
+            // own /metrics endpoint for the whole process lifetime (see the
+            // with_extra_metrics_hook wiring above), so teardown just stops the
+            // router; no post-mortem snapshot is needed.
             let _ = mount.router.shutdown().await;
         }
         serve_result
