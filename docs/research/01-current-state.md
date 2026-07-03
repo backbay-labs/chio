@@ -11,7 +11,7 @@ The codebase already has:
 - useful guard implementations
 - signed receipts for allow and deny decisions
 - an MCP adapter that can wrap existing MCP tools
-- a richer policy model in `arc-policy` that is ahead of the main CLI path
+- a richer policy model in `chio-policy` that is ahead of the main CLI path
 
 The codebase does not yet have:
 
@@ -45,27 +45,27 @@ Relevant code:
 
 The workspace decomposition is sensible:
 
-- `arc-core` for portable protocol data types
-- `arc-kernel` for enforcement
-- `arc-guards` for policy enforcement units
-- `arc-manifest` for signed tool metadata
-- `arc-mcp-adapter` for migration
-- `arc-policy` for the future policy plane
+- `chio-core` for portable protocol data types
+- `chio-kernel` for enforcement
+- `chio-guards` for policy enforcement units
+- `chio-manifest` for signed tool metadata
+- `chio-mcp-adapter` for migration
+- `chio-policy` for the future policy plane
 
 This is a good foundation for a layered runtime.
 
 ### 3. Real migration instinct
 
-The existence of `arc-mcp-adapter` is strategically important. It shows the project already understands that adoption will not happen via a flag day rewrite.
+The existence of `chio-mcp-adapter` is strategically important. It shows the project already understands that adoption will not happen via a flag day rewrite.
 
 Relevant code:
 
-- [crates/arc-mcp-adapter/src/lib.rs](../../crates/protocol/chio-mcp-adapter/src/lib.rs)
-- [crates/arc-mcp-adapter/src/transport.rs](../../crates/protocol/chio-mcp-adapter/src/transport.rs)
+- [crates/protocol/chio-mcp-adapter/src/lib.rs](../../crates/protocol/chio-mcp-adapter/src/lib.rs)
+- [crates/protocol/chio-mcp-adapter/src/transport.rs](../../crates/protocol/chio-mcp-adapter/src/transport.rs)
 
 ### 4. The policy future is already partly built
 
-`arc-policy` is more mature than the current CLI ARC YAML policy path. It already contains:
+`chio-policy` is more mature than the current CLI ARC YAML policy path. It already contains:
 
 - a richer HushSpec schema
 - validation
@@ -75,9 +75,9 @@ Relevant code:
 
 Relevant code:
 
-- [crates/arc-policy/src/lib.rs](../../crates/guards/chio-policy/src/lib.rs)
-- [crates/arc-policy/src/compiler.rs](../../crates/guards/chio-policy/src/compiler.rs)
-- [crates/arc-policy/src/models.rs](../../crates/guards/chio-policy/src/models.rs)
+- [crates/guards/chio-policy/src/lib.rs](../../crates/guards/chio-policy/src/lib.rs)
+- [crates/guards/chio-policy/src/compiler.rs](../../crates/guards/chio-policy/src/compiler.rs)
+- [crates/guards/chio-policy/src/models.rs](../../crates/guards/chio-policy/src/models.rs)
 
 ## What Is Structurally Missing
 
@@ -93,7 +93,7 @@ The current agent/kernel messages only cover:
 
 Relevant code:
 
-- [crates/arc-core/src/message.rs](../../crates/core/chio-core-types/src/message.rs)
+- [crates/core/chio-core/src/message.rs](../../crates/core/chio-core-types/src/message.rs)
 
 That is too small to replace MCP, which is a session protocol with lifecycle, negotiated capabilities, notifications, and multiple primitives.
 
@@ -103,7 +103,7 @@ ARC currently speaks a custom length-prefixed canonical JSON framing layer.
 
 Relevant code:
 
-- [crates/arc-kernel/src/transport.rs](../../crates/kernel/chio-kernel/src/transport.rs)
+- [crates/kernel/chio-kernel/src/transport.rs](../../crates/kernel/chio-kernel/src/transport.rs)
 
 That may be fine internally, but it is not enough externally if the goal is ecosystem replacement. MCP clients and servers expect JSON-RPC session semantics.
 
@@ -135,7 +135,7 @@ It still does not present:
 
 Relevant code:
 
-- [crates/arc-mcp-adapter/src/lib.rs](../../crates/protocol/chio-mcp-adapter/src/lib.rs)
+- [crates/protocol/chio-mcp-adapter/src/lib.rs](../../crates/protocol/chio-mcp-adapter/src/lib.rs)
 
 ### 4. Runtime is still behind the draft spec
 
@@ -149,7 +149,7 @@ It also now exposes a first standard task slice for server-side tool execution: 
 
 The runtime now also has a first remote MCP edge slice: `arc mcp serve-http` exposes authenticated Streamable HTTP session admission with `MCP-Session-Id` issuance, per-session remote edge workers, POST-based JSON request handling with SSE responses, stricter `Accept` and `Content-Type` enforcement, and remote nested sampling round-trips through follow-up POSTed JSON-RPC responses. Session IDs are now only surfaced after a successful `initialize` response rather than being preallocated at transport admission time. Session state also carries a normalized transport-auth context, so HTTP bearer admission is recorded separately from later capability authorization. That auth path is no longer static-token-only: the remote edge now supports either bootstrap static bearer admission or Ed25519-signed JWT bearer admission with normalized OAuth-style `iss` / `sub` / `aud` / scope capture, and follow-up requests must remain consistent with the authenticated session identity. In JWT mode the edge now also serves protected-resource metadata at the standard well-known paths, returns `WWW-Authenticate` challenges pointing clients at the metadata document and current scope hints, and can serve colocated OAuth authorization-server metadata at the issuer’s RFC 8414 well-known path when explicit authorization/token endpoints are configured. Admin APIs can also be separated onto their own bearer via `--admin-token`. The honest remaining gaps on the remote side are resumability, standalone GET SSE streams, actual token-exchange / hosted authorization-server flows, and broader hosted-runtime ownership beyond one wrapped subprocess per remote session.
 
-The trust plane is no longer only embedded local SQLite either. `arc-kernel` now ships SQLite receipt, revocation, authority, and budget backends, while `arc-cli` also ships an HA trust-control service in `arc trust serve`. That service now centralizes capability issuance, authority status/rotation, revocation query/control, durable tool/child receipt ingestion/query, and shared invocation-budget accounting, and every runtime path can use it through `--control-url` and `--control-token`. The control client now accepts a comma-separated endpoint list and will fail over across nodes. In clustered mode, trust-control nodes advertise themselves, deterministically elect the current write leader, forward writes there, and repair-sync authority snapshots, revocations, receipts, and budget usage in the background. Hosted HTTP admin APIs proxy to the control service when configured, so receipts, revocations, budgets, and authority status are no longer tied to whichever node happened to execute the request. Authority rotation remains intentionally future-session-only rather than a hot-swap of already running sessions, but trusted key history plus shared-SQLite or control-plane authority snapshots keep already-issued capabilities valid while new sessions converge on the new issuer across nodes without restart.
+The trust plane is no longer only embedded local SQLite either. `chio-kernel` now ships SQLite receipt, revocation, authority, and budget backends, while `chio-cli` also ships an HA trust-control service in `arc trust serve`. That service now centralizes capability issuance, authority status/rotation, revocation query/control, durable tool/child receipt ingestion/query, and shared invocation-budget accounting, and every runtime path can use it through `--control-url` and `--control-token`. The control client now accepts a comma-separated endpoint list and will fail over across nodes. In clustered mode, trust-control nodes advertise themselves, deterministically elect the current write leader, forward writes there, and repair-sync authority snapshots, revocations, receipts, and budget usage in the background. Hosted HTTP admin APIs proxy to the control service when configured, so receipts, revocations, budgets, and authority status are no longer tied to whichever node happened to execute the request. Authority rotation remains intentionally future-session-only rather than a hot-swap of already running sessions, but trusted key history plus shared-SQLite or control-plane authority snapshots keep already-issued capabilities valid while new sessions converge on the new issuer across nodes without restart.
 
 The remote auth surface also crossed the “real hosted auth server” threshold. `arc mcp serve-http` can now either verify external JWTs or act as its own OAuth authorization server with `GET/POST /oauth/authorize`, `POST /oauth/token`, and `GET /oauth/jwks.json`. The hosted server supports authorization code with `S256` PKCE and `urn:ietf:params:oauth:grant-type:token-exchange`, publishes protected-resource and authorization-server metadata, and enforces scope plus audience/resource binding on the resource-server side.
 
@@ -180,14 +180,14 @@ The runtime split is mostly closed now.
 The repo still has two authoring formats:
 
 - a simple ARC YAML path used by the CLI
-- a more ambitious HushSpec path in `arc-policy`
+- a more ambitious HushSpec path in `chio-policy`
 
 The important change is that both now compile into the same loaded runtime policy path. The remaining issue is product convergence and ergonomics, not a fake compile-then-discard execution path.
 
 Relevant code:
 
 - [crates/platform/chio-control-plane/src/policy.rs](../../crates/platform/chio-control-plane/src/policy.rs)
-- [crates/arc-policy/src/compiler.rs](../../crates/guards/chio-policy/src/compiler.rs)
+- [crates/guards/chio-policy/src/compiler.rs](../../crates/guards/chio-policy/src/compiler.rs)
 
 This is still a maturity issue, but it is no longer a runtime integrity problem.
 

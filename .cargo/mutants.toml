@@ -125,7 +125,7 @@ examine_globs = [
     "crates/guards/chio-guards/src/data_flow.rs",
     "crates/guards/chio-guards/src/behavioral_sequence.rs",
     "crates/guards/chio-guards/src/text_utils.rs",
-    "crates/guards/chio-guards/src/spider_sense.rs",
+    "crates/guards/chio-guards/src/embedding_anomaly.rs",
     "crates/guards/chio-guards/src/behavioral_profile.rs",
     "crates/guards/chio-guards/src/agent_velocity.rs",
     "crates/guards/chio-guards/src/velocity.rs",
@@ -189,7 +189,7 @@ exclude_globs = [
     "crates/guards/chio-policy/src/rulesets/**", # rationale: excluded helper or verification surface.
     # chio-guards: pure types, advisory-by-design guards, and the external/
     # adapter tree (remote-process bridges, integration-tested rather than
-    # mutation-tested). text_utils.rs and spider_sense.rs are intentionally
+    # mutation-tested). text_utils.rs and embedding_anomaly.rs are intentionally
     # not excluded because they feed or emit deny decisions.
     # rationale: these remaining files are helper, advisory, or process-bridge
     # surfaces with better coverage from integration and adapter tests than

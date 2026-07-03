@@ -20,10 +20,10 @@ ARC already has stronger repo-local integration coverage than it did when E8 was
 
 The important current assets are:
 
-- `crates/arc-cli/tests/mcp_serve.rs`
-- `crates/arc-cli/tests/mcp_serve_http.rs`
-- `crates/arc-cli/tests/mcp_auth_server.rs`
-- `crates/arc-cli/tests/trust_cluster.rs`
+- `crates/products/chio-cli/tests/mcp_serve.rs`
+- `crates/products/chio-cli/tests/mcp_serve_http.rs`
+- `crates/products/chio-cli/tests/mcp_auth_server.rs`
+- `crates/products/chio-cli/tests/trust_cluster.rs`
 
 What those tests already cover well:
 
@@ -105,7 +105,7 @@ ARC should copy that discipline.
 
 The `conformance/src/bin/server.rs` and `conformance/src/bin/client.rs` layout is useful because it creates a stable test target for scenario-driven execution.
 
-ARC should likely do the same through a dedicated harness crate instead of piling more orchestration into `arc-cli/tests`.
+ARC should likely do the same through a dedicated harness crate instead of piling more orchestration into `chio-cli/tests`.
 
 ### 3. Published result artifacts
 

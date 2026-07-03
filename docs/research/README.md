@@ -58,8 +58,8 @@ Primary external references used in this research:
 Primary local references used in this research:
 
 - [spec/PROTOCOL.md](../../spec/PROTOCOL.md)
-- [crates/arc-core/src/message.rs](../../crates/core/chio-core-types/src/message.rs)
-- [crates/arc-kernel/src/transport.rs](../../crates/kernel/chio-kernel/src/transport.rs)
-- [crates/arc-mcp-adapter/src/lib.rs](../../crates/protocol/chio-mcp-adapter/src/lib.rs)
-- [crates/arc-policy/src/compiler.rs](../../crates/guards/chio-policy/src/compiler.rs)
+- [crates/core/chio-core/src/message.rs](../../crates/core/chio-core-types/src/message.rs)
+- [crates/kernel/chio-kernel/src/transport.rs](../../crates/kernel/chio-kernel/src/transport.rs)
+- [crates/protocol/chio-mcp-adapter/src/lib.rs](../../crates/protocol/chio-mcp-adapter/src/lib.rs)
+- [crates/guards/chio-policy/src/compiler.rs](../../crates/guards/chio-policy/src/compiler.rs)
 - [crates/platform/chio-control-plane/src/policy.rs](../../crates/platform/chio-control-plane/src/policy.rs)

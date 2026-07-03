@@ -21,7 +21,7 @@ Add a session abstraction that owns:
 Suggested module split:
 
 ```text
-crates/arc-kernel/src/session/
+crates/kernel/chio-kernel/src/session/
   mod.rs
   lifecycle.rs
   inflight.rs
@@ -183,7 +183,7 @@ Benefits:
 
 ## Metadata parity
 
-Current `ToolDefinition` in `arc-manifest` is missing some MCP-facing fields that matter for compatibility:
+Current `ToolDefinition` in `chio-manifest` is missing some MCP-facing fields that matter for compatibility:
 
 - title
 - icons
@@ -278,7 +278,7 @@ Prompt retrieval should support policy gates such as:
 - argument schema and size checks
 - optional prompt-injection scanning on prompt bodies and embedded resources
 
-That aligns well with the project's security thesis and with `arc-policy` detection work.
+That aligns well with the project's security thesis and with `chio-policy` detection work.
 
 ## 8. Sampling and elicitation design
 

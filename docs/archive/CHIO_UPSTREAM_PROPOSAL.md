@@ -4,16 +4,16 @@ Status: decisive. Plugin-rewrite agents should code against §5 (migration table
 
 ## 0. Constraint recap
 
-- `HushSpec` (`arc/crates/arc-policy/src/models.rs:107-123`) and `Rules` (`models.rs:143-164`) are both `#[serde(deny_unknown_fields)]`. `Rules` closed to 10 keys.
+- `HushSpec` (`crates/guards/chio-policy/src/models.rs:107-123`) and `Rules` (`models.rs:143-164`) are both `#[serde(deny_unknown_fields)]`. `Rules` closed to 10 keys.
 - **`Extensions` (`models.rs:329-342`) is ALSO `deny_unknown_fields`**, closed to `posture|origins|detection|reputation|runtime_assurance`. So "drop under `extensions.chio.*`" is not a zero-change path - still needs one new `Extensions.chio` slot.
-- Approval machinery exists capability-side: `Constraint::RequireApprovalAbove { threshold_units }` (`arc/crates/arc-kernel-core/src/normalized.rs:73`), enforced at `arc/crates/arc-kernel/src/approval.rs:526`. HushSpec already emits this for `tool_access.require_confirmation` (compiler at `arc/crates/arc-policy/src/compiler.rs:590`). USD threshold is missing.
-- `VelocityGuard` (`arc/crates/arc-guards/src/velocity.rs:126-211`) and `AgentVelocityGuard` (`arc/crates/arc-guards/src/agent_velocity.rs:107-169`) exist and are fully-wired `Guard` impls, but are **not** in `GuardPipeline::default_pipeline()` (`arc/crates/arc-guards/src/pipeline.rs:38-48`) and have **no YAML compiler path**. Dead-coded relative to HushSpec today.
+- Approval machinery exists capability-side: `Constraint::RequireApprovalAbove { threshold_units }` (`crates/kernel/chio-kernel-core/src/normalized.rs:73`), enforced at `crates/kernel/chio-kernel/src/approval.rs:526`. HushSpec already emits this for `tool_access.require_confirmation` (compiler at `crates/guards/chio-policy/src/compiler.rs:590`). USD threshold is missing.
+- `VelocityGuard` (`crates/guards/chio-guards/src/velocity.rs:126-211`) and `AgentVelocityGuard` (`crates/guards/chio-guards/src/agent_velocity.rs:107-169`) exist and are fully-wired `Guard` impls, but are **not** in `GuardPipeline::default_pipeline()` (`crates/guards/chio-guards/src/pipeline.rs:38-48`) and have **no YAML compiler path**. Dead-coded relative to HushSpec today.
 
 ## 1. `velocity` - Option A, first-class `Rules.velocity`
 
 **Decision: first-class.** `VelocityGuard`/`AgentVelocityGuard` already implement the exact semantics (invocations/window, spend/window, burst factor, per-agent/per-capability keying). Missing piece is ~30 lines struct + ~40 lines compiler glue. Extensions path means re-inventing `VelocityConfig` in chio-bridge and leaving the in-tree guard unused forever.
 
-Proposed diff (arc-policy only):
+Proposed diff (chio-policy only):
 
 ```rust
 // Rules struct (models.rs:143-164), add:
@@ -35,7 +35,7 @@ pub struct VelocityRule {
 }
 ```
 
-Compiler wiring (follow-on work, not this PR): `compile_velocity_rule()` in `arc/crates/arc-policy/src/compiler.rs` returns `(Option<VelocityConfig>, Option<AgentVelocityConfig>)` and the `arc-cli` policy bootstrap pushes matching guards onto the pipeline between `ForbiddenPathGuard` and `ShellCommandGuard`. **No edits to `arc-guards` or `arc-kernel`.**
+Compiler wiring (follow-on work, not this PR): `compile_velocity_rule()` in `crates/guards/chio-policy/src/compiler.rs` returns `(Option<VelocityConfig>, Option<AgentVelocityConfig>)` and the `chio-cli` policy bootstrap pushes matching guards onto the pipeline between `ForbiddenPathGuard` and `ShellCommandGuard`. **No edits to `chio-guards` or `chio-kernel`.**
 
 ## 2. `human_in_loop` - Option A, first-class `Rules.human_in_loop`
 
@@ -68,7 +68,7 @@ pub enum HumanInLoopTimeoutAction { #[default] Deny, Defer }
 
 ## 3. Domain-specific keys → `extensions.chio.*`
 
-Shape the chio-ext slot on `Extensions`. One arc-policy edit.
+Shape the chio-ext slot on `Extensions`. One chio-policy edit.
 
 ```rust
 // Extensions struct (models.rs:329-342), add:
@@ -135,18 +135,18 @@ Cross-ref with `/tmp/chio-debate/DEBATER_B_RIGORIST.md` §3: every file cited (h
 
 One focused PR against arc. Files (all under the repository root):
 
-1. **`crates/arc-policy/src/models.rs`** - add `Rules.velocity`, `Rules.human_in_loop`, `Extensions.chio`; add 2 new default helpers; add 1 enum + 8 structs per §§1-3. All new fields `Option<T>` - no existing policy breaks.
-2. **`crates/arc-policy/src/compiler.rs`** - add `compile_velocity_rule()` returning `(Option<VelocityConfig>, Option<AgentVelocityConfig>)` (mechanical map to existing `arc-guards` types). Extend `compile_tool_constraints` (line 584) to emit `Constraint::RequireApprovalAbove { threshold_units: rule.approve_above.unwrap_or(0) }` when `rules.human_in_loop` matches. `extensions.chio` is passthrough (not compiled).
-3. **`crates/arc-cli/src/policy.rs`** - when compiled policy has velocity config, push `VelocityGuard`/`AgentVelocityGuard` onto pipeline between `ForbiddenPathGuard` and `ShellCommandGuard`.
-4. **Tests (new):** `crates/arc-policy/tests/velocity.rs`, `human_in_loop.rs`, `chio_extension.rs`. Each includes a `deny_unknown_fields` negative.
-5. **Tests (update):** `crates/arc-policy/tests/compile_policy.rs` - assert compile output includes `VelocityGuard` + `RequireApprovalAbove` when HushSpec specifies them.
+1. **`crates/guards/chio-policy/src/models.rs`** - add `Rules.velocity`, `Rules.human_in_loop`, `Extensions.chio`; add 2 new default helpers; add 1 enum + 8 structs per §§1-3. All new fields `Option<T>` - no existing policy breaks.
+2. **`crates/guards/chio-policy/src/compiler.rs`** - add `compile_velocity_rule()` returning `(Option<VelocityConfig>, Option<AgentVelocityConfig>)` (mechanical map to existing `chio-guards` types). Extend `compile_tool_constraints` (line 584) to emit `Constraint::RequireApprovalAbove { threshold_units: rule.approve_above.unwrap_or(0) }` when `rules.human_in_loop` matches. `extensions.chio` is passthrough (not compiled).
+3. **`crates/products/chio-cli/src/policy.rs`** - when compiled policy has velocity config, push `VelocityGuard`/`AgentVelocityGuard` onto pipeline between `ForbiddenPathGuard` and `ShellCommandGuard`.
+4. **Tests (new):** `crates/guards/chio-policy/tests/velocity.rs`, `human_in_loop.rs`, `chio_extension.rs`. Each includes a `deny_unknown_fields` negative.
+5. **Tests (update):** `crates/guards/chio-policy/tests/compile_policy.rs` - assert compile output includes `VelocityGuard` + `RequireApprovalAbove` when HushSpec specifies them.
 6. **Docs/fixtures:** `examples/policies/canonical-hushspec.yaml` - add commented `# rules.velocity:` and `# rules.human_in_loop:` stanzas (no behavior change).
 
-**Explicitly NOT touched**: `crates/arc-guards/`, `crates/arc-kernel/`, `crates/arc-kernel-core/`, trust-plane. Enforcement is already in place; we're just teaching YAML how to request it.
+**Explicitly NOT touched**: `crates/guards/chio-guards/`, `crates/kernel/chio-kernel/`, `crates/kernel/chio-kernel-core/`, trust-plane. Enforcement is already in place; we're just teaching YAML how to request it.
 
 ## 7. Rust diff status
 
-Not landed in this PR. The minimal-safe edit spans 6 files across 2 crates; `models.rs`-only would add fields that silently do nothing (exactly the failure mode Debater B flags). Recommendation: the arc engineer lands the full patch atomic, with `cargo test -p arc-policy` green. Diffs in §§1-3 are copy-paste ready.
+Not landed in this PR. The minimal-safe edit spans 6 files across 2 crates; `models.rs`-only would add fields that silently do nothing (exactly the failure mode Debater B flags). Recommendation: the arc engineer lands the full patch atomic, with `cargo test -p chio-policy` green. Diffs in §§1-3 are copy-paste ready.
 
 **Plugin agents should code against this now.** If arc-side lands with deltas, chio-bridge absorbs them via its schema normalizer. Presets don't re-rev.
 

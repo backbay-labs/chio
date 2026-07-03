@@ -26,7 +26,7 @@ Local evidence:
 
 - there is no Go peer yet in the ARC repo
 - the current interop harness exercises JS and Python peers only: [docs/archive/epics/E8-migration-conformance-and-sdks.md](../archive/epics/E8-migration-conformance-and-sdks.md)
-- `arc-core` is intentionally free of runtime dependencies and already documents itself as suitable for embedded and WASM-style environments: [crates/arc-core/src/lib.rs](../../crates/core/chio-core/src/lib.rs)
+- `chio-core` is intentionally free of runtime dependencies and already documents itself as suitable for embedded and WASM-style environments: [crates/core/chio-core/src/lib.rs](../../crates/core/chio-core/src/lib.rs)
 
 Implication:
 
@@ -115,7 +115,7 @@ packages/sdk/arc-go/
 
 If the native bridge ships later:
 
-- generated headers should come from `crates/arc-bindings-ffi`
+- generated headers should come from `crates/sdk/chio-bindings-ffi`
 - the Go package should consume them behind build tags
 
 ## Package API Recommendation
@@ -420,7 +420,7 @@ Local:
 
 - [../BINDINGS_CORE_PLAN.md](../operations/BINDINGS_CORE_PLAN.md)
 - [../archive/epics/E8-migration-conformance-and-sdks.md](../archive/epics/E8-migration-conformance-and-sdks.md)
-- [crates/arc-core/src/lib.rs](../../crates/core/chio-core/src/lib.rs)
+- [crates/core/chio-core/src/lib.rs](../../crates/core/chio-core/src/lib.rs)
 
 External:
 

@@ -89,7 +89,7 @@ Format: each row is `<glob>` -> classification, with rationale.
 | `crates/chio-guards/src/action.rs` | `OK` | Pure type definitions for the `Action` enum. No decision logic. |
 | `crates/chio-guards/src/text_utils.rs` | `FOR-REMOVAL-CANDIDATE` | `canonicalize` (`pub fn` at line 29) is imported and used by prompt-injection and jailbreak guards before they make their deny decisions. Mutations that stop stripping zero-width characters or folding homoglyphs can let obfuscated payloads evade the trust-boundary guards. **Recommendation**: re-include `text_utils.rs` in `examine_globs`. The chio-guards baseline re-baselines. |
 | `crates/chio-guards/src/advisory.rs` | `OK` | Advisory-by-design guard surface. By construction, advisory guards do not deny; their decisions are not on the trust boundary. |
-| `crates/chio-guards/src/spider_sense.rs` | `FOR-REMOVAL-CANDIDATE` | `SpiderSenseGuard` returns `Verdict::Deny` for dimension mismatch (line 290), non-finite embeddings (line 293), high similarity scores, and ambiguous-deny policy (line 299). The file's module-level doc-comment lists three explicit `Verdict::Deny` paths (lines 10-28). **Recommendation**: re-include `spider_sense.rs` in `examine_globs`. The chio-guards baseline re-baselines. |
+| `crates/chio-guards/src/embedding_anomaly.rs` | `FOR-REMOVAL-CANDIDATE` | `EmbeddingAnomalyGuard` returns `Verdict::Deny` for dimension mismatch (line 290), non-finite embeddings (line 293), high similarity scores, and ambiguous-deny policy (line 299). The file's module-level doc-comment lists three explicit `Verdict::Deny` paths (lines 10-28). **Recommendation**: re-include `embedding_anomaly.rs` in `examine_globs`. The chio-guards baseline re-baselines. |
 | `crates/chio-guards/src/external/**` | `FOR-REMOVAL-CANDIDATE` | This blanket exclusion of the `external/` tree is the most consequential entry in the file. The `external/` directory contains remote-process guard bridges (per `mutants.toml` rationale: "remote-process bridges, integration-tested rather than mutation-tested"). If the audit re-adds external paths, the kill-rate target re-baselines. A wholesale exclusion of `external/**` without per-file justification is exactly the pre-existing pattern this audit is meant to challenge. **Recommendation**: itemize each file in `external/` and either (a) confirm each is integration-tested with a named test path, or (b) include the file in `examine_globs`. |
 
 ### chio-anchor exclusions
@@ -111,7 +111,7 @@ Format: each row is `<glob>` -> classification, with rationale.
   - `crates/chio-guards/src/text_utils.rs` (canonicalize is the
     canonical-form input to prompt-injection / jailbreak guards;
     mutations to it can let obfuscated payloads through).
-  - `crates/chio-guards/src/spider_sense.rs` (SpiderSenseGuard
+  - `crates/chio-guards/src/embedding_anomaly.rs` (EmbeddingAnomalyGuard
     returns Verdict::Deny on multiple paths; not advisory).
   - `crates/chio-guards/src/external/**` (blanket exclusion with
     no per-file justification; remote-process bridges).
