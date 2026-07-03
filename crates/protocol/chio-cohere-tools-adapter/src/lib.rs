@@ -752,18 +752,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn error_display_is_em_dash_free() {
-        let cases = vec![
-            CohereAdapterError::Transport(transport::TransportError::MissingApiKey),
-            CohereAdapterError::Provider(ProviderError::Malformed("bad".to_string())),
-        ];
-        for err in cases {
-            let s = err.to_string();
-            assert!(!s.contains('\u{2014}'));
-        }
-    }
-
     #[tokio::test]
     async fn chat_proxies_request_and_lifts_tool_calls() {
         let cfg = config();

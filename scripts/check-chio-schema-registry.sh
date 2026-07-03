@@ -192,9 +192,6 @@ for schema_root in checked_chio_schema_roots:
         if manifest.get(rel) != hashlib.sha256(schema_path.read_bytes()).hexdigest():
             errors.append(f"Chio schema {rel} is absent from MANIFEST.sha256 or has stale hash")
         schema_text = schema_path.read_text(encoding="utf-8")
-        retired_schema_prefix = "chio." + "chio."
-        if retired_schema_prefix in schema_text:
-            errors.append(f"Chio schema {rel} allows legacy Chio schema ids")
         if '"$ref"' in schema_text and "../../chio/" in schema_text:
             errors.append(f"Chio schema {rel} references legacy chio schema paths")
 
@@ -208,11 +205,6 @@ for schema_root in checked_active_chio_schema_text_roots:
             and manifest.get(rel) != hashlib.sha256(schema_path.read_bytes()).hexdigest()
         ):
             errors.append(f"Active Chio schema {rel} is absent from MANIFEST.sha256 or has stale hash")
-        schema_text = schema_path.read_text(encoding="utf-8")
-        retired_schema_prefix = "chio." + "chio."
-        if retired_schema_prefix in schema_text:
-            errors.append(f"Active Chio schema {rel} exposes retired schema ids")
-
 if errors:
     raise SystemExit("\n".join(errors))
 

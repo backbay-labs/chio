@@ -1179,7 +1179,7 @@ fn chio_runtime_hook_denies_retired_swarm_context_without_admission(
             call_chain: None,
             autonomy: None,
             context: Some(serde_json::json!({
-                "chiodosSwarm": {
+                "runtimeSwarm": {
                     "taskGraph": {
                         "id": "swarm-task-graph-runtime",
                         "sha256": "a".repeat(64)

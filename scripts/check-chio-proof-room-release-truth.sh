@@ -80,7 +80,6 @@ DEFAULT_CLAIM_DOCS = (
 )
 DEFAULT_DOC_EXCLUDES = (
     "docs/adr/",
-    "docs/archive/",
     "docs/brainstorm/",
     "docs/operations/",
     "docs/papers/",

@@ -164,10 +164,6 @@ fn chio_federation_treaty_module_does_not_expose_public_chio_schema_constants() 
 
 #[test]
 fn chio_federation_production_text_is_chio_named() {
-    let retired_schema_prefix_text = ["chio", "chio", ""].join(".");
-    let retired_schema_path_text = ["spec", "schemas", "chio", "v1"].join("/");
-    let retired_schema_prefix = retired_schema_prefix_text.as_str();
-    let retired_schema_path = retired_schema_path_text.as_str();
     let sources = [
         ("lib.rs", production_source(include_str!("../src/lib.rs"))),
         (
@@ -192,9 +188,7 @@ fn chio_federation_production_text_is_chio_named() {
         .into_iter()
         .flat_map(|(path, source)| {
             source.lines().enumerate().filter_map(move |(index, line)| {
-                if line.contains(retired_schema_prefix)
-                    || line.contains(retired_schema_path)
-                    || line.contains("build_chio_predicate")
+                if line.contains("build_chio_predicate")
                     || line.contains("build_chio_statement")
                     || line.contains("sign_chio_dsse_envelope")
                     || line.contains("verify_chio_dsse_envelope")

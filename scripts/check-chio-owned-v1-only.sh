@@ -36,8 +36,6 @@ trap 'rm -f "$tmp"' EXIT
 rg -n --hidden \
   --glob '!target/**' \
   --glob '!audits/**' \
-  --glob '!docs/research/protocol-strategy/**' \
-  --glob '!docs/archive/**' \
   --glob '!**/node_modules/**' \
   --glob '!**/.git/**' \
   --glob '!scripts/check-chio-owned-v1-only.sh' \
@@ -56,7 +54,6 @@ if ((${#existing_normative_roots[@]})); then
     --glob '!audits/**' \
     --glob '!docs/research/**' \
     --glob '!docs/superpowers/**' \
-    --glob '!docs/archive/**' \
     --glob '!**/node_modules/**' \
     --glob '!**/.git/**' \
     "$normative_claim_pattern" \

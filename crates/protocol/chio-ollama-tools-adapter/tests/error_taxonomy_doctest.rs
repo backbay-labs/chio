@@ -69,10 +69,6 @@ fn readme_taxonomy_table_covers_adapter_visible_classes() -> Result<(), String> 
         return Err("README taxonomy must not map native envelopes to ProviderError::Other".into());
     }
 
-    if README.contains('\u{2014}') {
-        return Err("README taxonomy introduced an em dash".into());
-    }
-
     Ok(())
 }
 

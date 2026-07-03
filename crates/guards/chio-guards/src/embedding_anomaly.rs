@@ -201,7 +201,6 @@ pub struct EmbeddingAnomalyGuard {
     db: EmbeddingAnomalyPatternDb,
     upper: f64,
     lower: f64,
-    top_k: usize,
     ambiguous_policy: AmbiguousPolicy,
 }
 
@@ -239,7 +238,6 @@ impl EmbeddingAnomalyGuard {
             db,
             upper,
             lower,
-            top_k: config.top_k,
             ambiguous_policy: config.ambiguous_policy,
         })
     }
@@ -257,7 +255,7 @@ impl EmbeddingAnomalyGuard {
         Self::from_json(&data)
     }
 
-    /// Score an embedding against the pattern database.  Returns the
+    /// Score an embedding against the pattern database. Returns the
     /// cosine similarity of the best-matching pattern (0.0 if the
     /// embedding is invalid).
     pub fn score(&self, embedding: &[f32]) -> f64 {
@@ -268,18 +266,10 @@ impl EmbeddingAnomalyGuard {
             return 0.0;
         }
         let mut best = 0.0_f64;
-        let mut seen = 0usize;
         for entry in self.db.entries.iter() {
             let score = cosine_similarity(embedding, &entry.embedding);
             if score > best {
                 best = score;
-            }
-            seen += 1;
-            if seen >= self.top_k {
-                // We keep scanning - top_k is informational, not a cap on
-                // work, because the DB is typically small.  Break only
-                // when the scan has observed at least top_k entries; we
-                // still want the maximum across the full DB.
             }
         }
         best
@@ -315,7 +305,7 @@ impl EmbeddingAnomalyGuard {
 
 impl Guard for EmbeddingAnomalyGuard {
     fn name(&self) -> &str {
-        "spider-sense"
+        "embedding-anomaly"
     }
 
     fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {

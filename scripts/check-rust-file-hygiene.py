@@ -23,6 +23,10 @@ GENERATED_HEADER_CONST_MARKER = 'pub const GENERATED_HEADER: &str = "\\\n'
 ERRORS_GENERATED_PREFIX = "crates/core/chio-errors/src/_generated/"
 ERRORS_GENERATED_HEADER_SOURCE = "crates/tooling/chio-spec-codegen/src/errors_pass.rs"
 ERRORS_GENERATED_HEADER_CONST_MARKER = 'const ERROR_CODES_GENERATED_HEADER: &str = "\\\n'
+TEXT_HYGIENE_PREFIXES = ("crates/", "docs/", "sdks/", "scripts/", "spec/", "xtask/")
+TEXT_HYGIENE_SUFFIXES = (".rs", ".md")
+TEXT_HYGIENE_PATTERNS = ("*.rs", "*.md")
+EM_DASH = "\u2014"
 
 
 @dataclass(frozen=True)
@@ -256,6 +260,34 @@ def discover_rust_files(root: Path) -> list[str]:
     ]
 
 
+def discover_text_hygiene_files(root: Path) -> list[str]:
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            *TEXT_HYGIENE_PATTERNS,
+        ],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return [
+        line
+        for line in result.stdout.splitlines()
+        if line
+        and (root / line).is_file()
+        and line.startswith(TEXT_HYGIENE_PREFIXES)
+        and line.endswith(TEXT_HYGIENE_SUFFIXES)
+        and "/_generated/" not in f"/{line}/"
+    ]
+
+
 def line_count(path: Path) -> int:
     data = path.read_bytes()
     return data.count(b"\n")
@@ -358,6 +390,27 @@ def validate_generated_headers(
             failures.append(
                 f"{path}: generated Rust path is not covered by a known generator header check"
             )
+
+
+def validate_text_hygiene(root: Path, failures: list[str]) -> None:
+    try:
+        paths = discover_text_hygiene_files(root)
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.strip()
+        failures.append(f"failed to list text hygiene files under {root}: {stderr}")
+        return
+
+    for path in sorted(paths):
+        try:
+            text = (root / path).read_text(encoding="utf-8")
+        except UnicodeDecodeError as err:
+            failures.append(f"{path}: could not decode text hygiene file: {err}")
+            continue
+        for index, line in enumerate(text.splitlines(), start=1):
+            column = line.find(EM_DASH)
+            if column != -1:
+                failures.append(f"{path}:{index}:{column + 1}: contains U+2014 em dash")
+                break
 
 
 def inspect_file(root: Path, path: str) -> RustFile:
@@ -494,6 +547,7 @@ def main() -> int:
             failures.append(f"{file.path}: {violation}")
 
     validate_generated_headers(root, paths, failures)
+    validate_text_hygiene(root, failures)
 
     if errors:
         failures.extend(errors)

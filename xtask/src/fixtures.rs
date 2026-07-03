@@ -1,12 +1,10 @@
 //! Pheromone fixture-and-schema gate (`cargo xtask check fixtures <facet>`).
 //!
-//! This is the consolidated replacement for the 15
-//! `scripts/check-chio-pheromone-*.sh` gates. The genuinely tabular per-facet
-//! data (schema-id/file maps, fixture dirs, schema-validate document lists,
-//! `cargo test` invocations, recursion edges, node-dashboard / sre-metrics
-//! flags) lives in `ci-gates/pheromone.toml`. The imperative per-facet steps
-//! that the manifest cannot express (CLI orchestration, fixture regeneration,
-//! retired-marker guards, npm dashboard checks) live in typed handlers keyed by
+//! Tabular per-facet data (schema-id/file maps, fixture dirs, schema-validate
+//! document lists, `cargo test` invocations, recursion edges, node-dashboard /
+//! sre-metrics flags) lives in `ci-gates/pheromone.toml`. Imperative
+//! per-facet steps that the manifest cannot express (CLI orchestration, fixture
+//! regeneration, npm dashboard checks) live in typed handlers keyed by
 //! [`Facet::kind`].
 //!
 //! Fail-closed contract:
@@ -531,9 +529,9 @@ fn load_registry(
 
 // -- Per-facet metadata assertions ----------------------------------------
 
-/// Per-facet metadata assertions mirroring each script's embedded python
-/// block. These confirm fixture invariants beyond pure schema validation
-/// (negative-corpus required codes, bounded metric labels, binding fields).
+/// Per-facet metadata assertions for fixture invariants beyond pure schema
+/// validation (negative-corpus required codes, bounded metric labels, binding
+/// fields).
 fn run_metadata_block(root: &Path, facet: &Facet) -> Result<(), XtaskError> {
     let fixture_dir = root.join(&facet.fixture_dir);
     match facet.kind.as_str() {
@@ -674,8 +672,7 @@ const EXTERNAL_RETENTION_EXPECTED_CODES: [(&str, &str); 16] = [
 
 /// Assert the external-retention negative corpus carries exactly the expected
 /// `(caseId, expectedCode)` mapping: no missing cases, no unexpected cases, and
-/// every `expectedCode` matching. Restores the per-case expectedCode check the
-/// script ran (the shared handler previously only checked caseId presence).
+/// every `expectedCode` matching.
 fn metadata_external_retention_expected_codes(fixture_dir: &Path) -> Result<(), XtaskError> {
     let path = fixture_dir.join("relay-alert-assurance-external-retention-negative-cases.json");
     let value = load_json(&path)?;

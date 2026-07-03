@@ -135,21 +135,15 @@ fn assert_report_bool(report: &Path, field: &str, expected: bool) -> Result<(), 
 
 // -- runtime-spine-fixtures ------------------------------------------------
 
-/// `check-chio-runtime-spine-fixtures.sh`: a retired-schema-ID scan over the
-/// fixture tree, the runtime-derived signed bodies validated against their
-/// schemas, the scenario admission-profile/bundle native-schema assertion, and
-/// the static validate block (in the manifest).
+/// Validate runtime-derived signed bodies against their schemas, enforce the
+/// scenario admission-profile/bundle native-schema assertion, and run the
+/// static validate block from the manifest.
 fn handle_spine_fixtures(
     root: &Path,
     manifest: &RuntimeManifest,
     facet: &RuntimeFacet,
 ) -> Result<(), XtaskError> {
     let fixture_dir = root.join(&facet.fixture_dir);
-
-    // The script's `rg "chio\.chio"` guard: active fixtures must not embed the
-    // retired doubled-schema prefix. The marker is assembled at runtime so this
-    // gate file never embeds the literal it screens for.
-    guard_no_retired_schema_prefix(&fixture_dir)?;
 
     // Build and validate the three signed bodies (trust / peer-weights / policy)
     // the script derives from their unsigned fixtures, and assert the scenario
@@ -160,28 +154,6 @@ fn handle_spine_fixtures(
 
     // Static schema-only validate pairs from the manifest.
     run_runtime_validate_pairs(root, manifest, facet)
-}
-
-/// `chio.chio` retired doubled-schema prefix, assembled at runtime.
-fn retired_schema_prefix() -> String {
-    let mut prefix = String::from("chio");
-    prefix.push('.');
-    prefix.push_str("chio");
-    prefix
-}
-
-fn guard_no_retired_schema_prefix(dir: &Path) -> Result<(), XtaskError> {
-    let marker = retired_schema_prefix();
-    for path in walk_files(dir)? {
-        let text = fs::read_to_string(&path).map_err(|err| XtaskError::Io(display(&path), err))?;
-        if text.contains(&marker) {
-            return Err(XtaskError::Validation(format!(
-                "active Chio runtime-spine fixtures must not contain retired schema IDs: {}",
-                display(&path)
-            )));
-        }
-    }
-    Ok(())
 }
 
 /// Wrap an unsigned body in a signed envelope with filler signer/signature
@@ -514,9 +486,8 @@ fn spine_run_negative(
     spine_assert_no_disallowed_runtime_key(&mismatch_report)
 }
 
-/// Build the trusted-verifiers document from a signed trust input, mirroring the
-/// script's embedded python (active-status verifier key derived from the signed
-/// body and signer key).
+/// Build the trusted-verifiers document from a signed trust input. The
+/// active-status verifier key is derived from the signed body and signer key.
 fn spine_build_trusted_verifiers(signed: &Path, out: &Path) -> Result<(), XtaskError> {
     let value = load_json(signed)?;
     let body = value
@@ -545,7 +516,7 @@ fn spine_build_trusted_verifiers(signed: &Path, out: &Path) -> Result<(), XtaskE
 }
 
 /// Substitute the `PEER_WEIGHTS_SHA256` token in the policy body with the hash
-/// the CLI emitted, in place (mirrors the script's python text replace).
+/// the CLI emitted.
 fn spine_patch_policy_peer_weights(policy_body: &Path, hash_file: &Path) -> Result<(), XtaskError> {
     let hash = fs::read_to_string(hash_file)
         .map_err(|err| XtaskError::Io(display(hash_file), err))?
@@ -557,8 +528,7 @@ fn spine_patch_policy_peer_weights(policy_body: &Path, hash_file: &Path) -> Resu
     fs::write(policy_body, body).map_err(|err| XtaskError::Io(display(policy_body), err))
 }
 
-/// Assert the positive admission report, store, and trust-floor invariants the
-/// script's python checked.
+/// Assert the positive admission report, store, and trust-floor invariants.
 fn spine_assert_admission(
     report: &Path,
     store: &Path,

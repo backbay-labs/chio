@@ -161,6 +161,17 @@ assert_rc "$(run_checker "$bad_error_generated" "$work/bad-error-generated.out" 
 grep -F "crates/core/chio-errors/src/_generated/error_codes.rs: generated Rust file does not begin with chio_spec_codegen::errors_pass::ERROR_CODES_GENERATED_HEADER" \
   "$work/bad-error-generated.err" >/dev/null
 
+em_dash_doc="$work/em-dash-doc"
+init_case "$em_dash_doc"
+write_lines "$em_dash_doc/crates/chio-small/src/main.rs" 25
+mkdir -p "$em_dash_doc/docs"
+printf 'bad \342\200\224 dash\n' > "$em_dash_doc/docs/guide.md"
+track_case "$em_dash_doc"
+assert_rc "$(run_checker "$em_dash_doc" "$work/em-dash-doc.out" "$work/em-dash-doc.err")" 1 \
+  "tracked docs with U+2014 fail text hygiene"
+grep -F "docs/guide.md:1:5: contains U+2014 em dash" \
+  "$work/em-dash-doc.err" >/dev/null
+
 large_production="$work/large-production"
 init_case "$large_production"
 write_lines "$large_production/crates/chio-small/src/main.rs" 2001

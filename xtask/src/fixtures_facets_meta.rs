@@ -1,16 +1,14 @@
 // Committed-fixture metadata assertions for the alert routing/handoff/delivery/
 // assurance facets and the shared label-hygiene / canonical-hash helpers they
-// use, mirroring the embedded python blocks of the
-// `scripts/check-chio-pheromone-relay-alert-*.sh` gates. Included as a focused facet module.
-// included into `fixtures.rs` via `include!` so it shares that module's private
-// helpers (load_json, glob_documents, str_field, invalid, metadata_negative_*).
+// use. Included into `fixtures.rs` via `include!` so it shares that module's
+// private helpers (load_json, glob_documents, str_field, invalid,
+// metadata_negative_*).
 
 /// Committed-fixture invariants for the handoff facet beyond the negative
 /// corpus: the handoff profile must carry no inline secrets, dynamic endpoints,
 /// duplicate targets, or duplicate route coverage; the committed handoff report
 /// must be dry-run accepted, preserve critical firing visibility, and carry the
-/// primary downstream route. The shared handler had checked only the
-/// negative-case IDs.
+/// primary downstream route.
 fn metadata_relay_alert_handoff(fixture_dir: &Path) -> Result<(), XtaskError> {
     let profile = load_json(&fixture_dir.join("relay-alert-handoff-profile.json"))?;
     if str_field(&profile, "schema") != Some("chio.pheromone.relay-alert-handoff-profile.v1") {

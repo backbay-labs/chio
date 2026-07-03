@@ -508,22 +508,6 @@ fn lower_allow_function_response_helper_applies_redactions() {
     assert_eq!(part.tool_call_id, "call_weather_1");
     assert_eq!(part.response, json!({"token": "[redacted]", "ok": true}));
 }
-
-#[test]
-fn error_display_is_em_dash_free() {
-    let cases = vec![
-        GroqAdapterError::Transport(transport::HttpTransportError::Status {
-            code: 500,
-            body: "boom".to_string(),
-        }),
-        GroqAdapterError::Provider(ProviderError::Malformed("bad shape".to_string())),
-    ];
-    for err in cases {
-        let s = err.to_string();
-        assert!(!s.contains('\u{2014}'), "em dash in {s}");
-    }
-}
-
 fn chat_request_body() -> Vec<u8> {
     let request = json!({
         "model": "llama-3.3-70b-versatile",

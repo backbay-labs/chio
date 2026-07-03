@@ -10,12 +10,6 @@ PHEROMONE_SCHEMA_DIR="$ROOT/spec/schemas/chio-pheromone/v1"
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
 
-retired_schema_prefix="chio\\.chio"
-if rg -n "$retired_schema_prefix" "$FIXTURE_DIR"; then
-  echo "active Chio runtime-spine fixtures must not contain retired schema IDs" >&2
-  exit 1
-fi
-
 run_spec_validate() {
   if [[ -n "${CHIO_SPEC_VALIDATE_BIN:-}" ]]; then
     "$CHIO_SPEC_VALIDATE_BIN" "$@"

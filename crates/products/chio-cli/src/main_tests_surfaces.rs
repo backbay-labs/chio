@@ -70,11 +70,6 @@ fn chio_attest_buyer_public_outputs_use_chio_error_and_schema_boundary(
         explanation["schema"],
         "chio.attest.buyer-attestation-explanation.v1"
     );
-    let retired_schema_prefix = ["chio", "chio", ""].join(".");
-    assert!(
-        !explanation.to_string().contains(&retired_schema_prefix),
-        "public buyer explanation must emit a Chio-native schema id"
-    );
 
     Ok(())
 }

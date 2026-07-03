@@ -915,37 +915,6 @@ mod tests {
         let exhausted = futures_block_on(mock.converse(&request)).unwrap_err();
         assert!(matches!(exhausted, TransportError::MockExhausted { .. }));
     }
-
-    #[test]
-    fn transport_error_display_is_em_dash_free() {
-        let cases = vec![
-            TransportError::MockExhausted {
-                operation: "Converse",
-            },
-            TransportError::UnsupportedOperation {
-                operation: "InvokeModel".to_string(),
-            },
-            TransportError::UnsupportedRegion {
-                region: "us-west-2".to_string(),
-            },
-            TransportError::MalformedRequest("bad".to_string()),
-            TransportError::RateLimited {
-                retry_after_ms: 1000,
-            },
-            TransportError::Upstream {
-                status: 500,
-                message: "boom".to_string(),
-            },
-            TransportError::Timeout { ms: 30000 },
-            TransportError::Rejected("nope".to_string()),
-            TransportError::DecodeResponse("bad".to_string()),
-        ];
-        for err in cases {
-            let s = err.to_string();
-            assert!(!s.contains('\u{2014}'), "em dash in {s}");
-        }
-    }
-
     fn futures_block_on<F: std::future::Future>(future: F) -> F::Output {
         use std::sync::Arc;
         use std::task::{Context, Poll, Wake, Waker};

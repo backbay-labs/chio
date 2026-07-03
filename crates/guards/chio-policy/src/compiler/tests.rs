@@ -378,7 +378,7 @@ extensions:
     .unwrap();
 
     let compiled = compile_policy(&spec).unwrap();
-    assert_eq!(compiled.guard_names, vec!["spider-sense".to_string()]);
+    assert_eq!(compiled.guard_names, vec!["embedding-anomaly".to_string()]);
 
     let _ = std::fs::remove_file(pattern_db);
 }
@@ -410,7 +410,7 @@ extensions:
     .unwrap();
 
     let compiled = compile_policy_with_source(&spec, Some(&policy_path)).unwrap();
-    assert_eq!(compiled.guard_names, vec!["spider-sense".to_string()]);
+    assert_eq!(compiled.guard_names, vec!["embedding-anomaly".to_string()]);
 
     let _ = std::fs::remove_file(pattern_db);
     let _ = std::fs::remove_file(policy_path);
@@ -502,7 +502,7 @@ extensions:
         "path-allowlist",
         "prompt-injection",
         "jailbreak",
-        "spider-sense",
+        "embedding-anomaly",
         "agent-velocity",
     ]
     .into_iter()
