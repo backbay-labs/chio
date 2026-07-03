@@ -1,3 +1,0 @@
-crates/chio-weights/src/lineage.rs:168:5: replace anchor_model_card -> Result<ModelCardLineageAnchor, WeightsError> with Ok(Default::default())
-crates/chio-weights/src/card.rs:257:9: replace ModelCard::from_canonical_json -> Result<Self, WeightsError> with Ok(Default::default())
-crates/chio-weights/src/bundle.rs:78:5: replace verify_model_card_bundle -> Result<VerifiedModelCard, WeightsError> with Ok(Default::default())

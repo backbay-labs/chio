@@ -1,5 +1,0 @@
-crates/chio-anchor/src/evm.rs:426:5: replace verify_inclusion_onchain -> Result<bool, AnchorError> with Ok(true)
-crates/chio-anchor/src/evm.rs:426:5: replace verify_inclusion_onchain -> Result<bool, AnchorError> with Ok(false)
-crates/chio-anchor/src/evm.rs:496:5: replace rpc_call -> Result<Value, AnchorError> with Ok(Default::default())
-crates/chio-anchor/src/evm.rs:583:39: replace * with / in devnet_rpc_egress_contract_for_url
-crates/chio-anchor/src/evm.rs:279:15: replace != with == in confirm_root_publication

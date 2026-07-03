@@ -1,9 +1,0 @@
-crates/chio-kernel-core/src/normalized.rs:539:9: replace <impl TryFrom<&Constraint> for NormalizedConstraint>::try_from -> Result<Self, Self::Error> with Ok(Default::default())
-crates/chio-kernel-core/src/capability_verify.rs:239:5: replace verify_capability_with_negotiated_floor -> Result<VerifiedCapability, CapabilityError> with Ok(Default::default())
-crates/chio-kernel-core/src/scope.rs:421:5: replace collect_domain_candidates -> Vec<String> with vec![String::new()]
-crates/chio-kernel-core/src/scope.rs:372:5: replace collect_string_leaves -> Vec<StringLeaf> with vec![]
-crates/chio-kernel-core/src/evaluate.rs:517:5: replace deny -> EvaluationVerdict with Default::default()
-crates/chio-kernel-core/src/passport_verify.rs:209:9: replace payload_bytes_hex::serialize -> Result<S::Ok, S::Error> with Ok(Default::default())
-crates/chio-kernel-core/src/capability_verify.rs:267:5: replace verify_capability_with_trusted -> Result<VerifiedCapability, CapabilityError> with Ok(Default::default())
-crates/chio-kernel-core/src/normalized.rs:348:9: replace <impl TryFrom<&CapabilityToken> for NormalizedCapability>::try_from -> Result<Self, Self::Error> with Ok(Default::default())
-crates/chio-kernel-core/src/evaluate.rs:110:9: replace EvaluationVerdict::normalized -> Result<NormalizedEvaluationVerdict, NormalizationError> with Ok(Default::default())
