@@ -1,0 +1,29 @@
+[package]
+name = "chio-federation-transport-iroh"
+description = "Iroh federation-transport adapter: accept-time admission gate over an issuer-signed EndpointId directory (sits strictly under chio-federation, replaces no trust logic)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_federation_transport_iroh"
+
+[dependencies]
+chio-core-types = { workspace = true }
+chio-pheromone-relay = { workspace = true }
+# Slim iroh per ADAPTER-SPEC section 8: drop metrics/portmapper/fast-apple-datapath,
+# keep exactly one TLS backend (tls-ring). NEVER add test-utils (pulls axum + a relay
+# server + the insecure_skip_verify dev path). iroh-gossip / iroh-blobs are the lanes
+# phase (section 3.3/3.4), not this foundation.
+iroh = { version = "1.0", default-features = false, features = ["tls-ring"] }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+
+[lints]
+workspace = true
