@@ -40,6 +40,12 @@ chio-errors = { workspace = true }
 chio-did = { workspace = true }
 chio-external-guards = { workspace = true }
 chio-federation = { workspace = true }
+# DEPLOYABILITY: mount the iroh federation-transport lanes on the pheromone-relay
+# serve binary. Opt-in behind --iroh-enable (defaults OFF, DUAL migration). The
+# slim iroh build (default-features off + tls-ring only) mirrors the adapter crate
+# so no second, un-slimmed iroh tree is pulled (ADAPTER-SPEC section 8).
+chio-federation-transport-iroh = { workspace = true }
+iroh = { version = "1.0", default-features = false, features = ["tls-ring"] }
 chio-hosted-mcp = { workspace = true }
 chio-kernel = { workspace = true }
 chio-guards = { workspace = true }

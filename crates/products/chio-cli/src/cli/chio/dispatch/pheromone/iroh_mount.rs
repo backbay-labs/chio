@@ -1,0 +1,660 @@
+//! DEPLOYABILITY: mount the iroh federation-transport lanes on the pheromone
+//! relay serve binary so the transport is actually runnable.
+//!
+//! # Safety invariant (DUAL, opt-in, default OFF)
+//!
+//! This module is only ever reached when the operator passes `--iroh-enable`
+//! (which defaults to `false`). With the flag off, [`load_iroh_serve_inputs`]
+//! returns `Ok(None)` BEFORE touching any file or constructing anything iroh, so
+//! the serve path is byte-for-byte unchanged and the HTTP relay behaves exactly as
+//! today. With the flag on, the iroh endpoint runs ALONGSIDE the axum HTTP relay
+//! (DUAL migration): the HTTP relay always keeps running and stays authoritative;
+//! iroh is a second ingress/egress behind the same trust logic.
+//!
+//! # What is wired here
+//!
+//! The pheromone directed-batch lane is the lane that genuinely reuses the
+//! shipped relay seam: [`build_iroh_router`] mounts
+//! [`chio_federation_transport_iroh::lanes::pheromone::mount_pheromone_lane`]
+//! with the SAME `Arc<dyn RelayBatchReceiver>` and `Arc<SqlitePheromoneRelayStore>`
+//! the HTTP `PheromoneRelayService` holds (one receiver, one store, two
+//! transports). The per-frame verifier runs ABOVE both transports, unchanged.
+//!
+//! The revocation and bilateral lanes are NOT wired on this hook: the current
+//! crate constructors need collaborators the relay-serve process does not host
+//! (`RevocationHandler::new` requires a `RevocationRootSink` backed by a live
+//! revocation-view cache plus a `RevocationCatchupHistory`;
+//! `BilateralCoSignHandler::new` requires a dedicated DSSE co-sign `Keypair` and a
+//! pinned-passport-key map). Stubbing those with no-op collaborators would be
+//! fail-OPEN for revocation (a no-op sink silently discards verified revocation
+//! roots), which the house rules forbid, so requesting them fails closed at load
+//! time (see [`parse_iroh_lanes`]).
+//!
+//! # Fail-closed
+//!
+//! Every load/verify step ([`load_iroh_serve_inputs`]) and every endpoint-build
+//! step ([`build_iroh_router`]) returns `Err` on any problem, and the caller
+//! aborts serve startup. `--iroh-enable` never silently continues without the
+//! transport.
+//!
+//! # Relay/discovery default
+//!
+//! With no `--iroh-relay-url`, the endpoint uses `RelayMode::Disabled` (direct
+//! addressing). The n0 free relays end 2026-12-31, so this NEVER defaults to n0.
+
+use std::net::SocketAddr;
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
+
+use chio_federation_transport_iroh::admission::DirectoryGate;
+use chio_federation_transport_iroh::identity::TransportDirectoryBundleDocument;
+use chio_federation_transport_iroh::identity::TransportDirectoryBundleTrust;
+use chio_federation_transport_iroh::identity::TrustedTransportDirectoryIssuer;
+use chio_federation_transport_iroh::identity::VerifiedDirectory;
+use chio_federation_transport_iroh::lanes::limits::RECOMMENDED_MAX_IDLE_TIMEOUT;
+use chio_federation_transport_iroh::lanes::pheromone::mount_pheromone_lane;
+use chio_federation_transport_iroh::lanes::pheromone::PheromoneBatchHandler;
+use chio_pheromone_relay::RelayBatchReceiver;
+use chio_pheromone_relay::SqlitePheromoneRelayStore;
+use iroh::endpoint::presets;
+use iroh::endpoint::IdleTimeout;
+use iroh::endpoint::QuicTransportConfig;
+use iroh::protocol::Router;
+use iroh::Endpoint;
+use iroh::EndpointId;
+use iroh::RelayMode;
+use iroh::RelayUrl;
+use iroh::SecretKey;
+
+use super::read_utf8_json_file;
+use super::unix_now_ms;
+use super::RelayTrustedIssuersDocument;
+use crate::CliError;
+
+/// A dedicated, rotatable ed25519 transport key file (Option B), SEPARATE from the
+/// long-term passport / relay signing key. `seedHex` is the 32-byte ed25519 seed as
+/// hex. Kept minimal on purpose: the passport key (loaded elsewhere) endorses this
+/// transport `EndpointId` inside the issuer-signed directory bundle.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct IrohTransportKeyDocument {
+    pub(crate) seed_hex: String,
+}
+
+/// The iroh federation-transport lanes an operator may request via `--iroh-lanes`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IrohLane {
+    /// Directed pheromone batches (lane a). Reuses the relay receiver + store.
+    Pheromone,
+    /// Revocation epoch roots (lane b). Needs a sink + history not hosted here.
+    Revocation,
+    /// Bilateral DSSE co-sign (lane d). Needs a co-sign key + passport-key map.
+    Bilateral,
+}
+
+impl IrohLane {
+    fn label(self) -> &'static str {
+        match self {
+            IrohLane::Pheromone => "pheromone",
+            IrohLane::Revocation => "revocation",
+            IrohLane::Bilateral => "bilateral",
+        }
+    }
+}
+
+/// Endpoint + router construction knobs, derived from the CLI flags.
+#[derive(Debug, Clone)]
+pub(crate) struct IrohMountConfig {
+    /// Relay mode. `Disabled` by default (never n0).
+    pub(crate) relay_mode: RelayMode,
+    /// Socket address the iroh endpoint binds.
+    pub(crate) bind_addr: SocketAddr,
+    /// The lanes to mount (pheromone only, on this hook).
+    pub(crate) lanes: Vec<IrohLane>,
+    /// QUIC transport idle-timeout backstop.
+    pub(crate) max_idle_timeout: Duration,
+}
+
+/// Everything needed to build the iroh router, produced by
+/// [`load_iroh_serve_inputs`] (all fail-closed file loads + the load-time bundle
+/// verification), and consumed by [`build_iroh_router`] (the async endpoint bind).
+/// Deliberately does NOT hold the relay receiver/store: those are attached at build
+/// time so the loading + verification is unit-testable without them.
+pub(crate) struct IrohServeInputs {
+    /// The load-time-verified transport directory the admission gate is built from.
+    pub(crate) directory: Arc<VerifiedDirectory>,
+    /// The rotatable ed25519 transport key this endpoint authenticates as.
+    pub(crate) transport_key: SecretKey,
+    /// Endpoint + router construction knobs.
+    pub(crate) config: IrohMountConfig,
+}
+
+/// A live iroh mount: the spawned router (kept alive for the process lifetime) plus
+/// startup metadata for the log line.
+pub(crate) struct IrohMount {
+    /// The spawned protocol router. Call [`Router::shutdown`] on teardown.
+    pub(crate) router: Router,
+    /// This endpoint's authenticated id (for the startup log line).
+    pub(crate) endpoint_id: EndpointId,
+    /// The lane labels actually mounted (for the startup log line).
+    pub(crate) enabled_lanes: Vec<&'static str>,
+}
+
+/// Render the iroh federation-transport Prometheus metric families.
+///
+/// The relay's own `/metrics` route lives in `chio-pheromone-relay`
+/// (`service.rs`), a separate crate this `-p chio-cli` change does not touch. The
+/// clean hook is a one-line concatenation of this string onto that exporter's
+/// body; this accessor makes the render reachable from the serving binary in the
+/// meantime. All families are process-global statics, so any `/metrics` handler
+/// that calls this observes the live counters.
+#[must_use]
+pub(crate) fn iroh_transport_metrics_prometheus() -> String {
+    chio_federation_transport_iroh::metrics::render_iroh_transport_metrics_prometheus()
+}
+
+/// Parse the comma-separated `--iroh-lanes` value.
+///
+/// Fail-closed: an empty set, an unknown token, or a lane that is not wireable on
+/// the relay-serve hook (revocation / bilateral, see the module docs) is rejected
+/// rather than silently dropped.
+pub(crate) fn parse_iroh_lanes(raw: &str) -> Result<Vec<IrohLane>, CliError> {
+    let mut lanes = Vec::new();
+    for token in raw.split(',') {
+        let token = token.trim();
+        if token.is_empty() {
+            continue;
+        }
+        let lane = match token {
+            "pheromone" => IrohLane::Pheromone,
+            "revocation" => IrohLane::Revocation,
+            "bilateral" => IrohLane::Bilateral,
+            other => {
+                return Err(CliError::cli_other_error(format!(
+                    "Chio iroh transport: unknown lane '{other}' (expected pheromone, revocation, or bilateral)"
+                )));
+            }
+        };
+        if !matches!(lane, IrohLane::Pheromone) {
+            return Err(CliError::cli_other_error(format!(
+                "Chio iroh transport: lane '{}' is not yet wired on the pheromone relay serve hook \
+                 (it needs collaborators the relay does not host); only 'pheromone' is supported here",
+                lane.label()
+            )));
+        }
+        if !lanes.contains(&lane) {
+            lanes.push(lane);
+        }
+    }
+    if lanes.is_empty() {
+        return Err(CliError::cli_other_error(
+            "Chio iroh transport: --iroh-lanes selected no lanes".to_string(),
+        ));
+    }
+    Ok(lanes)
+}
+
+/// Build `RelayMode` from the repeated `--iroh-relay-url` flag.
+///
+/// No URLs -> `RelayMode::Disabled` (direct addressing). This NEVER returns the n0
+/// default map (free relays end 2026-12-31); a self-hosted relay is opt-in.
+fn relay_mode_from_urls(urls: &[String]) -> Result<RelayMode, CliError> {
+    if urls.is_empty() {
+        return Ok(RelayMode::Disabled);
+    }
+    let mut parsed = Vec::with_capacity(urls.len());
+    for url in urls {
+        let relay_url: RelayUrl = url.parse().map_err(|error| {
+            CliError::cli_other_error(format!("Chio iroh transport relay url '{url}': {error}"))
+        })?;
+        parsed.push(relay_url);
+    }
+    Ok(RelayMode::custom(parsed))
+}
+
+/// Load the transport ed25519 secret key from a `{ "seedHex": ".." }` file.
+fn load_transport_secret_key(path: &Path) -> Result<SecretKey, CliError> {
+    let json = read_utf8_json_file(path, "Chio iroh transport key")?;
+    let document: IrohTransportKeyDocument = serde_json::from_str(&json).map_err(|error| {
+        CliError::cli_other_error(format!("Chio iroh transport key: {error}"))
+    })?;
+    let bytes = hex::decode(document.seed_hex.trim()).map_err(|error| {
+        CliError::cli_other_error(format!("Chio iroh transport key seedHex: {error}"))
+    })?;
+    let seed: [u8; 32] = bytes.as_slice().try_into().map_err(|_| {
+        CliError::cli_other_error(
+            "Chio iroh transport key seedHex: must decode to exactly 32 bytes".to_string(),
+        )
+    })?;
+    Ok(SecretKey::from_bytes(&seed))
+}
+
+/// Build the load-time trust for the transport-directory bundle from the SAME
+/// `--trusted-issuers` config the HTTP peer directory uses. First-bundle promotion
+/// (`version_floor = 0`, no expected predecessor); the validity window is checked
+/// against `now`.
+fn transport_bundle_trust(
+    trusted_issuers: Option<&Path>,
+    now_unix_ms: u64,
+) -> Result<TransportDirectoryBundleTrust, CliError> {
+    let path = trusted_issuers.ok_or_else(|| {
+        CliError::cli_other_error(
+            "Chio iroh transport: --trusted-issuers is required with --iroh-enable".to_string(),
+        )
+    })?;
+    let json = read_utf8_json_file(path, "Chio iroh transport trusted issuers")?;
+    let document: RelayTrustedIssuersDocument = serde_json::from_str(&json).map_err(|error| {
+        CliError::cli_other_error(format!("Chio iroh transport trusted issuers: {error}"))
+    })?;
+    let issuers = document
+        .issuers
+        .into_iter()
+        .map(|issuer| TrustedTransportDirectoryIssuer {
+            issuer: issuer.issuer,
+            key_id: issuer.key_id,
+            public_key: issuer.public_key,
+        })
+        .collect::<Vec<_>>();
+    if issuers.is_empty() {
+        return Err(CliError::cli_other_error(
+            "Chio iroh transport trusted issuers: no issuers configured".to_string(),
+        ));
+    }
+    Ok(TransportDirectoryBundleTrust {
+        issuers,
+        version_floor: 0,
+        expected_previous_version_sha256: None,
+        now_unix_ms,
+    })
+}
+
+/// Load + verify all iroh serve inputs, fail-closed.
+///
+/// Returns `Ok(None)` immediately (touching NO files, constructing NOTHING) when
+/// `iroh_enable` is false: this is the opt-in-default-off / byte-unchanged
+/// guarantee. When enabled, every missing/invalid input aborts with `Err`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn load_iroh_serve_inputs(
+    iroh_enable: bool,
+    iroh_transport_directory: Option<&Path>,
+    trusted_issuers: Option<&Path>,
+    iroh_transport_key: Option<&Path>,
+    iroh_bind_addr: &str,
+    iroh_relay_url: &[String],
+    iroh_lanes: &str,
+    now_unix_ms: u64,
+) -> Result<Option<IrohServeInputs>, CliError> {
+    if !iroh_enable {
+        return Ok(None);
+    }
+
+    let lanes = parse_iroh_lanes(iroh_lanes)?;
+
+    let directory_path = iroh_transport_directory.ok_or_else(|| {
+        CliError::cli_other_error(
+            "Chio iroh transport: --iroh-transport-directory is required with --iroh-enable"
+                .to_string(),
+        )
+    })?;
+    let directory_json =
+        read_utf8_json_file(directory_path, "Chio iroh transport directory bundle")?;
+    let bundle: TransportDirectoryBundleDocument = serde_json::from_str(&directory_json)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio iroh transport directory bundle: {error}"))
+        })?;
+    let trust = transport_bundle_trust(trusted_issuers, now_unix_ms)?;
+    let directory = bundle.verify_bundle(&trust).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "Chio iroh transport directory bundle verification: {error}"
+        ))
+    })?;
+
+    let key_path = iroh_transport_key.ok_or_else(|| {
+        CliError::cli_other_error(
+            "Chio iroh transport: --iroh-transport-key is required with --iroh-enable".to_string(),
+        )
+    })?;
+    let transport_key = load_transport_secret_key(key_path)?;
+
+    let bind_addr = iroh_bind_addr.parse::<SocketAddr>().map_err(|error| {
+        CliError::cli_other_error(format!("Chio iroh transport bind address: {error}"))
+    })?;
+    let relay_mode = relay_mode_from_urls(iroh_relay_url)?;
+
+    Ok(Some(IrohServeInputs {
+        directory: Arc::new(directory),
+        transport_key,
+        config: IrohMountConfig {
+            relay_mode,
+            bind_addr,
+            lanes,
+            max_idle_timeout: RECOMMENDED_MAX_IDLE_TIMEOUT,
+        },
+    }))
+}
+
+/// Build and spawn the iroh router, sharing the relay's receiver + store.
+///
+/// One `Endpoint` with the [`DirectoryGate`] installed via `.hooks(gate)` (so
+/// unadmitted endpoints are 403'd at `after_handshake` before any handler runs),
+/// the configured `RelayMode`, the configured bind address, and the recommended
+/// QUIC idle-timeout backstop. The pheromone lane is mounted with the SAME
+/// `Arc<dyn RelayBatchReceiver>` + `Arc<SqlitePheromoneRelayStore>` the HTTP relay
+/// holds. Fail-closed: any bind/verify error returns `Err`.
+pub(crate) async fn build_iroh_router(
+    inputs: IrohServeInputs,
+    receiver: Arc<dyn RelayBatchReceiver>,
+    store: Arc<SqlitePheromoneRelayStore>,
+) -> Result<IrohMount, CliError> {
+    let IrohServeInputs {
+        directory,
+        transport_key,
+        config,
+    } = inputs;
+
+    // Only the pheromone lane is wireable here; parse_iroh_lanes already rejected
+    // anything else, so this is a defense-in-depth re-check.
+    if config.lanes.iter().any(|lane| !matches!(lane, IrohLane::Pheromone)) {
+        return Err(CliError::cli_other_error(
+            "Chio iroh transport: only the pheromone lane is wireable on the relay serve hook"
+                .to_string(),
+        ));
+    }
+
+    let gate = DirectoryGate::new(directory);
+
+    let idle_timeout: IdleTimeout = config.max_idle_timeout.try_into().map_err(|error| {
+        CliError::cli_other_error(format!("Chio iroh transport idle timeout: {error}"))
+    })?;
+    let transport_config = QuicTransportConfig::builder()
+        .max_idle_timeout(Some(idle_timeout))
+        .build();
+
+    let endpoint = Endpoint::builder(presets::Minimal)
+        .secret_key(transport_key)
+        .relay_mode(config.relay_mode)
+        .transport_config(transport_config)
+        .bind_addr(config.bind_addr)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio iroh transport bind address: {error}"))
+        })?
+        .hooks(gate.clone())
+        .bind()
+        .await
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio iroh transport endpoint bind: {error}"))
+        })?;
+    let endpoint_id = endpoint.id();
+
+    // The shared clock the handler stamps received batches with.
+    let now_fn: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(unix_now_ms);
+    let handler = PheromoneBatchHandler::new(gate, receiver, store, now_fn);
+    let router = mount_pheromone_lane(endpoint, handler);
+
+    let enabled_lanes = config.lanes.iter().map(|lane| lane.label()).collect();
+    Ok(IrohMount {
+        router,
+        endpoint_id,
+        enabled_lanes,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use super::*;
+    use chio_core_types::canonical_json_bytes;
+    use chio_core_types::sha256_hex;
+    use chio_core_types::Keypair;
+    use chio_federation::pheromone_gossip::PheromoneGossipBatch;
+    use chio_federation::pheromone_gossip::PHEROMONE_GOSSIP_BATCH_SCHEMA;
+    use chio_federation_transport_iroh::identity::transport_endorsement_preimage;
+    use chio_federation_transport_iroh::identity::TransportDirectoryBundleBody;
+    use chio_federation_transport_iroh::identity::TransportDirectoryDocument;
+    use chio_federation_transport_iroh::identity::TransportDirectoryEntry;
+    use chio_federation_transport_iroh::identity::TRANSPORT_DIRECTORY_BUNDLE_SCHEMA;
+    use chio_federation_transport_iroh::lanes::pheromone::deliver_batch_over_iroh;
+    use chio_pheromone_relay::PheromoneRelayError;
+    use chio_pheromone_runtime::PheromoneReceiveReport;
+    use iroh::EndpointAddr;
+    use std::net::Ipv4Addr;
+
+    const NOW: u64 = 2_000_000;
+
+    fn endpoint_from_seed(seed: u8) -> EndpointId {
+        SecretKey::from_bytes(&[seed; 32]).public()
+    }
+
+    /// A verified single-entry directory admitting `kernel_id` at the transport
+    /// endpoint derived from `transport_seed` (mirrors the crate fixture).
+    fn verified_directory(kernel_id: &str, transport_seed: u8) -> Arc<VerifiedDirectory> {
+        let passport = Keypair::from_seed(&[7u8; 32]);
+        let issuer = Keypair::from_seed(&[240u8; 32]);
+        let transport = endpoint_from_seed(transport_seed);
+        let entry = TransportDirectoryEntry {
+            kernel_id: kernel_id.to_string(),
+            passport_public_key: passport.public_key(),
+            transport_endpoint_id: transport,
+            passport_endorsement: passport
+                .sign(&transport_endorsement_preimage(kernel_id, &transport)),
+            revocation_signers: Vec::new(),
+            removed: false,
+        };
+        let directory = TransportDirectoryDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            local_kernel_id: "did:chio:relay".to_string(),
+            peers: vec![entry],
+        };
+        let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());
+        let body = TransportDirectoryBundleBody {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            issuer: "did:chio:issuer".to_string(),
+            key_id: "issuer-key-1".to_string(),
+            directory_sha256,
+            version: 1,
+            previous_version_sha256: None,
+            issued_at_unix_ms: NOW - 1,
+            expires_at_unix_ms: NOW + 1,
+        };
+        let (signature, _) = issuer.sign_canonical(&body).unwrap();
+        let bundle = TransportDirectoryBundleDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            body,
+            directory,
+            signature,
+        };
+        let trust = TransportDirectoryBundleTrust {
+            issuers: vec![TrustedTransportDirectoryIssuer {
+                issuer: "did:chio:issuer".to_string(),
+                key_id: "issuer-key-1".to_string(),
+                public_key: issuer.public_key(),
+            }],
+            version_floor: 0,
+            expected_previous_version_sha256: None,
+            now_unix_ms: NOW,
+        };
+        Arc::new(bundle.verify_bundle(&trust).expect("fixture bundle verifies"))
+    }
+
+    /// A receiver double: the loopback 403 test never reaches it (the gate rejects
+    /// the unbound dialer at handshake), so it fails closed if ever invoked.
+    #[derive(Debug)]
+    struct RejectingReceiver;
+
+    #[async_trait::async_trait]
+    impl RelayBatchReceiver for RejectingReceiver {
+        async fn receive_batch(
+            &self,
+            _batch: PheromoneGossipBatch,
+            _authenticated_sender_kernel_id: String,
+            _received_at_unix_ms: u64,
+        ) -> Result<PheromoneReceiveReport, PheromoneRelayError> {
+            Err(PheromoneRelayError::Json("test receiver never accepts".to_string()))
+        }
+    }
+
+    fn loopback_config(lanes: Vec<IrohLane>) -> IrohMountConfig {
+        IrohMountConfig {
+            relay_mode: RelayMode::Disabled,
+            bind_addr: SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
+            lanes,
+            max_idle_timeout: RECOMMENDED_MAX_IDLE_TIMEOUT,
+        }
+    }
+
+    fn empty_batch() -> PheromoneGossipBatch {
+        PheromoneGossipBatch {
+            schema: PHEROMONE_GOSSIP_BATCH_SCHEMA.to_string(),
+            recipient_kernel_id: "did:chio:relay".to_string(),
+            treaty_id: "treaty:test".to_string(),
+            frames: Vec::new(),
+            flushed_at_unix_ms: NOW,
+        }
+    }
+
+    #[test]
+    fn disabled_loads_no_inputs_and_touches_nothing() {
+        // The opt-in-default-off guarantee: with iroh disabled, load returns None
+        // before any file access (the bogus paths are never read) and constructs
+        // nothing, so the serve path is byte-for-byte unchanged.
+        let inputs = load_iroh_serve_inputs(
+            false,
+            Some(Path::new("/nonexistent/directory.json")),
+            Some(Path::new("/nonexistent/issuers.json")),
+            Some(Path::new("/nonexistent/key.json")),
+            "0.0.0.0:0",
+            &[],
+            "pheromone",
+            NOW,
+        )
+        .expect("disabled load never errors");
+        assert!(inputs.is_none(), "disabled iroh must construct nothing");
+    }
+
+    #[test]
+    fn enable_without_transport_directory_fails_closed() {
+        let error = match load_iroh_serve_inputs(
+            true,
+            None,
+            Some(Path::new("/nonexistent/issuers.json")),
+            Some(Path::new("/nonexistent/key.json")),
+            "0.0.0.0:0",
+            &[],
+            "pheromone",
+            NOW,
+        ) {
+            Ok(_) => panic!("missing transport directory must fail closed"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("iroh-transport-directory"));
+    }
+
+    #[test]
+    fn invalid_transport_directory_bundle_fails_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let bundle_path = dir.path().join("bundle.json");
+        let issuers_path = dir.path().join("issuers.json");
+        let key_path = dir.path().join("key.json");
+
+        // A bundle that is not even the right schema: verification must reject it.
+        std::fs::write(&bundle_path, "{\"schema\":\"totally.wrong\"}").unwrap();
+        let issuer = Keypair::from_seed(&[240u8; 32]);
+        let issuers = serde_json::json!({
+            "issuers": [{
+                "issuer": "did:chio:issuer",
+                "keyId": "issuer-key-1",
+                "publicKey": issuer.public_key(),
+            }],
+        });
+        std::fs::write(&issuers_path, serde_json::to_string(&issuers).unwrap()).unwrap();
+        std::fs::write(&key_path, "{\"seedHex\":\"".to_string() + &"11".repeat(32) + "\"}").unwrap();
+
+        let error = match load_iroh_serve_inputs(
+            true,
+            Some(&bundle_path),
+            Some(&issuers_path),
+            Some(&key_path),
+            "0.0.0.0:0",
+            &[],
+            "pheromone",
+            NOW,
+        ) {
+            Ok(_) => panic!("an invalid/tampered directory bundle must fail closed"),
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("directory bundle"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn revocation_and_bilateral_lanes_are_rejected_fail_closed() {
+        assert!(parse_iroh_lanes("revocation").is_err());
+        assert!(parse_iroh_lanes("bilateral").is_err());
+        assert!(parse_iroh_lanes("pheromone,bilateral").is_err());
+        assert!(parse_iroh_lanes("").is_err());
+        assert_eq!(parse_iroh_lanes("pheromone").unwrap(), vec![IrohLane::Pheromone]);
+    }
+
+    async fn bind_dialer(seed: u8) -> Endpoint {
+        Endpoint::builder(presets::Minimal)
+            .secret_key(SecretKey::from_bytes(&[seed; 32]))
+            .relay_mode(RelayMode::Disabled)
+            .bind_addr((Ipv4Addr::LOCALHOST, 0))
+            .expect("loopback bind address parses")
+            .bind()
+            .await
+            .expect("dialer endpoint binds on loopback")
+    }
+
+    fn direct_addr(endpoint: &Endpoint) -> EndpointAddr {
+        let socket = endpoint
+            .bound_sockets()
+            .into_iter()
+            .next()
+            .expect("endpoint bound a socket");
+        EndpointAddr::new(endpoint.id()).with_ip_addr(socket)
+    }
+
+    #[tokio::test]
+    async fn build_iroh_router_succeeds_and_403s_unadmitted_over_loopback() {
+        let dialer_seed = 24u8;
+        let unbound_seed = 99u8;
+        // The directory admits only the endpoint derived from dialer_seed.
+        let directory = verified_directory("did:chio:bob", dialer_seed);
+        let inputs = IrohServeInputs {
+            directory,
+            // The acceptor's own transport key is unrelated to the admitted set.
+            transport_key: SecretKey::from_bytes(&[42u8; 32]),
+            config: loopback_config(vec![IrohLane::Pheromone]),
+        };
+        let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+        let receiver: Arc<dyn RelayBatchReceiver> = Arc::new(RejectingReceiver);
+
+        let mount = build_iroh_router(inputs, receiver, store)
+            .await
+            .expect("mount builder succeeds with a valid directory + gate");
+        assert_eq!(mount.enabled_lanes, vec!["pheromone"]);
+        let acceptor_addr = direct_addr(mount.router.endpoint());
+
+        // An unadmitted (unbound) endpoint is rejected at the admission gate (403 at
+        // after_handshake) BEFORE any handler runs: the delivery must error.
+        let unbound = bind_dialer(unbound_seed).await;
+        let batch = empty_batch();
+        let result = tokio::time::timeout(
+            Duration::from_secs(15),
+            deliver_batch_over_iroh(&unbound, acceptor_addr, &batch),
+        )
+        .await
+        .expect("dial resolves before timeout");
+        assert!(
+            result.is_err(),
+            "an unadmitted endpoint must be 403'd at the gate, got {result:?}"
+        );
+
+        mount.router.shutdown().await.ok();
+    }
+}

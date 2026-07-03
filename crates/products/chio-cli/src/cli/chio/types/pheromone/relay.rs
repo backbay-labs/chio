@@ -87,6 +87,35 @@ pub(crate) enum ChioPheromoneRelayCommands {
         /// Environment variable containing the operator token for observability endpoints.
         #[arg(long, value_name = "ENV")]
         operator_token_env: Option<String>,
+
+        /// Mount the iroh federation-transport mesh alongside the HTTP relay (DUAL).
+        /// OFF by default: with it off the serve path is byte-for-byte unchanged.
+        #[arg(long, default_value_t = false)]
+        iroh_enable: bool,
+
+        /// Issuer-signed iroh transport-directory bundle JSON. Required with
+        /// --iroh-enable; verified fail-closed against --trusted-issuers.
+        #[arg(long, value_name = "PATH")]
+        iroh_transport_directory: Option<PathBuf>,
+
+        /// Dedicated rotatable ed25519 transport key file ({ "seedHex": ".." }),
+        /// SEPARATE from the passport/relay signing key. Required with --iroh-enable.
+        #[arg(long, value_name = "PATH")]
+        iroh_transport_key: Option<PathBuf>,
+
+        /// Socket address the iroh endpoint binds. Default 0.0.0.0:0 (ephemeral port).
+        #[arg(long, value_name = "ADDR", default_value = "0.0.0.0:0")]
+        iroh_bind_addr: String,
+
+        /// Self-hosted relay URL(s). Repeatable. Omitted -> RelayMode::Disabled
+        /// (direct addressing; never the n0 free relays).
+        #[arg(long, value_name = "URL")]
+        iroh_relay_url: Vec<String>,
+
+        /// Comma-separated iroh lanes to mount. Default: pheromone (the only lane
+        /// that shares the relay receiver + store on this hook).
+        #[arg(long, value_name = "LANES", default_value = "pheromone")]
+        iroh_lanes: String,
     },
 
     /// Queue accepted local relay work for subscribed peers.

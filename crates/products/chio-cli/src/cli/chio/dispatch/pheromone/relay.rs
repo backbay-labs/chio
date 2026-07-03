@@ -1,8 +1,9 @@
 use super::{
-    build_peer_directory_bundle_trust, load_relay_peer_directory_from_paths,
+    build_iroh_router, build_peer_directory_bundle_trust, iroh_transport_metrics_prometheus,
     load_chio_verified_workflow_resolver, load_chio_workflow_verifier_trust_bundle,
-    load_relay_signing_key, read_json_documents_from_dir, read_utf8_json_file, unix_now_ms,
-    write_json_string, write_pretty_json,
+    load_iroh_serve_inputs, load_relay_peer_directory_from_paths, load_relay_signing_key,
+    read_json_documents_from_dir, read_utf8_json_file, unix_now_ms, write_json_string,
+    write_pretty_json,
 };
 use crate::CliError;
 use std::path::Path;
@@ -119,6 +120,7 @@ pub(crate) fn cmd_chio_pheromone_relay_lint(
     write_json_string(report, &format!("{json}\n"))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn cmd_chio_pheromone_relay_serve(
     listen: &str,
     store: &Path,
@@ -132,8 +134,28 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
     context: &Path,
     report_dir: &Path,
     operator_token_env: Option<&str>,
+    iroh_enable: bool,
+    iroh_transport_directory: Option<&Path>,
+    iroh_transport_key: Option<&Path>,
+    iroh_bind_addr: &str,
+    iroh_relay_url: &[String],
+    iroh_lanes: &str,
 ) -> Result<(), CliError> {
     let now = unix_now_ms();
+    // DEPLOYABILITY (opt-in, DUAL): load + verify the iroh federation-transport
+    // inputs up front. Fail-closed: with --iroh-enable set, any bad input aborts
+    // serve before the endpoint binds; with it unset this returns None WITHOUT
+    // touching any file, so the serve path below is byte-for-byte unchanged.
+    let iroh_inputs = load_iroh_serve_inputs(
+        iroh_enable,
+        iroh_transport_directory,
+        trusted_issuers,
+        iroh_transport_key,
+        iroh_bind_addr,
+        iroh_relay_url,
+        iroh_lanes,
+        now,
+    )?;
     std::fs::create_dir_all(report_dir).map_err(|error| {
         CliError::cli_other_error(format!(
             "failed to create Chio pheromone relay report directory {}: {error}",
@@ -187,6 +209,14 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         receiver_config,
         resolver,
     });
+    // Share the SAME receiver + store the HTTP relay uses (one receiver, one store,
+    // two transports) with the optional iroh mount, BEFORE the service takes
+    // ownership of them below. `None` when --iroh-enable is off (no extra work).
+    let iroh_mount_plan = iroh_inputs.map(|inputs| {
+        let receiver: std::sync::Arc<dyn chio_pheromone_relay::RelayBatchReceiver> =
+            receiver.clone();
+        (inputs, receiver, relay_store.clone())
+    });
     let relay_limits = relay_service_limits_for_profile(profile);
     let service = chio_pheromone_relay::PheromoneRelayService::new(
         chio_pheromone_relay::PheromoneRelayConfig {
@@ -211,15 +241,45 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         .build()
         .map_err(|error| CliError::cli_other_error(format!("Chio relay runtime: {error}")))?;
     runtime.block_on(async move {
+        // Mount the iroh federation-transport lanes ALONGSIDE the axum serve (DUAL:
+        // the HTTP relay always keeps running). `None` when --iroh-enable is off, in
+        // which case this closure behaves exactly as before. Fail-closed: an iroh
+        // setup error aborts startup rather than silently serving HTTP-only.
+        let iroh_mount = match iroh_mount_plan {
+            Some((inputs, receiver, relay_store)) => {
+                let mount = build_iroh_router(inputs, receiver, relay_store).await?;
+                tracing::info!(
+                    target: "chio.iroh.transport",
+                    endpoint_id = %mount.endpoint_id,
+                    lanes = ?mount.enabled_lanes,
+                    "iroh federation-transport mounted alongside the HTTP relay (DUAL, opt-in --iroh-enable)"
+                );
+                Some(mount)
+            }
+            None => None,
+        };
         let listener = tokio::net::TcpListener::bind(address)
             .await
             .map_err(|error| {
                 CliError::cli_other_error(format!("Chio pheromone relay bind: {error}"))
             })?;
-        service
+        let serve_result = service
             .serve(listener)
             .await
-            .map_err(|error| CliError::cli_other_error(format!("Chio pheromone relay: {error}")))
+            .map_err(|error| CliError::cli_other_error(format!("Chio pheromone relay: {error}")));
+        if let Some(mount) = iroh_mount {
+            // Final iroh federation-transport metrics snapshot for post-mortem. The
+            // render surface (chio_federation_transport_iroh::metrics) is process
+            // global; the clean production hook is to concatenate this onto the
+            // relay's own /metrics exporter in chio-pheromone-relay's service.rs.
+            tracing::debug!(
+                target: "chio.iroh.transport",
+                metrics = %iroh_transport_metrics_prometheus(),
+                "iroh federation-transport final metrics snapshot"
+            );
+            let _ = mount.router.shutdown().await;
+        }
+        serve_result
     })
 }
 
