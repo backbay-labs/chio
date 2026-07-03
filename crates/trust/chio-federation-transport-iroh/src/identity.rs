@@ -474,6 +474,59 @@ mod tests {
         (bundle, trust)
     }
 
+    /// Build a fully-signed bundle at an explicit `version` chaining onto
+    /// `previous_version_sha256`. Mirrors [`signed_bundle`] but exposes the
+    /// version + predecessor so a rotation CHAIN (version N then N+1) can be
+    /// constructed and verified end-to-end.
+    fn rotation_bundle(
+        entries: &[EntrySpec],
+        version: u64,
+        previous_version_sha256: Option<String>,
+    ) -> TransportDirectoryBundleDocument {
+        let issuer_keypair = passport_from_seed(200);
+        let directory = TransportDirectoryDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            local_kernel_id: "did:chio:local".to_string(),
+            peers: entries.iter().map(build_entry).collect(),
+        };
+        let directory_sha256 = canonical_sha256(&directory).unwrap();
+        let body = TransportDirectoryBundleBody {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            issuer: ISSUER.to_string(),
+            key_id: KEY_ID.to_string(),
+            directory_sha256,
+            version,
+            previous_version_sha256,
+            issued_at_unix_ms: NOW - 1_000,
+            expires_at_unix_ms: NOW + 1_000,
+        };
+        let (signature, _) = issuer_keypair.sign_canonical(&body).unwrap();
+        TransportDirectoryBundleDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            body,
+            directory,
+            signature,
+        }
+    }
+
+    /// Trust inputs pinning the same issuer [`rotation_bundle`] signs with, at an
+    /// explicit rollback floor and expected predecessor hash.
+    fn rotation_trust(
+        version_floor: u64,
+        expected_previous_version_sha256: Option<String>,
+    ) -> TransportDirectoryBundleTrust {
+        TransportDirectoryBundleTrust {
+            issuers: vec![TrustedTransportDirectoryIssuer {
+                issuer: ISSUER.to_string(),
+                key_id: KEY_ID.to_string(),
+                public_key: passport_from_seed(200).public_key(),
+            }],
+            version_floor,
+            expected_previous_version_sha256,
+            now_unix_ms: NOW,
+        }
+    }
+
     #[test]
     fn valid_bundle_verifies_and_resolves_endpoints() {
         let alice = EntrySpec::admitted("did:chio:alice", 1, 10);
@@ -632,5 +685,117 @@ mod tests {
             bundle.verify_bundle(&trust),
             Err(IdentityError::EmptyDirectory)
         );
+    }
+
+    #[test]
+    fn transport_key_rotation_end_to_end() {
+        // Option B's premise: the passport is the long-term operator identity,
+        // and the ed25519 transport EndpointId rotates INDEPENDENTLY of it. Alice
+        // keeps the same passport (seed 1) across the rotation and swaps her
+        // transport endpoint from E_old to E_new.
+        //
+        // MODELING NOTE: `verify_bundle`'s per-kernel-id dedup rejects two entries
+        // sharing a kernel_id as `Duplicate`, so a rotation for one operator
+        // cannot be expressed as (old entry removed=true) + (new entry). Rotation
+        // is therefore an in-place REBIND of alice's single entry onto E_new; the
+        // rotated-away E_old then simply drops out of the directory and resolves
+        // to `None` (fail-closed). The admission gate treats an unbound endpoint
+        // and a removed tombstone identically (both 403), so the security
+        // property is the same either way.
+        let e_old = endpoint_from_seed(10);
+        let e_new = endpoint_from_seed(20);
+        assert_ne!(e_old, e_new, "the rotation must move to a fresh endpoint");
+
+        // Version N: alice admitted at E_old, passport-endorsed over E_old.
+        let bundle_n = rotation_bundle(&[EntrySpec::admitted("did:chio:alice", 1, 10)], 5, None);
+        let dir_n = bundle_n
+            .verify_bundle(&rotation_trust(4, None))
+            .expect("version N verifies");
+        assert_eq!(dir_n.authorize(&e_old), Some("did:chio:alice"));
+        assert_eq!(dir_n.authorize(&e_new), None, "E_new is not admitted at N");
+        let hash_n = dir_n.body_sha256().to_string();
+
+        // Version N+1: alice rebinds to E_new (SAME passport seed 1, freshly
+        // endorsed over E_new), chaining onto N via previous_version_sha256.
+        let bundle_np1 = rotation_bundle(
+            &[EntrySpec::admitted("did:chio:alice", 1, 20)],
+            6,
+            Some(hash_n.clone()),
+        );
+        let dir_np1 = bundle_np1
+            .verify_bundle(&rotation_trust(5, Some(hash_n.clone())))
+            .expect("version N+1 chains onto N and verifies");
+
+        // THE LOAD-BEARING ROTATION PROPERTY: E_new now authorizes to alice's
+        // kernel_id, and the rotated-away E_old no longer authorizes at all.
+        assert_eq!(
+            dir_np1.authorize(&e_new),
+            Some("did:chio:alice"),
+            "rotated-in E_new authorizes to alice"
+        );
+        assert_eq!(
+            dir_np1.authorize(&e_old),
+            None,
+            "rotated-away E_old no longer authorizes (fail-closed)"
+        );
+        assert_eq!(dir_np1.version(), 6);
+
+        // Fail-closed (a): a version N+1 that does NOT chain onto the real N is
+        // rejected. An attacker cannot slot in a successor pinned to a bogus
+        // predecessor, even with a correct signature and version.
+        let bad_chain = rotation_bundle(
+            &[EntrySpec::admitted("did:chio:alice", 1, 20)],
+            6,
+            Some("not-the-real-predecessor".to_string()),
+        );
+        assert_eq!(
+            bad_chain.verify_bundle(&rotation_trust(5, Some(hash_n.clone()))),
+            Err(IdentityError::PreviousVersionMismatch)
+        );
+
+        // Fail-closed (b): after adopting N+1 the floor advances to 6, so
+        // replaying the older version-5 bundle N is a downgrade the floor rejects.
+        assert_eq!(
+            bundle_n.verify_bundle(&rotation_trust(6, None)),
+            Err(IdentityError::Rollback {
+                version: 5,
+                floor: 6,
+            })
+        );
+    }
+
+    #[test]
+    fn rotation_to_unendorsed_new_endpoint_is_rejected() {
+        // A rotation is only genuine if the passport actually endorses the NEW
+        // transport key. Two ways it can be forged, both fail-closed:
+        let e_new = endpoint_from_seed(20);
+
+        // (a) alice presents E_new but the endorsement covers E_old (it does not
+        // cover the carried transport id): rejected. This keeps a rotated-in
+        // transport key from floating free of the long-term passport.
+        let mut endorse_stale = EntrySpec::admitted("did:chio:alice", 1, 20);
+        endorse_stale.endorsed_over = endpoint_from_seed(10);
+        assert_ne!(endorse_stale.transport, endorse_stale.endorsed_over);
+        let stale = rotation_bundle(&[endorse_stale], 6, Some("prev".to_string()));
+        assert!(matches!(
+            stale.verify_bundle(&rotation_trust(5, Some("prev".to_string()))),
+            Err(IdentityError::EndorsementInvalid(_))
+        ));
+
+        // (b) E_new IS endorsed, but by the WRONG passport (an attacker key, not
+        // alice's long-term passport): rejected. Re-pin + re-sign so only the
+        // endorsement check can fire.
+        let mut wrong_passport = rotation_bundle(
+            &[EntrySpec::admitted("did:chio:alice", 1, 20)],
+            6,
+            Some("prev".to_string()),
+        );
+        let attacker = passport_from_seed(151);
+        wrong_passport.directory.peers[0].passport_endorsement = attacker.sign(e_new.as_bytes());
+        repin_and_resign(&mut wrong_passport);
+        assert!(matches!(
+            wrong_passport.verify_bundle(&rotation_trust(5, Some("prev".to_string()))),
+            Err(IdentityError::EndorsementInvalid(_))
+        ));
     }
 }

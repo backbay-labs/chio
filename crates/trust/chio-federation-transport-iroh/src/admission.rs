@@ -213,4 +213,45 @@ mod tests {
         assert_eq!(code, NOT_ADMITTED_ERROR_CODE);
         assert_eq!(gate.resolve(&removed), None);
     }
+
+    #[test]
+    fn transport_key_rotation_flips_admitted_endpoint_at_the_gate() {
+        // Option B end-to-end at the admission layer: alice's ed25519 transport
+        // EndpointId rotates from E_old to E_new while her passport (seed 1) stays
+        // fixed. The gate admits whichever endpoint the current directory binds.
+        // (The chained fail-closed VERIFICATION of the N -> N+1 bundle, and the
+        // passport-over-transport endorsement of E_new, are covered in
+        // identity.rs; here we assert the resulting gate DECISION flips.)
+        let e_old = endpoint_from_seed(10);
+        let e_new = endpoint_from_seed(20);
+
+        // Directory version N: alice admitted at E_old.
+        let gate_n = DirectoryGate::new(verified_directory("did:chio:alice", 1, 10, false));
+        assert!(matches!(
+            gate_n.decide(&e_old),
+            AfterHandshakeOutcome::Accept
+        ));
+        assert_eq!(gate_n.resolve(&e_old), Some("did:chio:alice".to_string()));
+        // E_new is not yet admitted at N: fail-closed 403.
+        assert!(
+            reject_code(&gate_n.decide(&e_new)).is_some(),
+            "E_new must not be admitted before rotation"
+        );
+
+        // Directory version N+1: alice has rotated to E_new (same passport).
+        let gate_np1 = DirectoryGate::new(verified_directory("did:chio:alice", 1, 20, false));
+        assert!(matches!(
+            gate_np1.decide(&e_new),
+            AfterHandshakeOutcome::Accept
+        ));
+        assert_eq!(gate_np1.resolve(&e_new), Some("did:chio:alice".to_string()));
+
+        // THE LOAD-BEARING PROPERTY: the rotated-away E_old no longer admits.
+        let outcome = gate_np1.decide(&e_old);
+        let (code, reason) =
+            reject_code(&outcome).expect("rotated-away E_old is rejected at the gate");
+        assert_eq!(code, NOT_ADMITTED_ERROR_CODE);
+        assert_eq!(reason, NOT_ADMITTED_REASON);
+        assert_eq!(gate_np1.resolve(&e_old), None);
+    }
 }
