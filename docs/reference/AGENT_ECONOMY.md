@@ -1,6 +1,6 @@
 # Chio Agent Economy: Technical Design
 
-Status: Historical internal milestone design; implemented economic primitives are part of the current v1 pre-release profile.
+Scope: economic substrate design; implemented economic primitives are part of the current v1 pre-release profile.
 Authors: Engineering
 
 > Historical internal milestone note. Any `v2.x` labels below are pre-release

@@ -45,11 +45,11 @@
       decision as the corresponding rollback under the pre-amendment
       constitution, given BackwardRefines.
 
-  Per the rfl-gate analysis in the brainstorm tracker, candidates 1 and 2
-  are flagged as `rfl` and are retained only as definitional bridges
-  (the same role `amendment_admissible_iff_backward_refinement` plays in
-  the parent paper). The headline candidate for THIS paper is Candidate 3,
-  with Candidate 4 as the supporting load-bearing reduction.
+  The rfl-gate check flags candidates 1 and 2 as definitional restatements, so
+  they are retained only as bridges (the same role
+  `amendment_admissible_iff_backward_refinement` plays in the parent paper).
+  The headline candidate for this paper is Candidate 3, with Candidate 4 as
+  the supporting load-bearing reduction.
 -/
 
 import Chio.Treaty.Intersection

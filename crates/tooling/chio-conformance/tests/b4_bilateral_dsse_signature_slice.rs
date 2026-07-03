@@ -90,15 +90,15 @@ const ORG_B_KERNEL_ID: &str = "kernel.org-b";
 /// both, which is precisely why this path must be separate from the DualSignedReceipt
 /// receipt preimage.
 #[test]
-fn legacy_preimage_and_dsse_pae_preimage_share_zero_bytes() {
+fn cosigning_body_preimage_and_dsse_pae_preimage_share_zero_bytes() {
     let kp_a = Keypair::generate();
     let kp_b = Keypair::generate();
     let receipt = sample_receipt(&kp_b);
 
-    // Legacy preimage: canonical-JSON of CoSigningBody.
-    let legacy_body =
+    // CoSigningBody preimage: canonical JSON.
+    let cosigning_body =
         CoSigningBody::from_receipt(&receipt, ORG_A_KERNEL_ID, ORG_B_KERNEL_ID).unwrap();
-    let legacy_preimage = legacy_body.canonical_bytes().unwrap();
+    let cosigning_body_preimage = cosigning_body.canonical_bytes().unwrap();
 
     // Signature-slice preimage: DSSE PAE bytes wrapping the in-toto Statement.
     let envelope = sign_dsse_envelope(
@@ -115,9 +115,9 @@ fn legacy_preimage_and_dsse_pae_preimage_share_zero_bytes() {
 
     // The two preimages are not the same bytes.
     assert_ne!(
-        legacy_preimage, dsse_preimage,
-        "legacy CoSigningBody bytes and DSSE PAE bytes MUST differ; \
-         a signature-slice signature cannot authenticate the legacy preimage"
+        cosigning_body_preimage, dsse_preimage,
+        "CoSigningBody bytes and DSSE PAE bytes MUST differ; \
+         a signature-slice signature cannot authenticate the CoSigningBody preimage"
     );
 
     // Stronger: the DSSE PAE bytes start with the literal "DSSEv1 " prefix
@@ -128,11 +128,11 @@ fn legacy_preimage_and_dsse_pae_preimage_share_zero_bytes() {
         "DSSE PAE preimage MUST begin with the literal 'DSSEv1 ' tag"
     );
     assert!(
-        legacy_preimage.starts_with(b"{"),
-        "legacy CoSigningBody canonical-JSON preimage MUST begin with '{{' (RFC 8785)"
+        cosigning_body_preimage.starts_with(b"{"),
+        "CoSigningBody canonical-JSON preimage MUST begin with '{{' (RFC 8785)"
     );
-    let header_overlap_len = std::cmp::min(7, legacy_preimage.len());
-    let no_position_overlaps = legacy_preimage
+    let header_overlap_len = std::cmp::min(7, cosigning_body_preimage.len());
+    let no_position_overlaps = cosigning_body_preimage
         .iter()
         .take(header_overlap_len)
         .zip(dsse_preimage.iter().take(header_overlap_len))
@@ -406,7 +406,7 @@ fn mismatched_payload_type_rejected_by_signature_slice_verifier() {
 /// `signatures` array. The signature-slice verifier MUST reject because the DualSignedReceipt
 /// signature does not authenticate the DSSE PAE preimage.
 #[test]
-fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
+fn forged_envelope_using_dual_signed_receipt_signature_bytes_is_rejected() {
     let kp_a = Keypair::generate();
     let kp_b = Keypair::generate();
     let receipt = sample_receipt(&kp_b);
@@ -441,16 +441,16 @@ fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
     // would accept this; the signature-slice verifier rejects because Ed25519 fails
     // against the wrong preimage.
     let mut forged: DsseEnvelope = artifacts.dsse_envelope.clone();
-    let legacy_sig_a_bytes = artifacts.dual_signed_receipt.org_a_signature.to_bytes();
-    let legacy_sig_b_bytes = artifacts.dual_signed_receipt.org_b_signature.to_bytes();
-    forged.signatures[0].sig = BASE64_STANDARD.encode(legacy_sig_a_bytes);
-    forged.signatures[1].sig = BASE64_STANDARD.encode(legacy_sig_b_bytes);
+    let dual_signed_receipt_sig_a_bytes = artifacts.dual_signed_receipt.org_a_signature.to_bytes();
+    let dual_signed_receipt_sig_b_bytes = artifacts.dual_signed_receipt.org_b_signature.to_bytes();
+    forged.signatures[0].sig = BASE64_STANDARD.encode(dual_signed_receipt_sig_a_bytes);
+    forged.signatures[1].sig = BASE64_STANDARD.encode(dual_signed_receipt_sig_b_bytes);
 
     let result = verify_dsse_envelope(&forged, &kp_a.public_key(), &kp_b.public_key());
     assert!(
         result.is_err(),
-        "DSSE envelope forged from legacy DualSignedReceipt signatures MUST \
-         fail signature-slice verification because a legacy signature cannot \
+        "DSSE envelope forged from DualSignedReceipt signatures MUST \
+         fail signature-slice verification because a DualSignedReceipt signature cannot \
          authenticate the DSSE preimage"
     );
 }
@@ -479,7 +479,7 @@ fn hot_path_emits_both_artifacts_and_each_verifies() {
     artifacts
         .dual_signed_receipt
         .verify(&kp_a.public_key(), &kp_b.public_key())
-        .expect("legacy DualSignedReceipt verifies under legacy verifier");
+        .expect("DualSignedReceipt verifies under DualSignedReceipt verifier");
 
     // Signature-slice verifier accepts the DSSE artifact.
     verify_dsse_envelope(
@@ -494,14 +494,15 @@ fn hot_path_emits_both_artifacts_and_each_verifies() {
     // even compile. We document the intent in a runtime check instead:
     // the DualSignedReceipt preimage bytes do not appear inside the DSSE preimage,
     // so a DSSE envelope cannot be re-interpreted as a DualSignedReceipt artifact.
-    let legacy_preimage = CoSigningBody::from_receipt(&receipt, ORG_A_KERNEL_ID, ORG_B_KERNEL_ID)
-        .unwrap()
-        .canonical_bytes()
-        .unwrap();
+    let cosigning_body_preimage =
+        CoSigningBody::from_receipt(&receipt, ORG_A_KERNEL_ID, ORG_B_KERNEL_ID)
+            .unwrap()
+            .canonical_bytes()
+            .unwrap();
     let dsse_preimage = artifacts.dsse_envelope.pae_bytes().unwrap();
     assert!(
-        !contains_subsequence(&dsse_preimage, &legacy_preimage),
-        "the DSSE PAE preimage does NOT contain the legacy preimage as a \
+        !contains_subsequence(&dsse_preimage, &cosigning_body_preimage),
+        "the DSSE PAE preimage does NOT contain the CoSigningBody preimage as a \
          substring; the two surfaces are not collapsible"
     );
 }

@@ -741,7 +741,6 @@ impl ChioKernel {
         };
         let Some(value) = metadata
             .get("chio_runtime")
-            .or_else(|| metadata.get("chio_runtime"))
             .and_then(|runtime| runtime.get("federation_treaty_dsse"))
         else {
             return Ok(None);

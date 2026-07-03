@@ -11,10 +11,10 @@ family:
 
 The implementation tightens three contract-shape gaps deliberately:
 
-1. RFC6962 proof verification needs `leafIndex` and `treeSize`. The research
-   interface examples omitted those fields in the public methods, so the
-   contracts add `*Detailed` overloads and make the under-specified methods
-   revert fail closed.
+1. RFC6962 proof verification needs `leafIndex` and `treeSize`. The reference
+   and prototype interface examples omitted those fields in the public methods,
+   so the contracts add `*Detailed` overloads and make the under-specified
+   methods revert fail closed.
 2. Signature-based escrow release must bind `escrowId`, `settledAmount`, and
    chain context into the signed payload. Verifying a bare `receiptHash` would
    leave the amount under-specified.

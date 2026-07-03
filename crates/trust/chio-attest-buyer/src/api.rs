@@ -9,9 +9,7 @@ use crate::conversions::{
     historical_receipt_lineage_statement, historical_review_bundle, historical_review_package,
     historical_review_sources, local_review_report, local_verification_report,
 };
-use crate::error::{
-    chio_attest_buyer_code, json_error, BuyerAttestationError, HistoricalBuyerError,
-};
+use crate::error::{chio_attest_buyer_code, json_error, BuyerAttestationError, RuntimeBuyerError};
 use crate::types::{
     BilateralInvocation, BuyerAttestationPacket, BuyerAttestationReviewCheck,
     BuyerAttestationReviewPackage, BuyerAttestationReviewReport, BuyerAttestationReviewSource,
@@ -57,7 +55,7 @@ pub fn buyer_attestation_verification_report_json(
             .collect(),
     };
     chio_runtime_core::buyer_attestation_verification_report_json(&historical)
-        .map_err(BuyerAttestationError::from_historical)
+        .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn buyer_attestation_review_report_json(
@@ -84,14 +82,14 @@ pub fn buyer_attestation_review_report_json(
             .collect(),
     };
     chio_runtime_core::buyer_attestation_review_report_json(&historical)
-        .map_err(BuyerAttestationError::from_historical)
+        .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn buyer_attestation_packet_sha256(
     packet: &BuyerAttestationPacket,
 ) -> Result<String, BuyerAttestationError> {
     chio_runtime_core::buyer_attestation_packet_sha256(&historical_buyer_attestation_packet(packet))
-        .map_err(BuyerAttestationError::from_historical)
+        .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn receipt_lineage_statement_sha256(
@@ -100,7 +98,7 @@ pub fn receipt_lineage_statement_sha256(
     chio_runtime_core::receipt_lineage_statement_sha256(&historical_receipt_lineage_statement(
         statement,
     ))
-    .map_err(BuyerAttestationError::from_historical)
+    .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn bilateral_invocation_binding_sha256(
@@ -109,7 +107,7 @@ pub fn bilateral_invocation_binding_sha256(
     chio_runtime_core::bilateral_invocation_binding_sha256(&historical_bilateral_invocation(
         invocation,
     ))
-    .map_err(BuyerAttestationError::from_historical)
+    .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn verify_buyer_attestation_packet(
@@ -127,7 +125,7 @@ pub fn verify_buyer_attestation_packet(
         &historical_bilateral_invocation(bilateral),
     )
     .map(local_verification_report)
-    .map_err(BuyerAttestationError::from_historical)
+    .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn verify_buyer_attestation_review_package(
@@ -139,7 +137,7 @@ pub fn verify_buyer_attestation_review_package(
         &historical_review_sources(sources),
     )
     .map(local_review_report)
-    .map_err(BuyerAttestationError::from_historical)
+    .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn verify_buyer_attestation_review_package_with_trust(
@@ -157,14 +155,14 @@ pub fn verify_buyer_attestation_review_package_with_trust(
         &historical_trust,
     )
     .map(local_review_report)
-    .map_err(BuyerAttestationError::from_historical)
+    .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn verify_receipt_lineage_bundle(
     bundle: &ReceiptLineageBundle,
 ) -> Result<bool, BuyerAttestationError> {
     chio_runtime_core::verify_receipt_lineage_bundle(&historical_review_bundle(bundle))
-        .map_err(BuyerAttestationError::from_historical)
+        .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn verify_buyer_attestation_review_package_with_proof_replay_json(
@@ -230,7 +228,7 @@ fn replay_historical_verifier(
     verification_context_json: &str,
 ) -> Result<(), BuyerAttestationError> {
     let proof_package_bytes = review_source_bytes(sources, "proof_package").ok_or_else(|| {
-        BuyerAttestationError::from_historical(HistoricalBuyerError::Rejected {
+        BuyerAttestationError::from_runtime(RuntimeBuyerError::Rejected {
             code: "chio_attest_buyer_review_missing_proof_package",
             detail: "buyer review package is missing proof_package artifact".to_string(),
         })
