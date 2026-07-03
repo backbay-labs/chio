@@ -1,7 +1,6 @@
 # Chio Rename Migration Guide
 
 **Status:** cutover update
-**Date:** 2026-03-25
 
 ## Goal
 

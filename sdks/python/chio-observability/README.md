@@ -157,13 +157,6 @@ receipts to the existing trace instead of creating a standalone one:
 * `ChioObservabilityConfigError` -- the bridge configuration is invalid
   (missing credentials, missing project, unavailable SDK, etc.).
 
-## Reference
-
-See
-[`docs/guards/11-SIEM-OBSERVABILITY-COMPLETION.md`](../../../docs/guards/11-SIEM-OBSERVABILITY-COMPLETION.md)
-section 5 for the full bridge design (trace context propagation, span
-schemas, polling model).
-
 ## Development
 
 ```bash

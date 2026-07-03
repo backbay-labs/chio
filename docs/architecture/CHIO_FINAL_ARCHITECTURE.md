@@ -1,7 +1,6 @@
 # Chio Final Architecture
 
 Status: architecture target, not an implementation patch
-Date: 2026-05-18
 
 > **Large-doc status**
 > - Category: live architecture contract.
@@ -32,9 +31,8 @@ runtime and attest surfaces.
 
 ## Current State Map
 
-This section is grounded in the current dirty worktree on
-`codex/chio-7-8-live-treaty-buyer-closure`. Line numbers are evidence, not a
-stability promise.
+This section is grounded in the current source tree. Line numbers are evidence,
+not a stability promise.
 
 ### Pheromone substrate
 
@@ -145,8 +143,6 @@ relay path, including catch-up and future replay endpoints.
   `ChioTreatyCommands`).
 - The nested public `chio federation authority trust-bundle` tree now uses
   `ChioTrustBundleCommands`.
-- `docs/research/CHIO_3VENDOR_FIXTURE.md` points signed-artifact
-  verification at `chio attest buyer verify-proof`.
 - `spec/schemas/registry.json` registers active Chio schema IDs with Chio-native
   `artifactKind` values. The schema registry gate fails active Chio schema
   files whose JSON Schema `title` uses retired naming, and fails active Chio

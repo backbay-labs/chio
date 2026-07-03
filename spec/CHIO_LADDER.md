@@ -1,16 +1,11 @@
 # Chio Governance Ladder Manifest
 
 **Status:** v1 (Chio-owned pre-release; wire-frozen against `chio.federation.governance-ladder-manifest.v1`)
-**Date:** 2026-05-04
-**Supersedes:** none
 
 This specification defines the **chio governance ladder manifest**, the
 signed per-participant artefact that declares how each cross-trust action
-class maps to a governance mode and a consistency model. It is the gating
-spec named in
-[CHIO_CONCEPT.md](../docs/research/CHIO_CONCEPT.md) section 4.2:
-peers cannot declare or interpret each other's governance intensity without
-it.
+class maps to a governance mode and a consistency model. Peers cannot declare
+or interpret each other's governance intensity without it.
 
 The ladder manifest is signed and pinned at the federation handshake
 ([../crates/trust/chio-federation/src/trust_establishment.rs](../crates/trust/chio-federation/src/trust_establishment.rs))
@@ -390,8 +385,8 @@ mutation; any action without an authenticated operator identity.
 
 ## 4. Consistency Model Semantics
 
-Per CHIO_CONCEPT v1.1 section 4.2 and hard problem 2, bilateral
-co-signing alone leaves the partition-divergent co-sign window open.
+The bilateral co-signing layer alone leaves the partition-divergent co-sign
+window open.
 Each action class therefore declares a `consistency_model` and (for two
 of the three) a `consistency_anchor`.
 
@@ -1187,12 +1182,9 @@ verifiable.
 ## 9. Open Items
 
 - BBS+ projection of the manifest body so a peer can prove "we declare a
-  class X at receipt_backed" without revealing the full class table. See
-  CHIO_CONCEPT v1.1 hard problem 4.
-- The `chio-pheromone` substrate spec
-  ([CHIO_CONCEPT.md](../docs/research/CHIO_CONCEPT.md) section 4.1)
-  is the sibling gating spec; pheromone-deposit action classes will pin
-  to its wire format once it lands.
+  class X at receipt_backed" without revealing the full class table.
+- The `chio-pheromone` substrate spec is the sibling gating spec;
+  pheromone-deposit action classes pin to its wire format.
 - A `ladder.dispute_resolution` workflow that turns a section 7 finding
   into an actionable `GenericGovernanceCaseEvaluation` with named
   remediation steps.

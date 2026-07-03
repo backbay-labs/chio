@@ -2,7 +2,6 @@
 
 - Status: Accepted
 - Decision owner: kernel and capability lanes
-- Related plan items: phase 07-02 (monetary types foundation)
 
 ## Context
 

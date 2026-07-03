@@ -1,10 +1,8 @@
 # Risk Register
 
 This register tracks known risks for the v1-only pre-release candidate.
-See also [REVIEW-FINDINGS-AND-NEXT-STEPS.md](../protocols/REVIEW-FINDINGS-AND-NEXT-STEPS.md)
-for the full engineering backlog.
 
-## Critical engineering backlog (from review)
+## Critical Engineering Backlog
 
 | Risk | Severity | Mitigation status | Notes |
 | --- | --- | --- | --- |

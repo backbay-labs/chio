@@ -2,9 +2,8 @@
 
 ## Purpose
 
-This note turns Pattern B from
-`docs/research/TEE_RUNTIME_ASSURANCE_BINDING_MEMO.md` into one concrete
-candidate artifact shape for `chio.nitro.attested_checkpoint_binding.v1`.
+This note defines one concrete candidate artifact shape for
+`chio.nitro.attested_checkpoint_binding.v1`.
 
 It is intentionally bounded:
 
@@ -184,8 +183,6 @@ This note does not define:
 
 ## Source Notes
 
-- Local research context:
-  `docs/research/TEE_RUNTIME_ASSURANCE_BINDING_MEMO.md`
 - AWS Nitro attestation overview:
   <https://docs.aws.amazon.com/enclaves/latest/user/set-up-attestation.html>
 - AWS Nitro attestation document structure:

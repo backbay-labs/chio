@@ -1,7 +1,5 @@
 # Portable Kernel Architecture: `chio-kernel-core` Extraction
 
-**Status:** Draft
-**Date:** 2026-04-15
 
 > The WASM kernel build is the single largest surface multiplier in the Chio
 > roadmap. It unlocks browser agents, edge workers (Cloudflare Workers, Deno

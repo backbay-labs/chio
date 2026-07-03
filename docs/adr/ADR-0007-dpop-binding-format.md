@@ -2,7 +2,6 @@
 
 - Status: Accepted
 - Decision owner: protocol and enforcement lanes
-- Related plan items: phase 07 (DPoP proof-of-possession)
 
 ## Context
 

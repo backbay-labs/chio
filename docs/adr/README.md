@@ -1,8 +1,7 @@
 # Architecture Decision Records
 
-These ADRs capture the blocking design decisions called out in
-[../operations/EXECUTION_PLAN.md](../operations/EXECUTION_PLAN.md) and the
-current v1 protocol strategy review.
+These ADRs capture blocking design decisions for the current v1 protocol
+baseline.
 
 Status legend:
 

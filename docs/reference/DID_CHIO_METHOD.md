@@ -2,7 +2,6 @@
 
 **Status:** legacy compatibility method for current v1 profile; originally
 tracked under an internal portable-trust milestone
-**Date:** 2026-03-23
 
 **Transition note:** The Chio rename freezes `did:chio` as a legacy
 compatibility method for already-issued Chio artifacts. The planned Chio
