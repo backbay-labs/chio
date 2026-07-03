@@ -22,6 +22,7 @@ use chio_core_types::sha256_hex;
 use chio_core_types::Keypair;
 use chio_federation_transport_iroh::admission::DirectoryGate;
 use chio_federation_transport_iroh::admission::NOT_ADMITTED_ERROR_CODE;
+use chio_federation_transport_iroh::identity::transport_endorsement_preimage;
 use chio_federation_transport_iroh::identity::TransportDirectoryBundleBody;
 use chio_federation_transport_iroh::identity::TransportDirectoryBundleDocument;
 use chio_federation_transport_iroh::identity::TransportDirectoryBundleTrust;
@@ -74,8 +75,11 @@ fn build_gate(entries: &[(&str, u8, u8)]) -> Result<DirectoryGate, Box<dyn Error
                 passport_public_key: passport.public_key(),
                 transport_endpoint_id: transport,
                 // The passport-over-transport endorsement: the long-term passport
-                // signs the 32 transport-id bytes, binding the two identities.
-                passport_endorsement: passport.sign(transport.as_bytes()),
+                // signs the DOMAIN-SEPARATED preimage committing to the kernel_id
+                // and the transport endpoint, binding the two identities.
+                passport_endorsement: passport
+                    .sign(&transport_endorsement_preimage(kernel_id, &transport)),
+                revocation_signers: Vec::new(),
                 removed: false,
             }
         })

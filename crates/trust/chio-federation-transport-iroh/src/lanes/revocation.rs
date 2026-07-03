@@ -21,21 +21,23 @@
 //!
 //! Revocation wire types carry only an opaque `signer_id`
 //! ([`revocation_gossip.rs:65`](chio_federation::revocation_gossip)); there is no
-//! endpoint or public key on the wire. So this lane owns a NET-NEW
-//! [`VerifiedSignerDirectory`] mapping `signer_id -> (EndpointId, verifying-key)`,
-//! distinct from the pheromone [`VerifiedDirectory`]. At accept time the handler
-//! (1) REJECTS at the admission gate any transport `EndpointId` not bound to an
-//! admitted kernel (defense in depth), (2) asserts each frame's `signer_id` is
-//! pinned to the SAME authenticated `EndpointId` (transport origin pin), and
-//! (3) signature-verifies the [`SignedEpochRoot`] against the bound verifying key
-//! (authenticity). All three are mandatory and independent (ADAPTER-SPEC 5
-//! "feeds the verifier, not replaces it"; blueprint B.4).
+//! endpoint or public key on the wire. So this lane needs a
+//! [`VerifiedSignerDirectory`] mapping `signer_id -> (EndpointId, verifying-key)`.
+//! In production that directory is a DERIVED PROJECTION of the one issuer-signed
+//! [`VerifiedDirectory`]: each [`crate::identity::RevocationSignerEntry`] binds
+//! `signer_id -> oracle_public_key` to an operator via a domain-separated passport
+//! endorsement, and the transport `EndpointId` that may originate the signer's
+//! roots IS that operator's `transport_endpoint_id`. So the origin pin is
+//! STRUCTURAL: signer and endpoint come from one issuer-signed entry, inheriting
+//! the body-hash pin, issuer signature, validity window, and rollback machinery.
 //!
-//! TODO(iroh-transport): the `signer_id -> (EndpointId, verifying-key)` binding
-//! is modeled here as an adapter-local pinned map. Its final home is likely
-//! `KernelTrustExchange`-anchored (ADAPTER-SPEC 7 Open Decision
-//! "`signer_id -> EndpointId` binding home"); until then this map MUST be built
-//! only from issuer-verified material and MUST NOT weaken the signature check.
+//! At accept time the handler (1) REJECTS at the admission gate any transport
+//! `EndpointId` not bound to an admitted kernel (defense in depth), (2) asserts
+//! each frame's `signer_id` is pinned to the SAME authenticated `EndpointId`
+//! (transport origin pin, now structurally guaranteed by the derived directory),
+//! and (3) signature-verifies the [`SignedEpochRoot`] against the bound verifying
+//! key (authenticity). All three are mandatory and independent (ADAPTER-SPEC 5
+//! "feeds the verifier, not replaces it"; blueprint B.4).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -86,13 +88,20 @@ pub struct SignerBinding {
     pub verifier: Ed25519RootVerifier,
 }
 
-/// The NET-NEW `signer_id -> (EndpointId, verifying-key)` directory this lane
-/// requires (blueprint B.4). Sibling to [`VerifiedDirectory`] but keyed on the
-/// opaque revocation `signer_id`, since revocation wire types carry no endpoint
-/// or public key.
+/// The `signer_id -> (EndpointId, verifying-key)` directory this lane requires
+/// (blueprint B.4), keyed on the opaque revocation `signer_id` since revocation
+/// wire types carry no endpoint or public key.
 ///
-/// Fail-closed at construction: a duplicate `signer_id` is rejected so a pinned
-/// binding can never be silently shadowed.
+/// In production this is a DERIVED PROJECTION of the issuer-signed
+/// [`VerifiedDirectory`], built by
+/// [`TransportDirectoryBundleDocument::verify_bundle`](crate::identity::TransportDirectoryBundleDocument::verify_bundle)
+/// and read back via
+/// [`VerifiedDirectory::signer_directory`](crate::identity::VerifiedDirectory::signer_directory).
+/// The duplicate-`signer_id` and `signer_id`-vs-key consistency rules are enforced
+/// during bundle verification (consistent by construction, since the verifier is
+/// built from the same `signer_id`). The [`from_bindings`](Self::from_bindings)
+/// constructor is retained for explicit / test construction and re-checks both
+/// rules fail-closed.
 #[derive(Debug, Clone, Default)]
 pub struct VerifiedSignerDirectory {
     by_signer: HashMap<String, SignerBinding>,
@@ -120,6 +129,15 @@ impl VerifiedSignerDirectory {
             }
         }
         Ok(Self { by_signer })
+    }
+
+    /// Wrap an already-validated `signer_id -> binding` map produced by the
+    /// issuer-signed directory verifier (`verify_bundle`), where duplicate
+    /// detection and `signer_id`-vs-key consistency are enforced during bundle
+    /// verification. This is the production constructor; the map's provenance is
+    /// the one issuer-signed transport directory.
+    pub(crate) fn from_verified_map(by_signer: HashMap<String, SignerBinding>) -> Self {
+        Self { by_signer }
     }
 
     /// Resolve an opaque `signer_id` to its pinned binding, or `None`
@@ -274,11 +292,11 @@ impl RevocationLaneError {
 /// `Router::builder(ep).accept(ALPN_REVOCATION_ROOT, handler)`.
 #[derive(Clone)]
 pub struct RevocationHandler {
-    /// Admission re-resolve (`EndpointId -> kernel_id`); defense in depth above
-    /// the accept-time gate.
+    /// The one issuer-signed directory. It resolves the admission re-check
+    /// (`EndpointId -> kernel_id`, defense in depth above the accept-time gate)
+    /// AND carries the derived `signer_id -> (EndpointId, verifying-key)` pinning,
+    /// so both originate from the same issuer-signed material.
     directory: Arc<VerifiedDirectory>,
-    /// NET-NEW `signer_id -> (EndpointId, verifying-key)` pinning.
-    signers: Arc<VerifiedSignerDirectory>,
     /// Catch-up history the responder serves via `respond_to_catchup`.
     history: Arc<dyn RevocationCatchupHistory + Send + Sync>,
     /// Caller cache updater for verified push roots.
@@ -292,7 +310,7 @@ impl std::fmt::Debug for RevocationHandler {
         f.debug_struct("RevocationHandler")
             .field("responder_kernel_id", &self.responder_kernel_id)
             .field("directory_version", &self.directory.version())
-            .field("pinned_signers", &self.signers.len())
+            .field("pinned_signers", &self.directory.signer_directory().len())
             .finish_non_exhaustive()
     }
 }
@@ -308,18 +326,19 @@ impl RevocationCatchupHistory for DynHistory {
 }
 
 impl RevocationHandler {
-    /// Build a revocation-root handler.
+    /// Build a revocation-root handler. The signer pinning is DERIVED from the
+    /// issuer-signed `directory` ([`VerifiedDirectory::signer_directory`]), so the
+    /// handler can never be fed a signer map that disagrees with the admitted
+    /// endpoints: the transport-origin pin is structural, not conventional.
     #[must_use]
     pub fn new(
         directory: Arc<VerifiedDirectory>,
-        signers: Arc<VerifiedSignerDirectory>,
         history: Arc<dyn RevocationCatchupHistory + Send + Sync>,
         sink: Arc<dyn RevocationRootSink>,
         responder_kernel_id: impl Into<String>,
     ) -> Self {
         Self {
             directory,
-            signers,
             history,
             sink,
             responder_kernel_id: responder_kernel_id.into(),
@@ -348,13 +367,15 @@ impl RevocationHandler {
 
         let mut verified: Vec<SignedEpochRoot> = Vec::with_capacity(batch.frames.len());
         for frame in &batch.frames {
-            // (a) resolve the opaque signer_id to its pinned binding.
+            // (a) resolve the opaque signer_id to its pinned binding in the
+            // directory's derived signer projection.
             let binding = self
-                .signers
-                .resolve(&frame.signer_id)
+                .directory
+                .resolve_signer(&frame.signer_id)
                 .ok_or_else(|| RevocationLaneError::UnknownSigner(frame.signer_id.clone()))?;
             // (b) transport-origin pin: the signer must be bound to the SAME
-            // authenticated endpoint that presented this frame.
+            // authenticated endpoint that presented this frame. Structurally
+            // guaranteed by the derived directory, re-checked fail-closed.
             if binding.endpoint != endpoint {
                 return Err(RevocationLaneError::SignerEndpointMismatch {
                     signer_id: frame.signer_id.clone(),
@@ -549,6 +570,9 @@ mod tests {
     use iroh::SecretKey;
     use std::sync::Mutex;
 
+    use crate::identity::revocation_signer_endorsement_preimage;
+    use crate::identity::transport_endorsement_preimage;
+    use crate::identity::RevocationSignerEntry;
     use crate::identity::TransportDirectoryBundleBody;
     use crate::identity::TransportDirectoryBundleDocument;
     use crate::identity::TransportDirectoryBundleTrust;
@@ -588,23 +612,77 @@ mod tests {
         }
     }
 
-    /// Build a verified single-entry admission directory binding `kernel_id` to
-    /// the transport endpoint derived from `transport_seed`.
-    fn verified_directory(kernel_id: &str, transport_seed: u8) -> Arc<VerifiedDirectory> {
-        let passport = Keypair::from_seed(&[7; 32]);
-        let issuer = Keypair::from_seed(&[240; 32]);
-        let transport = endpoint_from_seed(transport_seed);
-        let entry = TransportDirectoryEntry {
-            kernel_id: kernel_id.to_string(),
+    /// A peer for the test directory builder: admitted at a transport endpoint,
+    /// optionally declaring oracle revocation signers via its passport. The
+    /// derived signer directory is a projection of the verified bundle, so a
+    /// signer's endpoint is STRUCTURALLY this peer's `transport_seed`.
+    struct PeerSpec {
+        kernel_id: &'static str,
+        passport_seed: u8,
+        transport_seed: u8,
+        /// (signer_id, oracle seed hex) declared by this peer's passport.
+        signers: Vec<(&'static str, &'static str)>,
+        removed: bool,
+    }
+
+    impl PeerSpec {
+        fn admitted(kernel_id: &'static str, passport_seed: u8, transport_seed: u8) -> Self {
+            Self {
+                kernel_id,
+                passport_seed,
+                transport_seed,
+                signers: Vec::new(),
+                removed: false,
+            }
+        }
+
+        fn with_signer(mut self, signer_id: &'static str, oracle_seed: &'static str) -> Self {
+            self.signers.push((signer_id, oracle_seed));
+            self
+        }
+    }
+
+    fn build_peer_entry(spec: &PeerSpec) -> TransportDirectoryEntry {
+        let passport = Keypair::from_seed(&[spec.passport_seed; 32]);
+        let transport = endpoint_from_seed(spec.transport_seed);
+        let passport_endorsement =
+            passport.sign(&transport_endorsement_preimage(spec.kernel_id, &transport));
+        let revocation_signers = spec
+            .signers
+            .iter()
+            .map(|(signer_id, seed)| {
+                let oracle = signer(signer_id, seed);
+                let oracle_public_key = oracle.public_key();
+                let oracle_endorsement = passport.sign(&revocation_signer_endorsement_preimage(
+                    spec.kernel_id,
+                    signer_id,
+                    &oracle_public_key,
+                ));
+                RevocationSignerEntry {
+                    signer_id: signer_id.to_string(),
+                    oracle_public_key,
+                    oracle_endorsement,
+                }
+            })
+            .collect();
+        TransportDirectoryEntry {
+            kernel_id: spec.kernel_id.to_string(),
             passport_public_key: passport.public_key(),
             transport_endpoint_id: transport,
-            passport_endorsement: passport.sign(transport.as_bytes()),
-            removed: false,
-        };
+            passport_endorsement,
+            revocation_signers,
+            removed: spec.removed,
+        }
+    }
+
+    /// Build a load-time-verified directory admitting the given peers; each peer's
+    /// declared oracle signers are projected into the derived signer directory.
+    fn verified_directory_of(peers: &[PeerSpec]) -> Arc<VerifiedDirectory> {
+        let issuer = Keypair::from_seed(&[240; 32]);
         let directory = TransportDirectoryDocument {
             schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
             local_kernel_id: "did:chio:local".to_string(),
-            peers: vec![entry],
+            peers: peers.iter().map(build_peer_entry).collect(),
         };
         let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());
         let body = TransportDirectoryBundleBody {
@@ -637,17 +715,17 @@ mod tests {
         Arc::new(bundle.verify_bundle(&trust).expect("bundle verifies"))
     }
 
-    fn signers(pairs: Vec<(&str, EndpointId, &Ed25519RootSigner)>) -> Arc<VerifiedSignerDirectory> {
-        let bindings = pairs.into_iter().map(|(signer_id, endpoint, signer)| {
-            (
-                signer_id.to_string(),
-                SignerBinding {
-                    endpoint,
-                    verifier: signer.verifier(),
-                },
-            )
-        });
-        Arc::new(VerifiedSignerDirectory::from_bindings(bindings).expect("distinct signers"))
+    /// A single-peer directory admitting `kernel_id` at `transport_seed` and
+    /// declaring `signer_id` (oracle `seed`) bound to that same endpoint.
+    fn directory_with_signer(
+        kernel_id: &'static str,
+        transport_seed: u8,
+        signer_id: &'static str,
+        seed: &'static str,
+    ) -> Arc<VerifiedDirectory> {
+        verified_directory_of(&[
+            PeerSpec::admitted(kernel_id, 7, transport_seed).with_signer(signer_id, seed)
+        ])
     }
 
     /// A recording sink so tests can assert exactly what was merged.
@@ -674,14 +752,10 @@ mod tests {
         }
     }
 
-    fn handler(
-        directory: Arc<VerifiedDirectory>,
-        signers: Arc<VerifiedSignerDirectory>,
-    ) -> (RevocationHandler, Arc<RecordingSink>) {
+    fn handler(directory: Arc<VerifiedDirectory>) -> (RevocationHandler, Arc<RecordingSink>) {
         let sink = Arc::new(RecordingSink::default());
         let handler = RevocationHandler::new(
             directory,
-            signers,
             Arc::new(EmptyHistory),
             sink.clone(),
             "did:chio:responder",
@@ -690,12 +764,13 @@ mod tests {
     }
 
     #[test]
-    fn signed_root_accepted_from_pinned_signer() {
+    fn signed_root_accepted_through_derived_binding() {
+        // A real SignedEpochRoot verifies through the DERIVED signer binding: the
+        // directory declares oracle-a bound (structurally) to the peer's endpoint.
         let transport = endpoint_from_seed(10);
         let oracle = signer("oracle-a", SEED_A);
-        let directory = verified_directory("did:chio:peer", 10);
-        let signer_dir = signers(vec![("oracle-a", transport, &oracle)]);
-        let (handler, sink) = handler(directory, signer_dir);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let (handler, sink) = handler(directory);
 
         let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
         let response = handler.handle_request(
@@ -716,9 +791,8 @@ mod tests {
     fn tampered_signature_is_rejected_bad_signature() {
         let transport = endpoint_from_seed(10);
         let oracle = signer("oracle-a", SEED_A);
-        let directory = verified_directory("did:chio:peer", 10);
-        let signer_dir = signers(vec![("oracle-a", transport, &oracle)]);
-        let (handler, sink) = handler(directory, signer_dir);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let (handler, sink) = handler(directory);
 
         let mut signed = signed_root(&oracle, 5);
         // Flip a signature byte: integrity of the wire object is intact, but the
@@ -735,15 +809,14 @@ mod tests {
     }
 
     #[test]
-    fn wrong_signer_key_is_rejected_bad_signature() {
+    fn forged_root_rejected_through_derived_binding() {
+        // Pinned "oracle-a" holds SEED_A (declared in the directory); the frame is
+        // signed by an impostor that CLAIMS "oracle-a" but holds SEED_B. The
+        // derived binding's verifier rejects it fail-closed.
         let transport = endpoint_from_seed(10);
-        // Pinned signer "oracle-a" uses SEED_A; the frame is signed by a signer
-        // that CLAIMS "oracle-a" but holds SEED_B (a different key).
-        let pinned = signer("oracle-a", SEED_A);
         let impostor = signer("oracle-a", SEED_B);
-        let directory = verified_directory("did:chio:peer", 10);
-        let signer_dir = signers(vec![("oracle-a", transport, &pinned)]);
-        let (handler, _sink) = handler(directory, signer_dir);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let (handler, _sink) = handler(directory);
 
         let frame = RevocationRootGossip::from_signed(signed_root(&impostor, 5), NOW);
         let err = handler
@@ -755,12 +828,10 @@ mod tests {
     #[test]
     fn unpinned_signer_id_is_rejected() {
         let transport = endpoint_from_seed(10);
-        let oracle_a = signer("oracle-a", SEED_A);
         let oracle_b = signer("oracle-b", SEED_B);
-        let directory = verified_directory("did:chio:peer", 10);
-        // Only oracle-a is pinned.
-        let signer_dir = signers(vec![("oracle-a", transport, &oracle_a)]);
-        let (handler, _sink) = handler(directory, signer_dir);
+        // Only oracle-a is declared in the directory.
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let (handler, _sink) = handler(directory);
 
         let frame = RevocationRootGossip::from_signed(signed_root(&oracle_b, 5), NOW);
         let err = handler
@@ -771,15 +842,17 @@ mod tests {
 
     #[test]
     fn signer_pinned_to_other_endpoint_is_rejected() {
-        // oracle-a is pinned to endpoint(10) but the frame arrives on endpoint(11).
-        let bound = endpoint_from_seed(10);
+        // oracle-a is declared by peer-a (structurally bound to endpoint(10)), but
+        // the frame arrives authenticated as peer-b's endpoint(11). peer-b is
+        // itself admitted, so this exercises the signer/endpoint origin pin, not
+        // the admission reject.
         let arriving = endpoint_from_seed(11);
         let oracle = signer("oracle-a", SEED_A);
-        // The arriving endpoint must itself be admitted so we exercise the
-        // signer/endpoint origin pin, not the admission reject.
-        let directory = verified_directory("did:chio:peer", 11);
-        let signer_dir = signers(vec![("oracle-a", bound, &oracle)]);
-        let (handler, _sink) = handler(directory, signer_dir);
+        let directory = verified_directory_of(&[
+            PeerSpec::admitted("did:chio:peer-a", 7, 10).with_signer("oracle-a", SEED_A),
+            PeerSpec::admitted("did:chio:peer-b", 8, 11),
+        ]);
+        let (handler, _sink) = handler(directory);
 
         let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
         let err = handler
@@ -795,12 +868,10 @@ mod tests {
     fn unbound_endpoint_is_rejected_at_the_gate() {
         // The connection's endpoint is bound to NO admitted kernel: the handler's
         // defense-in-depth re-resolve rejects before any signer work.
-        let admitted = endpoint_from_seed(10);
         let intruder = endpoint_from_seed(200);
         let oracle = signer("oracle-a", SEED_A);
-        let directory = verified_directory("did:chio:peer", 10);
-        let signer_dir = signers(vec![("oracle-a", admitted, &oracle)]);
-        let (handler, _sink) = handler(directory, signer_dir);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let (handler, _sink) = handler(directory);
 
         let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
         let err = handler
@@ -813,9 +884,8 @@ mod tests {
     fn one_bad_frame_rejects_whole_batch_all_or_nothing() {
         let transport = endpoint_from_seed(10);
         let oracle = signer("oracle-a", SEED_A);
-        let directory = verified_directory("did:chio:peer", 10);
-        let signer_dir = signers(vec![("oracle-a", transport, &oracle)]);
-        let (handler, sink) = handler(directory, signer_dir);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let (handler, sink) = handler(directory);
 
         let good = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
         let mut bad_signed = signed_root(&oracle, 6);
@@ -833,6 +903,20 @@ mod tests {
     }
 
     #[test]
+    fn derived_signer_directory_resolves_binding() {
+        // The projection consumed by the handler resolves the declared signer to
+        // the peer's endpoint, and rejects an undeclared signer fail-closed.
+        let transport = endpoint_from_seed(10);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let binding = directory
+            .resolve_signer("oracle-a")
+            .expect("oracle-a resolves through the derived projection");
+        assert_eq!(binding.endpoint, transport);
+        assert_eq!(directory.signer_directory().len(), 1);
+        assert!(directory.resolve_signer("oracle-b").is_none());
+    }
+
+    #[test]
     fn catchup_request_serves_from_history() {
         // A history holding epochs 5..=7 served through respond_to_catchup.
         #[derive(Debug)]
@@ -844,15 +928,13 @@ mod tests {
         }
         let transport = endpoint_from_seed(10);
         let oracle = signer("oracle-a", SEED_A);
-        let directory = verified_directory("did:chio:peer", 10);
-        let signer_dir = signers(vec![("oracle-a", transport, &oracle)]);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
         let mut roots = HashMap::new();
         for epoch in 5..=7 {
             roots.insert(epoch, signed_root(&oracle, epoch));
         }
         let handler = RevocationHandler::new(
             directory,
-            signer_dir,
             Arc::new(MapHistory(roots)),
             Arc::new(RecordingSink::default()),
             "did:chio:responder",
@@ -981,11 +1063,12 @@ mod tests {
     #[tokio::test]
     async fn real_handler_accepts_pinned_signer_over_quic() {
         let dialer_seed = 20u8;
-        let dialer_ep = endpoint_from_seed(dialer_seed);
         let oracle = signer("oracle-a", SEED_A);
-        let directory = verified_directory("did:chio:peer", dialer_seed);
-        let signer_dir = signers(vec![("oracle-a", dialer_ep, &oracle)]);
-        let (handler, sink) = handler(directory, signer_dir);
+        // The directory declares oracle-a bound (structurally) to the dialer's
+        // endpoint (transport_seed == dialer_seed), so the derived binding both
+        // admits the dialer and pins oracle-a to it.
+        let directory = directory_with_signer("did:chio:peer", dialer_seed, "oracle-a", SEED_A);
+        let (handler, sink) = handler(directory);
 
         let acceptor = bind_endpoint(21).await;
         let router = Router::builder(acceptor)
@@ -1015,16 +1098,13 @@ mod tests {
     #[tokio::test]
     async fn real_handler_rejects_forged_signer_root_before_merge_over_quic() {
         let dialer_seed = 20u8;
-        let dialer_ep = endpoint_from_seed(dialer_seed);
-        // Pinned "oracle-a" holds SEED_A and is bound to the dialer endpoint, so
+        // Declared "oracle-a" holds SEED_A and is bound to the dialer endpoint, so
         // the admission gate and the transport-origin pin BOTH pass; the batch is
         // signed by an IMPOSTOR that claims "oracle-a" but holds SEED_B.
         // Authenticity must fail closed on the wire, before any merge.
-        let pinned = signer("oracle-a", SEED_A);
         let impostor = signer("oracle-a", SEED_B);
-        let directory = verified_directory("did:chio:peer", dialer_seed);
-        let signer_dir = signers(vec![("oracle-a", dialer_ep, &pinned)]);
-        let (handler, sink) = handler(directory, signer_dir);
+        let directory = directory_with_signer("did:chio:peer", dialer_seed, "oracle-a", SEED_A);
+        let (handler, sink) = handler(directory);
 
         let acceptor = bind_endpoint(22).await;
         let router = Router::builder(acceptor)

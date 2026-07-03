@@ -96,6 +96,7 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
 
     use super::*;
+    use crate::identity::transport_endorsement_preimage;
     use crate::identity::TransportDirectoryBundleBody;
     use crate::identity::TransportDirectoryBundleDocument;
     use crate::identity::TransportDirectoryBundleTrust;
@@ -129,7 +130,9 @@ mod tests {
             kernel_id: kernel_id.to_string(),
             passport_public_key: passport.public_key(),
             transport_endpoint_id: transport,
-            passport_endorsement: passport.sign(transport.as_bytes()),
+            passport_endorsement: passport
+                .sign(&transport_endorsement_preimage(kernel_id, &transport)),
+            revocation_signers: Vec::new(),
             removed,
         };
         let directory = TransportDirectoryDocument {

@@ -14,7 +14,12 @@
 //! 2.2). So every fetched blob is deserialized as a
 //! [`chio_revocation_oracle::SignedEpochRoot`] and signature-verified against the
 //! PINNED signer ([`crate::lanes::revocation::VerifiedSignerDirectory`]) before it
-//! is trusted, with strict monotone epoch ordering / gap detection mirroring
+//! is trusted. In production that signer directory is the DERIVED PROJECTION of
+//! the issuer-signed transport directory
+//! ([`VerifiedDirectory::signer_directory`](crate::identity::VerifiedDirectory::signer_directory)),
+//! so the signer's pinned key and its pull-endpoint originate from one
+//! issuer-signed entry. Verification uses strict monotone epoch ordering / gap
+//! detection mirroring
 //! [`RevocationCatchupResponse::validate_response`](chio_federation::revocation_gossip::RevocationCatchupResponse::validate_response).
 //! Any failure leaves the caught-up set EMPTY (all-or-nothing).
 //!

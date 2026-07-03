@@ -31,6 +31,7 @@ use chio_federation::pheromone_gossip::PheromoneTransitPolicy;
 use chio_federation::pheromone_gossip::PHEROMONE_GOSSIP_SCHEMA;
 use chio_federation::pheromone_gossip::PHEROMONE_TRANSIT_POLICY_SCHEMA;
 use chio_federation_transport_iroh::admission::DirectoryGate;
+use chio_federation_transport_iroh::identity::transport_endorsement_preimage;
 use chio_federation_transport_iroh::identity::TransportDirectoryBundleBody;
 use chio_federation_transport_iroh::identity::TransportDirectoryBundleDocument;
 use chio_federation_transport_iroh::identity::TransportDirectoryBundleTrust;
@@ -85,7 +86,9 @@ fn build_gate(entries: &[(&str, u8, u8)]) -> Result<DirectoryGate, Box<dyn Error
                 kernel_id: (*kernel_id).to_string(),
                 passport_public_key: passport.public_key(),
                 transport_endpoint_id: transport,
-                passport_endorsement: passport.sign(transport.as_bytes()),
+                passport_endorsement: passport
+                    .sign(&transport_endorsement_preimage(kernel_id, &transport)),
+                revocation_signers: Vec::new(),
                 removed: false,
             }
         })

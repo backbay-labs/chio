@@ -30,6 +30,7 @@ use chio_core_types::Keypair;
 use chio_federation_transport_iroh::admission::DirectoryGate;
 use chio_federation_transport_iroh::catchup::BlobCatchupClient;
 use chio_federation_transport_iroh::catchup::CatchupError;
+use chio_federation_transport_iroh::identity::transport_endorsement_preimage;
 use chio_federation_transport_iroh::identity::TransportDirectoryBundleBody;
 use chio_federation_transport_iroh::identity::TransportDirectoryBundleDocument;
 use chio_federation_transport_iroh::identity::TransportDirectoryBundleTrust;
@@ -82,7 +83,9 @@ fn build_gate(entries: &[(&str, u8, u8)]) -> Result<DirectoryGate, Box<dyn Error
                 kernel_id: (*kernel_id).to_string(),
                 passport_public_key: passport.public_key(),
                 transport_endpoint_id: transport,
-                passport_endorsement: passport.sign(transport.as_bytes()),
+                passport_endorsement: passport
+                    .sign(&transport_endorsement_preimage(kernel_id, &transport)),
+                revocation_signers: Vec::new(),
                 removed: false,
             }
         })
@@ -197,7 +200,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let forger = Ed25519RootSigner::from_signing_key(SIGNER_ID, FORGER_SEED)?;
 
     // The follower pins signer "oracle-a" to the AUTHORITY endpoint (the origin it
-    // is allowed to pull from) and to the PINNED verifying key.
+    // is allowed to pull from) and to the PINNED verifying key. In production this
+    // projection is DERIVED from the authority's issuer-signed directory entry via
+    // `VerifiedDirectory::signer_directory`; here we build it explicitly with
+    // `from_bindings` (retained for explicit construction) to keep the example self
+    // contained.
     let pinned_signers = Arc::new(VerifiedSignerDirectory::from_bindings([(
         SIGNER_ID.to_string(),
         SignerBinding {

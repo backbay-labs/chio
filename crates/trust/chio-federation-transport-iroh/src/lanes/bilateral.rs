@@ -580,6 +580,7 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
 
     use super::*;
+    use crate::identity::transport_endorsement_preimage;
     use crate::identity::TransportDirectoryBundleBody;
     use crate::identity::TransportDirectoryBundleDocument;
     use crate::identity::TransportDirectoryBundleTrust;
@@ -628,7 +629,11 @@ mod tests {
                 kernel_id: self.kernel_id.clone(),
                 passport_public_key: self.passport.public_key(),
                 transport_endpoint_id: self.transport_id,
-                passport_endorsement: self.passport.sign(self.transport_id.as_bytes()),
+                passport_endorsement: self.passport.sign(&transport_endorsement_preimage(
+                    &self.kernel_id,
+                    &self.transport_id,
+                )),
+                revocation_signers: Vec::new(),
                 removed: false,
             }
         }
