@@ -13,12 +13,17 @@
 //! hash (integrity), but NOT who signed the root (authenticity, ADAPTER-SPEC
 //! 2.2). So every fetched blob is deserialized as a
 //! [`chio_revocation_oracle::SignedEpochRoot`] and signature-verified against the
-//! PINNED signer ([`crate::lanes::revocation::VerifiedSignerDirectory`]) before it
-//! is trusted. In production that signer directory is the DERIVED PROJECTION of
-//! the issuer-signed transport directory
-//! ([`VerifiedDirectory::signer_directory`](crate::identity::VerifiedDirectory::signer_directory)),
-//! so the signer's pinned key and its pull-endpoint originate from one
-//! issuer-signed entry. Verification uses strict monotone epoch ordering / gap
+//! PINNED signer before it is trusted. The [`BlobCatchupClient`] holds the one
+//! issuer-signed [`VerifiedDirectory`](crate::identity::VerifiedDirectory) and
+//! resolves the signer binding structurally via
+//! [`VerifiedDirectory::resolve_signer`](crate::identity::VerifiedDirectory::resolve_signer),
+//! exactly as the direct push lane
+//! ([`RevocationHandler`](crate::lanes::revocation::RevocationHandler)) does. So
+//! the signer's pinned key and its pull-endpoint originate from ONE issuer-signed
+//! entry and inherit that bundle's body-hash pin, issuer signature, validity
+//! window, and anti-rollback machinery; because the client holds the live
+//! directory, a bundle rotation is tracked rather than going stale on a detached
+//! clone. Verification uses strict monotone epoch ordering / gap
 //! detection mirroring
 //! [`RevocationCatchupResponse::validate_response`](chio_federation::revocation_gossip::RevocationCatchupResponse::validate_response).
 //! Any failure leaves the caught-up set EMPTY (all-or-nothing).
@@ -50,8 +55,8 @@ use iroh_blobs::store::fs::FsStore;
 use iroh_blobs::BlobsProtocol;
 use iroh_blobs::Hash;
 
+use crate::identity::VerifiedDirectory;
 use crate::lanes::revocation::SignerBinding;
-use crate::lanes::revocation::VerifiedSignerDirectory;
 
 /// Errors surfaced by the blobs catch-up substrate. Every variant is
 /// fail-closed: on any failure the caught-up set is empty and nothing is merged.
@@ -140,12 +145,15 @@ impl RevocationCatchupHistory for BlobBackedHistory {
 }
 
 /// The blobs catch-up client. Holds a durable [`FsStore`], the gated
-/// [`Endpoint`] used to build a `Downloader`, and the pinned signer directory.
+/// [`Endpoint`] used to build a `Downloader`, and the one issuer-signed
+/// [`VerifiedDirectory`] the pinned signer binding is DERIVED from (structural,
+/// rotation-tracking), mirroring how
+/// [`RevocationHandler`](crate::lanes::revocation::RevocationHandler) consumes it.
 #[derive(Debug, Clone)]
 pub struct BlobCatchupClient {
     store: FsStore,
     endpoint: Endpoint,
-    signers: Arc<VerifiedSignerDirectory>,
+    directory: Arc<VerifiedDirectory>,
 }
 
 impl BlobCatchupClient {
@@ -153,10 +161,49 @@ impl BlobCatchupClient {
     /// client. The `endpoint` MUST already have the admission gate installed via
     /// `Endpoint::builder(..).hooks(gate)`; catch-up pulls only from the endpoint
     /// its pinned signer binding names.
+    ///
+    /// `directory` is the one issuer-signed [`VerifiedDirectory`]; the catch-up
+    /// signer binding is DERIVED from it via
+    /// [`VerifiedDirectory::resolve_signer`](crate::identity::VerifiedDirectory::resolve_signer),
+    /// so lane e inherits the same issuer signature, body-hash pin, validity
+    /// window, and anti-rollback anchoring as the direct push lane, and tracks a
+    /// bundle rotation because it holds the live directory. A free-standing
+    /// [`VerifiedSignerDirectory`](crate::lanes::revocation::VerifiedSignerDirectory)
+    /// (for example one built by
+    /// [`from_bindings`](crate::lanes::revocation::VerifiedSignerDirectory::from_bindings))
+    /// is NOT accepted on this production path. The issuer-signed directory is
+    /// accepted (positive control, identical scaffolding):
+    ///
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// use chio_federation_transport_iroh::catchup::BlobCatchupClient;
+    /// use chio_federation_transport_iroh::identity::VerifiedDirectory;
+    ///
+    /// async fn accepted(endpoint: iroh::Endpoint, directory: Arc<VerifiedDirectory>) {
+    ///     let _ = BlobCatchupClient::load("/tmp/blobs", endpoint, directory).await;
+    /// }
+    /// ```
+    ///
+    /// A free-standing signer directory is a type error (only the `signers`
+    /// argument differs from the accepted form above):
+    ///
+    /// ```compile_fail
+    /// use std::sync::Arc;
+    /// use chio_federation_transport_iroh::catchup::BlobCatchupClient;
+    /// use chio_federation_transport_iroh::lanes::revocation::VerifiedSignerDirectory;
+    ///
+    /// async fn rejected(endpoint: iroh::Endpoint) {
+    ///     let free_standing = Arc::new(VerifiedSignerDirectory::default());
+    ///     // Type error: `load` requires an `Arc<VerifiedDirectory>`, never an
+    ///     // `Arc<VerifiedSignerDirectory>`, so `from_bindings` can no longer be
+    ///     // the lane-e production entry point.
+    ///     let _ = BlobCatchupClient::load("/tmp/blobs", endpoint, free_standing).await;
+    /// }
+    /// ```
     pub async fn load(
         store_path: impl AsRef<std::path::Path>,
         endpoint: Endpoint,
-        signers: Arc<VerifiedSignerDirectory>,
+        directory: Arc<VerifiedDirectory>,
     ) -> Result<Self, CatchupError> {
         let store = FsStore::load(store_path)
             .await
@@ -164,7 +211,7 @@ impl BlobCatchupClient {
         Ok(Self {
             store,
             endpoint,
-            signers,
+            directory,
         })
     }
 
@@ -192,7 +239,8 @@ impl BlobCatchupClient {
     /// `manifest` is the `(epoch, content-address)` list obtained via the lane-b
     /// control response. The walk:
     /// 1. rejects an over-cap manifest fail-closed,
-    /// 2. resolves the pinned signer and asserts `authority` is its bound
+    /// 2. resolves the pinned signer from the DERIVED signer directory of the
+    ///    issuer-signed [`VerifiedDirectory`] and asserts `authority` is its bound
     ///    endpoint (only pull from the pinned authority),
     /// 3. two-step downloads each blob into the follower store then reads it,
     /// 4. re-checks BLAKE3 integrity and pinned-signer authenticity per blob,
@@ -206,16 +254,7 @@ impl BlobCatchupClient {
         manifest: &[(u64, Hash)],
     ) -> Result<Vec<SignedEpochRoot>, CatchupError> {
         check_manifest_cap(manifest.len())?;
-        let binding = self
-            .signers
-            .resolve(signer_id)
-            .ok_or_else(|| CatchupError::UnknownSigner(signer_id.to_string()))?;
-        if binding.endpoint != authority {
-            return Err(CatchupError::SignerEndpointMismatch {
-                signer_id: signer_id.to_string(),
-                endpoint: authority.fmt_short().to_string(),
-            });
-        }
+        let binding = resolve_pinned_signer(&self.directory, signer_id, authority)?;
 
         let downloader = self.store.downloader(&self.endpoint);
         let mut verified: Vec<SignedEpochRoot> = Vec::with_capacity(manifest.len());
@@ -271,6 +310,32 @@ pub async fn publish_signed_root(
         });
     }
     Ok(tag.hash)
+}
+
+/// Resolve `signer_id` to its pinned binding from the DERIVED signer directory of
+/// the issuer-signed [`VerifiedDirectory`], asserting `authority` is the endpoint
+/// the binding names (only ever pull a signer's roots from its pinned authority).
+///
+/// This mirrors the direct push lane
+/// ([`RevocationHandler::verify_batch`](crate::lanes::revocation::RevocationHandler)):
+/// the binding is structural (issuer-signed + anti-rollback), never a free-standing
+/// map, and tracks a bundle rotation because the directory is the live one. Both
+/// checks are fail-closed.
+fn resolve_pinned_signer<'a>(
+    directory: &'a VerifiedDirectory,
+    signer_id: &str,
+    authority: EndpointId,
+) -> Result<&'a SignerBinding, CatchupError> {
+    let binding = directory
+        .resolve_signer(signer_id)
+        .ok_or_else(|| CatchupError::UnknownSigner(signer_id.to_string()))?;
+    if binding.endpoint != authority {
+        return Err(CatchupError::SignerEndpointMismatch {
+            signer_id: signer_id.to_string(),
+            endpoint: authority.fmt_short().to_string(),
+        });
+    }
+    Ok(binding)
 }
 
 /// Reject an over-cap catch-up manifest fail-closed
@@ -525,5 +590,130 @@ mod tests {
         assert_eq!(got, signed);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // -- Derived-binding tests: the lane-e production path resolves its signer
+    // -- from the issuer-signed VerifiedDirectory, mirroring the direct push lane.
+
+    use crate::identity::revocation_signer_endorsement_preimage;
+    use crate::identity::transport_endorsement_preimage;
+    use crate::identity::RevocationSignerEntry;
+    use crate::identity::TransportDirectoryBundleBody;
+    use crate::identity::TransportDirectoryBundleDocument;
+    use crate::identity::TransportDirectoryBundleTrust;
+    use crate::identity::TransportDirectoryDocument;
+    use crate::identity::TransportDirectoryEntry;
+    use crate::identity::TrustedTransportDirectoryIssuer;
+    use crate::identity::VerifiedDirectory;
+    use crate::identity::TRANSPORT_DIRECTORY_BUNDLE_SCHEMA;
+    use chio_core_types::sha256_hex;
+    use chio_core_types::Keypair;
+
+    const BUNDLE_NOW: u64 = 2_000_000;
+
+    /// Build an issuer-signed, load-time-verified directory admitting one operator
+    /// at `transport_seed` that declares oracle signer `signer_id` (key `seed`).
+    /// The derived projection binds that signer to the operator's endpoint exactly
+    /// as production does, so the catch-up client resolves it structurally.
+    fn issuer_signed_directory(
+        transport_seed: u8,
+        signer_id: &str,
+        seed: &str,
+    ) -> Arc<VerifiedDirectory> {
+        let issuer = Keypair::from_seed(&[240; 32]);
+        let passport = Keypair::from_seed(&[7; 32]);
+        let transport = endpoint_from_seed(transport_seed);
+        let oracle = signer(signer_id, seed);
+        let oracle_public_key = oracle.public_key();
+        let entry = TransportDirectoryEntry {
+            kernel_id: "did:chio:authority".to_string(),
+            passport_public_key: passport.public_key(),
+            transport_endpoint_id: transport,
+            passport_endorsement: passport.sign(&transport_endorsement_preimage(
+                "did:chio:authority",
+                &transport,
+            )),
+            revocation_signers: vec![RevocationSignerEntry {
+                signer_id: signer_id.to_string(),
+                oracle_public_key: oracle_public_key.clone(),
+                oracle_endorsement: passport.sign(&revocation_signer_endorsement_preimage(
+                    "did:chio:authority",
+                    signer_id,
+                    &oracle_public_key,
+                )),
+            }],
+            removed: false,
+        };
+        let directory = TransportDirectoryDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            local_kernel_id: "did:chio:local".to_string(),
+            peers: vec![entry],
+        };
+        let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());
+        let body = TransportDirectoryBundleBody {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            issuer: "did:chio:issuer".to_string(),
+            key_id: "issuer-key-1".to_string(),
+            directory_sha256,
+            version: 1,
+            previous_version_sha256: None,
+            issued_at_unix_ms: BUNDLE_NOW - 1,
+            expires_at_unix_ms: BUNDLE_NOW + 1,
+        };
+        let (signature, _) = issuer.sign_canonical(&body).unwrap();
+        let bundle = TransportDirectoryBundleDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            body,
+            directory,
+            signature,
+        };
+        let trust = TransportDirectoryBundleTrust {
+            issuers: vec![TrustedTransportDirectoryIssuer {
+                issuer: "did:chio:issuer".to_string(),
+                key_id: "issuer-key-1".to_string(),
+                public_key: issuer.public_key(),
+            }],
+            version_floor: 0,
+            expected_previous_version_sha256: None,
+            now_unix_ms: BUNDLE_NOW,
+        };
+        Arc::new(bundle.verify_bundle(&trust).expect("bundle verifies"))
+    }
+
+    #[test]
+    fn derived_binding_resolves_and_verifies_a_root() {
+        // The production lane-e resolution: the pinned signer is DERIVED from the
+        // issuer-signed directory (not a free-standing map), and a real root signed
+        // by that oracle verifies through the derived binding.
+        let authority = endpoint_from_seed(41);
+        let directory = issuer_signed_directory(41, "oracle-a", SEED_A);
+
+        let binding = resolve_pinned_signer(&directory, "oracle-a", authority)
+            .expect("oracle-a resolves through the derived projection");
+        assert_eq!(binding.endpoint, authority);
+
+        let oracle = signer("oracle-a", SEED_A);
+        let (bytes, hash) = blob_of(&signed_root(&oracle, 5));
+        let got = decode_and_verify_root(&bytes, hash, binding)
+            .expect("root verifies through the derived binding");
+        assert_eq!(got.root.epoch, 5);
+    }
+
+    #[test]
+    fn derived_binding_rejects_unknown_signer_and_wrong_authority() {
+        let authority = endpoint_from_seed(41);
+        let directory = issuer_signed_directory(41, "oracle-a", SEED_A);
+
+        // Unknown signer id: fail-closed.
+        let err = resolve_pinned_signer(&directory, "oracle-z", authority)
+            .expect_err("unknown signer must fail closed");
+        assert!(matches!(err, CatchupError::UnknownSigner(ref id) if id == "oracle-z"));
+
+        // Known signer, but pulled from the WRONG authority endpoint: fail-closed
+        // (only pull a signer's roots from its pinned authority).
+        let wrong = endpoint_from_seed(99);
+        let err = resolve_pinned_signer(&directory, "oracle-a", wrong)
+            .expect_err("wrong authority endpoint must fail closed");
+        assert!(matches!(err, CatchupError::SignerEndpointMismatch { .. }));
     }
 }

@@ -500,11 +500,20 @@ impl TransportDirectoryBundleDocument {
             if !endorsed {
                 return Err(IdentityError::EndorsementInvalid(entry.kernel_id.clone()));
             }
-            // Per-entry oracle revocation-signer bindings. Each is verified
-            // against the SAME passport under a DISTINCT domain tag, then (for a
-            // non-removed entry) projected into the derived signer directory with
-            // the entry's transport endpoint as the structural origin pin.
+            // Per-entry oracle revocation-signer bindings. Each non-removed entry
+            // is verified against the SAME passport under a DISTINCT domain tag,
+            // then projected into the derived signer directory with the entry's
+            // transport endpoint as the structural origin pin.
             for signer in &entry.revocation_signers {
+                // A removed operator contributes no signer (fail-closed): eviction
+                // revokes its oracle signer in the same bundle, so its oracle
+                // material is NOT validated here. Suppressing the binding before
+                // the endorsement check keeps eviction from being over-strict: a
+                // removed operator whose oracle endorsement is stale or malformed
+                // must not fail the whole bundle (its signer is dropped anyway).
+                if entry.removed {
+                    continue;
+                }
                 let signer_preimage = revocation_signer_endorsement_preimage(
                     &entry.kernel_id,
                     &signer.signer_id,
@@ -518,11 +527,6 @@ impl TransportDirectoryBundleDocument {
                         kernel_id: entry.kernel_id.clone(),
                         signer_id: signer.signer_id.clone(),
                     });
-                }
-                // A removed operator contributes no signer (fail-closed): eviction
-                // revokes its oracle signer in the same bundle.
-                if entry.removed {
-                    continue;
                 }
                 let binding = SignerBinding {
                     endpoint: entry.transport_endpoint_id,
@@ -1147,6 +1151,49 @@ mod tests {
             "a removed operator's oracle signer must be suppressed"
         );
         assert!(directory.signer_directory().is_empty());
+    }
+
+    #[test]
+    fn removed_entry_with_malformed_oracle_endorsement_does_not_fail_the_bundle() {
+        // Eviction path: a removed operator carries a MALFORMED oracle endorsement
+        // (its passport signed the WRONG preimage). Because eviction suppresses the
+        // signer BEFORE the oracle material is validated, the bad endorsement must
+        // not fail the whole bundle - the operator is being evicted and its signer
+        // binding is dropped regardless (not over-strict on the eviction path).
+        let opk = oracle_key(60);
+        // A structurally malformed endorsement: signed over a DIFFERENT signer_id
+        // than the entry declares, so it would fail the oracle-endorsement check.
+        let bad_signer = RevocationSignerEntry {
+            signer_id: "oracle-a".to_string(),
+            oracle_public_key: opk.clone(),
+            oracle_endorsement: passport_from_seed(3).sign(
+                &revocation_signer_endorsement_preimage("did:chio:ghost", "not-oracle-a", &opk),
+            ),
+        };
+        let mut ghost =
+            EntrySpec::admitted("did:chio:ghost", 3, 12).with_raw_signer(bad_signer.clone());
+        ghost.removed = true;
+        let live = EntrySpec::admitted("did:chio:live", 4, 13);
+        let (bundle, trust) = signed_bundle(&[ghost, live]);
+
+        let directory = bundle
+            .verify_bundle(&trust)
+            .expect("a removed entry's malformed oracle endorsement must not fail the bundle");
+        assert!(
+            directory.resolve_signer("oracle-a").is_none(),
+            "the removed operator's signer stays suppressed"
+        );
+        assert!(directory.signer_directory().is_empty());
+
+        // Control: the SAME malformed endorsement on a NON-removed entry DOES fail
+        // closed, proving the endorsement is genuinely malformed (fail-closed for
+        // live entries is preserved).
+        let live_bad = EntrySpec::admitted("did:chio:ghost", 3, 12).with_raw_signer(bad_signer);
+        let (control_bundle, control_trust) = signed_bundle(&[live_bad]);
+        assert!(matches!(
+            control_bundle.verify_bundle(&control_trust),
+            Err(IdentityError::OracleEndorsementInvalid { .. })
+        ));
     }
 
     #[test]

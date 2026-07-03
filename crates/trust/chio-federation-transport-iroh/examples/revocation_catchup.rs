@@ -30,7 +30,9 @@ use chio_core_types::Keypair;
 use chio_federation_transport_iroh::admission::DirectoryGate;
 use chio_federation_transport_iroh::catchup::BlobCatchupClient;
 use chio_federation_transport_iroh::catchup::CatchupError;
+use chio_federation_transport_iroh::identity::revocation_signer_endorsement_preimage;
 use chio_federation_transport_iroh::identity::transport_endorsement_preimage;
+use chio_federation_transport_iroh::identity::RevocationSignerEntry;
 use chio_federation_transport_iroh::identity::TransportDirectoryBundleBody;
 use chio_federation_transport_iroh::identity::TransportDirectoryBundleDocument;
 use chio_federation_transport_iroh::identity::TransportDirectoryBundleTrust;
@@ -39,8 +41,6 @@ use chio_federation_transport_iroh::identity::TransportDirectoryEntry;
 use chio_federation_transport_iroh::identity::TrustedTransportDirectoryIssuer;
 use chio_federation_transport_iroh::identity::VerifiedDirectory;
 use chio_federation_transport_iroh::identity::TRANSPORT_DIRECTORY_BUNDLE_SCHEMA;
-use chio_federation_transport_iroh::lanes::revocation::SignerBinding;
-use chio_federation_transport_iroh::lanes::revocation::VerifiedSignerDirectory;
 use chio_revocation_oracle::Ed25519RootSigner;
 use chio_revocation_oracle::EpochRoot;
 use chio_revocation_oracle::SignedEpochRoot;
@@ -69,31 +69,69 @@ fn endpoint_id(seed: u8) -> EndpointId {
     SecretKey::from_bytes(&[seed; 32]).public()
 }
 
-/// Build a load-time-verified admission directory admitting `(kernel_id,
-/// transport_seed)` pairs and wrap it in a gate. The authority admits the
-/// follower so the follower's blob fetch is not 403-rejected at the handshake.
-fn build_gate(entries: &[(&str, u8, u8)]) -> Result<DirectoryGate, Box<dyn Error>> {
+/// A plain admitted operator entry (no revocation signers), passport-endorsed
+/// over its transport endpoint.
+fn admitted_entry(
+    kernel_id: &str,
+    passport_seed: u8,
+    transport_seed: u8,
+) -> TransportDirectoryEntry {
+    let passport = Keypair::from_seed(&[passport_seed; 32]);
+    let transport = endpoint_id(transport_seed);
+    TransportDirectoryEntry {
+        kernel_id: kernel_id.to_string(),
+        passport_public_key: passport.public_key(),
+        transport_endpoint_id: transport,
+        passport_endorsement: passport.sign(&transport_endorsement_preimage(kernel_id, &transport)),
+        revocation_signers: Vec::new(),
+        removed: false,
+    }
+}
+
+/// Build the ONE issuer-signed, load-time-verified transport directory. It admits
+/// the authority (declaring oracle signer `SIGNER_ID` bound - structurally - to the
+/// authority's transport endpoint via the `pinned` key) AND the follower (so the
+/// follower's blob fetch is not 403-rejected at the authority's admission gate).
+///
+/// Both the authority's gate and the follower's catch-up client are derived from
+/// THIS directory, so the catch-up signer binding inherits the issuer signature,
+/// body-hash pin, validity window, and anti-rollback anchoring (no free-standing
+/// signer map: the `from_bindings` path is test-only).
+fn build_directory(pinned: &Ed25519RootSigner) -> Result<Arc<VerifiedDirectory>, Box<dyn Error>> {
     let issuer = Keypair::from_seed(&[240u8; 32]);
-    let peers = entries
-        .iter()
-        .map(|(kernel_id, passport_seed, transport_seed)| {
-            let passport = Keypair::from_seed(&[*passport_seed; 32]);
-            let transport = endpoint_id(*transport_seed);
-            TransportDirectoryEntry {
-                kernel_id: (*kernel_id).to_string(),
-                passport_public_key: passport.public_key(),
-                transport_endpoint_id: transport,
-                passport_endorsement: passport
-                    .sign(&transport_endorsement_preimage(kernel_id, &transport)),
-                revocation_signers: Vec::new(),
-                removed: false,
-            }
-        })
-        .collect::<Vec<_>>();
+
+    // Authority entry carrying the derived oracle-signer binding: its passport
+    // endorses the pinned oracle key under the revocation-signer domain tag.
+    let authority_passport = Keypair::from_seed(&[3u8; 32]);
+    let authority_transport = endpoint_id(AUTHORITY_SEED);
+    let oracle_public_key = pinned.public_key();
+    let authority_entry = TransportDirectoryEntry {
+        kernel_id: AUTHORITY_KERNEL.to_string(),
+        passport_public_key: authority_passport.public_key(),
+        transport_endpoint_id: authority_transport,
+        passport_endorsement: authority_passport.sign(&transport_endorsement_preimage(
+            AUTHORITY_KERNEL,
+            &authority_transport,
+        )),
+        revocation_signers: vec![RevocationSignerEntry {
+            signer_id: SIGNER_ID.to_string(),
+            oracle_public_key: oracle_public_key.clone(),
+            oracle_endorsement: authority_passport.sign(&revocation_signer_endorsement_preimage(
+                AUTHORITY_KERNEL,
+                SIGNER_ID,
+                &oracle_public_key,
+            )),
+        }],
+        removed: false,
+    };
+
     let directory = TransportDirectoryDocument {
         schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
         local_kernel_id: AUTHORITY_KERNEL.to_string(),
-        peers,
+        peers: vec![
+            authority_entry,
+            admitted_entry(FOLLOWER_KERNEL, 1, FOLLOWER_SEED),
+        ],
     };
     let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory)?);
     let body = TransportDirectoryBundleBody {
@@ -123,8 +161,7 @@ fn build_gate(entries: &[(&str, u8, u8)]) -> Result<DirectoryGate, Box<dyn Error
         expected_previous_version_sha256: None,
         now_unix_ms: NOW,
     };
-    let verified: VerifiedDirectory = bundle.verify_bundle(&trust)?;
-    Ok(DirectoryGate::new(Arc::new(verified)))
+    Ok(Arc::new(bundle.verify_bundle(&trust)?))
 }
 
 async fn bind_endpoint(
@@ -199,28 +236,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let pinned = Ed25519RootSigner::from_signing_key(SIGNER_ID, PINNED_SEED)?;
     let forger = Ed25519RootSigner::from_signing_key(SIGNER_ID, FORGER_SEED)?;
 
-    // The follower pins signer "oracle-a" to the AUTHORITY endpoint (the origin it
-    // is allowed to pull from) and to the PINNED verifying key. In production this
-    // projection is DERIVED from the authority's issuer-signed directory entry via
-    // `VerifiedDirectory::signer_directory`; here we build it explicitly with
-    // `from_bindings` (retained for explicit construction) to keep the example self
-    // contained.
-    let pinned_signers = Arc::new(VerifiedSignerDirectory::from_bindings([(
-        SIGNER_ID.to_string(),
-        SignerBinding {
-            endpoint: endpoint_id(AUTHORITY_SEED),
-            verifier: pinned.verifier(),
-        },
-    )])?);
+    // The ONE issuer-signed transport directory. It binds signer "oracle-a" -
+    // structurally - to the AUTHORITY endpoint (the origin the follower may pull
+    // from) and to the PINNED verifying key, and admits the follower. Both the
+    // authority's admission gate and the follower's catch-up client derive from
+    // this same directory, so the signer binding inherits the issuer signature and
+    // anti-rollback anchoring rather than being a free-standing `from_bindings` map.
+    let directory = build_directory(&pinned)?;
 
     // ---- Authority: gated endpoint + iroh-blobs provider --------------------
-    let gate = build_gate(&[(FOLLOWER_KERNEL, 1, FOLLOWER_SEED)])?;
+    let gate = DirectoryGate::new(directory.clone());
     let authority_endpoint = bind_endpoint(AUTHORITY_SEED, Some(gate), None).await?;
     let authority_dir = scratch_dir("authority")?;
     let authority_client = BlobCatchupClient::load(
         &authority_dir,
         authority_endpoint.clone(),
-        pinned_signers.clone(),
+        directory.clone(),
     )
     .await?;
     let authority_addr = direct_addr(&authority_endpoint)?;
@@ -246,7 +277,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let follower_endpoint = bind_endpoint(FOLLOWER_SEED, None, Some(lookup)).await?;
     let follower_dir = scratch_dir("follower")?;
     let follower_client =
-        BlobCatchupClient::load(&follower_dir, follower_endpoint, pinned_signers).await?;
+        BlobCatchupClient::load(&follower_dir, follower_endpoint, directory).await?;
 
     println!("\nfollower fetches epoch 5 (pinned-signer manifest):");
     let good_ok = match fetch_with_timeout(&follower_client, authority_id, &[(5, good_hash)]).await
