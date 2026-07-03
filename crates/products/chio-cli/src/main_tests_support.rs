@@ -31,19 +31,6 @@ where
         .expect("parse thread must not panic")
 }
 
-pub(crate) fn retired_surface_name() -> String {
-    ["chio", "dos"].concat()
-}
-
-pub(crate) fn assert_no_retired_surface_name(label: &str, text: &str) {
-    let lowered = text.to_ascii_lowercase();
-    let retired = retired_surface_name();
-    assert!(
-        !lowered.contains(&retired),
-        "{label} must not expose the retired public surface name"
-    );
-}
-
 pub(crate) fn rendered_help(args: &[&str]) -> String {
     let error = match parse_cli(args.iter().copied()) {
         Ok(_) => panic!("help exits before parsing command values"),

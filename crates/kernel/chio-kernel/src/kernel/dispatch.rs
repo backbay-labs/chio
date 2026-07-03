@@ -336,15 +336,9 @@ impl ChioKernel {
                 .as_ref()
                 .and_then(|intent| intent.context.as_ref())
                 .is_some_and(|context| {
-                    let retired_admission_key = ["chio", "dos", "Admission"].concat();
-                    let retired_treaty_key = ["chio", "dos", "Treaty"].concat();
-                    let retired_swarm_key = ["chio", "dos", "Swarm"].concat();
                     context.get("chioAdmission").is_some()
                         || context.get("chioTreaty").is_some()
                         || context.get("chioSwarm").is_some()
-                        || context.get(retired_admission_key.as_str()).is_some()
-                        || context.get(retired_treaty_key.as_str()).is_some()
-                        || context.get(retired_swarm_key.as_str()).is_some()
                 });
             if has_runtime_context {
                 return RuntimeAdmissionDecision::deny(

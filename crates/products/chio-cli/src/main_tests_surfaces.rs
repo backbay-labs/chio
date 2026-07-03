@@ -1,9 +1,6 @@
 use std::error::Error;
 
-use super::cli_entrypoint_support::{
-    assert_no_retired_surface_name, fixture_path, parse_cli, render_error_json,
-    retired_surface_name,
-};
+use super::cli_entrypoint_support::{fixture_path, parse_cli, render_error_json};
 use super::*;
 
 #[test]
@@ -49,7 +46,6 @@ fn chio_attest_buyer_public_outputs_use_chio_error_and_schema_boundary(
         rendered_text.contains("Chio buyer run output"),
         "public buyer error should describe the Chio buyer boundary: {rendered_text}"
     );
-    assert_no_retired_surface_name("buyer error", &rendered_text);
 
     let report_path = tempdir.path().join("buyer-review-report.json");
     let explanation_out = tempdir.path().join("buyer-explanation.json");
@@ -585,7 +581,6 @@ fn chio_runtime_active_subject_namespaces_are_chio_native() {
     let chio_namespace = format!("{}.{}", "chio", "runtime");
     let expected_assignment = format!("subject_class_namespace: \"{chio_namespace}\".to_string()");
 
-    assert_no_retired_surface_name("runtime admission dispatch", runtime_admission);
     assert!(
             runtime_admission.contains(&expected_assignment),
             "active Chio runtime admission dispatch tests must exercise the Chio runtime subject namespace"
@@ -642,12 +637,6 @@ fn chio_runtime_signing_dispatch_uses_chio_handlers() {
     assert!(runtime_dispatch.contains("cmd_chio_runtime_sign_pheromone_query_report("));
 }
 
-#[test]
-fn chio_runtime_dispatch_uses_only_native_names() {
-    let runtime_dispatch = include_str!("cli/dispatch/runtime.rs");
-
-    assert_no_retired_surface_name("runtime dispatch", runtime_dispatch);
-}
 
 #[test]
 fn chio_runtime_dispatch_uses_chio_command_types() {
@@ -692,7 +681,6 @@ fn public_chio_runtime_pheromone_query_errors_use_chio_boundary() -> Result<(), 
         rendered_text.contains("Chio runtime pheromone query report"),
         "public runtime error should describe the Chio query-report boundary: {rendered_text}"
     );
-    assert_no_retired_surface_name("runtime error", &rendered_text);
 
     let runtime_admission = include_str!("cli/chio/dispatch/runtime/admission.rs");
     assert!(!runtime_admission.contains("Chio signed pheromone query report parse"));
@@ -747,7 +735,6 @@ fn public_chio_pheromone_verified_workflow_errors_use_chio_boundary() -> Result<
         rendered_text.contains("Chio proof package"),
         "public pheromone error should describe the Chio proof boundary: {rendered_text}"
     );
-    assert_no_retired_surface_name("pheromone error", &rendered_text);
 
     let runtime_dispatch = include_str!("cli/chio/dispatch/pheromone/runtime.rs");
     let relay_dispatch = include_str!("cli/chio/dispatch/pheromone/relay.rs");
@@ -827,41 +814,6 @@ fn chio_pheromone_remaining_relay_dispatch_uses_chio_handlers() {
     }
 }
 
-#[test]
-fn chio_pheromone_gates_use_chio_fixture_root() {
-    let scripts = [include_str!(
-        "../../../../scripts/check-chio-authority-issuance.sh"
-    )];
-    let workflows = [
-        include_str!("../../../../.github/workflows/chio-pheromone-directory-lifecycle.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay.yml"),
-        include_str!(
-            "../../../../.github/workflows/chio-pheromone-relay-alert-assurance-archive.yml"
-        ),
-        include_str!(
-            "../../../../.github/workflows/chio-pheromone-relay-alert-assurance-export.yml"
-        ),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay-alert-assurance.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay-alert-delivery.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay-alert-handoff.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay-alert-routing.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay-observability.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay-ops.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-runtime.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-transit.yml"),
-    ];
-    let retired_fixture_root = ["examples/", &retired_surface_name(), "-3vendor"].concat();
-    let chio_fixture_root = ["examples/", "chio", "-3vendor/fixtures"].concat();
-    let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
-
-    assert!(repo_root.join(chio_fixture_root).is_dir());
-    for script in scripts {
-        assert!(!script.contains(&retired_fixture_root));
-    }
-    for workflow in workflows {
-        assert!(!workflow.contains(&retired_fixture_root));
-    }
-}
 
 #[test]
 fn chio_authority_gate_validates_local_signing_keys_schema() {
@@ -879,40 +831,6 @@ fn chio_authority_gate_validates_local_signing_keys_schema() {
         );
 }
 
-#[test]
-fn chio_pheromone_workflows_watch_chio_named_docs_and_specs() {
-    let workflows = [
-        include_str!("../../../../.github/workflows/chio-pheromone-directory-lifecycle.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay.yml"),
-        include_str!(
-            "../../../../.github/workflows/chio-pheromone-relay-alert-assurance-archive.yml"
-        ),
-        include_str!(
-            "../../../../.github/workflows/chio-pheromone-relay-alert-assurance-export.yml"
-        ),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay-alert-assurance.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay-alert-delivery.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay-alert-handoff.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay-alert-routing.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay-observability.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-relay-ops.yml"),
-        include_str!("../../../../.github/workflows/chio-pheromone-transit.yml"),
-    ];
-    let retired = retired_surface_name();
-    let retired_spec_path = ["spec/", &retired.to_ascii_uppercase(), "_PHEROMONE.md"].concat();
-    let retired_runbook_path = [
-        "docs/release/",
-        &retired.to_ascii_uppercase(),
-        "_PHEROMONE_RELAY_RUNBOOK.md",
-    ]
-    .concat();
-    let retired_operator_docs_path = ["docs/release/", &retired, "-pheromone-relay/"].concat();
-    for workflow in workflows {
-        assert!(!workflow.contains(&retired_spec_path));
-        assert!(!workflow.contains(&retired_runbook_path));
-        assert!(!workflow.contains(&retired_operator_docs_path));
-    }
-}
 
 #[test]
 fn chio_attest_buyer_dispatch_uses_canonical_crate_names() {

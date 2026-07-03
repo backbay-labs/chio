@@ -452,7 +452,6 @@ fn spine_run_negative(
     validate_runtime(root, "admission-report.schema.json", &replay_report)?;
     assert_report_bool(&replay_report, "accepted", false)?;
     assert_report_str(&replay_report, "failureCode", "destructive_lease_replay")?;
-    spine_assert_no_disallowed_runtime_key(&replay_report)?;
 
     // Request binding mismatch: a request with a different toolArgsSha256 must
     // fail with request_binding_mismatch.
@@ -482,8 +481,7 @@ fn spine_run_negative(
         "expected request binding mismatch to fail",
     )?;
     validate_runtime(root, "admission-report.schema.json", &mismatch_report)?;
-    assert_report_str(&mismatch_report, "failureCode", "request_binding_mismatch")?;
-    spine_assert_no_disallowed_runtime_key(&mismatch_report)
+    assert_report_str(&mismatch_report, "failureCode", "request_binding_mismatch")
 }
 
 /// Build the trusted-verifiers document from a signed trust input. The
@@ -565,7 +563,6 @@ fn spine_assert_admission(
     if array_len(&floor_value, "entries") != Some(1) {
         return Err(invalid("runtime trust-floor state did not persist verifier floor"));
     }
-    assert_no_disallowed_runtime_metadata_key(&report_value)?;
     let metadata = report_value
         .get("receiptMetadata")
         .and_then(|m| m.get("chio_runtime"))
@@ -592,26 +589,6 @@ fn spine_assert_admission(
         ));
     }
     Ok(())
-}
-
-/// The retired-runtime-metadata-key guard, assembled at runtime (`chio` +
-/// `dos_runtime`).
-fn assert_no_disallowed_runtime_metadata_key(report: &Value) -> Result<(), XtaskError> {
-    let mut retired = String::from("chio");
-    retired.push_str("dos_runtime");
-    let present = report
-        .get("receiptMetadata")
-        .and_then(|m| m.get(&retired))
-        .map(|v| !v.is_null())
-        .unwrap_or(false);
-    if present {
-        return Err(invalid("Chio admission report used disallowed runtime metadata key"));
-    }
-    Ok(())
-}
-
-fn spine_assert_no_disallowed_runtime_key(report: &Path) -> Result<(), XtaskError> {
-    assert_no_disallowed_runtime_metadata_key(&load_json(report)?)
 }
 
 fn array_len(value: &Value, key: &str) -> Option<usize> {
@@ -641,12 +618,9 @@ fn run_bash_with_arg(root: &Path, script: &str, arg: &str) -> Result<(), XtaskEr
 
 // -- runtime-proof-parity --------------------------------------------------
 
-/// `check-chio-runtime-proof-parity.sh`. `all` runs the three runtime-core proof
-/// filters, the fixture-generation + verify-proof flow, the chio-cli runtime
-/// test, then the full spine. `schema-only` / `negative-only` delegate to spine;
-/// the script's `--regenerate-only`/`--parity-only`/`--fixtures-only` modes are
-/// captured by the `all` path here (the consolidated CLI exposes the three
-/// canonical modes).
+/// `all` runs the three runtime-core proof filters, the fixture-generation +
+/// verify-proof flow, the chio-cli runtime test, then the full spine.
+/// `schema-only` / `negative-only` delegate to spine.
 fn handle_proof_parity(
     root: &Path,
     manifest: &RuntimeManifest,

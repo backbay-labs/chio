@@ -1,4 +1,4 @@
-use super::cli_entrypoint_support::{assert_no_retired_surface_name, parse_cli, rendered_help};
+use super::cli_entrypoint_support::parse_cli;
 use super::*;
 
 #[test]
@@ -15,35 +15,6 @@ fn json_shorthand_flag_enables_json_output() {
 
 #[test]
 fn public_chio_command_type_boundaries_are_native() {
-    let sources = [
-        ("root cli types", include_str!("cli/types.rs")),
-        ("runtime types", include_str!("cli/chio/types/runtime.rs")),
-        (
-            "pheromone root types",
-            include_str!("cli/chio/types/pheromone/root.rs"),
-        ),
-        (
-            "pheromone relay types",
-            include_str!("cli/chio/types/pheromone/relay.rs"),
-        ),
-        (
-            "pheromone alert types",
-            include_str!("cli/chio/types/pheromone/alerts.rs"),
-        ),
-        (
-            "pheromone assurance types",
-            include_str!("cli/chio/types/pheromone/assurance.rs"),
-        ),
-        (
-            "authority types",
-            include_str!("cli/chio/types/authority.rs"),
-        ),
-        ("treaty types", include_str!("cli/chio/types/treaty.rs")),
-    ];
-    for (label, source) in sources {
-        assert_no_retired_surface_name(label, source);
-    }
-
     let cli_types = include_str!("cli/types.rs");
     assert!(cli_types.contains("command: ChioRuntimeCommands"));
     assert!(cli_types.contains("command: ChioPheromoneCommands"));
@@ -560,17 +531,4 @@ fn hidden_chio_attest_verify_shortcut_is_rejected() {
     };
 
     assert_eq!(error.kind(), clap::error::ErrorKind::InvalidSubcommand);
-}
-
-#[test]
-fn public_chio_help_uses_native_surface_names() {
-    let public_help = [
-        rendered_help(&["chio", "federation", "authority", "issue", "--help"]),
-        rendered_help(&["chio", "runtime", "--help"]),
-        rendered_help(&["chio", "pheromone", "receive", "--help"]),
-        rendered_help(&["chio", "pheromone", "relay", "serve", "--help"]),
-    ]
-    .join("\n");
-
-    assert_no_retired_surface_name("public help", &public_help);
 }

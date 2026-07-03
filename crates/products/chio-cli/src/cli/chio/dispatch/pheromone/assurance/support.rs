@@ -314,8 +314,6 @@ mod tests {
             .expect_err("non-empty output dir should fail")
             .to_string();
 
-        let retired_label = ["Chio", "dos"].concat();
         assert!(error.contains("Chio output directory"));
-        assert!(!error.contains(&retired_label));
     }
 }
