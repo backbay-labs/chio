@@ -61,23 +61,12 @@ pub(crate) struct MercurySupervisedLiveExportSummary {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct MercuryQualificationDocRefs {
-    pub(crate) bridge_file: String,
-    pub(crate) operating_model_file: String,
-    pub(crate) operations_runbook_file: String,
-    pub(crate) qualification_package_file: String,
-    pub(crate) decision_record_file: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct MercurySupervisedLiveQualificationReport {
     pub(crate) workflow_id: String,
     pub(crate) decision: String,
     pub(crate) same_workflow_boundary: String,
     pub(crate) supervised_live: MercurySupervisedLiveExportSummary,
     pub(crate) pilot: MercuryPilotExportSummary,
-    pub(crate) docs: MercuryQualificationDocRefs,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -92,16 +81,6 @@ pub(crate) struct MercurySupervisedLiveReviewerPackage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) supervised_live_inquiry_package_file: Option<String>,
     pub(crate) rollback_proof_package_file: String,
-    pub(crate) docs: MercuryQualificationDocRefs,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MercuryDownstreamReviewDocRefs {
-    pub(crate) distribution_file: String,
-    pub(crate) operations_file: String,
-    pub(crate) validation_package_file: String,
-    pub(crate) decision_record_file: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -170,16 +149,6 @@ pub(crate) struct MercuryDownstreamReviewValidationReport {
     pub(crate) same_workflow_boundary: String,
     pub(crate) downstream_review: MercuryDownstreamReviewExportSummary,
     pub(crate) decision_record_file: String,
-    pub(crate) docs: MercuryDownstreamReviewDocRefs,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MercuryGovernanceWorkbenchDocRefs {
-    pub(crate) workbench_file: String,
-    pub(crate) operations_file: String,
-    pub(crate) validation_package_file: String,
-    pub(crate) decision_record_file: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -217,16 +186,6 @@ pub(crate) struct MercuryGovernanceWorkbenchValidationReport {
     pub(crate) workflow_path: String,
     pub(crate) same_workflow_boundary: String,
     pub(crate) governance_workbench: MercuryGovernanceWorkbenchExportSummary,
-    pub(crate) decision_record_file: String,
-    pub(crate) docs: MercuryGovernanceWorkbenchDocRefs,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MercuryAssuranceSuiteDocRefs {
-    pub(crate) suite_file: String,
-    pub(crate) operations_file: String,
-    pub(crate) validation_package_file: String,
     pub(crate) decision_record_file: String,
 }
 
@@ -292,16 +251,6 @@ pub(crate) struct MercuryAssuranceSuiteValidationReport {
     pub(crate) support_owner: String,
     pub(crate) same_workflow_boundary: String,
     pub(crate) assurance_suite: MercuryAssuranceSuiteExportSummary,
-    pub(crate) decision_record_file: String,
-    pub(crate) docs: MercuryAssuranceSuiteDocRefs,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MercuryEmbeddedOemDocRefs {
-    pub(crate) oem_file: String,
-    pub(crate) operations_file: String,
-    pub(crate) validation_package_file: String,
     pub(crate) decision_record_file: String,
 }
 
@@ -391,16 +340,6 @@ pub(crate) struct MercuryEmbeddedOemValidationReport {
     pub(crate) support_owner: String,
     pub(crate) same_workflow_boundary: String,
     pub(crate) embedded_oem: MercuryEmbeddedOemExportSummary,
-    pub(crate) decision_record_file: String,
-    pub(crate) docs: MercuryEmbeddedOemDocRefs,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MercuryTrustNetworkDocRefs {
-    pub(crate) trust_network_file: String,
-    pub(crate) operations_file: String,
-    pub(crate) validation_package_file: String,
     pub(crate) decision_record_file: String,
 }
 
@@ -504,16 +443,6 @@ pub(crate) struct MercuryTrustNetworkValidationReport {
     pub(crate) support_owner: String,
     pub(crate) same_workflow_boundary: String,
     pub(crate) trust_network: MercuryTrustNetworkExportSummary,
-    pub(crate) decision_record_file: String,
-    pub(crate) docs: MercuryTrustNetworkDocRefs,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MercuryReleaseReadinessDocRefs {
-    pub(crate) release_readiness_file: String,
-    pub(crate) operations_file: String,
-    pub(crate) validation_package_file: String,
     pub(crate) decision_record_file: String,
 }
 
@@ -643,16 +572,6 @@ pub(crate) struct MercuryReleaseReadinessValidationReport {
     pub(crate) same_workflow_boundary: String,
     pub(crate) release_readiness: MercuryReleaseReadinessExportSummary,
     pub(crate) decision_record_file: String,
-    pub(crate) docs: MercuryReleaseReadinessDocRefs,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MercuryControlledAdoptionDocRefs {
-    pub(crate) controlled_adoption_file: String,
-    pub(crate) operations_file: String,
-    pub(crate) validation_package_file: String,
-    pub(crate) decision_record_file: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -781,16 +700,6 @@ pub(crate) struct MercuryControlledAdoptionValidationReport {
     pub(crate) support_owner: String,
     pub(crate) same_workflow_boundary: String,
     pub(crate) controlled_adoption: MercuryControlledAdoptionExportSummary,
-    pub(crate) decision_record_file: String,
-    pub(crate) docs: MercuryControlledAdoptionDocRefs,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MercuryReferenceDistributionDocRefs {
-    pub(crate) reference_distribution_file: String,
-    pub(crate) operations_file: String,
-    pub(crate) validation_package_file: String,
     pub(crate) decision_record_file: String,
 }
 
@@ -929,16 +838,6 @@ pub(crate) struct MercuryReferenceDistributionValidationReport {
     pub(crate) sales_owner: String,
     pub(crate) same_workflow_boundary: String,
     pub(crate) reference_distribution: MercuryReferenceDistributionExportSummary,
-    pub(crate) decision_record_file: String,
-    pub(crate) docs: MercuryReferenceDistributionDocRefs,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MercuryBroaderDistributionDocRefs {
-    pub(crate) broader_distribution_file: String,
-    pub(crate) operations_file: String,
-    pub(crate) validation_package_file: String,
     pub(crate) decision_record_file: String,
 }
 
@@ -1090,7 +989,6 @@ pub(crate) struct MercuryBroaderDistributionValidationReport {
     pub(crate) same_workflow_boundary: String,
     pub(crate) broader_distribution: MercuryBroaderDistributionExportSummary,
     pub(crate) decision_record_file: String,
-    pub(crate) docs: MercuryBroaderDistributionDocRefs,
 }
 
 impl MercuryPilotRunPaths {

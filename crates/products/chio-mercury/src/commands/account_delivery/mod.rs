@@ -10,14 +10,11 @@ pub use self::validation::{
     cmd_mercury_selective_account_activation_validate,
 };
 
-pub(crate) use self::export::{
-    delivery_continuity_doc_refs, export_delivery_continuity, export_selective_account_activation,
-};
+pub(crate) use self::export::{export_delivery_continuity, export_selective_account_activation};
 pub(crate) use self::types::{
     MercuryDeliveryContinuityAccountBoundaryFreeze,
     MercuryDeliveryContinuityCustomerEvidenceHandoff, MercuryDeliveryContinuityDecisionRecord,
-    MercuryDeliveryContinuityDeliveryEscalationBrief, MercuryDeliveryContinuityDocRefs,
-    MercuryDeliveryContinuityExportSummary, MercuryDeliveryContinuityManifest,
-    MercuryDeliveryContinuityOutcomeEvidenceSummary, MercuryDeliveryContinuityRenewalGate,
-    MercuryDeliveryContinuityValidationReport,
+    MercuryDeliveryContinuityDeliveryEscalationBrief, MercuryDeliveryContinuityExportSummary,
+    MercuryDeliveryContinuityManifest, MercuryDeliveryContinuityOutcomeEvidenceSummary,
+    MercuryDeliveryContinuityRenewalGate, MercuryDeliveryContinuityValidationReport,
 };

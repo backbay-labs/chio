@@ -270,7 +270,6 @@ pub fn cmd_mercury_downstream_review_validate(
 
     let downstream_review_dir = output.join("downstream-review");
     let summary = export_downstream_review(&downstream_review_dir)?;
-    let docs = downstream_review_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryDownstreamReviewDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -300,7 +299,6 @@ pub fn cmd_mercury_downstream_review_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         downstream_review: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 
@@ -369,7 +367,6 @@ pub fn cmd_mercury_governance_workbench_validate(
 
     let governance_dir = output.join("governance-workbench");
     let summary = export_governance_workbench(&governance_dir)?;
-    let docs = governance_workbench_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryGovernanceWorkbenchDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -399,7 +396,6 @@ pub fn cmd_mercury_governance_workbench_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         governance_workbench: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 

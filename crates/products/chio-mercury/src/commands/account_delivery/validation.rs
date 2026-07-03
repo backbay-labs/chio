@@ -56,7 +56,6 @@ pub fn cmd_mercury_selective_account_activation_validate(
 
     let selective_account_activation_dir = output.join("selective-account-activation");
     let summary = export_selective_account_activation(&selective_account_activation_dir)?;
-    let docs = selective_account_activation_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercurySelectiveAccountActivationDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -91,7 +90,6 @@ pub fn cmd_mercury_selective_account_activation_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         selective_account_activation: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 
@@ -197,7 +195,6 @@ pub fn cmd_mercury_delivery_continuity_validate(
 
     let delivery_continuity_dir = output.join("delivery-continuity");
     let summary = export_delivery_continuity(&delivery_continuity_dir)?;
-    let docs = delivery_continuity_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryDeliveryContinuityDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -232,7 +229,6 @@ pub fn cmd_mercury_delivery_continuity_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         delivery_continuity: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 

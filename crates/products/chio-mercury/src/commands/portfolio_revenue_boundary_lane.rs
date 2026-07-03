@@ -24,15 +24,6 @@ impl Drop for TempStage {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct MercuryPortfolioRevenueBoundaryDocRefs {
-    portfolio_revenue_boundary_file: String,
-    operations_file: String,
-    validation_package_file: String,
-    decision_record_file: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct MercuryRevenueBoundaryFreeze {
     schema: String,
     workflow_id: String,
@@ -186,16 +177,6 @@ struct MercuryPortfolioRevenueBoundaryValidationReport {
     same_workflow_boundary: String,
     portfolio_revenue_boundary: MercuryPortfolioRevenueBoundaryExportSummary,
     decision_record_file: String,
-    docs: MercuryPortfolioRevenueBoundaryDocRefs,
-}
-
-fn portfolio_revenue_boundary_doc_refs() -> MercuryPortfolioRevenueBoundaryDocRefs {
-    MercuryPortfolioRevenueBoundaryDocRefs {
-        portfolio_revenue_boundary_file: String::new(),
-        operations_file: String::new(),
-        validation_package_file: String::new(),
-        decision_record_file: String::new(),
-    }
 }
 
 fn build_portfolio_revenue_boundary_profile(
@@ -706,7 +687,6 @@ pub fn cmd_mercury_portfolio_revenue_boundary_validate(
 
     let revenue_boundary_dir = output.join("portfolio-revenue-boundary");
     let summary = export_portfolio_revenue_boundary(&revenue_boundary_dir)?;
-    let docs = portfolio_revenue_boundary_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryPortfolioRevenueBoundaryDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -737,7 +717,6 @@ pub fn cmd_mercury_portfolio_revenue_boundary_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         portfolio_revenue_boundary: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 

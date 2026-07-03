@@ -392,15 +392,6 @@ pub(crate) fn export_selective_account_activation(
     Ok(summary)
 }
 
-pub(crate) fn delivery_continuity_doc_refs() -> MercuryDeliveryContinuityDocRefs {
-    MercuryDeliveryContinuityDocRefs {
-        delivery_continuity_file: String::new(),
-        operations_file: String::new(),
-        validation_package_file: String::new(),
-        decision_record_file: String::new(),
-    }
-}
-
 fn build_delivery_continuity_profile(
     workflow_id: &str,
 ) -> Result<MercuryDeliveryContinuityProfile, CliError> {

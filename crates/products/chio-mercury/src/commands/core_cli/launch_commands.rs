@@ -43,7 +43,6 @@ pub fn cmd_mercury_assurance_suite_validate(
 
     let assurance_dir = output.join("assurance-suite");
     let summary = export_assurance_suite(&assurance_dir)?;
-    let docs = assurance_suite_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryAssuranceSuiteDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -74,7 +73,6 @@ pub fn cmd_mercury_assurance_suite_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         assurance_suite: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 
@@ -139,7 +137,6 @@ pub fn cmd_mercury_embedded_oem_validate(output: &Path, json_output: bool) -> Re
 
     let embedded_oem_dir = output.join("embedded-oem");
     let summary = export_embedded_oem(&embedded_oem_dir)?;
-    let docs = embedded_oem_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryEmbeddedOemDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -175,7 +172,6 @@ pub fn cmd_mercury_embedded_oem_validate(output: &Path, json_output: bool) -> Re
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         embedded_oem: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 
@@ -249,7 +245,6 @@ pub fn cmd_mercury_trust_network_validate(
 
     let trust_network_dir = output.join("trust-network");
     let summary = export_trust_network(&trust_network_dir)?;
-    let docs = trust_network_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryTrustNetworkDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -287,7 +282,6 @@ pub fn cmd_mercury_trust_network_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         trust_network: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 
@@ -366,7 +360,6 @@ pub fn cmd_mercury_release_readiness_validate(
 
     let release_readiness_dir = output.join("release-readiness");
     let summary = export_release_readiness(&release_readiness_dir)?;
-    let docs = release_readiness_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryReleaseReadinessDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -399,7 +392,6 @@ pub fn cmd_mercury_release_readiness_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         release_readiness: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 
@@ -479,7 +471,6 @@ pub fn cmd_mercury_controlled_adoption_validate(
 
     let controlled_adoption_dir = output.join("controlled-adoption");
     let summary = export_controlled_adoption(&controlled_adoption_dir)?;
-    let docs = controlled_adoption_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryControlledAdoptionDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -512,7 +503,6 @@ pub fn cmd_mercury_controlled_adoption_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         controlled_adoption: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 
@@ -595,7 +585,6 @@ pub fn cmd_mercury_reference_distribution_validate(
 
     let reference_distribution_dir = output.join("reference-distribution");
     let summary = export_reference_distribution(&reference_distribution_dir)?;
-    let docs = reference_distribution_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryReferenceDistributionDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -629,7 +618,6 @@ pub fn cmd_mercury_reference_distribution_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         reference_distribution: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 
@@ -720,7 +708,6 @@ pub fn cmd_mercury_broader_distribution_validate(
 
     let broader_distribution_dir = output.join("broader-distribution");
     let summary = export_broader_distribution(&broader_distribution_dir)?;
-    let docs = broader_distribution_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryBroaderDistributionDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -754,7 +741,6 @@ pub fn cmd_mercury_broader_distribution_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         broader_distribution: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 

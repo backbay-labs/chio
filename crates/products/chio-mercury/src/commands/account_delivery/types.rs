@@ -2,15 +2,6 @@ use super::*;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct MercuryDeliveryContinuityDocRefs {
-    pub(crate) delivery_continuity_file: String,
-    pub(crate) operations_file: String,
-    pub(crate) validation_package_file: String,
-    pub(crate) decision_record_file: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct MercuryDeliveryContinuityAccountBoundaryFreeze {
     pub(crate) schema: String,
     pub(crate) workflow_id: String,
@@ -182,5 +173,4 @@ pub(crate) struct MercuryDeliveryContinuityValidationReport {
     pub(crate) same_workflow_boundary: String,
     pub(crate) delivery_continuity: MercuryDeliveryContinuityExportSummary,
     pub(crate) decision_record_file: String,
-    pub(crate) docs: MercuryDeliveryContinuityDocRefs,
 }
