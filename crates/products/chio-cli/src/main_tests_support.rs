@@ -31,15 +31,6 @@ where
         .expect("parse thread must not panic")
 }
 
-pub(crate) fn rendered_help(args: &[&str]) -> String {
-    let error = match parse_cli(args.iter().copied()) {
-        Ok(_) => panic!("help exits before parsing command values"),
-        Err(error) => error,
-    };
-    assert_eq!(error.kind(), clap::error::ErrorKind::DisplayHelp);
-    error.to_string()
-}
-
 pub(crate) fn render_error_json(error: &CliError) -> Result<serde_json::Value, Box<dyn Error>> {
     let mut output = Vec::new();
     write_cli_error(&mut output, error, true)?;

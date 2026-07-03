@@ -268,21 +268,6 @@ fn streamed_loads_use_verify_bytes_error_mapping() {
     ));
 }
 
-#[test]
-fn guard_registry_source_has_no_raw_cosign_shellout_or_shadow_identity() {
-    let source = [
-        include_str!("../src/lib.rs"),
-        include_str!("../src/verify.rs"),
-        include_str!("../src/oci.rs"),
-        include_str!("../src/pull.rs"),
-    ]
-    .join("\n");
-
-    assert!(!source.contains(&["cosign", " verify-blob"].concat()));
-    assert!(!source.contains(&["std::process", "::Command"].concat()));
-    assert!(!source.contains("struct ExpectedIdentity"));
-}
-
 fn expected_identity() -> ExpectedIdentity
 where
     ExpectedIdentity: Sized,

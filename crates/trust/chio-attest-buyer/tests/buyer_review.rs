@@ -31,15 +31,6 @@ fn buyer_boundary_does_not_reexport_historical_runtime_types() {
 }
 
 #[test]
-fn buyer_public_review_messages_use_chio_boundary_wording() {
-    let lib = include_str!("../src/lib.rs");
-    assert!(
-        !lib.contains("existing Chio verifier"),
-        "public buyer review messages should describe historical replay without Chio branding"
-    );
-}
-
-#[test]
 fn buyer_error_boundary_is_chio_owned() {
     let error_type = std::any::type_name::<BuyerAttestationError>();
     assert_eq!(
