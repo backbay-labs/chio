@@ -1,9 +1,8 @@
 # Iroh Federation-Transport Adapter: Implementation Spec
 
 Capstone implementation spec for the iroh federation-transport adapter. It
-consolidates a four-iteration, build-validated investigation (see the running
-journal at [INTEGRATION-LOG.md](./INTEGRATION-LOG.md)) into a single Year-2
-build plan, and is governed by the decision record at
+consolidates a build-validated investigation into a single Year-2 build plan,
+and is governed by the decision record at
 [ADR-0014](../../adr/ADR-0014-iroh-federation-transport.md). Where this spec and
 ADR-0014 appear to differ, ADR-0014 wins; nothing here is intended to contradict
 it.
@@ -57,10 +56,10 @@ crate's wire types.
 
 ## 2. Validated Foundation
 
-What the four iterations actually proved, separated honestly from what is still
-only argued. PoC sources live **outside this repo** under
-`/Users/connor/backbay/iroh-lab/` and were referenced, not vendored. All on iroh
-1.0.0 / iroh-gossip 0.101 / iroh-blobs 0.103 / iroh-relay 1.0.0.
+What the validation work proved, separated honestly from what is still only
+argued. The validation programs are intentionally not vendored in this repo. All
+validation ran on iroh 1.0.0 / iroh-gossip 0.101 / iroh-blobs 0.103 /
+iroh-relay 1.0.0.
 
 ### 2.1 Status table
 
@@ -198,8 +197,7 @@ Backs `RevocationCatchupHistory` with iroh-blobs; the design gates the downloade
 behind `admission` (ASSERTED - `signed_admission` and `blobslab` were validated in
 isolation, now composed end-to-end in `three_way.rs`; see table row 82 and the three-way row).
 
-- iroh-blobs 0.103 types and the **iteration-4 corrected signatures** (the
-  iteration-3 sketch was wrong in three places):
+- iroh-blobs 0.103 types and signatures:
   - PUT: `Blobs::add_bytes(impl Into<Bytes>) -> AddProgress`, which is
     `IntoFuture<Output = RequestResult<TagInfo>>`, where `TagInfo { name, format,
     hash }`. (NOT a bare `Hash`.)
@@ -490,11 +488,6 @@ mesh must run its own relays (or pay for n0 Iroh Services) by then.
 ## References
 
 - Decision record: [ADR-0014](../../adr/ADR-0014-iroh-federation-transport.md)
-- Investigation journal (all four iterations, validated-vs-asserted):
-  [INTEGRATION-LOG.md](./INTEGRATION-LOG.md)
-- Validated PoCs (outside this repo, do NOT modify):
-  `/Users/connor/backbay/iroh-lab/poc` (dial + ALPN),
-  `/Users/connor/backbay/iroh-lab/poc2/src/bin/{gossip.rs, admission.rs,
-  signed_admission.rs}`, `/Users/connor/backbay/iroh-lab/blobslab` (iroh-blobs
-  catch-up), `/Users/connor/backbay/iroh-lab/relaylab` (self-hosted relay). All on
-  iroh 1.0.0 / iroh-gossip 0.101 / iroh-blobs 0.103 / iroh-relay 1.0.0.
+- Validation summary: dial + ALPN, gossip broadcast, admission gating, signed
+  directory checks, iroh-blobs catch-up, and self-hosted relay behavior were
+  exercised outside this repo and are summarized in section 2.

@@ -737,7 +737,7 @@ still enforcing the kernel-key match. It MUST NOT be used on any path that
 holds the evaluated content; every such path MUST call `sign_receipt` (or the
 one-time-handle variant that delegates to it) so the recompute-and-refuse
 check applies. Threading the preimage across the FFI/WASM boundary so those
-adapters can recompute too is tracked as follow-up work (BAC-601); until
+adapters can recompute too is tracked as follow-up work; until
 then, this seam is the single place where caller-asserted `content_hash` is
 trusted, rather than that trust being a silent default.
 

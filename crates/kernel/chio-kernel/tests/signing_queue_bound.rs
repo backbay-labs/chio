@@ -1,4 +1,4 @@
-//! Byte-bound enforcement for the async receipt-signing queue (BAC-539).
+//! Byte-bound enforcement for the async receipt-signing queue.
 //!
 //! Each queued [`signing_task::SignRequest`] owns the full canonical-content
 //! preimage. The bounded mpsc channel limits the queue by request *count* but
@@ -11,16 +11,16 @@
 //!   which would break the WYSIWYS recompute), via both the awaiting [`sign`]
 //!   path and the non-blocking [`try_sign`] path.
 //!
-//! BAC-539 round-7 hardens the aggregate admission model with three regressions:
+//! The aggregate admission model is covered by three regressions:
 //!
 //! - a preimage larger than the aggregate budget inline-signs instead of being
-//!   clamp-and-enqueued (hole 1), so one oversized request never exceeds the
+//!   clamp-and-enqueued (case 1), so one oversized request never exceeds the
 //!   queue memory bound;
 //! - a producer that cannot enqueue under backpressure inline-signs instead of
-//!   parking while holding the preimage (hole 2), so many blocked producers
+//!   parking while holding the preimage (case 2), so many blocked producers
 //!   retain no more than the configured budget; and
 //! - a request that had not reached the channel when shutdown began is rejected,
-//!   never enqueued after shutdown (hole 3), with the closed-check and enqueue
+//!   never enqueued after shutdown (case 3), with the closed-check and enqueue
 //!   made atomic under the spawn gate.
 //!
 //! Every inline fallback still recomputes-and-refuses (WYSIWYS): a
@@ -172,7 +172,7 @@ async fn try_sign_returns_oversized_content_unsent() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn default_budget_admits_large_async_receipts_above_one_mib() {
-    // BAC-539 round-4: the default per-request budget is aligned to the kernel's
+    // The default per-request budget is aligned to the kernel's
     // configured stream/output max (256 MiB), not a fixed 1 MiB hard-reject. A
     // legitimate large async receipt above 1 MiB must sign through the async
     // queue, since it is the documented off-critical-path signer. The budget is
@@ -205,7 +205,7 @@ async fn default_budget_admits_large_async_receipts_above_one_mib() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn zero_per_request_cap_admits_large_receipts_unlimited() {
-    // BAC-539 round-5 (issue 2): a per-request cap of 0 means UNLIMITED (matching
+    // a per-request cap of 0 means UNLIMITED (matching
     // the inline signer), NOT a 1-byte cap. The kernel wires a `0` cap when
     // `max_stream_total_bytes == 0` ("unlimited stream") flows through, so the
     // async path must admit a large receipt rather than rejecting it as "1 byte
@@ -235,7 +235,7 @@ async fn zero_per_request_cap_admits_large_receipts_unlimited() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn aggregate_byte_budget_backpressures_even_with_channel_room() {
-    // BAC-539 round-5 (issue 1): the AGGREGATE byte budget bounds the SUM of
+    // the AGGREGATE byte budget bounds the SUM of
     // in-flight queued preimage bytes independently of channel COUNT capacity.
     // On a current-thread runtime the spawned signing task does not run until we
     // `.await` it, so permits acquired by `try_sign` stay held; this lets us
@@ -252,7 +252,7 @@ async fn aggregate_byte_budget_backpressures_even_with_channel_room() {
         /* aggregate budget */ 4,
     );
 
-    // First request consumes the whole 4-byte aggregate budget and enqueues
+    // First request consumes the entire 4-byte aggregate budget and enqueues
     // (channel has plenty of count capacity). The task has not run yet, so the
     // permit is still held.
     let first_content = vec![0x11u8; 4];
@@ -302,7 +302,7 @@ async fn aggregate_byte_budget_backpressures_even_with_channel_room() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn backpressure_under_exhausted_budget_signs_inline_without_parking() {
-    // BAC-539 round-7 (hole 2): a producer that cannot enqueue because the
+    // (case 2): a producer that cannot enqueue because the
     // aggregate budget is exhausted MUST NOT park while holding the preimage; it
     // signs INLINE through the same WYSIWYS primitive instead. We prove the
     // `sign` future completes in a SINGLE poll (no Pending park) even though the
@@ -351,7 +351,7 @@ async fn backpressure_under_exhausted_budget_signs_inline_without_parking() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn oversized_preimage_signs_inline_without_exceeding_queue_bound() {
-    // BAC-539 round-7 (hole 1): a single preimage LARGER than the aggregate byte
+    // (case 1): a single preimage LARGER than the aggregate byte
     // budget must NOT be enqueued (the old code clamped the permit count to the
     // whole budget but still moved the full Vec into the queue, so one oversized
     // request retained more bytes than the advertised bound). It must inline-sign
@@ -392,7 +392,7 @@ async fn oversized_preimage_signs_inline_without_exceeding_queue_bound() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn oversized_inline_fallback_still_refuses_render_a_sign_b() {
-    // BAC-539 round-7 (hole 1 + WYSIWYS): the oversized inline fallback routes
+    // (case 1 + WYSIWYS): the oversized inline fallback routes
     // through the SAME content-recompute primitive as the queue path, so a body
     // whose `content_hash` does not match the canonical-content preimage (a
     // render-A / sign-B attempt) is refused on the inline path too. Memory stays
@@ -430,7 +430,7 @@ async fn oversized_inline_fallback_still_refuses_render_a_sign_b() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn many_blocked_producers_do_not_retain_more_than_budget() {
-    // BAC-539 round-7 (hole 2): under a tiny aggregate budget, a burst of
+    // (case 2): under a tiny aggregate budget, a burst of
     // concurrent producers must NOT each park holding a full preimage outside the
     // semaphore accounting (the old `acquire_aggregate_permit().await` retained a
     // preimage per blocked future, so memory grew with the waiter count). With the
@@ -484,7 +484,7 @@ async fn many_blocked_producers_do_not_retain_more_than_budget() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn shutdown_before_send_rejects_request_no_post_shutdown_enqueue() {
-    // BAC-539 round-7 (hole 3): when `shutdown()` begins before a request reaches
+    // (case 3): when `shutdown()` begins before a request reaches
     // the channel, that request MUST be rejected, never enqueued onto a draining
     // channel and never inline-signed. The fix makes the closed-check and the
     // `try_send` a single atomic step under the spawn gate, closing the

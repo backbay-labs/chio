@@ -73,7 +73,7 @@ const FIXTURE_EVALUATE_REQUEST = {
   clock_override_unix_secs: 1_700_000_500,
 };
 
-// WYSIWYS (BAC-539): the PUBLIC `sign_receipt` entry point requires the exact
+// WYSIWYS: the PUBLIC `sign_receipt` entry point requires the exact
 // `canonical_content` preimage and recomputes `content_hash` inside the signer,
 // refusing on mismatch. The demo therefore renders the content the human sees,
 // derives `content_hash` from it, and ships the preimage as a `u8` array so the

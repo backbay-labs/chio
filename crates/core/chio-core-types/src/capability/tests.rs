@@ -2139,7 +2139,7 @@ fn delegate_rejects_signed_at_at_or_after_parent_expiry() {
 }
 
 // ---------------------------------------------------------------------------
-// BAC-573: time-checked verify entry points fold the validity window into the
+// Time-checked verify entry points fold the validity window into the
 // signature-verification path so "signature-valid" cannot diverge from
 // "unexpired". Each checked entry point is fail-closed and signature-first.
 // ---------------------------------------------------------------------------
@@ -2386,7 +2386,7 @@ fn bac573_continuation_token_verify_at_bad_signature_fails_first() {
 }
 
 // ---------------------------------------------------------------------------
-// BAC-548: attenuation-step narrowing + parent-relative budget_share_bps.
+// Attenuation-step narrowing + parent-relative budget_share_bps.
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "delegation")]
@@ -2970,7 +2970,7 @@ fn delegate_rejects_step_not_reflected_in_child() {
     assert!(matches!(err, Error::AttenuationViolation { .. }));
 }
 
-/// Round-3 review regression (Codex P2, attenuation correctness): a wildcard
+/// attenuation correctness regression: a wildcard
 /// step TARGET must cover concrete child grants when checking that a declared
 /// removal is reflected in the child.
 ///
@@ -3074,8 +3074,8 @@ fn delegate_accepts_wildcard_remove_operation_step_reflected_in_concrete_child()
     assert_eq!(receipt.link.attenuations.len(), 1);
 }
 
-/// Round-4 review regression (Codex P2, attenuation correctness): the mirror of
-/// the round-3 case. A CONCRETE step TARGET must cover a WILDCARD child grant
+/// Attenuation correctness regression: the mirror of the wildcard-step case. A
+/// CONCRETE step TARGET must cover a WILDCARD child grant
 /// when checking that a declared removal is reflected in the child.
 ///
 /// A `*:*` parent delegates a wildcard `*:*` child while declaring

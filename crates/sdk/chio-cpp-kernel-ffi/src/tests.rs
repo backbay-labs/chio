@@ -450,7 +450,7 @@ fn take_result_string(result: &ChioKernelFfiResult) -> String {
 
 #[test]
 fn ffi_sign_receipt_recompute_accepts_matching_content() {
-    // WYSIWYS (BAC-539): drive the PUBLIC C ABI signer end-to-end. A matching
+    // WYSIWYS: drive the PUBLIC C ABI signer end-to-end. A matching
     // content+hash pair signs and verifies.
     let keypair = Keypair::generate();
     let canonical_content = br#"{"shown":"to-the-human"}"#.to_vec();
@@ -474,7 +474,7 @@ fn ffi_sign_receipt_recompute_accepts_matching_content() {
 
 #[test]
 fn ffi_sign_receipt_refuses_render_a_sign_b() {
-    // WYSIWYS render-A/sign-B regression (BAC-539 / C1) at the C++ ABI boundary.
+    // WYSIWYS render-A/sign-B regression (C1) at the C++ ABI boundary.
     // The body claims hash(B) while the canonical content handed to the public
     // C ABI signer is A; the recompute-and-refuse gate MUST reject it
     // fail-closed. Without the fix (relaying the trusted body without
@@ -499,7 +499,7 @@ fn ffi_sign_receipt_refuses_render_a_sign_b() {
 
 #[test]
 fn ffi_sign_receipt_relay_signs_without_preimage() {
-    // The explicitly named relay ABI (BAC-601 seam) forwards a trusted body
+    // The explicitly named relay ABI forwards a trusted body
     // without a content preimage; it trusts `content_hash`.
     let keypair = Keypair::generate();
     let body_json = make_receipt_body_json(&keypair, "0".repeat(64));
@@ -520,7 +520,7 @@ fn ffi_sign_receipt_relay_signs_without_preimage() {
 
 #[test]
 fn ffi_abi_version_is_two_so_two_arg_clients_fail_closed() {
-    // BAC-539: `chio_kernel_sign_receipt_json` gained a third pointer arg
+    // `chio_kernel_sign_receipt_json` gained a third pointer arg
     // (`canonical_content_hex`). The ABI version MUST advance from 1 to 2 so an
     // old 2-arg client that gates on `chio_kernel_ffi_abi_version()` refuses to
     // link instead of calling the 3-arg symbol with a missing third pointer.

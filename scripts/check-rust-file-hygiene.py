@@ -124,7 +124,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/core/chio-core-types/src/capability/tests.rs": allow(
         "2026-07-31",
-        "existing oversized capability type test suite; capped to current size until split grown by BAC-573/BAC-548 capability tests (round-3 wildcard RemoveOperation reflection regressions, round-4 concrete-step vs wildcard-child reflection regression)",
+        "existing oversized capability type test suite; capped to current size until split; covers time-checked verification, attenuation narrowing, and wildcard/concrete reflection regressions",
         max_lines=3_200,
     ),
     "crates/kernel/chio-runtime-core/tests/runtime_buyer_review.rs": allow(

@@ -118,7 +118,7 @@ pub fn evaluate_pure(
 /// Pure receipt-signing helper. Builds an `Ed25519Backend` from the supplied
 /// seed (which the wasm binding mints via Web Crypto) and signs the body.
 ///
-/// WYSIWYS (BAC-539): this is the PUBLIC browser-boundary signer, so it is
+/// WYSIWYS: this is the PUBLIC browser-boundary signer, so it is
 /// fail-closed. The caller MUST carry the canonical content preimage across the
 /// wasm-bindgen boundary (`SignReceiptRequestJson::canonical_content`); the
 /// signer then routes through the production recompute-and-refuse primitive
@@ -131,8 +131,8 @@ pub fn evaluate_pure(
 /// When the preimage is absent (`None`), this signer REFUSES (fail-closed)
 /// instead of silently relaying a trusted body. The trusted-body relay is no
 /// longer reachable through the default public signer; callers that genuinely
-/// only forward an already-minted upstream body (the FFI/WASM relay seam tracked
-/// under BAC-601) must call the explicitly named
+/// only forward an already-minted upstream body through the FFI/WASM relay seam
+/// must call the explicitly named
 /// [`sign_receipt_relaying_trusted_body_pure`] instead.
 pub fn sign_receipt_pure(
     input: SignReceiptRequestJson,
@@ -148,7 +148,7 @@ pub fn sign_receipt_pure(
     // Fail-closed: the public signer requires the canonical content preimage so
     // the recompute-and-refuse gate can run. Without it we cannot prove the body
     // hashes what the human was shown, so we refuse rather than fall back to the
-    // trusted-body relay (BAC-539 / round-3 review).
+    // trusted-body relay.
     let canonical_content = input.canonical_content.ok_or_else(|| {
         BindingError::new(
             "canonical_content_required",
@@ -166,7 +166,7 @@ pub fn sign_receipt_pure(
         .map_err(|error| BindingError::new("receipt_signing_failed", format_signing(&error)))
 }
 
-/// Trusted-upstream-body relay signer (the BAC-601 seam), NOT the default public
+/// Trusted-upstream-body relay signer, NOT the default public
 /// signer.
 ///
 /// This is the explicit, auditable forwarding path for callers that only relay
@@ -382,7 +382,7 @@ fn format_signing(error: &chio_kernel_core::ReceiptSigningError) -> String {
         chio_kernel_core::ReceiptSigningError::KernelKeyMismatch => {
             "receipt body kernel_key does not match the signing backend".to_string()
         }
-        // WYSIWYS mismatch (BAC-539). When the browser caller carries the
+        // WYSIWYS mismatch. When the browser caller carries the
         // canonical content preimage (`SignReceiptRequestJson::canonical_content`),
         // `sign_receipt_pure` routes through `chio_kernel_core::sign_receipt`,
         // which recomputes `content_hash` inside the signer and produces this

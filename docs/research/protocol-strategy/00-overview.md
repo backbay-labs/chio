@@ -6,7 +6,7 @@ Six parallel research agents investigated whether Chio should expand its protoco
 
 Branch: `research/protocol-strategy-2026` off `main` at `14b4de625`. Companion docs in this directory.
 
-> **Plan-of-record note (PR 652 review):** This round-1 overview is retained as historical context. Use [00-overview-v2.md](00-overview-v2.md) as the current synthesis and [18-decision-packet.md](18-decision-packet.md) as the architecture decision packet before implementation tickets.
+> **Plan-of-record note (PR 652 review):** This  overview is retained as historical context. Use [00-overview-v2.md](00-overview-v2.md) as the current synthesis and [18-decision-packet.md](18-decision-packet.md) as the architecture decision packet before implementation tickets.
 
 > **Erratum**: AGNTCY ACP is dead. The `agntcy/acp-spec` repo was archived 2026-04-11 and absorbed into A2A. The AGNTCY ACP bridge bullet in Phase C below is struck; only consume-only Directory + Identity integration via the `DirectoryProvider` seam survives. See [17-agntcy-revisited.md](17-agntcy-revisited.md). Also: the n8n priority-1 framing originally cited the Talos 686% spike (which is Chain D, not blocked by Chio); the actually-blocked attack chain is Chain C (prompt-injection agent-to-webhook). See [11-n8n-threat-mapping.md](11-n8n-threat-mapping.md).
 

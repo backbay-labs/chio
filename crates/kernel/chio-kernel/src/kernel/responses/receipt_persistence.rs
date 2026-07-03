@@ -62,7 +62,7 @@ impl ChioKernel {
         // `content_hash` was derived from. The handle recomputes
         // `sha256_hex(canonical_content)` and the signing primitive refuses to
         // sign if it disagrees with `body.content_hash`, closing the
-        // render-A / sign-B hole on the production path (BAC-539). The
+        // render-A / sign-B hole on the production path. The
         // canonical_content is the same preimage `receipt_content_for_output`
         // hashed to produce `content_hash`.
         let handle = ReceiptSigningHandle::from_content_preimage(params.canonical_content);

@@ -181,7 +181,7 @@ pub struct SignReceiptRequestJson {
     /// from, carried across the wasm-bindgen boundary as raw bytes (a JSON
     /// array of `u8`).
     ///
-    /// WYSIWYS (BAC-539): the public signer `sign_receipt_pure` recomputes
+    /// WYSIWYS: the public signer `sign_receipt_pure` recomputes
     /// `sha256_hex(canonical_content)` inside the signer and refuses to sign
     /// when it disagrees with `body.content_hash`, so a browser/mobile caller
     /// can no longer render content A while signing a body claiming hash(B).

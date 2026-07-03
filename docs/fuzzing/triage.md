@@ -196,7 +196,7 @@ scripts/promote_fuzz_seed.sh \
   --target jwt_vc_verify \
   --crate chio-credentials \
   --input /tmp/fuzz-crash/crash-3f8a1c.bin \
-  --issue 142
+  --case 142
 ```
 
 The script copies the minimized input into the crate's test-fixture

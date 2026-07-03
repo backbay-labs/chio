@@ -38,6 +38,7 @@ def _chio_bin() -> str:
 
 def _run_chio(args: list[str], *, cwd: Path = REPO_ROOT) -> Json:
     command = [_chio_bin(), "--format", "json", *args]
+    recorded_command = ["chio", "--format", "json", *args]
     completed = subprocess.run(
         command,
         cwd=cwd,
@@ -49,21 +50,21 @@ def _run_chio(args: list[str], *, cwd: Path = REPO_ROOT) -> Json:
     if completed.returncode != 0:
         raise RuntimeError(
             "chio command failed\n"
-            f"command: {' '.join(command)}\n"
+            f"command: {' '.join(recorded_command)}\n"
             f"stdout: {completed.stdout}\n"
             f"stderr: {completed.stderr}"
         )
     stdout = completed.stdout.strip()
     if not stdout:
-        return {"command": command, "stdout": ""}
+        return {"command": recorded_command, "stdout": ""}
     try:
         parsed = json.loads(stdout)
     except json.JSONDecodeError:
         parsed = {"stdout": stdout}
     if isinstance(parsed, dict):
-        parsed.setdefault("command", command)
+        parsed.setdefault("command", recorded_command)
         return parsed
-    return {"command": command, "output": parsed}
+    return {"command": recorded_command, "output": parsed}
 
 
 def _write_seed(path: Path, seed_hex: str) -> None:

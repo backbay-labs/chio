@@ -60,7 +60,7 @@ impl KernelCryptoFloor {
 
 /// Sign an already-assembled [`ChioReceiptBody`] with an arbitrary
 /// [`SigningBackend`] (classical, hybrid, or PQ), recomputing `content_hash`
-/// inside the trust boundary (WYSIWYS, BAC-539).
+/// inside the trust boundary (WYSIWYS).
 ///
 /// Delegates to `chio_kernel_core::sign_receipt`, the production
 /// recompute-and-refuse primitive, so the hybrid signing path is held to the
@@ -78,7 +78,7 @@ impl KernelCryptoFloor {
 /// Callers that genuinely cannot carry the content preimage (the thin transport
 /// adapters relaying an already-minted body across an FFI/WASM boundary) must
 /// use `chio_kernel_core::sign_receipt_relaying_trusted_body` directly, which is
-/// the explicit, auditable trusted-relay seam tracked under BAC-601; this
+/// the explicit, auditable trusted-relay seam tracked; this
 /// content-bearing kernel wrapper is not that seam.
 ///
 /// # Errors
@@ -101,7 +101,7 @@ pub fn sign_receipt_body_with_backend(
             ReceiptSigningError::KernelKeyMismatch => {
                 "kernel signing key does not match receipt body kernel_key".to_string()
             }
-            // WYSIWYS mismatch (BAC-539): the body claimed a `content_hash` the
+            // WYSIWYS mismatch: the body claimed a `content_hash` the
             // signer could not reproduce from `canonical_content`, so the
             // signature is refused fail-closed.
             ReceiptSigningError::ContentHashMismatch {
@@ -163,7 +163,7 @@ pub struct SignedHybridReceipt {
 /// shared by every downstream consumer (storage, lineage anchor, federation
 /// cosign).
 ///
-/// # WYSIWYS recompute (BAC-539)
+/// # WYSIWYS recompute
 ///
 /// `canonical_content` is the exact byte preimage the body's `content_hash` was
 /// derived from (the same preimage the classical sibling
@@ -178,7 +178,7 @@ pub struct SignedHybridReceipt {
 /// rather than leaving it as a caller-hash-trust seam. Callers that genuinely
 /// cannot carry the content preimage must use
 /// `chio_kernel_core::sign_receipt_relaying_trusted_body` (the explicit
-/// trusted-relay seam, BAC-601); this content-bearing kernel wrapper is not that
+/// trusted-relay seam); this content-bearing kernel wrapper is not that
 /// seam.
 ///
 /// # Authoritative signing input
@@ -236,7 +236,7 @@ pub fn sign_receipt_body_hybrid_canonical(
     };
 
     // WYSIWYS recompute-and-refuse FIRST, inside the trust boundary, before any
-    // kernel-key check or cryptographic work (BAC-539). We recompute
+    // kernel-key check or cryptographic work. We recompute
     // `sha256_hex(canonical_content)` over the BORROWED preimage and refuse to
     // sign when it disagrees with the caller-supplied `body.content_hash`. This
     // is the same recompute-and-refuse gate `chio_kernel_core::sign_receipt`
@@ -244,7 +244,7 @@ pub fn sign_receipt_body_hybrid_canonical(
     // path can no longer render content A while signing a body claiming the hash
     // of content B.
     //
-    // BAC-539 round-5 (issue 4): hash the borrowed slice directly instead of
+    // hash the borrowed slice directly instead of
     // cloning it into a `ReceiptSigningHandle` via `to_vec()`. The preimage can
     // be up to the configured stream/output max (256 MiB); a transient clone
     // here doubled peak memory for no benefit, since the handle's only role on
@@ -456,7 +456,7 @@ pub fn kernel_signing_backend(
 
 #[cfg(test)]
 mod borrowed_preimage_tests {
-    //! BAC-539 round-5 (issue 4): the hybrid/PQ shared-canonical path recomputes
+    //! the hybrid/PQ shared-canonical path recomputes
     //! `sha256_hex(canonical_content)` from the BORROWED preimage slice (no
     //! `to_vec()` clone) before any signing work, so render-A / sign-B is still
     //! refused fail-closed. These run under a classical Ed25519 backend so they
@@ -528,10 +528,10 @@ mod borrowed_preimage_tests {
 
     #[test]
     fn borrowed_hash_path_refuses_render_a_sign_b() {
-        // WYSIWYS (BAC-539): the body binds `content_hash` to PREIMAGE but the
+        // WYSIWYS: the body binds `content_hash` to PREIMAGE but the
         // signer is handed a DIFFERENT preimage. The borrowed-slice recompute
         // must disagree and refuse, proving the clone-free hash check still
-        // recomputes-and-refuses (issue 4 must not weaken the gate).
+        // recomputes-and-refuses (case 4 must not weaken the gate).
         let kp = Keypair::from_seed(&seed());
         let backend = Ed25519Backend::new(kp.clone());
         let body = body_for(kp.public_key(), chio_core::crypto::sha256_hex(PREIMAGE));

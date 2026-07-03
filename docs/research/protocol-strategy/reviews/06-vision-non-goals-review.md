@@ -1,6 +1,6 @@
 # 06 - Vision and Non-Goals Review
 
-> Round-2 swarm seat 6: vision-level consistency. Branch
+> Vision-level consistency review. Branch
 > `research/protocol-strategy-2026`. Reads 17 docs in
 > `docs/research/protocol-strategy/` against `spec/PROTOCOL.md:96-115`
 > (v2 non-goals), `spec/PROTOCOL.md:305-329` (ceiling negotiation), and
@@ -119,7 +119,7 @@ the naming fix in doc 02 is a second-round edit and should be acknowledged.
 
 ## Overview v1 vs v2 reconciliation
 
-The relationship is undeclared. `00-overview-v2.md:7` says "round-1 docs
+The relationship is undeclared. `00-overview-v2.md:7` says " docs
 (`00-` through `06-`) are unchanged" but never says whether v2 supersedes
 v1, builds on it, or is a delta document. The two phased queues disagree:
 
@@ -277,7 +277,7 @@ Round 1 open questions (`00-overview.md:77-83`):
 v2 open questions (`00-overview-v2.md:77-83`) are new and load-bearing:
 voice-tier policy classification, `must_understand` extension registry
 ownership, AGNTCY zero-securitySchemes, async receipt write SLO,
-bench-stub PR ordering. None repeat round-1 items.
+bench-stub PR ordering. None repeat  items.
 
 ## Top inconsistencies to fix
 
@@ -291,8 +291,8 @@ bench-stub PR ordering. None repeat round-1 items.
    OAuth consumer-side step-up (Phase A in v1) is dropped from v2's
    queue, though doc 03 still proposes it.
 5. **Em dashes in both overviews**: 11 in `00-overview.md`, 20 in
-   `00-overview-v2.md`. CLAUDE.md forbids U+2014 anywhere; the round-1
-   and round-2 docs themselves are clean. Examples at
+   `00-overview-v2.md`. CLAUDE.md forbids U+2014 anywhere; the
+   and  docs themselves are clean. Examples at
    `00-overview-v2.md:23, 25, 31, 39, 43, 47, 56, 58, 59, 61` and
    `00-overview.md:27, 31, 33, 37, 39, 42, 44, 71, 72, 73`.
 6. **Crate count understated**: v2 lists 5 new crates; the corpus

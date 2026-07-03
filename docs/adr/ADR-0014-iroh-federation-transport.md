@@ -2,8 +2,8 @@
 
 - Status: Accepted
 - Decision owner: trust and federation lane
-- Related plan items: brainstorm brief Phase 2 (Year-2 neutrality / federation mesh), moat #2; see [../brainstorm/CHIO-AUTONOMOUS-COMMERCE.md](../brainstorm/CHIO-AUTONOMOUS-COMMERCE.md)
-- Companions: running investigation log at [../research/iroh/INTEGRATION-LOG.md](../research/iroh/INTEGRATION-LOG.md); Year-2 implementation plan at [../research/iroh/ADAPTER-SPEC.md](../research/iroh/ADAPTER-SPEC.md)
+- Related plan items: Year-2 neutrality and federation mesh
+- Companion: Year-2 implementation plan at [../research/iroh/ADAPTER-SPEC.md](../research/iroh/ADAPTER-SPEC.md)
 
 ## Context
 

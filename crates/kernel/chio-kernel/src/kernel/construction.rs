@@ -141,7 +141,7 @@ impl ChioKernel {
         // so `ChioKernel::new` remains constructible from sync contexts; by the
         // time any caller reaches `sign`, a tokio runtime is necessarily active.
         let signing_keypair = config.keypair.clone();
-        // BAC-539 round-5: the async signer admits exactly what the inline
+        // WYSIWYS: the async signer admits exactly what the inline
         // signer admits, then bounds queue memory by an AGGREGATE byte budget.
         //
         // - Per-request cap = 0 (unlimited). The inline `build_and_sign_receipt`
@@ -150,14 +150,14 @@ impl ChioKernel {
         //   queued request holds (a stream receipt's preimage is the
         //   concatenation of 64-char per-chunk digests, not the raw payload).
         //   Comparing a preimage length against `max_stream_total_bytes` would
-        //   falsely reject stream receipts the inline signer accepts (issue 3),
+        //   falsely reject stream receipts the inline signer accepts (case 3),
         //   and a `max_stream_total_bytes == 0` ("unlimited") config must not
-        //   collapse to a 1-byte cap (issue 2). So we disable the per-request
+        //   collapse to a 1-byte cap (case 2). So we disable the per-request
         //   cap and let the aggregate budget bound memory instead.
         // - Aggregate budget tracks the configured stream/output max (saturating
         //   into `usize`), with a non-zero floor so a `0` ("unlimited") stream
         //   config still bounds queued memory at the documented default rather
-        //   than growing unbounded (issue 1). Always BOUNDED.
+        //   than growing unbounded (case 1). Always BOUNDED.
         let configured_stream_max =
             usize::try_from(config.max_stream_total_bytes).unwrap_or(usize::MAX);
         let signing_queued_budget = if configured_stream_max == 0 {
@@ -360,7 +360,7 @@ impl ChioKernel {
     /// `canonical_content` is the exact byte preimage `body.content_hash` was
     /// derived from. The signing task recomputes `sha256_hex(canonical_content)`
     /// inside the trust boundary and refuses to sign on mismatch (WYSIWYS,
-    /// BAC-539), so this channel path is as fail-closed as the inline
+    /// ), so this channel path is as fail-closed as the inline
     /// `build_and_sign_receipt` path.
     pub async fn sign_receipt_via_channel(
         &self,

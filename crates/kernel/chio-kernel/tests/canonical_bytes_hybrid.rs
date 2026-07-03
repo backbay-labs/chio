@@ -73,7 +73,7 @@ fn fixture_pq_seed() -> [u8; 32] {
 
 /// Canonical content preimage the test bodies bind their `content_hash` to.
 /// `sign_receipt_body_with_backend` recomputes `sha256_hex` over these bytes and
-/// refuses to sign on mismatch (WYSIWYS, BAC-539), so the body built by
+/// refuses to sign on mismatch (WYSIWYS), so the body built by
 /// [`build_body`] carries exactly `sha256_hex(FIXTURE_CANONICAL_CONTENT)`.
 const FIXTURE_CANONICAL_CONTENT: &[u8] = br#"{"q":"canonical"}"#;
 
@@ -237,7 +237,7 @@ fn kernel_key_mismatch_fails_closed_before_canonicalization() {
 
 #[test]
 fn content_hash_mismatch_fails_closed_render_a_sign_b() {
-    // WYSIWYS (BAC-539): the shared-canonical hybrid path must refuse to sign
+    // WYSIWYS: the shared-canonical hybrid path must refuse to sign
     // a body whose claimed `content_hash` does not match the canonical content
     // preimage handed to the signer (render content A, sign hash B). The refusal
     // happens before any cryptographic work.
