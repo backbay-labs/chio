@@ -113,7 +113,6 @@ rust_refinement_lanes = [
 claim_gate_inputs = [
   "README.md",
   "docs/start-here/VISION.md",
-  "docs/protocols/STRATEGIC-VISION.md",
   "docs/reference/CLAIM_REGISTRY.md",
   "docs/release/RISK_REGISTER.md",
   "spec/PROTOCOL.md",

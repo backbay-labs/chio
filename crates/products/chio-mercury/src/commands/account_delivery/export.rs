@@ -394,11 +394,10 @@ pub(crate) fn export_selective_account_activation(
 
 pub(crate) fn delivery_continuity_doc_refs() -> MercuryDeliveryContinuityDocRefs {
     MercuryDeliveryContinuityDocRefs {
-        delivery_continuity_file: "docs/mercury/DELIVERY_CONTINUITY.md".to_string(),
-        operations_file: "docs/mercury/DELIVERY_CONTINUITY_OPERATIONS.md".to_string(),
-        validation_package_file: "docs/mercury/DELIVERY_CONTINUITY_VALIDATION_PACKAGE.md"
-            .to_string(),
-        decision_record_file: "docs/mercury/DELIVERY_CONTINUITY_DECISION_RECORD.md".to_string(),
+        delivery_continuity_file: String::new(),
+        operations_file: String::new(),
+        validation_package_file: String::new(),
+        decision_record_file: String::new(),
     }
 }
 

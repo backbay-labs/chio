@@ -169,10 +169,10 @@ struct MercuryProgramFamilyValidationReport {
 
 fn program_family_doc_refs() -> MercuryProgramFamilyDocRefs {
     MercuryProgramFamilyDocRefs {
-        program_family_file: "docs/mercury/PROGRAM_FAMILY.md".to_string(),
-        operations_file: "docs/mercury/PROGRAM_FAMILY_OPERATIONS.md".to_string(),
-        validation_package_file: "docs/mercury/PROGRAM_FAMILY_VALIDATION_PACKAGE.md".to_string(),
-        decision_record_file: "docs/mercury/PROGRAM_FAMILY_DECISION_RECORD.md".to_string(),
+        program_family_file: String::new(),
+        operations_file: String::new(),
+        validation_package_file: String::new(),
+        decision_record_file: String::new(),
     }
 }
 

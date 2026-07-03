@@ -1,8 +1,6 @@
 {
   "schema": "chio.agent-web.standards-signoff.v1",
   "status": "approved",
-  "source_log_path": "docs/superpowers/research/chio-launch/indices/external-standards-source-log.md",
-  "source_log_status": "refreshed source log",
   "terms": [
     "standard",
     "compatible",

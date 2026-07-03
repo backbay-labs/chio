@@ -2,7 +2,8 @@
   "name": "@chio-protocol/sdk",
   "version": "0.1.0",
   "type": "module",
-  "description": "TypeScript SDK for the Chio (Chio) protocol",
+  "description": "TypeScript SDK for the Chio protocol",
+  "license": "Apache-2.0",
   "keywords": ["chio", "mcp", "receipts", "capabilities", "agent-governance"],
   "homepage": "https://github.com/backbay-labs/chio/tree/main/sdks/typescript/chio-ts",
   "bugs": {

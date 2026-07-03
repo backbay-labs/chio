@@ -17,9 +17,6 @@ const HOMEPAGE_COPY_MAP_SCHEMA: &str = "chio.proof-room.homepage-copy-map.v1";
 const NON_CLAIMS_SCHEMA: &str = "chio.proof-room.non-claims.v1";
 const NEGATIVE_CATALOG_SCHEMA: &str = "chio.proof-room.negative-catalog.v1";
 const AGENT_WEB_STAGE_ID: &str = "disclosure-and-agent-web-envelope";
-const AGENT_WEB_SOURCE_LOG_PATH: &str =
-    "docs/superpowers/research/chio-launch/indices/external-standards-source-log.md";
-const AGENT_WEB_SOURCE_LOG_STATUS: &str = "Status: refreshed source log";
 const AGENT_WEB_STANDARDS_SIGNOFF_PATH: &str =
     "docs/standards/CHIO_AGENT_WEB_STANDARDS_SIGNOFF.json";
 const AGENT_WEB_STANDARDS_SIGNOFF_SCHEMA: &str = "chio.agent-web.standards-signoff.v1";
@@ -331,16 +328,6 @@ fn validate_agent_web_exit_gate(
     source: &Path,
     negative_cases: &[Value],
 ) -> Result<Value, XtaskError> {
-    let source_log_path = root.join(AGENT_WEB_SOURCE_LOG_PATH);
-    require_file(&source_log_path)?;
-    let source_log = fs::read_to_string(&source_log_path)
-        .map_err(|err| XtaskError::Io(crate::display_path(&source_log_path), err))?;
-    if !source_log.contains(AGENT_WEB_SOURCE_LOG_STATUS) {
-        return Err(XtaskError::Validation(format!(
-            "{}: Agent Web source log is not marked refreshed",
-            crate::display_path(&source_log_path)
-        )));
-    }
     let signoff = validate_agent_web_standards_signoff(root)?;
 
     let mut source_protocols = BTreeSet::new();
@@ -399,8 +386,6 @@ fn validate_agent_web_exit_gate(
 
     Ok(json!({
         "verdict": "verified",
-        "source_log_path": AGENT_WEB_SOURCE_LOG_PATH,
-        "source_log_status": "refreshed source log",
         "standards_signoff_path": AGENT_WEB_STANDARDS_SIGNOFF_PATH,
         "standards_signoff_status": signoff.status,
         "standards_signoff_terms": signoff.terms,
@@ -425,13 +410,6 @@ fn validate_agent_web_standards_signoff(
     if signoff.get("schema").and_then(Value::as_str) != Some(AGENT_WEB_STANDARDS_SIGNOFF_SCHEMA) {
         return Err(XtaskError::Validation(format!(
             "{}: unsupported Agent Web standards sign-off schema",
-            crate::display_path(&path)
-        )));
-    }
-    let source_log_path = required_json_string(&signoff, "source_log_path", &path)?;
-    if source_log_path != AGENT_WEB_SOURCE_LOG_PATH {
-        return Err(XtaskError::Validation(format!(
-            "{}: Agent Web standards sign-off source log mismatch",
             crate::display_path(&path)
         )));
     }

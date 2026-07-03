@@ -2,7 +2,7 @@
 
 - Status: Proposed
 - Decision owner: economy and settlement lane
-- Related invariant: invariant 10 (no discretionary emergency intervention; circuit breakers are predeclared) in [../brainstorm/CHIO-TOKEN-INVARIANTS.md](../brainstorm/CHIO-TOKEN-INVARIANTS.md)
+- Related invariant: invariant 10 (no discretionary emergency intervention; circuit breakers are predeclared)
 - Related plan items: M4 slashing/adjudication gate; also touches invariant 9 (penalty proceeds never accrue to insiders)
 
 ## Context
@@ -30,8 +30,7 @@ preference. Invariant 10 requires that "Dispute conditions and settlement prices
 are written ex ante into contracts and ADRs, with no override path, and never a
 settlement price that turns protocol loss into protocol profit," and it binds
 "escrow dispute handling and the M4 slashing/adjudication ADRs (anti-JELLY
-policy)" (see [../brainstorm/CHIO-TOKEN-INVARIANTS.md](../brainstorm/CHIO-TOKEN-INVARIANTS.md),
-invariant 10; the related invariant 9 requires that slash, tax, or trap proceeds
+policy)" (invariant 10; the related invariant 9 requires that slash, tax, or trap proceeds
 "go to harmed parties or the community fund, never team wallets"). Under the
 house fail-closed rule a violation is a design rejection, not a trade-off.
 

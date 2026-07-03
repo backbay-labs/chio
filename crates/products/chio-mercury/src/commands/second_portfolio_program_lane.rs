@@ -225,12 +225,10 @@ struct MercurySecondPortfolioProgramValidationReport {
 
 fn second_portfolio_program_doc_refs() -> MercurySecondPortfolioProgramDocRefs {
     MercurySecondPortfolioProgramDocRefs {
-        second_portfolio_program_file: "docs/mercury/SECOND_PORTFOLIO_PROGRAM.md".to_string(),
-        operations_file: "docs/mercury/SECOND_PORTFOLIO_PROGRAM_OPERATIONS.md".to_string(),
-        validation_package_file: "docs/mercury/SECOND_PORTFOLIO_PROGRAM_VALIDATION_PACKAGE.md"
-            .to_string(),
-        decision_record_file: "docs/mercury/SECOND_PORTFOLIO_PROGRAM_DECISION_RECORD.md"
-            .to_string(),
+        second_portfolio_program_file: String::new(),
+        operations_file: String::new(),
+        validation_package_file: String::new(),
+        decision_record_file: String::new(),
     }
 }
 

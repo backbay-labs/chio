@@ -80,11 +80,9 @@ DEFAULT_CLAIM_DOCS = (
 )
 DEFAULT_DOC_EXCLUDES = (
     "docs/adr/",
-    "docs/brainstorm/",
     "docs/operations/",
     "docs/papers/",
     "docs/research/",
-    "docs/superpowers/",
 )
 
 ALLOW_CONTEXT_RE = re.compile(
