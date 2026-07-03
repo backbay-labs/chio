@@ -97,7 +97,7 @@ fn bounded_chio(root: &Path) -> Result<(), XtaskError> {
     Ok(())
 }
 
-/// Structural assertions over the bounded matrix value. Split out so a unit
+/// Structural assertions over the bounded matrix value. Kept separate so a unit
 /// test can exercise the fail-closed branches against in-memory fixtures
 /// without touching the filesystem.
 fn assert_bounded_matrix(matrix: &Value) -> Result<(), XtaskError> {

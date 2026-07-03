@@ -50,7 +50,7 @@ registry entry it names" rule.
 - Diagnostics built from registry entries must use the registry's URN, domain,
   severity, and help text without allowing callers to accidentally mismatch
   those fields.
-- Unknown free-form codes must remain representable for legacy CLI and transport
+- Unknown free-form codes must remain representable for compatibility CLI and transport
   surfaces.
 - JSON-RPC bridge behavior must remain fail-closed for unmapped numeric codes.
 

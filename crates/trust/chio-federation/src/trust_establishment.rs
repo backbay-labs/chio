@@ -206,7 +206,7 @@ pub struct FederationPeer {
     /// peer is treated as stale and MUST be re-handshaked before any
     /// federation-level operation is accepted against it.
     pub rotation_due: u64,
-    /// Peer-advertised protocol feature bitset. Missing on legacy peers
+    /// Peer-advertised protocol feature bitset. Missing on compatibility peers
     /// defaults to current capability semantics without optional features.
     #[serde(default)]
     pub capabilities: CapabilityNegotiation,

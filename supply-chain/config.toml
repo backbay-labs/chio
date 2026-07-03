@@ -760,7 +760,7 @@ criteria = "safe-to-deploy"
 [[exemptions.chio-guard-sdk]]
 version = "0.1.0"
 criteria = "safe-to-deploy"
-notes = "First-party SDK crate; formal cargo-vet audit deferred post-SDK-consolidation."
+notes = "First-party SDK crate; formal cargo-vet audit deferred until SDK ownership settles."
 
 [[exemptions.chio-guard-sdk]]
 version = "0.2.0"

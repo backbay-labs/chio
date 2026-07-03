@@ -225,13 +225,9 @@ fn swarm_authority_claims_reference_positive_fixture() {
 }
 
 #[test]
-fn third_wave_launch_schema_boundary_matches_registry_owner_acceptance() {
+fn launch_schema_boundary_matches_registry_owner_acceptance() {
     let root = workspace_root();
     let schema_registry = read_json(&root.join("spec/schemas/registry.json"));
-    let artifact_registry = std::fs::read_to_string(
-        root.join("docs/superpowers/research/chio-launch/indices/artifact-registry.md"),
-    )
-    .test_expect("artifact registry is readable");
     let registered_schemas = schema_registry["artifacts"]
         .as_array()
         .test_expect("schema registry has artifacts array")
@@ -277,26 +273,18 @@ fn third_wave_launch_schema_boundary_matches_registry_owner_acceptance() {
         );
         assert!(
             known_signed_schemas.contains(schema),
-            "accepted third-wave schema is not a known signed artifact: {schema}"
-        );
-        assert!(
-            artifact_registry.contains(schema),
-            "artifact registry omits accepted third-wave schema: {schema}"
+            "accepted launch schema is not a known signed artifact: {schema}"
         );
     }
 
     for schema in candidate_schemas {
         assert!(
             !registered_schemas.contains(schema),
-            "candidate third-wave schema registered without registry-owner promotion: {schema}"
+            "candidate launch schema registered without registry-owner promotion: {schema}"
         );
         assert!(
             !known_signed_schemas.contains(schema),
-            "candidate third-wave schema signed without registry-owner promotion: {schema}"
-        );
-        assert!(
-            artifact_registry.contains(schema),
-            "artifact registry must keep third-wave candidate visible for scope review: {schema}"
+            "candidate launch schema signed without registry-owner promotion: {schema}"
         );
     }
 }

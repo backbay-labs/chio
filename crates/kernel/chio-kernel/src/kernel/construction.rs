@@ -308,7 +308,7 @@ impl ChioKernel {
     }
 
     /// Install (or replace) the recursive-delegation oracle handle.
-    /// Default deployments leave this `None` and rely on the legacy
+    /// Default deployments leave this `None` and rely on the compatibility
     /// per-row `RevocationStore` lookup. Installing a
     /// [`chio_kernel_core::RevocationView`] here causes the verifier to
     /// consult it on every delegated dispatch.
@@ -804,7 +804,7 @@ impl ChioKernel {
     /// surfaced as a [`KernelError::Internal`] so operators see the
     /// federation drift rather than silently shipping a receipt without
     /// the remote signature. Production evaluate paths pass the
-    /// admission-time snapshot; legacy direct record callers still get a
+    /// admission-time snapshot; direct record callers still get a
     /// fresh-peer fallback. Non-federated requests (`None` origin) are a
     /// no-op.
     pub(crate) fn apply_federation_cosign(

@@ -265,7 +265,7 @@ mod cli_env_tests {
 
         assert!(
             !source.contains(&stale_uppercase_phrase),
-            "active explain help text must not describe DSSE conformance with stale uppercase legacy wording"
+            "active explain help text must not describe DSSE conformance with stale uppercase compatibility wording"
         );
     }
 }

@@ -72,7 +72,7 @@ impl AwsNitroVerificationPolicy {
         }
         if self.tier > RuntimeAssuranceTier::Attested {
             return Err(AwsNitroVerificationError::InvalidPolicy(
-                "phase-70 verifier adapters must not widen runtime assurance above `attested` before policy v2 rebinding".to_string(),
+                "verifier adapters must not widen runtime assurance above `attested` before policy v2 rebinding".to_string(),
             ));
         }
         for (index, pem) in self.trusted_root_certificates_pem.iter().enumerate() {
@@ -226,7 +226,7 @@ impl EnterpriseVerifierVerificationPolicy {
         }
         if self.tier > RuntimeAssuranceTier::Attested {
             return Err(EnterpriseVerifierVerificationError::InvalidPolicy(
-                "phase-108 verifier adapters must not widen runtime assurance above `attested` before trust-policy rebinding".to_string(),
+                "verifier adapters must not widen runtime assurance above `attested` before trust-policy rebinding".to_string(),
             ));
         }
         for (index, signer_key) in self.trusted_signer_keys.iter().enumerate() {
@@ -362,7 +362,7 @@ impl AzureMaaVerificationPolicy {
         }
         if self.tier > RuntimeAssuranceTier::Attested {
             return Err(AzureMaaVerificationError::InvalidPolicy(
-                "phase-58 verifier adapters must not widen runtime assurance above `attested` before trust-policy rebinding".to_string(),
+                "verifier adapters must not widen runtime assurance above `attested` before trust-policy rebinding".to_string(),
             ));
         }
         if let Some(path) = self.workload_claim_path.as_deref() {
@@ -445,7 +445,7 @@ impl GoogleConfidentialVmVerificationPolicy {
         }
         if self.tier > RuntimeAssuranceTier::Attested {
             return Err(GoogleConfidentialVmVerificationError::InvalidPolicy(
-                "phase-71 verifier adapters must not widen runtime assurance above `attested` before trust-policy rebinding".to_string(),
+                "verifier adapters must not widen runtime assurance above `attested` before trust-policy rebinding".to_string(),
             ));
         }
         for (index, audience) in self.allowed_audiences.iter().enumerate() {

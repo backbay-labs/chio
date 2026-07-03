@@ -64,8 +64,7 @@ pub(crate) async fn batch_respond_approvals_handler(
 /// Body for `POST /approvals/submit`. Operator-friendly shape: the
 /// caller hands the sidecar enough context to record a pending request
 /// and the sidecar materializes the full `ApprovalRequest`, signing on
-/// behalf of itself as the trusted approver. v0.2 manual-flow only:
-/// no auto-resume of the held call.
+/// behalf of itself as the trusted approver. Manual flow only: the held call is not auto-resumed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct SubmitApprovalRequest {
     capability_id: String,

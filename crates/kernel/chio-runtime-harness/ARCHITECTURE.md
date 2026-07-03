@@ -8,7 +8,7 @@ The harness coordinates existing runtime, kernel, and proof primitives. It does 
 
 ## Scenario Model
 
-Scenario normalization accepts exactly one input shape: either the legacy top-level single-step fields or the explicit `steps` list. The harness rejects ambiguous mixed scenarios so a fixture cannot carry ignored top-level admission data while executing a different step list.
+Scenario normalization accepts exactly one input shape: either the top-level single-step single-step fields or the explicit `steps` list. The harness rejects ambiguous mixed scenarios so a fixture cannot carry ignored top-level admission data while executing a different step list.
 
 Each step carries an admission profile, admission bundle, runtime request binding, and optional tool arguments. The harness preserves step order because later proof assembly and receipt binding depend on deterministic scenario replay.
 
@@ -21,7 +21,7 @@ Output paths must be plain relative paths under the selected evidence directory.
 ## Invariants
 
 - Scenario run ids must be non-empty and unpadded.
-- Legacy top-level inputs and explicit step lists are mutually exclusive.
+- Top-level single-step inputs and explicit step lists are mutually exclusive.
 - Evidence hashes are derived from the exact bytes written.
 - Manifest entries record role, relative path, SHA-256, and byte count.
 - Harness failures must stop fixture generation rather than producing partial trusted evidence.

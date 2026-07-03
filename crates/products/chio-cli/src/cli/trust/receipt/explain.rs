@@ -7,7 +7,7 @@ pub(crate) struct ReceiptExplainArgs<'a> {
     pub(crate) fanout_limit: usize,
     /// Inspect-only: the CLI does not carry the org A / org B passport
     /// public keys and cannot perform real Ed25519 verification, so the
-    /// trace reports structural / schema checks only. The legacy CLI flag
+    /// trace reports structural / schema checks only. The compatibility CLI flag
     /// spelling is preserved as a `clap` alias on the parent enum.
     pub(crate) inspect_bilateral: bool,
     pub(crate) tenant: Option<&'a str>,
@@ -997,7 +997,7 @@ mod receipt_explain_tests {
     #[test]
     fn receipt_value_matches_flat_and_nested_ids() {
         let flat = serde_json::json!({
-            "id": "receipt-legacy",
+            "id": "receipt-compat",
             "decision": {"type": "allow"}
         });
         let nested = serde_json::json!({
@@ -1006,7 +1006,7 @@ mod receipt_explain_tests {
             }
         });
 
-        assert!(receipt_value_matches_id(&flat, "receipt-legacy"));
+        assert!(receipt_value_matches_id(&flat, "receipt-compat"));
         assert!(receipt_value_matches_id(&nested, "nested-receipt"));
         assert!(!receipt_value_matches_id(&flat, "missing"));
     }

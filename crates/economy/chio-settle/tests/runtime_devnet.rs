@@ -440,7 +440,7 @@ async fn runtime_devnet_keeps_escrow_identity_stable_under_interleaving_and_repl
             ),
             settlement_path: Web3SettlementPath::MerkleProof,
             oracle_evidence_required_for_fx: false,
-            note: Some("phase-169 drift coverage A".to_string()),
+            note: Some("drift-coverage-a".to_string()),
         },
         &binding,
     )
@@ -466,7 +466,7 @@ async fn runtime_devnet_keeps_escrow_identity_stable_under_interleaving_and_repl
             ),
             settlement_path: Web3SettlementPath::MerkleProof,
             oracle_evidence_required_for_fx: false,
-            note: Some("phase-169 drift coverage B".to_string()),
+            note: Some("drift-coverage-b".to_string()),
         },
         &binding,
     )

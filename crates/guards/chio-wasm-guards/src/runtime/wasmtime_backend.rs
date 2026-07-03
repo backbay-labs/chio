@@ -534,7 +534,7 @@ impl Default for WasmtimeBackend {
 
 impl WasmGuardAbi for WasmtimeBackend {
     fn load_module(&mut self, wasm_bytes: &[u8], fuel_limit: u64) -> Result<(), WasmGuardError> {
-        // WGSEC-03: Reject oversized modules before compilation
+        // Reject oversized modules before compilation
         if wasm_bytes.len() > self.max_module_size {
             return Err(WasmGuardError::ModuleTooLarge {
                 size: wasm_bytes.len(),
@@ -545,7 +545,7 @@ impl WasmGuardAbi for WasmtimeBackend {
         let module = Module::new(&self.engine, wasm_bytes)
             .map_err(|e| WasmGuardError::Compilation(e.to_string()))?;
 
-        // WGSEC-02: Validate that all imports come from the "chio" namespace
+        // Validate that all imports come from the "chio" namespace
         for import in module.imports() {
             if import.module() != "chio" {
                 return Err(WasmGuardError::ImportViolation {
@@ -575,7 +575,7 @@ impl WasmGuardAbi for WasmtimeBackend {
             .ok_or(WasmGuardError::BackendUnavailable)?;
         let tenant_id = request.agent_id.as_str();
 
-        // WGSEC-01: Create a fresh Store with configurable memory limit
+        // Create a fresh Store with configurable memory limit
         let host_state =
             WasmHostState::with_memory_limit(self.config.clone(), self.max_memory_bytes);
         let mut store = Store::new(&self.engine, host_state);

@@ -129,7 +129,7 @@ pub fn verify_capability(
 ///
 /// This is the floor-aware entry point for kernels that load
 /// `policy.crypto_floor`. The default [`verify_capability`] wrapper preserves
-/// legacy callers by using [`CapabilityCryptoFloor::AllowClassical`] and a
+/// compatibility callers by using [`CapabilityCryptoFloor::AllowClassical`] and a
 /// [`NoopBudgetRegistry`].
 ///
 /// Sibling-sum enforcement: when the token carries a non-empty

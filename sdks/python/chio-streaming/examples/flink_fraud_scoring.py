@@ -147,40 +147,6 @@ def main() -> None:
         FileSink.for_row_format(args.dlq_out, SimpleStringEncoder()).build()
     ).name("chio-dlq-sink")
 
-    # Kafka source + 2PC sinks variant. KafkaSink implements
-    # TwoPhaseCommitSinkFunction: receipt / DLQ writes are exactly-once
-    # end-to-end when checkpointing is enabled.
-    #
-    # from pyflink.datastream.connectors.base import DeliveryGuarantee
-    # from pyflink.datastream.connectors.kafka import (
-    #     KafkaSource, KafkaSink, KafkaRecordSerializationSchema,
-    #     KafkaOffsetsInitializer,
-    # )
-    # source = (
-    #     KafkaSource.builder()
-    #     .set_bootstrap_servers("broker:9092")
-    #     .set_topics("transactions")
-    #     .set_group_id("chio-fraud")
-    #     .set_starting_offsets(KafkaOffsetsInitializer.committed_offsets())
-    #     .set_value_only_deserializer(SimpleStringSchema())
-    #     .build()
-    # )
-    # receipts_sink = (
-    #     KafkaSink.builder()
-    #     .set_bootstrap_servers("broker:9092")
-    #     .set_record_serializer(
-    #         KafkaRecordSerializationSchema.builder()
-    #         .set_topic("chio-fraud-receipts")
-    #         .set_value_serialization_schema(SimpleStringSchema())
-    #         .build()
-    #     )
-    #     .set_delivery_guarantee(DeliveryGuarantee.EXACTLY_ONCE)
-    #     .set_transactional_id_prefix("chio-fraud-receipt-")
-    #     .build()
-    # )
-    # NOTE: the Kafka broker's transaction.max.timeout.ms must exceed
-    # checkpoint interval + commit latency, or receipts are lost when
-    # transactions expire mid-commit.
 
     env.execute("chio-flink-fraud-scoring")
 

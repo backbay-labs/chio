@@ -1,8 +1,8 @@
-// Typed handlers for chio-runtime facets, ported from runtime gate scripts and
+// Typed handlers for chio-runtime facets, mirroring runtime gate scripts and
 // launch assurance requirements. Included into `fixtures.rs` via `include!`
 // so the handlers share that module's private helpers (ScratchDir, require_cli,
 // run_cargo_test, validate_document, the JSON mutators, canonical_sha256) while
-// keeping each file under the 2000-line hygiene cap.
+// keeping runtime handlers focused.
 //
 // The runtime scripts are far more imperative than the pheromone gates: each
 // drives a multi-step `chio runtime ...` CLI pipeline, materializes derived
@@ -480,7 +480,7 @@ fn spine_run_negative(
     validate_runtime(root, "admission-report.schema.json", &replay_report)?;
     assert_report_bool(&replay_report, "accepted", false)?;
     assert_report_str(&replay_report, "failureCode", "destructive_lease_replay")?;
-    spine_assert_no_legacy_runtime_key(&replay_report)?;
+    spine_assert_no_disallowed_runtime_key(&replay_report)?;
 
     // Request binding mismatch: a request with a different toolArgsSha256 must
     // fail with request_binding_mismatch.
@@ -511,7 +511,7 @@ fn spine_run_negative(
     )?;
     validate_runtime(root, "admission-report.schema.json", &mismatch_report)?;
     assert_report_str(&mismatch_report, "failureCode", "request_binding_mismatch")?;
-    spine_assert_no_legacy_runtime_key(&mismatch_report)
+    spine_assert_no_disallowed_runtime_key(&mismatch_report)
 }
 
 /// Build the trusted-verifiers document from a signed trust input, mirroring the
@@ -595,7 +595,7 @@ fn spine_assert_admission(
     if array_len(&floor_value, "entries") != Some(1) {
         return Err(invalid("runtime trust-floor state did not persist verifier floor"));
     }
-    assert_no_legacy_runtime_metadata_key(&report_value)?;
+    assert_no_disallowed_runtime_metadata_key(&report_value)?;
     let metadata = report_value
         .get("receiptMetadata")
         .and_then(|m| m.get("chio_runtime"))
@@ -626,7 +626,7 @@ fn spine_assert_admission(
 
 /// The retired-runtime-metadata-key guard, assembled at runtime (`chio` +
 /// `dos_runtime`).
-fn assert_no_legacy_runtime_metadata_key(report: &Value) -> Result<(), XtaskError> {
+fn assert_no_disallowed_runtime_metadata_key(report: &Value) -> Result<(), XtaskError> {
     let mut retired = String::from("chio");
     retired.push_str("dos_runtime");
     let present = report
@@ -635,13 +635,13 @@ fn assert_no_legacy_runtime_metadata_key(report: &Value) -> Result<(), XtaskErro
         .map(|v| !v.is_null())
         .unwrap_or(false);
     if present {
-        return Err(invalid("Chio admission report used legacy runtime metadata key"));
+        return Err(invalid("Chio admission report used disallowed runtime metadata key"));
     }
     Ok(())
 }
 
-fn spine_assert_no_legacy_runtime_key(report: &Path) -> Result<(), XtaskError> {
-    assert_no_legacy_runtime_metadata_key(&load_json(report)?)
+fn spine_assert_no_disallowed_runtime_key(report: &Path) -> Result<(), XtaskError> {
+    assert_no_disallowed_runtime_metadata_key(&load_json(report)?)
 }
 
 fn array_len(value: &Value, key: &str) -> Option<usize> {

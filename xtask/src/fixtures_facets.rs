@@ -1,7 +1,7 @@
 // Per-facet imperative handlers, pre-schema guards, and the metadata
-// assertions ported from each script's embedded python block. Included into
+// assertions mirroring each script's embedded python block. Included into
 // `fixtures.rs` via `include!` so the handlers share the module's private
-// helpers while keeping each file under the 2000-line hygiene cap.
+// helpers while keeping runtime handlers focused.
 
 /// A unique temp directory cleaned up on drop. `unwrap`/`expect` are denied, so
 /// cleanup is best-effort and ignores errors in `Drop`.
@@ -56,7 +56,7 @@ pub(crate) fn pre_schema_guard(root: &Path, facet: &Facet) -> Result<(), XtaskEr
             &retired_marker(),
             "active Chio pheromone relay runbook must not cite retired docs or labels",
         ),
-        "relay_alert_assurance" => guard_assurance_no_legacy_marker(&root.join(&facet.fixture_dir)),
+        "relay_alert_assurance" => guard_assurance_no_disallowed_marker(&root.join(&facet.fixture_dir)),
         _ => Ok(()),
     }
 }
@@ -85,7 +85,7 @@ fn guard_no_marker_in_file(
 /// Fail if any assurance fixture JSON cites the retired relay surface. The
 /// markers (`<retired>-relay`, `<retired>-pheromone-relay`, the runbook file
 /// name) are assembled at runtime from `"chio" + "dos"`.
-fn guard_assurance_no_legacy_marker(dir: &Path) -> Result<(), XtaskError> {
+fn guard_assurance_no_disallowed_marker(dir: &Path) -> Result<(), XtaskError> {
     let retired = retired_marker();
     let markers = [
         format!("{retired}-relay"),
@@ -101,7 +101,7 @@ fn guard_assurance_no_legacy_marker(dir: &Path) -> Result<(), XtaskError> {
         for marker in &markers {
             if text.contains(marker) {
                 return Err(XtaskError::Validation(format!(
-                    "active Chio relay alert assurance fixture has legacy marker {marker}: {}",
+                    "active Chio relay alert assurance fixture has disallowed marker {marker}: {}",
                     display(&path)
                 )));
             }
@@ -162,7 +162,7 @@ fn metadata_transit(fixture_dir: &Path) -> Result<(), XtaskError> {
     // The cost-commitment statement must bind back to the deposit's subject
     // namespace/class and treaty scope, and carry the verifier identity the
     // scarcity policy later pins. The commitment is the load-bearing tie between
-    // the deposit and the scarcity economics; the consolidated handler had
+    // the deposit and the scarcity economics; the shared handler had
     // dropped every one of these bindings.
     let statement = commitment
         .get("statement")
@@ -671,7 +671,7 @@ fn handle_runtime(
     if mode == Mode::NegativeOnly {
         // Negative-only runs the targeted rejection tests, not the full suite,
         // then the CLI receive/query orchestration and its replay /
-        // wrong-recipient CLI negatives. The retired script's `negative-only`
+        // wrong-recipient CLI negatives. The original shell gate's `negative-only`
         // branch exited after the rejection tests, but its trailing
         // `if negative-only: exit 0` (placed AFTER the replay / wrong-recipient
         // negatives) shows those CLI negatives were intended to be part of the
@@ -720,7 +720,7 @@ fn handle_runtime(
     }
 
     // The CLI receive -> query persisted-state flow and its replay /
-    // wrong-recipient negatives that the script drove (the consolidated handler
+    // wrong-recipient negatives that the script drove (the shared handler
     // previously only regenerated and diffed the fixtures).
     runtime_receive_query_flow(root, &fixture_dir, &scratch)?;
 
@@ -1607,7 +1607,7 @@ fn handle_relay_ops(
     // The lint (local-dev + production) and tick CLI orchestration the script
     // drove, including the production `relay_profile_denied` assertion, runs in
     // both `all` and `negative-only` (it precedes the script's negative-only
-    // exit). The consolidated handler had dropped it entirely.
+    // exit). The shared handler had dropped it entirely.
     relay_ops_lint_orchestration(root, facet)?;
     run_cargo_tests(root, facet)?;
     relay_ops_tick(root, facet)?;

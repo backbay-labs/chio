@@ -1,8 +1,7 @@
 // Committed-fixture metadata assertions for the alert routing/handoff/delivery/
 // assurance facets and the shared label-hygiene / canonical-hash helpers they
-// use, ported from the embedded python blocks of the
-// `scripts/check-chio-pheromone-relay-alert-*.sh` gates. Split out of
-// `fixtures_facets.rs` to keep each include file under the 2000-line hygiene cap;
+// use, mirroring the embedded python blocks of the
+// `scripts/check-chio-pheromone-relay-alert-*.sh` gates. Included as a focused facet module.
 // included into `fixtures.rs` via `include!` so it shares that module's private
 // helpers (load_json, glob_documents, str_field, invalid, metadata_negative_*).
 
@@ -10,7 +9,7 @@
 /// corpus: the handoff profile must carry no inline secrets, dynamic endpoints,
 /// duplicate targets, or duplicate route coverage; the committed handoff report
 /// must be dry-run accepted, preserve critical firing visibility, and carry the
-/// primary downstream route. The consolidated handler had checked only the
+/// primary downstream route. The shared handler had checked only the
 /// negative-case IDs.
 fn metadata_relay_alert_handoff(fixture_dir: &Path) -> Result<(), XtaskError> {
     let profile = load_json(&fixture_dir.join("relay-alert-handoff-profile.json"))?;

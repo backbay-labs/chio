@@ -9,7 +9,7 @@ contract for **selective-disclosure proofs over chio receipts and
 workflow receipts**. The repository now includes
 `chio-selective-disclosure` with an opt-in `bbs` feature that signs
 receipt, workflow, and step projections and verifies reveal-set BBS
-proof packages. Legacy federation placeholder proof packages are not a
+proof packages. Compatibility federation placeholder proof packages are not a
 conformance surface and any schema ending in `.stub` is rejected by the
 v1 proof schema and verifier. Hidden range predicates, VC Data
 Integrity interop, and zkVM proofs are still deferred.
@@ -535,7 +535,7 @@ v1 does not specify a proof-carrying-receipt mode.
 The implemented slice lives in
 [`chio-selective-disclosure`](../crates/trust/chio-selective-disclosure/src/lib.rs).
 It is outside the default build and enabled with the crate's `bbs`
-feature. Federation no longer ships a parallel selective-disclosure
+feature. Federation does not ship a parallel selective-disclosure
 proof path; BBS projection, signing, proof derivation, and verification
 are owned by `chio-selective-disclosure`.
 

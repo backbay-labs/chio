@@ -531,7 +531,7 @@ fn load_registry(
 
 // -- Per-facet metadata assertions ----------------------------------------
 
-/// Per-facet metadata assertions ported from each script's embedded python
+/// Per-facet metadata assertions mirroring each script's embedded python
 /// block. These confirm fixture invariants beyond pure schema validation
 /// (negative-corpus required codes, bounded metric labels, binding fields).
 fn run_metadata_block(root: &Path, facet: &Facet) -> Result<(), XtaskError> {
@@ -675,7 +675,7 @@ const EXTERNAL_RETENTION_EXPECTED_CODES: [(&str, &str); 16] = [
 /// Assert the external-retention negative corpus carries exactly the expected
 /// `(caseId, expectedCode)` mapping: no missing cases, no unexpected cases, and
 /// every `expectedCode` matching. Restores the per-case expectedCode check the
-/// script ran (the consolidated handler previously only checked caseId presence).
+/// script ran (the shared handler previously only checked caseId presence).
 fn metadata_external_retention_expected_codes(fixture_dir: &Path) -> Result<(), XtaskError> {
     let path = fixture_dir.join("relay-alert-assurance-external-retention-negative-cases.json");
     let value = load_json(&path)?;

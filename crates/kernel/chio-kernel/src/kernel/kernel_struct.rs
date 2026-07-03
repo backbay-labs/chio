@@ -162,7 +162,7 @@ pub struct ChioKernel {
     pub(super) dpop_config: Option<dpop::DpopConfig>,
     /// Execution-nonce config (TTL, capacity, strict-mode flag).
     /// When `None`, no nonce is minted on allow and strict verification is
-    /// disabled (legacy deployments keep working).
+    /// disabled (compatibility deployments keep working).
     pub(super) execution_nonce_config: Option<crate::execution_nonce::ExecutionNonceConfig>,
     /// Replay-prevention store for execution nonces. Shared with
     /// any tool server that delegates verification to the kernel. Boxed
@@ -259,7 +259,7 @@ pub struct ChioKernel {
     /// Recursive-delegation oracle handle. When `Some`, the verifier consults this
     /// arc-swap-backed snapshot on every delegated dispatch and denies
     /// the capability if any link in the chain (or the leaf) is in the
-    /// revoked set. `None` falls back to the legacy per-row
+    /// revoked set. `None` falls back to the per-row
     /// `RevocationStore` lookup. Field always present so the struct
     /// shape stays feature-flag agnostic.
     pub(super) revocation_view: Option<std::sync::Arc<chio_kernel_core::RevocationView>>,

@@ -77,7 +77,7 @@ const FIXTURE_EVALUATE_REQUEST = {
 // `canonical_content` preimage and recomputes `content_hash` inside the signer,
 // refusing on mismatch. The demo therefore renders the content the human sees,
 // derives `content_hash` from it, and ships the preimage as a `u8` array so the
-// recompute gate passes. The legacy `{body}`-only shape (no preimage, zeroed
+// recompute gate passes. The plain `{body}`-only shape (no preimage, zeroed
 // hash) now fails closed with `canonical_content_required`.
 const CANONICAL_CONTENT = new TextEncoder().encode(
   JSON.stringify({ shown: "to-the-human" }),

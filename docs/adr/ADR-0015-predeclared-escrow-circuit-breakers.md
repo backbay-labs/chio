@@ -1,4 +1,4 @@
-# ADR-0015: Anti-JELLY Escrow Circuit Breakers
+# ADR-0015: Predeclared Non-Discretionary Escrow Circuit Breakers
 
 - Status: Proposed
 - Decision owner: economy and settlement lane

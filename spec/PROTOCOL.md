@@ -191,7 +191,7 @@ The security boundary that matters is constant across these surfaces:
 
 ### 4.1 Canonical JSON
 
-Signed Chio artifacts use canonical JSON serialization before signing. Legacy
+Signed Chio artifacts use canonical JSON serialization before signing. Classical
 artifacts remain Ed25519 by default. Post-quantum hybrid artifacts use the
 `hybrid:<classical>:<pq>:<alg_set>` string prefix, where `pq` is ML-DSA-65
 bytes encoded as lowercase hex and `alg_set` is one of
@@ -567,7 +567,7 @@ continuation tokens are the stronger receipt-to-receipt and cross-kernel proof
 forms when present; their absence must not be silently treated as verified
 upstream truth.
 
-Legacy `governed_intent.context.callChainUpstreamProof` remains a compatibility
+Compatibility `governed_intent.context.callChainUpstreamProof` remains a compatibility
 input during migration, but the stronger continuation artifact for new work is
 `governed_intent.context.callChainContinuation`.
 
@@ -903,7 +903,7 @@ Governed receipt metadata now also admits a versioned
 `merchant`, `payee`, `rail`, `amount_bounds`, `pricing_basis?`,
 `metering?`, `liability_refs?`, `budget`, and `settlement`. The envelope keeps
 budget, meter, rail, and settlement truth in separate typed sub-blocks and is
-additive only: the legacy `financial`, `commerce`, `metered_billing`,
+additive only: the compatibility `financial`, `commerce`, `metered_billing`,
 `approval`, `runtime_assurance`, `call_chain`, and `autonomy` fields remain
 intact for backward compatibility.
 
@@ -1190,7 +1190,7 @@ Receipt batches can be committed to a Merkle checkpoint with primary schema:
 chio.checkpoint_statement.v1
 ```
 
-Legacy `chio.checkpoint_statement.v1` checkpoints remain valid for verification
+`chio.checkpoint_statement.v1` checkpoints remain valid for verification
 and evidence import. Checkpoint verification is part of exported evidence and
 compliance-oriented operator reporting. Chio's web3 anchoring and settlement
 lanes additionally require durable local receipt storage and kernel-signed
@@ -1865,7 +1865,7 @@ one normalized mapping shape:
 - `scheme: spiffe`
 - `credentialKind: uri | x509_svid | jwt_svid`
 
-If only the legacy raw `runtimeIdentity` field is present and it is a valid
+If only the raw `runtimeIdentity` compatibility field is present and it is a valid
 SPIFFE URI, Chio derives the same normalized mapping for policy, governed
 validation, and receipt metadata. If `runtimeIdentity` is non-SPIFFE, Chio
 preserves it as opaque verifier metadata and does not invent a typed identity
@@ -2174,7 +2174,7 @@ their current lifecycle projection and latest appeal status. The list/report
 surface does not mutate or re-sign prior decisions: the original signed
 artifact remains immutable, while the store projects current lifecycle state
 such as `active` or `superseded`. Premium totals are partitioned by currency
-in the report summary; the legacy single total is populated only when the
+in the report summary; the compatibility single total is populated only when the
 matching quoted premiums share one currency.
 
 `POST /v1/underwriting/appeals` and
@@ -3286,7 +3286,7 @@ The certification contract covers:
   `not-found`
 - dispute states: `open`, `under-review`, `resolved-no-change`,
   `resolved-revoked`
-- legacy `chio.certify.check.v1` and `chio.certify.registry.v1` remain valid
+- compatibility `chio.certify.check.v1` and `chio.certify.registry.v1` remain valid
   for verification and load
 - registry/discovery results that remain explicitly scoped to the operator that
   published them

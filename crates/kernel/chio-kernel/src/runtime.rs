@@ -69,7 +69,7 @@ pub struct ToolCallRequest {
     /// Optional metadata describing the model executing the calling
     /// agent. Consumed by `Constraint::ModelConstraint` enforcement.
     ///
-    /// Absent in legacy callers; when the matched grant carries a
+    /// Absent when callers omit it; when the matched grant carries a
     /// `ModelConstraint` with any requirement, the call is denied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model_metadata: Option<ModelMetadata>,
@@ -80,7 +80,7 @@ pub struct ToolCallRequest {
     /// intra-org calls.
     ///
     /// The field is skipped from wire serialization when `None` so the
-    /// legacy wire format stays byte-identical.
+    /// wire format stays byte-identical.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub federated_origin_kernel_id: Option<String>,
 }

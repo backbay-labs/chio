@@ -36,7 +36,7 @@
 //!   completes.
 //! - Producers whose oneshot reply receiver is dropped (e.g. the caller
 //!   timed out waiting) do not poison the task; the signed receipt is
-//!   simply discarded.
+//!   discarded.
 //!
 //! ## Channel capacity
 //!
@@ -105,7 +105,7 @@ pub const DEFAULT_MAX_SIGNING_CONTENT_BYTES: usize =
 /// cap* (unlimited), matching the inline signer which applies no preimage cap.
 /// Used so the kernel can wire `KernelConfig::max_stream_total_bytes == 0`
 /// (operator "unlimited stream") straight through to "no async per-request cap"
-/// instead of the old `max(1)` that turned 0 into a 1-byte cap rejecting almost
+/// without coercing 0 into a 1-byte cap that rejects almost
 /// every receipt.
 const PER_REQUEST_BUDGET_UNLIMITED: usize = 0;
 

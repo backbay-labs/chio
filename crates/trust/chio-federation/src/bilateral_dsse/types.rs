@@ -121,7 +121,7 @@ pub struct KernelIdentity {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct BilateralPredicate {
-    /// Internal schema discriminator for the legacy signature-slice profile.
+    /// Internal schema discriminator for the compatibility signature-slice profile.
     ///
     /// Strict Chio predicates omit this field because the signed
     /// `predicateType` is the verifier-facing schema discriminator.
@@ -141,11 +141,11 @@ pub struct BilateralPredicate {
     /// was canonicalised (Unix milliseconds).
     pub timestamp_unix_ms: u64,
     /// SHA-256 over canonical tool arguments. Required by the strict
-    /// Chio profile and intentionally omitted from the legacy
+    /// Chio profile and intentionally omitted from the compatibility
     /// signature-slice profile.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_args_hash: Option<HashRecord>,
-    /// Canonical-JSON of the underlying `ChioReceipt`. This is a legacy
+    /// Canonical-JSON of the underlying `ChioReceipt`. This is a compatibility
     /// signature-slice helper field and must be absent from strict Chio
     /// predicates.
     #[serde(default, skip_serializing_if = "Option::is_none")]
