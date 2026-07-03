@@ -198,7 +198,7 @@ pub const REVOCATION_CATCHUP_MAX_EPOCHS: u64 = 4_096;
 /// receiver still verifies signatures individually before merging the
 /// implied root into its [`crate::revocation_gossip::RevocationRootGossip`]
 /// cache. Empty batches are never emitted; a peer with no pending roots is
-/// simply omitted from the flush result.
+/// omitted from the flush result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RevocationGossipBatch {

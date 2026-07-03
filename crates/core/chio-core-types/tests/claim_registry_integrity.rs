@@ -269,7 +269,7 @@ fn launch_schema_boundary_matches_registry_owner_acceptance() {
     for schema in accepted_schemas {
         assert!(
             registered_schemas.contains(schema),
-            "accepted third-wave schema is not registered: {schema}"
+            "accepted launch schema is not registered: {schema}"
         );
         assert!(
             known_signed_schemas.contains(schema),

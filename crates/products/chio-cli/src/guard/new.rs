@@ -70,11 +70,9 @@ pub(crate) fn cmd_guard_new(name: &str) -> Result<(), CliError> {
     let package_name = sanitize_package_name(dir_name);
     let underscored_name = package_name.replace('-', "_");
 
-    // Write Cargo.toml
     let cargo_toml = CARGO_TOML_TEMPLATE.replace("{{PACKAGE_NAME}}", &package_name);
     write_file(&project_dir.join("Cargo.toml"), &cargo_toml)?;
 
-    // Write src/lib.rs
     let src_dir = project_dir.join("src");
     fs::create_dir_all(&src_dir)
         .map_err(|e| guard_io_error(format!("failed to create {}: {e}", src_dir.display())))?;

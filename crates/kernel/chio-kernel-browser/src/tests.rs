@@ -415,7 +415,7 @@ fn sign_receipt_pure_refuses_without_canonical_content() {
     // WYSIWYS (): the PUBLIC browser signer must NOT silently
     // relay a trusted body. With no canonical content preimage it fails closed
     // so a caller cannot render content A while signing a body claiming hash(B)
-    // and slip past the recompute gate by simply omitting the preimage.
+    // and slip past the recompute gate by omitting the preimage.
     let seed = [9u8; 32];
     let body = ChioReceiptBody {
         id: "rcpt-no-preimage".to_string(),

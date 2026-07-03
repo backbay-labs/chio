@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import os
 import shlex
-import warnings
 from pathlib import Path
 from typing import Any
 
@@ -26,9 +25,7 @@ from chio_adapter_base.security import (
 
 # The seven security primitives below are sourced from
 # :mod:`chio_adapter_base.security`. The chio-hermes module-level names
-# remain compatibility aliases for consumers that import
-# ``chio_hermes.executors._sanitised_env`` etc. Internal call sites here
-# use the canonical imports.
+# delegate to chio-adapter-base so this package has one security implementation.
 from chio_adapter_base.security import (
     DEFAULT_SHELL_TIMEOUT as _ADAPTER_BASE_DEFAULT_SHELL_TIMEOUT,
 )
@@ -43,9 +40,8 @@ from chio_adapter_base.security import (
 from chio_adapter_base.security import resolve_within as _adapter_base_resolve_within
 from chio_adapter_base.security import sanitised_env as _adapter_base_sanitised_env
 
-# Re-exported aliases (no warnings; constants are routinely read by
-# external callers and cannot wrap as descriptors). The values stay
-# byte-identical with the chio-adapter-base canonicals.
+# Re-exported constants stay byte-identical with the chio-adapter-base
+# canonicals.
 DEFAULT_SHELL_TIMEOUT = _ADAPTER_BASE_DEFAULT_SHELL_TIMEOUT
 DEFAULT_SUBPROCESS_MAX_BYTES = _ADAPTER_BASE_DEFAULT_SUBPROCESS_MAX_BYTES
 _ENV_DENY_PREFIXES: tuple[str, ...] = _ADAPTER_BASE_ENV_DENY_PREFIXES
@@ -53,30 +49,13 @@ _ENV_DENY_SUFFIXES: tuple[str, ...] = _ADAPTER_BASE_ENV_DENY_SUFFIXES
 _ENV_DENY_EXACT: frozenset[str] = _ADAPTER_BASE_ENV_DENY_EXACT
 
 
-def _exec_compat_warn(symbol: str, replacement: str) -> None:
-    warnings.warn(
-        (
-            f"chio_hermes.executors.{symbol} is a compatibility alias; "
-            f"prefer {replacement}."
-        ),
-        DeprecationWarning,
-        stacklevel=3,
-    )
-
-
 def _is_denied_env(name: str) -> bool:
-    """Compatibility alias for ``chio_adapter_base.security.sanitised_env``."""
-    _exec_compat_warn(
-        "_is_denied_env", "chio_adapter_base.security.sanitised_env"
-    )
+    """Delegates to ``chio_adapter_base.security._is_denied_env``."""
     return _adapter_base_is_denied_env(name)
 
 
 def _sanitised_env() -> dict[str, str]:
-    """Compatibility alias for ``chio_adapter_base.security.sanitised_env``."""
-    _exec_compat_warn(
-        "_sanitised_env", "chio_adapter_base.security.sanitised_env"
-    )
+    """Delegates to ``chio_adapter_base.security.sanitised_env``."""
     return _adapter_base_sanitised_env()
 
 
@@ -111,31 +90,19 @@ def shell_timeout() -> int:
 
 
 def _resolve_within(path: str, root: Path) -> Path:
-    """Compatibility alias for ``chio_adapter_base.security.resolve_within``."""
-    _exec_compat_warn(
-        "_resolve_within", "chio_adapter_base.security.resolve_within"
-    )
+    """Delegates to ``chio_adapter_base.security.resolve_within``."""
     return _resolve_within_impl(path, root)
 
 
 def _resolve_within_impl(path: str, root: Path) -> Path:
-    """Internal: resolve ``path`` under ``root`` without the deprecation warning.
-
-    Internal call sites in this module use this helper so that warnings do
-    not flood the receipt log on every shell/git dispatch. The public
-    ``_resolve_within`` warns and delegates here.
-    """
+    """Delegates to ``chio_adapter_base.security.resolve_within``."""
     return _adapter_base_resolve_within(path, root)
 
 
 def _drain_stream_to_cap(
     stream: Any, cap: int
 ) -> tuple[bytearray, bool]:
-    """Compatibility alias for the adapter-base bounded subprocess loop."""
-    _exec_compat_warn(
-        "_drain_stream_to_cap",
-        "chio_adapter_base.security.BoundedSubprocess",
-    )
+    """Delegates to ``chio_adapter_base.security._drain_stream_to_cap``."""
     from chio_adapter_base.security import _drain_stream_to_cap as _impl
 
     return _impl(stream, cap)
@@ -148,16 +115,12 @@ def _run_subprocess(
     timeout: int,
     stdin: str | None = None,
 ) -> dict[str, Any]:
-    """Compatibility alias for ``chio_adapter_base.security.BoundedSubprocess.run``.
+    """Delegates to ``chio_adapter_base.security.BoundedSubprocess.run``.
 
     Returns the chio-hermes dict shape (``{"argv", "returncode",
     "stdout", "stderr", "output_truncated"?}``); the canonical
-    :class:`BoundedSubprocessResult` dataclass exposes the same fields,
-    but external callers that pattern-match on the dict keep working.
+    :class:`BoundedSubprocessResult` dataclass exposes the same fields.
     """
-    _exec_compat_warn(
-        "_run_subprocess", "chio_adapter_base.security.BoundedSubprocess"
-    )
     return _run_subprocess_impl(argv, cwd=cwd, timeout=timeout, stdin=stdin)
 
 
@@ -339,15 +302,10 @@ async def git_run_executor(
 
 
 def _harden_git_run_argv(argv: list[str]) -> list[str]:
-    """Compatibility alias for ``chio_adapter_base.security.harden_git_argv``.
+    """Delegates to ``chio_adapter_base.security.harden_git_argv``.
 
-    The canonical implementation returns a NEW list (never mutates the
-    input). The chio-hermes shim preserved the same contract; callers
-    that captured the result keep working unchanged.
+    The canonical implementation returns a new list and never mutates the input.
     """
-    _exec_compat_warn(
-        "_harden_git_run_argv", "chio_adapter_base.security.harden_git_argv"
-    )
     return _adapter_base_harden_git_argv(argv)
 
 

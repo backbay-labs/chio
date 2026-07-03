@@ -426,7 +426,7 @@ fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
     .expect("hot path must produce both artifacts");
 
     // The hot-path-produced DSSE envelope verifies under the signature-slice verifier
-    // (sanity check: the test setup is healthy before forging).
+    // (the test setup is healthy before forging).
     verify_dsse_envelope(
         &artifacts.dsse_envelope,
         &kp_a.public_key(),
@@ -568,7 +568,7 @@ fn statement_subject_digest_matches_canonical_receipt_body_hash() {
          cross-impl resolution from a body-only receipt store relies on this binding."
     );
 
-    // Belt-and-suspenders: hashing the full signed wrapper must NOT
+    // hashing the full signed wrapper must NOT
     // match. A wrapper-hash match would mean the body/wrapper binding
     // had regressed silently.
     let canonical_full = canonical_json_bytes(&receipt).unwrap();

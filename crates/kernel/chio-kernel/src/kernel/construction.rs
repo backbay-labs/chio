@@ -896,7 +896,7 @@ impl ChioKernel {
     /// deny receipt with reason `"kernel emergency stop active"` before
     /// touching capability validation or the guard pipeline. The kernel
     /// remains running so orchestrators and health probes see a live
-    /// process; it is simply inert.
+    /// process; it is inert.
     ///
     /// The active capability set is NOT purged from the revocation store:
     /// the current `RevocationStore` trait has no bulk revoke API and

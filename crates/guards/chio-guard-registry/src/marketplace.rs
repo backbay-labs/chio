@@ -48,7 +48,7 @@ impl GuardPrice {
         }
     }
 
-    /// The free-tier sentinel for manifests without marketplace pricing without a price.
+    /// The free-tier sentinel for manifests without marketplace pricing.
     #[must_use]
     pub fn zero(currency: impl Into<String>) -> Self {
         Self::new(0, currency)

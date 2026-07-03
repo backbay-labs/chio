@@ -27,7 +27,6 @@ import logging
 import os
 import sys
 import threading
-import warnings
 from collections import deque
 from collections.abc import Iterator
 from pathlib import Path
@@ -72,27 +71,8 @@ def _resolve_log_path() -> Path:
     return home / "logs" / "chio-receipts.jsonl"
 
 
-def _receipts_compat_warn(symbol: str, replacement: str) -> None:
-    warnings.warn(
-        (
-            f"chio_hermes.receipts.{symbol} is a compatibility alias; "
-            f"prefer {replacement}."
-        ),
-        DeprecationWarning,
-        stacklevel=3,
-    )
-
-
 def _canonical_dumps(record: dict[str, Any]) -> bytes:
-    """Compatibility alias for ``chio_adapter_base.receipts.canonical_dumps``.
-
-    Kept as a thin shim because external callers and at least one
-    in-tree test imported the underscore name directly. Behaviour is
-    byte-identical to the canonical helper.
-    """
-    _receipts_compat_warn(
-        "_canonical_dumps", "chio_adapter_base.receipts.canonical_dumps"
-    )
+    """Delegates to ``chio_adapter_base.receipts.canonical_dumps``."""
     return _adapter_base_canonical_dumps(record)
 
 

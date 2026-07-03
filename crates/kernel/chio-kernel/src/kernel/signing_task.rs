@@ -363,12 +363,10 @@ impl SigningTaskHandle {
     /// Build a handle with a caller-chosen channel capacity and per-request
     /// byte cap, deriving the aggregate byte budget from the per-request cap.
     ///
-    /// `max_content_bytes` is the OPTIONAL per-request preimage cap: `0` means
-    /// *no per-request cap* (unlimited, matching the inline signer) and is NOT
-    /// turned into `max(1)`: the old `max(1)` turned a
-    /// `max_stream_total_bytes == 0` "unlimited" config into a 1-byte cap that
-    /// rejected almost every receipt). A non-zero value fail-closed refuses a
-    /// single preimage over the cap.
+    /// `max_content_bytes` is the optional per-request preimage cap: 0 is the
+    /// explicit no-per-request-cap sentinel and is NOT coerced to max(1); a
+    /// 1-byte cap would reject almost every receipt. A non-zero value
+    /// fail-closed refuses a single preimage over the cap.
     ///
     /// The aggregate byte budget (the real queue-memory bound) is derived from
     /// the per-request cap: a non-zero cap budgets the aggregate at the cap; an

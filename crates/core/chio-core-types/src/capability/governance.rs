@@ -736,7 +736,7 @@ impl GovernedTransactionIntent {
         Ok(Some(serde_json::from_value(value.clone())?))
     }
 
-    /// Extract an explicitly attached continuation token without compatibility fallback.
+    /// Extract an explicitly attached continuation token.
     pub fn explicit_continuation_token(&self) -> Result<Option<CallChainContinuationToken>> {
         let Some(context) = self.context.as_ref() else {
             return Ok(None);

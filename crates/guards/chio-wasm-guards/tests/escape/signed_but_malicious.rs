@@ -50,7 +50,7 @@ fn sign_bytes(sk: &SigningKey, bytes: &[u8], name: &str, version: &str) -> Signe
 /// with a freshly-generated ed25519 key. The signing layer accepts the
 /// signature; the runtime layer rejects the import via the import-namespace check.
 #[test]
-fn signed_undeclared_import_is_caught_by_wgsec02() {
+fn signed_undeclared_import_is_rejected() {
     let cfg = load_frozen_config();
     let wat = r#"
         (module

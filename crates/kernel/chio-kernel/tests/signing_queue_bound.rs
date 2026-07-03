@@ -351,13 +351,11 @@ async fn backpressure_under_exhausted_budget_signs_inline_without_parking() {
 
 #[tokio::test(flavor = "current_thread")]
 async fn oversized_preimage_signs_inline_without_exceeding_queue_bound() {
-    // (case 1): a single preimage LARGER than the aggregate byte
-    // budget must NOT be enqueued (the old code clamped the permit count to the
-    // whole budget but still moved the full Vec into the queue, so one oversized
-    // request retained more bytes than the advertised bound). It must inline-sign
-    // instead. We prove (a) it signs and verifies, and (b) the queue never held
-    // it: the whole aggregate budget is still free afterwards, so a budget-filling
-    // request still enqueues via the non-blocking `try_sign`.
+    // (case 1): a single preimage LARGER than the aggregate byte budget must
+    // NOT be enqueued. It must inline-sign instead. Prove (a) it signs and
+    // verifies, and (b) the queue never held it: the whole aggregate budget is
+    // still free afterwards, so a budget-filling request still enqueues via the
+    // non-blocking `try_sign`.
     let keypair = Keypair::from_seed(&KERNEL_SEED);
     // Tiny 4-byte aggregate budget, unlimited per-request cap so ONLY the
     // aggregate bound governs admission.

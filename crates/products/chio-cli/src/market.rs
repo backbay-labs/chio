@@ -249,7 +249,7 @@ pub struct MarketInfoReport {
 /// matching the visibility gate enforced by `market_list` and
 /// `market_install`. The function returns `MarketError::UnknownReference`
 /// (not a tier-specific error) so the failure mode is byte-identical to
-/// the entry simply not being present in the catalog. This preserves the
+/// the entry not being present in the catalog. This preserves the
 /// undiscoverable contract: a low-tier tenant cannot use `info` to
 /// confirm or deny the existence of a guard above their floor.
 pub fn market_info(
@@ -717,7 +717,7 @@ mod tests {
         // market_info must enforce the reputation floor so a low-tier
         // tenant cannot retrieve metadata for an above-floor guard.
         // The error is UnknownReference, matching the contract that
-        // the entry is simply undiscoverable for this tenant.
+        // the entry is undiscoverable for this tenant.
         let dir = tempdir().expect("tmpdir");
         let path = write_catalog(dir.path(), &fixture_entries());
         let result = market_info(

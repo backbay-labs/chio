@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import logging
 import time
-import warnings
 from collections.abc import Callable
 from typing import Any
 
@@ -143,54 +142,10 @@ def _truncate_receipt_result(
     return head, True
 
 
-# Compatibility aliases for the in-tree redaction helpers. The canonical
-# implementations live in :mod:`chio_adapter_base.redact`. Internal call
-# sites within chio-hermes use :data:`_DEFAULT_REDACTION_POLICY` directly
-# so they do not trigger the compatibility warning.
-
 _DEFAULT_REDACTION_POLICY: RedactionPolicy = RedactionPolicy.chio_default()
 """Module-private policy used by the post-tool-call hook."""
 
-
-def _compat_warn(symbol: str, replacement: str) -> None:
-    warnings.warn(
-        (
-            f"chio_hermes.hooks.{symbol} is a compatibility alias; "
-            f"prefer {replacement}."
-        ),
-        DeprecationWarning,
-        stacklevel=3,
-    )
-
-
-class _BodyRedactFieldsShim(dict):
-    """Dict subclass that warns on every external lookup.
-
-    Returning a real ``dict`` keeps ``_BODY_REDACT_FIELDS["chio_file_write"]``
-    and ``in`` checks working unchanged for any external caller that was
-    reaching into the table directly.
-    """
-
-    def _warn(self) -> None:
-        _compat_warn(
-            "_BODY_REDACT_FIELDS",
-            "chio_adapter_base.redact.RedactionPolicy.chio_default",
-        )
-
-    def __getitem__(self, key: str) -> tuple[str, ...]:
-        self._warn()
-        return super().__getitem__(key)
-
-    def get(self, key: str, default: Any = None) -> Any:
-        self._warn()
-        return super().get(key, default)
-
-    def __contains__(self, key: object) -> bool:
-        self._warn()
-        return super().__contains__(key)
-
-
-_BODY_REDACT_FIELDS: _BodyRedactFieldsShim = _BodyRedactFieldsShim(
+_BODY_REDACT_FIELDS: dict[str, tuple[str, ...]] = dict(
     _DEFAULT_REDACTION_POLICY.body_fields
 )
 
@@ -198,10 +153,7 @@ _BODY_REDACT_FIELDS: _BodyRedactFieldsShim = _BodyRedactFieldsShim(
 def _redact_args(
     tool_name: str | None, args: dict[str, Any]
 ) -> dict[str, Any]:
-    """Compatibility alias for ``chio_adapter_base.redact.redact_args``."""
-    _compat_warn(
-        "_redact_args", "chio_adapter_base.redact.redact_args"
-    )
+    """Delegates to ``chio_adapter_base.redact.redact_args``."""
     return _adapter_base_redact_args(
         tool_name, args, policy=_DEFAULT_REDACTION_POLICY
     )

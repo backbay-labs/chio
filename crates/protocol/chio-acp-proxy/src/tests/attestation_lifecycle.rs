@@ -551,7 +551,7 @@ fn terminal_kill_with_mismatched_parameter_hash_fails_closed() {
         AcpAttestationMode::BestEffort,
     );
 
-    // Sanity check: the approved binding is allowed.
+    // the approved binding is allowed.
     let approved_kill = json!({
         "jsonrpc": "2.0",
         "id": 905,
