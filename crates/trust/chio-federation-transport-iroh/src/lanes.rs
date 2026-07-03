@@ -11,7 +11,7 @@
 //! - `fanout`: cross-operator fan-out over iroh-gossip per-treaty topics (lane c).
 //! - `bilateral`: DSSE co-sign over a dedicated-ALPN bidirectional QUIC RPC (lane d).
 
+pub mod bilateral;
+pub mod fanout;
 pub mod pheromone;
 pub mod revocation;
-pub mod fanout;
-pub mod bilateral;
