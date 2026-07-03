@@ -467,6 +467,7 @@ impl RevocationHandler {
                     let mut merged = Vec::with_capacity(roots.len());
                     for root in &roots {
                         if let Err(error) = self.sink.merge_root(root) {
+                            note_revocation_failure(&error);
                             return error.as_rejected();
                         }
                         merged.push(root.root.epoch);
@@ -475,16 +476,40 @@ impl RevocationHandler {
                         merged_epochs: merged,
                     }
                 }
-                Err(error) => error.as_rejected(),
+                Err(error) => {
+                    note_revocation_failure(&error);
+                    error.as_rejected()
+                }
             },
             RevocationLaneRequest::Catchup(request) => {
                 match self.respond_catchup(&request, now_unix_ms) {
                     Ok(response) => RevocationLaneResponse::Catchup(response),
-                    Err(error) => error.as_rejected(),
+                    Err(error) => {
+                        note_revocation_failure(&error);
+                        error.as_rejected()
+                    }
                 }
             }
         }
     }
+}
+
+/// OBSERVE-ONLY: count + log a revocation-lane rejection alongside the unchanged
+/// fail-closed response. Reads the error's bounded `code()`; a `catchup-gap` also
+/// bumps the epoch-gap family (a core revocation-freshness health signal that was
+/// entirely dark before). Never alters the response the caller returns.
+fn note_revocation_failure(error: &RevocationLaneError) {
+    let reason = error.code();
+    crate::metrics::record_verify_failure(crate::metrics::SEAM_REVOCATION, reason);
+    if reason == "catchup-gap" {
+        crate::metrics::record_catchup_epoch_gap(crate::metrics::CATCHUP_SOURCE_REVOCATION);
+    }
+    tracing::warn!(
+        target: crate::observability::TARGET_VERIFY,
+        seam = crate::metrics::SEAM_REVOCATION,
+        reason = reason,
+        "revocation lane rejected request"
+    );
 }
 
 impl RevocationHandler {
@@ -525,11 +550,17 @@ impl RevocationHandler {
 
 impl ProtocolHandler for RevocationHandler {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+        use tracing::Instrument;
         // Concurrency cap: acquire one in-flight permit (held for the whole
         // handler) or shed under saturation with a distinct busy code.
         let _permit = match self.limiter.admit().await {
             Ok(permit) => permit,
             Err(error) => {
+                // OBSERVE-ONLY: the slowloris saturation shed is now countable.
+                crate::metrics::record_lane_frame(
+                    crate::metrics::LANE_REVOCATION,
+                    crate::metrics::LANE_OUTCOME_BUSY,
+                );
                 tracing::warn!(
                     code = error.code(),
                     "revocation lane shed accept (saturated)"
@@ -538,8 +569,22 @@ impl ProtocolHandler for RevocationHandler {
                 return Err(AcceptError::from_err(error));
             }
         };
-        match self.serve(&conn).await {
+        // OBSERVE-ONLY: the in-flight gauge (slowloris detector) and accept span.
+        let span = crate::observability::lane_accept_span(crate::metrics::LANE_REVOCATION);
+        let _open = crate::metrics::AcceptOpenGuard::enter(crate::metrics::LANE_REVOCATION);
+        let started = std::time::Instant::now();
+        let result = self.serve(&conn).instrument(span.clone()).await;
+        crate::metrics::observe_accept_duration_nanos(
+            crate::metrics::LANE_REVOCATION,
+            u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX),
+        );
+        match result {
             Ok(()) => {
+                crate::metrics::record_lane_frame(
+                    crate::metrics::LANE_REVOCATION,
+                    crate::metrics::LANE_OUTCOME_ACCEPT,
+                );
+                crate::observability::record_outcome(&span, crate::metrics::LANE_OUTCOME_ACCEPT);
                 // Bounded linger: keep the connection open until the dialer has
                 // read the finished response and closed (so the finished stream
                 // is not reset on drop; without this the response can be lost as
@@ -548,6 +593,9 @@ impl ProtocolHandler for RevocationHandler {
                 Ok(())
             }
             Err(error) => {
+                let outcome = crate::metrics::accept_outcome_for_code(error.code());
+                crate::metrics::record_lane_frame(crate::metrics::LANE_REVOCATION, outcome);
+                crate::observability::record_outcome(&span, outcome);
                 tracing::warn!(code = error.code(), error = %error, "revocation lane reset");
                 conn.close(error.close_code().into(), error.code().as_bytes());
                 Err(AcceptError::from_err(error))
@@ -870,6 +918,36 @@ mod tests {
             other => panic!("expected PushAccepted, got {other:?}"),
         }
         assert_eq!(*sink.merged.lock().unwrap(), vec![5]);
+    }
+
+    #[test]
+    fn forged_root_bumps_verify_failure_counter_and_is_still_rejected() {
+        // OBSERVE-ONLY proof: a forged (tampered) root drives handle_request to a
+        // typed Rejected AND bumps verify_failures{revocation,bad-signature}. The
+        // response and the empty sink are byte-identical to before instrumentation.
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let (handler, sink) = handler(directory);
+
+        let mut signed = signed_root(&oracle, 5);
+        signed.signature.signature_bytes[0] ^= 0x01;
+        let frame = RevocationRootGossip::from_signed(signed, NOW);
+
+        let before =
+            crate::metrics::verify_failures_total(crate::metrics::SEAM_REVOCATION, "bad-signature");
+        let response = handler.handle_request(
+            transport,
+            RevocationLaneRequest::Push(batch(vec![frame])),
+            NOW,
+        );
+        assert!(matches!(response, RevocationLaneResponse::Rejected { .. }));
+        assert!(sink.merged.lock().unwrap().is_empty(), "nothing merged");
+        assert!(
+            crate::metrics::verify_failures_total(crate::metrics::SEAM_REVOCATION, "bad-signature")
+                > before,
+            "the verify failure must be counted (observe-only)"
+        );
     }
 
     #[test]

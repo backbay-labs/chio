@@ -313,6 +313,30 @@ pub enum IdentityError {
     CanonicalJson(String),
 }
 
+impl IdentityError {
+    /// Stable, log- and metric-friendly code for this bundle-verification failure.
+    /// The values are bounded (one per variant), so they are safe as a Prometheus
+    /// `reason` label on `chio_federation_transport_verify_failures_total`.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::UnsupportedSchema(_) => "unsupported-schema",
+            Self::Rollback { .. } => "rollback",
+            Self::PreviousVersionMismatch => "previous-version-mismatch",
+            Self::OutsideValidityWindow => "outside-validity-window",
+            Self::BodyHashMismatch { .. } => "body-hash-mismatch",
+            Self::UnknownIssuer(_) => "unknown-issuer",
+            Self::SignatureInvalid => "signature-invalid",
+            Self::EndorsementInvalid(_) => "endorsement-invalid",
+            Self::OracleEndorsementInvalid { .. } => "oracle-endorsement-invalid",
+            Self::MalformedEntry(_) => "malformed-entry",
+            Self::Duplicate(_) => "duplicate",
+            Self::EmptyDirectory => "empty-directory",
+            Self::CanonicalJson(_) => "canonical-json",
+        }
+    }
+}
+
 /// A directory that passed every check. The gate is built ONLY from this type,
 /// so it can never resolve against an unverified bundle (ADAPTER-SPEC section 5).
 ///
@@ -412,6 +436,29 @@ impl TransportDirectoryBundleDocument {
     ///    endorsement, projected into the derived [`VerifiedSignerDirectory`]
     ///    (non-removed entries only; duplicate `signer_id` rejected fail-closed).
     pub fn verify_bundle(
+        &self,
+        trust: &TransportDirectoryBundleTrust,
+    ) -> Result<VerifiedDirectory, IdentityError> {
+        // OBSERVE-ONLY wrapper: the fail-closed verification logic is unchanged in
+        // `verify_bundle_inner`; here we count + log a rejection ALONGSIDE it and
+        // return the SAME `Result` (a tampered/rolled-back directory bundle was
+        // previously indistinguishable from a healthy load in the telemetry).
+        let result = self.verify_bundle_inner(trust);
+        if let Err(error) = &result {
+            crate::metrics::record_verify_failure(crate::metrics::SEAM_IDENTITY, error.code());
+            tracing::warn!(
+                target: crate::observability::TARGET_VERIFY,
+                seam = crate::metrics::SEAM_IDENTITY,
+                reason = error.code(),
+                issuer = %self.body.issuer,
+                version = self.body.version,
+                "directory bundle verification failed"
+            );
+        }
+        result
+    }
+
+    fn verify_bundle_inner(
         &self,
         trust: &TransportDirectoryBundleTrust,
     ) -> Result<VerifiedDirectory, IdentityError> {
@@ -748,6 +795,35 @@ mod tests {
             expected_previous_version_sha256,
             now_unix_ms: NOW,
         }
+    }
+
+    #[test]
+    fn out_of_window_bundle_bumps_identity_verify_failure_and_is_still_rejected() {
+        // OBSERVE-ONLY proof: a bundle presented outside its validity window is
+        // still rejected fail-closed AND the failure is now counted + logged (a
+        // tampered / out-of-window directory bundle was previously indistinguishable
+        // from a healthy load in the telemetry). The returned Err is unchanged.
+        let alice = EntrySpec::admitted("did:chio:alice", 1, 10);
+        let (mut bundle, trust) = signed_bundle(&[alice]);
+        // Push the window start past `now` so the validity check fails closed.
+        bundle.body.issued_at_unix_ms = NOW + 10_000;
+
+        let before = crate::metrics::verify_failures_total(
+            crate::metrics::SEAM_IDENTITY,
+            "outside-validity-window",
+        );
+        let error = bundle
+            .verify_bundle(&trust)
+            .expect_err("an out-of-window bundle must fail closed");
+        assert_eq!(error, IdentityError::OutsideValidityWindow);
+        assert_eq!(error.code(), "outside-validity-window");
+        assert!(
+            crate::metrics::verify_failures_total(
+                crate::metrics::SEAM_IDENTITY,
+                "outside-validity-window"
+            ) > before,
+            "the identity verify failure must be counted (observe-only)"
+        );
     }
 
     #[test]

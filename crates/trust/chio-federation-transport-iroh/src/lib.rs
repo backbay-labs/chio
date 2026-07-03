@@ -25,3 +25,5 @@ pub mod admission;
 pub mod catchup;
 pub mod identity;
 pub mod lanes;
+pub mod metrics;
+pub mod observability;

@@ -23,8 +23,11 @@ use chio_core::{sha256_hex, Hash, Keypair};
 use chio_manifest::{ToolDefinition, ToolManifest};
 use chio_metrics_spec::{
     is_registered_metric, CHIO_ANCHOR_ROUND_LATENCY_SECONDS, CHIO_FEDERATION_HOP_LATENCY_SECONDS,
-    CHIO_FEDERATION_HOP_TOTAL, CHIO_GUARD_EVALUATIONS_TOTAL, CHIO_KERNEL_DECISION_LATENCY_SECONDS,
-    CHIO_RECEIPT_WRITE_TOTAL,
+    CHIO_FEDERATION_HOP_TOTAL, CHIO_FEDERATION_TRANSPORT_ACCEPT_DURATION_SECONDS,
+    CHIO_FEDERATION_TRANSPORT_ACCEPT_OPEN, CHIO_FEDERATION_TRANSPORT_ADMISSION_TOTAL,
+    CHIO_FEDERATION_TRANSPORT_CATCHUP_EPOCH_GAP_TOTAL, CHIO_FEDERATION_TRANSPORT_LANE_TOTAL,
+    CHIO_FEDERATION_TRANSPORT_OUTBOX_TOTAL, CHIO_FEDERATION_TRANSPORT_VERIFY_FAILURES_TOTAL,
+    CHIO_GUARD_EVALUATIONS_TOTAL, CHIO_KERNEL_DECISION_LATENCY_SECONDS, CHIO_RECEIPT_WRITE_TOTAL,
 };
 use chio_wasm_guards::{
     register_guard_pool_metric_families, GuardRequest, WasmGuardAbi, GUARD_POOL_METRIC_FAMILIES,
@@ -816,5 +819,158 @@ fn wasm_guards_runtime_emits_pool_metrics() -> Result<(), Box<dyn Error>> {
         snapshot.warm_size > 0,
         "wasm guard pool warm size must be reported after evaluation"
     );
+    Ok(())
+}
+
+/// Build an issuer-signed, load-time-verified transport directory admitting one
+/// operator at the endpoint derived from `transport_seed`. Mirrors the fixture in
+/// the transport crate's own tests so the conformance gate drives the SAME
+/// production verification path that emits the security metrics.
+#[allow(clippy::type_complexity)]
+fn iroh_transport_bundle(
+    transport_seed: u8,
+) -> Result<
+    (
+        chio_federation_transport_iroh::identity::TransportDirectoryBundleDocument,
+        chio_federation_transport_iroh::identity::TransportDirectoryBundleTrust,
+    ),
+    Box<dyn Error>,
+> {
+    use chio_federation_transport_iroh::identity::{
+        transport_endorsement_preimage, TransportDirectoryBundleBody,
+        TransportDirectoryBundleDocument, TransportDirectoryBundleTrust,
+        TransportDirectoryDocument, TransportDirectoryEntry, TrustedTransportDirectoryIssuer,
+        TRANSPORT_DIRECTORY_BUNDLE_SCHEMA,
+    };
+
+    let passport = Keypair::from_seed(&[1u8; 32]);
+    let issuer = Keypair::from_seed(&[240u8; 32]);
+    let transport = iroh::SecretKey::from_bytes(&[transport_seed; 32]).public();
+    let entry = TransportDirectoryEntry {
+        kernel_id: "did:chio:alice".to_string(),
+        passport_public_key: passport.public_key(),
+        transport_endpoint_id: transport,
+        passport_endorsement: passport.sign(&transport_endorsement_preimage(
+            "did:chio:alice",
+            &transport,
+        )),
+        revocation_signers: Vec::new(),
+        removed: false,
+    };
+    let directory = TransportDirectoryDocument {
+        schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+        local_kernel_id: "did:chio:local".to_string(),
+        peers: vec![entry],
+    };
+    let now: u64 = 2_000_000;
+    let directory_sha256 = chio_core::sha256_hex(&chio_core::canonical_json_bytes(&directory)?);
+    let body = TransportDirectoryBundleBody {
+        schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+        issuer: "did:chio:issuer".to_string(),
+        key_id: "issuer-key-1".to_string(),
+        directory_sha256,
+        version: 1,
+        previous_version_sha256: None,
+        issued_at_unix_ms: now - 1,
+        expires_at_unix_ms: now + 1,
+    };
+    let (signature, _) = issuer.sign_canonical(&body)?;
+    let bundle = TransportDirectoryBundleDocument {
+        schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+        body,
+        directory,
+        signature,
+    };
+    let trust = TransportDirectoryBundleTrust {
+        issuers: vec![TrustedTransportDirectoryIssuer {
+            issuer: "did:chio:issuer".to_string(),
+            key_id: "issuer-key-1".to_string(),
+            public_key: issuer.public_key(),
+        }],
+        version_floor: 0,
+        expected_previous_version_sha256: None,
+        now_unix_ms: now,
+    };
+    Ok((bundle, trust))
+}
+
+#[test]
+fn iroh_transport_emits_admission_and_verify_failure_families() -> Result<(), Box<dyn Error>> {
+    use chio_federation_transport_iroh::admission::DirectoryGate;
+    use chio_federation_transport_iroh::metrics;
+    use std::sync::Arc;
+
+    // Every iroh federation-transport family must be registered in the spec.
+    for name in [
+        CHIO_FEDERATION_TRANSPORT_ADMISSION_TOTAL,
+        CHIO_FEDERATION_TRANSPORT_VERIFY_FAILURES_TOTAL,
+        CHIO_FEDERATION_TRANSPORT_CATCHUP_EPOCH_GAP_TOTAL,
+        CHIO_FEDERATION_TRANSPORT_LANE_TOTAL,
+        CHIO_FEDERATION_TRANSPORT_OUTBOX_TOTAL,
+        CHIO_FEDERATION_TRANSPORT_ACCEPT_OPEN,
+        CHIO_FEDERATION_TRANSPORT_ACCEPT_DURATION_SECONDS,
+    ] {
+        assert!(
+            is_registered_metric(name),
+            "expected {name} to live in the chio-metrics-spec registry"
+        );
+    }
+
+    // Drive the #1 security signal (admission 403) through the real gate decision.
+    let (bundle, trust) = iroh_transport_bundle(10)?;
+    let directory = Arc::new(
+        bundle
+            .verify_bundle(&trust)
+            .map_err(|error| format!("bundle must verify: {error:?}"))?,
+    );
+    let gate = DirectoryGate::new(directory);
+    let admitted = iroh::SecretKey::from_bytes(&[10u8; 32]).public();
+    let unadmitted = iroh::SecretKey::from_bytes(&[200u8; 32]).public();
+
+    let before_reject = metrics::admission_total(metrics::ADMISSION_REJECT);
+    let before_accept = metrics::admission_total(metrics::ADMISSION_ACCEPT);
+    let _ = gate.decide(&admitted);
+    let _ = gate.decide(&unadmitted);
+    assert!(
+        metrics::admission_total(metrics::ADMISSION_REJECT) > before_reject,
+        "the admission 403 reject must advance through DirectoryGate::decide"
+    );
+    assert!(
+        metrics::admission_total(metrics::ADMISSION_ACCEPT) > before_accept,
+        "the admission accept must advance through DirectoryGate::decide"
+    );
+
+    // Drive a verification-failure through the real identity verify seam: an
+    // out-of-window bundle is still rejected fail-closed AND is now counted.
+    let (mut tampered, tampered_trust) = iroh_transport_bundle(10)?;
+    tampered.body.issued_at_unix_ms = tampered_trust.now_unix_ms + 10_000;
+    let before_verify =
+        metrics::verify_failures_total(metrics::SEAM_IDENTITY, "outside-validity-window");
+    assert!(
+        tampered.verify_bundle(&tampered_trust).is_err(),
+        "an out-of-window bundle must fail closed"
+    );
+    assert!(
+        metrics::verify_failures_total(metrics::SEAM_IDENTITY, "outside-validity-window")
+            > before_verify,
+        "the identity verify failure must advance through verify_bundle"
+    );
+
+    // The rendered body must carry every registered iroh-transport family name.
+    let body = metrics::render_iroh_transport_metrics_prometheus();
+    for name in [
+        CHIO_FEDERATION_TRANSPORT_ADMISSION_TOTAL,
+        CHIO_FEDERATION_TRANSPORT_VERIFY_FAILURES_TOTAL,
+        CHIO_FEDERATION_TRANSPORT_CATCHUP_EPOCH_GAP_TOTAL,
+        CHIO_FEDERATION_TRANSPORT_LANE_TOTAL,
+        CHIO_FEDERATION_TRANSPORT_OUTBOX_TOTAL,
+        CHIO_FEDERATION_TRANSPORT_ACCEPT_OPEN,
+        CHIO_FEDERATION_TRANSPORT_ACCEPT_DURATION_SECONDS,
+    ] {
+        assert!(body.contains(name), "render must emit {name}");
+    }
+    assert!(body.contains("outcome=\"reject\""));
+    assert!(body.contains("seam=\"identity\",reason=\"outside-validity-window\""));
+    assert!(body.contains("chio_federation_transport_accept_duration_seconds_bucket"));
     Ok(())
 }

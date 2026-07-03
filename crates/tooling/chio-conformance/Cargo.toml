@@ -180,6 +180,12 @@ chio-a2a-edge = { workspace = true }
 chio-manifest = { workspace = true }
 chio-wasm-guards = { path = "../../guards/chio-wasm-guards", default-features = false, features = ["wasmtime-runtime"] }
 chio-metrics-spec = { workspace = true }
+# Registry-consumed smoke test also drives the iroh federation-transport security
+# metrics (admission 403 + identity verify-failure) through their real public
+# paths. `iroh` (slim, matching the transport crate) mints the EndpointId/SecretKey
+# the directory fixture needs.
+chio-federation-transport-iroh = { workspace = true }
+iroh = { version = "1.0", default-features = false, features = ["tls-ring"] }
 wat = "1.246"
 # tee_quote_forgery threat-evidence test imports chio-tee-frame to
 # drive validate_signed and verify_tenant_sig deny branches with forged

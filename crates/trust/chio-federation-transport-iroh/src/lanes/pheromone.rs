@@ -308,12 +308,17 @@ impl PheromoneBatchHandler {
 
 impl ProtocolHandler for PheromoneBatchHandler {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+        use tracing::Instrument;
         // Concurrency cap: acquire one in-flight permit (held for the whole
         // handler) or shed under saturation with a distinct busy code, so one
         // hostile peer cannot spawn unbounded accept tasks.
         let _permit = match self.limiter.admit().await {
             Ok(permit) => permit,
             Err(error) => {
+                crate::metrics::record_lane_frame(
+                    crate::metrics::LANE_PHEROMONE,
+                    crate::metrics::LANE_OUTCOME_BUSY,
+                );
                 tracing::warn!(
                     code = error.code(),
                     "pheromone lane shed accept (saturated)"
@@ -322,8 +327,21 @@ impl ProtocolHandler for PheromoneBatchHandler {
                 return Err(AcceptError::from_err(error));
             }
         };
-        match self.handle(&conn).await {
+        let span = crate::observability::lane_accept_span(crate::metrics::LANE_PHEROMONE);
+        let _open = crate::metrics::AcceptOpenGuard::enter(crate::metrics::LANE_PHEROMONE);
+        let started = std::time::Instant::now();
+        let result = self.handle(&conn).instrument(span.clone()).await;
+        crate::metrics::observe_accept_duration_nanos(
+            crate::metrics::LANE_PHEROMONE,
+            u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX),
+        );
+        match result {
             Ok(()) => {
+                crate::metrics::record_lane_frame(
+                    crate::metrics::LANE_PHEROMONE,
+                    crate::metrics::LANE_OUTCOME_ACCEPT,
+                );
+                crate::observability::record_outcome(&span, crate::metrics::LANE_OUTCOME_ACCEPT);
                 // Bounded linger: keep the connection open until the dialer has
                 // read the report and closed (so the finished stream is not reset
                 // on drop), but never past the linger bound.
@@ -331,6 +349,9 @@ impl ProtocolHandler for PheromoneBatchHandler {
                 Ok(())
             }
             Err(error) => {
+                let outcome = crate::metrics::accept_outcome_for_code(error.code());
+                crate::metrics::record_lane_frame(crate::metrics::LANE_PHEROMONE, outcome);
+                crate::observability::record_outcome(&span, outcome);
                 tracing::warn!(code = error.code(), error = %error, "pheromone lane reset batch");
                 conn.close(error.close_code().into(), error.code().as_bytes());
                 Err(AcceptError::from_err(error))
@@ -475,6 +496,9 @@ where
             Ok(outcome) if outcome.accepted => {
                 store.mark_delivered(&entry.outbox_id)?;
                 report.delivered = report.delivered.saturating_add(1);
+                // OBSERVE-ONLY: the iroh outbox drain emits the delivery outcome the
+                // shipped HTTP relay already meters; this path was previously dark.
+                crate::metrics::record_outbox(crate::metrics::OUTBOX_DELIVERED);
             }
             Ok(_) => {
                 record_delivery_failure(
@@ -507,6 +531,16 @@ fn record_delivery_failure(
     if entry.attempts.saturating_add(1) >= 3 {
         store.mark_dead_letter(&entry.outbox_id, code)?;
         report.dead_lettered = report.dead_lettered.saturating_add(1);
+        // OBSERVE-ONLY: a dead-lettered batch is an operator-actionable signal
+        // (delivery has permanently failed for this batch). Counted + logged with
+        // the durable outbox `code`; the retry/dead-letter decision is unchanged.
+        crate::metrics::record_outbox(crate::metrics::OUTBOX_DEAD_LETTERED);
+        tracing::warn!(
+            target: crate::observability::TARGET_OUTBOX,
+            outbox_id = %entry.outbox_id,
+            code = code,
+            "pheromone outbox batch dead-lettered"
+        );
     } else {
         let backoff_ms = 60_000u64.saturating_mul(entry.attempts.saturating_add(1));
         store.mark_retry(
@@ -515,6 +549,7 @@ fn record_delivery_failure(
             now_unix_ms.saturating_add(backoff_ms),
         )?;
         report.retried = report.retried.saturating_add(1);
+        crate::metrics::record_outbox(crate::metrics::OUTBOX_RETRIED);
     }
     Ok(())
 }
@@ -799,6 +834,47 @@ mod tests {
         assert_eq!(report.retried, 2);
         assert_eq!(report.dead_lettered, 1);
         assert_eq!(report.failures.len(), 3);
+    }
+
+    #[test]
+    fn outbox_retry_and_dead_letter_bump_outbox_counters() {
+        // OBSERVE-ONLY proof: the retry/dead-letter accounting is unchanged AND now
+        // emits the outbox family the shipped HTTP relay already meters.
+        let store = SqlitePheromoneRelayStore::open_in_memory().unwrap();
+        let batch = direct_batch("did:chio:llamaworks");
+        enqueue_batch_for_delivery(
+            &store,
+            "did:chio:llamaworks",
+            RECIPIENT,
+            TREATY,
+            &batch,
+            NOW,
+        )
+        .unwrap();
+        let mut entry = store
+            .lease_due_batches(NOW, 10)
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
+
+        let before_retry = crate::metrics::outbox_total(crate::metrics::OUTBOX_RETRIED);
+        let before_dead = crate::metrics::outbox_total(crate::metrics::OUTBOX_DEAD_LETTERED);
+        let mut report = OutboxDrainReport::default();
+        for attempts in 0..3u64 {
+            entry.attempts = attempts;
+            record_delivery_failure(&store, &entry, "transport", NOW, &mut report).unwrap();
+        }
+        assert_eq!(report.retried, 2);
+        assert_eq!(report.dead_lettered, 1);
+        assert!(
+            crate::metrics::outbox_total(crate::metrics::OUTBOX_RETRIED) > before_retry,
+            "retries must be counted (observe-only)"
+        );
+        assert!(
+            crate::metrics::outbox_total(crate::metrics::OUTBOX_DEAD_LETTERED) > before_dead,
+            "dead-letters must be counted (observe-only)"
+        );
     }
 
     // -- End-to-end over real loopback QUIC (mirrors the validated PoC shape) --

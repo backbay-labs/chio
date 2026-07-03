@@ -160,6 +160,40 @@ pub enum FanoutError {
     Gossip(String),
 }
 
+impl FanoutError {
+    /// Stable, bounded metric/log reason for this fan-out failure. Feeds the
+    /// `reason` label on `chio_federation_transport_verify_failures_total`.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::MessageTooLarge { .. } => "message-too-large",
+            Self::Codec(_) => "codec",
+            Self::UnknownOrigin(_) => "unknown-origin",
+            Self::DepositSignatureInvalid => "deposit-signature-invalid",
+            Self::TreatyMismatch { .. } => "treaty-mismatch",
+            Self::Canonical(_) => "canonical-json",
+            Self::Frame(_) => "frame-invalid",
+            Self::Gossip(_) => "gossip-transport",
+        }
+    }
+}
+
+/// OBSERVE-ONLY: count + log a fan-out frame rejection alongside the unchanged
+/// fail-closed drop. The receive path previously delegated logging away ("the
+/// caller can log-and-drop it") and did none itself, so a `TreatyMismatch`
+/// cross-treaty injection campaign or a `DepositSignatureInvalid` flood produced
+/// zero local signal.
+fn note_fanout_failure(error: &FanoutError) {
+    let reason = error.code();
+    crate::metrics::record_verify_failure(crate::metrics::SEAM_FANOUT, reason);
+    tracing::warn!(
+        target: crate::observability::TARGET_VERIFY,
+        seam = crate::metrics::SEAM_FANOUT,
+        reason = reason,
+        "fan-out frame rejected"
+    );
+}
+
 /// Resolves an origin operator's passport verifying key from its `kernel_id`.
 ///
 /// The fan-out lane verifies the embedded deposit's OWN signature against this
@@ -234,6 +268,25 @@ pub fn verify_fanout_frame<R>(
 where
     R: OriginKeyResolver + ?Sized,
 {
+    // OBSERVE-ONLY wrapper: the origin-verification logic is unchanged in
+    // `verify_fanout_frame_inner`; here we count + log a rejection and return the
+    // SAME `Result`.
+    let result = verify_fanout_frame_inner(frame, origin_keys, policy, now_unix_ms);
+    if let Err(error) = &result {
+        note_fanout_failure(error);
+    }
+    result
+}
+
+fn verify_fanout_frame_inner<R>(
+    frame: &PheromoneDepositGossip,
+    origin_keys: &R,
+    policy: &PheromoneTransitPolicy,
+    now_unix_ms: u64,
+) -> Result<(), FanoutError>
+where
+    R: OriginKeyResolver + ?Sized,
+{
     // (1) Transport-independent frame verification. Pins origin == deposit author.
     verify_pheromone_gossip_frame(frame, policy, now_unix_ms).map_err(FanoutError::Frame)?;
 
@@ -297,10 +350,15 @@ where
     let frame: PheromoneDepositGossip =
         serde_json::from_slice(content).map_err(|error| FanoutError::Codec(error.to_string()))?;
     if frame.treaty_id != expected_treaty {
-        return Err(FanoutError::TreatyMismatch {
+        // OBSERVE-ONLY: the cross-treaty injection signal (a foreign-treaty frame
+        // on this swarm) is counted before the unchanged fail-closed reject. The
+        // verify_fanout_frame call below already self-counts its own failures.
+        let error = FanoutError::TreatyMismatch {
             expected: expected_treaty.to_string(),
             got: frame.treaty_id,
-        });
+        };
+        note_fanout_failure(&error);
+        return Err(error);
     }
     verify_fanout_frame(&frame, origin_keys, policy, now_unix_ms)?;
     Ok(frame)
@@ -693,6 +751,49 @@ mod tests {
 
         let result = verify_fanout_frame(&frame, &keys, &policy, NOW);
         assert!(matches!(result, Err(FanoutError::UnknownOrigin(_))));
+    }
+
+    #[test]
+    fn unknown_origin_bumps_verify_failure_counter_and_is_still_rejected() {
+        // OBSERVE-ONLY proof: an unresolvable author still fails closed AND bumps
+        // verify_failures{fanout,unknown-origin}; the returned Err is unchanged.
+        let author = Keypair::from_seed(&[7; 32]);
+        let frame = signed_direct_frame(&author, AUTHOR, "did:chio:hub", TREATY_ALPHA, NAMESPACE);
+        let policy = live_policy(NAMESPACE);
+        let keys = StaticOriginKeys::new();
+
+        let before =
+            crate::metrics::verify_failures_total(crate::metrics::SEAM_FANOUT, "unknown-origin");
+        let result = verify_fanout_frame(&frame, &keys, &policy, NOW);
+        assert!(matches!(result, Err(FanoutError::UnknownOrigin(_))));
+        assert!(
+            crate::metrics::verify_failures_total(crate::metrics::SEAM_FANOUT, "unknown-origin")
+                > before,
+            "the fan-out verify failure must be counted (observe-only)"
+        );
+    }
+
+    #[test]
+    fn treaty_mismatch_bumps_verify_failure_counter_and_is_still_rejected() {
+        // OBSERVE-ONLY proof for the cross-treaty injection signal: a valid-signature
+        // frame minted for a foreign treaty is still rejected on this swarm AND is
+        // counted (verify_failures{fanout,treaty-mismatch}).
+        let author = Keypair::from_seed(&[7; 32]);
+        let beta_frame =
+            signed_direct_frame(&author, AUTHOR, "did:chio:hub", "treaty-beta", NAMESPACE);
+        let policy = live_policy(NAMESPACE);
+        let keys = StaticOriginKeys::new().with(AUTHOR, author.public_key());
+        let content = encode_fanout_frame(&beta_frame).expect("encodes under cap");
+
+        let before =
+            crate::metrics::verify_failures_total(crate::metrics::SEAM_FANOUT, "treaty-mismatch");
+        let result = decode_bind_treaty_and_verify(&content, TREATY_ALPHA, &keys, &policy, NOW);
+        assert!(matches!(result, Err(FanoutError::TreatyMismatch { .. })));
+        assert!(
+            crate::metrics::verify_failures_total(crate::metrics::SEAM_FANOUT, "treaty-mismatch")
+                > before,
+            "the cross-treaty injection must be counted (observe-only)"
+        );
     }
 
     #[test]

@@ -121,6 +121,17 @@ pub const CHIO_DLQ_DEPTH: &str = "chio_dlq_depth";
 pub const CHIO_FAIL_OPEN_SUSPECTED_TOTAL: &str = "chio_fail_open_suspected_total";
 pub const CHIO_FEDERATION_HOP_LATENCY_SECONDS: &str = "chio_federation_hop_latency_seconds";
 pub const CHIO_FEDERATION_HOP_TOTAL: &str = "chio_federation_hop_total";
+pub const CHIO_FEDERATION_TRANSPORT_ACCEPT_DURATION_SECONDS: &str =
+    "chio_federation_transport_accept_duration_seconds";
+pub const CHIO_FEDERATION_TRANSPORT_ACCEPT_OPEN: &str = "chio_federation_transport_accept_open";
+pub const CHIO_FEDERATION_TRANSPORT_ADMISSION_TOTAL: &str =
+    "chio_federation_transport_admission_total";
+pub const CHIO_FEDERATION_TRANSPORT_CATCHUP_EPOCH_GAP_TOTAL: &str =
+    "chio_federation_transport_catchup_epoch_gap_total";
+pub const CHIO_FEDERATION_TRANSPORT_LANE_TOTAL: &str = "chio_federation_transport_lane_total";
+pub const CHIO_FEDERATION_TRANSPORT_OUTBOX_TOTAL: &str = "chio_federation_transport_outbox_total";
+pub const CHIO_FEDERATION_TRANSPORT_VERIFY_FAILURES_TOTAL: &str =
+    "chio_federation_transport_verify_failures_total";
 pub const CHIO_GUARD_DENY_TOTAL: &str = "chio_guard_deny_total";
 pub const CHIO_GUARD_EVAL_DURATION_SECONDS: &str = "chio_guard_eval_duration_seconds";
 pub const CHIO_GUARD_EVALUATIONS_TOTAL: &str = "chio_guard_evaluations_total";
@@ -182,6 +193,8 @@ pub const EXPORT_LAG_BUCKETS_SECONDS: &[&str] = &["30", "60", "120", "300", "600
 pub const ANCHOR_ROUND_LATENCY_BUCKETS_SECONDS: &[&str] =
     &["0.1", "0.5", "1.0", "2.5", "5.0", "10.0"];
 pub const FEDERATION_HOP_LATENCY_BUCKETS_SECONDS: &[&str] =
+    &["0.01", "0.025", "0.05", "0.1", "0.25", "0.5", "1.0"];
+pub const FEDERATION_TRANSPORT_ACCEPT_DURATION_BUCKETS_SECONDS: &[&str] =
     &["0.01", "0.025", "0.05", "0.1", "0.25", "0.5", "1.0"];
 pub const PHEROMONE_RECEIVER_LATENCY_BUCKETS_SECONDS: &[&str] = &[
     "0.001", "0.005", "0.01", "0.025", "0.05", "0.1", "0.25", "0.5", "1.0",
@@ -245,6 +258,49 @@ pub const REGISTRY: &[MetricDescriptor] = &[
         help = "Total federation hop outcomes.",
         kind = Counter,
         labels = ["result"]
+    ),
+    describe!(
+        name = CHIO_FEDERATION_TRANSPORT_ACCEPT_DURATION_SECONDS,
+        help = "Iroh federation-transport per-lane accept handler duration in seconds.",
+        kind = Histogram,
+        labels = ["lane"],
+        buckets = ["0.01", "0.025", "0.05", "0.1", "0.25", "0.5", "1.0"]
+    ),
+    describe!(
+        name = CHIO_FEDERATION_TRANSPORT_ACCEPT_OPEN,
+        help = "Iroh federation-transport in-flight accept handlers by lane (slowloris gauge).",
+        kind = Gauge,
+        labels = ["lane"]
+    ),
+    describe!(
+        name = CHIO_FEDERATION_TRANSPORT_ADMISSION_TOTAL,
+        help = "Total iroh federation-transport admission-gate outcomes at after_handshake.",
+        kind = Counter,
+        labels = ["outcome"]
+    ),
+    describe!(
+        name = CHIO_FEDERATION_TRANSPORT_CATCHUP_EPOCH_GAP_TOTAL,
+        help = "Total iroh federation-transport revocation catch-up epoch gaps detected.",
+        kind = Counter,
+        labels = ["source"]
+    ),
+    describe!(
+        name = CHIO_FEDERATION_TRANSPORT_LANE_TOTAL,
+        help = "Total iroh federation-transport per-lane accept outcomes.",
+        kind = Counter,
+        labels = ["lane", "outcome"]
+    ),
+    describe!(
+        name = CHIO_FEDERATION_TRANSPORT_OUTBOX_TOTAL,
+        help = "Total iroh federation-transport pheromone outbox drain outcomes.",
+        kind = Counter,
+        labels = ["outcome"]
+    ),
+    describe!(
+        name = CHIO_FEDERATION_TRANSPORT_VERIFY_FAILURES_TOTAL,
+        help = "Total iroh federation-transport verification failures by seam and bounded reason.",
+        kind = Counter,
+        labels = ["seam", "reason"]
     ),
     describe!(
         name = CHIO_GUARD_DENY_TOTAL,

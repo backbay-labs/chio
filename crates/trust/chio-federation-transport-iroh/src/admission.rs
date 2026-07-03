@@ -74,11 +74,29 @@ impl DirectoryGate {
     #[must_use]
     pub fn decide(&self, endpoint: &EndpointId) -> AfterHandshakeOutcome {
         match self.directory.authorize(endpoint) {
-            Some(_kernel_id) => AfterHandshakeOutcome::Accept,
-            None => AfterHandshakeOutcome::Reject {
-                error_code: NOT_ADMITTED_ERROR_CODE.into(),
-                reason: NOT_ADMITTED_REASON.to_vec(),
-            },
+            Some(_kernel_id) => {
+                // OBSERVE-ONLY: count the admit alongside the unchanged decision.
+                crate::metrics::record_admission(crate::metrics::ADMISSION_ACCEPT);
+                AfterHandshakeOutcome::Accept
+            }
+            None => {
+                // OBSERVE-ONLY: the admission-gate 403 was the crate's single most
+                // security-relevant SILENT event. Count it and emit a structured
+                // event carrying the endpoint short-id (never a full key) so an
+                // operator can alert on a reject spike (someone probing the mesh).
+                // The returned Reject is byte-identical to before.
+                crate::metrics::record_admission(crate::metrics::ADMISSION_REJECT);
+                tracing::warn!(
+                    target: crate::observability::TARGET_ADMISSION,
+                    endpoint = %endpoint.fmt_short(),
+                    code = NOT_ADMITTED_ERROR_CODE,
+                    "admission reject: endpoint not bound to an admitted kernel"
+                );
+                AfterHandshakeOutcome::Reject {
+                    error_code: NOT_ADMITTED_ERROR_CODE.into(),
+                    reason: NOT_ADMITTED_REASON.to_vec(),
+                }
+            }
         }
     }
 }
@@ -256,5 +274,35 @@ mod tests {
         assert_eq!(code, NOT_ADMITTED_ERROR_CODE);
         assert_eq!(reason, NOT_ADMITTED_REASON);
         assert_eq!(gate_np1.resolve(&e_old), None);
+    }
+
+    #[test]
+    fn unadmitted_endpoint_bumps_403_counter_and_is_still_rejected() {
+        // OBSERVE-ONLY proof: the admission-gate counter advances on a reject AND
+        // the decision is byte-identical to before instrumentation (still a 403).
+        // Counters are process-global, so assert a monotone lower bound (other
+        // tests only ever add), never an exact value.
+        let gate = DirectoryGate::new(verified_directory("did:chio:alice", 1, 10, false));
+        let before_reject = crate::metrics::admission_total(crate::metrics::ADMISSION_REJECT);
+        let before_accept = crate::metrics::admission_total(crate::metrics::ADMISSION_ACCEPT);
+
+        let outcome = gate.decide(&endpoint_from_seed(200));
+        let (code, reason) = reject_code(&outcome).expect("unadmitted endpoint is still rejected");
+        assert_eq!(code, NOT_ADMITTED_ERROR_CODE);
+        assert_eq!(reason, NOT_ADMITTED_REASON);
+        assert!(
+            crate::metrics::admission_total(crate::metrics::ADMISSION_REJECT) > before_reject,
+            "the 403 reject must be counted (observe-only)"
+        );
+
+        // An admitted endpoint still accepts AND bumps the accept counter.
+        assert!(matches!(
+            gate.decide(&endpoint_from_seed(10)),
+            AfterHandshakeOutcome::Accept
+        ));
+        assert!(
+            crate::metrics::admission_total(crate::metrics::ADMISSION_ACCEPT) > before_accept,
+            "an admit must be counted (observe-only)"
+        );
     }
 }

@@ -203,6 +203,31 @@ enum WireErrorCode {
     PeerRejected,
 }
 
+impl WireErrorCode {
+    /// Stable, bounded metric/log reason for this wire error code. Feeds the
+    /// `reason` label on `chio_federation_transport_verify_failures_total`.
+    fn as_reason(self) -> &'static str {
+        match self {
+            WireErrorCode::UnsupportedSchema => "unsupported-schema",
+            WireErrorCode::UnknownPeer => "unknown-peer",
+            WireErrorCode::PeerExpired => "peer-expired",
+            WireErrorCode::OrgBSignatureInvalid => "org-b-signature-invalid",
+            WireErrorCode::PeerRejected => "peer-rejected",
+        }
+    }
+}
+
+/// OBSERVE-ONLY reason for a co-sign rejection, reusing the exhaustive
+/// [`WireReply::err`] mapping so any [`BilateralCoSigningError`] variant folds to
+/// one bounded code (never a high-cardinality label).
+fn bilateral_reason(error: &BilateralCoSigningError) -> &'static str {
+    if let WireReply::Err { code, .. } = WireReply::err(error) {
+        code.as_reason()
+    } else {
+        "peer-rejected"
+    }
+}
+
 impl WireReply {
     /// Encode a successful co-signature.
     fn ok(response: &DsseCoSigningResponse) -> Self {
@@ -557,6 +582,29 @@ impl BilateralCoSignHandler {
         remote: &EndpointId,
         request: &DsseCoSigningRequest,
     ) -> Result<DsseCoSigningResponse, BilateralCoSigningError> {
+        // OBSERVE-ONLY wrapper: the verification + co-signature logic is unchanged
+        // in `cosign_inner`; here we count + log a rejection (OrgBSignatureInvalid,
+        // UnknownPeer origin/endpoint mismatch, PeerExpired) ALONGSIDE it and
+        // return the SAME `Result` the caller folds into a typed WireReply::Err.
+        let result = self.cosign_inner(remote, request);
+        if let Err(error) = &result {
+            let reason = bilateral_reason(error);
+            crate::metrics::record_verify_failure(crate::metrics::SEAM_BILATERAL, reason);
+            tracing::warn!(
+                target: crate::observability::TARGET_VERIFY,
+                seam = crate::metrics::SEAM_BILATERAL,
+                reason = reason,
+                "bilateral co-sign refused without signing"
+            );
+        }
+        result
+    }
+
+    fn cosign_inner(
+        &self,
+        remote: &EndpointId,
+        request: &DsseCoSigningRequest,
+    ) -> Result<DsseCoSigningResponse, BilateralCoSigningError> {
         if request.schema != BILATERAL_DSSE_COSIGNING_SCHEMA {
             return Err(BilateralCoSigningError::UnsupportedSchema(
                 request.schema.clone(),
@@ -651,11 +699,16 @@ impl BilateralCoSignHandler {
 
 impl ProtocolHandler for BilateralCoSignHandler {
     async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
+        use tracing::Instrument;
         // Concurrency cap: acquire one in-flight permit (held for the whole
         // handler) or shed under saturation with a distinct busy code.
         let _permit = match self.limiter.admit().await {
             Ok(permit) => permit,
             Err(error) => {
+                crate::metrics::record_lane_frame(
+                    crate::metrics::LANE_BILATERAL,
+                    crate::metrics::LANE_OUTCOME_BUSY,
+                );
                 tracing::warn!(
                     code = error.code(),
                     "bilateral lane shed accept (saturated)"
@@ -664,8 +717,21 @@ impl ProtocolHandler for BilateralCoSignHandler {
                 return Err(AcceptError::from_err(error));
             }
         };
-        match self.serve(&connection).await {
+        let span = crate::observability::lane_accept_span(crate::metrics::LANE_BILATERAL);
+        let _open = crate::metrics::AcceptOpenGuard::enter(crate::metrics::LANE_BILATERAL);
+        let started = std::time::Instant::now();
+        let result = self.serve(&connection).instrument(span.clone()).await;
+        crate::metrics::observe_accept_duration_nanos(
+            crate::metrics::LANE_BILATERAL,
+            u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX),
+        );
+        match result {
             Ok(()) => {
+                crate::metrics::record_lane_frame(
+                    crate::metrics::LANE_BILATERAL,
+                    crate::metrics::LANE_OUTCOME_ACCEPT,
+                );
+                crate::observability::record_outcome(&span, crate::metrics::LANE_OUTCOME_ACCEPT);
                 // Bounded linger: keep the connection until the client has read
                 // the reply and closed (so the framed response is not truncated
                 // by an early drop), but never past the linger bound.
@@ -673,6 +739,9 @@ impl ProtocolHandler for BilateralCoSignHandler {
                 Ok(())
             }
             Err(error) => {
+                let outcome = crate::metrics::accept_outcome_for_code(error.code());
+                crate::metrics::record_lane_frame(crate::metrics::LANE_BILATERAL, outcome);
+                crate::observability::record_outcome(&span, outcome);
                 tracing::warn!(code = error.code(), error = %error, "bilateral lane reset");
                 connection.close(error.close_code().into(), error.code().as_bytes());
                 Err(AcceptError::from_err(error))
@@ -1021,6 +1090,44 @@ mod tests {
             Err(BilateralCoSigningError::UnknownPeer(
                 "did:chio:some-other-origin".to_string()
             ))
+        );
+    }
+
+    #[test]
+    fn wrong_origin_bumps_verify_failure_counter_and_is_still_rejected() {
+        // OBSERVE-ONLY proof: a request addressed to a different Org A is refused
+        // WITHOUT signing (byte-identical Err) AND bumps verify_failures{bilateral}.
+        let org_a = Peer::new(ORIGIN_KERNEL, 10, 1);
+        let org_b = Peer::new(TOOL_HOST_KERNEL, 11, 2);
+        let gate = DirectoryGate::new(verified_directory(&[&org_a, &org_b]));
+        let handler = BilateralCoSignHandler::new(
+            gate,
+            ORIGIN_KERNEL,
+            org_a.passport.clone(),
+            pinned_org_b(&org_b),
+        );
+
+        let pae_bytes = b"pae".to_vec();
+        let request = DsseCoSigningRequest::new(
+            "did:chio:some-other-origin".to_string(),
+            org_b.kernel_id.clone(),
+            pae_bytes.clone(),
+            org_b.passport.sign(&pae_bytes),
+        );
+
+        let before =
+            crate::metrics::verify_failures_total(crate::metrics::SEAM_BILATERAL, "unknown-peer");
+        let result = handler.cosign(&org_b.transport_id, &request);
+        assert_eq!(
+            result,
+            Err(BilateralCoSigningError::UnknownPeer(
+                "did:chio:some-other-origin".to_string()
+            ))
+        );
+        assert!(
+            crate::metrics::verify_failures_total(crate::metrics::SEAM_BILATERAL, "unknown-peer")
+                > before,
+            "the co-sign rejection must be counted (observe-only)"
         );
     }
 

@@ -104,6 +104,45 @@ pub enum CatchupError {
     Codec(String),
 }
 
+impl CatchupError {
+    /// Stable, bounded metric/log reason for this catch-up failure. Feeds the
+    /// `reason` label on `chio_federation_transport_verify_failures_total`.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Blob(_) => "blob-transport",
+            Self::UnknownSigner(_) => "unknown-signer",
+            Self::SignerEndpointMismatch { .. } => "signer-endpoint-mismatch",
+            Self::IntegrityMismatch { .. } => "integrity-mismatch",
+            Self::BadSignature(_) => "bad-signature",
+            Self::Ordering(inner) => match inner {
+                RevocationGossipError::CatchupGap { .. } => "catchup-gap",
+                _ => "ordering",
+            },
+            Self::ManifestTooWide { .. } => "manifest-too-wide",
+            Self::Codec(_) => "codec",
+        }
+    }
+}
+
+/// OBSERVE-ONLY: count + log a catch-up rejection alongside the unchanged
+/// fail-closed error. An epoch gap also bumps the epoch-gap family (the
+/// revocation-freshness health metric that was entirely dark). Never alters the
+/// `Err` the caller returns.
+fn note_catchup_failure(error: &CatchupError) {
+    let reason = error.code();
+    crate::metrics::record_verify_failure(crate::metrics::SEAM_CATCHUP, reason);
+    if reason == "catchup-gap" {
+        crate::metrics::record_catchup_epoch_gap(crate::metrics::CATCHUP_SOURCE_CATCHUP);
+    }
+    tracing::warn!(
+        target: crate::observability::TARGET_CATCHUP,
+        seam = crate::metrics::SEAM_CATCHUP,
+        reason = reason,
+        "revocation catch-up rejected"
+    );
+}
+
 /// A follower's caught-up, signature-verified history, keyed by epoch. Backs the
 /// contract's [`RevocationCatchupHistory`] so a follower that just filled a gap
 /// over blobs can immediately serve those roots to the next peer.
@@ -274,10 +313,12 @@ impl BlobCatchupClient {
             let signed = decode_and_verify_root(&bytes, *hash, binding)?;
             // Per-entry epoch pin: the manifest epoch must match the signed root.
             if signed.root.epoch != *epoch {
-                return Err(CatchupError::Ordering(RevocationGossipError::CatchupGap {
+                let error = CatchupError::Ordering(RevocationGossipError::CatchupGap {
                     expected: *epoch,
                     observed: signed.root.epoch,
-                }));
+                });
+                note_catchup_failure(&error);
+                return Err(error);
             }
             verified.push(signed);
         }
@@ -326,6 +367,20 @@ fn resolve_pinned_signer<'a>(
     signer_id: &str,
     authority: EndpointId,
 ) -> Result<&'a SignerBinding, CatchupError> {
+    // OBSERVE-ONLY tail: count a failure alongside the unchanged fail-closed
+    // resolution (the inner fn's `Err` is returned verbatim).
+    let result = resolve_pinned_signer_inner(directory, signer_id, authority);
+    if let Err(error) = &result {
+        note_catchup_failure(error);
+    }
+    result
+}
+
+fn resolve_pinned_signer_inner<'a>(
+    directory: &'a VerifiedDirectory,
+    signer_id: &str,
+    authority: EndpointId,
+) -> Result<&'a SignerBinding, CatchupError> {
     let binding = directory
         .resolve_signer(signer_id)
         .ok_or_else(|| CatchupError::UnknownSigner(signer_id.to_string()))?;
@@ -343,10 +398,12 @@ fn resolve_pinned_signer<'a>(
 fn check_manifest_cap(len: usize) -> Result<(), CatchupError> {
     let requested = len as u64;
     if requested > REVOCATION_CATCHUP_MAX_EPOCHS {
-        return Err(CatchupError::ManifestTooWide {
+        let error = CatchupError::ManifestTooWide {
             requested,
             max: REVOCATION_CATCHUP_MAX_EPOCHS,
-        });
+        };
+        note_catchup_failure(&error);
+        return Err(error);
     }
     Ok(())
 }
@@ -354,6 +411,20 @@ fn check_manifest_cap(len: usize) -> Result<(), CatchupError> {
 /// Verify one fetched blob's bytes as a [`SignedEpochRoot`]: BLAKE3 integrity
 /// against the requested content address, then pinned-signer authenticity.
 fn decode_and_verify_root(
+    bytes: &[u8],
+    expected_hash: Hash,
+    binding: &SignerBinding,
+) -> Result<SignedEpochRoot, CatchupError> {
+    // OBSERVE-ONLY tail: count integrity/authenticity failures alongside the
+    // unchanged fail-closed verification (the inner `Err` is returned verbatim).
+    let result = decode_and_verify_root_inner(bytes, expected_hash, binding);
+    if let Err(error) = &result {
+        note_catchup_failure(error);
+    }
+    result
+}
+
+fn decode_and_verify_root_inner(
     bytes: &[u8],
     expected_hash: Hash,
     binding: &SignerBinding,
@@ -386,10 +457,12 @@ fn order_check(roots: &[SignedEpochRoot]) -> Result<(), CatchupError> {
         if let Some(previous) = prev {
             let expected = previous.saturating_add(1);
             if signed.root.epoch != expected {
-                return Err(CatchupError::Ordering(RevocationGossipError::CatchupGap {
+                let error = CatchupError::Ordering(RevocationGossipError::CatchupGap {
                     expected,
                     observed: signed.root.epoch,
-                }));
+                });
+                note_catchup_failure(&error);
+                return Err(error);
             }
         }
         prev = Some(signed.root.epoch);
@@ -515,6 +588,38 @@ mod tests {
             }
             other => panic!("expected CatchupGap, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn epoch_gap_bumps_gap_counter_and_is_still_rejected() {
+        // OBSERVE-ONLY proof: a dropped epoch still fails closed AND bumps both the
+        // verify-failure and the dedicated epoch-gap family (the revocation-
+        // freshness health signal that was entirely dark before).
+        let oracle = signer("oracle-a", SEED_A);
+        let run = vec![
+            signed_root(&oracle, 1),
+            signed_root(&oracle, 2),
+            signed_root(&oracle, 4),
+        ];
+        let before_gap =
+            crate::metrics::catchup_epoch_gap_total(crate::metrics::CATCHUP_SOURCE_CATCHUP);
+        let before_verify =
+            crate::metrics::verify_failures_total(crate::metrics::SEAM_CATCHUP, "catchup-gap");
+
+        let err = order_check(&run).expect_err("dropped epoch still fails closed");
+        assert!(matches!(
+            err,
+            CatchupError::Ordering(RevocationGossipError::CatchupGap { .. })
+        ));
+        assert!(
+            crate::metrics::catchup_epoch_gap_total(crate::metrics::CATCHUP_SOURCE_CATCHUP)
+                > before_gap,
+            "the epoch gap must be counted (observe-only)"
+        );
+        assert!(
+            crate::metrics::verify_failures_total(crate::metrics::SEAM_CATCHUP, "catchup-gap")
+                > before_verify
+        );
     }
 
     #[test]

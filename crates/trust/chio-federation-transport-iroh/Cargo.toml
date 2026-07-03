@@ -23,6 +23,10 @@ iroh = { version = "1.0", default-features = false, features = ["tls-ring"] }
 iroh-gossip = "0.101"
 iroh-blobs = "0.103"
 chio-federation = { workspace = true }
+# Security telemetry: registered Prometheus metric-name constants. In-workspace
+# path dep with no heavy transitive graph; does NOT un-slim iroh (no new runtime
+# facade, counters are hand-rolled AtomicU64 in src/metrics.rs).
+chio-metrics-spec = { workspace = true }
 # Lane b + catch-up verify each SignedEpochRoot against the REAL pinned
 # revocation-oracle verifier (Ed25519RootVerifier / EpochRootVerifier +
 # SignedEpochRoot), which chio-federation does not re-export - depend on the
