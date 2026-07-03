@@ -1,9 +1,53 @@
 # ADR-0014: Iroh As Federation Transport (Deferred To Year-2)
 
-- Status: Accepted
+- Status: Accepted; implemented 2026-07-03 on `feat/iroh-federation-transport` (originally "Accepted" as a Year-2 deferral; see the Status update below)
 - Decision owner: trust and federation lane
 - Related plan items: brainstorm brief Phase 2 (Year-2 neutrality / federation mesh), moat #2; see [../brainstorm/CHIO-AUTONOMOUS-COMMERCE.md](../brainstorm/CHIO-AUTONOMOUS-COMMERCE.md)
 - Companions: running investigation log at [../research/iroh/INTEGRATION-LOG.md](../research/iroh/INTEGRATION-LOG.md); Year-2 implementation plan at [../research/iroh/ADAPTER-SPEC.md](../research/iroh/ADAPTER-SPEC.md)
+
+## Status update 2026-07-03 - BUILT in-tree
+
+This ADR was written to ratify a Year-2 deferral (the original body below is
+retained verbatim for history). That deferral has since been **overridden**: the
+adapter was pulled forward and built as launch scope. This section records what
+was decided and shipped; it does not revise the original design rationale.
+
+- **Crate (source of truth):** `chio-federation-transport-iroh`
+  ([../../crates/trust/chio-federation-transport-iroh/](../../crates/trust/chio-federation-transport-iroh/)),
+  on branch `feat/iroh-federation-transport`. Where this ADR's forward-looking
+  body and the built crate disagree, the crate wins.
+- **What shipped:** the full drop-in seam (issuer-signed transport directory +
+  accept-time `EndpointHooks` admission gate: `identity.rs`, `admission.rs`), all
+  four lanes (pheromone directed batches, revocation epoch roots, bilateral DSSE
+  co-sign, gossip fan-out: `lanes/{pheromone,revocation,bilateral,fanout}.rs`),
+  and content-addressed anti-entropy catch-up (`catchup.rs`, iroh-blobs). The
+  `chio-federation` contracts crate is untouched, as the Drop-In Seam predicted.
+- **Key model:** Option B was built (a rotatable ed25519 transport `EndpointId`
+  bound to the long-term passport by an issuer-signed directory entry plus a
+  passport-over-transport endorsement). Transport-key rotation is verified
+  end-to-end (`identity.rs` `transport_key_rotation_end_to_end`).
+- **Verification:** 64 in-crate tests, workspace-green, adversarially reviewed
+  with 4 findings fixed. Built against **iroh 1.0.1, iroh-gossip 0.101,
+  iroh-blobs 0.103**, slimmed per the deps guidance (`default-features = false`,
+  `tls-ring` only, no `test-utils`).
+- **Open decisions resolved / still open:** the per-item status is recorded in
+  [ADAPTER-SPEC section 7](../research/iroh/ADAPTER-SPEC.md). In brief, four
+  resolved: migrate-vs-dual = DUAL behind `--iroh-enable`; the revocation
+  `signer_id -> EndpointId` binding home = the crate's own issuer-signed transport
+  directory (NOT `KernelTrustExchange`, which carries the kernel key not the
+  oracle root, has no `EndpointId`, and is a TOFU self-claim); Option A vs B = B
+  built; blobs-vs-direct-QUIC = iroh-blobs for bulk roots with the control
+  envelope on the direct-QUIC lane. Three stay open and operational: topic
+  eviction latency, the gossip ~4 KiB budget, and ongoing iroh-version
+  re-verification (iroh-gossip / iroh-blobs are still pre-1.0).
+- **New open item surfaced by the build:** a passport-endorsement
+  domain-separation gap. The per-entry endorsement signs the bare 32
+  `transport_endpoint_id` bytes with no domain tag (`identity.rs`), and the
+  planned oracle-key endorsement would sign another bare 32-byte ed25519 value
+  with the same passport key. Without domain separation a signature over one could
+  be replayed as the other (cross-protocol signature-confusion). Domain-separate
+  both (commit to a distinct context plus `signer_id`) before the oracle
+  endorsement is added.
 
 ## Context
 

@@ -2,6 +2,15 @@
 
 Running log of the iroh-as-federation-transport investigation; companion to ADR-0014 and built incrementally by a subagent team.
 
+> **Status 2026-07-03 - BUILT in-tree.** This journal records the external PoC
+> investigation (PoCs under `/Users/connor/backbay/iroh-lab/`, referenced not
+> vendored). The design has since been implemented in-tree as the crate
+> [`chio-federation-transport-iroh`](../../../crates/trust/chio-federation-transport-iroh/)
+> on branch `feat/iroh-federation-transport`: seam + four lanes + iroh-blobs
+> catch-up, 64 tests, iroh 1.0.1 / iroh-gossip 0.101 / iroh-blobs 0.103. That
+> crate, not these external PoCs, is now the source of truth for the built state;
+> see ADR-0014 Status update 2026-07-03 and ADAPTER-SPEC section 7.
+
 ## Iteration 1 - 2026-06-15
 
 ### (a) Research snapshot

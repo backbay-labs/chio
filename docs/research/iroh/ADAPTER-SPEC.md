@@ -8,6 +8,19 @@ build plan, and is governed by the decision record at
 ADR-0014 appear to differ, ADR-0014 wins; nothing here is intended to contradict
 it.
 
+> **Status 2026-07-03 - BUILT in-tree.** The Year-2 deferral was overridden and
+> this plan is now implemented as the crate
+> [`chio-federation-transport-iroh`](../../../crates/trust/chio-federation-transport-iroh/)
+> (branch `feat/iroh-federation-transport`; 64 tests; iroh 1.0.1 / iroh-gossip
+> 0.101 / iroh-blobs 0.103). The seam (issuer-signed transport directory +
+> accept-time admission gate), all four lanes (pheromone, revocation, bilateral
+> DSSE co-sign, gossip fan-out), and iroh-blobs catch-up all ship. **That crate is
+> the source of truth for the built state**; the sections below are the original
+> plan, retained for the rationale, and are no longer "forward-looking" where the
+> crate has landed. Section 7's open decisions are individually marked RESOLVED /
+> STILL OPEN. See [ADR-0014](../../adr/ADR-0014-iroh-federation-transport.md)
+> Status update 2026-07-03.
+
 Status legend used throughout: **VALIDATED** = a PoC outside this repo built AND
 ran against the real crate and the property was observed at runtime;
 **ASSERTED** = argued from the API/source but not yet exercised end-to-end.
@@ -17,7 +30,9 @@ ran against the real crate and the property was observed at runtime;
 This is a **forward-looking implementation plan**, not a description of current
 state. It describes an adapter crate (provisional name
 `chio-federation-transport-iroh`) that sits **strictly underneath**
-`chio-federation` as a transport and replaces no trust logic.
+`chio-federation` as a transport and replaces no trust logic. (Superseded
+2026-07-03: the plan is now largely built in-tree under exactly that crate name;
+see the status banner above and read the crate as the source of truth.)
 
 The division of responsibility is the whole point and must be held on sight:
 
@@ -60,7 +75,11 @@ crate's wire types.
 What the four iterations actually proved, separated honestly from what is still
 only argued. PoC sources live **outside this repo** under
 `/Users/connor/backbay/iroh-lab/` and were referenced, not vendored. All on iroh
-1.0.0 / iroh-gossip 0.101 / iroh-blobs 0.103 / iroh-relay 1.0.0.
+1.0.0 / iroh-gossip 0.101 / iroh-blobs 0.103 / iroh-relay 1.0.0. (As of 2026-07-03
+the design is implemented in-tree at
+[`crates/trust/chio-federation-transport-iroh/`](../../../crates/trust/chio-federation-transport-iroh/)
+on iroh 1.0.1; those external PoCs de-risked it and remain the historical
+validation record.)
 
 ### 2.1 Status table
 
@@ -413,11 +432,23 @@ what remains. None of this starts before the multi-operator-mesh boundary.
 Carried from ADR-0014 Required Follow-up and the iteration logs; to be resolved at
 adoption, not now.
 
+**Status 2026-07-03 (BUILT in-tree):** each decision below is now marked
+**RESOLVED** or **STILL OPEN** against what the crate
+[`chio-federation-transport-iroh`](../../../crates/trust/chio-federation-transport-iroh/)
+actually built. Tally: 4 resolved, 3 still open (operational), plus 1 new item
+surfaced by the build.
+
 - **Migrate-vs-dual-transport (pheromone).** Either migrate the shipped
   `chio-pheromone-relay` HTTP transport to iroh and unify all surfaces under one
   P2P transport, or run iroh only for the revocation and bilateral lanes and leave
   pheromone on HTTP. Migrating unifies addressing and auth; keeping HTTP avoids
   disturbing a working, shipped service.
+  **RESOLVED 2026-07-03: DUAL behind `--iroh-enable`.** The iroh pheromone lane
+  (`lanes/pheromone.rs`) was built to share the same `Arc<dyn RelayBatchReceiver>`
+  and `SqlitePheromoneRelayStore` as the axum relay, so HTTP and iroh run side by
+  side over one verifier and one outbox (no second trust path). Revocation and
+  bilateral have no HTTP incumbent and are iroh-only from day one. A later
+  `--iroh-only` cutover flag stays available.
 - **`signer_id -> EndpointId` binding home (revocation).** Revocation gossip has
   no directory, no endpoint, and no public_key in its wire types
   ([revocation_gossip.rs:65,206](../../../crates/trust/chio-federation/src/revocation_gossip.rs));
@@ -425,10 +456,28 @@ adoption, not now.
   The net-new `signer_id -> EndpointId` (and `signer_id -> verifying-key`) binding
   needs a home - likely anchored at `KernelTrustExchange` - distinct from the
   pheromone directory.
+  **RESOLVED 2026-07-03: the crate's own issuer-signed transport directory, NOT
+  `KernelTrustExchange`.** KTX is the wrong anchor on three independent grounds -
+  it carries the kernel signing key, not the oracle root key; it has no
+  `EndpointId` field; and it is a TOFU subject self-claim, whereas this binding
+  must be issuer-signed. The home is `identity.rs`'s issuer-signed transport
+  directory: add `signer_id -> (oracle key, EndpointId)` as an additive per-entry
+  field and derive the signer map as a projection of the one `VerifiedDirectory`,
+  inheriting its anti-rollback / validity-window / pinned-issuer machinery for
+  free. Built today as an adapter-local `VerifiedSignerDirectory`
+  (`lanes/revocation.rs`) fed only from issuer-verified material (launch Phase-0);
+  folding it into the directory projection is the next phase.
 - **Blobs-vs-direct-QUIC default for catch-up.** iroh-blobs is pre-1.0 and its
   README is not production-quality. Decide whether blobs is the default catch-up
   substrate at Year-2 or whether the direct-QUIC fallback ships as v1 until blobs
   is ready.
+  **RESOLVED 2026-07-03: iroh-blobs for bulk roots, direct-QUIC for the control
+  envelope.** Catch-up ships on iroh-blobs content-addressed fetch (`catchup.rs`,
+  `BlobCatchupClient`, iroh-blobs 0.103), each fetched root signature-verified
+  against the pinned revocation-oracle verifier; the `RevocationCatchupRequest` /
+  `Response` control envelope rides the direct-QUIC revocation lane (lane b). The
+  direct-QUIC-only path remains the fallback if a deployment wants to avoid the
+  pre-1.0 blobs dependency.
 - **Topic-membership admission + revocation eviction latency.** A deterministic
   `TopicId` grants no access; membership must be gated by the accept-time
   `EndpointId` gate. Open: how a compromised / revoked transport `EndpointId` is
@@ -437,15 +486,42 @@ adoption, not now.
   receiver promotes the new version; favor short transport-key validity / fast
   re-issue, distinct from the long-term passport. Blast radius is bounded by
   directory propagation latency.
+  **STILL OPEN (operational).** The accept-time `EndpointId` gate is built and
+  gates membership, but live eviction of a compromised/revoked `EndpointId` before
+  the next directory bundle propagates is unresolved; the mitigation (short
+  transport-key validity / fast re-issue) is a deployment posture, not code.
 - **Gossip `max_message_size` budget.** iroh-gossip's
   `DEFAULT_MAX_MESSAGE_SIZE = 4096` bytes (floor 512). Decide the per-lane payload
   budget and the chunk-or-reference-by-hash policy for anything larger (bulk goes
   out-of-band via blobs).
+  **STILL OPEN (operational).** The fan-out lane (`lanes/fanout.rs`) honors the
+  ~4 KiB cap; per-lane payload budgets and the chunk-or-reference-by-hash policy
+  for larger payloads remain a deployment decision (bulk goes out-of-band via
+  blobs).
 
 Also open from ADR-0014: the global Option A vs B choice for Ed25519 operators (B
 is already forced for non-ed25519), and re-verifying iroh status at adoption
 (core 1.x stability, then-current iroh-gossip / iroh-blobs versions and
 production-readiness, relay self-hosting story, license, maintenance health).
+
+**RESOLVED 2026-07-03 (Option A vs B): Option B was built** for all operators - a
+rotatable ed25519 transport `EndpointId` bound to the long-term passport by an
+issuer-signed directory entry plus a passport-over-transport endorsement, with
+transport-key rotation verified end-to-end (`identity.rs`
+`transport_key_rotation_end_to_end`). **STILL OPEN (iroh-status
+re-verification):** built and green against iroh 1.0.1 / iroh-gossip 0.101 /
+iroh-blobs 0.103, but iroh-gossip and iroh-blobs remain pre-1.0, so ongoing
+re-verification (versions, production-readiness, relay/discovery, license,
+maintenance health) stays a live operational item.
+
+**NEW open item (2026-07-03, surfaced by the build): passport-endorsement
+domain-separation gap.** The per-entry endorsement signs the bare 32
+`transport_endpoint_id` bytes with no domain tag (`identity.rs`), and the planned
+oracle-key endorsement would sign another bare 32-byte ed25519 value with the same
+passport key. Without domain separation a signature over one could be replayed as
+the other (cross-protocol signature-confusion). Commit both endorsements to a
+distinct domain-separation context plus `signer_id` before the oracle endorsement
+lands.
 
 ## 8. Slim Build and Ops
 
