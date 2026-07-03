@@ -493,6 +493,7 @@ fn verify_signed_root_graph_binding(
     validate_claim_set_bytes(
         artifacts,
         &claim_set_path,
+        &passport.claim_set_sha256,
         &effective_required_claims,
         externally_verified_claims,
     )
@@ -664,12 +665,23 @@ fn evidence_graph_transparency_state(nodes: &[Value]) -> &'static str {
 fn validate_claim_set_bytes(
     artifacts: &BTreeMap<String, Vec<u8>>,
     claim_set_path: &str,
+    expected_claim_set_sha256: &str,
     required_claims: &[String],
     externally_verified_claims: &[String],
 ) -> Result<Vec<TransactionClaimResult>, TransactionPassportError> {
     let bytes = artifacts.get(claim_set_path).ok_or_else(|| {
         TransactionPassportError::MissingEvidenceGraphArtifact(claim_set_path.to_string())
     })?;
+    let actual_claim_set_sha256 = super::sha256_hex(bytes);
+    if actual_claim_set_sha256 != expected_claim_set_sha256 {
+        return Err(
+            TransactionPassportError::EvidenceGraphArtifactDigestMismatch {
+                path: claim_set_path.to_string(),
+                expected: expected_claim_set_sha256.to_string(),
+                actual: actual_claim_set_sha256,
+            },
+        );
+    }
     let claim_set: RootClaimSet = serde_json::from_slice(bytes).map_err(|error| {
         TransactionPassportError::InvalidEvidenceGraphArtifact(format!(
             "invalid claim set: {error}"
@@ -947,6 +959,7 @@ pub fn verify_standalone_minimal_passport_artifacts(
     let claim_results = validate_claim_set_bytes(
         artifacts,
         &passport.claim_set_path,
+        &passport.claim_set_sha256,
         &effective_required_claims,
         &[],
     )?;

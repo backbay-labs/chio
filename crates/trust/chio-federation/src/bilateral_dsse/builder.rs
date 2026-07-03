@@ -1,5 +1,15 @@
 use super::*;
 
+/// DSSE Pre-Authentication Encoding (DSSE v1 spec, secure-systems-lab/dsse).
+///
+/// The output bytes are what each kernel's Ed25519 signature covers per spec
+/// §6 lines 338-343. The encoding is deterministic and does NOT include any
+/// kernel-derived nonce: two kernels signing the same `(payload_type,
+/// payload_bytes)` produce signatures over identical preimages.
+///
+/// Format: `"DSSEv1" SP LEN(type) SP type SP LEN(body) SP body` where SP is a
+/// single ASCII space (0x20) and LEN values are decimal ASCII.
+#[must_use]
 pub fn pae(payload_type: &str, payload: &[u8]) -> Vec<u8> {
     let type_len = payload_type.len().to_string();
     let payload_len = payload.len().to_string();

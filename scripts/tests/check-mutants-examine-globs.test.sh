@@ -66,4 +66,35 @@ write_file "$root/excluded.toml" \
 assert_fails "excluded-only examine glob fails" "matches only excluded paths" \
   python3 "$CHECKER" --root "$root" --config excluded.toml
 
+mkdir -p "$root/crates/guards/chio-policy/src/compiler"
+write_file "$root/crates/guards/chio-policy/src/compiler.rs" \
+  'mod rules;' \
+  '#[cfg(test)]' \
+  'mod tests {' \
+  '    fn test_only() {}' \
+  '}'
+write_file "$root/crates/guards/chio-policy/src/compiler/rules.rs" \
+  'pub fn compile_rule() -> bool {' \
+  '    true' \
+  '}'
+write_file "$root/hollow-shim.toml" \
+  'examine_globs = ["crates/guards/chio-policy/src/compiler.rs"]' \
+  'exclude_globs = ["**/tests.rs"]'
+assert_fails "hollow shim examine glob fails" "sibling module directory is not examined" \
+  python3 "$CHECKER" --root "$root" --config hollow-shim.toml
+
+write_file "$root/covered-shim.toml" \
+  'examine_globs = [' \
+  '  "crates/guards/chio-policy/src/compiler.rs",' \
+  '  "crates/guards/chio-policy/src/compiler/*.rs",' \
+  ']' \
+  'exclude_globs = ["**/tests.rs"]'
+assert_passes "covered shim examine glob passes" \
+  python3 "$CHECKER" --root "$root" --config covered-shim.toml
+
+missing_workspace_root="$work/missing-workspace-config"
+mkdir -p "$missing_workspace_root"
+assert_fails "missing workspace config fails closed" "config file is missing" \
+  python3 "$CHECKER" --root "$missing_workspace_root"
+
 echo "check-mutants-examine-globs.test.sh: all assertions passed"

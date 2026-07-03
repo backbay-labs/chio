@@ -836,6 +836,12 @@ fn rejects_detached_signature_from_untrusted_key() -> Result<(), Box<dyn Error>>
             .contains("proof-room.signature.signer-untrusted"),
         "{error}"
     );
+    assert!(
+        error
+            .to_string()
+            .contains("CHIO_PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS"),
+        "{error}"
+    );
     Ok(())
 }
 

@@ -1,4 +1,17 @@
-# Chio M2 merge runbook: chio/m2-build into the launch branch
+# Retired: Chio M2 merge runbook
+
+Status: retired on 2026-07-03. Do not execute this as PR #937 merge guidance.
+The real PR #937 lane reconciliation was merge commit `4f1c58ef1` on
+`chio/autonomous-commerce-brainstorm`, with parents `d5049b588` and
+`f355490ef`. That merge is pushed, both lanes are ancestors of the head, and
+the origin security fixes were preserved through the merge.
+
+This file is retained only as historical planning context for a different
+`chio/m2-build` merge. Its stale "9 ahead" and "72 workspace failures are a
+pass" statements are superseded and must not be used as launch-readiness
+evidence.
+
+## Historical Scope
 
 Execution runbook for landing the M2 economy stack (netting, prepaid, x402
 signing, EAS/Verax conformance, vgrade pricing, XCC) plus the M0 Pass and M1

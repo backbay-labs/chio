@@ -1,5 +1,19 @@
 use super::*;
 
+/// Verify a DSSE signature-slice envelope. Returns the parsed Statement on
+/// success so callers can drive subsequent checks (peer pinning, lease
+/// resolution, anchor reconciliation) against a single decoded payload.
+///
+/// 1. Payload base64-decodes (`dsse.malformed`).
+/// 2. Statement is parseable canonical JSON (`statement.malformed`).
+/// 3. `payload_type == PAYLOAD_TYPE_IN_TOTO` (PAE preimage shape).
+/// 4. `predicate_type` is `PREDICATE_TYPE_BILATERAL`.
+/// 5. `signatures` carries exactly two entries. Their array order is not
+///    security-relevant; signatures are matched by `keyid`.
+/// 6. Each required `keyid` matches the SHA-256 of the corresponding
+///    public key the verifier was given (`peer.unpinned_or_keyid_mismatch`).
+/// 7. Each signature, base64-decoded, is a valid Ed25519 signature over
+///    the recomputed DSSE PAE bytes (`signature.server_*_invalid`).
 pub fn verify_dsse_envelope(
     envelope: &DsseEnvelope,
     org_a_public_key: &PublicKey,

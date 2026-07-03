@@ -1000,3 +1000,75 @@ At the **pushed head `eea18fd9c`**, PR #937 remains in the strong, CI-green stat
 2. **Close the completeness/evidence gaps five passes missed and this one surfaced.** The two HIGH completeness items (no PROTOCOL.md transaction text SIX-PROTO-TXN-01; quickstart broken from clean checkout SIX-QUICKSTART-01), the documentation-integrity regression (SIX-SETTLE-TEST-01), and the MEDIUM tail (passport minimum fields, unregistered settlement IDs, missing runtime fixture, bare-ACP scope, docker/registry CI wiring) are all genuine launch-doc deltas, none previously recorded.
 
 Close-out order and done-when gates are appended to `PR-937-remediation-roadmap.md` ("SIXTH RE-REVIEW additions"). A copy-paste steering prompt for the execution agent is at `docs/superpowers/research/chio-launch/PR-937-sixth-review-steering-prompt.md`.
+
+---
+
+# SEVENTH RE-REVIEW (2026-07-03) - review pinned at d5049b588; lanes merged to 4f1c58ef1 mid-review
+
+Re-ran the launch-doc comparison one day after the sixth pass. Method: 10 finder tracks (behavior-preservation + path-keyed-gate audit of the 24 new local split commits and the 2 non-refactor local commits; fix-quality audit of the 12 origin-lane commits; sixth-review remediation status on both lanes; a fork/merge-risk analysis), then dedup, 3-lens adversarial refutation of every HIGH/regression, and a completeness critic. ~41 agents. Strictly read-only agents; I ran the cargo gates myself this time (see table). The tree moved twice mid-review; where it matters, findings were re-verified at the final HEAD.
+
+**Headline.** When this pass started, the branch had FORKED: a 53-commit local lane (split campaign + sixth-review Phase 0 gate fixes) and a 12-commit origin lane (real security fixes pushed by another session: a fail-open close in proof-parity/family-report verdicts, an SSRF DNS-pin + stream-cap on settlement RPC egress, a fail-closed xtask verdict derivation, RUSTSEC-2026-0190 handling, an A2A version-truth reversal). **Mid-review the executor performed exactly the prescribed remediation: a true merge (`4f1c58ef1`, parents d5049b588 + f355490ef) pushed non-force, so local == origin == PR head and both lanes' fixes are ancestors of the head.** The adversarial pass therefore refuted the fork findings as overtaken by events - verified first-hand, including byte-empty diffs vs the origin fix tip on every security-flagged file. What survives is sharper: the mutation gate was RE-hollowed by three new splits one day after it was fixed, a structurally identical sibling of the just-fixed fail-open verdict merge is still shipping in chio-cli, the A2A version-truth reversal contradicts this record and deleted a lint rule without the record being amended, and the sixth review's Phase 1-3 items remain untouched while the split campaign continued.
+
+## Empirical gate state (measured first-hand 2026-07-03 at d5049b588 unless noted)
+
+| Gate | Result | Evidence |
+|---|---|---|
+| `cargo fmt --all -- --check` | **PASS** | GATE:fmt EXIT=0 |
+| `cargo build --workspace` | **PASS** | GATE:build EXIT=0 (warm cache, ~2m) |
+| `cargo clippy --workspace -- -D warnings` | **PASS** | GATE:clippy EXIT=0 - first first-hand cargo-gate verification since the fifth review (closes the measurement half of SIX-VERIFY-CI) |
+| `python3 scripts/check-stub-surfaces.py` | **PASS** (EXIT=0) | SIX-STUB-01 genuinely closed by 92f7c5e2f |
+| `xtask verify launch-acceptance` + proof test suites | **NOT RUN this pass** | disk guard aborted at 1.9 GiB free (clippy consumed ~4 GiB incremental; I then freed 5.7 GiB of regenerable incremental cache); the executor's own full one-liner (`CARGO_INCREMENTAL=0 build && test --workspace && clippy && fmt`) was in flight in parallel - its outcome plus CI on the merged head supersede |
+| GitHub CI at origin fix tip `f355490ef` | **PASS** (69/0/2) | `gh pr checks 937` before the merge |
+| GitHub CI at merged head `4f1c58ef1` | **PENDING at review close** | the merge pushed mid-review; confirm green before calling the head validated |
+
+## Sixth-review remediation scoreboard (verified first-hand)
+
+- **Phase 0: all four genuinely closed** by `92f7c5e2f` (stub-surfaces EXIT=0; mutants glob now `sigstore/*.rs` + NEW guard `scripts/check-mutants-examine-globs.py` wired at ci.yml:86; bless SOURCE_PATTERN directory form; schema-registry script + self-test at ci.yml:97-98).
+- **SIX-VERIFY-CI: half closed** - fmt/build/clippy now measured green first-hand at d5049b588; full workspace test + post-merge CI green still pending.
+- **Phases 1-3: ALL still open** (SIX-SETTLE-TEST-01, SIX-QUICKSTART-01, SIX-PROTO-TXN-01 four-family, and every MEDIUM/LOW). The executor resumed the split campaign instead of Phase 1. The origin lane's spec commit (f73fddfc4) did NOT close any of the four PROTOCOL.md families.
+
+## Confirmed findings (survived adversarial refutation)
+
+### SEVEN-MUT-02 - Three split commits RE-hollowed the mutation gate one day after SIX-MUT-01 was fixed (HIGH, regression, survived 3/3 lenses)
+- **Evidence:** `.cargo/mutants.toml` examine globs for `crates/guards/chio-policy/src/compiler.rs`, `crates/guards/chio-guards/src/response_sanitization.rs`, and `crates/economy/chio-anchor/src/evm.rs` now match only near-empty shims after splits 800bbb646 / 6405acb94 / 3ec640de5: compiler.rs is a 158-line umbrella (~1743 lines moved to `compiler/*.rs`), response_sanitization.rs is 37 lines with zero fn, evm.rs is mod decls + 2 one-line wrappers (785 logic lines in `evm/*.rs` incl. egress.rs). Mirror configs equally stale (`chio-policy/mutants.toml:16`, `chio-guards/mutants.toml:29`, `chio-anchor/mutants.toml:20`, per-crate audit configs). Verified unchanged at merged HEAD 4f1c58ef1.
+- **Why the new guard missed it:** `check-mutants-examine-globs.py` only fails on ZERO-match globs; these globs still match the hollow shim files, so the gate passes while examining almost nothing. Policy compilation (fail-closed policy rejection), response sanitization, and EVM anchoring/egress silently left the mutation gate.
+- **Fix:** extend the three examine entries to `<mod>/*.rs` (as done for sigstore), update the mirror configs, and harden the guard script to flag globs whose matched files contain fewer than N logic lines or no `fn` (shim detection).
+
+### SEVEN-FAILOPEN-SIB-01 - The structurally identical sibling of the just-fixed fail-open verdict merge still ships in chio-cli (MEDIUM, security-adjacent)
+- **Evidence:** `crates/products/chio-cli/src/cli/dispatch/proof.rs` `merge_family_verifier_reports` (lines 1338-1382) hardcodes `"verdict":"verified"`, `"accepted":true`, `"state":"verified"` without inspecting any family report's verdict/accepted/state. Origin commit 269c70dad fixed the structurally identical merge in `chio-proof-room/src/source_verifier.rs` (added `source_family_report_is_verified`, derives the merged verdict) with the explicit rationale that correctness must not rely on family verifiers upstream. Present on both lanes and at merged HEAD.
+- **Fix:** port the 269c70dad pattern to the chio-cli merge; add a negative test where a family report carries a failed verdict and assert the merged report is not "verified".
+
+### SEVEN-A2A-01 - A2A version-truth reversal is real, factually correct, but contradicts this record and deleted a lint rule without amendment (MEDIUM, regression-of-record, survived 3/3)
+- **Evidence:** origin 4acd236d5 deletes the `stale_a2a_version` rule from `check-chio-proof-room-release-truth.sh` (+2 test assertions) and rewrites `A2A_ADAPTER_GUIDE.md`, the external-standards source log, and `spec/PROTOCOL.md:70/:3080` to "A2A v1.0.0" - reversing the direction this record marks fixed (SW-STD-04, roadmap:270/:463/:486, review:678: "the CRATE is correct (A2A 0.3.0)"). The verifiers confirmed the NEW direction is factually right: `chio-a2a-adapter/src/lib.rs:36-37` pins `A2A_PROTOCOL_MAJOR="1."`, invoke.rs uses `SendMessage`/`ROLE_USER` (v1.0 shapes) - i.e., the old record was wrong, and the merge carried the origin side.
+- **Fix:** amend SW-STD-04/RR2-COPY in this record to the corrected direction (crate and docs are v1.0.0); decide whether a replacement lint (ban *0.3.0* claims now) is warranted; note the deleted rule + tests in the record.
+
+### Other confirmed (MEDIUM)
+- **SEVEN-RUNBOOK-01** (2/1, corrected MEDIUM): the only in-tree merge runbook (`docs/brainstorm/CHIO-M2-MERGE-RUNBOOK.md`, added by 1f2a4a96b) is mis-scoped - it plans the m2-build merge, asserts the launch branch "has NOT advanced (still 9 ahead)" while the lanes were 12/53 commits apart, and accepts a 72-failure baseline as a pass. The actual lane merge (4f1c58ef1) happened outside it. Fix: retire or re-scope the runbook; record the real merge.
+- **SEVEN-DSSE-01:** the federation DSSE split (f2c410b92) dropped `#[must_use]` from public `pae()` and deleted the security-contract doc comments on `verify_dsse` - semantic delta in a refactor-labeled commit on signature code. Fix: restore both.
+- **SEVEN-SPEC-DRIFT-01:** the "close conformance-audit drift" spec text (f73fddfc4) is already drifted against its own lane - the settlement-RPC caller description does not match the post-049e46d7a egress-pinned call path. Fix: re-align the spec paragraph.
+- **SEVEN-WASM-SKIP-01:** d55fcd2c7 makes the python-guard round-trip deny tests skip when the wasm artifact is absent - and NO automated lane builds it, so the deny-path coverage is now silently zero everywhere. Fix: build the artifact in one CI lane or mark the skip loudly as a known gap.
+
+### Other confirmed (LOW)
+Stale module-map docs in five more crates split since the pin (new SIX-ARCH-DOCS-01 instances); MCP splits (94da261ed, 2d48fd75f) broke file-precise evidence references embedded in normative schema descriptions; the sanitization split compressed the module doc, deleting the concrete detector/redaction-strategy inventory; the `pii_phi_exposure` triage row's symbol-grep can no longer find `ResponseSanitization*` (moved); `check-mutants-examine-globs.py` silently skips a MISSING workspace config (deleting `.cargo/mutants.toml` would pass); `docs/README.md` still says "ADR-0001 through ADR-0014" while the same push added ADR-0015; `encode_path_segment` re-export newly `#[cfg(test)]`-gated inside a refactor commit.
+
+## Refuted this pass (do NOT action - verified overtaken or unfounded)
+- **"PR head is origin-lane only / fork recorded nowhere" (was CRITICAL) and "local lacks all five origin security fixes" (was HIGH):** REFUTED 0/3 each - overtaken by events. The executor executed exactly the prescribed fix mid-review: true merge `4f1c58ef1` (parents d5049b588 + f355490ef), pushed non-force; both lanes are ancestors of the head; `git diff f355490ef..4f1c58ef1` is byte-empty on every security-flagged file (proof-parity lib, source_verifier, proof-room lib, dispatch/proof/env, launch_acceptance, deny.toml, Cargo.lock), so the merge preserved the origin fixes exactly.
+- Hygiene-expiry progress note (already recorded as SIX-HYGIENE-SCOPE-01); "reconciliation is an uncommitted content-port" (superseded by the real merge); A2A 0.3.0-lane compatibility concern (the evidence-projection lane is deliberate).
+
+## Verdict (seventh re-review)
+
+The two things that dominated this pass's risk - the fork and the missing origin security fixes - were resolved mid-review by a correct, verified merge. The head (`4f1c58ef1`) now unites the split campaign, the sixth-review Phase 0 gate fixes, AND the origin fail-open/SSRF/xtask hardening; fmt/build/clippy are green first-hand and stub-surfaces passes. Remaining, in priority order:
+1. **SEVEN-MUT-02** - re-repair the re-hollowed mutation gate (third occurrence of this class; the guard needs shim detection, or this will recur with every future split).
+2. **SEVEN-FAILOPEN-SIB-01** - port the fail-open verdict fix to the chio-cli sibling.
+3. **Confirm CI green on the merged head 4f1c58ef1** and run `xtask verify launch-acceptance` + the full workspace test on it (neither measured on the merged tree).
+4. **The sixth review's Phase 1-3 backlog is untouched** - SETTLE-TEST seam, QUICKSTART env docs, PROTOCOL.md four families, and the MEDIUM/LOW tail all still open, plus the A2A record amendment and the small SEVEN-* items.
+
+Close-out checklist in `PR-937-remediation-roadmap.md` ("SEVENTH RE-REVIEW additions"). Steering prompt: `docs/superpowers/research/chio-launch/PR-937-seventh-review-steering-prompt.md`.
+
+## Seventh close-out update (2026-07-03)
+
+The local close-out tree now has first-hand green evidence for the gates that were pending at review close. The full cargo one-liner passed with incremental disabled for the cargo stages: `CARGO_INCREMENTAL=0 cargo build --workspace && CARGO_INCREMENTAL=0 cargo test --workspace && CARGO_INCREMENTAL=0 cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check`. Because `sdks/guard/chio-guard-py/dist/tool-gate.wasm` existed during the run, the optional Python guard wasm integration lane also executed and passed.
+
+Additional close-out gates also passed first-hand: `CARGO_INCREMENTAL=0 cargo run -p xtask -- verify launch-acceptance`, `python3 scripts/check-stub-surfaces.py`, `python3 scripts/check-mutants-examine-globs.py`, `bash scripts/tests/check-mutants-examine-globs.test.sh`, `bash scripts/check-chio-schema-registry.sh`, `bash scripts/check-chio-proof-room-release-truth.sh`, `bash scripts/tests/check-chio-proof-room-release-truth.test.sh`, `python3 scripts/check-rust-file-hygiene.py`, `bash scripts/check-proof-room-source-quickstart.sh`, `git diff --check`, and an em-dash sweep over the textual diff.
+
+Close-out fixes completed in this tree: SEVEN-MUT-02, SEVEN-FAILOPEN-SIB-01, SEVEN-A2A-01, SEVEN-WASM-SKIP-01, SEVEN-DSSE-01, SEVEN-SPEC-DRIFT-01, SEVEN-RUNBOOK-01, SEVEN-SDK-CHORE-01, SIX-SETTLE-TEST-01, SIX-QUICKSTART-01, SIX-PROTO-TXN-01, and SIX-CLAIMSET-DIGEST-01. The remaining condition before calling the pushed head mergeable is GitHub CI green on that new pushed head.

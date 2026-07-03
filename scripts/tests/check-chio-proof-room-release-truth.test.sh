@@ -73,6 +73,7 @@ EOF
 cat > "$work/rejected-standards-fail.md" <<'EOF'
 Chio is the universal agent protocol.
 Every external agent protocol natively verifies Chio authority.
+A2A task evidence is bound for version v0.3.0.
 Chio provides OpenAPI 3.2 support.
 SLSA v1.1 is the current source.
 Sigstore proves runtime authorization.
@@ -192,6 +193,7 @@ if CHIO_PROOF_ROOM_RELEASE_TRUTH="$truth" \
 fi
 grep -q "proof-room.release.copy-forbidden: universal_protocol_overclaim" "$work/rejected-standards-fail.out"
 grep -q "proof-room.release.copy-forbidden: native_external_authority_overclaim" "$work/rejected-standards-fail.out"
+grep -q "proof-room.release.copy-forbidden: stale_a2a_version" "$work/rejected-standards-fail.out"
 grep -q "proof-room.release.copy-forbidden: unsupported_openapi_32" "$work/rejected-standards-fail.out"
 grep -q "proof-room.release.copy-forbidden: stale_slsa_version" "$work/rejected-standards-fail.out"
 grep -q "proof-room.release.copy-forbidden: sigstore_runtime_authority" "$work/rejected-standards-fail.out"

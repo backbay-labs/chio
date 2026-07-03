@@ -187,6 +187,17 @@ jobs:
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: cargo test -p chio-wasm-guards --lib
 
+      - name: Build Python guard WASM fixture
+        run: |
+          python3 -m pip install "componentize-py==$(cat .tooling/componentize-py.version)"
+          ./sdks/guard/chio-guard-py/scripts/build-guard.sh
+
+      - name: Wasm guards Python SDK round-trip tests
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: cargo test -p chio-wasm-guards --test py_guard_integration -- --nocapture
+
       - name: Tokio console smoke
         env:
           CARGO_BUILD_JOBS: "1"

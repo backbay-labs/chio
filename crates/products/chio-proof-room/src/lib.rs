@@ -26,13 +26,11 @@ mod tests;
 
 pub(crate) use bundle_a::*;
 pub(crate) use bundle_b::*;
-pub(crate) use fixture_a::*;
-pub(crate) use fixture_b::*;
-pub(crate) use source_verifier::*;
-
 pub use crypto_context::{
     crypto_context_rejected_report_bytes_with_bbs, crypto_context_verified_report_bytes_with_bbs,
 };
+pub(crate) use fixture_a::*;
+pub(crate) use fixture_b::*;
 pub use server::{
     build_proof_room_fixture_catalog_json, build_proof_room_fixture_catalog_json_with_fixture_root,
     is_proof_room_bundle_namespace, parse_listen_addr, proof_room_content_type,
@@ -40,6 +38,7 @@ pub use server::{
     proof_room_router_with_optional_ui_root, proof_room_served_bundle_paths,
     resolve_proof_room_served_asset_path, serve_proof_room, ProofRoomServeConfig,
 };
+pub(crate) use source_verifier::*;
 
 const PROOF_ROOM_BUNDLE_SCHEMA: &str = "chio.proof-room.bundle.v1";
 const PROOF_ROOM_VERIFIER_REPORT_SCHEMA: &str = "chio.proof-room.verifier-report.v1";
@@ -525,7 +524,8 @@ fn public_settlement_rpc_egress_contract(url: &str) -> Result<HttpEgressContract
         tenant_egress_namespace: "proof.public-settlement.rpc".to_string(),
         allowed_schemes,
         allowed_authority_set,
-        deny_loopback: true,
+        deny_loopback: cfg!(not(debug_assertions))
+            || !optional_bool_from_env("CHIO_TEST_PUBLIC_SETTLEMENT_ALLOW_LOOPBACK_RPC")?,
         deny_link_local: true,
         deny_ipv6_ula: true,
         max_redirect_chain: 0,

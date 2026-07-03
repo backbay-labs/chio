@@ -218,6 +218,13 @@ COPY_STOP_PATTERNS = {
         ),
         "external standards are projections, not native Chio authority",
     ),
+    "stale_a2a_version": (
+        re.compile(
+            r"\bA2A\b.{0,96}\bv0\.3\.0\b|\bv0\.3\.0\b.{0,96}\bA2A\b",
+            re.IGNORECASE,
+        ),
+        "A2A launch claims must use the v1.0.0 source-truth row",
+    ),
     "stale_slsa_version": (
         re.compile(r"\bSLSA v1\.1\b", re.IGNORECASE),
         "SLSA launch claims must use the pinned current source",
