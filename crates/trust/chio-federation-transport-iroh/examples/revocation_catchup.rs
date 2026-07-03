@@ -9,13 +9,13 @@
 //! claims the same `signer_id` but is signed by a different key - is rejected
 //! `BadSignature` and yields no history (all-or-nothing).
 //!
-//! Why the blobs catch-up path and not the direct revocation-lane push: the direct
-//! `RevocationHandler::accept` returns without awaiting `conn.closed()`, so on
-//! loopback the connection tears down before the dialer reads the reply frame
-//! (the pheromone and bilateral handlers avoid this by holding the connection
-//! open). The iroh-blobs substrate, served by iroh-blobs' own protocol handler,
-//! transfers cleanly; the ADAPTER-SPEC pairs the two lanes for exactly this bulk
-//! transfer. Both share the SAME pinned-signer authenticity check.
+//! This example demonstrates the iroh-blobs catch-up substrate specifically (the
+//! bulk half of lane b). ADAPTER-SPEC pairs the two revocation transports: the
+//! direct `RevocationHandler` push for real-time roots, and iroh-blobs
+//! content-addressed range catch-up for backfilling a follower that has fallen
+//! behind. Both share the SAME pinned-signer authenticity check, so this demo
+//! exercises that check over the catch-up path; the direct-push path is covered by
+//! the crate's `real_handler_*_over_quic` tests.
 //!
 //! Run: `cargo run -p chio-federation-transport-iroh --example revocation_catchup`
 
