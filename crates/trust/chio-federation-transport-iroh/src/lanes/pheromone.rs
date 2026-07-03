@@ -56,6 +56,10 @@ use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 
 use crate::admission::DirectoryGate;
+use crate::lanes::limits::AcceptLimitConfig;
+use crate::lanes::limits::AcceptLimitError;
+use crate::lanes::limits::AcceptLimiter;
+use crate::lanes::limits::AcceptPhase;
 
 /// ALPN for the pheromone directed-batch lane. Distinct, versioned, mounted on
 /// its own `Router` accept (ADAPTER-SPEC 4 lane a, blueprint A.2).
@@ -103,6 +107,11 @@ pub enum IrohLaneError {
     /// verifier and inbox dedup live behind this seam).
     #[error("pheromone relay error: {0}")]
     Relay(#[from] PheromoneRelayError),
+    /// A peer-dependent accept step exceeded its bound (slowloris) or the
+    /// in-flight cap shed the connection. Fail-closed: the connection is reset
+    /// and NOTHING is verified or accepted.
+    #[error(transparent)]
+    AcceptLimit(#[from] AcceptLimitError),
 }
 
 impl IrohLaneError {
@@ -119,6 +128,19 @@ impl IrohLaneError {
             Self::CanonicalJson(_) => "canonical_json",
             Self::Transport(_) => "transport",
             Self::Relay(error) => error.code(),
+            Self::AcceptLimit(error) => error.code(),
+        }
+    }
+
+    /// QUIC application close code for a fail-closed reset. Accept-limit outcomes
+    /// (slowloris timeout / saturation shed) carry their own distinct codes so a
+    /// stalled or shed peer is diagnosable on the wire; every other lane error is
+    /// a generic reset.
+    #[must_use]
+    pub fn close_code(&self) -> u32 {
+        match self {
+            Self::AcceptLimit(error) => error.close_code(),
+            _ => LANE_RESET_ERROR_CODE,
         }
     }
 }
@@ -191,6 +213,9 @@ pub struct PheromoneBatchHandler {
     receiver: Arc<dyn RelayBatchReceiver>,
     store: Arc<SqlitePheromoneRelayStore>,
     now: Arc<dyn Fn() -> u64 + Send + Sync>,
+    /// Shared slowloris / resource-exhaustion bounds (per-phase timeouts + an
+    /// in-flight concurrency cap). Defaults are generous; see [`AcceptLimiter`].
+    limiter: AcceptLimiter,
 }
 
 impl fmt::Debug for PheromoneBatchHandler {
@@ -217,7 +242,17 @@ impl PheromoneBatchHandler {
             receiver,
             store,
             now,
+            limiter: AcceptLimiter::default(),
         }
+    }
+
+    /// Override the default accept-hardening bounds (per-phase timeouts + the
+    /// in-flight concurrency cap). The [`Default`] preserves the historical
+    /// (generous) behavior; the wiring can tighten or loosen it in one place.
+    #[must_use]
+    pub fn with_accept_limits(mut self, config: AcceptLimitConfig) -> Self {
+        self.limiter = AcceptLimiter::new(config);
+        self
     }
 
     async fn handle(&self, conn: &Connection) -> Result<(), IrohLaneError> {
@@ -225,12 +260,20 @@ impl PheromoneBatchHandler {
         // EndpointId, resolved through the load-time-verified directory.
         let authenticated_sender = resolve_authenticated_sender(&self.gate, &conn.remote_id())?;
 
-        let (mut send, mut recv) = conn
-            .accept_bi()
-            .await
+        // Bound accept_bi: a connected-but-silent peer is dropped here.
+        let (mut send, mut recv) = self
+            .limiter
+            .bounded(AcceptPhase::AcceptStream, conn.accept_bi())
+            .await?
             .map_err(|error| IrohLaneError::Transport(error.to_string()))?;
 
-        let raw = read_len_delimited(&mut recv).await?;
+        // Bound the request-frame read: the primary slowloris surface (a large
+        // declared length then a dribble of bytes is dropped here). Timeouts only
+        // bound waiting; the verifier below runs on the fully received frame.
+        let raw = self
+            .limiter
+            .bounded(AcceptPhase::ReadFrame, read_len_delimited(&mut recv))
+            .await??;
         let batch: PheromoneGossipBatch = serde_json::from_slice(&raw)?;
 
         let now = (self.now)();
@@ -250,7 +293,13 @@ impl PheromoneBatchHandler {
 
         let report_bytes = canonical_json_bytes(&report)
             .map_err(|error| IrohLaneError::CanonicalJson(error.to_string()))?;
-        write_len_delimited(&mut send, &report_bytes).await?;
+        // Bound the response write: a peer that stops reading is dropped here.
+        self.limiter
+            .bounded(
+                AcceptPhase::WriteResponse,
+                write_len_delimited(&mut send, &report_bytes),
+            )
+            .await??;
         send.finish()
             .map_err(|error| IrohLaneError::Transport(error.to_string()))?;
         Ok(())
@@ -259,16 +308,31 @@ impl PheromoneBatchHandler {
 
 impl ProtocolHandler for PheromoneBatchHandler {
     async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+        // Concurrency cap: acquire one in-flight permit (held for the whole
+        // handler) or shed under saturation with a distinct busy code, so one
+        // hostile peer cannot spawn unbounded accept tasks.
+        let _permit = match self.limiter.admit().await {
+            Ok(permit) => permit,
+            Err(error) => {
+                tracing::warn!(
+                    code = error.code(),
+                    "pheromone lane shed accept (saturated)"
+                );
+                conn.close(error.close_code().into(), error.code().as_bytes());
+                return Err(AcceptError::from_err(error));
+            }
+        };
         match self.handle(&conn).await {
             Ok(()) => {
-                // Keep the connection open until the dialer has read the report
-                // and closed, so the finished stream is not reset on drop.
-                conn.closed().await;
+                // Bounded linger: keep the connection open until the dialer has
+                // read the report and closed (so the finished stream is not reset
+                // on drop), but never past the linger bound.
+                self.limiter.linger(&conn).await;
                 Ok(())
             }
             Err(error) => {
                 tracing::warn!(code = error.code(), error = %error, "pheromone lane reset batch");
-                conn.close(LANE_RESET_ERROR_CODE.into(), error.code().as_bytes());
+                conn.close(error.close_code().into(), error.code().as_bytes());
                 Err(AcceptError::from_err(error))
             }
         }

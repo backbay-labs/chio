@@ -62,6 +62,11 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::identity::VerifiedDirectory;
+use crate::lanes::limits::AcceptLimitConfig;
+use crate::lanes::limits::AcceptLimitError;
+use crate::lanes::limits::AcceptLimiter;
+use crate::lanes::limits::AcceptPhase;
+use crate::lanes::limits::LANE_RESET_CLOSE_CODE;
 
 /// ALPN for the revocation-root lane. Distinct, versioned, mounted on its own
 /// `Router` accept (blueprint B.2).
@@ -213,6 +218,11 @@ pub enum RevocationLaneError {
     /// A QUIC stream read/write/finish failure.
     #[error("transport error: {0}")]
     Transport(String),
+    /// A peer-dependent accept step exceeded its bound (slowloris) or the
+    /// in-flight cap shed the connection. Fail-closed: the connection is reset
+    /// and NOTHING is merged or served.
+    #[error(transparent)]
+    AcceptLimit(#[from] AcceptLimitError),
 }
 
 /// Caller-provided sink for verified epoch roots (blueprint B.6
@@ -282,6 +292,17 @@ impl RevocationLaneError {
             RevocationLaneError::SinkRejected(_) => "sink-rejected",
             RevocationLaneError::Codec(_) => "codec",
             RevocationLaneError::Transport(_) => "transport",
+            RevocationLaneError::AcceptLimit(error) => error.code(),
+        }
+    }
+
+    /// QUIC application close code for a fail-closed reset. Accept-limit outcomes
+    /// (slowloris timeout / saturation shed) carry their own distinct codes; every
+    /// other lane error is a generic reset.
+    fn close_code(&self) -> u32 {
+        match self {
+            RevocationLaneError::AcceptLimit(error) => error.close_code(),
+            _ => LANE_RESET_CLOSE_CODE,
         }
     }
 
@@ -308,6 +329,9 @@ pub struct RevocationHandler {
     sink: Arc<dyn RevocationRootSink>,
     /// This responder's kernel id, echoed into catch-up responses.
     responder_kernel_id: String,
+    /// Shared slowloris / resource-exhaustion bounds (per-phase timeouts + an
+    /// in-flight concurrency cap). Defaults are generous; see [`AcceptLimiter`].
+    limiter: AcceptLimiter,
 }
 
 impl std::fmt::Debug for RevocationHandler {
@@ -347,7 +371,17 @@ impl RevocationHandler {
             history,
             sink,
             responder_kernel_id: responder_kernel_id.into(),
+            limiter: AcceptLimiter::default(),
         }
+    }
+
+    /// Override the default accept-hardening bounds (per-phase timeouts + the
+    /// in-flight concurrency cap). The [`Default`] preserves the historical
+    /// (generous) behavior; the wiring can tune it in one place.
+    #[must_use]
+    pub fn with_accept_limits(mut self, config: AcceptLimitConfig) -> Self {
+        self.limiter = AcceptLimiter::new(config);
+        self
     }
 
     /// Verify EVERY frame of a pushed batch against the pinned signer directory
@@ -453,26 +487,72 @@ impl RevocationHandler {
     }
 }
 
-impl ProtocolHandler for RevocationHandler {
-    async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+impl RevocationHandler {
+    /// One bounded request/response exchange over the accepted connection. Every
+    /// peer-dependent await is bounded (accept_bi, the request-frame read, the
+    /// response write); a verification failure is still delivered IN-BAND as a
+    /// typed [`RevocationLaneResponse::Rejected`] (produced by `handle_request`,
+    /// so this returns `Ok`), and only transport / codec / timeout failures reset.
+    async fn serve(&self, conn: &Connection) -> Result<(), RevocationLaneError> {
         let endpoint = conn.remote_id();
         // Defense in depth: unreachable past the admission gate. Reset closed.
         if self.directory.authorize(&endpoint).is_none() {
-            return Err(AcceptError::from_err(RevocationLaneError::UnboundEndpoint));
+            return Err(RevocationLaneError::UnboundEndpoint);
         }
-        let (mut send, mut recv) = conn.accept_bi().await.map_err(AcceptError::from_err)?;
-        let request: RevocationLaneRequest =
-            read_frame(&mut recv).await.map_err(AcceptError::from_err)?;
+        // Bound accept_bi: a connected-but-silent peer is dropped here.
+        let (mut send, mut recv) = self
+            .limiter
+            .bounded(AcceptPhase::AcceptStream, conn.accept_bi())
+            .await?
+            .map_err(|error| RevocationLaneError::Transport(error.to_string()))?;
+        // Bound the request-frame read: the primary slowloris surface.
+        let request: RevocationLaneRequest = self
+            .limiter
+            .bounded(AcceptPhase::ReadFrame, read_frame(&mut recv))
+            .await??;
+        // Verification runs on the fully received frame; timeouts never weaken it.
         let response = self.handle_request(endpoint, request, now_unix_ms());
-        write_frame(&mut send, &response)
-            .await
-            .map_err(AcceptError::from_err)?;
-        // Keep the connection open until the dialer has read the finished
-        // response and closed, so the finished stream is not reset on drop
-        // (mirrors the pheromone lane; without this the response can be lost as
-        // "connection lost" on real QUIC).
-        conn.closed().await;
+        // Bound the response write: a peer that stops reading is dropped here.
+        self.limiter
+            .bounded(
+                AcceptPhase::WriteResponse,
+                write_frame(&mut send, &response),
+            )
+            .await??;
         Ok(())
+    }
+}
+
+impl ProtocolHandler for RevocationHandler {
+    async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+        // Concurrency cap: acquire one in-flight permit (held for the whole
+        // handler) or shed under saturation with a distinct busy code.
+        let _permit = match self.limiter.admit().await {
+            Ok(permit) => permit,
+            Err(error) => {
+                tracing::warn!(
+                    code = error.code(),
+                    "revocation lane shed accept (saturated)"
+                );
+                conn.close(error.close_code().into(), error.code().as_bytes());
+                return Err(AcceptError::from_err(error));
+            }
+        };
+        match self.serve(&conn).await {
+            Ok(()) => {
+                // Bounded linger: keep the connection open until the dialer has
+                // read the finished response and closed (so the finished stream
+                // is not reset on drop; without this the response can be lost as
+                // "connection lost" on real QUIC), but never past the linger bound.
+                self.limiter.linger(&conn).await;
+                Ok(())
+            }
+            Err(error) => {
+                tracing::warn!(code = error.code(), error = %error, "revocation lane reset");
+                conn.close(error.close_code().into(), error.code().as_bytes());
+                Err(AcceptError::from_err(error))
+            }
+        }
     }
 }
 

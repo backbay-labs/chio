@@ -13,5 +13,6 @@
 
 pub mod bilateral;
 pub mod fanout;
+pub mod limits;
 pub mod pheromone;
 pub mod revocation;

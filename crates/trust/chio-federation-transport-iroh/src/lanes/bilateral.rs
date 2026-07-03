@@ -76,6 +76,11 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::admission::DirectoryGate;
+use crate::lanes::limits::AcceptLimitConfig;
+use crate::lanes::limits::AcceptLimitError;
+use crate::lanes::limits::AcceptLimiter;
+use crate::lanes::limits::AcceptPhase;
+use crate::lanes::limits::LANE_RESET_CLOSE_CODE;
 
 /// SPEC-FIXED ALPN for the bilateral DSSE co-sign lane (ADAPTER-SPEC 4.2).
 pub const ALPN_BILATERAL: &[u8] = b"chio/federation/bilateral-dsse-cosign/1";
@@ -273,6 +278,49 @@ enum WireError {
     FrameTooLarge(usize),
 }
 
+/// Fail-closed accept-side failures that RESET the bilateral stream (as opposed
+/// to a co-sign rejection, which is delivered in-band as a typed [`WireReply::Err`]
+/// and is NOT an error here). Groups the raw framing, codec, transport, and
+/// accept-limit (slowloris timeout / saturation shed) failures so the accept
+/// handler can close with the right code in one place.
+#[derive(Debug, thiserror::Error)]
+enum BilateralAcceptError {
+    /// A raw length-delimited framing failure.
+    #[error(transparent)]
+    Wire(#[from] WireError),
+    /// A request could not be decoded / a reply could not be encoded.
+    #[error("bilateral codec error: {0}")]
+    Codec(#[from] serde_json::Error),
+    /// A QUIC accept/finish transport failure.
+    #[error("bilateral transport error: {0}")]
+    Transport(String),
+    /// A peer-dependent accept step exceeded its bound (slowloris) or the
+    /// in-flight cap shed the connection.
+    #[error(transparent)]
+    AcceptLimit(#[from] AcceptLimitError),
+}
+
+impl BilateralAcceptError {
+    /// Stable, log- and reason-string-friendly code.
+    fn code(&self) -> &'static str {
+        match self {
+            BilateralAcceptError::Wire(_) => "wire",
+            BilateralAcceptError::Codec(_) => "codec",
+            BilateralAcceptError::Transport(_) => "transport",
+            BilateralAcceptError::AcceptLimit(error) => error.code(),
+        }
+    }
+
+    /// QUIC application close code. Accept-limit outcomes carry their own distinct
+    /// codes; every other failure is a generic reset.
+    fn close_code(&self) -> u32 {
+        match self {
+            BilateralAcceptError::AcceptLimit(error) => error.close_code(),
+            _ => LANE_RESET_CLOSE_CODE,
+        }
+    }
+}
+
 /// Write one length-delimited frame: a 4-byte big-endian length prefix followed
 /// by the payload bytes. The caller `finish()`es the send half afterwards.
 async fn write_frame(send: &mut SendStream, bytes: &[u8]) -> Result<(), WireError> {
@@ -455,6 +503,9 @@ pub struct BilateralCoSignHandler {
     origin_keypair: Keypair,
     /// Pinned Org B passport keys (algorithm-agnostic), keyed by `kernel_id`.
     passport_keys: Arc<dyn PinnedPassportKeys>,
+    /// Shared slowloris / resource-exhaustion bounds (per-phase timeouts + an
+    /// in-flight concurrency cap). Defaults are generous; see [`AcceptLimiter`].
+    limiter: AcceptLimiter,
 }
 
 impl core::fmt::Debug for BilateralCoSignHandler {
@@ -481,7 +532,17 @@ impl BilateralCoSignHandler {
             origin_kernel_id: origin_kernel_id.into(),
             origin_keypair,
             passport_keys,
+            limiter: AcceptLimiter::default(),
         }
+    }
+
+    /// Override the default accept-hardening bounds (per-phase timeouts + the
+    /// in-flight concurrency cap). The [`Default`] preserves the historical
+    /// (generous) behavior; the wiring can tune it in one place.
+    #[must_use]
+    pub fn with_accept_limits(mut self, config: AcceptLimitConfig) -> Self {
+        self.limiter = AcceptLimiter::new(config);
+        self
     }
 
     /// Pure verification + co-signature, decoupled from the stream so the
@@ -543,35 +604,80 @@ impl BilateralCoSignHandler {
     }
 }
 
-impl ProtocolHandler for BilateralCoSignHandler {
-    async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
+impl BilateralCoSignHandler {
+    /// One bounded request/response exchange. Every peer-dependent await is
+    /// bounded (accept_bi, the request-frame read, the reply write). A co-sign
+    /// REJECTION is delivered IN-BAND as a typed [`WireReply::Err`] (never a
+    /// signature) and returns `Ok`; only genuine transport / codec / timeout
+    /// failures return `Err` and reset the stream.
+    async fn serve(&self, connection: &Connection) -> Result<(), BilateralAcceptError> {
         // Infallible after the handshake; the gate hook has already run.
         let remote = connection.remote_id();
-        let (mut send, mut recv) = connection.accept_bi().await?;
+        // Bound accept_bi: a connected-but-silent peer is dropped here.
+        let (mut send, mut recv) = self
+            .limiter
+            .bounded(AcceptPhase::AcceptStream, connection.accept_bi())
+            .await?
+            .map_err(|error| BilateralAcceptError::Transport(error.to_string()))?;
 
-        // Step 3: read the single length-delimited request.
-        let request_bytes = read_frame(&mut recv).await.map_err(AcceptError::from_err)?;
-        let wire_request: WireDsseCoSigningRequest =
-            serde_json::from_slice(&request_bytes).map_err(AcceptError::from_err)?;
+        // Step 3: read the single length-delimited request (bounded: the primary
+        // slowloris surface).
+        let request_bytes = self
+            .limiter
+            .bounded(AcceptPhase::ReadFrame, read_frame(&mut recv))
+            .await??;
+        let wire_request: WireDsseCoSigningRequest = serde_json::from_slice(&request_bytes)?;
         let request = wire_request.into_request();
 
         // Step 4/5: verify + co-sign (or a typed error mirroring the contract).
-        // A rejection is delivered IN-BAND as a typed error frame and never
-        // carries a signature; only genuine transport failures reset the stream.
+        // Verification runs on the fully received request; timeouts never weaken it.
         let reply = match self.cosign(&remote, &request) {
             Ok(response) => WireReply::ok(&response),
             Err(error) => WireReply::err(&error),
         };
-        let reply_bytes = serde_json::to_vec(&reply).map_err(AcceptError::from_err)?;
-        write_frame(&mut send, &reply_bytes)
-            .await
-            .map_err(AcceptError::from_err)?;
-        send.finish()?;
-
-        // Keep the connection until the client has read the reply and closed, so
-        // the framed response is not truncated by an early drop.
-        connection.closed().await;
+        let reply_bytes = serde_json::to_vec(&reply)?;
+        // Bound the reply write: a peer that stops reading is dropped here.
+        self.limiter
+            .bounded(
+                AcceptPhase::WriteResponse,
+                write_frame(&mut send, &reply_bytes),
+            )
+            .await??;
+        send.finish()
+            .map_err(|error| BilateralAcceptError::Transport(error.to_string()))?;
         Ok(())
+    }
+}
+
+impl ProtocolHandler for BilateralCoSignHandler {
+    async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
+        // Concurrency cap: acquire one in-flight permit (held for the whole
+        // handler) or shed under saturation with a distinct busy code.
+        let _permit = match self.limiter.admit().await {
+            Ok(permit) => permit,
+            Err(error) => {
+                tracing::warn!(
+                    code = error.code(),
+                    "bilateral lane shed accept (saturated)"
+                );
+                connection.close(error.close_code().into(), error.code().as_bytes());
+                return Err(AcceptError::from_err(error));
+            }
+        };
+        match self.serve(&connection).await {
+            Ok(()) => {
+                // Bounded linger: keep the connection until the client has read
+                // the reply and closed (so the framed response is not truncated
+                // by an early drop), but never past the linger bound.
+                self.limiter.linger(&connection).await;
+                Ok(())
+            }
+            Err(error) => {
+                tracing::warn!(code = error.code(), error = %error, "bilateral lane reset");
+                connection.close(error.close_code().into(), error.code().as_bytes());
+                Err(AcceptError::from_err(error))
+            }
+        }
     }
 }
 
@@ -916,5 +1022,261 @@ mod tests {
                 "did:chio:some-other-origin".to_string()
             ))
         );
+    }
+
+    // -- Production-robustness: bounded accept over real loopback QUIC --
+    //
+    // These drive the REAL `BilateralCoSignHandler::accept` (through its bounded
+    // `serve` + concurrency cap) against deliberately misbehaving dialers. The
+    // bounds only limit WAITING; a slow/stalled/never-closing peer is dropped
+    // fail-closed, and a legitimate exchange within the bounds is still fully
+    // verified and co-signed (timeouts never weaken the trust path).
+
+    use std::time::Duration;
+
+    /// Spin up Org A exactly like [`spawn_org_a`] but with explicit accept bounds.
+    async fn spawn_org_a_with_limits(
+        org_a: &Peer,
+        gate: DirectoryGate,
+        passport_keys: Arc<dyn PinnedPassportKeys>,
+        limits: AcceptLimitConfig,
+    ) -> (EndpointAddr, Router) {
+        let endpoint = Endpoint::builder(presets::Minimal)
+            .secret_key(org_a.transport_secret.clone())
+            .relay_mode(RelayMode::Disabled)
+            .bind_addr((Ipv4Addr::LOCALHOST, 0))
+            .expect("valid loopback bind addr")
+            .hooks(gate.clone())
+            .bind()
+            .await
+            .expect("org a endpoint binds");
+        let socket = endpoint.bound_sockets()[0];
+        let addr = EndpointAddr::new(org_a.transport_id).with_ip_addr(socket);
+        let handler = BilateralCoSignHandler::new(
+            gate,
+            org_a.kernel_id.clone(),
+            org_a.passport.clone(),
+            passport_keys,
+        )
+        .with_accept_limits(limits);
+        let router = Router::builder(endpoint)
+            .accept(ALPN_BILATERAL, handler)
+            .spawn();
+        (addr, router)
+    }
+
+    /// A raw admitted dialer endpoint (for hand-driven, misbehaving clients).
+    async fn bind_peer(peer: &Peer) -> Endpoint {
+        Endpoint::builder(presets::Minimal)
+            .secret_key(peer.transport_secret.clone())
+            .relay_mode(RelayMode::Disabled)
+            .bind_addr((Ipv4Addr::LOCALHOST, 0))
+            .expect("valid loopback bind addr")
+            .bind()
+            .await
+            .expect("peer endpoint binds")
+    }
+
+    /// Small per-phase bounds so an INFINITE stall trips promptly; the concurrency
+    /// cap stays at the generous default (not exercised by the slowloris tests).
+    fn stall_bounds() -> AcceptLimitConfig {
+        AcceptLimitConfig {
+            accept_stream_timeout: Duration::from_millis(300),
+            read_timeout: Duration::from_millis(300),
+            write_timeout: Duration::from_millis(300),
+            linger_timeout: Duration::from_millis(300),
+            ..AcceptLimitConfig::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn legit_cosign_within_tight_bounds_is_still_fully_verified_and_accepted() {
+        // The CRITICAL trust-path test: with real (tight but sufficient) bounds
+        // active, a valid request is still fully verified and co-signed, and the
+        // response verifies over the exact pae_bytes. Timeouts bound waiting only.
+        let org_a = Peer::new(ORIGIN_KERNEL, 10, 1);
+        let org_b = Peer::new(TOOL_HOST_KERNEL, 11, 2);
+        let gate = DirectoryGate::new(verified_directory(&[&org_a, &org_b]));
+        let limits = AcceptLimitConfig {
+            accept_stream_timeout: Duration::from_secs(4),
+            read_timeout: Duration::from_secs(4),
+            write_timeout: Duration::from_secs(4),
+            linger_timeout: Duration::from_secs(4),
+            ..AcceptLimitConfig::default()
+        };
+
+        let (addr, _router) =
+            spawn_org_a_with_limits(&org_a, gate, pinned_org_b(&org_b), limits).await;
+        let cosigner = spawn_org_b(&org_b, ORIGIN_KERNEL, addr).await;
+
+        let pae_bytes = b"DSSEv1 opaque bilateral pae preimage (bounded path)".to_vec();
+        let request = org_b_request(&org_b, ORIGIN_KERNEL, &pae_bytes);
+
+        let response = cosigner
+            .request_dsse_cosignature_over_iroh(&request)
+            .await
+            .expect("a legitimate exchange within the bounds still co-signs");
+        assert_eq!(response.schema, BILATERAL_DSSE_COSIGNING_SCHEMA);
+        assert!(
+            org_a
+                .passport
+                .public_key()
+                .verify(&pae_bytes, &response.org_a_signature),
+            "the co-signature verifies over the exact pae_bytes: verification was not weakened"
+        );
+    }
+
+    #[tokio::test]
+    async fn peer_that_never_opens_a_stream_is_dropped_within_accept_bi_bound() {
+        // An admitted peer connects (handshake completes, handler runs) but never
+        // opens its bidi stream. The bounded accept_bi drops it fail-closed.
+        let org_a = Peer::new(ORIGIN_KERNEL, 10, 1);
+        let org_b = Peer::new(TOOL_HOST_KERNEL, 11, 2);
+        let gate = DirectoryGate::new(verified_directory(&[&org_a, &org_b]));
+        let (addr, _router) =
+            spawn_org_a_with_limits(&org_a, gate, pinned_org_b(&org_b), stall_bounds()).await;
+
+        let dialer = bind_peer(&org_b).await;
+        let conn = dialer
+            .connect(addr, ALPN_BILATERAL)
+            .await
+            .expect("admitted dialer connects");
+        // Never open_bi. The server must close within the accept_bi bound; give a
+        // wide outer window so only a genuine hang (not scheduling jitter) fails.
+        let closed = tokio::time::timeout(Duration::from_secs(5), conn.closed()).await;
+        assert!(
+            closed.is_ok(),
+            "server must drop a peer that never opens a stream, not hang on accept_bi"
+        );
+    }
+
+    #[tokio::test]
+    async fn slowloris_length_prefix_without_body_is_dropped_within_read_bound() {
+        // THE key slowloris test: the peer opens its stream and sends a length
+        // prefix declaring a body it never sends. The bounded frame read drops it
+        // fail-closed rather than blocking the handler task on read_exact forever.
+        let org_a = Peer::new(ORIGIN_KERNEL, 10, 1);
+        let org_b = Peer::new(TOOL_HOST_KERNEL, 11, 2);
+        let gate = DirectoryGate::new(verified_directory(&[&org_a, &org_b]));
+        let (addr, _router) =
+            spawn_org_a_with_limits(&org_a, gate, pinned_org_b(&org_b), stall_bounds()).await;
+
+        let dialer = bind_peer(&org_b).await;
+        let conn = dialer
+            .connect(addr, ALPN_BILATERAL)
+            .await
+            .expect("admitted dialer connects");
+        let (mut send, _recv) = conn.open_bi().await.expect("dialer opens bi stream");
+        // Declare a 4096-byte frame, then send NOTHING more and never finish.
+        send.write_all(&4096u32.to_be_bytes())
+            .await
+            .expect("dialer writes only the length prefix");
+        // Deliberately no body, no finish(): the classic slowloris dribble.
+
+        let closed = tokio::time::timeout(Duration::from_secs(5), conn.closed()).await;
+        assert!(
+            closed.is_ok(),
+            "server must drop a peer that sends a length prefix then withholds the body"
+        );
+    }
+
+    #[tokio::test]
+    async fn peer_that_completes_exchange_but_never_closes_does_not_hang_past_linger() {
+        // The peer runs a full, valid exchange (and gets a real co-signature) but
+        // then never closes the connection. The bounded linger releases the
+        // handler task instead of pinning it on conn.closed() forever.
+        let org_a = Peer::new(ORIGIN_KERNEL, 10, 1);
+        let org_b = Peer::new(TOOL_HOST_KERNEL, 11, 2);
+        let gate = DirectoryGate::new(verified_directory(&[&org_a, &org_b]));
+        let (addr, _router) =
+            spawn_org_a_with_limits(&org_a, gate, pinned_org_b(&org_b), stall_bounds()).await;
+
+        let dialer = bind_peer(&org_b).await;
+        let conn = dialer
+            .connect(addr, ALPN_BILATERAL)
+            .await
+            .expect("admitted dialer connects");
+        let (mut send, mut recv) = conn.open_bi().await.expect("dialer opens bi stream");
+
+        let pae_bytes = b"pae for the never-close linger test".to_vec();
+        let request = org_b_request(&org_b, ORIGIN_KERNEL, &pae_bytes);
+        let request_bytes =
+            serde_json::to_vec(&WireDsseCoSigningRequest::from_request(&request)).unwrap();
+        write_frame(&mut send, &request_bytes)
+            .await
+            .expect("write request frame");
+        send.finish().expect("half-close the request stream");
+
+        let reply_bytes = read_frame(&mut recv).await.expect("read the reply frame");
+        let reply: WireReply = serde_json::from_slice(&reply_bytes).unwrap();
+        let response = reply
+            .into_result()
+            .expect("the full exchange yields a real co-signature");
+        assert!(
+            org_a
+                .passport
+                .public_key()
+                .verify(&pae_bytes, &response.org_a_signature),
+            "the co-signature is valid: the exchange genuinely completed"
+        );
+
+        // Now hold the connection open (never close). The server must stop
+        // lingering within its linger bound and drop the connection, which the
+        // dialer observes as `closed()` resolving. A hang would time out here.
+        let closed = tokio::time::timeout(Duration::from_secs(5), conn.closed()).await;
+        assert!(
+            closed.is_ok(),
+            "server must not hang past the linger bound waiting for a peer that never closes"
+        );
+    }
+
+    #[tokio::test]
+    async fn saturated_concurrency_cap_sheds_an_additional_dialer_over_quic() {
+        // Cap = 1. Dialer A opens a stream and stalls the read, holding the sole
+        // in-flight permit. While it is held, dialer C is shed after the bounded
+        // wait: one peer cannot starve the lane, and back-pressure is bounded.
+        let org_a = Peer::new(ORIGIN_KERNEL, 10, 1);
+        let org_b = Peer::new(TOOL_HOST_KERNEL, 11, 2);
+        let org_c = Peer::new("did:chio:org-c", 12, 3);
+        let gate = DirectoryGate::new(verified_directory(&[&org_a, &org_b, &org_c]));
+        let limits = AcceptLimitConfig {
+            max_in_flight: 1,
+            accept_stream_timeout: Duration::from_secs(3),
+            read_timeout: Duration::from_secs(3),
+            shed_wait: Duration::from_millis(150),
+            ..AcceptLimitConfig::default()
+        };
+        let (addr, _router) =
+            spawn_org_a_with_limits(&org_a, gate, pinned_org_b(&org_b), limits).await;
+
+        // A holds the single permit by stalling in the bounded read.
+        let dialer_a = bind_peer(&org_b).await;
+        let conn_a = dialer_a
+            .connect(addr.clone(), ALPN_BILATERAL)
+            .await
+            .expect("dialer A connects");
+        let (mut send_a, _recv_a) = conn_a.open_bi().await.expect("A opens bi stream");
+        send_a
+            .write_all(&512u32.to_be_bytes())
+            .await
+            .expect("A sends a length prefix then stalls");
+        // Let A's accept task acquire the sole permit and enter the bounded read.
+        tokio::time::sleep(Duration::from_millis(400)).await;
+
+        // C dials for a full co-sign, but the cap is saturated: it is shed.
+        let cosigner_c = spawn_org_b(&org_c, ORIGIN_KERNEL, addr).await;
+        let request_c = org_b_request(&org_c, ORIGIN_KERNEL, b"pae from a shed dialer");
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            cosigner_c.request_dsse_cosignature_over_iroh(&request_c),
+        )
+        .await
+        .expect("the shed dialer resolves quickly (bounded wait, not unbounded)");
+        assert!(
+            result.is_err(),
+            "a dialer must be shed while the single in-flight permit is held, got {result:?}"
+        );
+
+        drop(conn_a);
     }
 }
