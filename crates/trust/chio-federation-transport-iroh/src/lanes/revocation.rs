@@ -1,8 +1,920 @@
 //! Lane b: revocation epoch roots over a direct per-peer QUIC stream.
-//! ADAPTER-SPEC section 4 row (b). First implementation; needs a NET-NEW
-//! signer_id -> EndpointId binding (revocation wire types carry no directory).
+//! ADAPTER-SPEC section 4 row (b) + IROH-LANES-BLUEPRINT "LANE B".
 //!
-// TODO(phase 2, lane b): implement.
+//! This lane carries two message kinds over one direct, admission-gated,
+//! per-peer QUIC stream (`open_bi` / `accept_bi`):
+//!
+//! - a pushed [`RevocationGossipBatch`] of signed epoch roots, and
+//! - a [`RevocationCatchupRequest`] whose [`RevocationCatchupResponse`] rides the
+//!   same stream (the CONTROL envelope for the catch-up lane; the bulk root bytes
+//!   ride iroh-blobs in [`crate::catchup`], ADAPTER-SPEC 4 lane e).
+//!
+//! ## Authenticity model (different from lane a)
+//!
+//! Revocation has NO `authenticated_sender_kernel_id` seam. The receiver verifies
+//! each [`chio_revocation_oracle::SignedEpochRoot`] against a PINNED signer key it
+//! already holds (revocation carries no directory in its wire types). The
+//! transport contributes origin + ordering + reliability only (ADAPTER-SPEC 4
+//! row b; blueprint B.3).
+//!
+//! ## The net-new binding this lane introduces
+//!
+//! Revocation wire types carry only an opaque `signer_id`
+//! ([`revocation_gossip.rs:65`](chio_federation::revocation_gossip)); there is no
+//! endpoint or public key on the wire. So this lane owns a NET-NEW
+//! [`VerifiedSignerDirectory`] mapping `signer_id -> (EndpointId, verifying-key)`,
+//! distinct from the pheromone [`VerifiedDirectory`]. At accept time the handler
+//! (1) REJECTS at the admission gate any transport `EndpointId` not bound to an
+//! admitted kernel (defense in depth), (2) asserts each frame's `signer_id` is
+//! pinned to the SAME authenticated `EndpointId` (transport origin pin), and
+//! (3) signature-verifies the [`SignedEpochRoot`] against the bound verifying key
+//! (authenticity). All three are mandatory and independent (ADAPTER-SPEC 5
+//! "feeds the verifier, not replaces it"; blueprint B.4).
+//!
+//! TODO(iroh-transport): the `signer_id -> (EndpointId, verifying-key)` binding
+//! is modeled here as an adapter-local pinned map. Its final home is likely
+//! `KernelTrustExchange`-anchored (ADAPTER-SPEC 7 Open Decision
+//! "`signer_id -> EndpointId` binding home"); until then this map MUST be built
+//! only from issuer-verified material and MUST NOT weaken the signature check.
 
-/// Reserved for lane b. Present so the module tree compiles while the lane team builds.
-pub fn reserved() {}
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use chio_federation::revocation_gossip::respond_to_catchup;
+use chio_federation::revocation_gossip::RevocationCatchupHistory;
+use chio_federation::revocation_gossip::RevocationCatchupRequest;
+use chio_federation::revocation_gossip::RevocationCatchupResponse;
+use chio_federation::revocation_gossip::RevocationGossipBatch;
+use chio_federation::revocation_gossip::RevocationGossipError;
+use chio_revocation_oracle::Ed25519RootVerifier;
+use chio_revocation_oracle::EpochRootVerifier;
+use chio_revocation_oracle::SignedEpochRoot;
+use iroh::endpoint::Connection;
+use iroh::endpoint::RecvStream;
+use iroh::endpoint::SendStream;
+use iroh::protocol::AcceptError;
+use iroh::protocol::ProtocolHandler;
+use iroh::Endpoint;
+use iroh::EndpointId;
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::identity::VerifiedDirectory;
+
+/// ALPN for the revocation-root lane. Distinct, versioned, mounted on its own
+/// `Router` accept (blueprint B.2).
+pub const ALPN_REVOCATION_ROOT: &[u8] = b"chio/federation/revocation-root/1";
+
+/// Hard cap on a single length-delimited lane frame. Revocation batches and
+/// catch-up responses are small (bounded by
+/// [`chio_federation::revocation_gossip::REVOCATION_CATCHUP_MAX_EPOCHS`]); this
+/// bounds a hostile peer's per-message allocation fail-closed.
+pub const MAX_WIRE_BYTES: usize = 16 * 1024 * 1024;
+
+/// A single pinned signer binding: an opaque `signer_id` cross-linked to the
+/// transport `EndpointId` that is allowed to originate its roots AND to the
+/// pinned verifying key that authenticates those roots.
+///
+/// The verifier already carries the `signer_id` and the public key; the
+/// `endpoint` is the transport-origin pin the wire types lack.
+#[derive(Debug, Clone)]
+pub struct SignerBinding {
+    /// Transport `EndpointId` allowed to originate this signer's roots.
+    pub endpoint: EndpointId,
+    /// Pinned verify-only counterpart of the signer's oracle key. Holds no
+    /// private material, so it can never forge a root.
+    pub verifier: Ed25519RootVerifier,
+}
+
+/// The NET-NEW `signer_id -> (EndpointId, verifying-key)` directory this lane
+/// requires (blueprint B.4). Sibling to [`VerifiedDirectory`] but keyed on the
+/// opaque revocation `signer_id`, since revocation wire types carry no endpoint
+/// or public key.
+///
+/// Fail-closed at construction: a duplicate `signer_id` is rejected so a pinned
+/// binding can never be silently shadowed.
+#[derive(Debug, Clone, Default)]
+pub struct VerifiedSignerDirectory {
+    by_signer: HashMap<String, SignerBinding>,
+}
+
+impl VerifiedSignerDirectory {
+    /// Build a pinned signer directory from `(signer_id, binding)` pairs.
+    ///
+    /// Rejects a duplicate `signer_id` fail-closed and rejects a binding whose
+    /// pinned verifier `signer_id` disagrees with its map key (the two identify
+    /// the same signer and must not drift).
+    pub fn from_bindings(
+        bindings: impl IntoIterator<Item = (String, SignerBinding)>,
+    ) -> Result<Self, RevocationLaneError> {
+        let mut by_signer: HashMap<String, SignerBinding> = HashMap::new();
+        for (signer_id, binding) in bindings {
+            if binding.verifier.signer_id() != signer_id {
+                return Err(RevocationLaneError::SignerIdMismatch {
+                    key: signer_id,
+                    pinned: binding.verifier.signer_id().to_string(),
+                });
+            }
+            if by_signer.insert(signer_id.clone(), binding).is_some() {
+                return Err(RevocationLaneError::DuplicateSigner(signer_id));
+            }
+        }
+        Ok(Self { by_signer })
+    }
+
+    /// Resolve an opaque `signer_id` to its pinned binding, or `None`
+    /// (fail-closed) when the signer is not pinned.
+    #[must_use]
+    pub fn resolve(&self, signer_id: &str) -> Option<&SignerBinding> {
+        self.by_signer.get(signer_id)
+    }
+
+    /// Number of pinned signer bindings.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.by_signer.len()
+    }
+
+    /// Whether no signer is pinned.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.by_signer.is_empty()
+    }
+}
+
+/// Errors surfaced by the revocation lane. Every variant is fail-closed: the
+/// receiver merges nothing and either resets the stream or writes back a typed
+/// [`RevocationLaneResponse::Rejected`] (blueprint B.7).
+#[derive(Debug, thiserror::Error)]
+pub enum RevocationLaneError {
+    /// A structural / ordering error from the `chio-federation` envelope layer.
+    #[error("revocation gossip error: {0}")]
+    Gossip(#[from] RevocationGossipError),
+    /// The authenticated transport `EndpointId` resolves to no admitted kernel.
+    /// Should be unreachable past the admission gate; treated as a hard reset.
+    #[error("unbound transport endpoint reached revocation handler")]
+    UnboundEndpoint,
+    /// A frame's `signer_id` is not present in the pinned signer directory.
+    #[error("no pinned signer binding for signer_id `{0}`")]
+    UnknownSigner(String),
+    /// A frame's `signer_id` is pinned, but to a DIFFERENT transport endpoint
+    /// than the one that authenticated this connection (origin-pin violation).
+    #[error("signer `{signer_id}` is not pinned to transport endpoint {endpoint}")]
+    SignerEndpointMismatch {
+        /// The opaque signer identity carried by the frame.
+        signer_id: String,
+        /// The authenticated transport endpoint (short form) that presented it.
+        endpoint: String,
+    },
+    /// The pinned-signer signature check over a [`SignedEpochRoot`] failed
+    /// (BLAKE3/transport integrity is NOT authenticity, ADAPTER-SPEC 2.2).
+    #[error("epoch root signature failed pinned-signer verification (signer_id `{0}`)")]
+    BadSignature(String),
+    /// A pinned binding's verifier `signer_id` disagrees with its directory key.
+    #[error("pinned signer key `{key}` disagrees with verifier signer_id `{pinned}`")]
+    SignerIdMismatch {
+        /// The directory map key.
+        key: String,
+        /// The `signer_id` carried by the pinned verifier.
+        pinned: String,
+    },
+    /// The same `signer_id` was pinned more than once.
+    #[error("duplicate signer binding for signer_id `{0}`")]
+    DuplicateSigner(String),
+    /// The caller's revocation-root sink rejected a verified root.
+    #[error("revocation sink rejected merge: {0}")]
+    SinkRejected(String),
+    /// A JSON (de)serialization failure on the wire.
+    #[error("wire codec error: {0}")]
+    Codec(String),
+    /// A QUIC stream read/write/finish failure.
+    #[error("transport error: {0}")]
+    Transport(String),
+}
+
+/// Caller-provided sink for verified epoch roots (blueprint B.6
+/// `RevocationRootSink`). Called only AFTER a root has passed pinned-signer
+/// verification and the transport-origin pin. The merge is all-or-nothing at the
+/// batch level: a batch with any unverifiable frame merges nothing.
+pub trait RevocationRootSink: std::fmt::Debug + Send + Sync {
+    /// Merge one verified signed root into the caller's `RevocationView` cache.
+    /// Fail-closed: an `Err` aborts the batch.
+    fn merge_root(&self, signed: &SignedEpochRoot) -> Result<(), RevocationLaneError>;
+}
+
+/// One lane request. Externally tagged so the inner `deny_unknown_fields`
+/// contract types keep their own object shape (an internally-tagged enum would
+/// inject the discriminant key into the batch object and break the contract).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RevocationLaneRequest {
+    /// A pushed batch of signed roots (per-peer FIFO drain).
+    Push(RevocationGossipBatch),
+    /// A catch-up gap-fill request; its response rides this same stream.
+    Catchup(RevocationCatchupRequest),
+}
+
+/// One lane response, correlated to the request by stream identity.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RevocationLaneResponse {
+    /// A push batch verified and merged; carries the merged epochs for audit.
+    PushAccepted {
+        /// The epochs merged into the receiver cache, in wire order.
+        merged_epochs: Vec<u64>,
+    },
+    /// A catch-up response (may be a partial suffix; see `validate_response`).
+    Catchup(RevocationCatchupResponse),
+    /// A typed rejection. Fail-closed: NOTHING was merged and no root was served.
+    Rejected {
+        /// Stable machine code for the deny reason.
+        code: String,
+        /// Human-readable detail.
+        message: String,
+    },
+}
+
+impl RevocationLaneError {
+    /// Stable machine code for a typed [`RevocationLaneResponse::Rejected`].
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            RevocationLaneError::Gossip(inner) => match inner {
+                RevocationGossipError::UnsupportedSchema(_) => "unsupported-schema",
+                RevocationGossipError::EpochMismatch { .. } => "epoch-mismatch",
+                RevocationGossipError::SignerIdMismatch { .. } => "signer-id-mismatch",
+                RevocationGossipError::UnknownPeer(_) => "unknown-peer",
+                RevocationGossipError::InvalidConfiguration(_) => "invalid-configuration",
+                RevocationGossipError::QueuePoisoned => "queue-poisoned",
+                RevocationGossipError::CatchupRangeInverted { .. } => "catchup-range-inverted",
+                RevocationGossipError::CatchupRangeTooWide { .. } => "catchup-range-too-wide",
+                RevocationGossipError::CatchupGap { .. } => "catchup-gap",
+            },
+            RevocationLaneError::UnboundEndpoint => "unbound-endpoint",
+            RevocationLaneError::UnknownSigner(_) => "unknown-signer",
+            RevocationLaneError::SignerEndpointMismatch { .. } => "signer-endpoint-mismatch",
+            RevocationLaneError::BadSignature(_) => "bad-signature",
+            RevocationLaneError::SignerIdMismatch { .. } => "signer-id-mismatch",
+            RevocationLaneError::DuplicateSigner(_) => "duplicate-signer",
+            RevocationLaneError::SinkRejected(_) => "sink-rejected",
+            RevocationLaneError::Codec(_) => "codec",
+            RevocationLaneError::Transport(_) => "transport",
+        }
+    }
+
+    fn as_rejected(&self) -> RevocationLaneResponse {
+        RevocationLaneResponse::Rejected {
+            code: self.code().to_string(),
+            message: self.to_string(),
+        }
+    }
+}
+
+/// The revocation-root [`ProtocolHandler`]. Mount on
+/// `Router::builder(ep).accept(ALPN_REVOCATION_ROOT, handler)`.
+#[derive(Clone)]
+pub struct RevocationHandler {
+    /// Admission re-resolve (`EndpointId -> kernel_id`); defense in depth above
+    /// the accept-time gate.
+    directory: Arc<VerifiedDirectory>,
+    /// NET-NEW `signer_id -> (EndpointId, verifying-key)` pinning.
+    signers: Arc<VerifiedSignerDirectory>,
+    /// Catch-up history the responder serves via `respond_to_catchup`.
+    history: Arc<dyn RevocationCatchupHistory + Send + Sync>,
+    /// Caller cache updater for verified push roots.
+    sink: Arc<dyn RevocationRootSink>,
+    /// This responder's kernel id, echoed into catch-up responses.
+    responder_kernel_id: String,
+}
+
+impl std::fmt::Debug for RevocationHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RevocationHandler")
+            .field("responder_kernel_id", &self.responder_kernel_id)
+            .field("directory_version", &self.directory.version())
+            .field("pinned_signers", &self.signers.len())
+            .finish_non_exhaustive()
+    }
+}
+
+/// Adapts an `Arc<dyn RevocationCatchupHistory>` to the sized `H:
+/// RevocationCatchupHistory` bound `respond_to_catchup` requires.
+struct DynHistory(Arc<dyn RevocationCatchupHistory + Send + Sync>);
+
+impl RevocationCatchupHistory for DynHistory {
+    fn signed_root_at(&self, epoch: u64) -> Option<SignedEpochRoot> {
+        self.0.signed_root_at(epoch)
+    }
+}
+
+impl RevocationHandler {
+    /// Build a revocation-root handler.
+    #[must_use]
+    pub fn new(
+        directory: Arc<VerifiedDirectory>,
+        signers: Arc<VerifiedSignerDirectory>,
+        history: Arc<dyn RevocationCatchupHistory + Send + Sync>,
+        sink: Arc<dyn RevocationRootSink>,
+        responder_kernel_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            directory,
+            signers,
+            history,
+            sink,
+            responder_kernel_id: responder_kernel_id.into(),
+        }
+    }
+
+    /// Verify EVERY frame of a pushed batch against the pinned signer directory
+    /// and the transport-origin pin, returning the verified roots WITHOUT
+    /// merging. All-or-nothing: any unverifiable frame fails the whole batch so
+    /// the cache/history is left untouched (blueprint B.5).
+    ///
+    /// `endpoint` is the authenticated transport `EndpointId` of the connection
+    /// carrying the batch.
+    pub fn verify_batch(
+        &self,
+        endpoint: EndpointId,
+        batch: &RevocationGossipBatch,
+    ) -> Result<Vec<SignedEpochRoot>, RevocationLaneError> {
+        // Defense in depth: the admission gate already rejected unbound
+        // endpoints before any accept ran. Re-resolve fail-closed anyway.
+        if self.directory.authorize(&endpoint).is_none() {
+            return Err(RevocationLaneError::UnboundEndpoint);
+        }
+        // Cheap structural gate: schema + per-frame envelope consistency.
+        batch.validate_envelope()?;
+
+        let mut verified: Vec<SignedEpochRoot> = Vec::with_capacity(batch.frames.len());
+        for frame in &batch.frames {
+            // (a) resolve the opaque signer_id to its pinned binding.
+            let binding = self
+                .signers
+                .resolve(&frame.signer_id)
+                .ok_or_else(|| RevocationLaneError::UnknownSigner(frame.signer_id.clone()))?;
+            // (b) transport-origin pin: the signer must be bound to the SAME
+            // authenticated endpoint that presented this frame.
+            if binding.endpoint != endpoint {
+                return Err(RevocationLaneError::SignerEndpointMismatch {
+                    signer_id: frame.signer_id.clone(),
+                    endpoint: endpoint.fmt_short().to_string(),
+                });
+            }
+            // (c) envelope consistency (epoch/signer agreement) BEFORE crypto.
+            frame.validate_envelope()?;
+            // (d) authenticity: pinned-signer signature over the root. BLAKE3 /
+            // transport integrity is not authenticity.
+            frame
+                .signed_root
+                .verify(&binding.verifier)
+                .map_err(|_| RevocationLaneError::BadSignature(frame.signer_id.clone()))?;
+            verified.push(frame.signed_root.clone());
+        }
+        Ok(verified)
+    }
+
+    /// Serve a catch-up request from the pinned history via the contract's
+    /// `respond_to_catchup` (strict monotone, gap-truncating, never fabricating).
+    pub fn respond_catchup(
+        &self,
+        request: &RevocationCatchupRequest,
+        responded_at_unix_ms: u64,
+    ) -> Result<RevocationCatchupResponse, RevocationLaneError> {
+        let history = DynHistory(self.history.clone());
+        let response = respond_to_catchup(
+            request,
+            &self.responder_kernel_id,
+            &history,
+            responded_at_unix_ms,
+        )?;
+        Ok(response)
+    }
+
+    /// Handle one decoded lane request, producing the response to write back.
+    /// Verification failures become a typed [`RevocationLaneResponse::Rejected`]
+    /// (never a silent drop) and NOTHING is merged / served (fail-closed).
+    fn handle_request(
+        &self,
+        endpoint: EndpointId,
+        request: RevocationLaneRequest,
+        now_unix_ms: u64,
+    ) -> RevocationLaneResponse {
+        match request {
+            RevocationLaneRequest::Push(batch) => match self.verify_batch(endpoint, &batch) {
+                Ok(roots) => {
+                    // Only now merge, all-or-nothing having verified every root.
+                    let mut merged = Vec::with_capacity(roots.len());
+                    for root in &roots {
+                        if let Err(error) = self.sink.merge_root(root) {
+                            return error.as_rejected();
+                        }
+                        merged.push(root.root.epoch);
+                    }
+                    RevocationLaneResponse::PushAccepted {
+                        merged_epochs: merged,
+                    }
+                }
+                Err(error) => error.as_rejected(),
+            },
+            RevocationLaneRequest::Catchup(request) => {
+                match self.respond_catchup(&request, now_unix_ms) {
+                    Ok(response) => RevocationLaneResponse::Catchup(response),
+                    Err(error) => error.as_rejected(),
+                }
+            }
+        }
+    }
+}
+
+impl ProtocolHandler for RevocationHandler {
+    async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+        let endpoint = conn.remote_id();
+        // Defense in depth: unreachable past the admission gate. Reset closed.
+        if self.directory.authorize(&endpoint).is_none() {
+            return Err(AcceptError::from_err(RevocationLaneError::UnboundEndpoint));
+        }
+        let (mut send, mut recv) = conn.accept_bi().await.map_err(AcceptError::from_err)?;
+        let request: RevocationLaneRequest =
+            read_frame(&mut recv).await.map_err(AcceptError::from_err)?;
+        let response = self.handle_request(endpoint, request, now_unix_ms());
+        write_frame(&mut send, &response)
+            .await
+            .map_err(AcceptError::from_err)?;
+        Ok(())
+    }
+}
+
+/// Client half: dial an authority and push a batch of signed roots, returning
+/// the authority's typed response. The admission gate on the authority endpoint
+/// rejects an unadmitted dialer before this stream is accepted.
+pub async fn push_batch_over_iroh(
+    endpoint: &Endpoint,
+    authority: EndpointId,
+    batch: &RevocationGossipBatch,
+) -> Result<RevocationLaneResponse, RevocationLaneError> {
+    request_over_iroh(
+        endpoint,
+        authority,
+        &RevocationLaneRequest::Push(batch.clone()),
+    )
+    .await
+}
+
+/// Client half: dial an authority and request a catch-up range; the response
+/// (control envelope) rides this lane-b stream while the bulk root bytes are
+/// available over iroh-blobs ([`crate::catchup`]).
+pub async fn request_catchup_over_iroh(
+    endpoint: &Endpoint,
+    authority: EndpointId,
+    request: &RevocationCatchupRequest,
+) -> Result<RevocationLaneResponse, RevocationLaneError> {
+    request_over_iroh(
+        endpoint,
+        authority,
+        &RevocationLaneRequest::Catchup(request.clone()),
+    )
+    .await
+}
+
+async fn request_over_iroh(
+    endpoint: &Endpoint,
+    authority: EndpointId,
+    request: &RevocationLaneRequest,
+) -> Result<RevocationLaneResponse, RevocationLaneError> {
+    let conn = endpoint
+        .connect(authority, ALPN_REVOCATION_ROOT)
+        .await
+        .map_err(|error| RevocationLaneError::Transport(error.to_string()))?;
+    let (mut send, mut recv) = conn
+        .open_bi()
+        .await
+        .map_err(|error| RevocationLaneError::Transport(error.to_string()))?;
+    write_frame(&mut send, request).await?;
+    let response = read_frame(&mut recv).await?;
+    Ok(response)
+}
+
+/// Write a length-delimited canonical-JSON frame and half-close the send half so
+/// the reader's `read_to_end` terminates.
+async fn write_frame<T: Serialize>(
+    send: &mut SendStream,
+    value: &T,
+) -> Result<(), RevocationLaneError> {
+    let bytes =
+        serde_json::to_vec(value).map_err(|error| RevocationLaneError::Codec(error.to_string()))?;
+    send.write_all(&bytes)
+        .await
+        .map_err(|error| RevocationLaneError::Transport(error.to_string()))?;
+    send.finish()
+        .map_err(|error| RevocationLaneError::Transport(error.to_string()))?;
+    Ok(())
+}
+
+/// Read a single frame written by [`write_frame`] (the peer half-closes after
+/// one message), capped at [`MAX_WIRE_BYTES`] fail-closed.
+async fn read_frame<T: for<'de> Deserialize<'de>>(
+    recv: &mut RecvStream,
+) -> Result<T, RevocationLaneError> {
+    let bytes = recv
+        .read_to_end(MAX_WIRE_BYTES)
+        .await
+        .map_err(|error| RevocationLaneError::Transport(error.to_string()))?;
+    serde_json::from_slice(&bytes).map_err(|error| RevocationLaneError::Codec(error.to_string()))
+}
+
+fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
+        .unwrap_or(0)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use chio_core_types::canonical_json_bytes;
+    use chio_core_types::sha256_hex;
+    use chio_core_types::Keypair;
+    use chio_federation::revocation_gossip::RevocationRootGossip;
+    use chio_federation::revocation_gossip::REVOCATION_ROOT_GOSSIP_BATCH_SCHEMA;
+    use chio_revocation_oracle::Ed25519RootSigner;
+    use chio_revocation_oracle::EpochRoot;
+    use iroh::SecretKey;
+    use std::sync::Mutex;
+
+    use crate::identity::TransportDirectoryBundleBody;
+    use crate::identity::TransportDirectoryBundleDocument;
+    use crate::identity::TransportDirectoryBundleTrust;
+    use crate::identity::TransportDirectoryDocument;
+    use crate::identity::TransportDirectoryEntry;
+    use crate::identity::TrustedTransportDirectoryIssuer;
+    use crate::identity::TRANSPORT_DIRECTORY_BUNDLE_SCHEMA;
+
+    const NOW: u64 = 2_000_000;
+    const SEED_A: &str = "0101010101010101010101010101010101010101010101010101010101010101";
+    const SEED_B: &str = "0202020202020202020202020202020202020202020202020202020202020202";
+
+    fn endpoint_from_seed(seed: u8) -> EndpointId {
+        SecretKey::from_bytes(&[seed; 32]).public()
+    }
+
+    fn signer(signer_id: &str, seed: &str) -> Ed25519RootSigner {
+        Ed25519RootSigner::from_signing_key(signer_id, seed).expect("valid seed")
+    }
+
+    fn signed_root(signer: &Ed25519RootSigner, epoch: u64) -> SignedEpochRoot {
+        let root = EpochRoot {
+            epoch,
+            root_hash: [epoch as u8; 32],
+            leaf_count: epoch as usize,
+            issued_at_unix_ms: 1_700_000_000_000 + epoch,
+        };
+        SignedEpochRoot::sign(root, signer).expect("sign never fails")
+    }
+
+    fn batch(frames: Vec<RevocationRootGossip>) -> RevocationGossipBatch {
+        RevocationGossipBatch {
+            schema: REVOCATION_ROOT_GOSSIP_BATCH_SCHEMA.to_string(),
+            recipient_kernel_id: "did:chio:receiver".to_string(),
+            frames,
+            flushed_at_unix_ms: NOW,
+        }
+    }
+
+    /// Build a verified single-entry admission directory binding `kernel_id` to
+    /// the transport endpoint derived from `transport_seed`.
+    fn verified_directory(kernel_id: &str, transport_seed: u8) -> Arc<VerifiedDirectory> {
+        let passport = Keypair::from_seed(&[7; 32]);
+        let issuer = Keypair::from_seed(&[240; 32]);
+        let transport = endpoint_from_seed(transport_seed);
+        let entry = TransportDirectoryEntry {
+            kernel_id: kernel_id.to_string(),
+            passport_public_key: passport.public_key(),
+            transport_endpoint_id: transport,
+            passport_endorsement: passport.sign(transport.as_bytes()),
+            removed: false,
+        };
+        let directory = TransportDirectoryDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            local_kernel_id: "did:chio:local".to_string(),
+            peers: vec![entry],
+        };
+        let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());
+        let body = TransportDirectoryBundleBody {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            issuer: "did:chio:issuer".to_string(),
+            key_id: "issuer-key-1".to_string(),
+            directory_sha256,
+            version: 1,
+            previous_version_sha256: None,
+            issued_at_unix_ms: NOW - 1,
+            expires_at_unix_ms: NOW + 1,
+        };
+        let (signature, _) = issuer.sign_canonical(&body).unwrap();
+        let bundle = TransportDirectoryBundleDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            body,
+            directory,
+            signature,
+        };
+        let trust = TransportDirectoryBundleTrust {
+            issuers: vec![TrustedTransportDirectoryIssuer {
+                issuer: "did:chio:issuer".to_string(),
+                key_id: "issuer-key-1".to_string(),
+                public_key: issuer.public_key(),
+            }],
+            version_floor: 0,
+            expected_previous_version_sha256: None,
+            now_unix_ms: NOW,
+        };
+        Arc::new(bundle.verify_bundle(&trust).expect("bundle verifies"))
+    }
+
+    fn signers(pairs: Vec<(&str, EndpointId, &Ed25519RootSigner)>) -> Arc<VerifiedSignerDirectory> {
+        let bindings = pairs.into_iter().map(|(signer_id, endpoint, signer)| {
+            (
+                signer_id.to_string(),
+                SignerBinding {
+                    endpoint,
+                    verifier: signer.verifier(),
+                },
+            )
+        });
+        Arc::new(VerifiedSignerDirectory::from_bindings(bindings).expect("distinct signers"))
+    }
+
+    /// A recording sink so tests can assert exactly what was merged.
+    #[derive(Debug, Default)]
+    struct RecordingSink {
+        merged: Mutex<Vec<u64>>,
+    }
+
+    impl RevocationRootSink for RecordingSink {
+        fn merge_root(&self, signed: &SignedEpochRoot) -> Result<(), RevocationLaneError> {
+            self.merged
+                .lock()
+                .expect("sink lock")
+                .push(signed.root.epoch);
+            Ok(())
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct EmptyHistory;
+    impl RevocationCatchupHistory for EmptyHistory {
+        fn signed_root_at(&self, _epoch: u64) -> Option<SignedEpochRoot> {
+            None
+        }
+    }
+
+    fn handler(
+        directory: Arc<VerifiedDirectory>,
+        signers: Arc<VerifiedSignerDirectory>,
+    ) -> (RevocationHandler, Arc<RecordingSink>) {
+        let sink = Arc::new(RecordingSink::default());
+        let handler = RevocationHandler::new(
+            directory,
+            signers,
+            Arc::new(EmptyHistory),
+            sink.clone(),
+            "did:chio:responder",
+        );
+        (handler, sink)
+    }
+
+    #[test]
+    fn signed_root_accepted_from_pinned_signer() {
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = verified_directory("did:chio:peer", 10);
+        let signer_dir = signers(vec![("oracle-a", transport, &oracle)]);
+        let (handler, sink) = handler(directory, signer_dir);
+
+        let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        let response = handler.handle_request(
+            transport,
+            RevocationLaneRequest::Push(batch(vec![frame])),
+            NOW,
+        );
+        match response {
+            RevocationLaneResponse::PushAccepted { merged_epochs } => {
+                assert_eq!(merged_epochs, vec![5]);
+            }
+            other => panic!("expected PushAccepted, got {other:?}"),
+        }
+        assert_eq!(*sink.merged.lock().unwrap(), vec![5]);
+    }
+
+    #[test]
+    fn tampered_signature_is_rejected_bad_signature() {
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = verified_directory("did:chio:peer", 10);
+        let signer_dir = signers(vec![("oracle-a", transport, &oracle)]);
+        let (handler, sink) = handler(directory, signer_dir);
+
+        let mut signed = signed_root(&oracle, 5);
+        // Flip a signature byte: integrity of the wire object is intact, but the
+        // pinned-signer authenticity check must fail closed.
+        signed.signature.signature_bytes[0] ^= 0x01;
+        let frame = RevocationRootGossip::from_signed(signed, NOW);
+
+        let err = handler
+            .verify_batch(transport, &batch(vec![frame]))
+            .expect_err("tampered signature must fail closed");
+        assert!(matches!(err, RevocationLaneError::BadSignature(ref id) if id == "oracle-a"));
+        // Nothing merged (all-or-nothing).
+        assert!(sink.merged.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn wrong_signer_key_is_rejected_bad_signature() {
+        let transport = endpoint_from_seed(10);
+        // Pinned signer "oracle-a" uses SEED_A; the frame is signed by a signer
+        // that CLAIMS "oracle-a" but holds SEED_B (a different key).
+        let pinned = signer("oracle-a", SEED_A);
+        let impostor = signer("oracle-a", SEED_B);
+        let directory = verified_directory("did:chio:peer", 10);
+        let signer_dir = signers(vec![("oracle-a", transport, &pinned)]);
+        let (handler, _sink) = handler(directory, signer_dir);
+
+        let frame = RevocationRootGossip::from_signed(signed_root(&impostor, 5), NOW);
+        let err = handler
+            .verify_batch(transport, &batch(vec![frame]))
+            .expect_err("wrong signing key must fail closed");
+        assert!(matches!(err, RevocationLaneError::BadSignature(_)));
+    }
+
+    #[test]
+    fn unpinned_signer_id_is_rejected() {
+        let transport = endpoint_from_seed(10);
+        let oracle_a = signer("oracle-a", SEED_A);
+        let oracle_b = signer("oracle-b", SEED_B);
+        let directory = verified_directory("did:chio:peer", 10);
+        // Only oracle-a is pinned.
+        let signer_dir = signers(vec![("oracle-a", transport, &oracle_a)]);
+        let (handler, _sink) = handler(directory, signer_dir);
+
+        let frame = RevocationRootGossip::from_signed(signed_root(&oracle_b, 5), NOW);
+        let err = handler
+            .verify_batch(transport, &batch(vec![frame]))
+            .expect_err("unpinned signer must fail closed");
+        assert!(matches!(err, RevocationLaneError::UnknownSigner(ref id) if id == "oracle-b"));
+    }
+
+    #[test]
+    fn signer_pinned_to_other_endpoint_is_rejected() {
+        // oracle-a is pinned to endpoint(10) but the frame arrives on endpoint(11).
+        let bound = endpoint_from_seed(10);
+        let arriving = endpoint_from_seed(11);
+        let oracle = signer("oracle-a", SEED_A);
+        // The arriving endpoint must itself be admitted so we exercise the
+        // signer/endpoint origin pin, not the admission reject.
+        let directory = verified_directory("did:chio:peer", 11);
+        let signer_dir = signers(vec![("oracle-a", bound, &oracle)]);
+        let (handler, _sink) = handler(directory, signer_dir);
+
+        let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        let err = handler
+            .verify_batch(arriving, &batch(vec![frame]))
+            .expect_err("signer bound to another endpoint must fail closed");
+        assert!(matches!(
+            err,
+            RevocationLaneError::SignerEndpointMismatch { .. }
+        ));
+    }
+
+    #[test]
+    fn unbound_endpoint_is_rejected_at_the_gate() {
+        // The connection's endpoint is bound to NO admitted kernel: the handler's
+        // defense-in-depth re-resolve rejects before any signer work.
+        let admitted = endpoint_from_seed(10);
+        let intruder = endpoint_from_seed(200);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = verified_directory("did:chio:peer", 10);
+        let signer_dir = signers(vec![("oracle-a", admitted, &oracle)]);
+        let (handler, _sink) = handler(directory, signer_dir);
+
+        let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        let err = handler
+            .verify_batch(intruder, &batch(vec![frame]))
+            .expect_err("unbound endpoint must fail closed at the gate");
+        assert!(matches!(err, RevocationLaneError::UnboundEndpoint));
+    }
+
+    #[test]
+    fn one_bad_frame_rejects_whole_batch_all_or_nothing() {
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = verified_directory("did:chio:peer", 10);
+        let signer_dir = signers(vec![("oracle-a", transport, &oracle)]);
+        let (handler, sink) = handler(directory, signer_dir);
+
+        let good = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        let mut bad_signed = signed_root(&oracle, 6);
+        bad_signed.signature.signature_bytes[0] ^= 0x01;
+        let bad = RevocationRootGossip::from_signed(bad_signed, NOW);
+
+        let response = handler.handle_request(
+            transport,
+            RevocationLaneRequest::Push(batch(vec![good, bad])),
+            NOW,
+        );
+        assert!(matches!(response, RevocationLaneResponse::Rejected { .. }));
+        // The good frame must NOT have been merged: all-or-nothing.
+        assert!(sink.merged.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn catchup_request_serves_from_history() {
+        // A history holding epochs 5..=7 served through respond_to_catchup.
+        #[derive(Debug)]
+        struct MapHistory(HashMap<u64, SignedEpochRoot>);
+        impl RevocationCatchupHistory for MapHistory {
+            fn signed_root_at(&self, epoch: u64) -> Option<SignedEpochRoot> {
+                self.0.get(&epoch).cloned()
+            }
+        }
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = verified_directory("did:chio:peer", 10);
+        let signer_dir = signers(vec![("oracle-a", transport, &oracle)]);
+        let mut roots = HashMap::new();
+        for epoch in 5..=7 {
+            roots.insert(epoch, signed_root(&oracle, epoch));
+        }
+        let handler = RevocationHandler::new(
+            directory,
+            signer_dir,
+            Arc::new(MapHistory(roots)),
+            Arc::new(RecordingSink::default()),
+            "did:chio:responder",
+        );
+
+        let request = RevocationCatchupRequest::new("did:chio:peer", 5, 7, NOW).unwrap();
+        let response =
+            handler.handle_request(transport, RevocationLaneRequest::Catchup(request), NOW);
+        match response {
+            RevocationLaneResponse::Catchup(catchup) => {
+                let epochs: Vec<u64> = catchup.frames.iter().map(|frame| frame.epoch).collect();
+                assert_eq!(epochs, vec![5, 6, 7]);
+                assert!(catchup.validate_response().is_ok());
+            }
+            other => panic!("expected Catchup, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn signer_directory_rejects_duplicate_and_key_mismatch() {
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        // Duplicate signer_id.
+        let dup = VerifiedSignerDirectory::from_bindings(vec![
+            (
+                "oracle-a".to_string(),
+                SignerBinding {
+                    endpoint: transport,
+                    verifier: oracle.verifier(),
+                },
+            ),
+            (
+                "oracle-a".to_string(),
+                SignerBinding {
+                    endpoint: transport,
+                    verifier: oracle.verifier(),
+                },
+            ),
+        ]);
+        assert!(matches!(dup, Err(RevocationLaneError::DuplicateSigner(_))));
+
+        // Key/verifier signer_id disagrees with the map key.
+        let mismatch = VerifiedSignerDirectory::from_bindings(vec![(
+            "oracle-z".to_string(),
+            SignerBinding {
+                endpoint: transport,
+                verifier: oracle.verifier(),
+            },
+        )]);
+        assert!(matches!(
+            mismatch,
+            Err(RevocationLaneError::SignerIdMismatch { .. })
+        ));
+    }
+
+    #[test]
+    fn lane_request_round_trips_externally_tagged() {
+        // The externally-tagged envelope preserves the inner deny_unknown_fields
+        // contract types unchanged.
+        let oracle = signer("oracle-a", SEED_A);
+        let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        let request = RevocationLaneRequest::Push(batch(vec![frame]));
+        let encoded = serde_json::to_vec(&request).unwrap();
+        let decoded: RevocationLaneRequest = serde_json::from_slice(&encoded).unwrap();
+        match decoded {
+            RevocationLaneRequest::Push(batch) => assert!(batch.validate_envelope().is_ok()),
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+}

@@ -23,6 +23,11 @@ iroh = { version = "1.0", default-features = false, features = ["tls-ring"] }
 iroh-gossip = "0.101"
 iroh-blobs = "0.103"
 chio-federation = { workspace = true }
+# Lane b + catch-up verify each SignedEpochRoot against the REAL pinned
+# revocation-oracle verifier (Ed25519RootVerifier / EpochRootVerifier +
+# SignedEpochRoot), which chio-federation does not re-export - depend on the
+# oracle crate directly rather than re-implement (and weaken) the check.
+chio-revocation-oracle = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

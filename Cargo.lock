@@ -3584,6 +3584,7 @@ dependencies = [
  "chio-federation",
  "chio-pheromone",
  "chio-pheromone-relay",
+ "chio-revocation-oracle",
  "iroh",
  "iroh-blobs",
  "iroh-gossip",
