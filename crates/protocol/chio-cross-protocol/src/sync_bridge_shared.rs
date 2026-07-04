@@ -1,12 +1,11 @@
-// Compatibility-only synchronous bridge shim, shared by the outward protocol
-// edges. This file is NOT compiled as part of `chio-cross-protocol`; it is a
-// shared source fragment textually pulled into each edge's crate-root scope via
-// `include!("../../chio-cross-protocol/src/sync_bridge_shared.rs")`, so its
-// `#[cfg(...)]` gates evaluate in the including edge crate exactly as a
-// per-edge copy would.
-//
-// Mirrors the kernel's sync-bridge gate so the explicit passthrough surface
-// fails closed under a current-thread runtime instead of deadlocking.
+//! Compatibility-only synchronous bridge shim, shared by the outward protocol
+//! edges (chio-a2a-edge, chio-acp-edge). The edges gate their use of it on
+//! their own `compatibility-surface` feature; the helper itself is always
+//! compiled here so both edges can depend on a single definition instead of
+//! textually including this file.
+//!
+//! Mirrors the kernel's sync-bridge gate so the explicit passthrough surface
+//! fails closed under a current-thread runtime instead of deadlocking.
 
 /// Sentinel error returned by [`block_on_tool_server_invoke`] when the
 /// passthrough is invoked from inside a current-thread Tokio runtime.
@@ -16,7 +15,6 @@
 /// awaits Tokio I/O. The kernel bridge refuses this case fail-closed,
 /// and the edge shims must match instead of reintroducing the
 /// deadlock through the `compatibility-surface` feature.
-#[cfg(any(test, feature = "compatibility-surface"))]
 #[derive(Debug, thiserror::Error)]
 #[error(
     "sync bridge incompatible with current-thread Tokio runtime: \
@@ -31,8 +29,7 @@ pub struct SyncBridgeIncompatibleWithCurrentThreadRuntime;
 /// [`SyncBridgeIncompatibleWithCurrentThreadRuntime`] instead of
 /// silently parking the only worker thread; with no runtime active,
 /// drive the future with the non-tokio `futures::executor::block_on`.
-#[cfg(any(test, feature = "compatibility-surface"))]
-fn block_on_tool_server_invoke<F, T>(
+pub fn block_on_tool_server_invoke<F, T>(
     future: F,
 ) -> Result<T, SyncBridgeIncompatibleWithCurrentThreadRuntime>
 where

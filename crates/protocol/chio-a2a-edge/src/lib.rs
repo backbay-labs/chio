@@ -80,11 +80,11 @@ pub mod otel;
 // Each fragment merges into this crate-root module scope; item paths and
 // visibility resolve as if the fragments were inlined here.
 
-// `sync_bridge` is a shared source fragment that lives in `chio-cross-protocol`
-// so the A2A and ACP edges keep one definition of the fail-closed sync-bridge
-// gate. It is included (not `mod`-declared) so its `#[cfg(...)]` gates evaluate
-// in this crate exactly as an inline per-edge copy would.
-include!("../../chio-cross-protocol/src/sync_bridge_shared.rs");
+// The fail-closed sync-bridge helper lives once in `chio-cross-protocol`; the
+// A2A and ACP edges share that single definition. Only used under the
+// compatibility-surface passthrough, so the import is gated to match.
+#[cfg(any(test, feature = "compatibility-surface"))]
+use chio_cross_protocol::sync_bridge_shared::block_on_tool_server_invoke;
 include!("error.rs");
 include!("config.rs");
 include!("types.rs");

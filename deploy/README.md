@@ -42,7 +42,7 @@ Each manifest wires the following as secret references (never inline):
 Non-secret configuration is passed as CLI flags to the sidecar subcommand
 (`chio api protect`), not via environment variables:
 
-- `--listen` -- bind address (default `0.0.0.0:9090`); the health route is fixed at `/chio/health`
+- `--listen` -- bind address (default `127.0.0.1:9090`; the manifests bind `0.0.0.0:9090`); the health route is fixed at `/chio/health`
 - `--upstream` -- the protected upstream base URL
 - `--spec` -- the OpenAPI spec used to derive tool scopes
 - `--receipt-store` -- receipt destination
