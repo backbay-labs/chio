@@ -21,7 +21,6 @@ import type {
   HttpMethod,
   IdentityExtractor,
   RoutePatternResolver,
-  Verdict,
 } from "./types.js";
 import {
   CHIO_ERROR_CODES,
@@ -29,6 +28,7 @@ import {
   isAuthoritativeVerification,
   isAuthorizedHttpReceipt,
 } from "./types.js";
+import { VALID_METHODS, verdictReason, verdictStatus } from "./http-helpers.js";
 
 const bufferedNodeBodies = new WeakMap<IncomingMessage, Buffer>();
 
@@ -40,8 +40,7 @@ function sha256Hex(input: Uint8Array | string): string {
 
 function normalizeMethod(method: string): HttpMethod | null {
   const upper = method.toUpperCase();
-  const valid: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
-  return valid.includes(upper as HttpMethod) ? (upper as HttpMethod) : null;
+  return VALID_METHODS.has(upper) ? (upper as HttpMethod) : null;
 }
 
 function headersToRecord(headers: Record<string, string | string[] | undefined>): Record<string, string> {
@@ -75,14 +74,6 @@ function parseQueryString(url: string): Record<string, string> {
 function extractPath(url: string): string {
   const qIndex = url.indexOf("?");
   return qIndex === -1 ? url : url.slice(0, qIndex);
-}
-
-function verdictStatus(verdict: Verdict): number {
-  return "http_status" in verdict ? verdict.http_status : 403;
-}
-
-function verdictReason(verdict: Verdict): string {
-  return "reason" in verdict ? verdict.reason : "request was not authorized";
 }
 
 /** Default route pattern resolver -- returns the raw path as pattern. */
@@ -425,7 +416,30 @@ function bufferedBodyFromValue(value: unknown): Buffer | null {
   return null;
 }
 
-function preserveReadableBody(req: IncomingMessage, bodyBytes: Buffer): void {
+/** Options for {@link preserveReadableBody}. */
+export interface PreserveReadableBodyOptions {
+  /**
+   * When true (the default), bind `Symbol.asyncIterator` to the replay stream
+   * so `for await (const chunk of req)` re-reads the buffered body. Express
+   * intentionally leaves this off to preserve its existing replay semantics.
+   */
+  bindAsyncIterator?: boolean;
+}
+
+/**
+ * Replace a consumed `IncomingMessage` body stream with a replayable
+ * `PassThrough` seeded with the buffered bytes, so downstream body parsers can
+ * re-read the request after Chio has hashed it.
+ *
+ * Shared by the node-http interceptor and the Express middleware; the two
+ * differ only in whether they rebind `Symbol.asyncIterator` (see options).
+ */
+export function preserveReadableBody(
+  req: IncomingMessage,
+  bodyBytes: Buffer,
+  options: PreserveReadableBodyOptions = {},
+): void {
+  const { bindAsyncIterator = true } = options;
   const replay = new PassThrough();
   replay.end(bodyBytes);
   const replayWithState = replay as PassThrough & { _readableState: unknown };
@@ -454,7 +468,9 @@ function preserveReadableBody(req: IncomingMessage, bodyBytes: Buffer): void {
     }
   }
 
-  replayable[Symbol.asyncIterator] = replay[Symbol.asyncIterator].bind(replay) as unknown;
+  if (bindAsyncIterator) {
+    replayable[Symbol.asyncIterator] = replay[Symbol.asyncIterator].bind(replay) as unknown;
+  }
 
   Object.defineProperty(replayable, "_readableState", {
     configurable: true,

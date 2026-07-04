@@ -25,7 +25,10 @@ import {
   isAllowed,
   resolveConfig,
   buildChioHttpRequest,
-  type Verdict,
+  VALID_METHODS,
+  verdictStatus,
+  verdictReason,
+  shouldSkip,
 } from "@chio-protocol/node-http";
 import { createHash } from "node:crypto";
 
@@ -38,18 +41,14 @@ export interface ChioElysiaConfig extends ChioConfig {
   skip?: Array<string | RegExp> | undefined;
 }
 
-/** Valid HTTP methods for Chio evaluation. */
-const VALID_METHODS = new Set<string>([
-  "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS",
-]);
-
-function verdictStatus(verdict: Verdict): number {
-  return "http_status" in verdict ? verdict.http_status : 403;
-}
-
-function verdictReason(verdict: Verdict): string {
-  return "reason" in verdict ? verdict.reason : "request was not authorized";
-}
+// Note: this plugin keeps its own Web Request handling below rather than
+// delegating to interceptWebRequest from @chio-protocol/node-http (the way
+// Express uses interceptNodeRequest). Elysia's beforeHandle swallows body-read
+// errors (continue without a body hash) and drives responses through
+// `set.status`/`set.headers`, whereas interceptWebRequest throws on unreadable
+// bodies and returns a marker Response. Sharing only the pure helpers
+// (VALID_METHODS/verdictStatus/verdictReason/shouldSkip) keeps behavior
+// byte-for-byte identical.
 
 /**
  * Create an Elysia plugin that evaluates every request against Chio.
@@ -190,17 +189,4 @@ export function chio(config: ChioElysiaConfig = {}) {
         };
       }
     });
-}
-
-// -- Helpers --
-
-function shouldSkip(path: string, patterns: Array<string | RegExp>): boolean {
-  for (const pattern of patterns) {
-    if (typeof pattern === "string") {
-      if (path === pattern) return true;
-    } else {
-      if (pattern.test(path)) return true;
-    }
-  }
-  return false;
 }

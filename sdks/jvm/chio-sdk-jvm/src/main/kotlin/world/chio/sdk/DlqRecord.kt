@@ -1,6 +1,6 @@
 /**
  * Dead-letter-queue wire record. Mirrors DLQRecord in
- * chio_streaming/dlq.py:37-59.
+ * chio_streaming/dlq.py.
  */
 package world.chio.sdk
 

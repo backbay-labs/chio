@@ -30,7 +30,10 @@ import {
   isAllowed,
   resolveConfig,
   buildChioHttpRequest,
-  type Verdict,
+  VALID_METHODS,
+  verdictStatus,
+  verdictReason,
+  shouldSkip,
 } from "@chio-protocol/node-http";
 import { createHash } from "node:crypto";
 import { PassThrough } from "node:stream";
@@ -50,19 +53,6 @@ declare module "fastify" {
     chioResult?: EvaluateResponse | undefined;
     chioRawBody?: Buffer | undefined;
   }
-}
-
-/** Valid HTTP methods for Chio evaluation. */
-const VALID_METHODS = new Set<string>([
-  "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS",
-]);
-
-function verdictStatus(verdict: Verdict): number {
-  return "http_status" in verdict ? verdict.http_status : 403;
-}
-
-function verdictReason(verdict: Verdict): string {
-  return "reason" in verdict ? verdict.reason : "request was not authorized";
 }
 
 /**
@@ -228,17 +218,6 @@ export const chio = fp(chioPlugin, {
 });
 
 // -- Helpers --
-
-function shouldSkip(path: string, patterns: Array<string | RegExp>): boolean {
-  for (const pattern of patterns) {
-    if (typeof pattern === "string") {
-      if (path === pattern) return true;
-    } else {
-      if (pattern.test(path)) return true;
-    }
-  }
-  return false;
-}
 
 function extractRoutePattern(request: FastifyRequest, fallbackPath: string): string {
   // Fastify provides routeOptions.url which is the route pattern

@@ -1,13 +1,13 @@
 /**
  * Build DLQ records for denied evaluations. Mirrors DLQRouter in
- * chio_streaming/dlq.py:62-197.
+ * chio_streaming/dlq.py.
  *
  * Routing precedence (highest wins):
  * 1. Exact match on topicMap[sourceTopic].
  * 2. defaultTopic fallback.
  * 3. ChioValidationError if neither is configured.
  *
- * Payload invariants (dlq.py:118-184):
+ * Payload invariants (dlq.py):
  * - Input receipt MUST be a deny; otherwise throws ChioValidationError.
  * - Payload version: "chio-streaming/dlq/v1".
  * - Payload keys in fixed order after canonicalisation:

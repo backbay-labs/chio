@@ -1,6 +1,6 @@
 /**
- * Typealias shims that keep the `world.chio.*` imports working for one
- * release. Remove in 0.2.0.
+ * Package-level typealiases so world.chio.* resolves the world.chio.sdk.*
+ * types used by ChioFilter.
  */
 @file:JvmName("ChioSdkAliases")
 

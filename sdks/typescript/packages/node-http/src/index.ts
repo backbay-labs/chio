@@ -15,13 +15,21 @@ export * from "./types.js";
 export * from "./identity.js";
 export * from "./sidecar-client.js";
 export {
+  VALID_METHODS,
+  verdictStatus,
+  verdictReason,
+  shouldSkip,
+} from "./http-helpers.js";
+export {
   interceptNodeRequest,
   interceptWebRequest,
   getBufferedNodeRequestBody,
   buildChioHttpRequest,
+  preserveReadableBody,
   resolveConfig,
   type ResolvedConfig,
   type BuildRequestOptions,
   type NodeInterceptionOutcome,
   type WebInterceptionOutcome,
+  type PreserveReadableBodyOptions,
 } from "./interceptor.js";

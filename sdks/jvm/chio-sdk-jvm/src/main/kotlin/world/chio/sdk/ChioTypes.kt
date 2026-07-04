@@ -86,7 +86,7 @@ data class Verdict(
     @JsonIgnore
     fun isDenied(): Boolean = verdict == "deny"
 
-    /** Convert to core Decision type. Mirrors models.py:375-386. */
+    /** Convert to core Decision type. Mirrors models.py. */
     fun toDecision(): Decision =
         when (verdict) {
             "allow" -> Decision.allow()

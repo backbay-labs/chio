@@ -66,7 +66,7 @@ class ChioClient
             return parser.convertValue(node, Map::class.java) as Map<String, Any?>
         }
 
-        /** Boolean shim kept for chio-spring-boot parity with the old healthCheck(). */
+        /** Boolean health check used by the Spring Boot ChioSidecarClient.healthCheck() wrapper. */
         fun isHealthy(): Boolean =
             try {
                 val (status, _) = sendGet(SidecarPaths.HEALTH)
