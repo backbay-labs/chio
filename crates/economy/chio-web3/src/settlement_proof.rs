@@ -1570,12 +1570,15 @@ fn validate_dispute_snapshot(
             "public settlement dispute snapshot before challenge window close".to_string(),
         ));
     }
-    if let Some(verifier_now) = verifier_now_unix_seconds {
-        if dispute.window_closed_at > verifier_now || dispute.observed_at > verifier_now {
-            return Err(Web3ContractError::InvalidProof(
-                "public settlement dispute snapshot is from the future".to_string(),
-            ));
-        }
+    let verifier_now = verifier_now_unix_seconds.ok_or_else(|| {
+        Web3ContractError::InvalidProof(
+            "public settlement dispute verifier time missing".to_string(),
+        )
+    })?;
+    if dispute.window_closed_at > verifier_now || dispute.observed_at > verifier_now {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement dispute snapshot is from the future".to_string(),
+        ));
     }
     for receipt_id in &dispute.linked_receipt_ids {
         ensure_non_empty(receipt_id, "public_settlement.dispute.linked_receipt_ids")?;

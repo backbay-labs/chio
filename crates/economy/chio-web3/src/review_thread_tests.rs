@@ -1,10 +1,15 @@
 use crate::error::Web3ContractError;
 use crate::settlement::validate_web3_settlement_dispatch;
+use crate::settlement_proof::{
+    public_settlement_witness_body_hash, verify_public_settlement_proof,
+    PublicSettlementWitnessMode,
+};
 use serde_json::json;
 
 use super::tests::{
     resign_dispatch_capital_instruction, sample_beneficiary_binding_for_address, sample_dispatch,
     sample_public_settlement_proof_bundle_with_chain_snapshot,
+    sample_public_settlement_verifier_trust, sign_sample_public_settlement_bundle,
     verify_sample_public_settlement_proof,
 };
 
@@ -155,5 +160,25 @@ fn public_settlement_proof_rejects_future_dated_dispute_snapshot() {
         verify_sample_public_settlement_proof(&bundle),
         Err(Web3ContractError::InvalidProof(message))
             if message.contains("public settlement dispute snapshot is from the future")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_requires_verifier_time_for_live_dispute_snapshot() {
+    let mut bundle = sample_public_settlement_proof_bundle_with_chain_snapshot(|_| {});
+    let witness = bundle
+        .public_witness
+        .as_mut()
+        .expect("sample public settlement witness exists");
+    witness.mode = PublicSettlementWitnessMode::Live;
+    witness.body_hash = public_settlement_witness_body_hash(witness).unwrap();
+    sign_sample_public_settlement_bundle(&mut bundle);
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.verifier_now_unix_seconds = None;
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &trust),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement dispute verifier time missing")
     ));
 }

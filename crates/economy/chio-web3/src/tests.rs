@@ -634,7 +634,7 @@ fn sample_public_settlement_proof_bundle() -> PublicSettlementProofBundle {
     bundle
 }
 
-fn sign_sample_public_settlement_bundle(bundle: &mut PublicSettlementProofBundle) {
+pub(super) fn sign_sample_public_settlement_bundle(bundle: &mut PublicSettlementProofBundle) {
     bundle.bundle_signature = None;
     let keypair = settlement_bundle_keypair();
     let Ok((signature, _)) = keypair.sign_canonical(bundle) else {
@@ -703,7 +703,7 @@ fn sample_public_settlement_order_binding() -> PublicSettlementOrderBinding {
     }
 }
 
-fn sample_public_settlement_verifier_trust() -> PublicSettlementVerifierTrust {
+pub(super) fn sample_public_settlement_verifier_trust() -> PublicSettlementVerifierTrust {
     PublicSettlementVerifierTrust {
         trusted_bundle_signer_keys: vec![settlement_bundle_keypair().public_key()],
         trusted_capital_signer_keys: vec![treasury_keypair().public_key()],
