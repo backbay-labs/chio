@@ -50,6 +50,7 @@ use chio_revocation_oracle::EpochRootVerifier;
 use chio_revocation_oracle::SignedEpochRoot;
 use iroh::Endpoint;
 use iroh::EndpointId;
+use iroh_blobs::api::blobs::BlobStatus;
 use iroh_blobs::api::downloader::Shuffled;
 use iroh_blobs::store::fs::FsStore;
 use iroh_blobs::BlobsProtocol;
@@ -341,6 +342,17 @@ impl BlobCatchupClient {
             })
             .await?
             .map_err(|error| CatchupError::Blob(error.to_string()))?;
+            // Bound the blob BEFORE materializing it: `get_bytes` reads the WHOLE blob
+            // into memory, so a valid manifest hash pointing at a huge blob would
+            // exhaust follower RAM. The store now holds the downloaded blob; read its
+            // completed size (no full read) and reject fail-closed above the per-blob
+            // cap so the whole-blob read below never runs.
+            let status = client_bounded(limits, AcceptPhase::ReadFrame, async {
+                self.store.blobs().status(*hash).await
+            })
+            .await?
+            .map_err(|error| CatchupError::Blob(error.to_string()))?;
+            check_blob_size_cap(&status, *hash)?;
             let bytes = client_bounded(limits, AcceptPhase::ReadFrame, async {
                 self.store.blobs().get_bytes(*hash).await
             })
@@ -462,6 +474,49 @@ fn check_manifest_cap(len: usize) -> Result<(), CatchupError> {
             requested,
             max: REVOCATION_CATCHUP_MAX_EPOCHS,
         };
+        note_catchup_failure(&error);
+        return Err(error);
+    }
+    Ok(())
+}
+
+/// Hard per-blob byte cap for catch-up. A single [`SignedEpochRoot`] is tiny (an
+/// epoch, a Merkle root, a signer id, and a signature), so a blob larger than this is
+/// treated as a memory-exhaustion attempt and rejected fail-closed BEFORE it is read
+/// into memory. The cap is generous headroom over any legitimate root and mirrors the
+/// order of magnitude of the relay peer directory's per-peer `maxCatchupBytes`.
+///
+/// Content-address integrity (BLAKE3) constrains WHAT the bytes are, never HOW MANY:
+/// a compromised or admitted authority can advertise a valid manifest hash for an
+/// arbitrarily large blob, so the manifest entry-count cap alone does not bound the
+/// bytes a follower loads. This is the byte-size backstop.
+const MAX_CATCHUP_BLOB_SIZE: u64 = 1_048_576;
+
+/// Reject a downloaded catch-up blob whose stored size exceeds
+/// [`MAX_CATCHUP_BLOB_SIZE`] BEFORE it is materialized into memory by `get_bytes`.
+///
+/// The two-step download writes the blob into the follower store; its completed-blob
+/// [`BlobStatus::Complete`] carries the size WITHOUT a full read, so this is the
+/// "check the size iroh-blobs exposes before the full read" path. A non-`Complete`
+/// status after a download the transport reported as successful is itself anomalous
+/// and fails closed. Every rejection is [`CatchupError::Blob`], so it folds into the
+/// same all-or-nothing catch-up failure as any other blob-transport error.
+fn check_blob_size_cap(status: &BlobStatus, hash: Hash) -> Result<(), CatchupError> {
+    let size = match status {
+        BlobStatus::Complete { size } => *size,
+        _ => {
+            let error = CatchupError::Blob(format!(
+                "catch-up blob {hash} is not completely stored after download"
+            ));
+            note_catchup_failure(&error);
+            return Err(error);
+        }
+    };
+    if size > MAX_CATCHUP_BLOB_SIZE {
+        let error = CatchupError::Blob(format!(
+            "catch-up blob {hash} of {size} bytes exceeds the \
+             {MAX_CATCHUP_BLOB_SIZE}-byte per-blob cap"
+        ));
         note_catchup_failure(&error);
         return Err(error);
     }
@@ -707,6 +762,30 @@ mod tests {
         assert!(
             check_manifest_cap(usize::try_from(REVOCATION_CATCHUP_MAX_EPOCHS).unwrap()).is_ok()
         );
+    }
+
+    #[test]
+    fn over_cap_blob_size_is_rejected_before_read() {
+        let hash = Hash::new(b"any blob");
+        // A blob just over the cap is rejected fail-closed (memory-exhaustion guard).
+        let over = BlobStatus::Complete {
+            size: MAX_CATCHUP_BLOB_SIZE + 1,
+        };
+        let err = check_blob_size_cap(&over, hash)
+            .expect_err("an over-cap blob must be rejected before it is read into memory");
+        assert!(matches!(err, CatchupError::Blob(_)));
+        assert_eq!(err.code(), "blob-transport");
+        // A blob exactly at the cap is accepted (inclusive).
+        assert!(check_blob_size_cap(
+            &BlobStatus::Complete {
+                size: MAX_CATCHUP_BLOB_SIZE
+            },
+            hash
+        )
+        .is_ok());
+        // A non-Complete status after a "successful" download is itself fail-closed.
+        assert!(check_blob_size_cap(&BlobStatus::NotFound, hash).is_err());
+        assert!(check_blob_size_cap(&BlobStatus::Partial { size: Some(10) }, hash).is_err());
     }
 
     #[test]
