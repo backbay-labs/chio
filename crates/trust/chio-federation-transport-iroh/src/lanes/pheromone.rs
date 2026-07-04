@@ -605,7 +605,20 @@ where
     let mut report = OutboxDrainReport::default();
     for entry in due {
         if entry.sender_kernel_id != sender_kernel_id {
-            record_delivery_failure(store, &entry, "sender_mismatch", now_unix_ms, &mut report)?;
+            // A row leased for a DIFFERENT sender is re-queued, NOT routed through
+            // record_delivery_failure (which dead-letters after 3 attempts). Mirror
+            // the HTTP deliver tick (service.rs deliver_due_batches): the row belongs
+            // to another sender's drain, so it must stay available for that sender
+            // rather than being permanently dead-lettered here.
+            store.mark_retry(
+                &entry.outbox_id,
+                "sender_mismatch",
+                now_unix_ms.saturating_add(60_000),
+            )?;
+            report.retried = report.retried.saturating_add(1);
+            report
+                .failures
+                .push(format!("{}: sender_mismatch", entry.outbox_id));
             continue;
         }
         // ENFORCE OUTBOUND PEER SCOPE (fail-closed): mirror the HTTP deliver tick.
@@ -1308,6 +1321,59 @@ mod tests {
         assert_eq!(error.code(), "accept_timeout");
 
         router.shutdown().await.ok();
+    }
+
+    // -- Sender-mismatch rows are re-queued, never dead-lettered (finding D) --
+
+    #[tokio::test]
+    async fn sender_mismatch_row_is_requeued_not_dead_lettered() {
+        // A leased outbox row whose sender_kernel_id != the sender being drained
+        // belongs to a DIFFERENT sender's drain. It must be re-queued (mirroring the
+        // HTTP tick), never routed through the dead-letter path: draining it
+        // repeatedly must NEVER dead-letter another sender's batch.
+        let store = SqlitePheromoneRelayStore::open_in_memory().unwrap();
+        let batch = direct_batch("did:chio:other");
+        enqueue_batch_for_delivery(&store, "did:chio:other", RECIPIENT, TREATY, &batch, NOW)
+            .unwrap();
+
+        // The mismatch is caught before any dial, so resolve_addr / scope_check must
+        // never run; the endpoint is likewise never used.
+        let endpoint = bind_endpoint(43, None).await;
+        let mut now = NOW;
+        for _ in 0..4 {
+            let report = drain_outbox_over_iroh(
+                &store,
+                &endpoint,
+                |_recipient: &str| -> Option<EndpointAddr> {
+                    panic!("a sender-mismatched row must never be resolved or dialed")
+                },
+                |_recipient: &str, _batch: &PheromoneGossipBatch| {
+                    panic!("a sender-mismatched row must never be scope-checked")
+                },
+                // Draining for a DIFFERENT sender than the queued row.
+                "did:chio:llamaworks",
+                now,
+                10,
+            )
+            .await
+            .unwrap();
+            assert_eq!(report.delivered, 0);
+            assert_eq!(
+                report.dead_lettered, 0,
+                "a mismatched-sender row must never be dead-lettered"
+            );
+            assert_eq!(
+                report.retried, 1,
+                "the row is re-queued so its correct sender can drain it"
+            );
+            assert!(
+                report.failures[0].contains("sender_mismatch"),
+                "unexpected failures: {:?}",
+                report.failures
+            );
+            // Advance past the fixed 60s re-queue backoff so the row leases again.
+            now = now.saturating_add(60_001);
+        }
     }
 
     // -- Outbound directory-scope enforcement on the drain (finding C) --
