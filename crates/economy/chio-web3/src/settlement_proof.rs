@@ -341,7 +341,7 @@ pub fn verify_public_settlement_proof(
     validate_chain_snapshot(bundle)?;
     validate_independent_chain_head(bundle, trust)?;
     validate_finality(bundle)?;
-    validate_dispute_posture(bundle)?;
+    validate_dispute_posture(bundle, trust.verifier_now_unix_seconds)?;
     let trust_market_context = validate_trust_market_refs(bundle)?;
     let trust_market_context_verified =
         validate_expected_trust_market_context(&trust_market_context, trust)?;
@@ -581,12 +581,12 @@ fn validate_deployment_provenance(
     if !evm_addresses_match(
         &provenance.root_registry_address,
         &bundle.chain_snapshot.root_registry_address,
-    ) {
+    )? {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement deployment root registry mismatch".to_string(),
         ));
     }
-    if !evm_addresses_match(&provenance.escrow_contract, &dispatch.escrow_contract) {
+    if !evm_addresses_match(&provenance.escrow_contract, &dispatch.escrow_contract)? {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement deployment escrow contract mismatch".to_string(),
         ));
@@ -594,7 +594,7 @@ fn validate_deployment_provenance(
     if !evm_addresses_match(
         &provenance.bond_vault_contract,
         &dispatch.bond_vault_contract,
-    ) {
+    )? {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement deployment bond vault mismatch".to_string(),
         ));
@@ -983,7 +983,7 @@ fn validate_chain_snapshot(bundle: &PublicSettlementProofBundle) -> Result<(), W
     if !evm_addresses_match(
         &snapshot.root_registry_address,
         &chain_anchor.contract_address,
-    ) {
+    )? {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement root registry address mismatch".to_string(),
         ));
@@ -1134,7 +1134,7 @@ fn validate_beneficiary_identity_binding(
     if !evm_addresses_match(
         &certificate.settlement_address,
         &bundle.settlement_receipt.dispatch.beneficiary_address,
-    ) {
+    )? {
         return Err(Web3ContractError::InvalidBinding(
             "public settlement beneficiary identity binding address mismatch".to_string(),
         ));
@@ -1173,12 +1173,12 @@ fn validate_escrow_snapshot(
             "public settlement escrow id mismatch".to_string(),
         ));
     }
-    if !evm_addresses_match(&escrow.escrow_contract, &dispatch.escrow_contract) {
+    if !evm_addresses_match(&escrow.escrow_contract, &dispatch.escrow_contract)? {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement escrow contract mismatch".to_string(),
         ));
     }
-    if !evm_addresses_match(&escrow.beneficiary_address, &dispatch.beneficiary_address) {
+    if !evm_addresses_match(&escrow.beneficiary_address, &dispatch.beneficiary_address)? {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement escrow beneficiary mismatch".to_string(),
         ));
@@ -1221,7 +1221,7 @@ fn validate_bond_snapshot(
     )?;
 
     let dispatch = &bundle.settlement_receipt.dispatch;
-    if !evm_addresses_match(&bond.bond_vault_contract, &dispatch.bond_vault_contract) {
+    if !evm_addresses_match(&bond.bond_vault_contract, &dispatch.bond_vault_contract)? {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement bond vault mismatch".to_string(),
         ));
@@ -1408,7 +1408,7 @@ fn validate_order_binding_tuple(
             "public settlement order binding settlement tx mismatch".to_string(),
         ));
     }
-    if !evm_addresses_match(&binding.beneficiary_address, &dispatch.beneficiary_address) {
+    if !evm_addresses_match(&binding.beneficiary_address, &dispatch.beneficiary_address)? {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement order binding beneficiary mismatch".to_string(),
         ));
@@ -1445,9 +1445,12 @@ fn validate_finality(bundle: &PublicSettlementProofBundle) -> Result<(), Web3Con
     Ok(())
 }
 
-fn validate_dispute_posture(bundle: &PublicSettlementProofBundle) -> Result<(), Web3ContractError> {
+fn validate_dispute_posture(
+    bundle: &PublicSettlementProofBundle,
+    verifier_now_unix_seconds: Option<u64>,
+) -> Result<(), Web3ContractError> {
     let dispute = required_dispute_snapshot(bundle)?;
-    validate_dispute_snapshot(bundle, dispute)?;
+    validate_dispute_snapshot(bundle, dispute, verifier_now_unix_seconds)?;
     if dispute.open_dispute_count > 0 {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement active dispute blocks finality".to_string(),
@@ -1531,6 +1534,7 @@ fn finality_report_status(bundle: &PublicSettlementProofBundle) -> &'static str 
 fn validate_dispute_snapshot(
     bundle: &PublicSettlementProofBundle,
     dispute: &PublicSettlementDisputeSnapshot,
+    verifier_now_unix_seconds: Option<u64>,
 ) -> Result<(), Web3ContractError> {
     if dispute.schema != CHIO_WEB3_SETTLEMENT_DISPUTE_SCHEMA {
         return Err(Web3ContractError::UnsupportedSchema(dispute.schema.clone()));
@@ -1565,6 +1569,13 @@ fn validate_dispute_snapshot(
         return Err(Web3ContractError::InvalidProof(
             "public settlement dispute snapshot before challenge window close".to_string(),
         ));
+    }
+    if let Some(verifier_now) = verifier_now_unix_seconds {
+        if dispute.window_closed_at > verifier_now || dispute.observed_at > verifier_now {
+            return Err(Web3ContractError::InvalidProof(
+                "public settlement dispute snapshot is from the future".to_string(),
+            ));
+        }
     }
     for receipt_id in &dispute.linked_receipt_ids {
         ensure_non_empty(receipt_id, "public_settlement.dispute.linked_receipt_ids")?;

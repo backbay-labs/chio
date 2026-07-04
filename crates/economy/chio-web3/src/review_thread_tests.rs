@@ -48,6 +48,24 @@ fn web3_dispatch_accepts_equivalent_mixed_case_signed_rail_beneficiary() {
 }
 
 #[test]
+fn web3_dispatch_rejects_equal_malformed_evm_beneficiary_refs() {
+    let mut dispatch = sample_dispatch();
+    dispatch.beneficiary_address = "not-an-address".to_string();
+    dispatch
+        .capital_instruction
+        .body
+        .rail
+        .destination_account_ref = Some("not-an-address".to_string());
+    resign_dispatch_capital_instruction(&mut dispatch);
+
+    assert!(matches!(
+        validate_web3_settlement_dispatch(&dispatch),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("EVM address fields must be 0x-prefixed 20-byte hex values")
+    ));
+}
+
+#[test]
 fn public_settlement_proof_accepts_settlement_tx_after_anchor_block() {
     let bundle = sample_public_settlement_proof_bundle_with_chain_snapshot(|bundle| {
         bundle["chain_snapshot"]["block"]["transaction_hashes"] =
@@ -123,5 +141,19 @@ fn public_settlement_proof_rejects_different_evm_addresses_after_normalization()
         verify_sample_public_settlement_proof(&bundle),
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("public settlement escrow contract mismatch")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_future_dated_dispute_snapshot() {
+    let bundle = sample_public_settlement_proof_bundle_with_chain_snapshot(|bundle| {
+        bundle["dispute_snapshot"]["window_closed_at"] = json!(1_743_294_000_u64);
+        bundle["dispute_snapshot"]["observed_at"] = json!(1_743_294_001_u64);
+    });
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement dispute snapshot is from the future")
     ));
 }

@@ -220,7 +220,7 @@ pub fn validate_web3_settlement_dispatch(
         destination_account_ref,
         "web3_settlement_dispatch.capital_instruction.rail.destination_account_ref",
     )?;
-    if !evm_addresses_match(destination_account_ref, &dispatch.beneficiary_address) {
+    if !evm_addresses_match(destination_account_ref, &dispatch.beneficiary_address)? {
         return Err(Web3ContractError::invalid_settlement(
             "web3 settlement dispatch beneficiary_address must match capital_instruction rail.destination_account_ref",
         ));

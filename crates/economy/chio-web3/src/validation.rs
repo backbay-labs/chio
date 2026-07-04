@@ -15,11 +15,10 @@ pub(crate) fn ensure_non_empty(value: &str, field: &'static str) -> Result<(), W
     Ok(())
 }
 
-pub(crate) fn evm_addresses_match(left: &str, right: &str) -> bool {
-    match (evm_address_hex(left), evm_address_hex(right)) {
-        (Some(left_hex), Some(right_hex)) => left_hex.eq_ignore_ascii_case(right_hex),
-        _ => left == right,
-    }
+pub(crate) fn evm_addresses_match(left: &str, right: &str) -> Result<bool, Web3ContractError> {
+    let left_hex = evm_address_hex(left).ok_or_else(invalid_evm_address)?;
+    let right_hex = evm_address_hex(right).ok_or_else(invalid_evm_address)?;
+    Ok(left_hex.eq_ignore_ascii_case(right_hex))
 }
 
 fn evm_address_hex(value: &str) -> Option<&str> {
@@ -29,6 +28,12 @@ fn evm_address_hex(value: &str) -> Option<&str> {
     } else {
         None
     }
+}
+
+fn invalid_evm_address() -> Web3ContractError {
+    Web3ContractError::invalid_settlement(
+        "EVM address fields must be 0x-prefixed 20-byte hex values",
+    )
 }
 
 pub(crate) fn ensure_unique_strings(
