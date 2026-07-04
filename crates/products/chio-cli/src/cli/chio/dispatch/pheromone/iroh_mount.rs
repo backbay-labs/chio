@@ -419,11 +419,16 @@ pub(crate) fn load_iroh_serve_inputs(
 /// the iroh ingress handler enforces `enforce_peer_batch_directory_scope` against it
 /// before every `receive_batch`, so both transports apply one identical inbound scope
 /// gate (an out-of-scope sender is rejected on the iroh path exactly as over HTTP).
+///
+/// `max_batch_bytes` is the relay profile's configured body-size limit (the HTTP
+/// relay's `DefaultBodyLimit`); the ingress handler rejects any frame over it before
+/// deserialization, so the iroh path is never a laxer ingress than HTTP.
 pub(crate) async fn build_iroh_router(
     inputs: IrohServeInputs,
     receiver: Arc<dyn RelayBatchReceiver>,
     store: Arc<SqlitePheromoneRelayStore>,
     peer_directory: PeerDirectory,
+    max_batch_bytes: usize,
 ) -> Result<IrohMount, CliError> {
     let IrohServeInputs {
         directory,
@@ -478,7 +483,12 @@ pub(crate) async fn build_iroh_router(
     let scope_check: InboundBatchScopeCheck = Arc::new(move |sender, batch| {
         enforce_peer_batch_directory_scope(&peer_directory, sender, batch)
     });
-    let handler = PheromoneBatchHandler::new(gate, receiver, store, now_fn, scope_check);
+    // Enforce the SAME body-size limit the HTTP relay applies (the relay profile's
+    // max_body_bytes: 256 KiB production / 1 MiB local-dev) on the iroh ingress, so
+    // the new transport is no laxer than the HTTP `DefaultBodyLimit` (fail-closed;
+    // clamped to the transport hard cap inside the handler).
+    let handler = PheromoneBatchHandler::new(gate, receiver, store, now_fn, scope_check)
+        .with_max_batch_bytes(max_batch_bytes);
     let router = mount_pheromone_lane(endpoint, handler);
 
     let enabled_lanes = config.lanes.iter().map(|lane| lane.label()).collect();
@@ -577,6 +587,7 @@ mod tests {
     use chio_federation_transport_iroh::identity::TransportDirectoryEntry;
     use chio_federation_transport_iroh::identity::TRANSPORT_DIRECTORY_BUNDLE_SCHEMA;
     use chio_federation_transport_iroh::lanes::pheromone::deliver_batch_over_iroh;
+    use chio_federation_transport_iroh::lanes::pheromone::MAX_PHEROMONE_BATCH_BYTES;
     use chio_pheromone_relay::PeerDirectoryDocument;
     use chio_pheromone_relay::PeerDirectoryEntry;
     use chio_pheromone_relay::PheromoneRelayError;
@@ -1085,8 +1096,14 @@ mod tests {
         let receiver: Arc<dyn RelayBatchReceiver> = Arc::new(RejectingReceiver);
         let peer_directory = peer_directory_admitting("did:chio:bob", RelayRole::Origin);
 
-        let mount = build_iroh_router(inputs, receiver, store, peer_directory)
-            .await
+        let mount = build_iroh_router(
+            inputs,
+            receiver,
+            store,
+            peer_directory,
+            MAX_PHEROMONE_BATCH_BYTES,
+        )
+        .await
             .expect("mount builder succeeds with a valid directory + gate");
         assert_eq!(mount.enabled_lanes, vec!["pheromone"]);
         // DEPLOYABILITY: the mount returns the ACTUAL bound socket(s). Binding on
@@ -1145,8 +1162,14 @@ mod tests {
         // directory: NOT authorized to submit inbound batches.
         let peer_directory = peer_directory_admitting("did:chio:bob", RelayRole::Receiver);
 
-        let mount = build_iroh_router(inputs, receiver, store, peer_directory)
-            .await
+        let mount = build_iroh_router(
+            inputs,
+            receiver,
+            store,
+            peer_directory,
+            MAX_PHEROMONE_BATCH_BYTES,
+        )
+        .await
             .expect("mount builder succeeds");
         let acceptor_addr = direct_addr(mount.router.endpoint());
 

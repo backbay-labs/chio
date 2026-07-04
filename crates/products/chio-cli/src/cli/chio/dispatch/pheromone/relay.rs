@@ -216,12 +216,13 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
     // ownership of them below. The peer directory is cloned here (also before the
     // service takes ownership) so the iroh ingress handler enforces the SAME inbound
     // directory-scope gate the HTTP relay applies. `None` when --iroh-enable is off.
+    let relay_limits = relay_service_limits_for_profile(profile);
+    let iroh_ingress_max_body_bytes = relay_limits.max_body_bytes;
     let iroh_mount_plan = iroh_inputs.map(|inputs| {
         let receiver: std::sync::Arc<dyn chio_pheromone_relay::RelayBatchReceiver> =
             receiver.clone();
         (inputs, receiver, relay_store.clone(), peer_directory.clone())
     });
-    let relay_limits = relay_service_limits_for_profile(profile);
     let mut service = chio_pheromone_relay::PheromoneRelayService::new(
         chio_pheromone_relay::PheromoneRelayConfig {
             local_kernel_id: peer_directory.local_kernel_id().to_string(),
@@ -263,8 +264,14 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         // setup error aborts startup rather than silently serving HTTP-only.
         let iroh_mount = match iroh_mount_plan {
             Some((inputs, receiver, relay_store, peer_directory)) => {
-                let mount =
-                    build_iroh_router(inputs, receiver, relay_store, peer_directory).await?;
+                let mount = build_iroh_router(
+                    inputs,
+                    receiver,
+                    relay_store,
+                    peer_directory,
+                    iroh_ingress_max_body_bytes,
+                )
+                .await?;
                 // DEPLOYABILITY: print the ACTUAL bound address(es) + the EndpointId
                 // (short + full) + the enabled lanes so the operator knows exactly
                 // what to configure on peers. With the default ephemeral

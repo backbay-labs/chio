@@ -281,12 +281,18 @@ impl Drop for InboxSlotGuard {
 
 /// Read a `u32` big-endian length prefix followed by exactly that many bytes,
 /// rejecting an over-cap declared length before allocating (fail-closed).
-async fn read_len_delimited<R>(reader: &mut R) -> Result<Vec<u8>, IrohLaneError>
+///
+/// `max_bytes` is the caller's effective cap and MUST never exceed the transport
+/// hard cap [`MAX_PHEROMONE_BATCH_BYTES`]. The ingress handler passes the configured
+/// relay body-size limit (256 KiB production / 1 MiB local-dev) so the iroh path is
+/// no laxer than the HTTP relay's `DefaultBodyLimit`; internal reads (the dialer's
+/// own response) pass the transport cap.
+async fn read_len_delimited<R>(reader: &mut R, max_bytes: usize) -> Result<Vec<u8>, IrohLaneError>
 where
     R: AsyncRead + Unpin,
 {
     let len = reader.read_u32().await? as usize;
-    if len > MAX_PHEROMONE_BATCH_BYTES {
+    if len > max_bytes {
         return Err(IrohLaneError::FrameTooLarge(len));
     }
     let mut buf = vec![0u8; len];
@@ -333,6 +339,12 @@ pub struct PheromoneBatchHandler {
     /// Shared slowloris / resource-exhaustion bounds (per-phase timeouts + an
     /// in-flight concurrency cap). Defaults are generous; see [`AcceptLimiter`].
     limiter: AcceptLimiter,
+    /// Effective ingress body-size cap. Defaults to the transport hard cap
+    /// [`MAX_PHEROMONE_BATCH_BYTES`]; the wiring lowers it to the relay profile's
+    /// configured body limit (mirroring the HTTP relay's `DefaultBodyLimit`) so the
+    /// iroh ingress is never a laxer surface than HTTP. Applied to the request-frame
+    /// read BEFORE deserialization, fail-closed to [`IrohLaneError::FrameTooLarge`].
+    max_batch_bytes: usize,
 }
 
 impl fmt::Debug for PheromoneBatchHandler {
@@ -365,6 +377,7 @@ impl PheromoneBatchHandler {
             now,
             scope_check,
             limiter: AcceptLimiter::default(),
+            max_batch_bytes: MAX_PHEROMONE_BATCH_BYTES,
         }
     }
 
@@ -374,6 +387,19 @@ impl PheromoneBatchHandler {
     #[must_use]
     pub fn with_accept_limits(mut self, config: AcceptLimitConfig) -> Self {
         self.limiter = AcceptLimiter::new(config);
+        self
+    }
+
+    /// Lower the ingress body-size cap to the relay profile's configured body limit
+    /// so the iroh ingress path is no laxer than the HTTP relay's `DefaultBodyLimit`
+    /// (256 KiB production / 1 MiB local-dev). Fail-closed: the effective cap is the
+    /// MIN of the requested limit and the transport hard cap
+    /// [`MAX_PHEROMONE_BATCH_BYTES`], so this can only tighten, never widen, the
+    /// ceiling. A batch declaring more than the effective cap is rejected before any
+    /// allocation or deserialization.
+    #[must_use]
+    pub fn with_max_batch_bytes(mut self, max_batch_bytes: usize) -> Self {
+        self.max_batch_bytes = max_batch_bytes.min(MAX_PHEROMONE_BATCH_BYTES);
         self
     }
 
@@ -394,7 +420,10 @@ impl PheromoneBatchHandler {
         // bound waiting; the verifier below runs on the fully received frame.
         let raw = self
             .limiter
-            .bounded(AcceptPhase::ReadFrame, read_len_delimited(&mut recv))
+            .bounded(
+                AcceptPhase::ReadFrame,
+                read_len_delimited(&mut recv, self.max_batch_bytes),
+            )
             .await??;
         let batch: PheromoneGossipBatch = serde_json::from_slice(&raw)?;
 
@@ -733,11 +762,12 @@ pub async fn deliver_batch_over_iroh_with_limits(
         .map_err(|error| IrohLaneError::Transport(error.to_string()))?;
 
     // The primary client-side hang surface: a peer that accepts the batch but
-    // never returns the report frame is dropped here at the read bound.
+    // never returns the report frame is dropped here at the read bound. The report
+    // is our own peer's response, so it is bounded by the transport hard cap.
     let report_json = client_bounded(
         limits,
         AcceptPhase::ReadFrame,
-        read_len_delimited(&mut recv),
+        read_len_delimited(&mut recv, MAX_PHEROMONE_BATCH_BYTES),
     )
     .await??;
     conn.close(LANE_OK_CODE.into(), b"ok");
@@ -1194,7 +1224,9 @@ mod tests {
         write_len_delimited(&mut out, &bytes).await.unwrap();
 
         let mut reader: &[u8] = &out;
-        let read = read_len_delimited(&mut reader).await.unwrap();
+        let read = read_len_delimited(&mut reader, MAX_PHEROMONE_BATCH_BYTES)
+            .await
+            .unwrap();
         let decoded: PheromoneGossipBatch = serde_json::from_slice(&read).unwrap();
         assert_eq!(decoded, batch);
     }
@@ -1205,9 +1237,30 @@ mod tests {
         let oversized = (MAX_PHEROMONE_BATCH_BYTES as u32).saturating_add(1);
         framed.extend_from_slice(&oversized.to_be_bytes());
         let mut reader: &[u8] = &framed;
-        let error = read_len_delimited(&mut reader).await.unwrap_err();
+        let error = read_len_delimited(&mut reader, MAX_PHEROMONE_BATCH_BYTES)
+            .await
+            .unwrap_err();
         assert!(matches!(error, IrohLaneError::FrameTooLarge(_)));
         assert_eq!(error.code(), "frame_too_large");
+    }
+
+    #[tokio::test]
+    async fn read_len_delimited_enforces_the_configured_ingress_cap() {
+        // A frame WITHIN the transport hard cap but OVER the configured body limit is
+        // rejected before allocation, so the iroh ingress is no laxer than the HTTP
+        // relay's DefaultBodyLimit (the FINDING 3 parity fix).
+        let configured = 256_000usize; // production relay max_body_bytes
+        let mut framed: Vec<u8> = Vec::new();
+        let over_configured = (configured as u32).saturating_add(1);
+        framed.extend_from_slice(&over_configured.to_be_bytes());
+        let mut reader: &[u8] = &framed;
+        let error = read_len_delimited(&mut reader, configured)
+            .await
+            .unwrap_err();
+        match error {
+            IrohLaneError::FrameTooLarge(len) => assert_eq!(len as u32, over_configured),
+            other => panic!("expected FrameTooLarge, got {other:?}"),
+        }
     }
 
     // -- Inbox-reservation lifecycle (InboxSlotGuard) --
@@ -1411,7 +1464,7 @@ mod tests {
             let sender = resolve_authenticated_sender(&self.gate, &conn.remote_id())
                 .map_err(AcceptError::from_err)?;
             let (mut send, mut recv) = conn.accept_bi().await?;
-            let raw = read_len_delimited(&mut recv)
+            let raw = read_len_delimited(&mut recv, MAX_PHEROMONE_BATCH_BYTES)
                 .await
                 .map_err(AcceptError::from_err)?;
             // Prove the received bytes decode to the real wire type.
@@ -1543,7 +1596,7 @@ mod tests {
             let sender = resolve_authenticated_sender(&self.gate, &conn.remote_id())
                 .map_err(AcceptError::from_err)?;
             let (mut send, mut recv) = conn.accept_bi().await?;
-            let raw = read_len_delimited(&mut recv)
+            let raw = read_len_delimited(&mut recv, MAX_PHEROMONE_BATCH_BYTES)
                 .await
                 .map_err(AcceptError::from_err)?;
             let batch: PheromoneGossipBatch =
@@ -1667,7 +1720,7 @@ mod tests {
             // Read the request frame, then deliberately never write the report:
             // exactly the "recipient never returns the report" hang the client
             // read bound defends against.
-            let _raw = read_len_delimited(&mut recv)
+            let _raw = read_len_delimited(&mut recv, MAX_PHEROMONE_BATCH_BYTES)
                 .await
                 .map_err(AcceptError::from_err)?;
             conn.closed().await;
