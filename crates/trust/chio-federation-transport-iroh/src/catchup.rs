@@ -56,6 +56,8 @@ use iroh_blobs::BlobsProtocol;
 use iroh_blobs::Hash;
 
 use crate::identity::VerifiedDirectory;
+use crate::lanes::limits::AcceptLimitConfig;
+use crate::lanes::limits::AcceptPhase;
 use crate::lanes::revocation::SignerBinding;
 
 /// Errors surfaced by the blobs catch-up substrate. Every variant is
@@ -286,11 +288,40 @@ impl BlobCatchupClient {
     /// 5. enforces strict monotone contiguous epochs (mirrors `validate_response`).
     ///
     /// All-or-nothing: ANY failure returns `Err` and yields no partial history.
+    ///
+    /// Uses the generous default client bounds ([`AcceptLimitConfig::default`]); see
+    /// [`fetch_range_with_limits`](Self::fetch_range_with_limits) to tune them.
     pub async fn fetch_range(
         &self,
         signer_id: &str,
         authority: EndpointId,
         manifest: &[(u64, Hash)],
+    ) -> Result<Vec<SignedEpochRoot>, CatchupError> {
+        self.fetch_range_with_limits(
+            signer_id,
+            authority,
+            manifest,
+            &AcceptLimitConfig::default(),
+        )
+        .await
+    }
+
+    /// Same as [`fetch_range`](Self::fetch_range), with explicit client-side bounds.
+    ///
+    /// Client-side liveness defense (mirrors the direct client lanes' `client_bounded`
+    /// in [`revocation`](crate::lanes::revocation) and [`bilateral`](crate::lanes::bilateral)):
+    /// every peer-dependent await - the per-blob `download` from the authority and the
+    /// read-back - is bounded by the corresponding [`AcceptLimitConfig`] phase timeout.
+    /// A stalled authority that accepts the pull but never serves (or completes) the
+    /// blob no longer hangs the follower's catch-up forever; the walk fails closed to
+    /// [`CatchupError::Blob`] and yields no partial history (all-or-nothing), exactly
+    /// as any other blob-transport failure does.
+    pub async fn fetch_range_with_limits(
+        &self,
+        signer_id: &str,
+        authority: EndpointId,
+        manifest: &[(u64, Hash)],
+        limits: &AcceptLimitConfig,
     ) -> Result<Vec<SignedEpochRoot>, CatchupError> {
         check_manifest_cap(manifest.len())?;
         let binding = resolve_pinned_signer(&self.directory, signer_id, authority)?;
@@ -299,17 +330,22 @@ impl BlobCatchupClient {
         let mut verified: Vec<SignedEpochRoot> = Vec::with_capacity(manifest.len());
         for (epoch, hash) in manifest {
             // Two-step download (ADAPTER-SPEC 3.4): fetch INTO the follower store
-            // from the pinned authority only, then read the bytes back.
-            downloader
-                .download(*hash, Shuffled::new(vec![authority]))
-                .await
-                .map_err(|error| CatchupError::Blob(error.to_string()))?;
-            let bytes = self
-                .store
-                .blobs()
-                .get_bytes(*hash)
-                .await
-                .map_err(|error| CatchupError::Blob(error.to_string()))?;
+            // from the pinned authority only, then read the bytes back. Both awaits
+            // are peer-/store-dependent and bounded fail-closed: a stalled authority
+            // cannot hang catch-up (fail-OPEN on liveness) the way an unbounded await
+            // would.
+            client_bounded(limits, AcceptPhase::AcceptStream, async {
+                downloader
+                    .download(*hash, Shuffled::new(vec![authority]))
+                    .await
+            })
+            .await?
+            .map_err(|error| CatchupError::Blob(error.to_string()))?;
+            let bytes = client_bounded(limits, AcceptPhase::ReadFrame, async {
+                self.store.blobs().get_bytes(*hash).await
+            })
+            .await?
+            .map_err(|error| CatchupError::Blob(error.to_string()))?;
             let signed = decode_and_verify_root(&bytes, *hash, binding)?;
             // Per-entry epoch pin: the manifest epoch must match the signed root.
             if signed.root.epoch != *epoch {
@@ -325,6 +361,30 @@ impl BlobCatchupClient {
         // Strict monotone contiguous ordering across the run (mirror semantics).
         order_check(&verified)?;
         Ok(verified)
+    }
+}
+
+/// Bound one peer-/store-dependent catch-up await by the phase's timeout, mirroring
+/// the direct client lanes' `client_bounded` (revocation / bilateral) and the
+/// accept-side [`AcceptLimiter::bounded`](crate::lanes::limits::AcceptLimiter). On
+/// timeout this fails closed with [`CatchupError::Blob`] so a stalled authority that
+/// never serves (or completes) a blob can no longer hang the follower's catch-up
+/// forever. The inner transport `Result` flows through unchanged on success.
+async fn client_bounded<T, F>(
+    limits: &AcceptLimitConfig,
+    phase: AcceptPhase,
+    fut: F,
+) -> Result<T, CatchupError>
+where
+    F: std::future::Future<Output = T>,
+{
+    let bound = limits.phase_timeout(phase);
+    match tokio::time::timeout(bound, fut).await {
+        Ok(output) => Ok(output),
+        Err(_elapsed) => Err(CatchupError::Blob(format!(
+            "blob catch-up {phase} exceeded its {}ms bound",
+            u64::try_from(bound.as_millis()).unwrap_or(u64::MAX)
+        ))),
     }
 }
 
@@ -820,5 +880,31 @@ mod tests {
         let err = resolve_pinned_signer(&directory, "oracle-a", wrong)
             .expect_err("wrong authority endpoint must fail closed");
         assert!(matches!(err, CatchupError::SignerEndpointMismatch { .. }));
+    }
+
+    // -- Client-side liveness bound (adversarial: a stalled authority) --
+
+    #[tokio::test(start_paused = true)]
+    async fn blob_transfer_that_never_completes_fails_closed_at_the_bound() {
+        // A never-completing peer-dependent await (a stalled authority that accepts
+        // the pull but never serves the blob) must fail CLOSED at the client bound,
+        // not hang catch-up forever. Drive client_bounded - the same helper
+        // fetch_range_with_limits wraps every download / read-back in - with a future
+        // that never resolves under a tight bound.
+        let limits = AcceptLimitConfig {
+            accept_stream_timeout: std::time::Duration::from_millis(50),
+            ..AcceptLimitConfig::default()
+        };
+        let error = client_bounded(&limits, AcceptPhase::AcceptStream, async {
+            // Models downloader.download(..) from an authority that never serves.
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+        })
+        .await
+        .expect_err("a never-completing download must be bounded out fail-closed");
+        assert!(
+            matches!(error, CatchupError::Blob(_)),
+            "a stalled transfer must fail closed to Blob, got {error:?}"
+        );
+        assert_eq!(error.code(), "blob-transport");
     }
 }
