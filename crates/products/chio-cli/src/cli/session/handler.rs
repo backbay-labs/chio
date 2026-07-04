@@ -165,4 +165,3 @@ pub(crate) fn normalize_agent_message(
         ),
     }
 }
-

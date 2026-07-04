@@ -1093,4 +1093,3 @@ mod receipt_explain_tests {
         Ok(())
     }
 }
-

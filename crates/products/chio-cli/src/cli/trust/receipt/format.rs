@@ -193,4 +193,3 @@ pub(crate) fn render_receipt_checkpoint_create_human(
     ));
     lines.join("\n") + "\n"
 }
-
