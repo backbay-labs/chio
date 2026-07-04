@@ -76,7 +76,7 @@ class Verdict(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class _GuardEvidenceLegacy(BaseModel):
+class _GuardEvidenceMinimal(BaseModel):
     """Minimal guard evidence shape used by HttpReceipt."""
 
     guard_name: str
@@ -196,7 +196,7 @@ class HttpReceipt(BaseModel):
     tool_origin: str | None = None
     redaction_mode: str | None = None
     actor_chain: list[dict[str, Any]] = Field(default_factory=list)
-    evidence: list[_GuardEvidenceLegacy] = Field(default_factory=list)
+    evidence: list[_GuardEvidenceMinimal] = Field(default_factory=list)
     response_status: int = Field(
         description=(
             "Chio evaluation-time HTTP status; allow receipts may be signed "
@@ -265,7 +265,7 @@ class EvaluateResponse(BaseModel):
 
     verdict: Verdict
     receipt: HttpReceipt
-    evidence: list[_GuardEvidenceLegacy] = Field(default_factory=list)
+    evidence: list[_GuardEvidenceMinimal] = Field(default_factory=list)
 
 
 class VerifyReceiptResponse(BaseModel):

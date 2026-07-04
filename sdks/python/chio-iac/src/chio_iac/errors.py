@@ -22,7 +22,7 @@ from chio_sdk.errors import ChioError
 
 
 class ChioIACError(ChioError):
-    """An Chio-governed IaC operation was denied or failed.
+    """A Chio-governed IaC operation was denied or failed.
 
     The structured error carries the sidecar verdict so callers and
     structured-log consumers can see which guard denied, the reason, and

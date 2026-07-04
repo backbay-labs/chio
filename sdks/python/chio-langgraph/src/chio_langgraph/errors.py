@@ -8,7 +8,7 @@ from chio_sdk.errors import ChioError
 
 
 class ChioLangGraphError(ChioError):
-    """An Chio-governed LangGraph node invocation was denied or rejected.
+    """A Chio-governed LangGraph node invocation was denied or rejected.
 
     Raised when the Chio kernel denies a node's sidecar evaluation or
     when an :func:`chio_approval_node` receives a denial from the human

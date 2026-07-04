@@ -8,7 +8,7 @@ from chio_sdk.errors import ChioError
 
 
 class ChioRayError(ChioError):
-    """An Chio-governed Ray task or actor method call was denied or failed.
+    """A Chio-governed Ray task or actor method call was denied or failed.
 
     Carries the sidecar verdict so callers (and Ray task exception traces)
     can inspect the guard that denied, the reason, and any structured hint

@@ -8,7 +8,7 @@ from chio_sdk.errors import ChioError
 
 
 class ChioStreamingError(ChioError):
-    """An Chio-governed Kafka event processing step was denied or failed.
+    """A Chio-governed Kafka event processing step was denied or failed.
 
     Carries the sidecar verdict so callers (and downstream audit
     pipelines) can inspect the guard that denied, the reason, and any
