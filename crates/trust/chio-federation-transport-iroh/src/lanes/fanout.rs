@@ -526,11 +526,19 @@ impl FanoutTopic {
         self.topic_id
     }
 
-    /// A cheap clone of the broadcast sender, for broadcasting concurrently with a
+    /// A cheap-clone CHECKED concurrent sender, for broadcasting concurrently with a
     /// receive loop (the receiver borrows `&mut self`).
+    ///
+    /// Unlike a raw [`GossipSender`], every [`CheckedFanoutSender::broadcast`] runs the
+    /// SAME send-side treaty binding and [`MAX_GOSSIP_MESSAGE_SIZE`] cap that
+    /// [`FanoutTopic::broadcast`] enforces, so a concurrent send path cannot bypass the
+    /// treaty pin or inject an oversized frame onto the swarm.
     #[must_use]
-    pub fn sender(&self) -> GossipSender {
-        self.sender.clone()
+    pub fn concurrent_sender(&self) -> CheckedFanoutSender {
+        CheckedFanoutSender {
+            treaty_id: self.treaty_id.clone(),
+            sender: self.sender.clone(),
+        }
     }
 
     /// Broadcast a self-signed frame to the treaty swarm, enforcing the
@@ -549,17 +557,7 @@ impl FanoutTopic {
     /// [`FanoutError::MessageTooLarge`] / [`FanoutError::Codec`] from encoding, or
     /// [`FanoutError::Gossip`] if the broadcast fails.
     pub async fn broadcast(&self, frame: &PheromoneDepositGossip) -> Result<(), FanoutError> {
-        if frame.treaty_id != self.treaty_id {
-            return Err(FanoutError::TreatyMismatch {
-                expected: self.treaty_id.clone(),
-                got: frame.treaty_id.clone(),
-            });
-        }
-        let payload = encode_fanout_frame(frame)?;
-        self.sender
-            .broadcast(payload)
-            .await
-            .map_err(|error| FanoutError::Gossip(error.to_string()))
+        checked_broadcast(&self.sender, &self.treaty_id, frame).await
     }
 
     /// Await the next gossip PAYLOAD from the swarm, mapping the membership
@@ -617,6 +615,65 @@ impl FanoutTopic {
             policy,
             now_unix_ms,
         ))
+    }
+}
+
+/// Broadcast `frame` on `sender` after enforcing the send-side treaty binding and the
+/// [`MAX_GOSSIP_MESSAGE_SIZE`] cap. Shared by [`FanoutTopic::broadcast`] and
+/// [`CheckedFanoutSender::broadcast`] so NO broadcast path (including a concurrent one)
+/// can reach the raw [`GossipSender`] and skip the checks. Fail-closed: a wrong-treaty
+/// frame is [`FanoutError::TreatyMismatch`] and an oversized/unencodable frame is
+/// [`FanoutError::MessageTooLarge`] / [`FanoutError::Codec`], both BEFORE the frame
+/// reaches the wire.
+async fn checked_broadcast(
+    sender: &GossipSender,
+    expected_treaty_id: &str,
+    frame: &PheromoneDepositGossip,
+) -> Result<(), FanoutError> {
+    if frame.treaty_id != expected_treaty_id {
+        return Err(FanoutError::TreatyMismatch {
+            expected: expected_treaty_id.to_string(),
+            got: frame.treaty_id.clone(),
+        });
+    }
+    let payload = encode_fanout_frame(frame)?;
+    sender
+        .broadcast(payload)
+        .await
+        .map_err(|error| FanoutError::Gossip(error.to_string()))
+}
+
+/// A cheap-clone concurrent broadcast handle for one treaty swarm that ENFORCES the
+/// same send-side checks as [`FanoutTopic::broadcast`].
+///
+/// Returned by [`FanoutTopic::concurrent_sender`] so a broadcast path running
+/// alongside a `&mut self` receive loop cannot reach the raw [`GossipSender`] and
+/// bypass the treaty binding or the [`MAX_GOSSIP_MESSAGE_SIZE`] cap. This closes the
+/// send-side treaty-pin bypass: there is no accessor that hands out the unchecked
+/// sender.
+#[derive(Debug, Clone)]
+pub struct CheckedFanoutSender {
+    treaty_id: String,
+    sender: GossipSender,
+}
+
+impl CheckedFanoutSender {
+    /// The treaty this sender is pinned to.
+    #[must_use]
+    pub fn treaty_id(&self) -> &str {
+        &self.treaty_id
+    }
+
+    /// Broadcast a self-signed frame to the pinned treaty swarm, enforcing the treaty
+    /// binding and the [`MAX_GOSSIP_MESSAGE_SIZE`] cap first (identical semantics to
+    /// [`FanoutTopic::broadcast`]).
+    ///
+    /// # Errors
+    /// Returns [`FanoutError::TreatyMismatch`] for a wrong-treaty frame,
+    /// [`FanoutError::MessageTooLarge`] / [`FanoutError::Codec`] from encoding, or
+    /// [`FanoutError::Gossip`] if the broadcast fails.
+    pub async fn broadcast(&self, frame: &PheromoneDepositGossip) -> Result<(), FanoutError> {
+        checked_broadcast(&self.sender, &self.treaty_id, frame).await
     }
 }
 
@@ -1035,6 +1092,74 @@ mod tests {
                     if expected == TREATY_ALPHA && got == "treaty-beta"
             ),
             "a treaty-beta frame must be rejected before the alpha swarm broadcast, got {result:?}"
+        );
+
+        drop(alpha_topic);
+        router.shutdown().await.ok();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn concurrent_sender_enforces_treaty_and_size_checks() {
+        // The advertised concurrent sender (for broadcasting alongside a `&mut self`
+        // receive loop) must run the SAME send-side checks as `FanoutTopic::broadcast`:
+        // there is no raw-`GossipSender` escape hatch. Both a wrong-treaty frame and an
+        // oversized frame are rejected BEFORE they reach the wire.
+        let endpoint = Endpoint::builder(presets::Minimal)
+            .secret_key(SecretKey::from_bytes(&[74u8; 32]))
+            .relay_mode(RelayMode::Disabled)
+            .bind_addr((Ipv4Addr::LOCALHOST, 0))
+            .expect("valid loopback bind addr")
+            .bind()
+            .await
+            .expect("endpoint binds on loopback");
+        let gossip = Gossip::builder().spawn(endpoint.clone());
+        let router = Router::builder(endpoint)
+            .accept(iroh_gossip::ALPN, gossip.clone())
+            .spawn();
+
+        // subscribe (NOT join): returns immediately without a neighbor, enough to
+        // exercise the pre-send checks (they return before the sender is ever used).
+        let topic_id = pheromone_topic_for_treaty(TREATY_ALPHA);
+        let (sender, receiver) = gossip
+            .subscribe(topic_id, vec![])
+            .await
+            .expect("subscribe to the alpha topic")
+            .split();
+        let alpha_topic = FanoutTopic {
+            treaty_id: TREATY_ALPHA.to_string(),
+            topic_id,
+            sender,
+            receiver,
+        };
+
+        let concurrent = alpha_topic.concurrent_sender();
+        assert_eq!(concurrent.treaty_id(), TREATY_ALPHA);
+
+        // Wrong treaty: a fully valid, self-signed treaty-beta frame is rejected on
+        // the alpha concurrent sender before any broadcast.
+        let author = Keypair::from_seed(&[7; 32]);
+        let beta_frame =
+            signed_direct_frame(&author, AUTHOR, "did:chio:hub", "treaty-beta", NAMESPACE);
+        let wrong_treaty = concurrent.broadcast(&beta_frame).await;
+        assert!(
+            matches!(
+                wrong_treaty,
+                Err(FanoutError::TreatyMismatch { ref expected, ref got })
+                    if expected == TREATY_ALPHA && got == "treaty-beta"
+            ),
+            "the concurrent sender must reject a wrong-treaty frame, got {wrong_treaty:?}"
+        );
+
+        // Oversized: a correctly-addressed alpha frame past the ~4 KiB cap is rejected
+        // too (the size check the raw sender would have skipped).
+        let mut body = deposit_body(AUTHOR, TREATY_ALPHA, NAMESPACE);
+        body.indicator = serde_json::json!({ "blob": "x".repeat(5_000) });
+        let deposit = sign_deposit(body, &author).unwrap();
+        let oversized = frame_over(deposit, AUTHOR, "did:chio:hub", TREATY_ALPHA);
+        let too_large = concurrent.broadcast(&oversized).await;
+        assert!(
+            matches!(too_large, Err(FanoutError::MessageTooLarge { .. })),
+            "the concurrent sender must reject an oversized frame, got {too_large:?}"
         );
 
         drop(alpha_topic);
