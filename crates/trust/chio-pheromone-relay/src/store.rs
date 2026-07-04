@@ -118,6 +118,15 @@ pub struct InboxRecordResult {
     pub inserted: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InboxReserveResult {
+    /// True when THIS caller atomically claimed the in-flight receive slot and
+    /// is therefore the sole receiver; false when a concurrent caller already
+    /// holds it (the loser must take the dedup path, never re-receive).
+    pub won: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelayTickReport {
@@ -247,6 +256,12 @@ impl SqlitePheromoneRelayStore {
                 PRIMARY KEY(sender_kernel_id, nonce)
             );
 
+            CREATE TABLE IF NOT EXISTS chio_pheromone_relay_inbox_reservations (
+                sender_kernel_id TEXT NOT NULL,
+                nonce TEXT NOT NULL,
+                PRIMARY KEY(sender_kernel_id, nonce)
+            );
+
             CREATE TABLE IF NOT EXISTS chio_pheromone_relay_attempts (
                 attempt_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 outbox_id TEXT NOT NULL,
@@ -272,6 +287,14 @@ impl SqlitePheromoneRelayStore {
             "#,
         )?;
         ensure_outbox_queued_column(&conn)?;
+        // In-flight receive reservations are process-local coordination, not durable
+        // state: a live reservation exists ONLY while a handler is mid-receive, so any
+        // row present at open is a leftover from a crashed prior process. Clear them so
+        // a crash between reserve and record cannot permanently wedge redelivery (every
+        // retry would otherwise lose the stale reservation and never receive). This
+        // assumes the shipped single-writer ownership the outbox lease model already
+        // relies on.
+        conn.execute("DELETE FROM chio_pheromone_relay_inbox_reservations", [])?;
         Ok(())
     }
 
@@ -730,6 +753,66 @@ impl SqlitePheromoneRelayStore {
         Ok(())
     }
 
+    /// Atomically claim the in-flight receive slot for `(sender_kernel_id, nonce)`.
+    ///
+    /// Returns `won = true` for the SINGLE caller that inserts the reservation and
+    /// `won = false` for every concurrent caller that finds it already held. This
+    /// closes the dedup race that a bare [`lookup_inbox_report`] -> receive ->
+    /// [`record_inbox`] sequence leaves open: two connections delivering the SAME
+    /// batch both read `None` and both re-run the receiver, double-mutating the
+    /// runtime replay window. The winner is the sole receiver: it MUST run the
+    /// receiver exactly once and then [`record_inbox`] the durable verdict, and on
+    /// ANY failure MUST [`release_inbox_slot`] so a later redelivery can re-claim.
+    /// A loser MUST NOT run the receiver; it reads the winner's durable
+    /// [`lookup_inbox_report`] instead.
+    ///
+    /// [`record_inbox`]: Self::record_inbox
+    /// [`release_inbox_slot`]: Self::release_inbox_slot
+    /// [`lookup_inbox_report`]: Self::lookup_inbox_report
+    pub fn reserve_inbox_slot(
+        &self,
+        sender_kernel_id: &str,
+        nonce: &str,
+    ) -> Result<InboxReserveResult, PheromoneRelayError> {
+        let conn = self.conn.lock()?;
+        let inserted = conn.execute(
+            r#"
+            INSERT INTO chio_pheromone_relay_inbox_reservations
+                (sender_kernel_id, nonce)
+            VALUES (?1, ?2)
+            ON CONFLICT(sender_kernel_id, nonce) DO NOTHING
+            "#,
+            params![sender_kernel_id, nonce],
+        )?;
+        Ok(InboxReserveResult { won: inserted > 0 })
+    }
+
+    /// Release the in-flight receive slot claimed by [`reserve_inbox_slot`].
+    ///
+    /// Idempotent: releasing an unheld slot is a no-op. The winner calls this after
+    /// a FAILED receive/record so a redelivery can re-claim and retry; on success
+    /// the durable inbox record short-circuits future redeliveries (via
+    /// [`lookup_inbox_report`]) before they reach the reservation, so releasing is
+    /// unnecessary there and a leftover reservation is harmless.
+    ///
+    /// [`reserve_inbox_slot`]: Self::reserve_inbox_slot
+    /// [`lookup_inbox_report`]: Self::lookup_inbox_report
+    pub fn release_inbox_slot(
+        &self,
+        sender_kernel_id: &str,
+        nonce: &str,
+    ) -> Result<(), PheromoneRelayError> {
+        let conn = self.conn.lock()?;
+        conn.execute(
+            r#"
+            DELETE FROM chio_pheromone_relay_inbox_reservations
+            WHERE sender_kernel_id = ?1 AND nonce = ?2
+            "#,
+            params![sender_kernel_id, nonce],
+        )?;
+        Ok(())
+    }
+
     pub fn record_inbox(
         &self,
         sender_kernel_id: &str,
@@ -956,5 +1039,150 @@ mod inbox_lookup_tests {
             .lookup_inbox_report("did:chio:other", "nonce-1")
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn reserve_inbox_slot_is_won_by_exactly_one_concurrent_caller() {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
+        use std::sync::Arc;
+        use std::sync::Barrier;
+
+        const THREADS: usize = 8;
+        let store = SqlitePheromoneRelayStore::open_in_memory().unwrap();
+        let wins = Arc::new(AtomicUsize::new(0));
+        // Release every thread into the reserve at once to actually contend.
+        let barrier = Arc::new(Barrier::new(THREADS));
+        let mut handles = Vec::new();
+        for _ in 0..THREADS {
+            let store = store.clone();
+            let wins = wins.clone();
+            let barrier = barrier.clone();
+            handles.push(std::thread::spawn(move || {
+                barrier.wait();
+                if store
+                    .reserve_inbox_slot("did:chio:sender", "nonce-race")
+                    .unwrap()
+                    .won
+                {
+                    wins.fetch_add(1, Ordering::SeqCst);
+                }
+            }));
+        }
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        assert_eq!(
+            wins.load(Ordering::SeqCst),
+            1,
+            "exactly one concurrent caller may win the receive slot"
+        );
+    }
+
+    #[test]
+    fn release_inbox_slot_frees_the_slot_for_re_reservation() {
+        let store = SqlitePheromoneRelayStore::open_in_memory().unwrap();
+        assert!(
+            store.reserve_inbox_slot("s", "n").unwrap().won,
+            "the first reserve wins the free slot"
+        );
+        assert!(
+            !store.reserve_inbox_slot("s", "n").unwrap().won,
+            "a held slot cannot be re-won"
+        );
+        store.release_inbox_slot("s", "n").unwrap();
+        assert!(
+            store.reserve_inbox_slot("s", "n").unwrap().won,
+            "after release the slot can be re-won (a failed winner lets a retry re-receive)"
+        );
+        // Release is idempotent: releasing an unheld slot is a no-op.
+        store.release_inbox_slot("s", "n").unwrap();
+        store.release_inbox_slot("s", "n").unwrap();
+    }
+
+    #[test]
+    fn concurrent_same_batch_receives_exactly_once() {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
+        use std::sync::Arc;
+        use std::sync::Barrier;
+
+        const THREADS: usize = 8;
+        let store = SqlitePheromoneRelayStore::open_in_memory().unwrap();
+        let batch = sample_batch();
+        let report = sample_report();
+        // The replay-mutating receive is modelled by this counter; the whole point
+        // of the reservation is that it increments EXACTLY once.
+        let receives = Arc::new(AtomicUsize::new(0));
+        let dedup_hits = Arc::new(AtomicUsize::new(0));
+        let barrier = Arc::new(Barrier::new(THREADS));
+        let mut handles = Vec::new();
+        for _ in 0..THREADS {
+            let store = store.clone();
+            let batch = batch.clone();
+            let report = report.clone();
+            let receives = receives.clone();
+            let dedup_hits = dedup_hits.clone();
+            let barrier = barrier.clone();
+            handles.push(std::thread::spawn(move || {
+                barrier.wait();
+                // Mirror PheromoneBatchHandler::handle's dedup path exactly.
+                if store
+                    .lookup_inbox_report("did:chio:sender", "nonce-race")
+                    .unwrap()
+                    .is_some()
+                {
+                    dedup_hits.fetch_add(1, Ordering::SeqCst);
+                    return;
+                }
+                if store
+                    .reserve_inbox_slot("did:chio:sender", "nonce-race")
+                    .unwrap()
+                    .won
+                {
+                    // Sole receiver: the replay-mutating step runs here, once.
+                    receives.fetch_add(1, Ordering::SeqCst);
+                    store
+                        .record_inbox("did:chio:sender", "nonce-race", &batch, &report)
+                        .unwrap();
+                } else {
+                    // Loser: never receives; waits, bounded, for the winner's verdict.
+                    let mut seen = false;
+                    for _ in 0..500 {
+                        if store
+                            .lookup_inbox_report("did:chio:sender", "nonce-race")
+                            .unwrap()
+                            .is_some()
+                        {
+                            seen = true;
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(2));
+                    }
+                    assert!(seen, "the loser observes the winner's recorded verdict");
+                    dedup_hits.fetch_add(1, Ordering::SeqCst);
+                }
+            }));
+        }
+        for handle in handles {
+            handle.join().unwrap();
+        }
+        assert_eq!(
+            receives.load(Ordering::SeqCst),
+            1,
+            "the replay-mutating receive runs exactly once across concurrent same-batch deliveries"
+        );
+        assert_eq!(
+            dedup_hits.load(Ordering::SeqCst),
+            THREADS - 1,
+            "every other concurrent delivery takes the dedup path, never re-receiving"
+        );
+        assert_eq!(
+            store
+                .lookup_inbox_report("did:chio:sender", "nonce-race")
+                .unwrap()
+                .expect("the durable verdict is recorded exactly once"),
+            report
+        );
     }
 }

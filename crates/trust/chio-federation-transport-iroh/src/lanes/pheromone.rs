@@ -77,6 +77,16 @@ pub const LANE_RESET_ERROR_CODE: u32 = 1;
 /// QUIC application close code used on a clean dial-side teardown.
 const LANE_OK_CODE: u32 = 0;
 
+/// Bounded wait, on the LOSER of a concurrent receive-slot reservation, for the
+/// winner to record its durable verdict. The loser never re-runs the receiver; it
+/// polls the inbox this many times, sleeping [`DEDUP_WAIT_BACKOFF`] between tries,
+/// then fails closed (the peer retries and hits the recorded verdict). The product
+/// (a few seconds) comfortably covers one `receive_batch` + `record_inbox`.
+const DEDUP_WAIT_ATTEMPTS: u32 = 150;
+
+/// Backoff between inbox polls while the loser waits for the winner's verdict.
+const DEDUP_WAIT_BACKOFF: std::time::Duration = std::time::Duration::from_millis(20);
+
 /// Inbound directory-scope gate applied on the iroh ingress path BEFORE
 /// [`RelayBatchReceiver::receive_batch`], mirroring the HTTP relay's
 /// `enforce_peer_batch_directory_scope` (`service.rs`). Supplied by the wiring so
@@ -118,6 +128,13 @@ pub enum IrohLaneError {
     /// verifier and inbox dedup live behind this seam).
     #[error("pheromone relay error: {0}")]
     Relay(#[from] PheromoneRelayError),
+    /// A concurrent connection holds the receive slot for this exact batch and had
+    /// not yet recorded its verdict within the bounded dedup wait. Fail-closed: the
+    /// stream is reset WITHOUT re-running the receiver (re-running would double-
+    /// mutate the runtime replay window); the peer retries and hits the recorded
+    /// verdict via the durable inbox.
+    #[error("pheromone batch dedup in-flight: {0}")]
+    DedupInFlight(String),
     /// A peer-dependent accept step exceeded its bound (slowloris) or the
     /// in-flight cap shed the connection. Fail-closed: the connection is reset
     /// and NOTHING is verified or accepted.
@@ -139,6 +156,7 @@ impl IrohLaneError {
             Self::CanonicalJson(_) => "canonical_json",
             Self::Transport(_) => "transport",
             Self::Relay(error) => error.code(),
+            Self::DedupInFlight(_) => "dedup_in_flight",
             Self::AcceptLimit(error) => error.code(),
         }
     }
@@ -319,20 +337,73 @@ impl PheromoneBatchHandler {
             .store
             .lookup_inbox_report(&authenticated_sender, &nonce)?
         {
+            // Already fully admitted: return the durable verdict verbatim.
             Some(stored) => stored,
             None => {
-                let now = (self.now)();
-                // The report type (chio-pheromone-runtime PheromoneReceiveReport) is
-                // not nameable here; it flows through by inference. The per-frame
-                // verifier (pheromone_gossip.rs:236/244) runs inside this call,
-                // unchanged, and only ever on a batch not already in the inbox.
-                let fresh = self
-                    .receiver
-                    .receive_batch(batch.clone(), authenticated_sender.clone(), now)
-                    .await?;
-                self.store
-                    .record_inbox(&authenticated_sender, &nonce, &batch, &fresh)?;
-                fresh
+                // RESERVE BEFORE RECEIVE (fail-closed concurrency): the lookup ->
+                // receive -> record sequence is NOT atomic, so two connections
+                // delivering the SAME batch could both read None and both re-run
+                // receive_batch, double-mutating the runtime replay window. Atomically
+                // claim the (sender, nonce) receive slot first; only the sole winner
+                // receives.
+                if self
+                    .store
+                    .reserve_inbox_slot(&authenticated_sender, &nonce)?
+                    .won
+                {
+                    let now = (self.now)();
+                    // The report type (chio-pheromone-runtime PheromoneReceiveReport)
+                    // is not nameable here; it flows through by inference. The per-frame
+                    // verifier (pheromone_gossip.rs:236/244) runs inside this call,
+                    // unchanged, and only ever on a batch not already in the inbox.
+                    let received = self
+                        .receiver
+                        .receive_batch(batch.clone(), authenticated_sender.clone(), now)
+                        .await;
+                    let fresh = match received {
+                        Ok(fresh) => fresh,
+                        Err(error) => {
+                            // Nothing was admitted: free the slot so a redelivery can
+                            // re-claim and re-receive, then propagate fail-closed.
+                            self.store
+                                .release_inbox_slot(&authenticated_sender, &nonce)?;
+                            return Err(error.into());
+                        }
+                    };
+                    if let Err(error) =
+                        self.store
+                            .record_inbox(&authenticated_sender, &nonce, &batch, &fresh)
+                    {
+                        self.store
+                            .release_inbox_slot(&authenticated_sender, &nonce)?;
+                        return Err(error.into());
+                    }
+                    fresh
+                } else {
+                    // Loser: a concurrent handler is receiving this exact batch. Do
+                    // NOT receive (that is the double-mutation this dedup closes); wait,
+                    // bounded, for the winner's durable verdict and return it. The
+                    // report type is unnameable in this crate (see the module note), so
+                    // the wait is inlined and flows the verdict through by inference.
+                    let mut verdict = None;
+                    for _ in 0..DEDUP_WAIT_ATTEMPTS {
+                        if let Some(stored) = self
+                            .store
+                            .lookup_inbox_report(&authenticated_sender, &nonce)?
+                        {
+                            verdict = Some(stored);
+                            break;
+                        }
+                        tokio::time::sleep(DEDUP_WAIT_BACKOFF).await;
+                    }
+                    // Fail-closed if the winner has not recorded within the bound: the
+                    // peer retries and the durable inbox short-circuits the retry.
+                    verdict.ok_or_else(|| {
+                        IrohLaneError::DedupInFlight(format!(
+                            "sender {authenticated_sender} nonce {nonce} still receiving"
+                        ))
+                    })?
+                }
             }
         };
 

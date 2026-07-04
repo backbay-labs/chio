@@ -191,9 +191,9 @@ pub use service::{
 };
 pub(crate) use store::i64_from_u64;
 pub use store::{
-    CatchupRequest, CatchupResponse, InboxRecordResult, PheromoneRelayStore, RelayDeliveryReport,
-    RelayHealthCheck, RelayHealthReport, RelayNonceRecorder, RelayNonceSet, RelayOperatorReport,
-    RelayOutboxBatch, RelayTickReport, SqlitePheromoneRelayStore,
+    CatchupRequest, CatchupResponse, InboxRecordResult, InboxReserveResult, PheromoneRelayStore,
+    RelayDeliveryReport, RelayHealthCheck, RelayHealthReport, RelayNonceRecorder, RelayNonceSet,
+    RelayOperatorReport, RelayOutboxBatch, RelayTickReport, SqlitePheromoneRelayStore,
 };
 pub(crate) use validation::{
     canonical_sha256, is_sha256_hex, u64_from_i64, validate_endpoint,
