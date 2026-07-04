@@ -54,7 +54,10 @@ use chio_federation_transport_iroh::identity::TrustedTransportDirectoryIssuer;
 use chio_federation_transport_iroh::identity::VerifiedDirectory;
 use chio_federation_transport_iroh::lanes::limits::RECOMMENDED_MAX_IDLE_TIMEOUT;
 use chio_federation_transport_iroh::lanes::pheromone::mount_pheromone_lane;
+use chio_federation_transport_iroh::lanes::pheromone::InboundBatchScopeCheck;
 use chio_federation_transport_iroh::lanes::pheromone::PheromoneBatchHandler;
+use chio_pheromone_relay::enforce_peer_batch_directory_scope;
+use chio_pheromone_relay::PeerDirectory;
 use chio_pheromone_relay::RelayBatchReceiver;
 use chio_pheromone_relay::SqlitePheromoneRelayStore;
 use iroh::endpoint::presets;
@@ -392,10 +395,16 @@ pub(crate) fn load_iroh_serve_inputs(
 /// QUIC idle-timeout backstop. The pheromone lane is mounted with the SAME
 /// `Arc<dyn RelayBatchReceiver>` + `Arc<SqlitePheromoneRelayStore>` the HTTP relay
 /// holds. Fail-closed: any bind/verify error returns `Err`.
+///
+/// `peer_directory` is the SAME issuer-verified peer directory the HTTP relay holds;
+/// the iroh ingress handler enforces `enforce_peer_batch_directory_scope` against it
+/// before every `receive_batch`, so both transports apply one identical inbound scope
+/// gate (an out-of-scope sender is rejected on the iroh path exactly as over HTTP).
 pub(crate) async fn build_iroh_router(
     inputs: IrohServeInputs,
     receiver: Arc<dyn RelayBatchReceiver>,
     store: Arc<SqlitePheromoneRelayStore>,
+    peer_directory: PeerDirectory,
 ) -> Result<IrohMount, CliError> {
     let IrohServeInputs {
         directory,
@@ -443,7 +452,14 @@ pub(crate) async fn build_iroh_router(
 
     // The shared clock the handler stamps received batches with.
     let now_fn: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(unix_now_ms);
-    let handler = PheromoneBatchHandler::new(gate, receiver, store, now_fn);
+    // Inbound directory-scope gate: reuse the shipped enforce_peer_batch_directory_scope
+    // against the SAME peer directory the HTTP relay holds, so the iroh ingress path
+    // applies the identical Origin/Hub + frame-cap + treaty-subscription + ladder-pin
+    // check the HTTP handle_batch_relay runs before receive_batch (fail-closed).
+    let scope_check: InboundBatchScopeCheck = Arc::new(move |sender, batch| {
+        enforce_peer_batch_directory_scope(&peer_directory, sender, batch)
+    });
+    let handler = PheromoneBatchHandler::new(gate, receiver, store, now_fn, scope_check);
     let router = mount_pheromone_lane(endpoint, handler);
 
     let enabled_lanes = config.lanes.iter().map(|lane| lane.label()).collect();
@@ -471,10 +487,16 @@ mod tests {
     use chio_federation_transport_iroh::identity::TransportDirectoryEntry;
     use chio_federation_transport_iroh::identity::TRANSPORT_DIRECTORY_BUNDLE_SCHEMA;
     use chio_federation_transport_iroh::lanes::pheromone::deliver_batch_over_iroh;
+    use chio_pheromone_relay::PeerDirectoryDocument;
+    use chio_pheromone_relay::PeerDirectoryEntry;
     use chio_pheromone_relay::PheromoneRelayError;
+    use chio_pheromone_relay::RelayRole;
+    use chio_pheromone_relay::PHEROMONE_PEER_DIRECTORY_SCHEMA;
     use chio_pheromone_runtime::PheromoneReceiveReport;
     use iroh::EndpointAddr;
     use std::net::Ipv4Addr;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
 
     const NOW: u64 = 2_000_000;
 
@@ -548,6 +570,56 @@ mod tests {
         ) -> Result<PheromoneReceiveReport, PheromoneRelayError> {
             Err(PheromoneRelayError::Json("test receiver never accepts".to_string()))
         }
+    }
+
+    /// A receiver double that records whether it was ever consulted, so the
+    /// out-of-scope test can PROVE the inbound scope gate short-circuits BEFORE
+    /// `receive_batch` (an out-of-scope sender must never reach the receiver).
+    #[derive(Debug)]
+    struct TripwireReceiver {
+        called: Arc<AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl RelayBatchReceiver for TripwireReceiver {
+        async fn receive_batch(
+            &self,
+            _batch: PheromoneGossipBatch,
+            _authenticated_sender_kernel_id: String,
+            _received_at_unix_ms: u64,
+        ) -> Result<PheromoneReceiveReport, PheromoneRelayError> {
+            self.called.store(true, Ordering::SeqCst);
+            Err(PheromoneRelayError::Json(
+                "receiver must not be reached for an out-of-scope sender".to_string(),
+            ))
+        }
+    }
+
+    /// A minimal issuer-independent peer directory admitting `kernel_id` with the
+    /// given `relay_role` (the field `enforce_peer_batch_directory_scope` gates the
+    /// inbound submit authorization on). Subscribed to `treaty:test` so an Origin/Hub
+    /// entry passes the treaty check too.
+    fn peer_directory_admitting(kernel_id: &str, role: RelayRole) -> PeerDirectory {
+        let passport = Keypair::from_seed(&[7u8; 32]);
+        let document = PeerDirectoryDocument {
+            schema: PHEROMONE_PEER_DIRECTORY_SCHEMA.to_string(),
+            local_kernel_id: "did:chio:relay".to_string(),
+            issued_at_unix_ms: NOW - 1,
+            expires_at_unix_ms: NOW + 1,
+            peers: vec![PeerDirectoryEntry {
+                kernel_id: kernel_id.to_string(),
+                public_key: passport.public_key(),
+                endpoint: "https://peer.example/relay".to_string(),
+                treaty_subscriptions: vec!["treaty:test".to_string()],
+                relay_role: role,
+                allowed_subject_class_namespaces: Vec::new(),
+                accepted_ladder_refs: Vec::new(),
+                max_batch_frames: 128,
+                max_catchup_frames: 128,
+                max_catchup_bytes: 1_048_576,
+            }],
+        };
+        PeerDirectory::from_document(document, NOW).expect("peer directory builds")
     }
 
     fn loopback_config(lanes: Vec<IrohLane>) -> IrohMountConfig {
@@ -810,8 +882,9 @@ mod tests {
         };
         let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
         let receiver: Arc<dyn RelayBatchReceiver> = Arc::new(RejectingReceiver);
+        let peer_directory = peer_directory_admitting("did:chio:bob", RelayRole::Origin);
 
-        let mount = build_iroh_router(inputs, receiver, store)
+        let mount = build_iroh_router(inputs, receiver, store, peer_directory)
             .await
             .expect("mount builder succeeds with a valid directory + gate");
         assert_eq!(mount.enabled_lanes, vec!["pheromone"]);
@@ -842,6 +915,55 @@ mod tests {
         assert!(
             result.is_err(),
             "an unadmitted endpoint must be 403'd at the gate, got {result:?}"
+        );
+
+        mount.router.shutdown().await.ok();
+    }
+
+    #[tokio::test]
+    async fn iroh_ingress_rejects_out_of_scope_sender_before_the_receiver() {
+        // The transport gate ADMITS the dialer endpoint (it resolves to did:chio:bob),
+        // so the batch reaches the handler; but the peer directory lists did:chio:bob
+        // as a Receiver (NOT an Origin/Hub), so it is not authorized to SUBMIT inbound
+        // batches. enforce_peer_batch_directory_scope must reject the batch on the iroh
+        // ingress path BEFORE receive_batch - exactly as the HTTP handle_batch_relay
+        // would - and the TripwireReceiver proves the batch never reached the receiver.
+        let dialer_seed = 24u8;
+        let directory = verified_directory("did:chio:bob", dialer_seed);
+        let inputs = IrohServeInputs {
+            directory,
+            transport_key: SecretKey::from_bytes(&[42u8; 32]),
+            config: loopback_config(vec![IrohLane::Pheromone]),
+        };
+        let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+        let called = Arc::new(AtomicBool::new(false));
+        let receiver: Arc<dyn RelayBatchReceiver> = Arc::new(TripwireReceiver {
+            called: called.clone(),
+        });
+        // Admitted at the transport endpoint, but only a Receiver in the peer
+        // directory: NOT authorized to submit inbound batches.
+        let peer_directory = peer_directory_admitting("did:chio:bob", RelayRole::Receiver);
+
+        let mount = build_iroh_router(inputs, receiver, store, peer_directory)
+            .await
+            .expect("mount builder succeeds");
+        let acceptor_addr = direct_addr(mount.router.endpoint());
+
+        let dialer = bind_dialer(dialer_seed).await;
+        let batch = empty_batch();
+        let result = tokio::time::timeout(
+            Duration::from_secs(15),
+            deliver_batch_over_iroh(&dialer, acceptor_addr, &batch),
+        )
+        .await
+        .expect("dial resolves before timeout");
+        assert!(
+            result.is_err(),
+            "an out-of-scope (non-Origin/Hub) sender's batch must be rejected on the iroh path, got {result:?}"
+        );
+        assert!(
+            !called.load(Ordering::SeqCst),
+            "the inbound scope gate must reject BEFORE the receiver is ever consulted"
         );
 
         mount.router.shutdown().await.ok();

@@ -77,6 +77,17 @@ pub const LANE_RESET_ERROR_CODE: u32 = 1;
 /// QUIC application close code used on a clean dial-side teardown.
 const LANE_OK_CODE: u32 = 0;
 
+/// Inbound directory-scope gate applied on the iroh ingress path BEFORE
+/// [`RelayBatchReceiver::receive_batch`], mirroring the HTTP relay's
+/// `enforce_peer_batch_directory_scope` (`service.rs`). Supplied by the wiring so
+/// this crate never names `PeerDirectory`; it MUST be evaluated against the CURRENT
+/// peer directory and fail closed on any out-of-scope sender (not an `Origin`/`Hub`,
+/// over its per-peer frame cap, unsubscribed from the batch treaty, or carrying an
+/// unpinned transit ladder). Its `Err` folds into [`IrohLaneError::Relay`] and
+/// resets the stream, exactly as the HTTP path rejects the same peer.
+pub type InboundBatchScopeCheck =
+    Arc<dyn Fn(&str, &PheromoneGossipBatch) -> Result<(), PheromoneRelayError> + Send + Sync>;
+
 /// Errors raised inside the pheromone lane. Every variant is fail-closed: an
 /// error denies the batch (handler side resets the stream; sender side folds
 /// into the durable outbox retry/dead-letter path via [`IrohLaneError::code`]).
@@ -213,6 +224,11 @@ pub struct PheromoneBatchHandler {
     receiver: Arc<dyn RelayBatchReceiver>,
     store: Arc<SqlitePheromoneRelayStore>,
     now: Arc<dyn Fn() -> u64 + Send + Sync>,
+    /// Inbound per-peer directory-scope gate (the SAME `enforce_peer_batch_directory_scope`
+    /// the HTTP relay runs before receiving). Evaluated fail-closed BEFORE the batch
+    /// reaches the receiver, so an out-of-scope sender is rejected on the iroh path
+    /// exactly as it is over HTTP.
+    scope_check: InboundBatchScopeCheck,
     /// Shared slowloris / resource-exhaustion bounds (per-phase timeouts + an
     /// in-flight concurrency cap). Defaults are generous; see [`AcceptLimiter`].
     limiter: AcceptLimiter,
@@ -229,19 +245,24 @@ impl fmt::Debug for PheromoneBatchHandler {
 
 impl PheromoneBatchHandler {
     /// Build the handler from the admission gate (for re-resolution), the reused
-    /// relay receiver seam, the shipped SQLite store (inbox dedup), and a clock.
+    /// relay receiver seam, the shipped SQLite store (inbox dedup), a clock, and the
+    /// inbound directory-scope gate (the SAME `enforce_peer_batch_directory_scope`
+    /// the HTTP relay runs before receiving, supplied by the wiring against the
+    /// current peer directory).
     #[must_use]
     pub fn new(
         gate: DirectoryGate,
         receiver: Arc<dyn RelayBatchReceiver>,
         store: Arc<SqlitePheromoneRelayStore>,
         now: Arc<dyn Fn() -> u64 + Send + Sync>,
+        scope_check: InboundBatchScopeCheck,
     ) -> Self {
         Self {
             gate,
             receiver,
             store,
             now,
+            scope_check,
             limiter: AcceptLimiter::default(),
         }
     }
@@ -275,6 +296,15 @@ impl PheromoneBatchHandler {
             .bounded(AcceptPhase::ReadFrame, read_len_delimited(&mut recv))
             .await??;
         let batch: PheromoneGossipBatch = serde_json::from_slice(&raw)?;
+
+        // ENFORCE INBOUND PEER SCOPE (fail-closed): mirror the HTTP handle_batch_relay,
+        // which runs enforce_peer_batch_directory_scope BEFORE receive_batch. A sender
+        // that is not an Origin/Hub, exceeds its per-peer frame cap, is unsubscribed
+        // from the batch treaty, or carries an unpinned transit ladder is rejected here
+        // on the iroh path exactly as over HTTP, BEFORE any receiver/inbox state is
+        // consulted or mutated. Runs on EVERY batch (even a dedup redelivery), matching
+        // the HTTP path, so a sender that has since fallen out of scope cannot replay.
+        (self.scope_check)(&authenticated_sender, &batch)?;
 
         // DEDUP BEFORE RECEIVE (fail-closed idempotency): compute the deterministic
         // inbox nonce and consult the store BEFORE mutating receiver state. On a

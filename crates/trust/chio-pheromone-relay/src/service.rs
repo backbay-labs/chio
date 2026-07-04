@@ -450,7 +450,15 @@ async fn handle_batch_relay(
     Ok(Json(report))
 }
 
-fn enforce_peer_batch_directory_scope(
+/// Enforce the inbound per-peer directory scope for a submitted batch: the sender
+/// must be an `Origin`/`Hub`, within its per-peer frame cap, subscribed to the
+/// batch treaty, and carry only directory-pinned transit ladders. Fail-closed.
+///
+/// Exposed (in addition to its use by [`handle_batch_relay`]) so a second ingress
+/// transport (the iroh federation-transport pheromone lane) can enforce the SAME
+/// scope gate against the SAME peer directory before it hands a batch to
+/// [`RelayBatchReceiver::receive_batch`]. Both transports therefore apply one gate.
+pub fn enforce_peer_batch_directory_scope(
     directory: &PeerDirectory,
     sender_kernel_id: &str,
     batch: &PheromoneGossipBatch,

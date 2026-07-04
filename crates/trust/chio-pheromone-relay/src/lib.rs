@@ -184,9 +184,10 @@ pub use schema::{
     PHEROMONE_RELAY_TICK_REPORT_SCHEMA, PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
 };
 pub use service::{
-    deliver_due_batches, lint_relay_supervisor_profile, relay_supervisor_profile_from_json,
-    ExtraMetricsHook, PheromoneRelayConfig, PheromoneRelayService, RelayBatchReceiver,
-    RelayDrillCheck, RelayDrillReport, RelayReverseProxyProfile, RelaySupervisorProfileDocument,
+    deliver_due_batches, enforce_peer_batch_directory_scope, lint_relay_supervisor_profile,
+    relay_supervisor_profile_from_json, ExtraMetricsHook, PheromoneRelayConfig,
+    PheromoneRelayService, RelayBatchReceiver, RelayDrillCheck, RelayDrillReport,
+    RelayReverseProxyProfile, RelaySupervisorProfileDocument,
 };
 pub(crate) use store::i64_from_u64;
 pub use store::{
