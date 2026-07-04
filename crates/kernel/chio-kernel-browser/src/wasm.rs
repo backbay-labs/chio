@@ -19,7 +19,6 @@ use crate::pure::{
 };
 use crate::wire::{
     BindingError, EvaluateRequestJson, SignReceiptRequestJson, VerifyCapabilityRequestJson,
-    VerifyReceiptResultJson,
 };
 use crate::{BrowserClock, WebCryptoRng};
 
