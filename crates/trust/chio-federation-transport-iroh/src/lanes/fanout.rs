@@ -59,6 +59,7 @@
 //! [`decode_and_verify_fanout_frame`], whose signatures do not even accept it).
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use bytes::Bytes;
 use chio_core_types::canonical_json_bytes;
@@ -86,6 +87,13 @@ pub const PHEROMONE_FANOUT_TOPIC_LABEL: &str = "chio-pheromone-gossip/v1";
 /// a long transit chain can exceed this; such payloads must be referenced
 /// out-of-band (bulk over the blob lane), never squeezed past the cap.
 pub const MAX_GOSSIP_MESSAGE_SIZE: usize = 4096;
+
+/// Client-side liveness bound on a swarm JOIN. `subscribe_and_join` blocks until a
+/// neighbor is up, so an empty, unreachable, or hostile bootstrap set would hang the
+/// join forever. After this bound the join fails closed (mirrors the direct lanes'
+/// `client_bounded` and the blob catch-up client bounds). Generous for cross-continent
+/// neighbor discovery; tune via [`FanoutLane::subscribe_treaty_with_timeout`].
+pub const FANOUT_JOIN_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Derive the per-surface gossip topic for a treaty (ADAPTER-SPEC 4.1):
 /// `TopicId = blake3(label || 0x00 || treaty_id_bytes)`. Deterministic and
@@ -452,13 +460,40 @@ impl FanoutLane {
         treaty_id: &str,
         bootstrap: Vec<EndpointId>,
     ) -> Result<FanoutTopic, FanoutError> {
-        let topic_id = pheromone_topic_for_treaty(treaty_id);
-        let (sender, receiver) = self
-            .gossip
-            .subscribe_and_join(topic_id, bootstrap)
+        self.subscribe_treaty_with_timeout(treaty_id, bootstrap, FANOUT_JOIN_TIMEOUT)
             .await
-            .map_err(|error| FanoutError::Gossip(error.to_string()))?
-            .split();
+    }
+
+    /// Same as [`subscribe_treaty`](Self::subscribe_treaty), with an explicit join
+    /// bound. `subscribe_and_join` blocks until a neighbor is up; an empty or
+    /// unreachable `bootstrap` would otherwise hang the join forever, so it fails
+    /// closed to [`FanoutError::Gossip`] after `join_timeout` (client-side liveness
+    /// defense, mirroring the direct lanes' `client_bounded`). `next_payload`'s wait
+    /// is deliberately NOT bounded: a receive loop is meant to block until the next
+    /// gossip message.
+    ///
+    /// # Errors
+    /// Returns [`FanoutError::Gossip`] if the join times out or the subscribe/join fails.
+    pub async fn subscribe_treaty_with_timeout(
+        &self,
+        treaty_id: &str,
+        bootstrap: Vec<EndpointId>,
+        join_timeout: Duration,
+    ) -> Result<FanoutTopic, FanoutError> {
+        let topic_id = pheromone_topic_for_treaty(treaty_id);
+        let joined = tokio::time::timeout(
+            join_timeout,
+            self.gossip.subscribe_and_join(topic_id, bootstrap),
+        )
+        .await
+        .map_err(|_elapsed| {
+            FanoutError::Gossip(format!(
+                "swarm join timed out after {}ms (no neighbor from bootstrap)",
+                u64::try_from(join_timeout.as_millis()).unwrap_or(u64::MAX)
+            ))
+        })?
+        .map_err(|error| FanoutError::Gossip(error.to_string()))?;
+        let (sender, receiver) = joined.split();
         Ok(FanoutTopic {
             treaty_id: treaty_id.to_string(),
             topic_id,
@@ -923,6 +958,32 @@ mod tests {
         // Round-trips back to an equal frame.
         let decoded: PheromoneDepositGossip = serde_json::from_slice(&payload).unwrap();
         assert_eq!(decoded, frame);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn subscribe_join_fails_closed_on_timeout() {
+        // An empty bootstrap has no neighbor to join, so subscribe_and_join would
+        // block forever; the client join bound fails it closed rather than hanging.
+        let endpoint = Endpoint::builder(presets::Minimal)
+            .secret_key(SecretKey::from_bytes(&[73u8; 32]))
+            .relay_mode(RelayMode::Disabled)
+            .bind_addr((Ipv4Addr::LOCALHOST, 0))
+            .expect("valid loopback bind addr")
+            .bind()
+            .await
+            .expect("endpoint binds on loopback");
+        let gossip = Gossip::builder().spawn(endpoint.clone());
+        let _router = Router::builder(endpoint)
+            .accept(iroh_gossip::ALPN, gossip.clone())
+            .spawn();
+        let lane = FanoutLane::new(gossip);
+        let result = lane
+            .subscribe_treaty_with_timeout(TREATY_ALPHA, vec![], Duration::from_millis(50))
+            .await;
+        assert!(
+            matches!(result, Err(FanoutError::Gossip(ref msg)) if msg.contains("timed out")),
+            "empty-bootstrap join must fail closed on the client bound, got {result:?}"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
