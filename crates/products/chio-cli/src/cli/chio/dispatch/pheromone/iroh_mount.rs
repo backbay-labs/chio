@@ -82,6 +82,23 @@ pub(crate) struct IrohTransportKeyDocument {
     pub(crate) seed_hex: String,
 }
 
+/// Optional rotation-state input for the transport-directory bundle, mirroring the
+/// relay's signed peer-directory state. It pins the rollback FLOOR and the expected
+/// predecessor bundle hash a ROTATED successor bundle must chain onto, so a
+/// post-genesis bundle (version > 1 carrying a `previousVersionSha256`) is accepted
+/// at startup. Without it the wiring can only promote a GENESIS bundle (floor 0, no
+/// predecessor). The bundle it pins is itself issuer-signed and verified against
+/// `--trusted-issuers`; this document only carries the operator's local rollback pin.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct IrohTransportDirectoryStateDocument {
+    /// Rollback floor: the loaded bundle's `version` MUST be strictly greater.
+    pub(crate) version_floor: u64,
+    /// The expected predecessor bundle hash the successor must chain onto (its
+    /// `previousVersionSha256`); `None` only when pinning a genesis bundle.
+    pub(crate) expected_previous_version_sha256: Option<String>,
+}
+
 /// The iroh federation-transport lanes an operator may request via `--iroh-lanes`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IrohLane {
@@ -236,11 +253,18 @@ fn load_transport_secret_key(path: &Path) -> Result<SecretKey, CliError> {
 }
 
 /// Build the load-time trust for the transport-directory bundle from the SAME
-/// `--trusted-issuers` config the HTTP peer directory uses. First-bundle promotion
-/// (`version_floor = 0`, no expected predecessor); the validity window is checked
-/// against `now`.
+/// `--trusted-issuers` config the HTTP peer directory uses. The validity window is
+/// checked against `now`.
+///
+/// Rollback pin: without a `transport_directory_state` file this promotes a GENESIS
+/// bundle only (`version_floor = 0`, no expected predecessor), so a ROTATED
+/// successor bundle (version > 1 carrying a `previousVersionSha256`) is rejected
+/// fail-closed because it cannot chain onto a `None` predecessor. Supplying the
+/// signed-state/floor input pins the rollback floor and the expected predecessor
+/// hash so a successor is accepted (see [`IrohTransportDirectoryStateDocument`]).
 fn transport_bundle_trust(
     trusted_issuers: Option<&Path>,
+    transport_directory_state: Option<&Path>,
     now_unix_ms: u64,
 ) -> Result<TransportDirectoryBundleTrust, CliError> {
     let path = trusted_issuers.ok_or_else(|| {
@@ -266,10 +290,26 @@ fn transport_bundle_trust(
             "Chio iroh transport trusted issuers: no issuers configured".to_string(),
         ));
     }
+    // Genesis default (floor 0, no predecessor) unless the operator supplies the
+    // rotation-state pin; see the fn docs for the successor-rejection limitation.
+    let (version_floor, expected_previous_version_sha256) = match transport_directory_state {
+        Some(state_path) => {
+            let state_json =
+                read_utf8_json_file(state_path, "Chio iroh transport directory state")?;
+            let state: IrohTransportDirectoryStateDocument = serde_json::from_str(&state_json)
+                .map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chio iroh transport directory state: {error}"
+                    ))
+                })?;
+            (state.version_floor, state.expected_previous_version_sha256)
+        }
+        None => (0, None),
+    };
     Ok(TransportDirectoryBundleTrust {
         issuers,
-        version_floor: 0,
-        expected_previous_version_sha256: None,
+        version_floor,
+        expected_previous_version_sha256,
         now_unix_ms,
     })
 }
@@ -283,6 +323,7 @@ fn transport_bundle_trust(
 pub(crate) fn load_iroh_serve_inputs(
     iroh_enable: bool,
     iroh_transport_directory: Option<&Path>,
+    iroh_transport_directory_state: Option<&Path>,
     trusted_issuers: Option<&Path>,
     iroh_transport_key: Option<&Path>,
     iroh_bind_addr: &str,
@@ -308,7 +349,11 @@ pub(crate) fn load_iroh_serve_inputs(
         .map_err(|error| {
             CliError::cli_other_error(format!("Chio iroh transport directory bundle: {error}"))
         })?;
-    let trust = transport_bundle_trust(trusted_issuers, now_unix_ms)?;
+    let trust = transport_bundle_trust(
+        trusted_issuers,
+        iroh_transport_directory_state,
+        now_unix_ms,
+    )?;
     let directory = bundle.verify_bundle(&trust).map_err(|error| {
         CliError::cli_other_error(format!(
             "Chio iroh transport directory bundle verification: {error}"
@@ -532,6 +577,7 @@ mod tests {
         let inputs = load_iroh_serve_inputs(
             false,
             Some(Path::new("/nonexistent/directory.json")),
+            None,
             Some(Path::new("/nonexistent/issuers.json")),
             Some(Path::new("/nonexistent/key.json")),
             "0.0.0.0:0",
@@ -547,6 +593,7 @@ mod tests {
     fn enable_without_transport_directory_fails_closed() {
         let error = match load_iroh_serve_inputs(
             true,
+            None,
             None,
             Some(Path::new("/nonexistent/issuers.json")),
             Some(Path::new("/nonexistent/key.json")),
@@ -584,6 +631,7 @@ mod tests {
         let error = match load_iroh_serve_inputs(
             true,
             Some(&bundle_path),
+            None,
             Some(&issuers_path),
             Some(&key_path),
             "0.0.0.0:0",
@@ -597,6 +645,125 @@ mod tests {
         assert!(
             error.to_string().contains("directory bundle"),
             "unexpected error: {error}"
+        );
+    }
+
+    /// Build and serialize a signed transport-directory bundle at `version`
+    /// chaining onto `previous_version_sha256`. Returns the bundle JSON plus the
+    /// issuer keypair whose public key the trusted-issuers file must pin.
+    fn signed_bundle_json(
+        kernel_id: &str,
+        transport_seed: u8,
+        version: u64,
+        previous_version_sha256: Option<String>,
+    ) -> (String, Keypair) {
+        let passport = Keypair::from_seed(&[7u8; 32]);
+        let issuer = Keypair::from_seed(&[240u8; 32]);
+        let transport = endpoint_from_seed(transport_seed);
+        let entry = TransportDirectoryEntry {
+            kernel_id: kernel_id.to_string(),
+            passport_public_key: passport.public_key(),
+            transport_endpoint_id: transport,
+            passport_endorsement: passport
+                .sign(&transport_endorsement_preimage(kernel_id, &transport)),
+            revocation_signers: Vec::new(),
+            removed: false,
+        };
+        let directory = TransportDirectoryDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            local_kernel_id: "did:chio:relay".to_string(),
+            peers: vec![entry],
+        };
+        let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());
+        let body = TransportDirectoryBundleBody {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            issuer: "did:chio:issuer".to_string(),
+            key_id: "issuer-key-1".to_string(),
+            directory_sha256,
+            version,
+            previous_version_sha256,
+            issued_at_unix_ms: NOW - 1,
+            expires_at_unix_ms: NOW + 1,
+        };
+        let (signature, _) = issuer.sign_canonical(&body).unwrap();
+        let bundle = TransportDirectoryBundleDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            body,
+            directory,
+            signature,
+        };
+        (serde_json::to_string(&bundle).unwrap(), issuer)
+    }
+
+    #[test]
+    fn successor_bundle_accepted_with_rotation_state_supplied() {
+        // A ROTATED successor bundle (version 5, chaining onto a predecessor hash)
+        // is REJECTED at genesis defaults (floor 0, no predecessor) but ACCEPTED
+        // once the rotation-state pin supplies the floor + expected predecessor
+        // hash, so a durable directory rotation is loadable at startup.
+        let dir = tempfile::tempdir().unwrap();
+        let bundle_path = dir.path().join("bundle.json");
+        let issuers_path = dir.path().join("issuers.json");
+        let key_path = dir.path().join("key.json");
+        let state_path = dir.path().join("state.json");
+
+        let predecessor = "predecessor-bundle-sha256".to_string();
+        let (bundle_json, issuer) =
+            signed_bundle_json("did:chio:bob", 24, 5, Some(predecessor.clone()));
+        std::fs::write(&bundle_path, &bundle_json).unwrap();
+
+        let issuers = serde_json::json!({
+            "issuers": [{
+                "issuer": "did:chio:issuer",
+                "keyId": "issuer-key-1",
+                "publicKey": issuer.public_key(),
+            }],
+        });
+        std::fs::write(&issuers_path, serde_json::to_string(&issuers).unwrap()).unwrap();
+        std::fs::write(&key_path, "{\"seedHex\":\"".to_string() + &"11".repeat(32) + "\"}").unwrap();
+
+        // Without the rotation state, the successor is rejected fail-closed: its
+        // previousVersionSha256 cannot chain onto the genesis default of None.
+        let rejected = load_iroh_serve_inputs(
+            true,
+            Some(&bundle_path),
+            None,
+            Some(&issuers_path),
+            Some(&key_path),
+            "0.0.0.0:0",
+            &[],
+            "pheromone",
+            NOW,
+        );
+        assert!(
+            rejected.is_err(),
+            "a rotated successor bundle must be rejected without the rotation-state pin"
+        );
+
+        // With the floor + predecessor hash supplied, the successor is accepted.
+        let state = serde_json::json!({
+            "versionFloor": 4,
+            "expectedPreviousVersionSha256": predecessor,
+        });
+        std::fs::write(&state_path, serde_json::to_string(&state).unwrap()).unwrap();
+
+        let inputs = load_iroh_serve_inputs(
+            true,
+            Some(&bundle_path),
+            Some(&state_path),
+            Some(&issuers_path),
+            Some(&key_path),
+            "0.0.0.0:0",
+            &[],
+            "pheromone",
+            NOW,
+        )
+        .expect("successor bundle accepted with the rotation-state pin")
+        .expect("iroh enabled must produce serve inputs");
+        assert_eq!(
+            inputs.directory.version(),
+            5,
+            "the accepted directory must be the rotated successor (version 5)"
         );
     }
 

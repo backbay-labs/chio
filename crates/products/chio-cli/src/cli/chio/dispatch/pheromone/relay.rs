@@ -136,6 +136,7 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
     operator_token_env: Option<&str>,
     iroh_enable: bool,
     iroh_transport_directory: Option<&Path>,
+    iroh_transport_directory_state: Option<&Path>,
     iroh_transport_key: Option<&Path>,
     iroh_bind_addr: &str,
     iroh_relay_url: &[String],
@@ -149,6 +150,7 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
     let iroh_inputs = load_iroh_serve_inputs(
         iroh_enable,
         iroh_transport_directory,
+        iroh_transport_directory_state,
         trusted_issuers,
         iroh_transport_key,
         iroh_bind_addr,

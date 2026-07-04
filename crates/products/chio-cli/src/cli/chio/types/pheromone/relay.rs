@@ -98,6 +98,14 @@ pub(crate) enum ChioPheromoneRelayCommands {
         #[arg(long, value_name = "PATH")]
         iroh_transport_directory: Option<PathBuf>,
 
+        /// Optional rotation-state pin ({ "versionFloor": N,
+        /// "expectedPreviousVersionSha256": ".." }) for the transport-directory
+        /// bundle. Without it only a GENESIS bundle loads (floor 0, no
+        /// predecessor); a rotated successor bundle needs this to pin the rollback
+        /// floor and the predecessor hash it must chain onto.
+        #[arg(long, value_name = "PATH")]
+        iroh_transport_directory_state: Option<PathBuf>,
+
         /// Dedicated rotatable ed25519 transport key file ({ "seedHex": ".." }),
         /// SEPARATE from the passport/relay signing key. Required with --iroh-enable.
         #[arg(long, value_name = "PATH")]
