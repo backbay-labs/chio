@@ -300,6 +300,6 @@ is the same across all of them:
    `len(value)` for `bytes` / `bytearray`).
 
 If your adapter has a parity shim wrapping `bind_and_redact`
-back into a legacy envelope shape, also assert that the shim's
-output is byte-identical to a pre-migration golden snapshot for
+back into its previous envelope shape, also assert that the shim's
+output is byte-identical to a golden snapshot of that earlier output for
 at least one call per signature shape your adapter wraps.

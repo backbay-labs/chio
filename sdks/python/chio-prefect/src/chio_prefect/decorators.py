@@ -537,7 +537,7 @@ def _prefect_envelope(
     # Detect the positional-only-spillover collision: the fn signature
     # has a positional-only param whose name appears as a kwarg AND
     # there is a VAR_KEYWORD spillover param. In that case prefect's
-    # legacy wire shape moves the kwarg's redacted value to a synthetic
+    # wire shape moves the kwarg's redacted value to a synthetic
     # ``<name>__var_kw_spillover__`` key so neither bucket overwrites
     # the other.
     spillover_keys: set[str] = set()
