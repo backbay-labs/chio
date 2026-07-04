@@ -259,12 +259,16 @@ fn load_transport_secret_key(path: &Path) -> Result<SecretKey, CliError> {
 /// `--trusted-issuers` config the HTTP peer directory uses. The validity window is
 /// checked against `now`.
 ///
-/// Rollback pin: without a `transport_directory_state` file this promotes a GENESIS
-/// bundle only (`version_floor = 0`, no expected predecessor), so a ROTATED
-/// successor bundle (version > 1 carrying a `previousVersionSha256`) is rejected
-/// fail-closed because it cannot chain onto a `None` predecessor. Supplying the
-/// signed-state/floor input pins the rollback floor and the expected predecessor
-/// hash so a successor is accepted (see [`IrohTransportDirectoryStateDocument`]).
+/// Rollback pin: the trusted-issuer file's `minVersion` (the SAME field the HTTP
+/// peer-directory loader reads as its trusted floor) is the rollback floor when no
+/// explicit `transport_directory_state` pin is supplied, so a bundle below the
+/// issuer-configured minimum is rejected fail-closed even without a state file
+/// (defaulting to `0` only when `minVersion` is absent). Without a state pin the
+/// expected predecessor is `None`, so a ROTATED successor bundle (carrying a
+/// `previousVersionSha256`) still needs the state input to pin the predecessor hash;
+/// a supplied state floor can never sit BELOW the issuer `minVersion` (a local pin
+/// must not silently lower the issuer-configured floor). See
+/// [`IrohTransportDirectoryStateDocument`].
 fn transport_bundle_trust(
     trusted_issuers: Option<&Path>,
     transport_directory_state: Option<&Path>,
@@ -279,6 +283,9 @@ fn transport_bundle_trust(
     let document: RelayTrustedIssuersDocument = serde_json::from_str(&json).map_err(|error| {
         CliError::cli_other_error(format!("Chio iroh transport trusted issuers: {error}"))
     })?;
+    // The SAME minVersion the HTTP peer-directory loader enforces as its trusted
+    // rollback floor (absent -> 0). Read before `issuers` is consumed below.
+    let trusted_min_version = document.min_version.unwrap_or(0);
     let issuers = document
         .issuers
         .into_iter()
@@ -293,8 +300,9 @@ fn transport_bundle_trust(
             "Chio iroh transport trusted issuers: no issuers configured".to_string(),
         ));
     }
-    // Genesis default (floor 0, no predecessor) unless the operator supplies the
-    // rotation-state pin; see the fn docs for the successor-rejection limitation.
+    // Honor the trusted-issuer minVersion as the rollback floor. Without a rotation
+    // state the expected predecessor is None (genesis chaining); with one, the
+    // explicit floor takes precedence but can never fall below the issuer minVersion.
     let (version_floor, expected_previous_version_sha256) = match transport_directory_state {
         Some(state_path) => {
             let state_json =
@@ -305,9 +313,12 @@ fn transport_bundle_trust(
                         "Chio iroh transport directory state: {error}"
                     ))
                 })?;
-            (state.version_floor, state.expected_previous_version_sha256)
+            (
+                state.version_floor.max(trusted_min_version),
+                state.expected_previous_version_sha256,
+            )
         }
-        None => (0, None),
+        None => (trusted_min_version, None),
     };
     Ok(TransportDirectoryBundleTrust {
         issuers,
@@ -836,6 +847,73 @@ mod tests {
             inputs.directory.version(),
             5,
             "the accepted directory must be the rotated successor (version 5)"
+        );
+    }
+
+    #[test]
+    fn bundle_below_trusted_issuer_min_version_is_rejected_without_state_file() {
+        // The shared --trusted-issuers file sets minVersion (the SAME floor the HTTP
+        // peer-directory loader enforces). With NO explicit transport-directory-state
+        // pin, that minVersion must be the rollback floor, so a below-floor bundle is
+        // rejected fail-closed rather than promoted against a hardcoded floor of 0.
+        let dir = tempfile::tempdir().unwrap();
+        let bundle_path = dir.path().join("bundle.json");
+        let issuers_path = dir.path().join("issuers.json");
+        let key_path = dir.path().join("key.json");
+
+        // A genesis-shaped bundle at version 3 (no predecessor to chain onto).
+        let (below_json, issuer) = signed_bundle_json("did:chio:bob", 24, 3, None);
+        std::fs::write(&bundle_path, &below_json).unwrap();
+
+        // Pin minVersion = 5 in the trusted-issuers file (camelCase on the wire).
+        let issuers = serde_json::json!({
+            "issuers": [{
+                "issuer": "did:chio:issuer",
+                "keyId": "issuer-key-1",
+                "publicKey": issuer.public_key(),
+            }],
+            "minVersion": 5,
+        });
+        std::fs::write(&issuers_path, serde_json::to_string(&issuers).unwrap()).unwrap();
+        std::fs::write(&key_path, "{\"seedHex\":\"".to_string() + &"11".repeat(32) + "\"}").unwrap();
+
+        // No state file: the floor comes from minVersion (5), so version 3 is rejected.
+        let rejected = load_iroh_serve_inputs(
+            true,
+            Some(&bundle_path),
+            None,
+            Some(&issuers_path),
+            Some(&key_path),
+            "0.0.0.0:0",
+            &[],
+            "pheromone",
+            NOW,
+        );
+        assert!(
+            rejected.is_err(),
+            "a bundle below the trusted-issuer minVersion must be rejected even without a state file"
+        );
+
+        // A genesis-shaped bundle above the floor (version 6, no predecessor) loads.
+        let (above_json, _issuer) = signed_bundle_json("did:chio:bob", 24, 6, None);
+        std::fs::write(&bundle_path, &above_json).unwrap();
+        let inputs = load_iroh_serve_inputs(
+            true,
+            Some(&bundle_path),
+            None,
+            Some(&issuers_path),
+            Some(&key_path),
+            "0.0.0.0:0",
+            &[],
+            "pheromone",
+            NOW,
+        )
+        .expect("a bundle above the minVersion floor loads")
+        .expect("iroh enabled must produce serve inputs");
+        assert_eq!(
+            inputs.directory.version(),
+            6,
+            "the accepted directory must be the above-floor bundle"
         );
     }
 
