@@ -152,7 +152,7 @@ returns `GuardDenied` with a diagnostic name rather than panicking.
 ## 6. Policy Wiring
 
 External guards are instantiated through the policy-compiler path in
-`crates/products/chio-cli/src/policy.rs`. Authoring lives on the
+`crates/products/chio-cli`. Authoring lives on the
 HushSpec-canonical pipeline (see `E13: Policy and Adoption
 Unification`). The shape is the same for every provider:
 
@@ -276,7 +276,7 @@ claim requires its own qualification lane, not a documentation change.
   three-state breaker.
 - `crates/guards/chio-guards/src/external/cache.rs`,
   `token_bucket.rs`, `retry.rs` -- supporting primitives.
-- `crates/products/chio-cli/src/policy.rs` -- policy-compiler wiring and
+- `crates/products/chio-cli` -- policy-compiler wiring and
   `build_pipeline_from_external_guard_policy` test.
 - `docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md` -- canonical
   claim boundary.

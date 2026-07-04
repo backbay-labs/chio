@@ -30,7 +30,7 @@ If teams execute from different docs, they will produce incompatible code.
 ### 1. Source of Truth
 
 The source of truth for `ToolAction` is `crates/guards/chio-guards/src/action.rs`.
-The source of truth for `Constraint` is `crates/core/chio-core-types/src/capability.rs`.
+The source of truth for `Constraint` is `crates/core/chio-core-types/src/capability`.
 
 All doc proposals are **design sketches**. They inform the final
 implementation but are not the contract. When implementing, the developer

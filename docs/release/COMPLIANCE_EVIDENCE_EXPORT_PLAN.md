@@ -134,7 +134,7 @@ evidence-package/
   - package manifest types
   - inclusion-proof record types
   - local SQLite export helpers
-- `crates/products/chio-cli/src/evidence_export.rs`
+- `crates/products/chio-cli`
   - CLI orchestration
   - output directory/tar writing
   - policy-file attachment handling

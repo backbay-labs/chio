@@ -204,8 +204,8 @@ relay path, including catch-up and future replay endpoints.
   verification.
 - `crates/products/chio-cli/src/cli/chio/dispatch/pheromone/runtime.rs:27` and
   line 109 expose Chio-named pheromone receive and query handlers. The public
-  `chio pheromone receive/query` dispatcher calls those handlers at
-  `crates/products/chio-cli/src/cli/dispatch.rs:3143` and line 3161.
+  `chio pheromone receive/query` dispatcher calls those handlers in
+  `crates/products/chio-cli/src/cli/dispatch`.
 - `crates/products/chio-cli/src/cli/chio/dispatch/pheromone/*.rs` expose Chio-named
   relay handlers for core relay, alert routing, delivery evidence, assurance
   export/replay/recovery/archive/closeout, peer-directory rotation, and
