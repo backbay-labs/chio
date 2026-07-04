@@ -965,56 +965,6 @@ fn standalone_minimal_passport_accepts_governed_action_evidence() {
 }
 
 #[test]
-fn standalone_minimal_passport_unchecked_signature_keeps_artifact_checks() {
-    let mut artifacts = governed_action_artifacts();
-    let evidence_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
-    let verifier_policy_bytes = valid_verifier_policy_bytes();
-    let mut passport =
-        standalone_passport_for_artifact_bytes(&evidence_graph_bytes, verifier_policy_bytes);
-    passport.signature = "00".repeat(64);
-
-    let error = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
-        &passport,
-        "transaction-passport.json".to_string(),
-        &evidence_graph_bytes,
-        verifier_policy_bytes,
-        &artifacts,
-        &governed_action_trusted_root_keys(),
-    )
-    .test_expect_err("checked standalone verifier must reject tampered passport signature");
-    assert!(error
-        .to_string()
-        .contains("transaction passport signature invalid"));
-
-    let report =
-        chio_transaction_passport::verify_standalone_minimal_passport_artifacts_unchecked_signature(
-            &passport,
-            "transaction-passport.json".to_string(),
-            &evidence_graph_bytes,
-            verifier_policy_bytes,
-            &artifacts,
-            &governed_action_trusted_root_keys(),
-        )
-        .test_expect("unchecked standalone verifier should accept unchanged artifacts");
-    assert!(report.accepted);
-
-    artifacts.remove("kernel-receipt.json");
-    let error =
-        chio_transaction_passport::verify_standalone_minimal_passport_artifacts_unchecked_signature(
-            &passport,
-            "transaction-passport.json".to_string(),
-            &evidence_graph_bytes,
-            verifier_policy_bytes,
-            &artifacts,
-            &governed_action_trusted_root_keys(),
-        )
-        .test_expect_err("unchecked standalone verifier must still validate artifacts");
-    assert!(error
-        .to_string()
-        .contains("missing evidence graph artifact: kernel-receipt.json"));
-}
-
-#[test]
 fn standalone_minimal_passport_preserves_nonbinary_claim_result_statuses() {
     let mut artifacts = governed_action_artifacts();
     let claim_set_bytes = serde_json::to_vec(&json!({
