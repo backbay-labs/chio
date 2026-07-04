@@ -163,7 +163,7 @@ pub async fn inspect_publication_guard(
 
 pub async fn ensure_publication_ready(
     target: &EvmAnchorTarget,
-    checkpoint_seq: u64,
+    checkpoint: &KernelCheckpoint,
     egress_contract: &HttpEgressContract,
 ) -> Result<EvmPublicationGuard, AnchorError> {
     let guard = inspect_publication_guard(target, egress_contract).await?;
@@ -173,11 +173,69 @@ pub async fn ensure_publication_ready(
             guard.publisher_address, guard.operator_address, guard.chain_id
         )));
     }
-    if checkpoint_seq != guard.next_checkpoint_seq_min {
+    if checkpoint.body.checkpoint_seq != guard.next_checkpoint_seq_min {
         return Err(AnchorError::Verification(format!(
             "checkpoint sequence {} must equal {} on {}",
-            checkpoint_seq, guard.next_checkpoint_seq_min, guard.chain_id
+            checkpoint.body.checkpoint_seq, guard.next_checkpoint_seq_min, guard.chain_id
+        )));
+    }
+    if checkpoint.body.batch_start_seq > checkpoint.body.batch_end_seq {
+        return Err(AnchorError::Verification(
+            "invalid checkpoint batch range".to_string(),
+        ));
+    }
+    let latest_batch_end_seq = if guard.latest_checkpoint_seq == 0 {
+        0
+    } else {
+        fetch_latest_root_batch_end_seq(target, guard.latest_checkpoint_seq, egress_contract)
+            .await?
+    };
+    let expected_batch_start_seq = latest_batch_end_seq.checked_add(1).ok_or_else(|| {
+        AnchorError::Verification("latest root batch_end_seq overflowed u64".to_string())
+    })?;
+    if checkpoint.body.batch_start_seq != expected_batch_start_seq {
+        return Err(AnchorError::Verification(format!(
+            "checkpoint batch_start_seq {} must equal latest root batch_end_seq + 1 ({}) on {}",
+            checkpoint.body.batch_start_seq, expected_batch_start_seq, guard.chain_id
         )));
     }
     Ok(guard)
+}
+
+async fn fetch_latest_root_batch_end_seq(
+    target: &EvmAnchorTarget,
+    latest_checkpoint_seq: u64,
+    egress_contract: &HttpEgressContract,
+) -> Result<u64, AnchorError> {
+    let validated_target = parse_validated_evm_anchor_target(target)?;
+    let latest_root_call = IChioRootRegistry::getLatestRootCall {
+        operator: validated_target.operator,
+    };
+    let latest_root_response = rpc_call(
+        &target.rpc_url,
+        egress_contract,
+        "eth_call",
+        json!([
+            {
+                "to": target.contract_address,
+                "data": format!("0x{}", hex::encode(latest_root_call.abi_encode()))
+            },
+            "latest"
+        ]),
+    )
+    .await?;
+    let latest_root_raw = latest_root_response.as_str().ok_or_else(|| {
+        AnchorError::Rpc("eth_call getLatestRoot did not return data".to_string())
+    })?;
+    let latest_root_bytes = hex::decode(latest_root_raw.trim_start_matches("0x"))
+        .map_err(|error| AnchorError::Rpc(error.to_string()))?;
+    let latest_root = IChioRootRegistry::getLatestRootCall::abi_decode_returns(&latest_root_bytes)
+        .map_err(|error| AnchorError::Serialization(error.to_string()))?;
+    if latest_root.checkpointSeq != latest_checkpoint_seq {
+        return Err(AnchorError::Verification(format!(
+            "latest root checkpoint sequence {} does not match latest sequence {}",
+            latest_root.checkpointSeq, latest_checkpoint_seq
+        )));
+    }
+    Ok(latest_root.batchEndSeq)
 }

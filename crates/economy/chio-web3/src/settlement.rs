@@ -205,6 +205,26 @@ pub fn validate_web3_settlement_dispatch(
             "web3 settlement dispatch requires capital_instruction rail.kind = web3",
         ));
     }
+    let Some(destination_account_ref) = dispatch
+        .capital_instruction
+        .body
+        .rail
+        .destination_account_ref
+        .as_deref()
+    else {
+        return Err(Web3ContractError::MissingField(
+            "web3_settlement_dispatch.capital_instruction.rail.destination_account_ref",
+        ));
+    };
+    ensure_non_empty(
+        destination_account_ref,
+        "web3_settlement_dispatch.capital_instruction.rail.destination_account_ref",
+    )?;
+    if destination_account_ref != dispatch.beneficiary_address.as_str() {
+        return Err(Web3ContractError::invalid_settlement(
+            "web3 settlement dispatch beneficiary_address must match capital_instruction rail.destination_account_ref",
+        ));
+    }
     let Some(amount) = dispatch.capital_instruction.body.amount.as_ref() else {
         return Err(Web3ContractError::MissingField(
             "web3_settlement_dispatch.capital_instruction.amount",

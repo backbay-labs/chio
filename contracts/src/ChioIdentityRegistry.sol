@@ -66,7 +66,7 @@ contract ChioIdentityRegistry is IChioIdentityRegistry {
     ) external onlyAdmin {
         if (operatorAddress == address(0) || settlementKey == address(0)) revert ZeroAddress();
         OperatorRecord storage record = operatorRecords[operatorAddress];
-        if (record.registeredAt != 0) revert OperatorAlreadyRegistered();
+        if (record.active) revert OperatorAlreadyRegistered();
 
         operatorRecords[operatorAddress] = OperatorRecord({
             edKeyHash: edKeyHash,

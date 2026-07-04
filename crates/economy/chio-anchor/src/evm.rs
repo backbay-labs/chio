@@ -823,6 +823,7 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_publication_ready_rejects_unauthorized_publisher() {
+        let checkpoint = sample_checkpoint();
         let Some(server) = MockJsonRpcServer::spawn(vec![
             rpc_result(json!(encode_hex(
                 IChioRootRegistry::isAuthorizedPublisherCall::abi_encode_returns(&false)
@@ -836,7 +837,7 @@ mod tests {
         let target = sample_delegate_target(server.base_url());
         let egress_contract = sample_rpc_contract(server.base_url());
 
-        let error = ensure_publication_ready(&target, 42, &egress_contract)
+        let error = ensure_publication_ready(&target, &checkpoint, &egress_contract)
             .await
             .test_expect_err("unauthorized publisher should fail");
 
@@ -846,6 +847,8 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_publication_ready_rejects_checkpoint_regression() {
+        let mut checkpoint = sample_checkpoint();
+        checkpoint.body.checkpoint_seq = 41;
         let Some(server) = MockJsonRpcServer::spawn(vec![
             rpc_result(json!(encode_hex(
                 IChioRootRegistry::isAuthorizedPublisherCall::abi_encode_returns(&true)
@@ -859,7 +862,7 @@ mod tests {
         let target = sample_delegate_target(server.base_url());
         let egress_contract = sample_rpc_contract(server.base_url());
 
-        let error = ensure_publication_ready(&target, 41, &egress_contract)
+        let error = ensure_publication_ready(&target, &checkpoint, &egress_contract)
             .await
             .test_expect_err("checkpoint regression should fail");
 
@@ -869,6 +872,8 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_publication_ready_rejects_skipped_checkpoint_sequence() {
+        let mut checkpoint = sample_checkpoint();
+        checkpoint.body.checkpoint_seq = 44;
         let Some(server) = MockJsonRpcServer::spawn(vec![
             rpc_result(json!(encode_hex(
                 IChioRootRegistry::isAuthorizedPublisherCall::abi_encode_returns(&true)
@@ -882,7 +887,7 @@ mod tests {
         let target = sample_delegate_target(server.base_url());
         let egress_contract = sample_rpc_contract(server.base_url());
 
-        let error = ensure_publication_ready(&target, 44, &egress_contract)
+        let error = ensure_publication_ready(&target, &checkpoint, &egress_contract)
             .await
             .test_expect_err("skipped checkpoint sequence should fail");
 
@@ -892,6 +897,20 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_publication_ready_accepts_next_checkpoint() {
+        let mut checkpoint = sample_checkpoint();
+        checkpoint.body.checkpoint_seq = 42;
+        checkpoint.body.batch_start_seq = 10;
+        checkpoint.body.batch_end_seq = 20;
+        let binding = sample_binding();
+        let latest_root = IChioRootRegistry::RootEntry {
+            merkleRoot: hash_to_b256(&checkpoint.body.merkle_root),
+            checkpointSeq: checkpoint.body.checkpoint_seq - 1,
+            batchStartSeq: 1,
+            batchEndSeq: checkpoint.body.batch_start_seq - 1,
+            treeSize: checkpoint.body.tree_size as u64,
+            publishedAt: 1_744_000_123_u64,
+            operatorKeyHash: operator_key_hash(&binding).test_expect("operator key hash"),
+        };
         let Some(server) = MockJsonRpcServer::spawn(vec![
             rpc_result(json!(encode_hex(
                 IChioRootRegistry::isAuthorizedPublisherCall::abi_encode_returns(&true)
@@ -899,18 +918,61 @@ mod tests {
             rpc_result(json!(encode_hex(
                 IChioRootRegistry::getLatestSeqCall::abi_encode_returns(&41_u64)
             ))),
+            rpc_result(json!(encode_hex(
+                IChioRootRegistry::getLatestRootCall::abi_encode_returns(&latest_root)
+            ))),
         ]) else {
             return;
         };
         let target = sample_delegate_target(server.base_url());
         let egress_contract = sample_rpc_contract(server.base_url());
 
-        let guard = ensure_publication_ready(&target, 42, &egress_contract)
+        let guard = ensure_publication_ready(&target, &checkpoint, &egress_contract)
             .await
             .test_expect("checkpoint 42 should be accepted");
 
         server.join();
         assert_eq!(guard.next_checkpoint_seq_min, 42);
+    }
+
+    #[tokio::test]
+    async fn ensure_publication_ready_rejects_batch_gap_against_latest_root() {
+        let mut checkpoint = sample_checkpoint();
+        checkpoint.body.checkpoint_seq = 42;
+        checkpoint.body.batch_start_seq = 10;
+        checkpoint.body.batch_end_seq = 20;
+        let binding = sample_binding();
+        let latest_root = IChioRootRegistry::RootEntry {
+            merkleRoot: hash_to_b256(&checkpoint.body.merkle_root),
+            checkpointSeq: checkpoint.body.checkpoint_seq - 1,
+            batchStartSeq: 1,
+            batchEndSeq: checkpoint.body.batch_start_seq - 2,
+            treeSize: checkpoint.body.tree_size as u64,
+            publishedAt: 1_744_000_123_u64,
+            operatorKeyHash: operator_key_hash(&binding).test_expect("operator key hash"),
+        };
+        let Some(server) = MockJsonRpcServer::spawn(vec![
+            rpc_result(json!(encode_hex(
+                IChioRootRegistry::isAuthorizedPublisherCall::abi_encode_returns(&true)
+            ))),
+            rpc_result(json!(encode_hex(
+                IChioRootRegistry::getLatestSeqCall::abi_encode_returns(&41_u64)
+            ))),
+            rpc_result(json!(encode_hex(
+                IChioRootRegistry::getLatestRootCall::abi_encode_returns(&latest_root)
+            ))),
+        ]) else {
+            return;
+        };
+        let target = sample_delegate_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
+
+        let error = ensure_publication_ready(&target, &checkpoint, &egress_contract)
+            .await
+            .test_expect_err("batch gap should fail preflight");
+
+        server.join();
+        assert!(error.to_string().contains("batch_start_seq"));
     }
 
     #[tokio::test]

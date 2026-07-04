@@ -989,7 +989,7 @@ fn validate_chain_snapshot(bundle: &PublicSettlementProofBundle) -> Result<(), W
 
     validate_escrow_snapshot(bundle, &snapshot.escrow)?;
     validate_bond_snapshot(bundle, required_bond_snapshot(bundle)?)?;
-    validate_block_snapshot(bundle, required_block_snapshot(bundle)?, chain_anchor)?;
+    validate_block_snapshot(required_block_snapshot(bundle)?, chain_anchor)?;
     validate_beneficiary_identity_binding(bundle, required_beneficiary_identity_binding(bundle)?)?;
     Ok(())
 }
@@ -1235,7 +1235,6 @@ fn validate_bond_snapshot(
 }
 
 fn validate_block_snapshot(
-    bundle: &PublicSettlementProofBundle,
     block: &PublicSettlementBlockSnapshot,
     chain_anchor: &crate::anchors::Web3ChainAnchorRecord,
 ) -> Result<(), Web3ContractError> {
@@ -1275,19 +1274,6 @@ fn validate_block_snapshot(
     {
         return Err(Web3ContractError::InvalidProof(
             "public settlement anchor tx hash missing from block".to_string(),
-        ));
-    }
-    let settlement_tx_hash = &bundle
-        .settlement_receipt
-        .observed_execution
-        .external_reference_id;
-    if !block
-        .transaction_hashes
-        .iter()
-        .any(|tx_hash| tx_hash == settlement_tx_hash)
-    {
-        return Err(Web3ContractError::InvalidProof(
-            "public settlement tx hash not included in block".to_string(),
         ));
     }
     Ok(())

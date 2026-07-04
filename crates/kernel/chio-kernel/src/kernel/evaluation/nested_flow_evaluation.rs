@@ -318,7 +318,8 @@ impl ChioKernel {
             now_unix_ms,
             Some(matched_grant_index),
         );
-        let runtime_admission_metadata = runtime_admission.metadata.clone();
+        let runtime_admission_metadata =
+            merge_metadata_objects(extra_metadata.clone(), runtime_admission.metadata.clone());
         if !runtime_admission.allowed {
             let msg = runtime_admission
                 .reason
@@ -339,7 +340,7 @@ impl ChioKernel {
                         reverse.committed_cost_units_after,
                         cap,
                         self.merge_budget_receipt_metadata(
-                            runtime_admission.metadata,
+                            runtime_admission_metadata.clone(),
                             self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
@@ -355,7 +356,7 @@ impl ChioKernel {
                     &msg,
                     now,
                     Some(matched_grant_index),
-                    runtime_admission.metadata,
+                    runtime_admission_metadata,
                 )
             });
         }

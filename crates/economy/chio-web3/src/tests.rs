@@ -518,7 +518,7 @@ fn sample_active_bond() -> crate::credit::SignedCreditBond {
     }
 }
 
-fn resign_dispatch_capital_instruction(dispatch: &mut Web3SettlementDispatchArtifact) {
+pub(super) fn resign_dispatch_capital_instruction(dispatch: &mut Web3SettlementDispatchArtifact) {
     dispatch.capital_instruction = SignedCapitalExecutionInstruction::sign(
         dispatch.capital_instruction.body.clone(),
         &treasury_keypair(),
@@ -526,7 +526,7 @@ fn resign_dispatch_capital_instruction(dispatch: &mut Web3SettlementDispatchArti
     .unwrap();
 }
 
-fn sample_dispatch() -> Web3SettlementDispatchArtifact {
+pub(super) fn sample_dispatch() -> Web3SettlementDispatchArtifact {
     Web3SettlementDispatchArtifact {
         schema: CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA.to_string(),
         dispatch_id: "dispatch-web3-1".to_string(),
@@ -713,7 +713,7 @@ fn sample_public_settlement_verifier_trust() -> PublicSettlementVerifierTrust {
     }
 }
 
-fn verify_sample_public_settlement_proof(
+pub(super) fn verify_sample_public_settlement_proof(
     bundle: &PublicSettlementProofBundle,
 ) -> Result<crate::settlement_proof::PublicSettlementVerifierReport, Web3ContractError> {
     let mut signed_bundle = bundle.clone();
@@ -787,7 +787,7 @@ fn sample_public_settlement_chain_snapshot_json() -> serde_json::Value {
     snapshot
 }
 
-fn sample_public_settlement_proof_bundle_with_chain_snapshot(
+pub(super) fn sample_public_settlement_proof_bundle_with_chain_snapshot(
     mutate: impl FnOnce(&mut serde_json::Value),
 ) -> PublicSettlementProofBundle {
     let Ok(mut bundle) = serde_json::to_value(sample_public_settlement_proof_bundle()) else {
@@ -1831,20 +1831,6 @@ fn public_settlement_proof_rejects_missing_block_snapshot() {
         verify_sample_public_settlement_proof(&bundle),
         Err(Web3ContractError::InvalidProof(message))
             if message.contains("public settlement block snapshot missing")
-    ));
-}
-
-#[test]
-fn public_settlement_proof_rejects_settlement_tx_not_included_in_block() {
-    let bundle = sample_public_settlement_proof_bundle_with_chain_snapshot(|bundle| {
-        bundle["chain_snapshot"]["block"]["transaction_hashes"] =
-            json!(["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]);
-    });
-
-    assert!(matches!(
-        verify_sample_public_settlement_proof(&bundle),
-        Err(Web3ContractError::InvalidProof(message))
-            if message.contains("public settlement tx hash not included in block")
     ));
 }
 

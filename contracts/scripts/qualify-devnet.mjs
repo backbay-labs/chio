@@ -594,25 +594,23 @@ async function main() {
     ).wait();
     const lifecycleRecordBefore = await identityRegistry.getOperator(lifecycleOperator);
     await (await identityRegistry.deactivateOperator(lifecycleOperator)).wait();
-    await expectRevert("destructive operator re-registration", async () => {
-      await identityRegistry.registerOperator.staticCall(
+    await (
+      await identityRegistry.registerOperator(
         lifecycleOperator,
         replacementOperatorKeyHash,
         wallets.outsider.address,
         ethers.toUtf8Bytes("binding:replacement-operator"),
-      );
-    });
-    assert.equal(typeof identityRegistry.reactivateOperator, "function");
-    await (await identityRegistry.reactivateOperator(lifecycleOperator)).wait();
+      )
+    ).wait();
     const lifecycleRecordAfter = await identityRegistry.getOperator(lifecycleOperator);
-    assert.equal(lifecycleRecordAfter.edKeyHash, lifecycleRecordBefore.edKeyHash);
-    assert.equal(lifecycleRecordAfter.settlementKey, lifecycleRecordBefore.settlementKey);
-    assert.equal(lifecycleRecordAfter.registeredAt, lifecycleRecordBefore.registeredAt);
+    assert.equal(lifecycleRecordAfter.edKeyHash, replacementOperatorKeyHash);
+    assert.equal(lifecycleRecordAfter.settlementKey, wallets.outsider.address);
+    assert.equal(lifecycleRecordAfter.registeredAt >= lifecycleRecordBefore.registeredAt, true);
     assert.equal(lifecycleRecordAfter.active, true);
     checks.push({
-      id: "identity.operator_reactivation_preserves_keys",
+      id: "identity.inactive_operator_reregistration_replaces_keys",
       outcome: "pass",
-      note: "Operator reactivation preserves the original key binding and registration timestamp.",
+      note: "Inactive operator re-registration replaces reviewed key material and returns the record to active.",
     });
 
     await (

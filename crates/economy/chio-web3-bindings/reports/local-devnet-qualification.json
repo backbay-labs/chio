@@ -5,20 +5,20 @@
   "environment": "local-devnet",
   "network_tier": "development",
   "note": "Ephemeral local-devnet test run.",
-  "generated_at": "2026-07-04T09:07:19.576Z",
+  "generated_at": "2026-07-04T12:23:46.972Z",
   "chain_id": "eip155:31337",
   "gas_estimates": {
-    "register_operator": "74736",
+    "register_operator": "74724",
     "register_delegate": "84718",
     "publish_root_operator": "218005",
     "publish_root_delegate": "186126",
     "register_feed": "123638",
     "price_read": "60488",
     "create_escrow": "298366",
-    "merkle_partial_release": "166284",
-    "dual_sign_release": "129712",
+    "merkle_partial_release": "166296",
+    "dual_sign_release": "129700",
     "lock_bond": "293267",
-    "bond_release": "143914"
+    "bond_release": "143902"
   },
   "checks": [
     {
@@ -37,9 +37,9 @@
       "note": "Entity binding authorization accepts a standards-compatible contract admin signature."
     },
     {
-      "id": "identity.operator_reactivation_preserves_keys",
+      "id": "identity.inactive_operator_reregistration_replaces_keys",
       "outcome": "pass",
-      "note": "Operator reactivation preserves the original key binding and registration timestamp."
+      "note": "Inactive operator re-registration replaces reviewed key material and returns the record to active."
     },
     {
       "id": "identity.admin_handoff",
