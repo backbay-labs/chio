@@ -26,7 +26,6 @@ web3 = [
     "dep:hex",
     "dep:opentimestamps",
     "dep:p256",
-    "dep:pem",
     "dep:reqwest",
     "dep:serde",
     "dep:serde_json",
@@ -66,7 +65,6 @@ opentimestamps = { version = "0.2.0", optional = true }
 # Rekor signed-entry-timestamp (SET) verification: P-256 ECDSA against
 # the pinned Sigstore Rekor public key.
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem"], optional = true }
-pem = { version = "3", optional = true }
 reqwest = { workspace = true, features = ["form", "json", "query", "rustls"], optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }
 serde_json = { workspace = true, optional = true }

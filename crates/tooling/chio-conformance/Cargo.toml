@@ -69,7 +69,6 @@ chio-core = { package = "chio-core-types", version = "0.1.0", path = "../../core
 chio-kernel = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 toml = "0.8"
 reqwest = { workspace = true, features = ["blocking", "form", "query", "rustls"] }
