@@ -59,6 +59,15 @@ ignore = [
     # the real fix is anyhow >=1.0.103, deferred to a coordinated dep bump + cargo-vet re-audit (bumping it alone
     # fails cargo-vet with an unvetted version). Clears with that batch.
     "RUSTSEC-2026-0190",
+    # last-checked = 2026-07-03; quick-xml 0.39.4 unbounded-allocation memory-exhaustion DoS
+    # (RUSTSEC-2026-0194 entity expansion, RUSTSEC-2026-0195 NsReader namespace declarations).
+    # Pulled only transitively via iroh -> netwatch -> netdev -> plist for local network-interface
+    # discovery; the parsed XML is the host's own Apple property lists, not attacker-controlled
+    # input, so the DoS vector is unreachable. The fix needs quick-xml >=0.41.0, outside the ^0.39
+    # range pinned through the iroh chain; no semver-compatible bump exists and we do not edit iroh
+    # crate versions. Clears when the iroh/plist chain updates quick-xml upstream.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
 ]
 
 # cargo-deny 0.16 enforces an explicit allow-list only: unlisted licenses are

@@ -32,7 +32,7 @@ code does not issue, parse, or validate Chio capabilities directly.
 ## Architectural Constraints
 
 - Health checks must remain excluded from Chio evaluation.
-- The middleware must remain fail-closed. Do not set `fail_open=True`.
+- The middleware is unconditionally fail-closed: if the sidecar is unreachable, requests are denied.
 - The app may depend on the sidecar URL only through `CHIO_SIDECAR_URL` or an
   injected `ChioASGIConfig`.
 - The `/echo` request schema in `app.py` and `openapi.yaml` must remain aligned.

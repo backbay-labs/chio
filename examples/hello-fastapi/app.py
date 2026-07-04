@@ -21,7 +21,6 @@ def build_chio_config(sidecar_url: str | None = None) -> ChioASGIConfig:
         sidecar_url=sidecar_url
         or os.environ.get("CHIO_SIDECAR_URL", "http://127.0.0.1:9090"),
         exclude_paths=frozenset({"/healthz"}),
-        fail_open=False,
     )
 
 

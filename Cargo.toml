@@ -82,6 +82,7 @@ members = [
     "crates/trust/chio-did",
     "crates/trust/chio-disclosure-lineage",
     "crates/trust/chio-federation",
+    "crates/trust/chio-federation-transport-iroh",
     "crates/trust/chio-governance",
     "crates/trust/chio-attest-buyer-core",
     "crates/trust/chio-federation-authority",
@@ -388,6 +389,7 @@ chio-eval-receipt = { path = "crates/sdk/chio-eval-receipt" }
 chio-external-guards = { path = "crates/guards/chio-external-guards" }
 chio-federation = { path = "crates/trust/chio-federation" }
 chio-federation-authority = { path = "crates/trust/chio-federation-authority" }
+chio-federation-transport-iroh = { path = "crates/trust/chio-federation-transport-iroh" }
 chio-gemini-tools-adapter = { path = "crates/protocol/chio-gemini-tools-adapter" }
 chio-governance = { path = "crates/trust/chio-governance" }
 chio-groq-tools-adapter = { path = "crates/protocol/chio-groq-tools-adapter" }
