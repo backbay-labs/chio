@@ -194,6 +194,17 @@ pub enum RevocationLaneError {
         /// The authenticated transport endpoint (short form) that presented it.
         endpoint: String,
     },
+    /// A catch-up request's claimed `requester_kernel_id` is not the kernel
+    /// admitted at the authenticated transport `EndpointId`. The field was
+    /// previously echoed unauthenticated (a requester-spoofing gap); this binds
+    /// it to the connection endpoint. Fail-closed: nothing is served.
+    #[error("catch-up requester `{claimed}` is not admitted at transport endpoint {endpoint}")]
+    RequesterMismatch {
+        /// The authenticated transport endpoint (short form) that presented it.
+        endpoint: String,
+        /// The `requester_kernel_id` claimed by the catch-up request.
+        claimed: String,
+    },
     /// The pinned-signer signature check over a [`SignedEpochRoot`] failed
     /// (BLAKE3/transport integrity is NOT authenticity, ADAPTER-SPEC 2.2).
     #[error("epoch root signature failed pinned-signer verification (signer_id `{0}`)")]
@@ -286,6 +297,7 @@ impl RevocationLaneError {
             RevocationLaneError::UnboundEndpoint => "unbound-endpoint",
             RevocationLaneError::UnknownSigner(_) => "unknown-signer",
             RevocationLaneError::SignerEndpointMismatch { .. } => "signer-endpoint-mismatch",
+            RevocationLaneError::RequesterMismatch { .. } => "requester-mismatch",
             RevocationLaneError::BadSignature(_) => "bad-signature",
             RevocationLaneError::SignerIdMismatch { .. } => "signer-id-mismatch",
             RevocationLaneError::DuplicateSigner(_) => "duplicate-signer",
@@ -482,6 +494,22 @@ impl RevocationHandler {
                 }
             },
             RevocationLaneRequest::Catchup(request) => {
+                // Authenticate the catch-up requester against the connection: the
+                // claimed `requester_kernel_id` MUST be the kernel this
+                // authenticated transport `EndpointId` is admitted as. This binds
+                // the previously-informational field to the transport identity,
+                // closing a requester-spoofing gap. Fail-closed: an unadmitted
+                // endpoint (authorize -> None) or a mismatched claim is rejected
+                // and NOTHING is served.
+                if self.directory.authorize(&endpoint) != Some(request.requester_kernel_id.as_str())
+                {
+                    let error = RevocationLaneError::RequesterMismatch {
+                        endpoint: endpoint.fmt_short().to_string(),
+                        claimed: request.requester_kernel_id.clone(),
+                    };
+                    note_revocation_failure(&error);
+                    return error.as_rejected();
+                }
                 match self.respond_catchup(&request, now_unix_ms) {
                     Ok(response) => RevocationLaneResponse::Catchup(response),
                     Err(error) => {
@@ -1111,6 +1139,58 @@ mod tests {
                 let epochs: Vec<u64> = catchup.frames.iter().map(|frame| frame.epoch).collect();
                 assert_eq!(epochs, vec![5, 6, 7]);
                 assert!(catchup.validate_response().is_ok());
+            }
+            other => panic!("expected Catchup, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn catchup_requester_mismatch_is_rejected_and_not_served() {
+        // The connection endpoint is admitted as "did:chio:peer", but the catch-up
+        // request CLAIMS a different requester_kernel_id. The requester is now
+        // bound to the authenticated transport endpoint, so this is
+        // Rejected(requester-mismatch) and the history is never served; a matching
+        // claim from the same endpoint is still served.
+        #[derive(Debug)]
+        struct MapHistory(HashMap<u64, SignedEpochRoot>);
+        impl RevocationCatchupHistory for MapHistory {
+            fn signed_root_at(&self, epoch: u64) -> Option<SignedEpochRoot> {
+                self.0.get(&epoch).cloned()
+            }
+        }
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let mut roots = HashMap::new();
+        for epoch in 5..=7 {
+            roots.insert(epoch, signed_root(&oracle, epoch));
+        }
+        let handler = RevocationHandler::new(
+            directory,
+            Arc::new(MapHistory(roots)),
+            Arc::new(RecordingSink::default()),
+            "did:chio:responder",
+        );
+
+        // Spoofed requester: claims to be a kernel this endpoint is not admitted as.
+        let spoofed = RevocationCatchupRequest::new("did:chio:impostor", 5, 7, NOW).unwrap();
+        let response =
+            handler.handle_request(transport, RevocationLaneRequest::Catchup(spoofed), NOW);
+        match response {
+            RevocationLaneResponse::Rejected { code, .. } => {
+                assert_eq!(code, "requester-mismatch");
+            }
+            other => panic!("expected Rejected(requester-mismatch), got {other:?}"),
+        }
+
+        // A matching requester (the endpoint's own admitted kernel) is still served.
+        let genuine = RevocationCatchupRequest::new("did:chio:peer", 5, 7, NOW).unwrap();
+        let served =
+            handler.handle_request(transport, RevocationLaneRequest::Catchup(genuine), NOW);
+        match served {
+            RevocationLaneResponse::Catchup(catchup) => {
+                let epochs: Vec<u64> = catchup.frames.iter().map(|frame| frame.epoch).collect();
+                assert_eq!(epochs, vec![5, 6, 7]);
             }
             other => panic!("expected Catchup, got {other:?}"),
         }
