@@ -387,6 +387,22 @@ impl VerifiedDirectory {
         }
     }
 
+    /// Resolve an admitted `kernel_id` to its bound transport [`EndpointId`], the
+    /// reverse of [`authorize`](Self::authorize).
+    ///
+    /// Returns `None` (fail-closed) when the kernel is unknown OR its entry is a
+    /// removed tombstone, so an outbound drain (the relay tick) never dials a removed
+    /// or unadmitted recipient over the transport. This is the outbound-address side
+    /// of the same issuer-signed binding `authorize` reads on the inbound side.
+    #[must_use]
+    pub fn resolve_transport_endpoint(&self, kernel_id: &str) -> Option<EndpointId> {
+        self.by_endpoint
+            .iter()
+            .find_map(|(endpoint, (bound_kernel_id, removed))| {
+                (!*removed && bound_kernel_id == kernel_id).then_some(*endpoint)
+            })
+    }
+
     /// The derived `signer_id -> (EndpointId, oracle verifier)` projection built
     /// from the same issuer-signed bundle. This is the production source of the
     /// revocation lane's [`VerifiedSignerDirectory`]: signer and endpoint
@@ -901,6 +917,37 @@ mod tests {
             "removed must not resolve"
         );
         assert_eq!(directory.authorize(&live_ep), Some("did:chio:live"));
+    }
+
+    #[test]
+    fn resolve_transport_endpoint_is_the_reverse_of_authorize_and_fails_closed() {
+        let mut ghost = EntrySpec::admitted("did:chio:ghost", 3, 12);
+        ghost.removed = true;
+        let ghost_ep = ghost.transport;
+        let live = EntrySpec::admitted("did:chio:live", 4, 13);
+        let live_ep = live.transport;
+        let (bundle, trust) = signed_bundle(&[ghost, live]);
+
+        let directory = bundle.verify_bundle(&trust).expect("verifies");
+        // A live kernel resolves to exactly the endpoint `authorize` maps back.
+        assert_eq!(
+            directory.resolve_transport_endpoint("did:chio:live"),
+            Some(live_ep),
+            "a live kernel must resolve to its bound transport endpoint"
+        );
+        assert_eq!(directory.authorize(&live_ep), Some("did:chio:live"));
+        // A removed kernel resolves to None (fail-closed): the tick never dials it.
+        assert_eq!(
+            directory.resolve_transport_endpoint("did:chio:ghost"),
+            None,
+            "a removed kernel must not resolve to an address"
+        );
+        assert_eq!(directory.authorize(&ghost_ep), None);
+        // An unknown kernel resolves to None.
+        assert_eq!(
+            directory.resolve_transport_endpoint("did:chio:nobody"),
+            None
+        );
     }
 
     #[test]

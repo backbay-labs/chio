@@ -490,6 +490,77 @@ pub(crate) async fn build_iroh_router(
     })
 }
 
+/// Bind an OUTBOUND-only iroh endpoint for the relay tick's outbound drain
+/// (`drain_outbox_over_iroh`).
+///
+/// This is the SAME gated endpoint [`build_iroh_router`] binds (the `DirectoryGate`
+/// hooks, the configured relay mode / bind address / QUIC idle timeout, the rotatable
+/// transport key), but WITHOUT mounting an accept handler: the tick only DIALS
+/// recipients to deliver queued batches, it does not accept inbound streams. Returns
+/// the bound endpoint plus the issuer-verified transport directory the recipient
+/// address resolver is derived from (kernel_id -> transport `EndpointId`). Fail-closed:
+/// any bind error returns `Err`.
+///
+/// # Reachability residual
+///
+/// The verified transport directory binds `(kernel_id -> transport EndpointId)`; it
+/// does NOT carry per-peer dialable socket addresses. So the tick resolves a recipient
+/// to an id-only [`iroh::EndpointAddr`], which is dialable only where the deployment
+/// provides path discovery (a configured `--iroh-relay-url` plus discovery, mirroring
+/// how the serve mount logs its bound socket for operators to configure on peers). A
+/// pure direct-addressing deployment with no discovery still needs an out-of-band
+/// address book; until then the drain folds an undialable recipient into the durable
+/// retry/dead-letter path fail-closed (it never drops the batch).
+pub(crate) async fn build_iroh_outbound_endpoint(
+    inputs: IrohServeInputs,
+) -> Result<(Endpoint, Arc<VerifiedDirectory>), CliError> {
+    let IrohServeInputs {
+        directory,
+        transport_key,
+        config,
+    } = inputs;
+
+    // Only the pheromone lane is drainable here; parse_iroh_lanes already rejected
+    // anything else, so this is a defense-in-depth re-check.
+    if config
+        .lanes
+        .iter()
+        .any(|lane| !matches!(lane, IrohLane::Pheromone))
+    {
+        return Err(CliError::cli_other_error(
+            "Chio iroh transport: only the pheromone lane is drainable on the relay tick hook"
+                .to_string(),
+        ));
+    }
+
+    // Install the admission gate even though this endpoint only dials: it is harmless
+    // for an outbound-only endpoint and keeps the identity + relay setup byte-identical
+    // to the serve mount. The directory is cloned so the caller keeps it for address
+    // resolution.
+    let gate = DirectoryGate::new(directory.clone());
+    let idle_timeout: IdleTimeout = config.max_idle_timeout.try_into().map_err(|error| {
+        CliError::cli_other_error(format!("Chio iroh transport idle timeout: {error}"))
+    })?;
+    let transport_config = QuicTransportConfig::builder()
+        .max_idle_timeout(Some(idle_timeout))
+        .build();
+    let endpoint = Endpoint::builder(presets::Minimal)
+        .secret_key(transport_key)
+        .relay_mode(config.relay_mode)
+        .transport_config(transport_config)
+        .bind_addr(config.bind_addr)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio iroh transport bind address: {error}"))
+        })?
+        .hooks(gate)
+        .bind()
+        .await
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio iroh transport endpoint bind: {error}"))
+        })?;
+    Ok((endpoint, directory))
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]

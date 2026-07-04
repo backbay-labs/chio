@@ -53,7 +53,8 @@ pub(crate) use self::io::{
     load_relay_signing_key, read_json_documents_from_dir, read_json_file, unix_now_ms,
 };
 pub(crate) use self::iroh_mount::{
-    build_iroh_router, iroh_transport_metrics_prometheus, load_iroh_serve_inputs,
+    build_iroh_outbound_endpoint, build_iroh_router, iroh_transport_metrics_prometheus,
+    load_iroh_serve_inputs, IrohServeInputs,
 };
 pub(crate) use self::relay::{
     RelaySigningKeyDocument, RelayTrustedIssuersDocument, cmd_chio_pheromone_relay_catchup,

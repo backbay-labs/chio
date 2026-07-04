@@ -184,7 +184,8 @@ pub use schema::{
     PHEROMONE_RELAY_TICK_REPORT_SCHEMA, PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
 };
 pub use service::{
-    deliver_due_batches, enforce_peer_batch_directory_scope, lint_relay_supervisor_profile,
+    deliver_due_batches, enforce_outbound_peer_batch_directory_scope,
+    enforce_peer_batch_directory_scope, lint_relay_supervisor_profile,
     relay_supervisor_profile_from_json, ExtraMetricsHook, PheromoneRelayConfig,
     PheromoneRelayService, RelayBatchReceiver, RelayDrillCheck, RelayDrillReport,
     RelayReverseProxyProfile, RelaySupervisorProfileDocument,

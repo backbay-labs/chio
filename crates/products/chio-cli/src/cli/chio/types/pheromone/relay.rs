@@ -224,6 +224,47 @@ pub(crate) enum ChioPheromoneRelayCommands {
         /// Directory for bounded outbound delivery event reports.
         #[arg(long, value_name = "DIR")]
         report_dir: Option<PathBuf>,
+
+        /// Drain due batches over the iroh federation transport INSTEAD of HTTP for
+        /// this tick (DUAL). OFF by default: with it off the tick delivers over HTTP
+        /// exactly as before. A single tick drains over exactly one transport (an iroh
+        /// tick and an HTTP tick would both lease the same outbox rows).
+        #[arg(long, default_value_t = false)]
+        iroh_enable: bool,
+
+        /// Issuer-signed iroh transport-directory bundle JSON. Required with
+        /// --iroh-enable; verified fail-closed against --trusted-issuers. Supplies the
+        /// recipient kernel_id -> transport EndpointId resolution the drain dials.
+        #[arg(long, value_name = "PATH")]
+        iroh_transport_directory: Option<PathBuf>,
+
+        /// Optional rotation-state pin ({ "versionFloor": N,
+        /// "expectedPreviousVersionSha256": ".." }) for the transport-directory
+        /// bundle. Without it only a GENESIS bundle loads (floor 0, no predecessor); a
+        /// rotated successor bundle needs this to pin the rollback floor and the
+        /// predecessor hash it must chain onto.
+        #[arg(long, value_name = "PATH")]
+        iroh_transport_directory_state: Option<PathBuf>,
+
+        /// Dedicated rotatable ed25519 transport key file ({ "seedHex": ".." }),
+        /// SEPARATE from the passport/relay signing key. Required with --iroh-enable.
+        #[arg(long, value_name = "PATH")]
+        iroh_transport_key: Option<PathBuf>,
+
+        /// Socket address the outbound iroh endpoint binds. Default 0.0.0.0:0
+        /// (ephemeral port); the drain only dials, so an ephemeral local port is fine.
+        #[arg(long, value_name = "ADDR", default_value = "0.0.0.0:0")]
+        iroh_bind_addr: String,
+
+        /// Self-hosted relay URL(s). Repeatable. Omitted -> RelayMode::Disabled
+        /// (direct addressing; never the n0 free relays).
+        #[arg(long, value_name = "URL")]
+        iroh_relay_url: Vec<String>,
+
+        /// Comma-separated iroh lanes to drain. Default: pheromone (the only outbound
+        /// lane on this hook).
+        #[arg(long, value_name = "LANES", default_value = "pheromone")]
+        iroh_lanes: String,
     },
 
     /// Request bounded catch-up metadata from local relay state.

@@ -719,7 +719,17 @@ pub async fn deliver_due_batches(
     Ok(report)
 }
 
-fn enforce_outbound_peer_batch_directory_scope(
+/// Enforce the OUTBOUND per-peer directory scope for a queued batch before it is
+/// dialed: the recipient must be a `Receiver`/`Hub` in the CURRENT directory, within
+/// its per-peer frame cap, subscribed to the batch treaty, and within its pinned
+/// transit ladders. Mirrors [`enforce_peer_batch_directory_scope`] (the inbound gate)
+/// on the send side.
+///
+/// The HTTP relay tick (`deliver_due_batches`) applies this before every
+/// `post_batch`; it is exposed so an iroh outbound drain (the relay tick's
+/// `--iroh-enable` path) applies the IDENTICAL scope gate against the same peer
+/// directory before it dials a recipient over the transport (fail-closed).
+pub fn enforce_outbound_peer_batch_directory_scope(
     directory: &PeerDirectory,
     recipient_kernel_id: &str,
     batch: &PheromoneGossipBatch,

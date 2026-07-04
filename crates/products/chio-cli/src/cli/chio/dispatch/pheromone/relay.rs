@@ -1,9 +1,9 @@
 use super::{
-    build_iroh_router, build_peer_directory_bundle_trust, iroh_transport_metrics_prometheus,
-    load_chio_verified_workflow_resolver, load_chio_workflow_verifier_trust_bundle,
-    load_iroh_serve_inputs, load_relay_peer_directory_from_paths, load_relay_signing_key,
-    read_json_documents_from_dir, read_utf8_json_file, unix_now_ms, write_json_string,
-    write_pretty_json,
+    build_iroh_outbound_endpoint, build_iroh_router, build_peer_directory_bundle_trust,
+    iroh_transport_metrics_prometheus, load_chio_verified_workflow_resolver,
+    load_chio_workflow_verifier_trust_bundle, load_iroh_serve_inputs,
+    load_relay_peer_directory_from_paths, load_relay_signing_key, read_json_documents_from_dir,
+    read_utf8_json_file, unix_now_ms, write_json_string, write_pretty_json, IrohServeInputs,
 };
 use crate::CliError;
 use std::path::Path;
@@ -389,6 +389,7 @@ pub(crate) fn cmd_chio_pheromone_relay_enqueue(
     write_json_string(report, &format!("{json}\n"))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn cmd_chio_pheromone_relay_tick(
     store: &Path,
     peer_directory: Option<&Path>,
@@ -400,6 +401,13 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
     signing_key: &Path,
     report: &Path,
     report_dir: Option<&Path>,
+    iroh_enable: bool,
+    iroh_transport_directory: Option<&Path>,
+    iroh_transport_directory_state: Option<&Path>,
+    iroh_transport_key: Option<&Path>,
+    iroh_bind_addr: &str,
+    iroh_relay_url: &[String],
+    iroh_lanes: &str,
 ) -> Result<(), CliError> {
     let now_unix_ms = now_unix_ms.unwrap_or_else(unix_now_ms);
     let peer_directory = load_relay_peer_directory_from_paths(
@@ -415,20 +423,50 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
         chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(|error| {
             CliError::cli_other_error(format!("Chio pheromone relay store: {error}"))
         })?;
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|error| CliError::cli_other_error(format!("Chio relay runtime: {error}")))?;
-    let tick_report = runtime
-        .block_on(chio_pheromone_relay::deliver_due_batches(
+    // DUAL outbound transport (opt-in, default OFF): with --iroh-enable this tick drains
+    // due batches over the iroh federation transport INSTEAD of HTTP, mirroring how
+    // deliver_due_batches is scheduled (a one-shot operator/cron tick). Fail-closed:
+    // with the flag set, any bad iroh input aborts before draining; with it unset this
+    // returns None WITHOUT touching any file, so the HTTP path below is byte-for-byte
+    // unchanged. Running an iroh tick and an HTTP tick against the SAME store would
+    // both lease the same outbox rows, so a single invocation drains over exactly ONE
+    // transport (the operator picks per tick).
+    let iroh_inputs = load_iroh_serve_inputs(
+        iroh_enable,
+        iroh_transport_directory,
+        iroh_transport_directory_state,
+        trusted_issuers,
+        iroh_transport_key,
+        iroh_bind_addr,
+        iroh_relay_url,
+        iroh_lanes,
+        now_unix_ms,
+    )?;
+    let tick_report = if let Some(iroh_inputs) = iroh_inputs {
+        drain_due_batches_over_iroh(
             &relay_store,
             peer_directory,
-            keypair,
+            iroh_inputs,
             &sender_kernel_id,
             now_unix_ms,
             max_batches,
-        ))
-        .map_err(|error| CliError::cli_other_error(format!("Chio relay tick: {error}")))?;
+        )?
+    } else {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| CliError::cli_other_error(format!("Chio relay runtime: {error}")))?;
+        runtime
+            .block_on(chio_pheromone_relay::deliver_due_batches(
+                &relay_store,
+                peer_directory,
+                keypair,
+                &sender_kernel_id,
+                now_unix_ms,
+                max_batches,
+            ))
+            .map_err(|error| CliError::cli_other_error(format!("Chio relay tick: {error}")))?
+    };
     let json = serde_json::to_string_pretty(&tick_report)
         .map_err(|error| CliError::cli_other_error(format!("Chio relay report: {error}")))?;
     write_json_string(report, &format!("{json}\n"))?;
@@ -441,6 +479,79 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
         )?;
     }
     Ok(())
+}
+
+/// Drain due outbox batches over the iroh federation transport for one tick, the iroh
+/// analogue of `deliver_due_batches`.
+///
+/// Binds an outbound-only gated endpoint, resolves each recipient's dialable address
+/// from the issuer-verified transport directory, applies the IDENTICAL outbound
+/// directory-scope gate the HTTP tick applies (`enforce_outbound_peer_batch_directory_scope`),
+/// and runs `drain_outbox_over_iroh`. Leasing, retry/backoff, and dead-lettering all
+/// reuse the shipped store, so an unresolvable/undialable recipient folds into the
+/// durable retry/dead-letter path fail-closed rather than being dropped. The
+/// `OutboxDrainReport` is mapped onto the shipped `RelayTickReport` so the report file
+/// shape is identical to the HTTP tick's.
+fn drain_due_batches_over_iroh(
+    relay_store: &chio_pheromone_relay::SqlitePheromoneRelayStore,
+    peer_directory: chio_pheromone_relay::PeerDirectory,
+    iroh_inputs: IrohServeInputs,
+    sender_kernel_id: &str,
+    now_unix_ms: u64,
+    max_batches: usize,
+) -> Result<chio_pheromone_relay::RelayTickReport, CliError> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| CliError::cli_other_error(format!("Chio relay iroh runtime: {error}")))?;
+    runtime.block_on(async move {
+        let (endpoint, directory) = build_iroh_outbound_endpoint(iroh_inputs).await?;
+
+        // resolve_addr: recipient kernel_id -> dialable transport address, derived from
+        // the issuer-verified transport directory (the outbound side of the same
+        // binding the inbound gate authorizes). A removed/unknown recipient resolves to
+        // None and folds into the durable retry path fail-closed.
+        let resolve_directory = directory.clone();
+        let resolve_addr = move |kernel_id: &str| -> Option<iroh::EndpointAddr> {
+            resolve_directory
+                .resolve_transport_endpoint(kernel_id)
+                .map(iroh::EndpointAddr::new)
+        };
+
+        // scope_check: the SAME outbound directory-scope gate the HTTP tick applies
+        // before post_batch, evaluated against the CURRENT peer directory (fail-closed).
+        let scope_check = move |recipient: &str,
+                                batch: &chio_federation::pheromone_gossip::PheromoneGossipBatch| {
+            chio_pheromone_relay::enforce_outbound_peer_batch_directory_scope(
+                &peer_directory,
+                recipient,
+                batch,
+            )
+        };
+
+        let drain = chio_federation_transport_iroh::lanes::pheromone::drain_outbox_over_iroh(
+            relay_store,
+            &endpoint,
+            resolve_addr,
+            scope_check,
+            sender_kernel_id,
+            now_unix_ms,
+            max_batches,
+        )
+        .await
+        .map_err(|error| CliError::cli_other_error(format!("Chio relay iroh drain: {error}")))?;
+        endpoint.close().await;
+
+        Ok(chio_pheromone_relay::RelayTickReport {
+            schema: chio_pheromone_relay::PHEROMONE_RELAY_TICK_REPORT_SCHEMA.to_string(),
+            accepted: drain.failures.is_empty(),
+            delivered: drain.delivered,
+            retried: drain.retried,
+            dead_lettered: drain.dead_lettered,
+            duplicate_idempotent: 0,
+            failures: drain.failures,
+        })
+    })
 }
 
 pub(crate) fn write_relay_outbound_event_report(
@@ -749,5 +860,188 @@ mod tests {
         let limits = relay_service_limits_for_profile(chio_pheromone_relay::RelayProfile::LocalDev);
 
         assert_eq!(limits.max_body_bytes, 1_048_576);
+    }
+
+    mod iroh_tick {
+        use super::*;
+        use chio_core_types::canonical_json_bytes;
+        use chio_core_types::sha256_hex;
+        use chio_core_types::Keypair;
+        use chio_federation::pheromone_gossip::PheromoneGossipBatch;
+        use chio_federation::pheromone_gossip::PHEROMONE_GOSSIP_BATCH_SCHEMA;
+        use chio_federation_transport_iroh::identity::transport_endorsement_preimage;
+        use chio_federation_transport_iroh::identity::TransportDirectoryBundleBody;
+        use chio_federation_transport_iroh::identity::TransportDirectoryBundleDocument;
+        use chio_federation_transport_iroh::identity::TransportDirectoryDocument;
+        use chio_federation_transport_iroh::identity::TransportDirectoryEntry;
+        use chio_federation_transport_iroh::identity::TRANSPORT_DIRECTORY_BUNDLE_SCHEMA;
+        use chio_pheromone_relay::PeerDirectory;
+        use chio_pheromone_relay::PeerDirectoryDocument;
+        use chio_pheromone_relay::PeerDirectoryEntry;
+        use chio_pheromone_relay::RelayRole;
+        use chio_pheromone_relay::SqlitePheromoneRelayStore;
+        use chio_pheromone_relay::PHEROMONE_PEER_DIRECTORY_SCHEMA;
+        use iroh::EndpointId;
+        use iroh::SecretKey;
+
+        const NOW: u64 = 2_000_000;
+
+        fn endpoint_from_seed(seed: u8) -> EndpointId {
+            SecretKey::from_bytes(&[seed; 32]).public()
+        }
+
+        /// A signed, verifiable transport-directory bundle admitting `admitted_kernel`
+        /// at the endpoint derived from `transport_seed`, plus the issuer keypair whose
+        /// public key the trusted-issuers file must pin.
+        fn signed_bundle_json(admitted_kernel: &str, transport_seed: u8) -> (String, Keypair) {
+            let passport = Keypair::from_seed(&[7u8; 32]);
+            let issuer = Keypair::from_seed(&[240u8; 32]);
+            let transport = endpoint_from_seed(transport_seed);
+            let entry = TransportDirectoryEntry {
+                kernel_id: admitted_kernel.to_string(),
+                passport_public_key: passport.public_key(),
+                transport_endpoint_id: transport,
+                passport_endorsement: passport
+                    .sign(&transport_endorsement_preimage(admitted_kernel, &transport)),
+                revocation_signers: Vec::new(),
+                removed: false,
+            };
+            let directory = TransportDirectoryDocument {
+                schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+                local_kernel_id: "did:chio:relay".to_string(),
+                peers: vec![entry],
+            };
+            let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());
+            let body = TransportDirectoryBundleBody {
+                schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+                issuer: "did:chio:issuer".to_string(),
+                key_id: "issuer-key-1".to_string(),
+                directory_sha256,
+                version: 1,
+                previous_version_sha256: None,
+                issued_at_unix_ms: NOW - 1,
+                expires_at_unix_ms: NOW + 1,
+            };
+            let (signature, _) = issuer.sign_canonical(&body).unwrap();
+            let bundle = TransportDirectoryBundleDocument {
+                schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+                body,
+                directory,
+                signature,
+            };
+            (serde_json::to_string(&bundle).unwrap(), issuer)
+        }
+
+        /// A peer directory admitting `recipient` as a Receiver subscribed to
+        /// `treaty:test` (so the outbound scope gate passes for it).
+        fn peer_directory_receiving(recipient: &str) -> PeerDirectory {
+            let passport = Keypair::from_seed(&[9u8; 32]);
+            let document = PeerDirectoryDocument {
+                schema: PHEROMONE_PEER_DIRECTORY_SCHEMA.to_string(),
+                local_kernel_id: "did:chio:relay".to_string(),
+                issued_at_unix_ms: NOW - 1,
+                expires_at_unix_ms: NOW + 1,
+                peers: vec![PeerDirectoryEntry {
+                    kernel_id: recipient.to_string(),
+                    public_key: passport.public_key(),
+                    endpoint: "https://peer.example/relay".to_string(),
+                    treaty_subscriptions: vec!["treaty:test".to_string()],
+                    relay_role: RelayRole::Receiver,
+                    allowed_subject_class_namespaces: Vec::new(),
+                    accepted_ladder_refs: Vec::new(),
+                    max_batch_frames: 128,
+                    max_catchup_frames: 128,
+                    max_catchup_bytes: 1_048_576,
+                }],
+            };
+            PeerDirectory::from_document(document, NOW).expect("peer directory builds")
+        }
+
+        fn empty_batch(recipient: &str) -> PheromoneGossipBatch {
+            PheromoneGossipBatch {
+                schema: PHEROMONE_GOSSIP_BATCH_SCHEMA.to_string(),
+                recipient_kernel_id: recipient.to_string(),
+                treaty_id: "treaty:test".to_string(),
+                frames: Vec::new(),
+                flushed_at_unix_ms: NOW,
+            }
+        }
+
+        #[test]
+        fn iroh_tick_drains_the_outbox_and_folds_an_unresolvable_recipient_into_retry() {
+            // Proves the tick's iroh outbound wiring end-to-end: the endpoint binds, the
+            // outbound directory-scope gate PASSES for an admitted Receiver, the transport
+            // resolver returns None for a recipient NOT in the transport directory, and the
+            // drain folds that into the durable retry path fail-closed (never dropped) -
+            // all surfaced through the shipped RelayTickReport shape.
+            let dir = tempfile::tempdir().unwrap();
+            let bundle_path = dir.path().join("bundle.json");
+            let issuers_path = dir.path().join("issuers.json");
+            let key_path = dir.path().join("key.json");
+
+            // The transport directory admits ONLY did:chio:other, so the queued
+            // recipient did:chio:buyer does not resolve to a dialable endpoint.
+            let (bundle_json, issuer) = signed_bundle_json("did:chio:other", 24);
+            std::fs::write(&bundle_path, &bundle_json).unwrap();
+            let issuers = serde_json::json!({
+                "issuers": [{
+                    "issuer": "did:chio:issuer",
+                    "keyId": "issuer-key-1",
+                    "publicKey": issuer.public_key(),
+                }],
+            });
+            std::fs::write(&issuers_path, serde_json::to_string(&issuers).unwrap()).unwrap();
+            std::fs::write(
+                &key_path,
+                "{\"seedHex\":\"".to_string() + &"11".repeat(32) + "\"}",
+            )
+            .unwrap();
+
+            let inputs = load_iroh_serve_inputs(
+                true,
+                Some(&bundle_path),
+                None,
+                Some(&issuers_path),
+                Some(&key_path),
+                "127.0.0.1:0",
+                &[],
+                "pheromone",
+                NOW,
+            )
+            .expect("iroh inputs load")
+            .expect("iroh enabled produces inputs");
+
+            let store = SqlitePheromoneRelayStore::open_in_memory().unwrap();
+            let batch = empty_batch("did:chio:buyer");
+            store
+                .enqueue_batch(
+                    "did:chio:sender",
+                    "did:chio:buyer",
+                    "treaty:test",
+                    &batch,
+                    NOW,
+                )
+                .expect("batch enqueues");
+
+            let peer_directory = peer_directory_receiving("did:chio:buyer");
+            let report = drain_due_batches_over_iroh(
+                &store,
+                peer_directory,
+                inputs,
+                "did:chio:sender",
+                NOW,
+                10,
+            )
+            .expect("iroh drain tick runs");
+
+            assert_eq!(report.delivered, 0, "nothing is delivered to an unlisted peer");
+            assert_eq!(report.retried, 1, "the batch folds into the durable retry path");
+            assert!(!report.accepted, "a retried tick is not fully accepted");
+            assert!(
+                report.failures.iter().any(|line| line.contains("unknown_peer")),
+                "the failure must be the fail-closed unknown_peer code, got {:?}",
+                report.failures
+            );
+        }
     }
 }
