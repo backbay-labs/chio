@@ -196,7 +196,6 @@ const SOURCE_VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_TRANSACTION,
     CLAIM_PREFIX_MARKET,
 ];
-
 pub(crate) fn agent_web_verifier_trust_from_env(
 ) -> Result<chio_agent_web_interop::AgentWebVerifierTrust, String> {
     let mut trust = match env::var(AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV) {
@@ -679,6 +678,7 @@ pub(crate) fn public_settlement_verifier_trust_from_env(
         independent_chain_head: optional_public_settlement_independent_chain_head_from_env(
             proof_bundle,
         )?,
+        trusted_dispute_event_blocks: Vec::new(),
         verifier_now_unix_seconds: optional_u64_from_env(
             PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS_ENV,
         )?,

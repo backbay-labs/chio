@@ -367,8 +367,28 @@
             "pattern": "^0x[0-9a-fA-F]{64}$"
           },
           "uniqueItems": true
+        },
+        "chain_event_blocks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blockSnapshot" }
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["chain_event_tx_hashes"],
+            "properties": {
+              "chain_event_tx_hashes": { "minItems": 1 }
+            }
+          },
+          "then": {
+            "required": ["chain_event_blocks"],
+            "properties": {
+              "chain_event_blocks": { "minItems": 1 }
+            }
+          }
+        }
+      ]
     },
     "settlementReceipt": {
       "type": "object",

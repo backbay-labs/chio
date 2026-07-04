@@ -27,4 +27,7 @@ pub(crate) mod validation;
 mod review_thread_tests;
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
+mod settlement_proof_event_tests;
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests;

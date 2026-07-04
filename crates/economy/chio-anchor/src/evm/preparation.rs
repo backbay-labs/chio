@@ -10,7 +10,7 @@ use crate::AnchorError;
 
 use super::hashing::hash_to_b256;
 use super::types::{EvmAnchorTarget, PreparedDelegateRegistration, PreparedEvmRootPublication};
-use super::validation::parse_validated_evm_anchor_target;
+use super::validation::{parse_nonzero_evm_address, parse_validated_evm_anchor_target};
 use super::{operator_key_hash, operator_key_hash_hex};
 
 pub fn prepare_root_publication(
@@ -39,7 +39,11 @@ pub fn prepare_root_publication(
             target.chain_id
         )));
     }
-    if binding.certificate.settlement_address != target.operator_address {
+    let binding_operator = parse_nonzero_evm_address(
+        "binding settlement address",
+        &binding.certificate.settlement_address,
+    )?;
+    if binding_operator != validated_target.operator {
         return Err(AnchorError::InvalidBinding(format!(
             "binding settlement address {} does not match operator address {}",
             binding.certificate.settlement_address, target.operator_address

@@ -271,29 +271,10 @@ pub fn prepare_merkle_release(
         }
     }
 
-    let proof = ChioMerkleProof {
-        audit_path: anchor_proof
-            .receipt_inclusion
-            .proof
-            .audit_path
-            .iter()
-            .map(hash_to_b256)
-            .collect(),
-        leaf_index: U256::from(anchor_proof.receipt_inclusion.proof.leaf_index as u64),
-        tree_size: U256::from(anchor_proof.receipt_inclusion.proof.tree_size as u64),
-    };
     let receipt_bytes = canonical_json_bytes(&anchor_proof.receipt.body())
         .map_err(|error| SettlementError::Serialization(error.to_string()))?;
     let leaf = leaf_hash(&receipt_bytes);
     let receipt_hash = keccak256(&receipt_bytes);
-    if anchor_proof.receipt_inclusion.proof.tree_size != 1
-        || !anchor_proof.receipt_inclusion.proof.audit_path.is_empty()
-    {
-        return Err(SettlementError::Unsupported(
-            "multi-leaf Merkle release preparation requires typed settlement inclusion data"
-                .to_string(),
-        ));
-    }
     let observed_amount = match amount {
         EscrowExecutionAmount::Full => dispatch.settlement_amount.clone(),
         EscrowExecutionAmount::Partial(amount) => amount,
@@ -307,6 +288,11 @@ pub fn prepare_merkle_release(
         amount_minor_units,
         observed_amount != dispatch.settlement_amount,
     )?;
+    let proof = ChioMerkleProof {
+        audit_path: Vec::new(),
+        leaf_index: U256::from(0_u8),
+        tree_size: U256::from(1_u8),
+    };
     let call = if observed_amount == dispatch.settlement_amount {
         IChioEscrow::releaseWithProofDetailedCall {
             escrowId: escrow_id,

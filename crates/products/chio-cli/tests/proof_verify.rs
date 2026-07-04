@@ -1267,7 +1267,7 @@ fn proof_verify_rejects_public_settlement_invalid_chain_snapshot() {
                 "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
             ]);
         },
-        "public settlement dispute event tx hash not included in block",
+        "public settlement dispute event block evidence missing",
     );
     assert_public_settlement_mutation_rejected_with_codes(
         |settlement_bundle| {

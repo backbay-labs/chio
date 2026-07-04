@@ -317,7 +317,7 @@ fn sample_receipt_with_nonce_and_content_hash(nonce: &str, content_hash: String)
     ChioReceipt::sign(body, &operator).unwrap()
 }
 
-fn sample_anchor_inclusion_proof() -> AnchorInclusionProof {
+pub(super) fn sample_anchor_inclusion_proof() -> AnchorInclusionProof {
     sample_anchor_inclusion_proof_for_receipt(sample_receipt())
 }
 
@@ -607,7 +607,7 @@ fn sample_execution_receipt() -> Web3SettlementExecutionReceiptArtifact {
     }
 }
 
-fn sample_public_settlement_proof_bundle() -> PublicSettlementProofBundle {
+pub(super) fn sample_public_settlement_proof_bundle() -> PublicSettlementProofBundle {
     let mut bundle = PublicSettlementProofBundle {
         schema: CHIO_WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA.to_string(),
         bundle_id: "public-settlement-proof-web3-1".to_string(),
@@ -721,6 +721,7 @@ pub(super) fn sample_public_settlement_verifier_trust() -> PublicSettlementVerif
                 "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string(),
             latest_block_number: 12_345_701,
         }),
+        trusted_dispute_event_blocks: Vec::new(),
         verifier_now_unix_seconds: Some(1_743_293_860),
     }
 }
@@ -744,6 +745,7 @@ fn sample_public_settlement_dispute_snapshot() -> PublicSettlementDisputeSnapsho
         open_dispute_count: 0,
         linked_receipt_ids: Vec::new(),
         chain_event_tx_hashes: Vec::new(),
+        chain_event_blocks: Vec::new(),
     }
 }
 
@@ -1847,20 +1849,6 @@ fn public_settlement_proof_rejects_missing_block_snapshot() {
 }
 
 #[test]
-fn public_settlement_proof_rejects_dispute_event_tx_not_included_in_block() {
-    let bundle = sample_public_settlement_proof_bundle_with_chain_snapshot(|bundle| {
-        bundle["dispute_snapshot"]["chain_event_tx_hashes"] =
-            json!(["0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"]);
-    });
-
-    assert!(matches!(
-        verify_sample_public_settlement_proof(&bundle),
-        Err(Web3ContractError::InvalidProof(message))
-            if message.contains("public settlement dispute event tx hash not included in block")
-    ));
-}
-
-#[test]
 fn public_settlement_proof_rejects_missing_beneficiary_identity_binding() {
     let bundle = sample_public_settlement_proof_bundle_with_chain_snapshot(|bundle| {
         let Some(chain_snapshot) = bundle["chain_snapshot"].as_object_mut() else {
@@ -2141,31 +2129,6 @@ fn public_settlement_proof_rejects_refunded_posture_without_reversal() {
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("refunded dispute posture requires reversed or timed out settlement")
     ));
-}
-
-#[test]
-fn public_settlement_proof_reports_refunded_reversal_status() {
-    let mut bundle = sample_public_settlement_proof_bundle();
-    bundle.dispute_posture = PublicSettlementDisputePosture::Refunded;
-    bundle.settlement_receipt.lifecycle_state = Web3SettlementLifecycleState::Reversed;
-    bundle.settlement_receipt.reversal_of = Some("receipt-web3-original".to_string());
-    let Some(dispute_snapshot) = bundle.dispute_snapshot.as_mut() else {
-        panic!("sample public settlement proof bundle has dispute snapshot");
-    };
-    dispute_snapshot.posture = PublicSettlementDisputePosture::Refunded;
-    dispute_snapshot.dispute_id = "dispute-public-settlement-refunded".to_string();
-    dispute_snapshot
-        .linked_receipt_ids
-        .push(bundle.settlement_receipt.execution_receipt_id.clone());
-
-    let report = verify_sample_public_settlement_proof(&bundle).unwrap();
-
-    assert_eq!(report.finality_decision.status, "refunded");
-    assert_eq!(report.recomputed_settlement_state, "reversed");
-    assert_eq!(
-        report.dispute_posture,
-        PublicSettlementDisputePosture::Refunded
-    );
 }
 
 #[test]

@@ -168,6 +168,7 @@ pub struct PublicSettlementVerifierTrust {
     pub minimum_confirmations: Option<u32>,
     pub expected_trust_market_context: Option<PublicSettlementTrustMarketContext>,
     pub independent_chain_head: Option<PublicSettlementIndependentChainHead>,
+    pub trusted_dispute_event_blocks: Vec<PublicSettlementBlockSnapshot>,
     pub verifier_now_unix_seconds: Option<u64>,
 }
 
@@ -236,6 +237,8 @@ pub struct PublicSettlementDisputeSnapshot {
     pub open_dispute_count: u32,
     pub linked_receipt_ids: Vec<String>,
     pub chain_event_tx_hashes: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chain_event_blocks: Vec<PublicSettlementBlockSnapshot>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -341,7 +344,7 @@ pub fn verify_public_settlement_proof(
     validate_chain_snapshot(bundle)?;
     validate_independent_chain_head(bundle, trust)?;
     validate_finality(bundle)?;
-    validate_dispute_posture(bundle, trust.verifier_now_unix_seconds)?;
+    validate_dispute_posture(bundle, trust)?;
     let trust_market_context = validate_trust_market_refs(bundle)?;
     let trust_market_context_verified =
         validate_expected_trust_market_context(&trust_market_context, trust)?;
@@ -1447,10 +1450,10 @@ fn validate_finality(bundle: &PublicSettlementProofBundle) -> Result<(), Web3Con
 
 fn validate_dispute_posture(
     bundle: &PublicSettlementProofBundle,
-    verifier_now_unix_seconds: Option<u64>,
+    trust: &PublicSettlementVerifierTrust,
 ) -> Result<(), Web3ContractError> {
     let dispute = required_dispute_snapshot(bundle)?;
-    validate_dispute_snapshot(bundle, dispute, verifier_now_unix_seconds)?;
+    validate_dispute_snapshot(bundle, dispute, trust)?;
     if dispute.open_dispute_count > 0 {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement active dispute blocks finality".to_string(),
@@ -1534,7 +1537,7 @@ fn finality_report_status(bundle: &PublicSettlementProofBundle) -> &'static str 
 fn validate_dispute_snapshot(
     bundle: &PublicSettlementProofBundle,
     dispute: &PublicSettlementDisputeSnapshot,
-    verifier_now_unix_seconds: Option<u64>,
+    trust: &PublicSettlementVerifierTrust,
 ) -> Result<(), Web3ContractError> {
     if dispute.schema != CHIO_WEB3_SETTLEMENT_DISPUTE_SCHEMA {
         return Err(Web3ContractError::UnsupportedSchema(dispute.schema.clone()));
@@ -1570,7 +1573,7 @@ fn validate_dispute_snapshot(
             "public settlement dispute snapshot before challenge window close".to_string(),
         ));
     }
-    let verifier_now = verifier_now_unix_seconds.ok_or_else(|| {
+    let verifier_now = trust.verifier_now_unix_seconds.ok_or_else(|| {
         Web3ContractError::InvalidProof(
             "public settlement dispute verifier time missing".to_string(),
         )
@@ -1593,21 +1596,7 @@ fn validate_dispute_snapshot(
             "public settlement dispute not linked to settlement receipt".to_string(),
         ));
     }
-    let block = required_block_snapshot(bundle)?;
-    for tx_hash in &dispute.chain_event_tx_hashes {
-        ensure_non_empty(tx_hash, "public_settlement.dispute.chain_event_tx_hashes")?;
-        Hash::from_hex(tx_hash)
-            .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
-        if !block
-            .transaction_hashes
-            .iter()
-            .any(|block_tx_hash| block_tx_hash == tx_hash)
-        {
-            return Err(Web3ContractError::InvalidProof(
-                "public settlement dispute event tx hash not included in block".to_string(),
-            ));
-        }
-    }
+    validate_dispute_event_blocks(bundle, dispute, &trust.trusted_dispute_event_blocks)?;
     if dispute.posture == PublicSettlementDisputePosture::Undisputed
         && dispute.open_dispute_count != 0
     {
@@ -1619,6 +1608,123 @@ fn validate_dispute_snapshot(
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement active dispute missing".to_string(),
         ));
+    }
+    Ok(())
+}
+
+fn validate_dispute_event_blocks(
+    bundle: &PublicSettlementProofBundle,
+    dispute: &PublicSettlementDisputeSnapshot,
+    trusted_blocks: &[PublicSettlementBlockSnapshot],
+) -> Result<(), Web3ContractError> {
+    for tx_hash in &dispute.chain_event_tx_hashes {
+        ensure_non_empty(tx_hash, "public_settlement.dispute.chain_event_tx_hashes")?;
+        Hash::from_hex(tx_hash)
+            .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    }
+    if dispute.chain_event_tx_hashes.is_empty() {
+        if !dispute.chain_event_blocks.is_empty() {
+            return Err(Web3ContractError::InvalidProof(
+                "public settlement dispute event block without tx hash".to_string(),
+            ));
+        }
+        return Ok(());
+    }
+    if dispute.chain_event_blocks.is_empty() {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement dispute event block evidence missing".to_string(),
+        ));
+    }
+    if trusted_blocks.is_empty() {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement dispute event trusted block evidence missing".to_string(),
+        ));
+    }
+    let chain_anchor = required_chain_anchor(bundle)?;
+    for block in &dispute.chain_event_blocks {
+        validate_dispute_event_block(block, chain_anchor.block_number, bundle)?;
+        let Some(trusted_block) = trusted_blocks.iter().find(|trusted_block| {
+            trusted_block.block_number == block.block_number
+                && trusted_block.block_hash == block.block_hash
+        }) else {
+            return Err(Web3ContractError::InvalidProof(
+                "public settlement dispute event block is not trusted".to_string(),
+            ));
+        };
+        validate_dispute_event_block(trusted_block, chain_anchor.block_number, bundle)?;
+    }
+    for tx_hash in &dispute.chain_event_tx_hashes {
+        if !dispute.chain_event_blocks.iter().any(|block| {
+            block
+                .transaction_hashes
+                .iter()
+                .any(|block_tx_hash| block_tx_hash == tx_hash)
+        }) {
+            return Err(Web3ContractError::InvalidProof(
+                "public settlement dispute event tx hash not included in event block".to_string(),
+            ));
+        }
+        if !trusted_blocks.iter().any(|block| {
+            dispute.chain_event_blocks.iter().any(|bundle_block| {
+                bundle_block.block_number == block.block_number
+                    && bundle_block.block_hash == block.block_hash
+            }) && block
+                .transaction_hashes
+                .iter()
+                .any(|block_tx_hash| block_tx_hash == tx_hash)
+        }) {
+            return Err(Web3ContractError::InvalidProof(
+                "public settlement dispute event tx hash not included in trusted event block"
+                    .to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_dispute_event_block(
+    block: &PublicSettlementBlockSnapshot,
+    anchor_block_number: u64,
+    bundle: &PublicSettlementProofBundle,
+) -> Result<(), Web3ContractError> {
+    ensure_non_empty(
+        &block.block_hash,
+        "public_settlement.dispute.chain_event_blocks.block_hash",
+    )?;
+    Hash::from_hex(&block.block_hash)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    if block.block_number < anchor_block_number {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement dispute event block predates anchor block".to_string(),
+        ));
+    }
+    if block.block_number > bundle.chain_snapshot.latest_block_number {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement dispute event block exceeds latest block".to_string(),
+        ));
+    }
+    let confirmations = bundle
+        .chain_snapshot
+        .latest_block_number
+        .saturating_sub(block.block_number)
+        .saturating_add(1);
+    if confirmations < u64::from(bundle.required_confirmations) {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement dispute event block below finality threshold".to_string(),
+        ));
+    }
+    if block.transaction_hashes.is_empty() {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement dispute event block transaction list is empty".to_string(),
+        ));
+    }
+    for tx_hash in &block.transaction_hashes {
+        ensure_non_empty(
+            tx_hash,
+            "public_settlement.dispute.chain_event_blocks.transaction_hashes",
+        )?;
+        Hash::from_hex(tx_hash)
+            .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
     }
     Ok(())
 }

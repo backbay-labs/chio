@@ -356,6 +356,21 @@ mod tests {
     }
 
     #[test]
+    fn prepare_root_publication_accepts_operator_address_case_mismatch() {
+        let checkpoint = sample_checkpoint();
+        let mut target = sample_target("http://127.0.0.1:8545");
+        let mut binding = sample_binding();
+        target.operator_address = "0x735f1ba389d9d350501db8fbbb5b52477dcadda8".to_string();
+        binding.certificate.settlement_address =
+            "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string();
+
+        let prepared = prepare_root_publication(&target, &checkpoint, &binding)
+            .test_expect("matching EVM operator addresses should prepare");
+
+        assert_eq!(prepared.operator_address, target.operator_address);
+    }
+
+    #[test]
     fn prepare_root_publication_rejects_non_ed25519_operator_key() {
         let checkpoint = sample_checkpoint();
         let target = sample_target("http://127.0.0.1:8545");

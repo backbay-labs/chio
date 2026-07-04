@@ -74,6 +74,7 @@ mod tests {
     };
     use chio_core::crypto::Keypair;
     use chio_core::hashing::sha256_hex;
+    use chio_core::merkle::MerkleTree;
     use chio_core::receipt::{
         body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
         lineage::SignedExportEnvelope,
@@ -236,6 +237,33 @@ mod tests {
             "../../../../../docs/standards/CHIO_ANCHOR_INCLUSION_PROOF_EXAMPLE.json"
         ))
         .test_expect("parse primary proof example")
+    }
+
+    fn batched_primary_proof() -> AnchorInclusionProof {
+        let mut proof = sample_primary_proof();
+        let receipt_bytes =
+            canonical_json_bytes(&proof.receipt.body()).test_expect("proof receipt serializes");
+        let peer_receipt = b"peer receipt";
+        let leaves: Vec<&[u8]> = vec![receipt_bytes.as_slice(), peer_receipt.as_slice()];
+        let tree = MerkleTree::from_leaves(&leaves).test_expect("batched tree builds");
+        let merkle_root = tree.root();
+        proof.receipt_inclusion.merkle_root = merkle_root;
+        proof.receipt_inclusion.proof = tree.inclusion_proof(0).test_expect("proof builds");
+        proof.checkpoint_statement.tree_size = tree.leaf_count() as u64;
+        proof.checkpoint_statement.merkle_root = merkle_root;
+        if let Some(chain_anchor) = proof.chain_anchor.as_mut() {
+            chain_anchor.anchored_merkle_root = merkle_root;
+        }
+        let mut body = serde_json::to_value(&proof.checkpoint_statement)
+            .test_expect("checkpoint statement serializes");
+        body.as_object_mut()
+            .test_expect("checkpoint statement body is an object")
+            .remove("signature");
+        let (signature, _) = operator_keypair()
+            .sign_canonical(&body)
+            .test_expect("checkpoint statement signs");
+        proof.checkpoint_statement.signature = signature;
+        proof
     }
 
     fn operator_keypair() -> Keypair {
@@ -1267,6 +1295,29 @@ mod tests {
         assert_eq!(full.call.to_address, config.escrow_contract);
         assert_eq!(partial.observed_amount, partial_amount);
         assert!(partial.settlement_amount_minor_units < full.settlement_amount_minor_units);
+        let batched = prepare_merkle_release(
+            &config,
+            &dispatch,
+            &batched_primary_proof(),
+            EscrowExecutionAmount::Full,
+        )
+        .test_expect("batched anchor proof should prepare");
+        assert_eq!(batched.escrow_id, dispatch.escrow_id);
+        let batched_call_data = hex::decode(batched.call.data.trim_start_matches("0x"))
+            .test_expect("batched call data decodes");
+        let decoded_batched_call =
+            IChioEscrow::releaseWithProofDetailedCall::abi_decode(&batched_call_data)
+                .test_expect("batched release call decodes");
+        assert!(decoded_batched_call.proof.auditPath.is_empty());
+        assert_eq!(decoded_batched_call.proof.leafIndex, U256::from(0_u8));
+        assert_eq!(decoded_batched_call.proof.treeSize, U256::from(1_u8));
+        assert_ne!(
+            batched.merkle_root,
+            batched_primary_proof()
+                .receipt_inclusion
+                .merkle_root
+                .to_hex_prefixed()
+        );
         let proof_receipt_bytes =
             canonical_json_bytes(&proof.receipt.body()).test_expect("proof receipt serializes");
         assert_eq!(

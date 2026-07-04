@@ -12,7 +12,7 @@ use crate::identity::{
 };
 use crate::merkle::{leaf_hash, MerkleProof};
 use crate::receipt::body::ChioReceipt;
-use crate::validation::ensure_non_empty;
+use crate::validation::{ensure_non_empty, evm_addresses_match};
 
 pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA: &str = "chio.checkpoint_statement.v1";
 pub const CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA: &str = "chio.anchor-inclusion-proof.v1";
@@ -343,9 +343,10 @@ pub fn validate_anchor_inclusion_proof(
                 "chain anchor root must match checkpoint statement".to_string(),
             ));
         }
-        if chain_anchor.operator_address
-            != proof.key_binding_certificate.certificate.settlement_address
-        {
+        if !evm_addresses_match(
+            &chain_anchor.operator_address,
+            &proof.key_binding_certificate.certificate.settlement_address,
+        )? {
             return Err(Web3ContractError::InvalidBinding(
                 "chain anchor operator address must match settlement binding".to_string(),
             ));
