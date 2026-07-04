@@ -34,7 +34,7 @@
     {
       "id": "deployment.post_config",
       "outcome": "pass",
-      "note": "Operator binding, delegate registration, and oracle feed configuration were applied from the reviewed manifest and chain config."
+      "note": "Operator binding, delegate registration, token allowlisting, and oracle feed configuration were applied from the reviewed manifest and chain config."
     }
   ],
   "planned_contract_addresses": {

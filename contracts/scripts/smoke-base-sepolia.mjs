@@ -10,6 +10,11 @@ const repoRoot = path.resolve(contractsDir, "..");
 
 const BASE_SEPOLIA_CHAIN_ID = 84532n;
 const BASE_SEPOLIA_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+const ESCROW_PROOF_LEAF_TYPEHASH = ethers.keccak256(
+  ethers.toUtf8Bytes(
+    "ChioEscrowProof(uint256 chainId,address escrow,bytes32 escrowId,address token,address beneficiary,bytes32 operatorKeyHash,bytes32 receiptHash,uint256 amount,bool partial)"
+  )
+);
 const ENTITY_BINDING_TYPES = {
   ChioEntityBinding: [
     { name: "chioEntityId", type: "bytes32" },
@@ -87,6 +92,47 @@ function labelHash(label) {
   return ethers.keccak256(ethers.toUtf8Bytes(label));
 }
 
+function escrowProofLeaf(
+  chainId,
+  escrowAddress,
+  escrowId,
+  token,
+  beneficiary,
+  operatorKeyHash,
+  receiptHash,
+  amount,
+  isPartial
+) {
+  return ethers.keccak256(
+    ethers.AbiCoder.defaultAbiCoder().encode(
+      [
+        "bytes32",
+        "uint256",
+        "address",
+        "bytes32",
+        "address",
+        "address",
+        "bytes32",
+        "bytes32",
+        "uint256",
+        "bool"
+      ],
+      [
+        ESCROW_PROOF_LEAF_TYPEHASH,
+        BigInt(chainId),
+        escrowAddress,
+        escrowId,
+        token,
+        beneficiary,
+        operatorKeyHash,
+        receiptHash,
+        amount,
+        isPartial
+      ]
+    )
+  );
+}
+
 function entityBindingDomain(chainId, identityRegistryAddress) {
   return {
     name: "ChioIdentityRegistry",
@@ -148,12 +194,27 @@ async function refreshMockFeeds({ signer, dependenciesPath }) {
   const refreshed = [];
   for (const [name, feed] of Object.entries(dependencies.mock_chainlink_feeds ?? {})) {
     const contract = new ethers.Contract(feed.address, artifact.abi, signer);
-    const tx = await contract.setAnswer(BigInt(feed.answer));
-    const receipt = await waitForReceipt(tx);
-    refreshed.push(txSummary(`feed.${name}.refresh`, tx, receipt, {
+    let tx;
+    let extra = {
       address: feed.address,
       answer: BigInt(feed.answer)
-    }));
+    };
+    if (name === "sequencer_uptime_feed") {
+      const latestBlock = await signer.provider.getBlock("latest");
+      const updatedAt = BigInt(latestBlock.timestamp);
+      const startedAt = updatedAt > 7200n ? updatedAt - 7200n : 1n;
+      const roundId = BigInt(feed.round_id ?? 1);
+      tx = await contract.setRoundData(roundId, BigInt(feed.answer), startedAt, updatedAt, roundId);
+      extra = {
+        ...extra,
+        started_at: startedAt,
+        updated_at: updatedAt
+      };
+    } else {
+      tx = await contract.setAnswer(BigInt(feed.answer));
+    }
+    const receipt = await waitForReceipt(tx);
+    refreshed.push(txSummary(`feed.${name}.refresh`, tx, receipt, extra));
   }
   return refreshed;
 }
@@ -331,43 +392,8 @@ async function main() {
       transactions.push(txSummary("anchor.delegate_registration", tx, receipt, { delegate_expiry: delegateExpiry }));
     }
 
-    const latestSeq = BigInt(await rootRegistry.getLatestSeq(actor));
     const partialReceiptHash = labelHash(`base-sepolia-smoke-partial:${runId}`);
     const finalReceiptHash = labelHash(`base-sepolia-smoke-final:${runId}`);
-    const partialRootTx = await rootRegistry.publishRoot(
-      actor,
-      partialReceiptHash,
-      latestSeq + 1n,
-      latestSeq + 1n,
-      latestSeq + 1n,
-      1n,
-      operatorEdKeyHash
-    );
-    const partialRootReceipt = await waitForReceipt(partialRootTx);
-    transactions.push(txSummary("anchor.partial_root_publish", partialRootTx, partialRootReceipt, {
-      checkpoint_seq: latestSeq + 1n,
-      root: partialReceiptHash
-    }));
-
-    const finalRootTx = await rootRegistry.publishRoot(
-      actor,
-      finalReceiptHash,
-      latestSeq + 2n,
-      latestSeq + 2n,
-      latestSeq + 2n,
-      1n,
-      operatorEdKeyHash
-    );
-    const finalRootReceipt = await waitForReceipt(finalRootTx);
-    transactions.push(txSummary("anchor.final_root_publish", finalRootTx, finalRootReceipt, {
-      checkpoint_seq: latestSeq + 2n,
-      root: finalReceiptHash
-    }));
-    checks.push({
-      id: "anchor.root_publication",
-      outcome: "pass",
-      note: "Operator published fresh partial and final roots for proof-backed releases."
-    });
 
     if (!(await escrow.tokenAllowed(BASE_SEPOLIA_USDC))) {
       const allowTokenTx = await escrow.setTokenAllowed(BASE_SEPOLIA_USDC, true);
@@ -400,6 +426,65 @@ async function main() {
       operatorKeyHash: operatorEdKeyHash
     };
     const primaryEscrowId = await escrow.deriveEscrowId(primaryTerms);
+    const partialProofLeaf = escrowProofLeaf(
+      network.chainId,
+      await escrow.getAddress(),
+      primaryEscrowId,
+      primaryTerms.token,
+      primaryTerms.beneficiary,
+      primaryTerms.operatorKeyHash,
+      partialReceiptHash,
+      75_000n,
+      true
+    );
+    const finalProofLeaf = escrowProofLeaf(
+      network.chainId,
+      await escrow.getAddress(),
+      primaryEscrowId,
+      primaryTerms.token,
+      primaryTerms.beneficiary,
+      primaryTerms.operatorKeyHash,
+      finalReceiptHash,
+      125_000n,
+      false
+    );
+    const latestSeq = BigInt(await rootRegistry.getLatestSeq(actor));
+    const partialRootTx = await rootRegistry.publishRoot(
+      actor,
+      partialProofLeaf,
+      latestSeq + 1n,
+      latestSeq + 1n,
+      latestSeq + 1n,
+      1n,
+      operatorEdKeyHash
+    );
+    const partialRootReceipt = await waitForReceipt(partialRootTx);
+    transactions.push(txSummary("anchor.partial_root_publish", partialRootTx, partialRootReceipt, {
+      checkpoint_seq: latestSeq + 1n,
+      root: partialProofLeaf,
+      receipt_hash: partialReceiptHash
+    }));
+
+    const finalRootTx = await rootRegistry.publishRoot(
+      actor,
+      finalProofLeaf,
+      latestSeq + 2n,
+      latestSeq + 2n,
+      latestSeq + 2n,
+      1n,
+      operatorEdKeyHash
+    );
+    const finalRootReceipt = await waitForReceipt(finalRootTx);
+    transactions.push(txSummary("anchor.final_root_publish", finalRootTx, finalRootReceipt, {
+      checkpoint_seq: latestSeq + 2n,
+      root: finalProofLeaf,
+      receipt_hash: finalReceiptHash
+    }));
+    checks.push({
+      id: "anchor.root_publication",
+      outcome: "pass",
+      note: "Operator published fresh partial and final roots for proof-backed releases."
+    });
     const createPrimaryTx = await escrow.createEscrow(primaryTerms);
     const createPrimaryReceipt = await waitForReceipt(createPrimaryTx);
     transactions.push(txSummary("settlement.primary_escrow_create", createPrimaryTx, createPrimaryReceipt, {
@@ -410,7 +495,7 @@ async function main() {
     const partialReleaseTx = await escrow.partialReleaseWithProofDetailed(
       primaryEscrowId,
       proof,
-      partialReceiptHash,
+      partialProofLeaf,
       partialReceiptHash,
       75_000n
     );
@@ -423,7 +508,7 @@ async function main() {
     const finalReleaseTx = await escrow.releaseWithProofDetailed(
       primaryEscrowId,
       proof,
-      finalReceiptHash,
+      finalProofLeaf,
       finalReceiptHash,
       125_000n
     );

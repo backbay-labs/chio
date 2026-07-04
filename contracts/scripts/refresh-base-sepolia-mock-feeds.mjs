@@ -97,12 +97,26 @@ async function main() {
     const refreshed = [];
     for (const [name, feed] of Object.entries(dependencies.mock_chainlink_feeds ?? {})) {
       const contract = new ethers.Contract(feed.address, artifact.abi, signer);
-      const tx = await contract.setAnswer(BigInt(feed.answer));
-      const receipt = await tx.wait();
-      refreshed.push({
+      let tx;
+      const record = {
         name,
         address: feed.address,
-        answer: BigInt(feed.answer),
+        answer: BigInt(feed.answer)
+      };
+      if (name === "sequencer_uptime_feed") {
+        const latestBlock = await provider.getBlock("latest");
+        const updatedAt = BigInt(latestBlock.timestamp);
+        const startedAt = updatedAt > 7200n ? updatedAt - 7200n : 1n;
+        const roundId = BigInt(feed.round_id ?? 1);
+        tx = await contract.setRoundData(roundId, BigInt(feed.answer), startedAt, updatedAt, roundId);
+        record.started_at = startedAt;
+        record.updated_at = updatedAt;
+      } else {
+        tx = await contract.setAnswer(BigInt(feed.answer));
+      }
+      const receipt = await tx.wait();
+      refreshed.push({
+        ...record,
         tx_hash: tx.hash,
         block_number: receipt.blockNumber,
         gas_used: receipt.gasUsed

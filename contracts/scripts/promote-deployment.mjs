@@ -680,6 +680,8 @@ async function main() {
     const identityRegistryArtifact = readArtifact("contracts/artifacts/ChioIdentityRegistry.json");
     const rootRegistryArtifact = readArtifact("contracts/artifacts/ChioRootRegistry.json");
     const priceResolverArtifact = readArtifact("contracts/artifacts/ChioPriceResolver.json");
+    const escrowArtifact = readArtifact("contracts/artifacts/ChioEscrow.json");
+    const bondVaultArtifact = readArtifact("contracts/artifacts/ChioBondVault.json");
 
     const identityRegistry = new ethers.Contract(
       deployedContracts["chio.identity-registry"],
@@ -696,6 +698,21 @@ async function main() {
       priceResolverArtifact.abi,
       wallets.priceAdmin
     );
+    const escrow = new ethers.Contract(
+      deployedContracts["chio.escrow"],
+      escrowArtifact.abi,
+      wallets.admin
+    );
+    const bondVault = new ethers.Contract(
+      deployedContracts["chio.bond-vault"],
+      bondVaultArtifact.abi,
+      wallets.admin
+    );
+    const rawSettlementTokenAddress = resolveValue(manifest.settlement_token?.address, state);
+    if (!rawSettlementTokenAddress) {
+      throw new Error("manifest settlement_token.address is required");
+    }
+    const settlementTokenAddress = ethers.getAddress(rawSettlementTokenAddress);
 
     const operatorConfig = manifest.operator_configuration ?? {};
     const operatorLabel = operatorConfig.operator_ed_key_label ?? "chio-operator-ed25519-key";
@@ -776,10 +793,33 @@ async function main() {
       });
     }
 
+    const escrowTokenAlreadyAllowed = await escrow.tokenAllowed(settlementTokenAddress);
+    let escrowTokenTx = null;
+    if (!escrowTokenAlreadyAllowed) {
+      escrowTokenTx = await sendContractCall(
+        escrow,
+        "setTokenAllowed",
+        [settlementTokenAddress, true],
+        null
+      );
+      await escrowTokenTx.wait();
+    }
+    const bondTokenAlreadyAllowed = await bondVault.tokenAllowed(settlementTokenAddress);
+    let bondTokenTx = null;
+    if (!bondTokenAlreadyAllowed) {
+      bondTokenTx = await sendContractCall(
+        bondVault,
+        "setTokenAllowed",
+        [settlementTokenAddress, true],
+        null
+      );
+      await bondTokenTx.wait();
+    }
+
     report.checks.push({
       id: "deployment.post_config",
       outcome: "pass",
-      note: "Operator binding, delegate registration, and oracle feed configuration were applied from the reviewed manifest and chain config."
+      note: "Operator binding, delegate registration, token allowlisting, and oracle feed configuration were applied from the reviewed manifest and chain config."
     });
 
     const deploymentRecord = {
@@ -809,7 +849,16 @@ async function main() {
         delegate_registration: delegateTx
           ? { tx_hash: delegateTx.hash, status: "submitted" }
           : { tx_hash: null, status: "already_registered" },
-        feed_registrations: feedTransactions
+        feed_registrations: feedTransactions,
+        token_allowlist: {
+          settlement_token: settlementTokenAddress,
+          escrow: escrowTokenTx
+            ? { tx_hash: escrowTokenTx.hash, status: "submitted" }
+            : { tx_hash: null, status: "already_allowed" },
+          bond_vault: bondTokenTx
+            ? { tx_hash: bondTokenTx.hash, status: "submitted" }
+            : { tx_hash: null, status: "already_allowed" }
+        }
       },
       attribution: dataSuffix
         ? {

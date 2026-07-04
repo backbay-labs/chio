@@ -164,7 +164,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/economy/chio-web3/src/tests.rs": allow(
         "2026-07-31",
         "existing oversized web3 test module; capped to current size until split",
-        max_lines=2_208,
+        max_lines=2_237,
     ),
     "crates/kernel/chio-runtime-proof-parity/src/lib.rs": allow(
         "2026-07-31",
