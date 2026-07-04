@@ -391,6 +391,11 @@ async fn read_frame(recv: &mut RecvStream) -> Result<Vec<u8>, WireError> {
 pub struct IrohBilateralCoSigner {
     endpoint: Endpoint,
     address_book: Arc<dyn OrgAddressBook>,
+    /// Client-side slowloris bounds: every peer-dependent await (connect, open,
+    /// write, the reply read) is bounded by the matching phase timeout so an Org A
+    /// that accepts but never replies cannot hang the caller forever. Generous by
+    /// default; tune via [`IrohBilateralCoSigner::with_accept_limits`].
+    limits: AcceptLimitConfig,
 }
 
 impl core::fmt::Debug for IrohBilateralCoSigner {
@@ -403,13 +408,24 @@ impl core::fmt::Debug for IrohBilateralCoSigner {
 
 impl IrohBilateralCoSigner {
     /// Build the co-signer over a bound iroh [`Endpoint`] and an Org A address
-    /// resolver.
+    /// resolver. The client-side waits use the generous [`AcceptLimitConfig::default`]
+    /// bounds; tune them via [`Self::with_accept_limits`].
     #[must_use]
     pub fn new(endpoint: Endpoint, address_book: Arc<dyn OrgAddressBook>) -> Self {
         Self {
             endpoint,
             address_book,
+            limits: AcceptLimitConfig::default(),
         }
+    }
+
+    /// Override the default client-side slowloris bounds (per-phase timeouts on
+    /// connect / open / write / the reply read). The [`Default`] preserves the
+    /// generous behavior; a caller can tighten them in one place.
+    #[must_use]
+    pub fn with_accept_limits(mut self, limits: AcceptLimitConfig) -> Self {
+        self.limits = limits;
+        self
     }
 
     /// Async transport of the co-signing exchange (the recommended entry point).
@@ -429,11 +445,13 @@ impl IrohBilateralCoSigner {
             .address_of(&request.org_a_kernel_id)
             .ok_or_else(|| BilateralCoSigningError::UnknownPeer(request.org_a_kernel_id.clone()))?;
 
-        let connection = self
-            .endpoint
-            .connect(addr, ALPN_BILATERAL)
-            .await
-            .map_err(|error| BilateralCoSigningError::TransportFailure(error.to_string()))?;
+        let connection = client_bounded(
+            &self.limits,
+            AcceptPhase::AcceptStream,
+            self.endpoint.connect(addr, ALPN_BILATERAL),
+        )
+        .await?
+        .map_err(|error| BilateralCoSigningError::TransportFailure(error.to_string()))?;
 
         let result = self.exchange(&connection, request).await;
         connection.close(VarInt::from_u32(CLOSE_OK), b"done");
@@ -447,25 +465,57 @@ impl IrohBilateralCoSigner {
         connection: &Connection,
         request: &DsseCoSigningRequest,
     ) -> Result<DsseCoSigningResponse, BilateralCoSigningError> {
-        let (mut send, mut recv) = connection
-            .open_bi()
-            .await
-            .map_err(|error| BilateralCoSigningError::TransportFailure(error.to_string()))?;
+        let (mut send, mut recv) = client_bounded(
+            &self.limits,
+            AcceptPhase::AcceptStream,
+            connection.open_bi(),
+        )
+        .await?
+        .map_err(|error| BilateralCoSigningError::TransportFailure(error.to_string()))?;
 
         let request_bytes = serde_json::to_vec(&WireDsseCoSigningRequest::from_request(request))
             .map_err(|error| BilateralCoSigningError::TransportFailure(error.to_string()))?;
-        write_frame(&mut send, &request_bytes)
-            .await
-            .map_err(|error| BilateralCoSigningError::TransportFailure(error.to_string()))?;
+        client_bounded(
+            &self.limits,
+            AcceptPhase::WriteResponse,
+            write_frame(&mut send, &request_bytes),
+        )
+        .await?
+        .map_err(|error| BilateralCoSigningError::TransportFailure(error.to_string()))?;
         send.finish()
             .map_err(|error| BilateralCoSigningError::TransportFailure(error.to_string()))?;
 
-        let reply_bytes = read_frame(&mut recv)
-            .await
-            .map_err(|error| BilateralCoSigningError::TransportFailure(error.to_string()))?;
+        // The primary client-side hang surface: an Org A that accepts the request but
+        // never returns the reply frame is dropped here at the read bound.
+        let reply_bytes =
+            client_bounded(&self.limits, AcceptPhase::ReadFrame, read_frame(&mut recv))
+                .await?
+                .map_err(|error| BilateralCoSigningError::TransportFailure(error.to_string()))?;
         let reply: WireReply = serde_json::from_slice(&reply_bytes)
             .map_err(|error| BilateralCoSigningError::TransportFailure(error.to_string()))?;
         reply.into_result()
+    }
+}
+
+/// Bound one peer-dependent client await by the phase's timeout, mirroring the
+/// accept-side [`AcceptLimiter::bounded`]. On timeout this fails closed with a
+/// [`BilateralCoSigningError::TransportFailure`] so an Org A that accepts but never
+/// replies can no longer hang the caller forever.
+async fn client_bounded<T, F>(
+    limits: &AcceptLimitConfig,
+    phase: AcceptPhase,
+    fut: F,
+) -> Result<T, BilateralCoSigningError>
+where
+    F: std::future::Future<Output = T>,
+{
+    let bound = limits.phase_timeout(phase);
+    match tokio::time::timeout(bound, fut).await {
+        Ok(output) => Ok(output),
+        Err(_elapsed) => Err(BilateralCoSigningError::TransportFailure(format!(
+            "bilateral co-sign {phase} exceeded its {}ms client bound",
+            bound.as_millis()
+        ))),
     }
 }
 
@@ -1427,5 +1477,69 @@ mod tests {
         );
 
         drop(conn_a);
+    }
+
+    // -- Client-side slowloris bound: a silent Org A must not hang the caller --
+    //
+    // An Org A that accepts the connection and reads the request but never returns
+    // the reply frame must not hang the dialer forever. This handler is that
+    // admitted-but-silent Org A.
+
+    #[derive(Debug, Clone)]
+    struct SilentAfterReadBilateralHandler;
+
+    impl ProtocolHandler for SilentAfterReadBilateralHandler {
+        async fn accept(&self, connection: Connection) -> Result<(), AcceptError> {
+            let (mut _send, mut recv) = connection.accept_bi().await?;
+            // Read the request frame, then deliberately never write the reply.
+            let _request = read_frame(&mut recv).await.map_err(AcceptError::from_err)?;
+            connection.closed().await;
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn client_read_bound_drops_an_org_a_that_never_replies() {
+        // No admission gate installed: this isolates the CLIENT read bound (Org A
+        // handshakes and reads the request, then goes silent).
+        let org_a = Peer::new(ORIGIN_KERNEL, 10, 1);
+        let org_b = Peer::new(TOOL_HOST_KERNEL, 11, 2);
+        let endpoint = Endpoint::builder(presets::Minimal)
+            .secret_key(org_a.transport_secret.clone())
+            .relay_mode(RelayMode::Disabled)
+            .bind_addr((Ipv4Addr::LOCALHOST, 0))
+            .expect("valid loopback bind addr")
+            .bind()
+            .await
+            .expect("org a endpoint binds");
+        let socket = endpoint.bound_sockets()[0];
+        let addr = EndpointAddr::new(org_a.transport_id).with_ip_addr(socket);
+        let router = Router::builder(endpoint)
+            .accept(ALPN_BILATERAL, SilentAfterReadBilateralHandler)
+            .spawn();
+
+        // A tight read bound; connect/open/write keep their generous defaults so only
+        // the (hung) reply read trips.
+        let cosigner = spawn_org_b(&org_b, ORIGIN_KERNEL, addr)
+            .await
+            .with_accept_limits(AcceptLimitConfig {
+                read_timeout: Duration::from_millis(200),
+                ..AcceptLimitConfig::default()
+            });
+
+        let pae_bytes = b"pae for a silent org a".to_vec();
+        let request = org_b_request(&org_b, ORIGIN_KERNEL, &pae_bytes);
+        let result = tokio::time::timeout(
+            Duration::from_secs(15),
+            cosigner.request_dsse_cosignature_over_iroh(&request),
+        )
+        .await
+        .expect("the client read bound must fire well before the outer test timeout");
+        assert!(
+            matches!(result, Err(BilateralCoSigningError::TransportFailure(_))),
+            "a silent org a must fail closed at the client read bound, got {result:?}"
+        );
+
+        router.shutdown().await.ok();
     }
 }

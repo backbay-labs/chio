@@ -663,15 +663,31 @@ impl ProtocolHandler for RevocationHandler {
 /// [`EndpointId`] (resolved via discovery/relay) OR a full [`EndpointAddr`] carrying
 /// the socket address(es), so a direct-address / relay-disabled deployment can dial
 /// a known peer without discovery.
+///
+/// Uses the generous default client bounds ([`AcceptLimitConfig::default`]); see
+/// [`push_batch_over_iroh_with_limits`] to tune them.
 pub async fn push_batch_over_iroh(
     endpoint: &Endpoint,
     authority: impl Into<EndpointAddr>,
     batch: &RevocationGossipBatch,
 ) -> Result<RevocationLaneResponse, RevocationLaneError> {
+    push_batch_over_iroh_with_limits(endpoint, authority, batch, &AcceptLimitConfig::default())
+        .await
+}
+
+/// Same as [`push_batch_over_iroh`], with explicit client-side bounds on every
+/// peer-dependent await (connect, open, write, read).
+pub async fn push_batch_over_iroh_with_limits(
+    endpoint: &Endpoint,
+    authority: impl Into<EndpointAddr>,
+    batch: &RevocationGossipBatch,
+    limits: &AcceptLimitConfig,
+) -> Result<RevocationLaneResponse, RevocationLaneError> {
     request_over_iroh(
         endpoint,
         authority,
         &RevocationLaneRequest::Push(batch.clone()),
+        limits,
     )
     .await
 }
@@ -681,35 +697,87 @@ pub async fn push_batch_over_iroh(
 /// available over iroh-blobs ([`crate::catchup`]).
 ///
 /// `authority` accepts a bare [`EndpointId`] or a full [`EndpointAddr`] (see
-/// [`push_batch_over_iroh`]).
+/// [`push_batch_over_iroh`]). Uses the generous default client bounds; see
+/// [`request_catchup_over_iroh_with_limits`] to tune them.
 pub async fn request_catchup_over_iroh(
     endpoint: &Endpoint,
     authority: impl Into<EndpointAddr>,
     request: &RevocationCatchupRequest,
 ) -> Result<RevocationLaneResponse, RevocationLaneError> {
+    request_catchup_over_iroh_with_limits(
+        endpoint,
+        authority,
+        request,
+        &AcceptLimitConfig::default(),
+    )
+    .await
+}
+
+/// Same as [`request_catchup_over_iroh`], with explicit client-side bounds.
+pub async fn request_catchup_over_iroh_with_limits(
+    endpoint: &Endpoint,
+    authority: impl Into<EndpointAddr>,
+    request: &RevocationCatchupRequest,
+    limits: &AcceptLimitConfig,
+) -> Result<RevocationLaneResponse, RevocationLaneError> {
     request_over_iroh(
         endpoint,
         authority,
         &RevocationLaneRequest::Catchup(request.clone()),
+        limits,
     )
     .await
+}
+
+/// Bound one peer-dependent client await by the phase's timeout, mirroring the
+/// accept-side [`AcceptLimiter::bounded`] and the pheromone client. On timeout this
+/// fails closed with [`RevocationLaneError::AcceptLimit`] (`accept_timeout`) so a
+/// peer that accepts but never replies can no longer hang the caller forever.
+async fn client_bounded<T, F>(
+    limits: &AcceptLimitConfig,
+    phase: AcceptPhase,
+    fut: F,
+) -> Result<T, RevocationLaneError>
+where
+    F: std::future::Future<Output = T>,
+{
+    let bound = limits.phase_timeout(phase);
+    match tokio::time::timeout(bound, fut).await {
+        Ok(output) => Ok(output),
+        Err(_elapsed) => Err(RevocationLaneError::AcceptLimit(
+            AcceptLimitError::Timeout {
+                phase,
+                timeout_ms: u64::try_from(bound.as_millis()).unwrap_or(u64::MAX),
+            },
+        )),
+    }
 }
 
 async fn request_over_iroh(
     endpoint: &Endpoint,
     authority: impl Into<EndpointAddr>,
     request: &RevocationLaneRequest,
+    limits: &AcceptLimitConfig,
 ) -> Result<RevocationLaneResponse, RevocationLaneError> {
-    let conn = endpoint
-        .connect(authority, ALPN_REVOCATION_ROOT)
-        .await
+    let conn = client_bounded(
+        limits,
+        AcceptPhase::AcceptStream,
+        endpoint.connect(authority, ALPN_REVOCATION_ROOT),
+    )
+    .await?
+    .map_err(|error| RevocationLaneError::Transport(error.to_string()))?;
+    let (mut send, mut recv) = client_bounded(limits, AcceptPhase::AcceptStream, conn.open_bi())
+        .await?
         .map_err(|error| RevocationLaneError::Transport(error.to_string()))?;
-    let (mut send, mut recv) = conn
-        .open_bi()
-        .await
-        .map_err(|error| RevocationLaneError::Transport(error.to_string()))?;
-    write_frame(&mut send, request).await?;
-    let response = read_frame(&mut recv).await?;
+    client_bounded(
+        limits,
+        AcceptPhase::WriteResponse,
+        write_frame(&mut send, request),
+    )
+    .await??;
+    // The primary client-side hang surface: a peer that accepts the request but
+    // never returns the response frame is dropped here at the read bound.
+    let response = client_bounded(limits, AcceptPhase::ReadFrame, read_frame(&mut recv)).await??;
     Ok(response)
 }
 
@@ -1548,6 +1616,67 @@ mod tests {
         }
         // Fail-closed: the forged root reached the sink NOWHERE (nothing merged).
         assert!(sink.merged.lock().unwrap().is_empty());
+        router.shutdown().await.ok();
+    }
+
+    // -- Client-side slowloris bound: a silent authority must not hang the caller --
+    //
+    // An authority that accepts the connection and reads the request but never
+    // returns the response frame must not hang the dialer forever. This handler is
+    // that admitted-but-silent authority.
+
+    #[derive(Debug, Clone)]
+    struct SilentAfterReadRevocationHandler;
+
+    impl ProtocolHandler for SilentAfterReadRevocationHandler {
+        async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+            let (mut _send, mut recv) = conn.accept_bi().await?;
+            // Read the request frame, then deliberately never write a response.
+            let _request: RevocationLaneRequest =
+                read_frame(&mut recv).await.map_err(AcceptError::from_err)?;
+            conn.closed().await;
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn client_read_bound_drops_an_authority_that_never_replies() {
+        // No admission gate on the acceptor: this isolates the CLIENT read bound (the
+        // authority handshakes and reads the request, then goes silent).
+        let acceptor = bind_endpoint(30).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_REVOCATION_ROOT, SilentAfterReadRevocationHandler)
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(31).await;
+        let oracle = signer("oracle-a", SEED_A);
+        let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        // A tight read bound; connect/open/write keep their generous defaults so only
+        // the (hung) response read trips.
+        let limits = AcceptLimitConfig {
+            read_timeout: Duration::from_millis(200),
+            ..AcceptLimitConfig::default()
+        };
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(15),
+            push_batch_over_iroh_with_limits(&dialer, acceptor_addr, &batch(vec![frame]), &limits),
+        )
+        .await
+        .expect("the client read bound must fire well before the outer test timeout");
+        let error = outcome.expect_err("a silent authority must fail closed at the read bound");
+        assert!(
+            matches!(
+                error,
+                RevocationLaneError::AcceptLimit(AcceptLimitError::Timeout {
+                    phase: AcceptPhase::ReadFrame,
+                    ..
+                })
+            ),
+            "unexpected error: {error:?}"
+        );
+        assert_eq!(error.code(), "accept_timeout");
+
         router.shutdown().await.ok();
     }
 }
