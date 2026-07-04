@@ -173,9 +173,9 @@ pub async fn ensure_publication_ready(
             guard.publisher_address, guard.operator_address, guard.chain_id
         )));
     }
-    if checkpoint_seq < guard.next_checkpoint_seq_min {
+    if checkpoint_seq != guard.next_checkpoint_seq_min {
         return Err(AnchorError::Verification(format!(
-            "checkpoint sequence {} must be >= {} on {}",
+            "checkpoint sequence {} must equal {} on {}",
             checkpoint_seq, guard.next_checkpoint_seq_min, guard.chain_id
         )));
     }

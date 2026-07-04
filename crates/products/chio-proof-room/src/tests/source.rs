@@ -396,6 +396,52 @@ fn source_family_verifier_rejects_claim_set_required_claim_not_verified(
 }
 
 #[test]
+fn source_standalone_verifier_can_skip_passport_signature_check() -> Result<(), Box<dyn Error>> {
+    let root = repo_root()?;
+    let source = root.join("fixtures/proof-room/minimal-passport/valid");
+    let work = tempfile::tempdir()?;
+    copy_dir_all(&source, work.path())?;
+
+    let passport_path = work.path().join("transaction-passport.json");
+    let mut passport: serde_json::Value = serde_json::from_slice(&fs::read(&passport_path)?)?;
+    passport["signature"] = serde_json::Value::String("00".repeat(64));
+    fs::write(
+        &passport_path,
+        [serde_json::to_vec_pretty(&passport)?.as_slice(), b"\n"].concat(),
+    )?;
+
+    let error = verify_transaction_passport_file_with_options(work.path(), &passport_path, true)
+        .err()
+        .ok_or("tampered signature unexpectedly verified")?;
+    assert!(
+        error.contains("transaction passport signature invalid"),
+        "{error}"
+    );
+
+    let report = verify_transaction_passport_file_with_options(work.path(), &passport_path, false)?;
+
+    assert_eq!(report["verdict"], "verified");
+
+    let receipt_path = work.path().join("kernel-receipt.json");
+    let mut receipt: serde_json::Value = serde_json::from_slice(&fs::read(&receipt_path)?)?;
+    receipt["receipt_id"] = serde_json::Value::String("receipt-minimal-tampered".to_string());
+    fs::write(
+        &receipt_path,
+        [serde_json::to_vec_pretty(&receipt)?.as_slice(), b"\n"].concat(),
+    )?;
+
+    let error = verify_transaction_passport_file_with_options(work.path(), &passport_path, false)
+        .err()
+        .ok_or("tampered governed-action artifact unexpectedly verified")?;
+    assert!(
+        error.contains("evidence graph artifact digest mismatch")
+            && error.contains("kernel-receipt.json"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn source_family_required_claims_accept_verified_transaction_root_claims(
 ) -> Result<(), Box<dyn Error>> {
     let report = serde_json::json!({

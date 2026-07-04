@@ -864,7 +864,30 @@ mod tests {
             .test_expect_err("checkpoint regression should fail");
 
         server.join();
-        assert!(error.to_string().contains("must be >="));
+        assert!(error.to_string().contains("must equal"));
+    }
+
+    #[tokio::test]
+    async fn ensure_publication_ready_rejects_skipped_checkpoint_sequence() {
+        let Some(server) = MockJsonRpcServer::spawn(vec![
+            rpc_result(json!(encode_hex(
+                IChioRootRegistry::isAuthorizedPublisherCall::abi_encode_returns(&true)
+            ))),
+            rpc_result(json!(encode_hex(
+                IChioRootRegistry::getLatestSeqCall::abi_encode_returns(&41_u64)
+            ))),
+        ]) else {
+            return;
+        };
+        let target = sample_delegate_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
+
+        let error = ensure_publication_ready(&target, 44, &egress_contract)
+            .await
+            .test_expect_err("skipped checkpoint sequence should fail");
+
+        server.join();
+        assert!(error.to_string().contains("must equal"));
     }
 
     #[tokio::test]

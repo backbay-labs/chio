@@ -23,6 +23,7 @@
 //! Fail-closed semantics:
 //!
 //! - malformed pattern JSON at construction time → [`EmbeddingAnomalyError`];
+//! - malformed explicit request embedding fields → [`Verdict::Deny`];
 //! - non-finite values in a request embedding → [`Verdict::Deny`];
 //! - embedding-dimension mismatch with the pattern DB → [`Verdict::Deny`];
 //! - cosine norm collapse (zero vector) → similarity score `0.0` (not
@@ -309,9 +310,10 @@ impl Guard for EmbeddingAnomalyGuard {
     }
 
     fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
-        let embedding = match extract_embedding(&ctx.request.arguments) {
-            Some(e) => e,
-            None => return Ok(GuardDecision::allow()),
+        let embedding = match extract_embedding_status(&ctx.request.arguments) {
+            EmbeddingExtraction::Present(e) => e,
+            EmbeddingExtraction::Missing => return Ok(GuardDecision::allow()),
+            EmbeddingExtraction::Invalid => return Ok(GuardDecision::deny(Vec::new())),
         };
         if embedding.len() != self.db.dim {
             // Dimension mismatch = fail-closed.
@@ -333,34 +335,66 @@ impl Guard for EmbeddingAnomalyGuard {
 /// 2. `vector: [f32; D]`
 /// 3. `embeddings: [[f32; D], ...]` → mean-pooled to a single vector
 ///
-/// Returns `None` if no recognised embedding field is present.
+/// Returns `None` if no recognised embedding field is present or the supplied
+/// embedding field is malformed.
 pub fn extract_embedding(arguments: &Value) -> Option<Vec<f32>> {
-    if let Some(vec) = arguments
-        .get("embedding")
-        .or_else(|| arguments.get("vector"))
-        .and_then(array_as_f32_vec)
-    {
-        return Some(vec);
+    match extract_embedding_status(arguments) {
+        EmbeddingExtraction::Present(embedding) => Some(embedding),
+        EmbeddingExtraction::Missing | EmbeddingExtraction::Invalid => None,
     }
-    if let Some(array) = arguments.get("embeddings").and_then(|v| v.as_array()) {
-        let vectors: Vec<Vec<f32>> = array.iter().filter_map(array_as_f32_vec).collect();
-        if vectors.is_empty() {
-            return None;
-        }
-        let dim = vectors[0].len();
-        if dim == 0 || vectors.iter().any(|v| v.len() != dim) {
-            return None;
-        }
-        let mut sum = vec![0.0_f64; dim];
-        for v in &vectors {
-            for (i, x) in v.iter().enumerate() {
-                sum[i] += f64::from(*x);
-            }
-        }
-        let n = vectors.len() as f64;
-        return Some(sum.into_iter().map(|s| (s / n) as f32).collect());
+}
+
+enum EmbeddingExtraction {
+    Missing,
+    Invalid,
+    Present(Vec<f32>),
+}
+
+fn extract_embedding_status(arguments: &Value) -> EmbeddingExtraction {
+    if let Some(value) = arguments.get("embedding") {
+        return match array_as_f32_vec(value) {
+            Some(vec) => EmbeddingExtraction::Present(vec),
+            None => EmbeddingExtraction::Invalid,
+        };
     }
-    None
+    if let Some(value) = arguments.get("vector") {
+        return match array_as_f32_vec(value) {
+            Some(vec) => EmbeddingExtraction::Present(vec),
+            None => EmbeddingExtraction::Invalid,
+        };
+    }
+    if let Some(value) = arguments.get("embeddings") {
+        return match value.as_array() {
+            Some(array) => mean_pool_embeddings(array),
+            None => EmbeddingExtraction::Invalid,
+        };
+    }
+    EmbeddingExtraction::Missing
+}
+
+fn mean_pool_embeddings(array: &[Value]) -> EmbeddingExtraction {
+    if array.is_empty() {
+        return EmbeddingExtraction::Invalid;
+    }
+    let mut vectors = Vec::with_capacity(array.len());
+    for value in array {
+        let Some(vector) = array_as_f32_vec(value) else {
+            return EmbeddingExtraction::Invalid;
+        };
+        vectors.push(vector);
+    }
+    let dim = vectors[0].len();
+    if dim == 0 || vectors.iter().any(|v| v.len() != dim) {
+        return EmbeddingExtraction::Invalid;
+    }
+    let mut sum = vec![0.0_f64; dim];
+    for vector in &vectors {
+        for (i, value) in vector.iter().enumerate() {
+            sum[i] += f64::from(*value);
+        }
+    }
+    let n = vectors.len() as f64;
+    EmbeddingExtraction::Present(sum.into_iter().map(|s| (s / n) as f32).collect())
 }
 
 fn array_as_f32_vec(value: &Value) -> Option<Vec<f32>> {

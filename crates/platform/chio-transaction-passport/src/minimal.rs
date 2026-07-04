@@ -922,6 +922,42 @@ pub fn verify_standalone_minimal_passport_artifacts(
     trusted_root_signer_keys: &[PublicKey],
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
     verify_transaction_passport_signature(passport, trusted_root_signer_keys)?;
+    verify_standalone_minimal_passport_artifacts_bound(
+        passport,
+        passport_path,
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        artifacts,
+        trusted_root_signer_keys,
+    )
+}
+
+pub fn verify_standalone_minimal_passport_artifacts_unchecked_signature(
+    passport: &TransactionPassport,
+    passport_path: String,
+    evidence_graph_bytes: &[u8],
+    verifier_policy_bytes: &[u8],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    trusted_root_signer_keys: &[PublicKey],
+) -> Result<TransactionVerifierReport, TransactionPassportError> {
+    verify_standalone_minimal_passport_artifacts_bound(
+        passport,
+        passport_path,
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        artifacts,
+        trusted_root_signer_keys,
+    )
+}
+
+fn verify_standalone_minimal_passport_artifacts_bound(
+    passport: &TransactionPassport,
+    passport_path: String,
+    evidence_graph_bytes: &[u8],
+    verifier_policy_bytes: &[u8],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    trusted_root_signer_keys: &[PublicKey],
+) -> Result<TransactionVerifierReport, TransactionPassportError> {
     let report = verify_minimal_passport_artifacts(
         passport,
         passport_path,
