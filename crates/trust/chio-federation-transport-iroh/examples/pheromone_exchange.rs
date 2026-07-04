@@ -279,10 +279,22 @@ impl ReceiverHandler {
         let accepted = verdict.is_ok();
         println!("  [B] verify_pheromone_gossip_batch -> accepted={accepted}");
 
+        // A COMPLETE receive report, mirroring the runtime `PheromoneReceiveReport`.
+        // The dial side rejects a partial report before marking a batch delivered, so
+        // every required field is present (plus a diagnostic `verifierOutcome`, which
+        // the forward-compatible validation ignores).
+        let frame_count = batch.frames.len() as u64;
         let report = serde_json::json!({
             "schema": "chio.pheromone-receive-report.v1",
             "accepted": accepted,
+            "batchOutcome": if accepted { "accepted" } else { "rejected" },
+            "acceptedFrameCount": if accepted { frame_count } else { 0 },
+            "rejectedFrameCount": if accepted { 0 } else { frame_count },
+            "batchSha256": "0".repeat(64),
+            "recipientKernelId": batch.recipient_kernel_id,
             "authenticatedSenderKernelId": sender,
+            "receivedAtUnixMs": NOW,
+            "frames": [],
             "verifierOutcome": match &verdict {
                 Ok(()) => "accepted".to_string(),
                 Err(error) => error.to_string(),

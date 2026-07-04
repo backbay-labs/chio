@@ -598,15 +598,52 @@ pub fn mount_pheromone_lane(endpoint: Endpoint, handler: PheromoneBatchHandler) 
         .spawn()
 }
 
-/// Outcome of a single dial-side delivery: the peer's `accepted` verdict (parsed
-/// from its report; fail-closed to `false` if absent) plus the raw canonical
-/// report bytes for callers that hold the runtime report type.
+/// Outcome of a single dial-side delivery: the peer's `accepted` verdict (read from
+/// a fully validated receive report; a partial/malformed report is rejected before
+/// this is ever produced) plus the raw canonical report bytes for callers that hold
+/// the runtime report type.
 #[derive(Debug, Clone)]
 pub struct BatchDeliveryOutcome {
     /// Whether the receiving peer accepted the whole batch.
     pub accepted: bool,
     /// Canonical JSON bytes of the peer's `PheromoneReceiveReport`.
     pub report_json: Vec<u8>,
+}
+
+/// The batch-level verdict enum mirrored from the runtime `PheromoneReceiveReport`,
+/// so an unknown or absent outcome string is rejected fail-closed alongside a missing
+/// field when a receive report is validated.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum ReceiveReportOutcome {
+    Accepted,
+    Partial,
+    Rejected,
+}
+
+/// The set of fields a COMPLETE `PheromoneReceiveReport` (the runtime relay's receive
+/// verdict) carries on the wire, deserialized on the dial side to REJECT a partial or
+/// malformed report BEFORE a batch is marked durably delivered (see
+/// [`deliver_batch_over_iroh_with_limits`]). Every field is required, so serde rejects
+/// a report that omits any of them (for example a buggy or misrouted ALPN handler
+/// answering `{"accepted":true}`); it is deliberately NOT `deny_unknown_fields` so a
+/// forward-compatible report that ADDS fields still verifies. This crate mirrors the
+/// runtime report's shape rather than depending on the runtime type (the same reason
+/// the batch itself is exchanged as canonical bytes).
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+struct ReceiveReportShape {
+    schema: String,
+    accepted: bool,
+    batch_outcome: ReceiveReportOutcome,
+    accepted_frame_count: u64,
+    rejected_frame_count: u64,
+    batch_sha256: String,
+    recipient_kernel_id: String,
+    authenticated_sender_kernel_id: String,
+    received_at_unix_ms: u64,
+    frames: Vec<serde_json::Value>,
 }
 
 /// Bound one peer-dependent client await by the phase's timeout, mirroring the
@@ -705,16 +742,20 @@ pub async fn deliver_batch_over_iroh_with_limits(
     .await??;
     conn.close(LANE_OK_CODE.into(), b"ok");
 
-    // Parse only the `accepted` flag; the full report is returned as bytes so
-    // this crate does not need to name the runtime report type.
-    let value: serde_json::Value = serde_json::from_slice(&report_json)?;
-    let accepted = value
-        .get("accepted")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
+    // Fail-closed durable-delivery gate: a batch is only ever marked delivered (and
+    // its durable outbox row discarded by `drain_outbox_over_iroh`) once the recipient
+    // returns a COMPLETE, well-typed receive report - not merely any JSON carrying
+    // `accepted: true`. A buggy or misrouted ALPN handler answering `{"accepted":true}`
+    // deserializes here as a PARTIAL report (missing the required fields) and is
+    // REJECTED with a typed [`IrohLaneError::Codec`], so the drain retries or
+    // dead-letters the batch rather than dropping it. This mirrors the HTTP relay tick,
+    // which deserializes the full `PheromoneReceiveReport` type before trusting
+    // `accepted`. `report_json` is still surfaced verbatim for callers that hold the
+    // runtime report type.
+    let report: ReceiveReportShape = serde_json::from_slice(&report_json)?;
 
     Ok(BatchDeliveryOutcome {
-        accepted,
+        accepted: report.accepted,
         report_json,
     })
 }
@@ -1039,6 +1080,58 @@ mod tests {
         );
     }
 
+    /// A complete receive report round-trips through the dial-side validation shape
+    /// and yields its `accepted` verdict.
+    #[test]
+    fn full_receive_report_validates_and_carries_accepted() {
+        let report = serde_json::json!({
+            "schema": "chio.pheromone.receive-report.v1",
+            "accepted": true,
+            "batchOutcome": "accepted",
+            "acceptedFrameCount": 2,
+            "rejectedFrameCount": 0,
+            "batchSha256": "a".repeat(64),
+            "recipientKernelId": "did:chio:relay",
+            "authenticatedSenderKernelId": "did:chio:origin",
+            "receivedAtUnixMs": NOW,
+            "frames": [],
+        });
+        let bytes = serde_json::to_vec(&report).unwrap();
+        let shape: ReceiveReportShape =
+            serde_json::from_slice(&bytes).expect("a complete report must validate");
+        assert!(shape.accepted, "the validated report carries accepted=true");
+    }
+
+    /// Fail-closed: a response that merely asserts `{"accepted":true}` (a buggy or
+    /// misrouted ALPN handler) is NOT a full receive report and MUST be rejected so a
+    /// batch is never marked durably delivered on it.
+    #[test]
+    fn partial_accepted_response_is_rejected_before_delivery() {
+        let rejected = serde_json::from_slice::<ReceiveReportShape>(br#"{"accepted":true}"#);
+        assert!(
+            rejected.is_err(),
+            "a partial report carrying only accepted:true must fail validation"
+        );
+        // An otherwise-complete report with an unknown batchOutcome is also rejected.
+        let bad_outcome = serde_json::json!({
+            "schema": "chio.pheromone.receive-report.v1",
+            "accepted": true,
+            "batchOutcome": "totally-unknown",
+            "acceptedFrameCount": 0,
+            "rejectedFrameCount": 0,
+            "batchSha256": "a".repeat(64),
+            "recipientKernelId": "did:chio:relay",
+            "authenticatedSenderKernelId": "did:chio:origin",
+            "receivedAtUnixMs": NOW,
+            "frames": [],
+        });
+        let bytes = serde_json::to_vec(&bad_outcome).unwrap();
+        assert!(
+            serde_json::from_slice::<ReceiveReportShape>(&bytes).is_err(),
+            "an unknown batchOutcome must fail validation fail-closed"
+        );
+    }
+
     #[test]
     fn unbound_endpoint_is_rejected_fail_closed() {
         let gate = verified_gate("did:chio:llamaworks", 1, 10, false);
@@ -1321,12 +1414,23 @@ mod tests {
                 .await
                 .map_err(AcceptError::from_err)?;
             // Prove the received bytes decode to the real wire type.
-            let _batch: PheromoneGossipBatch =
+            let batch: PheromoneGossipBatch =
                 serde_json::from_slice(&raw).map_err(AcceptError::from_err)?;
+            // Emit a COMPLETE receive report, faithfully mirroring the runtime
+            // `PheromoneReceiveReport` the production handler serializes. A partial
+            // report (for example only `accepted`) is rejected on the dial side before
+            // a batch is marked delivered, so the double must carry every field.
             let report = serde_json::json!({
                 "schema": "chio.pheromone-receive-report.v1",
                 "accepted": true,
+                "batchOutcome": "accepted",
+                "acceptedFrameCount": batch.frames.len() as u64,
+                "rejectedFrameCount": 0,
+                "batchSha256": "0".repeat(64),
+                "recipientKernelId": batch.recipient_kernel_id,
                 "authenticatedSenderKernelId": sender,
+                "receivedAtUnixMs": 0u64,
+                "frames": [],
             });
             let bytes = serde_json::to_vec(&report).map_err(AcceptError::from_err)?;
             write_len_delimited(&mut send, &bytes)
@@ -1451,10 +1555,21 @@ mod tests {
             };
             let accepted = verify_pheromone_gossip_batch(&batch, &self.policy, &context).is_ok();
 
+            // A COMPLETE receive report, faithfully mirroring the runtime type; a
+            // partial report is rejected on the dial side before a batch is marked
+            // delivered (see [`ReceiveReportShape`]).
+            let frame_count = batch.frames.len() as u64;
             let report = serde_json::json!({
                 "schema": "chio.pheromone-receive-report.v1",
                 "accepted": accepted,
+                "batchOutcome": if accepted { "accepted" } else { "rejected" },
+                "acceptedFrameCount": if accepted { frame_count } else { 0 },
+                "rejectedFrameCount": if accepted { 0 } else { frame_count },
+                "batchSha256": "0".repeat(64),
+                "recipientKernelId": batch.recipient_kernel_id,
                 "authenticatedSenderKernelId": sender,
+                "receivedAtUnixMs": self.now_unix_ms,
+                "frames": [],
             });
             let bytes = serde_json::to_vec(&report).map_err(AcceptError::from_err)?;
             write_len_delimited(&mut send, &bytes)
