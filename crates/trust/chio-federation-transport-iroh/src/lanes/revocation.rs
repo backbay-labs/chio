@@ -63,8 +63,10 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::catchup::build_catchup_manifest;
+use crate::catchup::publish_and_build_catchup_manifest;
 use crate::catchup::CatchupError;
 use crate::catchup::RevocationCatchupManifest;
+use crate::catchup::RevocationRootPublisher;
 use crate::identity::VerifiedDirectory;
 use crate::lanes::limits::AcceptLimitConfig;
 use crate::lanes::limits::AcceptLimitError;
@@ -417,6 +419,16 @@ pub struct RevocationHandler {
     sink: Arc<dyn RevocationRootSink>,
     /// This responder's kernel id, echoed into catch-up responses.
     responder_kernel_id: String,
+    /// Optional AUTHORITY-side blob publisher backed by the SAME [`FsStore`](iroh_blobs::store::fs::FsStore)
+    /// the authority serves over
+    /// [`BlobsProtocol`](iroh_blobs::BlobsProtocol). When present, a
+    /// [`CatchupManifest`](RevocationLaneRequest::CatchupManifest) request PUBLISHES
+    /// every advertised root into that store before advertising its hash, so every
+    /// advertised hash is fetchable (blob catch-up, lane e). When absent, the manifest
+    /// path FAILS CLOSED and falls back to inline catch-up rather than advertise a hash
+    /// the authority may not have stored. Wire it via
+    /// [`with_blob_publisher`](Self::with_blob_publisher).
+    blob_publisher: Option<RevocationRootPublisher>,
     /// Shared slowloris / resource-exhaustion bounds (per-phase timeouts + an
     /// in-flight concurrency cap). Defaults are generous; see [`AcceptLimiter`].
     limiter: AcceptLimiter,
@@ -428,6 +440,7 @@ impl std::fmt::Debug for RevocationHandler {
             .field("responder_kernel_id", &self.responder_kernel_id)
             .field("directory_version", &self.directory.version())
             .field("pinned_signers", &self.directory.signer_directory().len())
+            .field("blob_publisher", &self.blob_publisher.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -459,6 +472,7 @@ impl RevocationHandler {
             history,
             sink,
             responder_kernel_id: responder_kernel_id.into(),
+            blob_publisher: None,
             limiter: AcceptLimiter::default(),
         }
     }
@@ -469,6 +483,26 @@ impl RevocationHandler {
     #[must_use]
     pub fn with_accept_limits(mut self, config: AcceptLimitConfig) -> Self {
         self.limiter = AcceptLimiter::new(config);
+        self
+    }
+
+    /// Wire an AUTHORITY-side blob publisher so the blob-manifest catch-up path
+    /// (lane e) actually serves fetchable hashes. The `publisher` MUST wrap the SAME
+    /// [`FsStore`](iroh_blobs::store::fs::FsStore) the authority mounts as its
+    /// [`BlobsProtocol`](iroh_blobs::BlobsProtocol) (build it with
+    /// [`BlobCatchupClient::publisher`](crate::catchup::BlobCatchupClient::publisher)).
+    ///
+    /// With a publisher, a
+    /// [`CatchupManifest`](RevocationLaneRequest::CatchupManifest) request PUBLISHES
+    /// every advertised root into that store before putting its hash in the manifest,
+    /// so a follower can fetch every advertised hash. WITHOUT a publisher the handler
+    /// cannot confirm the advertised blobs are stored, so it fails closed: it never
+    /// advertises a blob manifest and instead falls back to inline catch-up on the same
+    /// request. This is the seam that keeps the manifest path from advertising a hash
+    /// the authority cannot serve.
+    #[must_use]
+    pub fn with_blob_publisher(mut self, publisher: RevocationRootPublisher) -> Self {
+        self.blob_publisher = Some(publisher);
         self
     }
 
@@ -550,11 +584,17 @@ impl RevocationHandler {
         Ok(response)
     }
 
-    /// Serve a catch-up request as a blob MANIFEST (the `(epoch -> content-address)`
-    /// list) instead of inline roots, so a large history can ride iroh-blobs (lane
-    /// e). Walks the SAME contiguous suffix as [`respond_catchup`](Self::respond_catchup),
-    /// computing each entry's address deterministically; the follower still fetches
-    /// and pinned-signer-verifies every blob.
+    /// Build a blob MANIFEST (the `(epoch -> content-address)` list) for a catch-up
+    /// request, computing each entry's address deterministically. Walks the SAME
+    /// contiguous suffix as [`respond_catchup`](Self::respond_catchup).
+    ///
+    /// ADDRESS-ONLY: this does NOT publish the roots. It must not be advertised over
+    /// the wire unless the caller has ALREADY published every advertised root into the
+    /// store the authority's `BlobsProtocol` serves; otherwise a follower fetches a
+    /// hash the authority never stored and catch-up fails. The lane's served manifest
+    /// path uses [`respond_catchup_manifest_published`](Self::respond_catchup_manifest_published)
+    /// (which publishes as it advertises) and this remains a lower-level builder for
+    /// callers that manage publishing themselves.
     pub fn respond_catchup_manifest(
         &self,
         request: &RevocationCatchupRequest,
@@ -567,6 +607,30 @@ impl RevocationHandler {
             &history,
             responded_at_unix_ms,
         )
+        .map_err(RevocationLaneError::from_catchup)
+    }
+
+    /// Serve a catch-up request as a blob MANIFEST, PUBLISHING every advertised root
+    /// into `publisher`'s store (the same store the authority's `BlobsProtocol` serves)
+    /// before advertising its hash. This is the safe served-manifest path: every
+    /// advertised hash is confirmed-stored, so a follower can never be pointed at a
+    /// hash the authority cannot serve (closes the "advertise an unpublished root" gap).
+    /// The follower still fetches and pinned-signer-verifies every blob.
+    async fn respond_catchup_manifest_published(
+        &self,
+        request: &RevocationCatchupRequest,
+        responded_at_unix_ms: u64,
+        publisher: &RevocationRootPublisher,
+    ) -> Result<RevocationCatchupManifest, RevocationLaneError> {
+        let history = DynHistory(self.history.clone());
+        publish_and_build_catchup_manifest(
+            request,
+            &self.responder_kernel_id,
+            &history,
+            responded_at_unix_ms,
+            publisher,
+        )
+        .await
         .map_err(RevocationLaneError::from_catchup)
     }
 
@@ -638,21 +702,75 @@ impl RevocationHandler {
                 }
             }
             RevocationLaneRequest::CatchupManifest(request) => {
-                // Same transport-bound requester authentication as `Catchup`; a
-                // spoofed requester is rejected and NO manifest is served.
+                // A blob manifest is only safe to advertise when the authority has a
+                // publisher wired, so it can publish each advertised root and every
+                // hash is fetchable. That path is async and served by
+                // `serve` -> `handle_catchup_manifest`. Reaching this SYNC arm means no
+                // publisher is available (or a direct caller bypassed `serve`), so fail
+                // closed: authenticate the requester, then fall back to inline catch-up
+                // rather than advertise a hash the authority may not have stored.
                 if let Err(error) =
                     self.authenticate_catchup_requester(endpoint, &request.requester_kernel_id)
                 {
                     note_revocation_failure(&error);
                     return error.as_rejected();
                 }
-                match self.respond_catchup_manifest(&request, now_unix_ms) {
-                    Ok(manifest) => RevocationLaneResponse::CatchupManifest(manifest),
+                match self.respond_catchup(&request, now_unix_ms) {
+                    Ok(response) => RevocationLaneResponse::Catchup(response),
                     Err(error) => {
                         note_revocation_failure(&error);
                         error.as_rejected()
                     }
                 }
+            }
+        }
+    }
+
+    /// Serve a [`CatchupManifest`](RevocationLaneRequest::CatchupManifest) request,
+    /// binding the requester to the transport identity exactly as the inline catch-up
+    /// path, then:
+    ///
+    /// - with a blob publisher wired ([`with_blob_publisher`](Self::with_blob_publisher)),
+    ///   PUBLISH every advertised root into the store the authority's `BlobsProtocol`
+    ///   serves and return a [`CatchupManifest`](RevocationLaneResponse::CatchupManifest)
+    ///   whose every hash is therefore fetchable (option a);
+    /// - WITHOUT a publisher, fail closed and fall back to an inline
+    ///   [`Catchup`](RevocationLaneResponse::Catchup) response on the same request, so
+    ///   the follower still catches up over lane-b and the authority NEVER advertises a
+    ///   hash it cannot serve (option b).
+    ///
+    /// A spoofed requester is [`Rejected`](RevocationLaneResponse::Rejected) and nothing
+    /// is published or served, in either mode.
+    async fn handle_catchup_manifest(
+        &self,
+        endpoint: EndpointId,
+        request: &RevocationCatchupRequest,
+        now_unix_ms: u64,
+    ) -> RevocationLaneResponse {
+        if let Err(error) =
+            self.authenticate_catchup_requester(endpoint, &request.requester_kernel_id)
+        {
+            note_revocation_failure(&error);
+            return error.as_rejected();
+        }
+        // With a publisher: publish-then-advertise, so every advertised hash is
+        // fetchable (option a). Without one: fail closed to an inline catch-up
+        // response, never advertising a hash the authority may not have stored
+        // (option b). Both branches yield a lane response or a fail-closed error.
+        let result = match &self.blob_publisher {
+            Some(publisher) => self
+                .respond_catchup_manifest_published(request, now_unix_ms, publisher)
+                .await
+                .map(RevocationLaneResponse::CatchupManifest),
+            None => self
+                .respond_catchup(request, now_unix_ms)
+                .map(RevocationLaneResponse::Catchup),
+        };
+        match result {
+            Ok(response) => response,
+            Err(error) => {
+                note_revocation_failure(&error);
+                error.as_rejected()
             }
         }
     }
@@ -700,7 +818,17 @@ impl RevocationHandler {
             .bounded(AcceptPhase::ReadFrame, read_frame(&mut recv))
             .await??;
         // Verification runs on the fully received frame; timeouts never weaken it.
-        let response = self.handle_request(endpoint, request, now_unix_ms());
+        // The blob-manifest path is served asynchronously (it may PUBLISH each
+        // advertised root so every advertised hash is fetchable) and is the only lane
+        // response produced outside the sync `handle_request`; everything else is
+        // synchronous, pure verification.
+        let now = now_unix_ms();
+        let response = match request {
+            RevocationLaneRequest::CatchupManifest(catchup) => {
+                self.handle_catchup_manifest(endpoint, &catchup, now).await
+            }
+            other => self.handle_request(endpoint, other, now),
+        };
         // Bound the response write: a peer that stops reading is dropped here.
         self.limiter
             .bounded(
@@ -837,6 +965,59 @@ pub async fn request_catchup_over_iroh_with_limits(
         endpoint,
         authority,
         &RevocationLaneRequest::Catchup(request.clone()),
+        limits,
+    )
+    .await
+}
+
+/// Client half: dial an authority and request a BLOB-MANIFEST catch-up (lane e),
+/// sending [`RevocationLaneRequest::CatchupManifest`] instead of the inline
+/// [`Catchup`](RevocationLaneRequest::Catchup) so a large history rides iroh-blobs
+/// rather than overrunning the bounded lane-b response. This is the PUBLIC entry point
+/// that was missing: [`request_catchup_over_iroh`] only ever asks for inline frames, so
+/// without this an external caller could never drive the advertised blob path.
+///
+/// The returned [`RevocationLaneResponse`] is one of:
+/// - [`CatchupManifest`](RevocationLaneResponse::CatchupManifest): feed it to
+///   [`BlobCatchupClient::fetch_from_manifest`](crate::catchup::BlobCatchupClient::fetch_from_manifest)
+///   to pull + verify the history over blobs (every advertised hash is fetchable
+///   because the authority publishes each root before advertising it);
+/// - [`Catchup`](RevocationLaneResponse::Catchup): a fail-closed INLINE fallback the
+///   authority serves when it has no blob publisher wired (it will not advertise a hash
+///   it cannot serve) - merge the inline frames directly;
+/// - [`Rejected`](RevocationLaneResponse::Rejected): a typed deny (e.g. a spoofed
+///   requester); nothing was served.
+///
+/// The caller therefore MUST handle both the manifest and the inline-fallback response.
+/// Mirrors [`request_catchup_over_iroh`]'s auth-gated connect, close-after-read, and
+/// per-phase timeout handling. `authority` accepts a bare [`EndpointId`] or a full
+/// [`EndpointAddr`] (see [`push_batch_over_iroh`]). Uses the generous default client
+/// bounds; see [`request_manifest_catchup_over_iroh_with_limits`] to tune them.
+pub async fn request_manifest_catchup_over_iroh(
+    endpoint: &Endpoint,
+    authority: impl Into<EndpointAddr>,
+    request: &RevocationCatchupRequest,
+) -> Result<RevocationLaneResponse, RevocationLaneError> {
+    request_manifest_catchup_over_iroh_with_limits(
+        endpoint,
+        authority,
+        request,
+        &AcceptLimitConfig::default(),
+    )
+    .await
+}
+
+/// Same as [`request_manifest_catchup_over_iroh`], with explicit client-side bounds.
+pub async fn request_manifest_catchup_over_iroh_with_limits(
+    endpoint: &Endpoint,
+    authority: impl Into<EndpointAddr>,
+    request: &RevocationCatchupRequest,
+    limits: &AcceptLimitConfig,
+) -> Result<RevocationLaneResponse, RevocationLaneError> {
+    request_over_iroh(
+        endpoint,
+        authority,
+        &RevocationLaneRequest::CatchupManifest(request.clone()),
         limits,
     )
     .await
@@ -1176,6 +1357,43 @@ mod tests {
             "did:chio:responder",
         );
         (handler, sink)
+    }
+
+    /// A durable temp [`FsStore`](iroh_blobs::store::fs::FsStore) at a per-process,
+    /// per-timestamp path, plus its dir for cleanup. Used to back a
+    /// [`RevocationRootPublisher`] so the served-manifest tests can assert every
+    /// advertised hash is actually stored (fetchable).
+    async fn temp_fs_store(tag: &str) -> (iroh_blobs::store::fs::FsStore, std::path::PathBuf) {
+        let mut dir = std::env::temp_dir();
+        dir.push(format!(
+            "chio-{tag}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let store = iroh_blobs::store::fs::FsStore::load(&dir)
+            .await
+            .expect("load fs store");
+        (store, dir)
+    }
+
+    /// A tiny in-memory [`RevocationCatchupHistory`] for the manifest tests.
+    #[derive(Debug)]
+    struct MapHistory(HashMap<u64, SignedEpochRoot>);
+    impl RevocationCatchupHistory for MapHistory {
+        fn signed_root_at(&self, epoch: u64) -> Option<SignedEpochRoot> {
+            self.0.get(&epoch).cloned()
+        }
+    }
+
+    fn history_5_to_7(oracle: &Ed25519RootSigner) -> MapHistory {
+        let mut roots = HashMap::new();
+        for epoch in 5..=7 {
+            roots.insert(epoch, signed_root(oracle, epoch));
+        }
+        MapHistory(roots)
     }
 
     #[test]
@@ -1606,57 +1824,138 @@ mod tests {
         }
     }
 
-    #[test]
-    fn catchup_manifest_request_serves_blob_addresses() {
+    #[tokio::test]
+    async fn catchup_manifest_request_serves_published_blob_addresses() {
         // The SAME history that catchup_request_serves_from_history inlines as full
-        // frames is served as a blob MANIFEST when the follower asks via
-        // CatchupManifest: the (epoch -> address) list a follower feeds to
-        // BlobCatchupClient::fetch_range, each address exactly the one the follower
-        // re-derives + BLAKE3-verifies. This is what makes lane e discoverable from
-        // the lane-b control exchange for large histories.
-        #[derive(Debug)]
-        struct MapHistory(HashMap<u64, SignedEpochRoot>);
-        impl RevocationCatchupHistory for MapHistory {
-            fn signed_root_at(&self, epoch: u64) -> Option<SignedEpochRoot> {
-                self.0.get(&epoch).cloned()
-            }
-        }
+        // frames is served as a blob MANIFEST when a publisher is wired: the
+        // (epoch -> address) list a follower feeds to BlobCatchupClient::fetch_range,
+        // each address exactly the one the follower re-derives + BLAKE3-verifies. AND
+        // the handler PUBLISHES every advertised root into the store its BlobsProtocol
+        // serves, so every advertised hash is actually fetchable (finding 2): no hash
+        // is advertised that the authority cannot serve.
         let transport = endpoint_from_seed(10);
         let oracle = signer("oracle-a", SEED_A);
         let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
-        let mut roots = HashMap::new();
-        for epoch in 5..=7 {
-            roots.insert(epoch, signed_root(&oracle, epoch));
-        }
+        let history = history_5_to_7(&oracle);
         let expected: Vec<(u64, iroh_blobs::Hash)> = (5..=7)
             .map(|epoch| {
                 (
                     epoch,
-                    crate::catchup::signed_root_blob_address(&roots[&epoch]).unwrap(),
+                    crate::catchup::signed_root_blob_address(&history.0[&epoch]).unwrap(),
                 )
             })
             .collect();
+
+        let (store, dir) = temp_fs_store("revocation-manifest-serve").await;
         let handler = RevocationHandler::new(
             directory,
-            Arc::new(MapHistory(roots)),
+            Arc::new(history),
             Arc::new(RecordingSink::default()),
             "did:chio:responder",
-        );
+        )
+        .with_blob_publisher(RevocationRootPublisher::new(store.clone()));
 
+        // The requester is the kernel admitted at this transport endpoint.
         let request = RevocationCatchupRequest::new("did:chio:peer", 5, 7, NOW).unwrap();
-        let response = handler.handle_request(
-            transport,
-            RevocationLaneRequest::CatchupManifest(request),
-            NOW,
-        );
+        let response = handler
+            .handle_catchup_manifest(transport, &request, NOW)
+            .await;
         match response {
             RevocationLaneResponse::CatchupManifest(manifest) => {
                 manifest.validate().expect("manifest is well-formed");
                 assert_eq!(manifest.responder_kernel_id, "did:chio:responder");
                 assert_eq!(manifest.fetch_manifest(), expected);
+                // Every advertised hash is Complete in the served store, not merely a
+                // deterministic address the store never held.
+                for entry in &manifest.entries {
+                    assert!(
+                        matches!(
+                            store.blobs().status(entry.blob_hash).await.unwrap(),
+                            iroh_blobs::api::blobs::BlobStatus::Complete { .. }
+                        ),
+                        "advertised epoch {} must be published to the served store",
+                        entry.epoch
+                    );
+                }
             }
             other => panic!("expected CatchupManifest, got {other:?}"),
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn catchup_manifest_without_publisher_falls_back_to_inline() {
+        // Fail-closed (finding 2, option b): with NO blob publisher wired the handler
+        // cannot confirm advertised blobs are stored, so a manifest request is served
+        // as an INLINE Catchup response (the follower still catches up over lane-b) and
+        // NEVER as a CatchupManifest advertising hashes the authority may not hold.
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        // No .with_blob_publisher(...): the manifest path must fall back to inline.
+        let handler = RevocationHandler::new(
+            directory,
+            Arc::new(history_5_to_7(&oracle)),
+            Arc::new(RecordingSink::default()),
+            "did:chio:responder",
+        );
+
+        let request = RevocationCatchupRequest::new("did:chio:peer", 5, 7, NOW).unwrap();
+        let response = handler
+            .handle_catchup_manifest(transport, &request, NOW)
+            .await;
+        match response {
+            RevocationLaneResponse::Catchup(catchup) => {
+                let epochs: Vec<u64> = catchup.frames.iter().map(|frame| frame.epoch).collect();
+                assert_eq!(epochs, vec![5, 6, 7]);
+                assert!(catchup.validate_response().is_ok());
+            }
+            other => panic!("expected inline Catchup fallback, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn catchup_manifest_async_requester_mismatch_rejected_and_nothing_published() {
+        // The async served-manifest path enforces the SAME transport-bound requester
+        // auth as the inline path, BEFORE publishing: a spoofed requester is Rejected
+        // and NOTHING is written to the store (auth precedes any publish).
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let history = history_5_to_7(&oracle);
+        let addresses: Vec<iroh_blobs::Hash> = (5..=7)
+            .map(|epoch| crate::catchup::signed_root_blob_address(&history.0[&epoch]).unwrap())
+            .collect();
+
+        let (store, dir) = temp_fs_store("revocation-manifest-spoof").await;
+        let handler = RevocationHandler::new(
+            directory,
+            Arc::new(history),
+            Arc::new(RecordingSink::default()),
+            "did:chio:responder",
+        )
+        .with_blob_publisher(RevocationRootPublisher::new(store.clone()));
+
+        // The endpoint is admitted as did:chio:peer, but the request claims another.
+        let spoofed = RevocationCatchupRequest::new("did:chio:impostor", 5, 7, NOW).unwrap();
+        let response = handler
+            .handle_catchup_manifest(transport, &spoofed, NOW)
+            .await;
+        assert!(
+            matches!(response, RevocationLaneResponse::Rejected { ref code, .. } if code == "requester-mismatch"),
+            "a spoofed manifest requester must be rejected, got {response:?}"
+        );
+        // Fail-closed: NOTHING was published for the rejected request.
+        for hash in addresses {
+            assert!(
+                !matches!(
+                    store.blobs().status(hash).await.unwrap(),
+                    iroh_blobs::api::blobs::BlobStatus::Complete { .. }
+                ),
+                "a rejected request must publish nothing"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -2102,6 +2401,110 @@ mod tests {
             .await
             .expect("the shipped client must close the connection after reading the reply");
 
+        router.shutdown().await.ok();
+    }
+
+    // -- Public manifest client helper end to end over real loopback QUIC --
+    //
+    // The shipped `request_manifest_catchup_over_iroh` is the PUBLIC entry point for
+    // blob catch-up (finding 1). These bind two endpoints over loopback, mount the
+    // REAL `RevocationHandler`, and drive the genuine `serve` -> `handle_catchup_manifest`
+    // path. With a publisher wired the client receives a manifest whose every hash is
+    // fetchable from the authority store (finding 2); without one it receives the
+    // fail-closed inline fallback (never an unfetchable manifest).
+
+    #[tokio::test]
+    async fn request_manifest_catchup_over_iroh_returns_published_manifest() {
+        let dialer_seed = 24u8;
+        let oracle = signer("oracle-a", SEED_A);
+        // Admit did:chio:peer at the dialer endpoint; the requester claims that kernel.
+        let directory = directory_with_signer("did:chio:peer", dialer_seed, "oracle-a", SEED_A);
+        let (store, dir) = temp_fs_store("revocation-manifest-quic").await;
+        let handler = RevocationHandler::new(
+            directory,
+            Arc::new(history_5_to_7(&oracle)),
+            Arc::new(RecordingSink::default()),
+            "did:chio:responder",
+        )
+        .with_blob_publisher(RevocationRootPublisher::new(store.clone()));
+
+        let acceptor = bind_endpoint(25).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_REVOCATION_ROOT, handler)
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(dialer_seed).await;
+        let request = RevocationCatchupRequest::new("did:chio:peer", 5, 7, NOW).unwrap();
+        let response = tokio::time::timeout(
+            Duration::from_secs(15),
+            // The shipped PUBLIC manifest client helper (finding 1).
+            request_manifest_catchup_over_iroh(&dialer, acceptor_addr, &request),
+        )
+        .await
+        .expect("manifest request completes before timeout")
+        .expect("request_manifest_catchup_over_iroh returns a response");
+        match response {
+            RevocationLaneResponse::CatchupManifest(manifest) => {
+                manifest.validate().expect("manifest is well-formed");
+                assert_eq!(
+                    manifest.entries.iter().map(|e| e.epoch).collect::<Vec<_>>(),
+                    vec![5, 6, 7]
+                );
+                // Every advertised hash is fetchable from the authority's served store.
+                for entry in &manifest.entries {
+                    assert!(
+                        matches!(
+                            store.blobs().status(entry.blob_hash).await.unwrap(),
+                            iroh_blobs::api::blobs::BlobStatus::Complete { .. }
+                        ),
+                        "advertised epoch {} must be fetchable from the authority store",
+                        entry.epoch
+                    );
+                }
+            }
+            other => panic!("expected CatchupManifest, got {other:?}"),
+        }
+        router.shutdown().await.ok();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn request_manifest_catchup_over_iroh_falls_back_to_inline_without_publisher() {
+        let dialer_seed = 26u8;
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = directory_with_signer("did:chio:peer", dialer_seed, "oracle-a", SEED_A);
+        // No publisher: the authority must fall back to inline rather than advertise
+        // hashes it cannot serve.
+        let handler = RevocationHandler::new(
+            directory,
+            Arc::new(history_5_to_7(&oracle)),
+            Arc::new(RecordingSink::default()),
+            "did:chio:responder",
+        );
+
+        let acceptor = bind_endpoint(27).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_REVOCATION_ROOT, handler)
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(dialer_seed).await;
+        let request = RevocationCatchupRequest::new("did:chio:peer", 5, 7, NOW).unwrap();
+        let response = tokio::time::timeout(
+            Duration::from_secs(15),
+            request_manifest_catchup_over_iroh(&dialer, acceptor_addr, &request),
+        )
+        .await
+        .expect("completes before timeout")
+        .expect("returns a response");
+        match response {
+            RevocationLaneResponse::Catchup(catchup) => {
+                let epochs: Vec<u64> = catchup.frames.iter().map(|frame| frame.epoch).collect();
+                assert_eq!(epochs, vec![5, 6, 7]);
+            }
+            other => panic!("expected inline Catchup fallback, got {other:?}"),
+        }
         router.shutdown().await.ok();
     }
 }

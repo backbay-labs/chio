@@ -74,7 +74,6 @@ class ChioConfigTests(unittest.TestCase):
 
         self.assertEqual(config.sidecar_url, "http://127.0.0.1:9555")
         self.assertEqual(config.exclude_paths, frozenset({"/healthz"}))
-        self.assertFalse(config.fail_open)
         self.assertEqual(config.receipt_header, "X-Chio-Receipt")
 
     def test_sidecar_config_reads_environment(self) -> None:

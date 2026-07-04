@@ -146,6 +146,15 @@ pub(crate) struct IrohServeInputs {
     pub(crate) directory: Arc<VerifiedDirectory>,
     /// The rotatable ed25519 transport key this endpoint authenticates as.
     pub(crate) transport_key: SecretKey,
+    /// The transport directory's own `localKernelId` (the issuer-signed, body-hash-pinned
+    /// identity this node authenticates AS over the transport). Captured at load time
+    /// from the verified bundle so [`build_iroh_router`] can fail closed when it does NOT
+    /// match the relay's configured local identity (`peer_directory.local_kernel_id()`):
+    /// otherwise the endpoint would authenticate as a DIFFERENT kernel than the relay's
+    /// receiver verifies inbound batches as, and valid deliveries would be
+    /// rejected/dead-lettered. `VerifiedDirectory` does not surface this id, so it is
+    /// carried here rather than re-derived.
+    pub(crate) transport_local_kernel_id: String,
     /// Endpoint + router construction knobs.
     pub(crate) config: IrohMountConfig,
 }
@@ -427,6 +436,11 @@ pub(crate) fn load_iroh_serve_inputs(
     Ok(Some(IrohServeInputs {
         directory: Arc::new(directory),
         transport_key,
+        // The issuer-signed, body-hash-pinned local identity this node authenticates
+        // AS over the transport. Compared against the relay's configured local identity
+        // at build time (fail-closed) so the endpoint can never authenticate as a
+        // different kernel than the relay's receiver verifies inbound batches as.
+        transport_local_kernel_id: bundle.directory.local_kernel_id.clone(),
         config: IrohMountConfig {
             relay_mode,
             bind_addr,
@@ -463,6 +477,7 @@ pub(crate) async fn build_iroh_router(
     let IrohServeInputs {
         directory,
         transport_key,
+        transport_local_kernel_id,
         config,
     } = inputs;
 
@@ -473,6 +488,25 @@ pub(crate) async fn build_iroh_router(
             "Chio iroh transport: only the pheromone lane is wireable on the relay serve hook"
                 .to_string(),
         ));
+    }
+
+    // Fail-closed relay/transport identity binding. The transport directory's own
+    // `localKernelId` (the identity this endpoint authenticates AS, verified at load time
+    // to match the endorsed transport key) MUST equal the relay's configured local
+    // identity, which is `peer_directory.local_kernel_id()` (the SAME value the HTTP relay
+    // sets as `PheromoneRelayConfig.local_kernel_id` and its receiver verifies every
+    // inbound batch against). If they differ, the iroh endpoint authenticates as a
+    // DIFFERENT kernel than the receiver expects, so valid deliveries are
+    // rejected/dead-lettered while startup silently "succeeds". Reject BEFORE binding the
+    // endpoint so the mount never comes up authenticating as the wrong kernel.
+    let relay_local_kernel_id = peer_directory.local_kernel_id();
+    if transport_local_kernel_id != relay_local_kernel_id {
+        return Err(CliError::cli_other_error(format!(
+            "Chio iroh transport: the transport directory's local kernel id '{transport_local_kernel_id}' \
+             does not match the relay's configured local kernel id '{relay_local_kernel_id}'; the iroh \
+             endpoint would authenticate as a different kernel than the relay's receiver verifies inbound \
+             batches as, so valid deliveries would be rejected/dead-lettered"
+        )));
     }
 
     let gate = DirectoryGate::new(directory);
@@ -488,6 +522,14 @@ pub(crate) async fn build_iroh_router(
         .secret_key(transport_key)
         .relay_mode(config.relay_mode)
         .transport_config(transport_config)
+        // iroh's Endpoint builder is pre-seeded with BOTH default IP transports
+        // (0.0.0.0 AND [::]); `bind_addr` only replaces the default for the address
+        // FAMILY it names, so a single-family bind (e.g. 127.0.0.1:4433) would still
+        // open an IPv6 wildcard ([::]) socket and expose the lane on an unintended
+        // interface. Clear all default IP transports FIRST, then bind exactly the one
+        // operator-intended address (`clear_ip_transports` removes every IP transport,
+        // so it MUST precede `bind_addr` or it would drop the address just added).
+        .clear_ip_transports()
         .bind_addr(config.bind_addr)
         .map_err(|error| {
             CliError::cli_other_error(format!("Chio iroh transport bind address: {error}"))
@@ -558,12 +600,28 @@ pub(crate) async fn build_iroh_router(
 /// fail-closed (it never drops the batch).
 pub(crate) async fn build_iroh_outbound_endpoint(
     inputs: IrohServeInputs,
+    relay_local_kernel_id: &str,
 ) -> Result<(Endpoint, Arc<VerifiedDirectory>), CliError> {
     let IrohServeInputs {
         directory,
         transport_key,
+        transport_local_kernel_id,
         config,
     } = inputs;
+
+    // Fail-closed relay/transport identity binding, mirroring the serve path in
+    // [`build_iroh_router`]: the transport directory's `localKernelId` (verified at load
+    // time to match the endorsed transport key) MUST equal the relay's configured local
+    // identity. If they differ, this outbound tick endpoint dials as a different kernel
+    // than the relay's peers expect, so deliveries are rejected/dead-lettered. Reject
+    // before binding the endpoint.
+    if transport_local_kernel_id != relay_local_kernel_id {
+        return Err(CliError::cli_other_error(format!(
+            "Chio iroh transport: the transport directory's local kernel id '{transport_local_kernel_id}' \
+             does not match the relay's configured local kernel id '{relay_local_kernel_id}'; the iroh tick \
+             endpoint would dial as a different kernel than the relay's peers expect"
+        )));
+    }
 
     // Only the pheromone lane is drainable here; parse_iroh_lanes already rejected
     // anything else, so this is a defense-in-depth re-check.
@@ -604,6 +662,11 @@ pub(crate) async fn build_iroh_outbound_endpoint(
         .secret_key(transport_key)
         .relay_mode(config.relay_mode)
         .transport_config(transport_config)
+        // Clear both default IP transports (0.0.0.0 AND [::]) before binding, so the
+        // ephemeral outbound socket lives on ONLY the operator-intended address family/
+        // interface and never opens an unintended IPv6 wildcard socket. Must precede
+        // `bind_addr` (see the serve-path bind for the full rationale).
+        .clear_ip_transports()
         .bind_addr(outbound_bind_addr)
         .map_err(|error| {
             CliError::cli_other_error(format!("Chio iroh transport bind address: {error}"))
@@ -1295,6 +1358,9 @@ mod tests {
         Endpoint::builder(presets::Minimal)
             .secret_key(SecretKey::from_bytes(&[seed; 32]))
             .relay_mode(RelayMode::Disabled)
+            // Single-family loopback bind (mirrors the production bind sites): clear the
+            // default 0.0.0.0 + [::] transports before binding the one loopback address.
+            .clear_ip_transports()
             .bind_addr((Ipv4Addr::LOCALHOST, 0))
             .expect("loopback bind address parses")
             .bind()
@@ -1321,6 +1387,9 @@ mod tests {
             directory,
             // The acceptor's own transport key is unrelated to the admitted set.
             transport_key: SecretKey::from_bytes(&[42u8; 32]),
+            // Matches the relay's own local id (peer_directory below), so the
+            // relay/transport identity binding guard passes.
+            transport_local_kernel_id: LOCAL_KERNEL_ID.to_string(),
             config: loopback_config(vec![IrohLane::Pheromone]),
         };
         let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
@@ -1347,6 +1416,15 @@ mod tests {
         assert!(
             mount.bound_sockets.iter().all(|socket| socket.port() != 0),
             "an ephemeral bind must resolve to a concrete non-zero port: {:?}",
+            mount.bound_sockets
+        );
+        // SECURITY: the config binds a single IPv4 loopback address. `clear_ip_transports`
+        // before `bind_addr` must have removed BOTH default IP transports (0.0.0.0 AND
+        // [::]), so the endpoint binds ONLY the operator-intended family - no stray IPv6
+        // wildcard socket exposing the lane on an unintended interface.
+        assert!(
+            mount.bound_sockets.iter().all(std::net::SocketAddr::is_ipv4),
+            "a single-family (IPv4 loopback) bind must NOT open any IPv6 socket: {:?}",
             mount.bound_sockets
         );
         let acceptor_addr = direct_addr(mount.router.endpoint());
@@ -1382,6 +1460,9 @@ mod tests {
         let inputs = IrohServeInputs {
             directory,
             transport_key: SecretKey::from_bytes(&[42u8; 32]),
+            // Matches the relay's own local id (peer_directory below), so the
+            // relay/transport identity binding guard passes.
+            transport_local_kernel_id: LOCAL_KERNEL_ID.to_string(),
             config: loopback_config(vec![IrohLane::Pheromone]),
         };
         let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
@@ -1425,6 +1506,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn build_iroh_router_rejects_relay_vs_transport_local_id_mismatch() {
+        // The transport directory's own localKernelId is the identity the iroh endpoint
+        // authenticates AS. It MUST equal the relay's configured local identity
+        // (peer_directory.local_kernel_id()), which the relay's receiver verifies every
+        // inbound batch against. When they differ, the endpoint authenticates as a
+        // DIFFERENT kernel than the receiver expects, so valid deliveries would be
+        // rejected/dead-lettered while startup silently "succeeds". The build must fail
+        // closed BEFORE binding the endpoint.
+        let directory = verified_directory("did:chio:bob", 24);
+        let inputs = IrohServeInputs {
+            directory,
+            transport_key: SecretKey::from_bytes(&[42u8; 32]),
+            // A transport-directory local id that is NOT the relay's own (peer_directory
+            // below is "did:chio:relay").
+            transport_local_kernel_id: "did:chio:someone-else".to_string(),
+            config: loopback_config(vec![IrohLane::Pheromone]),
+        };
+        let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+        let receiver: Arc<dyn RelayBatchReceiver> = Arc::new(RejectingReceiver);
+        // The relay's local identity is "did:chio:relay".
+        let peer_directory = peer_directory_admitting("did:chio:bob", RelayRole::Origin);
+
+        let error = match build_iroh_router(
+            inputs,
+            receiver,
+            store,
+            peer_directory,
+            MAX_PHEROMONE_BATCH_BYTES,
+        )
+        .await
+        {
+            Ok(_) => {
+                panic!("a transport-directory local id that is not the relay's own must fail closed")
+            }
+            Err(error) => error,
+        };
+        assert!(
+            error.to_string().contains("does not match the relay")
+                && error.to_string().contains("local kernel id"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[tokio::test]
     async fn tick_outbound_endpoint_uses_ephemeral_port_not_the_serving_bind_addr() {
         // A durable relay-serve process holds the stable --iroh-bind-addr for inbound
         // reachability. The tick is OUTBOUND-ONLY: it must NOT reuse that addr:port, or
@@ -1447,10 +1572,13 @@ mod tests {
         let inputs = IrohServeInputs {
             directory,
             transport_key: SecretKey::from_bytes(&[42u8; 32]),
+            // Must equal the relay local id passed to build_iroh_outbound_endpoint below
+            // (the tick path now enforces the same relay/transport identity binding).
+            transport_local_kernel_id: LOCAL_KERNEL_ID.to_string(),
             config,
         };
 
-        let (endpoint, _directory) = build_iroh_outbound_endpoint(inputs)
+        let (endpoint, _directory) = build_iroh_outbound_endpoint(inputs, LOCAL_KERNEL_ID)
             .await
             .expect("the outbound tick endpoint must bind despite the serve addr being in use");
         let bound = endpoint.bound_sockets();
@@ -1462,6 +1590,13 @@ mod tests {
         assert!(
             bound.iter().all(|socket| socket.port() != 0),
             "the ephemeral bind must resolve to a concrete non-zero port: {bound:?}"
+        );
+        // SECURITY: the configured bind addr is IPv4 loopback, so `clear_ip_transports`
+        // before `bind_addr` must have dropped the default [::] transport too - the
+        // outbound tick socket lives on ONLY the intended family, never an IPv6 wildcard.
+        assert!(
+            bound.iter().all(std::net::SocketAddr::is_ipv4),
+            "the outbound tick bind must be single-family (IPv4), got {bound:?}"
         );
 
         endpoint.close().await;

@@ -37,7 +37,11 @@
 //! 1. JOIN side: [`FanoutLane::subscribe_treaty`] /
 //!    [`subscribe_treaty_with_timeout`](FanoutLane::subscribe_treaty_with_timeout)
 //!    reject with [`FanoutError::TreatyMembershipDenied`] BEFORE joining the swarm
-//!    if the LOCAL operator's `kernel_id` is not a party to `treaty_id`.
+//!    if the LOCAL operator is not a party to `treaty_id`. The local operator's
+//!    kernel id is resolved from the node's OWN AUTHENTICATED endpoint identity (the
+//!    `EndpointId` the swarm authenticates as on the wire), NOT from a
+//!    caller-supplied string, so a non-party cannot pass a real party's kernel id to
+//!    slip past the gate.
 //! 2. RECEIVE side: the frame-verification path
 //!    ([`verify_fanout_frame`] / [`FanoutTopic::recv_verified`]) additionally
 //!    rejects (same variant) a frame whose ORIGIN kernel is not a party to the
@@ -292,11 +296,34 @@ impl OriginKeyResolver for StaticOriginKeys {
 pub trait TreatyMembership {
     /// Whether `kernel_id` is a party to `treaty_id` (fail-closed on unknown).
     fn is_party(&self, treaty_id: &str, kernel_id: &str) -> bool;
+
+    /// Resolve an AUTHENTICATED transport `EndpointId` to the admitted `kernel_id`
+    /// bound to it, or `None` (fail-closed) when the endpoint is not
+    /// directory-bound. This is the seam the JOIN gate uses to bind the party
+    /// check to the LOCAL node's real endpoint identity (the same `EndpointId` the
+    /// gossip swarm authenticates as on the wire) rather than a caller-supplied
+    /// string: the production [`crate::identity::VerifiedDirectory`] resolves it
+    /// from its issuer-signed `EndpointId -> kernel_id` admission map (the same map
+    /// the accept-time [`DirectoryGate`](crate::admission::DirectoryGate) uses).
+    ///
+    /// The default returns `None`, so any membership backend that does NOT bind
+    /// endpoints to kernel ids fails closed (the JOIN gate denies rather than
+    /// trusting the caller's claimed id).
+    fn kernel_id_for_endpoint(&self, _endpoint: &EndpointId) -> Option<String> {
+        None
+    }
 }
 
 impl TreatyMembership for crate::identity::VerifiedDirectory {
     fn is_party(&self, treaty_id: &str, kernel_id: &str) -> bool {
         self.is_treaty_party(treaty_id, kernel_id)
+    }
+
+    fn kernel_id_for_endpoint(&self, endpoint: &EndpointId) -> Option<String> {
+        // The SAME issuer-signed EndpointId -> kernel_id admission map the
+        // accept-time DirectoryGate consults (VerifiedDirectory::authorize),
+        // fail-closed on an unbound or removed endpoint.
+        self.authorize(endpoint).map(str::to_owned)
     }
 }
 
@@ -307,6 +334,11 @@ impl TreatyMembership for crate::identity::VerifiedDirectory {
 #[derive(Debug, Clone, Default)]
 pub struct StaticTreatyMembership {
     parties: HashMap<String, HashSet<String>>,
+    /// The authenticated `EndpointId -> kernel_id` binding the JOIN gate resolves
+    /// the LOCAL node's identity through (mirroring the issuer-signed admission map
+    /// [`crate::identity::VerifiedDirectory`] carries). Empty by default, so an
+    /// unbound endpoint fails closed at the gate.
+    endpoints: HashMap<EndpointId, String>,
 }
 
 impl StaticTreatyMembership {
@@ -314,6 +346,15 @@ impl StaticTreatyMembership {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Bind an authenticated transport `EndpointId` to its `kernel_id` (builder
+    /// style), so the JOIN gate can resolve the LOCAL node's identity from its
+    /// endpoint the way [`crate::identity::VerifiedDirectory`] does in production.
+    #[must_use]
+    pub fn with_endpoint(mut self, endpoint: EndpointId, kernel_id: impl Into<String>) -> Self {
+        self.endpoints.insert(endpoint, kernel_id.into());
+        self
     }
 
     /// Bind `treaty_id` to a party set (builder style).
@@ -344,6 +385,10 @@ impl TreatyMembership for StaticTreatyMembership {
         self.parties
             .get(treaty_id)
             .is_some_and(|parties| parties.contains(kernel_id))
+    }
+
+    fn kernel_id_for_endpoint(&self, endpoint: &EndpointId) -> Option<String> {
+        self.endpoints.get(endpoint).cloned()
     }
 }
 
@@ -574,16 +619,42 @@ fn verify_deposit_self_signature(
 /// so a caller cannot reach
 /// `subscribe_and_join(pheromone_topic_for_treaty(..), ..)` directly and join a
 /// treaty it is not a party to.
+///
+/// ## The JOIN gate binds to the AUTHENTICATED local endpoint, not a caller string
+///
+/// The lane also captures its own `local_endpoint_id`: the `EndpointId` of the
+/// endpoint the [`Gossip`] handle was spawned on, i.e. the identity this node
+/// AUTHENTICATES as on the wire when it joins a swarm. The JOIN gate resolves THAT
+/// endpoint to a kernel id through the issuer-signed directory
+/// ([`TreatyMembership::kernel_id_for_endpoint`]) and authorizes against the
+/// resolved id, so a caller cannot pass an arbitrary party's `kernel_id` string to
+/// slip past the party check. `iroh_gossip::Gossip` exposes no accessor to recover
+/// the endpoint it was spawned on, so the id is supplied at construction (it MUST be
+/// `endpoint.id()` of that same endpoint).
 #[derive(Debug, Clone)]
 pub struct FanoutLane {
     gossip: Gossip,
+    /// The AUTHENTICATED local endpoint identity (the `EndpointId` the `gossip`
+    /// swarm authenticates as on the wire). The JOIN gate resolves this - never a
+    /// caller-supplied string - to the local kernel id it authorizes.
+    local_endpoint_id: EndpointId,
 }
 
 impl FanoutLane {
-    /// Wrap an already-spawned, router-mounted [`Gossip`] handle.
+    /// Wrap an already-spawned, router-mounted [`Gossip`] handle together with the
+    /// AUTHENTICATED local endpoint identity the JOIN gate binds to.
+    ///
+    /// `local_endpoint_id` MUST be `endpoint.id()` of the SAME endpoint the
+    /// `gossip` handle was spawned on (`Gossip::builder().spawn(endpoint.clone())`).
+    /// It is the identity this node authenticates as when it joins a swarm, so the
+    /// treaty-party JOIN gate authorizes the kernel id resolved from THIS endpoint
+    /// (via the directory), not a caller-supplied `local_kernel_id` string.
     #[must_use]
-    pub fn new(gossip: Gossip) -> Self {
-        Self { gossip }
+    pub fn new(gossip: Gossip, local_endpoint_id: EndpointId) -> Self {
+        Self {
+            gossip,
+            local_endpoint_id,
+        }
     }
 
     // NO raw gossip accessor is exposed (deliberate, fail-closed). Handing out the
@@ -603,17 +674,23 @@ impl FanoutLane {
     /// that are not directory-bound simply fail to connect). The topic is derived
     /// deterministically from `treaty_id` via [`pheromone_topic_for_treaty`].
     ///
-    /// TREATY-PARTY JOIN GATE (fail-closed): the swarm is joined ONLY if
-    /// `local_kernel_id` is a party to `treaty_id` per `membership` (the
-    /// issuer-signed per-treaty party set). A globally-admitted operator that is
-    /// NOT a party is rejected with [`FanoutError::TreatyMembershipDenied`] BEFORE
-    /// the (non-secret, deterministic) topic is computed or any neighbor is dialed,
-    /// so federation admission alone never leaks a treaty's traffic to a non-party.
+    /// TREATY-PARTY JOIN GATE (fail-closed), bound to the AUTHENTICATED local
+    /// identity: the swarm is joined ONLY if the LOCAL node's OWN endpoint
+    /// (`local_endpoint_id`, resolved to a kernel id through `membership` the way
+    /// [`crate::identity::VerifiedDirectory`] does) is a party to `treaty_id`. The
+    /// caller-supplied `local_kernel_id` is NOT trusted on its own: it is rejected
+    /// unless it EQUALS the id resolved from the authenticated endpoint, so a
+    /// globally-admitted non-party cannot pass a real party's `kernel_id` string to
+    /// slip past the check. A non-party is rejected with
+    /// [`FanoutError::TreatyMembershipDenied`] BEFORE the (non-secret,
+    /// deterministic) topic is computed or any neighbor is dialed, so federation
+    /// admission alone never leaks a treaty's traffic to a non-party.
     ///
     /// # Errors
-    /// Returns [`FanoutError::TreatyMembershipDenied`] when the local operator is
-    /// not a party to `treaty_id`, or [`FanoutError::Gossip`] if the subscribe/join
-    /// fails.
+    /// Returns [`FanoutError::TreatyMembershipDenied`] when the local endpoint does
+    /// not resolve to a kernel id, when `local_kernel_id` does not match that
+    /// resolved id, or when the resolved id is not a party to `treaty_id`; or
+    /// [`FanoutError::Gossip`] if the subscribe/join fails.
     pub async fn subscribe_treaty<M>(
         &self,
         treaty_id: &str,
@@ -642,13 +719,15 @@ impl FanoutLane {
     /// is deliberately NOT bounded: a receive loop is meant to block until the next
     /// gossip message.
     ///
-    /// The treaty-party JOIN gate (see [`subscribe_treaty`](Self::subscribe_treaty))
-    /// is enforced here, fail-closed, BEFORE the topic is derived or joined.
+    /// The treaty-party JOIN gate (see [`subscribe_treaty`](Self::subscribe_treaty)),
+    /// bound to the AUTHENTICATED local endpoint identity, is enforced here,
+    /// fail-closed, BEFORE the topic is derived or joined.
     ///
     /// # Errors
-    /// Returns [`FanoutError::TreatyMembershipDenied`] when the local operator is
-    /// not a party to `treaty_id`, or [`FanoutError::Gossip`] if the join times out
-    /// or the subscribe/join fails.
+    /// Returns [`FanoutError::TreatyMembershipDenied`] when the local endpoint does
+    /// not resolve to a kernel id, when `local_kernel_id` does not match that
+    /// resolved id, or when the resolved id is not a party to `treaty_id`; or
+    /// [`FanoutError::Gossip`] if the join times out or the subscribe/join fails.
     pub async fn subscribe_treaty_with_timeout<M>(
         &self,
         treaty_id: &str,
@@ -660,13 +739,45 @@ impl FanoutLane {
     where
         M: TreatyMembership + ?Sized,
     {
-        // TREATY-PARTY JOIN GATE (fail-closed): a non-party local operator is
-        // rejected before the (non-secret) topic is even computed, so it never
-        // joins the swarm. Federation admission is necessary but not sufficient.
-        if !membership.is_party(treaty_id, local_kernel_id) {
+        // TREATY-PARTY JOIN GATE (fail-closed), bound to the AUTHENTICATED local
+        // identity. The gate MUST NOT authorize on the caller-supplied
+        // `local_kernel_id` string alone: a globally-admitted operator that is not a
+        // party to `treaty_id` could otherwise pass ANY real party's kernel id here,
+        // satisfy `is_party`, join the deterministic gossip topic, and observe that
+        // treaty's traffic. Instead we resolve the LOCAL node's OWN endpoint
+        // (`local_endpoint_id`, the same identity the swarm authenticates as on the
+        // wire, captured at construction) to its admitted kernel id through the
+        // issuer-signed directory, then (1) reject unless the caller's claimed id
+        // equals that authenticated id, and (2) authorize the authenticated id
+        // against the treaty party set. All three failure modes reject BEFORE the
+        // (non-secret) topic is computed, so a non-party never joins the swarm.
+        let Some(authenticated_kernel_id) =
+            membership.kernel_id_for_endpoint(&self.local_endpoint_id)
+        else {
+            // The local endpoint is not directory-bound: fail closed rather than
+            // trust the caller's claimed id.
             let error = FanoutError::TreatyMembershipDenied {
                 treaty_id: treaty_id.to_string(),
                 kernel_id: local_kernel_id.to_string(),
+            };
+            note_fanout_failure(&error);
+            return Err(error);
+        };
+        if authenticated_kernel_id != local_kernel_id {
+            // The caller claimed an identity that is NOT the one this node
+            // authenticates as: reject the spoof, whether or not the claimed id is a
+            // genuine party.
+            let error = FanoutError::TreatyMembershipDenied {
+                treaty_id: treaty_id.to_string(),
+                kernel_id: local_kernel_id.to_string(),
+            };
+            note_fanout_failure(&error);
+            return Err(error);
+        }
+        if !membership.is_party(treaty_id, &authenticated_kernel_id) {
+            let error = FanoutError::TreatyMembershipDenied {
+                treaty_id: treaty_id.to_string(),
+                kernel_id: authenticated_kernel_id,
             };
             note_fanout_failure(&error);
             return Err(error);
@@ -1300,14 +1411,18 @@ mod tests {
             .bind()
             .await
             .expect("endpoint binds on loopback");
+        let local_id = endpoint.id();
         let gossip = Gossip::builder().spawn(endpoint.clone());
         let _router = Router::builder(endpoint)
             .accept(iroh_gossip::ALPN, gossip.clone())
             .spawn();
-        let lane = FanoutLane::new(gossip);
-        // Local operator IS a party, so it passes the membership gate and reaches
-        // the (empty-bootstrap) join, which then fails closed on the client bound.
-        let membership = StaticTreatyMembership::new().with(TREATY_ALPHA, [AUTHOR]);
+        let lane = FanoutLane::new(gossip, local_id);
+        // Local operator IS a party AND its authenticated endpoint resolves to
+        // AUTHOR, so it passes the membership gate and reaches the (empty-bootstrap)
+        // join, which then fails closed on the client bound.
+        let membership = StaticTreatyMembership::new()
+            .with(TREATY_ALPHA, [AUTHOR])
+            .with_endpoint(local_id, AUTHOR);
         let result = lane
             .subscribe_treaty_with_timeout(
                 TREATY_ALPHA,
@@ -1610,15 +1725,21 @@ mod tests {
             .bind()
             .await
             .expect("endpoint binds on loopback");
+        let local_id = endpoint.id();
         let gossip = Gossip::builder().spawn(endpoint.clone());
         let router = Router::builder(endpoint)
             .accept(iroh_gossip::ALPN, gossip.clone())
             .spawn();
-        let lane = FanoutLane::new(gossip);
+        let lane = FanoutLane::new(gossip, local_id);
 
-        // Membership admits a DIFFERENT operator to alpha; the local operator is a
-        // non-party, so the join is rejected before any neighbor dial.
-        let membership = StaticTreatyMembership::new().with(TREATY_ALPHA, ["did:chio:party"]);
+        // Membership admits a DIFFERENT operator to alpha; the local endpoint
+        // authenticates (honestly) as "did:chio:non-party", which is NOT a party, so
+        // the join is rejected before any neighbor dial. (The caller's claimed id
+        // equals the authenticated id here, so this exercises the party-denial path,
+        // not the spoof path.)
+        let membership = StaticTreatyMembership::new()
+            .with(TREATY_ALPHA, ["did:chio:party"])
+            .with_endpoint(local_id, "did:chio:non-party");
         let result = lane
             .subscribe_treaty(TREATY_ALPHA, "did:chio:non-party", &membership, vec![])
             .await;
@@ -1670,13 +1791,18 @@ mod tests {
             .bind()
             .await
             .expect("endpoint binds on loopback");
+        let local_id = endpoint.id();
         let gossip = Gossip::builder().spawn(endpoint.clone());
         let router = Router::builder(endpoint)
             .accept(iroh_gossip::ALPN, gossip.clone())
             .spawn();
-        let lane = FanoutLane::new(gossip);
+        let lane = FanoutLane::new(gossip, local_id);
 
-        let membership = StaticTreatyMembership::new().with(TREATY_ALPHA, ["did:chio:party"]);
+        // The local endpoint AUTHENTICATES as the genuine party, and the caller's
+        // claimed id matches it, so the gate lets it through to the join.
+        let membership = StaticTreatyMembership::new()
+            .with(TREATY_ALPHA, ["did:chio:party"])
+            .with_endpoint(local_id, "did:chio:party");
         let result = lane
             .subscribe_treaty_with_timeout(
                 TREATY_ALPHA,
@@ -1689,6 +1815,80 @@ mod tests {
         assert!(
             matches!(result, Err(FanoutError::Gossip(ref msg)) if msg.contains("timed out")),
             "a party must pass the membership gate and reach the empty-bootstrap join, got {result:?}"
+        );
+        router.shutdown().await.ok();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn subscribe_rejects_a_non_party_spoofing_a_real_party_kernel_id() {
+        // SPOOFING CASE (codex P1 follow-up): the JOIN gate must bind to the node's
+        // AUTHENTICATED endpoint identity, not the caller-supplied `local_kernel_id`
+        // string. A globally-admitted operator that is NOT a party to the treaty
+        // calls subscribe_treaty passing a REAL party's kernel id as the argument;
+        // because that string is a genuine party, the OLD `is_party(treaty, arg)`
+        // check would have admitted it and leaked the treaty's traffic. The gate now
+        // resolves the LOCAL endpoint to its admitted kernel id and rejects the spoof.
+        let endpoint = Endpoint::builder(presets::Minimal)
+            .secret_key(SecretKey::from_bytes(&[78u8; 32]))
+            .relay_mode(RelayMode::Disabled)
+            .bind_addr((Ipv4Addr::LOCALHOST, 0))
+            .expect("valid loopback bind addr")
+            .bind()
+            .await
+            .expect("endpoint binds on loopback");
+        let local_id = endpoint.id();
+        let gossip = Gossip::builder().spawn(endpoint.clone());
+        let router = Router::builder(endpoint)
+            .accept(iroh_gossip::ALPN, gossip.clone())
+            .spawn();
+        let lane = FanoutLane::new(gossip, local_id);
+
+        // The directory authenticates THIS node's endpoint as the NON-party
+        // "did:chio:intruder". "did:chio:party" is a real party, but a DIFFERENT
+        // node - the intruder does not authenticate as it.
+        let membership = StaticTreatyMembership::new()
+            .with(TREATY_ALPHA, ["did:chio:party"])
+            .with_endpoint(local_id, "did:chio:intruder");
+
+        // Spoof: the intruder passes the real party's kernel id as the arg. Even
+        // with a non-empty bootstrap and a short bound, it is denied (not dialed and
+        // timed out), because the arg does not match the authenticated id.
+        let spoofed = lane
+            .subscribe_treaty_with_timeout(
+                TREATY_ALPHA,
+                "did:chio:party",
+                &membership,
+                vec![endpoint_from_seed(99)],
+                Duration::from_millis(50),
+            )
+            .await;
+        assert!(
+            matches!(
+                spoofed,
+                Err(FanoutError::TreatyMembershipDenied { ref treaty_id, ref kernel_id })
+                    if treaty_id == TREATY_ALPHA && kernel_id == "did:chio:party"
+            ),
+            "a non-party spoofing a real party's kernel id must be rejected, got {spoofed:?}"
+        );
+
+        // And the intruder gets no join even under its OWN authenticated id: it is
+        // simply not a party to the treaty (the honest party-denial path).
+        let honest = lane
+            .subscribe_treaty_with_timeout(
+                TREATY_ALPHA,
+                "did:chio:intruder",
+                &membership,
+                vec![endpoint_from_seed(99)],
+                Duration::from_millis(50),
+            )
+            .await;
+        assert!(
+            matches!(
+                honest,
+                Err(FanoutError::TreatyMembershipDenied { ref treaty_id, ref kernel_id })
+                    if treaty_id == TREATY_ALPHA && kernel_id == "did:chio:intruder"
+            ),
+            "the intruder is a non-party even under its own id, got {honest:?}"
         );
         router.shutdown().await.ok();
     }

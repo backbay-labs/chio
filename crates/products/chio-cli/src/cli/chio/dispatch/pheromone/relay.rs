@@ -587,7 +587,9 @@ fn drain_due_batches_over_iroh(
         .build()
         .map_err(|error| CliError::cli_other_error(format!("Chio relay iroh runtime: {error}")))?;
     runtime.block_on(async move {
-        let (endpoint, directory) = build_iroh_outbound_endpoint(iroh_inputs).await?;
+        let relay_local_kernel_id = peer_directory.local_kernel_id().to_string();
+        let (endpoint, directory) =
+            build_iroh_outbound_endpoint(iroh_inputs, &relay_local_kernel_id).await?;
 
         // resolve_addr: recipient kernel_id -> dialable transport address, derived from
         // the issuer-verified transport directory (the outbound side of the same
