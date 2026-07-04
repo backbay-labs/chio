@@ -10,7 +10,8 @@
     "sdks/typescript/packages/browser",
     "sdks/typescript/packages/workers",
     "sdks/typescript/packages/edge",
-    "sdks/typescript/packages/deno"
+    "sdks/typescript/packages/deno",
+    "sdks/typescript/packages/wasm-core"
   ],
   "overrides": {
     "undici": "7.28.0",

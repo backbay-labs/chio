@@ -24,6 +24,9 @@
   "engines": {
     "node": ">=22"
   },
+  "dependencies": {
+    "@chio-protocol/wasm-core": "0.1.0"
+  },
   "scripts": {
     "build": "bun run build:wasm && tsc -p tsconfig.json",
     "build:wasm": "../../scripts/build-wasm.sh --package deno --target web",
