@@ -5,7 +5,7 @@
   "environment": "local-devnet",
   "network_tier": "development",
   "note": "Ephemeral local-devnet test run.",
-  "generated_at": "2026-07-04T08:15:34.856Z",
+  "generated_at": "2026-07-04T09:07:19.576Z",
   "chain_id": "eip155:31337",
   "gas_estimates": {
     "register_operator": "74736",
@@ -14,11 +14,11 @@
     "publish_root_delegate": "186126",
     "register_feed": "123638",
     "price_read": "60488",
-    "create_escrow": "298394",
-    "merkle_partial_release": "166296",
+    "create_escrow": "298366",
+    "merkle_partial_release": "166284",
     "dual_sign_release": "129712",
-    "lock_bond": "293295",
-    "bond_release": "143902"
+    "lock_bond": "293267",
+    "bond_release": "143914"
   },
   "checks": [
     {
@@ -112,14 +112,14 @@
       "note": "Escrow custody accepts ERC20 transfers that succeed without return data."
     },
     {
-      "id": "escrow.measured_deposit_accounting",
+      "id": "escrow.rejects_short_token_receipts",
       "outcome": "pass",
-      "note": "Escrow custody records the token balance delta actually received."
+      "note": "Escrow custody rejects deposits whose received token balance is below the requested amount."
     },
     {
-      "id": "bond.measured_collateral_accounting",
+      "id": "bond.rejects_short_token_receipts",
       "outcome": "pass",
-      "note": "Bond vault custody records the token balance delta actually received."
+      "note": "Bond vault custody rejects collateral whose received token balance is below the requested amount."
     },
     {
       "id": "escrow.permit_allowance_fallback",

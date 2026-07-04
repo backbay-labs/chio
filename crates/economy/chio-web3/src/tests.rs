@@ -2171,6 +2171,20 @@ fn public_settlement_proof_reports_refunded_reversal_status() {
 }
 
 #[test]
+fn public_settlement_v1_fixture_remains_verifiable() {
+    let bundle: PublicSettlementProofBundle = serde_json::from_str(include_str!(
+        "../../../../fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json"
+    ))
+    .unwrap();
+
+    let report =
+        verify_public_settlement_proof(&bundle, &sample_public_settlement_verifier_trust())
+            .unwrap();
+
+    assert_eq!(report.finality_decision.status, "final");
+}
+
+#[test]
 fn invalid_settlement_constructor_preserves_message() {
     let error = Web3ContractError::invalid_settlement("settlement amount must match");
     assert!(matches!(

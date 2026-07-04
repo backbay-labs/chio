@@ -21,8 +21,14 @@ use crate::receipt::{
 use crate::trust_profile::Web3SettlementPath;
 use crate::validation::{ensure_money, ensure_non_empty};
 
-pub const CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA: &str = "chio.web3-settlement-dispatch.v2";
-pub const CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA: &str = "chio.web3-settlement-execution-receipt.v2";
+pub const CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA: &str = "chio.web3-settlement-dispatch.v1";
+pub const CHIO_WEB3_SETTLEMENT_DISPATCH_V2_SCHEMA: &str = "chio.web3-settlement-dispatch.v2";
+pub const CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA: &str = CHIO_WEB3_SETTLEMENT_DISPATCH_V2_SCHEMA;
+pub const CHIO_WEB3_SETTLEMENT_RECEIPT_V1_SCHEMA: &str =
+    "chio.web3-settlement-execution-receipt.v1";
+pub const CHIO_WEB3_SETTLEMENT_RECEIPT_V2_SCHEMA: &str =
+    "chio.web3-settlement-execution-receipt.v2";
+pub const CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA: &str = CHIO_WEB3_SETTLEMENT_RECEIPT_V2_SCHEMA;
 pub const CHIO_LINK_CONTROL_STATE_SCHEMA: &str = "chio.link.control-state.v1";
 pub const CHIO_LINK_CONTROL_TRACE_SCHEMA: &str = "chio.link.control-trace.v1";
 pub const CHIO_SETTLE_CONTROL_STATE_SCHEMA: &str = "chio.settle.control-state.v1";
@@ -69,8 +75,10 @@ pub struct Web3SettlementDispatchArtifact {
     pub escrow_id: String,
     pub escrow_contract: String,
     pub bond_vault_contract: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub settlement_token_address: String,
     pub beneficiary_address: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub operator_key_hash: String,
     pub support_boundary: Web3SettlementSupportBoundary,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -108,11 +116,15 @@ pub type SignedWeb3SettlementExecutionReceipt =
 pub fn validate_web3_settlement_dispatch(
     dispatch: &Web3SettlementDispatchArtifact,
 ) -> Result<(), Web3ContractError> {
-    if dispatch.schema != CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA {
-        return Err(Web3ContractError::UnsupportedSchema(
-            dispatch.schema.clone(),
-        ));
-    }
+    let dispatch_v2 = match dispatch.schema.as_str() {
+        CHIO_WEB3_SETTLEMENT_DISPATCH_V2_SCHEMA => true,
+        CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA => false,
+        _ => {
+            return Err(Web3ContractError::UnsupportedSchema(
+                dispatch.schema.clone(),
+            ))
+        }
+    };
     for field in [
         &dispatch.dispatch_id,
         &dispatch.trust_profile_id,
@@ -121,17 +133,27 @@ pub fn validate_web3_settlement_dispatch(
         &dispatch.escrow_id,
         &dispatch.escrow_contract,
         &dispatch.bond_vault_contract,
-        &dispatch.settlement_token_address,
         &dispatch.beneficiary_address,
-        &dispatch.operator_key_hash,
     ] {
         ensure_non_empty(field, "web3_settlement_dispatch.field")?;
     }
-    Hash::from_hex(&dispatch.operator_key_hash).map_err(|error| {
-        Web3ContractError::invalid_settlement(format!(
-            "web3 settlement dispatch operator_key_hash must be a 32-byte hex hash: {error}"
-        ))
-    })?;
+    if dispatch_v2 {
+        ensure_non_empty(
+            &dispatch.settlement_token_address,
+            "web3_settlement_dispatch.settlement_token_address",
+        )?;
+        ensure_non_empty(
+            &dispatch.operator_key_hash,
+            "web3_settlement_dispatch.operator_key_hash",
+        )?;
+    }
+    if !dispatch.operator_key_hash.is_empty() {
+        Hash::from_hex(&dispatch.operator_key_hash).map_err(|error| {
+            Web3ContractError::invalid_settlement(format!(
+                "web3 settlement dispatch operator_key_hash must be a 32-byte hex hash: {error}"
+            ))
+        })?;
+    }
     ensure_money(
         &dispatch.settlement_amount,
         "web3_settlement_dispatch.settlement_amount",
@@ -233,8 +255,24 @@ pub fn validate_web3_settlement_dispatch(
 pub fn validate_web3_settlement_execution_receipt(
     receipt: &Web3SettlementExecutionReceiptArtifact,
 ) -> Result<(), Web3ContractError> {
-    if receipt.schema != CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA {
-        return Err(Web3ContractError::UnsupportedSchema(receipt.schema.clone()));
+    let receipt_v2 = match receipt.schema.as_str() {
+        CHIO_WEB3_SETTLEMENT_RECEIPT_V2_SCHEMA => true,
+        CHIO_WEB3_SETTLEMENT_RECEIPT_V1_SCHEMA => false,
+        _ => return Err(Web3ContractError::UnsupportedSchema(receipt.schema.clone())),
+    };
+    let dispatch_v2 = match receipt.dispatch.schema.as_str() {
+        CHIO_WEB3_SETTLEMENT_DISPATCH_V2_SCHEMA => true,
+        CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA => false,
+        _ => {
+            return Err(Web3ContractError::UnsupportedSchema(
+                receipt.dispatch.schema.clone(),
+            ))
+        }
+    };
+    if receipt_v2 != dispatch_v2 {
+        return Err(Web3ContractError::invalid_settlement(
+            "web3 settlement receipt schema must match dispatch schema generation",
+        ));
     }
     ensure_non_empty(
         &receipt.execution_receipt_id,

@@ -1455,14 +1455,13 @@ async function main() {
       await escrow.connect(wallets.depositor).createEscrow.staticCall(unlistedEscrowTerms);
     });
     await (await escrow.setTokenAllowed(await feeToken.getAddress(), true)).wait();
-    const feeEscrowId = await escrow.connect(wallets.depositor).deriveEscrowId(feeEscrowTerms);
-    await (await escrow.connect(wallets.depositor).createEscrow(feeEscrowTerms)).wait();
-    const [, feeEscrowDeposited] = await escrow.getEscrow(feeEscrowId);
-    assert.equal(feeEscrowDeposited, await feeToken.balanceOf(await escrow.getAddress()));
+    await expectRevert("fee token short escrow deposit", async () => {
+      await escrow.connect(wallets.depositor).createEscrow.staticCall(feeEscrowTerms);
+    });
     checks.push({
-      id: "escrow.measured_deposit_accounting",
+      id: "escrow.rejects_short_token_receipts",
       outcome: "pass",
-      note: "Escrow custody records the token balance delta actually received.",
+      note: "Escrow custody rejects deposits whose received token balance is below the requested amount.",
     });
 
     const feeBondTerms = {
@@ -1485,14 +1484,13 @@ async function main() {
         .connect(wallets.principal)
         .approve(await bondVault.getAddress(), feeBondTerms.collateralAmount)
     ).wait();
-    const feeVaultId = await bondVault.connect(wallets.principal).deriveVaultId(feeBondTerms);
-    await (await bondVault.connect(wallets.principal).lockBond(feeBondTerms)).wait();
-    const [, feeBondLocked] = await bondVault.getBond(feeVaultId);
-    assert.equal(feeBondLocked, await feeToken.balanceOf(await bondVault.getAddress()));
+    await expectRevert("fee token short bond collateral", async () => {
+      await bondVault.connect(wallets.principal).lockBond.staticCall(feeBondTerms);
+    });
     checks.push({
-      id: "bond.measured_collateral_accounting",
+      id: "bond.rejects_short_token_receipts",
       outcome: "pass",
-      note: "Bond vault custody records the token balance delta actually received.",
+      note: "Bond vault custody rejects collateral whose received token balance is below the requested amount.",
     });
 
     const permitAllowanceTerms = {
@@ -2426,59 +2424,6 @@ async function main() {
           oneLeafProof,
           bondImpairLeaf,
           bondImpairEvidenceHash,
-        );
-    });
-    const feeEscrowReceiptHash = toBytes32Label("fee-token-escrow-release");
-    const feeEscrowProofLeaf = escrowProofLeaf(
-      chainId,
-      await escrow.getAddress(),
-      feeEscrowId,
-      feeEscrowTerms.token,
-      feeEscrowTerms.beneficiary,
-      feeEscrowTerms.operatorKeyHash,
-      feeEscrowReceiptHash,
-      feeEscrowDeposited,
-      false,
-    );
-    await (
-      await rootRegistry
-        .connect(wallets.operator)
-        .publishRoot(wallets.operator.address, feeEscrowProofLeaf, 14, 15, 15, 1, operatorEdKeyHash)
-    ).wait();
-    await expectRevert("fee token outbound escrow release", async () => {
-      await escrow
-        .connect(wallets.beneficiary)
-        .releaseWithProofDetailed.staticCall(
-          feeEscrowId,
-          oneLeafProof,
-          feeEscrowProofLeaf,
-          feeEscrowReceiptHash,
-          feeEscrowDeposited,
-        );
-    });
-    const feeBondEvidenceHash = toBytes32Label("fee-token-bond-release");
-    const feeBondReleaseLeaf = bondProofLeaf(
-      chainId,
-      await bondVault.getAddress(),
-      feeVaultId,
-      feeBondEvidenceHash,
-      BOND_ACTION_RELEASE,
-      0n,
-      ZERO_BYTES32,
-    );
-    await (
-      await rootRegistry
-        .connect(wallets.operator)
-        .publishRoot(wallets.operator.address, feeBondReleaseLeaf, 15, 16, 16, 1, operatorEdKeyHash)
-    ).wait();
-    await expectRevert("fee token outbound bond release", async () => {
-      await bondVault
-        .connect(wallets.operator)
-        .releaseBondDetailed.staticCall(
-          feeVaultId,
-          oneLeafProof,
-          feeBondReleaseLeaf,
-          feeBondEvidenceHash,
         );
     });
     await (await bondVault.connect(adminRpcSigner).setPaused(true)).wait();

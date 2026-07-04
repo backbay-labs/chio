@@ -1,6 +1,6 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use chio_core_types::capability::governance::{
     CallChainContinuationToken, CallChainContinuationTokenBody, CHIO_CALL_CHAIN_CONTINUATION_SCHEMA,
@@ -68,6 +68,105 @@ fn known_signed_artifact_schemas_match_public_registry_or_internal_exemption() {
         missing_schemas.is_empty(),
         "known signed-artifact schemas missing from registry.json or internal exemption list: {missing_schemas:?}"
     );
+}
+
+#[test]
+fn built_in_signed_artifact_registry_matches_public_metadata() {
+    let registry: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../spec/schemas/registry.json"
+    )))
+    .expect("schema registry parses");
+    let registered_metadata: BTreeMap<&str, (&str, &str)> = registry
+        .get("artifacts")
+        .and_then(serde_json::Value::as_array)
+        .expect("registry artifacts are present")
+        .iter()
+        .map(|entry| {
+            let schema = entry
+                .get("schema")
+                .and_then(serde_json::Value::as_str)
+                .expect("registry artifact has schema");
+            let artifact_kind = entry
+                .get("artifactKind")
+                .and_then(serde_json::Value::as_str)
+                .expect("registry artifact has artifactKind");
+            let introduced_by = entry
+                .get("introducedBy")
+                .and_then(serde_json::Value::as_str)
+                .expect("registry artifact has introducedBy");
+            (schema, (artifact_kind, introduced_by))
+        })
+        .collect();
+    let internal_only_schemas: BTreeSet<&str> = [
+        "chio.session_anchor.v1",
+        "chio.request_lineage_record.v1",
+        "chio.runtime-attestation.azure-maa.jwt.v1",
+        "chio.runtime-attestation.aws-nitro-attestation.v1",
+        "chio.runtime-attestation.google-confidential-vm.jwt.v1",
+        "chio.runtime-attestation.enterprise-verifier.json.v1",
+    ]
+    .into_iter()
+    .collect();
+
+    for entry in chio_core_types::built_in_signed_artifact_registry() {
+        let Some((artifact_kind, introduced_by)) = registered_metadata.get(entry.schema.as_str())
+        else {
+            assert!(
+                internal_only_schemas.contains(entry.schema.as_str()),
+                "built-in signed-artifact registry row missing from registry.json or internal exemption list: {}",
+                entry.schema
+            );
+            continue;
+        };
+        assert_eq!(
+            entry.artifact_kind, *artifact_kind,
+            "built-in artifact kind must match registry.json for {}",
+            entry.schema
+        );
+        assert_eq!(
+            entry.introduced_by, *introduced_by,
+            "built-in introducedBy must match registry.json for {}",
+            entry.schema
+        );
+    }
+}
+
+#[test]
+fn public_settlement_dispatch_and_receipt_schemas_are_supported() {
+    let registry: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../spec/schemas/registry.json"
+    )))
+    .expect("schema registry parses");
+    let settlement_schemas: Vec<&str> = registry
+        .get("artifacts")
+        .and_then(serde_json::Value::as_array)
+        .expect("registry artifacts are present")
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry
+                    .get("artifactKind")
+                    .and_then(serde_json::Value::as_str),
+                Some("web3_settlement_dispatch" | "web3_settlement_execution_receipt")
+            )
+        })
+        .map(|entry| {
+            entry
+                .get("schema")
+                .and_then(serde_json::Value::as_str)
+                .expect("registry artifact has schema")
+        })
+        .collect();
+
+    assert_eq!(settlement_schemas.len(), 4);
+    for schema in settlement_schemas {
+        assert!(
+            chio_core_types::is_supported_signed_artifact_schema(schema),
+            "public settlement schema should be supported by the core signed-artifact gate: {schema}"
+        );
+    }
 }
 
 #[test]

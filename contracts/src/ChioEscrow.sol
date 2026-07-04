@@ -418,7 +418,7 @@ contract ChioEscrow is IChioEscrow {
         _callOptionalReturn(token, data);
         uint256 afterBalance = IERC20(token).balanceOf(to);
         received = afterBalance - beforeBalance;
-        if (received == 0 || received > amount) revert TransferFailed();
+        if (received != amount) revert TransferFailed();
     }
 
     function _permitOrAllowance(
