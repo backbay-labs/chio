@@ -7,7 +7,7 @@ use std::time::Duration;
 use std::thread;
 
 use alloy_primitives::{keccak256, Address, FixedBytes, B256, U256};
-use alloy_sol_types::{sol, SolCall};
+use alloy_sol_types::{sol, SolCall, SolValue};
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::capability::scope::MonetaryAmount;
 use chio_core::credit::{
@@ -29,7 +29,7 @@ use chio_core::web3::settlement::{
 };
 use chio_core::web3::trust_profile::Web3SettlementPath;
 use chio_egress_contract::{client_builder_with_contract, send_with_contract};
-use chio_web3_bindings::{ChioMerkleProof, IChioBondVault, IChioEscrow};
+use chio_web3_bindings::{ChioMerkleProof, IChioBondVault, IChioEscrow, IChioRootRegistry};
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::{Message, Secp256k1, SecretKey};
 use serde::{Deserialize, Serialize};
@@ -1267,6 +1267,61 @@ mod tests {
         assert_eq!(full.call.to_address, config.escrow_contract);
         assert_eq!(partial.observed_amount, partial_amount);
         assert!(partial.settlement_amount_minor_units < full.settlement_amount_minor_units);
+        let proof_receipt_bytes =
+            canonical_json_bytes(&proof.receipt.body()).test_expect("proof receipt serializes");
+        assert_eq!(
+            full.receipt_hash,
+            format_b256(keccak256(&proof_receipt_bytes))
+        );
+        assert_ne!(full.receipt_hash, full.receipt_leaf_hash);
+        assert_ne!(
+            full.merkle_root,
+            proof.receipt_inclusion.merkle_root.to_hex_prefixed()
+        );
+        let root_publication =
+            prepare_merkle_release_root_publication(&config, &dispatch, &full, 2, 2)
+                .test_expect("typed settlement root publication should prepare");
+        assert_eq!(root_publication.from_address, config.operator_address);
+        assert_eq!(root_publication.to_address, config.root_registry_contract);
+
+        let mut invalid_dispatch = dispatch.clone();
+        invalid_dispatch.operator_key_hash = "0x1234".to_string();
+        let invalid_key_hash = prepare_merkle_release(
+            &config,
+            &invalid_dispatch,
+            &proof,
+            EscrowExecutionAmount::Full,
+        )
+        .test_expect_err("malformed operator key hash should fail");
+        assert!(invalid_key_hash.to_string().contains("operator_key_hash"));
+
+        let mut mismatched_escrow_config = config.clone();
+        mismatched_escrow_config.escrow_contract =
+            "0x765F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string();
+        let invalid_escrow_contract = prepare_merkle_release(
+            &mismatched_escrow_config,
+            &dispatch,
+            &proof,
+            EscrowExecutionAmount::Full,
+        )
+        .test_expect_err("escrow contract drift should fail");
+        assert!(invalid_escrow_contract
+            .to_string()
+            .contains("escrow_contract"));
+
+        let mut invalid_token_dispatch = dispatch.clone();
+        invalid_token_dispatch.settlement_token_address =
+            "0x465F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string();
+        let invalid_token = prepare_merkle_release(
+            &config,
+            &invalid_token_dispatch,
+            &proof,
+            EscrowExecutionAmount::Full,
+        )
+        .test_expect_err("settlement token drift should fail");
+        assert!(invalid_token
+            .to_string()
+            .contains("settlement_token_address"));
 
         let dual_dispatch = hex_dispatch();
         let mut dual_config = config.clone();
@@ -1352,8 +1407,61 @@ mod tests {
 
         assert_eq!(release.call.to_address, config.bond_vault_contract);
         assert_eq!(release.vault_id, prepared.vault_id);
+        let anchor_root = sample_primary_proof()
+            .receipt_inclusion
+            .merkle_root
+            .to_hex_prefixed();
+        assert_ne!(release.merkle_root, anchor_root);
         assert_eq!(impair.slash_amount_minor_units, 2_500_000);
         assert_eq!(impair.call.to_address, config.bond_vault_contract);
+        assert_ne!(impair.merkle_root, anchor_root);
+        assert_ne!(release.merkle_root, impair.merkle_root);
+        let root_publication = prepare_bond_proof_root_publication(
+            &config,
+            &impair.merkle_root,
+            &format_b256(B256::from([0x22; 32])),
+            2,
+            2,
+        )
+        .test_expect("bond proof root publication should prepare");
+        assert_eq!(root_publication.from_address, config.operator_address);
+        assert_eq!(root_publication.to_address, config.root_registry_contract);
+    }
+
+    #[test]
+    fn bond_proof_leaf_matches_solidity_abi_vector() {
+        let mut config = sample_config();
+        config.bond_vault_contract = "0x1000000000000000000000000000000000000008".to_string();
+        let leaf = bond_proof_leaf(
+            &config,
+            B256::from([0x44; 32]),
+            B256::from([0x55; 32]),
+            1,
+            2_500_000,
+            B256::from([0x66; 32]),
+        )
+        .test_expect("bond proof leaf should hash");
+
+        assert_eq!(
+            format_b256(leaf),
+            "0x186322b91d7f071e24a2137b0b4852137f10fbd13613675736407276e2ccc815"
+        );
+    }
+
+    #[test]
+    fn bond_distribution_hash_matches_solidity_abi_vector() {
+        let hash = bond_distribution_hash(
+            &[
+                Address::from_str("0x1000000000000000000000000000000000000006")
+                    .test_expect("address"),
+            ],
+            &[U256::from(2_500_000_u64)],
+        );
+
+        assert_eq!(
+            format_b256(hash),
+            "0x683300ebc7d25bc113b428e572e2b6698732a9ed36a33e26e849fafe65613496"
+        );
     }
 
     #[test]

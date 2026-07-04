@@ -13,6 +13,7 @@ use crate::credit::{
 };
 use crate::crypto::sha256_hex;
 use crate::error::Web3ContractError;
+use crate::hashing::Hash;
 use crate::receipt::{
     body::ChioReceipt, lineage::SignedExportEnvelope,
     signing::CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
@@ -20,8 +21,8 @@ use crate::receipt::{
 use crate::trust_profile::Web3SettlementPath;
 use crate::validation::{ensure_money, ensure_non_empty};
 
-pub const CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA: &str = "chio.web3-settlement-dispatch.v1";
-pub const CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA: &str = "chio.web3-settlement-execution-receipt.v1";
+pub const CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA: &str = "chio.web3-settlement-dispatch.v2";
+pub const CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA: &str = "chio.web3-settlement-execution-receipt.v2";
 pub const CHIO_LINK_CONTROL_STATE_SCHEMA: &str = "chio.link.control-state.v1";
 pub const CHIO_LINK_CONTROL_TRACE_SCHEMA: &str = "chio.link.control-trace.v1";
 pub const CHIO_SETTLE_CONTROL_STATE_SCHEMA: &str = "chio.settle.control-state.v1";
@@ -68,7 +69,9 @@ pub struct Web3SettlementDispatchArtifact {
     pub escrow_id: String,
     pub escrow_contract: String,
     pub bond_vault_contract: String,
+    pub settlement_token_address: String,
     pub beneficiary_address: String,
+    pub operator_key_hash: String,
     pub support_boundary: Web3SettlementSupportBoundary,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
@@ -118,10 +121,17 @@ pub fn validate_web3_settlement_dispatch(
         &dispatch.escrow_id,
         &dispatch.escrow_contract,
         &dispatch.bond_vault_contract,
+        &dispatch.settlement_token_address,
         &dispatch.beneficiary_address,
+        &dispatch.operator_key_hash,
     ] {
         ensure_non_empty(field, "web3_settlement_dispatch.field")?;
     }
+    Hash::from_hex(&dispatch.operator_key_hash).map_err(|error| {
+        Web3ContractError::invalid_settlement(format!(
+            "web3 settlement dispatch operator_key_hash must be a 32-byte hex hash: {error}"
+        ))
+    })?;
     ensure_money(
         &dispatch.settlement_amount,
         "web3_settlement_dispatch.settlement_amount",

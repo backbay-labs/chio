@@ -1,0 +1,134 @@
+{
+  "contractName": "MockAggregatorV3",
+  "sourceName": "src/mocks/MockAggregatorV3.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "uint8",
+          "name": "decimals_",
+          "type": "uint8"
+        },
+        {
+          "internalType": "string",
+          "name": "description_",
+          "type": "string"
+        },
+        {
+          "internalType": "int256",
+          "name": "answer_",
+          "type": "int256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "decimals",
+      "outputs": [
+        {
+          "internalType": "uint8",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "description",
+      "outputs": [
+        {
+          "internalType": "string",
+          "name": "",
+          "type": "string"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "latestRoundData",
+      "outputs": [
+        {
+          "internalType": "uint80",
+          "name": "",
+          "type": "uint80"
+        },
+        {
+          "internalType": "int256",
+          "name": "",
+          "type": "int256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint80",
+          "name": "",
+          "type": "uint80"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "int256",
+          "name": "answer_",
+          "type": "int256"
+        }
+      ],
+      "name": "setAnswer",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint80",
+          "name": "roundId_",
+          "type": "uint80"
+        },
+        {
+          "internalType": "int256",
+          "name": "answer_",
+          "type": "int256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "startedAt_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "updatedAt_",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint80",
+          "name": "answeredInRound_",
+          "type": "uint80"
+        }
+      ],
+      "name": "setRoundData",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "60a060405234801561001057600080fd5b5060405161072f38038061072f83398101604081905261002f916100d5565b60ff831660805260006100428382610250565b5061004e814280610056565b505050610341565b6001805481906000906100739083906001600160501b031661030e565b82546101009290920a6001600160501b038181021990931691831602179091556002949094555060039190915560045560015460058054919092166001600160501b0319909116179055565b634e487b7160e01b600052604160045260246000fd5b6000806000606084860312156100ea57600080fd5b835160ff811681146100fb57600080fd5b60208501519093506001600160401b0381111561011757600080fd5b8401601f8101861361012857600080fd5b80516001600160401b03811115610141576101416100bf565b604051601f8201601f19908116603f011681016001600160401b038111828210171561016f5761016f6100bf565b60405281815282820160200188101561018757600080fd5b60005b828110156101a65760208185018101518383018201520161018a565b50600091810160200191909152604095909501519396949550929392505050565b600181811c908216806101db57607f821691505b6020821081036101fb57634e487b7160e01b600052602260045260246000fd5b50919050565b601f82111561024b57806000526020600020601f840160051c810160208510156102285750805b601f840160051c820191505b818110156102485760008155600101610234565b50505b505050565b81516001600160401b03811115610269576102696100bf565b61027d8161027784546101c7565b84610201565b6020601f8211600181146102b157600083156102995750848201515b600019600385901b1c1916600184901b178455610248565b600084815260208120601f198516915b828110156102e157878501518255602094850194600190920191016102c1565b50848210156102ff5786840151600019600387901b60f8161c191681555b50505050600190811b01905550565b6001600160501b03818116838216019081111561033b57634e487b7160e01b600052601160045260246000fd5b92915050565b6080516103d461035b600039600060b101526103d46000f3fe608060405234801561001057600080fd5b50600436106100575760003560e01c80631c12940a1461005c578063313ce567146100ac5780637284e416146100ea57806399213cd8146100ff578063feaf968c14610112575b600080fd5b6100aa61006a36600461027a565b600180546001600160501b0396871669ffffffffffffffffffff199182161790915560029490945560039290925560045560058054919093169116179055565b005b6100d37f000000000000000000000000000000000000000000000000000000000000000081565b60405160ff90911681526020015b60405180910390f35b6100f2610156565b6040516100e191906102ca565b6100aa61010d366004610318565b6101e4565b600154600254600354600454600554604080516001600160501b0396871681526020810195909552840192909252606083015291909116608082015260a0016100e1565b6000805461016390610331565b80601f016020809104026020016040519081016040528092919081815260200182805461018f90610331565b80156101dc5780601f106101b1576101008083540402835291602001916101dc565b820191906000526020600020905b8154815290600101906020018083116101bf57829003601f168201915b505050505081565b6101ef8142426101f2565b50565b60018054819060009061020f9083906001600160501b031661036b565b82546101009290920a6001600160501b0381810219909316918316021790915560029490945550600391909155600455600154600580549190921669ffffffffffffffffffff19909116179055565b80356001600160501b038116811461027557600080fd5b919050565b600080600080600060a0868803121561029257600080fd5b61029b8661025e565b94506020860135935060408601359250606086013591506102be6080870161025e565b90509295509295909350565b602081526000825180602084015260005b818110156102f857602081860181015160408684010152016102db565b506000604082850101526040601f19601f83011684010191505092915050565b60006020828403121561032a57600080fd5b5035919050565b600181811c9082168061034557607f821691505b60208210810361036557634e487b7160e01b600052602260045260246000fd5b50919050565b6001600160501b03818116838216019081111561039857634e487b7160e01b600052601160045260246000fd5b9291505056fea26469706673582212204f5c8f6437a64997e72db8d24bdaf4a6b85c717757f3c318078836298c1c71ae64736f6c634300081e0033",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.30+commit.73712a01\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"uint8\",\"name\":\"decimals_\",\"type\":\"uint8\"},{\"internalType\":\"string\",\"name\":\"description_\",\"type\":\"string\"},{\"internalType\":\"int256\",\"name\":\"answer_\",\"type\":\"int256\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"inputs\":[],\"name\":\"decimals\",\"outputs\":[{\"internalType\":\"uint8\",\"name\":\"\",\"type\":\"uint8\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"description\",\"outputs\":[{\"internalType\":\"string\",\"name\":\"\",\"type\":\"string\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"latestRoundData\",\"outputs\":[{\"internalType\":\"uint80\",\"name\":\"\",\"type\":\"uint80\"},{\"internalType\":\"int256\",\"name\":\"\",\"type\":\"int256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"},{\"internalType\":\"uint80\",\"name\":\"\",\"type\":\"uint80\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"int256\",\"name\":\"answer_\",\"type\":\"int256\"}],\"name\":\"setAnswer\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"uint80\",\"name\":\"roundId_\",\"type\":\"uint80\"},{\"internalType\":\"int256\",\"name\":\"answer_\",\"type\":\"int256\"},{\"internalType\":\"uint256\",\"name\":\"startedAt_\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"updatedAt_\",\"type\":\"uint256\"},{\"internalType\":\"uint80\",\"name\":\"answeredInRound_\",\"type\":\"uint80\"}],\"name\":\"setRoundData\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"src/mocks/MockAggregatorV3.sol\":\"MockAggregatorV3\"},\"evmVersion\":\"paris\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[]},\"sources\":{\"src/mocks/MockAggregatorV3.sol\":{\"keccak256\":\"0xf7e0db2ef70a866d426a41b06c45bf11e208b12412b86924e2555dba3df6c7e2\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://63c8f3cba4cef680dfb1122fa805fef609840e14359f1bd9be8364f7748308e8\",\"dweb:/ipfs/QmT2NrCve3i3F4FP6paxLyYMeH2r99ZQnZ1yReX9DMS9UW\"]}},\"version\":1}"
+}

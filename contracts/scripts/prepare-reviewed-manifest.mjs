@@ -200,6 +200,8 @@ function buildApprovalScaffold({
   if (create2FactoryAddress !== null && create2FactoryAddress !== undefined) {
     validateAddress("create2_factory_address", create2FactoryAddress);
   }
+  const defaultAllowedEnvironments = new Set(["local-devnet", "runtime-devnet", "base-sepolia"]);
+  const requiresExternalAssurance = !defaultAllowedEnvironments.has(environment);
 
   return {
     approval_id: `chio.web3-deployment-approval.${environment}.v1`,
@@ -209,6 +211,14 @@ function buildApprovalScaffold({
     reviewed_manifest_sha256: manifestHash,
     environment,
     status: "pending-review",
+    deployment_scope: "review-required",
+    non_testnet_guard: {
+      status: requiresExternalAssurance ? "external_assurance_required" : "local_or_testnet_only",
+      requires_external_assurance: requiresExternalAssurance,
+      note: requiresExternalAssurance
+        ? "Non-testnet promotion requires an approved external assurance artifact."
+        : "This scaffold is rehearsal or testnet evidence only and does not authorize mainnet custody."
+    },
     approvals: [],
     create2: {
       factory_mode: create2FactoryMode,

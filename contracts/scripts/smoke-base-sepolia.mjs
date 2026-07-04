@@ -10,6 +10,13 @@ const repoRoot = path.resolve(contractsDir, "..");
 
 const BASE_SEPOLIA_CHAIN_ID = 84532n;
 const BASE_SEPOLIA_USDC = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+const ENTITY_BINDING_TYPES = {
+  ChioEntityBinding: [
+    { name: "chioEntityId", type: "bytes32" },
+    { name: "settlementAddress", type: "address" },
+    { name: "operator", type: "address" }
+  ]
+};
 const ERC20_ABI = [
   "function balanceOf(address account) view returns (uint256)",
   "function allowance(address owner, address spender) view returns (uint256)",
@@ -78,6 +85,15 @@ function readArtifact(name) {
 
 function labelHash(label) {
   return ethers.keccak256(ethers.toUtf8Bytes(label));
+}
+
+function entityBindingDomain(chainId, identityRegistryAddress) {
+  return {
+    name: "ChioIdentityRegistry",
+    version: "1",
+    chainId,
+    verifyingContract: identityRegistryAddress
+  };
 }
 
 async function waitForReceipt(tx) {
@@ -210,6 +226,19 @@ async function main() {
     const usdc = new ethers.Contract(BASE_SEPOLIA_USDC, ERC20_ABI, signer);
 
     const actor = await signer.getAddress();
+    const identityAdmin = await identityRegistry.admin();
+    let identityAdminSigner = signer;
+    if (identityAdmin.toLowerCase() !== actor.toLowerCase()) {
+      const identityAdminKey = requireValue(
+        "--identity-admin-key or CHIO_BASE_SEPOLIA_IDENTITY_ADMIN_KEY",
+        args["identity-admin-key"] ?? process.env.CHIO_BASE_SEPOLIA_IDENTITY_ADMIN_KEY
+      );
+      identityAdminSigner = new ethers.Wallet(identityAdminKey, provider);
+      const suppliedAdmin = await identityAdminSigner.getAddress();
+      if (suppliedAdmin.toLowerCase() !== identityAdmin.toLowerCase()) {
+        throw new Error(`identity admin key resolves to ${suppliedAdmin}, expected ${identityAdmin}`);
+      }
+    }
     const operatorEdKeyHash = labelHash(process.env.CHIO_BASE_SEPOLIA_OPERATOR_ED_KEY_LABEL ?? "chio-base-sepolia-operator-ed25519-key");
     const runId = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
     const transactions = [];
@@ -241,7 +270,7 @@ async function main() {
 
     const operatorRegistered = await identityRegistry.isOperator(actor);
     if (!operatorRegistered) {
-      const tx = await identityRegistry.registerOperator(
+      const tx = await identityRegistry.connect(identityAdminSigner).registerOperator(
         actor,
         operatorEdKeyHash,
         actor,
@@ -267,10 +296,19 @@ async function main() {
     });
 
     const entityId = labelHash(`base-sepolia-smoke-entity:${runId}`);
+    const entityBindingSignature = await identityAdminSigner.signTypedData(
+      entityBindingDomain(network.chainId, await identityRegistry.getAddress()),
+      ENTITY_BINDING_TYPES,
+      {
+        chioEntityId: entityId,
+        settlementAddress: actor,
+        operator: actor
+      }
+    );
     const entityTx = await identityRegistry.registerEntity(
       entityId,
       actor,
-      ethers.toUtf8Bytes(`base-sepolia-smoke:entity:${runId}`)
+      entityBindingSignature
     );
     const entityReceipt = await waitForReceipt(entityTx);
     transactions.push(txSummary("identity.entity_registration", entityTx, entityReceipt, { entity_id: entityId }));
@@ -330,6 +368,14 @@ async function main() {
       outcome: "pass",
       note: "Operator published fresh partial and final roots for proof-backed releases."
     });
+
+    if (!(await escrow.tokenAllowed(BASE_SEPOLIA_USDC))) {
+      const allowTokenTx = await escrow.setTokenAllowed(BASE_SEPOLIA_USDC, true);
+      const allowTokenReceipt = await waitForReceipt(allowTokenTx);
+      transactions.push(txSummary("settlement.usdc_allowlist", allowTokenTx, allowTokenReceipt, {
+        token: BASE_SEPOLIA_USDC
+      }));
+    }
 
     const allowance = await usdc.allowance(actor, await escrow.getAddress());
     if (allowance < totalRequiredUsdc) {

@@ -544,7 +544,10 @@ fn sample_dispatch() -> Web3SettlementDispatchArtifact {
         escrow_id: "escrow-web3-1".to_string(),
         escrow_contract: "0x1000000000000000000000000000000000000002".to_string(),
         bond_vault_contract: "0x1000000000000000000000000000000000000003".to_string(),
+        settlement_token_address: "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string(),
         beneficiary_address: "0x2222222222222222222222222222222222222222".to_string(),
+        operator_key_hash: "0x9999999999999999999999999999999999999999999999999999999999999999"
+            .to_string(),
         support_boundary: Web3SettlementSupportBoundary {
             real_dispatch_supported: true,
             anchor_proof_required: true,
@@ -983,6 +986,18 @@ fn web3_dispatch_rejects_lowercase_settlement_currency() {
         validate_web3_settlement_dispatch(&dispatch),
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("currency")
+    ));
+}
+
+#[test]
+fn web3_dispatch_rejects_malformed_operator_key_hash() {
+    let mut dispatch = sample_dispatch();
+    dispatch.operator_key_hash = "0x1234".to_string();
+
+    assert!(matches!(
+        validate_web3_settlement_dispatch(&dispatch),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("operator_key_hash")
     ));
 }
 

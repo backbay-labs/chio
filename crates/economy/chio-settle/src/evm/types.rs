@@ -78,6 +78,7 @@ pub enum EscrowExecutionAmount {
 pub struct PreparedMerkleRelease {
     pub escrow_id: String,
     pub chain_id: String,
+    pub receipt_hash: String,
     pub receipt_leaf_hash: String,
     pub merkle_root: String,
     pub partial: bool,
@@ -97,7 +98,7 @@ impl PreparedMerkleRelease {
             chain_id: self.chain_id.clone(),
             lane_kind: "evm_merkle_proof".to_string(),
             capability_commitment,
-            receipt_reference: self.receipt_leaf_hash.clone(),
+            receipt_reference: self.receipt_hash.clone(),
             operator_identity,
             settlement_amount: self.observed_amount.clone(),
         }
@@ -182,6 +183,7 @@ pub struct PreparedBondRelease {
     pub vault_id: String,
     pub chain_id: String,
     pub evidence_hash: String,
+    pub merkle_root: String,
     pub call: PreparedEvmCall,
 }
 
@@ -191,6 +193,7 @@ pub struct PreparedBondImpair {
     pub vault_id: String,
     pub chain_id: String,
     pub evidence_hash: String,
+    pub merkle_root: String,
     pub slash_amount_minor_units: u128,
     pub call: PreparedEvmCall,
 }
@@ -269,4 +272,5 @@ pub(super) struct JsonRpcEnvelope {
 pub(super) struct JsonRpcError {
     pub(super) code: i64,
     pub(super) message: String,
+    pub(super) data: Option<Value>,
 }

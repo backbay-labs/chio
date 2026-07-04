@@ -37,6 +37,20 @@ interface IChioBondVault {
 
     event BondExpired(bytes32 indexed vaultId, bytes32 indexed bondId, uint256 returnedAmount);
 
+    event TokenAllowedSet(address indexed token, bool allowed);
+
+    event PausedSet(address indexed admin, bool paused);
+
+    function admin() external view returns (address);
+
+    function paused() external view returns (bool);
+
+    function setPaused(bool paused_) external;
+
+    function setTokenAllowed(address token, bool allowed) external;
+
+    function tokenAllowed(address token) external view returns (bool);
+
     function deriveVaultId(BondTerms calldata terms) external view returns (bytes32 vaultId);
 
     function lockBond(BondTerms calldata terms) external returns (bytes32 vaultId);

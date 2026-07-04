@@ -14,6 +14,15 @@ const artifactsDir = path.join(contractsDir, "artifacts");
 const LOCAL_PORT = Number(process.env.CHIO_PROMOTION_DEVNET_PORT ?? "8551");
 const LOCAL_RPC_URL = `http://127.0.0.1:${LOCAL_PORT}`;
 const LOCAL_CHAIN_ID = 31337;
+const DEFAULT_ALLOWED_CHAIN_IDS = new Set([
+  "31337",
+  "1337",
+  "84532",
+  "11155111",
+  "421614",
+  "11155420",
+  "80002"
+]);
 const USDC_UNITS = 10n ** 6n;
 const DEFAULT_EXPIRY_SECONDS = 3600;
 const ERC8021_MARKER = "80218021802180218021802180218021";
@@ -87,6 +96,84 @@ function repoRelative(filePath) {
 
 function artifactPath(ref) {
   return path.isAbsolute(ref) ? ref : path.join(repoRoot, ref);
+}
+
+function parseEip155ChainId(chainId) {
+  if (typeof chainId !== "string") {
+    throw new Error("manifest chain_id must be an eip155 chain id");
+  }
+  const match = /^eip155:(\d+)$/.exec(chainId);
+  if (!match) {
+    throw new Error(`manifest chain_id ${chainId} must use eip155:<number>`);
+  }
+  return match[1];
+}
+
+function requireAssuranceCheck(label, value) {
+  if (!value || value.status !== "pass") {
+    throw new Error(`external assurance artifact missing passing ${label}`);
+  }
+}
+
+function validateAssuranceUnlock({ unlock, unlockPath, manifest, approval, contractRelease, deploymentPolicy }) {
+  if (!unlock || typeof unlock !== "object") {
+    throw new Error("external assurance artifact must be a JSON object");
+  }
+  if (unlock.status !== "approved") {
+    throw new Error("external assurance artifact status must be approved");
+  }
+  if (unlock.gate !== "EXTERNAL_ASSURANCE") {
+    throw new Error("external assurance artifact gate must be EXTERNAL_ASSURANCE");
+  }
+  if (unlock.chain_id !== manifest.chain_id) {
+    throw new Error("external assurance artifact chain_id does not match the manifest");
+  }
+  if (unlock.candidate_release_id !== contractRelease.release_id) {
+    throw new Error("external assurance artifact candidate_release_id does not match the contract release");
+  }
+  if (unlock.deployment_policy_id !== deploymentPolicy.policyId) {
+    throw new Error("external assurance artifact deployment_policy_id does not match the deployment policy");
+  }
+  if (unlock.approval_id !== approval.approval_id) {
+    throw new Error("external assurance artifact approval_id does not match the promotion approval");
+  }
+  const securityOwner = unlock.security_owner_approval ?? {};
+  if (securityOwner.status !== "approved" || !securityOwner.actor || !securityOwner.approved_at) {
+    throw new Error("external assurance artifact requires security_owner_approval with status approved, actor, and approved_at");
+  }
+  requireAssuranceCheck("external_audit", unlock.external_audit);
+  requireAssuranceCheck("testnet_soak", unlock.testnet_soak);
+  requireAssuranceCheck("artifact_digest_gate", unlock.artifact_digest_gate);
+  requireAssuranceCheck("runtime_codehash_gate", unlock.runtime_codehash_gate);
+  requireAssuranceCheck("minimum_bar_checklist", unlock.minimum_bar_checklist);
+  if (!Array.isArray(unlock.unresolved_critical_high_findings) || unlock.unresolved_critical_high_findings.length !== 0) {
+    throw new Error("external assurance artifact must declare zero unresolved critical/high findings");
+  }
+  return {
+    id: "deployment.external_assurance",
+    outcome: "pass",
+    note: `External assurance artifact ${repoRelative(unlockPath)} authorizes non-testnet promotion for ${manifest.chain_id}.`
+  };
+}
+
+function enforceNonTestnetAssurance({ args, manifest, approval, contractRelease, deploymentPolicy }) {
+  const chainId = parseEip155ChainId(manifest.chain_id);
+  if (DEFAULT_ALLOWED_CHAIN_IDS.has(chainId)) {
+    return null;
+  }
+
+  const unlockPathArg = args["assurance-unlock"];
+  if (!unlockPathArg) {
+    throw new Error(
+      `${manifest.chain_id} is not a default-allowed local or testnet chain. ` +
+        "Non-testnet promotion requires external audit, testnet soak, artifact digest, runtime codehash, " +
+        "and minimum-bar gates. Provide --assurance-unlock <reviewed-json> only after security-owner approval."
+    );
+  }
+
+  const unlockPath = path.resolve(repoRoot, unlockPathArg);
+  const unlock = readJson(unlockPath);
+  return validateAssuranceUnlock({ unlock, unlockPath, manifest, approval, contractRelease, deploymentPolicy });
 }
 
 function readArtifact(ref) {
@@ -359,7 +446,7 @@ async function main() {
   const dataSuffix = resolveDataSuffix(args);
 
   if (!manifestPath || !approvalPath || !outputDir) {
-    throw new Error("usage: node contracts/scripts/promote-deployment.mjs --manifest <path> --approval <path> --output-dir <path> [--local-devnet] [--rollback-on-failure] [--rpc-url <url>] [--deployer-key <hex>] [--registry-admin-key <hex>] [--operator-key <hex>] [--price-admin-key <hex>] [--base-builder-code <code>] [--data-suffix <hex>]");
+    throw new Error("usage: node contracts/scripts/promote-deployment.mjs --manifest <path> --approval <path> --output-dir <path> [--local-devnet] [--rollback-on-failure] [--rpc-url <url>] [--deployer-key <hex>] [--registry-admin-key <hex>] [--operator-key <hex>] [--price-admin-key <hex>] [--assurance-unlock <reviewed-json>] [--base-builder-code <code>] [--data-suffix <hex>]");
   }
 
   ensureDir(outputDir);
@@ -396,6 +483,10 @@ async function main() {
       outcome: "pass",
       note: "Reviewed manifest hash, release id, deployment policy, and create2 salt namespace matched the approved promotion artifact."
     });
+    const assuranceCheck = enforceNonTestnetAssurance({ args, manifest, approval, contractRelease, deploymentPolicy });
+    if (assuranceCheck) {
+      report.checks.push(assuranceCheck);
+    }
 
     const state = {
       placeholders: {},
@@ -732,7 +823,7 @@ async function main() {
     rollbackPlan.notes.push(
       localDevnet
         ? "Local rehearsal can revert to the captured snapshot on failure; successful promotion remains reproducible by rerunning against a fresh devnet with the same reviewed manifest and approval."
-        : "Live rollback is replacement-oriented: stop broader promotion, retain the reviewed manifest and approval artifact, and cut a superseding reviewed manifest if remediation is required."
+        : "Live rollback is replacement-oriented: stop broader promotion, retain the reviewed manifest and approval artifact, and cut a superseding reviewed manifest if replacement is required."
     );
 
     report.status = "promoted";

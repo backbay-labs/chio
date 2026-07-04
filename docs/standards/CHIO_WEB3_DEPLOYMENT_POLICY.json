@@ -1,6 +1,17 @@
 {
   "policyId": "chio.web3-deployment-promotion.v1",
   "generatedAt": "2026-04-02T09:00:00Z",
+  "nonTestnetGuard": {
+    "status": "EXTERNAL_ASSURANCE_REQUIRED",
+    "effectiveAt": "2026-07-04T01:48:54Z",
+    "summary": "No mainnet deployment, non-testnet custody, or non-testnet promotion is authorized until external assurance passes.",
+    "defaultAllowedEnvironments": [
+      "local-devnet",
+      "runtime-devnet",
+      "base-sepolia public testnet rehearsal"
+    ],
+    "unlockRequirement": "contracts/scripts/promote-deployment.mjs requires --assurance-unlock with approved external audit, testnet soak, artifact digest, runtime codehash, minimum-bar checklist, zero unresolved critical/high findings, and security-owner sign-off for any non-testnet chain."
+  },
   "environments": [
     "local-devnet",
     "runtime-devnet",
@@ -28,6 +39,18 @@
     "settlementIndexerDriftThresholdBlocks": 12,
     "ccipValidityWindowMultiplier": 2
   },
+  "historicalEvidence": [
+    "contracts/reports/local-devnet-qualification.json",
+    "crates/economy/chio-web3-bindings/reports/local-devnet-qualification.json",
+    "contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md"
+  ],
+  "requiredExternalAssurance": [
+    "independent external audit with zero unresolved critical/high findings",
+    "four-week testnet soak evidence",
+    "artifact-freshness digest gate evidence",
+    "deployed runtime codehash gate evidence",
+    "security-owner signed minimum-bar checklist"
+  ],
   "requiredEvidence": [
     "./scripts/qualify-web3-runtime.sh",
     "./scripts/qualify-web3-promotion.sh",
@@ -37,10 +60,8 @@
     "contracts/scripts/prepare-reviewed-manifest.mjs",
     "examples/internet-of-agents-web3-network/smoke.sh",
     "scripts/qualify-web3-examples.sh",
-    "contracts/reports/local-devnet-qualification.json",
     "contracts/deployments/local-devnet.reviewed.json",
     "contracts/deployments/base-sepolia.template.json",
-    "contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md",
     "contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md",
     "docs/standards/CHIO_WEB3_DEPLOYMENT_APPROVAL_EXAMPLE.json",
     "docs/standards/CHIO_WEB3_DEPLOYMENT_PROMOTION_REPORT_EXAMPLE.json",
@@ -52,16 +73,19 @@
     "target/web3-promotion-qualification/review-prep/qualification.json",
     "target/web3-promotion-qualification/promotion-qualification.json"
   ],
-  "promotionGates": [
-    "No unreviewed critical findings may remain in the web3 readiness audit.",
-    "Measured local-devnet gas must stay within the budget table.",
-    "Runtime qualification must be green on the candidate revision.",
+  "deploymentGates": [
+    "No mainnet deployment, non-testnet custody, or non-testnet promotion is authorized until external audit, testnet soak, artifact digest, runtime codehash, minimum-bar checklist, and security-owner sign-off pass.",
+    "The local-devnet qualification JSON and contract security review are historical evidence only and are not promotion signals.",
+    "No unresolved critical/high finding may remain after the external-audit re-review.",
+    "Measured local-devnet gas is budget evidence only; it does not authorize non-testnet custody or promotion.",
+    "Runtime qualification must be green on the candidate revision, but it does not replace external assurance.",
     "Reviewed promotion manifests must bind one exact manifest hash, release id, deployment policy id, CREATE2 salt namespace, and environment-specific approval artifact before any rollout begins.",
     "Deployment manifests must remain deterministic templates with operator-filled addresses reviewed before any live promotion.",
     "The repo-shipped review-prep helper must be able to materialize reviewed manifests and pending-review approval scaffolds for every shipped public-chain template with no unresolved operator-supplied placeholders.",
     "Base Sepolia public-chain rehearsals may use deployed mock Chainlink-compatible feeds only when the dependency report records them as testnet-only placeholders.",
     "Base Sepolia public-chain rehearsals that use mock Chainlink-compatible feeds must refresh feed timestamps before delayed readback or tests that depend on fresh oracle prices.",
     "Base Sepolia promotion must have a passing smoke report with transaction hashes before any mainnet approval artifact is prepared.",
+    "Mainnet and Arbitrum One approvals require an approved --assurance-unlock artifact before the runner may create a provider or send any transaction.",
     "Base Builder Code attribution must be enabled for Base deployment factory calls when a builder code is configured.",
     "Promotion qualification must prove reproducible CREATE2 rollout across fresh local devnets and emit explicit rollback plans on failure.",
     "External publication still requires hosted workflow observation and operator approval."

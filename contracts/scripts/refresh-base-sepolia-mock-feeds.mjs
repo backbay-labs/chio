@@ -7,6 +7,7 @@ import { ethers } from "ethers";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const contractsDir = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(contractsDir, "..");
+const BASE_SEPOLIA_CHAIN_ID = 84532n;
 
 function parseArgs(argv) {
   const args = {};
@@ -86,6 +87,13 @@ async function main() {
   const provider = new ethers.JsonRpcProvider(rpcUrl);
   try {
     const signer = new ethers.Wallet(deployerKey, provider);
+    const network = await provider.getNetwork();
+    if (network.chainId !== BASE_SEPOLIA_CHAIN_ID) {
+      throw new Error(`expected Base Sepolia chain id ${BASE_SEPOLIA_CHAIN_ID}, got ${network.chainId}`);
+    }
+    if (dependencies.chain_id !== `eip155:${network.chainId}`) {
+      throw new Error(`dependencies chain id ${dependencies.chain_id} does not match eip155:${network.chainId}`);
+    }
     const refreshed = [];
     for (const [name, feed] of Object.entries(dependencies.mock_chainlink_feeds ?? {})) {
       const contract = new ethers.Contract(feed.address, artifact.abi, signer);

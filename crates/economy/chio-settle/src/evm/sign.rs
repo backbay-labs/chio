@@ -151,12 +151,34 @@ pub(super) fn dual_sign_digest(
     amount_minor_units: u128,
 ) -> Result<B256, SettlementError> {
     let chain_id = parse_eip155_chain_id(&config.chain_id)?;
-    let mut packed = Vec::with_capacity(32 + 20 + 32 + 32 + 32);
-    packed.extend_from_slice(&u256_to_bytes32(U256::from(chain_id)));
-    packed.extend_from_slice(parse_address(escrow_contract, "escrow_contract")?.as_slice());
-    packed.extend_from_slice(escrow_id.as_slice());
-    packed.extend_from_slice(receipt_hash.as_slice());
-    packed.extend_from_slice(&u256_to_bytes32(U256::from(amount_minor_units)));
+    let domain_separator = keccak256(
+        (
+            keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                    .as_bytes(),
+            ),
+            keccak256("ChioEscrow".as_bytes()),
+            keccak256("1".as_bytes()),
+            U256::from(chain_id),
+            parse_address(escrow_contract, "escrow_contract")?,
+        )
+            .abi_encode(),
+    );
+    let struct_hash = keccak256(
+        (
+            keccak256(
+                "ChioEscrowRelease(bytes32 escrowId,bytes32 receiptHash,uint256 amount)".as_bytes(),
+            ),
+            *escrow_id,
+            *receipt_hash,
+            U256::from(amount_minor_units),
+        )
+            .abi_encode(),
+    );
+    let mut packed = Vec::with_capacity(66);
+    packed.extend_from_slice(b"\x19\x01");
+    packed.extend_from_slice(domain_separator.as_slice());
+    packed.extend_from_slice(struct_hash.as_slice());
     Ok(keccak256(packed))
 }
 

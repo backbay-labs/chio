@@ -2,17 +2,12 @@
 
 ## Purpose
 
-This profile freezes the bounded `chio-settle` runtime, originally tracked
-under historical internal milestone `v2.37`, as implemented in the current
-pre-release v1 workspace over the official web3 contract family.
+This profile freezes the bounded `chio-settle` runtime as implemented in the
+current pre-release v1 workspace over the official web3 contract family.
 
-> Version posture: this is a pre-release standards profile. Internal `v2.x`
-> milestone labels are historical planning labels, not Chio-owned protocol,
-> schema, SDK, or runtime versions. Current protocol posture is v1-only.
-
-The later `v2.38` interop work does not widen `chio-settle` itself into a
-generic bridge, scheduler, or gas-sponsorship system. Those overlays remain
-separate bounded profiles on top of this runtime.
+This profile does not widen `chio-settle` itself into a generic bridge,
+scheduler, or gas-sponsorship system. Those overlays remain separate bounded
+profiles on top of this runtime.
 
 It covers four connected surfaces:
 
@@ -41,7 +36,7 @@ runtime example at `docs/standards/CHIO_SETTLE_RUNTIME_REPORT_EXAMPLE.json`.
   explicit recovery actions for confirmation wait, dispute wait, reorg retry,
   refund, and manual review
 - projection of observed chain state back into
-  `chio.web3-settlement-execution-receipt.v1` without mutating prior signed Chio
+  `chio.web3-settlement-execution-receipt.v2` without mutating prior signed Chio
   truth
 - one bounded Solana settlement-preparation model that verifies Chio Ed25519
   receipts and key bindings locally, then emits a canonical
@@ -103,8 +98,7 @@ observation unless the signed Chio verifier report also accepts the bound claim.
 
 ## Related Interop Surfaces
 
-`chio-settle` interoperates with additional bounded overlays that were tracked
-under historical internal milestone `v2.38`:
+`chio-settle` interoperates with additional bounded overlays:
 
 - `docs/standards/CHIO_AUTOMATION_PROFILE.md` for settlement and bond watchdog
   jobs
@@ -166,4 +160,4 @@ This profile does not yet claim:
   interop layer remains explicit compatibility only
 - direct Solana transaction broadcast or on-chain Solana program verification
 
-Those surfaces remain later milestones in the appended web3-runtime ladder.
+Those surfaces remain outside this settlement runtime profile.

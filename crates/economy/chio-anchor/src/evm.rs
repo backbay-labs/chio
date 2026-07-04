@@ -25,6 +25,8 @@ pub use types::{
 };
 pub use verification::verify_inclusion_onchain;
 
+use crate::AnchorError;
+
 #[cfg(test)]
 use chio_egress_contract::HttpEgressContract;
 
@@ -32,13 +34,13 @@ pub(crate) use validation::parse_validated_evm_anchor_target;
 
 pub fn operator_key_hash(
     binding: &chio_core::web3::identity::SignedWeb3IdentityBinding,
-) -> alloy_primitives::B256 {
+) -> Result<alloy_primitives::B256, AnchorError> {
     hashing::operator_key_hash(binding)
 }
 
 pub fn operator_key_hash_hex(
     binding: &chio_core::web3::identity::SignedWeb3IdentityBinding,
-) -> String {
+) -> Result<String, AnchorError> {
     hashing::operator_key_hash_hex(binding)
 }
 
@@ -51,6 +53,7 @@ mod tests {
     use std::time::Duration;
 
     use alloy_sol_types::SolCall;
+    use chio_core::crypto::PublicKey;
     use chio_core::web3::anchors::AnchorInclusionProof;
     use chio_core::web3::identity::{SignedWeb3IdentityBinding, Web3KeyBindingPurpose};
     use chio_kernel::checkpoint::KernelCheckpoint;
@@ -350,6 +353,23 @@ mod tests {
         assert!(error
             .to_string()
             .contains("does not match operator address"));
+    }
+
+    #[test]
+    fn prepare_root_publication_rejects_non_ed25519_operator_key() {
+        let checkpoint = sample_checkpoint();
+        let target = sample_target("http://127.0.0.1:8545");
+        let mut binding = sample_binding();
+        let mut encoded_point = [0u8; 65];
+        encoded_point[0] = 0x04;
+        binding.certificate.chio_public_key =
+            PublicKey::from_p256_sec1(&encoded_point).test_expect("P-256 key parses");
+
+        let error = prepare_root_publication(&target, &checkpoint, &binding)
+            .test_expect_err("non-Ed25519 operator key should fail");
+
+        assert!(matches!(error, crate::AnchorError::InvalidBinding(_)));
+        assert!(error.to_string().contains("Ed25519"));
     }
 
     #[test]
@@ -667,7 +687,7 @@ mod tests {
                 batchEndSeq: checkpoint.body.batch_end_seq,
                 treeSize: checkpoint.body.tree_size as u64,
                 publishedAt: 1_744_000_123_u64,
-                operatorKeyHash: operator_key_hash(&binding),
+                operatorKeyHash: operator_key_hash(&binding).test_expect("operator key hash"),
             },
         ));
         let Some(server) = MockJsonRpcServer::spawn(vec![
@@ -743,7 +763,7 @@ mod tests {
                 batchEndSeq: checkpoint.body.batch_end_seq,
                 treeSize: checkpoint.body.tree_size as u64 + 1,
                 publishedAt: 1_744_000_123_u64,
-                operatorKeyHash: operator_key_hash(&binding),
+                operatorKeyHash: operator_key_hash(&binding).test_expect("operator key hash"),
             },
         ));
         let Some(server) = MockJsonRpcServer::spawn(vec![

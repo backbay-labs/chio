@@ -133,12 +133,14 @@ async function main() {
     wallets.admin,
     await rootRegistry.getAddress(),
     await identityRegistry.getAddress(),
+    wallets.admin.address,
   );
   const bondVault = await deploy(
     "ChioBondVault",
     wallets.admin,
     await rootRegistry.getAddress(),
     await identityRegistry.getAddress(),
+    wallets.admin.address,
   );
   const priceResolver = await deploy(
     "ChioPriceResolver",
@@ -155,6 +157,8 @@ async function main() {
       ethers.toUtf8Bytes("binding:operator"),
     )
   ).wait();
+  await (await escrow.setTokenAllowed(await mockUsdc.getAddress(), true)).wait();
+  await (await bondVault.setTokenAllowed(await mockUsdc.getAddress(), true)).wait();
   await (
     await rootRegistry
       .connect(wallets.operator)

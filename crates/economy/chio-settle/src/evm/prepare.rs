@@ -34,6 +34,11 @@ pub fn scale_chio_amount_to_token_minor_units(
     }
 }
 
+const ESCROW_PROOF_LEAF_TYPE: &str = "ChioEscrowProof(uint256 chainId,address escrow,bytes32 escrowId,address token,address beneficiary,bytes32 operatorKeyHash,bytes32 receiptHash,uint256 amount,bool partial)";
+const BOND_PROOF_LEAF_TYPE: &str = "ChioBondProof(uint256 chainId,address vault,bytes32 vaultId,bytes32 evidenceHash,uint8 action,uint256 slashAmount,bytes32 distributionHash)";
+const BOND_ACTION_RELEASE: u8 = 0;
+const BOND_ACTION_IMPAIR: u8 = 1;
+
 pub(crate) fn scale_token_minor_units_to_chio_amount(
     units: u128,
     currency: &str,
@@ -186,7 +191,9 @@ pub async fn prepare_web3_escrow_dispatch(
         escrow_id: expected_escrow_id.clone(),
         escrow_contract: config.escrow_contract.clone(),
         bond_vault_contract: config.bond_vault_contract.clone(),
+        settlement_token_address: config.settlement_token_address.clone(),
         beneficiary_address: request.beneficiary_address.clone(),
+        operator_key_hash: format_b256(operator_key_hash),
         support_boundary: Web3SettlementSupportBoundary {
             real_dispatch_supported: true,
             anchor_proof_required: request.settlement_path == Web3SettlementPath::MerkleProof,
@@ -228,6 +235,27 @@ pub fn prepare_merkle_release(
             dispatch.chain_id, config.chain_id
         )));
     }
+    let dispatch_escrow = parse_address(&dispatch.escrow_contract, "dispatch.escrow_contract")?;
+    let config_escrow = parse_address(&config.escrow_contract, "config.escrow_contract")?;
+    if dispatch_escrow != config_escrow {
+        return Err(SettlementError::InvalidDispatch(
+            "dispatch escrow_contract does not match config escrow_contract".to_string(),
+        ));
+    }
+    let dispatch_token = parse_address(
+        &dispatch.settlement_token_address,
+        "dispatch.settlement_token_address",
+    )?;
+    let config_token = parse_address(
+        &config.settlement_token_address,
+        "config.settlement_token_address",
+    )?;
+    if dispatch_token != config_token {
+        return Err(SettlementError::InvalidDispatch(
+            "dispatch settlement_token_address does not match config settlement_token_address"
+                .to_string(),
+        ));
+    }
     if dispatch.settlement_path != Web3SettlementPath::MerkleProof {
         return Err(SettlementError::Unsupported(
             "dispatch is not configured for the Merkle settlement path".to_string(),
@@ -257,18 +285,34 @@ pub fn prepare_merkle_release(
     let receipt_bytes = canonical_json_bytes(&anchor_proof.receipt.body())
         .map_err(|error| SettlementError::Serialization(error.to_string()))?;
     let leaf = leaf_hash(&receipt_bytes);
+    let receipt_hash = keccak256(&receipt_bytes);
+    if anchor_proof.receipt_inclusion.proof.tree_size != 1
+        || !anchor_proof.receipt_inclusion.proof.audit_path.is_empty()
+    {
+        return Err(SettlementError::Unsupported(
+            "multi-leaf Merkle release preparation requires typed settlement inclusion data"
+                .to_string(),
+        ));
+    }
     let observed_amount = match amount {
         EscrowExecutionAmount::Full => dispatch.settlement_amount.clone(),
         EscrowExecutionAmount::Partial(amount) => amount,
     };
     let amount_minor_units = scale_chio_amount_to_token_minor_units(&observed_amount, config)?;
     let escrow_id = parse_b256_hex(&dispatch.escrow_id, "dispatch.escrow_id")?;
+    let typed_root = escrow_proof_leaf(
+        dispatch,
+        escrow_id,
+        receipt_hash,
+        amount_minor_units,
+        observed_amount != dispatch.settlement_amount,
+    )?;
     let call = if observed_amount == dispatch.settlement_amount {
         IChioEscrow::releaseWithProofDetailedCall {
             escrowId: escrow_id,
             proof: (&proof).into(),
-            root: hash_to_b256(&anchor_proof.receipt_inclusion.merkle_root),
-            receiptHash: hash_to_b256(&leaf),
+            root: typed_root,
+            receiptHash: receipt_hash,
             settledAmount: U256::from(amount_minor_units),
         }
         .abi_encode()
@@ -276,8 +320,8 @@ pub fn prepare_merkle_release(
         IChioEscrow::partialReleaseWithProofDetailedCall {
             escrowId: escrow_id,
             proof: (&proof).into(),
-            root: hash_to_b256(&anchor_proof.receipt_inclusion.merkle_root),
-            receiptHash: hash_to_b256(&leaf),
+            root: typed_root,
+            receiptHash: receipt_hash,
             amount: U256::from(amount_minor_units),
         }
         .abi_encode()
@@ -286,8 +330,9 @@ pub fn prepare_merkle_release(
     Ok(PreparedMerkleRelease {
         escrow_id: dispatch.escrow_id.clone(),
         chain_id: dispatch.chain_id.clone(),
+        receipt_hash: format_b256(receipt_hash),
         receipt_leaf_hash: leaf.to_hex_prefixed(),
-        merkle_root: anchor_proof.receipt_inclusion.merkle_root.to_hex_prefixed(),
+        merkle_root: format_b256(typed_root),
         partial: observed_amount != dispatch.settlement_amount,
         settlement_amount_minor_units: amount_minor_units,
         observed_amount,
@@ -298,6 +343,131 @@ pub fn prepare_merkle_release(
             gas_limit: None,
         },
     })
+}
+
+pub fn prepare_merkle_release_root_publication(
+    config: &SettlementChainConfig,
+    dispatch: &Web3SettlementDispatchArtifact,
+    release: &PreparedMerkleRelease,
+    checkpoint_seq: u64,
+    batch_seq: u64,
+) -> Result<PreparedEvmCall, SettlementError> {
+    config.validate()?;
+    validate_web3_settlement_dispatch(dispatch)
+        .map_err(|error| SettlementError::InvalidDispatch(error.to_string()))?;
+    if checkpoint_seq == 0 || batch_seq == 0 {
+        return Err(SettlementError::InvalidInput(
+            "settlement root publication sequence values must be non-zero".to_string(),
+        ));
+    }
+    if release.chain_id != dispatch.chain_id || release.escrow_id != dispatch.escrow_id {
+        return Err(SettlementError::InvalidDispatch(
+            "settlement root publication release does not match dispatch".to_string(),
+        ));
+    }
+    let call = IChioRootRegistry::publishRootCall {
+        operator: parse_address(&config.operator_address, "operator_address")?,
+        merkleRoot: parse_b256_hex(&release.merkle_root, "release.merkle_root")?,
+        checkpointSeq: checkpoint_seq,
+        batchStartSeq: batch_seq,
+        batchEndSeq: batch_seq,
+        treeSize: 1,
+        operatorKeyHash: parse_b256_hex(&dispatch.operator_key_hash, "dispatch.operator_key_hash")?,
+    };
+    Ok(PreparedEvmCall {
+        from_address: config.operator_address.clone(),
+        to_address: config.root_registry_contract.clone(),
+        data: encode_call(call),
+        gas_limit: None,
+    })
+}
+
+fn escrow_proof_leaf(
+    dispatch: &Web3SettlementDispatchArtifact,
+    escrow_id: B256,
+    receipt_hash: B256,
+    amount_minor_units: u128,
+    partial: bool,
+) -> Result<B256, SettlementError> {
+    let chain_id = parse_eip155_chain_id(&dispatch.chain_id)?;
+    let encoded = (
+        keccak256(ESCROW_PROOF_LEAF_TYPE.as_bytes()),
+        U256::from(chain_id),
+        parse_address(&dispatch.escrow_contract, "dispatch.escrow_contract")?,
+        escrow_id,
+        parse_address(
+            &dispatch.settlement_token_address,
+            "dispatch.settlement_token_address",
+        )?,
+        parse_address(
+            &dispatch.beneficiary_address,
+            "dispatch.beneficiary_address",
+        )?,
+        parse_b256_hex(&dispatch.operator_key_hash, "dispatch.operator_key_hash")?,
+        receipt_hash,
+        U256::from(amount_minor_units),
+        partial,
+    )
+        .abi_encode();
+    Ok(keccak256(encoded))
+}
+
+fn ensure_single_leaf_bond_proof(
+    anchor_proof: &AnchorInclusionProof,
+) -> Result<(), SettlementError> {
+    if anchor_proof.receipt_inclusion.proof.tree_size != 1
+        || !anchor_proof.receipt_inclusion.proof.audit_path.is_empty()
+    {
+        return Err(SettlementError::Unsupported(
+            "multi-leaf bond proof preparation requires typed bond inclusion data".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+pub(super) fn bond_proof_leaf(
+    config: &SettlementChainConfig,
+    vault_id: B256,
+    evidence_hash: B256,
+    action: u8,
+    slash_amount_minor_units: u128,
+    distribution_hash: B256,
+) -> Result<B256, SettlementError> {
+    let chain_id = parse_eip155_chain_id(&config.chain_id)?;
+    let encoded = (
+        keccak256(BOND_PROOF_LEAF_TYPE.as_bytes()),
+        U256::from(chain_id),
+        parse_address(&config.bond_vault_contract, "bond_vault_contract")?,
+        vault_id,
+        evidence_hash,
+        U256::from(action),
+        U256::from(slash_amount_minor_units),
+        distribution_hash,
+    )
+        .abi_encode();
+    Ok(keccak256(encoded))
+}
+
+pub(super) fn bond_distribution_hash(beneficiaries: &[Address], shares: &[U256]) -> B256 {
+    let beneficiaries_tail_len = 32 + beneficiaries.len() * 32;
+    let shares_offset = 64 + beneficiaries_tail_len;
+    let mut encoded = Vec::with_capacity(shares_offset + 32 + shares.len() * 32);
+    push_abi_u256(&mut encoded, U256::from(64_u64));
+    push_abi_u256(&mut encoded, U256::from(shares_offset as u64));
+    push_abi_u256(&mut encoded, U256::from(beneficiaries.len() as u64));
+    for beneficiary in beneficiaries {
+        encoded.extend_from_slice(&[0_u8; 12]);
+        encoded.extend_from_slice(beneficiary.as_slice());
+    }
+    push_abi_u256(&mut encoded, U256::from(shares.len() as u64));
+    for share in shares {
+        push_abi_u256(&mut encoded, *share);
+    }
+    keccak256(encoded)
+}
+
+fn push_abi_u256(encoded: &mut Vec<u8>, value: U256) {
+    encoded.extend_from_slice(&value.to_be_bytes::<32>());
 }
 
 pub fn prepare_dual_sign_release(
@@ -472,17 +642,28 @@ pub fn prepare_bond_release(
     config.validate()?;
     verify_anchor_inclusion_proof(anchor_proof)
         .map_err(|error| SettlementError::Verification(error.to_string()))?;
-    let (proof, root, evidence_hash) = proof_components(anchor_proof)?;
+    ensure_single_leaf_bond_proof(anchor_proof)?;
+    let (proof, _anchor_root, evidence_hash) = proof_components(anchor_proof)?;
+    let vault_id = parse_b256_hex(vault_id, "vault_id")?;
+    let root = bond_proof_leaf(
+        config,
+        vault_id,
+        evidence_hash,
+        BOND_ACTION_RELEASE,
+        0,
+        B256::ZERO,
+    )?;
     let call = IChioBondVault::releaseBondDetailedCall {
-        vaultId: parse_b256_hex(vault_id, "vault_id")?,
+        vaultId: vault_id,
         proof: proof.into(),
         root,
         evidenceHash: evidence_hash,
     };
     Ok(PreparedBondRelease {
-        vault_id: vault_id.to_string(),
+        vault_id: format_b256(vault_id),
         chain_id: config.chain_id.clone(),
         evidence_hash: format_b256(evidence_hash),
+        merkle_root: format_b256(root),
         call: PreparedEvmCall {
             from_address: operator_address.to_string(),
             to_address: config.bond_vault_contract.clone(),
@@ -509,6 +690,7 @@ pub fn prepare_bond_impair(
     }
     verify_anchor_inclusion_proof(anchor_proof)
         .map_err(|error| SettlementError::Verification(error.to_string()))?;
+    ensure_single_leaf_bond_proof(anchor_proof)?;
     let slash_amount_minor_units = scale_chio_amount_to_token_minor_units(slash_amount, config)?;
     let mut share_units = Vec::with_capacity(shares.len());
     let mut total = 0_u128;
@@ -524,23 +706,35 @@ pub fn prepare_bond_impair(
             "slash shares must sum to slash_amount".to_string(),
         ));
     }
-    let (proof, root, evidence_hash) = proof_components(anchor_proof)?;
+    let beneficiary_addresses = beneficiaries
+        .iter()
+        .map(|value| parse_address(value, "beneficiary"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let (proof, _anchor_root, evidence_hash) = proof_components(anchor_proof)?;
+    let vault_id = parse_b256_hex(vault_id, "vault_id")?;
+    let distribution_hash = bond_distribution_hash(&beneficiary_addresses, &share_units);
+    let root = bond_proof_leaf(
+        config,
+        vault_id,
+        evidence_hash,
+        BOND_ACTION_IMPAIR,
+        slash_amount_minor_units,
+        distribution_hash,
+    )?;
     let call = IChioBondVault::impairBondDetailedCall {
-        vaultId: parse_b256_hex(vault_id, "vault_id")?,
+        vaultId: vault_id,
         slashAmount: U256::from(slash_amount_minor_units),
-        beneficiaries: beneficiaries
-            .iter()
-            .map(|value| parse_address(value, "beneficiary"))
-            .collect::<Result<Vec<_>, _>>()?,
+        beneficiaries: beneficiary_addresses,
         shares: share_units,
         proof: proof.into(),
         root,
         evidenceHash: evidence_hash,
     };
     Ok(PreparedBondImpair {
-        vault_id: vault_id.to_string(),
+        vault_id: format_b256(vault_id),
         chain_id: config.chain_id.clone(),
         evidence_hash: format_b256(evidence_hash),
+        merkle_root: format_b256(root),
         slash_amount_minor_units,
         call: PreparedEvmCall {
             from_address: operator_address.to_string(),
@@ -548,6 +742,36 @@ pub fn prepare_bond_impair(
             data: encode_call(call),
             gas_limit: None,
         },
+    })
+}
+
+pub fn prepare_bond_proof_root_publication(
+    config: &SettlementChainConfig,
+    root: &str,
+    operator_key_hash: &str,
+    checkpoint_seq: u64,
+    batch_seq: u64,
+) -> Result<PreparedEvmCall, SettlementError> {
+    config.validate()?;
+    if checkpoint_seq == 0 || batch_seq == 0 {
+        return Err(SettlementError::InvalidInput(
+            "bond root publication sequence values must be non-zero".to_string(),
+        ));
+    }
+    let call = IChioRootRegistry::publishRootCall {
+        operator: parse_address(&config.operator_address, "operator_address")?,
+        merkleRoot: parse_b256_hex(root, "root")?,
+        checkpointSeq: checkpoint_seq,
+        batchStartSeq: batch_seq,
+        batchEndSeq: batch_seq,
+        treeSize: 1,
+        operatorKeyHash: parse_b256_hex(operator_key_hash, "operator_key_hash")?,
+    };
+    Ok(PreparedEvmCall {
+        from_address: config.operator_address.clone(),
+        to_address: config.root_registry_contract.clone(),
+        data: encode_call(call),
+        gas_limit: None,
     })
 }
 

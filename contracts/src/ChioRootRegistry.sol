@@ -7,6 +7,7 @@ import {ChioMerkle} from "./lib/ChioMerkle.sol";
 
 contract ChioRootRegistry is IChioRootRegistry {
     uint256 public constant MAX_ACTIVE_DELEGATES = 3;
+    uint256 public constant MAX_BATCH_ROOTS = 32;
 
     error OperatorNotAuthorized();
     error InvalidCheckpointSequence();
@@ -16,16 +17,23 @@ contract ChioRootRegistry is IChioRootRegistry {
     error ProofMetadataRequired();
     error InvalidDelegate();
     error DelegateLimitReached();
+    error RootNotFound();
+    error InvalidRegistry();
 
     IChioIdentityRegistry public immutable identityRegistry;
 
     mapping(address => mapping(uint64 => RootEntry)) private rootEntries;
     mapping(address => mapping(bytes32 => bool)) private publishedRoots;
+    mapping(address => mapping(bytes32 => uint64)) private rootTreeSizes;
     mapping(address => uint64) private latestSeq;
+    mapping(address => uint64) private latestBatchEndSeq;
     mapping(address => mapping(address => uint64)) private delegateExpiries;
-    mapping(address => uint256) private activeDelegateCounts;
+    mapping(address => address[]) private delegateSlots;
 
     constructor(address identityRegistry_) {
+        if (identityRegistry_ == address(0) || identityRegistry_.code.length == 0) {
+            revert InvalidRegistry();
+        }
         identityRegistry = IChioIdentityRegistry(identityRegistry_);
     }
 
@@ -62,6 +70,7 @@ contract ChioRootRegistry is IChioRootRegistry {
         uint256 count = merkleRoots.length;
         if (
             count == 0 ||
+            count > MAX_BATCH_ROOTS ||
             checkpointSeqs.length != count ||
             batchStartSeqs.length != count ||
             batchEndSeqs.length != count ||
@@ -90,12 +99,14 @@ contract ChioRootRegistry is IChioRootRegistry {
             revert InvalidDelegate();
         }
 
+        _pruneExpiredDelegates(msg.sender);
         uint64 currentExpiry = delegateExpiries[msg.sender][delegate];
-        bool currentlyActive = currentExpiry >= block.timestamp;
+        bool currentlyActive = currentExpiry > block.timestamp;
         if (!currentlyActive) {
-            uint256 nextCount = activeDelegateCounts[msg.sender] + 1;
-            if (nextCount > MAX_ACTIVE_DELEGATES) revert DelegateLimitReached();
-            activeDelegateCounts[msg.sender] = nextCount;
+            if (delegateSlots[msg.sender].length >= MAX_ACTIVE_DELEGATES) {
+                revert DelegateLimitReached();
+            }
+            delegateSlots[msg.sender].push(delegate);
         }
 
         delegateExpiries[msg.sender][delegate] = expiresAt;
@@ -105,10 +116,8 @@ contract ChioRootRegistry is IChioRootRegistry {
     function revokeDelegate(address delegate) external {
         uint64 currentExpiry = delegateExpiries[msg.sender][delegate];
         if (currentExpiry == 0) revert InvalidDelegate();
-        if (currentExpiry >= block.timestamp) {
-            activeDelegateCounts[msg.sender] -= 1;
-        }
         delete delegateExpiries[msg.sender][delegate];
+        _removeDelegateSlot(msg.sender, delegate);
         emit DelegateRevoked(msg.sender, delegate);
     }
 
@@ -122,7 +131,7 @@ contract ChioRootRegistry is IChioRootRegistry {
         }
         return
             identityRegistry.isOperator(operator)
-                && delegateExpiries[operator][publisher] >= block.timestamp;
+                && delegateExpiries[operator][publisher] > block.timestamp;
     }
 
     function verifyInclusion(
@@ -143,19 +152,59 @@ contract ChioRootRegistry is IChioRootRegistry {
         if (!publishedRoots[operator][root]) {
             return false;
         }
+        uint64 treeSize = rootTreeSizes[operator][root];
+        if (treeSize == 0 || proof.treeSize != uint256(treeSize)) {
+            return false;
+        }
         return ChioMerkle.verifyRFC6962(proof, root, leafHash);
     }
 
     function getLatestRoot(address operator) external view returns (RootEntry memory) {
-        return rootEntries[operator][latestSeq[operator]];
+        uint64 checkpointSeq = latestSeq[operator];
+        if (checkpointSeq == 0) revert RootNotFound();
+        return rootEntries[operator][checkpointSeq];
     }
 
     function getRoot(address operator, uint64 checkpointSeq) external view returns (RootEntry memory) {
-        return rootEntries[operator][checkpointSeq];
+        RootEntry memory entry = rootEntries[operator][checkpointSeq];
+        if (entry.treeSize == 0) revert RootNotFound();
+        return entry;
     }
 
     function getLatestSeq(address operator) external view returns (uint64) {
         return latestSeq[operator];
+    }
+
+    function _pruneExpiredDelegates(address operator) private {
+        address[] storage slots = delegateSlots[operator];
+        uint256 index = 0;
+        while (index < slots.length) {
+            address delegate = slots[index];
+            if (delegateExpiries[operator][delegate] <= block.timestamp) {
+                delete delegateExpiries[operator][delegate];
+                uint256 lastIndex = slots.length - 1;
+                if (index != lastIndex) {
+                    slots[index] = slots[lastIndex];
+                }
+                slots.pop();
+            } else {
+                ++index;
+            }
+        }
+    }
+
+    function _removeDelegateSlot(address operator, address delegate) private {
+        address[] storage slots = delegateSlots[operator];
+        for (uint256 index = 0; index < slots.length; ++index) {
+            if (slots[index] == delegate) {
+                uint256 lastIndex = slots.length - 1;
+                if (index != lastIndex) {
+                    slots[index] = slots[lastIndex];
+                }
+                slots.pop();
+                return;
+            }
+        }
     }
 
     function _publishSingle(
@@ -171,7 +220,16 @@ contract ChioRootRegistry is IChioRootRegistry {
         if (!isAuthorizedPublisher(operator, publisher)) revert OperatorNotAuthorized();
         if (merkleRoot == bytes32(0)) revert InvalidMerkleRoot();
         if (batchStartSeq > batchEndSeq || treeSize == 0) revert InvalidBatchRange();
-        if (checkpointSeq <= latestSeq[operator]) revert InvalidCheckpointSequence();
+        if (checkpointSeq != latestSeq[operator] + 1) revert InvalidCheckpointSequence();
+        uint64 previousBatchEndSeq = latestBatchEndSeq[operator];
+        if (
+            previousBatchEndSeq == type(uint64).max ||
+            batchStartSeq != previousBatchEndSeq + 1
+        ) {
+            revert InvalidBatchRange();
+        }
+        uint64 storedTreeSize = rootTreeSizes[operator][merkleRoot];
+        if (storedTreeSize != 0 && storedTreeSize != treeSize) revert InvalidMerkleRoot();
 
         IChioIdentityRegistry.OperatorRecord memory record = identityRegistry.getOperator(operator);
         if (record.edKeyHash != operatorKeyHash) revert OperatorKeyHashMismatch();
@@ -188,7 +246,9 @@ contract ChioRootRegistry is IChioRootRegistry {
 
         rootEntries[operator][checkpointSeq] = entry;
         latestSeq[operator] = checkpointSeq;
+        latestBatchEndSeq[operator] = batchEndSeq;
         publishedRoots[operator][merkleRoot] = true;
+        rootTreeSizes[operator][merkleRoot] = treeSize;
 
         emit RootPublished(
             operator,

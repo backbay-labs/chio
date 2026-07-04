@@ -52,7 +52,7 @@ pub fn prepare_root_publication(
         batchStartSeq: checkpoint.body.batch_start_seq,
         batchEndSeq: checkpoint.body.batch_end_seq,
         treeSize: checkpoint.body.tree_size as u64,
-        operatorKeyHash: operator_key_hash(binding),
+        operatorKeyHash: operator_key_hash(binding)?,
     };
 
     Ok(PreparedEvmRootPublication {
@@ -66,7 +66,7 @@ pub fn prepare_root_publication(
         batch_end_seq: checkpoint.body.batch_end_seq,
         tree_size: checkpoint.body.tree_size as u64,
         merkle_root: checkpoint.body.merkle_root,
-        operator_key_hash: operator_key_hash_hex(binding),
+        operator_key_hash: operator_key_hash_hex(binding)?,
         call_data: format!("0x{}", hex::encode(call.abi_encode())),
         requires_delegate_authorization: validated_target.publisher != validated_target.operator,
     })

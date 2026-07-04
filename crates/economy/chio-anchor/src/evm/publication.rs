@@ -79,7 +79,7 @@ pub async fn confirm_root_publication(
         || stored.batchEndSeq != checkpoint.body.batch_end_seq
         || stored.treeSize != checkpoint.body.tree_size as u64
         || stored.merkleRoot != hash_to_b256(&checkpoint.body.merkle_root)
-        || stored.operatorKeyHash != operator_key_hash(binding)
+        || stored.operatorKeyHash != operator_key_hash(binding)?
     {
         return Err(AnchorError::Verification(
             "root registry entry does not match the checkpoint being confirmed".to_string(),

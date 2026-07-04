@@ -1,11 +1,16 @@
 {
   "matrixId": "chio.web3-external-qualification.v1",
   "generatedAt": "2026-04-02T23:15:00Z",
+  "promotionStatus": "EXTERNAL_ASSURANCE_REQUIRED",
+  "nonTestnetGuard": {
+    "effectiveAt": "2026-07-04T01:48:54Z",
+    "summary": "Contract-family local qualification and old security review are historical evidence only. Non-testnet deployment and custody require external assurance."
+  },
   "lanes": [
     {
       "id": "contracts.local-devnet",
       "scope": "official contract family",
-      "status": "qualified_locally",
+      "status": "historical_local_evidence",
       "evidence": [
         "contracts/reports/local-devnet-qualification.json",
         "contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md",
@@ -97,6 +102,10 @@
     }
   ],
   "remainingExternalDependencies": [
+    "external audit with zero unresolved critical/high findings",
+    "four-week testnet soak evidence",
+    "artifact digest and deployed runtime codehash gates",
+    "security-owner signed minimum-bar checklist",
     "hosted CI and release-qualification observation on the candidate revision",
     "operator-filled reviewed chain manifests and approval records for the target environment",
     "operator-owned RPC, deployer key material, and predeployed CREATE2 factory for the target chain"

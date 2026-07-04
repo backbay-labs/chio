@@ -34,7 +34,11 @@ pub const CHIO_ESCROW_ARTIFACT: &str = include_str!("../artifacts/ChioEscrow.jso
 pub const CHIO_BOND_VAULT_ARTIFACT: &str = include_str!("../artifacts/ChioBondVault.json");
 pub const CHIO_PRICE_RESOLVER_ARTIFACT: &str = include_str!("../artifacts/ChioPriceResolver.json");
 
+/// Historical local-devnet deployment fixture for parser and integration tests.
+/// This is not release approval or a mainnet promotion gate.
 pub const CHIO_LOCAL_DEVNET_DEPLOYMENT: &str = include_str!("../deployments/local-devnet.json");
+/// Historical local-devnet qualification fixture embedded for Rust tests.
+/// This is not release approval or a mainnet promotion gate.
 pub const CHIO_LOCAL_DEVNET_QUALIFICATION_REPORT: &str =
     include_str!("../reports/local-devnet-qualification.json");
 

@@ -2,15 +2,13 @@
 
 ## Purpose
 
-It is the compact reviewer-facing package for the bounded web3 stack delivered
-across historical internal milestones `v2.34` through `v2.41`: contracts,
+It is the compact reviewer-facing package for the bounded web3 stack: contracts,
 oracle runtime, anchoring, settlement, interop overlays, runtime hardening,
 hosted qualification, promotion, operator controls, and generated end-to-end
 settlement proof.
 
-> Version posture: this is a pre-release partner proof. Internal `v2.x`
-> milestone labels are historical planning labels, not Chio-owned protocol,
-> schema, SDK, or runtime versions. Current protocol posture is v1-only.
+> Version posture: this is a pre-release partner proof for the v1 protocol
+> surface.
 
 It is not the authoritative release-go record. Use
 [RELEASE_AUDIT.md](RELEASE_AUDIT.md) for the repo-local release decision,
@@ -19,10 +17,17 @@ It is not the authoritative release-go record. Use
 
 ## Current Decision
 
-Local technical evidence says **go** for the shipped web3-runtime stack.
+External assurance is required for the contract family. Local technical evidence
+is rehearsal and partner-review context only.
 
-External deployment and publication remain **on hold** until:
+External deployment, non-testnet custody, and non-testnet promotion remain
+**blocked** until:
 
+- external audit reports zero unresolved critical/high findings,
+- testnet soak, artifact digest, runtime codehash, and minimum-bar gates
+  pass,
+- the security owner signs the assurance artifact for the exact approval,
+  release, policy, and chain,
 - hosted workflow results are observed on the candidate revision, including
   the staged bundle under `target/release-qualification/web3-runtime/`, and
 - the operator approves the exact reviewed manifest, target-chain CREATE2
@@ -33,7 +38,7 @@ External deployment and publication remain **on hold** until:
 - one official contract family where root registry, escrow, bond vault, and
   price resolver are immutable, while the identity registry remains the one
   owner-managed mutable contract for operator registration and key-binding
-  changes
+  changes. This is a package-shape statement only; it is not mainnet approval.
 - one bounded reviewed-manifest CREATE2 deployment runner that binds rollout
   to an exact manifest hash, release id, deployment policy id, and explicit
   rollback behavior
@@ -60,8 +65,8 @@ External deployment and publication remain **on hold** until:
 - `./scripts/qualify-web3-e2e.sh`
 - `./scripts/qualify-web3-ops-controls.sh`
 - `./scripts/qualify-web3-promotion.sh`
-- `contracts/reports/local-devnet-qualification.json`
-- `contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md`
+- `contracts/reports/local-devnet-qualification.json` (historical local evidence)
+- `contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md` (historical review)
 - `contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md`
 - `contracts/deployments/local-devnet.reviewed.json`
 - `docs/standards/CHIO_WEB3_DEPLOYMENT_POLICY.json`
@@ -120,6 +125,8 @@ Reviewers can trace one bounded runtime path end to end:
 
 - This package is partner-visible and reproducible, but it is still primarily
   local qualification evidence.
+- The contract-family local qualification and old security review are
+  historical evidence and are not promotion signals.
 - The repo does not yet claim unattended testnet or mainnet deployment.
 - The repo does not yet claim public chain publication from local evidence
   alone.

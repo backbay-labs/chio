@@ -10,8 +10,15 @@ contract ChioPriceResolver is IChioPriceResolver {
     error FeedNotConfigured();
     error StalePrice();
     error SequencerDown();
+    error InvalidPrice();
+    error InvalidTimestamp();
+    error SequencerGracePeriodActive();
+    error NotPendingAdmin();
+
+    uint256 private constant SEQUENCER_GRACE_PERIOD_SECONDS = 3600;
 
     address public admin;
+    address public pendingAdmin;
     address public immutable sequencerFeed;
 
     mapping(bytes32 => PriceFeed) private feeds;
@@ -25,6 +32,20 @@ contract ChioPriceResolver is IChioPriceResolver {
     modifier onlyAdmin() {
         if (msg.sender != admin) revert NotAdmin();
         _;
+    }
+
+    function transferAdmin(address newAdmin) external onlyAdmin {
+        if (newAdmin == address(0)) revert ZeroAddress();
+        pendingAdmin = newAdmin;
+        emit AdminTransferStarted(msg.sender, newAdmin);
+    }
+
+    function acceptAdmin() external {
+        if (msg.sender != pendingAdmin) revert NotPendingAdmin();
+        address previous = admin;
+        admin = msg.sender;
+        pendingAdmin = address(0);
+        emit AdminTransferred(previous, msg.sender);
     }
 
     function registerFeed(
@@ -48,13 +69,21 @@ contract ChioPriceResolver is IChioPriceResolver {
         view
         returns (int256 price, uint8 decimals, uint256 updatedAt)
     {
-        (bool up,) = sequencerStatus();
+        (bool up, uint256 sequencerStartedAt) = sequencerStatus();
         if (!up) revert SequencerDown();
+        if (
+            sequencerFeed != address(0) &&
+            block.timestamp <= sequencerStartedAt + SEQUENCER_GRACE_PERIOD_SECONDS
+        ) {
+            revert SequencerGracePeriodActive();
+        }
 
         PriceFeed memory feed = feeds[_feedKey(base, quote)];
         if (feed.aggregator == address(0)) revert FeedNotConfigured();
 
         (, price,, updatedAt,) = IAggregatorV3(feed.aggregator).latestRoundData();
+        if (price <= 0) revert InvalidPrice();
+        if (updatedAt == 0 || updatedAt > block.timestamp) revert InvalidTimestamp();
         if (block.timestamp > updatedAt + feed.maxStalenessSeconds) revert StalePrice();
         return (price, feed.decimals, updatedAt);
     }
@@ -65,6 +94,9 @@ contract ChioPriceResolver is IChioPriceResolver {
         }
         (, int256 answer, uint256 reportedStartedAt,,) =
             IAggregatorV3(sequencerFeed).latestRoundData();
+        if (reportedStartedAt == 0 || reportedStartedAt > block.timestamp) {
+            revert InvalidTimestamp();
+        }
         return (answer == 0, reportedStartedAt);
     }
 

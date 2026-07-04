@@ -174,9 +174,14 @@ pub(super) async fn rpc_call(
         .await
         .map_err(|error| SettlementError::Rpc(error.to_string()))?;
     if let Some(error) = envelope.error {
+        let data = error
+            .data
+            .as_ref()
+            .map(|data| format!(" data {data}"))
+            .unwrap_or_default();
         return Err(SettlementError::Rpc(format!(
-            "{} (code {})",
-            error.message, error.code
+            "{} (code {}){}",
+            error.message, error.code, data
         )));
     }
     envelope
@@ -249,10 +254,4 @@ pub(super) fn u256_to_u128(value: U256, field: &str) -> Result<u128, SettlementE
         )));
     }
     Ok((u128::from(limbs[1]) << 64) | u128::from(limbs[0]))
-}
-
-pub(super) fn u256_to_bytes32(value: U256) -> [u8; 32] {
-    let mut bytes = [0_u8; 32];
-    value.to_be_bytes::<32>().clone_into(&mut bytes);
-    bytes
 }

@@ -1,30 +1,60 @@
 {
   "report_id": "chio.web3-contract-qualification.local-devnet.v1",
-  "generated_at": "2026-04-24T01:52:19.168Z",
+  "status": "pass",
+  "scope": "local-devnet",
+  "environment": "local-devnet",
+  "network_tier": "development",
+  "note": "Ephemeral local-devnet test run.",
+  "generated_at": "2026-07-04T08:15:34.856Z",
   "chain_id": "eip155:31337",
   "gas_estimates": {
-    "register_operator": "74670",
-    "register_delegate": "74559",
-    "publish_root_operator": "172438",
-    "publish_root_delegate": "157662",
-    "register_feed": "123625",
-    "price_read": "60173",
-    "create_escrow": "284016",
-    "merkle_partial_release": "103764",
-    "dual_sign_release": "76277",
-    "lock_bond": "278775",
-    "bond_release": "83641"
+    "register_operator": "74736",
+    "register_delegate": "84718",
+    "publish_root_operator": "218005",
+    "publish_root_delegate": "186126",
+    "register_feed": "123638",
+    "price_read": "60488",
+    "create_escrow": "298394",
+    "merkle_partial_release": "166296",
+    "dual_sign_release": "129712",
+    "lock_bond": "293295",
+    "bond_release": "143902"
   },
   "checks": [
+    {
+      "id": "deployment.constructor_wiring",
+      "outcome": "pass",
+      "note": "Root registry, escrow, and bond vault reject zero or non-contract registry addresses at construction."
+    },
     {
       "id": "identity.operator_registration",
       "outcome": "pass",
       "note": "Identity registry bound the operator settlement key to the Chio Ed25519 key hash."
     },
     {
+      "id": "identity.contract_admin_entity_registration",
+      "outcome": "pass",
+      "note": "Entity binding authorization accepts a standards-compatible contract admin signature."
+    },
+    {
+      "id": "identity.operator_reactivation_preserves_keys",
+      "outcome": "pass",
+      "note": "Operator reactivation preserves the original key binding and registration timestamp."
+    },
+    {
+      "id": "identity.admin_handoff",
+      "outcome": "pass",
+      "note": "Identity registry admin handoff requires the nominated account to accept."
+    },
+    {
       "id": "identity.entity_registration",
       "outcome": "pass",
-      "note": "Operator registered the beneficiary entity binding for settlement parity checks."
+      "note": "Entity bindings require current-admin authorization and can be deactivated or reassigned by the admin."
+    },
+    {
+      "id": "anchor.expired_delegate_slots",
+      "outcome": "pass",
+      "note": "Expired delegates do not consume the active delegate cap."
     },
     {
       "id": "anchor.delegate_registration",
@@ -42,9 +72,19 @@
       "note": "Authorized delegate published a root against the operator namespace with canonical publisher traceability."
     },
     {
+      "id": "anchor.tree_size_bound_proof",
+      "outcome": "pass",
+      "note": "Root registry rejects proof metadata that does not match the published root geometry."
+    },
+    {
       "id": "anchor.delegate_revocation",
       "outcome": "pass",
       "note": "Revoked delegates can no longer publish roots."
+    },
+    {
+      "id": "oracle.admin_handoff",
+      "outcome": "pass",
+      "note": "Price resolver admin handoff requires the nominated account to accept."
     },
     {
       "id": "oracle.price_read",
@@ -54,7 +94,37 @@
     {
       "id": "oracle.fail_closed",
       "outcome": "pass",
-      "note": "Price resolver rejects stale feeds and sequencer-down conditions."
+      "note": "Price resolver rejects invalid feeds, stale feeds, zero or future sequencer timestamps, sequencer downtime, and sequencer grace-period reads."
+    },
+    {
+      "id": "escrow.inactive_operator_release_denied",
+      "outcome": "pass",
+      "note": "Escrow release rechecks operator activation before moving funds."
+    },
+    {
+      "id": "bond.inactive_operator_impair_denied",
+      "outcome": "pass",
+      "note": "Bond impairment rechecks operator activation before moving collateral."
+    },
+    {
+      "id": "escrow.optional_return_token",
+      "outcome": "pass",
+      "note": "Escrow custody accepts ERC20 transfers that succeed without return data."
+    },
+    {
+      "id": "escrow.measured_deposit_accounting",
+      "outcome": "pass",
+      "note": "Escrow custody records the token balance delta actually received."
+    },
+    {
+      "id": "bond.measured_collateral_accounting",
+      "outcome": "pass",
+      "note": "Bond vault custody records the token balance delta actually received."
+    },
+    {
+      "id": "escrow.permit_allowance_fallback",
+      "outcome": "pass",
+      "note": "Escrow permit creation accepts an already-sufficient allowance if the permit call is unavailable."
     },
     {
       "id": "escrow.merkle_partial_release",
@@ -85,6 +155,11 @@
       "id": "bond.release_with_proof",
       "outcome": "pass",
       "note": "Bond vault releases collateral only on the detailed proof path and rejects the under-specified interface."
+    },
+    {
+      "id": "bond.impair_release_reentry_accounting",
+      "outcome": "pass",
+      "note": "Bond impairment rejects token callbacks that reenter release."
     },
     {
       "id": "bond.identity_reconciliation_under_nonce_drift",

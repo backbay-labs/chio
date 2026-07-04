@@ -121,9 +121,9 @@ pub const CHIO_PROOF_FIRST_RUN_GUARD_REPORT_V1_SCHEMA: &str =
 pub const CHIO_PROOF_FIRST_RUN_TRUST_ROOTS_V1_SCHEMA: &str = "chio.proof.first-run.trust-roots.v1";
 pub const CHIO_PROOF_FIRST_RUN_COMMAND_LOG_V1_SCHEMA: &str = "chio.proof.first-run.command-log.v1";
 pub const CHIO_RUNTIME_TERMINAL_RECEIPT_V1_SCHEMA: &str = "chio.runtime.terminal-receipt.v1";
-pub const CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA: &str = "chio.web3-settlement-dispatch.v1";
-pub const CHIO_WEB3_SETTLEMENT_EXECUTION_RECEIPT_V1_SCHEMA: &str =
-    "chio.web3-settlement-execution-receipt.v1";
+pub const CHIO_WEB3_SETTLEMENT_DISPATCH_V2_SCHEMA: &str = "chio.web3-settlement-dispatch.v2";
+pub const CHIO_WEB3_SETTLEMENT_EXECUTION_RECEIPT_V2_SCHEMA: &str =
+    "chio.web3-settlement-execution-receipt.v2";
 pub const CHIO_WEB3_SETTLEMENT_PROOF_BUNDLE_V1_SCHEMA: &str =
     "chio.web3-settlement-proof-bundle.v1";
 pub const CHIO_PUBLIC_SETTLEMENT_VERIFIER_REPORT_V1_SCHEMA: &str =
@@ -487,11 +487,11 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
         Some(("proof_first_run_command_log", "proof-room-v1")),
     ),
     (
-        CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA,
+        CHIO_WEB3_SETTLEMENT_DISPATCH_V2_SCHEMA,
         Some(("web3_settlement_dispatch", "public-settlement-v1")),
     ),
     (
-        CHIO_WEB3_SETTLEMENT_EXECUTION_RECEIPT_V1_SCHEMA,
+        CHIO_WEB3_SETTLEMENT_EXECUTION_RECEIPT_V2_SCHEMA,
         Some(("web3_settlement_execution_receipt", "public-settlement-v1")),
     ),
     (

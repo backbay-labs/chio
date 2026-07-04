@@ -1,4 +1,4 @@
-8cfbb871daa24416e5718203d8fd4240893203e44ecb0ca661058b92a8923aca  spec/schemas/MANIFEST.sha256
+0ff821a0bb45f49495c311e142f3a7928d3992e2787d87ba0899cb772afa0017  spec/schemas/MANIFEST.sha256
 59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03  spec/schemas/VERSION
 e90c7bc3c555c335559650c71f7fda1e3c13d134a5ff8ceaa0041000536c2ea9  spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json
 1cd24132ad8f98fad89bb62aa756304c2dee0b51aacd69c922e0f786dce2abec  spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json
@@ -251,6 +251,8 @@ da129d09dc8ffccc16740f32a7bd3cd802df17e708d488ac5d060a4d7ad8684d  spec/schemas/c
 b338458880dab8cba5c47ebbd66f00459c0fc3d443c2ca48e5786944f1605538  spec/schemas/chio-web3/v1/settlement-dispatch.schema.json
 c0f2f15a0704602f5b808efaf60e2e34c54ed8785f98ea04f8c0597097ec1b74  spec/schemas/chio-web3/v1/settlement-execution-receipt.schema.json
 2541a250d79a55798869e613f92450088e45829dd9089ce6f5dbf17507e0f02c  spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json
+56657c55e7f7a9a55236409e4d224c928f6ae7b560a6b5b0f7421e7007ff737e  spec/schemas/chio-web3/v2/settlement-dispatch.schema.json
+b35621c8b80e45daa1a09d14ae7c21f5d3f71bbdf014ddfad8ee390ce70d511b  spec/schemas/chio-web3/v2/settlement-execution-receipt.schema.json
 79919a3cf6f16b03fa5c44eb00e6a79d7fe3b70b8223cace0dd520ea71179b18  spec/schemas/chio-wire/v1/agent/heartbeat.schema.json
 fb7f0ae9a9819cb1ddc01a36cdbc345c7a146e26f17abf29bdc9ee1bd6d8b25f  spec/schemas/chio-wire/v1/agent/list_capabilities.schema.json
 ee500904990f67eb73cf3b70a9eef9aa77663aa39964aeec5465367cb86182f2  spec/schemas/chio-wire/v1/agent/tool_call_request.schema.json
@@ -293,4 +295,4 @@ ecc3891c299ad8bf7b2950a3daa0a7f8be3df990a1bdaeb732e995abb4a3c241  spec/schemas/c
 63540f55a91b96cf071cece6b3465e8c3bba82512a91a5f83b05affc757033f4  spec/schemas/chio-wire/v1/trust-control/terminate.schema.json
 4646a51a6d23c27f0ba3951923e029ab9568bfa87f1b373ad2b1334be0ca7f62  spec/schemas/chio-workflow/v1/preflight-plan.schema.json
 3374b9d40520b66cae420da1f9c8bb07fed6bfbd62ae918615e2f88b6e1b7700  spec/schemas/chio-workflow/v1/preflight-report.schema.json
-d51afafc2338dfb7f1845d743a90ed5cf88e06a51f4a0a7d33fb9a08ef842e2f  spec/schemas/registry.json
+232f7ec0d8c89b5f48a4543209152d996f4f4a49cc7a051be4ad26fb0652efc8  spec/schemas/registry.json

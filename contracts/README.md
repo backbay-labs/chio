@@ -1,7 +1,7 @@
 # Chio Web3 Contracts
 
-This package is the on-chain realization of Chio's official web3 contract
-family:
+This package is the Solidity settlement and anchoring adapter package for
+Chio's official web3 contract family:
 
 - `ChioRootRegistry`
 - `ChioEscrow`
@@ -35,6 +35,16 @@ The money-handling boundary is intentionally narrow:
   parity and review. The canonical runtime FX authority remains the off-chain
   `chio-link` receipt-evidence path.
 
+## Deployment Guard
+
+Mainnet deployment, non-testnet custody, and non-testnet promotion are blocked
+until external audit, testnet soak, artifact digest, runtime codehash, and
+minimum-bar gates pass with security-owner sign-off. The prior
+`contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md` and both
+`local-devnet-qualification.json` copies are historical fixtures,
+not promotion signals. The local smoke and promotion lanes remain useful for
+rehearsal only.
+
 Compile locally with:
 
 ```bash
@@ -60,7 +70,8 @@ Run the full local dress rehearsal with:
 
 That installs the locked JavaScript dependencies, reruns the runtime, end-to-
 end, ops, and reviewed-manifest promotion qualification lanes, and leaves the
-generated evidence under `target/web3-*/`.
+generated evidence under `target/web3-*/`. This evidence does not authorize
+mainnet deployment or non-testnet custody before external assurance.
 
 Run the reviewed-manifest promotion qualification with:
 
@@ -139,6 +150,9 @@ For non-local rollout the same runner requires operator-owned `--rpc-url`,
 `--deployer-key`, a reviewed manifest derived from the shipped `*.template.json`
 files, and an approval artifact that binds the exact manifest hash, release id,
 deployment policy id, predeployed CREATE2 factory, and salt namespace.
+For any non-testnet chain it also requires `--assurance-unlock <reviewed-json>` with
+approved external audit, testnet soak, artifact digest, runtime codehash,
+minimum-bar, zero critical/high finding, and security-owner sign-off evidence.
 Set `CHIO_BASE_BUILDER_CODE` or pass `--base-builder-code` to append a Base
 ERC-8021 attribution suffix to CREATE2 factory calls. Strict ABI registry and
 oracle configuration calls are not suffixed because some public RPC paths reject

@@ -1218,6 +1218,18 @@
       "schemaFile": "spec/schemas/chio-web3/v1/settlement-execution-receipt.schema.json"
     },
     {
+      "schema": "chio.web3-settlement-dispatch.v2",
+      "artifactKind": "web3_settlement_dispatch",
+      "introducedBy": "public-settlement-v2",
+      "schemaFile": "spec/schemas/chio-web3/v2/settlement-dispatch.schema.json"
+    },
+    {
+      "schema": "chio.web3-settlement-execution-receipt.v2",
+      "artifactKind": "web3_settlement_execution_receipt",
+      "introducedBy": "public-settlement-v2",
+      "schemaFile": "spec/schemas/chio-web3/v2/settlement-execution-receipt.schema.json"
+    },
+    {
       "schema": "chio.web3-settlement-proof-bundle.v1",
       "artifactKind": "web3_settlement_proof_bundle",
       "introducedBy": "public-settlement-v1",
