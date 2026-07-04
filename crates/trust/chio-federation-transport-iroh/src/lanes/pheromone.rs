@@ -211,11 +211,14 @@ fn inbox_nonce(batch_bytes: &[u8]) -> String {
 ///   Without this, a cancelled/panicked pre-commit accept would LEAK the row and
 ///   make that `(sender, nonce)` un-receivable (losers fail closed as
 ///   [`IrohLaneError::DedupInFlight`]) until a restart's DELETE-at-open.
-/// - Once the receive commits, the caller [`disarm`](Self::disarm)s. From there a
-///   drop/cancel/panic must NOT release: re-receiving an already-admitted batch
-///   would re-enter the runtime replay window and reject its already-accepted
-///   deposits (a spurious "rejected" durable verdict for admitted deposits), so
-///   the slot stays HELD (fail-closed) and a redelivery takes the loser path.
+/// - Once the receive commits, the caller [`commit`](Self::commit)s. That disarms the
+///   guard (a drop/cancel/panic must NOT release: re-receiving an already-admitted
+///   batch would re-enter the runtime replay window and reject its already-accepted
+///   deposits, a spurious "rejected" durable verdict) AND persists a durable
+///   `committed` marker on the reservation so that a PROCESS crash in this window
+///   leaves a row that SURVIVES the store's clear-at-open (which reclaims only
+///   provably-pre-commit rows); a redelivery then loses the reservation and takes the
+///   fail-closed loser path instead of re-receiving.
 /// - On a recorded durable verdict the caller [`release`](Self::release)s
 ///   explicitly: the verdict now short-circuits redelivery at `lookup_inbox_report`
 ///   BEFORE the reservation is consulted, so the row is redundant and releasing it
@@ -238,10 +241,24 @@ impl InboxSlotGuard {
         }
     }
 
-    /// Disarm after the receive has committed: a subsequent drop must NOT release
-    /// (see the type docs). Idempotent.
-    fn disarm(&mut self) {
+    /// Commit the slot after the receive has self-committed its runtime deposits, the
+    /// instant BEFORE the durable verdict is recorded.
+    ///
+    /// Two effects, both fail-closed:
+    /// - Disarms the guard so a subsequent drop/cancel/panic does NOT release (see the
+    ///   type docs); done FIRST so that even if the durable marker write below errors,
+    ///   the slot stays HELD rather than being released. Re-receiving an
+    ///   already-committed batch must never happen.
+    /// - Persists the durable `committed` marker so a PROCESS crash in the
+    ///   committed-but-unrecorded window leaves a reservation that survives the store's
+    ///   clear-at-open reclaim (which clears only provably-pre-commit `committed = 0`
+    ///   rows); a redelivery then loses the reservation and takes the fail-closed loser
+    ///   path instead of re-receiving.
+    fn commit(&mut self) -> Result<(), IrohLaneError> {
         self.armed = false;
+        self.store
+            .mark_inbox_reservation_committed(&self.sender_kernel_id, &self.nonce)?;
+        Ok(())
     }
 
     /// Explicitly release the (now redundant) reservation after the durable verdict
@@ -495,12 +512,14 @@ impl PheromoneBatchHandler {
                         Err(error) => return Err(error.into()),
                         Ok(fresh) => fresh,
                     };
-                    // Deposits are now committed. DISARM: a cancel/panic in the
-                    // committed-but-unrecorded window below must NOT release, or a
-                    // redelivery would re-receive an already-admitted batch (yielding a
+                    // Deposits are now committed. COMMIT the slot: disarm (a cancel/panic
+                    // in the committed-but-unrecorded window below must NOT release, or a
+                    // redelivery would re-receive an already-admitted batch, yielding a
                     // spurious "rejected" durable verdict for deposits that were in fact
-                    // admitted). The slot stays HELD, fail-closed.
-                    slot.disarm();
+                    // admitted) AND persist the durable commit marker so a PROCESS crash in
+                    // this window leaves a reservation that survives the store's
+                    // clear-at-open, forcing redelivery down the fail-closed loser path.
+                    slot.commit()?;
                     match self
                         .store
                         .record_inbox(&authenticated_sender, &nonce, &batch, &fresh)
@@ -1315,8 +1334,8 @@ mod tests {
                 GUARD_SENDER.to_string(),
                 nonce.to_string(),
             );
-            slot.disarm(); // deposits committed
-                           // record_inbox fails -> do NOT release -> guard drops DISARMED.
+            slot.commit().unwrap(); // deposits committed (disarm + durable marker)
+                                    // record_inbox fails -> do NOT release -> guard drops DISARMED.
         }
         assert!(
             !store.reserve_inbox_slot(GUARD_SENDER, nonce).unwrap().won,
@@ -1347,7 +1366,7 @@ mod tests {
                 GUARD_SENDER.to_string(),
                 nonce.to_string(),
             );
-            slot.disarm(); // deposits committed
+            slot.commit().unwrap(); // deposits committed (disarm + durable marker)
             slot.release().unwrap(); // durable verdict recorded -> release the redundant row
                                      // guard drops already-disarmed -> no double release.
         }

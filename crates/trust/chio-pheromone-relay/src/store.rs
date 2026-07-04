@@ -259,6 +259,7 @@ impl SqlitePheromoneRelayStore {
             CREATE TABLE IF NOT EXISTS chio_pheromone_relay_inbox_reservations (
                 sender_kernel_id TEXT NOT NULL,
                 nonce TEXT NOT NULL,
+                committed INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY(sender_kernel_id, nonce)
             );
 
@@ -287,14 +288,35 @@ impl SqlitePheromoneRelayStore {
             "#,
         )?;
         ensure_outbox_queued_column(&conn)?;
-        // In-flight receive reservations are process-local coordination, not durable
-        // state: a live reservation exists ONLY while a handler is mid-receive, so any
-        // row present at open is a leftover from a crashed prior process. Clear them so
-        // a crash between reserve and record cannot permanently wedge redelivery (every
-        // retry would otherwise lose the stale reservation and never receive). This
-        // assumes the shipped single-writer ownership the outbox lease model already
-        // relies on.
-        conn.execute("DELETE FROM chio_pheromone_relay_inbox_reservations", [])?;
+        ensure_inbox_reservation_committed_column(&conn)?;
+        // Reclaim ONLY provably-pre-commit reservations at open (`committed = 0`).
+        //
+        // A won reservation is the sole guard that makes concurrent delivery of the
+        // same batch receive it exactly once. Its lifecycle is reserve -> receive
+        // (self-commits the runtime deposits) -> record the durable verdict. The
+        // instant of commit sits BETWEEN the reservation and the durable inbox record,
+        // and the receiver marks the reservation `committed = 1` at that instant, so at
+        // open a row's `committed` flag distinguishes the two crash residuals:
+        //
+        // - `committed = 0`: the prior process crashed (or was cancelled) BEFORE the
+        //   receive committed anything, so nothing was admitted. Clearing it lets a
+        //   redelivery re-claim and re-receive; leaving it would permanently wedge that
+        //   `(sender, nonce)` (every retry loses the stale reservation and never
+        //   receives). These are safe and correct to clear.
+        // - `committed = 1`: the prior process crashed AFTER the receive committed the
+        //   deposits but BEFORE `record_inbox` wrote the durable verdict. Re-receiving
+        //   would re-enter the runtime replay window and reject its already-accepted
+        //   deposits (a spurious "rejected" verdict for a batch that was in fact
+        //   admitted). We MUST NOT clear it: the row survives so a redelivery loses the
+        //   reservation and takes the fail-closed loser path (it never re-runs the
+        //   receiver; the peer retry fail-closes pending operational verdict recovery).
+        //
+        // This assumes the shipped single-writer ownership the outbox lease model
+        // already relies on.
+        conn.execute(
+            "DELETE FROM chio_pheromone_relay_inbox_reservations WHERE committed = 0",
+            [],
+        )?;
         Ok(())
     }
 
@@ -787,6 +809,35 @@ impl SqlitePheromoneRelayStore {
         Ok(InboxReserveResult { won: inserted > 0 })
     }
 
+    /// Durably mark a won reservation as `committed` at the instant its receive has
+    /// self-committed the runtime deposits (BEFORE [`record_inbox`] writes the verdict).
+    ///
+    /// This is the crash-recovery guard: a process that crashes in the
+    /// committed-but-unrecorded window leaves a `committed = 1` reservation that
+    /// SURVIVES the clear-at-open reclaim, so a redelivery loses the reservation and
+    /// takes the fail-closed loser path instead of re-receiving an already-admitted
+    /// batch (which would spuriously reject its already-accepted deposits). Idempotent:
+    /// re-marking an already-committed slot is a no-op. Marking a slot that no longer
+    /// exists (already released) affects no rows, which is harmless.
+    ///
+    /// [`record_inbox`]: Self::record_inbox
+    pub fn mark_inbox_reservation_committed(
+        &self,
+        sender_kernel_id: &str,
+        nonce: &str,
+    ) -> Result<(), PheromoneRelayError> {
+        let conn = self.conn.lock()?;
+        conn.execute(
+            r#"
+            UPDATE chio_pheromone_relay_inbox_reservations
+            SET committed = 1
+            WHERE sender_kernel_id = ?1 AND nonce = ?2
+            "#,
+            params![sender_kernel_id, nonce],
+        )?;
+        Ok(())
+    }
+
     /// Release the in-flight receive slot claimed by [`reserve_inbox_slot`].
     ///
     /// Idempotent: releasing an unheld slot is a no-op. A winner whose receive
@@ -980,6 +1031,30 @@ pub(crate) fn ensure_outbox_queued_column(conn: &Connection) -> Result<(), Phero
     Ok(())
 }
 
+/// Additive migration for the reservation `committed` marker (crash-recovery guard).
+///
+/// A store created before this column existed has reservations with no commit marker.
+/// Backfilling them to `committed = 0` (the ADD COLUMN default) is the fail-closed
+/// choice: a pre-existing reservation predates the commit-marker protocol, so its
+/// receive either never committed or was recorded long ago, and clearing it at open
+/// (as before) is correct. New reservations set the marker explicitly at commit time.
+pub(crate) fn ensure_inbox_reservation_committed_column(
+    conn: &Connection,
+) -> Result<(), PheromoneRelayError> {
+    let mut stmt = conn.prepare("PRAGMA table_info(chio_pheromone_relay_inbox_reservations)")?;
+    let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
+    for column in columns {
+        if column? == "committed" {
+            return Ok(());
+        }
+    }
+    conn.execute(
+        "ALTER TABLE chio_pheromone_relay_inbox_reservations ADD COLUMN committed INTEGER NOT NULL DEFAULT 0",
+        [],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod inbox_lookup_tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -1102,6 +1177,57 @@ mod inbox_lookup_tests {
         // Release is idempotent: releasing an unheld slot is a no-op.
         store.release_inbox_slot("s", "n").unwrap();
         store.release_inbox_slot("s", "n").unwrap();
+    }
+
+    #[test]
+    fn clear_at_open_preserves_committed_reservations_but_reclaims_pre_commit() {
+        // Crash-recovery residual (codex round-7): the store's clear-at-open must NOT
+        // wipe a reservation whose batch already committed its runtime deposits but
+        // whose durable verdict was not yet recorded, or a redelivery would re-win the
+        // slot and RE-RECEIVE an already-admitted batch (the runtime replay window then
+        // wrongly rejects it, a spurious verdict). A provably-pre-commit reservation
+        // (committed = 0) IS still reclaimed, so a crash between reserve and commit
+        // never permanently wedges redelivery.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("relay.sqlite3");
+
+        {
+            // Model a prior process. One reservation crashed AFTER commit but BEFORE
+            // record (reserve + mark committed, no durable verdict); another is a plain
+            // pre-commit leftover (reserve only). The process then crashes: the store is
+            // dropped with no inbox verdict recorded for either.
+            let store = SqlitePheromoneRelayStore::open(&path).unwrap();
+            assert!(store.reserve_inbox_slot("s", "committed").unwrap().won);
+            store
+                .mark_inbox_reservation_committed("s", "committed")
+                .unwrap();
+            assert!(store.reserve_inbox_slot("s", "pre-commit").unwrap().won);
+        }
+
+        // Restart: re-opening the SAME file runs clear-at-open.
+        let restarted = SqlitePheromoneRelayStore::open(&path).unwrap();
+
+        // The committed-but-unrecorded reservation SURVIVES: a redelivery loses the
+        // slot and takes the fail-closed loser path, NEVER re-receiving the admitted
+        // batch.
+        assert!(
+            !restarted.reserve_inbox_slot("s", "committed").unwrap().won,
+            "a committed-but-unrecorded reservation must survive restart (never re-receive)"
+        );
+        assert!(
+            restarted
+                .lookup_inbox_report("s", "committed")
+                .unwrap()
+                .is_none(),
+            "no durable verdict was recorded; the loser fails closed pending recovery"
+        );
+
+        // The provably-pre-commit reservation is reclaimed: nothing committed, so a
+        // redelivery may re-win and re-receive (no permanent wedge).
+        assert!(
+            restarted.reserve_inbox_slot("s", "pre-commit").unwrap().won,
+            "a pre-commit reservation must be reclaimed at open so redelivery can re-receive"
+        );
     }
 
     #[test]
