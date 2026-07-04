@@ -196,6 +196,89 @@ fn inbox_nonce(batch_bytes: &[u8]) -> String {
     format!("iroh-pheromone-batch:{}", sha256_hex(batch_bytes))
 }
 
+/// RAII holder for an inbox receive-slot reservation (`reserve_inbox_slot`).
+///
+/// The reservation is the dedup primitive that makes concurrent delivery of the
+/// SAME batch receive it exactly once. Its lifecycle is subtle because
+/// [`RelayBatchReceiver::receive_batch`] SELF-COMMITS its runtime mutation
+/// (admitting the deposits) internally, so the instant of commit sits BETWEEN the
+/// reservation and the durable inbox record:
+///
+/// - While ARMED (before the receive commits), dropping this guard RELEASES the
+///   slot. This covers the receive-failed `?`-return AND an accept-task
+///   cancel/panic (a `Router` shutdown or connection close cancels the accept
+///   future): nothing was committed, so a redelivery may re-claim and re-receive.
+///   Without this, a cancelled/panicked pre-commit accept would LEAK the row and
+///   make that `(sender, nonce)` un-receivable (losers fail closed as
+///   [`IrohLaneError::DedupInFlight`]) until a restart's DELETE-at-open.
+/// - Once the receive commits, the caller [`disarm`](Self::disarm)s. From there a
+///   drop/cancel/panic must NOT release: re-receiving an already-admitted batch
+///   would re-enter the runtime replay window and reject its already-accepted
+///   deposits (a spurious "rejected" durable verdict for admitted deposits), so
+///   the slot stays HELD (fail-closed) and a redelivery takes the loser path.
+/// - On a recorded durable verdict the caller [`release`](Self::release)s
+///   explicitly: the verdict now short-circuits redelivery at `lookup_inbox_report`
+///   BEFORE the reservation is consulted, so the row is redundant and releasing it
+///   bounds reservation-table growth.
+struct InboxSlotGuard {
+    store: Arc<SqlitePheromoneRelayStore>,
+    sender_kernel_id: String,
+    nonce: String,
+    armed: bool,
+}
+
+impl InboxSlotGuard {
+    /// Arm a guard over a freshly-won reservation.
+    fn new(store: Arc<SqlitePheromoneRelayStore>, sender_kernel_id: String, nonce: String) -> Self {
+        Self {
+            store,
+            sender_kernel_id,
+            nonce,
+            armed: true,
+        }
+    }
+
+    /// Disarm after the receive has committed: a subsequent drop must NOT release
+    /// (see the type docs). Idempotent.
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+
+    /// Explicitly release the (now redundant) reservation after the durable verdict
+    /// is recorded, disarming so a later drop does not release again. Fail-closed:
+    /// propagates the store error.
+    fn release(&mut self) -> Result<(), IrohLaneError> {
+        self.armed = false;
+        self.store
+            .release_inbox_slot(&self.sender_kernel_id, &self.nonce)?;
+        Ok(())
+    }
+}
+
+impl Drop for InboxSlotGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        // Pre-commit exit (receive failed, or the accept future was cancelled /
+        // panicked before commit): release so a redelivery can re-claim and
+        // re-receive. Best-effort - Drop cannot propagate - so a store error is
+        // logged, leaving the slot HELD (fail-closed) until a restart's
+        // DELETE-at-open reclaims it.
+        if let Err(error) = self
+            .store
+            .release_inbox_slot(&self.sender_kernel_id, &self.nonce)
+        {
+            tracing::warn!(
+                sender = %self.sender_kernel_id,
+                nonce = %self.nonce,
+                error = %error,
+                "failed to release inbox receive slot on drop (slot held fail-closed)"
+            );
+        }
+    }
+}
+
 /// Read a `u32` big-endian length prefix followed by exactly that many bytes,
 /// rejecting an over-cap declared length before allocating (fail-closed).
 async fn read_len_delimited<R>(reader: &mut R) -> Result<Vec<u8>, IrohLaneError>
@@ -351,32 +434,60 @@ impl PheromoneBatchHandler {
                     .reserve_inbox_slot(&authenticated_sender, &nonce)?
                     .won
                 {
+                    // Hold the freshly-won reservation via an RAII guard, ARMED. While
+                    // armed, ANY early exit - the receive `?`-return below, an
+                    // accept-task cancel (Router shutdown / connection close cancels the
+                    // accept future), or a panic - drops the guard and RELEASES the slot,
+                    // so a batch that committed NOTHING never leaks its reservation (a
+                    // leaked row would make that (sender, nonce) un-receivable until a
+                    // restart's DELETE-at-open). Once the receive COMMITS we DISARM, so
+                    // from there a drop/cancel/panic leaves the slot HELD (fail-closed):
+                    // re-receiving an already-admitted batch would re-enter the runtime
+                    // replay window and reject its already-accepted deposits.
+                    let mut slot = InboxSlotGuard::new(
+                        Arc::clone(&self.store),
+                        authenticated_sender.clone(),
+                        nonce.clone(),
+                    );
                     let now = (self.now)();
                     // The report type (chio-pheromone-runtime PheromoneReceiveReport)
                     // is not nameable here; it flows through by inference. The per-frame
                     // verifier (pheromone_gossip.rs:236/244) runs inside this call,
                     // unchanged, and only ever on a batch not already in the inbox.
-                    let received = self
+                    let fresh = match self
                         .receiver
                         .receive_batch(batch.clone(), authenticated_sender.clone(), now)
-                        .await;
-                    let fresh = match received {
-                        Ok(fresh) => fresh,
-                        Err(error) => {
-                            // Nothing was admitted: free the slot so a redelivery can
-                            // re-claim and re-receive, then propagate fail-closed.
-                            self.store
-                                .release_inbox_slot(&authenticated_sender, &nonce)?;
-                            return Err(error.into());
-                        }
-                    };
-                    if let Err(error) =
-                        self.store
-                            .record_inbox(&authenticated_sender, &nonce, &batch, &fresh)
+                        .await
                     {
-                        self.store
-                            .release_inbox_slot(&authenticated_sender, &nonce)?;
-                        return Err(error.into());
+                        // receive_batch self-commits its runtime mutation only on Ok; an
+                        // Err admitted nothing. The still-ARMED guard drops on this
+                        // `?`-return and RELEASES the slot so a redelivery can re-claim
+                        // and re-receive. Fail-closed.
+                        Err(error) => return Err(error.into()),
+                        Ok(fresh) => fresh,
+                    };
+                    // Deposits are now committed. DISARM: a cancel/panic in the
+                    // committed-but-unrecorded window below must NOT release, or a
+                    // redelivery would re-receive an already-admitted batch (yielding a
+                    // spurious "rejected" durable verdict for deposits that were in fact
+                    // admitted). The slot stays HELD, fail-closed.
+                    slot.disarm();
+                    match self
+                        .store
+                        .record_inbox(&authenticated_sender, &nonce, &batch, &fresh)
+                    {
+                        // Durable verdict recorded: it now short-circuits any redelivery
+                        // at lookup_inbox_report BEFORE the reservation is consulted, so
+                        // the reservation is redundant. Release it to bound
+                        // reservation-table growth (fail-closed on the store error; the
+                        // recorded verdict still short-circuits the peer's retry).
+                        Ok(_) => slot.release()?,
+                        // A committed batch whose verdict failed to record must NOT be
+                        // re-received. Leave the slot HELD (already disarmed): a
+                        // redelivery loses the reservation and takes the loser /
+                        // fail-closed path, never re-running the receiver. The peer retry
+                        // fail-closes pending operational recovery.
+                        Err(error) => return Err(error.into()),
                     }
                     fresh
                 } else {
@@ -1003,6 +1114,100 @@ mod tests {
         let error = read_len_delimited(&mut reader).await.unwrap_err();
         assert!(matches!(error, IrohLaneError::FrameTooLarge(_)));
         assert_eq!(error.code(), "frame_too_large");
+    }
+
+    // -- Inbox-reservation lifecycle (InboxSlotGuard) --
+    //
+    // The winner's slot lifecycle is: reserve -> receive (self-commits) -> record.
+    // These drive the guard's state machine directly (the real receiver's report
+    // type is not nameable here, so the store seam is exercised through the guard,
+    // observing outcomes via reserve/lookup).
+
+    const GUARD_SENDER: &str = "did:chio:llamaworks";
+
+    #[test]
+    fn receive_fail_releases_slot_for_reclaim() {
+        // Winner reserves, then models a FAILED receive: the guard stays ARMED and
+        // drops (the `?`-return / cancel / panic path). Nothing committed, so the
+        // slot must be released and a redelivery re-wins and re-receives.
+        let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+        let nonce = "iroh-pheromone-batch:receive-fail";
+        assert!(store.reserve_inbox_slot(GUARD_SENDER, nonce).unwrap().won);
+        {
+            let _slot = InboxSlotGuard::new(
+                Arc::clone(&store),
+                GUARD_SENDER.to_string(),
+                nonce.to_string(),
+            );
+            // receive fails -> guard drops ARMED -> RELEASE.
+        }
+        assert!(
+            store.reserve_inbox_slot(GUARD_SENDER, nonce).unwrap().won,
+            "a failed receive must release so a redelivery can re-receive"
+        );
+        assert!(
+            store
+                .lookup_inbox_report(GUARD_SENDER, nonce)
+                .unwrap()
+                .is_none(),
+            "no durable verdict is recorded when nothing committed"
+        );
+    }
+
+    #[test]
+    fn record_fail_leaves_slot_held_so_redelivery_never_re_receives() {
+        // Winner reserves, the receive COMMITS (disarm), then record FAILS: the slot
+        // must stay HELD so a redelivery loses the reservation and takes the loser /
+        // fail-closed path, NEVER re-receiving the already-admitted batch (defect a).
+        let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+        let nonce = "iroh-pheromone-batch:record-fail";
+        assert!(store.reserve_inbox_slot(GUARD_SENDER, nonce).unwrap().won);
+        {
+            let mut slot = InboxSlotGuard::new(
+                Arc::clone(&store),
+                GUARD_SENDER.to_string(),
+                nonce.to_string(),
+            );
+            slot.disarm(); // deposits committed
+                           // record_inbox fails -> do NOT release -> guard drops DISARMED.
+        }
+        assert!(
+            !store.reserve_inbox_slot(GUARD_SENDER, nonce).unwrap().won,
+            "a committed-but-unrecorded batch must leave the slot held, fail-closed"
+        );
+        assert!(
+            store
+                .lookup_inbox_report(GUARD_SENDER, nonce)
+                .unwrap()
+                .is_none(),
+            "with no durable verdict the loser waits then fails closed, never re-receiving"
+        );
+    }
+
+    #[test]
+    fn record_ok_release_frees_slot_and_bounds_growth() {
+        // Winner reserves, the receive COMMITS (disarm), record succeeds, then the
+        // now-redundant reservation is released explicitly (bounds table growth). In
+        // production the durable verdict recorded before release short-circuits any
+        // redelivery at lookup_inbox_report BEFORE the reservation, so re-winning the
+        // freed slot here is harmless.
+        let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+        let nonce = "iroh-pheromone-batch:record-ok";
+        assert!(store.reserve_inbox_slot(GUARD_SENDER, nonce).unwrap().won);
+        {
+            let mut slot = InboxSlotGuard::new(
+                Arc::clone(&store),
+                GUARD_SENDER.to_string(),
+                nonce.to_string(),
+            );
+            slot.disarm(); // deposits committed
+            slot.release().unwrap(); // durable verdict recorded -> release the redundant row
+                                     // guard drops already-disarmed -> no double release.
+        }
+        assert!(
+            store.reserve_inbox_slot(GUARD_SENDER, nonce).unwrap().won,
+            "a recorded success must release the redundant reservation"
+        );
     }
 
     #[test]

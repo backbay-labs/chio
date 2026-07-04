@@ -789,11 +789,15 @@ impl SqlitePheromoneRelayStore {
 
     /// Release the in-flight receive slot claimed by [`reserve_inbox_slot`].
     ///
-    /// Idempotent: releasing an unheld slot is a no-op. The winner calls this after
-    /// a FAILED receive/record so a redelivery can re-claim and retry; on success
-    /// the durable inbox record short-circuits future redeliveries (via
-    /// [`lookup_inbox_report`]) before they reach the reservation, so releasing is
-    /// unnecessary there and a leftover reservation is harmless.
+    /// Idempotent: releasing an unheld slot is a no-op. A winner whose receive
+    /// FAILED (committed nothing) releases so a redelivery can re-claim and
+    /// re-receive. A winner whose receive COMMITTED but whose verdict FAILED to
+    /// record must NOT release: re-receiving an admitted batch would reject its
+    /// already-accepted deposits, so the slot stays held (fail-closed) and a
+    /// redelivery takes the loser path. On a RECORDED success the caller releases
+    /// the now-redundant reservation to bound table growth; the durable inbox
+    /// record already short-circuits redelivery (via [`lookup_inbox_report`]) before
+    /// it reaches the reservation, so a leftover row would also be harmless.
     ///
     /// [`reserve_inbox_slot`]: Self::reserve_inbox_slot
     /// [`lookup_inbox_report`]: Self::lookup_inbox_report
