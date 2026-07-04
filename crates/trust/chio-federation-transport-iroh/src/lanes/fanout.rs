@@ -504,10 +504,22 @@ impl FanoutTopic {
     /// The frame MUST already carry a valid deposit self-signature: peers verify
     /// it origin-only on receive and DROP anything that fails.
     ///
+    /// Fail-closed: a frame whose `treaty_id` does not match this swarm's treaty is
+    /// REJECTED before it reaches the wire (send-side treaty binding, mirroring the
+    /// receive-side check), so a mis-addressed frame cannot leak to another treaty's
+    /// swarm members.
+    ///
     /// # Errors
-    /// Returns [`FanoutError::MessageTooLarge`] / [`FanoutError::Codec`] from
-    /// encoding, or [`FanoutError::Gossip`] if the broadcast fails.
+    /// Returns [`FanoutError::TreatyMismatch`] for a wrong-treaty frame,
+    /// [`FanoutError::MessageTooLarge`] / [`FanoutError::Codec`] from encoding, or
+    /// [`FanoutError::Gossip`] if the broadcast fails.
     pub async fn broadcast(&self, frame: &PheromoneDepositGossip) -> Result<(), FanoutError> {
+        if frame.treaty_id != self.treaty_id {
+            return Err(FanoutError::TreatyMismatch {
+                expected: self.treaty_id.clone(),
+                got: frame.treaty_id.clone(),
+            });
+        }
         let payload = encode_fanout_frame(frame)?;
         self.sender
             .broadcast(payload)

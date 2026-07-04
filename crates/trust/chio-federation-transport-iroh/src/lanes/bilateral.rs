@@ -483,18 +483,29 @@ impl BilateralCoSigningProtocol for IrohBilateralCoSigner {
     }
 
     /// Synchronous contract entry point. Bridges to
-    /// [`Self::request_dsse_cosignature_over_iroh`]. MUST be called either from a
-    /// multi-threaded tokio runtime (uses `block_in_place`) or from a plain
-    /// (non-async) thread (spins a private current-thread runtime). Prefer the
-    /// async method inside async code.
+    /// [`Self::request_dsse_cosignature_over_iroh`]. Works from a multi-threaded
+    /// tokio runtime (uses `block_in_place`) or from a plain non-async thread
+    /// (spins a private current-thread runtime). On a CURRENT-THREAD tokio runtime
+    /// it returns a `TransportFailure` error instead of panicking (`block_in_place`
+    /// is unsupported there). Prefer the async method inside async code.
     fn request_dsse_cosignature(
         &self,
         request: &DsseCoSigningRequest,
     ) -> Result<DsseCoSigningResponse, BilateralCoSigningError> {
         match tokio::runtime::Handle::try_current() {
-            Ok(handle) => tokio::task::block_in_place(|| {
-                handle.block_on(self.request_dsse_cosignature_over_iroh(request))
-            }),
+            Ok(handle) => match handle.runtime_flavor() {
+                tokio::runtime::RuntimeFlavor::MultiThread => tokio::task::block_in_place(|| {
+                    handle.block_on(self.request_dsse_cosignature_over_iroh(request))
+                }),
+                // `block_in_place` panics on a current-thread runtime; fail closed with a
+                // typed error instead of crashing during DSSE co-signing. A caller on a
+                // current-thread runtime must use the async method directly.
+                _ => Err(BilateralCoSigningError::TransportFailure(
+                    "request_dsse_cosignature invoked on a current-thread tokio runtime; \
+                     call request_dsse_cosignature_over_iroh (async) instead of blocking"
+                        .to_string(),
+                )),
+            },
             Err(_) => {
                 let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
