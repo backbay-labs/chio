@@ -132,6 +132,7 @@ fn build_directory(pinned: &Ed25519RootSigner) -> Result<Arc<VerifiedDirectory>,
             authority_entry,
             admitted_entry(FOLLOWER_KERNEL, 1, FOLLOWER_SEED),
         ],
+        treaties: Vec::new(),
     };
     let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory)?);
     let body = TransportDirectoryBundleBody {

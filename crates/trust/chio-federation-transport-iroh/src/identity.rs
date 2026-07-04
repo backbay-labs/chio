@@ -172,6 +172,26 @@ pub struct RevocationSignerEntry {
     pub oracle_endorsement: Signature,
 }
 
+/// An issuer-signed per-treaty PARTY SET: the set of operator `kernel_id`s that
+/// are parties to `treaty_id`.
+///
+/// This rides the SAME trusted, anti-rollback substrate as the transport keys
+/// (the issuer-signed directory bundle, body-hash-pinned, validity-windowed, and
+/// monotone-versioned), so the fan-out lane can gate a treaty's gossip swarm to
+/// its actual party set rather than to federation-wide admission alone. Membership
+/// is fail-closed: an operator absent from `party_kernel_ids` (or a treaty absent
+/// from the directory) is NOT a party.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransportTreatyEntry {
+    /// The treaty this party set is bound to (the same `String` treaty id the
+    /// fan-out topic derivation and pheromone frames carry).
+    pub treaty_id: String,
+    /// The operator `kernel_id`s that are parties to `treaty_id`. Verified
+    /// non-empty and duplicate-free at bundle-load time.
+    pub party_kernel_ids: Vec<String>,
+}
+
 /// The directory document that is canonical-hashed and pinned by the signed body.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -182,6 +202,12 @@ pub struct TransportDirectoryDocument {
     pub local_kernel_id: String,
     /// The per-operator transport bindings.
     pub peers: Vec<TransportDirectoryEntry>,
+    /// Additive per-treaty party sets (the treaty-membership substrate the
+    /// fan-out lane gates on). `#[serde(default)]` keeps a treaty-less directory
+    /// (the pre-existing shape) wire-compatible: a directory that binds no party
+    /// sets simply admits nobody to any treaty (fail-closed).
+    #[serde(default)]
+    pub treaties: Vec<TransportTreatyEntry>,
 }
 
 /// The issuer-signed body. This is the value the pinned issuer signs; it pins
@@ -367,6 +393,10 @@ impl IdentityError {
 pub struct VerifiedDirectory {
     by_endpoint: HashMap<EndpointId, (String, bool)>,
     signers: VerifiedSignerDirectory,
+    /// `treaty_id -> set of party kernel_ids`, built in the same verified pass
+    /// from the issuer-signed [`TransportTreatyEntry`] set. Fail-closed:
+    /// membership is denied for any treaty or kernel absent from this index.
+    treaty_parties: HashMap<String, HashSet<String>>,
     version: u64,
     body_sha256: String,
 }
@@ -420,6 +450,21 @@ impl VerifiedDirectory {
         self.signers.resolve(signer_id)
     }
 
+    /// Whether `kernel_id` is a party to `treaty_id` per the issuer-signed
+    /// per-treaty party set.
+    ///
+    /// Fail-closed: returns `false` when the treaty is unknown to this directory
+    /// OR the kernel is not in that treaty's party set. This is the trusted,
+    /// anti-rollback source the fan-out lane gates swarm join AND frame receive on
+    /// (a treaty party set inherits the bundle's issuer signature, body-hash pin,
+    /// validity window, and monotone-version rollback machinery).
+    #[must_use]
+    pub fn is_treaty_party(&self, treaty_id: &str, kernel_id: &str) -> bool {
+        self.treaty_parties
+            .get(treaty_id)
+            .is_some_and(|parties| parties.contains(kernel_id))
+    }
+
     /// The monotone version of the bundle this directory was built from.
     #[must_use]
     pub fn version(&self) -> u64 {
@@ -467,7 +512,10 @@ impl TransportDirectoryBundleDocument {
     /// 6. per-entry domain-separated passport-over-transport endorsement, and per
     ///    revocation-signer entry a domain-separated passport-over-oracle
     ///    endorsement, projected into the derived [`VerifiedSignerDirectory`]
-    ///    (non-removed entries only; duplicate `signer_id` rejected fail-closed).
+    ///    (non-removed entries only; duplicate `signer_id` rejected fail-closed),
+    /// 7. per-treaty party sets validated (non-empty, duplicate-free) and indexed
+    ///    into the `treaty_id -> {party kernel_ids}` membership map the fan-out
+    ///    lane gates on (additive; a treaty-less directory denies every treaty).
     pub fn verify_bundle(
         &self,
         trust: &TransportDirectoryBundleTrust,
@@ -664,10 +712,53 @@ impl TransportDirectoryBundleDocument {
             return Err(IdentityError::EmptyDirectory);
         }
 
+        // (7) per-treaty party sets. Structurally validated (non-empty,
+        // duplicate-free) and indexed into `treaty_id -> {party kernel_ids}`. This
+        // is additive: a directory with no treaty entries yields an empty index, so
+        // every treaty membership check fails closed (denies).
+        let mut treaty_parties: HashMap<String, HashSet<String>> = HashMap::new();
+        for treaty in &self.directory.treaties {
+            if treaty.treaty_id.trim().is_empty() || treaty.treaty_id.trim() != treaty.treaty_id {
+                return Err(IdentityError::MalformedEntry(
+                    "treaty id is empty or padded".to_string(),
+                ));
+            }
+            if treaty.party_kernel_ids.is_empty() {
+                return Err(IdentityError::MalformedEntry(format!(
+                    "treaty {} binds no parties",
+                    treaty.treaty_id
+                )));
+            }
+            let mut parties: HashSet<String> = HashSet::new();
+            for party in &treaty.party_kernel_ids {
+                if party.trim().is_empty() || party.trim() != party {
+                    return Err(IdentityError::MalformedEntry(
+                        "treaty party kernel id is empty or padded".to_string(),
+                    ));
+                }
+                if !parties.insert(party.clone()) {
+                    return Err(IdentityError::Duplicate(format!(
+                        "treaty {} party {}",
+                        treaty.treaty_id, party
+                    )));
+                }
+            }
+            if treaty_parties
+                .insert(treaty.treaty_id.clone(), parties)
+                .is_some()
+            {
+                return Err(IdentityError::Duplicate(format!(
+                    "treaty {}",
+                    treaty.treaty_id
+                )));
+            }
+        }
+
         let body_sha256 = canonical_sha256(self)?;
         Ok(VerifiedDirectory {
             by_endpoint,
             signers: VerifiedSignerDirectory::from_verified_map(by_signer),
+            treaty_parties,
             version: self.body.version,
             body_sha256,
         })
@@ -767,6 +858,7 @@ mod tests {
             schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
             local_kernel_id: "did:chio:local".to_string(),
             peers: entries.iter().map(build_entry).collect(),
+            treaties: Vec::new(),
         };
         let directory_sha256 = canonical_sha256(&directory).unwrap();
         let body = TransportDirectoryBundleBody {
@@ -813,6 +905,7 @@ mod tests {
             schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
             local_kernel_id: "did:chio:local".to_string(),
             peers: entries.iter().map(build_entry).collect(),
+            treaties: Vec::new(),
         };
         let directory_sha256 = canonical_sha256(&directory).unwrap();
         let body = TransportDirectoryBundleBody {
@@ -1464,6 +1557,94 @@ mod tests {
         assert!(matches!(
             bundle.verify_bundle(&trust),
             Err(IdentityError::EndorsementInvalid(_))
+        ));
+    }
+
+    #[test]
+    fn directory_document_without_treaties_field_deserializes_back_compat() {
+        // A pre-existing directory document (no `treaties` key) still deserializes:
+        // the field is additive (`#[serde(default)]`), so an older bundle stays
+        // wire-compatible and simply admits nobody to any treaty (fail-closed).
+        let json = format!(
+            r#"{{"schema":"{schema}","localKernelId":"did:chio:local","peers":[]}}"#,
+            schema = TRANSPORT_DIRECTORY_BUNDLE_SCHEMA
+        );
+        let doc: TransportDirectoryDocument =
+            serde_json::from_str(&json).expect("a treaty-less directory document deserializes");
+        assert!(
+            doc.treaties.is_empty(),
+            "an omitted treaties field defaults to empty"
+        );
+    }
+
+    #[test]
+    fn treaty_party_set_is_indexed_and_membership_is_fail_closed() {
+        let (mut bundle, trust) = signed_bundle(&[
+            EntrySpec::admitted("did:chio:alice", 1, 10),
+            EntrySpec::admitted("did:chio:bob", 2, 11),
+        ]);
+        bundle.directory.treaties = vec![TransportTreatyEntry {
+            treaty_id: "treaty-x".to_string(),
+            party_kernel_ids: vec!["did:chio:alice".to_string(), "did:chio:bob".to_string()],
+        }];
+        repin_and_resign(&mut bundle);
+
+        let directory = bundle
+            .verify_bundle(&trust)
+            .expect("a bundle carrying a treaty party set verifies");
+        // Parties resolve; a non-party and an unknown treaty both deny (fail-closed).
+        assert!(directory.is_treaty_party("treaty-x", "did:chio:alice"));
+        assert!(directory.is_treaty_party("treaty-x", "did:chio:bob"));
+        assert!(!directory.is_treaty_party("treaty-x", "did:chio:carol"));
+        assert!(!directory.is_treaty_party("treaty-unknown", "did:chio:alice"));
+    }
+
+    #[test]
+    fn empty_treaty_party_set_is_rejected() {
+        let (mut bundle, trust) = signed_bundle(&[EntrySpec::admitted("did:chio:alice", 1, 10)]);
+        bundle.directory.treaties = vec![TransportTreatyEntry {
+            treaty_id: "treaty-x".to_string(),
+            party_kernel_ids: Vec::new(),
+        }];
+        repin_and_resign(&mut bundle);
+        assert!(matches!(
+            bundle.verify_bundle(&trust),
+            Err(IdentityError::MalformedEntry(_))
+        ));
+    }
+
+    #[test]
+    fn duplicate_treaty_party_is_rejected() {
+        let (mut bundle, trust) = signed_bundle(&[EntrySpec::admitted("did:chio:alice", 1, 10)]);
+        bundle.directory.treaties = vec![TransportTreatyEntry {
+            treaty_id: "treaty-x".to_string(),
+            party_kernel_ids: vec!["did:chio:alice".to_string(), "did:chio:alice".to_string()],
+        }];
+        repin_and_resign(&mut bundle);
+        assert!(matches!(
+            bundle.verify_bundle(&trust),
+            Err(IdentityError::Duplicate(_))
+        ));
+    }
+
+    #[test]
+    fn tampered_treaty_party_set_fails_body_hash_pin() {
+        // The party set is pinned by the signed body: mutating it after the hash is
+        // pinned fails the body-hash check, so a treaty membership can never be
+        // forged onto an otherwise-valid bundle.
+        let (mut bundle, trust) = signed_bundle(&[EntrySpec::admitted("did:chio:alice", 1, 10)]);
+        bundle.directory.treaties = vec![TransportTreatyEntry {
+            treaty_id: "treaty-x".to_string(),
+            party_kernel_ids: vec!["did:chio:alice".to_string()],
+        }];
+        repin_and_resign(&mut bundle);
+        // Inject an extra party WITHOUT re-pinning/re-signing.
+        bundle.directory.treaties[0]
+            .party_kernel_ids
+            .push("did:chio:evil".to_string());
+        assert!(matches!(
+            bundle.verify_bundle(&trust),
+            Err(IdentityError::BodyHashMismatch { .. })
         ));
     }
 }

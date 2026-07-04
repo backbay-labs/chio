@@ -876,6 +876,7 @@ fn iroh_transport_bundle(
         schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
         local_kernel_id: "did:chio:local".to_string(),
         peers: vec![entry],
+        treaties: Vec::new(),
     };
     let now: u64 = 2_000_000;
     let directory_sha256 = chio_core::sha256_hex(&chio_core::canonical_json_bytes(&directory)?);

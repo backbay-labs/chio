@@ -892,6 +892,7 @@ mod tests {
             schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
             local_kernel_id: "did:chio:local".to_string(),
             peers: vec![entry],
+            treaties: Vec::new(),
         };
         let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());
         let body = TransportDirectoryBundleBody {

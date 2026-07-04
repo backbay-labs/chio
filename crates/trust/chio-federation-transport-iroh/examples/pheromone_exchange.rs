@@ -103,6 +103,7 @@ fn build_gate(entries: &[(&str, u8, u8)]) -> Result<DirectoryGate, Box<dyn Error
         schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
         local_kernel_id: OPERATOR_B.to_string(),
         peers,
+        treaties: Vec::new(),
     };
     let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory)?);
     let body = TransportDirectoryBundleBody {

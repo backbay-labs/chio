@@ -45,6 +45,7 @@ use chio_federation_transport_iroh::lanes::fanout::FanoutError;
 use chio_federation_transport_iroh::lanes::fanout::FanoutLane;
 use chio_federation_transport_iroh::lanes::fanout::FanoutTopic;
 use chio_federation_transport_iroh::lanes::fanout::StaticOriginKeys;
+use chio_federation_transport_iroh::lanes::fanout::StaticTreatyMembership;
 use chio_pheromone::sign_deposit;
 use chio_pheromone::PheromoneDepositBody;
 use chio_pheromone::Severity;
@@ -97,6 +98,7 @@ fn build_gate(entries: &[(&str, u8, u8)]) -> Result<DirectoryGate, Box<dyn Error
         schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
         local_kernel_id: "did:chio:swarm".to_string(),
         peers,
+        treaties: Vec::new(),
     };
     let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory)?);
     let body = TransportDirectoryBundleBody {
@@ -237,6 +239,7 @@ fn build_frame(
 /// The receive-side verification context (payload-only; never `delivered_from`).
 struct Verifier<'a> {
     origin_keys: &'a StaticOriginKeys,
+    membership: &'a StaticTreatyMembership,
     policy: &'a PheromoneTransitPolicy,
 }
 
@@ -266,6 +269,7 @@ where
                 let verdict = decode_and_verify_fanout_frame(
                     &message.content,
                     verifier.origin_keys,
+                    verifier.membership,
                     verifier.policy,
                     NOW,
                 );
@@ -299,12 +303,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
     node_b.lookup.add_endpoint_info(node_a.addr.clone());
     node_c.lookup.add_endpoint_info(node_b.addr.clone());
 
+    // The issuer-signed per-treaty party set the fan-out gate consults. Every node
+    // (and the frame author) is a party to TREATY, so join and receive both admit;
+    // a non-party would be rejected with FanoutError::TreatyMembershipDenied.
+    let membership = StaticTreatyMembership::new().with(
+        TREATY,
+        [
+            "did:chio:node-a",
+            "did:chio:node-b",
+            "did:chio:node-c",
+            AUTHOR,
+        ],
+    );
+
     println!("joining topic for {TREATY:?} (A seed; B<-A; C<-B) ...");
     let joined = tokio::time::timeout(Duration::from_secs(30), async {
         tokio::join!(
-            node_a.lane.subscribe_treaty(TREATY, vec![]),
-            node_b.lane.subscribe_treaty(TREATY, vec![node_a.id]),
-            node_c.lane.subscribe_treaty(TREATY, vec![node_b.id]),
+            node_a
+                .lane
+                .subscribe_treaty(TREATY, "did:chio:node-a", &membership, vec![]),
+            node_b
+                .lane
+                .subscribe_treaty(TREATY, "did:chio:node-b", &membership, vec![node_a.id]),
+            node_c
+                .lane
+                .subscribe_treaty(TREATY, "did:chio:node-c", &membership, vec![node_b.id]),
         )
     })
     .await
@@ -325,6 +348,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let policy = live_policy();
     let verifier = Verifier {
         origin_keys: &origin_keys,
+        membership: &membership,
         policy: &policy,
     };
 

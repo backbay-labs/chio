@@ -15,24 +15,42 @@
 //! (different treaty, different swarm, different `TopicId`), which keeps one
 //! treaty's frames off another treaty's wire by default.
 //!
-//! This is NOT, by itself, treaty-scoped ACCESS CONTROL, and must not be
-//! overclaimed as such. The `TopicId` is deterministic and therefore NOT a
-//! secret; it grants no access on its own, but it withholds none either. Swarm
-//! admission is gated UPSTREAM by the accept-time
-//! [`DirectoryGate`](crate::admission::DirectoryGate), which is FEDERATION-GLOBAL,
-//! not treaty-scoped: it admits an operator to the federation, not to a specific
-//! treaty. So a globally-admitted operator that is NOT a party to a treaty can
-//! still compute that treaty's (non-secret) `TopicId` and join its swarm. True
-//! treaty-scoped access control would require a PER-TREATY membership gate (the
-//! accept-time gate checking treaty membership, not merely federation admission).
+//! Topic-per-treaty ROUTING separation is one layer; ACCESS CONTROL is the other
+//! and is now ENFORCED (below). The `TopicId` is deterministic and therefore NOT a
+//! secret; it grants no access on its own. The accept-time
+//! [`DirectoryGate`](crate::admission::DirectoryGate) is FEDERATION-GLOBAL: it
+//! admits an operator to the federation, not to a specific treaty. So a
+//! globally-admitted operator that is NOT a party to a treaty could still compute
+//! that treaty's (non-secret) `TopicId`. That gap is closed by a PER-TREATY
+//! membership gate layered on top of federation admission.
 //!
-//! TODO(iroh-transport): add a per-treaty membership gate at accept time so swarm
-//! admission is scoped to the treaty's party set, upgrading this routing
-//! separation into enforced treaty-scoped access control. Until then the
-//! DELIVERED guarantee is exactly: (1) routing separation (above), plus (2) a
-//! receive-side swarm/treaty binding, so a frame carrying a foreign `treaty_id`
-//! is rejected on this swarm even if its deposit self-signature is valid (see
-//! [`FanoutTopic::recv_verified`] and [`FanoutError::TreatyMismatch`]).
+//! ## Treaty-party membership gate (federation admission + treaty party set)
+//!
+//! Membership is sourced from the SAME issuer-signed, anti-rollback substrate the
+//! transport keys use: the per-treaty PARTY SET carried in the
+//! [`VerifiedDirectory`](crate::identity::VerifiedDirectory) (an issuer-signed
+//! `treaty_id -> {party kernel_ids}` map, body-hash-pinned, validity-windowed,
+//! monotone-versioned). The gate is enforced FAIL-CLOSED in two places (defense in
+//! depth), so this is no longer routing separation alone but enforced
+//! treaty-scoped access control:
+//!
+//! 1. JOIN side: [`FanoutLane::subscribe_treaty`] /
+//!    [`subscribe_treaty_with_timeout`](FanoutLane::subscribe_treaty_with_timeout)
+//!    reject with [`FanoutError::TreatyMembershipDenied`] BEFORE joining the swarm
+//!    if the LOCAL operator's `kernel_id` is not a party to `treaty_id`.
+//! 2. RECEIVE side: the frame-verification path
+//!    ([`verify_fanout_frame`] / [`FanoutTopic::recv_verified`]) additionally
+//!    rejects (same variant) a frame whose ORIGIN kernel is not a party to the
+//!    frame's `treaty_id`, so a non-party that joins the swarm anyway cannot inject
+//!    an accepted frame.
+//!
+//! The DELIVERED guarantee is therefore: (1) routing separation (above), (2) the
+//! treaty-party membership gate at JOIN and RECEIVE (this section), and (3) a
+//! receive-side swarm/treaty binding, so a frame carrying a foreign `treaty_id` is
+//! rejected on this swarm even if its deposit self-signature is valid (see
+//! [`FanoutTopic::recv_verified`] and [`FanoutError::TreatyMismatch`]). This is
+//! federation admission AND treaty-party membership, not one standing in for the
+//! other.
 //!
 //! ## The load-bearing correctness property: `delivered_from` is NOT the author
 //!
@@ -59,6 +77,7 @@
 //! [`decode_and_verify_fanout_frame`], whose signatures do not even accept it).
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -155,6 +174,18 @@ pub enum FanoutError {
         /// The `treaty_id` carried by the received frame.
         got: String,
     },
+    /// The local operator (at JOIN) or a frame's origin kernel (at RECEIVE) is
+    /// NOT a party to `treaty_id` per the issuer-signed per-treaty party set.
+    /// Fail-closed: federation admission alone does not admit a non-party to a
+    /// treaty's swarm, and a non-party origin frame is rejected on receive.
+    #[error("kernel `{kernel_id}` is not a party to treaty `{treaty_id}`")]
+    TreatyMembershipDenied {
+        /// The treaty whose party set was consulted.
+        treaty_id: String,
+        /// The kernel id that is not a party (the local operator at join, or the
+        /// frame origin at receive).
+        kernel_id: String,
+    },
     /// Canonical JSON serialization failed while reconstructing the deposit
     /// signing preimage.
     #[error("canonical json error: {0}")]
@@ -179,6 +210,7 @@ impl FanoutError {
             Self::UnknownOrigin(_) => "unknown-origin",
             Self::DepositSignatureInvalid => "deposit-signature-invalid",
             Self::TreatyMismatch { .. } => "treaty-mismatch",
+            Self::TreatyMembershipDenied { .. } => "treaty-membership-denied",
             Self::Canonical(_) => "canonical-json",
             Self::Frame(_) => "frame-invalid",
             Self::Gossip(_) => "gossip-transport",
@@ -249,10 +281,76 @@ impl OriginKeyResolver for StaticOriginKeys {
     }
 }
 
+/// Decides whether a `kernel_id` is a party to a `treaty_id`.
+///
+/// This is the treaty-scoped ACCESS-CONTROL oracle the fan-out lane consults at
+/// JOIN (is the LOCAL operator a party?) and at RECEIVE (is the frame ORIGIN a
+/// party?). It MUST be backed by trusted, anti-rollback data: the production
+/// implementation is [`crate::identity::VerifiedDirectory`] (the issuer-signed
+/// per-treaty party set), never the (non-secret) topic id or the gossip transport.
+/// Fail-closed: an unknown treaty or a non-party kernel returns `false`.
+pub trait TreatyMembership {
+    /// Whether `kernel_id` is a party to `treaty_id` (fail-closed on unknown).
+    fn is_party(&self, treaty_id: &str, kernel_id: &str) -> bool;
+}
+
+impl TreatyMembership for crate::identity::VerifiedDirectory {
+    fn is_party(&self, treaty_id: &str, kernel_id: &str) -> bool {
+        self.is_treaty_party(treaty_id, kernel_id)
+    }
+}
+
+/// A simple in-memory [`TreatyMembership`] backed by a `treaty_id -> {kernel_id}`
+/// map. Callers populate it from the trusted per-treaty party set (mirroring
+/// [`StaticOriginKeys`] for the origin-key resolver); production wiring should
+/// prefer the issuer-signed [`crate::identity::VerifiedDirectory`].
+#[derive(Debug, Clone, Default)]
+pub struct StaticTreatyMembership {
+    parties: HashMap<String, HashSet<String>>,
+}
+
+impl StaticTreatyMembership {
+    /// An empty membership set (every kernel is a non-party; fail-closed).
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Bind `treaty_id` to a party set (builder style).
+    #[must_use]
+    pub fn with(
+        mut self,
+        treaty_id: impl Into<String>,
+        party_kernel_ids: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        let entry = self.parties.entry(treaty_id.into()).or_default();
+        for kernel_id in party_kernel_ids {
+            entry.insert(kernel_id.into());
+        }
+        self
+    }
+
+    /// Add a single `kernel_id` to a treaty's party set.
+    pub fn insert_party(&mut self, treaty_id: impl Into<String>, kernel_id: impl Into<String>) {
+        self.parties
+            .entry(treaty_id.into())
+            .or_default()
+            .insert(kernel_id.into());
+    }
+}
+
+impl TreatyMembership for StaticTreatyMembership {
+    fn is_party(&self, treaty_id: &str, kernel_id: &str) -> bool {
+        self.parties
+            .get(treaty_id)
+            .is_some_and(|parties| parties.contains(kernel_id))
+    }
+}
+
 /// Origin-verify a fan-out frame FROM THE PAYLOAD ALONE. This is the whole point
 /// of the lane: it never consults the gossip transport sender.
 ///
-/// Order (fail-closed, cheapest checks first):
+/// Order (fail-closed; authenticate, THEN authorize):
 /// 1. [`verify_pheromone_gossip_frame`]: schema, `origin_kernel_id ==
 ///    deposit.body.kernel_id`, subject namespace, policy liveness, and
 ///    transit-chain integrity. It takes NO transport-sender identity. Running it
@@ -261,39 +359,48 @@ impl OriginKeyResolver for StaticOriginKeys {
 /// 2. Resolve the AUTHOR key from `frame.origin_kernel_id` (the signed payload),
 ///    NEVER from `delivered_from`.
 /// 3. Verify the deposit's OWN self-signature against that key.
+/// 4. TREATY-PARTY AUTHORIZATION: the (now-authenticated) origin kernel MUST be a
+///    party to the frame's own `treaty_id` per `membership`. A non-party origin is
+///    rejected even with a valid self-signature, so a non-party that joins a swarm
+///    anyway cannot inject an accepted frame.
 ///
 /// # Errors
 /// Returns [`FanoutError::Frame`] on frame verification failure,
-/// [`FanoutError::UnknownOrigin`] when the origin has no bound key, and
+/// [`FanoutError::UnknownOrigin`] when the origin has no bound key,
 /// [`FanoutError::DepositSignatureInvalid`] when the self-signature does not
-/// verify.
-pub fn verify_fanout_frame<R>(
+/// verify, and [`FanoutError::TreatyMembershipDenied`] when the origin is not a
+/// party to the frame's treaty.
+pub fn verify_fanout_frame<R, M>(
     frame: &PheromoneDepositGossip,
     origin_keys: &R,
+    membership: &M,
     policy: &PheromoneTransitPolicy,
     now_unix_ms: u64,
 ) -> Result<(), FanoutError>
 where
     R: OriginKeyResolver + ?Sized,
+    M: TreatyMembership + ?Sized,
 {
     // OBSERVE-ONLY wrapper: the origin-verification logic is unchanged in
     // `verify_fanout_frame_inner`; here we count + log a rejection and return the
     // SAME `Result`.
-    let result = verify_fanout_frame_inner(frame, origin_keys, policy, now_unix_ms);
+    let result = verify_fanout_frame_inner(frame, origin_keys, membership, policy, now_unix_ms);
     if let Err(error) = &result {
         note_fanout_failure(error);
     }
     result
 }
 
-fn verify_fanout_frame_inner<R>(
+fn verify_fanout_frame_inner<R, M>(
     frame: &PheromoneDepositGossip,
     origin_keys: &R,
+    membership: &M,
     policy: &PheromoneTransitPolicy,
     now_unix_ms: u64,
 ) -> Result<(), FanoutError>
 where
     R: OriginKeyResolver + ?Sized,
+    M: TreatyMembership + ?Sized,
 {
     // (1) Transport-independent frame verification. Pins origin == deposit author.
     verify_pheromone_gossip_frame(frame, policy, now_unix_ms).map_err(FanoutError::Frame)?;
@@ -304,7 +411,17 @@ where
         .ok_or_else(|| FanoutError::UnknownOrigin(frame.origin_kernel_id.clone()))?;
 
     // (3) Verify the deposit's OWN self-signature against that key.
-    verify_deposit_self_signature(frame, &origin_key)
+    verify_deposit_self_signature(frame, &origin_key)?;
+
+    // (4) Authorize the authenticated origin against the frame's treaty party set.
+    // Fail-closed: a non-party origin is rejected even with a valid self-signature.
+    if !membership.is_party(&frame.treaty_id, &frame.origin_kernel_id) {
+        return Err(FanoutError::TreatyMembershipDenied {
+            treaty_id: frame.treaty_id.clone(),
+            kernel_id: frame.origin_kernel_id.clone(),
+        });
+    }
+    Ok(())
 }
 
 /// Decode a raw gossip payload and origin-verify it via [`verify_fanout_frame`].
@@ -315,19 +432,22 @@ where
 ///
 /// # Errors
 /// Returns [`FanoutError::Codec`] on malformed JSON, else any error from
-/// [`verify_fanout_frame`].
-pub fn decode_and_verify_fanout_frame<R>(
+/// [`verify_fanout_frame`] (including [`FanoutError::TreatyMembershipDenied`] when
+/// the frame origin is not a party to the frame's treaty).
+pub fn decode_and_verify_fanout_frame<R, M>(
     content: &[u8],
     origin_keys: &R,
+    membership: &M,
     policy: &PheromoneTransitPolicy,
     now_unix_ms: u64,
 ) -> Result<PheromoneDepositGossip, FanoutError>
 where
     R: OriginKeyResolver + ?Sized,
+    M: TreatyMembership + ?Sized,
 {
     let frame: PheromoneDepositGossip =
         serde_json::from_slice(content).map_err(|error| FanoutError::Codec(error.to_string()))?;
-    verify_fanout_frame(&frame, origin_keys, policy, now_unix_ms)?;
+    verify_fanout_frame(&frame, origin_keys, membership, policy, now_unix_ms)?;
     Ok(frame)
 }
 
@@ -345,15 +465,17 @@ where
 /// [`FanoutError::Codec`] on malformed JSON, [`FanoutError::TreatyMismatch`]
 /// when the frame is bound to a different treaty, else any error from
 /// [`verify_fanout_frame`].
-fn decode_bind_treaty_and_verify<R>(
+fn decode_bind_treaty_and_verify<R, M>(
     content: &[u8],
     expected_treaty: &str,
     origin_keys: &R,
+    membership: &M,
     policy: &PheromoneTransitPolicy,
     now_unix_ms: u64,
 ) -> Result<PheromoneDepositGossip, FanoutError>
 where
     R: OriginKeyResolver + ?Sized,
+    M: TreatyMembership + ?Sized,
 {
     let frame: PheromoneDepositGossip =
         serde_json::from_slice(content).map_err(|error| FanoutError::Codec(error.to_string()))?;
@@ -368,7 +490,7 @@ where
         note_fanout_failure(&error);
         return Err(error);
     }
-    verify_fanout_frame(&frame, origin_keys, policy, now_unix_ms)?;
+    verify_fanout_frame(&frame, origin_keys, membership, policy, now_unix_ms)?;
     Ok(frame)
 }
 
@@ -453,15 +575,35 @@ impl FanoutLane {
     /// that are not directory-bound simply fail to connect). The topic is derived
     /// deterministically from `treaty_id` via [`pheromone_topic_for_treaty`].
     ///
+    /// TREATY-PARTY JOIN GATE (fail-closed): the swarm is joined ONLY if
+    /// `local_kernel_id` is a party to `treaty_id` per `membership` (the
+    /// issuer-signed per-treaty party set). A globally-admitted operator that is
+    /// NOT a party is rejected with [`FanoutError::TreatyMembershipDenied`] BEFORE
+    /// the (non-secret, deterministic) topic is computed or any neighbor is dialed,
+    /// so federation admission alone never leaks a treaty's traffic to a non-party.
+    ///
     /// # Errors
-    /// Returns [`FanoutError::Gossip`] if the subscribe/join fails.
-    pub async fn subscribe_treaty(
+    /// Returns [`FanoutError::TreatyMembershipDenied`] when the local operator is
+    /// not a party to `treaty_id`, or [`FanoutError::Gossip`] if the subscribe/join
+    /// fails.
+    pub async fn subscribe_treaty<M>(
         &self,
         treaty_id: &str,
+        local_kernel_id: &str,
+        membership: &M,
         bootstrap: Vec<EndpointId>,
-    ) -> Result<FanoutTopic, FanoutError> {
-        self.subscribe_treaty_with_timeout(treaty_id, bootstrap, FANOUT_JOIN_TIMEOUT)
-            .await
+    ) -> Result<FanoutTopic, FanoutError>
+    where
+        M: TreatyMembership + ?Sized,
+    {
+        self.subscribe_treaty_with_timeout(
+            treaty_id,
+            local_kernel_id,
+            membership,
+            bootstrap,
+            FANOUT_JOIN_TIMEOUT,
+        )
+        .await
     }
 
     /// Same as [`subscribe_treaty`](Self::subscribe_treaty), with an explicit join
@@ -472,14 +614,35 @@ impl FanoutLane {
     /// is deliberately NOT bounded: a receive loop is meant to block until the next
     /// gossip message.
     ///
+    /// The treaty-party JOIN gate (see [`subscribe_treaty`](Self::subscribe_treaty))
+    /// is enforced here, fail-closed, BEFORE the topic is derived or joined.
+    ///
     /// # Errors
-    /// Returns [`FanoutError::Gossip`] if the join times out or the subscribe/join fails.
-    pub async fn subscribe_treaty_with_timeout(
+    /// Returns [`FanoutError::TreatyMembershipDenied`] when the local operator is
+    /// not a party to `treaty_id`, or [`FanoutError::Gossip`] if the join times out
+    /// or the subscribe/join fails.
+    pub async fn subscribe_treaty_with_timeout<M>(
         &self,
         treaty_id: &str,
+        local_kernel_id: &str,
+        membership: &M,
         bootstrap: Vec<EndpointId>,
         join_timeout: Duration,
-    ) -> Result<FanoutTopic, FanoutError> {
+    ) -> Result<FanoutTopic, FanoutError>
+    where
+        M: TreatyMembership + ?Sized,
+    {
+        // TREATY-PARTY JOIN GATE (fail-closed): a non-party local operator is
+        // rejected before the (non-secret) topic is even computed, so it never
+        // joins the swarm. Federation admission is necessary but not sufficient.
+        if !membership.is_party(treaty_id, local_kernel_id) {
+            let error = FanoutError::TreatyMembershipDenied {
+                treaty_id: treaty_id.to_string(),
+                kernel_id: local_kernel_id.to_string(),
+            };
+            note_fanout_failure(&error);
+            return Err(error);
+        }
         let topic_id = pheromone_topic_for_treaty(treaty_id);
         let joined = tokio::time::timeout(
             join_timeout,
@@ -582,9 +745,12 @@ impl FanoutTopic {
     /// Await the next payload AND verify it end-to-end: decode, ENFORCE the
     /// swarm/treaty binding (reject a frame whose `treaty_id` is not this swarm's
     /// treaty, even if its deposit self-signature is valid), run the
-    /// transport-independent frame verifier, and verify the deposit's OWN
-    /// self-signature against the origin's resolved key. `delivered_from` is
-    /// never consulted. `now_unix_ms` is supplied by the caller per receive.
+    /// transport-independent frame verifier, verify the deposit's OWN
+    /// self-signature against the origin's resolved key, and ENFORCE the
+    /// treaty-party gate (reject a frame whose ORIGIN kernel is not a party to the
+    /// treaty per `membership`, so a non-party that joined the swarm anyway cannot
+    /// inject an accepted frame). `delivered_from` is never consulted. `now_unix_ms`
+    /// is supplied by the caller per receive.
     ///
     /// The swarm/treaty binding is what turns topic-per-treaty ROUTING separation
     /// into a hard receive-side check: a globally-admitted operator can compute a
@@ -595,14 +761,16 @@ impl FanoutTopic {
     /// Returns `None` when the topic stream is closed; otherwise the verified
     /// frame or the verification error (a rejected frame over best-effort gossip
     /// is surfaced so the caller can log-and-drop it).
-    pub async fn recv_verified<R>(
+    pub async fn recv_verified<R, M>(
         &mut self,
         origin_keys: &R,
+        membership: &M,
         policy: &PheromoneTransitPolicy,
         now_unix_ms: u64,
     ) -> Option<Result<PheromoneDepositGossip, FanoutError>>
     where
         R: OriginKeyResolver + ?Sized,
+        M: TreatyMembership + ?Sized,
     {
         let message = match self.next_payload().await? {
             Ok(message) => message,
@@ -612,6 +780,7 @@ impl FanoutTopic {
             &message.content,
             &self.treaty_id,
             origin_keys,
+            membership,
             policy,
             now_unix_ms,
         ))
@@ -760,6 +929,16 @@ mod tests {
         }
     }
 
+    /// A membership admitting `AUTHOR` to both treaties the tests exercise, so the
+    /// treaty-party gate is a no-op for the pre-existing authenticity tests (which
+    /// isolate signature / origin / binding failures). The dedicated membership
+    /// tests below use a membership that does NOT admit the author.
+    fn party_membership() -> StaticTreatyMembership {
+        StaticTreatyMembership::new()
+            .with(TREATY_ALPHA, [AUTHOR])
+            .with("treaty-beta", [AUTHOR])
+    }
+
     fn live_policy(namespace: &str) -> PheromoneTransitPolicy {
         PheromoneTransitPolicy {
             schema: PHEROMONE_TRANSIT_POLICY_SCHEMA.to_string(),
@@ -783,8 +962,10 @@ mod tests {
         let frame = signed_direct_frame(&author, AUTHOR, "did:chio:hub", TREATY_ALPHA, NAMESPACE);
         let policy = live_policy(NAMESPACE);
         let keys = StaticOriginKeys::new().with(AUTHOR, author.public_key());
+        let membership = party_membership();
 
-        verify_fanout_frame(&frame, &keys, &policy, NOW).expect("valid self-signed frame accepted");
+        verify_fanout_frame(&frame, &keys, &membership, &policy, NOW)
+            .expect("valid self-signed frame accepted");
 
         // And through the full receive shape (mirrors the gossip PoC loop): the
         // frame arrives forwarded by some neighbor, then decode + verify accepts.
@@ -797,9 +978,14 @@ mod tests {
         });
         match event {
             Event::Received(message) => {
-                let verified =
-                    decode_and_verify_fanout_frame(&message.content, &keys, &policy, NOW)
-                        .expect("received frame verifies");
+                let verified = decode_and_verify_fanout_frame(
+                    &message.content,
+                    &keys,
+                    &membership,
+                    &policy,
+                    NOW,
+                )
+                .expect("received frame verifies");
                 assert_eq!(verified.origin_kernel_id, AUTHOR);
             }
             other => panic!("expected Received, got {other:?}"),
@@ -829,6 +1015,7 @@ mod tests {
         let keys = StaticOriginKeys::new()
             .with(AUTHOR, author.public_key())
             .with("did:chio:neighbor", neighbor.public_key());
+        let membership = party_membership();
 
         // Delivered by the admitted neighbor. `delivered_from` is a genuine,
         // trusted swarm member, yet it does NOT launder the tampered payload.
@@ -840,7 +1027,13 @@ mod tests {
         });
         match event {
             Event::Received(message) => {
-                let result = decode_and_verify_fanout_frame(&message.content, &keys, &policy, NOW);
+                let result = decode_and_verify_fanout_frame(
+                    &message.content,
+                    &keys,
+                    &membership,
+                    &policy,
+                    NOW,
+                );
                 assert!(
                     matches!(result, Err(FanoutError::DepositSignatureInvalid)),
                     "tampered payload must be rejected regardless of the admitted forwarder, got {result:?}"
@@ -857,8 +1050,9 @@ mod tests {
         let policy = live_policy(NAMESPACE);
         // Empty resolver: the origin has no bound key, so authorship is unresolvable.
         let keys = StaticOriginKeys::new();
+        let membership = party_membership();
 
-        let result = verify_fanout_frame(&frame, &keys, &policy, NOW);
+        let result = verify_fanout_frame(&frame, &keys, &membership, &policy, NOW);
         assert!(matches!(result, Err(FanoutError::UnknownOrigin(_))));
     }
 
@@ -870,10 +1064,11 @@ mod tests {
         let frame = signed_direct_frame(&author, AUTHOR, "did:chio:hub", TREATY_ALPHA, NAMESPACE);
         let policy = live_policy(NAMESPACE);
         let keys = StaticOriginKeys::new();
+        let membership = party_membership();
 
         let before =
             crate::metrics::verify_failures_total(crate::metrics::SEAM_FANOUT, "unknown-origin");
-        let result = verify_fanout_frame(&frame, &keys, &policy, NOW);
+        let result = verify_fanout_frame(&frame, &keys, &membership, &policy, NOW);
         assert!(matches!(result, Err(FanoutError::UnknownOrigin(_))));
         assert!(
             crate::metrics::verify_failures_total(crate::metrics::SEAM_FANOUT, "unknown-origin")
@@ -892,11 +1087,13 @@ mod tests {
             signed_direct_frame(&author, AUTHOR, "did:chio:hub", "treaty-beta", NAMESPACE);
         let policy = live_policy(NAMESPACE);
         let keys = StaticOriginKeys::new().with(AUTHOR, author.public_key());
+        let membership = party_membership();
         let content = encode_fanout_frame(&beta_frame).expect("encodes under cap");
 
         let before =
             crate::metrics::verify_failures_total(crate::metrics::SEAM_FANOUT, "treaty-mismatch");
-        let result = decode_bind_treaty_and_verify(&content, TREATY_ALPHA, &keys, &policy, NOW);
+        let result =
+            decode_bind_treaty_and_verify(&content, TREATY_ALPHA, &keys, &membership, &policy, NOW);
         assert!(matches!(result, Err(FanoutError::TreatyMismatch { .. })));
         assert!(
             crate::metrics::verify_failures_total(crate::metrics::SEAM_FANOUT, "treaty-mismatch")
@@ -954,15 +1151,18 @@ mod tests {
             signed_direct_frame(&author, AUTHOR, "did:chio:hub", "treaty-beta", NAMESPACE);
         let policy = live_policy(NAMESPACE);
         let keys = StaticOriginKeys::new().with(AUTHOR, author.public_key());
+        let membership = party_membership();
         let content = encode_fanout_frame(&beta_frame).expect("encodes under cap");
 
-        // Sanity: the frame's OWN signature and origin verification are valid, so
-        // the rejection below is purely the swarm/treaty binding, not a bad sig.
-        decode_and_verify_fanout_frame(&content, &keys, &policy, NOW)
-            .expect("beta frame's own deposit self-signature and origin verify are valid");
+        // Sanity: bound to its OWN treaty (beta), the frame's signature, origin, and
+        // treaty-party membership all verify, so the rejection below is purely the
+        // swarm/treaty binding to a DIFFERENT treaty, not a bad sig or a non-party.
+        decode_bind_treaty_and_verify(&content, "treaty-beta", &keys, &membership, &policy, NOW)
+            .expect("beta frame verifies when bound to the beta swarm");
 
         // Received on the alpha swarm (self.treaty_id = TREATY_ALPHA): rejected.
-        let result = decode_bind_treaty_and_verify(&content, TREATY_ALPHA, &keys, &policy, NOW);
+        let result =
+            decode_bind_treaty_and_verify(&content, TREATY_ALPHA, &keys, &membership, &policy, NOW);
         assert!(
             matches!(
                 result,
@@ -976,8 +1176,15 @@ mod tests {
         let alpha_frame =
             signed_direct_frame(&author, AUTHOR, "did:chio:hub", TREATY_ALPHA, NAMESPACE);
         let alpha_content = encode_fanout_frame(&alpha_frame).expect("encodes under cap");
-        decode_bind_treaty_and_verify(&alpha_content, TREATY_ALPHA, &keys, &policy, NOW)
-            .expect("an alpha-treaty frame is accepted on the alpha swarm");
+        decode_bind_treaty_and_verify(
+            &alpha_content,
+            TREATY_ALPHA,
+            &keys,
+            &membership,
+            &policy,
+            NOW,
+        )
+        .expect("an alpha-treaty frame is accepted on the alpha swarm");
     }
 
     #[test]
@@ -1034,8 +1241,17 @@ mod tests {
             .accept(iroh_gossip::ALPN, gossip.clone())
             .spawn();
         let lane = FanoutLane::new(gossip);
+        // Local operator IS a party, so it passes the membership gate and reaches
+        // the (empty-bootstrap) join, which then fails closed on the client bound.
+        let membership = StaticTreatyMembership::new().with(TREATY_ALPHA, [AUTHOR]);
         let result = lane
-            .subscribe_treaty_with_timeout(TREATY_ALPHA, vec![], Duration::from_millis(50))
+            .subscribe_treaty_with_timeout(
+                TREATY_ALPHA,
+                AUTHOR,
+                &membership,
+                vec![],
+                Duration::from_millis(50),
+            )
             .await;
         assert!(
             matches!(result, Err(FanoutError::Gossip(ref msg)) if msg.contains("timed out")),
@@ -1163,6 +1379,124 @@ mod tests {
         );
 
         drop(alpha_topic);
+        router.shutdown().await.ok();
+    }
+
+    #[test]
+    fn receive_rejects_a_non_party_origin_frame() {
+        // ITEM 1 receive side: a frame with a fully VALID deposit self-signature and
+        // a resolvable origin key is still rejected if the origin kernel is NOT a
+        // party to the frame's treaty, so a non-party that joined the swarm anyway
+        // cannot inject an accepted frame.
+        let author = Keypair::from_seed(&[7; 32]);
+        let frame = signed_direct_frame(&author, AUTHOR, "did:chio:hub", TREATY_ALPHA, NAMESPACE);
+        let policy = live_policy(NAMESPACE);
+        let keys = StaticOriginKeys::new().with(AUTHOR, author.public_key());
+        // Membership admits a DIFFERENT kernel to alpha, so AUTHOR is a non-party.
+        let membership = StaticTreatyMembership::new().with(TREATY_ALPHA, ["did:chio:other"]);
+
+        let result = verify_fanout_frame(&frame, &keys, &membership, &policy, NOW);
+        assert!(
+            matches!(
+                result,
+                Err(FanoutError::TreatyMembershipDenied { ref treaty_id, ref kernel_id })
+                    if treaty_id == TREATY_ALPHA && kernel_id == AUTHOR
+            ),
+            "a non-party origin frame must be rejected on receive, got {result:?}"
+        );
+
+        // Same rejection through the raw decode entry.
+        let content = encode_fanout_frame(&frame).expect("encodes under cap");
+        let decoded = decode_and_verify_fanout_frame(&content, &keys, &membership, &policy, NOW);
+        assert!(matches!(
+            decoded,
+            Err(FanoutError::TreatyMembershipDenied { .. })
+        ));
+    }
+
+    #[test]
+    fn receive_accepts_a_party_origin_frame() {
+        // Control: with the origin admitted as a party to alpha, the same frame
+        // verifies. The membership gate is the ONLY difference from the reject above.
+        let author = Keypair::from_seed(&[7; 32]);
+        let frame = signed_direct_frame(&author, AUTHOR, "did:chio:hub", TREATY_ALPHA, NAMESPACE);
+        let policy = live_policy(NAMESPACE);
+        let keys = StaticOriginKeys::new().with(AUTHOR, author.public_key());
+        let membership = StaticTreatyMembership::new().with(TREATY_ALPHA, [AUTHOR]);
+
+        verify_fanout_frame(&frame, &keys, &membership, &policy, NOW)
+            .expect("a party origin frame verifies");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn subscribe_rejects_a_non_party_local_operator() {
+        // ITEM 1 join side: a globally-admitted operator that is NOT a party to the
+        // treaty is rejected BEFORE the swarm is joined, so treaty traffic never
+        // reaches a non-party even though it can compute the (non-secret) topic id.
+        let endpoint = Endpoint::builder(presets::Minimal)
+            .secret_key(SecretKey::from_bytes(&[75u8; 32]))
+            .relay_mode(RelayMode::Disabled)
+            .bind_addr((Ipv4Addr::LOCALHOST, 0))
+            .expect("valid loopback bind addr")
+            .bind()
+            .await
+            .expect("endpoint binds on loopback");
+        let gossip = Gossip::builder().spawn(endpoint.clone());
+        let router = Router::builder(endpoint)
+            .accept(iroh_gossip::ALPN, gossip.clone())
+            .spawn();
+        let lane = FanoutLane::new(gossip);
+
+        // Membership admits a DIFFERENT operator to alpha; the local operator is a
+        // non-party, so the join is rejected before any neighbor dial.
+        let membership = StaticTreatyMembership::new().with(TREATY_ALPHA, ["did:chio:party"]);
+        let result = lane
+            .subscribe_treaty(TREATY_ALPHA, "did:chio:non-party", &membership, vec![])
+            .await;
+        assert!(
+            matches!(
+                result,
+                Err(FanoutError::TreatyMembershipDenied { ref treaty_id, ref kernel_id })
+                    if treaty_id == TREATY_ALPHA && kernel_id == "did:chio:non-party"
+            ),
+            "a non-party local operator must be rejected at join, got {result:?}"
+        );
+        router.shutdown().await.ok();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn subscribe_admits_a_party_past_the_membership_gate() {
+        // A genuine party passes the membership gate and proceeds to the join; with
+        // an empty bootstrap the join then times out, proving the gate let it
+        // through (the error is the client join bound, NOT a membership denial).
+        let endpoint = Endpoint::builder(presets::Minimal)
+            .secret_key(SecretKey::from_bytes(&[76u8; 32]))
+            .relay_mode(RelayMode::Disabled)
+            .bind_addr((Ipv4Addr::LOCALHOST, 0))
+            .expect("valid loopback bind addr")
+            .bind()
+            .await
+            .expect("endpoint binds on loopback");
+        let gossip = Gossip::builder().spawn(endpoint.clone());
+        let router = Router::builder(endpoint)
+            .accept(iroh_gossip::ALPN, gossip.clone())
+            .spawn();
+        let lane = FanoutLane::new(gossip);
+
+        let membership = StaticTreatyMembership::new().with(TREATY_ALPHA, ["did:chio:party"]);
+        let result = lane
+            .subscribe_treaty_with_timeout(
+                TREATY_ALPHA,
+                "did:chio:party",
+                &membership,
+                vec![],
+                Duration::from_millis(50),
+            )
+            .await;
+        assert!(
+            matches!(result, Err(FanoutError::Gossip(ref msg)) if msg.contains("timed out")),
+            "a party must pass the membership gate and reach the empty-bootstrap join, got {result:?}"
+        );
         router.shutdown().await.ok();
     }
 }
