@@ -97,6 +97,9 @@ name = "verdict_matrix_cross_language"
 path = "verdict_matrix/tests/verdict_matrix_cross_language.rs"
 
 [dev-dependencies]
+# verdict-matrix test targets (deployment_shape_smoke, diff_oracle_self_test)
+# compile verdict_matrix/src/diff_oracle.rs, which parses the error registry as YAML.
+serde_yaml = { workspace = true }
 # Cross-language verdict-matrix oracle exercises the WASM
 # browser kernel through its native (non-wasm32) cargo test surface.
 chio-kernel-browser = { workspace = true }
