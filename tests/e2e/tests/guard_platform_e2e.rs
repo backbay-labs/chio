@@ -195,7 +195,7 @@ fn temp_incident_root() -> PathBuf {
 }
 
 #[test]
-#[ignore]
+#[ignore = "e2e gate: requires the full guard-platform harness; run explicitly"]
 fn publish_pull_verify_swap_rollback_and_metrics_gate() {
     let manifest_wit_world = Some(REQUIRED_WIT_WORLD.to_string());
     verify_wit_world(manifest_wit_world.as_deref())

@@ -369,6 +369,8 @@ fn network_module_regex() -> &'static Regex {
             Err(err) => {
                 tracing::error!(error = %err, "code-execution: failed to compile network regex");
                 // Safe fallback: regex that never matches anything.
+                // expect: `\A\z` is a compile-time constant literal, so this
+                // construction cannot fail at runtime.
                 #[allow(clippy::expect_used)]
                 {
                     Regex::new(r"\A\z").expect("empty-string regex compiles")

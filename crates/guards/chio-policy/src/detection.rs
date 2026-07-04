@@ -89,6 +89,8 @@ pub struct RegexInjectionDetector {
 }
 
 impl RegexInjectionDetector {
+    // expect: every regex below is a compile-time constant literal, so
+    // construction cannot fail at runtime (covered by the module tests).
     #[allow(clippy::expect_used)]
     pub fn new() -> Self {
         let patterns = vec![
@@ -180,6 +182,8 @@ pub struct RegexJailbreakDetector {
 }
 
 impl RegexJailbreakDetector {
+    // expect: the jailbreak regex is a compile-time constant literal, so
+    // construction cannot fail at runtime (covered by the module tests).
     #[allow(clippy::expect_used)]
     pub fn new() -> Self {
         let patterns = vec![DetectionPattern {
@@ -225,6 +229,8 @@ pub struct RegexExfiltrationDetector {
 }
 
 impl RegexExfiltrationDetector {
+    // expect: every regex below is a compile-time constant literal, so
+    // construction cannot fail at runtime (covered by the module tests).
     #[allow(clippy::expect_used)]
     pub fn new() -> Self {
         let patterns = vec![

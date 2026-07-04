@@ -88,8 +88,8 @@ fn public_key(seed: u8) -> PublicKey {
 /// the observed `report_data` against `expected_report_data`.
 ///
 /// Production entry: `chio_attest_verify::expect_report_data`
-/// (`pub fn` at `crates/trust/chio-attest-verify/src/quote.rs:163`,
-/// re-exported via `crates/trust/chio-attest-verify/src/lib.rs:50`).
+/// (`pub fn` in `crates/trust/chio-attest-verify/src/quote.rs`,
+/// re-exported via `crates/trust/chio-attest-verify/src/lib.rs`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_expect_report_data_determinism_under_input_change() {
@@ -179,13 +179,13 @@ struct ModelQuoteOutcome {
 ///
 /// The arm priority below mirrors the production order observed in all
 /// three TEE backends:
-///   - TDX (`crates/trust/chio-attest-verify/src/tdx.rs:164-191`): TCB
+///   - TDX (`crates/trust/chio-attest-verify/src/tdx.rs`): TCB
 ///     collateral verification -> parse -> algorithm dispatch ->
 ///     report_data comparison.
-///   - Nitro (`crates/trust/chio-attest-verify/src/nitro.rs:237-254`): COSE
+///   - Nitro (`crates/trust/chio-attest-verify/src/nitro.rs`): COSE
 ///     algorithm tag check -> parse -> TCB collateral -> signature ->
 ///     report_data comparison.
-///   - SEV-SNP (`crates/trust/chio-attest-verify/src/sev_snp.rs:252-268`):
+///   - SEV-SNP (`crates/trust/chio-attest-verify/src/sev_snp.rs`):
 ///     TCB collateral -> signature dispatch -> measurement ->
 ///     report_data comparison.
 ///
@@ -223,7 +223,7 @@ fn model_verify_quote(outcome: ModelQuoteOutcome) -> Result<(), AttestError> {
 /// to satisfy.
 ///
 /// Production entry: `<NitroVerifier as QuoteVerifier>::verify_quote`
-/// (impl at `crates/trust/chio-attest-verify/src/nitro.rs:200`). The
+/// (impl in `crates/trust/chio-attest-verify/src/nitro.rs`). The
 /// real entry is reachable only with the `tee-quotes` Cargo feature
 /// active; this harness pins the algebra independently of that
 /// feature gate so default `cargo build` paths stay green.
@@ -293,7 +293,7 @@ pub fn public_nitro_verify_quote_rejects_report_data_mismatch() {
 /// signature validity.
 ///
 /// Production entry: `<SevSnpVerifier as QuoteVerifier>::verify_quote`
-/// (impl at `crates/trust/chio-attest-verify/src/sev_snp.rs:246`).
+/// (impl in `crates/trust/chio-attest-verify/src/sev_snp.rs`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_sev_snp_verify_quote_rejects_unacceptable_tcb() {
@@ -356,11 +356,11 @@ pub fn public_sev_snp_verify_quote_rejects_unacceptable_tcb() {
 /// verification arm (or vice versa) yields a non-`Ok` result.
 ///
 /// Production entry: `<TdxDcapVerifier as QuoteVerifier>::verify_quote`
-/// (impl at `crates/trust/chio-attest-verify/src/tdx.rs:159`). The
+/// (impl in `crates/trust/chio-attest-verify/src/tdx.rs`). The
 /// crate-private dispatchers
 /// `verify_p256_signature_with_attestation_key` and
 /// `verify_p384_signature_with_attestation_key`
-/// (`tee_signature.rs:15,36`, both `pub(crate)`) are the runtime
+/// (`tee_signature.rs`, both `pub(crate)`) are the runtime
 /// branches the algebra below abstracts.
 #[kani::proof]
 #[kani::unwind(8)]

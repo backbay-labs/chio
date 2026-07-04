@@ -106,8 +106,8 @@ fn fixture_card(issued_at: DateTime<Utc>, expires_at: DateTime<Utc>) -> ModelCar
 /// `weights_hash`.
 ///
 /// Production entry: `chio_weights::card::weights_hash_of`
-/// (`pub fn` at `crates/trust/chio-weights/src/card.rs:274`,
-/// re-exported via `crates/trust/chio-weights/src/lib.rs:44`).
+/// (`pub fn` in `crates/trust/chio-weights/src/card.rs`,
+/// re-exported via `crates/trust/chio-weights/src/lib.rs`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_weights_hash_of_determinism_and_tampering() {
@@ -155,7 +155,7 @@ pub fn public_weights_hash_of_determinism_and_tampering() {
 /// itself remains valid.
 ///
 /// Production entry: `chio_weights::card::ModelCard::require_live`
-/// (`pub fn` at `crates/trust/chio-weights/src/card.rs:236`).
+/// (`pub fn` in `crates/trust/chio-weights/src/card.rs`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_model_card_require_live_fail_closed() {
@@ -218,7 +218,7 @@ pub fn public_model_card_require_live_fail_closed() {
 /// two distinct refusal classes in the audit trail.
 ///
 /// Production entry: `chio_weights::error::WeightsError::urn`
-/// (`pub fn` at `crates/trust/chio-weights/src/error.rs:75`).
+/// (`pub fn` in `crates/trust/chio-weights/src/error.rs`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_weights_error_urn_is_stable() {
@@ -296,7 +296,7 @@ pub fn public_weights_error_urn_is_stable() {
 ///
 /// Production entries:
 /// - `chio_weights::card::ModelCard::new`
-///   (`pub fn` at `crates/trust/chio-weights/src/card.rs:172`).
+///   (`pub fn` in `crates/trust/chio-weights/src/card.rs`).
 /// - `chio_weights::card::CARD_VERSION_V1` constant.
 #[kani::proof]
 #[kani::unwind(8)]

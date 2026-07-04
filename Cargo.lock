@@ -2749,7 +2749,6 @@ dependencies = [
  "chio-runtime-harness",
  "chio-selective-disclosure",
  "chio-settle",
- "chio-siem",
  "chio-store-sqlite",
  "chio-swarm-authority",
  "chio-tee-frame",

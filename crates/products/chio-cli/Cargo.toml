@@ -89,7 +89,6 @@ ureq = { version = "2.10", features = ["json"] }
 serde_urlencoded = "0.7"
 toml = "0.8"
 rusqlite = { workspace = true }
-chio-siem = { workspace = true, optional = true }
 tower-http = { version = "0.6", features = ["fs", "set-header"] }
 chrono = { version = "0.4", features = ["clock"] }
 p256 = { version = "0.13", features = ["ecdsa"] }
@@ -118,7 +117,6 @@ tempfile = "3"
 wiremock = "0.6"
 
 [features]
-siem = ["chio-siem"]
 tee-quotes = ["chio-attest-verify/tee-quotes"]
 
 [lints]
