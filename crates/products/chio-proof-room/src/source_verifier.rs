@@ -1242,7 +1242,7 @@ pub(crate) fn verify_transaction_passport_file_with_options(
         .unwrap_or_else(|| path.to_string_lossy().into_owned());
     let report = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
         &passport,
-        passport_report_path,
+        passport_report_path.clone(),
         &evidence_graph_bytes,
         &verifier_policy_bytes,
         &artifacts,
@@ -1253,7 +1253,7 @@ pub(crate) fn verify_transaction_passport_file_with_options(
         .map_err(|error| format!("proof-room.source-verifier.report-encode: {error}"))?;
     let context = SourceVerifierContext {
         passport,
-        passport_report_path: String::new(),
+        passport_report_path,
         evidence_graph_bytes,
         claim_set_bytes,
         verifier_policy_bytes,
