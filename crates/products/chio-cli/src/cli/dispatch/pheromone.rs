@@ -133,6 +133,7 @@ pub(crate) fn dispatch_chio_pheromone_command(command: ChioPheromoneCommands) ->
                 iroh_transport_key,
                 iroh_bind_addr,
                 iroh_relay_url,
+                iroh_peer_addr,
                 iroh_lanes,
             } => cmd_chio_pheromone_relay_tick(
                 &store,
@@ -151,6 +152,7 @@ pub(crate) fn dispatch_chio_pheromone_command(command: ChioPheromoneCommands) ->
                 iroh_transport_key.as_deref(),
                 &iroh_bind_addr,
                 &iroh_relay_url,
+                &iroh_peer_addr,
                 &iroh_lanes,
             ),
             ChioPheromoneRelayCommands::Catchup {

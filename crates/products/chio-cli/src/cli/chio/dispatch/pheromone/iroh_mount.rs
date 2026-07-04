@@ -511,16 +511,17 @@ pub(crate) async fn build_iroh_router(
 /// address resolver is derived from (kernel_id -> transport `EndpointId`). Fail-closed:
 /// any bind error returns `Err`.
 ///
-/// # Reachability residual
+/// # Reachability
 ///
 /// The verified transport directory binds `(kernel_id -> transport EndpointId)`; it
 /// does NOT carry per-peer dialable socket addresses. So the tick resolves a recipient
-/// to an id-only [`iroh::EndpointAddr`], which is dialable only where the deployment
-/// provides path discovery (a configured `--iroh-relay-url` plus discovery, mirroring
-/// how the serve mount logs its bound socket for operators to configure on peers). A
-/// pure direct-addressing deployment with no discovery still needs an out-of-band
-/// address book; until then the drain folds an undialable recipient into the durable
-/// retry/dead-letter path fail-closed (it never drops the batch).
+/// to an EndpointId and then threads any direct socket(s) from the out-of-band
+/// `--iroh-peer-addr` book onto it (the direct-address deployment). Where the
+/// deployment instead provides path discovery (a configured `--iroh-relay-url` plus
+/// discovery, mirroring how the serve mount logs its bound socket for operators to
+/// configure on peers) the id-only address resolves without a book entry. Either way,
+/// a recipient with no dialable path folds into the durable retry/dead-letter path
+/// fail-closed (it never drops the batch).
 pub(crate) async fn build_iroh_outbound_endpoint(
     inputs: IrohServeInputs,
 ) -> Result<(Endpoint, Arc<VerifiedDirectory>), CliError> {

@@ -261,6 +261,18 @@ pub(crate) enum ChioPheromoneRelayCommands {
         #[arg(long, value_name = "URL")]
         iroh_relay_url: Vec<String>,
 
+        /// Direct dialable socket address(es) for a recipient in the relay-disabled /
+        /// direct-address deployment, as `KERNEL_ID=HOST:PORT`. Repeatable; repeat the
+        /// same KERNEL_ID to add multiple sockets. The verified transport directory
+        /// binds `kernel_id -> transport EndpointId` but carries NO socket address, so
+        /// without discovery / --iroh-relay-url the drain cannot reach a peer known only
+        /// by EndpointId + socket. Each entry threads its socket(s) onto the resolved
+        /// EndpointId so the drain dials directly. The EndpointId binding still comes
+        /// from the verified directory and iroh authenticates it at the handshake, so a
+        /// wrong/hostile socket cannot redirect delivery to an unauthorized peer.
+        #[arg(long, value_name = "KERNEL_ID=HOST:PORT")]
+        iroh_peer_addr: Vec<String>,
+
         /// Comma-separated iroh lanes to drain. Default: pheromone (the only outbound
         /// lane on this hook).
         #[arg(long, value_name = "LANES", default_value = "pheromone")]

@@ -6,6 +6,8 @@ use super::{
     read_utf8_json_file, unix_now_ms, write_json_string, write_pretty_json, IrohServeInputs,
 };
 use crate::CliError;
+use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::path::Path;
 
 #[derive(Clone)]
@@ -414,6 +416,7 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
     iroh_transport_key: Option<&Path>,
     iroh_bind_addr: &str,
     iroh_relay_url: &[String],
+    iroh_peer_addr: &[String],
     iroh_lanes: &str,
 ) -> Result<(), CliError> {
     let now_unix_ms = now_unix_ms.unwrap_or_else(unix_now_ms);
@@ -450,10 +453,16 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
         now_unix_ms,
     )?;
     let tick_report = if let Some(iroh_inputs) = iroh_inputs {
+        // Direct-address book (relay-disabled / direct-address deployment): parse the
+        // repeated --iroh-peer-addr entries into kernel_id -> dialable socket(s).
+        // Parsed only on the iroh path so an HTTP-only tick is untouched; fail-closed
+        // on any malformed entry.
+        let peer_addr_book = parse_iroh_peer_addr_book(iroh_peer_addr)?;
         drain_due_batches_over_iroh(
             &relay_store,
             peer_directory,
             iroh_inputs,
+            peer_addr_book,
             &sender_kernel_id,
             now_unix_ms,
             max_batches,
@@ -488,6 +497,65 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
     Ok(())
 }
 
+/// Parse the repeated `--iroh-peer-addr` entries (`KERNEL_ID=HOST:PORT`) into a
+/// `kernel_id -> dialable socket(s)` book for the direct-address deployment.
+///
+/// Fail-closed: any entry missing the `=` separator, with an empty kernel id, or whose
+/// value is not a parseable socket address aborts the tick. Repeating a `KERNEL_ID`
+/// appends another socket (a multi-homed recipient), de-duplicating identical sockets.
+fn parse_iroh_peer_addr_book(
+    entries: &[String],
+) -> Result<HashMap<String, Vec<SocketAddr>>, CliError> {
+    let mut book: HashMap<String, Vec<SocketAddr>> = HashMap::new();
+    for entry in entries {
+        let (kernel_id, addr) = entry.split_once('=').ok_or_else(|| {
+            CliError::cli_other_error(format!(
+                "Chio iroh peer address '{entry}': expected KERNEL_ID=HOST:PORT"
+            ))
+        })?;
+        let kernel_id = kernel_id.trim();
+        if kernel_id.is_empty() {
+            return Err(CliError::cli_other_error(format!(
+                "Chio iroh peer address '{entry}': empty kernel id"
+            )));
+        }
+        let socket = addr.trim().parse::<SocketAddr>().map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chio iroh peer address '{entry}': invalid socket address: {error}"
+            ))
+        })?;
+        let sockets = book.entry(kernel_id.to_string()).or_default();
+        if !sockets.contains(&socket) {
+            sockets.push(socket);
+        }
+    }
+    Ok(book)
+}
+
+/// Resolve a recipient `kernel_id` to a dialable [`iroh::EndpointAddr`] for the drain.
+///
+/// The EndpointId is resolved from the issuer-verified transport directory (fail-closed
+/// to `None` for a removed/unknown recipient), then any direct socket(s) from the
+/// out-of-band `--iroh-peer-addr` book are threaded onto it so a relay-disabled /
+/// direct-address deployment dials directly. The EndpointId binding always comes from
+/// the verified directory, and iroh authenticates it at the handshake, so a socket hint
+/// can never redirect delivery to an unauthorized peer. With no book entry the returned
+/// address is id-only (dialable where discovery / `--iroh-relay-url` is configured).
+fn resolve_dialable_transport_addr(
+    directory: &chio_federation_transport_iroh::identity::VerifiedDirectory,
+    peer_addr_book: &HashMap<String, Vec<SocketAddr>>,
+    kernel_id: &str,
+) -> Option<iroh::EndpointAddr> {
+    let endpoint_id = directory.resolve_transport_endpoint(kernel_id)?;
+    let mut addr = iroh::EndpointAddr::new(endpoint_id);
+    if let Some(sockets) = peer_addr_book.get(kernel_id) {
+        for socket in sockets {
+            addr = addr.with_ip_addr(*socket);
+        }
+    }
+    Some(addr)
+}
+
 /// Drain due outbox batches over the iroh federation transport for one tick, the iroh
 /// analogue of `deliver_due_batches`.
 ///
@@ -499,10 +567,17 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
 /// durable retry/dead-letter path fail-closed rather than being dropped. The
 /// `OutboxDrainReport` is mapped onto the shipped `RelayTickReport` so the report file
 /// shape is identical to the HTTP tick's.
+///
+/// `peer_addr_book` supplies out-of-band direct dialable socket(s) per recipient
+/// (`--iroh-peer-addr`) for the relay-disabled / direct-address deployment: the
+/// verified directory binds only `kernel_id -> transport EndpointId`, so its socket(s)
+/// are threaded onto the resolved EndpointId here. An empty book keeps the id-only
+/// resolution (dialable where discovery / `--iroh-relay-url` is configured).
 fn drain_due_batches_over_iroh(
     relay_store: &chio_pheromone_relay::SqlitePheromoneRelayStore,
     peer_directory: chio_pheromone_relay::PeerDirectory,
     iroh_inputs: IrohServeInputs,
+    peer_addr_book: HashMap<String, Vec<SocketAddr>>,
     sender_kernel_id: &str,
     now_unix_ms: u64,
     max_batches: usize,
@@ -517,12 +592,15 @@ fn drain_due_batches_over_iroh(
         // resolve_addr: recipient kernel_id -> dialable transport address, derived from
         // the issuer-verified transport directory (the outbound side of the same
         // binding the inbound gate authorizes). A removed/unknown recipient resolves to
-        // None and folds into the durable retry path fail-closed.
+        // None and folds into the durable retry path fail-closed. When the direct-address
+        // book carries socket(s) for the recipient they are threaded onto the resolved
+        // EndpointId so a direct-address deployment dials directly; the EndpointId itself
+        // still comes from the verified directory (and iroh authenticates it at the
+        // handshake), so a socket hint can never redirect delivery to an unauthorized
+        // peer. No book entry keeps the id-only address (dialable under discovery/relay).
         let resolve_directory = directory.clone();
         let resolve_addr = move |kernel_id: &str| -> Option<iroh::EndpointAddr> {
-            resolve_directory
-                .resolve_transport_endpoint(kernel_id)
-                .map(iroh::EndpointAddr::new)
+            resolve_dialable_transport_addr(&resolve_directory, &peer_addr_book, kernel_id)
         };
 
         // scope_check: the SAME outbound directory-scope gate the HTTP tick applies
@@ -869,6 +947,46 @@ mod tests {
         assert_eq!(limits.max_body_bytes, 1_048_576);
     }
 
+    #[test]
+    fn parse_iroh_peer_addr_book_parses_and_groups_multi_homed_recipients() {
+        let entries = vec![
+            "did:chio:bob=203.0.113.7:4433".to_string(),
+            "did:chio:bob=203.0.113.8:4433".to_string(),
+            "did:chio:carol=[2001:db8::1]:5000".to_string(),
+            // A duplicate socket for the same kernel is de-duplicated.
+            "did:chio:bob=203.0.113.7:4433".to_string(),
+        ];
+        let book = parse_iroh_peer_addr_book(&entries).expect("valid entries parse");
+        assert_eq!(
+            book.get("did:chio:bob").unwrap(),
+            &vec![
+                "203.0.113.7:4433".parse::<SocketAddr>().unwrap(),
+                "203.0.113.8:4433".parse::<SocketAddr>().unwrap(),
+            ],
+        );
+        assert_eq!(
+            book.get("did:chio:carol").unwrap(),
+            &vec!["[2001:db8::1]:5000".parse::<SocketAddr>().unwrap()],
+        );
+    }
+
+    #[test]
+    fn parse_iroh_peer_addr_book_is_empty_for_no_entries() {
+        assert!(parse_iroh_peer_addr_book(&[]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_iroh_peer_addr_book_rejects_malformed_entries_fail_closed() {
+        // Missing '=' separator.
+        assert!(parse_iroh_peer_addr_book(&["did:chio:bob 203.0.113.7:4433".to_string()]).is_err());
+        // Empty kernel id.
+        assert!(parse_iroh_peer_addr_book(&["=203.0.113.7:4433".to_string()]).is_err());
+        // Unparseable socket address (no port).
+        assert!(parse_iroh_peer_addr_book(&["did:chio:bob=203.0.113.7".to_string()]).is_err());
+        // Empty socket address.
+        assert!(parse_iroh_peer_addr_book(&["did:chio:bob=".to_string()]).is_err());
+    }
+
     mod iroh_tick {
         use super::*;
         use chio_core_types::canonical_json_bytes;
@@ -881,6 +999,8 @@ mod tests {
         use chio_federation_transport_iroh::identity::TransportDirectoryBundleDocument;
         use chio_federation_transport_iroh::identity::TransportDirectoryDocument;
         use chio_federation_transport_iroh::identity::TransportDirectoryEntry;
+        use chio_federation_transport_iroh::identity::TransportDirectoryBundleTrust;
+        use chio_federation_transport_iroh::identity::TrustedTransportDirectoryIssuer;
         use chio_federation_transport_iroh::identity::TRANSPORT_DIRECTORY_BUNDLE_SCHEMA;
         use chio_pheromone_relay::PeerDirectory;
         use chio_pheromone_relay::PeerDirectoryDocument;
@@ -1036,6 +1156,7 @@ mod tests {
                 &store,
                 peer_directory,
                 inputs,
+                HashMap::new(),
                 "did:chio:sender",
                 NOW,
                 10,
@@ -1049,6 +1170,74 @@ mod tests {
                 report.failures.iter().any(|line| line.contains("unknown_peer")),
                 "the failure must be the fail-closed unknown_peer code, got {:?}",
                 report.failures
+            );
+        }
+
+        /// Verify a signed bundle admitting `admitted_kernel` and return the
+        /// load-time-verified directory the resolver reads.
+        fn verified_directory(
+            admitted_kernel: &str,
+            transport_seed: u8,
+        ) -> chio_federation_transport_iroh::identity::VerifiedDirectory {
+            let (bundle_json, issuer) = signed_bundle_json(admitted_kernel, transport_seed);
+            let bundle: TransportDirectoryBundleDocument =
+                serde_json::from_str(&bundle_json).unwrap();
+            let trust = TransportDirectoryBundleTrust {
+                issuers: vec![TrustedTransportDirectoryIssuer {
+                    issuer: "did:chio:issuer".to_string(),
+                    key_id: "issuer-key-1".to_string(),
+                    public_key: issuer.public_key(),
+                }],
+                version_floor: 0,
+                expected_previous_version_sha256: None,
+                now_unix_ms: NOW,
+            };
+            bundle.verify_bundle(&trust).expect("bundle verifies")
+        }
+
+        #[test]
+        fn direct_address_book_threads_the_socket_onto_the_resolved_endpoint() {
+            // FINDING 1 (codex round-7): in a relay-disabled / direct-address deployment
+            // the resolver must thread the --iroh-peer-addr socket onto the resolved
+            // EndpointId so the drain can dial a peer known only by EndpointId + socket,
+            // while an id-only resolution still works where discovery/relay is configured.
+            let directory = verified_directory("did:chio:buyer", 24);
+            let expected_endpoint = endpoint_from_seed(24);
+
+            // No book entry: id-only address (dialable under discovery/relay), no socket.
+            let empty_book: HashMap<String, Vec<SocketAddr>> = HashMap::new();
+            let id_only =
+                resolve_dialable_transport_addr(&directory, &empty_book, "did:chio:buyer")
+                    .expect("admitted recipient resolves");
+            assert_eq!(id_only.id, expected_endpoint, "the directory EndpointId is kept");
+            assert!(
+                id_only.ip_addrs().next().is_none(),
+                "with no book entry the address is id-only"
+            );
+
+            // Book entry: the direct socket(s) are threaded onto the SAME EndpointId.
+            let socket_a: SocketAddr = "203.0.113.7:4433".parse().unwrap();
+            let socket_b: SocketAddr = "203.0.113.8:4433".parse().unwrap();
+            let mut book: HashMap<String, Vec<SocketAddr>> = HashMap::new();
+            book.insert("did:chio:buyer".to_string(), vec![socket_a, socket_b]);
+            let direct = resolve_dialable_transport_addr(&directory, &book, "did:chio:buyer")
+                .expect("admitted recipient resolves");
+            assert_eq!(
+                direct.id, expected_endpoint,
+                "the EndpointId still comes from the verified directory, not the book"
+            );
+            let dialable: Vec<SocketAddr> = direct.ip_addrs().copied().collect();
+            assert!(dialable.contains(&socket_a) && dialable.contains(&socket_b));
+
+            // A recipient NOT in the transport directory resolves to None even with a
+            // book entry: the EndpointId binding is fail-closed against the directory, so
+            // a socket hint can never fabricate a dialable address for an unadmitted peer.
+            let mut ghost_book: HashMap<String, Vec<SocketAddr>> = HashMap::new();
+            ghost_book.insert("did:chio:ghost".to_string(), vec![socket_a]);
+            assert!(
+                resolve_dialable_transport_addr(&directory, &ghost_book, "did:chio:ghost")
+                    .is_none(),
+                "an unadmitted recipient never resolves, even with a direct-address entry"
             );
         }
     }
