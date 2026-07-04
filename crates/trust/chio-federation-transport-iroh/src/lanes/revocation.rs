@@ -57,6 +57,7 @@ use iroh::endpoint::SendStream;
 use iroh::protocol::AcceptError;
 use iroh::protocol::ProtocolHandler;
 use iroh::Endpoint;
+use iroh::EndpointAddr;
 use iroh::EndpointId;
 use serde::Deserialize;
 use serde::Serialize;
@@ -657,9 +658,14 @@ impl ProtocolHandler for RevocationHandler {
 /// Client half: dial an authority and push a batch of signed roots, returning
 /// the authority's typed response. The admission gate on the authority endpoint
 /// rejects an unadmitted dialer before this stream is accepted.
+///
+/// `authority` is anything that resolves to a dialable [`EndpointAddr`]: a bare
+/// [`EndpointId`] (resolved via discovery/relay) OR a full [`EndpointAddr`] carrying
+/// the socket address(es), so a direct-address / relay-disabled deployment can dial
+/// a known peer without discovery.
 pub async fn push_batch_over_iroh(
     endpoint: &Endpoint,
-    authority: EndpointId,
+    authority: impl Into<EndpointAddr>,
     batch: &RevocationGossipBatch,
 ) -> Result<RevocationLaneResponse, RevocationLaneError> {
     request_over_iroh(
@@ -673,9 +679,12 @@ pub async fn push_batch_over_iroh(
 /// Client half: dial an authority and request a catch-up range; the response
 /// (control envelope) rides this lane-b stream while the bulk root bytes are
 /// available over iroh-blobs ([`crate::catchup`]).
+///
+/// `authority` accepts a bare [`EndpointId`] or a full [`EndpointAddr`] (see
+/// [`push_batch_over_iroh`]).
 pub async fn request_catchup_over_iroh(
     endpoint: &Endpoint,
-    authority: EndpointId,
+    authority: impl Into<EndpointAddr>,
     request: &RevocationCatchupRequest,
 ) -> Result<RevocationLaneResponse, RevocationLaneError> {
     request_over_iroh(
@@ -688,7 +697,7 @@ pub async fn request_catchup_over_iroh(
 
 async fn request_over_iroh(
     endpoint: &Endpoint,
-    authority: EndpointId,
+    authority: impl Into<EndpointAddr>,
     request: &RevocationLaneRequest,
 ) -> Result<RevocationLaneResponse, RevocationLaneError> {
     let conn = endpoint
@@ -1410,10 +1419,10 @@ mod tests {
         )
     }
 
-    /// Drive the client half by hand (the shipped `push_batch_over_iroh` takes a
-    /// bare `EndpointId` and needs discovery to resolve; on raw loopback we dial a
-    /// full `EndpointAddr`). Reuses the lane's own `write_frame` / `read_frame`
-    /// so the wire codec under test is the real one.
+    /// Drive the client half by hand, reusing the lane's own `write_frame` /
+    /// `read_frame` so the wire codec under test is the real one (the shipped
+    /// `push_batch_over_iroh` is exercised end to end in
+    /// [`push_batch_over_iroh_accepts_a_dialable_endpoint_addr`]).
     async fn push_batch_over_quic(
         dialer: &Endpoint,
         acceptor: EndpointAddr,
@@ -1457,6 +1466,43 @@ mod tests {
         )
         .await
         .expect("push completes before timeout");
+
+        match response {
+            RevocationLaneResponse::PushAccepted { merged_epochs } => {
+                assert_eq!(merged_epochs, vec![5]);
+            }
+            other => panic!("expected PushAccepted, got {other:?}"),
+        }
+        assert_eq!(*sink.merged.lock().unwrap(), vec![5]);
+        router.shutdown().await.ok();
+    }
+
+    #[tokio::test]
+    async fn push_batch_over_iroh_accepts_a_dialable_endpoint_addr() {
+        // In a direct-address / relay-disabled deployment the caller knows the peer's
+        // full EndpointAddr (id + socket). The shipped push_batch_over_iroh must accept
+        // it and dial successfully, not only a bare EndpointId that needs discovery.
+        let dialer_seed = 28u8;
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = directory_with_signer("did:chio:peer", dialer_seed, "oracle-a", SEED_A);
+        let (handler, sink) = handler(directory);
+
+        let acceptor = bind_endpoint(29).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_REVOCATION_ROOT, handler)
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(dialer_seed).await;
+        let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        let response = tokio::time::timeout(
+            Duration::from_secs(15),
+            // Pass the FULL EndpointAddr (not a bare EndpointId) through the shipped API.
+            push_batch_over_iroh(&dialer, acceptor_addr, &batch(vec![frame])),
+        )
+        .await
+        .expect("push completes before timeout")
+        .expect("push_batch_over_iroh dials a full EndpointAddr");
 
         match response {
             RevocationLaneResponse::PushAccepted { merged_epochs } => {
