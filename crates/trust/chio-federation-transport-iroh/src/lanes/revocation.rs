@@ -62,6 +62,9 @@ use iroh::EndpointId;
 use serde::Deserialize;
 use serde::Serialize;
 
+use crate::catchup::build_catchup_manifest;
+use crate::catchup::CatchupError;
+use crate::catchup::RevocationCatchupManifest;
 use crate::identity::VerifiedDirectory;
 use crate::lanes::limits::AcceptLimitConfig;
 use crate::lanes::limits::AcceptLimitError;
@@ -288,8 +291,13 @@ pub trait RevocationRootSink: std::fmt::Debug + Send + Sync {
 pub enum RevocationLaneRequest {
     /// A pushed batch of signed roots (per-peer FIFO drain).
     Push(RevocationGossipBatch),
-    /// A catch-up gap-fill request; its response rides this same stream.
+    /// A catch-up gap-fill request; its response inlines full signed-root frames
+    /// over this same stream (best for small ranges).
     Catchup(RevocationCatchupRequest),
+    /// A catch-up request that asks for a blob MANIFEST instead of inline frames,
+    /// so a large history can ride iroh-blobs (lane e) rather than overrunning the
+    /// bounded lane-b response. Same range + requester-authentication as `Catchup`.
+    CatchupManifest(RevocationCatchupRequest),
 }
 
 /// One lane response, correlated to the request by stream identity.
@@ -303,6 +311,9 @@ pub enum RevocationLaneResponse {
     },
     /// A catch-up response (may be a partial suffix; see `validate_response`).
     Catchup(RevocationCatchupResponse),
+    /// A blob catch-up MANIFEST: the `(epoch -> content-address)` list a follower
+    /// feeds to `BlobCatchupClient::fetch_range` to pull the history over blobs.
+    CatchupManifest(RevocationCatchupManifest),
     /// A typed rejection. Fail-closed: NOTHING was merged and no root was served.
     Rejected {
         /// Stable machine code for the deny reason.
@@ -357,6 +368,18 @@ impl RevocationLaneError {
         RevocationLaneResponse::Rejected {
             code: self.code().to_string(),
             message: self.to_string(),
+        }
+    }
+
+    /// Map a [`CatchupError`] from the manifest builder onto a lane error: a range /
+    /// gap ordering fault surfaces as [`RevocationLaneError::Gossip`] (so its stable
+    /// `code()` matches the inline catch-up path), everything else as
+    /// [`RevocationLaneError::Codec`]. Fail-closed either way (the manifest is not
+    /// served on error).
+    fn from_catchup(error: CatchupError) -> Self {
+        match error {
+            CatchupError::Ordering(inner) => RevocationLaneError::Gossip(inner),
+            other => RevocationLaneError::Codec(other.to_string()),
         }
     }
 }
@@ -509,6 +532,46 @@ impl RevocationHandler {
         Ok(response)
     }
 
+    /// Serve a catch-up request as a blob MANIFEST (the `(epoch -> content-address)`
+    /// list) instead of inline roots, so a large history can ride iroh-blobs (lane
+    /// e). Walks the SAME contiguous suffix as [`respond_catchup`](Self::respond_catchup),
+    /// computing each entry's address deterministically; the follower still fetches
+    /// and pinned-signer-verifies every blob.
+    pub fn respond_catchup_manifest(
+        &self,
+        request: &RevocationCatchupRequest,
+        responded_at_unix_ms: u64,
+    ) -> Result<RevocationCatchupManifest, RevocationLaneError> {
+        let history = DynHistory(self.history.clone());
+        build_catchup_manifest(
+            request,
+            &self.responder_kernel_id,
+            &history,
+            responded_at_unix_ms,
+        )
+        .map_err(RevocationLaneError::from_catchup)
+    }
+
+    /// Authenticate a catch-up requester against the connection: the claimed
+    /// `requester_kernel_id` MUST be the kernel this authenticated transport
+    /// `EndpointId` is admitted as. Fail-closed: an unadmitted endpoint
+    /// (`authorize -> None`) or a mismatched claim is rejected and NOTHING is
+    /// served. Shared by the inline-frame and manifest catch-up paths so both bind
+    /// the previously-informational requester field to the transport identity.
+    fn authenticate_catchup_requester(
+        &self,
+        endpoint: EndpointId,
+        requester_kernel_id: &str,
+    ) -> Result<(), RevocationLaneError> {
+        if self.directory.authorize(&endpoint) != Some(requester_kernel_id) {
+            return Err(RevocationLaneError::RequesterMismatch {
+                endpoint: endpoint.fmt_short().to_string(),
+                claimed: requester_kernel_id.to_string(),
+            });
+        }
+        Ok(())
+    }
+
     /// Handle one decoded lane request, producing the response to write back.
     /// Verification failures become a typed [`RevocationLaneResponse::Rejected`]
     /// (never a silent drop) and NOTHING is merged / served (fail-closed).
@@ -540,24 +603,33 @@ impl RevocationHandler {
                 }
             },
             RevocationLaneRequest::Catchup(request) => {
-                // Authenticate the catch-up requester against the connection: the
-                // claimed `requester_kernel_id` MUST be the kernel this
-                // authenticated transport `EndpointId` is admitted as. This binds
-                // the previously-informational field to the transport identity,
-                // closing a requester-spoofing gap. Fail-closed: an unadmitted
-                // endpoint (authorize -> None) or a mismatched claim is rejected
-                // and NOTHING is served.
-                if self.directory.authorize(&endpoint) != Some(request.requester_kernel_id.as_str())
+                // Bind the previously-informational `requester_kernel_id` to the
+                // authenticated transport identity, closing a requester-spoofing gap.
+                if let Err(error) =
+                    self.authenticate_catchup_requester(endpoint, &request.requester_kernel_id)
                 {
-                    let error = RevocationLaneError::RequesterMismatch {
-                        endpoint: endpoint.fmt_short().to_string(),
-                        claimed: request.requester_kernel_id.clone(),
-                    };
                     note_revocation_failure(&error);
                     return error.as_rejected();
                 }
                 match self.respond_catchup(&request, now_unix_ms) {
                     Ok(response) => RevocationLaneResponse::Catchup(response),
+                    Err(error) => {
+                        note_revocation_failure(&error);
+                        error.as_rejected()
+                    }
+                }
+            }
+            RevocationLaneRequest::CatchupManifest(request) => {
+                // Same transport-bound requester authentication as `Catchup`; a
+                // spoofed requester is rejected and NO manifest is served.
+                if let Err(error) =
+                    self.authenticate_catchup_requester(endpoint, &request.requester_kernel_id)
+                {
+                    note_revocation_failure(&error);
+                    return error.as_rejected();
+                }
+                match self.respond_catchup_manifest(&request, now_unix_ms) {
+                    Ok(manifest) => RevocationLaneResponse::CatchupManifest(manifest),
                     Err(error) => {
                         note_revocation_failure(&error);
                         error.as_rejected()
@@ -1428,6 +1500,97 @@ mod tests {
             }
             other => panic!("expected Catchup, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn catchup_manifest_request_serves_blob_addresses() {
+        // The SAME history that catchup_request_serves_from_history inlines as full
+        // frames is served as a blob MANIFEST when the follower asks via
+        // CatchupManifest: the (epoch -> address) list a follower feeds to
+        // BlobCatchupClient::fetch_range, each address exactly the one the follower
+        // re-derives + BLAKE3-verifies. This is what makes lane e discoverable from
+        // the lane-b control exchange for large histories.
+        #[derive(Debug)]
+        struct MapHistory(HashMap<u64, SignedEpochRoot>);
+        impl RevocationCatchupHistory for MapHistory {
+            fn signed_root_at(&self, epoch: u64) -> Option<SignedEpochRoot> {
+                self.0.get(&epoch).cloned()
+            }
+        }
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let mut roots = HashMap::new();
+        for epoch in 5..=7 {
+            roots.insert(epoch, signed_root(&oracle, epoch));
+        }
+        let expected: Vec<(u64, iroh_blobs::Hash)> = (5..=7)
+            .map(|epoch| {
+                (
+                    epoch,
+                    crate::catchup::signed_root_blob_address(&roots[&epoch]).unwrap(),
+                )
+            })
+            .collect();
+        let handler = RevocationHandler::new(
+            directory,
+            Arc::new(MapHistory(roots)),
+            Arc::new(RecordingSink::default()),
+            "did:chio:responder",
+        );
+
+        let request = RevocationCatchupRequest::new("did:chio:peer", 5, 7, NOW).unwrap();
+        let response = handler.handle_request(
+            transport,
+            RevocationLaneRequest::CatchupManifest(request),
+            NOW,
+        );
+        match response {
+            RevocationLaneResponse::CatchupManifest(manifest) => {
+                manifest.validate().expect("manifest is well-formed");
+                assert_eq!(manifest.responder_kernel_id, "did:chio:responder");
+                assert_eq!(manifest.fetch_manifest(), expected);
+            }
+            other => panic!("expected CatchupManifest, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn catchup_manifest_requester_mismatch_is_rejected_and_not_served() {
+        // The manifest path enforces the SAME transport-bound requester
+        // authentication as the inline catch-up path: a spoofed requester is
+        // Rejected(requester-mismatch) and NO manifest is served.
+        #[derive(Debug)]
+        struct MapHistory(HashMap<u64, SignedEpochRoot>);
+        impl RevocationCatchupHistory for MapHistory {
+            fn signed_root_at(&self, epoch: u64) -> Option<SignedEpochRoot> {
+                self.0.get(&epoch).cloned()
+            }
+        }
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let mut roots = HashMap::new();
+        for epoch in 5..=7 {
+            roots.insert(epoch, signed_root(&oracle, epoch));
+        }
+        let handler = RevocationHandler::new(
+            directory,
+            Arc::new(MapHistory(roots)),
+            Arc::new(RecordingSink::default()),
+            "did:chio:responder",
+        );
+
+        let spoofed = RevocationCatchupRequest::new("did:chio:impostor", 5, 7, NOW).unwrap();
+        let response = handler.handle_request(
+            transport,
+            RevocationLaneRequest::CatchupManifest(spoofed),
+            NOW,
+        );
+        assert!(
+            matches!(response, RevocationLaneResponse::Rejected { ref code, .. } if code == "requester-mismatch"),
+            "a spoofed manifest requester must be rejected, got {response:?}"
+        );
     }
 
     #[test]

@@ -44,6 +44,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chio_federation::revocation_gossip::RevocationCatchupHistory;
+use chio_federation::revocation_gossip::RevocationCatchupRequest;
 use chio_federation::revocation_gossip::RevocationGossipError;
 use chio_federation::revocation_gossip::REVOCATION_CATCHUP_MAX_EPOCHS;
 use chio_revocation_oracle::EpochRootVerifier;
@@ -55,6 +56,8 @@ use iroh_blobs::api::downloader::Shuffled;
 use iroh_blobs::store::fs::FsStore;
 use iroh_blobs::BlobsProtocol;
 use iroh_blobs::Hash;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::identity::VerifiedDirectory;
 use crate::lanes::limits::AcceptLimitConfig;
@@ -400,10 +403,26 @@ where
     }
 }
 
+/// The stable content address a follower fetches for `signed`: the BLAKE3 hash of
+/// its RFC-8785 canonical JSON.
+///
+/// This is the SINGLE derivation shared by the authority publish path
+/// ([`publish_signed_root`], which stores those exact bytes), the manifest
+/// advertised over lane b ([`build_catchup_manifest`]), and the follower's per-blob
+/// integrity re-check in [`BlobCatchupClient::fetch_range`]. Because all three use
+/// this one formula, the `(epoch -> hash)` manifest a responder advertises is
+/// exactly the address the follower downloads and BLAKE3-verifies.
+pub fn signed_root_blob_address(signed: &SignedEpochRoot) -> Result<Hash, CatchupError> {
+    let bytes = chio_core_types::canonical_json_bytes(signed)
+        .map_err(|error| CatchupError::Codec(error.to_string()))?;
+    Ok(Hash::new(&bytes))
+}
+
 /// AUTHORITY side, store-only: publish one signed root as a content-addressed
 /// blob. Separated from [`BlobCatchupClient`] so it is exercisable without an
 /// [`Endpoint`]. The blob content is the RFC-8785 canonical JSON of the root, so
-/// the address is stable and dedups naturally.
+/// the address is stable and dedups naturally, and it matches
+/// [`signed_root_blob_address`] (the address advertised in a catch-up manifest).
 pub async fn publish_signed_root(
     store: &FsStore,
     signed: &SignedEpochRoot,
@@ -423,6 +442,156 @@ pub async fn publish_signed_root(
         });
     }
     Ok(tag.hash)
+}
+
+/// Schema pin for the lane-b blob catch-up MANIFEST control response.
+pub const REVOCATION_CATCHUP_MANIFEST_SCHEMA: &str =
+    "chio.federation.transport.iroh.revocation-catchup-manifest.v1";
+
+/// One `(epoch, blob content-address)` manifest entry: the address the follower
+/// fetches over iroh-blobs (lane e) for that epoch's signed root.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevocationCatchupManifestEntry {
+    /// The epoch this blob carries the signed root for.
+    pub epoch: u64,
+    /// Content address of the epoch's signed root (see [`signed_root_blob_address`]).
+    pub blob_hash: Hash,
+}
+
+/// The blob catch-up MANIFEST a responder advertises over the lane-b control
+/// exchange (ADAPTER-SPEC lane e).
+///
+/// The lane-b [`RevocationCatchupResponse`](chio_federation::revocation_gossip::RevocationCatchupResponse)
+/// inlines full signed-root FRAMES, so a large history either never rides blobs or
+/// overruns the bounded lane-b frame. This manifest instead carries only the small
+/// `(epoch -> content-address)` list a follower feeds to
+/// [`BlobCatchupClient::fetch_range`], making the bulk blob path discoverable from
+/// the control exchange. Integrity/authenticity are NOT asserted by the manifest:
+/// the follower still downloads each blob, BLAKE3-re-checks its address, and
+/// pinned-signer-verifies the root.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevocationCatchupManifest {
+    /// Schema pin (must equal [`REVOCATION_CATCHUP_MANIFEST_SCHEMA`]).
+    pub schema: String,
+    /// Echoed from the request's `requester_kernel_id`.
+    pub requester_kernel_id: String,
+    /// The responder that produced the manifest.
+    pub responder_kernel_id: String,
+    /// `(epoch, blob content-address)` entries, in strictly increasing contiguous
+    /// epoch order (the contiguous suffix the responder retains).
+    pub entries: Vec<RevocationCatchupManifestEntry>,
+    /// Responder clock stamp.
+    pub responded_at_unix_ms: u64,
+}
+
+impl RevocationCatchupManifest {
+    /// Validate the manifest in isolation: schema, cap, and strict monotone
+    /// contiguous epochs (no internal gap), mirroring
+    /// [`RevocationCatchupResponse::validate_response`](chio_federation::revocation_gossip::RevocationCatchupResponse::validate_response).
+    /// The follower MUST STILL fetch each blob and re-check BLAKE3 integrity and
+    /// pinned-signer authenticity; a manifest is only a discovery aid.
+    pub fn validate(&self) -> Result<(), CatchupError> {
+        if self.schema != REVOCATION_CATCHUP_MANIFEST_SCHEMA {
+            return Err(CatchupError::Codec(format!(
+                "unexpected catch-up manifest schema: {}",
+                self.schema
+            )));
+        }
+        check_manifest_cap(self.entries.len())?;
+        let mut prev: Option<u64> = None;
+        for entry in &self.entries {
+            if let Some(previous) = prev {
+                let expected = previous.saturating_add(1);
+                if entry.epoch != expected {
+                    let error = CatchupError::Ordering(RevocationGossipError::CatchupGap {
+                        expected,
+                        observed: entry.epoch,
+                    });
+                    note_catchup_failure(&error);
+                    return Err(error);
+                }
+            }
+            prev = Some(entry.epoch);
+        }
+        Ok(())
+    }
+
+    /// The `(epoch, content-address)` list to feed
+    /// [`BlobCatchupClient::fetch_range`], consuming the manifest.
+    #[must_use]
+    pub fn into_fetch_manifest(self) -> Vec<(u64, Hash)> {
+        self.entries
+            .into_iter()
+            .map(|entry| (entry.epoch, entry.blob_hash))
+            .collect()
+    }
+
+    /// Borrowing form of [`into_fetch_manifest`](Self::into_fetch_manifest).
+    #[must_use]
+    pub fn fetch_manifest(&self) -> Vec<(u64, Hash)> {
+        self.entries
+            .iter()
+            .map(|entry| (entry.epoch, entry.blob_hash))
+            .collect()
+    }
+}
+
+/// AUTHORITY side: build the `(epoch -> blob content-address)` MANIFEST for a
+/// catch-up `request`, to advertise over the lane-b control response so a follower
+/// can fetch a large history over blobs (lane e) instead of inlining full
+/// signed-root frames.
+///
+/// Walks the SAME contiguous suffix
+/// [`respond_to_catchup`](chio_federation::revocation_gossip::respond_to_catchup)
+/// serves: it skips pre-history epochs, stops at the first internal gap, and never
+/// fabricates a root (a missing epoch simply ends the run). Each entry's address is
+/// derived deterministically via [`signed_root_blob_address`], the exact address
+/// the follower re-derives and BLAKE3-verifies in
+/// [`BlobCatchupClient::fetch_range`]. The requested range is capped by
+/// [`RevocationCatchupRequest::validate_envelope`], so the manifest is bounded.
+///
+/// # Errors
+/// [`CatchupError::Ordering`] if the request range is invalid, else
+/// [`CatchupError::Codec`] on a canonical-JSON failure.
+pub fn build_catchup_manifest<H: RevocationCatchupHistory>(
+    request: &RevocationCatchupRequest,
+    responder_kernel_id: &str,
+    history: &H,
+    responded_at_unix_ms: u64,
+) -> Result<RevocationCatchupManifest, CatchupError> {
+    request.validate_envelope()?;
+    let mut entries: Vec<RevocationCatchupManifestEntry> = Vec::new();
+    let mut started = false;
+    for epoch in request.from_epoch..=request.to_epoch {
+        match history.signed_root_at(epoch) {
+            Some(signed) => {
+                entries.push(RevocationCatchupManifestEntry {
+                    epoch: signed.root.epoch,
+                    blob_hash: signed_root_blob_address(&signed)?,
+                });
+                started = true;
+            }
+            None => {
+                if started {
+                    // Gap inside the retained history: stop so the manifest's
+                    // monotone-contiguous invariant holds (never fabricate).
+                    break;
+                }
+                // Pre-history skip: keep scanning for the retained suffix.
+            }
+        }
+    }
+    let manifest = RevocationCatchupManifest {
+        schema: REVOCATION_CATCHUP_MANIFEST_SCHEMA.to_string(),
+        requester_kernel_id: request.requester_kernel_id.clone(),
+        responder_kernel_id: responder_kernel_id.to_string(),
+        entries,
+        responded_at_unix_ms,
+    };
+    manifest.validate()?;
+    Ok(manifest)
 }
 
 /// Resolve `signer_id` to its pinned binding from the DERIVED signer directory of
@@ -986,5 +1155,102 @@ mod tests {
             "a stalled transfer must fail closed to Blob, got {error:?}"
         );
         assert_eq!(error.code(), "blob-transport");
+    }
+
+    #[test]
+    fn manifest_advertises_the_blob_addresses_the_follower_will_fetch() {
+        // The manifest a responder advertises carries exactly the (epoch, address)
+        // pairs a follower feeds to fetch_range, and each address is the one the
+        // follower re-derives and BLAKE3-verifies per blob (single-sourced).
+        let oracle = signer("oracle-a", SEED_A);
+        let roots = vec![
+            signed_root(&oracle, 5),
+            signed_root(&oracle, 6),
+            signed_root(&oracle, 7),
+        ];
+        let history = BlobBackedHistory::from_verified(roots.clone());
+        let request =
+            RevocationCatchupRequest::new("did:chio:follower", 5, 7, 1_700_000_000_000).unwrap();
+
+        let manifest =
+            build_catchup_manifest(&request, "did:chio:authority", &history, 1_700_000_000_500)
+                .expect("manifest builds");
+        manifest.validate().expect("manifest is well-formed");
+        assert_eq!(manifest.entries.len(), 3);
+        assert_eq!(manifest.requester_kernel_id, "did:chio:follower");
+        assert_eq!(manifest.responder_kernel_id, "did:chio:authority");
+        for (entry, root) in manifest.entries.iter().zip(roots.iter()) {
+            assert_eq!(entry.epoch, root.root.epoch);
+            let (_bytes, expected) = blob_of(root);
+            assert_eq!(entry.blob_hash, expected);
+            assert_eq!(signed_root_blob_address(root).unwrap(), expected);
+        }
+        // The fetch manifest feeds fetch_range directly.
+        let fetch = manifest.fetch_manifest();
+        let expected: Vec<(u64, Hash)> = roots
+            .iter()
+            .map(|root| (root.root.epoch, blob_of(root).1))
+            .collect();
+        assert_eq!(fetch, expected);
+    }
+
+    #[test]
+    fn manifest_serves_the_contiguous_suffix_and_stops_at_a_gap() {
+        // Missing epoch 6 (history has 5 and 7): requesting 5..=7 yields only epoch
+        // 5, stopping at the first internal gap (never fabricating).
+        let oracle = signer("oracle-a", SEED_A);
+        let history = BlobBackedHistory::from_verified(vec![
+            signed_root(&oracle, 5),
+            signed_root(&oracle, 7),
+        ]);
+        let request = RevocationCatchupRequest::new("did:chio:follower", 5, 7, 1).unwrap();
+        let manifest = build_catchup_manifest(&request, "did:chio:authority", &history, 2).unwrap();
+        assert_eq!(
+            manifest.entries.iter().map(|e| e.epoch).collect::<Vec<_>>(),
+            vec![5]
+        );
+    }
+
+    #[test]
+    fn manifest_skips_pre_history_and_serves_the_retained_suffix() {
+        // History starts at epoch 6: requesting 4..=7 skips the pre-history epochs
+        // 4,5 and serves the retained suffix 6,7.
+        let oracle = signer("oracle-a", SEED_A);
+        let history = BlobBackedHistory::from_verified(vec![
+            signed_root(&oracle, 6),
+            signed_root(&oracle, 7),
+        ]);
+        let request = RevocationCatchupRequest::new("did:chio:follower", 4, 7, 1).unwrap();
+        let manifest = build_catchup_manifest(&request, "did:chio:authority", &history, 2).unwrap();
+        assert_eq!(
+            manifest.entries.iter().map(|e| e.epoch).collect::<Vec<_>>(),
+            vec![6, 7]
+        );
+    }
+
+    #[test]
+    fn manifest_json_round_trips_and_validate_rejects_a_gap() {
+        let oracle = signer("oracle-a", SEED_A);
+        let history = BlobBackedHistory::from_verified(vec![
+            signed_root(&oracle, 1),
+            signed_root(&oracle, 2),
+        ]);
+        let request = RevocationCatchupRequest::new("did:chio:follower", 1, 2, 1).unwrap();
+        let manifest = build_catchup_manifest(&request, "did:chio:authority", &history, 2).unwrap();
+
+        // The manifest rides the lane-b JSON control response: round-trip it.
+        let json = serde_json::to_string(&manifest).unwrap();
+        let decoded: RevocationCatchupManifest = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded, manifest);
+
+        // A hand-built manifest with an internal epoch gap fails validate fail-closed.
+        let mut broken = manifest;
+        broken.entries[1].epoch = 5; // 1 then 5: a gap
+        assert!(matches!(
+            broken.validate(),
+            Err(CatchupError::Ordering(
+                RevocationGossipError::CatchupGap { .. }
+            ))
+        ));
     }
 }
