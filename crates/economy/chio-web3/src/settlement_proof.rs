@@ -15,7 +15,7 @@ use crate::settlement::{
     Web3SettlementLifecycleState,
 };
 use crate::trust_profile::Web3SettlementPath;
-use crate::validation::{ensure_money, ensure_non_empty};
+use crate::validation::{ensure_money, ensure_non_empty, evm_addresses_match};
 
 pub const CHIO_WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA: &str = "chio.web3-settlement-proof-bundle.v1";
 pub const CHIO_WEB3_SETTLEMENT_DISPUTE_SCHEMA: &str = "chio.web3-settlement-dispute.v1";
@@ -578,17 +578,23 @@ fn validate_deployment_provenance(
             "public settlement deployment contract package mismatch".to_string(),
         ));
     }
-    if provenance.root_registry_address != bundle.chain_snapshot.root_registry_address {
+    if !evm_addresses_match(
+        &provenance.root_registry_address,
+        &bundle.chain_snapshot.root_registry_address,
+    ) {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement deployment root registry mismatch".to_string(),
         ));
     }
-    if provenance.escrow_contract != dispatch.escrow_contract {
+    if !evm_addresses_match(&provenance.escrow_contract, &dispatch.escrow_contract) {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement deployment escrow contract mismatch".to_string(),
         ));
     }
-    if provenance.bond_vault_contract != dispatch.bond_vault_contract {
+    if !evm_addresses_match(
+        &provenance.bond_vault_contract,
+        &dispatch.bond_vault_contract,
+    ) {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement deployment bond vault mismatch".to_string(),
         ));
@@ -974,7 +980,10 @@ fn validate_chain_snapshot(bundle: &PublicSettlementProofBundle) -> Result<(), W
             "public settlement chain snapshot predates anchored settlement block".to_string(),
         ));
     }
-    if snapshot.root_registry_address != chain_anchor.contract_address {
+    if !evm_addresses_match(
+        &snapshot.root_registry_address,
+        &chain_anchor.contract_address,
+    ) {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement root registry address mismatch".to_string(),
         ));
@@ -1122,7 +1131,10 @@ fn validate_beneficiary_identity_binding(
             "public settlement beneficiary identity binding chain mismatch".to_string(),
         ));
     }
-    if certificate.settlement_address != bundle.settlement_receipt.dispatch.beneficiary_address {
+    if !evm_addresses_match(
+        &certificate.settlement_address,
+        &bundle.settlement_receipt.dispatch.beneficiary_address,
+    ) {
         return Err(Web3ContractError::InvalidBinding(
             "public settlement beneficiary identity binding address mismatch".to_string(),
         ));
@@ -1161,12 +1173,12 @@ fn validate_escrow_snapshot(
             "public settlement escrow id mismatch".to_string(),
         ));
     }
-    if escrow.escrow_contract != dispatch.escrow_contract {
+    if !evm_addresses_match(&escrow.escrow_contract, &dispatch.escrow_contract) {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement escrow contract mismatch".to_string(),
         ));
     }
-    if escrow.beneficiary_address != dispatch.beneficiary_address {
+    if !evm_addresses_match(&escrow.beneficiary_address, &dispatch.beneficiary_address) {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement escrow beneficiary mismatch".to_string(),
         ));
@@ -1209,7 +1221,7 @@ fn validate_bond_snapshot(
     )?;
 
     let dispatch = &bundle.settlement_receipt.dispatch;
-    if bond.bond_vault_contract != dispatch.bond_vault_contract {
+    if !evm_addresses_match(&bond.bond_vault_contract, &dispatch.bond_vault_contract) {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement bond vault mismatch".to_string(),
         ));
@@ -1396,7 +1408,7 @@ fn validate_order_binding_tuple(
             "public settlement order binding settlement tx mismatch".to_string(),
         ));
     }
-    if binding.beneficiary_address != dispatch.beneficiary_address {
+    if !evm_addresses_match(&binding.beneficiary_address, &dispatch.beneficiary_address) {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement order binding beneficiary mismatch".to_string(),
         ));

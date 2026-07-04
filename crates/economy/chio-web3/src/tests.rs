@@ -150,6 +150,18 @@ fn sample_beneficiary_binding() -> SignedWeb3IdentityBinding {
     )
 }
 
+pub(super) fn sample_beneficiary_binding_for_address(
+    settlement_address: &str,
+) -> SignedWeb3IdentityBinding {
+    signed_identity_binding(
+        beneficiary_keypair(),
+        settlement_address,
+        vec![Web3KeyBindingPurpose::Settle],
+        vec!["eip155:8453"],
+        "beneficiary-identity-binding-0001",
+    )
+}
+
 fn sample_trust_profile() -> Web3TrustProfile {
     Web3TrustProfile {
         schema: CHIO_WEB3_TRUST_PROFILE_SCHEMA.to_string(),

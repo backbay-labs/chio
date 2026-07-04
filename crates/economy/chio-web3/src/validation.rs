@@ -14,6 +14,23 @@ pub(crate) fn ensure_non_empty(value: &str, field: &'static str) -> Result<(), W
     }
     Ok(())
 }
+
+pub(crate) fn evm_addresses_match(left: &str, right: &str) -> bool {
+    match (evm_address_hex(left), evm_address_hex(right)) {
+        (Some(left_hex), Some(right_hex)) => left_hex.eq_ignore_ascii_case(right_hex),
+        _ => left == right,
+    }
+}
+
+fn evm_address_hex(value: &str) -> Option<&str> {
+    let hex = value.strip_prefix("0x")?;
+    if hex.len() == 40 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        Some(hex)
+    } else {
+        None
+    }
+}
+
 pub(crate) fn ensure_unique_strings(
     values: &[String],
     field: &'static str,

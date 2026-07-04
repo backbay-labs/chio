@@ -19,7 +19,7 @@ use crate::receipt::{
     signing::CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
 };
 use crate::trust_profile::Web3SettlementPath;
-use crate::validation::{ensure_money, ensure_non_empty};
+use crate::validation::{ensure_money, ensure_non_empty, evm_addresses_match};
 
 pub const CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA: &str = "chio.web3-settlement-dispatch.v1";
 pub const CHIO_WEB3_SETTLEMENT_DISPATCH_V2_SCHEMA: &str = "chio.web3-settlement-dispatch.v2";
@@ -220,7 +220,7 @@ pub fn validate_web3_settlement_dispatch(
         destination_account_ref,
         "web3_settlement_dispatch.capital_instruction.rail.destination_account_ref",
     )?;
-    if destination_account_ref != dispatch.beneficiary_address.as_str() {
+    if !evm_addresses_match(destination_account_ref, &dispatch.beneficiary_address) {
         return Err(Web3ContractError::invalid_settlement(
             "web3 settlement dispatch beneficiary_address must match capital_instruction rail.destination_account_ref",
         ));
