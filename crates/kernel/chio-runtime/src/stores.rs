@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::{fmt, path::Path};
 
 use crate::{
-    unwrap_runtime, wrap_runtime, ChioRuntimeError, HistoricalRuntimeError, RuntimeAdmissionBundle,
+    unwrap_runtime, wrap_runtime, ChioRuntimeError, RuntimeAdmissionBundle, RuntimeCoreError,
     RuntimeEvidenceManifestEntry, RuntimeOpsStatusReport, RuntimeOrchestrationProfile,
     RuntimeOrchestrationStatusReport, RuntimeOrchestrationStepState, RuntimeRecoveryDrillReport,
     RuntimeRunLease, RuntimeSchedulerTickReport, RuntimeSupervisorProfile, RuntimeTrustFloorEntry,
@@ -898,15 +898,15 @@ impl ChioRuntimeTrustFloorStore for JsonRuntimeTrustFloorStateStore {
     }
 }
 
-pub(crate) struct HistoricalRuntimeAdmissionStoreAdapter<'a> {
+pub(crate) struct RuntimeCoreAdmissionStoreAdapter<'a> {
     pub(crate) inner: &'a dyn ChioRuntimeAdmissionStore,
 }
 
-impl chio_runtime_core::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStoreAdapter<'_> {
+impl chio_runtime_core::RuntimeAdmissionStore for RuntimeCoreAdmissionStoreAdapter<'_> {
     fn bundle(
         &self,
         admission_id: &str,
-    ) -> Result<Option<RuntimeAdmissionBundle>, HistoricalRuntimeError> {
+    ) -> Result<Option<RuntimeAdmissionBundle>, RuntimeCoreError> {
         unwrap_runtime(self.inner.bundle(admission_id))
     }
 
@@ -914,7 +914,7 @@ impl chio_runtime_core::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStor
         &self,
         evidence_kind: &str,
         evidence_id: &str,
-    ) -> Result<Option<TreatyRuntimeArtifactRecord>, HistoricalRuntimeError> {
+    ) -> Result<Option<TreatyRuntimeArtifactRecord>, RuntimeCoreError> {
         unwrap_runtime(
             self.inner
                 .treaty_runtime_artifact(evidence_kind, evidence_id),
@@ -924,7 +924,7 @@ impl chio_runtime_core::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStor
     fn swarm_authority_bundle(
         &self,
         task_graph_id: &str,
-    ) -> Result<Option<SwarmAuthorityBundle>, HistoricalRuntimeError> {
+    ) -> Result<Option<SwarmAuthorityBundle>, RuntimeCoreError> {
         unwrap_runtime(self.inner.swarm_authority_bundle(task_graph_id))
     }
 
@@ -932,7 +932,7 @@ impl chio_runtime_core::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStor
         &self,
         lease_id: &str,
         admission_id: &str,
-    ) -> Result<(), HistoricalRuntimeError> {
+    ) -> Result<(), RuntimeCoreError> {
         unwrap_runtime(self.inner.consume_destructive_lease(lease_id, admission_id))
     }
 
@@ -940,7 +940,7 @@ impl chio_runtime_core::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStor
         &self,
         lease_id: &str,
         admission_id: &str,
-    ) -> Result<(), HistoricalRuntimeError> {
+    ) -> Result<(), RuntimeCoreError> {
         unwrap_runtime(self.inner.release_destructive_lease(lease_id, admission_id))
     }
 
@@ -948,7 +948,7 @@ impl chio_runtime_core::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStor
         &self,
         continuation_id: &str,
         admission_id: &str,
-    ) -> Result<(), HistoricalRuntimeError> {
+    ) -> Result<(), RuntimeCoreError> {
         unwrap_runtime(
             self.inner
                 .consume_treaty_continuation(continuation_id, admission_id),
@@ -959,7 +959,7 @@ impl chio_runtime_core::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStor
         &self,
         continuation_id: &str,
         admission_id: &str,
-    ) -> Result<(), HistoricalRuntimeError> {
+    ) -> Result<(), RuntimeCoreError> {
         unwrap_runtime(
             self.inner
                 .release_treaty_continuation(continuation_id, admission_id),
@@ -970,7 +970,7 @@ impl chio_runtime_core::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStor
         &self,
         continuation_id: &str,
         admission_id: &str,
-    ) -> Result<(), HistoricalRuntimeError> {
+    ) -> Result<(), RuntimeCoreError> {
         unwrap_runtime(
             self.inner
                 .consume_swarm_continuation(continuation_id, admission_id),
@@ -981,7 +981,7 @@ impl chio_runtime_core::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStor
         &self,
         continuation_id: &str,
         admission_id: &str,
-    ) -> Result<(), HistoricalRuntimeError> {
+    ) -> Result<(), RuntimeCoreError> {
         unwrap_runtime(
             self.inner
                 .release_swarm_continuation(continuation_id, admission_id),
@@ -992,14 +992,14 @@ impl chio_runtime_core::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStor
         &self,
         verifier_id: &str,
         key_id: &str,
-    ) -> Result<Option<RuntimeTrustFloorEntry>, HistoricalRuntimeError> {
+    ) -> Result<Option<RuntimeTrustFloorEntry>, RuntimeCoreError> {
         unwrap_runtime(self.inner.runtime_trust_floor(verifier_id, key_id))
     }
 
     fn record_runtime_trust_floor(
         &self,
         entry: RuntimeTrustFloorEntry,
-    ) -> Result<(), HistoricalRuntimeError> {
+    ) -> Result<(), RuntimeCoreError> {
         unwrap_runtime(self.inner.record_runtime_trust_floor(entry))
     }
 
@@ -1007,7 +1007,7 @@ impl chio_runtime_core::RuntimeAdmissionStore for HistoricalRuntimeAdmissionStor
         &self,
         entry: RuntimeTrustFloorEntry,
         previous_hash_sha256: Option<&str>,
-    ) -> Result<(), HistoricalRuntimeError> {
+    ) -> Result<(), RuntimeCoreError> {
         unwrap_runtime(
             self.inner
                 .validate_and_record_runtime_trust_floor(entry, previous_hash_sha256),
