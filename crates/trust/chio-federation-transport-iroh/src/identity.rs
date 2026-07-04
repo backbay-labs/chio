@@ -768,6 +768,17 @@ impl TransportDirectoryBundleDocument {
                         "treaty party kernel id is empty or padded".to_string(),
                     ));
                 }
+                // A treaty party must be a current, non-removed operator bound in
+                // this same signed directory. `by_kernel_passport` holds exactly the
+                // non-removed operators (tombstoned/unknown kernels are absent), so a
+                // treaty that lists a party without a current binding is rejected
+                // fail-closed rather than admitted into the party set.
+                if !by_kernel_passport.contains_key(party) {
+                    return Err(IdentityError::MalformedEntry(format!(
+                        "treaty {} lists party {} with no current directory passport binding",
+                        treaty.treaty_id, party
+                    )));
+                }
                 if !parties.insert(party.clone()) {
                     return Err(IdentityError::Duplicate(format!(
                         "treaty {} party {}",
