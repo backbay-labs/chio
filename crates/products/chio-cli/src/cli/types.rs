@@ -257,7 +257,6 @@ mod cli_env_tests {
 
         restore_env("CHIO_GUARD_REGISTRY_PASSWORD", prior);
     }
-
 }
 
 #[derive(Subcommand)]

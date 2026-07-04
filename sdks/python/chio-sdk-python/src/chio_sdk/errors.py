@@ -127,8 +127,8 @@ class ChioDeniedError(ChioError):
         """Human-readable multi-line error message.
 
         Only populated fields are shown. When nothing but the base
-        ``message`` is set the output is a single line, preserving the
-        legacy ``str(err)`` shape.
+        ``message`` is set the output is a single line, preserving the bare
+        ``str(err)`` shape.
         """
         lines: list[str] = []
         header = "Chio DENIED"
