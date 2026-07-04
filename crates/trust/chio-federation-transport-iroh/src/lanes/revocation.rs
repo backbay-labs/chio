@@ -206,6 +206,17 @@ pub enum RevocationLaneError {
         /// The `requester_kernel_id` claimed by the catch-up request.
         claimed: String,
     },
+    /// A Push batch named a `recipient_kernel_id` other than this responder's
+    /// kernel. Fail-closed: the batch is addressed to a DIFFERENT kernel, so
+    /// NOTHING is merged (a misrouted or cross-recipient-replayed batch cannot
+    /// mutate this responder's revocation cache).
+    #[error("push batch addressed to `{claimed}` but this responder is `{expected}`")]
+    RecipientMismatch {
+        /// This responder's kernel id (the only recipient it will merge for).
+        expected: String,
+        /// The `recipient_kernel_id` the batch claimed.
+        claimed: String,
+    },
     /// The pinned-signer signature check over a [`SignedEpochRoot`] failed
     /// (BLAKE3/transport integrity is NOT authenticity, ADAPTER-SPEC 2.2).
     #[error("epoch root signature failed pinned-signer verification (signer_id `{0}`)")]
@@ -321,6 +332,7 @@ impl RevocationLaneError {
             RevocationLaneError::UnknownSigner(_) => "unknown-signer",
             RevocationLaneError::SignerEndpointMismatch { .. } => "signer-endpoint-mismatch",
             RevocationLaneError::RequesterMismatch { .. } => "requester-mismatch",
+            RevocationLaneError::RecipientMismatch { .. } => "recipient-mismatch",
             RevocationLaneError::BadSignature(_) => "bad-signature",
             RevocationLaneError::SignerIdMismatch { .. } => "signer-id-mismatch",
             RevocationLaneError::DuplicateSigner(_) => "duplicate-signer",
@@ -438,6 +450,17 @@ impl RevocationHandler {
         }
         // Cheap structural gate: schema + per-frame envelope consistency.
         batch.validate_envelope()?;
+
+        // Address pin: a bilateral Push batch MUST name THIS responder as its
+        // recipient. A batch addressed to a DIFFERENT kernel (misrouted, or replayed
+        // cross-recipient) is rejected fail-closed BEFORE any root is merged, mirroring
+        // the pheromone verifier's recipient check and the catch-up requester pin.
+        if batch.recipient_kernel_id != self.responder_kernel_id {
+            return Err(RevocationLaneError::RecipientMismatch {
+                expected: self.responder_kernel_id.clone(),
+                claimed: batch.recipient_kernel_id.clone(),
+            });
+        }
 
         let mut verified: Vec<SignedEpochRoot> = Vec::with_capacity(batch.frames.len());
         for frame in &batch.frames {
@@ -863,10 +886,20 @@ mod tests {
         SignedEpochRoot::sign(root, signer).expect("sign never fails")
     }
 
+    /// A batch addressed to the test handlers' responder kernel
+    /// (`did:chio:responder`), so it passes the recipient-address pin. Use
+    /// [`batch_addressed_to`] to build a MIS-addressed batch.
     fn batch(frames: Vec<RevocationRootGossip>) -> RevocationGossipBatch {
+        batch_addressed_to("did:chio:responder", frames)
+    }
+
+    fn batch_addressed_to(
+        recipient_kernel_id: &str,
+        frames: Vec<RevocationRootGossip>,
+    ) -> RevocationGossipBatch {
         RevocationGossipBatch {
             schema: REVOCATION_ROOT_GOSSIP_BATCH_SCHEMA.to_string(),
-            recipient_kernel_id: "did:chio:receiver".to_string(),
+            recipient_kernel_id: recipient_kernel_id.to_string(),
             frames,
             flushed_at_unix_ms: NOW,
         }
@@ -1032,6 +1065,51 @@ mod tests {
         let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
         let (handler, sink) = handler(directory);
 
+        let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        let response = handler.handle_request(
+            transport,
+            RevocationLaneRequest::Push(batch(vec![frame])),
+            NOW,
+        );
+        match response {
+            RevocationLaneResponse::PushAccepted { merged_epochs } => {
+                assert_eq!(merged_epochs, vec![5]);
+            }
+            other => panic!("expected PushAccepted, got {other:?}"),
+        }
+        assert_eq!(*sink.merged.lock().unwrap(), vec![5]);
+    }
+
+    #[test]
+    fn push_addressed_to_another_responder_is_rejected_and_not_merged() {
+        // A batch whose recipient_kernel_id names a DIFFERENT kernel than this
+        // responder must be rejected fail-closed BEFORE any root reaches the sink,
+        // even when every frame would otherwise verify. Only the correctly-addressed
+        // batch merges.
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let (handler, sink) = handler(directory);
+
+        // Same crypto-valid frame, but the batch is addressed to another kernel.
+        let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        let response = handler.handle_request(
+            transport,
+            RevocationLaneRequest::Push(batch_addressed_to("did:chio:someone-else", vec![frame])),
+            NOW,
+        );
+        match response {
+            RevocationLaneResponse::Rejected { code, .. } => {
+                assert_eq!(code, "recipient-mismatch");
+            }
+            other => panic!("expected Rejected(recipient-mismatch), got {other:?}"),
+        }
+        assert!(
+            sink.merged.lock().unwrap().is_empty(),
+            "a mis-addressed batch must merge NOTHING"
+        );
+
+        // The SAME frame in a batch addressed to THIS responder still merges.
         let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
         let response = handler.handle_request(
             transport,
