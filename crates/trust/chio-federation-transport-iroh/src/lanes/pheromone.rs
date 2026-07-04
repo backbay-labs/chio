@@ -276,20 +276,35 @@ impl PheromoneBatchHandler {
             .await??;
         let batch: PheromoneGossipBatch = serde_json::from_slice(&raw)?;
 
-        let now = (self.now)();
-        // The report type (chio-pheromone-runtime PheromoneReceiveReport) is not
-        // nameable here; it flows through by inference. The per-frame verifier
-        // (pheromone_gossip.rs:236/244) runs inside this call, unchanged.
-        let report = self
-            .receiver
-            .receive_batch(batch.clone(), authenticated_sender.clone(), now)
-            .await?;
-
+        // DEDUP BEFORE RECEIVE (fail-closed idempotency): compute the deterministic
+        // inbox nonce and consult the store BEFORE mutating receiver state. On a
+        // retry of an already-admitted batch, re-running receive_batch would re-enter
+        // the runtime replay window and reject the already-accepted deposits, dead-
+        // lettering a batch the peer already holds. Returning the stored report keeps
+        // redelivery idempotent, exactly as the shipped HTTP inbox does.
         let batch_bytes = canonical_json_bytes(&batch)
             .map_err(|error| IrohLaneError::CanonicalJson(error.to_string()))?;
         let nonce = inbox_nonce(&batch_bytes);
-        self.store
-            .record_inbox(&authenticated_sender, &nonce, &batch, &report)?;
+        let report = match self
+            .store
+            .lookup_inbox_report(&authenticated_sender, &nonce)?
+        {
+            Some(stored) => stored,
+            None => {
+                let now = (self.now)();
+                // The report type (chio-pheromone-runtime PheromoneReceiveReport) is
+                // not nameable here; it flows through by inference. The per-frame
+                // verifier (pheromone_gossip.rs:236/244) runs inside this call,
+                // unchanged, and only ever on a batch not already in the inbox.
+                let fresh = self
+                    .receiver
+                    .receive_batch(batch.clone(), authenticated_sender.clone(), now)
+                    .await?;
+                self.store
+                    .record_inbox(&authenticated_sender, &nonce, &batch, &fresh)?;
+                fresh
+            }
+        };
 
         let report_bytes = canonical_json_bytes(&report)
             .map_err(|error| IrohLaneError::CanonicalJson(error.to_string()))?;
@@ -382,6 +397,29 @@ pub struct BatchDeliveryOutcome {
     pub report_json: Vec<u8>,
 }
 
+/// Bound one peer-dependent client await by the phase's timeout, mirroring the
+/// accept-side [`AcceptLimiter::bounded`]. On timeout this fails closed with the
+/// same [`AcceptLimitError::Timeout`] the accept side raises, so a stalled dial
+/// folds into the durable outbox retry/dead-letter path via [`IrohLaneError::code`]
+/// (`accept_timeout`) rather than hanging the sequential drain forever.
+async fn client_bounded<T, F>(
+    limits: &AcceptLimitConfig,
+    phase: AcceptPhase,
+    fut: F,
+) -> Result<T, IrohLaneError>
+where
+    F: std::future::Future<Output = T>,
+{
+    let bound = limits.phase_timeout(phase);
+    match tokio::time::timeout(bound, fut).await {
+        Ok(output) => Ok(output),
+        Err(_elapsed) => Err(IrohLaneError::AcceptLimit(AcceptLimitError::Timeout {
+            phase,
+            timeout_ms: u64::try_from(bound.as_millis()).unwrap_or(u64::MAX),
+        })),
+    }
+}
+
 /// Sender side of lane a: dial a peer over [`ALPN_PHEROMONE_BATCH`], write one
 /// length-delimited canonical [`PheromoneGossipBatch`], and read back the report.
 ///
@@ -389,28 +427,70 @@ pub struct BatchDeliveryOutcome {
 /// (`service.rs:652`). `recipient_addr` is the peer resolved from its
 /// `kernel_id` via the directory (an [`EndpointId`] in production with
 /// discovery, or a full [`EndpointAddr`] for direct addressing).
+///
+/// Uses the generous default client bounds
+/// ([`AcceptLimitConfig::default`]); see [`deliver_batch_over_iroh_with_limits`]
+/// to tune them.
 pub async fn deliver_batch_over_iroh(
     endpoint: &Endpoint,
     recipient_addr: impl Into<EndpointAddr>,
     batch: &PheromoneGossipBatch,
 ) -> Result<BatchDeliveryOutcome, IrohLaneError> {
+    deliver_batch_over_iroh_with_limits(
+        endpoint,
+        recipient_addr,
+        batch,
+        &AcceptLimitConfig::default(),
+    )
+    .await
+}
+
+/// Same as [`deliver_batch_over_iroh`], with explicit client-side bounds.
+///
+/// Client-side slowloris defense (mirrors the accept-side [`AcceptLimiter`]):
+/// every peer-dependent await (connect, open, write, and the report read) is
+/// bounded by the corresponding [`AcceptLimitConfig`] phase timeout. A recipient
+/// that connects but never returns the report frame no longer hangs the caller
+/// forever; the dial fails closed (`accept_timeout`) and the durable outbox lease
+/// retries or dead-letters normally, so one stalled peer cannot block the
+/// sequential drain of later batches.
+pub async fn deliver_batch_over_iroh_with_limits(
+    endpoint: &Endpoint,
+    recipient_addr: impl Into<EndpointAddr>,
+    batch: &PheromoneGossipBatch,
+    limits: &AcceptLimitConfig,
+) -> Result<BatchDeliveryOutcome, IrohLaneError> {
     let batch_bytes = canonical_json_bytes(batch)
         .map_err(|error| IrohLaneError::CanonicalJson(error.to_string()))?;
 
-    let conn = endpoint
-        .connect(recipient_addr, ALPN_PHEROMONE_BATCH)
-        .await
-        .map_err(|error| IrohLaneError::Transport(error.to_string()))?;
-    let (mut send, mut recv) = conn
-        .open_bi()
-        .await
+    let conn = client_bounded(
+        limits,
+        AcceptPhase::AcceptStream,
+        endpoint.connect(recipient_addr, ALPN_PHEROMONE_BATCH),
+    )
+    .await?
+    .map_err(|error| IrohLaneError::Transport(error.to_string()))?;
+    let (mut send, mut recv) = client_bounded(limits, AcceptPhase::AcceptStream, conn.open_bi())
+        .await?
         .map_err(|error| IrohLaneError::Transport(error.to_string()))?;
 
-    write_len_delimited(&mut send, &batch_bytes).await?;
+    client_bounded(
+        limits,
+        AcceptPhase::WriteResponse,
+        write_len_delimited(&mut send, &batch_bytes),
+    )
+    .await??;
     send.finish()
         .map_err(|error| IrohLaneError::Transport(error.to_string()))?;
 
-    let report_json = read_len_delimited(&mut recv).await?;
+    // The primary client-side hang surface: a peer that accepts the batch but
+    // never returns the report frame is dropped here at the read bound.
+    let report_json = client_bounded(
+        limits,
+        AcceptPhase::ReadFrame,
+        read_len_delimited(&mut recv),
+    )
+    .await??;
     conn.close(LANE_OK_CODE.into(), b"ok");
 
     // Parse only the `accepted` flag; the full report is returned as bytes so
@@ -470,22 +550,40 @@ pub struct OutboxDrainReport {
 /// `resolve_addr` maps a recipient `kernel_id` to its dialable
 /// [`EndpointAddr`]; an unresolvable recipient folds into the retry path rather
 /// than aborting the tick (fail-closed).
-pub async fn drain_outbox_over_iroh<F>(
+///
+/// `scope_check` mirrors the HTTP tick's `enforce_outbound_peer_batch_directory_scope`
+/// and MUST be applied against the CURRENT directory: a queued row whose recipient
+/// was removed or is otherwise outside the recipient's directory scope is rejected
+/// BEFORE it is dialed, so stale-or-unauthorized queued work is never leaked over
+/// the new transport. Its `Err` folds into the durable retry/dead-letter path with
+/// the mirrored scope code (fail-closed); the wiring supplies the shipped check so
+/// the two transports enforce the same scope.
+pub async fn drain_outbox_over_iroh<F, S>(
     store: &SqlitePheromoneRelayStore,
     endpoint: &Endpoint,
     resolve_addr: F,
+    scope_check: S,
     sender_kernel_id: &str,
     now_unix_ms: u64,
     max_batches: usize,
 ) -> Result<OutboxDrainReport, IrohLaneError>
 where
     F: Fn(&str) -> Option<EndpointAddr>,
+    S: Fn(&str, &PheromoneGossipBatch) -> Result<(), PheromoneRelayError>,
 {
     let due = store.lease_due_batches(now_unix_ms, max_batches)?;
     let mut report = OutboxDrainReport::default();
     for entry in due {
         if entry.sender_kernel_id != sender_kernel_id {
             record_delivery_failure(store, &entry, "sender_mismatch", now_unix_ms, &mut report)?;
+            continue;
+        }
+        // ENFORCE OUTBOUND PEER SCOPE (fail-closed): mirror the HTTP deliver tick.
+        // A recipient removed from / outside the current directory scope must not be
+        // dialed over iroh even if `resolve_addr` still yields an address; the row
+        // folds into the durable retry/dead-letter path with the scope code.
+        if let Err(error) = scope_check(&entry.recipient_kernel_id, &entry.batch) {
+            record_delivery_failure(store, &entry, error.code(), now_unix_ms, &mut report)?;
             continue;
         }
         let Some(addr) = resolve_addr(&entry.recipient_kernel_id) else {
@@ -1116,5 +1214,120 @@ mod tests {
         );
 
         router.shutdown().await.ok();
+    }
+
+    // -- Client-side slowloris bound (finding B) --
+    //
+    // A recipient that completes the handshake and reads the batch but never
+    // returns the report frame must not hang the dialer forever (which would
+    // block the sequential outbox drain of every later batch). This handler is
+    // that hostile-but-admitted recipient.
+
+    #[derive(Debug, Clone)]
+    struct SilentAfterReadHandler;
+
+    impl ProtocolHandler for SilentAfterReadHandler {
+        async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+            let (mut _send, mut recv) = conn.accept_bi().await?;
+            // Read the request frame, then deliberately never write the report:
+            // exactly the "recipient never returns the report" hang the client
+            // read bound defends against.
+            let _raw = read_len_delimited(&mut recv)
+                .await
+                .map_err(AcceptError::from_err)?;
+            conn.closed().await;
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn client_read_bound_drops_a_recipient_that_never_returns_the_report() {
+        // No admission gate on the acceptor: this isolates the CLIENT read bound
+        // (the recipient handshakes and reads the batch, then goes silent).
+        let acceptor = bind_endpoint(40, None).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_PHEROMONE_BATCH, SilentAfterReadHandler)
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(41, None).await;
+        let batch = direct_batch("did:chio:llamaworks");
+        // A tight read bound; connect/open/write keep their generous defaults so
+        // only the (hung) report read trips.
+        let limits = AcceptLimitConfig {
+            read_timeout: Duration::from_millis(200),
+            ..AcceptLimitConfig::default()
+        };
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(15),
+            deliver_batch_over_iroh_with_limits(&dialer, acceptor_addr, &batch, &limits),
+        )
+        .await
+        .expect("the client read bound must fire well before the outer test timeout");
+        let error = outcome.expect_err("a silent recipient must fail closed at the read bound");
+        assert!(
+            matches!(
+                error,
+                IrohLaneError::AcceptLimit(AcceptLimitError::Timeout {
+                    phase: AcceptPhase::ReadFrame,
+                    ..
+                })
+            ),
+            "unexpected error: {error:?}"
+        );
+        assert_eq!(error.code(), "accept_timeout");
+
+        router.shutdown().await.ok();
+    }
+
+    // -- Outbound directory-scope enforcement on the drain (finding C) --
+
+    #[tokio::test]
+    async fn outbound_scope_rejection_skips_dial_and_folds_into_retry() {
+        let store = SqlitePheromoneRelayStore::open_in_memory().unwrap();
+        let batch = direct_batch("did:chio:llamaworks");
+        enqueue_batch_for_delivery(
+            &store,
+            "did:chio:llamaworks",
+            RECIPIENT,
+            TREATY,
+            &batch,
+            NOW,
+        )
+        .unwrap();
+
+        // A real endpoint satisfies the signature, but the scope check rejects
+        // BEFORE any dial, so resolve_addr (and the endpoint) are never used.
+        let endpoint = bind_endpoint(42, None).await;
+
+        let report = drain_outbox_over_iroh(
+            &store,
+            &endpoint,
+            |_recipient: &str| -> Option<EndpointAddr> {
+                panic!("a scope-rejected batch must never be resolved or dialed")
+            },
+            |recipient: &str, _batch: &PheromoneGossipBatch| {
+                // Mirror a recipient removed from the current directory scope.
+                Err(PheromoneRelayError::PeerRemoved(recipient.to_string()))
+            },
+            "did:chio:llamaworks",
+            NOW,
+            10,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            report.delivered, 0,
+            "a scope-rejected batch is never delivered"
+        );
+        assert_eq!(report.retried, 1, "it folds into the durable retry path");
+        assert_eq!(report.dead_lettered, 0);
+        assert_eq!(report.failures.len(), 1);
+        assert!(
+            report.failures[0].contains("peer_removed"),
+            "the mirrored scope code must be recorded, got {:?}",
+            report.failures
+        );
     }
 }
