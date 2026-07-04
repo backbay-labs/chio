@@ -5,11 +5,13 @@
 # Build:
 #   docker build -f deploy/sidecar/Dockerfile -t ghcr.io/backbay-labs/chio-sidecar:latest .
 #
-# The sidecar exposes :9090 and responds to GET /chio/health. It reads policy and
-# signing material from env vars documented in
-# docs/protocols/CLOUD-SIDECAR-INTEGRATION.md; if CHIO_KERNEL_CONFIG_PATH is
-# unreadable the process exits non-zero and the platform marks the container
-# unhealthy (fail closed).
+# The sidecar exposes :9090 and responds to GET /chio/health. It is configured
+# via CLI flags (see the ENTRYPOINT/CMD notes below). Config-loading subcommands
+# such as `chio mcp serve-http --policy <file>` read a mounted policy/config file
+# that may reference secrets like ${CHIO_SIGNING_KEY} via env interpolation
+# (see docs/protocols/CLOUD-SIDECAR-INTEGRATION.md). If the process cannot start
+# serving the health endpoint it exits non-zero and the platform marks the
+# container unhealthy (fail closed).
 
 ARG RUST_VERSION=1.93
 ARG DEBIAN_VERSION=bookworm
@@ -47,7 +49,8 @@ COPY examples ./examples
 COPY formal ./formal
 COPY tests ./tests
 
-# The sidecar binary lives in chio-cli (chio serve-sidecar). If a dedicated
+# The sidecar is the `chio` binary from chio-cli, run as `chio api protect`
+# (reverse proxy) or `chio mcp serve-http` (MCP edge). If a dedicated
 # chio-sidecar bin is introduced, replace the --bin arg accordingly.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
@@ -99,11 +102,9 @@ LABEL org.opencontainers.image.title="chio-sidecar" \
       org.opencontainers.image.source="https://github.com/backbay-labs/chio" \
       org.opencontainers.image.licenses="Apache-2.0"
 
-# Runtime config defaults (overridable at deploy time).
-ENV CHIO_LISTEN_ADDR=0.0.0.0:9090 \
-    CHIO_HEALTH_PATH=/chio/health \
-    CHIO_LOG_LEVEL=info \
-    CHIO_KERNEL_CONFIG_PATH=/etc/chio/kernel.yaml
+# Runtime config default (overridable at deploy time). CHIO_LOG_LEVEL is
+# consumed via ${VAR} interpolation when a config/policy file is loaded.
+ENV CHIO_LOG_LEVEL=info
 
 # Copy the binary and the healthcheck helper from earlier stages. The
 # healthcheck stage has already arch-normalized curl + its shared libs
