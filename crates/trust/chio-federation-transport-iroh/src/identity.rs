@@ -556,13 +556,23 @@ impl TransportDirectoryBundleDocument {
             // The endorsement binds the long-term passport to the transport key:
             // the passport (any algorithm) must sign the DOMAIN-SEPARATED preimage
             // committing to (context, kernel_id, transport endpoint).
-            let transport_preimage =
-                transport_endorsement_preimage(&entry.kernel_id, &entry.transport_endpoint_id);
-            let endorsed = entry
-                .passport_public_key
-                .verify(&transport_preimage, &entry.passport_endorsement);
-            if !endorsed {
-                return Err(IdentityError::EndorsementInvalid(entry.kernel_id.clone()));
+            //
+            // A removed entry is a tombstone (suppressed, not resolved): skip its
+            // transport endorsement check, mirroring the revocation-signer skip
+            // below. Otherwise an eviction bundle that tombstones a peer whose
+            // transport endorsement is missing/invalid would fail to verify, so the
+            // stale directory would stay active. The removed endpoint still records
+            // as removed and resolves to None (fail-closed) regardless, so skipping
+            // the endorsement of a suppressed entry costs no authority.
+            if !entry.removed {
+                let transport_preimage =
+                    transport_endorsement_preimage(&entry.kernel_id, &entry.transport_endpoint_id);
+                let endorsed = entry
+                    .passport_public_key
+                    .verify(&transport_preimage, &entry.passport_endorsement);
+                if !endorsed {
+                    return Err(IdentityError::EndorsementInvalid(entry.kernel_id.clone()));
+                }
             }
             // Per-entry oracle revocation-signer bindings. Each non-removed entry
             // is verified against the SAME passport under a DISTINCT domain tag,
@@ -891,6 +901,45 @@ mod tests {
             "removed must not resolve"
         );
         assert_eq!(directory.authorize(&live_ep), Some("did:chio:live"));
+    }
+
+    #[test]
+    fn eviction_bundle_verifies_when_removed_entry_transport_endorsement_is_invalid() {
+        // Eviction path: a removed operator carries an INVALID transport endorsement
+        // (its passport signed over a DIFFERENT endpoint than the entry's transport
+        // id). Because a tombstone skips the transport-endorsement check, the eviction
+        // bundle still verifies - otherwise a peer whose transport endorsement is
+        // missing/bad could never be evicted and the stale directory would stay
+        // active. The removed endpoint resolves to None (fail-closed) regardless.
+        let mut ghost = EntrySpec::admitted("did:chio:ghost", 3, 12);
+        ghost.endorsed_over = endpoint_from_seed(99); // endorsement covers the wrong endpoint
+        assert_ne!(ghost.endorsed_over, ghost.transport);
+        let ghost_ep = ghost.transport;
+        ghost.removed = true;
+        let live = EntrySpec::admitted("did:chio:live", 4, 13);
+        let live_ep = live.transport;
+        let (bundle, trust) = signed_bundle(&[ghost, live]);
+
+        let directory = bundle
+            .verify_bundle(&trust)
+            .expect("a removed entry's invalid transport endorsement must not fail the bundle");
+        assert_eq!(
+            directory.authorize(&ghost_ep),
+            None,
+            "the evicted endpoint must not resolve"
+        );
+        assert_eq!(directory.authorize(&live_ep), Some("did:chio:live"));
+
+        // Control: the SAME invalid transport endorsement on a NON-removed entry DOES
+        // fail closed, proving the endorsement is genuinely invalid (fail-closed for
+        // live entries is preserved).
+        let mut live_bad = EntrySpec::admitted("did:chio:ghost", 3, 12);
+        live_bad.endorsed_over = endpoint_from_seed(99);
+        let (control_bundle, control_trust) = signed_bundle(&[live_bad]);
+        assert!(matches!(
+            control_bundle.verify_bundle(&control_trust),
+            Err(IdentityError::EndorsementInvalid(_))
+        ));
     }
 
     #[test]
