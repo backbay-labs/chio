@@ -81,7 +81,7 @@ class ChioMcpClient:
         result = self._rpc("initialize", {
             "protocolVersion": "2025-11-25",
             "capabilities": {},
-            "clientInfo": {"name": "incident-network", "version": "0.2.0"},
+            "clientInfo": {"name": "agent-commerce-network", "version": "0.2.0"},
         })
         # Notifications have no id and no response body
         self._http.post(
@@ -117,7 +117,7 @@ class StdioMcpClient:
         self._rpc("initialize", {
             "protocolVersion": "2025-11-25",
             "capabilities": {},
-            "clientInfo": {"name": "incident-network", "version": "0.2.0"},
+            "clientInfo": {"name": "agent-commerce-network", "version": "0.2.0"},
         })
         self._send({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
         return self
