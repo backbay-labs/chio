@@ -453,6 +453,28 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
         now_unix_ms,
     )?;
     let tick_report = if let Some(iroh_inputs) = iroh_inputs {
+        // Fail-closed signing/transport identity binding for the iroh drain. The drain
+        // leases + drains outbox rows keyed on `sender_kernel_id` (the relay SIGNING
+        // key's kernelId from load_relay_signing_key), but the outbound iroh endpoint
+        // authenticates as the peer/transport directory's LOCAL identity
+        // (`peer_directory.local_kernel_id()`, which build_iroh_outbound_endpoint pins to
+        // the verified transport directory's localKernelId). Recipients verify pheromone
+        // frames against the AUTHENTICATED transport sender, NOT the signing-key id, so if
+        // these differ the queued rows for the signing key are drained yet
+        // rejected/dead-lettered by recipients. Require the relay's signing identity and
+        // its transport/directory local identity to be the SAME kernel BEFORE leasing or
+        // draining any row.
+        if sender_kernel_id.as_str() != peer_directory.local_kernel_id() {
+            return Err(CliError::cli_other_error(format!(
+                "Chio relay iroh tick: the relay signing key's kernel id '{}' does not match the \
+                 peer/transport directory local kernel id '{}'; the outbound iroh endpoint \
+                 authenticates as the directory local identity, so queued rows for the signing key \
+                 would be rejected/dead-lettered by recipients (the relay's signing identity and \
+                 its transport/directory local identity must be the same kernel)",
+                sender_kernel_id,
+                peer_directory.local_kernel_id()
+            )));
+        }
         // Direct-address book (relay-disabled / direct-address deployment): parse the
         // repeated --iroh-peer-addr entries into kernel_id -> dialable socket(s).
         // Parsed only on the iroh path so an HTTP-only tick is untouched; fail-closed
@@ -1019,26 +1041,57 @@ mod tests {
             SecretKey::from_bytes(&[seed; 32]).public()
         }
 
-        /// A signed, verifiable transport-directory bundle admitting `admitted_kernel`
-        /// at the endpoint derived from `transport_seed`, plus the issuer keypair whose
-        /// public key the trusted-issuers file must pin.
-        fn signed_bundle_json(admitted_kernel: &str, transport_seed: u8) -> (String, Keypair) {
-            let passport = Keypair::from_seed(&[7u8; 32]);
-            let issuer = Keypair::from_seed(&[240u8; 32]);
+        /// The transport seed the bundle endorses for its own `localKernelId`
+        /// (`did:chio:relay`). Its `EndpointId` MUST equal the public key of the seed the
+        /// test key file carries (`0x11` bytes, i.e. `"11".repeat(32)`), so
+        /// `load_iroh_serve_inputs`'s local-transport-key binding check passes and the
+        /// drain path is actually reached.
+        const LOCAL_TRANSPORT_SEED: u8 = 0x11;
+
+        /// A well-formed, non-removed transport-directory entry binding `kernel_id` to the
+        /// transport `EndpointId` derived from `transport_seed`, self-endorsed by a
+        /// per-kernel passport.
+        fn directory_entry(
+            kernel_id: &str,
+            passport_seed: u8,
+            transport_seed: u8,
+        ) -> TransportDirectoryEntry {
+            let passport = Keypair::from_seed(&[passport_seed; 32]);
             let transport = endpoint_from_seed(transport_seed);
-            let entry = TransportDirectoryEntry {
-                kernel_id: admitted_kernel.to_string(),
+            TransportDirectoryEntry {
+                kernel_id: kernel_id.to_string(),
                 passport_public_key: passport.public_key(),
                 transport_endpoint_id: transport,
                 passport_endorsement: passport
-                    .sign(&transport_endorsement_preimage(admitted_kernel, &transport)),
+                    .sign(&transport_endorsement_preimage(kernel_id, &transport)),
                 revocation_signers: Vec::new(),
                 removed: false,
-            };
+            }
+        }
+
+        /// A signed, verifiable transport-directory bundle whose directory carries BOTH
+        /// the bundle's own `localKernelId` (`did:chio:relay`) bound to
+        /// [`LOCAL_TRANSPORT_SEED`] (so `load_iroh_serve_inputs`'s local-transport-key
+        /// binding check passes against the `0x11` key file the tests write) AND a
+        /// SEPARATE `admitted_kernel` peer at `transport_seed` (the recipient the drain's
+        /// address resolver exercises). Returns the issuer keypair whose public key the
+        /// trusted-issuers file must pin.
+        fn signed_bundle_json(admitted_kernel: &str, transport_seed: u8) -> (String, Keypair) {
+            let issuer = Keypair::from_seed(&[240u8; 32]);
+            // The local relay's OWN transport binding: did:chio:relay -> seed 0x11. The
+            // local-transport-key binding check added to load_iroh_serve_inputs in a prior
+            // round resolves THIS entry and rejects a bundle missing it, so without this
+            // entry the drain path would never be reached.
+            let local_relay_entry = directory_entry("did:chio:relay", 8, LOCAL_TRANSPORT_SEED);
+            // A SEPARATE admitted peer (NOT the local relay): the drain's recipient
+            // resolver returns this endpoint for an admitted peer, or None for a recipient
+            // (e.g. did:chio:buyer) NOT admitted here, which is the fail-closed
+            // unresolvable case the tick test asserts folds into the durable retry path.
+            let admitted_entry = directory_entry(admitted_kernel, 7, transport_seed);
             let directory = TransportDirectoryDocument {
                 schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
                 local_kernel_id: "did:chio:relay".to_string(),
-                peers: vec![entry],
+                peers: vec![local_relay_entry, admitted_entry],
                 treaties: Vec::new(),
             };
             let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());

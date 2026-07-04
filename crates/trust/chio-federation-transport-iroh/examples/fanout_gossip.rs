@@ -165,14 +165,17 @@ async fn spawn_node(seed: u8, gate: DirectoryGate) -> Result<Node, Box<dyn Error
     // Spawn gossip and mount it on a router under its own ALPN (gossip owns the
     // ALPN; this lane does not invent one). Membership is gated upstream.
     let gossip = Gossip::builder().spawn(endpoint.clone());
+    // Build the lane before the router moves `endpoint`: the lane derives its
+    // authenticated local id from this endpoint, so it must see the real one.
+    let lane = FanoutLane::new(gossip.clone(), &endpoint);
     let router = Router::builder(endpoint)
-        .accept(iroh_gossip::ALPN, gossip.clone())
+        .accept(iroh_gossip::ALPN, gossip)
         .spawn();
     Ok(Node {
         id,
         addr,
         lookup,
-        lane: FanoutLane::new(gossip, id),
+        lane,
         router,
     })
 }
