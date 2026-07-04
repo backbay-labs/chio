@@ -7598,7 +7598,7 @@ for ChioBilateralDsseSignatureSliceStatementSubjectItemName {
             })
     }
 }
-///A single grant carried inside a capability token's `scope`. Chio uses three distinct grant kinds (tool, resource, prompt) that share no common discriminator field; this schema accepts any one of them via `oneOf`. Mirrors `ToolGrant`, `ResourceGrant`, and `PromptGrant` in `crates/core/chio-core-types/src/capability.rs`. The wrapper `ChioScope` partitions grants into three named arrays (`grants`, `resource_grants`, `prompt_grants`); validators that consume a token can dispatch to the appropriate `$defs/*` shape directly without relying on `oneOf` matching.
+///A single grant carried inside a capability token's `scope`. Chio uses three distinct grant kinds (tool, resource, prompt) that share no common discriminator field; this schema accepts any one of them via `oneOf`. Mirrors `ToolGrant`, `ResourceGrant`, and `PromptGrant` in `crates/core/chio-core-types`. The wrapper `ChioScope` partitions grants into three named arrays (`grants`, `resource_grants`, `prompt_grants`); validators that consume a token can dispatch to the appropriate `$defs/*` shape directly without relying on `oneOf` matching.
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -7606,7 +7606,7 @@ for ChioBilateralDsseSignatureSliceStatementSubjectItemName {
 ///{
 ///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/grant/v1",
 ///  "title": "Chio Capability Grant",
-///  "description": "A single grant carried inside a capability token's `scope`. Chio uses three distinct grant kinds (tool, resource, prompt) that share no common discriminator field; this schema accepts any one of them via `oneOf`. Mirrors `ToolGrant`, `ResourceGrant`, and `PromptGrant` in `crates/core/chio-core-types/src/capability.rs`. The wrapper `ChioScope` partitions grants into three named arrays (`grants`, `resource_grants`, `prompt_grants`); validators that consume a token can dispatch to the appropriate `$defs/*` shape directly without relying on `oneOf` matching.",
+///  "description": "A single grant carried inside a capability token's `scope`. Chio uses three distinct grant kinds (tool, resource, prompt) that share no common discriminator field; this schema accepts any one of them via `oneOf`. Mirrors `ToolGrant`, `ResourceGrant`, and `PromptGrant` in `crates/core/chio-core-types`. The wrapper `ChioScope` partitions grants into three named arrays (`grants`, `resource_grants`, `prompt_grants`); validators that consume a token can dispatch to the appropriate `$defs/*` shape directly without relying on `oneOf` matching.",
 ///  "oneOf": [
 ///    {
 ///      "$ref": "#/$defs/toolGrant"
@@ -8582,7 +8582,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenSubject {
             })
     }
 }
-///JSON-RPC 2.0 notification envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shape constructed in `crates/protocol/chio-mcp-adapter/src/transport.rs::send_notification` (lines 770-774) and the streaming-chunk and cancellation notifications in `crates/protocol/chio-mcp-edge/src/runtime/protocol.rs` and transport.rs (lines 401-407, 1384-1392). A notification is structurally a request with no `id` field; the receiver MUST NOT respond. Common Chio notification methods include 'notifications/initialized', 'notifications/cancelled', 'notifications/tasks/status', 'notifications/resources/updated', 'notifications/resources/list_changed', and the Chio-specific tool-streaming chunk method exposed as `CHIO_TOOL_STREAMING_NOTIFICATION_METHOD`.
+///JSON-RPC 2.0 notification envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shape constructed by `send_notification` in `crates/protocol/chio-mcp-adapter` and the streaming-chunk and cancellation notifications in `crates/protocol/chio-mcp-edge` and `crates/protocol/chio-mcp-adapter`. A notification is structurally a request with no `id` field; the receiver MUST NOT respond. Common Chio notification methods include 'notifications/initialized', 'notifications/cancelled', 'notifications/tasks/status', 'notifications/resources/updated', 'notifications/resources/list_changed', and the Chio-specific tool-streaming chunk method exposed as `CHIO_TOOL_STREAMING_NOTIFICATION_METHOD`.
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -8590,7 +8590,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioCapabilityTokenSubject {
 ///{
 ///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/jsonrpc/notification/v1",
 ///  "title": "Chio JSON-RPC 2.0 Notification",
-///  "description": "JSON-RPC 2.0 notification envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shape constructed in `crates/protocol/chio-mcp-adapter/src/transport.rs::send_notification` (lines 770-774) and the streaming-chunk and cancellation notifications in `crates/protocol/chio-mcp-edge/src/runtime/protocol.rs` and transport.rs (lines 401-407, 1384-1392). A notification is structurally a request with no `id` field; the receiver MUST NOT respond. Common Chio notification methods include 'notifications/initialized', 'notifications/cancelled', 'notifications/tasks/status', 'notifications/resources/updated', 'notifications/resources/list_changed', and the Chio-specific tool-streaming chunk method exposed as `CHIO_TOOL_STREAMING_NOTIFICATION_METHOD`.",
+///  "description": "JSON-RPC 2.0 notification envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shape constructed by `send_notification` in `crates/protocol/chio-mcp-adapter` and the streaming-chunk and cancellation notifications in `crates/protocol/chio-mcp-edge` and `crates/protocol/chio-mcp-adapter`. A notification is structurally a request with no `id` field; the receiver MUST NOT respond. Common Chio notification methods include 'notifications/initialized', 'notifications/cancelled', 'notifications/tasks/status', 'notifications/resources/updated', 'notifications/resources/list_changed', and the Chio-specific tool-streaming chunk method exposed as `CHIO_TOOL_STREAMING_NOTIFICATION_METHOD`.",
 ///  "type": "object",
 ///  "not": {
 ///    "required": [
@@ -8766,7 +8766,7 @@ for ChioJsonRpc20NotificationParams {
         Self::Variant1(value)
     }
 }
-///JSON-RPC 2.0 request envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shape constructed in `crates/protocol/chio-mcp-adapter/src/transport.rs::send_request` (lines 643-648) and the typed `A2aJsonRpcRequest<T>` in `crates/protocol/chio-a2a-adapter/src/protocol.rs` (lines 234-241). The `id` may be an integer, a string, or null; null is permitted on the wire because Chio relays peers that originate ids upstream and forward them verbatim. `params` is optional per JSON-RPC 2.0 (notifications and parameterless calls omit it), but most Chio call sites supply at least an empty object.
+///JSON-RPC 2.0 request envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shape constructed by `send_request` in `crates/protocol/chio-mcp-adapter` and the typed `A2aJsonRpcRequest<T>` in `crates/protocol/chio-a2a-adapter`. The `id` may be an integer, a string, or null; null is permitted on the wire because Chio relays peers that originate ids upstream and forward them verbatim. `params` is optional per JSON-RPC 2.0 (notifications and parameterless calls omit it), but most Chio call sites supply at least an empty object.
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -8774,7 +8774,7 @@ for ChioJsonRpc20NotificationParams {
 ///{
 ///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/jsonrpc/request/v1",
 ///  "title": "Chio JSON-RPC 2.0 Request",
-///  "description": "JSON-RPC 2.0 request envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shape constructed in `crates/protocol/chio-mcp-adapter/src/transport.rs::send_request` (lines 643-648) and the typed `A2aJsonRpcRequest<T>` in `crates/protocol/chio-a2a-adapter/src/protocol.rs` (lines 234-241). The `id` may be an integer, a string, or null; null is permitted on the wire because Chio relays peers that originate ids upstream and forward them verbatim. `params` is optional per JSON-RPC 2.0 (notifications and parameterless calls omit it), but most Chio call sites supply at least an empty object.",
+///  "description": "JSON-RPC 2.0 request envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shape constructed by `send_request` in `crates/protocol/chio-mcp-adapter` and the typed `A2aJsonRpcRequest<T>` in `crates/protocol/chio-a2a-adapter`. The `id` may be an integer, a string, or null; null is permitted on the wire because Chio relays peers that originate ids upstream and forward them verbatim. `params` is optional per JSON-RPC 2.0 (notifications and parameterless calls omit it), but most Chio call sites supply at least an empty object.",
 ///  "type": "object",
 ///  "required": [
 ///    "id",
@@ -9083,7 +9083,7 @@ for ChioJsonRpc20RequestParams {
         Self::Variant1(value)
     }
 }
-///JSON-RPC 2.0 response envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shapes constructed in `crates/protocol/chio-mcp-adapter/src/transport.rs::json_rpc_result` and `json_rpc_error` (lines 1299-1316) and the typed `A2aJsonRpcResponse<T>` / `A2aJsonRpcError` in `crates/protocol/chio-a2a-adapter/src/protocol.rs` (lines 243-255). Exactly one of `result` or `error` MUST be present, enforced via `oneOf`. The `error.code` field is an integer (Chio uses standard JSON-RPC reserved codes -32600 through -32603, MCP's -32800 for cancellation, and Chio extension codes such as -32002 for nested-flow policy denials and -32042 for URL elicitations required - see `map_nested_flow_error_code` in transport.rs lines 1280-1297). The `id` is null only when the server cannot determine the request id (parse error before the id was readable).
+///JSON-RPC 2.0 response envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shapes constructed by `json_rpc_result` and `json_rpc_error` in `crates/protocol/chio-mcp-adapter` and the typed `A2aJsonRpcResponse<T>` / `A2aJsonRpcError` in `crates/protocol/chio-a2a-adapter`. Exactly one of `result` or `error` MUST be present, enforced via `oneOf`. The `error.code` field is an integer (Chio uses standard JSON-RPC reserved codes -32600 through -32603, MCP's -32800 for cancellation, and Chio extension codes such as -32002 for nested-flow policy denials and -32042 for URL elicitations required - see `map_nested_flow_error_code` in `crates/protocol/chio-mcp-adapter`). The `id` is null only when the server cannot determine the request id (parse error before the id was readable).
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -9091,7 +9091,7 @@ for ChioJsonRpc20RequestParams {
 ///{
 ///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/jsonrpc/response/v1",
 ///  "title": "Chio JSON-RPC 2.0 Response",
-///  "description": "JSON-RPC 2.0 response envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shapes constructed in `crates/protocol/chio-mcp-adapter/src/transport.rs::json_rpc_result` and `json_rpc_error` (lines 1299-1316) and the typed `A2aJsonRpcResponse<T>` / `A2aJsonRpcError` in `crates/protocol/chio-a2a-adapter/src/protocol.rs` (lines 243-255). Exactly one of `result` or `error` MUST be present, enforced via `oneOf`. The `error.code` field is an integer (Chio uses standard JSON-RPC reserved codes -32600 through -32603, MCP's -32800 for cancellation, and Chio extension codes such as -32002 for nested-flow policy denials and -32042 for URL elicitations required - see `map_nested_flow_error_code` in transport.rs lines 1280-1297). The `id` is null only when the server cannot determine the request id (parse error before the id was readable).",
+///  "description": "JSON-RPC 2.0 response envelope used by Chio for MCP and A2A wire framing. Mirrors the inline serde shapes constructed by `json_rpc_result` and `json_rpc_error` in `crates/protocol/chio-mcp-adapter` and the typed `A2aJsonRpcResponse<T>` / `A2aJsonRpcError` in `crates/protocol/chio-a2a-adapter`. Exactly one of `result` or `error` MUST be present, enforced via `oneOf`. The `error.code` field is an integer (Chio uses standard JSON-RPC reserved codes -32600 through -32603, MCP's -32800 for cancellation, and Chio extension codes such as -32002 for nested-flow policy denials and -32042 for URL elicitations required - see `map_nested_flow_error_code` in `crates/protocol/chio-mcp-adapter`). The `id` is null only when the server cannot determine the request id (parse error before the id was readable).",
 ///  "type": "object",
 ///  "oneOf": [
 ///    {
@@ -15085,7 +15085,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioKernelMessageToolCallResponseResultR
 ///      "minLength": 1
 ///    },
 ///    "evidenceClass": {
-///      "description": "Canonical evidence class Chio resolved across the bundle as a whole. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314), which uses `serde(rename_all = snake_case)`. The bundle's class is the floor across its statements: a single `asserted` statement holds the bundle to `asserted` regardless of how many `verified` statements accompany it.",
+///      "description": "Canonical evidence class Chio resolved across the bundle as a whole. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`, which uses `serde(rename_all = snake_case)`. The bundle's class is the floor across its statements: a single `asserted` statement holds the bundle to `asserted` regardless of how many `verified` statements accompany it.",
 ///      "type": "string",
 ///      "enum": [
 ///        "asserted",
@@ -15099,7 +15099,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioKernelMessageToolCallResponseResultR
 ///      "minLength": 1
 ///    },
 ///    "statements": {
-///      "description": "Ordered list of normalized runtime attestation evidence statements. Each statement is structurally identical to `chio-wire/v1/trust-control/attestation.schema.json` and mirrors `RuntimeAttestationEvidence` in `crates/core/chio-core-types/src/capability.rs` (lines 484-507). The struct does not carry `serde(rename_all)`, so the per-statement scalar fields are snake_case; the embedded `workload_identity` carries `serde(rename_all = camelCase)` so its inner fields are camelCase. Optional fields (`runtime_identity`, `workload_identity`, `claims`) are omitted from the wire when their underlying `Option<...>` is `None`.",
+///      "description": "Ordered list of normalized runtime attestation evidence statements. Each statement is structurally identical to `chio-wire/v1/trust-control/attestation.schema.json` and mirrors `RuntimeAttestationEvidence` in `crates/core/chio-core-types`. The struct does not carry `serde(rename_all)`, so the per-statement scalar fields are snake_case; the embedded `workload_identity` carries `serde(rename_all = camelCase)` so its inner fields are camelCase. Optional fields (`runtime_identity`, `workload_identity`, `claims`) are omitted from the wire when their underlying `Option<...>` is `None`.",
 ///      "type": "array",
 ///      "items": {
 ///        "type": "object",
@@ -15141,7 +15141,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioKernelMessageToolCallResponseResultR
 ///            "minLength": 1
 ///          },
 ///          "tier": {
-///            "description": "Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in capability.rs (lines 234-240).",
+///            "description": "Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in `crates/core/chio-core-types`.",
 ///            "type": "string",
 ///            "enum": [
 ///              "none",
@@ -15156,7 +15156,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioKernelMessageToolCallResponseResultR
 ///            "minLength": 1
 ///          },
 ///          "workload_identity": {
-///            "description": "Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in capability.rs (lines 290-304) which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity. Identical in shape to `chio-wire/v1/trust-control/attestation.schema.json#/properties/workload_identity`.",
+///            "description": "Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in `crates/core/chio-core-types` which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity. Identical in shape to `chio-wire/v1/trust-control/attestation.schema.json#/properties/workload_identity`.",
 ///            "type": "object",
 ///            "required": [
 ///              "credentialKind",
@@ -15167,7 +15167,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioKernelMessageToolCallResponseResultR
 ///            ],
 ///            "properties": {
 ///              "credentialKind": {
-///                "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` (lines 280-288) which uses `serde(rename_all = snake_case)`.",
+///                "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.",
 ///                "type": "string",
 ///                "enum": [
 ///                  "uri",
@@ -15180,7 +15180,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioKernelMessageToolCallResponseResultR
 ///                "type": "string"
 ///              },
 ///              "scheme": {
-///                "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278).",
+///                "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` in `crates/core/chio-core-types`.",
 ///                "type": "string",
 ///                "enum": [
 ///                  "spiffe"
@@ -15218,13 +15218,13 @@ pub struct ChioProvenanceAttestationBundle {
     ///Stable identifier of the governed call chain this bundle attests. Matches the `chainId` carried by `provenance/context.schema.json`.
     #[serde(rename = "chainId")]
     pub chain_id: ChioProvenanceAttestationBundleChainId,
-    ///Canonical evidence class Chio resolved across the bundle as a whole. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314), which uses `serde(rename_all = snake_case)`. The bundle's class is the floor across its statements: a single `asserted` statement holds the bundle to `asserted` regardless of how many `verified` statements accompany it.
+    ///Canonical evidence class Chio resolved across the bundle as a whole. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`, which uses `serde(rename_all = snake_case)`. The bundle's class is the floor across its statements: a single `asserted` statement holds the bundle to `asserted` regardless of how many `verified` statements accompany it.
     #[serde(rename = "evidenceClass")]
     pub evidence_class: ChioProvenanceAttestationBundleEvidenceClass,
     ///Optional identifier of the bundle assembler (kernel, gateway, or trust-control authority). Omitted when the bundle is locally assembled by the receiving kernel.
     #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
     pub issuer: ::std::option::Option<ChioProvenanceAttestationBundleIssuer>,
-    ///Ordered list of normalized runtime attestation evidence statements. Each statement is structurally identical to `chio-wire/v1/trust-control/attestation.schema.json` and mirrors `RuntimeAttestationEvidence` in `crates/core/chio-core-types/src/capability.rs` (lines 484-507). The struct does not carry `serde(rename_all)`, so the per-statement scalar fields are snake_case; the embedded `workload_identity` carries `serde(rename_all = camelCase)` so its inner fields are camelCase. Optional fields (`runtime_identity`, `workload_identity`, `claims`) are omitted from the wire when their underlying `Option<...>` is `None`.
+    ///Ordered list of normalized runtime attestation evidence statements. Each statement is structurally identical to `chio-wire/v1/trust-control/attestation.schema.json` and mirrors `RuntimeAttestationEvidence` in `crates/core/chio-core-types`. The struct does not carry `serde(rename_all)`, so the per-statement scalar fields are snake_case; the embedded `workload_identity` carries `serde(rename_all = camelCase)` so its inner fields are camelCase. Optional fields (`runtime_identity`, `workload_identity`, `claims`) are omitted from the wire when their underlying `Option<...>` is `None`.
     pub statements: ::std::vec::Vec<ChioProvenanceAttestationBundleStatementsItem>,
 }
 impl ::std::convert::From<&ChioProvenanceAttestationBundle>
@@ -15315,13 +15315,13 @@ impl<'de> ::serde::Deserialize<'de> for ChioProvenanceAttestationBundleChainId {
             })
     }
 }
-///Canonical evidence class Chio resolved across the bundle as a whole. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314), which uses `serde(rename_all = snake_case)`. The bundle's class is the floor across its statements: a single `asserted` statement holds the bundle to `asserted` regardless of how many `verified` statements accompany it.
+///Canonical evidence class Chio resolved across the bundle as a whole. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`, which uses `serde(rename_all = snake_case)`. The bundle's class is the floor across its statements: a single `asserted` statement holds the bundle to `asserted` regardless of how many `verified` statements accompany it.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Canonical evidence class Chio resolved across the bundle as a whole. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314), which uses `serde(rename_all = snake_case)`. The bundle's class is the floor across its statements: a single `asserted` statement holds the bundle to `asserted` regardless of how many `verified` statements accompany it.",
+///  "description": "Canonical evidence class Chio resolved across the bundle as a whole. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`, which uses `serde(rename_all = snake_case)`. The bundle's class is the floor across its statements: a single `asserted` statement holds the bundle to `asserted` regardless of how many `verified` statements accompany it.",
 ///  "type": "string",
 ///  "enum": [
 ///    "asserted",
@@ -15531,7 +15531,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioProvenanceAttestationBundleIssuer {
 ///      "minLength": 1
 ///    },
 ///    "tier": {
-///      "description": "Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in capability.rs (lines 234-240).",
+///      "description": "Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in `crates/core/chio-core-types`.",
 ///      "type": "string",
 ///      "enum": [
 ///        "none",
@@ -15546,7 +15546,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioProvenanceAttestationBundleIssuer {
 ///      "minLength": 1
 ///    },
 ///    "workload_identity": {
-///      "description": "Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in capability.rs (lines 290-304) which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity. Identical in shape to `chio-wire/v1/trust-control/attestation.schema.json#/properties/workload_identity`.",
+///      "description": "Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in `crates/core/chio-core-types` which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity. Identical in shape to `chio-wire/v1/trust-control/attestation.schema.json#/properties/workload_identity`.",
 ///      "type": "object",
 ///      "required": [
 ///        "credentialKind",
@@ -15557,7 +15557,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioProvenanceAttestationBundleIssuer {
 ///      ],
 ///      "properties": {
 ///        "credentialKind": {
-///          "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` (lines 280-288) which uses `serde(rename_all = snake_case)`.",
+///          "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.",
 ///          "type": "string",
 ///          "enum": [
 ///            "uri",
@@ -15570,7 +15570,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioProvenanceAttestationBundleIssuer {
 ///          "type": "string"
 ///        },
 ///        "scheme": {
-///          "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278).",
+///          "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` in `crates/core/chio-core-types`.",
 ///          "type": "string",
 ///          "enum": [
 ///            "spiffe"
@@ -15613,7 +15613,7 @@ pub struct ChioProvenanceAttestationBundleStatementsItem {
     >,
     ///Schema or format identifier of the upstream attestation statement (for example `azure-maa-jwt`, `aws-nitro-cose-sign1`, `google-confidential-vm-jwt`).
     pub schema: ChioProvenanceAttestationBundleStatementsItemSchema,
-    ///Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in capability.rs (lines 234-240).
+    ///Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in `crates/core/chio-core-types`.
     pub tier: ChioProvenanceAttestationBundleStatementsItemTier,
     ///Attestation verifier or relying party that accepted the evidence.
     pub verifier: ChioProvenanceAttestationBundleStatementsItemVerifier,
@@ -15892,13 +15892,13 @@ for ChioProvenanceAttestationBundleStatementsItemSchema {
             })
     }
 }
-///Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in capability.rs (lines 234-240).
+///Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in `crates/core/chio-core-types`.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in capability.rs (lines 234-240).",
+///  "description": "Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in `crates/core/chio-core-types`.",
 ///  "type": "string",
 ///  "enum": [
 ///    "none",
@@ -16071,13 +16071,13 @@ for ChioProvenanceAttestationBundleStatementsItemVerifier {
             })
     }
 }
-///Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in capability.rs (lines 290-304) which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity. Identical in shape to `chio-wire/v1/trust-control/attestation.schema.json#/properties/workload_identity`.
+///Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in `crates/core/chio-core-types` which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity. Identical in shape to `chio-wire/v1/trust-control/attestation.schema.json#/properties/workload_identity`.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in capability.rs (lines 290-304) which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity. Identical in shape to `chio-wire/v1/trust-control/attestation.schema.json#/properties/workload_identity`.",
+///  "description": "Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in `crates/core/chio-core-types` which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity. Identical in shape to `chio-wire/v1/trust-control/attestation.schema.json#/properties/workload_identity`.",
 ///  "type": "object",
 ///  "required": [
 ///    "credentialKind",
@@ -16088,7 +16088,7 @@ for ChioProvenanceAttestationBundleStatementsItemVerifier {
 ///  ],
 ///  "properties": {
 ///    "credentialKind": {
-///      "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` (lines 280-288) which uses `serde(rename_all = snake_case)`.",
+///      "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.",
 ///      "type": "string",
 ///      "enum": [
 ///        "uri",
@@ -16101,7 +16101,7 @@ for ChioProvenanceAttestationBundleStatementsItemVerifier {
 ///      "type": "string"
 ///    },
 ///    "scheme": {
-///      "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278).",
+///      "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` in `crates/core/chio-core-types`.",
 ///      "type": "string",
 ///      "enum": [
 ///        "spiffe"
@@ -16125,12 +16125,12 @@ for ChioProvenanceAttestationBundleStatementsItemVerifier {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ChioProvenanceAttestationBundleStatementsItemWorkloadIdentity {
-    ///Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` (lines 280-288) which uses `serde(rename_all = snake_case)`.
+    ///Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.
     #[serde(rename = "credentialKind")]
     pub credential_kind: ChioProvenanceAttestationBundleStatementsItemWorkloadIdentityCredentialKind,
     ///Canonical workload path within the trust domain.
     pub path: ::std::string::String,
-    ///Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278).
+    ///Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` in `crates/core/chio-core-types`.
     pub scheme: ChioProvenanceAttestationBundleStatementsItemWorkloadIdentityScheme,
     ///Stable trust domain resolved from the identifier.
     #[serde(rename = "trustDomain")]
@@ -16146,13 +16146,13 @@ for ChioProvenanceAttestationBundleStatementsItemWorkloadIdentity {
         value.clone()
     }
 }
-///Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` (lines 280-288) which uses `serde(rename_all = snake_case)`.
+///Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` (lines 280-288) which uses `serde(rename_all = snake_case)`.",
+///  "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.",
 ///  "type": "string",
 ///  "enum": [
 ///    "uri",
@@ -16241,13 +16241,13 @@ for ChioProvenanceAttestationBundleStatementsItemWorkloadIdentityCredentialKind 
         value.parse()
     }
 }
-///Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278).
+///Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` in `crates/core/chio-core-types`.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278).",
+///  "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` in `crates/core/chio-core-types`.",
 ///  "type": "string",
 ///  "enum": [
 ///    "spiffe"
@@ -16514,7 +16514,7 @@ for ChioProvenanceAttestationBundleStatementsItemWorkloadIdentityUri {
             })
     }
 }
-///One delegated call-chain context bound into a governed Chio request. The context names the stable `chainId` that identifies the delegated transaction, the upstream `parentRequestId` inside the trusted domain, the optional `parentReceiptId` when the upstream parent receipt is already available, the root `originSubject` that started the chain, and the immediate `delegatorSubject` that handed control to the current subject. Chio binds this shape into governed transactions and promotes it through the provenance evidence classes (`asserted`, `observed`, `verified`) defined in `crates/core/chio-core-types/src/capability.rs` (`GovernedProvenanceEvidenceClass`, lines 1303-1314). Mirrors the `GovernedCallChainContext` struct in `crates/core/chio-core-types/src/capability.rs` (lines 952-967). The struct uses `serde(rename_all = camelCase)` so wire field names are camelCase.
+///One delegated call-chain context bound into a governed Chio request. The context names the stable `chainId` that identifies the delegated transaction, the upstream `parentRequestId` inside the trusted domain, the optional `parentReceiptId` when the upstream parent receipt is already available, the root `originSubject` that started the chain, and the immediate `delegatorSubject` that handed control to the current subject. Chio binds this shape into governed transactions and promotes it through the provenance evidence classes (`asserted`, `observed`, `verified`) defined in `crates/core/chio-core-types` (`GovernedProvenanceEvidenceClass`). Mirrors the `GovernedCallChainContext` struct in `crates/core/chio-core-types`. The struct uses `serde(rename_all = camelCase)` so wire field names are camelCase.
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -16522,7 +16522,7 @@ for ChioProvenanceAttestationBundleStatementsItemWorkloadIdentityUri {
 ///{
 ///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/provenance/context/v1",
 ///  "title": "Chio Provenance Call-Chain Context",
-///  "description": "One delegated call-chain context bound into a governed Chio request. The context names the stable `chainId` that identifies the delegated transaction, the upstream `parentRequestId` inside the trusted domain, the optional `parentReceiptId` when the upstream parent receipt is already available, the root `originSubject` that started the chain, and the immediate `delegatorSubject` that handed control to the current subject. Chio binds this shape into governed transactions and promotes it through the provenance evidence classes (`asserted`, `observed`, `verified`) defined in `crates/core/chio-core-types/src/capability.rs` (`GovernedProvenanceEvidenceClass`, lines 1303-1314). Mirrors the `GovernedCallChainContext` struct in `crates/core/chio-core-types/src/capability.rs` (lines 952-967). The struct uses `serde(rename_all = camelCase)` so wire field names are camelCase.",
+///  "description": "One delegated call-chain context bound into a governed Chio request. The context names the stable `chainId` that identifies the delegated transaction, the upstream `parentRequestId` inside the trusted domain, the optional `parentReceiptId` when the upstream parent receipt is already available, the root `originSubject` that started the chain, and the immediate `delegatorSubject` that handed control to the current subject. Chio binds this shape into governed transactions and promotes it through the provenance evidence classes (`asserted`, `observed`, `verified`) defined in `crates/core/chio-core-types` (`GovernedProvenanceEvidenceClass`). Mirrors the `GovernedCallChainContext` struct in `crates/core/chio-core-types`. The struct uses `serde(rename_all = camelCase)` so wire field names are camelCase.",
 ///  "type": "object",
 ///  "required": [
 ///    "chainId",
@@ -17485,7 +17485,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioProvenanceStampRequestId {
 ///      "minLength": 1
 ///    },
 ///    "evidenceClass": {
-///      "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.",
+///      "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.",
 ///      "type": "string",
 ///      "enum": [
 ///        "asserted",
@@ -17512,7 +17512,7 @@ impl<'de> ::serde::Deserialize<'de> for ChioProvenanceStampRequestId {
 ///      "minimum": 0.0
 ///    },
 ///    "requestId": {
-///      "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).",
+///      "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.",
 ///      "type": "string",
 ///      "minLength": 1
 ///    },
@@ -17597,7 +17597,7 @@ for ChioProvenanceVerdictLink {
 ///          "minLength": 1
 ///        },
 ///        "evidenceClass": {
-///          "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.",
+///          "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.",
 ///          "type": "string",
 ///          "enum": [
 ///            "asserted",
@@ -17624,7 +17624,7 @@ for ChioProvenanceVerdictLink {
 ///          "minimum": 0.0
 ///        },
 ///        "requestId": {
-///          "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).",
+///          "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.",
 ///          "type": "string",
 ///          "minLength": 1
 ///        },
@@ -17768,7 +17768,7 @@ impl ::std::convert::From<&Self> for ChioProvenanceVerdictLinkVariant0 {
 ///      "minLength": 1
 ///    },
 ///    "evidenceClass": {
-///      "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.",
+///      "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.",
 ///      "type": "string",
 ///      "enum": [
 ///        "asserted",
@@ -17795,7 +17795,7 @@ impl ::std::convert::From<&Self> for ChioProvenanceVerdictLinkVariant0 {
 ///      "minimum": 0.0
 ///    },
 ///    "requestId": {
-///      "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).",
+///      "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.",
 ///      "type": "string",
 ///      "minLength": 1
 ///    },
@@ -17816,7 +17816,7 @@ pub struct ChioProvenanceVerdictLinkVariant1Subtype0 {
     ///Stable identifier of the governed call chain this verdict ties back to. Matches the `chainId` carried by `provenance/context.schema.json` and `provenance/attestation-bundle.schema.json`.
     #[serde(rename = "chainId")]
     pub chain_id: ChioProvenanceVerdictLinkVariant1Subtype0ChainId,
-    ///Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.
+    ///Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.
     #[serde(
         rename = "evidenceClass",
         default,
@@ -17841,7 +17841,7 @@ pub struct ChioProvenanceVerdictLinkVariant1Subtype0 {
     ///Unix timestamp (seconds) at which the policy engine rendered this verdict. Monotonic with respect to receipts emitted from the same kernel.
     #[serde(rename = "renderedAt")]
     pub rendered_at: u64,
-    ///Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).
+    ///Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.
     #[serde(rename = "requestId")]
     pub request_id: ChioProvenanceVerdictLinkVariant1Subtype0RequestId,
     pub verdict: ChioProvenanceVerdictLinkVariant1Subtype0Verdict,
@@ -17935,13 +17935,13 @@ for ChioProvenanceVerdictLinkVariant1Subtype0ChainId {
             })
     }
 }
-///Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.
+///Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.",
+///  "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.",
 ///  "type": "string",
 ///  "enum": [
 ///    "asserted",
@@ -18110,13 +18110,13 @@ for ChioProvenanceVerdictLinkVariant1Subtype0ReceiptId {
             })
     }
 }
-///Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).
+///Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).",
+///  "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.",
 ///  "type": "string",
 ///  "minLength": 1
 ///}
@@ -18294,7 +18294,7 @@ for ChioProvenanceVerdictLinkVariant1Subtype0Verdict {
 ///      "minLength": 1
 ///    },
 ///    "evidenceClass": {
-///      "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.",
+///      "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.",
 ///      "type": "string",
 ///      "enum": [
 ///        "asserted",
@@ -18321,7 +18321,7 @@ for ChioProvenanceVerdictLinkVariant1Subtype0Verdict {
 ///      "minimum": 0.0
 ///    },
 ///    "requestId": {
-///      "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).",
+///      "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.",
 ///      "type": "string",
 ///      "minLength": 1
 ///    },
@@ -18342,7 +18342,7 @@ pub struct ChioProvenanceVerdictLinkVariant1Subtype1 {
     ///Stable identifier of the governed call chain this verdict ties back to. Matches the `chainId` carried by `provenance/context.schema.json` and `provenance/attestation-bundle.schema.json`.
     #[serde(rename = "chainId")]
     pub chain_id: ChioProvenanceVerdictLinkVariant1Subtype1ChainId,
-    ///Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.
+    ///Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.
     #[serde(
         rename = "evidenceClass",
         default,
@@ -18367,7 +18367,7 @@ pub struct ChioProvenanceVerdictLinkVariant1Subtype1 {
     ///Unix timestamp (seconds) at which the policy engine rendered this verdict. Monotonic with respect to receipts emitted from the same kernel.
     #[serde(rename = "renderedAt")]
     pub rendered_at: u64,
-    ///Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).
+    ///Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.
     #[serde(rename = "requestId")]
     pub request_id: ChioProvenanceVerdictLinkVariant1Subtype1RequestId,
     pub verdict: ChioProvenanceVerdictLinkVariant1Subtype1Verdict,
@@ -18461,13 +18461,13 @@ for ChioProvenanceVerdictLinkVariant1Subtype1ChainId {
             })
     }
 }
-///Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.
+///Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.",
+///  "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.",
 ///  "type": "string",
 ///  "enum": [
 ///    "asserted",
@@ -18636,13 +18636,13 @@ for ChioProvenanceVerdictLinkVariant1Subtype1ReceiptId {
             })
     }
 }
-///Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).
+///Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).",
+///  "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.",
 ///  "type": "string",
 ///  "minLength": 1
 ///}
@@ -18820,7 +18820,7 @@ for ChioProvenanceVerdictLinkVariant1Subtype1Verdict {
 ///          "minLength": 1
 ///        },
 ///        "evidenceClass": {
-///          "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.",
+///          "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.",
 ///          "type": "string",
 ///          "enum": [
 ///            "asserted",
@@ -18847,7 +18847,7 @@ for ChioProvenanceVerdictLinkVariant1Subtype1Verdict {
 ///          "minimum": 0.0
 ///        },
 ///        "requestId": {
-///          "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).",
+///          "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.",
 ///          "type": "string",
 ///          "minLength": 1
 ///        },
@@ -18991,7 +18991,7 @@ impl ::std::convert::From<&Self> for ChioProvenanceVerdictLinkVariant2 {
 ///          "minLength": 1
 ///        },
 ///        "evidenceClass": {
-///          "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.",
+///          "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.",
 ///          "type": "string",
 ///          "enum": [
 ///            "asserted",
@@ -19018,7 +19018,7 @@ impl ::std::convert::From<&Self> for ChioProvenanceVerdictLinkVariant2 {
 ///          "minimum": 0.0
 ///        },
 ///        "requestId": {
-///          "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).",
+///          "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.",
 ///          "type": "string",
 ///          "minLength": 1
 ///        },
@@ -24620,7 +24620,7 @@ for ChioTrustControlLeaseTerminationSuccessorLeaderUrl {
             })
     }
 }
-///One normalized runtime attestation evidence statement carried alongside trust-control authority operations and governed capability issuance. The shape names the upstream attestation schema, the verifier or relying party that accepted the evidence, the normalized assurance tier Chio resolved, the evidence's issued-at and expires-at bounds, and a stable SHA-256 digest of the underlying attestation payload. Optional fields preserve a runtime or workload identifier and a normalized SPIFFE workload identity when the verifier exposed one. Mirrors the `RuntimeAttestationEvidence` struct in `crates/core/chio-core-types/src/capability.rs` (lines 484-507). The struct does not carry `serde(rename_all)`, so wire field names are snake_case. Verifier adapters and trust-control issuance call sites in `crates/platform/chio-control-plane/src/attestation.rs` populate this shape after running the per-vendor verifier bridges (Azure MAA, AWS Nitro, Google Confidential VM).
+///One normalized runtime attestation evidence statement carried alongside trust-control authority operations and governed capability issuance. The shape names the upstream attestation schema, the verifier or relying party that accepted the evidence, the normalized assurance tier Chio resolved, the evidence's issued-at and expires-at bounds, and a stable SHA-256 digest of the underlying attestation payload. Optional fields preserve a runtime or workload identifier and a normalized SPIFFE workload identity when the verifier exposed one. Mirrors the `RuntimeAttestationEvidence` struct in `crates/core/chio-core-types`. The struct does not carry `serde(rename_all)`, so wire field names are snake_case. Verifier adapters and trust-control issuance call sites in `crates/platform/chio-control-plane` populate this shape after running the per-vendor verifier bridges (Azure MAA, AWS Nitro, Google Confidential VM).
 ///
 /// <details><summary>JSON schema</summary>
 ///
@@ -24628,7 +24628,7 @@ for ChioTrustControlLeaseTerminationSuccessorLeaderUrl {
 ///{
 ///  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/trust-control/attestation/v1",
 ///  "title": "Chio Trust-Control Runtime Attestation Evidence",
-///  "description": "One normalized runtime attestation evidence statement carried alongside trust-control authority operations and governed capability issuance. The shape names the upstream attestation schema, the verifier or relying party that accepted the evidence, the normalized assurance tier Chio resolved, the evidence's issued-at and expires-at bounds, and a stable SHA-256 digest of the underlying attestation payload. Optional fields preserve a runtime or workload identifier and a normalized SPIFFE workload identity when the verifier exposed one. Mirrors the `RuntimeAttestationEvidence` struct in `crates/core/chio-core-types/src/capability.rs` (lines 484-507). The struct does not carry `serde(rename_all)`, so wire field names are snake_case. Verifier adapters and trust-control issuance call sites in `crates/platform/chio-control-plane/src/attestation.rs` populate this shape after running the per-vendor verifier bridges (Azure MAA, AWS Nitro, Google Confidential VM).",
+///  "description": "One normalized runtime attestation evidence statement carried alongside trust-control authority operations and governed capability issuance. The shape names the upstream attestation schema, the verifier or relying party that accepted the evidence, the normalized assurance tier Chio resolved, the evidence's issued-at and expires-at bounds, and a stable SHA-256 digest of the underlying attestation payload. Optional fields preserve a runtime or workload identifier and a normalized SPIFFE workload identity when the verifier exposed one. Mirrors the `RuntimeAttestationEvidence` struct in `crates/core/chio-core-types`. The struct does not carry `serde(rename_all)`, so wire field names are snake_case. Verifier adapters and trust-control issuance call sites in `crates/platform/chio-control-plane` populate this shape after running the per-vendor verifier bridges (Azure MAA, AWS Nitro, Google Confidential VM).",
 ///  "type": "object",
 ///  "required": [
 ///    "evidence_sha256",
@@ -24668,7 +24668,7 @@ for ChioTrustControlLeaseTerminationSuccessorLeaderUrl {
 ///      "minLength": 1
 ///    },
 ///    "tier": {
-///      "description": "Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in capability.rs (lines 234-240) which uses `serde(rename_all = snake_case)`.",
+///      "description": "Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.",
 ///      "type": "string",
 ///      "enum": [
 ///        "none",
@@ -24683,7 +24683,7 @@ for ChioTrustControlLeaseTerminationSuccessorLeaderUrl {
 ///      "minLength": 1
 ///    },
 ///    "workload_identity": {
-///      "description": "Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in capability.rs (lines 290-304) which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity.",
+///      "description": "Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in `crates/core/chio-core-types` which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity.",
 ///      "type": "object",
 ///      "required": [
 ///        "credentialKind",
@@ -24694,7 +24694,7 @@ for ChioTrustControlLeaseTerminationSuccessorLeaderUrl {
 ///      ],
 ///      "properties": {
 ///        "credentialKind": {
-///          "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` (lines 280-288) which uses `serde(rename_all = snake_case)`.",
+///          "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.",
 ///          "type": "string",
 ///          "enum": [
 ///            "uri",
@@ -24707,7 +24707,7 @@ for ChioTrustControlLeaseTerminationSuccessorLeaderUrl {
 ///          "type": "string"
 ///        },
 ///        "scheme": {
-///          "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278).",
+///          "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` in `crates/core/chio-core-types`.",
 ///          "type": "string",
 ///          "enum": [
 ///            "spiffe"
@@ -24750,7 +24750,7 @@ pub struct ChioTrustControlRuntimeAttestationEvidence {
     >,
     ///Schema or format identifier of the upstream attestation statement (for example `azure-maa-jwt`, `aws-nitro-cose-sign1`, `google-confidential-vm-jwt`).
     pub schema: ChioTrustControlRuntimeAttestationEvidenceSchema,
-    ///Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in capability.rs (lines 234-240) which uses `serde(rename_all = snake_case)`.
+    ///Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.
     pub tier: ChioTrustControlRuntimeAttestationEvidenceTier,
     ///Attestation verifier or relying party that accepted the evidence.
     pub verifier: ChioTrustControlRuntimeAttestationEvidenceVerifier,
@@ -25020,13 +25020,13 @@ for ChioTrustControlRuntimeAttestationEvidenceSchema {
             })
     }
 }
-///Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in capability.rs (lines 234-240) which uses `serde(rename_all = snake_case)`.
+///Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in capability.rs (lines 234-240) which uses `serde(rename_all = snake_case)`.",
+///  "description": "Normalized assurance tier resolved from the evidence. Mirrors `RuntimeAssuranceTier` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.",
 ///  "type": "string",
 ///  "enum": [
 ///    "none",
@@ -25198,13 +25198,13 @@ for ChioTrustControlRuntimeAttestationEvidenceVerifier {
             })
     }
 }
-///Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in capability.rs (lines 290-304) which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity.
+///Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in `crates/core/chio-core-types` which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in capability.rs (lines 290-304) which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity.",
+///  "description": "Optional normalized workload identity when the upstream verifier exposed one explicitly. Mirrors `WorkloadIdentity` in `crates/core/chio-core-types` which uses `serde(rename_all = camelCase)`. Omitted when the upstream verifier did not expose a typed workload identity.",
 ///  "type": "object",
 ///  "required": [
 ///    "credentialKind",
@@ -25215,7 +25215,7 @@ for ChioTrustControlRuntimeAttestationEvidenceVerifier {
 ///  ],
 ///  "properties": {
 ///    "credentialKind": {
-///      "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` (lines 280-288) which uses `serde(rename_all = snake_case)`.",
+///      "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.",
 ///      "type": "string",
 ///      "enum": [
 ///        "uri",
@@ -25228,7 +25228,7 @@ for ChioTrustControlRuntimeAttestationEvidenceVerifier {
 ///      "type": "string"
 ///    },
 ///    "scheme": {
-///      "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278).",
+///      "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` in `crates/core/chio-core-types`.",
 ///      "type": "string",
 ///      "enum": [
 ///        "spiffe"
@@ -25252,12 +25252,12 @@ for ChioTrustControlRuntimeAttestationEvidenceVerifier {
 #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct ChioTrustControlRuntimeAttestationEvidenceWorkloadIdentity {
-    ///Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` (lines 280-288) which uses `serde(rename_all = snake_case)`.
+    ///Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.
     #[serde(rename = "credentialKind")]
     pub credential_kind: ChioTrustControlRuntimeAttestationEvidenceWorkloadIdentityCredentialKind,
     ///Canonical workload path within the trust domain.
     pub path: ::std::string::String,
-    ///Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278).
+    ///Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` in `crates/core/chio-core-types`.
     pub scheme: ChioTrustControlRuntimeAttestationEvidenceWorkloadIdentityScheme,
     ///Stable trust domain resolved from the identifier.
     #[serde(rename = "trustDomain")]
@@ -25271,13 +25271,13 @@ for ChioTrustControlRuntimeAttestationEvidenceWorkloadIdentity {
         value.clone()
     }
 }
-///Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` (lines 280-288) which uses `serde(rename_all = snake_case)`.
+///Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` (lines 280-288) which uses `serde(rename_all = snake_case)`.",
+///  "description": "Credential family that authenticated the workload. Mirrors `WorkloadCredentialKind` in `crates/core/chio-core-types` which uses `serde(rename_all = snake_case)`.",
 ///  "type": "string",
 ///  "enum": [
 ///    "uri",
@@ -25366,13 +25366,13 @@ for ChioTrustControlRuntimeAttestationEvidenceWorkloadIdentityCredentialKind {
         value.parse()
     }
 }
-///Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278).
+///Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` in `crates/core/chio-core-types`.
 ///
 /// <details><summary>JSON schema</summary>
 ///
 /// ```json
 ///{
-///  "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` (lines 273-278).",
+///  "description": "Identity scheme Chio recognized from the upstream evidence. Mirrors `WorkloadIdentityScheme` in `crates/core/chio-core-types`.",
 ///  "type": "string",
 ///  "enum": [
 ///    "spiffe"

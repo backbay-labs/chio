@@ -20,7 +20,7 @@
     "requestId": {
       "type": "string",
       "minLength": 1,
-      "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768)."
+      "description": "Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`."
     },
     "receiptId": {
       "type": "string",
@@ -48,7 +48,7 @@
     "evidenceClass": {
       "type": "string",
       "enum": ["asserted", "observed", "verified"],
-      "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph."
+      "description": "Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph."
     }
   },
   "oneOf": [

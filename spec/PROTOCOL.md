@@ -276,7 +276,7 @@ this release.
 ## 5. Capability Contract
 
 The shipped capability token is `CapabilityToken` from
-`crates/core/chio-core/src/capability.rs`.
+`crates/core/chio-core-types`.
 
 Capability tokens are schema-tagged signed artifacts. Newly issued tokens carry
 `schema: "chio.capability.v1"` in the schema-aware signing input. Load-time and

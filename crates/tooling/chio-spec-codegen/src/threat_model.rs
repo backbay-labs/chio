@@ -3,7 +3,7 @@
 //! Reads `spec/security/chio-threat-model.v1.json`, validates it against
 //! `spec/security/chio-threat-model.schema.json`, and emits one Rust test
 //! inventory file per threat ID into the configured output directory
-//! (typically `crates/chio-conformance/tests/threats/`).
+//! (typically `crates/tooling/chio-conformance/tests/threats/`).
 //!
 //! The threat-model coverage CI gate inspects the output tree and fails the
 //! build if any threat ID lacks a populated regression body.
@@ -22,7 +22,7 @@ pub const THREAT_MODEL_INPUT: &str = "spec/security/chio-threat-model.v1.json";
 pub const THREAT_MODEL_SCHEMA: &str = "spec/security/chio-threat-model.schema.json";
 
 /// Default codegen output directory for threat-stub tests.
-pub const THREAT_STUBS_OUTPUT: &str = "crates/chio-conformance/tests/threats";
+pub const THREAT_STUBS_OUTPUT: &str = "crates/tooling/chio-conformance/tests/threats";
 
 /// Threat-model document parsed from the v1 JSON. Only the fields the
 /// codegen pipeline cares about are deserialised; the rest are ignored
