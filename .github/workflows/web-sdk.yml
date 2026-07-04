@@ -100,7 +100,7 @@ jobs:
         run: npm test --prefix sdks/typescript/packages/conformance -- browser-subset.test.ts
       - name: Browser smoke
         if: matrix.target == 'browser'
-        run: bun run --filter @chio-protocol/browser build
+        run: bun run --filter @chio-protocol/browser typecheck
       - name: Workers smoke (Miniflare)
         if: matrix.target == 'workers'
         run: bun run --filter @chio-protocol/workers test:miniflare
