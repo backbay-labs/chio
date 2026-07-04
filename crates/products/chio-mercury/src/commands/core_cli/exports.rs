@@ -18,7 +18,6 @@ pub(super) fn export_supervised_live_qualification(
         MercurySupervisedLiveCapture::sample(MercurySupervisedLiveMode::Live),
     )?;
     let pilot = export_pilot_scenario(&pilot_dir, MercuryPilotScenario::gold_release_control())?;
-    let docs = reviewer_doc_refs();
 
     let qualification_report = MercurySupervisedLiveQualificationReport {
         workflow_id: supervised_live.workflow_id.clone(),
@@ -26,7 +25,6 @@ pub(super) fn export_supervised_live_qualification(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         supervised_live: supervised_live.clone(),
         pilot: pilot.clone(),
-        docs: docs.clone(),
     };
     let qualification_report_file = output.join("qualification-report.json");
     write_json_file(&qualification_report_file, &qualification_report)?;
@@ -40,7 +38,6 @@ pub(super) fn export_supervised_live_qualification(
         supervised_live_proof_package_file: supervised_live.export.proof_package_file.clone(),
         supervised_live_inquiry_package_file: supervised_live.export.inquiry_package_file.clone(),
         rollback_proof_package_file: pilot.rollback.proof_package_file.clone(),
-        docs,
     };
     write_json_file(&output.join("reviewer-package.json"), &reviewer_package)?;
 

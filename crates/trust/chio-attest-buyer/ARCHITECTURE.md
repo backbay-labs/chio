@@ -2,11 +2,11 @@
 
 ## Boundary
 
-`chio-attest-buyer` owns the public Chio buyer attestation boundary. It exposes Chio-native packet, review-package, lineage, continuation, and verification-report types so callers do not depend directly on the historical runtime verifier shapes.
+`chio-attest-buyer` owns the public Chio buyer attestation boundary. It exposes Chio-native packet, review-package, lineage, continuation, and verification-report types so callers do not depend directly on the runtime-core verifier shapes.
 
 ## Internal Surfaces
 
-The crate is a thin boundary adapter. It maps public Chio structs into the verifier backend, normalizes historical error and check codes back into the `chio_attest_buyer` namespace, and delegates full proof replay to `chio-attest-buyer-core` when hydrated proof artifacts are available.
+The crate is a thin boundary adapter. It maps public Chio structs into the verifier backend, normalizes runtime-core error and check codes back into the `chio_attest_buyer` namespace, and delegates full proof replay to `chio-attest-buyer-core` when hydrated proof artifacts are available.
 
 ## Trust Invariants
 

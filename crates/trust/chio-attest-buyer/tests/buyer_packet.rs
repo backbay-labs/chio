@@ -130,7 +130,7 @@ fn buyer_packet_without_hydrated_dsse_is_unresolved() -> Result<(), Box<dyn std:
             .checks
             .iter()
             .all(|check| !check.contains("chio_buyer_packet") && !check.contains("chio_buyer.")),
-        "Chio packet reports must not expose historical Chio check codes: {:#?}",
+        "Chio packet reports must not expose runtime-core check codes: {:#?}",
         report.checks
     );
     Ok(())
@@ -258,7 +258,7 @@ fn chio_buyer_packet_schema_emits_chio_report_schema() -> Result<(), Box<dyn std
             .checks
             .iter()
             .all(|check| !check.contains("chio_buyer_packet") && !check.contains("chio_buyer.")),
-        "Chio packet reports must not expose historical Chio check codes: {:#?}",
+        "Chio packet reports must not expose runtime-core check codes: {:#?}",
         report.checks
     );
     Ok(())

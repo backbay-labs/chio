@@ -1,5 +1,5 @@
 mod builders;
-mod doc_refs;
+mod population_configs;
 #[cfg(test)]
 mod tests;
 mod types;
@@ -15,12 +15,7 @@ pub(super) use builders::{
     write_verification_report, AssurancePackageArgs, AssuranceReviewPackageArgs,
     GovernanceReviewPackageArgs,
 };
-pub(super) use doc_refs::{
-    assurance_suite_doc_refs, assurance_suite_population_configs, broader_distribution_doc_refs,
-    controlled_adoption_doc_refs, downstream_review_doc_refs, embedded_oem_doc_refs,
-    governance_workbench_doc_refs, reference_distribution_doc_refs, release_readiness_doc_refs,
-    reviewer_doc_refs, trust_network_doc_refs,
-};
+pub(super) use population_configs::assurance_suite_population_configs;
 pub(super) use types::{
     MercuryAssuranceSuiteDecisionRecord, MercuryAssuranceSuiteExportSummary,
     MercuryAssuranceSuiteValidationReport, MercuryBroaderDistributionClaimGovernanceRules,

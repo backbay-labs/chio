@@ -51,7 +51,7 @@ BBS step projection remains limited to stable step summary fields.
 ### 2.1 Implemented slice
 
 - BBS secondary commitments over a single
-  [`ChioReceipt`](../crates/core/chio-core-types/src/receipt.rs) body.
+  [`ChioReceipt`](../crates/core/chio-core-types/src/receipt/body.rs) body.
 - BBS secondary commitments over a
   [`WorkflowReceipt`](../crates/platform/chio-workflow/src/receipt.rs) body and
   its inner `StepRecord` list.

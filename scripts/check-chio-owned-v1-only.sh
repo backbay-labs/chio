@@ -43,7 +43,6 @@ rg -n --hidden \
   --glob '!docs/adr/**' \
   --glob '!**/in-toto/**' \
   --glob '!**/runtime-trace/**' \
-  --glob '!docs/superpowers/**' \
   "$pattern" \
   crates spec sdks scripts docs formal xtask >"$tmp" || true
 
@@ -53,7 +52,6 @@ if ((${#existing_normative_roots[@]})); then
     --glob '!target/**' \
     --glob '!audits/**' \
     --glob '!docs/research/**' \
-    --glob '!docs/superpowers/**' \
     --glob '!**/node_modules/**' \
     --glob '!**/.git/**' \
     "$normative_claim_pattern" \

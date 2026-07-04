@@ -136,8 +136,7 @@ pub use second_portfolio_program_lane::{
     cmd_mercury_second_portfolio_program_export, cmd_mercury_second_portfolio_program_validate,
 };
 use selective_account_activation_support::{
-    build_selective_account_activation_profile, selective_account_activation_doc_refs,
-    MercurySelectiveAccountActivationApprovalRefresh,
+    build_selective_account_activation_profile, MercurySelectiveAccountActivationApprovalRefresh,
     MercurySelectiveAccountActivationClaimContainmentRules,
     MercurySelectiveAccountActivationCustomerHandoffBrief,
     MercurySelectiveAccountActivationDecisionRecord,

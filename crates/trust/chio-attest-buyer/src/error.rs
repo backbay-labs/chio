@@ -1,11 +1,11 @@
 use std::fmt;
 
-pub(crate) type HistoricalBuyerError = chio_runtime_core::ChioRuntimeError;
+pub(crate) type RuntimeBuyerError = chio_runtime_core::ChioRuntimeError;
 
 #[derive(Debug)]
 pub struct BuyerAttestationError {
     code: String,
-    source: HistoricalBuyerError,
+    source: RuntimeBuyerError,
 }
 
 impl BuyerAttestationError {
@@ -14,7 +14,7 @@ impl BuyerAttestationError {
         &self.code
     }
 
-    pub(crate) fn from_historical(source: HistoricalBuyerError) -> Self {
+    pub(crate) fn from_runtime(source: RuntimeBuyerError) -> Self {
         let code = chio_attest_buyer_code(source.code());
         Self { code, source }
     }
@@ -33,7 +33,7 @@ impl std::error::Error for BuyerAttestationError {
 }
 
 pub(crate) fn chio_attest_buyer_code(code: &str) -> String {
-    for (historical_prefix, chio_prefix) in [
+    for (runtime_prefix, chio_prefix) in [
         ("chio_buyer.", "chio_attest_buyer.packet."),
         ("chio_buyer_review.", "chio_attest_buyer.review."),
         ("buyer_review.", "chio_attest_buyer.review."),
@@ -44,7 +44,7 @@ pub(crate) fn chio_attest_buyer_code(code: &str) -> String {
         ("chio_buyer_packet_", "chio_attest_buyer_packet_"),
         ("buyer_packet_", "chio_attest_buyer_packet_"),
     ] {
-        if let Some(suffix) = code.strip_prefix(historical_prefix) {
+        if let Some(suffix) = code.strip_prefix(runtime_prefix) {
             return format!("{chio_prefix}{suffix}");
         }
     }
@@ -52,14 +52,14 @@ pub(crate) fn chio_attest_buyer_code(code: &str) -> String {
 }
 
 pub(crate) fn json_error(label: &str, error: impl fmt::Display) -> BuyerAttestationError {
-    BuyerAttestationError::from_historical(HistoricalBuyerError::Json(format!("{label}: {error}")))
+    BuyerAttestationError::from_runtime(RuntimeBuyerError::Json(format!("{label}: {error}")))
 }
 
 pub(crate) fn boundary_rejection(
     code: &'static str,
     detail: impl Into<String>,
 ) -> BuyerAttestationError {
-    BuyerAttestationError::from_historical(HistoricalBuyerError::Rejected {
+    BuyerAttestationError::from_runtime(RuntimeBuyerError::Rejected {
         code,
         detail: detail.into(),
     })

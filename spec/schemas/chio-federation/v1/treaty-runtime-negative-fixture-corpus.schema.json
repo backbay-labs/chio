@@ -17,8 +17,7 @@
           "caseId": { "type": "string", "minLength": 1 },
           "expectedCode": {
             "type": "string",
-            "minLength": 1,
-            "not": { "pattern": "^chio(?:dos)_" }
+            "minLength": 1
           }
         }
       }

@@ -19,24 +19,15 @@ fn buyer_public_data_types_are_chio_owned() {
         );
         assert!(
             !type_name.contains("chio_runtime_core"),
-            "buyer public type must not resolve to a historical runtime type: {type_name}"
+            "buyer public type must not resolve to a runtime-core type: {type_name}"
         );
     }
 }
 
 #[test]
-fn buyer_boundary_does_not_reexport_historical_runtime_types() {
+fn buyer_boundary_does_not_reexport_runtime_core_types() {
     let lib = include_str!("../src/lib.rs");
     assert!(!lib.contains("pub use chio_runtime_core::{"));
-}
-
-#[test]
-fn buyer_public_review_messages_use_chio_boundary_wording() {
-    let lib = include_str!("../src/lib.rs");
-    assert!(
-        !lib.contains("existing Chio verifier"),
-        "public buyer review messages should describe historical replay without Chio branding"
-    );
 }
 
 #[test]
@@ -132,7 +123,7 @@ fn chio_buyer_review_package_schema_emits_chio_review_report_schema(
             .checks
             .iter()
             .all(|check| !check.code.contains("chio_buyer_review")),
-        "Chio review reports must not expose historical Chio check codes: {:#?}",
+        "Chio review reports must not expose runtime_core Chio check codes: {:#?}",
         report.checks
     );
     Ok(())

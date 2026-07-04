@@ -6,7 +6,7 @@
 |-------|-------|
 | Regulation | Colorado Senate Bill 24-205, "Consumer Protections for Artificial Intelligence" |
 | Effective Date | February 1, 2026 |
-| Chio Profile | Current v1-only pre-release profile; draft originally tracked under internal phase 9 |
+| Chio Profile | Current v1-only pre-release profile |
 | Document Date | 2026-03-22 |
 | Filing Deadline | June 30, 2026 |
 | Maintained by | Chio Protocol Team |
@@ -19,7 +19,7 @@ Chio provides a cryptographically-attested tool invocation infrastructure design
 
 Colorado SB 24-205 imposes obligations on developers and deployers of high-risk AI systems to maintain verifiable records of AI system outputs and to disclose the capabilities and material limitations of deployed AI systems. Chio satisfies the record-keeping obligations through its configurable `RetentionConfig` on `KernelConfig`: operators may set `retention_days` (default 90) and `max_size_bytes` (default 10 GB) to control how long live receipts are retained before they are archived to a separate SQLite file. Archived receipts remain verifiable against stored Merkle checkpoint roots in the archive database -- satisfying the requirement that records remain verifiable after the retention period.
 
-Transparency obligations are satisfied through the `ToolManifest` format: each tool server publishes a signed manifest with human-readable descriptions and parameter schemas for every tool it exposes. The DPoP (Demonstration of Proof-of-Possession) module in Phase 9 adds per-invocation cryptographic binding between the invoking agent's keypair and each specific tool call, providing proof of possession for every agent action. Budget accountability for monetary grants is captured in `FinancialReceiptMetadata` attached to every allow or deny receipt involving a monetary `ToolGrant`.
+Transparency obligations are satisfied through the `ToolManifest` format: each tool server publishes a signed manifest with human-readable descriptions and parameter schemas for every tool it exposes. The DPoP (Demonstration of Proof-of-Possession) module adds per-invocation cryptographic binding between the invoking agent's keypair and each specific tool call, providing proof of possession for every agent action. Budget accountability for monetary grants is captured in `FinancialReceiptMetadata` attached to every allow or deny receipt involving a monetary `ToolGrant`.
 
 ---
 

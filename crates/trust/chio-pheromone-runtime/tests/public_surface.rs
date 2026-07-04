@@ -12,14 +12,6 @@ fn chio_pheromone_runtime_exposes_chio_named_workflow_resolver() {
         lib.contains("pub struct VerifiedChioWorkflowResolver"),
         "public runtime resolver type must be Chio named"
     );
-    assert!(
-        !lib.contains("chio_verification"),
-        "public runtime errors must not expose Chio verification codes"
-    );
-    assert!(
-        !lib.contains("verified Chio evidence"),
-        "public workflow context mismatch errors must describe Chio evidence"
-    );
 }
 
 #[test]

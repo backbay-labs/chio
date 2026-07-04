@@ -277,8 +277,8 @@ fn stage1_allow_classical_accepts_v318_bundle_byte_identically() {
 #[test]
 fn stage2_allow_hybrid_accepts_both_classical_and_hybrid_bundles() {
     // Stage 2: operator flips the floor to `allow_hybrid` and rolls in
-    // the initial ML-DSA-65 seed. New bundles are hybrid; classical
-    // classical bundles are still accepted (the migration window).
+    // the initial ML-DSA-65 seed. New bundles are hybrid; classical bundles
+    // are still accepted (the migration window).
     let hybrid = build_hybrid_backend(&stage2_pq_seed());
     let body = migration_body(hybrid.public_key());
     let hybrid_bundle = ChioReceipt::sign_with_backend(body, &hybrid).unwrap();

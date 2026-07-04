@@ -41,7 +41,7 @@ fn runtime_admission_hook_boundary_is_chio_owned() {
 }
 
 #[test]
-fn runtime_boundary_does_not_wildcard_reexport_historical_core() {
+fn runtime_boundary_does_not_wildcard_reexport_runtime_core() {
     let lib = include_str!("../src/lib.rs");
 
     assert!(!lib.contains("pub use chio_runtime_core::*"));
@@ -128,7 +128,7 @@ fn runtime_provider_bindings_from_json_revalidates_public_payloads(
 }
 
 #[test]
-fn runtime_cli_helper_reexports_are_not_historical_error_reexports() {
+fn runtime_cli_helper_reexports_are_not_runtime_core_reexports() {
     let lib = include_str!("../src/lib.rs");
     for helper in [
         "runtime_admission_profile_from_json",

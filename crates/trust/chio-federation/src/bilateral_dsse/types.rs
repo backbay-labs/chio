@@ -29,7 +29,7 @@ pub const PREDICATE_BODY_SCHEMA: &str = PREDICATE_TYPE_BILATERAL;
 /// Fixed prefix tag of the DSSE Pre-Authentication Encoding (DSSE v1).
 pub(super) const PAE_PREFIX: &str = "DSSEv1";
 
-/// Historical profile identifier for the Chio bilateral DSSE signature-slice.
+/// Out-of-band profile identifier for the Chio bilateral DSSE signature-slice.
 ///
 /// Standard DSSE envelopes do not carry a top-level `schema` member. This
 /// value is retained only for callers that need an out-of-band profile label;

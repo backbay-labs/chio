@@ -119,7 +119,7 @@ fn shared_canonical_bytes_match_classical_signing_path() {
     // into `ChioReceiptSigningBody`, canonicalize). The bare body
     // bytes are NOT what either path signs; the wrapper is.
     let wrapper_bytes = canonical_signing_wrapper_bytes(&body);
-    let legacy_receipt =
+    let classical_receipt =
         sign_receipt_body_with_backend(body.clone(), &backend, FIXTURE_CANONICAL_CONTENT).unwrap();
 
     // New path: consume the SharedCanonicalBytes newtype.
@@ -141,8 +141,8 @@ fn shared_canonical_bytes_match_classical_signing_path() {
     // are deterministic per RFC 8032).
     assert_eq!(
         canonical_json_bytes(&receipt).unwrap(),
-        canonical_json_bytes(&legacy_receipt).unwrap(),
-        "hybrid-canonical receipt envelope drifted from legacy receipt"
+        canonical_json_bytes(&classical_receipt).unwrap(),
+        "hybrid-canonical receipt envelope drifted from classical receipt"
     );
     assert_eq!(receipt.signature.algorithm(), SigningAlgorithm::Ed25519);
 

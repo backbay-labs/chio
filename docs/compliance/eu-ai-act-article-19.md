@@ -6,7 +6,7 @@
 |-------|-------|
 | Regulation | EU AI Act, Regulation (EU) 2024/1689 |
 | Scope | Article 19: Automatically generated logs; Annex IV: Technical documentation; Annex VIII: EU database registration |
-| Chio Profile | Current v1-only pre-release profile; draft originally tracked under internal phase 9 |
+| Chio Profile | Current v1-only pre-release profile |
 | Document Date | 2026-03-22 |
 | Filing Deadline | August 2, 2026 |
 | Maintained by | Chio Protocol Team |

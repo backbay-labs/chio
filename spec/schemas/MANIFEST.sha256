@@ -1,4 +1,4 @@
-6901410548d4634c17b48e70254ced4069eb5329fe6bae8e49c156584a562ba4  spec/schemas/MANIFEST.sha256
+8cfbb871daa24416e5718203d8fd4240893203e44ecb0ca661058b92a8923aca  spec/schemas/MANIFEST.sha256
 59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03  spec/schemas/VERSION
 e90c7bc3c555c335559650c71f7fda1e3c13d134a5ff8ceaa0041000536c2ea9  spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json
 1cd24132ad8f98fad89bb62aa756304c2dee0b51aacd69c922e0f786dce2abec  spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json
@@ -57,7 +57,7 @@ a6b4ef3143e54236e64897f47d883a08c7e43517a7e742e14bf68bb11496c126  spec/schemas/c
 ab68cfe41cda34d0364662f729178021b9ccb0976598e402298a23265a25160b  spec/schemas/chio-federation/v1/revocation-checkpoint.schema.json
 ab4b1991f907ff0963fdf5617a27c497ac1455512ee563c3ede96535b0fe66c6  spec/schemas/chio-federation/v1/revocation-publication-request.schema.json
 5c53aab1c56fc11da61e17679506b02be8a51af60f20c6117153200556011e31  spec/schemas/chio-federation/v1/treaty-negative-fixture-corpus.schema.json
-b5e81fcc7a15fa00bb608aa2cb39ab10b897dbaf8a648f4082ad9560bb3187b8  spec/schemas/chio-federation/v1/treaty-runtime-negative-fixture-corpus.schema.json
+a86a3d95260eb73000977b85db001239620138e99879a91ef2f84a48898d1637  spec/schemas/chio-federation/v1/treaty-runtime-negative-fixture-corpus.schema.json
 a090c94daf60128bfbb637c141d4c6eb97f6d7dabca256ed2fcaeeea1a5ad0b1  spec/schemas/chio-federation/v1/treaty-scope.schema.json
 d3cd392ecaca10668edd360b7ce1e5479f2bfab784f63499879914dd876524e8  spec/schemas/chio-federation/v1/verification-context.schema.json
 fb33f0a18894dc039ea4a2d71c01469e9ef5a691f850235f32797cdfc99cfb9e  spec/schemas/chio-federation/v1/verifier-trust-bundle.schema.json
