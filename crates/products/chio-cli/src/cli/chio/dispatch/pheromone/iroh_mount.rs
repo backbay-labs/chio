@@ -303,6 +303,14 @@ fn transport_bundle_trust(
     // Honor the trusted-issuer minVersion as the rollback floor. Without a rotation
     // state the expected predecessor is None (genesis chaining); with one, the
     // explicit floor takes precedence but can never fall below the issuer minVersion.
+    //
+    // minVersion is INCLUSIVE (the HTTP peer-directory loader accepts version ==
+    // minVersion via `version < min_version`), but `verify_bundle` treats
+    // `version_floor` as EXCLUSIVE (`version <= version_floor` rejects). Map the
+    // inclusive minimum onto the exclusive floor with `saturating_sub(1)` so a
+    // bundle exactly AT minVersion is accepted and one below it is rejected, in
+    // lockstep with the HTTP loader.
+    let inclusive_min_as_floor = trusted_min_version.saturating_sub(1);
     let (version_floor, expected_previous_version_sha256) = match transport_directory_state {
         Some(state_path) => {
             let state_json =
@@ -314,11 +322,11 @@ fn transport_bundle_trust(
                     ))
                 })?;
             (
-                state.version_floor.max(trusted_min_version),
+                state.version_floor.max(inclusive_min_as_floor),
                 state.expected_previous_version_sha256,
             )
         }
-        None => (trusted_min_version, None),
+        None => (inclusive_min_as_floor, None),
     };
     Ok(TransportDirectoryBundleTrust {
         issuers,
@@ -914,6 +922,48 @@ mod tests {
             inputs.directory.version(),
             6,
             "the accepted directory must be the above-floor bundle"
+        );
+
+        // Boundary: minVersion is INCLUSIVE, so a bundle EXACTLY at minVersion (5)
+        // must be accepted (the exclusive `version_floor` maps to minVersion - 1).
+        let (at_floor_json, _issuer) = signed_bundle_json("did:chio:bob", 24, 5, None);
+        std::fs::write(&bundle_path, &at_floor_json).unwrap();
+        let at_floor = load_iroh_serve_inputs(
+            true,
+            Some(&bundle_path),
+            None,
+            Some(&issuers_path),
+            Some(&key_path),
+            "0.0.0.0:0",
+            &[],
+            "pheromone",
+            NOW,
+        )
+        .expect("a bundle exactly at the minVersion floor loads")
+        .expect("iroh enabled must produce serve inputs");
+        assert_eq!(
+            at_floor.directory.version(),
+            5,
+            "a bundle at minVersion must be accepted (inclusive floor)"
+        );
+
+        // Boundary: one BELOW minVersion (4) must still be rejected fail-closed.
+        let (below_floor_json, _issuer) = signed_bundle_json("did:chio:bob", 24, 4, None);
+        std::fs::write(&bundle_path, &below_floor_json).unwrap();
+        let below_floor = load_iroh_serve_inputs(
+            true,
+            Some(&bundle_path),
+            None,
+            Some(&issuers_path),
+            Some(&key_path),
+            "0.0.0.0:0",
+            &[],
+            "pheromone",
+            NOW,
+        );
+        assert!(
+            below_floor.is_err(),
+            "a bundle one below minVersion must be rejected"
         );
     }
 
