@@ -11,6 +11,7 @@ use chio_federation::pheromone_gossip::PheromoneGossipBatch;
 use chio_pheromone_runtime::PheromoneReceiveReport;
 use rusqlite::params;
 use rusqlite::Connection;
+use rusqlite::OptionalExtension;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -755,6 +756,39 @@ impl SqlitePheromoneRelayStore {
             inserted: inserted > 0,
         })
     }
+
+    /// Return the previously recorded inbox report for `(sender_kernel_id, nonce)`,
+    /// or `None` if this batch has not been admitted yet.
+    ///
+    /// This is the read half of the idempotent inbox that [`record_inbox`] writes.
+    /// A store-and-forward receiver consults it BEFORE re-running the receiver on a
+    /// redelivery: an already-admitted batch returns its original verdict verbatim
+    /// instead of re-entering the runtime replay window (which would otherwise
+    /// reject the already-accepted deposits and fail a batch the peer already has).
+    ///
+    /// [`record_inbox`]: Self::record_inbox
+    pub fn lookup_inbox_report(
+        &self,
+        sender_kernel_id: &str,
+        nonce: &str,
+    ) -> Result<Option<PheromoneReceiveReport>, PheromoneRelayError> {
+        let conn = self.conn.lock()?;
+        let report_json: Option<String> = conn
+            .query_row(
+                r#"
+                SELECT report_json
+                FROM chio_pheromone_relay_inbox
+                WHERE sender_kernel_id = ?1 AND nonce = ?2
+                "#,
+                params![sender_kernel_id, nonce],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        match report_json {
+            Some(json) => Ok(Some(serde_json::from_str(&json)?)),
+            None => Ok(None),
+        }
+    }
 }
 
 impl PheromoneRelayStore for SqlitePheromoneRelayStore {
@@ -857,4 +891,70 @@ pub(crate) fn ensure_outbox_queued_column(conn: &Connection) -> Result<(), Phero
         [],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod inbox_lookup_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use super::*;
+    use chio_federation::pheromone_gossip::PHEROMONE_GOSSIP_BATCH_SCHEMA;
+    use chio_pheromone_runtime::PheromoneBatchOutcome;
+
+    fn sample_batch() -> PheromoneGossipBatch {
+        PheromoneGossipBatch {
+            schema: PHEROMONE_GOSSIP_BATCH_SCHEMA.to_string(),
+            recipient_kernel_id: "did:chio:recipient".to_string(),
+            treaty_id: "treaty:inbox-lookup".to_string(),
+            frames: Vec::new(),
+            flushed_at_unix_ms: 4_000_000,
+        }
+    }
+
+    fn sample_report() -> PheromoneReceiveReport {
+        PheromoneReceiveReport {
+            schema: "chio.pheromone-receive-report.v1".to_string(),
+            accepted: true,
+            batch_outcome: PheromoneBatchOutcome::Accepted,
+            accepted_frame_count: 0,
+            rejected_frame_count: 0,
+            batch_sha256: "a".repeat(64),
+            recipient_kernel_id: "did:chio:recipient".to_string(),
+            authenticated_sender_kernel_id: "did:chio:sender".to_string(),
+            received_at_unix_ms: 4_000_000,
+            frames: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn lookup_inbox_report_returns_stored_report_and_keys_by_sender_nonce() {
+        let store = SqlitePheromoneRelayStore::open_in_memory().unwrap();
+        let batch = sample_batch();
+        let report = sample_report();
+
+        // Absent before any record: fail-closed None (the caller then receives).
+        assert!(store
+            .lookup_inbox_report("did:chio:sender", "nonce-1")
+            .unwrap()
+            .is_none());
+
+        let first = store
+            .record_inbox("did:chio:sender", "nonce-1", &batch, &report)
+            .unwrap();
+        assert!(first.inserted, "first admission inserts the inbox row");
+
+        // After record: the exact stored verdict is returned WITHOUT re-running the
+        // receiver (this is the dedup-before-receive primitive).
+        let stored = store
+            .lookup_inbox_report("did:chio:sender", "nonce-1")
+            .unwrap()
+            .expect("recorded inbox report is looked up");
+        assert_eq!(stored, report);
+
+        // A different sender for the same nonce is a distinct (absent) row.
+        assert!(store
+            .lookup_inbox_report("did:chio:other", "nonce-1")
+            .unwrap()
+            .is_none());
+    }
 }

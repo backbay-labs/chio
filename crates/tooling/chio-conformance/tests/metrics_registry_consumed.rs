@@ -1212,6 +1212,9 @@ async fn iroh_transport_lane_and_outbox_families_emit() -> Result<(), Box<dyn Er
         &store,
         &outbox_endpoint,
         |_recipient: &str| -> Option<EndpointAddr> { None },
+        |_recipient: &str,
+         _batch: &chio_federation::pheromone_gossip::PheromoneGossipBatch|
+         -> Result<(), chio_pheromone_relay::PheromoneRelayError> { Ok(()) },
         "did:chio:sender",
         2_000_000,
         10,
