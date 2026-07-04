@@ -997,6 +997,37 @@ mod tests {
             .verify(&pae_bytes, &response.org_a_signature));
     }
 
+    #[tokio::test(flavor = "current_thread")]
+    async fn sync_cosign_on_current_thread_runtime_fails_closed_without_panicking() {
+        // On a CURRENT-THREAD tokio runtime `block_in_place` would panic. The sync
+        // BilateralCoSigningProtocol entry point must instead fail closed with a
+        // TransportFailure (mirrors the multi-thread sync-trait test, which
+        // succeeds via `block_in_place`). No live server is needed: the
+        // current-thread guard trips before any dial.
+        let org_b = Peer::new(TOOL_HOST_KERNEL, 11, 2);
+        let endpoint = Endpoint::builder(presets::Minimal)
+            .secret_key(org_b.transport_secret.clone())
+            .relay_mode(RelayMode::Disabled)
+            .bind_addr((Ipv4Addr::LOCALHOST, 0))
+            .expect("valid loopback bind addr")
+            .bind()
+            .await
+            .expect("org b endpoint binds");
+        // An empty address book is fine: the guard returns before resolving Org A.
+        let book: HashMap<String, EndpointAddr> = HashMap::new();
+        let cosigner = IrohBilateralCoSigner::new(endpoint, Arc::new(book));
+
+        let pae_bytes = b"pae on a current-thread runtime".to_vec();
+        let request = org_b_request(&org_b, ORIGIN_KERNEL, &pae_bytes);
+
+        // Must NOT panic; must return a typed TransportFailure fail-closed.
+        let result = cosigner.request_dsse_cosignature(&request);
+        assert!(
+            matches!(result, Err(BilateralCoSigningError::TransportFailure(_))),
+            "sync co-sign on a current-thread runtime must fail closed, got {result:?}"
+        );
+    }
+
     #[tokio::test]
     async fn mismatched_org_b_kernel_id_is_rejected_without_signing() {
         let org_a = Peer::new(ORIGIN_KERNEL, 10, 1);

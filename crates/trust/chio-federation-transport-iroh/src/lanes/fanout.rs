@@ -600,9 +600,14 @@ mod tests {
     use chio_pheromone::PheromoneDepositBody;
     use chio_pheromone::Severity;
     use chio_pheromone::PHEROMONE_DEPOSIT_SCHEMA;
+    use iroh::endpoint::presets;
+    use iroh::protocol::Router;
+    use iroh::Endpoint;
+    use iroh::RelayMode;
     use iroh::SecretKey;
     use iroh_gossip::api::Message;
     use iroh_gossip::proto::DeliveryScope;
+    use std::net::Ipv4Addr;
 
     const NOW: u64 = 1_700_000_000_000;
     const NAMESPACE: &str = "chio/agents";
@@ -918,5 +923,60 @@ mod tests {
         // Round-trips back to an equal frame.
         let decoded: PheromoneDepositGossip = serde_json::from_slice(&payload).unwrap();
         assert_eq!(decoded, frame);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn broadcast_rejects_wrong_treaty_frame_before_send() {
+        // Send-side treaty binding (mirrors the receive-side check): a fully
+        // valid, self-signed frame minted for treaty-beta is rejected BEFORE it
+        // reaches the wire when broadcast on the alpha swarm, so a mis-addressed
+        // frame cannot leak onto another treaty's swarm members.
+        let endpoint = Endpoint::builder(presets::Minimal)
+            .secret_key(SecretKey::from_bytes(&[71u8; 32]))
+            .relay_mode(RelayMode::Disabled)
+            .bind_addr((Ipv4Addr::LOCALHOST, 0))
+            .expect("valid loopback bind addr")
+            .bind()
+            .await
+            .expect("endpoint binds on loopback");
+        let gossip = Gossip::builder().spawn(endpoint.clone());
+        let router = Router::builder(endpoint)
+            .accept(iroh_gossip::ALPN, gossip.clone())
+            .spawn();
+
+        // subscribe (NOT join): returns immediately without a neighbor, which is
+        // enough to exercise broadcast's pre-send treaty check on a single node
+        // (the check returns before the sender is ever used).
+        let topic_id = pheromone_topic_for_treaty(TREATY_ALPHA);
+        let (sender, receiver) = gossip
+            .subscribe(topic_id, vec![])
+            .await
+            .expect("subscribe to the alpha topic")
+            .split();
+        let alpha_topic = FanoutTopic {
+            treaty_id: TREATY_ALPHA.to_string(),
+            topic_id,
+            sender,
+            receiver,
+        };
+
+        // A frame with a fully VALID deposit self-signature, but minted for a
+        // DIFFERENT treaty than this swarm carries.
+        let author = Keypair::from_seed(&[7; 32]);
+        let beta_frame =
+            signed_direct_frame(&author, AUTHOR, "did:chio:hub", "treaty-beta", NAMESPACE);
+
+        let result = alpha_topic.broadcast(&beta_frame).await;
+        assert!(
+            matches!(
+                result,
+                Err(FanoutError::TreatyMismatch { ref expected, ref got })
+                    if expected == TREATY_ALPHA && got == "treaty-beta"
+            ),
+            "a treaty-beta frame must be rejected before the alpha swarm broadcast, got {result:?}"
+        );
+
+        drop(alpha_topic);
+        router.shutdown().await.ok();
     }
 }
