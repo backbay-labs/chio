@@ -855,7 +855,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -866,7 +866,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1990,7 +1990,7 @@ dependencies = [
  "bitflags 2.11.0",
  "cexpr",
  "clang-sys",
- "itertools 0.10.5",
+ "itertools 0.13.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2507,7 +2507,6 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
- "tracing",
  "ureq 2.12.1",
  "url",
  "webpki-roots 0.26.11",
@@ -2667,7 +2666,6 @@ dependencies = [
  "chio-test-support",
  "chrono",
  "hex",
- "hyper",
  "reqwest 0.13.2",
  "rusqlite",
  "serde",
@@ -2751,7 +2749,6 @@ dependencies = [
  "chio-workflow",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2783,7 +2780,6 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "tough",
- "tracing",
  "url",
  "x509-cert",
 ]
@@ -3129,10 +3125,7 @@ dependencies = [
  "criterion",
  "ed25519-dalek",
  "hex",
- "percent-encoding",
  "proptest",
- "rand_core 0.6.4",
- "ryu",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -3216,9 +3209,11 @@ dependencies = [
  "chio-core-types",
  "chio-kernel",
  "chio-manifest",
+ "futures",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
@@ -3483,7 +3478,6 @@ dependencies = [
  "chio-listing",
  "chio-test-support",
  "serde",
- "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -3544,7 +3538,6 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chio-core",
- "chio-core-types",
  "chio-http-session",
  "chio-kernel",
  "chio-store-sqlite",
@@ -3558,7 +3551,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
- "zeroize",
 ]
 
 [[package]]
@@ -3591,16 +3583,13 @@ dependencies = [
  "chio-metrics-spec",
  "chio-test-support",
  "chrono",
- "ed25519-dalek",
  "hex",
- "rand_core 0.6.4",
  "reqwest 0.13.2",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "thiserror 1.0.69",
  "tokio",
- "url",
  "uuid",
 ]
 
@@ -3628,14 +3617,10 @@ dependencies = [
  "chio-credit",
  "chio-custody-hw",
  "chio-federation",
- "chio-governance",
  "chio-kernel-core",
  "chio-link",
- "chio-listing",
  "chio-log-redact",
- "chio-market",
  "chio-metrics-spec",
- "chio-open-market",
  "chio-settle",
  "chio-store-sqlite",
  "chio-test-support",
@@ -3712,7 +3697,6 @@ name = "chio-lineage"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
- "petgraph 0.6.5",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -3746,8 +3730,6 @@ version = "0.1.0"
 dependencies = [
  "chio-core-types",
  "serde",
- "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3768,14 +3750,10 @@ dependencies = [
  "criterion",
  "dashmap 6.1.0",
  "notify",
- "serde",
- "serde_json",
  "serde_yml",
  "tempfile",
- "thiserror 1.0.69",
  "tokio",
  "tower-lsp",
- "tracing",
 ]
 
 [[package]]
@@ -3797,7 +3775,6 @@ dependencies = [
  "chio-credit",
  "chio-underwriting",
  "serde",
- "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -3815,7 +3792,6 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
  "tokio",
  "tracing",
  "url",
@@ -3845,7 +3821,6 @@ dependencies = [
  "chio-edge-metrics",
  "chio-kernel",
  "chio-manifest",
- "chio-metrics-spec",
  "chrono",
  "serde",
  "serde_json",
@@ -3961,7 +3936,6 @@ dependencies = [
  "chio-listing",
  "chio-test-support",
  "serde",
- "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -3981,7 +3955,6 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
- "tracing",
  "wiremock",
 ]
 
@@ -4071,7 +4044,6 @@ dependencies = [
  "chio-core-types",
  "chio-federation",
  "chio-pheromone",
- "chio-store-sqlite",
  "jsonschema",
  "rusqlite",
  "serde",
@@ -4472,19 +4444,13 @@ version = "0.1.0"
 name = "chio-three-vendor-example"
 version = "0.1.0"
 dependencies = [
- "chio-attest-buyer-core",
  "chio-attest-loopback",
  "chio-core-types",
  "chio-federation",
- "chio-federation-authority",
- "chio-governance",
  "chio-pheromone",
  "chio-pheromone-runtime",
- "chio-selective-disclosure",
- "chio-workflow",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -4517,8 +4483,6 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
- "pin-project-lite",
- "serde",
  "serde_json",
  "sha2 0.10.9",
  "thiserror 1.0.69",
@@ -4566,8 +4530,6 @@ dependencies = [
  "chio-appraisal",
  "chio-core-types",
  "serde",
- "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -5736,7 +5698,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6005,7 +5967,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -6672,7 +6634,6 @@ dependencies = [
  "chio-kernel",
  "chio-manifest",
  "chio-mcp-adapter",
- "serde",
  "serde_json",
  "tokio",
 ]
@@ -6926,7 +6887,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tokio",
  "tower-service",
  "tracing",
@@ -7217,7 +7178,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi 0.5.2",
  "libc",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7949,7 +7910,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9235,7 +9196,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.1",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -9273,7 +9234,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -9919,7 +9880,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9987,7 +9948,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10870,7 +10831,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11128,7 +11089,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -13072,7 +13033,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

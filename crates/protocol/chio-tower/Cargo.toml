@@ -16,7 +16,6 @@ async-trait = { workspace = true }
 chio-core-types = { workspace = true }
 chio-http-core = { workspace = true }
 chio-kernel = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 sha2 = { workspace = true }
@@ -31,7 +30,6 @@ tower-service = "0.3"
 http = "1"
 http-body = "1"
 http-body-util = "0.1"
-pin-project-lite = "0.2"
 bytes = "1"
 
 [dev-dependencies]

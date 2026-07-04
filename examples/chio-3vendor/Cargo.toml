@@ -21,18 +21,12 @@ path = "src/generate_chio_three_vendor_fixtures.rs"
 
 [dependencies]
 chio-attest-loopback = { workspace = true }
-chio-attest-buyer-core = { workspace = true }
-chio-federation-authority = { workspace = true }
 chio-core-types = { workspace = true }
 chio-federation = { workspace = true }
-chio-governance = { workspace = true }
 chio-pheromone = { workspace = true }
 chio-pheromone-runtime = { workspace = true }
-chio-selective-disclosure = { workspace = true, features = ["bbs"] }
-chio-workflow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-thiserror = { workspace = true }
 
 [lints]
 workspace = true

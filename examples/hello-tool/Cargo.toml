@@ -13,6 +13,5 @@ chio-core = { package = "chio-core-types", path = "../../crates/core/chio-core-t
 chio-kernel = { workspace = true }
 chio-manifest = { workspace = true }
 chio-mcp-adapter = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
