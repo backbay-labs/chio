@@ -26,7 +26,7 @@ examine_globs = [
     "crates/guards/chio-guards/src/jailbreak.rs",
     "crates/guards/chio-guards/src/jailbreak_detector.rs",
     "crates/guards/chio-guards/src/input_injection.rs",
-    "crates/guards/chio-guards/src/response_sanitization.rs",
+    "crates/guards/chio-guards/src/response_sanitization/*.rs",
     "crates/guards/chio-guards/src/data_flow.rs",
     "crates/guards/chio-guards/src/behavioral_sequence.rs",
     "crates/guards/chio-guards/src/behavioral_profile.rs",
@@ -47,7 +47,7 @@ exclude_globs = [
     "crates/guards/chio-guards/src/action.rs", # rationale: excluded helper or verification surface.
     "crates/guards/chio-guards/src/text_utils.rs", # rationale: excluded helper or verification surface.
     "crates/guards/chio-guards/src/advisory.rs", # rationale: excluded helper or verification surface.
-    "crates/guards/chio-guards/src/spider_sense.rs", # rationale: excluded helper or verification surface.
+    "crates/guards/chio-guards/src/embedding_anomaly.rs", # rationale: excluded helper or verification surface.
     "crates/guards/chio-guards/src/external/**", # rationale: excluded helper or verification surface.
     "**/tests.rs", # rationale: excluded helper or verification surface.
     "**/test_*.rs", # rationale: excluded helper or verification surface.

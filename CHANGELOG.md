@@ -16,9 +16,8 @@ change. The entries below track changes accumulating toward that baseline.
 
 ### Changed
 
-- `chio-kernel` no longer enables `legacy-sync` by default. Downstream callers
-  that still require the public `evaluate_tool_call_blocking` API must opt in
-  with `--features legacy-sync` while migrating to `evaluate_tool_call`.
+- `chio-kernel` provides both a synchronous `evaluate_tool_call_blocking`
+  entrypoint and an asynchronous `evaluate_tool_call` entrypoint.
 - Consolidated the workspace clippy lint policy (`unwrap_used`/`expect_used`
   denied) into a single canonical `[workspace.lints]` block that member crates
   inherit, rather than duplicating it per crate.

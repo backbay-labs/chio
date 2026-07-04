@@ -511,7 +511,7 @@ async fn web3_ops_qualification_emits_generated_runtime_reports_and_control_audi
     let incident_audit = json!({
         "schema": "chio.web3-ops-incident-audit.v1",
         "generatedAt": generated_at,
-        "drill": "phase-175-operator-controls",
+        "drill": "operator-controls-drill",
         "artifacts": {
             "runtimeReports": [
                 "runtime-reports/chio-link-runtime-report.json",

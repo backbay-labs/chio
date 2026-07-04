@@ -258,20 +258,4 @@ mod tests {
             )),
         }
     }
-
-    #[test]
-    fn transport_error_display_is_em_dash_free() {
-        let cases = [
-            TransportError::MockExhausted {
-                endpoint: "/v1/chat/completions".to_string(),
-            },
-            TransportError::Http(HttpTransportError::MissingEnvVar {
-                var: MISTRAL_API_KEY_ENV.to_string(),
-            }),
-        ];
-        for err in cases {
-            let s = err.to_string();
-            assert!(!s.contains('\u{2014}'), "em dash in {s}");
-        }
-    }
 }

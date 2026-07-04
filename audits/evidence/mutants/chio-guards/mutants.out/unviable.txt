@@ -1,9 +1,0 @@
-crates/chio-guards/src/egress_allowlist.rs:125:9: replace <impl chio_kernel::Guard for EgressAllowlistGuard>::evaluate -> Result<Verdict, KernelError> with Ok(Default::default())
-crates/chio-guards/src/forbidden_path.rs:145:9: replace <impl chio_kernel::Guard for ForbiddenPathGuard>::evaluate -> Result<Verdict, KernelError> with Ok(Default::default())
-crates/chio-guards/src/behavioral_sequence.rs:62:9: replace <impl Guard for BehavioralSequenceGuard>::evaluate -> Result<Verdict, KernelError> with Ok(Default::default())
-crates/chio-guards/src/data_flow.rs:56:9: replace <impl Guard for DataFlowGuard>::evaluate -> Result<Verdict, KernelError> with Ok(Default::default())
-crates/chio-guards/src/pipeline.rs:63:9: replace <impl Guard for GuardPipeline>::evaluate -> Result<Verdict, KernelError> with Ok(Default::default())
-crates/chio-guards/src/secret_leak.rs:299:9: replace <impl chio_kernel::Guard for SecretLeakGuard>::evaluate -> Result<Verdict, KernelError> with Ok(Default::default())
-crates/chio-guards/src/secret_leak.rs:254:9: replace SecretLeakGuard::scan -> Vec<SecretMatch> with vec![Default::default()]
-crates/chio-guards/src/secret_leak.rs:29:5: replace default_patterns -> Vec<SecretPattern> with vec![Default::default()]
-crates/chio-guards/src/path_allowlist.rs:187:9: replace <impl chio_kernel::Guard for PathAllowlistGuard>::evaluate -> Result<Verdict, KernelError> with Ok(Default::default())

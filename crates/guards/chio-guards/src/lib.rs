@@ -67,11 +67,11 @@ mod shell_command;
 pub mod text_utils;
 pub mod velocity;
 
-// Computer Use Agent (CUA) and SpiderSense guards.
+// Computer Use Agent (CUA) and EmbeddingAnomaly guards.
 pub mod computer_use;
+pub mod embedding_anomaly;
 pub mod input_injection;
 pub mod remote_desktop;
-pub mod spider_sense;
 
 // Code execution, browser automation, content review, and memory
 // governance guards.
@@ -159,20 +159,21 @@ pub fn default_runtime_guard_profile() -> RuntimeGuardProfile {
     }
 }
 
-// Computer Use Agent (CUA) and SpiderSense re-exports.
+// Computer Use Agent (CUA) and EmbeddingAnomaly re-exports.
 pub use computer_use::{
     default_allowed_action_types as computer_use_default_allowed_action_types, ComputerUseConfig,
     ComputerUseGuard, EnforcementMode,
+};
+pub use embedding_anomaly::{
+    cosine_similarity as embedding_anomaly_cosine_similarity, extract_embedding, AmbiguousPolicy,
+    EmbeddingAnomalyConfig, EmbeddingAnomalyError, EmbeddingAnomalyGuard,
+    EmbeddingAnomalyPatternDb, PatternEntry, DEFAULT_AMBIGUITY_BAND, DEFAULT_SIMILARITY_THRESHOLD,
+    DEFAULT_TOP_K,
 };
 pub use input_injection::{
     default_allowed_input_types, InputInjectionCapabilityConfig, InputInjectionCapabilityGuard,
 };
 pub use remote_desktop::{RemoteDesktopSideChannelConfig, RemoteDesktopSideChannelGuard};
-pub use spider_sense::{
-    cosine_similarity as spider_sense_cosine_similarity, extract_embedding, AmbiguousPolicy,
-    PatternDb, PatternEntry, SpiderSenseConfig, SpiderSenseError, SpiderSenseGuard,
-    DEFAULT_AMBIGUITY_BAND, DEFAULT_SIMILARITY_THRESHOLD, DEFAULT_TOP_K,
-};
 
 // Code execution, browser automation, content review, and memory
 // governance re-exports.

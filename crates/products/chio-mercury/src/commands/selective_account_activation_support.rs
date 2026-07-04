@@ -158,13 +158,10 @@ pub(super) struct MercurySelectiveAccountActivationValidationReport {
 
 pub(super) fn selective_account_activation_doc_refs() -> MercurySelectiveAccountActivationDocRefs {
     MercurySelectiveAccountActivationDocRefs {
-        selective_account_activation_file: "docs/mercury/SELECTIVE_ACCOUNT_ACTIVATION.md"
-            .to_string(),
-        operations_file: "docs/mercury/SELECTIVE_ACCOUNT_ACTIVATION_OPERATIONS.md".to_string(),
-        validation_package_file: "docs/mercury/SELECTIVE_ACCOUNT_ACTIVATION_VALIDATION_PACKAGE.md"
-            .to_string(),
-        decision_record_file: "docs/mercury/SELECTIVE_ACCOUNT_ACTIVATION_DECISION_RECORD.md"
-            .to_string(),
+        selective_account_activation_file: String::new(),
+        operations_file: String::new(),
+        validation_package_file: String::new(),
+        decision_record_file: String::new(),
     }
 }
 

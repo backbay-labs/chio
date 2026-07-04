@@ -2,7 +2,6 @@
 
 Status: Historical internal milestone design; implemented economic primitives are part of the current v1 pre-release profile.
 Authors: Engineering
-Date: 2026-03-21 (updated 2026-04-02)
 
 > Historical internal milestone note. Any `v2.x` labels below are pre-release
 > implementation milestones, not Chio-owned protocol, schema, SDK, or runtime

@@ -2,7 +2,6 @@
 
 Status: rejected
 Approver: Chio maintainers
-Date: 2026-04-27
 
 ## 1. Scope of delegated subkeys
 

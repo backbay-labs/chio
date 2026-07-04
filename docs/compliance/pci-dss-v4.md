@@ -1,5 +1,4 @@
 ---
-status: draft
 date: 2026-04-16
 framework: PCI DSS v4.0 (March 2022, effective March 2025)
 maintainer: Chio Protocol Team
@@ -14,7 +13,7 @@ maintainer: Chio Protocol Team
 | Framework | Payment Card Industry Data Security Standard v4.0 |
 | Published | March 2022, fully effective March 31, 2025 |
 | Scope | All 12 requirement groups |
-| Chio Profile | Current v1-only pre-release profile; draft originally tracked under internal phase 15 |
+| Chio Profile | Current v1-only pre-release profile |
 | Document Date | 2026-04-16 |
 
 ---

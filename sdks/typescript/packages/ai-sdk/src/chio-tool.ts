@@ -136,8 +136,8 @@ export interface ChioToolOptions<PARAMS, RESULT> extends ToolLike<PARAMS, RESULT
   /** Inline `ChioClient` options used when `client` is not provided. */
   clientOptions?: ChioClientOptions | undefined;
   /**
-   * Legacy sidecar-error option retained for source compatibility. Current
-   * v1 always throws `ChioToolError` when the sidecar is unreachable.
+   * Reserved no-op option. The wrapper always throws `ChioToolError` when the
+   * sidecar is unreachable.
    */
   onSidecarError?: "deny" | "allow" | undefined;
   /**

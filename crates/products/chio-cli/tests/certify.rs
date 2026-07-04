@@ -441,7 +441,7 @@ fn issue_local_liability_provider(
             "provenance": {
                 "configuredBy": "operator@example.com",
                 "configuredAt": 1,
-                "sourceRef": "phase-117-test"
+                "sourceRef": "certify-test-fixture"
             }
         }))
         .expect("serialize provider input"),

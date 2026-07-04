@@ -109,8 +109,7 @@ The `extract_database_action` helper:
 
 If extraction fails (missing fields, unsupported engine), the function
 returns `ToolAction::Unknown`. Guards receiving `Unknown` for a tool
-name they do not recognize return `Verdict::Allow` -- the guard simply
-does not apply. But if a guard *does* apply (the tool name matches a
+name they do not recognize return `Verdict::Allow` -- the guard does not apply. But if a guard *does* apply (the tool name matches a
 database pattern and the engine is recognized) and the query cannot be
 parsed, the guard itself denies. This separation keeps `extract_action`
 best-effort while guards remain fail-closed.

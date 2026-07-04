@@ -4,7 +4,7 @@
 //! namespace (e.g. `wasi_snapshot_preview1.fd_write`) in an attempt to
 //! reach syscalls the host runtime never exposes.
 //!
-//! Defense: WGSEC-02 import-namespace check inside
+//! Defense: import-namespace check inside
 //! `WasmtimeBackend::load_module` rejects any import whose module name
 //! is not exactly `"chio"`. The check is fail-closed.
 
@@ -68,7 +68,7 @@ fn rejects_env_namespace_import() {
 
 /// Reject a module that grafts a near-namespace ("chio_evil") in an
 /// attempt to bypass an exact-match check that does prefix matching by
-/// mistake. `WGSEC-02` does exact-string equality on the import module
+/// mistake. The import-namespace check does exact-string equality on the import module
 /// name, so this must still trip ImportViolation.
 #[test]
 fn rejects_namespace_substring_attack() {

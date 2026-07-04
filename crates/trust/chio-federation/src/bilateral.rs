@@ -525,7 +525,7 @@ fn co_sign_with_origin_inner(
 }
 
 /// **Verifiers seeking DSSE signature-slice coverage MUST verify
-/// [`Self::dsse_envelope`].** The legacy `DualSignedReceipt` is a
+/// [`Self::dsse_envelope`].** The compatibility `DualSignedReceipt` is a
 /// compatibility-only adapter that shares zero signed bytes with the DSSE
 /// PAE preimage and is therefore not a DSSE artifact; see
 /// `crate::bilateral_dsse` module docs. Neither artifact is a strict
@@ -569,7 +569,7 @@ pub fn co_sign_with_origin_full(
     tool_name: &str,
     timestamp_unix_ms: u64,
 ) -> Result<BilateralCoSignArtifacts, BilateralCoSigningError> {
-    // Legacy hop: produces the existing DualSignedReceipt (and emits the
+    // dual-signed-receipt hop: produces the existing DualSignedReceipt (and emits the
     // hop counter / histogram via co_sign_with_origin's wrapper).
     let dual = co_sign_with_origin(
         origin_kernel_id,
@@ -618,7 +618,7 @@ pub struct LocalBilateralInvocationFixtureRequest<'a> {
     /// `capability_lease_ref` and `policy_evaluation_summary` to be
     /// present, otherwise verification fails-closed at step 13/14.
     pub predicate_extensions: crate::bilateral_dsse::BilateralPredicateExtensions,
-    /// Cosigner driving the legacy DualSignedReceipt hop. Production
+    /// Cosigner driving the dual-signed-receipt hop. Production
     /// kernels supply a `BilateralCoSigningProtocol` over an mTLS-backed
     /// RPC client; demos use [`InProcessCoSigner`].
     pub cosigner: &'a dyn BilateralCoSigningProtocol,
@@ -626,7 +626,7 @@ pub struct LocalBilateralInvocationFixtureRequest<'a> {
 
 #[derive(Debug, Clone)]
 pub struct BilateralInvocationOutcome {
-    /// Legacy + DSSE signature-slice artifacts produced by the hot path.
+    /// dual-signed-receipt + DSSE signature-slice artifacts produced by the hot path.
     pub artifacts: BilateralCoSignArtifacts,
     /// Verifier output. Constructed by running the partial local
     /// verifier (subset of §7) against the freshly-signed envelope.
@@ -649,7 +649,7 @@ pub enum BilateralInvocationError {
 }
 
 /// 1. Drives the local fixture signing path to produce the
-///    [`BilateralCoSignArtifacts`] (legacy [`DualSignedReceipt`] +
+///    [`BilateralCoSignArtifacts`] (compatibility [`DualSignedReceipt`] +
 ///    DSSE signature-slice envelope) but layered with the
 ///    [`crate::bilateral_dsse::BilateralPredicateExtensions`] (lease ref,
 ///    policy summary, etc.) the verifier needs.
@@ -669,7 +669,7 @@ pub fn execute_local_bilateral_invocation_fixture(
     request: LocalBilateralInvocationFixtureRequest<'_>,
     verifier_config: &crate::bilateral_verifier::VerifierConfig<'_>,
 ) -> Result<BilateralInvocationOutcome, BilateralInvocationError> {
-    // Step 1: legacy DualSignedReceipt hop (drives the cosigner) +
+    // Step 1: dual-signed-receipt hop (drives the cosigner) +
     // DSSE signature-slice envelope with predicate extensions.
     let dual = co_sign_with_origin(
         request.origin_kernel_id,

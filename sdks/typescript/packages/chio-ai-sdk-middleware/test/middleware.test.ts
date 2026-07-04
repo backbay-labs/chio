@@ -562,7 +562,7 @@ describe("receipt authority verification", () => {
     // of `@chio-protocol/edge` rather than the option. The stubbed
     // wasm-level evaluator returns an allow envelope; the middleware then
     // reaches applyReceiptAuthority and must deny because no verifyReceipt
-    // was provided and the legacy fetch fallback is disabled on edge.
+    // was provided and the fetch fallback is disabled on edge.
     mock.module("@chio-protocol/edge", () => ({
       evaluate: () => ({
         verdict: "allow",

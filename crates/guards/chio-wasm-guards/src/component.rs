@@ -86,7 +86,7 @@ impl ComponentBackend {
 
 impl WasmGuardAbi for ComponentBackend {
     fn load_module(&mut self, wasm_bytes: &[u8], fuel_limit: u64) -> Result<(), WasmGuardError> {
-        // WGSEC-03: reject oversized modules before compilation
+        // reject oversized modules before compilation
         if wasm_bytes.len() > self.max_module_size {
             return Err(WasmGuardError::ModuleTooLarge {
                 size: wasm_bytes.len(),

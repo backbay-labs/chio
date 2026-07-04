@@ -5,11 +5,11 @@
 The federation crate keeps two separate verifier profiles:
 
 - `chio.bilateral-signature-slice.v1` remains the compatibility profile for
-  legacy local receipt binding.
+  compatibility local receipt binding.
 - `chio.bilateral-cosign-invocation.v1` is the strict Chio profile used by
   `verify_chio_bilateral_invocation`.
 
-Strict Chio verification requires `tool_args_hash`, rejects the legacy
+Strict Chio verification requires `tool_args_hash`, rejects the compatibility
 `receipt_canonical_json` helper field, requires fresh pinned ladder manifest
 references, resolves the receipt body from the configured receipt store, checks
 the subject digest, resolves lease and governance references, and fails closed

@@ -3,7 +3,7 @@
 #
 # Refuses to invoke the binary when the working tree contains changes to the
 # replay-relevant source paths (chio-core / chio-core-types / chio-kernel
-# receipt_support) without an accompanying delta in docs/replay-compat.md.
+# receipt_support directory) without an accompanying delta in docs/replay-compat.md.
 # The deeper gate logic (CHIO_BLESS=1, BLESS_REASON, branch checks, audit log,
 # TTY+CI checks) lives in tests/replay/src/bless.rs. This script is a
 # fast-fail wrapper that catches misuse before the binary runs.
@@ -34,7 +34,7 @@ Behaviour:
   - Refuses to run if CI=true (CI is banned from blessing).
   - Refuses to run on branch 'main' or 'release/*'.
   - Refuses to run if changes exist under crates/core/chio-core/src/,
-    crates/core/chio-core-types/src/, or crates/kernel/chio-kernel/src/receipt_support.rs
+    crates/core/chio-core-types/src/, or crates/kernel/chio-kernel/src/receipt_support/
     without a corresponding modification to docs/replay-compat.md.
   - Refuses to run if other unrelated paths (outside the bless allowlist of
     tests/replay/goldens/, tests/replay/.bless-audit.log, and
@@ -150,7 +150,7 @@ dirty_paths_matching() {
 }
 
 # Replay-source paths whose modification requires a docs/replay-compat.md delta.
-SOURCE_PATTERN='^(crates/core/chio-core/src/|crates/core/chio-core-types/src/|crates/kernel/chio-kernel/src/receipt_support\.rs$)'
+SOURCE_PATTERN='^(crates/core/chio-core/src/|crates/core/chio-core-types/src/|crates/kernel/chio-kernel/src/receipt_support/)'
 SOURCE_DIRTY="$(dirty_paths_matching "$SOURCE_PATTERN")"
 
 # Paths in the bless allowlist (always permitted to be dirty during a bless).

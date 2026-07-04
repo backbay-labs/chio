@@ -1,7 +1,5 @@
 # Cross-Protocol Bridging
 
-**Status:** Draft architecture with shipped edge baseline
-**Date:** 2026-04-13
 
 > **Status**: Chio now ships a shared `chio-cross-protocol` substrate with a real
 > `CrossProtocolOrchestrator`, `CapabilityBridge`, capability-envelope, and

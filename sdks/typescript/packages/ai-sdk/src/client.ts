@@ -542,12 +542,12 @@ function isAdvisoryReceipt(receipt: ChioReceipt): boolean {
 }
 
 function normalizeDecision(raw: unknown): ChioDecision | undefined {
-  // Accept both the legacy plain-string form and the canonical Rust
+  // Accept both the plain-string form and the canonical Rust
   // tagged-enum form. The Rust `Verdict` enum uses
   // `#[serde(tag = "verdict", rename_all = "snake_case")]` so an Allow
   // variant serializes as `{"verdict":"allow"}` and a Deny variant as
   // `{"verdict":"deny","reason":...,"guard":...,"http_status":403}`. The
-  // older SDK contract published a plain string in `receipt.decision`,
+  // alternate SDK shims publish a plain string in `receipt.decision`,
   // so we honor both shapes here.
   if (typeof raw === "string") {
     return verdictFromTag(raw, undefined);

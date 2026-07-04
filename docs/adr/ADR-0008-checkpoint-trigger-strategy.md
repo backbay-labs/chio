@@ -2,7 +2,6 @@
 
 - Status: Accepted
 - Decision owner: receipt log and kernel lanes
-- Related plan items: phase 07 (Merkle checkpointing)
 
 ## Context
 

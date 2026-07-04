@@ -51,7 +51,7 @@ covered_symbols = [
 # and finish in 1-3 seconds. The full sweep is ~2.2 min locally, within
 # the 6-minute PR budget, so every harness lands in `lanes.pr` (including the
 # two WYSIWYS `sign_receipt` content-hash recompute harnesses added for
-# BAC-539, which sign over concrete fixtures and finish in seconds).
+# , which sign over concrete fixtures and finish in seconds).
 #
 # The nightly Kani job runs the union of `lanes.pr` and
 # `lanes.nightly_only`, so moving a harness to `nightly_only` strictly

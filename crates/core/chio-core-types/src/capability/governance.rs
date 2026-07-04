@@ -119,7 +119,7 @@ pub struct GovernedCallChainContext {
     pub delegator_subject: String,
 }
 
-/// Reserved key inside `GovernedTransactionIntent.context` for legacy upstream call-chain proofs.
+/// Reserved key inside `GovernedTransactionIntent.context` for compatibility upstream call-chain proofs.
 pub const GOVERNED_CALL_CHAIN_UPSTREAM_PROOF_CONTEXT_KEY: &str = "callChainUpstreamProof";
 
 /// Signable upstream proof for delegated governed call-chain provenance.
@@ -736,7 +736,7 @@ impl GovernedTransactionIntent {
         Ok(Some(serde_json::from_value(value.clone())?))
     }
 
-    /// Extract an explicitly attached continuation token without legacy fallback.
+    /// Extract an explicitly attached continuation token.
     pub fn explicit_continuation_token(&self) -> Result<Option<CallChainContinuationToken>> {
         let Some(context) = self.context.as_ref() else {
             return Ok(None);

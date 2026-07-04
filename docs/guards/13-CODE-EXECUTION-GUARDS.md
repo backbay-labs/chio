@@ -1,9 +1,7 @@
 # Code Execution and Browser Automation Guards -- Technical Design
 
-> **Status**: Proposed April 2026
 > **Depends on**: `docs/guards/01-CURRENT-GUARD-SYSTEM.md` (guard trait and
-> pipeline), `docs/guards/08-DESKTOP-CUA-GUARD-ABSORPTION.md` (CUA action
-> taxonomy), `crates/guards/chio-guards/src/action.rs` (ToolAction enum)
+> pipeline), `crates/guards/chio-guards/src/action.rs` (ToolAction enum)
 
 When an agent invokes a code execution sandbox (E2B, Modal, Code Interpreter)
 or controls a headless browser (Playwright, Puppeteer, Anthropic Computer

@@ -138,3 +138,6 @@ sdks/typescript/packages/browser/dist/
 
 # Apalache local model-check output (regenerated on each `apalache-mc check`)
 _apalache-out/
+
+# Raw cargo-mutants output (dated JSON summaries stay tracked)
+audits/evidence/**/mutants.out/*.txt

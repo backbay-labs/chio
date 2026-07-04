@@ -4,7 +4,6 @@
 portable OID4VCI-compatible issuance, holder transport over public
 challenge/submit routes, multi-issuer composition, and shared-evidence
 analytics shipped
-**Date:** 2026-03-31
 
 ---
 
@@ -592,7 +591,7 @@ challenge verification applies the same lifecycle fail-closed rules as
 
 ## Holder Transport
 
-Phase 55 adds one conservative holder-facing transport over the existing Chio
+This adds one conservative holder-facing transport over the existing Chio
 challenge and response artifacts. The proof material is unchanged:
 
 - the verifier/admin still creates the signed

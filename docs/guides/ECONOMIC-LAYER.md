@@ -659,7 +659,6 @@ is at `docs/standards/CHIO_SETTLE_PROFILE.md`.
 - `docs/MONETARY_BUDGETS_GUIDE.md` -- denominated budget policies.
 - `docs/ECONOMIC_INTEROP_GUIDE.md` -- interoperability with external systems.
 - `docs/release/CHIO_SETTLE_RUNBOOK.md` -- operator runbook for settlement.
-- `docs/research/CHIO_SETTLE_PROTOCOL_DECISIONS.md` -- design history.
 
 When this guide and any referenced source disagree, the source is
 authoritative; file an issue so the guide can be updated.

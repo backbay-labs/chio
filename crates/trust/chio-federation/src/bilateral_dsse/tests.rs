@@ -560,7 +560,7 @@ fn keyid_is_sha256_of_raw_ed25519_public_key_bytes() {
     let keyid = Keyid::from_public_key(&pk);
     let want = sha256_hex(pk.as_bytes());
     assert_eq!(keyid.0, want);
-    // Belt-and-suspenders: hashing the hex form must NOT match.
+    // hashing the hex form must NOT match.
     let hex_form = sha256_hex(pk.to_hex().as_bytes());
     assert_ne!(
         keyid.0, hex_form,

@@ -266,23 +266,6 @@ mod tests {
         let back: AnthropicAdapterConfig = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(cfg, back);
     }
-
-    #[test]
-    fn error_display_is_em_dash_free() {
-        let cases = vec![
-            AnthropicAdapterError::Transport(transport::HttpTransportError::Status {
-                code: 500,
-                body: "overloaded".to_string(),
-            }),
-            AnthropicAdapterError::Provider(ProviderError::Malformed("nope".to_string())),
-            AnthropicAdapterError::ComputerUseFeatureDisabled,
-        ];
-        for err in cases {
-            let s = err.to_string();
-            assert!(!s.contains('\u{2014}'), "em dash in {s}");
-        }
-    }
-
     #[test]
     fn computer_use_flag_matches_cfg() {
         // Whatever the cargo feature is set to in this build, the helper

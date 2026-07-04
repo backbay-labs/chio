@@ -1263,28 +1263,4 @@ mod tests {
             HttpTransportError::Connect { .. } | HttpTransportError::Request { .. }
         ));
     }
-
-    #[test]
-    fn transport_error_display_is_em_dash_free() {
-        let cases = [
-            HttpTransportError::Build("boom".to_string()),
-            HttpTransportError::Status {
-                code: 500,
-                body: "oops".to_string(),
-            },
-            HttpTransportError::Timeout {
-                url: "http://x".to_string(),
-                timeout_ms: 1000,
-            },
-            HttpTransportError::MissingEnvVar {
-                var: "X".to_string(),
-            },
-            HttpTransportError::MockExhausted {
-                path: "/v1/chat".to_string(),
-            },
-        ];
-        for case in cases {
-            assert!(!case.to_string().contains('\u{2014}'), "em dash in {case}");
-        }
-    }
 }

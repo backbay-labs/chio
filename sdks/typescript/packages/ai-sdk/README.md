@@ -8,7 +8,7 @@ for capability-based policy evaluation.
 - Preserves `ReadableStream` / async-generator return values without
   buffering, so `streamText` / `streamObject` / SSE keep working.
 - Keeps full TypeScript generic inference from the underlying `tool()`.
-- Fails closed when the sidecar is unreachable, including when legacy
+- Fails closed when the sidecar is unreachable, including when
   `onSidecarError: "allow"` is supplied.
 
 ## Install
@@ -105,7 +105,7 @@ const progressiveTool = chioTool({
 | `scope`           | `ChioToolScope`                        | Chio evaluation binding (`toolServer`, `toolName`, `capabilityToken`, ...). |
 | `client`          | `ChioClient`                           | Optional shared client.                                                 |
 | `clientOptions`   | `ChioClientOptions`                    | Inline client options (`sidecarUrl`, `timeoutMs`, `fetch`, `debug`).    |
-| `onSidecarError`  | `"deny"` \| `"allow"`                 | Legacy source-compatibility setting. Current v1 throws on transport failure. |
+| `onSidecarError`  | `"deny"` \| `"allow"`                 | Reserved no-op setting. The wrapper throws on transport failure. |
 | `debug`           | `(message, data?) => void`            | Optional debug hook; the wrapper never writes to stdout.                |
 | `resolveCapabilityToken` | `(capabilityId) => token`       | Optional resolver when `scope.capabilityId` is only an indirection key. |
 
@@ -127,8 +127,8 @@ Minimal HTTP client for `POST /chio/evaluate`. Can be shared across many
 `chioTool()` instances to amortize construction cost. The client builds an
 `ChioHttpRequest`-compatible payload for tool calls, accepts the sidecar's
 canonical `EvaluateResponse { verdict, receipt, evidence }` shape, and
-still normalizes the Lambda evaluator's legacy `{ receipt_id, decision }`
-wire contract into the same `ChioReceipt` API.
+still normalizes the Lambda evaluator's `{ receipt_id, decision }` wire
+contract into the same `ChioReceipt` API.
 
 ## License
 

@@ -1,6 +1,5 @@
 use chio_kernel::ToolCallRequest;
 
-use super::request::retired_context_key;
 use crate::*;
 
 pub(super) struct TreatyReference {
@@ -30,11 +29,7 @@ pub(super) fn treaty_ref_from_request(
     let Some(context) = intent.context.as_ref() else {
         return Ok(None);
     };
-    let retired_treaty_key = retired_context_key("Treaty");
-    let Some(treaty) = context
-        .get("chioTreaty")
-        .or_else(|| context.get(retired_treaty_key.as_str()))
-    else {
+    let Some(treaty) = context.get("chioTreaty") else {
         return Ok(None);
     };
     let Some(object) = treaty.as_object() else {

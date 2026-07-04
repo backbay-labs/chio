@@ -16,7 +16,7 @@ The OT-security community has the most mature model. The canonical citations are
 
 - **Mitchell and Chen, "A Survey of Intrusion Detection Techniques for Cyber-Physical Systems," ACM Computing Surveys 2014** (verified, volume 46 article 55). Surveys 28 CPS IDS systems and classifies them by detection technique and audit material. Treats sensor state as inferred from observed behavior, not as witnessed; this is the dominant pattern in the field.
 
-- **Pasqualetti, Dörfler, Bullo, "Attack Detection and Identification in Cyber-Physical Systems," IEEE Transactions on Automatic Control 2013** (verified, vol 58 issue 11). Formal framework where attacks are exogenous unknown inputs to a linear descriptor system. Sensor flapping appears as a particular structure on the unknown-input signal.
+- **Pasqualetti, Dörfler, Bullo, "Attack Detection and Identification in Cyber-Physical Systems," IEEE Transactions on Automatic Control 2013** (verified, vol 58 case 11). Formal framework where attacks are exogenous unknown inputs to a linear descriptor system. Sensor flapping appears as a particular structure on the unknown-input signal.
 
 - **Krotofil, Larsen, Gollmann, "The Process Matters: Ensuring Data Veracity in Cyber-Physical Systems," AsiaCCS 2015** (verified; Krotofil's process-aware detection work). Detects sensor signals being maliciously manipulated by reasoning about plant-process dynamics. Krotofil's earlier 2014 work on stale-data vulnerabilities and the optimal time to launch attacks is the source for the paper's "stale attestation" concern.
 
@@ -28,7 +28,7 @@ The formal model across this lineage is consistent: a sensor produces a continuo
 
 The closest prior art is the phi-accrual lineage:
 
-- **Chandra and Toueg, "Unreliable Failure Detectors for Reliable Distributed Systems," Journal of the ACM 1996** (verified, vol 43 issue 2). Establishes that failure detectors are characterized by completeness and accuracy. Eventually-strong $\diamondsuit S$ is sufficient for consensus when a majority is correct. The two-state healthy/degraded model the paper uses is structurally the binary-output failure detector this work generalized.
+- **Chandra and Toueg, "Unreliable Failure Detectors for Reliable Distributed Systems," Journal of the ACM 1996** (verified, vol 43 case 2). Establishes that failure detectors are characterized by completeness and accuracy. Eventually-strong $\diamondsuit S$ is sufficient for consensus when a majority is correct. The two-state healthy/degraded model the paper uses is structurally the binary-output failure detector this work generalized.
 
 - **Hayashibara, Défago, Yared, Katayama, "The Phi Accrual Failure Detector," SRDS 2004** (verified). Replaces the binary up/down output with a continuous suspicion value $\phi$ derived from the inter-arrival history of heartbeats. Used in Cassandra and Akka. The motivation is *exactly* the paper's adversarial-review concern: short timeouts produce false positives, long timeouts produce false negatives, and the binary model loses the tradeoff information.
 

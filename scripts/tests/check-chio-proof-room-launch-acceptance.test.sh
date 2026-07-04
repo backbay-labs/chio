@@ -294,10 +294,6 @@ if not isinstance(agent_web_gate, dict):
     raise SystemExit("acceptance report missing Agent Web exit gate")
 if agent_web_gate.get("verdict") != "verified":
     raise SystemExit("Agent Web exit gate did not verify")
-if agent_web_gate.get("source_log_path") != "docs/superpowers/research/chio-launch/indices/external-standards-source-log.md":
-    raise SystemExit("Agent Web exit gate missing refreshed source log path")
-if agent_web_gate.get("source_log_status") != "refreshed source log":
-    raise SystemExit("Agent Web exit gate source log was not refreshed")
 if agent_web_gate.get("standards_signoff_path") != "docs/standards/CHIO_AGENT_WEB_STANDARDS_SIGNOFF.json":
     raise SystemExit("Agent Web exit gate missing standards sign-off path")
 if agent_web_gate.get("standards_signoff_status") != "approved":

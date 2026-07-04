@@ -128,9 +128,8 @@ pub fn verify_capability(
 /// sibling-sum budget split.
 ///
 /// This is the floor-aware entry point for kernels that load
-/// `policy.crypto_floor`. The default [`verify_capability`] wrapper preserves
-/// legacy callers by using [`CapabilityCryptoFloor::AllowClassical`] and a
-/// [`NoopBudgetRegistry`].
+/// `policy.crypto_floor`. The default [`verify_capability`] wrapper uses
+/// [`CapabilityCryptoFloor::AllowClassical`] and a [`NoopBudgetRegistry`].
 ///
 /// Sibling-sum enforcement: when the token carries a non-empty
 /// `delegation_chain`, the verifier asks `budgets` to admit the new child

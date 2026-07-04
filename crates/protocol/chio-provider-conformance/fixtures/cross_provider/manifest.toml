@@ -7,9 +7,7 @@
 # matrix cardinality; bumping the cardinality requires re-recording
 # every provider's fixture corpus and updating the test in lockstep.
 #
-# This oracle originally shipped for 3 providers (OpenAI, Anthropic,
-# Bedrock) and was later expanded to 8 providers without modifying the
-# oracle surface.
+# This oracle covers 8 providers without changing the verdict-equality surface.
 
 schema = "chio-provider-conformance.cross-provider.v1"
 matrix_id = "weather_lookup_allow"

@@ -150,8 +150,7 @@ pub(super) fn verify_tool_receipts(
             )));
         }
         // Evidence package verification has no policy.crypto_floor input.
-        // Keep the compatibility floor explicit here: accept legacy classical
-        // receipts and hybrid receipts, while policy-bearing callers enforce
+        // Keep the compatibility floor explicit here: accept classical and hybrid receipts, while policy-bearing callers enforce
         // their configured floor before export.
         if !record
             .receipt
@@ -190,8 +189,7 @@ pub(super) fn verify_child_receipts(
             )));
         }
         // Evidence package verification has no policy.crypto_floor input.
-        // Keep the compatibility floor explicit here: accept legacy classical
-        // receipts and hybrid receipts, while policy-bearing callers enforce
+        // Keep the compatibility floor explicit here: accept classical and hybrid receipts, while policy-bearing callers enforce
         // their configured floor before export.
         if !record
             .receipt

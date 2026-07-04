@@ -134,7 +134,7 @@ pub enum ComplianceCertificateError {
 /// authoritative and tamper-evident: a body with a different floor than
 /// the issuance call rejects fail-closed at issuance time, not at first
 /// audit. Under `KernelCryptoFloor::AllowClassical` this produces a
-/// classical-only envelope byte-identical to the legacy form (when
+/// classical-only envelope byte-identical to the signed form (when
 /// the body's `crypto_floor` field agrees with the configured floor).
 ///
 /// # Errors

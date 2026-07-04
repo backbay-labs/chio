@@ -13,6 +13,8 @@ import sys
 
 PRODUCTION_LIMIT = 2_000
 LIB_ROOT_LIMIT = 1_000
+WARN_LIMIT = 1_200
+LIB_WARN_LIMIT = 900
 TEST_LIMIT = 2_000
 SUMMARY_LIMIT = 25
 WIRE_GENERATED_PREFIX = "crates/core/chio-core-types/src/_generated/"
@@ -21,6 +23,10 @@ GENERATED_HEADER_CONST_MARKER = 'pub const GENERATED_HEADER: &str = "\\\n'
 ERRORS_GENERATED_PREFIX = "crates/core/chio-errors/src/_generated/"
 ERRORS_GENERATED_HEADER_SOURCE = "crates/tooling/chio-spec-codegen/src/errors_pass.rs"
 ERRORS_GENERATED_HEADER_CONST_MARKER = 'const ERROR_CODES_GENERATED_HEADER: &str = "\\\n'
+TEXT_HYGIENE_PREFIXES = ("crates/", "docs/", "sdks/", "scripts/", "spec/", "xtask/")
+TEXT_HYGIENE_SUFFIXES = (".rs", ".md")
+TEXT_HYGIENE_PATTERNS = ("*.rs", "*.md")
+EM_DASH = "\u2014"
 
 
 @dataclass(frozen=True)
@@ -122,7 +128,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/core/chio-core-types/src/capability/tests.rs": allow(
         "2026-07-31",
-        "existing oversized capability type test suite; capped to current size until split grown by BAC-573/BAC-548 capability tests (round-3 wildcard RemoveOperation reflection regressions, round-4 concrete-step vs wildcard-child reflection regression)",
+        "existing oversized capability type test suite; capped to current size until split; covers time-checked verification, attenuation narrowing, and wildcard/concrete reflection regressions",
         max_lines=3_200,
     ),
     "crates/kernel/chio-runtime-core/tests/runtime_buyer_review.rs": allow(
@@ -254,6 +260,34 @@ def discover_rust_files(root: Path) -> list[str]:
     ]
 
 
+def discover_text_hygiene_files(root: Path) -> list[str]:
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            *TEXT_HYGIENE_PATTERNS,
+        ],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return [
+        line
+        for line in result.stdout.splitlines()
+        if line
+        and (root / line).is_file()
+        and line.startswith(TEXT_HYGIENE_PREFIXES)
+        and line.endswith(TEXT_HYGIENE_SUFFIXES)
+        and "/_generated/" not in f"/{line}/"
+    ]
+
+
 def line_count(path: Path) -> int:
     data = path.read_bytes()
     return data.count(b"\n")
@@ -358,6 +392,27 @@ def validate_generated_headers(
             )
 
 
+def validate_text_hygiene(root: Path, failures: list[str]) -> None:
+    try:
+        paths = discover_text_hygiene_files(root)
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.strip()
+        failures.append(f"failed to list text hygiene files under {root}: {stderr}")
+        return
+
+    for path in sorted(paths):
+        try:
+            text = (root / path).read_text(encoding="utf-8")
+        except UnicodeDecodeError as err:
+            failures.append(f"{path}: could not decode text hygiene file: {err}")
+            continue
+        for index, line in enumerate(text.splitlines(), start=1):
+            column = line.find(EM_DASH)
+            if column != -1:
+                failures.append(f"{path}:{index}:{column + 1}: contains U+2014 em dash")
+                break
+
+
 def inspect_file(root: Path, path: str) -> RustFile:
     lines = line_count(root / path)
     category = classify(path)
@@ -382,6 +437,24 @@ def inspect_file(root: Path, path: str) -> RustFile:
         violations=tuple(violations),
         allowlist=allowlist,
     )
+
+
+def warning_for_file(file: RustFile) -> str | None:
+    if file.category != "production":
+        return None
+    if is_lib_root(file.path):
+        if LIB_WARN_LIMIT < file.lines <= LIB_ROOT_LIMIT:
+            return (
+                f"warning: {file.path} has {file.lines} lines, "
+                f"warn limit is {LIB_WARN_LIMIT}"
+            )
+        return None
+    if WARN_LIMIT < file.lines <= PRODUCTION_LIMIT:
+        return (
+            f"warning: {file.path} has {file.lines} lines, "
+            f"warn limit is {WARN_LIMIT}"
+        )
+    return None
 
 
 def print_summary(files: list[RustFile]) -> None:
@@ -430,6 +503,20 @@ def main() -> int:
     files = [inspect_file(root, path) for path in paths]
     print_summary(files)
 
+    warnings = [
+        warning
+        for warning in (
+            warning_for_file(file) for file in sorted(files, key=lambda item: item.path)
+        )
+        if warning is not None
+    ]
+    if warnings:
+        print(
+            f"\nRust file hygiene warnings: {len(warnings)} files exceed warning limits"
+        )
+        for warning in warnings:
+            print(warning)
+
     failures: list[str] = []
     for file in sorted(files, key=lambda candidate: candidate.path):
         if not file.violations:
@@ -460,6 +547,7 @@ def main() -> int:
             failures.append(f"{file.path}: {violation}")
 
     validate_generated_headers(root, paths, failures)
+    validate_text_hygiene(root, failures)
 
     if errors:
         failures.extend(errors)

@@ -240,7 +240,7 @@ impl ChioKernel {
     /// authority's trusted keys, and the kernel's own public key. The
     /// method is also used by the chio-kernel-core delegation path
     /// so the portable TCB verifier sees the same trust set as the
-    /// legacy inline check.
+    /// inline check.
     pub(crate) fn trusted_issuer_keys(&self) -> Vec<chio_core::PublicKey> {
         let mut trusted = self.config.ca_public_keys.clone();
         for authority_pk in self.capability_authority.trusted_public_keys() {
@@ -457,7 +457,7 @@ impl ChioKernel {
         cap: &CapabilityToken,
     ) -> Result<(), KernelError> {
         // When the `delegation` feature is on, consult the installed
-        // `RevocationView` snapshot before re-running the legacy chain
+        // `RevocationView` snapshot before re-running the validation chain
         // validation. Fail-closed: a revoked ancestor or leaf denies
         // dispatch even if the chain is otherwise valid. This is a
         // no-op (`Ok(())`) when no view is installed.

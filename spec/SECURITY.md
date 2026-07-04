@@ -475,7 +475,7 @@ Residual risk:
 - verifier paths that do not receive a policy `crypto_floor` still use the
   explicit `allow_hybrid` compatibility floor, which accepts classical and
   hybrid receipts but does not require post-quantum protection
-- third-party or legacy callers that invoke compatibility helpers such as
+- third-party or compatibility callers that invoke compatibility helpers such as
   receipt `verify_signature()` directly are not enforcing a post-quantum floor
   unless they route through the floor-aware verifier API
 

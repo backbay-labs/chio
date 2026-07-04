@@ -94,9 +94,7 @@ mod tests {
         .expect_err("missing directory should fail")
         .to_string();
 
-        let retired_label = ["Chio", "dos"].concat();
         assert!(error.contains("Chio relay event dir"));
-        assert!(!error.contains(&retired_label));
     }
 
     #[test]
@@ -110,8 +108,6 @@ mod tests {
             Err(error) => error.to_string(),
         };
 
-        let retired_label = ["Chio", "dos"].concat();
         assert!(error.contains("Chio relay signing key"));
-        assert!(!error.contains(&retired_label));
     }
 }

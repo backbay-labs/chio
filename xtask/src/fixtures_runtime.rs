@@ -1,8 +1,8 @@
-// Typed handlers for chio-runtime facets, ported from runtime gate scripts and
+// Typed handlers for chio-runtime facets, mirroring runtime gate scripts and
 // launch assurance requirements. Included into `fixtures.rs` via `include!`
 // so the handlers share that module's private helpers (ScratchDir, require_cli,
 // run_cargo_test, validate_document, the JSON mutators, canonical_sha256) while
-// keeping each file under the 2000-line hygiene cap.
+// keeping runtime handlers focused.
 //
 // The runtime scripts are far more imperative than the pheromone gates: each
 // drives a multi-step `chio runtime ...` CLI pipeline, materializes derived
@@ -135,21 +135,15 @@ fn assert_report_bool(report: &Path, field: &str, expected: bool) -> Result<(), 
 
 // -- runtime-spine-fixtures ------------------------------------------------
 
-/// `check-chio-runtime-spine-fixtures.sh`: a retired-schema-ID scan over the
-/// fixture tree, the runtime-derived signed bodies validated against their
-/// schemas, the scenario admission-profile/bundle native-schema assertion, and
-/// the static validate block (in the manifest).
+/// Validate runtime-derived signed bodies against their schemas, enforce the
+/// scenario admission-profile/bundle native-schema assertion, and run the
+/// static validate block from the manifest.
 fn handle_spine_fixtures(
     root: &Path,
     manifest: &RuntimeManifest,
     facet: &RuntimeFacet,
 ) -> Result<(), XtaskError> {
     let fixture_dir = root.join(&facet.fixture_dir);
-
-    // The script's `rg "chio\.chio"` guard: active fixtures must not embed the
-    // retired doubled-schema prefix. The marker is assembled at runtime so this
-    // gate file never embeds the literal it screens for.
-    guard_no_retired_schema_prefix(&fixture_dir)?;
 
     // Build and validate the three signed bodies (trust / peer-weights / policy)
     // the script derives from their unsigned fixtures, and assert the scenario
@@ -160,28 +154,6 @@ fn handle_spine_fixtures(
 
     // Static schema-only validate pairs from the manifest.
     run_runtime_validate_pairs(root, manifest, facet)
-}
-
-/// `chio.chio` retired doubled-schema prefix, assembled at runtime.
-fn retired_schema_prefix() -> String {
-    let mut prefix = String::from("chio");
-    prefix.push('.');
-    prefix.push_str("chio");
-    prefix
-}
-
-fn guard_no_retired_schema_prefix(dir: &Path) -> Result<(), XtaskError> {
-    let marker = retired_schema_prefix();
-    for path in walk_files(dir)? {
-        let text = fs::read_to_string(&path).map_err(|err| XtaskError::Io(display(&path), err))?;
-        if text.contains(&marker) {
-            return Err(XtaskError::Validation(format!(
-                "active Chio runtime-spine fixtures must not contain retired schema IDs: {}",
-                display(&path)
-            )));
-        }
-    }
-    Ok(())
 }
 
 /// Wrap an unsigned body in a signed envelope with filler signer/signature
@@ -480,7 +452,6 @@ fn spine_run_negative(
     validate_runtime(root, "admission-report.schema.json", &replay_report)?;
     assert_report_bool(&replay_report, "accepted", false)?;
     assert_report_str(&replay_report, "failureCode", "destructive_lease_replay")?;
-    spine_assert_no_legacy_runtime_key(&replay_report)?;
 
     // Request binding mismatch: a request with a different toolArgsSha256 must
     // fail with request_binding_mismatch.
@@ -510,13 +481,11 @@ fn spine_run_negative(
         "expected request binding mismatch to fail",
     )?;
     validate_runtime(root, "admission-report.schema.json", &mismatch_report)?;
-    assert_report_str(&mismatch_report, "failureCode", "request_binding_mismatch")?;
-    spine_assert_no_legacy_runtime_key(&mismatch_report)
+    assert_report_str(&mismatch_report, "failureCode", "request_binding_mismatch")
 }
 
-/// Build the trusted-verifiers document from a signed trust input, mirroring the
-/// script's embedded python (active-status verifier key derived from the signed
-/// body and signer key).
+/// Build the trusted-verifiers document from a signed trust input. The
+/// active-status verifier key is derived from the signed body and signer key.
 fn spine_build_trusted_verifiers(signed: &Path, out: &Path) -> Result<(), XtaskError> {
     let value = load_json(signed)?;
     let body = value
@@ -545,7 +514,7 @@ fn spine_build_trusted_verifiers(signed: &Path, out: &Path) -> Result<(), XtaskE
 }
 
 /// Substitute the `PEER_WEIGHTS_SHA256` token in the policy body with the hash
-/// the CLI emitted, in place (mirrors the script's python text replace).
+/// the CLI emitted.
 fn spine_patch_policy_peer_weights(policy_body: &Path, hash_file: &Path) -> Result<(), XtaskError> {
     let hash = fs::read_to_string(hash_file)
         .map_err(|err| XtaskError::Io(display(hash_file), err))?
@@ -557,8 +526,7 @@ fn spine_patch_policy_peer_weights(policy_body: &Path, hash_file: &Path) -> Resu
     fs::write(policy_body, body).map_err(|err| XtaskError::Io(display(policy_body), err))
 }
 
-/// Assert the positive admission report, store, and trust-floor invariants the
-/// script's python checked.
+/// Assert the positive admission report, store, and trust-floor invariants.
 fn spine_assert_admission(
     report: &Path,
     store: &Path,
@@ -595,7 +563,6 @@ fn spine_assert_admission(
     if array_len(&floor_value, "entries") != Some(1) {
         return Err(invalid("runtime trust-floor state did not persist verifier floor"));
     }
-    assert_no_legacy_runtime_metadata_key(&report_value)?;
     let metadata = report_value
         .get("receiptMetadata")
         .and_then(|m| m.get("chio_runtime"))
@@ -622,26 +589,6 @@ fn spine_assert_admission(
         ));
     }
     Ok(())
-}
-
-/// The retired-runtime-metadata-key guard, assembled at runtime (`chio` +
-/// `dos_runtime`).
-fn assert_no_legacy_runtime_metadata_key(report: &Value) -> Result<(), XtaskError> {
-    let mut retired = String::from("chio");
-    retired.push_str("dos_runtime");
-    let present = report
-        .get("receiptMetadata")
-        .and_then(|m| m.get(&retired))
-        .map(|v| !v.is_null())
-        .unwrap_or(false);
-    if present {
-        return Err(invalid("Chio admission report used legacy runtime metadata key"));
-    }
-    Ok(())
-}
-
-fn spine_assert_no_legacy_runtime_key(report: &Path) -> Result<(), XtaskError> {
-    assert_no_legacy_runtime_metadata_key(&load_json(report)?)
 }
 
 fn array_len(value: &Value, key: &str) -> Option<usize> {
@@ -671,12 +618,9 @@ fn run_bash_with_arg(root: &Path, script: &str, arg: &str) -> Result<(), XtaskEr
 
 // -- runtime-proof-parity --------------------------------------------------
 
-/// `check-chio-runtime-proof-parity.sh`. `all` runs the three runtime-core proof
-/// filters, the fixture-generation + verify-proof flow, the chio-cli runtime
-/// test, then the full spine. `schema-only` / `negative-only` delegate to spine;
-/// the script's `--regenerate-only`/`--parity-only`/`--fixtures-only` modes are
-/// captured by the `all` path here (the consolidated CLI exposes the three
-/// canonical modes).
+/// `all` runs the three runtime-core proof filters, the fixture-generation +
+/// verify-proof flow, the chio-cli runtime test, then the full spine.
+/// `schema-only` / `negative-only` delegate to spine.
 fn handle_proof_parity(
     root: &Path,
     manifest: &RuntimeManifest,

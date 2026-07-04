@@ -8,10 +8,10 @@
 //!    the canonical JSON byte buffer once and returns it alongside the
 //!    signed receipt; downstream consumers receive the exact bytes the
 //!    backend signed.
-//! 2. **Byte-identity with the legacy classical entrypoint.** Under the
+//! 2. **Byte-identity with the classical entrypoint.** Under the
 //!    classical [`Ed25519Backend`] path the canonical bytes returned by
 //!    the new hybrid-canonical helper are byte-identical to the bytes
-//!    the legacy `sign_receipt_body_with_backend` flow signs. This is
+//!    the `sign_receipt_body_with_backend` flow signs. This is
 //!    the byte-equivalence guarantee.
 //! 3. **Hybrid round-trip verifies against the shared bytes.** The
 //!    [`HybridBackend`] signs the shared canonical buffer; the
@@ -73,7 +73,7 @@ fn fixture_pq_seed() -> [u8; 32] {
 
 /// Canonical content preimage the test bodies bind their `content_hash` to.
 /// `sign_receipt_body_with_backend` recomputes `sha256_hex` over these bytes and
-/// refuses to sign on mismatch (WYSIWYS, BAC-539), so the body built by
+/// refuses to sign on mismatch (WYSIWYS), so the body built by
 /// [`build_body`] carries exactly `sha256_hex(FIXTURE_CANONICAL_CONTENT)`.
 const FIXTURE_CANONICAL_CONTENT: &[u8] = br#"{"q":"canonical"}"#;
 
@@ -107,7 +107,7 @@ fn build_body(kernel_key: PublicKey) -> ChioReceiptBody {
 fn shared_canonical_bytes_match_classical_signing_path() {
     // Contract 2: the canonical buffer the hybrid-canonical helper
     // emits under a classical backend is byte-identical to the buffer
-    // the legacy classical entrypoint signs. Deployments
+    // the classical entrypoint signs. Deployments
     // see no byte drift when they switch to the canonical-bytes-aware
     // entrypoint.
     let kp = Keypair::from_seed(&fixture_classical_seed());
@@ -135,7 +135,7 @@ fn shared_canonical_bytes_match_classical_signing_path() {
         wrapper_bytes.as_slice(),
         "shared CanonicalBytes drifted from authoritative ChioReceiptSigningBody bytes"
     );
-    // The signed receipt is byte-identical to the legacy receipt: the
+    // The signed receipt is byte-identical to the classical receipt: the
     // hybrid path and classical path produce the same signed envelope
     // when fed the same body and Ed25519 backend (Ed25519 signatures
     // are deterministic per RFC 8032).
@@ -237,7 +237,7 @@ fn kernel_key_mismatch_fails_closed_before_canonicalization() {
 
 #[test]
 fn content_hash_mismatch_fails_closed_render_a_sign_b() {
-    // WYSIWYS (BAC-539): the shared-canonical hybrid path must refuse to sign
+    // WYSIWYS: the shared-canonical hybrid path must refuse to sign
     // a body whose claimed `content_hash` does not match the canonical content
     // preimage handed to the signer (render content A, sign hash B). The refusal
     // happens before any cryptographic work.

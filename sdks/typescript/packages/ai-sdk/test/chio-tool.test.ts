@@ -870,7 +870,7 @@ describe("chioTool: deny path throws ChioToolError", () => {
     });
   });
 
-  it("fails closed even when legacy onSidecarError=allow is configured", async () => {
+  it("fails closed even when reserved onSidecarError=allow is configured", async () => {
     const { fetch } = throwingFetch(new Error("connect ECONNREFUSED"));
     let called = false;
     const wrapped = chioTool({
@@ -1094,14 +1094,14 @@ describe("chioTool: verdict lifting across wire shapes", () => {
     expect(result).toEqual({ doubled: 42 });
   });
 
-  it("accepts a plain-string receipt.decision (legacy fixture shape)", async () => {
-    // Older SDK shims wrote the decision as a plain string rather than
+  it("accepts a plain-string receipt.decision", async () => {
+    // Some evaluator shims write the decision as a plain string rather than
     // the tagged-enum object. Both shapes must lift identically.
-    const legacyShape: Record<string, unknown> = {
+    const plainStringShape: Record<string, unknown> = {
       verdict: "allow",
       receipt: {
-        id: "r-legacy-string",
-        // Legacy shim: receipt.decision is a plain string, not an object.
+        id: "r-string-decision",
+        // Alternate shim shape: receipt.decision is a plain string, not an object.
         decision: "allow",
         receipt_kind: "mediated_decision",
         boundary_class: "prevent",
@@ -1111,7 +1111,7 @@ describe("chioTool: verdict lifting across wire shapes", () => {
       },
       evidence: [],
     };
-    const { fetch } = fakeFetch([legacyShape]);
+    const { fetch } = fakeFetch([plainStringShape]);
     const wrapped = chioTool({
       verifyReceipt: trustedReceiptVerifier,
       parameters: z.object({ n: z.number() }),

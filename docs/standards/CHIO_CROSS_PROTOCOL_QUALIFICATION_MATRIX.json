@@ -131,7 +131,7 @@
       "summary": "Protocol, release, standards, and top-level vision docs make the same strongest honest claim.",
       "witnesses": [
         "docs/VISION.md",
-        "docs/protocols/STRATEGIC-VISION.md",
+        "docs/start-here/VISION.md",
         "docs/release/QUALIFICATION.md",
         "docs/release/RELEASE_AUDIT.md"
       ]
@@ -140,7 +140,7 @@
       "id": "VISION-03",
       "summary": "The repo records one authoritative claim-gate decision and names the exact remaining blockers when the stronger claim is not yet qualified.",
       "witnesses": [
-        "docs/protocols/STRATEGIC-VISION.md",
+        "docs/start-here/VISION.md",
         "docs/release/RELEASE_AUDIT.md",
         "docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json"
       ]
@@ -150,7 +150,7 @@
       "summary": "Economic/control-plane language is bounded to strategic thesis rather than implied as current shipped proof.",
       "witnesses": [
         "docs/VISION.md",
-        "docs/protocols/STRATEGIC-VISION.md"
+        "docs/start-here/VISION.md"
       ]
     }
   ],

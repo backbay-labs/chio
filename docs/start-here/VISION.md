@@ -1,12 +1,11 @@
 # Chio: Vision and Strategic Narrative
 
 This document is strategic narrative, not the authoritative claim gate. The
-current authoritative technical claim is now the universal control-plane thesis
-on the qualified authoritative surfaces, and the repo now also qualifies a
+current authoritative technical claim is the universal control-plane thesis
+on the qualified authoritative surfaces, and the repo also qualifies a
 stronger local economic boundary: Chio is comptroller-capable software on the
 documented operator, partner, and bounded federated proof surfaces. The
 broader market-position story remains strategic rather than proved. See
-[docs/protocols/STRATEGIC-VISION.md](../protocols/STRATEGIC-VISION.md) and
 [docs/release/QUALIFICATION.md](../release/QUALIFICATION.md).
 
 Chio is pre-release. The current Chio-owned protocol, schema, SDK, and runtime

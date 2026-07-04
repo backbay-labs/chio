@@ -1,9 +1,7 @@
 // Alert routing/handoff/delivery and the end-to-end assurance pipeline CLI
-// orchestration, ported from the
+// orchestration, mirroring the
 // `scripts/check-chio-pheromone-relay-alert-{routing,handoff,delivery}.sh` and
-// `check-chio-pheromone-relay-alert-assurance.sh` gates. Split out of
-// `fixtures_facets.rs` to keep each include file under the 2000-line hygiene
-// cap; included into `fixtures.rs` via `include!` so it shares that module's
+// `check-chio-pheromone-relay-alert-assurance.sh` gates. Included as a focused facet module. included into `fixtures.rs` via `include!` so it shares that module's
 // private helpers (ScratchDir, require_cli, reject_cli, validate_document, the
 // JSON helpers).
 

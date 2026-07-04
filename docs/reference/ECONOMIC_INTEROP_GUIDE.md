@@ -3,9 +3,8 @@
 Chio's economic interop surface exists to make governed receipts legible to IAM,
 finance, and partner-review systems without rewriting execution truth.
 
-This guide ties the shipped surface back to the research direction in
-`docs/research/DEEP_RESEARCH_1.md`: a two-source cost model, standards-legible
-authorization details, and explicit transaction context are prerequisites for
+The shipped surface uses a two-source cost model, standards-legible
+authorization details, and explicit transaction context as prerequisites for
 underwriting and later market layers.
 
 ## Truth Model

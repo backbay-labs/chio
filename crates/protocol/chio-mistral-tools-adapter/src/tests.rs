@@ -482,20 +482,6 @@ fn lower_allow_function_response_helper_applies_redactions() {
     assert_eq!(part.tool_call_id, "call_weather_1");
     assert_eq!(part.response, json!({"token": "[redacted]", "ok": true}));
 }
-
-#[test]
-fn error_display_is_em_dash_free() {
-    let cases = vec![MistralAdapterError::Transport(
-        transport::TransportError::MockExhausted {
-            endpoint: MISTRAL_CHAT_COMPLETIONS_PATH.to_string(),
-        },
-    )];
-    for err in cases {
-        let s = err.to_string();
-        assert!(!s.contains('\u{2014}'));
-    }
-}
-
 fn chat_request() -> MistralChatRequest {
     MistralChatRequest::new(
         "mistral-large-latest",

@@ -879,7 +879,9 @@ pub(crate) fn verify_bundle_signature(
             .map_err(|error| format!("proof-room.signature.key-invalid: {error}"))?;
         let key_id = public_key.to_hex();
         if !declared_signer_keys.contains(&key_id) || !trusted_signer_keys.contains(&key_id) {
-            return Err("proof-room.signature.signer-untrusted".to_string());
+            return Err(format!(
+                "proof-room.signature.signer-untrusted: set {PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS_ENV} to include trusted bundle signer keys"
+            ));
         }
         let signature = Signature::from_hex(&entry.sig)
             .map_err(|error| format!("proof-room.signature.signature-invalid: {error}"))?;

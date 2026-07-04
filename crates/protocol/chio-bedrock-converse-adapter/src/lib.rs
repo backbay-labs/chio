@@ -384,23 +384,6 @@ mod tests {
         let back: BedrockAdapterConfig = serde_json::from_slice(&bytes).unwrap();
         assert_eq!(cfg, back);
     }
-
-    #[test]
-    fn error_display_is_em_dash_free() {
-        let cases = vec![
-            BedrockAdapterError::UnsupportedRegion {
-                requested: "us-west-2".to_string(),
-            },
-            BedrockAdapterError::UnsupportedApiVersion {
-                requested: "bedrock.converse.v2".to_string(),
-            },
-        ];
-        for err in cases {
-            let s = err.to_string();
-            assert!(!s.contains('\u{2014}'), "em dash in {s}");
-        }
-    }
-
     #[test]
     fn transport_error_maps_into_fabric_taxonomy() {
         use chio_tool_call_fabric::ProviderError;

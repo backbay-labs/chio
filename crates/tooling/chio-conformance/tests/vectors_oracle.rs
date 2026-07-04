@@ -171,7 +171,7 @@ fn canonical_corpus_round_trips_through_rust_encoder() {
     }
 }
 
-/// Sanity check: every case carries the four required fields and a unique id.
+/// every case carries the four required fields and a unique id.
 /// Catches authoring mistakes in the corpus before the oracle complains.
 #[test]
 fn canonical_corpus_case_shape_is_well_formed() {

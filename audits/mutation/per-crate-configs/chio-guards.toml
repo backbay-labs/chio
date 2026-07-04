@@ -23,7 +23,7 @@
 # target satisfaction requires either a full run OR a pre-registered
 # statistically defensible sampling scheme.
 #
-# `text_utils.rs` and `spider_sense.rs` are in `examine_globs` because
+# `text_utils.rs` and `embedding_anomaly.rs` are in `examine_globs` because
 # both are decision-capable, not advisory:
 #
 #   - `text_utils.rs::canonicalize` is the canonical-form input to
@@ -32,7 +32,7 @@
 #     folding homoglyphs can let obfuscated payloads evade the
 #     trust-boundary guards.
 #
-#   - `spider_sense.rs::SpiderSenseGuard` returns `Verdict::Deny` for
+#   - `embedding_anomaly.rs::EmbeddingAnomalyGuard` returns `Verdict::Deny` for
 #     dimension mismatch (line 290), non-finite embeddings (line 293),
 #     high similarity scores, and ambiguous-deny policy (line 299). Its
 #     module-level doc-comment lists three explicit `Verdict::Deny`
@@ -43,9 +43,9 @@
 # `cargo mutants --list`). The full sweep is estimated at ~25 hours
 # wall-clock on the local workstation (per-mutant rebuild + test
 # averages 60-90s). This local config defines the trust-boundary core
-# surface including text_utils and spider_sense. The hosted nightly uses
+# surface including text_utils and embedding_anomaly. The hosted nightly uses
 # .cargo/mutants.toml, not this per-crate file; that workspace config
-# also includes text_utils and spider_sense. The nightly matrix is per
+# also includes text_utils and embedding_anomaly. The nightly matrix is per
 # crate, not sharded within chio-guards, so a timeout or budget
 # exhaustion remains a partial result until a full completed sweep is
 # recorded.
@@ -61,7 +61,7 @@
 #   - behavioral_sequence.rs: sequence-attack detection boundary
 #   - text_utils.rs         : canonicalize() feeds prompt-injection /
 #                             jailbreak guards before deny decisions
-#   - spider_sense.rs       : SpiderSenseGuard returns Verdict::Deny
+#   - embedding_anomaly.rs       : EmbeddingAnomalyGuard returns Verdict::Deny
 #                             on multiple paths
 #
 # Files NOT in this local surface (measured by the hosted nightly):
@@ -105,7 +105,7 @@ examine_globs = [
     "crates/guards/chio-guards/src/behavioral_sequence.rs",
     # Decision-capable per audits/evidence/mutation exclusion audit/exclude-audit.md.
     "crates/guards/chio-guards/src/text_utils.rs",
-    "crates/guards/chio-guards/src/spider_sense.rs",
+    "crates/guards/chio-guards/src/embedding_anomaly.rs",
 ]
 
 # Itemized exclusions (rationale per file in the header above).

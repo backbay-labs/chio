@@ -9,9 +9,7 @@ family:
 - `ChioIdentityRegistry`
 - `ChioPriceResolver`
 
-The source shapes come from
-`docs/research/CHIO_WEB3_CONTRACT_ARCHITECTURE.md`, but the implementation
-tightens three research-era gaps deliberately:
+The implementation tightens three contract-shape gaps deliberately:
 
 1. RFC6962 proof verification needs `leafIndex` and `treeSize`. The research
    interface examples omitted those fields in the public methods, so the

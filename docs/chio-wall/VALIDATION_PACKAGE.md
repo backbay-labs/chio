@@ -1,6 +1,5 @@
 # Chio-Wall Validation Package
 
-**Date:** 2026-04-03  
 **Milestone:** `v2.50`
 
 ---

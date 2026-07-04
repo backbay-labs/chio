@@ -58,7 +58,7 @@ pub enum ReceiptSigningError {
 /// delegates here after consuming its handle. For the thin transport adapters
 /// that relay an already-minted body across an FFI/WASM boundary and therefore
 /// do **not** hold the content preimage, see
-/// [`sign_receipt_relaying_trusted_body`] (BAC-539 / BAC-601).
+/// [`sign_receipt_relaying_trusted_body`].
 ///
 /// The `body.kernel_key` must equal `backend.public_key()`; otherwise we fail
 /// fast with [`ReceiptSigningError::KernelKeyMismatch`] so the caller doesn't
@@ -120,7 +120,7 @@ pub fn sign_receipt(
 /// canonical content inside the trust boundary and signing is refused on
 /// mismatch (fail-closed). Threading the content preimage across the FFI/WASM
 /// boundary so these adapters can recompute too is the larger follow-up tracked
-/// as BAC-601; until then this entrypoint is the explicit, auditable seam where
+/// as ; until then this entrypoint is the explicit, auditable seam where
 /// caller `content_hash` is trusted, rather than that trust being the silent
 /// default of `sign_receipt`.
 ///
@@ -200,11 +200,11 @@ pub fn sign_receipt_relaying_trusted_body(
 /// `content_hash` equals the recomputed hash.
 ///
 /// The kernel `build_and_sign_receipt` path and the mpsc signing task both route
-/// through here (BAC-539), so every signature the kernel mints recomputes
+/// through here, so every signature the kernel mints recomputes
 /// `content_hash` inside the trust boundary and is bound to a single artifact.
 /// The kernel key check from [`sign_receipt`] still applies.
 ///
-/// # Seam note (BAC-539 follow-up / BAC-601)
+/// # Seam note ( follow-up / )
 ///
 /// Producers currently build the handle from canonical content they supply
 /// (see [`ReceiptSigningHandle::from_content_preimage`] / [`ReceiptSigningHandle::from_content`]).

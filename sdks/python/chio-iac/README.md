@@ -144,7 +144,7 @@ staging_program()
 
 The decorator runs the program twice on apply: once in a collection
 pass to learn which resource types it registers (plan-review) and once
-for real. Programs that do not call `record_resource` simply get the
+for real. Programs that do not call `record_resource` get the
 sidecar-level capability check without a plan-review step -- the kernel
 retains final say.
 

@@ -280,7 +280,7 @@ fn happy_path_full_invocation_runs_end_to_end() {
     let outcome = run_default(&setup).unwrap_or_else(|e| panic!("happy path failed: {e:?}"));
     assert_eq!(outcome.verified.joint_verdict, "allow");
     assert_eq!(outcome.verified.resolved_receipt.id, setup.receipt.id);
-    // Both legacy and DSSE signature-slice artifacts populated.
+    // Both DualSignedReceipt and DSSE signature-slice artifacts populated.
     assert_eq!(outcome.artifacts.dsse_envelope.signatures.len(), 2);
 }
 

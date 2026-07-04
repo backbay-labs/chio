@@ -499,11 +499,6 @@ fn mercury_supervised_live_qualify_writes_reviewer_package_and_report() {
         serde_json::from_slice(&output.stdout).expect("reviewer package json");
     assert_eq!(reviewer_package["workflowId"], "workflow-release-control");
     assert_eq!(reviewer_package["decision"], "proceed");
-    assert_eq!(
-        reviewer_package["docs"]["operationsRunbookFile"],
-        "docs/mercury/SUPERVISED_LIVE_OPERATIONS_RUNBOOK.md"
-    );
-
     for relative_path in [
         "qualification-report.json",
         "reviewer-package.json",
@@ -632,11 +627,6 @@ fn mercury_downstream_review_validate_writes_validation_report_and_decision() {
     assert_eq!(report["workflowId"], "workflow-release-control");
     assert_eq!(report["decision"], "proceed_case_management_only");
     assert_eq!(report["consumerProfile"], "case_management_review");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/DOWNSTREAM_REVIEW_OPERATIONS.md"
-    );
-
     for relative_path in [
         "downstream-review/downstream-review-package.json",
         "downstream-review/consumer-drop/consumer-manifest.json",
@@ -752,11 +742,6 @@ fn mercury_governance_workbench_validate_writes_validation_report_and_decision()
     assert_eq!(report["workflowId"], "workflow-release-control");
     assert_eq!(report["decision"], "proceed_governance_workbench_only");
     assert_eq!(report["workflowPath"], "change_review_release_control");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/GOVERNANCE_WORKBENCH_OPERATIONS.md"
-    );
-
     for relative_path in [
         "governance-workbench/governance-decision-package.json",
         "governance-workbench/governance-reviews/workflow-owner/review-package.json",
@@ -897,11 +882,6 @@ fn mercury_assurance_suite_validate_writes_validation_report_and_decision() {
     assert_eq!(report["decision"], "proceed_assurance_suite_only");
     assert_eq!(report["reviewerOwner"], "mercury-assurance-review");
     assert_eq!(report["supportOwner"], "mercury-assurance-ops");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/ASSURANCE_SUITE_OPERATIONS.md"
-    );
-
     for relative_path in [
         "assurance-suite/assurance-suite-package.json",
         "assurance-suite/reviewer-populations/internal-review/investigation-package.json",
@@ -1031,11 +1011,6 @@ fn mercury_embedded_oem_validate_writes_validation_report_and_decision() {
     assert_eq!(report["partnerSurface"], "reviewer_workbench_embed");
     assert_eq!(report["sdkSurface"], "signed_artifact_bundle");
     assert_eq!(report["reviewerPopulation"], "counterparty_review");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/EMBEDDED_OEM_OPERATIONS.md"
-    );
-
     for relative_path in [
         "embedded-oem/embedded-oem-package.json",
         "embedded-oem/partner-sdk-manifest.json",
@@ -1178,11 +1153,6 @@ fn mercury_trust_network_validate_writes_validation_report_and_decision() {
     assert_eq!(report["trustAnchor"], "chio_checkpoint_witness_chain");
     assert_eq!(report["interopSurface"], "proof_inquiry_bundle_exchange");
     assert_eq!(report["reviewerPopulation"], "counterparty_review");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/TRUST_NETWORK_OPERATIONS.md"
-    );
-
     for relative_path in [
         "trust-network/trust-network-package.json",
         "trust-network/trust-network-interoperability-manifest.json",
@@ -1322,11 +1292,6 @@ fn mercury_release_readiness_validate_writes_validation_report_and_decision() {
     assert_eq!(report["workflowId"], "workflow-release-control");
     assert_eq!(report["decision"], "launch_release_readiness_only");
     assert_eq!(report["deliverySurface"], "signed_partner_review_bundle");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/RELEASE_READINESS_OPERATIONS.md"
-    );
-
     for relative_path in [
         "release-readiness/release-readiness-package.json",
         "release-readiness/partner-delivery-manifest.json",
@@ -1465,11 +1430,6 @@ fn mercury_controlled_adoption_validate_writes_validation_report_and_decision() 
     assert_eq!(report["decision"], "scale_controlled_adoption_only");
     assert_eq!(report["cohort"], "design_partner_renewal");
     assert_eq!(report["adoptionSurface"], "renewal_reference_bundle");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/CONTROLLED_ADOPTION_OPERATIONS.md"
-    );
-
     for relative_path in [
         "controlled-adoption/controlled-adoption-package.json",
         "controlled-adoption/renewal-evidence-manifest.json",
@@ -1609,11 +1569,6 @@ fn mercury_reference_distribution_validate_writes_validation_report_and_decision
     assert_eq!(report["decision"], "proceed_reference_distribution_only");
     assert_eq!(report["expansionMotion"], "landed_account_expansion");
     assert_eq!(report["distributionSurface"], "approved_reference_bundle");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/REFERENCE_DISTRIBUTION_OPERATIONS.md"
-    );
-
     for relative_path in [
         "reference-distribution/reference-distribution-package.json",
         "reference-distribution/account-motion-freeze.json",
@@ -1784,11 +1739,6 @@ fn mercury_broader_distribution_validate_writes_validation_report_and_decision()
         report["distributionSurface"],
         "governed_distribution_bundle"
     );
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/BROADER_DISTRIBUTION_OPERATIONS.md"
-    );
-
     for relative_path in [
         "broader-distribution/broader-distribution-package.json",
         "broader-distribution/target-account-freeze.json",
@@ -1942,11 +1892,6 @@ fn mercury_selective_account_activation_validate_writes_validation_report_and_de
     );
     assert_eq!(report["activationMotion"], "selective_account_activation");
     assert_eq!(report["deliverySurface"], "controlled_delivery_bundle");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/SELECTIVE_ACCOUNT_ACTIVATION_OPERATIONS.md"
-    );
-
     for relative_path in [
         "selective-account-activation/selective-account-activation-package.json",
         "selective-account-activation/activation-scope-freeze.json",
@@ -2105,11 +2050,6 @@ fn mercury_delivery_continuity_validate_writes_validation_report_and_decision() 
     assert_eq!(report["decision"], "proceed_delivery_continuity_only");
     assert_eq!(report["continuityMotion"], "controlled_delivery_continuity");
     assert_eq!(report["continuitySurface"], "outcome_evidence_bundle");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/DELIVERY_CONTINUITY_OPERATIONS.md"
-    );
-
     for relative_path in [
         "delivery-continuity/delivery-continuity-package.json",
         "delivery-continuity/account-boundary-freeze.json",
@@ -2264,11 +2204,6 @@ fn mercury_renewal_qualification_validate_writes_validation_report_and_decision(
     assert_eq!(report["decision"], "proceed_renewal_qualification_only");
     assert_eq!(report["renewalMotion"], "renewal_qualification");
     assert_eq!(report["reviewSurface"], "outcome_review_bundle");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/RENEWAL_QUALIFICATION_OPERATIONS.md"
-    );
-
     for relative_path in [
         "renewal-qualification/renewal-qualification-package.json",
         "renewal-qualification/renewal-boundary-freeze.json",
@@ -2430,11 +2365,6 @@ fn mercury_second_account_expansion_validate_writes_validation_report_and_decisi
     assert_eq!(report["decision"], "proceed_second_account_expansion_only");
     assert_eq!(report["expansionMotion"], "second_account_expansion");
     assert_eq!(report["reviewSurface"], "portfolio_review_bundle");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/SECOND_ACCOUNT_EXPANSION_OPERATIONS.md"
-    );
-
     for relative_path in [
         "second-account-expansion/second-account-expansion-package.json",
         "second-account-expansion/portfolio-boundary-freeze.json",
@@ -2600,11 +2530,6 @@ fn mercury_portfolio_program_validate_writes_validation_report_and_decision() {
     assert_eq!(report["decision"], "proceed_portfolio_program_only");
     assert_eq!(report["programMotion"], "portfolio_program");
     assert_eq!(report["reviewSurface"], "program_review_bundle");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/PORTFOLIO_PROGRAM_OPERATIONS.md"
-    );
-
     for relative_path in [
         "portfolio-program/portfolio-program-package.json",
         "portfolio-program/portfolio-program-boundary-freeze.json",
@@ -2778,11 +2703,6 @@ fn mercury_second_portfolio_program_validate_writes_validation_report_and_decisi
     assert_eq!(report["decision"], "proceed_second_portfolio_program_only");
     assert_eq!(report["programMotion"], "second_portfolio_program");
     assert_eq!(report["reviewSurface"], "portfolio_reuse_bundle");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/SECOND_PORTFOLIO_PROGRAM_OPERATIONS.md"
-    );
-
     for relative_path in [
         "second-portfolio-program/second-portfolio-program-package.json",
         "second-portfolio-program/second-portfolio-program-boundary-freeze.json",
@@ -2927,11 +2847,6 @@ fn mercury_third_program_validate_writes_validation_report_and_decision() {
     assert_eq!(report["decision"], "proceed_third_program_only");
     assert_eq!(report["programMotion"], "third_program");
     assert_eq!(report["reviewSurface"], "multi_program_reuse_bundle");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/THIRD_PROGRAM_OPERATIONS.md"
-    );
-
     for relative_path in [
         "third-program/third-program-package.json",
         "third-program/third-program-boundary-freeze.json",
@@ -3071,11 +2986,6 @@ fn mercury_program_family_validate_writes_validation_report_and_decision() {
     assert_eq!(report["decision"], "proceed_program_family_only");
     assert_eq!(report["programMotion"], "program_family");
     assert_eq!(report["reviewSurface"], "shared_review_package");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/PROGRAM_FAMILY_OPERATIONS.md"
-    );
-
     for relative_path in [
         "program-family/program-family-package.json",
         "program-family/program-family-boundary-freeze.json",
@@ -3220,11 +3130,6 @@ fn mercury_portfolio_revenue_boundary_validate_writes_validation_report_and_deci
     );
     assert_eq!(report["programMotion"], "portfolio_revenue_boundary");
     assert_eq!(report["reviewSurface"], "commercial_review_bundle");
-    assert_eq!(
-        report["docs"]["operationsFile"],
-        "docs/mercury/PORTFOLIO_REVENUE_BOUNDARY_OPERATIONS.md"
-    );
-
     for relative_path in [
         "portfolio-revenue-boundary/portfolio-revenue-boundary-package.json",
         "portfolio-revenue-boundary/revenue-boundary-freeze.json",

@@ -8,22 +8,22 @@
 //!
 //! ## What this fixture checks
 //!
-//! 1. **Byte-level non-overlap**: the legacy `CoSigningBody` canonical bytes
+//! 1. **Byte-level non-overlap**: the `CoSigningBody` canonical bytes
 //!    and the DSSE PAE preimage bytes share zero positions (byte-stream
 //!    inequivalence).
 //! 2. **Signature-slice verifier accepts the envelope** under matching public keys.
 //! 3. **Tampered payload bytes are rejected** (changes LEN(payload) and the
 //!    payload bytes; PAE preimage diverges).
 //! 4. **Mismatched payloadType is rejected** (payload-type is part of PAE).
-//! 5. **A "DSSE envelope" forged by stuffing legacy `DualSignedReceipt`
+//! 5. **A "DSSE envelope" forged by stuffing `DualSignedReceipt`
 //!    signature bytes into the `signatures` array is rejected** because
-//!    the legacy signatures cover a different preimage.
+//!    the DualSignedReceipt signatures cover a different preimage.
 //! 6. **The hot-path emitter (`co_sign_with_origin_full`) produces
 //!    artifacts that BOTH verify under their respective verifiers** - the
-//!    legacy verifier accepts the legacy artifact; the signature-slice verifier
+//!    DualSignedReceipt verifier accepts the DualSignedReceipt artifact; the signature-slice verifier
 //!    accepts the DSSE envelope. Cross-acceptance (e.g. the DSSE verifier accepting
-//!    a legacy `CoSigningBody`-shaped input) is structurally impossible:
-//!    the legacy bytes have no `payloadType` or `signatures` array.
+//!    a `CoSigningBody`-shaped input) is structurally impossible:
+//!    the CoSigningBody bytes have no `payloadType` or `signatures` array.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -84,10 +84,10 @@ const ORG_B_KERNEL_ID: &str = "kernel.org-b";
 // Tests
 // ---------------------------------------------------------------------------
 
-/// Concrete byte-level proof: the legacy `CoSigningBody`
+/// Concrete byte-level proof: the `CoSigningBody`
 /// canonical bytes and the DSSE PAE preimage share zero header bytes; their
 /// shapes are entirely incompatible. A single signature cannot authenticate
-/// both, which is precisely why this path must be separate from the legacy
+/// both, which is precisely why this path must be separate from the DualSignedReceipt
 /// receipt preimage.
 #[test]
 fn legacy_preimage_and_dsse_pae_preimage_share_zero_bytes() {
@@ -400,10 +400,10 @@ fn mismatched_payload_type_rejected_by_signature_slice_verifier() {
     );
 }
 
-/// Cross-shape attack: an adversary takes the bytes of a legacy
+/// Cross-shape attack: an adversary takes the bytes of a
 /// `DualSignedReceipt` signature (which authenticates `canonical_json
 /// (CoSigningBody)`) and stuffs them into a DSSE envelope's
-/// `signatures` array. The signature-slice verifier MUST reject because the legacy
+/// `signatures` array. The signature-slice verifier MUST reject because the DualSignedReceipt
 /// signature does not authenticate the DSSE PAE preimage.
 #[test]
 fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
@@ -411,7 +411,7 @@ fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
     let kp_b = Keypair::generate();
     let receipt = sample_receipt(&kp_b);
 
-    // Build the legacy artifact via the federation hot-path emitter.
+    // Build the DualSignedReceipt artifact via the federation hot-path emitter.
     let cosigner = InProcessCoSigner::new(ORG_A_KERNEL_ID, kp_a.clone(), kp_b.public_key());
     let artifacts = co_sign_with_origin_full(
         ORG_A_KERNEL_ID,
@@ -426,7 +426,7 @@ fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
     .expect("hot path must produce both artifacts");
 
     // The hot-path-produced DSSE envelope verifies under the signature-slice verifier
-    // (sanity check: the test setup is healthy before forging).
+    // (the test setup is healthy before forging).
     verify_dsse_envelope(
         &artifacts.dsse_envelope,
         &kp_a.public_key(),
@@ -434,8 +434,8 @@ fn forged_envelope_using_legacy_signature_bytes_is_rejected() {
     )
     .expect("hot-path-emitted DSSE envelope must verify under the signature-slice verifier");
 
-    // Forge: build a DSSE envelope shape but stuff it with the legacy
-    // signature bytes. The legacy signatures authenticate
+    // Forge: build a DSSE envelope shape but stuff it with the DualSignedReceipt
+    // signature bytes. The DualSignedReceipt signatures authenticate
     // `canonical_json(CoSigningBody)`, NOT the DSSE PAE bytes. A naive
     // verifier that only checked "two signatures present, keyid present"
     // would accept this; the signature-slice verifier rejects because Ed25519 fails
@@ -475,7 +475,7 @@ fn hot_path_emits_both_artifacts_and_each_verifies() {
     )
     .expect("hot path must succeed");
 
-    // Legacy verifier accepts the legacy artifact.
+    // DualSignedReceipt verifier accepts the DualSignedReceipt artifact.
     artifacts
         .dual_signed_receipt
         .verify(&kp_a.public_key(), &kp_b.public_key())
@@ -489,11 +489,11 @@ fn hot_path_emits_both_artifacts_and_each_verifies() {
     )
     .expect("DSSE envelope verifies under signature-slice verifier");
 
-    // The legacy verifier ONLY accepts a `DualSignedReceipt`; trying to
+    // The DualSignedReceipt verifier ONLY accepts a `DualSignedReceipt`; trying to
     // hand it a `DsseEnvelope` is a structural type error and so cannot
     // even compile. We document the intent in a runtime check instead:
-    // the legacy preimage bytes do not appear inside the DSSE preimage,
-    // so a DSSE envelope cannot be re-interpreted as a legacy artifact.
+    // the DualSignedReceipt preimage bytes do not appear inside the DSSE preimage,
+    // so a DSSE envelope cannot be re-interpreted as a DualSignedReceipt artifact.
     let legacy_preimage = CoSigningBody::from_receipt(&receipt, ORG_A_KERNEL_ID, ORG_B_KERNEL_ID)
         .unwrap()
         .canonical_bytes()
@@ -568,7 +568,7 @@ fn statement_subject_digest_matches_canonical_receipt_body_hash() {
          cross-impl resolution from a body-only receipt store relies on this binding."
     );
 
-    // Belt-and-suspenders: hashing the full signed wrapper must NOT
+    // hashing the full signed wrapper must NOT
     // match. A wrapper-hash match would mean the body/wrapper binding
     // had regressed silently.
     let canonical_full = canonical_json_bytes(&receipt).unwrap();

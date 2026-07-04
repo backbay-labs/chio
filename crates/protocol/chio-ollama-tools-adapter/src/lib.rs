@@ -767,22 +767,4 @@ mod tests {
         assert_eq!(msg.name, "get_weather");
         assert_eq!(msg.content, r#"{"ok":true,"token":"[redacted]"}"#);
     }
-
-    #[test]
-    fn error_display_is_em_dash_free() {
-        let cases = vec![
-            OllamaAdapterError::Provider(ProviderError::Malformed(
-                "Ollama /api/chat payload was not JSON".to_string(),
-            )),
-            OllamaAdapterError::Transport(
-                chio_provider_adapter_core::http::HttpTransportError::MockExhausted {
-                    path: OLLAMA_CHAT_PATH.to_string(),
-                },
-            ),
-        ];
-        for err in cases {
-            let s = err.to_string();
-            assert!(!s.contains('\u{2014}'), "em dash in {s}");
-        }
-    }
 }

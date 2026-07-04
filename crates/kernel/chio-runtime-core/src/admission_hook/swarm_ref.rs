@@ -1,6 +1,5 @@
 use chio_kernel::ToolCallRequest;
 
-use super::request::retired_context_key;
 use crate::*;
 
 #[derive(Debug, Clone)]
@@ -29,11 +28,7 @@ pub(super) fn swarm_ref_from_request(
     let Some(context) = intent.context.as_ref() else {
         return Ok(None);
     };
-    let retired_swarm_key = retired_context_key("Swarm");
-    let Some(swarm) = context
-        .get("chioSwarm")
-        .or_else(|| context.get(retired_swarm_key.as_str()))
-    else {
+    let Some(swarm) = context.get("chioSwarm") else {
         return Ok(None);
     };
     let Some(object) = swarm.as_object() else {

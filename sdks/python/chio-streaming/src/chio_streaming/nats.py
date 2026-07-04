@@ -44,7 +44,7 @@ HandlerErrorStrategy = Literal["nak", "term"]
 SidecarErrorBehaviour = Literal["raise", "deny"]
 
 DenyAckStrategy = DenyStrategy
-"""Deprecated alias for :data:`DenyStrategy`. Removed in 0.4."""
+"""Alias for :data:`DenyStrategy` used by NATS acknowledgement settings."""
 
 
 @runtime_checkable
@@ -104,7 +104,7 @@ class ChioNatsConsumerConfig:
         ``"ack"`` (default) or ``"term"``. ``"ack"`` marks the deny as
         processed so JetStream does not redeliver; ``"term"`` is
         semantically "abandon this message" -- either is safe once the
-        DLQ publish succeeds. ``deny_ack_strategy`` is a deprecated alias.
+        DLQ publish succeeds. ``deny_ack_strategy`` is an alias.
     handler_error_strategy:
         ``"nak"`` (default) or ``"term"``. Determines what happens
         when the application handler raises on the allow path. ``nak``
@@ -146,12 +146,12 @@ class ChioNatsConsumerConfig:
 
     @property
     def deny_ack_strategy(self) -> DenyStrategy:
-        """Deprecated alias for :attr:`deny_strategy`. Removed in 0.4."""
+        """Alias for :attr:`deny_strategy`."""
         import warnings
 
         warnings.warn(
-            "ChioNatsConsumerConfig.deny_ack_strategy is deprecated; "
-            "use deny_strategy instead (removed in 0.4).",
+            "ChioNatsConsumerConfig.deny_ack_strategy is an alias; "
+            "use deny_strategy instead.",
             DeprecationWarning,
             stacklevel=2,
         )

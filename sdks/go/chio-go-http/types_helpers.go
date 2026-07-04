@@ -180,8 +180,8 @@ type EvaluateResponse struct {
 	Evidence []GuardEvidence `json:"evidence"`
 }
 
-// ChioPassthrough is retained for legacy source compatibility. Current v1
-// middleware always fails closed and does not attach this marker.
+// ChioPassthrough is a reserved degraded-state marker. The middleware always
+// fails closed and does not attach this marker.
 type ChioPassthrough struct {
 	Mode    string `json:"mode"`
 	Error   string `json:"error"`

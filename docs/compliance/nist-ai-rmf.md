@@ -1,5 +1,4 @@
 ---
-status: draft
 date: 2026-04-16
 framework: NIST AI Risk Management Framework 1.0 (January 2023)
 maintainer: Chio Protocol Team
@@ -14,7 +13,7 @@ maintainer: Chio Protocol Team
 | Framework | NIST AI Risk Management Framework (AI RMF 1.0) |
 | Published | January 2023 (NIST AI 100-1) |
 | Scope | Govern, Map, Measure, Manage functions and their subcategories |
-| Chio Profile | Current v1-only pre-release profile; draft originally tracked under internal phase 15 |
+| Chio Profile | Current v1-only pre-release profile |
 | Document Date | 2026-04-16 |
 
 ---
@@ -103,7 +102,7 @@ This mapping covers every Govern/Map/Measure/Manage subcategory in AI RMF 1.0. S
 | MS-2.3 | Performance metrics are tracked | Receipt store records timing, outcome, cost | partial | Latency percentiles not reported out of the box | Observability stack |
 | MS-2.4 | Measurement results are documented | Evidence export (`crates/products/chio-cli/src/evidence_export.rs`) and compliance certificates | strong | None | Reporting cadence |
 | MS-2.5 | Robustness, reliability, resilience are evaluated | Fail-closed pipeline; checkpoint integrity (`crates/kernel/chio-kernel/src/checkpoint.rs`) | partial | Model-level robustness is out of scope | Model evaluations |
-| MS-2.6 | Safety risks are evaluated | Content safety guards: jailbreak/prompt-injection detectors in the application-layer guard suite (see `../archive/GUARD_SUITE_INTEGRATION.md`); `secret_leak`, `egress_allowlist`, `forbidden_path` in `crates/guards/chio-guards/src/` | strong | Model-inference safety out of scope | Model safety testing |
+| MS-2.6 | Safety risks are evaluated | Content safety guards: jailbreak/prompt-injection detectors in the application-layer guard suite; `secret_leak`, `egress_allowlist`, `forbidden_path` in `crates/guards/chio-guards/src/` | strong | Model-inference safety out of scope | Model safety testing |
 | MS-2.7 | Security and resilience are evaluated | Signed receipts, Merkle checkpoints, DPoP, capability revocation | strong | Penetration testing is not automated | Regular pen-testing |
 | MS-2.8 | Risks of privacy violations are examined | PII-oriented `QueryResultGuard` / `response_sanitization.rs`, column constraints in data guards | partial | Not all privacy patterns covered | Privacy impact assessment |
 | MS-2.9 | Risks of fairness violations are examined | Out of scope | customer-responsibility | N/A | Fairness evaluations |

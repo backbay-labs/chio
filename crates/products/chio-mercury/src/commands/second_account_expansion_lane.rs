@@ -197,12 +197,10 @@ struct MercurySecondAccountExpansionValidationReport {
 
 fn second_account_expansion_doc_refs() -> MercurySecondAccountExpansionDocRefs {
     MercurySecondAccountExpansionDocRefs {
-        second_account_expansion_file: "docs/mercury/SECOND_ACCOUNT_EXPANSION.md".to_string(),
-        operations_file: "docs/mercury/SECOND_ACCOUNT_EXPANSION_OPERATIONS.md".to_string(),
-        validation_package_file: "docs/mercury/SECOND_ACCOUNT_EXPANSION_VALIDATION_PACKAGE.md"
-            .to_string(),
-        decision_record_file: "docs/mercury/SECOND_ACCOUNT_EXPANSION_DECISION_RECORD.md"
-            .to_string(),
+        second_account_expansion_file: String::new(),
+        operations_file: String::new(),
+        validation_package_file: String::new(),
+        decision_record_file: String::new(),
     }
 }
 

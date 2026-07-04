@@ -408,11 +408,10 @@ impl ChioReceipt {
     ///
     /// This is the BBS/selective-disclosure analogue of
     /// [`ChioReceipt::sign_with_handle`]. The classical and backend handle
-    /// signers already recompute `content_hash` over a one-time
-    /// [`ReceiptSigningHandle`] and refuse on mismatch; the BBS path
-    /// ([`ChioReceipt::sign_prepared_with_bbs`]) historically bypassed that
-    /// gate, so a BBS receipt could render content `A` while binding a body
-    /// whose `content_hash` claimed `B`. This entrypoint closes that gap.
+    /// signers recompute `content_hash` over a one-time
+    /// [`ReceiptSigningHandle`] and refuse on mismatch; the older
+    /// [`ChioReceipt::sign_prepared_with_bbs`] entrypoint does not recompute
+    /// `content_hash`. This entrypoint signs only after the recompute matches.
     ///
     /// The `handle` is bound to the exact canonical content the producer
     /// evaluated. The signer recomputes `content_hash` over that content and

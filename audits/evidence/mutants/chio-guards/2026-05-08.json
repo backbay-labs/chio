@@ -10,7 +10,7 @@
   "result_label_reason": "9.2% hand-picked surface cannot retire the configured 80% crate-level target or the 65% activation floor; full run OR pre-registered statistically defensible sampling scheme required for target satisfaction",
   "subset_invalidated_for_files": [
     "crates/chio-guards/src/text_utils.rs",
-    "crates/chio-guards/src/spider_sense.rs"
+    "crates/chio-guards/src/embedding_anomaly.rs"
   ],
   "subset_invalidation_reason": "Both files have been re-included in the corrected local rerun config (audits/mutation/per-crate-configs/chio-guards.toml) and the hosted-nightly workspace config (.cargo/mutants.toml). The historical replay config for this row is audits/mutation/per-crate-configs/chio-guards-2026-05-08-subset.toml. The 119-mutant subset measured here did NOT mutate either file, so the next corrected mutation run must re-measure the corrected surface; this subset's 78.2% kill rate is invalid for those two files.",
   "caught": 86,

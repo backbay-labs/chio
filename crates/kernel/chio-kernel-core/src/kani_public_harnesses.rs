@@ -393,7 +393,7 @@ pub fn public_sign_receipt_accepts_matching_kernel_key() {
 
 #[kani::proof]
 pub fn public_sign_receipt_refuses_content_hash_mismatch() {
-    // Production WYSIWYS gate (BAC-539): `sign_receipt` recomputes
+    // Production WYSIWYS gate: `sign_receipt` recomputes
     // `sha256_hex(canonical_content)` inside the trust boundary and refuses to
     // sign when it disagrees with `body.content_hash`. The `receipt_body`
     // fixture claims `content_hash = "h"`, which is not the SHA-256 of the
@@ -421,7 +421,7 @@ pub fn public_sign_receipt_refuses_content_hash_mismatch() {
 
 #[kani::proof]
 pub fn public_sign_receipt_accepts_matching_content_hash() {
-    // Production WYSIWYS gate accept path (BAC-539): when `body.content_hash`
+    // Production WYSIWYS gate accept path: when `body.content_hash`
     // equals `sha256_hex(canonical_content)`, `sign_receipt` recomputes, agrees,
     // and routes through to signing. Bind the body's claimed hash to the
     // canonical preimage so the recompute matches, then assert the signature is

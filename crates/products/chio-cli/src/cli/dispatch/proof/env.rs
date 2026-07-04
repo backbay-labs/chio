@@ -365,7 +365,8 @@ fn public_settlement_rpc_egress_contract(url: &str) -> Result<HttpEgressContract
         tenant_egress_namespace: "proof.public-settlement.rpc".to_string(),
         allowed_schemes,
         allowed_authority_set,
-        deny_loopback: true,
+        deny_loopback: cfg!(not(debug_assertions))
+            || !optional_bool_from_env("CHIO_TEST_PUBLIC_SETTLEMENT_ALLOW_LOOPBACK_RPC")?,
         deny_link_local: true,
         deny_ipv6_ula: true,
         max_redirect_chain: 0,

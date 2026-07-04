@@ -170,9 +170,9 @@ impl CodeExecutionGuard {
         }
     }
 
-    /// Build an empty guard that denies every code-execution call.  Used
+    /// Build an empty guard that denies every code-execution call. Used
     /// as a fallback when the default configuration somehow fails to
-    /// compile (defensive programming; should never trigger).
+    /// compile.
     fn empty_failclosed() -> Self {
         Self {
             enabled: true,

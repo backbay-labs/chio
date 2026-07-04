@@ -10,6 +10,7 @@ chain transaction, or Rekor entry. Those remain governed by
 From the repository root:
 
 ```bash
+source scripts/proof-room-quickstart-env.sh
 cargo run -p chio-cli -- proof doctor --scenario single-call-authority --root . --json
 cargo run -p chio-cli -- proof serve fixtures/proof-room/first-run/single-call-authority/proof-room-bundle --listen 127.0.0.1:7391
 cargo run -p chio-proof-room -- \
@@ -46,6 +47,7 @@ artifact bound into the Proof Room bundle.
 Run the supporting gates:
 
 ```bash
+scripts/check-proof-room-source-quickstart.sh
 scripts/check-chio-proof-room-release-truth.sh
 scripts/check-chio-proof-room-docker-quickstart.sh
 ```

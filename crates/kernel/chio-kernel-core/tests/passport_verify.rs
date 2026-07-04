@@ -215,7 +215,7 @@ fn envelope_roundtrips_through_serde() {
     let decoded: PortablePassportEnvelope = serde_json::from_slice(&json).expect("decode envelope");
     assert_eq!(decoded, envelope);
 
-    // Sanity check: the decoded envelope verifies end-to-end.
+    // the decoded envelope verifies end-to-end.
     let clock = FixedClock::new(ISSUED_AT + 1);
     let trusted: [PublicKey; 1] = [issuer.public_key()];
     let _ = verify_parsed_passport(&decoded, &trusted, &clock).expect("verified");

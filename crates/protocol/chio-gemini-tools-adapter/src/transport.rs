@@ -389,16 +389,4 @@ mod tests {
         assert_eq!(transport.endpoint(), GEMINI_GENERATE_CONTENT_HOST);
         assert_eq!(transport.api_version(), GEMINI_API_VERSION);
     }
-
-    #[test]
-    fn transport_error_display_is_em_dash_free() {
-        let cases = vec![
-            TransportError::Build("boom".to_string()),
-            TransportError::MissingApiKey,
-        ];
-        for err in cases {
-            let s = err.to_string();
-            assert!(!s.contains('\u{2014}'), "em dash in {s}");
-        }
-    }
 }

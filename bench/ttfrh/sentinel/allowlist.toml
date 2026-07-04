@@ -31,4 +31,4 @@ hosts = []
 [notes]
 schema_version = "1"
 last_reviewed_iso = "2026-04-30"
-maintainer = "@bb-connor"
+maintainer = "@backbay-labs"

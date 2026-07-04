@@ -96,7 +96,7 @@ pub trait ToolEvaluator: Send + Sync {
     /// `build_and_sign_receipt` path, and equally fail-closed: both delegate to
     /// `chio_kernel_core::sign_receipt_with_handle`, which recomputes
     /// `content_hash` over `canonical_content` and refuses to sign on mismatch
-    /// (WYSIWYS, BAC-539).
+    /// (WYSIWYS).
     async fn sign_receipt(
         &self,
         kernel: &ChioKernel,

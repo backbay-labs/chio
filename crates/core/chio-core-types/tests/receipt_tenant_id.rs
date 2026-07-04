@@ -115,9 +115,8 @@ fn receipt_body_serde_emits_tenant_id_when_set() {
 }
 
 #[test]
-fn deserializing_legacy_receipt_without_tenant_id_works() {
-    // Legacy receipts issued before multi-tenant support have no tenant_id field.
-    // They must deserialize cleanly with tenant_id defaulting to None.
+fn deserializing_receipt_without_tenant_id_defaults_to_none() {
+    // A receipt that omits tenant_id must deserialize with tenant_id defaulting to None.
     let kp = Keypair::generate();
     let receipt = ChioReceipt::sign(body_with(&kp, None), &kp).unwrap();
     let json = serde_json::to_string(&receipt).unwrap();

@@ -2,7 +2,7 @@
 
 Status: launch taxonomy
 Owner: launch-standards-review
-Updated: 2026-06-25
+Updated: 2026-07-03
 
 This taxonomy defines how Chio talks about external Agent Web surfaces in public launch material. External standards can supply evidence, identifiers, signatures, manifests, or transport semantics. They do not become Chio authority unless a Chio verifier binds them to a Transaction Passport, Chio receipt, policy, and trusted key set.
 
@@ -22,7 +22,7 @@ This taxonomy defines how Chio talks about external Agent Web surfaces in public
 | Surface | Current launch role | Authority rule |
 | --- | --- | --- |
 | MCP | Tool and resource protocol evidence. | Chio may bind mediated MCP calls and object digests. MCP alone is not Chio authorization. |
-| A2A | Agent task and message evidence. | Chio may bind A2A task evidence for version v0.3.0. A2A alone is not Chio authority. |
+| A2A | Agent task and message evidence. | Chio may bind A2A task evidence for version v1.0.0. A2A alone is not Chio authority. |
 | ACP-Client | IDE or client permission/session evidence. | Use the full name `ACP-Client`; never use the unqualified acronym. |
 | ACP-Commerce | Commerce and merchant protocol evidence. | Use the full name `ACP-Commerce`. It is subordinate commerce evidence unless Chio verifies and binds it. |
 | AG-UI | Agent/user event stream evidence. | Chio requires a start, content, end event sequence and digest-bound receipts. UI events alone are not authority. |

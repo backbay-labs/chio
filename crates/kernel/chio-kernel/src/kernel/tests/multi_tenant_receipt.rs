@@ -238,7 +238,7 @@ fn tenant_id_falls_back_to_oauth_federated_claims() {
     assert_eq!(response.receipt.tenant_id.as_deref(), Some("tenant-fed"));
 }
 
-// --- WYSIWYS on the PRODUCTION signing path (BAC-539) ---------------------
+// --- WYSIWYS on the PRODUCTION signing path ---------------------
 //
 // These tests exercise the live `ChioKernel::build_and_sign_receipt` path --
 // the choke point EVERY production receipt (allow/deny, inline and session)

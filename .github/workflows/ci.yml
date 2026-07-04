@@ -83,6 +83,8 @@ jobs:
           ./scripts/check-release-inputs.sh
           ./scripts/check-workspace-layering.sh
           python3 scripts/check-review-slices.py
+          python3 scripts/check-mutants-examine-globs.py
+          bash scripts/tests/check-mutants-examine-globs.test.sh
           python3 scripts/check-rust-public-surface.py
           bash scripts/tests/check-rust-public-surface.test.sh
           python3 scripts/check-architecture-docs.py
@@ -92,6 +94,8 @@ jobs:
           bash ./scripts/tests/check-http-egress-contract.test.sh
           bash ./scripts/check-chio-proof-room-release-truth.sh
           bash ./scripts/tests/check-chio-proof-room-release-truth.test.sh
+          bash ./scripts/check-chio-schema-registry.sh
+          bash ./scripts/tests/check-chio-schema-registry.test.sh
           bash ./scripts/check-agent-web-proof-envelope-schema.sh
           bash ./scripts/tests/check-agent-web-proof-envelope-schema.test.sh
 
@@ -182,6 +186,17 @@ jobs:
           CARGO_BUILD_JOBS: "1"
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: cargo test -p chio-wasm-guards --lib
+
+      - name: Build Python guard WASM fixture
+        run: |
+          python3 -m pip install "componentize-py==$(cat .tooling/componentize-py.version)"
+          ./sdks/guard/chio-guard-py/scripts/build-guard.sh
+
+      - name: Wasm guards Python SDK round-trip tests
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: cargo test -p chio-wasm-guards --test py_guard_integration -- --nocapture
 
       - name: Tokio console smoke
         env:

@@ -118,7 +118,7 @@
       "id": "VISION3-01",
       "summary": "The stronger original technical control-plane claim upgrades only after FABRIC3, CTRL3, LIFE3, and ECO3 evidence is complete.",
       "witnesses": [
-        "docs/protocols/STRATEGIC-VISION.md",
+        "docs/start-here/VISION.md",
         "docs/release/QUALIFICATION.md",
         "docs/release/RELEASE_AUDIT.md"
       ]
@@ -128,7 +128,7 @@
       "summary": "The docs separate technical control-plane qualification from any still-unproved comptroller-of-the-agent-economy market-position thesis.",
       "witnesses": [
         "docs/VISION.md",
-        "docs/protocols/STRATEGIC-VISION.md",
+        "docs/start-here/VISION.md",
         "docs/release/QUALIFICATION.md",
         "docs/release/RELEASE_AUDIT.md"
       ]

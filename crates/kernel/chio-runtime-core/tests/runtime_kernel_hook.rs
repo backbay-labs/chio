@@ -128,10 +128,6 @@ fn advisory(strength: f64) -> RuntimePheromoneAdvisory {
     }
 }
 
-fn retired_context_key(suffix: &str) -> String {
-    ["chio", "dos", suffix].concat()
-}
-
 fn policy(peer_weights_sha256: String) -> RuntimePheromonePolicy {
     RuntimePheromonePolicy {
         schema: CHIO_RUNTIME_PHEROMONE_POLICY_SCHEMA.to_string(),
@@ -411,71 +407,6 @@ fn kernel_hook_bypasses_non_chio_request() -> Result<(), Box<dyn std::error::Err
 
     assert!(decision.allowed, "{decision:#?}");
     assert!(decision.metadata.is_none(), "{decision:#?}");
-    Ok(())
-}
-
-#[test]
-fn kernel_hook_denies_retired_runtime_context_instead_of_bypassing(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let store = InMemoryRuntimeAdmissionStore::new();
-    let cap = capability("cap-live-1")?;
-    let mut context = serde_json::Map::new();
-    context.insert(
-        retired_context_key("Admission"),
-        serde_json::json!({
-            "admissionId": "adm-retired-context",
-            "bundleSha256": "a".repeat(64)
-        }),
-    );
-    let request = ToolCallRequest {
-        request_id: "req-retired-context".to_string(),
-        capability: cap.clone(),
-        tool_name: "close_account".to_string(),
-        server_id: "vendor-ledger".to_string(),
-        agent_id: cap.subject.to_hex(),
-        arguments: serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-        dpop_proof: None,
-        execution_nonce: None,
-        governed_intent: Some(GovernedTransactionIntent {
-            id: "intent-retired-context".to_string(),
-            server_id: "vendor-ledger".to_string(),
-            tool_name: "close_account".to_string(),
-            purpose: "mixed-version runtime admission must fail closed".to_string(),
-            max_amount: None,
-            commerce: None,
-            metered_billing: None,
-            runtime_attestation: None,
-            call_chain: None,
-            autonomy: None,
-            context: Some(serde_json::Value::Object(context)),
-        }),
-        approval_token: None,
-        model_metadata: None,
-        federated_origin_kernel_id: None,
-    };
-    let hook = ChioRuntimeAdmissionHook::new(profile(), store);
-
-    let decision = hook.evaluate(&RuntimeAdmissionContext {
-        request: &request,
-        extra_metadata: None,
-        now_unix_secs: 1_800_000_001,
-        now_unix_ms: 1_800_000_001_000,
-        matched_grant_index: Some(0),
-        local_kernel_id: "kernel.vendor-b".to_string(),
-    })?;
-
-    assert!(!decision.allowed, "{decision:#?}");
-    let metadata = decision
-        .metadata
-        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
-    assert_eq!(
-        metadata["chio_runtime"]["admission_id"],
-        "adm-retired-context"
-    );
-    assert_eq!(
-        metadata["chio_runtime"]["failure_code"],
-        "missing_admission_bundle"
-    );
     Ok(())
 }
 

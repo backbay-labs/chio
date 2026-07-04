@@ -74,10 +74,9 @@ fn bounded_chio(root: &Path) -> Result<(), XtaskError> {
                 display(&matrix_path)
             ))
         })?;
-    // The legacy script hard-coded a fixed repo-relative profile path; the matrix
-    // supplies it as data here, so fail closed on a path that is absolute or
-    // escapes the workspace root before resolving it. A `profile.document` that
-    // points outside the repo would make the bounded boundary unverifiable.
+    // Reject an absolute or escaping profile path before resolving it. A
+    // `profile.document` that points outside the repo would make the bounded
+    // boundary unverifiable.
     let profile_path = resolve_repo_relative(root, profile_doc)?;
     if !profile_path.is_file() {
         return Err(XtaskError::Validation(format!(
@@ -97,7 +96,7 @@ fn bounded_chio(root: &Path) -> Result<(), XtaskError> {
     Ok(())
 }
 
-/// Structural assertions over the bounded matrix value. Split out so a unit
+/// Structural assertions over the bounded matrix value. Kept separate so a unit
 /// test can exercise the fail-closed branches against in-memory fixtures
 /// without touching the filesystem.
 fn assert_bounded_matrix(matrix: &Value) -> Result<(), XtaskError> {

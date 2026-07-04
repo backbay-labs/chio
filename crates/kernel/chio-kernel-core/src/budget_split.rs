@@ -296,7 +296,7 @@ pub trait BudgetRegistry {
 /// budget plumbing.
 ///
 /// `register_parent` and `try_admit_child` always return `Ok(())` and the
-/// registry never tracks state. This is suitable for legacy entry points
+/// registry never tracks state. This is suitable for compatibility entry points
 /// that only check signature, issuer trust, and time bounds; new code
 /// should use a real registry so sibling oversubscription is rejected.
 #[derive(Debug, Default, Clone, Copy)]

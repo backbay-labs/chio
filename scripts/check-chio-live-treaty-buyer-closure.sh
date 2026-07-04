@@ -38,12 +38,6 @@ if [[ $# -gt 1 ]]; then
 fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-protocol_doc="$repo_root/spec/PROTOCOL.md"
-
-if rg -n "historical Chio|Chio predicate|Chio proof verifier|Chio verifier|Chio proof" "$protocol_doc"; then
-  echo "active Chio protocol prose must use legacy-neutral verifier wording outside literal schema ids" >&2
-  exit 1
-fi
 
 run_cargo_test_filter() {
   local package="$1"

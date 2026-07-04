@@ -1,7 +1,6 @@
 # Agent Reputation System
 
 **Status:** Design proposal with local scoring, issuance gating, `did:chio`, and Agent Passport alpha implemented in the current pre-release v1 branch
-**Date:** 2026-03-23
 **Authors:** Chio Protocol Team
 
 > Historical internal milestone note. `v2.x` labels in this document are

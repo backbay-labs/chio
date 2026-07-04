@@ -118,9 +118,7 @@ etc.) propagates unchanged to match Python's
 
 ## Parity
 
-The Flink tests that pin wire invariants carry `@Tag("parity")` and
-are enumerated in
-[`02-flink-operator-design.md`](../../../docs/research/flink-jvm/02-flink-operator-design.md).
+The Flink tests that pin wire invariants carry `@Tag("parity")`.
 `MiniClusterSyncJobIT` / `MiniClusterAsyncJobIT` (integration, `@Tag("integration")`)
 drive a full allow + deny + sidecar-error scenario through a real
 MiniCluster; they are excluded from default `check` but runnable via

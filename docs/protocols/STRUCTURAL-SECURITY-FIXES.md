@@ -1,16 +1,14 @@
 # Structural Security Fixes
 
-> **Status**: Tier 0 -- proposed April 2026
-> **Source**: Red-team review (see `REVIEW-FINDINGS-AND-NEXT-STEPS.md`, section 1)
 > **Scope**: Three structural security gaps that guards cannot fix, plus three
-> additional hardening measures from the same review.
+> additional hardening measures.
 
 ---
 
 ## Executive Summary
 
-The red-team review identified three gaps that are architectural, not policy
-problems. No guard configuration, no matter how strict, can close them:
+Three gaps are architectural, not policy problems. No guard configuration, no
+matter how strict, can close them:
 
 1. **TOCTOU in the wrapper pattern** -- unbounded window between `evaluate()`
    and tool execution allows replay, substitution, and stale-verdict attacks.

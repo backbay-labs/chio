@@ -12,8 +12,8 @@
 //! Admission is non-blocking: when the queue is full (by count or by the
 //! aggregate byte budget), the producer signs INLINE through the same WYSIWYS
 //! primitive rather than parking while holding the preimage, so the memory held
-//! by would-be waiters stays bounded by the configured queue budget (BAC-539
-//! round-7). The async task is the off-critical-path optimisation; the inline
+//! by would-be waiters stays bounded by the configured queue budget. The async
+//! task is the off-critical-path optimisation; the inline
 //! fallback is the always-correct floor.
 //!
 //! The synchronous `build_and_sign_receipt` helper in `kernel/responses.rs`
@@ -36,7 +36,7 @@
 //!   completes.
 //! - Producers whose oneshot reply receiver is dropped (e.g. the caller
 //!   timed out waiting) do not poison the task; the signed receipt is
-//!   simply discarded.
+//!   discarded.
 //!
 //! ## Channel capacity
 //!
@@ -75,7 +75,7 @@ pub const DEFAULT_SIGNING_CHANNEL_CAPACITY: usize = 256;
 /// [`SigningTaskHandle::with_capacity_and_max_content_bytes`]); a non-zero value
 /// fail-closed refuses ([`KernelError::ReceiptSigningFailed`]) a preimage over
 /// the cap rather than silently truncating it, since truncating would break the
-/// WYSIWYS recompute (BAC-539).
+/// WYSIWYS recompute.
 ///
 /// The default is aligned to the kernel's configured stream/output max
 /// ([`crate::DEFAULT_MAX_STREAM_TOTAL_BYTES`], 256 MiB) for the convenience
@@ -105,8 +105,8 @@ pub const DEFAULT_MAX_SIGNING_CONTENT_BYTES: usize =
 /// cap* (unlimited), matching the inline signer which applies no preimage cap.
 /// Used so the kernel can wire `KernelConfig::max_stream_total_bytes == 0`
 /// (operator "unlimited stream") straight through to "no async per-request cap"
-/// instead of the old `max(1)` that turned 0 into a 1-byte cap rejecting almost
-/// every receipt (BAC-539 round-5, issue 2).
+/// without coercing 0 into a 1-byte cap that rejects almost
+/// every receipt.
 const PER_REQUEST_BUDGET_UNLIMITED: usize = 0;
 
 /// Default AGGREGATE byte budget across ALL in-flight queued preimages.
@@ -114,7 +114,7 @@ const PER_REQUEST_BUDGET_UNLIMITED: usize = 0;
 /// A bounded channel of [`DEFAULT_SIGNING_CHANNEL_CAPACITY`] (256) requests
 /// bounds the queue by *count* but not by *bytes*: with a 256 MiB per-request
 /// budget that is up to ~64 GiB of preimage bytes retained before count-based
-/// backpressure even engages (BAC-539 round-5, issue 1). This aggregate budget
+/// backpressure even engages. This aggregate budget
 /// is the real memory bound: producers acquire `preimage_len` permits from a
 /// shared [`Semaphore`] before enqueueing and release them once the signing task
 /// finishes the request, so the *sum* of queued preimage bytes is held under the
@@ -134,8 +134,8 @@ pub(crate) const DEFAULT_MAX_SIGNING_QUEUED_BYTES: usize =
 /// budget larger than `u32::MAX` is clamped down to a still-bounded value; the
 /// aggregate stays a memory bound, never unbounded. A zero budget collapses to 1
 /// so the semaphore can always vend at least one permit. A request whose
-/// preimage exceeds the budget is NOT queued at all (it inline-signs, BAC-539
-/// round-7 hole 1), so only preimages that fit the budget ever acquire permits.
+/// preimage exceeds the budget is NOT queued at all (it inline-signs), so only
+/// preimages that fit the budget ever acquire permits.
 const fn clamp_aggregate_permits(budget: usize) -> u32 {
     let ceiling = u32::MAX as usize;
     let clamped = if budget > ceiling { ceiling } else { budget };
@@ -185,11 +185,11 @@ type TrySignOutcome =
 /// - [`Self::Enqueued`]: the request reached the channel; await the oneshot.
 /// - [`Self::Backpressure`]: the aggregate budget was exhausted or the channel
 ///   was full. The `(body, canonical_content)` are returned so the caller can
-///   INLINE-sign them rather than parking with the preimage held (BAC-539
-///   round-7, hole 2). Memory held by would-be waiters is thereby bounded.
+///   INLINE-sign them rather than parking with the preimage held. Memory held
+///   by would-be waiters is thereby bounded.
 /// - [`Self::Closed`]: shutdown had begun (the closed flag was latched, or the
 ///   sender was already taken). The request is refused, never enqueued after
-///   shutdown (BAC-539 round-7, hole 3).
+///   shutdown.
 enum EnqueueOutcome {
     Enqueued(oneshot::Receiver<Result<ChioReceipt, KernelError>>),
     Backpressure(ChioReceiptBody, Vec<u8>),
@@ -212,7 +212,7 @@ pub(crate) struct SignRequest {
 
     /// The exact byte preimage `body.content_hash` was derived from. The task
     /// recomputes `sha256_hex(canonical_content)` at the signing boundary and
-    /// refuses to sign on mismatch (WYSIWYS, BAC-539), so this async funnel is
+    /// refuses to sign on mismatch (WYSIWYS), so this async funnel is
     /// byte-identical *and* equally fail-closed to the inline
     /// `build_and_sign_receipt` path.
     pub(crate) canonical_content: Vec<u8>,
@@ -225,8 +225,8 @@ pub(crate) struct SignRequest {
     /// request. Acquired (sized to the preimage) before the request is
     /// enqueued and dropped by the signing task once `sign_one` returns, which
     /// releases the permits back to the shared [`Semaphore`] so the *sum* of
-    /// queued preimage bytes stays under the aggregate budget (BAC-539 round-5,
-    /// issue 1). `None` only on the `#[path]`-included test/crash binaries that
+    /// queued preimage bytes stays under the aggregate budget. `None` only on
+    /// the `#[path]`-included test/crash binaries that
     /// build `SignRequest` directly without an aggregate budget; the lib path
     /// always carries a permit.
     pub(crate) _aggregate_permit: Option<OwnedSemaphorePermit>,
@@ -305,14 +305,14 @@ pub(crate) struct SigningTaskHandle {
     /// Shared AGGREGATE byte budget across all in-flight queued preimages.
     /// Producers acquire `preimage_len` permits before enqueueing and release
     /// them once the request is signed, bounding the *sum* of queued preimage
-    /// bytes (BAC-539 round-5, issue 1). Always bounded; the semaphore size is
+    /// bytes. Always bounded; the semaphore size is
     /// [`Self::aggregate_budget_permits`].
     aggregate_byte_budget: Arc<Semaphore>,
 
     /// Permit count the [`Self::aggregate_byte_budget`] semaphore was built
     /// with. A queued request acquires exactly `preimage_len` permits; a request
     /// whose preimage exceeds this count is never queued (it inline-signs,
-    /// BAC-539 round-7 hole 1), so an in-queue request can always be satisfied
+    /// case 1), so an in-queue request can always be satisfied
     /// once the queue drains, without deadlock.
     aggregate_budget_permits: u32,
 
@@ -363,12 +363,10 @@ impl SigningTaskHandle {
     /// Build a handle with a caller-chosen channel capacity and per-request
     /// byte cap, deriving the aggregate byte budget from the per-request cap.
     ///
-    /// `max_content_bytes` is the OPTIONAL per-request preimage cap: `0` means
-    /// *no per-request cap* (unlimited, matching the inline signer) and is NOT
-    /// turned into `max(1)` (BAC-539 round-5, issue 2: the old `max(1)` turned a
-    /// `max_stream_total_bytes == 0` "unlimited" config into a 1-byte cap that
-    /// rejected almost every receipt). A non-zero value fail-closed refuses a
-    /// single preimage over the cap.
+    /// `max_content_bytes` is the optional per-request preimage cap: 0 is the
+    /// explicit no-per-request-cap sentinel and is NOT coerced to max(1); a
+    /// 1-byte cap would reject almost every receipt. A non-zero value
+    /// fail-closed refuses a single preimage over the cap.
     ///
     /// The aggregate byte budget (the real queue-memory bound) is derived from
     /// the per-request cap: a non-zero cap budgets the aggregate at the cap; an
@@ -396,7 +394,7 @@ impl SigningTaskHandle {
 
     /// Build a handle with an explicit aggregate (queue-wide) byte budget in
     /// addition to the per-request cap. The aggregate budget bounds the *sum* of
-    /// in-flight queued preimage bytes (BAC-539 round-5, issue 1); producers
+    /// in-flight queued preimage bytes; producers
     /// `.await` on it (backpressure) rather than being rejected, so the async
     /// path admits exactly what the inline signer admits while keeping queue
     /// memory BOUNDED.
@@ -455,8 +453,7 @@ impl SigningTaskHandle {
     /// ([`PER_REQUEST_BUDGET_UNLIMITED`]) means no cap, so nothing is ever
     /// oversized; this is what makes a `max_stream_total_bytes == 0` config (or
     /// the kernel's default of an unlimited per-request cap) admit large
-    /// receipts on the async path, matching the inline signer (BAC-539 round-5,
-    /// issues 2 and 3).
+    /// receipts on the async path, matching the inline signer.
     fn exceeds_per_request_cap(&self, len: usize) -> bool {
         self.max_content_bytes != PER_REQUEST_BUDGET_UNLIMITED && len > self.max_content_bytes
     }
@@ -468,8 +465,7 @@ impl SigningTaskHandle {
     /// direct `len as u32` with no clamp: a request whose byte count cannot fit
     /// the queue under the advertised aggregate bound is NEVER enqueued (it
     /// inline-signs instead, see [`Self::sign`]), so we never clamp-and-enqueue
-    /// an oversized buffer that would hold more bytes than the budget admits
-    /// (BAC-539 round-7, hole 1).
+    /// an oversized buffer that would hold more bytes than the budget admits.
     fn permits_for(&self, len: usize) -> u32 {
         debug_assert!(
             len <= self.aggregate_budget_permits as usize,
@@ -482,7 +478,7 @@ impl SigningTaskHandle {
     /// advertised aggregate byte budget. Such a request would have to acquire
     /// MORE permits than the semaphore can ever vend, so enqueueing it (even
     /// after clamping the permit count) would retain a buffer larger than the
-    /// queue memory bound. It must inline-sign instead (BAC-539 round-7, hole 1).
+    /// queue memory bound. It must inline-sign instead.
     fn exceeds_aggregate_budget(&self, len: usize) -> bool {
         len > self.aggregate_budget_permits as usize
     }
@@ -541,8 +537,8 @@ impl SigningTaskHandle {
     /// `shutdown` latches `closed` AND drops the canonical sender while holding
     /// the [`Self::spawn_gate`]. Doing the closed-check, the sender clone, and
     /// the `try_send` all under the SAME gate makes admission a single atomic
-    /// step relative to shutdown, which closes the clone-then-send window
-    /// (BAC-539 round-7, hole 3): there is no instant where a producer holds a
+    /// step relative to shutdown, which closes the clone-then-send window:
+    /// there is no instant where a producer holds a
     /// live sender clone after `closed` was observed false but before the
     /// request is on the channel. Either shutdown wins the gate (we observe
     /// `closed` and return [`EnqueueOutcome::Closed`], refusing) or we win the
@@ -555,7 +551,7 @@ impl SigningTaskHandle {
     /// The gate is a `std::sync::Mutex`, so nothing here may `.await`. That is
     /// deliberate: blocking on the aggregate permit (or on a full channel) while
     /// holding the full preimage is exactly the unbounded-waiter retention this
-    /// round removes (BAC-539 round-7, hole 2). Both `try_acquire` and
+    /// path removes. Both `try_acquire` and
     /// `try_send` are non-blocking. When either reports no room, the caller
     /// falls back to INLINE signing rather than parking with the preimage held,
     /// so the bytes retained by would-be waiters cannot exceed the configured
@@ -608,8 +604,8 @@ impl SigningTaskHandle {
     }
 
     /// Inline (synchronous) fallback signer for requests that cannot be cleanly
-    /// enqueued: a preimage too large for the aggregate budget (hole 1) or a
-    /// request that hit backpressure (hole 2). Routes through the SAME
+    /// enqueued: a preimage too large for the aggregate budget (case 1) or a
+    /// request that hit backpressure (case 2). Routes through the SAME
     /// `sign_one` primitive the signing task uses, which recomputes
     /// `sha256_hex(canonical_content)` inside the trust boundary and refuses on
     /// mismatch, so the inline path is byte-identical AND equally fail-closed
@@ -630,7 +626,7 @@ impl SigningTaskHandle {
     /// already shut down (channel closed) or if the task replied that
     /// signing failed.
     ///
-    /// ## Admission order (BAC-539 round-7)
+    /// ## Admission order
     ///
     /// Memory is BOUNDED at every branch and no request is ever enqueued after
     /// shutdown begins:
@@ -638,7 +634,7 @@ impl SigningTaskHandle {
     /// 1. Per-request cap (OPTIONAL): a non-zero cap fail-closed refuses an
     ///    oversized single preimage. A `0` cap is unlimited (matches the inline
     ///    signer).
-    /// 2. Oversized-for-aggregate (hole 1): a preimage larger than the aggregate
+    /// 2. Oversized-for-aggregate (case 1): a preimage larger than the aggregate
     ///    byte budget can NEVER be queued under the advertised memory bound, so
     ///    it is NOT enqueued (no clamp-and-enqueue). It inline-signs instead, but
     ///    only after the closed-check so a post-shutdown oversized request is
@@ -646,8 +642,8 @@ impl SigningTaskHandle {
     /// 3. Atomic enqueue ([`Self::try_enqueue_if_open`]): under the spawn gate,
     ///    re-check `closed`, `try_acquire` the budget (never block), and
     ///    `try_send` (never block). This is one atomic step relative to shutdown
-    ///    (hole 3) and never parks while holding the preimage (hole 2).
-    /// 4. Backpressure (hole 2): when the budget is exhausted or the channel is
+    ///    (case 3) and never parks while holding the preimage (case 2).
+    /// 4. Backpressure (case 2): when the budget is exhausted or the channel is
     ///    full, the request inline-signs rather than parking with the preimage
     ///    held, so the bytes retained by would-be waiters cannot exceed the
     ///    configured queue budget.
@@ -662,7 +658,7 @@ impl SigningTaskHandle {
     ) -> Result<ChioReceipt, KernelError> {
         let len = canonical_content.len();
 
-        // Step 1: per-request cap. Fail-closed (BAC-539: never truncate, which
+        // Step 1: per-request cap. Fail-closed: never truncate, which
         // would break the WYSIWYS recompute).
         if self.exceeds_per_request_cap(len) {
             return Err(self.oversized_content_error(len));
@@ -670,7 +666,7 @@ impl SigningTaskHandle {
 
         // Step 2: a single preimage larger than the aggregate budget cannot be
         // enqueued without retaining more bytes than the queue bound advertises
-        // (BAC-539 round-7, hole 1). Sign it inline instead of clamp-and-enqueue.
+        // Sign it inline instead of clamp-and-enqueue.
         // The closed-check inside `sign_inline_if_open` keeps shutdown exclusion:
         // a post-shutdown oversized request is refused, not inline-signed.
         if self.exceeds_aggregate_budget(len) {
@@ -689,13 +685,13 @@ impl SigningTaskHandle {
                     "receipt signing task dropped reply channel".to_string(),
                 )),
             },
-            // Step 4: backpressure -> inline fallback (hole 2). The request is
+            // Step 4: backpressure -> inline fallback (case 2). The request is
             // signed off-queue rather than blocking while holding the preimage,
             // so retained memory stays bounded under load.
             EnqueueOutcome::Backpressure(body, canonical_content) => {
                 self.sign_inline(body, canonical_content)
             }
-            // Shutdown began before the request reached the channel (hole 3).
+            // Shutdown began before the request reached the channel (case 3).
             EnqueueOutcome::Closed(_body, _canonical_content) => Err(KernelError::Internal(
                 "receipt signing task already shut down".to_string(),
             )),
@@ -704,7 +700,7 @@ impl SigningTaskHandle {
 
     /// Inline-sign a request UNLESS shutdown has begun, in which case refuse.
     ///
-    /// Used for the oversized-for-aggregate path (hole 1): such a request never
+    /// Used for the oversized-for-aggregate path (case 1): such a request never
     /// reaches the channel, so it cannot be caught by the channel-close shutdown
     /// drain. Checking `closed` under the spawn gate here preserves the same
     /// shutdown-exclusion invariant the enqueue path enforces: no work (queued
@@ -752,7 +748,7 @@ impl SigningTaskHandle {
         if self.exceeds_per_request_cap(canonical_content.len()) {
             return Err((body, canonical_content));
         }
-        // Oversized-for-aggregate (BAC-539 round-7, hole 1): a preimage larger
+        // Oversized-for-aggregate: a preimage larger
         // than the aggregate budget can never be queued under the advertised
         // memory bound, so it is returned unsent (never clamp-and-enqueue). The
         // non-blocking contract leaves the inline/refuse decision to the caller.
@@ -939,8 +935,8 @@ async fn run_signing_task(keypair: Keypair, mut receiver: mpsc::Receiver<SignReq
         let result = sign_one(&keypair, body, canonical_content);
         // Release the aggregate byte-budget permit only AFTER `sign_one` has
         // consumed `canonical_content` (the preimage is no longer retained), so
-        // the budget reflects bytes actually held in memory (BAC-539 round-5,
-        // issue 1). Dropping the permit returns its bytes to the shared
+        // the budget reflects bytes actually held in memory. Dropping the
+        // permit returns its bytes to the shared
         // semaphore, unblocking a producer waiting on backpressure.
         drop(_aggregate_permit);
         // A dropped receiver is not an error: the producer either timed
@@ -973,7 +969,7 @@ fn sign_one_with_backend(
     // `chio_kernel_core::sign_receipt_with_handle`, the same WYSIWYS primitive
     // the inline `build_and_sign_receipt` path uses. The primitive recomputes
     // `sha256_hex(canonical_content)` inside the trust boundary and refuses to
-    // sign when it disagrees with `body.content_hash` (fail-closed, BAC-539),
+    // sign when it disagrees with `body.content_hash` (fail-closed),
     // then routes through `ChioReceipt::sign_with_backend`, which performs the
     // authoritative signing sequence: validate semantics, bind the
     // `chio_receipt_signing_nonce` metadata key to the pre-nonce receipt id,

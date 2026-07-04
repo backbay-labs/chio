@@ -322,17 +322,17 @@ Internal evidence inventory (not external closure claims):
 | the shipped identity surface still stopped short of broader DID/VC compatibility and public wallet-routing semantics | closed for the shipped local surface through one bounded public identity-profile, wallet-directory, routing-manifest, and qualification-matrix family that preserves `did:chio` provenance, verifier-bound routing, replay anchors, and fail-closed mismatch handling |
 | the public release, partner, protocol, and planning boundary still stopped short of the strongest honest maximal-endgame claim | closed for the shipped local surface through the final `v2.33` boundary rewrite across release candidate, qualification, partner proof, protocol, standards, and planning docs with residual non-goals kept explicit |
 
-## Phase 43 Formal/Spec Closure Inventory
+## Formal/Spec Closure Inventory
 
-This section records the accepted closure boundary for the `v2.8` formal/spec
-slice. It is not the final GA decision artifact; it defines what public claims
-phase 44 is allowed to rely on.
+This section records the accepted closure boundary for the formal/spec slice.
+It is not the final GA decision artifact; it defines what public claims the
+next release is allowed to rely on.
 
 | Gap | Launch disposition | Evidence |
 | --- | --- | --- |
-| executable spec drift versus current `ChioScope` subset behavior | closed in phase 43 | `formal/diff-tests`, `cargo test -p chio-formal-diff-tests` |
-| protocol lacked an explicit distinction between formal, empirical, and qualification evidence | closed in phase 43 | `spec/PROTOCOL.md`, this audit, `docs/release/QUALIFICATION.md` |
-| Lean root and comments implied stronger proof closure than the repo actually ships | closed in phase 43 | `formal/lean4/Chio/Chio.lean`, `formal/lean4/Chio/Chio/Spec/Properties.lean` |
+| executable spec drift versus current `ChioScope` subset behavior | closed | `formal/diff-tests`, `cargo test -p chio-formal-diff-tests` |
+| protocol lacked an explicit distinction between formal, empirical, and qualification evidence | closed | `spec/PROTOCOL.md`, this audit, `docs/release/QUALIFICATION.md` |
+| Lean root and comments implied stronger proof closure than the repo actually ships | closed | `formal/lean4/Chio/Chio.lean`, `formal/lean4/Chio/Chio/Spec/Properties.lean` |
 | standalone Lean proof completion for every current Chio surface | consciously deferred | `formal/lean4/Chio/Chio/Proofs/Monotonicity.lean` covers the bounded model only and is not a Rust refinement proof |
 | theorem-prover coverage for governed approvals, payment rails, federation maturity, and runtime assurance | consciously deferred | public claims rely on runtime tests, integration tests, and qualification rather than Lean proofs |
 

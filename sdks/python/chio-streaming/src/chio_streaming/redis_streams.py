@@ -502,15 +502,15 @@ class RedisStreamEntry:
 
 
 def __getattr__(name: str) -> Any:
-    # Deprecated shim for the old private name. PEP 562 module-level
+    # Compatibility shim for the private entry name. PEP 562 module-level
     # __getattr__ keeps `from chio_streaming.redis_streams import
-    # _HandlerEntry` working with a DeprecationWarning. Removed in 0.4.
+    # _HandlerEntry` working with a compatibility warning.
     if name == "_HandlerEntry":
         import warnings
 
         warnings.warn(
-            "chio_streaming.redis_streams._HandlerEntry is deprecated; "
-            "use RedisStreamEntry instead (removed in 0.4).",
+            "chio_streaming.redis_streams._HandlerEntry is a compatibility alias; "
+            "prefer RedisStreamEntry.",
             DeprecationWarning,
             stacklevel=2,
         )

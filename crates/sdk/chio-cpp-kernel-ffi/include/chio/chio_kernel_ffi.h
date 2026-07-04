@@ -18,6 +18,16 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/**
+ * C ABI version of this kernel FFI surface.
+ *
+ * Bumped from 1 to 2 when `chio_kernel_sign_receipt_json` gained a third
+ * pointer argument (`canonical_content_hex`, the WYSIWYS preimage). The symbol
+ * name is unchanged, so an old 2-arg client linked against v1 would call the
+ * 3-arg symbol with a missing third pointer (undefined behavior). Clients that
+ * gate on `chio_kernel_ffi_abi_version()` now fail closed against this v2
+ * surface instead of invoking the signer with a dangling argument.
+ */
 #define CHIO_CPP_KERNEL_FFI_ABI_VERSION 2
 
 #define CHIO_KERNEL_FFI_STATUS_OK 0
@@ -70,17 +80,17 @@ struct ChioKernelFfiResult chio_kernel_evaluate_json(const char *request_json);
 /**
  * PUBLIC WYSIWYS signer (fail-closed). `canonical_content_hex` is the
  * lowercase-hex preimage `content_hash` was derived from; the signer recomputes
- * the hash inside the trust boundary and refuses on mismatch (BAC-539). This
+ * the hash inside the trust boundary and refuses on mismatch. This
  * does NOT relay a trusted body; use
- * `chio_kernel_sign_receipt_relaying_trusted_body_json` for the BAC-601 seam.
+ * `chio_kernel_sign_receipt_relaying_trusted_body_json` for the relay seam.
  */
 struct ChioKernelFfiResult chio_kernel_sign_receipt_json(const char *body_json,
                                                          const char *canonical_content_hex,
                                                          const char *signing_seed_hex);
 
 /**
- * Relay-sign an already-minted, upstream-trusted receipt body (BAC-601 seam;
- * NOT the default public signer). Trusts the caller-supplied `content_hash` and
+ * Relay-sign an already-minted, upstream-trusted receipt body. This is NOT the
+ * default public signer. Trusts the caller-supplied `content_hash` and
  * does NOT recompute it. Content-bearing callers MUST use
  * `chio_kernel_sign_receipt_json` instead so the WYSIWYS recompute gate runs.
  */

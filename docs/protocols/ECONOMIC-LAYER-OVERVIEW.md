@@ -1,6 +1,5 @@
 # Chio Economic Layer: Technical Overview
 
-**Date:** 2026-04-15
 **Status:** Active technical documentation
 **Scope:** The 7 economic crates, their composition, the money flow, insurance, settlement, and marketplace
 

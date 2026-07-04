@@ -184,7 +184,7 @@ describe("chio() middleware", () => {
     }
   });
 
-  it("fails closed when legacy onSidecarError is allow", async () => {
+  it("fails closed when reserved onSidecarError is allow", async () => {
     const app = express();
     app.use(
       chio({

@@ -1357,14 +1357,20 @@ fn merge_family_verifier_reports(
     }
     let claim_results = verified_claim_results(&verified_claims);
     let checker_provenance = verified_claim_checker_provenance(&verified_claims);
+    let all_families_verified = family_reports.iter().all(family_report_is_verified);
+    let (verdict, accepted, state) = if all_families_verified {
+        ("verified", true, "verified")
+    } else {
+        ("rejected", false, "rejected")
+    };
 
     serde_json::json!({
         "schema": "chio.transaction.verifier-report.v1",
         "id": format!("verifier-report-{}", passport.id),
         "issued_at": passport.issued_at.clone(),
-        "verdict": "verified",
-        "accepted": true,
-        "state": "verified",
+        "verdict": verdict,
+        "accepted": accepted,
+        "state": state,
         "passport_id": passport.id.clone(),
         "passport_path": passport_report_path,
         "evidence_graph_sha256": passport.evidence_graph_sha256.clone(),
@@ -1379,6 +1385,20 @@ fn merge_family_verifier_reports(
         "family_reports": family_reports,
         "checker_provenance": checker_provenance,
     })
+}
+
+fn family_report_is_verified(report: &serde_json::Value) -> bool {
+    let verdict_verified =
+        report.get("verdict").and_then(serde_json::Value::as_str) == Some("verified");
+    let accepted_ok = match report.get("accepted") {
+        Some(value) => value.as_bool() == Some(true),
+        None => true,
+    };
+    let state_ok = match report.get("state") {
+        Some(value) => value.as_str() == Some("verified"),
+        None => true,
+    };
+    verdict_verified && accepted_ok && state_ok
 }
 
 fn verified_claim_results(verified_claims: &[String]) -> Vec<serde_json::Value> {
@@ -3314,36 +3334,4 @@ fn is_required_claim_missing_error(message: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn agent_web_receipt_scope_uses_schema_not_fixture_filename() {
-        assert!(is_agent_web_evidence_graph_node_parts(
-            "receipt",
-            "receipts/webhook-allow.json",
-            Some("chio.receipt.v1"),
-        ));
-    }
-
-    #[test]
-    fn enterprise_artifact_loader_includes_retained_jurisdiction_receipts() {
-        assert!(is_enterprise_evidence_graph_role(
-            "adjudication-jurisdiction-receipt"
-        ));
-        assert!(is_enterprise_artifact_role(
-            "adjudication-jurisdiction-receipt"
-        ));
-    }
-
-    #[test]
-    fn trust_market_artifact_loader_includes_retained_receipts() {
-        assert!(is_trust_market_evidence_graph_role("receipt"));
-        assert!(is_trust_market_artifact_role("receipt"));
-    }
-
-    #[test]
-    fn runtime_artifact_loader_includes_policy_activation_receipt() {
-        assert!(is_runtime_artifact_role("policy-activation-receipt"));
-    }
-}
+mod unit_tests;

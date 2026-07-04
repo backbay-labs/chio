@@ -4,6 +4,15 @@ set -euo pipefail
 # Navigate to package root relative to this script
 cd "$(dirname "$0")/.."
 
+echo "==> Cleaning generated Python bindings and WASM output..."
+rm -rf \
+    componentize_py_async_support \
+    componentize_py_runtime.pyi \
+    componentize_py_types.py \
+    dist \
+    guard \
+    poll_loop.py
+
 echo "==> Step 1: Generating Python bindings from WIT..."
 componentize-py -d ../../../wit/chio-guard -w guard --world-module guard bindings .
 

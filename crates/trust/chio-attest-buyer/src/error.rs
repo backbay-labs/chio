@@ -33,19 +33,7 @@ impl std::error::Error for BuyerAttestationError {
 }
 
 pub(crate) fn chio_attest_buyer_code(code: &str) -> String {
-    let retired_buyer_prefix = ["chio", "dos", "_buyer."].concat();
-    let retired_buyer_packet_prefix = ["chio", "dos", "_buyer_packet."].concat();
-    let retired_buyer_review_prefix = ["chio", "dos", "_buyer_review."].concat();
     for (historical_prefix, chio_prefix) in [
-        (retired_buyer_prefix.as_str(), "chio_attest_buyer.packet."),
-        (
-            retired_buyer_packet_prefix.as_str(),
-            "chio_attest_buyer.packet.",
-        ),
-        (
-            retired_buyer_review_prefix.as_str(),
-            "chio_attest_buyer.review.",
-        ),
         ("chio_buyer.", "chio_attest_buyer.packet."),
         ("chio_buyer_review.", "chio_attest_buyer.review."),
         ("buyer_review.", "chio_attest_buyer.review."),

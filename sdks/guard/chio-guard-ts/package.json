@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "type": "module",
   "description": "TypeScript SDK for writing Chio guard components compiled to WASM",
+  "license": "Apache-2.0",
   "engines": {
     "node": ">=22"
   },

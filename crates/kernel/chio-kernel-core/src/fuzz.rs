@@ -28,8 +28,7 @@
 //! 1. Split the input bytes on `\n` into NDJSON lines (matching the
 //!    `tests/replay/src/golden_writer.rs` newline-terminated framing).
 //! 2. For each non-empty line, attempt `serde_json::from_slice::<ChioReceipt>`.
-//!    Errors are silently consumed (fail-closed: malformed lines are simply
-//!    not part of the chain).
+//!    Errors are silently consumed (fail-closed: malformed lines are not part of the chain).
 //! 3. For each successfully decoded receipt, call
 //!    [`ChioReceipt::verify_signature`]. The result is intentionally
 //!    discarded: the trust-boundary contract guarantees the only outcomes

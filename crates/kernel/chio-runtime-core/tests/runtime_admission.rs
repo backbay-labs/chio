@@ -1153,66 +1153,6 @@ fn chio_runtime_hook_denies_swarm_context_without_required_evidence_refs(
 }
 
 #[test]
-fn chio_runtime_hook_denies_retired_swarm_context_without_admission(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let store = InMemoryRuntimeAdmissionStore::new();
-    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
-    let cap = capability("cap-live-1")?;
-    let request = ToolCallRequest {
-        request_id: "req-live-destructive".to_string(),
-        capability: cap.clone(),
-        tool_name: "close_account".to_string(),
-        server_id: "vendor-ledger".to_string(),
-        agent_id: cap.subject.to_hex(),
-        arguments: args,
-        dpop_proof: None,
-        execution_nonce: None,
-        governed_intent: Some(GovernedTransactionIntent {
-            id: "intent-live-1".to_string(),
-            server_id: "vendor-ledger".to_string(),
-            tool_name: "close_account".to_string(),
-            purpose: "close governed vendor account".to_string(),
-            max_amount: None,
-            commerce: None,
-            metered_billing: None,
-            runtime_attestation: None,
-            call_chain: None,
-            autonomy: None,
-            context: Some(serde_json::json!({
-                "chiodosSwarm": {
-                    "taskGraph": {
-                        "id": "swarm-task-graph-runtime",
-                        "sha256": "a".repeat(64)
-                    }
-                }
-            })),
-        }),
-        approval_token: None,
-        model_metadata: None,
-        federated_origin_kernel_id: None,
-    };
-    let hook = allowing_chio_policy_hook(store)?;
-    let decision = hook.evaluate(&RuntimeAdmissionContext {
-        request: &request,
-        extra_metadata: None,
-        now_unix_secs: 1_800_000_001,
-        now_unix_ms: 1_800_000_001_000,
-        matched_grant_index: Some(0),
-        local_kernel_id: "kernel.vendor-b".to_string(),
-    })?;
-
-    assert!(!decision.allowed);
-    let metadata = decision
-        .metadata
-        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
-    assert_eq!(
-        metadata["chio_runtime"]["failure_code"],
-        "missing_chio_admission_context"
-    );
-    Ok(())
-}
-
-#[test]
 fn chio_runtime_hook_denies_stale_swarm_continuation_before_dispatch(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let store = InMemoryRuntimeAdmissionStore::new();

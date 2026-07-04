@@ -1,6 +1,5 @@
 # Chio-Wall Decision Record
 
-**Date:** 2026-04-03  
 **Milestone:** `v2.50`
 
 ---

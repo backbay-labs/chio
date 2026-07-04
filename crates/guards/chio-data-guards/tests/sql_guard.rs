@@ -172,8 +172,7 @@ fn allow_all_permits_any_well_formed_query() {
 
 #[test]
 fn passes_through_non_database_actions() {
-    // A shell tool call should be allowed by the SQL guard (it simply
-    // does not apply).
+    // A shell tool call should be allowed by the SQL guard (it does not apply).
     let guard = SqlQueryGuard::new(SqlGuardConfig::default());
     let verdict = evaluate(&guard, "bash", serde_json::json!({"command": "ls -la"}));
     assert_eq!(verdict, Verdict::Allow);

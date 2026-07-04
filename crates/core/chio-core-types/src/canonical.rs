@@ -1080,7 +1080,7 @@ mod tests {
         assert!(!canonical.contains('\n'));
     }
 
-    // --- BAC-555: strict input validation (duplicate keys / non-I-JSON) ---
+    // --- Strict input validation (duplicate keys / non-I-JSON) ---
 
     #[test]
     fn strict_rejects_duplicate_keys() {
@@ -1247,7 +1247,7 @@ mod tests {
 
     #[test]
     fn strict_rejects_same_digit_count_different_value() {
-        // Round-3 Codex P2: the prior check compared only the *count* of
+        // The prior check compared only the *count* of
         // significant digits, so a token whose digit count equals the ryu
         // shortest rendering but whose digit *value* differs slipped through and
         // got signed as the rounded form (render-A / sign-B). 0.12345678901234567
