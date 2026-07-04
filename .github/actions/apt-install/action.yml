@@ -1,0 +1,30 @@
+name: apt-install
+description: Scrub the flaky azure/microsoft apt sources and install Debian packages with a retrying apt-get. Linux runners only; a no-op elsewhere.
+inputs:
+  packages:
+    description: Space-separated list of apt packages to install (e.g. "protobuf-compiler ripgrep zstd").
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install apt packages
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
+        sudo rm -f \
+          /etc/apt/sources.list.d/azure-cli.list \
+          /etc/apt/sources.list.d/azure-cli.sources \
+          /etc/apt/sources.list.d/microsoft-prod.list \
+          /etc/apt/sources.list.d/microsoft-prod.sources
+        for attempt in 1 2 3; do
+          if timeout 180s sudo apt-get update \
+              && timeout 180s sudo apt-get install -y ${{ inputs.packages }}; then
+            exit 0
+          fi
+          echo "apt-get install (${{ inputs.packages }}) attempt ${attempt} failed; retrying" >&2
+          sleep $((attempt * 10))
+        done
+        echo "apt-get install (${{ inputs.packages }}) failed after retries" >&2
+        exit 1

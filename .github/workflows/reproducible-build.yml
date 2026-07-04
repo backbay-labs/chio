@@ -64,7 +64,9 @@ jobs:
           rustup show active-toolchain
 
       - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
 
       - name: Build chio-cli release binary
         shell: bash
@@ -135,7 +137,9 @@ jobs:
           rustup show active-toolchain
 
       - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
 
       - name: Build chio-cli release binary
         shell: bash

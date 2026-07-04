@@ -26,15 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      - name: Install Rust toolchain
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
-
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
-
-      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: stable
 
       - name: Run sustained kernel p99 lane
         run: cargo bench -p chio-kernel --features sustained-p99-nightly --bench sustained_p99_30min -- --test --nocapture

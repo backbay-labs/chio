@@ -121,7 +121,9 @@ jobs:
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
 
       - name: Install native build dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential cmake
+        uses: ./.github/actions/apt-install
+        with:
+          packages: build-essential cmake
 
       - name: Run transitive surface checks
         run: ./scripts/check-transitive-surface.sh

@@ -56,7 +56,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential
+        uses: ./.github/actions/apt-install
+        with:
+          packages: build-essential
       - name: Install cbindgen
         shell: bash
         run: cargo install cbindgen --locked --version "${CHIO_CPP_CBINDGEN_VERSION}"
@@ -108,7 +110,9 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential cmake libcurl4-openssl-dev python3
+        uses: ./.github/actions/apt-install
+        with:
+          packages: build-essential cmake libcurl4-openssl-dev python3
       - name: Run live C++ conformance areas
         env:
           CHIO_CPP_LIVE_CONFORMANCE: "1"
@@ -126,7 +130,9 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential clang cmake valgrind
+        uses: ./.github/actions/apt-install
+        with:
+          packages: build-essential clang cmake valgrind
       - name: ASAN and UBSAN
         env:
           CC: clang
@@ -211,6 +217,8 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y build-essential cmake curl
+        uses: ./.github/actions/apt-install
+        with:
+          packages: build-essential cmake curl
       - name: Build Drogon SDK smoke
         run: ./scripts/check-chio-drogon.sh
