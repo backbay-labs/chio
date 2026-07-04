@@ -258,6 +258,9 @@ where
     F: FnMut(EndpointId, &Result<PheromoneDepositGossip, FanoutError>) -> bool,
 {
     let deadline = Instant::now() + Duration::from_secs(20);
+    // Bind the raw decode to the receiver's own treaty so a foreign-treaty frame
+    // could never be accepted on this swarm (captured before the receive borrow).
+    let receiver_treaty = receiver_topic.treaty_id().to_string();
     let mut attempt = 0u64;
     while Instant::now() < deadline {
         let frame = make_frame(attempt)?;
@@ -268,6 +271,7 @@ where
             Ok(Some(Ok(message))) => {
                 let verdict = decode_and_verify_fanout_frame(
                     &message.content,
+                    &receiver_treaty,
                     verifier.origin_keys,
                     verifier.membership,
                     verifier.policy,

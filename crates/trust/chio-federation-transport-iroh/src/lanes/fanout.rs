@@ -424,18 +424,27 @@ where
     Ok(())
 }
 
-/// Decode a raw gossip payload and origin-verify it via [`verify_fanout_frame`].
+/// Decode a raw gossip payload from `Message::content`, BIND it to the joined
+/// treaty, then origin-verify it. This is what a raw receive loop calls after
+/// [`FanoutTopic::next_payload`]; `expected_treaty` MUST be the treaty of the swarm
+/// the payload arrived on (use [`FanoutTopic::treaty_id`] or the topic-bound
+/// [`FanoutTopic::decode_and_verify`]).
 ///
-/// This is what a receive loop calls on `Message::content`. Note the signature
-/// takes only the payload bytes: `delivered_from` is structurally absent, so it
-/// cannot leak into the authorship decision.
+/// Fail-closed: a frame whose `treaty_id` is not `expected_treaty` is rejected with
+/// [`FanoutError::TreatyMismatch`] BEFORE any signature work, so a raw receive loop
+/// can no longer accept a foreign-treaty frame that a caller forgot to bind (a
+/// valid self-signed frame for a DIFFERENT treaty does not pass here). Note the
+/// signature takes only the payload bytes: `delivered_from` is structurally absent,
+/// so it cannot leak into the authorship decision.
 ///
 /// # Errors
-/// Returns [`FanoutError::Codec`] on malformed JSON, else any error from
+/// Returns [`FanoutError::Codec`] on malformed JSON, [`FanoutError::TreatyMismatch`]
+/// when the frame is bound to a different treaty, else any error from
 /// [`verify_fanout_frame`] (including [`FanoutError::TreatyMembershipDenied`] when
-/// the frame origin is not a party to the frame's treaty).
+/// the frame origin is not a party to the treaty).
 pub fn decode_and_verify_fanout_frame<R, M>(
     content: &[u8],
+    expected_treaty: &str,
     origin_keys: &R,
     membership: &M,
     policy: &PheromoneTransitPolicy,
@@ -445,16 +454,22 @@ where
     R: OriginKeyResolver + ?Sized,
     M: TreatyMembership + ?Sized,
 {
-    let frame: PheromoneDepositGossip =
-        serde_json::from_slice(content).map_err(|error| FanoutError::Codec(error.to_string()))?;
-    verify_fanout_frame(&frame, origin_keys, membership, policy, now_unix_ms)?;
-    Ok(frame)
+    decode_bind_treaty_and_verify(
+        content,
+        expected_treaty,
+        origin_keys,
+        membership,
+        policy,
+        now_unix_ms,
+    )
 }
 
 /// Decode a raw gossip payload, ENFORCE the swarm/treaty binding against
-/// `expected_treaty`, then origin-verify it. This is the pure core of
-/// [`FanoutTopic::recv_verified`], factored out so the swarm/treaty binding is
-/// unit-testable without a live swarm.
+/// `expected_treaty`, then origin-verify it. This is the single core shared by
+/// [`FanoutTopic::recv_verified`] and the public treaty-bound
+/// [`decode_and_verify_fanout_frame`], so both the streaming and raw receive paths
+/// enforce the SAME binding; factored out so it is unit-testable without a live
+/// swarm.
 ///
 /// Fail-closed order: decode, then reject with [`FanoutError::TreatyMismatch`]
 /// BEFORE any signature work if the frame's `treaty_id` is not `expected_treaty`
@@ -726,10 +741,12 @@ impl FanoutTopic {
     /// Await the next gossip PAYLOAD from the swarm, mapping the membership
     /// (`NeighborUp`/`NeighborDown`) and `Lagged` events away.
     ///
-    /// Returns the raw [`Message`]. The caller MUST verify it with
-    /// [`decode_and_verify_fanout_frame`] and MUST NOT treat
-    /// [`Message::delivered_from`] (the forwarding NEIGHBOR) as the author.
-    /// Returns `None` when the topic stream is closed.
+    /// Returns the raw [`Message`]. The caller MUST verify it with the
+    /// treaty-BOUND [`decode_and_verify`](Self::decode_and_verify) (or the free
+    /// [`decode_and_verify_fanout_frame`] passing this topic's
+    /// [`treaty_id`](Self::treaty_id)) so a foreign-treaty frame cannot be accepted
+    /// on this swarm, and MUST NOT treat [`Message::delivered_from`] (the forwarding
+    /// NEIGHBOR) as the author. Returns `None` when the topic stream is closed.
     pub async fn next_payload(&mut self) -> Option<Result<Message, FanoutError>> {
         loop {
             match self.receiver.next().await {
@@ -740,6 +757,38 @@ impl FanoutTopic {
                 None => return None,
             }
         }
+    }
+
+    /// Decode + fully verify a raw payload (from [`next_payload`](Self::next_payload))
+    /// BOUND to THIS swarm's treaty. This is the checked decoder a raw receive loop
+    /// uses so it cannot forget the treaty binding: it supplies `self.treaty_id`
+    /// to [`decode_and_verify_fanout_frame`], so a foreign-treaty frame is rejected
+    /// with [`FanoutError::TreatyMismatch`] even if its deposit self-signature is
+    /// valid. `delivered_from` is never consulted.
+    ///
+    /// # Errors
+    /// Any error from [`decode_and_verify_fanout_frame`] (codec, treaty mismatch,
+    /// origin/signature failure, or non-party origin).
+    pub fn decode_and_verify<R, M>(
+        &self,
+        content: &[u8],
+        origin_keys: &R,
+        membership: &M,
+        policy: &PheromoneTransitPolicy,
+        now_unix_ms: u64,
+    ) -> Result<PheromoneDepositGossip, FanoutError>
+    where
+        R: OriginKeyResolver + ?Sized,
+        M: TreatyMembership + ?Sized,
+    {
+        decode_and_verify_fanout_frame(
+            content,
+            &self.treaty_id,
+            origin_keys,
+            membership,
+            policy,
+            now_unix_ms,
+        )
     }
 
     /// Await the next payload AND verify it end-to-end: decode, ENFORCE the
@@ -980,6 +1029,7 @@ mod tests {
             Event::Received(message) => {
                 let verified = decode_and_verify_fanout_frame(
                     &message.content,
+                    TREATY_ALPHA,
                     &keys,
                     &membership,
                     &policy,
@@ -1029,6 +1079,7 @@ mod tests {
             Event::Received(message) => {
                 let result = decode_and_verify_fanout_frame(
                     &message.content,
+                    TREATY_ALPHA,
                     &keys,
                     &membership,
                     &policy,
@@ -1405,9 +1456,16 @@ mod tests {
             "a non-party origin frame must be rejected on receive, got {result:?}"
         );
 
-        // Same rejection through the raw decode entry.
+        // Same rejection through the raw decode entry (bound to the alpha treaty).
         let content = encode_fanout_frame(&frame).expect("encodes under cap");
-        let decoded = decode_and_verify_fanout_frame(&content, &keys, &membership, &policy, NOW);
+        let decoded = decode_and_verify_fanout_frame(
+            &content,
+            TREATY_ALPHA,
+            &keys,
+            &membership,
+            &policy,
+            NOW,
+        );
         assert!(matches!(
             decoded,
             Err(FanoutError::TreatyMembershipDenied { .. })
@@ -1426,6 +1484,104 @@ mod tests {
 
         verify_fanout_frame(&frame, &keys, &membership, &policy, NOW)
             .expect("a party origin frame verifies");
+    }
+
+    #[test]
+    fn raw_decode_rejects_a_foreign_treaty_frame() {
+        // ITEM 2: the raw next_payload decode path is now BOUND to the joined
+        // treaty. A frame minted for treaty-beta - with a fully VALID deposit
+        // self-signature AND an origin that is a party to beta - is still rejected
+        // when decoded on the alpha swarm (expected_treaty = TREATY_ALPHA), so a raw
+        // receive loop can no longer accept a foreign-treaty payload.
+        let author = Keypair::from_seed(&[7; 32]);
+        let beta_frame =
+            signed_direct_frame(&author, AUTHOR, "did:chio:hub", "treaty-beta", NAMESPACE);
+        let policy = live_policy(NAMESPACE);
+        let keys = StaticOriginKeys::new().with(AUTHOR, author.public_key());
+        let membership = party_membership(); // admits AUTHOR to both alpha and beta
+        let content = encode_fanout_frame(&beta_frame).expect("encodes under cap");
+
+        // Bound to beta (its own treaty) it verifies - isolating the binding below.
+        decode_and_verify_fanout_frame(&content, "treaty-beta", &keys, &membership, &policy, NOW)
+            .expect("the beta frame verifies when the raw decode is bound to beta");
+
+        // Bound to alpha, the raw decode rejects it before any signature work.
+        let result = decode_and_verify_fanout_frame(
+            &content,
+            TREATY_ALPHA,
+            &keys,
+            &membership,
+            &policy,
+            NOW,
+        );
+        assert!(
+            matches!(
+                result,
+                Err(FanoutError::TreatyMismatch { ref expected, ref got })
+                    if expected == TREATY_ALPHA && got == "treaty-beta"
+            ),
+            "the raw decode must bind to the joined treaty, got {result:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn topic_bound_decoder_rejects_a_foreign_treaty_frame() {
+        // The exposed checked decoder (FanoutTopic::decode_and_verify) supplies the
+        // topic's OWN treaty, so a raw receive loop cannot forget the binding: a
+        // beta frame is rejected on an alpha topic though its signature is valid.
+        let endpoint = Endpoint::builder(presets::Minimal)
+            .secret_key(SecretKey::from_bytes(&[77u8; 32]))
+            .relay_mode(RelayMode::Disabled)
+            .bind_addr((Ipv4Addr::LOCALHOST, 0))
+            .expect("valid loopback bind addr")
+            .bind()
+            .await
+            .expect("endpoint binds on loopback");
+        let gossip = Gossip::builder().spawn(endpoint.clone());
+        let router = Router::builder(endpoint)
+            .accept(iroh_gossip::ALPN, gossip.clone())
+            .spawn();
+        let topic_id = pheromone_topic_for_treaty(TREATY_ALPHA);
+        let (sender, receiver) = gossip
+            .subscribe(topic_id, vec![])
+            .await
+            .expect("subscribe to the alpha topic")
+            .split();
+        let alpha_topic = FanoutTopic {
+            treaty_id: TREATY_ALPHA.to_string(),
+            topic_id,
+            sender,
+            receiver,
+        };
+
+        let author = Keypair::from_seed(&[7; 32]);
+        let beta_frame =
+            signed_direct_frame(&author, AUTHOR, "did:chio:hub", "treaty-beta", NAMESPACE);
+        let policy = live_policy(NAMESPACE);
+        let keys = StaticOriginKeys::new().with(AUTHOR, author.public_key());
+        let membership = party_membership();
+        let content = encode_fanout_frame(&beta_frame).expect("encodes under cap");
+
+        let result = alpha_topic.decode_and_verify(&content, &keys, &membership, &policy, NOW);
+        assert!(
+            matches!(
+                result,
+                Err(FanoutError::TreatyMismatch { ref expected, ref got })
+                    if expected == TREATY_ALPHA && got == "treaty-beta"
+            ),
+            "the topic-bound decoder must bind to self.treaty_id, got {result:?}"
+        );
+
+        // Control: an alpha frame decodes cleanly through the same bound decoder.
+        let alpha_frame =
+            signed_direct_frame(&author, AUTHOR, "did:chio:hub", TREATY_ALPHA, NAMESPACE);
+        let alpha_content = encode_fanout_frame(&alpha_frame).expect("encodes under cap");
+        alpha_topic
+            .decode_and_verify(&alpha_content, &keys, &membership, &policy, NOW)
+            .expect("an alpha frame verifies on the alpha topic");
+
+        drop(alpha_topic);
+        router.shutdown().await.ok();
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
