@@ -156,7 +156,7 @@ chio-api-protect = { workspace = true }
 chio-external-guards = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 url = "2"
-zeroize = "1"
+zeroize = { workspace = true }
 # Anchor-batch witness-lane conformance tests exercise
 # AnchorWitnessClient (RekorClient + OtsClient) and the WitnessState
 # state machine via the chio-anchor crate. tokio drives the async

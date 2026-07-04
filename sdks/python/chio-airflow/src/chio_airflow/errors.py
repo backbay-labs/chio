@@ -8,7 +8,7 @@ from chio_sdk.errors import ChioError
 
 
 class ChioAirflowError(ChioError):
-    """An Chio-governed Airflow task invocation was denied or failed.
+    """A Chio-governed Airflow task invocation was denied or failed.
 
     Carries the sidecar verdict so callers (and Airflow task instance
     logs / XCom receipts) can inspect the guard that denied, the reason,

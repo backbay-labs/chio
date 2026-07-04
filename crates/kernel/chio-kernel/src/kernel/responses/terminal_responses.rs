@@ -1,23 +1,6 @@
 use super::*;
 
 impl ChioKernel {
-    /// Build a cancellation response with a signed cancelled receipt.
-    pub(crate) fn build_cancelled_response(
-        &self,
-        request: &ToolCallRequest,
-        reason: &str,
-        timestamp: u64,
-        matched_grant_index: Option<usize>,
-    ) -> Result<ToolCallResponse, KernelError> {
-        self.build_cancelled_response_with_metadata(
-            request,
-            reason,
-            timestamp,
-            matched_grant_index,
-            None,
-        )
-    }
-
     pub(crate) fn build_cancelled_response_with_metadata(
         &self,
         request: &ToolCallRequest,
@@ -75,42 +58,6 @@ impl ChioKernel {
             receipt,
             execution_nonce: None,
         })
-    }
-
-    /// Build an incomplete response with a signed incomplete receipt.
-    pub(crate) fn build_incomplete_response(
-        &self,
-        request: &ToolCallRequest,
-        reason: &str,
-        timestamp: u64,
-        matched_grant_index: Option<usize>,
-    ) -> Result<ToolCallResponse, KernelError> {
-        self.build_incomplete_response_with_output(
-            request,
-            None,
-            reason,
-            timestamp,
-            matched_grant_index,
-        )
-    }
-
-    /// Build an incomplete response with optional partial output and a signed incomplete receipt.
-    pub(crate) fn build_incomplete_response_with_output(
-        &self,
-        request: &ToolCallRequest,
-        output: Option<ToolCallOutput>,
-        reason: &str,
-        timestamp: u64,
-        matched_grant_index: Option<usize>,
-    ) -> Result<ToolCallResponse, KernelError> {
-        self.build_incomplete_response_with_output_and_metadata(
-            request,
-            output,
-            reason,
-            timestamp,
-            matched_grant_index,
-            None,
-        )
     }
 
     pub(crate) fn build_incomplete_response_with_output_and_metadata(

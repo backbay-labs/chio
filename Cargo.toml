@@ -331,9 +331,7 @@ tower-lsp = "0.20.0"
 lsp-types = "0.95.1"
 notify = "6.1.1"
 opentelemetry-semantic-conventions = { version = "=0.29.0", default-features = false, features = ["semconv_experimental"] }
-# Lineage DAG (petgraph) and marketplace CSV exports (csv).
-petgraph = "0.6"
-csv = "1"
+zeroize = "1.8"
 # Workspace metric registry. Surfaced through workspace.dependencies so edge
 # crates plus chio-wasm-guards consume the registry by
 # `chio-metrics-spec = { workspace = true }` rather than each carrying its own

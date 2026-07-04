@@ -1,6 +1,6 @@
 /**
  * Action block inside a ChioReceipt. Mirrors
- * chio_sdk.models.ToolCallAction (models.py:407-411).
+ * chio_sdk.models.ToolCallAction (models.py).
  */
 package world.chio.sdk
 

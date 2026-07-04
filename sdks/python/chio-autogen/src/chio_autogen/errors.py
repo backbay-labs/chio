@@ -8,7 +8,7 @@ from chio_sdk.errors import ChioError
 
 
 class ChioToolError(ChioError):
-    """An Chio-governed AutoGen function invocation was denied or failed.
+    """A Chio-governed AutoGen function invocation was denied or failed.
 
     Carries the sidecar verdict so callers can inspect the guard that
     denied, the reason, and any structured hint the kernel emitted.

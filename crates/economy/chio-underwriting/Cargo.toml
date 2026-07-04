@@ -15,8 +15,6 @@ name = "chio_underwriting"
 chio-appraisal = { workspace = true }
 chio-core-types = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
 
 [lints]
 workspace = true

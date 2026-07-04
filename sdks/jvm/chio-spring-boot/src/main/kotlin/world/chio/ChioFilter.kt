@@ -136,16 +136,6 @@ class ChioFilter(
         val result: EvaluateResponse
         try {
             result = client.evaluate(chioRequest, capabilityToken)
-        } catch (e: ChioSidecarException) {
-            writeJsonError(
-                httpResponse,
-                502,
-                ChioErrorResponse(
-                    error = ChioErrorCodes.SIDECAR_UNREACHABLE,
-                    message = "Chio sidecar error: ${e.message}",
-                ),
-            )
-            return
         } catch (e: Exception) {
             writeJsonError(
                 httpResponse,

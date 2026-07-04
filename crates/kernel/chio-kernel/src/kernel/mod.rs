@@ -1030,7 +1030,6 @@ mod governed_validation;
 mod dispatch;
 #[path = "evaluator.rs"]
 pub mod evaluator;
-#[allow(dead_code)]
 mod responses;
 #[path = "session_ops.rs"]
 mod session_ops;

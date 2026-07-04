@@ -35,11 +35,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 ed25519-dalek = { workspace = true }
-rand_core = { workspace = true }
 hex = { workspace = true }
-ryu = { workspace = true }
 sha2 = { workspace = true }
-percent-encoding = "2"
 url = "2"
 
 [features]

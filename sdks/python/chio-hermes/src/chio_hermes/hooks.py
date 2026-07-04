@@ -78,7 +78,7 @@ def make_pre_tool_call(handle: RuntimeHandle) -> PreHook:
                 for path in params.get("paths", []) or []:
                     handle.policy.check_write(path, cwd=handle.cwd)
         except ChioCodeAgentDeniedError as exc:
-            _ = task_id  # reserved for future telemetry
+            _ = task_id
             return {
                 "action": "block",
                 "message": str(exc),

@@ -77,7 +77,6 @@ chio-workflow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }
-jsonschema = { workspace = true }
 thiserror = { workspace = true }
 clap = { version = "4", features = ["derive", "env"] }
 tracing = { workspace = true }
@@ -99,7 +98,6 @@ rusqlite = { workspace = true }
 chio-siem = { workspace = true, optional = true }
 tower-http = { version = "0.6", features = ["fs", "set-header"] }
 chrono = { version = "0.4", features = ["clock"] }
-rsa = { version = "0.9", features = ["sha2"] }
 p256 = { version = "0.13", features = ["ecdsa"] }
 p384 = { version = "0.13", features = ["ecdsa"] }
 chio-wasm-guards = { workspace = true, features = ["wasmtime-runtime"] }
@@ -119,7 +117,9 @@ chio-open-market = { workspace = true }
 chio-settle = { workspace = true }
 chio-test-support = { workspace = true }
 insta = { version = "1.42", features = ["json", "redactions"] }
+jsonschema = { workspace = true }
 rand_core = { workspace = true }
+rsa = { version = "0.9", features = ["sha2"] }
 tempfile = "3"
 wiremock = "0.6"
 

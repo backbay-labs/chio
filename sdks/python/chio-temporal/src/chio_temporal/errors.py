@@ -8,7 +8,7 @@ from chio_sdk.errors import ChioError
 
 
 class ChioTemporalError(ChioError):
-    """An Chio-governed Temporal Activity invocation was denied or failed.
+    """A Chio-governed Temporal Activity invocation was denied or failed.
 
     Carries the sidecar verdict so callers (and Temporal workflow history)
     can inspect the guard that denied, the reason, and any structured hint

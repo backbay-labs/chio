@@ -289,29 +289,43 @@ resource containerApp 'Microsoft.App/containerApps@2023-05-01' = {
 
 ## 6. Chio Sidecar Container
 
-The sidecar container image is shared across all platforms. It is the Chio
-kernel compiled as a standalone HTTP server:
+The sidecar container image is shared across all platforms. It is the shipped
+`chio` binary (crate `chio-cli`) run as a sidecar subcommand; there is no
+separate `chio-sidecar` binary.
 
 ### 6.1 Dockerfile
+
+The canonical, maintained image is `deploy/sidecar/Dockerfile`. The snippet
+below is an illustrative minimal build. There is no `http-server`, `s3-policy`,
+`dynamodb-receipts`, or `bigquery` build feature; the sidecar behaviour is a
+runtime subcommand of the single `chio` binary, not a compile-time feature.
 
 ```dockerfile
 FROM rust:1.82-slim AS builder
 
 WORKDIR /build
 COPY . .
-RUN cargo build --release --bin chio-sidecar \
-    --features "http-server,s3-policy,dynamodb-receipts,bigquery-receipts"
+RUN cargo build --release --locked -p chio-cli --bin chio
 
 FROM gcr.io/distroless/cc-debian12:nonroot
-COPY --from=builder /build/target/release/chio-sidecar /chio-sidecar
+COPY --from=builder /build/target/release/chio /usr/local/bin/chio
 
 EXPOSE 9090
-ENTRYPOINT ["/chio-sidecar"]
+# Run the reverse-proxy sidecar (`chio api protect ...`) or the MCP edge
+# (`chio mcp serve-http ...`); pass the subcommand and flags at deploy time.
+ENTRYPOINT ["/usr/local/bin/chio"]
 ```
 
 ### 6.2 Configuration
 
-The sidecar accepts configuration via environment variables:
+> **Proposed surface -- not consumed today.** The shipped `chio` binary does not
+> read the environment variables in the table below. Today the sidecar is
+> configured with CLI flags (for example
+> `chio api protect --upstream <url> --listen 0.0.0.0:9090`, or
+> `chio mcp serve-http --policy <file> -- <server cmd>`). Secrets and log level
+> reach a loaded config/policy file via `${VAR}` interpolation
+> (e.g. `${CHIO_SIGNING_KEY}`, `${CHIO_LOG_LEVEL}`). The variables below are an
+> aspirational configuration surface for a future dedicated sidecar binary.
 
 | Variable | Description | Default |
 |----------|-------------|---------|

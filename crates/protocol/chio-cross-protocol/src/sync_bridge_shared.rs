@@ -1,7 +1,11 @@
-// Compatibility-only synchronous bridge shim.
-//
-// Mirrors the kernel's sync-bridge gate so the explicit passthrough surface
-// fails closed under a current-thread runtime instead of deadlocking.
+//! Compatibility-only synchronous bridge shim, shared by the outward protocol
+//! edges (chio-a2a-edge, chio-acp-edge). The edges gate their use of it on
+//! their own `compatibility-surface` feature; the helper itself is always
+//! compiled here so both edges can depend on a single definition instead of
+//! textually including this file.
+//!
+//! Mirrors the kernel's sync-bridge gate so the explicit passthrough surface
+//! fails closed under a current-thread runtime instead of deadlocking.
 
 /// Sentinel error returned by [`block_on_tool_server_invoke`] when the
 /// passthrough is invoked from inside a current-thread Tokio runtime.
@@ -11,7 +15,6 @@
 /// awaits Tokio I/O. The kernel bridge refuses this case fail-closed,
 /// and the edge shims must match instead of reintroducing the
 /// deadlock through the `compatibility-surface` feature.
-#[cfg(any(test, feature = "compatibility-surface"))]
 #[derive(Debug, thiserror::Error)]
 #[error(
     "sync bridge incompatible with current-thread Tokio runtime: \
@@ -26,8 +29,7 @@ pub struct SyncBridgeIncompatibleWithCurrentThreadRuntime;
 /// [`SyncBridgeIncompatibleWithCurrentThreadRuntime`] instead of
 /// silently parking the only worker thread; with no runtime active,
 /// drive the future with the non-tokio `futures::executor::block_on`.
-#[cfg(any(test, feature = "compatibility-surface"))]
-fn block_on_tool_server_invoke<F, T>(
+pub fn block_on_tool_server_invoke<F, T>(
     future: F,
 ) -> Result<T, SyncBridgeIncompatibleWithCurrentThreadRuntime>
 where
@@ -42,7 +44,7 @@ where
             // any tool-server future that awaits Tokio I/O. Surface a
             // typed error so callers see the architectural
             // incompatibility instead of a silent hang. The passthrough
-            // call site converts this into a Failed task response.
+            // call site converts this into a Failed passthrough response.
             Err(SyncBridgeIncompatibleWithCurrentThreadRuntime)
         }
         Err(_) => {

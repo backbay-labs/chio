@@ -104,7 +104,7 @@ class ChioNatsConsumerConfig:
         ``"ack"`` (default) or ``"term"``. ``"ack"`` marks the deny as
         processed so JetStream does not redeliver; ``"term"`` is
         semantically "abandon this message" -- either is safe once the
-        DLQ publish succeeds. ``deny_ack_strategy`` is an alias.
+        DLQ publish succeeds.
     handler_error_strategy:
         ``"nak"`` (default) or ``"term"``. Determines what happens
         when the application handler raises on the allow path. ``nak``
@@ -143,19 +143,6 @@ class ChioNatsConsumerConfig:
             raise ChioStreamingConfigError("handler_error_strategy must be 'nak' or 'term'")
         if self.on_sidecar_error not in ("raise", "deny"):
             raise ChioStreamingConfigError("on_sidecar_error must be 'raise' or 'deny'")
-
-    @property
-    def deny_ack_strategy(self) -> DenyStrategy:
-        """Alias for :attr:`deny_strategy`."""
-        import warnings
-
-        warnings.warn(
-            "ChioNatsConsumerConfig.deny_ack_strategy is an alias; "
-            "use deny_strategy instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.deny_strategy
 
 
 # ---------------------------------------------------------------------------

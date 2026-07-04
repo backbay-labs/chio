@@ -17,7 +17,6 @@ chio-core-types = { workspace = true }
 chio-credit = { workspace = true }
 chio-underwriting = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [lints]

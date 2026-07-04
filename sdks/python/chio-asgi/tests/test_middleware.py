@@ -251,9 +251,7 @@ class TestSidecarUnavailable:
                 side_effect=ChioConnectionError("connection refused")
             )
 
-            config = ChioASGIConfig(
-                sidecar_url="http://mock:9090", fail_open=False
-            )
+            config = ChioASGIConfig(sidecar_url="http://mock:9090")
             mw = ChioASGIMiddleware(_echo_app, config=config)
 
             scope = _make_scope()
@@ -264,31 +262,6 @@ class TestSidecarUnavailable:
                 m for m in messages if m.get("type") == "http.response.start"
             )
             assert start_msg["status"] == 503
-
-    async def test_legacy_fail_open_setting_still_fails_closed(self) -> None:
-        with patch(
-            "chio_asgi.middleware.ChioClient", autospec=True
-        ) as MockClient:
-            instance = MockClient.return_value
-            instance.evaluate_http_request = AsyncMock(
-                side_effect=ChioConnectionError("connection refused")
-            )
-
-            config = ChioASGIConfig(
-                sidecar_url="http://mock:9090", fail_open=True
-            )
-            mw = ChioASGIMiddleware(_echo_app, config=config)
-
-            scope = _make_scope()
-            send, messages = _make_send()
-            await mw(scope, _make_receive(), send)
-
-            start_msg = next(
-                m for m in messages if m.get("type") == "http.response.start"
-            )
-            assert start_msg["status"] == 503
-            header_dict = dict(start_msg.get("headers", []))
-            assert b"x-chio-receipt" not in header_dict
 
 
 class TestReceiptCallback:
@@ -366,15 +339,12 @@ class TestConfig:
     def test_defaults(self) -> None:
         config = ChioASGIConfig()
         assert config.sidecar_url == "http://127.0.0.1:9090"
-        assert config.fail_open is False
         assert "OPTIONS" in config.exclude_methods
         assert config.receipt_header == "X-Chio-Receipt"
 
     def test_custom(self) -> None:
         config = ChioASGIConfig(
             sidecar_url="http://localhost:9999",
-            fail_open=True,
             exclude_paths=frozenset({"/healthz", "/ready"}),
         )
-        assert config.fail_open is True
         assert "/healthz" in config.exclude_paths

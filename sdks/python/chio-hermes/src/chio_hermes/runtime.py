@@ -8,11 +8,13 @@ Hermes startup.
 
 from __future__ import annotations
 
+import logging
 import os
-import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 DEFAULT_SIDECAR_URL = "http://127.0.0.1:9090"
 
@@ -61,10 +63,7 @@ def _load_policy() -> _PolicyLoad:
             compile_policy,
         )
     except Exception as exc:  # noqa: BLE001
-        print(
-            f"[chio-hermes] chio_code_agent unavailable: {exc}",
-            file=sys.stderr,
-        )
+        _logger.warning("chio_code_agent unavailable: %s", exc)
         return _PolicyLoad(policy=None, error=f"chio_code_agent unavailable: {exc}")
 
     policy_path = os.environ.get("CHIO_POLICY_FILE")
@@ -74,9 +73,8 @@ def _load_policy() -> _PolicyLoad:
         text = Path(policy_path).read_text(encoding="utf-8")
         return _PolicyLoad(policy=compile_policy(text))
     except Exception as exc:  # noqa: BLE001
-        print(
-            f"[chio-hermes] failed to load CHIO_POLICY_FILE={policy_path!r}: {exc}",
-            file=sys.stderr,
+        _logger.warning(
+            "failed to load CHIO_POLICY_FILE=%r: %s", policy_path, exc
         )
         return _PolicyLoad(
             policy=None,

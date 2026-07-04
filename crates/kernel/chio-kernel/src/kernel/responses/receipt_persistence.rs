@@ -186,15 +186,6 @@ impl ChioKernel {
         Ok(())
     }
 
-    /// Trigger a Merkle checkpoint for all receipts in [last_checkpoint_seq+1, batch_end_seq].
-    pub(crate) fn maybe_trigger_checkpoint(&self, batch_end_seq: u64) -> Result<(), KernelError> {
-        let _receipt_store_write = self
-            .receipt_store_write_lock
-            .lock()
-            .map_err(|_| KernelError::Internal("receipt store write lock poisoned".to_string()))?;
-        self.maybe_trigger_checkpoint_locked(batch_end_seq)
-    }
-
     pub(crate) fn should_checkpoint_after_seq(&self, seq: u64) -> bool {
         let last_checkpoint_seq = self.last_checkpoint_seq.load(Ordering::SeqCst);
         seq > 0

@@ -39,15 +39,6 @@ fn allow_verdict() -> VerdictResult {
     }
 }
 
-fn malformed_stream() -> Vec<u8> {
-    // A well-formed Mistral chunk whose delta carries plain content and no
-    // tool_calls: there is nothing to gate, so this frame is forwarded as-is.
-    br#"data: {"object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "thinking"}}]}
-
-"#
-    .to_vec()
-}
-
 fn function_call_stream() -> Vec<u8> {
     // Mistral is OpenAI-compatible: a streaming chunk carries the tool call at
     // choices[].delta.tool_calls[] with `function.arguments` as a JSON-encoded
@@ -137,15 +128,6 @@ fn current_adapter_paths_match_documented_classes() -> Result<(), String> {
         }]
     }))?);
     require_provider_error(bad_args, "BadToolArgs")?;
-
-    let malformed = adapter.gate_sse_stream(&malformed_stream(), |_invocation| Ok(allow_verdict()));
-    // The content-only chunk carries no tool_calls, so gating succeeds; we
-    // separately confirm an actually malformed JSON SSE produces Malformed.
-    if malformed.is_err() {
-        // Acceptable; an unparseable frame returns Malformed.
-    } else {
-        let _ = malformed;
-    }
 
     let nonjson = adapter.gate_sse_stream(b"data: not-json\n\n", |_invocation| Ok(allow_verdict()));
     require_provider_error(nonjson, "Malformed")?;

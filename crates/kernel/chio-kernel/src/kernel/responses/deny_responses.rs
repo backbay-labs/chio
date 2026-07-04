@@ -1,25 +1,6 @@
 use super::*;
 
 impl ChioKernel {
-    /// denial reason is monetary budget exhaustion.
-    pub(crate) fn build_monetary_deny_response(
-        &self,
-        request: &ToolCallRequest,
-        reason: &str,
-        timestamp: u64,
-        matching_grants: &[MatchingGrant<'_>],
-        cap: &CapabilityToken,
-    ) -> Result<ToolCallResponse, KernelError> {
-        self.build_monetary_deny_response_with_metadata(
-            request,
-            reason,
-            timestamp,
-            matching_grants,
-            cap,
-            None,
-        )
-    }
-
     pub(crate) fn build_monetary_deny_response_with_metadata(
         &self,
         request: &ToolCallRequest,
@@ -128,26 +109,6 @@ impl ChioKernel {
 
         // No monetary grant -- standard deny.
         self.build_deny_response_with_metadata(request, reason, timestamp, None, extra_metadata)
-    }
-
-    pub(crate) fn build_pre_execution_monetary_deny_response(
-        &self,
-        request: &ToolCallRequest,
-        reason: &str,
-        timestamp: u64,
-        charge: &BudgetChargeResult,
-        committed_cost_after_release: u64,
-        cap: &CapabilityToken,
-    ) -> Result<ToolCallResponse, KernelError> {
-        self.build_pre_execution_monetary_deny_response_with_metadata(
-            request,
-            reason,
-            timestamp,
-            charge,
-            committed_cost_after_release,
-            cap,
-            None,
-        )
     }
 
     #[allow(clippy::too_many_arguments)]

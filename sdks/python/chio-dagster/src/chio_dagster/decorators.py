@@ -403,7 +403,7 @@ async def _run_with_guard(
             decision=decision_payload,
         )
 
-    _ = scope  # reserved for future guard-composition
+    _ = scope
     _attach_receipt_metadata(
         context,
         receipt=receipt,
