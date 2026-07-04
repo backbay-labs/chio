@@ -10,6 +10,10 @@ publish = false
 
 [features]
 default = []
+# FIPS smoke builds route Chio signing surfaces through chio-core-types'
+# aws-lc-rs backed FIPS feature without changing default builds. The
+# `chio-tee fips smoke` CI job builds `--features fips`.
+fips = ["chio-core/fips"]
 
 [lib]
 name = "chio_tee"
