@@ -383,15 +383,23 @@ impl IdentityError {
 /// A directory that passed every check. The gate is built ONLY from this type,
 /// so it can never resolve against an unverified bundle (ADAPTER-SPEC section 5).
 ///
-/// It carries two derived indices built in the SAME verified pass: `by_endpoint`
-/// (`EndpointId -> kernel_id`) and the [`VerifiedSignerDirectory`] projection
-/// (`signer_id -> (EndpointId, oracle verifier)`). The signer projection inherits
-/// the body-hash pin, issuer signature, validity window, and rollback machinery
-/// for free, so the revocation transport-origin pin is structural rather than a
-/// separately-fed map.
+/// It carries three derived indices built in the SAME verified pass: `by_endpoint`
+/// (`EndpointId -> kernel_id`), `by_kernel_passport` (`kernel_id -> passport key`
+/// for non-removed entries), and the [`VerifiedSignerDirectory`] projection
+/// (`signer_id -> (EndpointId, oracle verifier)`). Each inherits the body-hash pin,
+/// issuer signature, validity window, and rollback machinery for free, so both the
+/// revocation transport-origin pin and the bilateral lane's DSSE-verification key
+/// are structural (directory-bound) rather than separately-fed maps that can lag.
 #[derive(Debug, Clone)]
 pub struct VerifiedDirectory {
     by_endpoint: HashMap<EndpointId, (String, bool)>,
+    /// `kernel_id -> passport public key`, built in the same verified pass from the
+    /// issuer-signed [`TransportDirectoryEntry::passport_public_key`] of NON-removed
+    /// entries. This is the directory-bound source of the bilateral lane's Org B
+    /// DSSE-verification key: binding co-sign verification to THIS snapshot means a
+    /// rotated-away or revoked passport (absent from the current bundle) is never
+    /// accepted, even if a separately-pinned map lags the signed directory.
+    by_kernel_passport: HashMap<String, PublicKey>,
     signers: VerifiedSignerDirectory,
     /// `treaty_id -> set of party kernel_ids`, built in the same verified pass
     /// from the issuer-signed [`TransportTreatyEntry`] set. Fail-closed:
@@ -431,6 +439,22 @@ impl VerifiedDirectory {
             .find_map(|(endpoint, (bound_kernel_id, removed))| {
                 (!*removed && bound_kernel_id == kernel_id).then_some(*endpoint)
             })
+    }
+
+    /// Resolve an admitted `kernel_id` to its issuer-signed, load-time-verified
+    /// passport public key (the algorithm-agnostic long-term operator key the
+    /// bundle binds, and that the passport-over-transport endorsement was checked
+    /// against).
+    ///
+    /// Returns `None` (fail-closed) when the kernel is unknown OR its entry is a
+    /// removed tombstone. The bilateral co-sign lane sources Org B's
+    /// DSSE-verification key from HERE so verification is bound to the SAME
+    /// verified snapshot the admission gate authorized on: a rotated-away or
+    /// revoked passport (one the current directory no longer binds) can never be
+    /// used to obtain a co-signature.
+    #[must_use]
+    pub fn resolve_passport_key(&self, kernel_id: &str) -> Option<&PublicKey> {
+        self.by_kernel_passport.get(kernel_id)
     }
 
     /// The derived `signer_id -> (EndpointId, oracle verifier)` projection built
@@ -602,6 +626,7 @@ impl TransportDirectoryBundleDocument {
         // (6) per-entry structure + domain-separated endorsements. Also builds
         // the derived signer projection in the same pass.
         let mut by_endpoint: HashMap<EndpointId, (String, bool)> = HashMap::new();
+        let mut by_kernel_passport: HashMap<String, PublicKey> = HashMap::new();
         let mut by_signer: HashMap<String, SignerBinding> = HashMap::new();
         let mut seen_kernel_ids: HashSet<&str> = HashSet::new();
         for entry in &self.directory.peers {
@@ -637,6 +662,13 @@ impl TransportDirectoryBundleDocument {
                 if !endorsed {
                     return Err(IdentityError::EndorsementInvalid(entry.kernel_id.clone()));
                 }
+                // Bind the issuer-signed passport key to this kernel for the
+                // bilateral lane's directory-sourced DSSE verification. Only
+                // non-removed entries contribute (fail-closed: a tombstoned
+                // operator has no co-sign key). `kernel_id` is deduped above, so
+                // there is exactly one passport binding per admitted operator.
+                by_kernel_passport
+                    .insert(entry.kernel_id.clone(), entry.passport_public_key.clone());
             }
             // Per-entry oracle revocation-signer bindings. Each non-removed entry
             // is verified against the SAME passport under a DISTINCT domain tag,
@@ -757,6 +789,7 @@ impl TransportDirectoryBundleDocument {
         let body_sha256 = canonical_sha256(self)?;
         Ok(VerifiedDirectory {
             by_endpoint,
+            by_kernel_passport,
             signers: VerifiedSignerDirectory::from_verified_map(by_signer),
             treaty_parties,
             version: self.body.version,
@@ -1041,6 +1074,33 @@ mod tests {
             directory.resolve_transport_endpoint("did:chio:nobody"),
             None
         );
+    }
+
+    #[test]
+    fn resolve_passport_key_is_directory_bound_and_fails_closed() {
+        // The bilateral co-sign lane sources Org B's DSSE-verification key from
+        // this accessor, so it must return the issuer-signed passport of an
+        // admitted peer and fail closed (None) for a removed tombstone or an
+        // unknown kernel. Binding verification to this snapshot is what keeps a
+        // rotated-away / revoked passport from being accepted.
+        let alice = EntrySpec::admitted("did:chio:alice", 1, 10);
+        let alice_key = alice.passport.public_key();
+        let mut ghost = EntrySpec::admitted("did:chio:ghost", 3, 12);
+        ghost.removed = true;
+        let (bundle, trust) = signed_bundle(&[alice, ghost]);
+
+        let directory = bundle.verify_bundle(&trust).expect("verifies");
+        assert_eq!(
+            directory.resolve_passport_key("did:chio:alice"),
+            Some(&alice_key),
+            "an admitted peer resolves to its issuer-signed passport key"
+        );
+        assert_eq!(
+            directory.resolve_passport_key("did:chio:ghost"),
+            None,
+            "a removed operator has no directory-bound passport key (fail-closed)"
+        );
+        assert_eq!(directory.resolve_passport_key("did:chio:nobody"), None);
     }
 
     #[test]

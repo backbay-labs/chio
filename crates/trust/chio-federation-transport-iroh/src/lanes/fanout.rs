@@ -564,6 +564,16 @@ fn verify_deposit_self_signature(
 /// topic swarm is gated UPSTREAM by the accept-time
 /// [`DirectoryGate`](crate::admission::DirectoryGate) installed via
 /// `Endpoint::builder(..).hooks(gate)`.
+///
+/// That accept-time gate is FEDERATION-GLOBAL; the PER-TREATY party gate is layered
+/// on top at [`subscribe_treaty`](FanoutLane::subscribe_treaty). To keep that gate
+/// unbypassable, the underlying [`Gossip`] handle is held PRIVATELY and NOT exposed
+/// by any accessor: the only way to join a treaty swarm is through the
+/// membership-checked `subscribe_treaty` /
+/// [`subscribe_treaty_with_timeout`](FanoutLane::subscribe_treaty_with_timeout),
+/// so a caller cannot reach
+/// `subscribe_and_join(pheromone_topic_for_treaty(..), ..)` directly and join a
+/// treaty it is not a party to.
 #[derive(Debug, Clone)]
 pub struct FanoutLane {
     gossip: Gossip,
@@ -576,11 +586,14 @@ impl FanoutLane {
         Self { gossip }
     }
 
-    /// The underlying gossip handle.
-    #[must_use]
-    pub fn gossip(&self) -> &Gossip {
-        &self.gossip
-    }
+    // NO raw gossip accessor is exposed (deliberate, fail-closed). Handing out the
+    // underlying `Gossip` handle would let a caller run
+    // `subscribe_and_join(pheromone_topic_for_treaty(treaty_id), bootstrap)` directly
+    // and join a treaty swarm WITHOUT the treaty-party membership check enforced in
+    // `subscribe_treaty` / `subscribe_treaty_with_timeout` below - reopening exactly
+    // the leak the JOIN gate closes (a globally-admitted non-party computing the
+    // non-secret topic id and joining anyway). The handle stays private so EVERY join
+    // routes through the membership gate; there is no membership-bypass escape hatch.
 
     /// Subscribe to and join the per-treaty topic swarm, returning the split
     /// sender/receiver handle.
@@ -1616,6 +1629,30 @@ mod tests {
                     if treaty_id == TREATY_ALPHA && kernel_id == "did:chio:non-party"
             ),
             "a non-party local operator must be rejected at join, got {result:?}"
+        );
+
+        // The gate fires BEFORE any neighbor dial: even with a NON-empty bootstrap
+        // (an unreachable fabricated endpoint) and a short join bound, a non-party is
+        // still denied with TreatyMembershipDenied rather than attempting the dial and
+        // timing out. This pins finding 1's "before any neighbor is dialed" claim and,
+        // with the raw gossip handle now private (finding 2), leaves no path that
+        // reaches subscribe_and_join without this check.
+        let denied_with_bootstrap = lane
+            .subscribe_treaty_with_timeout(
+                TREATY_ALPHA,
+                "did:chio:non-party",
+                &membership,
+                vec![endpoint_from_seed(99)],
+                Duration::from_millis(50),
+            )
+            .await;
+        assert!(
+            matches!(
+                denied_with_bootstrap,
+                Err(FanoutError::TreatyMembershipDenied { ref treaty_id, ref kernel_id })
+                    if treaty_id == TREATY_ALPHA && kernel_id == "did:chio:non-party"
+            ),
+            "the membership gate must short-circuit before dialing bootstrap, got {denied_with_bootstrap:?}"
         );
         router.shutdown().await.ok();
     }

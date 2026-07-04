@@ -495,49 +495,71 @@ impl PheromoneBatchHandler {
                         authenticated_sender.clone(),
                         nonce.clone(),
                     );
-                    let now = (self.now)();
-                    // The report type (chio-pheromone-runtime PheromoneReceiveReport)
-                    // is not nameable here; it flows through by inference. The per-frame
-                    // verifier (pheromone_gossip.rs:236/244) runs inside this call,
-                    // unchanged, and only ever on a batch not already in the inbox.
-                    let fresh = match self
-                        .receiver
-                        .receive_batch(batch.clone(), authenticated_sender.clone(), now)
-                        .await
-                    {
-                        // receive_batch self-commits its runtime mutation only on Ok; an
-                        // Err admitted nothing. The still-ARMED guard drops on this
-                        // `?`-return and RELEASES the slot so a redelivery can re-claim
-                        // and re-receive. Fail-closed.
-                        Err(error) => return Err(error.into()),
-                        Ok(fresh) => fresh,
-                    };
-                    // Deposits are now committed. COMMIT the slot: disarm (a cancel/panic
-                    // in the committed-but-unrecorded window below must NOT release, or a
-                    // redelivery would re-receive an already-admitted batch, yielding a
-                    // spurious "rejected" durable verdict for deposits that were in fact
-                    // admitted) AND persist the durable commit marker so a PROCESS crash in
-                    // this window leaves a reservation that survives the store's
-                    // clear-at-open, forcing redelivery down the fail-closed loser path.
-                    slot.commit()?;
-                    match self
+                    // RE-READ AFTER WINNING THE RESERVATION (fail-closed): our first
+                    // lookup_inbox_report returned None, but winning the slot does NOT
+                    // prove the batch is unreceived. A concurrent handler can record its
+                    // durable verdict AND release its reservation (release_inbox_slot runs
+                    // only AFTER record_inbox, to bound table growth) in the window between
+                    // our None-read and our winning here, so we may have re-claimed a slot
+                    // for an ALREADY-admitted batch. Re-read the durable inbox now, holding
+                    // the freshly-won slot: if the verdict is already recorded, return it
+                    // verbatim and RELEASE the (now redundant) slot - NEVER re-run
+                    // receive_batch, which would re-enter the runtime replay window and
+                    // reject the already-accepted deposits (a spurious "rejected" verdict).
+                    // This closes the "reservation won after another handler recorded+
+                    // released" race and mirrors the HTTP path's nonce-before-receive
+                    // idempotency. Only a still-absent verdict proceeds to receive.
+                    if let Some(stored) = self
                         .store
-                        .record_inbox(&authenticated_sender, &nonce, &batch, &fresh)
+                        .lookup_inbox_report(&authenticated_sender, &nonce)?
                     {
-                        // Durable verdict recorded: it now short-circuits any redelivery
-                        // at lookup_inbox_report BEFORE the reservation is consulted, so
-                        // the reservation is redundant. Release it to bound
-                        // reservation-table growth (fail-closed on the store error; the
-                        // recorded verdict still short-circuits the peer's retry).
-                        Ok(_) => slot.release()?,
-                        // A committed batch whose verdict failed to record must NOT be
-                        // re-received. Leave the slot HELD (already disarmed): a
-                        // redelivery loses the reservation and takes the loser /
-                        // fail-closed path, never re-running the receiver. The peer retry
-                        // fail-closes pending operational recovery.
-                        Err(error) => return Err(error.into()),
+                        slot.release()?;
+                        stored
+                    } else {
+                        let now = (self.now)();
+                        // The report type (chio-pheromone-runtime PheromoneReceiveReport)
+                        // is not nameable here; it flows through by inference. The per-frame
+                        // verifier (pheromone_gossip.rs:236/244) runs inside this call,
+                        // unchanged, and only ever on a batch not already in the inbox.
+                        let fresh = match self
+                            .receiver
+                            .receive_batch(batch.clone(), authenticated_sender.clone(), now)
+                            .await
+                        {
+                            // receive_batch self-commits its runtime mutation only on Ok; an
+                            // Err admitted nothing. The still-ARMED guard drops on this
+                            // `?`-return and RELEASES the slot so a redelivery can re-claim
+                            // and re-receive. Fail-closed.
+                            Err(error) => return Err(error.into()),
+                            Ok(fresh) => fresh,
+                        };
+                        // Deposits are now committed. COMMIT the slot: disarm (a cancel/panic
+                        // in the committed-but-unrecorded window below must NOT release, or a
+                        // redelivery would re-receive an already-admitted batch, yielding a
+                        // spurious "rejected" durable verdict for deposits that were in fact
+                        // admitted) AND persist the durable commit marker so a PROCESS crash in
+                        // this window leaves a reservation that survives the store's
+                        // clear-at-open, forcing redelivery down the fail-closed loser path.
+                        slot.commit()?;
+                        match self
+                            .store
+                            .record_inbox(&authenticated_sender, &nonce, &batch, &fresh)
+                        {
+                            // Durable verdict recorded: it now short-circuits any redelivery
+                            // at lookup_inbox_report BEFORE the reservation is consulted, so
+                            // the reservation is redundant. Release it to bound
+                            // reservation-table growth (fail-closed on the store error; the
+                            // recorded verdict still short-circuits the peer's retry).
+                            Ok(_) => slot.release()?,
+                            // A committed batch whose verdict failed to record must NOT be
+                            // re-received. Leave the slot HELD (already disarmed): a
+                            // redelivery loses the reservation and takes the loser /
+                            // fail-closed path, never re-running the receiver. The peer retry
+                            // fail-closes pending operational recovery.
+                            Err(error) => return Err(error.into()),
+                        }
+                        fresh
                     }
-                    fresh
                 } else {
                     // Loser: a concurrent handler is receiving this exact batch. Do
                     // NOT receive (that is the double-mutation this dedup closes); wait,
@@ -1373,6 +1395,45 @@ mod tests {
         assert!(
             store.reserve_inbox_slot(GUARD_SENDER, nonce).unwrap().won,
             "a recorded success must release the redundant reservation"
+        );
+    }
+
+    #[test]
+    fn winning_the_reservation_does_not_prove_the_batch_is_unreceived() {
+        // Premise of handle()'s post-win RE-READ (FINDING 2, the "reservation won after
+        // another handler recorded+released" race): because the winner RELEASES its slot
+        // after recording the durable verdict (to bound reservation-table growth), a later
+        // redelivery can WIN the SAME (sender, nonce) reservation AGAIN even though the
+        // batch is already admitted. Winning therefore does NOT prove un-receipt, so
+        // handle() must re-read lookup_inbox_report AFTER winning and return the recorded
+        // verdict instead of re-running the receiver (which would re-enter the runtime
+        // replay window and reject the already-accepted deposits).
+        //
+        // This asserts the store-level premise only. The end-to-end Some-branch of the
+        // re-read (winning, then finding a recorded verdict) cannot be exercised in this
+        // crate: seeding a durable verdict needs `record_inbox(.., &PheromoneReceiveReport)`
+        // and chio-pheromone-runtime is not a (dev-)dependency here, so that report type is
+        // not nameable (the same limitation the loopback-QUIC tests document). The recorded-
+        // verdict short-circuit itself is covered by chio-pheromone-relay's store tests.
+        let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+        let nonce = "iroh-pheromone-batch:win-after-release";
+        // Winner: reserve -> commit -> release, exactly as handle()'s record-Ok path does.
+        assert!(store.reserve_inbox_slot(GUARD_SENDER, nonce).unwrap().won);
+        {
+            let mut slot = InboxSlotGuard::new(
+                Arc::clone(&store),
+                GUARD_SENDER.to_string(),
+                nonce.to_string(),
+            );
+            slot.commit().unwrap();
+            slot.release().unwrap();
+        }
+        // A redelivery re-WINS the freed slot: winning cannot be treated as proof of
+        // un-receipt, which is precisely why handle() re-reads the durable inbox here.
+        assert!(
+            store.reserve_inbox_slot(GUARD_SENDER, nonce).unwrap().won,
+            "a released slot is re-won by a redelivery, so a post-win re-read is required \
+             to avoid re-receiving an already-admitted batch"
         );
     }
 

@@ -20,11 +20,13 @@
 //!    [`WireDsseCoSigningRequest`], then half-closes its send half (`finish()`).
 //! 4. Org A ([`BilateralCoSignHandler`]) asserts its directory-resolved
 //!    `EndpointId == request.org_b_kernel_id`, verifies `org_b_signature` over the
-//!    exact `pae_bytes` against Org B's pinned passport key (algorithm-agnostic,
-//!    above iroh, via [`chio_core_types::PublicKey::verify`]), and re-checks trust /
-//!    rotation-window through the same directory resolution. On ANY failure it
-//!    writes a typed error mirroring [`BilateralCoSigningError`] and terminates
-//!    WITHOUT signing.
+//!    exact `pae_bytes` against Org B's DIRECTORY-BOUND passport key (the key the
+//!    same verified directory snapshot binds for that peer; a separately-pinned
+//!    map must AGREE with it or the co-sign is refused, so a rotated-away key is
+//!    never accepted), algorithm-agnostic, above iroh, via
+//!    [`chio_core_types::PublicKey::verify`], and re-checks trust / rotation-window
+//!    through the same directory resolution. On ANY failure it writes a typed error
+//!    mirroring [`BilateralCoSigningError`] and terminates WITHOUT signing.
 //! 5. On success Org A signs the SAME `pae_bytes` (mirroring
 //!    `InProcessCoSigner::request_dsse_cosignature`) and writes the response frame
 //!    on the same stream.
@@ -119,11 +121,16 @@ impl OrgAddressBook for HashMap<String, EndpointAddr> {
 /// Server-side (Org A) pinned passport keys for the counterparties it may
 /// co-sign for, keyed by `kernel_id`.
 ///
-/// This mirrors `InProcessCoSigner`'s single `tool_host_public_key`: Org A
-/// verifies Org B's signature over `pae_bytes` against the algorithm-agnostic
-/// passport key pinned here (above iroh, via [`PublicKey::verify`]). The passport
-/// key is deliberately NOT the ed25519 transport `EndpointId` (Option B: a
-/// non-ed25519 passport cannot be an `EndpointId`).
+/// This mirrors `InProcessCoSigner`'s single `tool_host_public_key` and serves as
+/// Org A's co-signing ALLOWLIST (which admitted peers it will co-sign for). It is
+/// NO LONGER the authoritative verification key: Org A verifies Org B's signature
+/// over `pae_bytes` against the DIRECTORY-BOUND passport key
+/// ([`crate::identity::VerifiedDirectory::resolve_passport_key`]) so verification
+/// is pinned to the same issuer-signed snapshot the admission gate authorized on.
+/// The key pinned here MUST agree with that binding; a pinned key that lags the
+/// signed directory is refused before signing (fail-closed on mismatch/lag). The
+/// passport key is deliberately NOT the ed25519 transport `EndpointId` (Option B:
+/// a non-ed25519 passport cannot be an `EndpointId`).
 pub trait PinnedPassportKeys: Send + Sync {
     /// The pinned passport public key for a peer `kernel_id`, or `None` when the
     /// peer is not a co-signing counterparty.
@@ -692,12 +699,35 @@ impl BilateralCoSignHandler {
                 request.org_b_kernel_id.clone(),
             ));
         }
-        // Org B's pinned passport key (any algorithm), verified above iroh.
-        let org_b_key = self
+        // Org B's passport key (any algorithm), bound to the SAME issuer-signed
+        // directory snapshot the gate admitted on. Sourcing the DSSE-verification
+        // key from the verified directory (not only a separately-fed pinned map
+        // that can lag it) means a rotated-away / revoked passport - one the
+        // CURRENT directory no longer binds - can never be used to obtain Org A's
+        // co-signature. Fail-closed: an unknown or removed peer has no
+        // directory-bound passport key.
+        let directory_key = self
+            .gate
+            .directory()
+            .resolve_passport_key(&request.org_b_kernel_id)
+            .ok_or_else(|| BilateralCoSigningError::UnknownPeer(request.org_b_kernel_id.clone()))?;
+        // The pinned map is Org A's co-signing allowlist (which admitted peers it
+        // will co-sign for): the peer MUST be pinned. Defense in depth: the pinned
+        // key MUST also agree with the directory's current binding. A pinned key
+        // that lags the signed directory (differs from the current binding) is
+        // refused BEFORE signing rather than silently overriding the verified
+        // snapshot - fail-closed on mismatch/lag.
+        let pinned_key = self
             .passport_keys
             .passport_key(&request.org_b_kernel_id)
             .ok_or_else(|| BilateralCoSigningError::UnknownPeer(request.org_b_kernel_id.clone()))?;
-        if !org_b_key.verify(&request.pae_bytes, &request.org_b_signature) {
+        if pinned_key != *directory_key {
+            return Err(BilateralCoSigningError::OrgBSignatureInvalid);
+        }
+        // Verify Org B's signature over the exact pae_bytes against the
+        // directory-bound key (above iroh; the pinned map having been proven to
+        // match it).
+        if !directory_key.verify(&request.pae_bytes, &request.org_b_signature) {
             return Err(BilateralCoSigningError::OrgBSignatureInvalid);
         }
 
@@ -1221,6 +1251,81 @@ mod tests {
             crate::metrics::verify_failures_total(crate::metrics::SEAM_BILATERAL, "unknown-peer")
                 > before,
             "the co-sign rejection must be counted (observe-only)"
+        );
+    }
+
+    #[test]
+    fn cosign_unit_verifies_against_the_directory_bound_passport_key() {
+        // The happy path of the directory-bound key: when the pinned map AGREES
+        // with the verified directory's current binding for Org B, a request
+        // signed with that key is co-signed. Pure (no network) proof that
+        // verification now flows through the directory snapshot.
+        let org_a = Peer::new(ORIGIN_KERNEL, 10, 1);
+        let org_b = Peer::new(TOOL_HOST_KERNEL, 11, 2);
+        let gate = DirectoryGate::new(verified_directory(&[&org_a, &org_b]));
+        let handler = BilateralCoSignHandler::new(
+            gate,
+            ORIGIN_KERNEL,
+            org_a.passport.clone(),
+            pinned_org_b(&org_b),
+        );
+
+        let pae_bytes = b"pae bound to the directory passport".to_vec();
+        let request = DsseCoSigningRequest::new(
+            ORIGIN_KERNEL.to_string(),
+            org_b.kernel_id.clone(),
+            pae_bytes.clone(),
+            org_b.passport.sign(&pae_bytes),
+        );
+        let response = handler
+            .cosign(&org_b.transport_id, &request)
+            .expect("a request signed with the directory-bound passport co-signs");
+        assert!(org_a
+            .passport
+            .public_key()
+            .verify(&pae_bytes, &response.org_a_signature));
+    }
+
+    #[test]
+    fn lagging_pinned_passport_key_is_rejected_without_signing() {
+        // Finding 2: the DSSE-verification key must be bound to the SAME verified
+        // directory the gate admitted on. If an out-of-band pinned map LAGS the
+        // signed directory (pins a different passport key than the directory's
+        // current binding for Org B), Org A must refuse to co-sign - otherwise an
+        // authenticated peer could obtain a co-signature under a passport the
+        // current directory no longer pins. Fail-closed, before signing.
+        let org_a = Peer::new(ORIGIN_KERNEL, 10, 1);
+        let org_b = Peer::new(TOOL_HOST_KERNEL, 11, 2);
+        // The directory binds org_b's CURRENT passport (seed 2 via `Peer::new`).
+        let gate = DirectoryGate::new(verified_directory(&[&org_a, &org_b]));
+
+        // The pinned map lags: it still pins a STALE/rotated-away key (seed 99),
+        // not the key the verified directory currently binds for org_b.
+        let stale_passport = Keypair::from_seed(&[99u8; 32]);
+        assert_ne!(stale_passport.public_key(), org_b.passport.public_key());
+        let mut stale: HashMap<String, PublicKey> = HashMap::new();
+        stale.insert(org_b.kernel_id.clone(), stale_passport.public_key());
+        let handler = BilateralCoSignHandler::new(
+            gate,
+            ORIGIN_KERNEL,
+            org_a.passport.clone(),
+            Arc::new(stale),
+        );
+
+        // Org B signs with its CURRENT (directory-bound) passport. Even a
+        // perfectly valid signature is refused because the pinned map disagrees
+        // with the signed directory: the lag is caught before any co-signature.
+        let pae_bytes = b"pae under a lagging pinned map".to_vec();
+        let request = DsseCoSigningRequest::new(
+            ORIGIN_KERNEL.to_string(),
+            org_b.kernel_id.clone(),
+            pae_bytes.clone(),
+            org_b.passport.sign(&pae_bytes),
+        );
+        assert_eq!(
+            handler.cosign(&org_b.transport_id, &request),
+            Err(BilateralCoSigningError::OrgBSignatureInvalid),
+            "a pinned passport key that lags the signed directory must be refused without signing"
         );
     }
 

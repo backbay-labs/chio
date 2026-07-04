@@ -82,6 +82,15 @@ pub const ALPN_REVOCATION_ROOT: &[u8] = b"chio/federation/revocation-root/1";
 /// bounds a hostile peer's per-message allocation fail-closed.
 pub const MAX_WIRE_BYTES: usize = 16 * 1024 * 1024;
 
+/// QUIC application close code the CLIENT sends once it has read a clean reply, so
+/// the accept side's bounded linger (which waits for the dialer to close) resolves
+/// promptly and its accept slot is released instead of being pinned until the idle
+/// timeout. Mirrors the pheromone (`LANE_OK_CODE`) and bilateral (`CLOSE_OK`)
+/// clients, which likewise close after reading; `0` matches this lane's own
+/// loopback test helper. Distinct from [`LANE_RESET_CLOSE_CODE`] (a fail-closed
+/// reset) so a clean client close is diagnosable on the wire.
+const LANE_OK_CLOSE_CODE: u32 = 0;
+
 /// A single pinned signer binding: an opaque `signer_id` cross-linked to the
 /// transport `EndpointId` that is allowed to originate its roots AND to the
 /// pinned verifying key that authenticates those roots.
@@ -266,20 +275,29 @@ pub trait RevocationRootSink: std::fmt::Debug + Send + Sync {
     /// `merge_root` directly), so the all-or-nothing batch contract is honored end
     /// to end.
     ///
-    /// The default implementation applies each root in order via [`merge_root`];
-    /// this is atomic ONLY for sinks whose per-root merge cannot fail after a
-    /// prior root has already been applied (e.g. an in-memory cache that validates
-    /// nothing, or a stub). A sink backed by a real store whose `merge_root` can
-    /// reject a root mid-batch (a storage/write failure) MUST override this to
-    /// stage-and-commit (or roll back), so a rejected root leaves the earlier
-    /// roots unapplied. Verification (signature + origin pin) already ran on every
-    /// root in [`RevocationHandler::verify_batch`] before this is called, so the
-    /// only residual mid-batch failure is a storage-layer error in the sink.
-    fn merge_batch(&self, roots: &[SignedEpochRoot]) -> Result<(), RevocationLaneError> {
-        for root in roots {
-            self.merge_root(root)?;
-        }
-        Ok(())
+    /// # Fail-closed default (no partial cache advance)
+    ///
+    /// The default here deliberately does NOT loop [`merge_root`]. A per-root loop
+    /// would leave earlier roots applied when a later root fails, advancing the
+    /// revocation cache partially while [`RevocationHandler::handle_request`]
+    /// reports the whole batch rejected - the exact all-or-nothing violation this
+    /// contract forbids. A generic default cannot roll back an arbitrary sink, so
+    /// instead of risking a silent partial apply it FAILS CLOSED: it merges nothing
+    /// and returns [`RevocationLaneError::SinkRejected`]. Every sink therefore MUST
+    /// provide its own atomic `merge_batch` that stages all roots and commits only
+    /// after every root is accepted (see the `AtomicRecordingSink` test for the
+    /// stage-then-commit shape); a sink that forgets the override gets a loud, total
+    /// rejection rather than a corrupting partial advance. Verification (signature +
+    /// origin pin) already ran on every root in [`RevocationHandler::verify_batch`]
+    /// before this is ever called.
+    fn merge_batch(&self, _roots: &[SignedEpochRoot]) -> Result<(), RevocationLaneError> {
+        Err(RevocationLaneError::SinkRejected(
+            "RevocationRootSink::merge_batch has no safe generic default: a sink MUST \
+             implement an atomic (stage-then-commit) batch merge so a mid-batch failure \
+             advances the revocation cache by nothing (all-or-nothing). The fail-closed \
+             default merged nothing."
+                .to_string(),
+        ))
     }
 }
 
@@ -861,6 +879,25 @@ async fn request_over_iroh(
     )
     .await?
     .map_err(|error| RevocationLaneError::Transport(error.to_string()))?;
+    // Run the open/write/read exchange, then ALWAYS close the connection before
+    // returning (mirrors the bilateral `request_dsse_cosignature_over_iroh` and the
+    // pheromone client, which both close after reading). On success the accept side
+    // is lingering purely to let the dialer close its half; closing here resolves
+    // that linger at once so the accept slot is freed instead of pinned until the
+    // QUIC idle timeout. Factored out so the connection is closed exactly once on
+    // every path (success, timeout, transport, or codec failure).
+    let result = request_exchange(limits, &conn, request).await;
+    conn.close(LANE_OK_CLOSE_CODE.into(), b"ok");
+    result
+}
+
+/// The open-bi / write-request / read-reply half of [`request_over_iroh`], factored
+/// out so the caller can close the connection exactly once regardless of outcome.
+async fn request_exchange(
+    limits: &AcceptLimitConfig,
+    conn: &Connection,
+    request: &RevocationLaneRequest,
+) -> Result<RevocationLaneResponse, RevocationLaneError> {
     let (mut send, mut recv) = client_bounded(limits, AcceptPhase::AcceptStream, conn.open_bi())
         .await?
         .map_err(|error| RevocationLaneError::Transport(error.to_string()))?;
@@ -1106,6 +1143,18 @@ mod tests {
                 .lock()
                 .expect("sink lock")
                 .push(signed.root.epoch);
+            Ok(())
+        }
+
+        // Infallible in-memory sink: record the whole verified batch under one lock
+        // acquisition, which is inherently atomic (there is no mid-batch failure to
+        // leave a partial apply). Overrides the fail-closed default so a valid push
+        // merges; every real sink must likewise provide an atomic merge_batch.
+        fn merge_batch(&self, roots: &[SignedEpochRoot]) -> Result<(), RevocationLaneError> {
+            self.merged
+                .lock()
+                .expect("sink lock")
+                .extend(roots.iter().map(|root| root.root.epoch));
             Ok(())
         }
     }
@@ -1449,6 +1498,61 @@ mod tests {
             other => panic!("expected PushAccepted, got {other:?}"),
         }
         assert_eq!(*sink.committed.lock().unwrap(), vec![5, 6]);
+    }
+
+    /// A sink that implements ONLY `merge_root` and inherits the trait's fail-closed
+    /// default `merge_batch`, modelling an implementer who forgot the atomic override.
+    #[derive(Debug, Default)]
+    struct DefaultMergeSink {
+        merged: Mutex<Vec<u64>>,
+    }
+
+    impl RevocationRootSink for DefaultMergeSink {
+        fn merge_root(&self, signed: &SignedEpochRoot) -> Result<(), RevocationLaneError> {
+            self.merged
+                .lock()
+                .expect("sink lock")
+                .push(signed.root.epoch);
+            Ok(())
+        }
+        // Intentionally NO merge_batch override: inherits the fail-closed default.
+    }
+
+    #[test]
+    fn default_merge_batch_fails_closed_with_no_partial_apply() {
+        // A sink relying on the trait's default merge_batch must NOT silently apply
+        // roots one at a time: the default fails closed (SinkRejected), so a batch
+        // that otherwise verifies is rejected and NOTHING reaches the cache. This is
+        // the all-or-nothing guarantee - an implementer who forgets an atomic
+        // merge_batch gets a loud, total rejection rather than a partial cache advance.
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let sink = Arc::new(DefaultMergeSink::default());
+        let handler = RevocationHandler::new(
+            directory,
+            Arc::new(EmptyHistory),
+            sink.clone(),
+            "did:chio:responder",
+        );
+
+        let f5 = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        let f6 = RevocationRootGossip::from_signed(signed_root(&oracle, 6), NOW);
+        let response = handler.handle_request(
+            transport,
+            RevocationLaneRequest::Push(batch(vec![f5, f6])),
+            NOW,
+        );
+        match response {
+            RevocationLaneResponse::Rejected { code, .. } => {
+                assert_eq!(code, "sink-rejected");
+            }
+            other => panic!("expected Rejected(sink-rejected), got {other:?}"),
+        }
+        assert!(
+            sink.merged.lock().unwrap().is_empty(),
+            "the fail-closed default must merge NOTHING (no partial apply)"
+        );
     }
 
     #[test]
@@ -1918,6 +2022,85 @@ mod tests {
             "unexpected error: {error:?}"
         );
         assert_eq!(error.code(), "accept_timeout");
+
+        router.shutdown().await.ok();
+    }
+
+    // -- Client closes the connection after reading the reply (frees accept slots) --
+    //
+    // The shipped client must close the QUIC connection once it has read the reply,
+    // so the accept side's linger (which waits for the dialer to close) resolves at
+    // once instead of pinning its accept slot until the idle timeout.
+
+    /// An acceptor that replies, then waits for the DIALER to close: `conn.closed()`
+    /// resolves only when the client closes its half, so it fires a `Notify` proving
+    /// the shipped client closed.
+    #[derive(Clone, Debug)]
+    struct NotifyOnDialerClose {
+        notify: Arc<tokio::sync::Notify>,
+    }
+
+    impl ProtocolHandler for NotifyOnDialerClose {
+        async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+            let (mut send, mut recv) = conn.accept_bi().await?;
+            let _request: RevocationLaneRequest =
+                read_frame(&mut recv).await.map_err(AcceptError::from_err)?;
+            write_frame(
+                &mut send,
+                &RevocationLaneResponse::PushAccepted {
+                    merged_epochs: Vec::new(),
+                },
+            )
+            .await
+            .map_err(AcceptError::from_err)?;
+            // Resolves when the dialer closes its half. If the shipped client closes
+            // after reading (the fix), this returns promptly; otherwise it would only
+            // resolve at the far-longer QUIC idle timeout.
+            conn.closed().await;
+            self.notify.notify_one();
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn shipped_client_closes_connection_after_reading_reply() {
+        // No admission gate: this isolates the CLIENT close behavior of the shipped
+        // push_batch_over_iroh path. The acceptor replies and then waits for the
+        // dialer to close; the client MUST close after reading the reply so the
+        // accept-side wait resolves promptly (freeing the slot).
+        let acceptor = bind_endpoint(34).await;
+        let notify = Arc::new(tokio::sync::Notify::new());
+        let router = Router::builder(acceptor)
+            .accept(
+                ALPN_REVOCATION_ROOT,
+                NotifyOnDialerClose {
+                    notify: notify.clone(),
+                },
+            )
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(35).await;
+        let oracle = signer("oracle-a", SEED_A);
+        let frame = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        let response = tokio::time::timeout(
+            Duration::from_secs(15),
+            push_batch_over_iroh(&dialer, acceptor_addr, &batch(vec![frame])),
+        )
+        .await
+        .expect("push completes before timeout")
+        .expect("push_batch_over_iroh returns a response");
+        assert!(matches!(
+            response,
+            RevocationLaneResponse::PushAccepted { .. }
+        ));
+
+        // The accept side observes the dialer's close well within this bound only
+        // because the shipped client closes after reading; without the close it would
+        // hang until the QUIC idle timeout (far longer than this bound).
+        tokio::time::timeout(Duration::from_secs(5), notify.notified())
+            .await
+            .expect("the shipped client must close the connection after reading the reply");
 
         router.shutdown().await.ok();
     }

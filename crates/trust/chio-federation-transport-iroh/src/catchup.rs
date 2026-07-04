@@ -105,6 +105,16 @@ pub enum CatchupError {
         /// The hard cap.
         max: u64,
     },
+    /// The manifest mixes more than one `signer_id`. A manifest is bound to a
+    /// SINGLE signer so a follower resolves exactly one pinned verifier/authority
+    /// for the whole range; a mixed-signer manifest is rejected fail-closed.
+    #[error("catch-up manifest mixes signer ids `{first}` and `{other}`")]
+    ManifestSignerMismatch {
+        /// The first `signer_id` the manifest declared.
+        first: String,
+        /// A later, conflicting `signer_id`.
+        other: String,
+    },
     /// A JSON (de)serialization failure.
     #[error("wire codec error: {0}")]
     Codec(String),
@@ -126,6 +136,7 @@ impl CatchupError {
                 _ => "ordering",
             },
             Self::ManifestTooWide { .. } => "manifest-too-wide",
+            Self::ManifestSignerMismatch { .. } => "manifest-signer-mismatch",
             Self::Codec(_) => "codec",
         }
     }
@@ -377,6 +388,48 @@ impl BlobCatchupClient {
         order_check(&verified)?;
         Ok(verified)
     }
+
+    /// FOLLOWER side: fetch and verify the roots a MANIFEST advertises, resolving the
+    /// pinned signer FROM THE MANIFEST (each entry carries its `signer_id`) instead
+    /// of requiring the caller to supply it out of band.
+    ///
+    /// Validates the manifest first (schema, cap, strict monotone contiguity, and the
+    /// single-signer binding), then delegates to [`fetch_range`](Self::fetch_range)
+    /// with the manifest's bound signer and its `(epoch, hash)` list. An empty
+    /// manifest yields no roots (nothing to fetch). Fail-closed and all-or-nothing,
+    /// exactly as [`fetch_range`](Self::fetch_range).
+    ///
+    /// Uses the generous default client bounds ([`AcceptLimitConfig::default`]); see
+    /// [`fetch_from_manifest_with_limits`](Self::fetch_from_manifest_with_limits).
+    pub async fn fetch_from_manifest(
+        &self,
+        authority: EndpointId,
+        manifest: &RevocationCatchupManifest,
+    ) -> Result<Vec<SignedEpochRoot>, CatchupError> {
+        self.fetch_from_manifest_with_limits(authority, manifest, &AcceptLimitConfig::default())
+            .await
+    }
+
+    /// Same as [`fetch_from_manifest`](Self::fetch_from_manifest), with explicit
+    /// client-side bounds on every peer-dependent await.
+    pub async fn fetch_from_manifest_with_limits(
+        &self,
+        authority: EndpointId,
+        manifest: &RevocationCatchupManifest,
+        limits: &AcceptLimitConfig,
+    ) -> Result<Vec<SignedEpochRoot>, CatchupError> {
+        // Re-validate the manifest fail-closed (schema, cap, monotone contiguity,
+        // single-signer) before trusting the signer it names.
+        manifest.validate()?;
+        let Some(signer_id) = manifest.signer_id() else {
+            // An empty manifest advertises nothing; there is no signer to resolve
+            // and no blob to fetch.
+            return Ok(Vec::new());
+        };
+        let fetch = manifest.fetch_manifest();
+        self.fetch_range_with_limits(signer_id, authority, &fetch, limits)
+            .await
+    }
 }
 
 /// Bound one peer-/store-dependent catch-up await by the phase's timeout, mirroring
@@ -448,11 +501,25 @@ pub async fn publish_signed_root(
 pub const REVOCATION_CATCHUP_MANIFEST_SCHEMA: &str =
     "chio.federation.transport.iroh.revocation-catchup-manifest.v1";
 
-/// One `(epoch, blob content-address)` manifest entry: the address the follower
-/// fetches over iroh-blobs (lane e) for that epoch's signed root.
+/// One `(signer_id, epoch, blob content-address)` manifest entry: the address the
+/// follower fetches over iroh-blobs (lane e) for that epoch's signed root, plus the
+/// opaque `signer_id` whose root it carries.
+///
+/// The `signer_id` is carried so a follower can resolve the pinned
+/// verifier/authority endpoint FROM THE MANIFEST (fed to
+/// [`BlobCatchupClient::fetch_from_manifest`]) instead of out of band: the lane-b
+/// [`RevocationCatchupResponse`](chio_federation::revocation_gossip::RevocationCatchupResponse)
+/// binds the signer per inline frame, but the earlier manifest shape carried only
+/// `(epoch, blob_hash)`, so `fetch_range` needed the `signer_id` supplied
+/// separately. Carrying it here closes that gap. It is NOT a trust input: the
+/// follower still resolves the signer against the issuer-signed directory and
+/// pinned-signer-verifies every fetched root.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RevocationCatchupManifestEntry {
+    /// The opaque signer identity whose signed root this blob carries (copied from
+    /// the root's [`RootSignature::signer_id`](chio_revocation_oracle::RootSignature)).
+    pub signer_id: String,
     /// The epoch this blob carries the signed root for.
     pub epoch: u64,
     /// Content address of the epoch's signed root (see [`signed_root_blob_address`]).
@@ -465,11 +532,13 @@ pub struct RevocationCatchupManifestEntry {
 /// The lane-b [`RevocationCatchupResponse`](chio_federation::revocation_gossip::RevocationCatchupResponse)
 /// inlines full signed-root FRAMES, so a large history either never rides blobs or
 /// overruns the bounded lane-b frame. This manifest instead carries only the small
-/// `(epoch -> content-address)` list a follower feeds to
-/// [`BlobCatchupClient::fetch_range`], making the bulk blob path discoverable from
-/// the control exchange. Integrity/authenticity are NOT asserted by the manifest:
-/// the follower still downloads each blob, BLAKE3-re-checks its address, and
-/// pinned-signer-verifies the root.
+/// `(signer_id, epoch, content-address)` list a follower feeds to
+/// [`BlobCatchupClient::fetch_from_manifest`], making the bulk blob path
+/// discoverable from the control exchange AND self-describing about its signer (the
+/// follower no longer needs the `signer_id` out of band). The manifest is bound to a
+/// SINGLE signer (`validate` rejects a mixed-signer manifest fail-closed). Integrity
+/// / authenticity are NOT asserted by the manifest: the follower still downloads each
+/// blob, BLAKE3-re-checks its address, and pinned-signer-verifies the root.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RevocationCatchupManifest {
@@ -501,7 +570,24 @@ impl RevocationCatchupManifest {
         }
         check_manifest_cap(self.entries.len())?;
         let mut prev: Option<u64> = None;
+        let mut signer: Option<&str> = None;
         for entry in &self.entries {
+            // Bind the manifest to a SINGLE signer: every entry must name the same
+            // signer_id, so a follower resolves exactly one pinned verifier/authority
+            // endpoint for the whole range (the fetch path resolves one binding). A
+            // manifest that mixes signers is rejected fail-closed.
+            match signer {
+                None => signer = Some(entry.signer_id.as_str()),
+                Some(bound) if bound != entry.signer_id.as_str() => {
+                    let error = CatchupError::ManifestSignerMismatch {
+                        first: bound.to_string(),
+                        other: entry.signer_id.clone(),
+                    };
+                    note_catchup_failure(&error);
+                    return Err(error);
+                }
+                Some(_) => {}
+            }
             if let Some(previous) = prev {
                 let expected = previous.saturating_add(1);
                 if entry.epoch != expected {
@@ -516,6 +602,17 @@ impl RevocationCatchupManifest {
             prev = Some(entry.epoch);
         }
         Ok(())
+    }
+
+    /// The single `signer_id` this manifest is bound to (shared by every entry), or
+    /// `None` when the manifest is empty. [`validate`](Self::validate) guarantees
+    /// every entry agrees, so this is the signer a follower resolves the pinned
+    /// verifier/authority from and feeds to
+    /// [`BlobCatchupClient::fetch_range`]. Prefer
+    /// [`BlobCatchupClient::fetch_from_manifest`], which threads it automatically.
+    #[must_use]
+    pub fn signer_id(&self) -> Option<&str> {
+        self.entries.first().map(|entry| entry.signer_id.as_str())
     }
 
     /// The `(epoch, content-address)` list to feed
@@ -568,6 +665,7 @@ pub fn build_catchup_manifest<H: RevocationCatchupHistory>(
         match history.signed_root_at(epoch) {
             Some(signed) => {
                 entries.push(RevocationCatchupManifestEntry {
+                    signer_id: signed.signature.signer_id.clone(),
                     epoch: signed.root.epoch,
                     blob_hash: signed_root_blob_address(&signed)?,
                 });
@@ -1252,5 +1350,75 @@ mod tests {
                 RevocationGossipError::CatchupGap { .. }
             ))
         ));
+    }
+
+    #[test]
+    fn manifest_carries_signer_id_and_binds_to_one_signer() {
+        // Each entry carries the signer_id of the root it addresses (copied from the
+        // signed root's signature), so a follower resolves the pinned verifier FROM
+        // the manifest instead of out of band, and the manifest exposes its single
+        // bound signer via `signer_id()`. The signer id is on the wire.
+        let oracle = signer("oracle-a", SEED_A);
+        let history = BlobBackedHistory::from_verified(vec![
+            signed_root(&oracle, 5),
+            signed_root(&oracle, 6),
+        ]);
+        let request = RevocationCatchupRequest::new("did:chio:follower", 5, 6, 1).unwrap();
+        let manifest = build_catchup_manifest(&request, "did:chio:authority", &history, 2).unwrap();
+
+        for entry in &manifest.entries {
+            assert_eq!(entry.signer_id, "oracle-a");
+        }
+        assert_eq!(manifest.signer_id(), Some("oracle-a"));
+
+        // The signer id rides the lane-b JSON control response (camelCase `signerId`).
+        let json = serde_json::to_string(&manifest).unwrap();
+        assert!(
+            json.contains("signerId") && json.contains("oracle-a"),
+            "the manifest wire form must carry the signer id: {json}"
+        );
+
+        // An empty manifest is bound to no signer.
+        let empty = RevocationCatchupManifest {
+            schema: REVOCATION_CATCHUP_MANIFEST_SCHEMA.to_string(),
+            requester_kernel_id: "did:chio:follower".to_string(),
+            responder_kernel_id: "did:chio:authority".to_string(),
+            entries: Vec::new(),
+            responded_at_unix_ms: 2,
+        };
+        empty.validate().expect("an empty manifest is well-formed");
+        assert_eq!(empty.signer_id(), None);
+    }
+
+    #[test]
+    fn manifest_mixing_signer_ids_is_rejected_fail_closed() {
+        // A contiguous range whose roots are signed by DIFFERENT signers cannot ride
+        // the single-signer fetch path (one resolved verifier/authority), so the
+        // manifest is rejected fail-closed at build time by its own `validate`.
+        let oracle_a = signer("oracle-a", SEED_A);
+        let oracle_b = signer("oracle-b", SEED_B);
+        let history = BlobBackedHistory::from_verified(vec![
+            signed_root(&oracle_a, 5),
+            signed_root(&oracle_b, 6),
+        ]);
+        let request = RevocationCatchupRequest::new("did:chio:follower", 5, 6, 1).unwrap();
+
+        let err = build_catchup_manifest(&request, "did:chio:authority", &history, 2)
+            .expect_err("a mixed-signer manifest must be rejected");
+        match err {
+            CatchupError::ManifestSignerMismatch { first, other } => {
+                assert_eq!(first, "oracle-a");
+                assert_eq!(other, "oracle-b");
+            }
+            other => panic!("expected ManifestSignerMismatch, got {other:?}"),
+        }
+        assert_eq!(
+            CatchupError::ManifestSignerMismatch {
+                first: "oracle-a".to_string(),
+                other: "oracle-b".to_string(),
+            }
+            .code(),
+            "manifest-signer-mismatch"
+        );
     }
 }
