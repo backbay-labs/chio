@@ -244,6 +244,28 @@ pub trait RevocationRootSink: std::fmt::Debug + Send + Sync {
     /// Merge one verified signed root into the caller's `RevocationView` cache.
     /// Fail-closed: an `Err` aborts the batch.
     fn merge_root(&self, signed: &SignedEpochRoot) -> Result<(), RevocationLaneError>;
+
+    /// Atomically merge a batch of verified roots. Fail-closed and
+    /// all-or-nothing: if ANY root fails, the sink MUST be left exactly as it was
+    /// before the call (no partial application). The lane calls THIS method (never
+    /// `merge_root` directly), so the all-or-nothing batch contract is honored end
+    /// to end.
+    ///
+    /// The default implementation applies each root in order via [`merge_root`];
+    /// this is atomic ONLY for sinks whose per-root merge cannot fail after a
+    /// prior root has already been applied (e.g. an in-memory cache that validates
+    /// nothing, or a stub). A sink backed by a real store whose `merge_root` can
+    /// reject a root mid-batch (a storage/write failure) MUST override this to
+    /// stage-and-commit (or roll back), so a rejected root leaves the earlier
+    /// roots unapplied. Verification (signature + origin pin) already ran on every
+    /// root in [`RevocationHandler::verify_batch`] before this is called, so the
+    /// only residual mid-batch failure is a storage-layer error in the sink.
+    fn merge_batch(&self, roots: &[SignedEpochRoot]) -> Result<(), RevocationLaneError> {
+        for root in roots {
+            self.merge_root(root)?;
+        }
+        Ok(())
+    }
 }
 
 /// One lane request. Externally tagged so the inner `deny_unknown_fields`
@@ -476,16 +498,16 @@ impl RevocationHandler {
             RevocationLaneRequest::Push(batch) => match self.verify_batch(endpoint, &batch) {
                 Ok(roots) => {
                     // Only now merge, all-or-nothing having verified every root.
-                    let mut merged = Vec::with_capacity(roots.len());
-                    for root in &roots {
-                        if let Err(error) = self.sink.merge_root(root) {
+                    // `merge_batch` carries the atomic (no-partial-application)
+                    // contract: a mid-batch sink failure leaves the sink untouched.
+                    match self.sink.merge_batch(&roots) {
+                        Ok(()) => RevocationLaneResponse::PushAccepted {
+                            merged_epochs: roots.iter().map(|root| root.root.epoch).collect(),
+                        },
+                        Err(error) => {
                             note_revocation_failure(&error);
-                            return error.as_rejected();
+                            error.as_rejected()
                         }
-                        merged.push(root.root.epoch);
-                    }
-                    RevocationLaneResponse::PushAccepted {
-                        merged_epochs: merged,
                     }
                 }
                 Err(error) => {
@@ -1091,6 +1113,114 @@ mod tests {
         assert!(matches!(response, RevocationLaneResponse::Rejected { .. }));
         // The good frame must NOT have been merged: all-or-nothing.
         assert!(sink.merged.lock().unwrap().is_empty());
+    }
+
+    /// A transactional sink that stages the whole batch and only commits when
+    /// every root passes: it can reject a configured epoch to simulate a
+    /// mid-batch storage failure WITHOUT leaving a partial commit. This is the
+    /// shape a real store-backed sink must implement to honor the all-or-nothing
+    /// batch contract (`merge_batch`).
+    #[derive(Debug, Default)]
+    struct AtomicRecordingSink {
+        committed: Mutex<Vec<u64>>,
+        fail_on_epoch: Option<u64>,
+    }
+
+    impl RevocationRootSink for AtomicRecordingSink {
+        fn merge_root(&self, signed: &SignedEpochRoot) -> Result<(), RevocationLaneError> {
+            if self.fail_on_epoch == Some(signed.root.epoch) {
+                return Err(RevocationLaneError::SinkRejected(format!(
+                    "storage rejected epoch {}",
+                    signed.root.epoch
+                )));
+            }
+            self.committed
+                .lock()
+                .expect("sink lock")
+                .push(signed.root.epoch);
+            Ok(())
+        }
+
+        fn merge_batch(&self, roots: &[SignedEpochRoot]) -> Result<(), RevocationLaneError> {
+            // Stage: validate every root against the configured storage failure
+            // BEFORE touching committed state, so a mid-batch failure is atomic.
+            let mut staged = Vec::with_capacity(roots.len());
+            for root in roots {
+                if self.fail_on_epoch == Some(root.root.epoch) {
+                    return Err(RevocationLaneError::SinkRejected(format!(
+                        "storage rejected epoch {}",
+                        root.root.epoch
+                    )));
+                }
+                staged.push(root.root.epoch);
+            }
+            // Commit only after the whole batch staged successfully.
+            self.committed.lock().expect("sink lock").extend(staged);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn batch_merge_is_atomic_when_a_later_root_fails() {
+        // Two crypto-valid roots pass verify_batch, but the sink rejects the 2nd
+        // (epoch 6) on storage. The batch merge MUST be all-or-nothing: the first
+        // root (epoch 5) must NOT be left partially applied.
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let sink = Arc::new(AtomicRecordingSink {
+            fail_on_epoch: Some(6),
+            ..AtomicRecordingSink::default()
+        });
+        let handler = RevocationHandler::new(
+            directory,
+            Arc::new(EmptyHistory),
+            sink.clone(),
+            "did:chio:responder",
+        );
+
+        let good = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        let doomed = RevocationRootGossip::from_signed(signed_root(&oracle, 6), NOW);
+        let response = handler.handle_request(
+            transport,
+            RevocationLaneRequest::Push(batch(vec![good, doomed])),
+            NOW,
+        );
+        assert!(matches!(response, RevocationLaneResponse::Rejected { .. }));
+        // Atomic: the earlier root must NOT have been committed.
+        assert!(
+            sink.committed.lock().unwrap().is_empty(),
+            "a mid-batch sink failure must leave the sink unchanged (no partial apply)"
+        );
+    }
+
+    #[test]
+    fn batch_merge_applies_all_when_every_root_succeeds() {
+        let transport = endpoint_from_seed(10);
+        let oracle = signer("oracle-a", SEED_A);
+        let directory = directory_with_signer("did:chio:peer", 10, "oracle-a", SEED_A);
+        let sink = Arc::new(AtomicRecordingSink::default());
+        let handler = RevocationHandler::new(
+            directory,
+            Arc::new(EmptyHistory),
+            sink.clone(),
+            "did:chio:responder",
+        );
+
+        let f5 = RevocationRootGossip::from_signed(signed_root(&oracle, 5), NOW);
+        let f6 = RevocationRootGossip::from_signed(signed_root(&oracle, 6), NOW);
+        let response = handler.handle_request(
+            transport,
+            RevocationLaneRequest::Push(batch(vec![f5, f6])),
+            NOW,
+        );
+        match response {
+            RevocationLaneResponse::PushAccepted { merged_epochs } => {
+                assert_eq!(merged_epochs, vec![5, 6]);
+            }
+            other => panic!("expected PushAccepted, got {other:?}"),
+        }
+        assert_eq!(*sink.committed.lock().unwrap(), vec![5, 6]);
     }
 
     #[test]
