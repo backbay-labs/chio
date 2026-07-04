@@ -14,14 +14,14 @@ const (
 	// capability token bytes (canonical JSON).
 	AnnotationCapabilityToken = "chio.world/capability-token"
 
-	// AnnotationLegacyRequiredScopes is a pod-supplied annotation that the
+	// AnnotationRequiredScopes is a pod-supplied annotation that the
 	// webhook does not trust. Required scopes are read from webhook
 	// configuration only.
-	AnnotationLegacyRequiredScopes = "chio.world/required-scopes"
+	AnnotationRequiredScopes = "chio.world/required-scopes"
 
-	// AnnotationLegacyExempt is a pod-supplied annotation that the webhook
+	// AnnotationExempt is a pod-supplied annotation that the webhook
 	// does not trust. The webhook never honors self-asserted exemptions.
-	AnnotationLegacyExempt = "chio.world/exempt"
+	AnnotationExempt = "chio.world/exempt"
 )
 
 // AdmissionReview wraps an admission request and response.

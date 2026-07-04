@@ -413,8 +413,8 @@ func TestAdmissionRejectsPodSuppliedRequiredScopes(t *testing.T) {
 	token := signedToolToken(t, signer, "db", "invoke")
 	body := buildPodReview(t,
 		map[string]string{
-			AnnotationCapabilityToken:      token,
-			AnnotationLegacyRequiredScopes: "db:invoke",
+			AnnotationCapabilityToken: token,
+			AnnotationRequiredScopes:  "db:invoke",
 		},
 		"CREATE",
 		"default",
@@ -441,7 +441,7 @@ func TestAdmissionRejectsSelfAssertedExemption(t *testing.T) {
 	server := NewServer(trustingConfig(t, signer, "db:invoke"), nil)
 
 	body := buildPodReview(t,
-		map[string]string{AnnotationLegacyExempt: "true"},
+		map[string]string{AnnotationExempt: "true"},
 		"CREATE",
 		"default",
 	)

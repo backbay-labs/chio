@@ -53,7 +53,9 @@ jobs:
           rustup default stable
 
       - name: Install native build dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake perl pkg-config protobuf-compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: cmake perl pkg-config protobuf-compiler
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
 

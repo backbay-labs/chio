@@ -23,7 +23,7 @@ export const DEMO_ORGS: Record<string, Org> = {
   proofworks: {
     id: "proofworks",
     name: "ProofWorks",
-    role: "Provider (Lorem)",
+    role: "Provider",
     quadrant: "tr",
     trustControlUrl: "https://proofworks.example.invalid/.chio/trust",
     color: "#5eead4",
@@ -39,7 +39,7 @@ export const DEMO_ORGS: Record<string, Org> = {
   cipherworks: {
     id: "cipherworks",
     name: "CipherWorks",
-    role: "Subcontractor (Lorem)",
+    role: "Subcontractor",
     quadrant: "br",
     trustControlUrl: "https://cipherworks.example.invalid/.chio/trust",
     color: "#a78bfa",

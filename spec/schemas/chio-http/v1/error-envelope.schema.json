@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Chio HTTP Error Envelope",
-  "description": "JSON-RPC 2.0 error envelope returned by the chio-http edge. Mirrors the inline shape constructed by `json_rpc_error` in `crates/protocol/chio-mcp-adapter/src/transport.rs` lines 1307-1316, the structured `EdgeTaskFinalOutcome::JsonRpcError` and `ToolCallEdgeOutcome::JsonRpcError` variants in `crates/protocol/chio-mcp-edge/src/runtime.rs` lines 405-425, and the `JsonRpcProtocolErrorArgs` carrier in the same file lines 427-436. The optional `data` field carries Chio-specific error context including a numeric `chio_code`, a stable `name`, a `retry_strategy` token, human-facing `guidance`, and an opaque `context` payload as documented by `JsonRpcProtocolErrorArgs`.",
+  "description": "JSON-RPC 2.0 error envelope returned by the chio-http edge. Mirrors the inline shape constructed by `json_rpc_error` in `crates/protocol/chio-mcp-adapter`, the structured `EdgeTaskFinalOutcome::JsonRpcError` and `ToolCallEdgeOutcome::JsonRpcError` variants in `crates/protocol/chio-mcp-edge`, and the `JsonRpcProtocolErrorArgs` carrier in the same crate. The optional `data` field carries Chio-specific error context including a numeric `chio_code`, a stable `name`, a `retry_strategy` token, human-facing `guidance`, and an opaque `context` payload as documented by `JsonRpcProtocolErrorArgs`.",
   "type": "object",
   "additionalProperties": false,
   "required": ["jsonrpc", "id", "error"],
@@ -26,7 +26,7 @@
       "properties": {
         "code": {
           "type": "integer",
-          "description": "JSON-RPC error code. Standard codes (-32700, -32600, -32601, -32602, -32603) and Chio-specific extensions (for example -32002 server-not-initialized, -32042 url-elicitation-required, 1000 protocol-version-unsupported, 1002 invalid-request-shape) are all permitted. Mirrors the `code` argument of `json_rpc_error` and the constants near `crates/protocol/chio-mcp-edge/src/runtime.rs` lines 40-47."
+          "description": "JSON-RPC error code. Standard codes (-32700, -32600, -32601, -32602, -32603) and Chio-specific extensions (for example -32002 server-not-initialized, -32042 url-elicitation-required, 1000 protocol-version-unsupported, 1002 invalid-request-shape) are all permitted. Mirrors the `code` argument of `json_rpc_error` and the constants in `crates/protocol/chio-mcp-edge`."
         },
         "message": {
           "type": "string",
@@ -34,7 +34,7 @@
           "description": "Human-readable error message. Mirrors the `message` argument of `json_rpc_error`."
         },
         "data": {
-          "description": "Optional structured error data. When populated by Chio it follows the `JsonRpcProtocolErrorArgs` carrier shape (`crates/protocol/chio-mcp-edge/src/runtime.rs` lines 427-436); when populated by adapter-error fan-in it is forwarded verbatim by `adapter_jsonrpc_error` (transport.rs lines 1318-1331).",
+          "description": "Optional structured error data. When populated by Chio it follows the `JsonRpcProtocolErrorArgs` carrier shape (`crates/protocol/chio-mcp-edge`); when populated by adapter-error fan-in it is forwarded verbatim by `adapter_jsonrpc_error` in `crates/protocol/chio-mcp-adapter`.",
           "type": ["object", "array", "string", "number", "boolean", "null"]
         }
       }

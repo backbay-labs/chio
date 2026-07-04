@@ -18,7 +18,7 @@ consumed_by = "crates/tooling/chio-spec-codegen/Cargo.toml"
 notes = """
 typify is invoked in-process from the chio-spec-codegen library. Version
 0.4.3 is the floor that supports schemars 0.8 RootSchema parsing of the
-chio-wire/v1 schema set (28 files).
+chio-wire/v1 schema set.
 """
 
 [python]

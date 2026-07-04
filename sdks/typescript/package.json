@@ -10,6 +10,7 @@
     "packages/ai-sdk",
     "packages/chio-ai-sdk-middleware",
     "packages/chio-next",
+    "packages/wasm-core",
     "packages/browser",
     "packages/mobile",
     "packages/passkey",

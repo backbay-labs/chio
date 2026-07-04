@@ -23,6 +23,9 @@
     "sdks/typescript/packages/browser": {
       "name": "@chio-protocol/browser",
       "version": "0.1.0",
+      "dependencies": {
+        "@chio-protocol/wasm-core": "0.1.0",
+      },
       "devDependencies": {
         "typescript": "~5.7.0",
       },
@@ -30,12 +33,25 @@
     "sdks/typescript/packages/deno": {
       "name": "@chio-protocol/deno",
       "version": "0.1.0",
+      "dependencies": {
+        "@chio-protocol/wasm-core": "0.1.0",
+      },
       "devDependencies": {
         "typescript": "~5.7.0",
       },
     },
     "sdks/typescript/packages/edge": {
       "name": "@chio-protocol/edge",
+      "version": "0.1.0",
+      "dependencies": {
+        "@chio-protocol/wasm-core": "0.1.0",
+      },
+      "devDependencies": {
+        "typescript": "~5.7.0",
+      },
+    },
+    "sdks/typescript/packages/wasm-core": {
+      "name": "@chio-protocol/wasm-core",
       "version": "0.1.0",
       "devDependencies": {
         "typescript": "~5.7.0",
@@ -61,6 +77,8 @@
     "@chio-protocol/deno": ["@chio-protocol/deno@workspace:sdks/typescript/packages/deno"],
 
     "@chio-protocol/edge": ["@chio-protocol/edge@workspace:sdks/typescript/packages/edge"],
+
+    "@chio-protocol/wasm-core": ["@chio-protocol/wasm-core@workspace:sdks/typescript/packages/wasm-core"],
 
     "@chio-protocol/workers": ["@chio-protocol/workers@workspace:sdks/typescript/packages/workers"],
 
