@@ -103,6 +103,16 @@ while IFS= read -r line; do
     continue
   fi
 
+  # Public settlement intentionally publishes v2 dispatch and execution-receipt
+  # artifacts while preserving v1 bundle verification.
+  if [[ "$text" =~ chio\.web3-settlement-(dispatch|execution-receipt)\.v2|CHIO_WEB3_SETTLEMENT_(DISPATCH|RECEIPT|EXECUTION_RECEIPT)_V2_SCHEMA|WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA ]]; then
+    continue
+  fi
+  if [[ "$path" == "crates/economy/chio-web3/src/settlement.rs" ]] && \
+     [[ "$text" =~ (dispatch_v2|receipt_v2) ]]; then
+    continue
+  fi
+
   # Attest bilateral-cosign / 3-vendor proof-package fixtures embed
   # workflow-receipt slices keyed at v2 as fixture data; the canonical
   # Chio-owned workflow-receipt schema (spec/WORKFLOW.md) remains v1.

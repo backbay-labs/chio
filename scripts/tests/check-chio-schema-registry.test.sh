@@ -43,7 +43,7 @@ cat >"${tmp}/spec/schemas/registry.json" <<'JSON'
 JSON
 
 printf '1\n' >"${tmp}/spec/schemas/VERSION"
-printf '{}\n' >"${tmp}/spec/schemas/unused/stale.schema.json"
+printf '{}\n' >"${tmp}/spec/schemas/unused/stale.extra"
 
 (
   cd "$tmp"
@@ -62,7 +62,7 @@ paths = [
     "spec/schemas/VERSION",
     "spec/schemas/chio-transaction/v1/minimal.schema.json",
     "spec/schemas/registry.json",
-    "spec/schemas/unused/stale.schema.json",
+    "spec/schemas/unused/stale.extra",
 ]
 lines = [
     f"{hashlib.sha256(Path(path).read_bytes()).hexdigest()}  {path}\n"
