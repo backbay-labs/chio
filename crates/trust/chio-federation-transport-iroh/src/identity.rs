@@ -29,6 +29,7 @@ use chio_core_types::canonical_json_bytes;
 use chio_core_types::sha256_hex;
 use chio_core_types::PublicKey;
 use chio_core_types::Signature;
+use chio_core_types::SigningAlgorithm;
 use chio_revocation_oracle::Ed25519RootVerifier;
 use iroh::EndpointId;
 use serde::Deserialize;
@@ -299,6 +300,21 @@ pub enum IdentityError {
         /// The oracle signer id whose endorsement failed.
         signer_id: String,
     },
+    /// A revocation-signer entry pinned a non-Ed25519 `oracle_public_key`. Lane-b
+    /// epoch roots are verified by an [`Ed25519RootVerifier`], so a P-256 / P-384 /
+    /// hybrid oracle key would be wrapped and then SILENTLY fail every root verify;
+    /// reject it at bundle-verify time (fail-closed) instead of accept-then-fail.
+    #[error(
+        "oracle revocation-signer key for kernel {kernel_id} signer {signer_id} is not Ed25519 (algorithm {algorithm:?})"
+    )]
+    NonEd25519OracleKey {
+        /// The kernel whose entry declared the non-Ed25519 oracle key.
+        kernel_id: String,
+        /// The oracle signer id whose key is not Ed25519.
+        signer_id: String,
+        /// The offending key's signing algorithm.
+        algorithm: SigningAlgorithm,
+    },
     /// A directory entry was structurally malformed.
     #[error("malformed directory entry: {0}")]
     MalformedEntry(String),
@@ -329,6 +345,7 @@ impl IdentityError {
             Self::SignatureInvalid => "signature-invalid",
             Self::EndorsementInvalid(_) => "endorsement-invalid",
             Self::OracleEndorsementInvalid { .. } => "oracle-endorsement-invalid",
+            Self::NonEd25519OracleKey { .. } => "non-ed25519-oracle-key",
             Self::MalformedEntry(_) => "malformed-entry",
             Self::Duplicate(_) => "duplicate",
             Self::EmptyDirectory => "empty-directory",
@@ -573,6 +590,18 @@ impl TransportDirectoryBundleDocument {
                     return Err(IdentityError::OracleEndorsementInvalid {
                         kernel_id: entry.kernel_id.clone(),
                         signer_id: signer.signer_id.clone(),
+                    });
+                }
+                // The oracle root is verified by an Ed25519RootVerifier, so a
+                // non-Ed25519 oracle key (even with a valid passport endorsement)
+                // would be wrapped and then silently fail every lane-b root verify.
+                // Reject it here (fail-closed, typed) rather than accept-then-fail.
+                let algorithm = signer.oracle_public_key.algorithm();
+                if algorithm != SigningAlgorithm::Ed25519 {
+                    return Err(IdentityError::NonEd25519OracleKey {
+                        kernel_id: entry.kernel_id.clone(),
+                        signer_id: signer.signer_id.clone(),
+                        algorithm,
                     });
                 }
                 let binding = SignerBinding {
@@ -1177,6 +1206,35 @@ mod tests {
             bundle.verify_bundle(&trust),
             Err(IdentityError::OracleEndorsementInvalid { .. })
         ));
+    }
+
+    #[test]
+    fn non_ed25519_oracle_key_is_rejected_even_with_valid_endorsement() {
+        // A validly-endorsed but non-Ed25519 (P-256) oracle key must be rejected at
+        // bundle-verify time: the lane-b Ed25519RootVerifier would otherwise wrap it
+        // and silently fail every epoch-root verify. The passport endorses the exact
+        // P-256 key (so the endorsement check passes), isolating the algorithm gate.
+        let mut sec1 = [0u8; 65];
+        sec1[0] = 0x04; // uncompressed SEC1 marker; curve-point validity is deferred.
+        let p256 = PublicKey::from_p256_sec1(&sec1).expect("well-formed P-256 SEC1 point");
+        assert_eq!(p256.algorithm(), SigningAlgorithm::P256);
+
+        let alice = EntrySpec::admitted("did:chio:alice", 1, 10).with_signer("oracle-a", &p256);
+        let (bundle, trust) = signed_bundle(&[alice]);
+        let error = bundle
+            .verify_bundle(&trust)
+            .expect_err("a non-Ed25519 oracle key must be rejected fail-closed");
+        assert!(
+            matches!(
+                error,
+                IdentityError::NonEd25519OracleKey {
+                    algorithm: SigningAlgorithm::P256,
+                    ..
+                }
+            ),
+            "unexpected error: {error:?}"
+        );
+        assert_eq!(error.code(), "non-ed25519-oracle-key");
     }
 
     #[test]
