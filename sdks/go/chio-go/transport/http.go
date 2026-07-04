@@ -93,7 +93,7 @@ func DeleteSession(
 	defer response.Body.Close()
 	return DeleteSessionResult{
 		Status:  response.StatusCode,
-		Headers: responseHeaders(response.Header),
+		Headers: FlattenHeaders(response.Header),
 	}, nil
 }
 
@@ -147,12 +147,15 @@ func postEnvelope(
 	return RPCExchange{
 		Request:  body,
 		Status:   response.StatusCode,
-		Headers:  responseHeaders(response.Header),
+		Headers:  FlattenHeaders(response.Header),
 		Messages: messages,
 	}, nil
 }
 
-func responseHeaders(headers http.Header) map[string]string {
+// FlattenHeaders collapses an http.Header into a single-value map keyed by
+// lowercase header name. Multi-value headers keep their first value; empty
+// headers are dropped.
+func FlattenHeaders(headers http.Header) map[string]string {
 	result := make(map[string]string, len(headers))
 	for key, values := range headers {
 		if len(values) == 0 {

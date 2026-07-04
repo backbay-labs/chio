@@ -109,13 +109,13 @@ func (s *Server) validatePod(req AdmissionRequest) AdmissionResponse {
 
 	// Pod-supplied required-scope or exempt annotations are not honored.
 	// Allowing them would let the workload override the operator's policy.
-	if _, ok := annotations[AnnotationLegacyRequiredScopes]; ok {
+	if _, ok := annotations[AnnotationRequiredScopes]; ok {
 		return denyResponse(
 			"webhook denies admission: pod-supplied required scopes are not trusted; configure " +
 				EnvRequiredScopes + " on the webhook",
 		)
 	}
-	if _, ok := annotations[AnnotationLegacyExempt]; ok {
+	if _, ok := annotations[AnnotationExempt]; ok {
 		return denyResponse(
 			"webhook denies admission: pod-supplied exemptions are not honored",
 		)
@@ -147,10 +147,8 @@ func (s *Server) mutatePod(req AdmissionRequest) AdmissionResponse {
 		return decision
 	}
 
-	// On allow, the webhook does not emit any patches in this module.
-	// The sidecar injection logic lives in the controller package and
-	// is being handled by a sibling agent. Returning an allow with no
-	// patch is the safe default for the mutation path.
+	// The mutation path emits no patch; sidecar injection is out of scope
+	// for this webhook. Returning an allow with no patch is the safe default.
 	return allowResponse("chio webhook: no mutation applied")
 }
 

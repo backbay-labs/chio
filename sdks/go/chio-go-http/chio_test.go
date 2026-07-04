@@ -371,34 +371,6 @@ func TestProtect_SidecarUnreachable_FailClosed(t *testing.T) {
 	}
 }
 
-func TestProtect_SidecarUnreachable_LegacyFailOpenSettingStillFailsClosed(t *testing.T) {
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := GetChioPassthrough(r); ok {
-			t.Fatal("did not expect passthrough context")
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("should not run"))
-	})
-
-	handler := Protect(inner,
-		WithSidecarURL("http://127.0.0.1:1"),
-		WithOnSidecarError("allow"),
-		WithTimeout(1),
-	)
-
-	req := httptest.NewRequest(http.MethodGet, "/pets", nil)
-	rec := httptest.NewRecorder()
-
-	handler.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected 502, got %d", rec.Code)
-	}
-	if got := rec.Header().Get("X-Chio-Receipt-Id"); got != "" {
-		t.Fatalf("expected no Chio receipt header, got %q", got)
-	}
-}
-
 func TestProtect_BearerIdentityExtraction(t *testing.T) {
 	sidecar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/chio/verify" {

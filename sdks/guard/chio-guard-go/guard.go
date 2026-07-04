@@ -158,7 +158,6 @@ func (context PolicyContext) Read(offset uint64, length uint32) ([]byte, error) 
 	return context.Host.FetchBlob(context.Handle, offset, length)
 }
 
-// Close closes the policy context wrapper.
-func (context PolicyContext) Close() {
-	_ = context
-}
+// Close releases the policy context wrapper. The bundle handle is owned by
+// the host runtime, so there is nothing for the guest to release here.
+func (context PolicyContext) Close() {}
