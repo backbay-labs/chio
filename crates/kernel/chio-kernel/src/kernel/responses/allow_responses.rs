@@ -1,22 +1,6 @@
 use super::*;
 
 impl ChioKernel {
-    pub(crate) fn build_allow_response(
-        &self,
-        request: &ToolCallRequest,
-        output: ToolCallOutput,
-        timestamp: u64,
-        matched_grant_index: Option<usize>,
-    ) -> Result<ToolCallResponse, KernelError> {
-        self.build_allow_response_with_metadata(
-            request,
-            output,
-            timestamp,
-            matched_grant_index,
-            None,
-        )
-    }
-
     pub(crate) fn build_allow_response_with_metadata(
         &self,
         request: &ToolCallRequest,

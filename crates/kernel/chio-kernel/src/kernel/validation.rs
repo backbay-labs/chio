@@ -898,22 +898,6 @@ impl ChioKernel {
         })
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn reduce_budget_charge_to_actual(
-        &self,
-        capability_id: &str,
-        charge: &BudgetChargeResult,
-        actual_cost_units: u64,
-    ) -> Result<u64, KernelError> {
-        Ok(self
-            .reconcile_budget_charge(
-                capability_id,
-                charge,
-                actual_cost_units.min(charge.cost_charged),
-            )?
-            .committed_cost_units_after)
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn finalize_budgeted_tool_output_with_cost_and_metadata(
         &self,
