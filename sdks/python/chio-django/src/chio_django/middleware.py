@@ -13,7 +13,6 @@ Usage in settings.py::
     ]
 
     CHIO_SIDECAR_URL = "http://127.0.0.1:9090"
-    CHIO_FAIL_OPEN = False
     CHIO_EXCLUDE_PATHS = ["/health", "/ready"]
     CHIO_EXCLUDE_METHODS = ["OPTIONS"]
     CHIO_RECEIPT_HEADER = "X-Chio-Receipt"
@@ -89,7 +88,6 @@ class ChioDjangoMiddleware:
     Reads configuration from Django settings:
 
     - ``CHIO_SIDECAR_URL``: sidecar base URL (default ``http://127.0.0.1:9090``)
-    - ``CHIO_FAIL_OPEN``: if True, allow when sidecar is down (default False)
     - ``CHIO_EXCLUDE_PATHS``: list of paths to skip (default ``[]``)
     - ``CHIO_EXCLUDE_METHODS``: list of methods to skip (default ``["OPTIONS"]``)
     - ``CHIO_RECEIPT_HEADER``: response header for receipt ID (default ``X-Chio-Receipt``)
@@ -101,7 +99,6 @@ class ChioDjangoMiddleware:
         self._sidecar_url = getattr(
             settings, "CHIO_SIDECAR_URL", "http://127.0.0.1:9090"
         ).rstrip("/")
-        self._fail_open = getattr(settings, "CHIO_FAIL_OPEN", False)
         self._exclude_paths: set[str] = set(
             getattr(settings, "CHIO_EXCLUDE_PATHS", [])
         )

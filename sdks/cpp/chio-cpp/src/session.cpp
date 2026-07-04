@@ -670,25 +670,32 @@ Result<std::string> Session::list_tools() const {
   return request("tools/list");
 }
 
-Result<TypedResponse<std::vector<Tool>>> Session::list_tools_typed() const {
+template <typename T, typename ParseFn>
+Result<TypedResponse<std::vector<T>>> Session::list_typed(const char* method,
+                                                          const char* context,
+                                                          ParseFn parse) const {
   const auto id = next_id();
   auto raw = send_envelope_response("{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(id) +
-                                    ",\"method\":\"tools/list\",\"params\":{}}");
+                                    ",\"method\":\"" + method + "\",\"params\":{}}");
   if (!raw) {
-    return Result<TypedResponse<std::vector<Tool>>>::failure(raw.error());
+    return Result<TypedResponse<std::vector<T>>>::failure(raw.error());
   }
   auto parsed = detail::parse_json(raw.value().raw_json);
   if (!parsed) {
-    return Result<TypedResponse<std::vector<Tool>>>::failure(
-        parse_error("Session::list_tools_typed", raw.value().raw_json));
+    return Result<TypedResponse<std::vector<T>>>::failure(
+        parse_error(context, raw.value().raw_json));
   }
-  auto error = reject_jsonrpc_error(*parsed, "Session::list_tools_typed", raw.value().raw_json);
+  auto error = reject_jsonrpc_error(*parsed, context, raw.value().raw_json);
   if (!error) {
-    return Result<TypedResponse<std::vector<Tool>>>::failure(error.error());
+    return Result<TypedResponse<std::vector<T>>>::failure(error.error());
   }
-  return Result<TypedResponse<std::vector<Tool>>>::success(
-      TypedResponse<std::vector<Tool>>{parse_tools(*parsed), raw.value().raw_json,
-                                       std::move(raw.value().response)});
+  return Result<TypedResponse<std::vector<T>>>::success(
+      TypedResponse<std::vector<T>>{parse(*parsed), raw.value().raw_json,
+                                    std::move(raw.value().response)});
+}
+
+Result<TypedResponse<std::vector<Tool>>> Session::list_tools_typed() const {
+  return list_typed<Tool>("tools/list", "Session::list_tools_typed", parse_tools);
 }
 
 Result<std::string> Session::call_tool(std::string name, std::string arguments_json) const {
@@ -710,25 +717,8 @@ Result<std::string> Session::list_resources() const {
 }
 
 Result<TypedResponse<std::vector<Resource>>> Session::list_resources_typed() const {
-  const auto id = next_id();
-  auto raw = send_envelope_response("{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(id) +
-                                    ",\"method\":\"resources/list\",\"params\":{}}");
-  if (!raw) {
-    return Result<TypedResponse<std::vector<Resource>>>::failure(raw.error());
-  }
-  auto parsed = detail::parse_json(raw.value().raw_json);
-  if (!parsed) {
-    return Result<TypedResponse<std::vector<Resource>>>::failure(
-        parse_error("Session::list_resources_typed", raw.value().raw_json));
-  }
-  auto error =
-      reject_jsonrpc_error(*parsed, "Session::list_resources_typed", raw.value().raw_json);
-  if (!error) {
-    return Result<TypedResponse<std::vector<Resource>>>::failure(error.error());
-  }
-  return Result<TypedResponse<std::vector<Resource>>>::success(
-      TypedResponse<std::vector<Resource>>{parse_resources(*parsed), raw.value().raw_json,
-                                           std::move(raw.value().response)});
+  return list_typed<Resource>("resources/list", "Session::list_resources_typed",
+                              parse_resources);
 }
 
 Result<std::string> Session::read_resource(std::string uri) const {
@@ -748,24 +738,7 @@ Result<std::string> Session::list_prompts() const {
 }
 
 Result<TypedResponse<std::vector<Prompt>>> Session::list_prompts_typed() const {
-  const auto id = next_id();
-  auto raw = send_envelope_response("{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(id) +
-                                    ",\"method\":\"prompts/list\",\"params\":{}}");
-  if (!raw) {
-    return Result<TypedResponse<std::vector<Prompt>>>::failure(raw.error());
-  }
-  auto parsed = detail::parse_json(raw.value().raw_json);
-  if (!parsed) {
-    return Result<TypedResponse<std::vector<Prompt>>>::failure(
-        parse_error("Session::list_prompts_typed", raw.value().raw_json));
-  }
-  auto error = reject_jsonrpc_error(*parsed, "Session::list_prompts_typed", raw.value().raw_json);
-  if (!error) {
-    return Result<TypedResponse<std::vector<Prompt>>>::failure(error.error());
-  }
-  return Result<TypedResponse<std::vector<Prompt>>>::success(
-      TypedResponse<std::vector<Prompt>>{parse_prompts(*parsed), raw.value().raw_json,
-                                         std::move(raw.value().response)});
+  return list_typed<Prompt>("prompts/list", "Session::list_prompts_typed", parse_prompts);
 }
 
 Result<std::string> Session::get_prompt(std::string name, std::string arguments_json) const {
@@ -778,24 +751,7 @@ Result<std::string> Session::list_tasks() const {
 }
 
 Result<TypedResponse<std::vector<Task>>> Session::list_tasks_typed() const {
-  const auto id = next_id();
-  auto raw = send_envelope_response("{\"jsonrpc\":\"2.0\",\"id\":" + std::to_string(id) +
-                                    ",\"method\":\"tasks/list\",\"params\":{}}");
-  if (!raw) {
-    return Result<TypedResponse<std::vector<Task>>>::failure(raw.error());
-  }
-  auto parsed = detail::parse_json(raw.value().raw_json);
-  if (!parsed) {
-    return Result<TypedResponse<std::vector<Task>>>::failure(
-        parse_error("Session::list_tasks_typed", raw.value().raw_json));
-  }
-  auto error = reject_jsonrpc_error(*parsed, "Session::list_tasks_typed", raw.value().raw_json);
-  if (!error) {
-    return Result<TypedResponse<std::vector<Task>>>::failure(error.error());
-  }
-  return Result<TypedResponse<std::vector<Task>>>::success(
-      TypedResponse<std::vector<Task>>{parse_tasks(*parsed), raw.value().raw_json,
-                                       std::move(raw.value().response)});
+  return list_typed<Task>("tasks/list", "Session::list_tasks_typed", parse_tasks);
 }
 
 Result<std::string> Session::get_task(std::string task_id) const {

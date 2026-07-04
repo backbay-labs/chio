@@ -112,6 +112,11 @@ class Session {
   SessionInfo info() const;
 
  private:
+  template <typename T, typename ParseFn>
+  Result<TypedResponse<std::vector<T>>> list_typed(const char* method,
+                                                   const char* context,
+                                                   ParseFn parse) const;
+
   Result<HttpRequest> make_post(std::string body_json, bool stream_response = false) const;
   Result<HttpRequest> make_get_stream(std::shared_ptr<CancellationToken> cancellation) const;
   std::int64_t next_id() const;

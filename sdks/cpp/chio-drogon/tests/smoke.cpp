@@ -8,7 +8,6 @@ int main() {
                 "ChioMiddleware must be a Drogon middleware");
 
   chio::drogon::Options options;
-  options.sidecar_failure_mode = chio::drogon::SidecarFailureMode::FailClosed;
   chio::drogon::configure(options);
 
   return 0;
