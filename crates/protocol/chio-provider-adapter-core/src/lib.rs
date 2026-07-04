@@ -1,11 +1,15 @@
 #![forbid(unsafe_code)]
 
 pub mod http;
+mod response;
 mod sse;
+mod streaming;
 
 use chio_core::LoadedWeightsUnavailable;
 use chio_tool_call_fabric::{DenyReason, ProviderError, ProviderId, ToolInvocation, VerdictResult};
+pub use response::{nested_response_body, openai_tool_call_to_function_call, response_body};
 pub use sse::{parse_sse_frames, SseFrame, SseParseOptions, UnknownSseFieldPolicy};
+pub use streaming::{gate_openai_sse_tool_calls, DecodedToolCall};
 
 /// Common adapter identity surface shared across provider adapters.
 pub trait Provider {

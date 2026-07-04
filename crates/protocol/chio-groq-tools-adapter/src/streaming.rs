@@ -4,15 +4,13 @@
 //! as SSE `data:` events, terminated by a `data: [DONE]` sentinel. Each chunk
 //! carries `choices[].delta.tool_calls[]` (or `choices[].message.tool_calls[]`
 //! on aggregated chunks). We buffer the tool calls and gate emission on a kernel
-//! verdict before forwarding bytes downstream.
+//! verdict before forwarding bytes downstream. The OpenAI-compatible gating
+//! logic lives in the shared [`gate_openai_sse_tool_calls`] core primitive.
 
-use chio_provider_adapter_core::{
-    ensure_streaming_allow_no_redactions, parse_sse_frames, GatedStream, SseParseOptions,
-};
+use chio_provider_adapter_core::{gate_openai_sse_tool_calls, GatedStream};
 use chio_tool_call_fabric::{ProviderError, ToolInvocation, VerdictResult};
-use serde_json::Value;
 
-use crate::{native::FunctionCallPart, response::openai_tool_call_to_function_call, GroqAdapter};
+use crate::{native::FunctionCallPart, GroqAdapter};
 
 pub type GatedSseStream = GatedStream;
 
@@ -21,72 +19,24 @@ impl GroqAdapter {
     pub fn gate_sse_stream<F>(
         &self,
         raw: &[u8],
-        mut evaluate: F,
+        evaluate: F,
     ) -> Result<GatedSseStream, ProviderError>
     where
         F: FnMut(&ToolInvocation) -> Result<VerdictResult, ProviderError>,
     {
         self.ensure_supported_api_version()?;
-        let frames = parse_sse_frames(
+        gate_openai_sse_tool_calls(
             raw,
-            SseParseOptions::ignoring_unknown("Groq").with_done_sentinel("[DONE]"),
-        )?;
-        let mut output: Vec<u8> = Vec::new();
-        let mut invocations = Vec::new();
-        let mut verdicts = Vec::new();
-
-        for frame in frames {
-            let Some(data) = frame.data.as_ref() else {
-                output.extend_from_slice(&frame.raw);
-                continue;
-            };
-
-            // Walk OpenAI-shaped choices[].{delta,message}.tool_calls[].
-            for call in extract_stream_function_calls(data)? {
-                let invocation = self.invocation_from_function_call(&call)?;
-                let verdict = evaluate(&invocation)?;
-                ensure_streaming_allow_no_redactions(
-                    "Groq",
-                    "functionCall",
-                    &call.name,
-                    None,
-                    &verdict,
-                )?;
-                invocations.push(invocation);
-                verdicts.push(verdict);
-            }
-            output.extend_from_slice(&frame.raw);
-        }
-
-        Ok(GatedSseStream {
-            bytes: output,
-            invocations,
-            verdicts,
-        })
+            "Groq",
+            Some("[DONE]"),
+            |call| {
+                self.invocation_from_function_call(&FunctionCallPart::new(
+                    call.id.clone(),
+                    call.name.clone(),
+                    call.args.clone(),
+                ))
+            },
+            evaluate,
+        )
     }
-}
-
-fn extract_stream_function_calls(data: &Value) -> Result<Vec<FunctionCallPart>, ProviderError> {
-    let mut out = Vec::new();
-    if let Some(choices) = data.get("choices").and_then(Value::as_array) {
-        for choice in choices {
-            // Streaming deltas live at choices[].delta.tool_calls[], while
-            // batched / aggregated chunks reuse choices[].message.tool_calls[].
-            for source in ["delta", "message"] {
-                let Some(tool_calls) = choice
-                    .get(source)
-                    .and_then(|m| m.get("tool_calls"))
-                    .and_then(Value::as_array)
-                else {
-                    continue;
-                };
-                for entry in tool_calls {
-                    if let Some(part) = openai_tool_call_to_function_call(entry, "Groq")? {
-                        out.push(part);
-                    }
-                }
-            }
-        }
-    }
-    Ok(out)
 }

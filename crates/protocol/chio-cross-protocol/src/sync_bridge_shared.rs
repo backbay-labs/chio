@@ -1,4 +1,9 @@
-// Compatibility-only synchronous bridge shim.
+// Compatibility-only synchronous bridge shim, shared by the outward protocol
+// edges. This file is NOT compiled as part of `chio-cross-protocol`; it is a
+// shared source fragment textually pulled into each edge's crate-root scope via
+// `include!("../../chio-cross-protocol/src/sync_bridge_shared.rs")`, so its
+// `#[cfg(...)]` gates evaluate in the including edge crate exactly as a
+// per-edge copy would.
 //
 // Mirrors the kernel's sync-bridge gate so the explicit passthrough surface
 // fails closed under a current-thread runtime instead of deadlocking.
@@ -42,7 +47,7 @@ where
             // any tool-server future that awaits Tokio I/O. Surface a
             // typed error so callers see the architectural
             // incompatibility instead of a silent hang. The passthrough
-            // call site converts this into a Failed task response.
+            // call site converts this into a Failed passthrough response.
             Err(SyncBridgeIncompatibleWithCurrentThreadRuntime)
         }
         Err(_) => {

@@ -82,7 +82,11 @@ pub use metrics::{
 // Each fragment merges into this crate-root module scope; item paths and
 // visibility resolve as if the fragments were inlined here.
 
-include!("sync_bridge.rs");
+// `sync_bridge` is a shared source fragment that lives in `chio-cross-protocol`
+// so the A2A and ACP edges keep one definition of the fail-closed sync-bridge
+// gate. It is included (not `mod`-declared) so its `#[cfg(...)]` gates evaluate
+// in this crate exactly as an inline per-edge copy would.
+include!("../../chio-cross-protocol/src/sync_bridge_shared.rs");
 include!("error.rs");
 include!("config.rs");
 include!("types.rs");

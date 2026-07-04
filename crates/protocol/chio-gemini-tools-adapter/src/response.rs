@@ -11,30 +11,9 @@ pub(crate) fn function_calls(raw: ProviderRequest) -> Result<Vec<FunctionCallPar
             "Gemini generateContent payload was not JSON: {error}"
         ))
     })?;
-    let body = response_body(value)?;
+    let body = chio_provider_adapter_core::response_body(value, "Gemini generateContent")?;
     classify_content_policy(&body)?;
     extract_function_calls(&body)
-}
-
-fn response_body(value: Value) -> Result<Value, ProviderError> {
-    for field in ["body", "response", "payload"] {
-        if let Some(nested) = value.get(field) {
-            return nested_response_body(nested).ok_or_else(|| {
-                ProviderError::Malformed(format!(
-                    "Gemini generateContent envelope field `{field}` was not a JSON object or string body"
-                ))
-            });
-        }
-    }
-    Ok(value)
-}
-
-fn nested_response_body(value: &Value) -> Option<Value> {
-    match value {
-        Value::Object(_) => Some(value.clone()),
-        Value::String(body) => serde_json::from_str(body).ok(),
-        _ => None,
-    }
 }
 
 fn classify_content_policy(body: &Value) -> Result<(), ProviderError> {
