@@ -588,6 +588,72 @@ impl ToolServerConnection for ToolNotRegisteredDispatchServer {
     }
 }
 
+// A registered tool server whose dispatch SUCCEEDS (returns Ok(Value)) after
+// committing a destructive side effect. Used to exercise the post-invocation
+// Block deny path: the tool has already run and its runtime-admission lease is
+// retained (not released) when a POST-invocation output guard blocks the
+// returned value.
+struct SucceedingAfterSideEffectServer {
+    id: String,
+    tools: Vec<String>,
+    side_effects: std::sync::Arc<AtomicU64>,
+}
+
+impl SucceedingAfterSideEffectServer {
+    fn new(id: &str, tools: Vec<&str>, side_effects: std::sync::Arc<AtomicU64>) -> Self {
+        Self {
+            id: id.to_string(),
+            tools: tools.into_iter().map(String::from).collect(),
+            side_effects,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for SucceedingAfterSideEffectServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        self.tools.clone()
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        // The destructive side effect commits, then the tool returns a
+        // successful value. A post-invocation output guard blocks this value
+        // AFTER the fact, but the side effect is already durable.
+        self.side_effects.fetch_add(1, Ordering::SeqCst);
+        Ok(serde_json::json!({"record": "vendor-ledger-7", "status": "closed"}))
+    }
+}
+
+// A post-invocation output guard that always blocks the returned value.
+// Simulates an output guard that denies a tool response AFTER the tool has
+// already executed (and committed a side effect).
+struct BlockingPostInvocationHook;
+
+impl crate::post_invocation::PostInvocationHook for BlockingPostInvocationHook {
+    fn name(&self) -> &str {
+        "test-post-invocation-block"
+    }
+
+    fn inspect(
+        &self,
+        _ctx: &crate::post_invocation::PostInvocationContext<'_>,
+        _response: &serde_json::Value,
+    ) -> crate::post_invocation::PostInvocationVerdict {
+        crate::post_invocation::PostInvocationVerdict::Block(
+            "post-invocation output guard blocked destructive tool output".to_string(),
+        )
+    }
+}
+
 fn assert_package_valid_allow_receipt(
     response: &ToolCallResponse,
     request: &ToolCallRequest,
@@ -2732,6 +2798,83 @@ fn incomplete_stream_output_marks_reservations_retained(
     assert_eq!(
         metadata["chio_runtime"]["retained_treaty_continuation_id"],
         "continuation-incomplete-stream-marked"
+    );
+    Ok(())
+}
+
+#[test]
+fn post_invocation_block_marks_reservations_retained(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // A runtime-admitted call dispatches successfully (a destructive side
+    // effect commits) and returns a value, but a POST-invocation output guard
+    // blocks the returned value AFTER dispatch. Because the tool already ran,
+    // the runtime-admission lease is retained (not released), so the deny
+    // receipt must carry the retained marker + reserved ids to keep the burned
+    // lease auditable and recoverable from the signed receipt alone, matching
+    // the incomplete-stream and RequestIncomplete arms.
+    let mut kernel = make_kernel(make_config());
+    let side_effects = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SucceedingAfterSideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&side_effects),
+    )));
+    kernel.add_post_invocation_hook(Box::new(BlockingPostInvocationHook));
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chio-runtime-post-invocation-block",
+            admission_id: "adm-post-invocation-block",
+            lease_id: "lease-post-invocation-block",
+            continuation_id: Some("continuation-post-invocation-block"),
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chio-runtime-post-invocation-block",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(
+        side_effects.load(Ordering::SeqCst),
+        1,
+        "tool must have dispatched (side effect committed) before the post-invocation block"
+    );
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        0,
+        "a post-invocation block after a side effect must retain reservations"
+    );
+    let metadata = response.receipt.metadata.ok_or_else(|| {
+        std::io::Error::other("post-invocation block receipt metadata missing")
+    })?;
+    assert_eq!(
+        metadata["chio_runtime"]["reservations_retained_fail_closed"],
+        true
+    );
+    assert_eq!(
+        metadata["chio_runtime"]["retained_destructive_lease_id"],
+        "lease-post-invocation-block"
+    );
+    assert_eq!(
+        metadata["chio_runtime"]["retained_treaty_continuation_id"],
+        "continuation-post-invocation-block"
     );
     Ok(())
 }
