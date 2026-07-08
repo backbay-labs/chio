@@ -1453,12 +1453,6 @@ fn validate_dispute_posture(
     trust: &PublicSettlementVerifierTrust,
 ) -> Result<(), Web3ContractError> {
     let dispute = required_dispute_snapshot(bundle)?;
-    validate_dispute_snapshot(bundle, dispute, trust)?;
-    if dispute.open_dispute_count > 0 {
-        return Err(Web3ContractError::InvalidSettlement(
-            "public settlement active dispute blocks finality".to_string(),
-        ));
-    }
     match bundle.dispute_posture {
         PublicSettlementDisputePosture::Refunded
             if !matches!(
@@ -1481,7 +1475,14 @@ fn validate_dispute_posture(
             ))
         }
         _ => Ok(()),
+    }?;
+    validate_dispute_snapshot(bundle, dispute, trust)?;
+    if dispute.open_dispute_count > 0 {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement active dispute blocks finality".to_string(),
+        ));
     }
+    Ok(())
 }
 
 fn validate_finality_settlement_state(
