@@ -209,6 +209,7 @@ pub(crate) const PEER_ROUND_WALL_CLOCK_BUDGET: Duration = Duration::from_secs(20
 #[derive(Debug)]
 pub(crate) enum PeerProtocolError {
     NonAdvancingPage { after_seq: u64, page_max_seq: u64 },
+    NonContiguousPage { expected_seq: u64, got_seq: u64 },
     PageBudgetExhausted { pages: u32 },
     RecordBudgetExhausted { records: u64 },
     RoundDeadlineExceeded,
@@ -222,6 +223,10 @@ impl std::fmt::Display for PeerProtocolError {
             Self::NonAdvancingPage { after_seq, page_max_seq } => write!(
                 f,
                 "peer returned a non-empty page whose max seq {page_max_seq} did not advance past cursor {after_seq}"
+            ),
+            Self::NonContiguousPage { expected_seq, got_seq } => write!(
+                f,
+                "peer returned an append-only page carrying seq {got_seq} where the cursor required contiguous seq {expected_seq}"
             ),
             Self::PageBudgetExhausted { pages } => {
                 write!(f, "peer exceeded per-round page budget after {pages} pages")
@@ -276,17 +281,29 @@ impl PullRoundBudget {
     }
 }
 
-/// Strict monotonicity for a `u64` cursor puller. `page_max_seq` MUST be the
-/// maximum seq in a non-empty page.
-pub(crate) fn ensure_seq_advanced(
+/// Append-only contiguity for a `u64` cursor puller: a non-empty page MUST begin
+/// at the expected next seq (`after_seq + 1`) and be gap-free, so the i-th
+/// returned record carries seq `after_seq + 1 + i`. This is strictly stronger
+/// than monotonic advancement: a page whose max advanced but which SKIPPED seqs
+/// in between (e.g. one starting at `after_seq + 100`) would, once the cursor
+/// advanced to that max, permanently strand the un-returned rows, because these
+/// receipt/lineage tables are append-only streams and a skipped seq is never
+/// re-offered. The ONLY sanctioned way to advance past a gap is a trusted
+/// compaction/retention floor that provably covers it (RFC-0007 publishes such a
+/// floor for the receipt log); absent that floor a gap is a peer protocol
+/// violation and the peer is demoted (fail-closed). `seqs` are the page's record
+/// seqs in returned order.
+pub(crate) fn ensure_page_contiguous(
     after_seq: u64,
-    page_max_seq: u64,
+    seqs: impl IntoIterator<Item = u64>,
 ) -> Result<(), PeerProtocolError> {
-    if page_max_seq > after_seq {
-        Ok(())
-    } else {
-        Err(PeerProtocolError::NonAdvancingPage { after_seq, page_max_seq })
+    for (offset, seq) in seqs.into_iter().enumerate() {
+        let expected = after_seq.saturating_add(offset as u64).saturating_add(1);
+        if seq != expected {
+            return Err(PeerProtocolError::NonContiguousPage { expected_seq: expected, got_seq: seq });
+        }
     }
+    Ok(())
 }
 ```
 
@@ -323,7 +340,7 @@ that produce store or serde errors convert through `CliError` explicitly (as
 single `From` step.
 
 Every puller loop changes from "loop until empty page, trust `record.seq`" to
-"budget the round, require strict advance". `sync_peer_tool_receipts`
+"budget the round, require gap-free contiguity". `sync_peer_tool_receipts`
 (`deltas.rs:332-361`) becomes representative:
 
 ```rust
@@ -348,8 +365,10 @@ fn sync_peer_tool_receipts(
             break;
         }
         round.charge_page(response.records.len() as u64)?;
-        let page_max_seq = response.records.iter().map(|record| record.seq).max().unwrap_or(after_seq);
-        ensure_seq_advanced(after_seq, page_max_seq)?;
+        // Require the page to start at the expected next seq (after_seq + 1) and
+        // be gap-free BEFORE accepting any of it: advancing the cursor past a gap
+        // would permanently skip the unreplicated append-only rows in between.
+        ensure_page_contiguous(after_seq, response.records.iter().map(|record| record.seq))?;
         let mut last_seq = after_seq;
         for record in response.records {
             let receipt: ChioReceipt = serde_json::from_value(record.receipt).map_err(CliError::from)?;
@@ -363,9 +382,10 @@ fn sync_peer_tool_receipts(
 }
 ```
 
-(The `.max(...).unwrap_or(after_seq)` on a `.iter().max()` over a guaranteed
-non-empty slice is total and clippy-clean; the branch is unreachable because the
-empty case already broke.)
+(Contiguity makes the applied range exactly `after_seq + 1 ..= after_seq +
+records.len()`, so `last_seq` ends at `after_seq + records.len()` and
+`update_peer_tool_seq` advances the cursor by exactly the page, never across a
+gap.)
 
 `sync_peer_child_receipts` and `sync_peer_lineage` take the identical shape.
 For the composite-cursor revocation puller (`sync_peer_revocations`,
@@ -892,8 +912,10 @@ trip them.
 ## Test and verification plan
 
 - Unit (PR gate). `pull_budget`: `charge_page` exhausts pages, records, and
-  deadline as typed errors; `ensure_seq_advanced` / `ensure_revocation_advanced`
-  reject non-advancing and equal cursors. Name:
+  deadline as typed errors; `ensure_page_contiguous` rejects a page that starts
+  past the expected next seq or skips a seq mid-page (append-only pullers), and
+  `ensure_revocation_advanced` rejects non-advancing and equal composite cursors.
+  Names: `non_contiguous_page_is_peer_protocol_error`,
   `non_advancing_page_is_peer_protocol_error`.
 - Unit (PR gate). Witness soundness: build a `ClusterRuntimeState` with a peer
   whose `budget_import_acks` holds a high seq under a *different* `origin_id`;

@@ -329,17 +329,25 @@ use std::hash::Hash;
 
 pub struct BoundedMap<K, V> {
     inner: HashMap<K, Timestamped<V>>,
-    order: VecDeque<K>,
+    /// `(key, epoch)` in insertion order. Re-inserting a key pushes a new
+    /// `(key, epoch)` and leaves the old pair behind as a stale duplicate;
+    /// eviction skips any pair whose epoch is not the key's current
+    /// `order_epoch`, so a refreshed key is never evicted before older keys.
+    order: VecDeque<(K, u64)>,
     capacity: usize,
     idle_ttl_secs: u64,
     sweep_interval: usize,
     inserts_since_sweep: usize,
+    next_epoch: u64,
     gauge: SizeGauge,
 }
 
 struct Timestamped<V> {
     value: V,
     last_seen_secs: u64,
+    /// Epoch of this key's NEWEST occurrence in `order`. Set on every insert so
+    /// `evict_oldest` can tell the live (newest) pair from stale duplicates.
+    order_epoch: u64,
 }
 
 impl<K: Eq + Hash + Clone, V> BoundedMap<K, V> {
@@ -351,6 +359,7 @@ impl<K: Eq + Hash + Clone, V> BoundedMap<K, V> {
             idle_ttl_secs,
             sweep_interval: 256,
             inserts_since_sweep: 0,
+            next_epoch: 0,
             gauge,
         }
     }
@@ -372,9 +381,20 @@ impl<K: Eq + Hash + Clone, V> BoundedMap<K, V> {
         if !self.inner.contains_key(&key) && self.inner.len() >= self.capacity {
             evicted = self.evict_oldest();
         }
-        self.inner.insert(key.clone(), Timestamped { value, last_seen_secs: now_secs });
-        self.order.push_back(key);
-        // Re-inserting a live key leaves its old position in `order` as a
+        // Stamp this insertion with a fresh epoch and record it as the key's
+        // newest occurrence. Re-inserting a live key refreshes its recency: the
+        // new `(key, epoch)` goes to the back and the entry's `order_epoch`
+        // advances, so the key's OLD pair in `order` is now stale and eviction
+        // will skip it. (`next_epoch` is a monotonic u64 counter; it cannot
+        // realistically wrap.)
+        let epoch = self.next_epoch;
+        self.next_epoch = self.next_epoch.wrapping_add(1);
+        self.inner.insert(
+            key.clone(),
+            Timestamped { value, last_seen_secs: now_secs, order_epoch: epoch },
+        );
+        self.order.push_back((key, epoch));
+        // Re-inserting a live key leaves its old `(key, epoch)` in `order` as a
         // stale duplicate. Compact when duplicates dominate so `order` stays
         // O(capacity) and the bounded invariant holds for the map's own
         // bookkeeping, not just its values.
@@ -385,15 +405,19 @@ impl<K: Eq + Hash + Clone, V> BoundedMap<K, V> {
         evicted
     }
 
-    /// Rebuild `order` keeping only the newest occurrence of each live key.
-    /// Amortized O(1) per insert because it runs at most once per `capacity`
-    /// inserts.
+    /// Rebuild `order` keeping only each live key's NEWEST occurrence (the pair
+    /// whose epoch matches the entry's current `order_epoch`; every older pair
+    /// for that key carries a smaller epoch and is dropped). Amortized O(1) per
+    /// insert because it runs at most once per `capacity` inserts.
     fn compact_order(&mut self) {
-        let mut seen = std::collections::HashSet::with_capacity(self.inner.len());
         let mut compacted = VecDeque::with_capacity(self.inner.len());
-        while let Some(key) = self.order.pop_back() {
-            if self.inner.contains_key(&key) && seen.insert(key.clone()) {
-                compacted.push_front(key);
+        while let Some((key, epoch)) = self.order.pop_back() {
+            if self
+                .inner
+                .get(&key)
+                .is_some_and(|entry| entry.order_epoch == epoch)
+            {
+                compacted.push_front((key, epoch));
             }
         }
         self.order = compacted;
@@ -415,15 +439,33 @@ impl<K: Eq + Hash + Clone, V> BoundedMap<K, V> {
         }
         let floor = now_secs.saturating_sub(self.idle_ttl_secs);
         self.inner.retain(|_, entry| entry.last_seen_secs > floor);
-        self.order.retain(|k| self.inner.contains_key(k));
+        self.order.retain(|(k, _)| self.inner.contains_key(k));
         self.gauge.set(self.inner.len());
     }
 
+    /// Evict the genuinely-oldest STILL-LIVE key. Popping from the front, skip
+    /// any pair that is NOT its key's newest occurrence (its epoch differs from
+    /// the entry's current `order_epoch`): those are stale duplicates left by a
+    /// later re-insertion, and removing the key on such a pair would evict a
+    /// recently-refreshed entry while a truly-older key survives (for a
+    /// rate-limit bucket that would reset active state). Only remove a key when
+    /// the front pair IS its newest occurrence, which makes it the genuine LRU
+    /// victim.
     fn evict_oldest(&mut self) -> Option<(K, V)> {
-        while let Some(candidate) = self.order.pop_front() {
-            if let Some(entry) = self.inner.remove(&candidate) {
-                self.gauge.set(self.inner.len());
-                return Some((candidate, entry.value));
+        while let Some((candidate, epoch)) = self.order.pop_front() {
+            match self.inner.get(&candidate) {
+                // Stale duplicate: a newer occurrence of this key is still
+                // queued behind us. Drop this pair and keep looking.
+                Some(entry) if entry.order_epoch != epoch => continue,
+                // Newest occurrence of a live key: the true oldest, evict it.
+                Some(_) => {
+                    if let Some(entry) = self.inner.remove(&candidate) {
+                        self.gauge.set(self.inner.len());
+                        return Some((candidate, entry.value));
+                    }
+                }
+                // Key already gone (swept or previously evicted): skip.
+                None => continue,
             }
         }
         None
@@ -431,11 +473,17 @@ impl<K: Eq + Hash + Clone, V> BoundedMap<K, V> {
 }
 ```
 
-Eviction order is oldest-insert (`get` refreshes the idle timestamp but does not
-reorder), which is approximate LRU. That is sufficient here because every
-`BoundedMap` in this RFC fronts a durable authoritative store or is a rate-limit
-table whose evicted entry is semantically fresh; strict recency ordering buys
-nothing for either.
+Eviction order is oldest by most-recent INSERT: re-inserting a key refreshes its
+recency (a fresh epoch moves it to the back and its now-stale `order` pair is
+skipped at eviction), while `get` refreshes only the idle timestamp and does not
+reorder. This is approximate LRU, sufficient here because every `BoundedMap` in
+this RFC fronts a durable authoritative store or is a rate-limit table whose
+evicted entry is semantically fresh; strict recency ordering buys nothing for
+either. The teeth test that guards this eviction fix: fill to capacity, refresh
+the oldest key by re-inserting it, then insert a new key at capacity and assert
+the refreshed key SURVIVES while the genuinely-oldest (un-refreshed) key is the
+one evicted (a count- or first-copy-only eviction would wrongly drop the
+refreshed key).
 
 No `.unwrap()`/`.expect()`; poison is handled at each call site by the existing
 `match lock() { Ok, Err(poisoned) => poisoned.into_inner() }` idiom already used

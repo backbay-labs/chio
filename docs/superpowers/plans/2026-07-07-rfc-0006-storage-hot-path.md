@@ -2953,7 +2953,12 @@ fn build_due_checkpoints(
 
 /// Build every checkpoint the head owes: count-based ADR-0008 trigger, range
 /// derived from the cached head (NOT next_checkpoint_range_for_connection,
-/// which runs a full chain verify), O(b) work per checkpoint.
+/// which runs a full chain verify), O(b) work per checkpoint. A checkpoint-seq
+/// INSERT conflict is NOT automatically fatal: with two store instances sharing
+/// one SQLite file the chain may simply have advanced under us, so on conflict
+/// this re-reads the persisted checkpoint at that seq and treats an identical
+/// already-committed checkpoint as benign (re-sync the head), surfacing only a
+/// genuine divergent-content conflict (see the insert arm below).
 fn maybe_build_checkpoint(
     connection: &mut SqliteStoreConnection,
     head: &mut VerifiedHead,
@@ -2989,9 +2994,45 @@ fn maybe_build_checkpoint(
         .map_err(checkpoint_error_to_receipt_store)?;
         ensure_checkpoint_transparency_guards(connection)?;
         let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        insert_checkpoint_incremental_tx(&tx, head.latest_checkpoint.as_ref(), &checkpoint)?;
-        tx.commit()?;
-        head.latest_checkpoint = Some(checkpoint);
+        match insert_checkpoint_incremental_tx(&tx, head.latest_checkpoint.as_ref(), &checkpoint) {
+            Ok(()) => {
+                tx.commit()?;
+                head.latest_checkpoint = Some(checkpoint);
+            }
+            Err(error) => {
+                // Two store instances can share one SQLite file: a peer writer
+                // may have committed THIS checkpoint_seq after we snapshotted the
+                // cached head but before this IMMEDIATE transaction took the write
+                // lock, so the INSERT conflicts on the UNIQUE checkpoint_seq. That
+                // is a legitimately-advanced chain, not corruption. Roll back and
+                // re-read the checkpoint now persisted at this seq: if it commits
+                // the SAME range and the SAME Merkle content (batch bounds,
+                // tree_size, merkle_root) as the candidate we built, the work is
+                // already done, so re-sync the head to the committed checkpoint
+                // and let the loop re-evaluate (benign already-done, NOT a
+                // failure). issued_at/signature may legitimately differ between
+                // two independent builders, so they are not part of the identity
+                // compare. Only a genuine divergent-content checkpoint at this seq
+                // (different range or root), or no persisted row at all, is fatal
+                // (fail-closed).
+                drop(tx); // roll back our aborted attempt before re-reading
+                match load_persisted_checkpoint_row(connection, checkpoint_seq)? {
+                    Some(row) => {
+                        let committed = parse_persisted_checkpoint_row(row)?;
+                        if committed.body.batch_start_seq == checkpoint.body.batch_start_seq
+                            && committed.body.batch_end_seq == checkpoint.body.batch_end_seq
+                            && committed.body.tree_size == checkpoint.body.tree_size
+                            && committed.body.merkle_root == checkpoint.body.merkle_root
+                        {
+                            head.latest_checkpoint = Some(committed);
+                        } else {
+                            return Err(error); // divergent content at this seq: fatal
+                        }
+                    }
+                    None => return Err(error), // not a benign already-done conflict
+                }
+            }
+        }
     }
     Ok(())
 }
