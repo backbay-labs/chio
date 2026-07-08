@@ -1623,6 +1623,11 @@ fn validate_dispute_event_blocks(
             .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
     }
     if dispute.chain_event_tx_hashes.is_empty() {
+        if dispute.posture != PublicSettlementDisputePosture::Undisputed {
+            return Err(Web3ContractError::InvalidProof(
+                "public settlement dispute event evidence missing".to_string(),
+            ));
+        }
         if !dispute.chain_event_blocks.is_empty() {
             return Err(Web3ContractError::InvalidProof(
                 "public settlement dispute event block without tx hash".to_string(),

@@ -229,38 +229,7 @@ pub fn prepare_merkle_release(
     config.validate()?;
     validate_web3_settlement_dispatch(dispatch)
         .map_err(|error| SettlementError::InvalidDispatch(error.to_string()))?;
-    if dispatch.chain_id != config.chain_id {
-        return Err(SettlementError::InvalidDispatch(format!(
-            "dispatch chain_id {} does not match config {}",
-            dispatch.chain_id, config.chain_id
-        )));
-    }
-    let dispatch_escrow = parse_address(&dispatch.escrow_contract, "dispatch.escrow_contract")?;
-    let config_escrow = parse_address(&config.escrow_contract, "config.escrow_contract")?;
-    if dispatch_escrow != config_escrow {
-        return Err(SettlementError::InvalidDispatch(
-            "dispatch escrow_contract does not match config escrow_contract".to_string(),
-        ));
-    }
-    let dispatch_token = parse_address(
-        &dispatch.settlement_token_address,
-        "dispatch.settlement_token_address",
-    )?;
-    let config_token = parse_address(
-        &config.settlement_token_address,
-        "config.settlement_token_address",
-    )?;
-    if dispatch_token != config_token {
-        return Err(SettlementError::InvalidDispatch(
-            "dispatch settlement_token_address does not match config settlement_token_address"
-                .to_string(),
-        ));
-    }
-    if dispatch.settlement_path != Web3SettlementPath::MerkleProof {
-        return Err(SettlementError::Unsupported(
-            "dispatch is not configured for the Merkle settlement path".to_string(),
-        ));
-    }
+    validate_merkle_dispatch_config(config, dispatch)?;
     verify_anchor_inclusion_proof(anchor_proof)
         .map_err(|error| SettlementError::Verification(error.to_string()))?;
     if let Some(chain_anchor) = anchor_proof.chain_anchor.as_ref() {
@@ -331,6 +300,45 @@ pub fn prepare_merkle_release(
     })
 }
 
+fn validate_merkle_dispatch_config(
+    config: &SettlementChainConfig,
+    dispatch: &Web3SettlementDispatchArtifact,
+) -> Result<(), SettlementError> {
+    if dispatch.chain_id != config.chain_id {
+        return Err(SettlementError::InvalidDispatch(format!(
+            "dispatch chain_id {} does not match config {}",
+            dispatch.chain_id, config.chain_id
+        )));
+    }
+    let dispatch_escrow = parse_address(&dispatch.escrow_contract, "dispatch.escrow_contract")?;
+    let config_escrow = parse_address(&config.escrow_contract, "config.escrow_contract")?;
+    if dispatch_escrow != config_escrow {
+        return Err(SettlementError::InvalidDispatch(
+            "dispatch escrow_contract does not match config escrow_contract".to_string(),
+        ));
+    }
+    let dispatch_token = parse_address(
+        &dispatch.settlement_token_address,
+        "dispatch.settlement_token_address",
+    )?;
+    let config_token = parse_address(
+        &config.settlement_token_address,
+        "config.settlement_token_address",
+    )?;
+    if dispatch_token != config_token {
+        return Err(SettlementError::InvalidDispatch(
+            "dispatch settlement_token_address does not match config settlement_token_address"
+                .to_string(),
+        ));
+    }
+    if dispatch.settlement_path != Web3SettlementPath::MerkleProof {
+        return Err(SettlementError::Unsupported(
+            "dispatch is not configured for the Merkle settlement path".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub fn prepare_merkle_release_root_publication(
     config: &SettlementChainConfig,
     dispatch: &Web3SettlementDispatchArtifact,
@@ -341,6 +349,7 @@ pub fn prepare_merkle_release_root_publication(
     config.validate()?;
     validate_web3_settlement_dispatch(dispatch)
         .map_err(|error| SettlementError::InvalidDispatch(error.to_string()))?;
+    validate_merkle_dispatch_config(config, dispatch)?;
     if checkpoint_seq == 0 || batch_seq == 0 {
         return Err(SettlementError::InvalidInput(
             "settlement root publication sequence values must be non-zero".to_string(),

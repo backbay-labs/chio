@@ -37,11 +37,11 @@ use crate::settlement::{
 };
 use crate::settlement_proof::{
     public_settlement_witness_body_hash, verify_public_settlement_proof,
-    PublicSettlementBundleSignature, PublicSettlementDeploymentProvenance,
-    PublicSettlementDisputePosture, PublicSettlementDisputeSnapshot,
-    PublicSettlementIndependentChainHead, PublicSettlementOrderBinding,
-    PublicSettlementProofBundle, PublicSettlementTrustMarketContext, PublicSettlementVerifierTrust,
-    PublicSettlementWitnessMode, PublicSettlementWitnessReport,
+    PublicSettlementBlockSnapshot, PublicSettlementBundleSignature,
+    PublicSettlementDeploymentProvenance, PublicSettlementDisputePosture,
+    PublicSettlementDisputeSnapshot, PublicSettlementIndependentChainHead,
+    PublicSettlementOrderBinding, PublicSettlementProofBundle, PublicSettlementTrustMarketContext,
+    PublicSettlementVerifierTrust, PublicSettlementWitnessMode, PublicSettlementWitnessReport,
     CHIO_PUBLIC_SETTLEMENT_VERIFIER_REPORT_SCHEMA, CHIO_WEB3_SETTLEMENT_DISPUTE_SCHEMA,
     CHIO_WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA, CLAIM_PUBLIC_SETTLEMENT_CHAIN_CONTEXT_VERIFIED,
     CLAIM_PUBLIC_SETTLEMENT_DISPUTE_POSTURE_BOUND, CLAIM_PUBLIC_SETTLEMENT_FINALITY_VERIFIED,
@@ -747,6 +747,42 @@ fn sample_public_settlement_dispute_snapshot() -> PublicSettlementDisputeSnapsho
         chain_event_tx_hashes: Vec::new(),
         chain_event_blocks: Vec::new(),
     }
+}
+
+fn sample_public_settlement_dispute_event_tx_hash() -> String {
+    "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".to_string()
+}
+
+fn sample_public_settlement_dispute_event_block() -> PublicSettlementBlockSnapshot {
+    PublicSettlementBlockSnapshot {
+        block_number: 12_345_679,
+        block_hash: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+            .to_string(),
+        transaction_hashes: vec![sample_public_settlement_dispute_event_tx_hash()],
+    }
+}
+
+fn add_public_settlement_dispute_event_evidence(
+    bundle: &mut PublicSettlementProofBundle,
+) -> PublicSettlementBlockSnapshot {
+    let event_block = sample_public_settlement_dispute_event_block();
+    let Some(dispute_snapshot) = bundle.dispute_snapshot.as_mut() else {
+        panic!("sample public settlement proof bundle has dispute snapshot");
+    };
+    dispute_snapshot.chain_event_tx_hashes = vec![sample_public_settlement_dispute_event_tx_hash()];
+    dispute_snapshot.chain_event_blocks = vec![event_block.clone()];
+    event_block
+}
+
+fn verify_sample_public_settlement_proof_with_dispute_event_evidence(
+    bundle: &PublicSettlementProofBundle,
+    event_block: PublicSettlementBlockSnapshot,
+) -> Result<crate::settlement_proof::PublicSettlementVerifierReport, Web3ContractError> {
+    let mut signed_bundle = bundle.clone();
+    sign_sample_public_settlement_bundle(&mut signed_bundle);
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_dispute_event_blocks = vec![event_block];
+    verify_public_settlement_proof(&signed_bundle, &trust)
 }
 
 fn sample_public_settlement_chain_snapshot_json() -> serde_json::Value {
@@ -2061,9 +2097,10 @@ fn public_settlement_proof_rejects_finality_with_active_dispute() {
     dispute_snapshot
         .linked_receipt_ids
         .push(bundle.settlement_receipt.execution_receipt_id.clone());
+    let event_block = add_public_settlement_dispute_event_evidence(&mut bundle);
 
     assert!(matches!(
-        verify_sample_public_settlement_proof(&bundle),
+        verify_sample_public_settlement_proof_with_dispute_event_evidence(&bundle, event_block),
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("public settlement active dispute blocks finality")
     ));
@@ -2103,9 +2140,10 @@ fn public_settlement_proof_rejects_closed_posture_with_open_dispute() {
     dispute_snapshot
         .linked_receipt_ids
         .push(bundle.settlement_receipt.execution_receipt_id.clone());
+    let event_block = add_public_settlement_dispute_event_evidence(&mut bundle);
 
     assert!(matches!(
-        verify_sample_public_settlement_proof(&bundle),
+        verify_sample_public_settlement_proof_with_dispute_event_evidence(&bundle, event_block),
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("public settlement active dispute blocks finality")
     ));
@@ -2123,9 +2161,10 @@ fn public_settlement_proof_rejects_refunded_posture_without_reversal() {
     dispute_snapshot
         .linked_receipt_ids
         .push(bundle.settlement_receipt.execution_receipt_id.clone());
+    let event_block = add_public_settlement_dispute_event_evidence(&mut bundle);
 
     assert!(matches!(
-        verify_sample_public_settlement_proof(&bundle),
+        verify_sample_public_settlement_proof_with_dispute_event_evidence(&bundle, event_block),
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("refunded dispute posture requires reversed or timed out settlement")
     ));

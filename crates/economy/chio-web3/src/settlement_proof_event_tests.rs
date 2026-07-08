@@ -66,6 +66,70 @@ fn public_settlement_proof_rejects_dispute_event_without_block_evidence() {
 }
 
 #[test]
+fn public_settlement_proof_rejects_resolved_dispute_without_event_evidence() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.dispute_posture = PublicSettlementDisputePosture::Refunded;
+    bundle.settlement_receipt.lifecycle_state = Web3SettlementLifecycleState::Reversed;
+    bundle.settlement_receipt.reversal_of = Some("receipt-web3-original".to_string());
+    let Some(dispute_snapshot) = bundle.dispute_snapshot.as_mut() else {
+        panic!("sample public settlement proof bundle has dispute snapshot");
+    };
+    dispute_snapshot.posture = PublicSettlementDisputePosture::Refunded;
+    dispute_snapshot.dispute_id = "dispute-public-settlement-refunded".to_string();
+    dispute_snapshot
+        .linked_receipt_ids
+        .push(bundle.settlement_receipt.execution_receipt_id.clone());
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement dispute event evidence missing")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_slashed_dispute_without_event_evidence() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.dispute_posture = PublicSettlementDisputePosture::Slashed;
+    bundle.settlement_receipt.lifecycle_state = Web3SettlementLifecycleState::ChargedBack;
+    bundle.settlement_receipt.reversal_of = Some("receipt-web3-original".to_string());
+    let Some(dispute_snapshot) = bundle.dispute_snapshot.as_mut() else {
+        panic!("sample public settlement proof bundle has dispute snapshot");
+    };
+    dispute_snapshot.posture = PublicSettlementDisputePosture::Slashed;
+    dispute_snapshot.dispute_id = "dispute-public-settlement-slashed".to_string();
+    dispute_snapshot
+        .linked_receipt_ids
+        .push(bundle.settlement_receipt.execution_receipt_id.clone());
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement dispute event evidence missing")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_closed_dispute_without_event_evidence() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.dispute_posture = PublicSettlementDisputePosture::Closed;
+    let Some(dispute_snapshot) = bundle.dispute_snapshot.as_mut() else {
+        panic!("sample public settlement proof bundle has dispute snapshot");
+    };
+    dispute_snapshot.posture = PublicSettlementDisputePosture::Closed;
+    dispute_snapshot.dispute_id = "dispute-public-settlement-closed".to_string();
+    dispute_snapshot
+        .linked_receipt_ids
+        .push(bundle.settlement_receipt.execution_receipt_id.clone());
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement dispute event evidence missing")
+    ));
+}
+
+#[test]
 fn public_settlement_proof_rejects_dispute_event_without_trusted_block_evidence() {
     let event_block = sample_dispute_event_block();
     let bundle = sample_public_settlement_proof_bundle_with_chain_snapshot(|bundle| {

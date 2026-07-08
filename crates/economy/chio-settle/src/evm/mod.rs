@@ -1335,6 +1335,46 @@ mod tests {
         assert_eq!(root_publication.from_address, config.operator_address);
         assert_eq!(root_publication.to_address, config.root_registry_contract);
 
+        let mut mismatched_root_config = config.clone();
+        mismatched_root_config.chain_id = "eip155:42161".to_string();
+        let invalid_root_config = prepare_merkle_release_root_publication(
+            &mismatched_root_config,
+            &dispatch,
+            &full,
+            2,
+            2,
+        )
+        .test_expect_err("root publication chain drift should fail");
+        assert!(invalid_root_config.to_string().contains("chain_id"));
+
+        let mut mismatched_root_escrow_config = config.clone();
+        mismatched_root_escrow_config.escrow_contract =
+            "0x765F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string();
+        let invalid_root_escrow = prepare_merkle_release_root_publication(
+            &mismatched_root_escrow_config,
+            &dispatch,
+            &full,
+            2,
+            2,
+        )
+        .test_expect_err("root publication escrow drift should fail");
+        assert!(invalid_root_escrow.to_string().contains("escrow_contract"));
+
+        let mut mismatched_root_token_config = config.clone();
+        mismatched_root_token_config.settlement_token_address =
+            "0x465F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string();
+        let invalid_root_token = prepare_merkle_release_root_publication(
+            &mismatched_root_token_config,
+            &dispatch,
+            &full,
+            2,
+            2,
+        )
+        .test_expect_err("root publication token drift should fail");
+        assert!(invalid_root_token
+            .to_string()
+            .contains("settlement_token_address"));
+
         let mut invalid_dispatch = dispatch.clone();
         invalid_dispatch.operator_key_hash = "0x1234".to_string();
         let invalid_key_hash = prepare_merkle_release(

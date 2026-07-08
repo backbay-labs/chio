@@ -223,9 +223,10 @@ fn detects_email() {
 #[test]
 fn detects_internal_private_ip() {
     let s = OutputSanitizer::new();
-    let r = s.sanitize_text("upstream: 10.0.1.42");
+    let r = s.sanitize_text("upstream: 10.1.2.3");
     assert!(r.was_redacted);
-    assert!(!r.sanitized.contains("10.0.1.42"));
+    assert_eq!(r.sanitized, "upstream: [REDACTED:internal]");
+    assert!(!r.sanitized.ends_with(".3"));
 }
 
 // ---------------------------------------------------------------------------
@@ -658,6 +659,24 @@ fn sanitize_json_helper_aggregates_findings() {
     let rendered = value.to_string();
     assert!(!rendered.contains("alice@example.com"));
     assert!(!rendered.contains("ghp_aaaaaa"));
+}
+
+#[test]
+fn sanitize_json_helper_omits_object_findings_when_configured() {
+    let s = sanitizer_with_config(OutputSanitizerConfig {
+        include_findings: false,
+        ..Default::default()
+    });
+    let input = serde_json::json!({
+        "type": "service_account",
+        "project_id": "my-project",
+    });
+    let (value, result) = sanitize_json(&s, &input);
+
+    assert!(result.was_redacted);
+    assert_eq!(value, serde_json::Value::Null);
+    assert!(result.findings.is_empty());
+    assert!(!result.redactions.is_empty());
 }
 
 // ---------------------------------------------------------------------------
