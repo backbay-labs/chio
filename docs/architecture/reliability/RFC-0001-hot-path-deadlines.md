@@ -622,7 +622,18 @@ fn append_with_timeout(
     match result.recv_timeout(timeout) {
         Ok(inner) => inner,
         Err(mpsc::RecvTimeoutError::Timeout) => {
-            atomic_saturating_sub(&self.health.inflight, 1);
+            // Do NOT decrement `inflight` here. `try_send` succeeded, so the
+            // command is still queued or running on the actor, which OWNS the
+            // inflight accounting and decrements it exactly once when it drains
+            // the batch (`commit_receipt_batch`). Decrementing on the timeout
+            // side too would double-count a slow-but-live append; under
+            // concurrent writes the saturating subtract could drive `inflight`
+            // to zero while work is still queued, making writer health look
+            // drained before the actor catches up. The timeout still fails THIS
+            // caller loudly and trips health via `failed_total` / `last_error`;
+            // a genuinely wedged (not merely slow) writer keeps `inflight`
+            // elevated, which is the honest signal, and the RFC-0001 watchdog
+            // surfaces it.
             self.health.failed_total.fetch_add(1, Ordering::SeqCst);
             if let Ok(mut last) = self.health.last_error.lock() {
                 *last = Some("sqlite receipt commit append timed out".to_string());

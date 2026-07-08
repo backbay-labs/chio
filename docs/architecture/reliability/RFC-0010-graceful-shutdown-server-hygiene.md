@@ -526,8 +526,12 @@ where
     S: std::future::IntoFuture<Output = std::io::Result<()>>,
     D: std::future::Future<Output = Result<(), String>>,
 {
-    let server = server.into_future();
-    tokio::pin!(server);
+    // Box-pin rather than `tokio::pin!` so the forced-drain path can DROP the
+    // serve future before the flush runs. A stack `Pin<&mut _>` from
+    // `tokio::pin!` cannot be dropped early (it only borrows), but an owned
+    // `Pin<Box<_>>` can, and dropping it force-closes any connection still
+    // stuck at the deadline.
+    let mut server = Box::pin(server.into_future());
     let signalled = async move {
         while !*shutdown.borrow_and_update() {
             if shutdown.changed().await.is_err() {
@@ -559,13 +563,22 @@ where
             }
         }
     };
+    // On a forced drain the serve future is still holding open the stuck
+    // connection(s). Drop it BEFORE `on_drained` so no handler can still be
+    // writing when the receipt flush runs (the ordering documented in
+    // section 6: nothing is writing during `on_drained`). A `Clean` outcome
+    // has already run the future to completion, so this drop is a no-op there.
+    if matches!(outcome, DrainOutcome::Forced) {
+        drop(server);
+    }
     on_drained.await.map_err(ServeError::Flush)?;
     Ok(outcome)
 }
 ```
 
-On `Forced`, dropping the serve future closes the remaining connections; the
-process still runs the flush hook and exits through the normal path.
+On `Forced`, dropping the serve future closes the remaining connections BEFORE the
+flush hook runs, so no in-flight handler can enqueue or hold a receipt write after
+the flush has completed; the process then exits through the normal path.
 
 ### 6. Drain sequence and ordering
 

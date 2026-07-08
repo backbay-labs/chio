@@ -559,11 +559,15 @@ async fn run_directory_reloader(
 }
 ```
 
-`reload_verified_directory` re-reads the bundle file, detects `Unchanged` by
-comparing the re-read bundle's version and body hash to the current directory
-BEFORE any verification (the rollback gate is `version <= version_floor`, so
-verifying the same-version bundle against a floor of the current version would
-spuriously reject it), and only for a strictly newer bundle builds
+`reload_verified_directory` checks expiry BEFORE the unchanged fast path: if the
+current (last-good) directory's `expires_at_unix_ms <= now`, it must not short-circuit
+to `Unchanged`, because an unchanged-but-expired directory has to fail closed. In that
+case it returns `ExpiredWhileRunning` unless the re-read yields a strictly-newer
+in-window successor to swap in. Only when the current directory is still in-window does
+it detect `Unchanged` by comparing the re-read bundle's version and body hash to the
+current directory BEFORE any verification (the rollback gate is
+`version <= version_floor`, so verifying the same-version bundle against a floor of the
+current version would spuriously reject it), and only for a strictly newer bundle builds
 `TransportDirectoryBundleTrust` with a fresh `now_unix_ms`, `version_floor` set to
 the current version, and `expected_previous_version_sha256` set to the current
 bundle's hash, then calls `verify_bundle`. Monotonicity is preserved fail-closed: a

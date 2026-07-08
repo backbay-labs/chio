@@ -208,7 +208,9 @@ CREATE TABLE IF NOT EXISTS payment_journal (
     rail              TEXT NOT NULL,          -- adapter id, known before authorize
     authorization_id  TEXT,                   -- attached after authorize returns
     transaction_id    TEXT,                   -- attached after capture/refund returns
-    amount_units      INTEGER NOT NULL,
+    amount_units      INTEGER NOT NULL,       -- preauthorized (hold) amount
+    settle_action     TEXT,                   -- capture|release, stamped before Settling
+    settle_amount_units INTEGER,              -- exact capture amount; NULL for release
     currency          TEXT NOT NULL,
     state             TEXT NOT NULL,          -- see PaymentJournalState
     created_at        INTEGER NOT NULL,
@@ -238,6 +240,26 @@ pub enum PaymentJournalState {
     ReconcileFailed,
 }
 
+/// Terminal action chosen before entering `Settling`: the rail call boot
+/// reconciliation must replay for a `Settling` row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PaymentSettleAction {
+    /// Capture the recorded `amount_units` from the hold.
+    Capture,
+    /// Release the whole hold without capturing.
+    Release,
+}
+
+/// The committed settle decision, stamped atomically with the advance to
+/// `Settling` so reconciliation replays the exact operation rather than guessing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PaymentSettleIntent {
+    pub action: PaymentSettleAction,
+    /// Exact capture amount for `Capture`; `None` for `Release`.
+    pub amount_units: Option<u64>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PaymentJournalRecord {
@@ -252,6 +274,12 @@ pub struct PaymentJournalRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transaction_id: Option<String>,
     pub amount_units: u64,
+    /// Terminal action stamped before entering `Settling`. None until step 3.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settle_action: Option<PaymentSettleAction>,
+    /// Exact capture amount recorded with `Capture`; None for `Release`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settle_amount_units: Option<u64>,
     pub currency: String,
     pub state: PaymentJournalState,
     pub created_at_unix_ms: u64,
@@ -272,10 +300,15 @@ fn record_payment_journal(&self, _entry: &PaymentJournalRecord)
 }
 
 /// Compare-and-set state advance. `expected` must match the current row state or the
-/// call returns Conflict (fail-closed); optional fields are attached when present.
+/// call returns Conflict (fail-closed); optional fields are attached when present. When
+/// advancing to `Settling` the caller MUST pass `settle` (the committed action and, for
+/// a capture, the exact amount) so boot reconciliation can replay the exact operation;
+/// the store stamps `settle_action`/`settle_amount_units` atomically with the state
+/// change. `settle` is None for every other transition.
 fn advance_payment_journal(&self, _request_id: &str, _expected: PaymentJournalState,
     _next: PaymentJournalState, _authorization_id: Option<&str>,
-    _transaction_id: Option<&str>) -> Result<(), BudgetStoreError> {
+    _transaction_id: Option<&str>, _settle: Option<PaymentSettleIntent>)
+    -> Result<(), BudgetStoreError> {
     Err(BudgetStoreError::Invariant(
         "payment journal is not supported by this budget store".to_string(),
     ))
@@ -298,7 +331,11 @@ fn list_incomplete_payment_journal(&self, _older_than_unix_ms: u64)
 Kernel control-flow changes in `validation.rs`, all keyed on `request.request_id`:
 
 1. Before `adapter.authorize` at `validation.rs:1274`, write the journal row with
-   `state = HoldPlaced`, `rail = adapter.rail_id()`, `authorization_id = None`.
+   `state = HoldPlaced`, `rail = adapter.rail_id()`, `authorization_id = None`. The
+   kernel sets `PaymentAuthorizeRequest.reference` (payment.rs:91) to this same
+   `request_id`, so authorize's idempotency key is durable before the external call
+   and the HoldPlaced row is recoverable through `settlement_state(request_id, None)`
+   if the process dies before step 2.
    Atomicity note: every SQLite `BudgetStore` method opens its own
    `TransactionBehavior::Immediate` transaction
    (`budget_store/trait_impl.rs`), so calling two trait methods inside one
@@ -312,9 +349,14 @@ Kernel control-flow changes in `validation.rs`, all keyed on `request.request_id
    recovery tooling and tests.
 2. After `adapter.authorize` returns `PaymentAuthorization`, call
    `advance_payment_journal(request_id, HoldPlaced, Authorized,
-   Some(&auth.authorization_id), None)`.
+   Some(&auth.authorization_id), None, None)` (no settle intent yet).
 3. Before `adapter.capture`/`adapter.release` at `validation.rs:1013-1015`, advance to
-   `Settling`; after it returns `PaymentResult`, advance to `Settled` attaching
+   `Settling` PASSING the terminal settle intent
+   (`Some(PaymentSettleIntent { action, amount_units })`): `Capture` with the exact
+   post-execution cost (which may differ from the preauthorized `amount_units`), or
+   `Release` with `None`. The intended rail call and its amount are thus durable
+   BEFORE any money can move, so a crash inside the rail call is replayable without
+   guessing. After it returns `PaymentResult`, advance to `Settled` attaching
    `transaction_id`.
 4. After `record_chio_receipt` commits the signed receipt, call
    `close_payment_journal(request_id)` (best-effort-durable). A crash between the
@@ -327,6 +369,16 @@ additions (the idempotency contract plus two defaulted methods, both fail-closed
 ```rust
 pub trait PaymentAdapter: Send + Sync {
     // ... authorize / capture / release / refund unchanged in signature ...
+
+    /// CONTRACT: authorize MUST be idempotent keyed on `request.reference`
+    /// (payment.rs:91), which the kernel sets to the durable `request_id` written
+    /// into the journal BEFORE the call. A repeated authorize with the same
+    /// reference returns the same authorization and places AT MOST ONE rail-side
+    /// hold. This closes the HoldPlaced crash window: if the process dies after
+    /// authorize succeeds but before the post-call journal advance (step 2 below),
+    /// no `authorization_id` is durable yet, but reconciliation can still discover
+    /// or release the hold via `settlement_state(request_id, None)` because the
+    /// reference is durable.
 
     /// CONTRACT: capture and release MUST be idempotent keyed on
     /// (authorization_id, reference). A repeated call with the same key returns an
@@ -344,12 +396,15 @@ pub trait PaymentAdapter: Send + Sync {
     }
 
     /// Query the current rail-side settlement state for a prior authorization WITHOUT
-    /// moving funds. Idempotent and side-effect-free. Defaulted to Unavailable so an
-    /// adapter that cannot answer forces a fail-closed operator incident rather than a
-    /// silent close during reconciliation.
-    fn settlement_state(&self, authorization_id: &str, reference: &str)
+    /// moving funds. Idempotent and side-effect-free. Keyed on `reference` (the durable
+    /// `request_id` written into the journal before authorize), so it stays answerable
+    /// in the HoldPlaced crash window where no `authorization_id` is durable yet;
+    /// `authorization_id` is an optional refinement passed once known. Defaulted to
+    /// Unavailable so an adapter that cannot answer forces a fail-closed operator
+    /// incident rather than a silent close during reconciliation.
+    fn settlement_state(&self, reference: &str, authorization_id: Option<&str>)
         -> Result<PaymentResult, PaymentError> {
-        let _ = (authorization_id, reference);
+        let _ = (reference, authorization_id);
         Err(PaymentError::Unavailable(
             "settlement_state query not implemented by this adapter".to_string(),
         ))
@@ -362,13 +417,21 @@ serving RFC-0003's `MonetaryReconciled` resolution) iterates
 `list_incomplete_payment_journal(now - horizon)` and, per row, is deterministic (no
 discretion, mirroring ADR-0015 D3/D5):
 
-- `HoldPlaced`: authorize may or may not have fired. Query `settlement_state`. If the
+- `HoldPlaced`: authorize may or may not have fired, and no `authorization_id` is
+  durable. Query `settlement_state(request_id, None)` by the durable reference. If the
   rail has no such authorization, close the journal and reverse the budget hold (funds
-  never moved). If the rail reports a hold, advance and complete per the state below.
-- `Authorized`/`Settling`: replay the intended `capture`/`release` (idempotent by the
-  amended contract) or, when the amount is unknown, `release`; on success close the
-  journal. This is a predeclared, price-free terminal state (ADR-0015 D2): it never
-  selects a new amount, only completes the committed one.
+  never moved). If the rail reports a hold, record the returned `authorization_id`,
+  advance, and complete per the state below.
+- `Authorized`: authorize succeeded but no terminal action was ever committed (the crash
+  predates step 3, so `settle_action` is NULL). No capture amount was chosen, so the only
+  sound, price-free completion is to `release` the hold (idempotent) and close; funds
+  were only held.
+- `Settling`: a terminal action IS durable. Replay exactly the recorded `settle_action`
+  and `settle_amount_units` (idempotent by the amended contract): `Capture` re-captures
+  the recorded amount, `Release` releases the hold. This is a predeclared, price-free
+  terminal state (ADR-0015 D2): it never selects a new amount, only completes the
+  committed one. A `Settling` row missing its `settle_action` is a corrupt row and is
+  `ReconcileFailed`, never a guessed capture or release.
 - `Settled`: the money moved. If a receipt with the same `request_id` exists, close
   (attested). Otherwise emit a signed reconciliation receipt for the already-moved
   amount and close.
@@ -555,12 +618,18 @@ CREATE INDEX IF NOT EXISTS idx_eip3009_nonces_retain_until ON eip3009_nonces(ret
 `record_if_fresh` is an `Immediate`-transaction `INSERT ... ON CONFLICT DO NOTHING`
 returning `Fresh`/`Replayed` from the affected-row count (atomic per EIP-3009's
 single-use requirement); it lowercases key components exactly as
-`canonicalize_nonce_key_component` (`payments.rs:357-364`) does. `gc_expired` is a
-`DELETE ... WHERE retain_until < ?`. To defuse the capacity wedge without a scheduler,
-`record_if_fresh` opportunistically runs `gc_expired(now)` when the row count crosses a
-high-water mark (7/8 of `DEFAULT_MAX_EIP3009_NONCE_ENTRIES`). The lane's future wiring
-is gated on this durable store, and the stale `payments.rs:366-371` doc is corrected to
-name it.
+`canonicalize_nonce_key_component` (`payments.rs:357-364`) does. It does NOT prune: the
+trait contract (`payments.rs:311-316`) makes `gc_expired` the sole entry point that
+drops entries so replay decisions stay decoupled from the wall clock, and
+`record_if_fresh` has no `now` argument to prune against. `gc_expired` is a
+`DELETE ... WHERE retain_until < ?`. To defuse the capacity wedge without a scheduler and
+without breaking that contract, the caller drives GC explicitly on the `now`-bearing
+path: the settlement verifier already computes `now` for the authorization validity
+window, so it calls `gc_expired(now)` immediately BEFORE `record_if_fresh` whenever a
+cheap `len()` probe crosses a high-water mark (7/8 of
+`DEFAULT_MAX_EIP3009_NONCE_ENTRIES`). Pruning thus stays on the explicit, now-driven GC
+path and never inside insertion. The lane's future wiring is gated on this durable
+store, and the stale `payments.rs:366-371` doc is corrected to name it.
 
 ### F74: BudgetEnforcer durability caveat + snapshot seam
 

@@ -176,6 +176,19 @@ impl WriterHandle {
                 // because the actor re-acquires a fresh connection per command
                 // (see `handle_non_append_command`); no state from the
                 // panicking closure is reused afterward.
+                //
+                // Unwind-profile caveat (matches RFC-0008's `panic = "abort"`
+                // note): the release and docker-release profiles set
+                // `panic = "abort"` (Cargo.toml:240), where a panic aborts the
+                // process BEFORE `catch_unwind` can return, so this job-level
+                // isolation only keeps the actor alive under an unwind profile
+                // (dev/test and the RFC-0002 post-admission boundary). In an
+                // abort build a writer-job panic is instead a loud process abort
+                // that process-level supervision (RFC-0008) restarts - the same
+                // "fail loud, not silent" outcome, not a silently wedged writer.
+                // The durable contribution in BOTH profiles is that the failure
+                // is loud and bounded: a typed per-job error when unwinding is
+                // enabled, a supervised process abort when it is not.
                 Ok(connection) => {
                     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| job(connection)))
                         .unwrap_or_else(|payload| Err(receipt_writer_job_panic_error(&payload)))

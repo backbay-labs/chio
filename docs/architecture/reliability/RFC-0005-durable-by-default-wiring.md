@@ -469,16 +469,31 @@ pub enum SchemaVersionError {
 }
 
 /// Read and validate the schema stamp. Returns the on-disk version so the
-/// caller can run additive migrations up to `supported_version`. A fresh or
-/// pre-versioning database (application_id == 0 and user_version == 0) is
-/// adopted at version 0 and stamped with the Chio application_id.
-pub fn check_schema_version(conn: &Connection, supported_version: i32) -> Result<i32, SchemaVersionError> {
+/// caller can run additive migrations up to `supported_version`. A zero stamp
+/// (application_id == 0 and user_version == 0) is adopted and stamped ONLY when
+/// the on-disk contents prove the database is ours: either it has no user tables
+/// (fresh) or it carries one of this store's `legacy_tables` (a pre-stamping Chio
+/// store). `legacy_tables` is the set of table names the store has shipped since
+/// before stamping existed (for the receipt store, e.g. `["chio_tool_receipts"]`).
+pub fn check_schema_version(
+    conn: &Connection,
+    supported_version: i32,
+    legacy_tables: &[&str],
+) -> Result<i32, SchemaVersionError> {
     let app_id: i32 = conn.query_row("PRAGMA application_id", [], |row| row.get(0))?;
     let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
 
     if app_id == 0 && user_version == 0 {
-        // Fresh DB, or a legacy Chio DB created before stamping existed.
-        // Both are the current additive-only shape at v0; adopt and stamp.
+        // A zero stamp is ambiguous: it is shared by a fresh DB, a legacy
+        // pre-stamping Chio DB, AND countless unrelated SQLite files. Adopt and
+        // stamp ONLY when the contents prove provenance; otherwise fail closed
+        // rather than commingling Chio tables into a foreign database.
+        if !zero_stamp_is_adoptable(conn, legacy_tables)? {
+            return Err(SchemaVersionError::ForeignDatabase {
+                found: app_id,
+                expected: CHIO_SQLITE_APPLICATION_ID,
+            });
+        }
         conn.execute_batch(&format!("PRAGMA application_id = {CHIO_SQLITE_APPLICATION_ID};"))?;
         return Ok(0);
     }
@@ -491,6 +506,32 @@ pub fn check_schema_version(conn: &Connection, supported_version: i32) -> Result
     Ok(user_version)
 }
 
+/// A zero-stamped database is adoptable only if it is empty (no user tables, so a
+/// freshly created file) or carries a known legacy Chio table (so a pre-stamping
+/// Chio store). This keeps an unrelated 0/0 SQLite file from being stamped and
+/// written into, without falsely rejecting a legacy Chio store on upgrade.
+fn zero_stamp_is_adoptable(conn: &Connection, legacy_tables: &[&str]) -> Result<bool, SchemaVersionError> {
+    let user_table_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+        [],
+        |row| row.get(0),
+    )?;
+    if user_table_count == 0 {
+        return Ok(true); // empty file: a fresh Chio store
+    }
+    for table in legacy_tables {
+        let present: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+            [table],
+            |row| row.get(0),
+        )?;
+        if present {
+            return Ok(true); // a known legacy table proves this is our store
+        }
+    }
+    Ok(false) // tables present but none recognizable: a foreign database
+}
+
 /// Stamp the schema revision after migrations have run. `PRAGMA` does not accept
 /// bound parameters; `version` is a compile-time constant, not caller input.
 pub fn stamp_schema_version(conn: &Connection, version: i32) -> Result<(), SchemaVersionError> {
@@ -501,12 +542,16 @@ pub fn stamp_schema_version(conn: &Connection, version: i32) -> Result<(), Schem
 
 Integration order in each store's `open` (receipt, authority, budget,
 revocation, approval, execution-nonce): (1) configure durability pragmas; (2)
-`check_schema_version(conn, THIS_STORE_SUPPORTED_VERSION)` and propagate its
-error (a future DB is refused before any write); (3) run the existing
+`check_schema_version(conn, THIS_STORE_SUPPORTED_VERSION, LEGACY_ANCHOR_TABLES)`
+and propagate its error (a future DB is refused before any write, and a 0/0 file
+that is neither empty nor a recognizable legacy Chio store is refused as
+`ForeignDatabase` before it is stamped); (3) run the existing
 `CREATE TABLE IF NOT EXISTS` bootstrap and additive `ALTER TABLE` migrations up
 to the supported version; (4) `stamp_schema_version(conn, THIS_STORE_SUPPORTED_VERSION)`.
 Each store owns a `const SUPPORTED_SCHEMA_VERSION: i32`, bumped on every
-schema-affecting change. The six stores above are the ones wired through the
+schema-affecting change, and a `const LEGACY_ANCHOR_TABLES: &[&str]` naming the
+tables it shipped before stamping existed (empty only for a store with no
+pre-stamping deployments, which then adopts a 0/0 file only when it is empty). The six stores above are the ones wired through the
 kernel and CLI dispatch paths; the remaining `chio-store-sqlite` store modules
 (batch approval, IOU, dead letters, memory provenance, capability lineage,
 encrypted blob, evidence export) open their connections the same way and adopt

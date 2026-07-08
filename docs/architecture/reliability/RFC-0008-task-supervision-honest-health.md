@@ -534,15 +534,32 @@ pub fn supervise_task<F, Fut>(
 ) -> tokio::task::JoinHandle<()>
 where
     F: FnMut() -> Fut + Send + 'static,
-    Fut: std::future::Future<Output = SupervisedOutcome> + Send,
+    Fut: std::future::Future<Output = SupervisedOutcome> + Send + 'static,
 {
     tokio::spawn(async move {
         loop {
-            match iteration().await {
+            // Run each iteration in its OWN task so a panic inside the future
+            // surfaces as a JoinError instead of unwinding out of this
+            // supervisor loop. Without this boundary a panic in `iteration()`
+            // aborts the loop before it can reach the `Restart` arm, so no
+            // failure is recorded, no restart happens, and the HealthFlag stays
+            // Healthy until some unrelated code inspects the finished handle -
+            // exactly the SIEM-exporter / cluster-loop panic cases this RFC
+            // exists to make loud. A panicked iteration is classified as a
+            // failure and treated like `Restart`.
+            let outcome = match tokio::spawn(iteration()).await {
+                Ok(outcome) => outcome,
+                Err(join_error) if join_error.is_panic() => {
+                    // Fall through to the failure/backoff path below.
+                    SupervisedOutcome::Restart
+                }
+                Err(_cancelled) => return, // runtime shutting down: stop cleanly
+            };
+            match outcome {
                 SupervisedOutcome::Shutdown => return,
                 SupervisedOutcome::Restart => {
                     let count = health.record_failure(
-                        format!("{} iteration failed", config.name),
+                        format!("{} iteration panicked or failed", config.name),
                         now_unix_ms(),
                         config.trip_after,
                     );
@@ -558,9 +575,20 @@ where
 }
 ```
 
+Running each iteration under an inner `tokio::spawn` (rather than
+`catch_unwind`) is deliberate: an async iteration can panic across an `.await`
+point, which `catch_unwind` cannot capture cleanly, and it makes the failure
+observable even under `panic = "abort"` only when the async runtime is
+configured to unwind tasks; where the process aborts on panic instead, the abort
+is loud and the orchestrator restarts the process (the same "fail loud, not
+silent" outcome as the sync writer). The tightened `Fut: 'static` bound is
+required to move the future into the inner task.
+
 The returned `JoinHandle` is RETAINED by the caller (the fix for the dropped handles at
-`init.rs:26`), and a top-level surface may call `handle.is_finished()` to detect an
-unexpected exit and trip the flag.
+`init.rs:26`). Because a panicking iteration is now recorded and restarted inside the
+loop, `handle.is_finished()` is a secondary backstop: it detects the terminal cases
+(max-restarts reached, or the supervisor itself cancelled) so a top-level surface can
+still trip the flag if the whole supervisor exits.
 
 ### 2. Wiring list
 

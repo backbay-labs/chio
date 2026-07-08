@@ -437,12 +437,17 @@ No new column is required; the origin of a durably-imported event is its
 
 Each node computes, over its own `budget_mutation_events`, the highest
 *contiguous* imported `event_seq` per origin (the largest `S` such that every
-event from that origin in `[origin_start..S]` is present with no gap), and
-reports it in `cluster_status`. Reporting `MAX(event_seq)` would be unsound: the
-puller hardening (D1) only checks that pages advance, not that they are
-gap-free, so a peer that skips event 41 and then imports 42 must not be treated
-as having acked 41. The contiguous head caps the ack at the last event before
-the first gap, so a gap can never be counted as an ack:
+event from that origin in `(floor..S]` is present with no gap, where `floor` is a
+durable trusted lower bound described below), and reports it in `cluster_status`.
+Reporting `MAX(event_seq)` would be unsound: the puller hardening (D1) only
+checks that pages advance, not that they are gap-free, so a peer that skips event
+41 and then imports 42 must not be treated as having acked 41. Anchoring on the
+minimum *present* row would be equally unsound: a peer that skipped 41 and holds
+only `{42, ...}` would have `MIN(event_seq) = 42` and report a contiguous head of
+42 for a write it never stored. The head is therefore computed from a trusted
+floor, not from the minimum present row, and capped at the last event before the
+first gap, so neither a mid-stream gap nor a missing prefix can be counted as an
+ack:
 
 ```rust
 // service_types/cluster_budget.rs
@@ -451,7 +456,8 @@ the first gap, so a gap can never be counted as an ack:
 pub(crate) struct BudgetOriginAck {
     pub(crate) origin_id: String,
     /// Contiguous ack head: the highest event_seq S from `origin_id` such that
-    /// every event in [origin_start..S] is present (no gap). NOT MAX(event_seq).
+    /// every event in (floor..S] is present (no gap) and the run reaches down to
+    /// the durable trusted floor. NOT MAX(event_seq), NOT anchored on MIN(present).
     pub(crate) event_seq: u64,
 }
 
@@ -460,17 +466,32 @@ pub(crate) struct BudgetOriginAck {
 //   pub(crate) budget_ack_heads: Vec<BudgetOriginAck>,
 ```
 
+The trusted floor is a durable per-origin lower bound, NOT the minimum present
+row. It lives in a small `budget_import_floors(authority_id TEXT PRIMARY KEY,
+floor_seq INTEGER NOT NULL)` table and defaults to `0` (genesis: the contiguous
+prefix must reach the origin's first event). It is raised only by a trusted
+operation: when this node installs a peer snapshot, `apply_cluster_snapshot`
+(`cluster/snapshots.rs:139`) records, per origin the snapshot covers,
+`floor_seq = (snapshot's minimum covered event_seq) - 1`. Today snapshots carry
+each origin's full mutation-event log from genesis (`import_snapshot_records`,
+`snapshots.rs:199-205`), so `floor_seq` is `0` for every origin and the genesis
+anchor applies uniformly; the recorded floor exists so a future truncated or
+compacted snapshot cannot be mistaken for a gap. A puller-introduced gap can
+never raise the floor, because the puller never writes it.
+
 New store read, mirroring the existing private `max_budget_mutation_event_seq`
 helper (`budget_store/replication.rs:134-143`). It returns the contiguous head
-per origin, not `MAX`. The window-function form uses the gaps-and-islands
-identity: within a partition ordered by `event_seq`, a run that increments by
-exactly 1 has a constant `event_seq - ROW_NUMBER()`. The first island (the run
-that begins at the origin's minimum imported seq) is the one whose island key
-equals `origin_start - 1`; the first gap moves the key, so restricting to that
-island and taking its `MAX` yields the contiguous prefix head. A per-origin
-event's `event_seq` values are consecutive integers by construction (each leader
-numbers its own mutation events), so consecutive-integer contiguity is the right
-test:
+per origin, not `MAX`, and anchors on the durable floor. The window-function form
+uses the gaps-and-islands identity: within a partition ordered by `event_seq`, a
+run that increments by exactly 1 has a constant `event_seq - ROW_NUMBER()`. The
+run that begins at `floor + 1` has island key `(floor + 1) - 1 = floor`, so
+restricting to `island = floor` selects the prefix anchored at the trusted floor
+and takes its `MAX`. A per-origin event's `event_seq` values are consecutive
+integers by construction (each leader numbers its own mutation events), so if the
+lowest present row for an origin is above `floor + 1`, no row lands in the
+`island = floor` group and the origin is absent from the result: the caller then
+reports the floor itself as the head (nothing above the floor is provably
+contiguous). This is the fix for anchoring on `MIN(present)`:
 
 ```rust
 // SqliteBudgetStore
@@ -480,18 +501,20 @@ pub fn budget_ack_heads(&self) -> Result<Vec<BudgetOriginAck>, BudgetStoreError>
         r#"
         WITH imported AS (
             SELECT
-                authority_id,
-                event_seq,
-                event_seq - ROW_NUMBER() OVER (
-                    PARTITION BY authority_id ORDER BY event_seq
+                bme.authority_id,
+                bme.event_seq,
+                bme.event_seq - ROW_NUMBER() OVER (
+                    PARTITION BY bme.authority_id ORDER BY bme.event_seq
                 ) AS island,
-                MIN(event_seq) OVER (PARTITION BY authority_id) AS origin_start
-            FROM budget_mutation_events
-            WHERE authority_id IS NOT NULL AND event_seq IS NOT NULL
+                COALESCE(bif.floor_seq, 0) AS floor
+            FROM budget_mutation_events bme
+            LEFT JOIN budget_import_floors bif
+                ON bif.authority_id = bme.authority_id
+            WHERE bme.authority_id IS NOT NULL AND bme.event_seq IS NOT NULL
         )
         SELECT authority_id, MAX(event_seq) AS ack_head
         FROM imported
-        WHERE island = origin_start - 1  -- first island only: the contiguous prefix
+        WHERE island = floor  -- the run anchored at the trusted floor (floor + 1..)
         GROUP BY authority_id
         "#,
     )?;
@@ -507,12 +530,21 @@ pub fn budget_ack_heads(&self) -> Result<Vec<BudgetOriginAck>, BudgetStoreError>
 
 A peer that has imported events `{40, 42}` for an origin (41 skipped) reports a
 contiguous head of `40`, not `42`, so a write at seq `41` is never witnessed by
-that peer until the gap is filled. A late-joining peer whose snapshot baseline
-seeds a contiguous run from a higher `origin_start` is handled the same way: the
-head advances only across events it actually holds with no gap above that
-baseline. An equivalent Rust-side computation (sort each origin's imported seqs,
-walk from the minimum, stop at the first `seq != previous + 1`) is acceptable if
-the SQLite build lacks window functions.
+that peer until the gap is filled. A peer that skipped the prefix entirely and
+holds only `{42, 43}` with `floor = 0` has no row in the `island = 0` group, so
+the origin is absent from the result and the caller reports the floor (`0`), not
+`43`: a missing prefix is never laundered into an ack by the accidental minimum.
+A late-joining peer seeded from a snapshot is handled by the recorded floor: the
+snapshot install set `floor_seq`, so the contiguous head advances only across the
+events above that trusted floor with no gap, and a gap above the floor caps the
+head at the floor itself. Origins absent from the result (a gap at or below
+`floor + 1`) are defaulted by the caller to their recorded `floor` as the head
+(`0` when none is recorded) when it assembles the advertised set, so a
+snapshot-vouched prefix is still witnessed while an unproven prefix is not. This
+is fail-safe either way: under-reporting an ack can only withhold quorum, never
+falsely grant it. An equivalent Rust-side computation (start at `floor + 1`,
+walk while `seq == previous + 1`, stop at the first gap) is acceptable if the
+SQLite build lacks window functions.
 
 `PeerSyncState` (`state.rs:80-94`) gains
 `budget_import_acks: BTreeMap<String, u64>` (origin_id -> highest *contiguous*
