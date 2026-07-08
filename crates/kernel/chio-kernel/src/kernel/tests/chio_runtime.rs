@@ -2492,6 +2492,226 @@ fn nested_flow_drop_post_dispatch_records_cancellation_receipt(
     Ok(())
 }
 
+// A registered tool server whose dispatch first performs a nested CHILD
+// operation through the bridge (which buffers a signed child receipt into the
+// parent evaluation's `child_receipts` sink) and then either parks forever or
+// returns normally. Exercises RFC-0002 receipt-completeness for buffered child
+// receipts across a post-dispatch parent drop, and the no-double-record
+// property on the normal exit.
+struct NestedChildOpServer {
+    id: String,
+    tools: Vec<String>,
+    child_ops: std::sync::Arc<AtomicU64>,
+    park: bool,
+}
+
+impl NestedChildOpServer {
+    fn new(
+        id: &str,
+        tools: Vec<&str>,
+        child_ops: std::sync::Arc<AtomicU64>,
+        park: bool,
+    ) -> Self {
+        Self {
+            id: id.to_string(),
+            tools: tools.into_iter().map(String::from).collect(),
+            child_ops,
+            park,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for NestedChildOpServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        self.tools.clone()
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        // Perform a nested child operation so a signed child receipt is
+        // buffered. The child op's own result is irrelevant: completing it
+        // (success or failure) is what records the signed receipt.
+        if let Some(bridge) = nested_flow_bridge {
+            let _ = bridge.list_roots();
+            self.child_ops.fetch_add(1, Ordering::SeqCst);
+        }
+        if self.park {
+            std::future::pending::<Result<serde_json::Value, KernelError>>().await
+        } else {
+            Ok(serde_json::json!({"status": "ok"}))
+        }
+    }
+}
+
+// Normal nested-flow exit: the buffered child receipt must be recorded exactly
+// once (no double-record between the normal `record_child_receipts` flush and
+// the disarmed drop guard) and the parent receipt must be a non-cancellation.
+#[test]
+fn nested_flow_normal_path_records_child_receipt_exactly_once(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let child_ops = std::sync::Arc::new(AtomicU64::new(0));
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(NestedChildOpServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&child_ops),
+        false,
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
+        300,
+    );
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        "req-chio-nested-normal",
+        &agent_kp.public_key().to_hex(),
+    );
+    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
+    let request = make_request_with_arguments(
+        "req-chio-nested-normal",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let _response = rt.block_on(async {
+        let mut client = NoopNestedFlowClient;
+        kernel
+            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
+            .await
+    })?;
+
+    assert_eq!(
+        child_ops.load(Ordering::SeqCst),
+        1,
+        "the nested child op must have run once"
+    );
+    let receipt_log = kernel.receipt_log();
+    assert_eq!(
+        receipt_log.len(),
+        1,
+        "the normal nested-flow exit records exactly one parent receipt"
+    );
+    assert!(
+        !receipt_log
+            .get(0)
+            .ok_or_else(|| std::io::Error::other("parent receipt missing"))?
+            .is_cancelled(),
+        "the normal-path parent receipt must not be a cancellation"
+    );
+    let child_receipt_log = kernel.child_receipt_log();
+    assert_eq!(
+        child_receipt_log.len(),
+        1,
+        "the buffered child receipt must be recorded exactly once on the normal path"
+    );
+    Ok(())
+}
+
+// Post-dispatch parent drop: the already-signed buffered child receipt must be
+// flushed onto the append-only log alongside the parent cancellation receipt.
+// Without the drop-path flush the child receipt is discarded with the dropped
+// future, violating receipt-completeness for nested child operations.
+#[test]
+fn nested_flow_drop_post_dispatch_flushes_buffered_child_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let child_ops = std::sync::Arc::new(AtomicU64::new(0));
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(NestedChildOpServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&child_ops),
+        true,
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
+        300,
+    );
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        "req-chio-nested-child-dropped",
+        &agent_kp.public_key().to_hex(),
+    );
+    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
+    let request = make_request_with_arguments(
+        "req-chio-nested-child-dropped",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(async {
+        let mut client = NoopNestedFlowClient;
+        let eval = kernel.evaluate_tool_call_with_nested_flow_client_async(
+            &context,
+            &request,
+            &mut client,
+            None,
+        );
+        let raced = tokio::time::timeout(std::time::Duration::from_millis(200), eval).await;
+        assert!(
+            raced.is_err(),
+            "parked nested dispatch must be dropped by the timeout"
+        );
+    });
+
+    assert_eq!(
+        child_ops.load(Ordering::SeqCst),
+        1,
+        "the nested child op must have run before the drop"
+    );
+    let receipt_log = kernel.receipt_log();
+    assert_eq!(
+        receipt_log.len(),
+        1,
+        "the parent cancellation receipt must be recorded on drop"
+    );
+    let receipt = receipt_log
+        .get(0)
+        .ok_or_else(|| std::io::Error::other("parent cancellation receipt missing"))?;
+    assert!(receipt.is_cancelled());
+    let Some(Decision::Cancelled { reason }) = &receipt.decision else {
+        return Err("expected a cancelled decision on the nested drop receipt".into());
+    };
+    assert_eq!(reason, "tool evaluation future dropped after admission");
+    let child_receipt_log = kernel.child_receipt_log();
+    assert_eq!(
+        child_receipt_log.len(),
+        1,
+        "the buffered signed child receipt must be flushed on post-dispatch drop, not discarded"
+    );
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn drop_post_dispatch_retains_and_marks_reservations(
 ) -> Result<(), Box<dyn std::error::Error>> {

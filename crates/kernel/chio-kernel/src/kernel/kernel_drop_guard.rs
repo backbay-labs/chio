@@ -2,7 +2,7 @@ use chio_core::receipt::metadata::GuardEvidence;
 use chio_log_redact::redacted;
 use tracing::warn;
 
-use crate::{CapabilityToken, PaymentAuthorization, ToolCallRequest};
+use crate::{CapabilityToken, ChildRequestReceipt, PaymentAuthorization, ToolCallRequest};
 
 use super::{
     current_unix_timestamp, merge_metadata_objects, scope_pre_invocation_guard_evidence,
@@ -34,6 +34,11 @@ pub(crate) struct PostAdmissionDropGuard<'a> {
     budget_mutation: &'a PreExecutionBudgetMutation,
     payment_authorization: Option<&'a PaymentAuthorization>,
     receipt_context: PostAdmissionReceiptContext,
+    /// Signed child-request receipts buffered by the nested-flow bridge during
+    /// dispatch. Owned by the guard (rather than the evaluation stack frame) so
+    /// a post-dispatch drop can still flush them onto the append-only log,
+    /// preserving receipt-completeness for nested child operations (RFC-0002).
+    child_receipts: Vec<ChildRequestReceipt>,
     armed: bool,
     dispatch_started: bool,
 }
@@ -56,9 +61,25 @@ impl<'a> PostAdmissionDropGuard<'a> {
             budget_mutation,
             payment_authorization,
             receipt_context,
+            child_receipts: Vec::new(),
             armed: true,
             dispatch_started: false,
         }
+    }
+
+    /// Borrow the buffered child-receipt sink so the nested-flow bridge can push
+    /// signed child receipts into it while dispatch is in flight. The guard owns
+    /// the buffer so a post-dispatch drop can still flush it (see
+    /// `flush_buffered_child_receipts_from_drop`).
+    pub(crate) fn child_receipts_mut(&mut self) -> &mut Vec<ChildRequestReceipt> {
+        &mut self.child_receipts
+    }
+
+    /// Take the buffered child receipts for the normal (non-drop) record path.
+    /// The guard is left holding an empty buffer, so a subsequent disarmed drop
+    /// flushes nothing and the receipts are never double-recorded.
+    pub(crate) fn take_child_receipts(&mut self) -> Vec<ChildRequestReceipt> {
+        std::mem::take(&mut self.child_receipts)
     }
 
     /// Mark that the tool-server dispatch await has been entered. After this
@@ -207,6 +228,29 @@ impl<'a> PostAdmissionDropGuard<'a> {
         }
     }
 
+    /// Flush the child receipts the nested-flow bridge buffered during dispatch
+    /// onto the append-only log. The receipts are ALREADY SIGNED, so this
+    /// persists them through the same synchronous record path the normal exit
+    /// uses (`record_child_receipts`). Called only from the post-dispatch drop
+    /// branch (a child operation can only have run once dispatch started); a
+    /// pre-dispatch drop leaves the buffer empty. Best-effort from Drop: a
+    /// failure logs an `audit_fault` and never panics, and the buffer is drained
+    /// unconditionally so the guard cannot re-record on a later drop.
+    fn flush_buffered_child_receipts_from_drop(&mut self) {
+        let receipts = std::mem::take(&mut self.child_receipts);
+        if receipts.is_empty() {
+            return;
+        }
+        if let Err(error) = self.kernel.record_child_receipts(receipts) {
+            warn!(
+                request_id = %self.request.request_id,
+                reason = %redacted!(&error),
+                audit_fault = "post_admission_drop_child_receipts_unrecorded",
+                "failed to flush buffered nested child receipts on post-admission drop"
+            );
+        }
+    }
+
     /// Record a signed cancellation receipt documenting a pre-dispatch cleanup
     /// fault. Best-effort from Drop: if even the receipt cannot be recorded,
     /// log with the `audit_fault` field. The failing steps and the reserved
@@ -267,6 +311,14 @@ impl Drop for PostAdmissionDropGuard<'_> {
             self.handle_pre_dispatch_drop();
             return;
         }
+
+        // Flush the buffered nested child receipts FIRST. The child operations
+        // completed and were signed before the parent evaluation was cancelled,
+        // so on the append-only log they precede the parent cancellation
+        // receipt recorded below. Without this flush the already-signed child
+        // receipts would be discarded with the dropped future, leaving the
+        // completed child requests off the log (RFC-0002 receipt-completeness).
+        self.flush_buffered_child_receipts_from_drop();
 
         // Charge-gated section: reverse the pre-execution monetary hold, if
         // any, folding the reversal into the post-dispatch receipt metadata.

@@ -433,7 +433,6 @@ impl ChioKernel {
         }
 
         let tool_started_at = Instant::now();
-        let mut child_receipts = Vec::new();
         // RFC-0002: the tool-server lookup is hoisted above the drop-guard
         // construction so its failure can never early-return through `?`
         // while the guard is armed. ToolNotRegistered precedes any tool
@@ -485,10 +484,15 @@ impl ChioKernel {
                 pre_invocation_guard_evidence: pre_invocation_guard_evidence.clone(),
             },
         );
+        // Mark dispatch started before lending the child-receipt buffer to the
+        // bridge: the bridge borrows the guard for the whole dispatch block, so
+        // the `&mut self` call must happen first. There is no await between here
+        // and the invoke below, so the future cannot be dropped in this window.
+        post_admission_drop_guard.mark_dispatch_started();
         let tool_output_result = {
             let mut bridge = SessionNestedFlowBridge {
                 sessions: &self.sessions,
-                child_receipts: &mut child_receipts,
+                child_receipts: post_admission_drop_guard.child_receipts_mut(),
                 parent_context,
                 allow_sampling: self.config.allow_sampling,
                 allow_sampling_tool_use: self.config.allow_sampling_tool_use,
@@ -497,7 +501,6 @@ impl ChioKernel {
                 kernel_keypair: &self.config.keypair,
                 client,
             };
-            post_admission_drop_guard.mark_dispatch_started();
 
             match server
                 .invoke_stream(
@@ -520,6 +523,10 @@ impl ChioKernel {
             }
         };
         post_admission_drop_guard.disarm();
+        // Take the buffered child receipts out of the guard before dropping it.
+        // The guard is now disarmed AND holds an empty buffer, so its Drop
+        // records nothing and the receipts cannot be double-recorded.
+        let child_receipts = post_admission_drop_guard.take_child_receipts();
         drop(post_admission_drop_guard);
         self.record_child_receipts(child_receipts)?;
         let tool_output = match tool_output_result {
