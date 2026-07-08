@@ -1142,7 +1142,14 @@ impl ChioKernel {
                     &reason,
                     timestamp,
                     Some(charge.grant_index),
-                    merged_extra_metadata,
+                    // The tool ran (a side effect may have committed) but the
+                    // stream ended incomplete, so any runtime-admission lease
+                    // consumed at admission is retained, not released. Mark it
+                    // so the burned lease is recoverable from the receipt,
+                    // matching the RequestIncomplete error arm.
+                    self.mark_runtime_admission_reservations_retained_fail_closed(
+                        merged_extra_metadata,
+                    ),
                 ),
         }
     }

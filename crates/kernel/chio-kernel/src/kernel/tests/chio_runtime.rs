@@ -60,6 +60,18 @@ struct IncompleteAfterSideEffectServer {
     side_effects: std::sync::Arc<AtomicU64>,
 }
 
+// A registered tool server whose dispatch succeeds but returns a
+// successful-yet-incomplete stream (e.g. stream-limit truncation). Unlike
+// `IncompleteAfterSideEffectServer` (which returns `Err(RequestIncomplete)`
+// and lands in the RequestIncomplete error arm), this drives the
+// `Ok(ToolServerStreamResult::Incomplete)` finalize path, where the
+// runtime-admission lease is still consumed after the side effect.
+struct IncompleteStreamAfterSideEffectServer {
+    id: String,
+    tools: Vec<String>,
+    side_effects: std::sync::Arc<AtomicU64>,
+}
+
 // A registered tool server (passes the pre-dispatch
 // `ensure_registered_tool_target` check, so the runtime admission hook
 // still fires and reserves) whose dispatch call itself fails with
@@ -478,6 +490,58 @@ impl ToolServerConnection for IncompleteAfterSideEffectServer {
     ) -> Result<serde_json::Value, KernelError> {
         Err(KernelError::Internal(
             "unexpected invoke after incomplete request".to_string(),
+        ))
+    }
+}
+
+impl IncompleteStreamAfterSideEffectServer {
+    fn new(id: &str, tools: Vec<&str>, side_effects: std::sync::Arc<AtomicU64>) -> Self {
+        Self {
+            id: id.to_string(),
+            tools: tools.into_iter().map(String::from).collect(),
+            side_effects,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for IncompleteStreamAfterSideEffectServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        self.tools.clone()
+    }
+
+    async fn invoke_stream(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<Option<ToolServerStreamResult>, KernelError> {
+        // The destructive side effect committed, then the stream was
+        // truncated. Dispatch returns Ok(Incomplete), so finalization (not
+        // the RequestIncomplete error arm) builds the incomplete receipt.
+        self.side_effects.fetch_add(1, Ordering::SeqCst);
+        Ok(Some(ToolServerStreamResult::Incomplete {
+            stream: ToolCallStream {
+                chunks: vec![ToolCallChunk {
+                    data: serde_json::json!({"partial": "vendor-ledger-7"}),
+                }],
+            },
+            reason: "stream truncated after possible dispatch side effect".to_string(),
+        }))
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        Err(KernelError::Internal(
+            "unexpected non-stream invoke on incomplete-stream server".to_string(),
         ))
     }
 }
@@ -2348,6 +2412,81 @@ fn request_incomplete_marks_reservations_retained(
     assert_eq!(
         metadata["chio_runtime"]["retained_destructive_lease_id"],
         "lease-incomplete-marked"
+    );
+    Ok(())
+}
+
+#[test]
+fn incomplete_stream_output_marks_reservations_retained(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Dispatch succeeds but returns Ok(ToolServerStreamResult::Incomplete)
+    // (e.g. stream-limit truncation). This is finalized via
+    // finalize_budgeted_tool_output_with_cost_and_metadata / the shared
+    // finalize path, NOT the RequestIncomplete error arm. The
+    // runtime-admission lease is still consumed after the side effect, so
+    // the incomplete receipt must carry the retained marker so the burned
+    // lease is auditable and recoverable from the signed receipt alone.
+    let mut kernel = make_kernel(make_config());
+    let side_effects = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(IncompleteStreamAfterSideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&side_effects),
+    )));
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chio-runtime-incomplete-stream-marked",
+            admission_id: "adm-incomplete-stream-marked",
+            lease_id: "lease-incomplete-stream-marked",
+            continuation_id: Some("continuation-incomplete-stream-marked"),
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chio-runtime-incomplete-stream-marked",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+    assert_eq!(side_effects.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        0,
+        "an incomplete stream after a side effect must retain reservations"
+    );
+    let metadata = response
+        .receipt
+        .metadata
+        .ok_or_else(|| std::io::Error::other("incomplete-stream receipt metadata missing"))?;
+    assert_eq!(
+        metadata["chio_runtime"]["reservations_retained_fail_closed"],
+        true
+    );
+    assert_eq!(
+        metadata["chio_runtime"]["retained_destructive_lease_id"],
+        "lease-incomplete-stream-marked"
+    );
+    assert_eq!(
+        metadata["chio_runtime"]["retained_treaty_continuation_id"],
+        "continuation-incomplete-stream-marked"
     );
     Ok(())
 }
