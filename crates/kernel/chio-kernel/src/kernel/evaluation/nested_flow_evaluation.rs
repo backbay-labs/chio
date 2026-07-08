@@ -434,6 +434,45 @@ impl ChioKernel {
 
         let tool_started_at = Instant::now();
         let mut child_receipts = Vec::new();
+        // RFC-0002: the tool-server lookup is hoisted above the drop-guard
+        // construction so its failure can never early-return through `?`
+        // while the guard is armed. ToolNotRegistered precedes any tool
+        // side effect (dispatch_error_precedes_tool_side_effect), so this
+        // arm releases runtime-admission reservations and records a deny
+        // receipt, matching the async-core generic-error arm's disposition.
+        let Some(server) = self.tool_servers.get(&request.server_id) else {
+            let error = KernelError::ToolNotRegistered(format!(
+                "server \"{}\" / tool \"{}\"",
+                request.server_id, request.tool_name
+            ));
+            let unwind = self.unwind_aborted_monetary_invocation(
+                request,
+                cap,
+                budget_mutation.charge_result(),
+                payment_authorization.as_ref(),
+            )?;
+            self.release_runtime_admission_reservations(runtime_admission_metadata.as_ref())?;
+            let msg = error.to_string();
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool server error");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    Some(matched_grant_index),
+                    match (budget_mutation.charge_result(), unwind.as_ref()) {
+                        (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
+                            runtime_admission_metadata.clone(),
+                            self.budget_execution_receipt_metadata(
+                                charge,
+                                Some(("reversed", reverse)),
+                            ),
+                        ),
+                        _ => runtime_admission_metadata.clone(),
+                    },
+                )
+            });
+        };
         let mut post_admission_drop_guard = PostAdmissionDropGuard::new(
             self,
             request,
@@ -447,12 +486,6 @@ impl ChioKernel {
             },
         );
         let tool_output_result = {
-            let server = self.tool_servers.get(&request.server_id).ok_or_else(|| {
-                KernelError::ToolNotRegistered(format!(
-                    "server \"{}\" / tool \"{}\"",
-                    request.server_id, request.tool_name
-                ))
-            })?;
             let mut bridge = SessionNestedFlowBridge {
                 sessions: &self.sessions,
                 child_receipts: &mut child_receipts,
@@ -464,6 +497,7 @@ impl ChioKernel {
                 kernel_keypair: &self.config.keypair,
                 client,
             };
+            post_admission_drop_guard.mark_dispatch_started();
 
             match server
                 .invoke_stream(

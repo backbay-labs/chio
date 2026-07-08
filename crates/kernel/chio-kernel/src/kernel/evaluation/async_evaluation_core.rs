@@ -522,6 +522,7 @@ impl ChioKernel {
                 pre_invocation_guard_evidence: pre_invocation_guard_evidence.clone(),
             },
         );
+        post_admission_drop_guard.mark_dispatch_started();
         let dispatch_result = self
             .dispatch_tool_call_with_cost_after_nonce_check(request, has_monetary)
             .await;

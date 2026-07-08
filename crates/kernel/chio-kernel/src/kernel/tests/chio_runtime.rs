@@ -1412,7 +1412,7 @@ fn chio_post_admission_drop_guard_retains_non_monetary_runtime_reservations(
         }
     });
 
-    drop(PostAdmissionDropGuard::new(
+    let mut guard = PostAdmissionDropGuard::new(
         &kernel,
         &request,
         &cap,
@@ -1423,14 +1423,30 @@ fn chio_post_admission_drop_guard_retains_non_monetary_runtime_reservations(
             extra_metadata: Some(metadata),
             pre_invocation_guard_evidence: Vec::new(),
         },
-    ));
+    );
+    guard.mark_dispatch_started();
+    drop(guard);
 
     assert_eq!(admission_calls.load(Ordering::SeqCst), 0);
     assert_eq!(
         releases.load(Ordering::SeqCst),
         0,
-        "dropping a non-monetary post-admission future cannot prove absence of side effects"
+        "a post-dispatch drop cannot prove absence of side effects, so reservations stay consumed"
     );
+    let receipt_log = kernel.receipt_log();
+    assert_eq!(
+        receipt_log.len(),
+        1,
+        "a post-dispatch drop must record exactly one cancellation receipt"
+    );
+    let receipt = receipt_log
+        .get(0)
+        .ok_or_else(|| std::io::Error::other("drop receipt missing"))?;
+    assert!(receipt.is_cancelled());
+    let Some(Decision::Cancelled { reason }) = &receipt.decision else {
+        return Err("expected a cancelled decision on the drop receipt".into());
+    };
+    assert_eq!(reason, "tool evaluation future dropped after admission");
     Ok(())
 }
 
@@ -1671,5 +1687,374 @@ fn chio_runtime_live_parent_and_vendor_calls_expose_package_valid_receipts(
     assert_eq!(receipt_log.receipts()[0].id, parent_response.receipt.id);
     assert_eq!(receipt_log.receipts()[1].id, vendor_response.receipt.id);
     assert_ne!(parent_response.receipt.id, vendor_response.receipt.id);
+    Ok(())
+}
+
+// --- RFC-0002 drop-guard unwind tests ---
+
+fn make_fabricated_drop_charge() -> BudgetChargeResult {
+    BudgetChargeResult {
+        grant_index: 0,
+        cost_charged: 5,
+        currency: "USD".to_string(),
+        budget_total: 100,
+        new_committed_cost_units: 5,
+        budget_hold_id: "hold-drop-guard-tests".to_string(),
+        authorize_metadata: BudgetCommitMetadata {
+            authority: None,
+            guarantee_level: crate::budget_store::BudgetGuaranteeLevel::SingleNodeAtomic,
+            budget_profile: crate::budget_store::BudgetAuthorityProfile::AuthoritativeHoldEvent,
+            metering_profile:
+                crate::budget_store::BudgetMeteringProfile::MaxCostPreauthorizeThenReconcileActual,
+            budget_commit_index: None,
+            event_id: None,
+        },
+    }
+}
+
+#[test]
+fn drop_pre_dispatch_releases_reservations_no_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chio-runtime-pre-dispatch-dropped",
+            admission_id: "adm-pre-dispatch-dropped",
+            lease_id: "lease-pre-dispatch-dropped",
+            continuation_id: None,
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chio-runtime-pre-dispatch-dropped",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+    let metadata = serde_json::json!({
+        "chio_runtime": {
+            "admission_id": "adm-pre-dispatch-dropped",
+            "accepted": true,
+            "reserved_destructive_lease_id": "lease-pre-dispatch-dropped",
+            "failure_code": null
+        }
+    });
+
+    // No mark_dispatch_started(): this models a future dropped (or a panic
+    // unwinding) after admission but before the tool-server dispatch await
+    // was entered. No side effect is possible, so the unwind is total.
+    drop(PostAdmissionDropGuard::new(
+        &kernel,
+        &request,
+        &cap,
+        Some(0),
+        None,
+        None,
+        PostAdmissionReceiptContext {
+            extra_metadata: Some(metadata),
+            pre_invocation_guard_evidence: Vec::new(),
+        },
+    ));
+
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        1,
+        "a pre-dispatch drop must safe-release runtime-admission reservations"
+    );
+    assert_eq!(
+        kernel.receipt_log().len(),
+        0,
+        "a pre-dispatch drop is the receipt-free fully-unwound exit"
+    );
+    Ok(())
+}
+
+#[test]
+fn drop_pre_dispatch_monetary_unwinds_without_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Flag-drop delta shipped unconditionally (program decision 2026-07-07):
+    // a MONETARY future dropped before dispatch used to record a
+    // drop-cancellation receipt; it now takes the pre-dispatch branch
+    // instead - hold reversed, reservations released, no receipt.
+    let mut kernel = make_kernel(make_config());
+    let payment = TrackingPaymentAdapter::new();
+    kernel.set_payment_adapter(Box::new(payment.clone()));
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chio-runtime-monetary-pre-dispatch-drop",
+            admission_id: "adm-monetary-pre-dispatch-drop",
+            lease_id: "lease-monetary-pre-dispatch-drop",
+            continuation_id: None,
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chio-runtime-monetary-pre-dispatch-drop",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+    let metadata = serde_json::json!({
+        "chio_runtime": {
+            "admission_id": "adm-monetary-pre-dispatch-drop",
+            "accepted": true,
+            "reserved_destructive_lease_id": "lease-monetary-pre-dispatch-drop",
+            "failure_code": null
+        }
+    });
+    let charge = make_fabricated_drop_charge();
+    let authorization = PaymentAuthorization {
+        authorization_id: "auth-monetary-pre-dispatch-drop".to_string(),
+        settled: false,
+        metadata: serde_json::json!({ "adapter": "tracking" }),
+    };
+
+    drop(PostAdmissionDropGuard::new(
+        &kernel,
+        &request,
+        &cap,
+        Some(0),
+        Some(&charge),
+        Some(&authorization),
+        PostAdmissionReceiptContext {
+            extra_metadata: Some(metadata),
+            pre_invocation_guard_evidence: Vec::new(),
+        },
+    ));
+
+    assert_eq!(
+        payment.released.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the unsettled monetary authorization must be released on a pre-dispatch drop"
+    );
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        1,
+        "runtime reservations must be released on a pre-dispatch drop"
+    );
+    assert_eq!(
+        kernel.receipt_log().len(),
+        0,
+        "a monetary pre-dispatch drop is receipt-free: hold reversed, reservations released"
+    );
+    Ok(())
+}
+
+struct ParkingServer {
+    id: String,
+    tools: Vec<String>,
+    started: std::sync::Arc<tokio::sync::Notify>,
+    invocations: std::sync::Arc<AtomicU64>,
+}
+
+impl ParkingServer {
+    fn new(
+        id: &str,
+        tools: Vec<&str>,
+        started: std::sync::Arc<tokio::sync::Notify>,
+        invocations: std::sync::Arc<AtomicU64>,
+    ) -> Self {
+        Self {
+            id: id.to_string(),
+            tools: tools.into_iter().map(String::from).collect(),
+            started,
+            invocations,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for ParkingServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        self.tools.clone()
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        self.invocations.fetch_add(1, Ordering::SeqCst);
+        self.started.notify_waiters();
+        std::future::pending::<Result<serde_json::Value, KernelError>>().await
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn drop_non_monetary_post_dispatch_records_cancellation_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let started = std::sync::Arc::new(tokio::sync::Notify::new());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(ParkingServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&started),
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chio-runtime-non-monetary-dropped",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let kernel = std::sync::Arc::new(kernel);
+    let eval = {
+        let kernel = std::sync::Arc::clone(&kernel);
+        tokio::spawn(async move { kernel.evaluate_tool_call(&request).await })
+    };
+
+    tokio::time::timeout(std::time::Duration::from_secs(5), started.notified())
+        .await
+        .map_err(|_| std::io::Error::other("parking tool server was never invoked"))?;
+    eval.abort();
+    assert!(eval.await.is_err(), "aborted evaluation must not complete");
+
+    let receipt_log = kernel.receipt_log();
+    assert_eq!(
+        receipt_log.len(),
+        1,
+        "dropped non-monetary post-admission future must record exactly one receipt"
+    );
+    let receipt = receipt_log
+        .get(0)
+        .ok_or_else(|| std::io::Error::other("cancellation receipt missing"))?;
+    assert!(receipt.is_cancelled());
+    let Some(Decision::Cancelled { reason }) = &receipt.decision else {
+        return Err("expected a cancelled decision on the drop receipt".into());
+    };
+    assert_eq!(reason, "tool evaluation future dropped after admission");
+    assert!(
+        receipt.verify_signature()?,
+        "drop receipt signature must verify"
+    );
+    Ok(())
+}
+
+#[test]
+fn nested_flow_drop_post_dispatch_records_cancellation_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let started = std::sync::Arc::new(tokio::sync::Notify::new());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(ParkingServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&started),
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        "req-chio-nested-dropped",
+        &agent_kp.public_key().to_hex(),
+    );
+    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
+    let request = make_request_with_arguments(
+        "req-chio-nested-dropped",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(async {
+        let mut client = NoopNestedFlowClient;
+        let eval = kernel.evaluate_tool_call_with_nested_flow_client_async(
+            &context,
+            &request,
+            &mut client,
+            None,
+        );
+        let raced =
+            tokio::time::timeout(std::time::Duration::from_millis(200), eval).await;
+        assert!(
+            raced.is_err(),
+            "parked nested dispatch must be dropped by the timeout"
+        );
+    });
+
+    assert_eq!(
+        invocations.load(Ordering::SeqCst),
+        1,
+        "nested dispatch must have been entered before the drop"
+    );
+    let receipt_log = kernel.receipt_log();
+    assert_eq!(
+        receipt_log.len(),
+        1,
+        "nested-flow drop must record exactly one receipt"
+    );
+    let receipt = receipt_log
+        .get(0)
+        .ok_or_else(|| std::io::Error::other("nested drop receipt missing"))?;
+    assert!(receipt.is_cancelled());
+    let Some(Decision::Cancelled { reason }) = &receipt.decision else {
+        return Err("expected a cancelled decision on the nested drop receipt".into());
+    };
+    assert_eq!(reason, "tool evaluation future dropped after admission");
     Ok(())
 }
