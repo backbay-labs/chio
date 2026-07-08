@@ -1,0 +1,77 @@
+{
+  "schema": "chio.web3-contract-package.v1",
+  "package_id": "chio.official-web3-contracts",
+  "version": "0.1.0",
+  "chio_contract_version": "2.0",
+  "contracts": [
+    {
+      "contract_id": "chio.root-registry",
+      "kind": "root_registry",
+      "interface_name": "IChioRootRegistry",
+      "abi_reference": "contracts/artifacts/interfaces/IChioRootRegistry.json",
+      "implementation_reference": "contracts/src/ChioRootRegistry.sol",
+      "creation_bytecode_hash": "0xb8e770c0cc4e2e7229458a1d51d7adbe2f4438d60ada7227bf2e0ea1db23e4c2",
+      "deployed_runtime_codehash": "0xe470364708c8a51536699d2cfb7856096c6e5510e72804625a613bdb63d3114c",
+      "immutable": true
+    },
+    {
+      "contract_id": "chio.escrow",
+      "kind": "escrow",
+      "interface_name": "IChioEscrow",
+      "abi_reference": "contracts/artifacts/interfaces/IChioEscrow.json",
+      "implementation_reference": "contracts/src/ChioEscrow.sol",
+      "creation_bytecode_hash": "0x0f42712a274c082faa9da102ee4555b822a8b8bcb4162719047050b431f414ad",
+      "deployed_runtime_codehash": "0x864fc83713b3c8bbcb0ed06ec409c08513375cb5474f4b0e702cc0dfd6eb7b8a",
+      "immutable": true
+    },
+    {
+      "contract_id": "chio.bond-vault",
+      "kind": "bond_vault",
+      "interface_name": "IChioBondVault",
+      "abi_reference": "contracts/artifacts/interfaces/IChioBondVault.json",
+      "implementation_reference": "contracts/src/ChioBondVault.sol",
+      "creation_bytecode_hash": "0xf1c8df6f97df7f94c07b26dc899dec495ca7263f560c3ddf6b8e14ff9476567f",
+      "deployed_runtime_codehash": "0x7b5092d138d20ed0bdb03faab42424ed0fb64fd98b33e10c721b2752724e7aff",
+      "immutable": true
+    },
+    {
+      "contract_id": "chio.identity-registry",
+      "kind": "identity_registry",
+      "interface_name": "IChioIdentityRegistry",
+      "abi_reference": "contracts/artifacts/interfaces/IChioIdentityRegistry.json",
+      "implementation_reference": "contracts/src/ChioIdentityRegistry.sol",
+      "creation_bytecode_hash": "0xa5f3c7c25e6a6198169af3462d50268a494f013a9d182ab0bc64909329d8eabd",
+      "deployed_runtime_codehash": "0x9906b1307e5908dd97f3025fb788d790abab45d8580bcf2f30b342510898e15b",
+      "immutable": false
+    },
+    {
+      "contract_id": "chio.price-resolver",
+      "kind": "price_resolver",
+      "interface_name": "IChioPriceResolver",
+      "abi_reference": "contracts/artifacts/interfaces/IChioPriceResolver.json",
+      "implementation_reference": "contracts/src/ChioPriceResolver.sol",
+      "creation_bytecode_hash": "0x30cb399df33d27ba027e424f94a58ba23bdd7ae0883a8c828e7c1e508a82817e",
+      "deployed_runtime_codehash": "0x47da56923b8635d468efc71558e0c383d8f427484fd815804d0929ac89718e66",
+      "immutable": true
+    }
+  ],
+  "bindings": [
+    {
+      "language": "rust",
+      "crate_path": "crates/economy/chio-web3-bindings/src/lib.rs",
+      "module_name": "chio_web3_bindings",
+      "contract_ids": [
+        "chio.root-registry",
+        "chio.escrow",
+        "chio.bond-vault",
+        "chio.identity-registry",
+        "chio.price-resolver"
+      ]
+    }
+  ],
+  "deferred_capabilities": [
+    "cross-chain-ccip",
+    "permissionless-operator-discovery",
+    "unattended-mainnet-rollout"
+  ]
+}

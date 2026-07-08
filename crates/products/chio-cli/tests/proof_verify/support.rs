@@ -74,15 +74,15 @@ const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ORACLE_KEYS: &str =
     "d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CONTRACT_PACKAGE_ID: &str = "chio.official-web3-contracts";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_REVIEWED_MANIFEST_HASH: &str =
-    "0x888e9b77c30067cb3f14497cc31fc2d63e53a15e4c667d3788a9f8d61e08ac2c";
+    "0x1bac99b703f5dfcd2992e072ad8ec53663f52a237f18aa4a670c082d371082bf";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH: &str =
-    "0x1381d51fcd2e2f10a8b4abd77d2f2738ee983970e5dd994549a8fa8ce39dbcbf";
+    "0xe470364708c8a51536699d2cfb7856096c6e5510e72804625a613bdb63d3114c";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH: &str =
     "0x9906b1307e5908dd97f3025fb788d790abab45d8580bcf2f30b342510898e15b";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ESCROW_RUNTIME_CODEHASH: &str =
-    "0x16a4d06cd751fb3d186c1b6f6b2d37d171c9f9fbd5a2a5ba0da3d83fa105d406";
+    "0x864fc83713b3c8bbcb0ed06ec409c08513375cb5474f4b0e702cc0dfd6eb7b8a";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH: &str =
-    "0xcf0e1f435ac2ea7aebe2b83e15fc14a683c37b63acd86445bdcd03bf917b5104";
+    "0x7b5092d138d20ed0bdb03faab42424ed0fb64fd98b33e10c721b2752724e7aff";
 const PUBLIC_SETTLEMENT_FIXTURE_INDEPENDENT_CHAIN_HEAD_JSON: &str =
     "{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"latest_block_number\":12345701}";
 const DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS: &str =
@@ -1606,6 +1606,9 @@ pub(crate) fn public_settlement_chain_snapshot_json() -> serde_json::Value {
         "latest_block_number": 12_345_701,
         "max_block_lag": 128,
         "root_registry_address": "0x1000000000000000000000000000000000000001",
+        "root_registry_runtime_codehash": PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH,
+        "identity_registry_address": "0x1000000000000000000000000000000000000004",
+        "identity_registry_runtime_codehash": PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH,
         "registry_root": "0xfba90da7db4859cf33cd97a64b2ce07f244c8fcafe51c19ddd67b03c8490c3eb",
         "block": {
             "block_number": 12_345_678,
@@ -1618,7 +1621,10 @@ pub(crate) fn public_settlement_chain_snapshot_json() -> serde_json::Value {
         "escrow": {
             "escrow_id": "escrow-web3-1",
             "escrow_contract": "0x1000000000000000000000000000000000000002",
+            "escrow_runtime_codehash": PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ESCROW_RUNTIME_CODEHASH,
+            "settlement_token_address": "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8",
             "beneficiary_address": "0x2222222222222222222222222222222222222222",
+            "refunded": false,
             "locked_amount": {
                 "units": 150,
                 "currency": "USD"
@@ -1630,6 +1636,7 @@ pub(crate) fn public_settlement_chain_snapshot_json() -> serde_json::Value {
         },
         "bond": {
             "bond_vault_contract": "0x1000000000000000000000000000000000000003",
+            "bond_vault_runtime_codehash": PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH,
             "posted_amount": {
                 "units": 150,
                 "currency": "USD"

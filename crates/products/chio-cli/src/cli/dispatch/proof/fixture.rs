@@ -2541,7 +2541,7 @@ fn public_settlement_runtime_hashes(
     expected_package_id: &str,
     context_path: &Path,
 ) -> Result<PublicSettlementRuntimeHashes, CliError> {
-    let package_path = find_chio_web3_contract_package(bundle)?;
+    let package_path = ensure_chio_web3_contract_package_in_bundle(bundle)?;
     let package = read_json_value(&package_path)?;
     let package_id = required_json_string(&package, "package_id", &package_path)?;
     if package_id != expected_package_id {
@@ -2570,6 +2570,11 @@ fn find_chio_web3_contract_package(bundle: &Path) -> Result<std::path::PathBuf, 
     if let Ok(cwd) = std::env::current_dir() {
         candidates.push(cwd.join(CHIO_WEB3_CONTRACT_PACKAGE_PATH));
     }
+    candidates.push(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../")
+            .join(CHIO_WEB3_CONTRACT_PACKAGE_PATH),
+    );
     for ancestor in bundle.ancestors() {
         candidates.push(ancestor.join(CHIO_WEB3_CONTRACT_PACKAGE_PATH));
     }
@@ -2582,6 +2587,19 @@ fn find_chio_web3_contract_package(bundle: &Path) -> Result<std::path::PathBuf, 
         "could not locate {CHIO_WEB3_CONTRACT_PACKAGE_PATH} for public settlement fixture {}",
         bundle.display()
     )))
+}
+
+fn ensure_chio_web3_contract_package_in_bundle(bundle: &Path) -> Result<PathBuf, CliError> {
+    let source = find_chio_web3_contract_package(bundle)?;
+    let destination = bundle.join(CHIO_WEB3_CONTRACT_PACKAGE_PATH);
+    if source == destination {
+        return Ok(destination);
+    }
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::copy(&source, &destination)?;
+    Ok(destination)
 }
 
 fn contract_package_runtime_hash(
