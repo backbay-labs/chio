@@ -1531,12 +1531,13 @@ fn chio_post_admission_drop_guard_retains_non_monetary_runtime_reservations(
         }
     });
 
+    let mutation = PreExecutionBudgetMutation::None;
     let mut guard = PostAdmissionDropGuard::new(
         &kernel,
         &request,
         &cap,
         Some(0),
-        None,
+        &mutation,
         None,
         PostAdmissionReceiptContext {
             extra_metadata: Some(metadata),
@@ -1831,6 +1832,39 @@ fn make_fabricated_drop_charge() -> BudgetChargeResult {
     }
 }
 
+/// Authorize a real, open budget hold that exactly matches the fabricated drop
+/// charge (see `make_fabricated_drop_charge`). The drop-guard tests build a
+/// fabricated `BudgetChargeResult`; without a matching open hold in the store,
+/// the monetary reversal fails and (after RFC-0002 Finding C) records a fault
+/// receipt. Authorizing the hold first models the real admission so the
+/// pre-dispatch monetary unwind is a genuine, clean, receipt-free reversal.
+fn authorize_fabricated_drop_hold(kernel: &ChioKernel, capability_id: &str) {
+    kernel
+        .with_budget_store(|store| {
+            let decision =
+                store.authorize_budget_hold(crate::budget_store::BudgetAuthorizeHoldRequest {
+                    capability_id: capability_id.to_string(),
+                    grant_index: 0,
+                    max_invocations: None,
+                    requested_exposure_units: 5,
+                    max_cost_per_invocation: Some(100),
+                    max_total_cost_units: Some(1_000),
+                    hold_id: Some("hold-drop-guard-tests".to_string()),
+                    event_id: Some("hold-drop-guard-tests:authorize".to_string()),
+                    authority: None,
+                })?;
+            assert!(
+                matches!(
+                    decision,
+                    crate::budget_store::BudgetAuthorizeHoldDecision::Authorized(_)
+                ),
+                "fabricated drop hold must authorize"
+            );
+            Ok(())
+        })
+        .expect("authorize fabricated drop hold");
+}
+
 #[test]
 fn drop_pre_dispatch_releases_reservations_no_receipt(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -1877,12 +1911,13 @@ fn drop_pre_dispatch_releases_reservations_no_receipt(
     // No mark_dispatch_started(): this models a future dropped (or a panic
     // unwinding) after admission but before the tool-server dispatch await
     // was entered. No side effect is possible, so the unwind is total.
+    let mutation = PreExecutionBudgetMutation::None;
     drop(PostAdmissionDropGuard::new(
         &kernel,
         &request,
         &cap,
         Some(0),
-        None,
+        &mutation,
         None,
         PostAdmissionReceiptContext {
             extra_metadata: Some(metadata),
@@ -1951,7 +1986,11 @@ fn drop_pre_dispatch_monetary_unwinds_without_receipt(
             "failure_code": null
         }
     });
-    let charge = make_fabricated_drop_charge();
+    // Model the real admission behind the fabricated charge so the monetary
+    // reversal is a genuine, clean unwind (RFC-0002 Finding C would otherwise
+    // record a fault receipt for the un-reversible fabricated hold).
+    authorize_fabricated_drop_hold(&kernel, &cap.id);
+    let mutation = PreExecutionBudgetMutation::Charge(make_fabricated_drop_charge());
     let authorization = PaymentAuthorization {
         authorization_id: "auth-monetary-pre-dispatch-drop".to_string(),
         settled: false,
@@ -1963,7 +2002,7 @@ fn drop_pre_dispatch_monetary_unwinds_without_receipt(
         &request,
         &cap,
         Some(0),
-        Some(&charge),
+        &mutation,
         Some(&authorization),
         PostAdmissionReceiptContext {
             extra_metadata: Some(metadata),
@@ -1985,6 +2024,212 @@ fn drop_pre_dispatch_monetary_unwinds_without_receipt(
         kernel.receipt_log().len(),
         0,
         "a monetary pre-dispatch drop is receipt-free: hold reversed, reservations released"
+    );
+    Ok(())
+}
+
+#[test]
+fn drop_pre_dispatch_reverses_invocation_budget() -> Result<(), Box<dyn std::error::Error>> {
+    // RFC-0002 Finding A: a non-monetary grant with `max_invocations`
+    // increments an invocation counter at admission. A future dropped BEFORE
+    // dispatch must reverse that increment so a never-dispatched call does not
+    // permanently consume the slot.
+    let kernel = make_kernel(make_config());
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chio-runtime-pre-dispatch-invocation",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    // Model admission consuming the single invocation slot for grant 0.
+    let admitted =
+        kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
+    assert!(admitted, "admission must consume the single invocation slot");
+
+    let mutation = PreExecutionBudgetMutation::Invocation { grant_index: 0 };
+    drop(PostAdmissionDropGuard::new(
+        &kernel,
+        &request,
+        &cap,
+        Some(0),
+        &mutation,
+        None,
+        PostAdmissionReceiptContext {
+            extra_metadata: None,
+            pre_invocation_guard_evidence: Vec::new(),
+        },
+    ));
+
+    // The slot must be free again: a retry increment succeeds.
+    let retry =
+        kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
+    assert!(
+        retry,
+        "a pre-dispatch drop must reverse the invocation increment so the slot is reusable"
+    );
+    assert_eq!(
+        kernel.receipt_log().len(),
+        0,
+        "a clean invocation reversal on a pre-dispatch drop is receipt-free"
+    );
+    Ok(())
+}
+
+#[test]
+fn drop_pre_dispatch_releases_admitted_child_budget() -> Result<(), Box<dyn std::error::Error>> {
+    // RFC-0002 Finding B: a delegated capability admitted its share of the
+    // parent budget at admission. A future dropped BEFORE dispatch must
+    // release that share or the child's claim is permanently recorded.
+    let SiblingSumMonetaryFixture {
+        kernel,
+        child_a,
+        child_b,
+        path: _path,
+        ..
+    } = make_sibling_sum_monetary_fixture("chio-runtime-pre-dispatch-child-budget");
+
+    // Admit child_a's share. In the fixture (parent share 5000 bps, each child
+    // 4000 bps) child_a alone fits but child_a + child_b does not.
+    kernel
+        .admit_capability_budget(&child_a)
+        .map_err(std::io::Error::other)?;
+
+    let request = make_request_with_arguments(
+        "req-chio-runtime-pre-dispatch-child-budget",
+        &child_a,
+        "compute",
+        "cost-srv",
+        serde_json::json!({}),
+    );
+    let mutation = PreExecutionBudgetMutation::None;
+    drop(PostAdmissionDropGuard::new(
+        &kernel,
+        &request,
+        &child_a,
+        Some(0),
+        &mutation,
+        None,
+        PostAdmissionReceiptContext {
+            extra_metadata: None,
+            pre_invocation_guard_evidence: Vec::new(),
+        },
+    ));
+
+    // child_a's share must have been released: child_b can now admit within
+    // the parent budget.
+    let readmit = kernel.admit_capability_budget(&child_b);
+    assert!(
+        readmit.is_ok(),
+        "a pre-dispatch drop must release child_a's admitted share so child_b admits: {readmit:?}"
+    );
+    assert_eq!(
+        kernel.receipt_log().len(),
+        0,
+        "a clean child-budget release on a pre-dispatch drop is receipt-free"
+    );
+    Ok(())
+}
+
+#[test]
+fn drop_pre_dispatch_records_receipt_on_cleanup_fault() -> Result<(), Box<dyn std::error::Error>> {
+    // RFC-0002 Finding C: when a pre-dispatch cleanup step FAILS, the drop must
+    // record a signed receipt documenting the fault so a stuck
+    // hold/reservation lands on the append-only log rather than being silently
+    // burned.
+    let mut kernel = make_kernel(make_config());
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(FailingReleaseRuntimeAdmissionHook {
+        calls: std::sync::Arc::clone(&admission_calls),
+        releases: std::sync::Arc::clone(&releases),
+        expected_request_id: "req-chio-runtime-pre-dispatch-cleanup-fault",
+        admission_id: "adm-pre-dispatch-cleanup-fault",
+        lease_id: "lease-pre-dispatch-cleanup-fault",
+    }));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chio-runtime-pre-dispatch-cleanup-fault",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+    let metadata = serde_json::json!({
+        "chio_runtime": {
+            "admission_id": "adm-pre-dispatch-cleanup-fault",
+            "accepted": true,
+            "reserved_destructive_lease_id": "lease-pre-dispatch-cleanup-fault",
+            "failure_code": null
+        }
+    });
+
+    let mutation = PreExecutionBudgetMutation::None;
+    drop(PostAdmissionDropGuard::new(
+        &kernel,
+        &request,
+        &cap,
+        Some(0),
+        &mutation,
+        None,
+        PostAdmissionReceiptContext {
+            extra_metadata: Some(metadata),
+            pre_invocation_guard_evidence: Vec::new(),
+        },
+    ));
+
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        1,
+        "the failing runtime-admission release must be attempted"
+    );
+    let receipt_log = kernel.receipt_log();
+    assert_eq!(
+        receipt_log.len(),
+        1,
+        "a failed pre-dispatch cleanup must record exactly one signed fault receipt"
+    );
+    let receipt = receipt_log
+        .get(0)
+        .ok_or_else(|| std::io::Error::other("pre-dispatch cleanup fault receipt missing"))?;
+    assert!(receipt.is_cancelled());
+    let receipt_metadata = receipt
+        .metadata
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("fault receipt metadata missing"))?;
+    assert_eq!(
+        receipt_metadata["chio_runtime"]["pre_dispatch_cleanup_failed"],
+        true
+    );
+    // The reserved lease id must survive alongside the fault annotation so an
+    // operator can locate the possibly-stuck reservation.
+    assert_eq!(
+        receipt_metadata["chio_runtime"]["reserved_destructive_lease_id"],
+        "lease-pre-dispatch-cleanup-fault"
+    );
+    let faults = receipt_metadata["chio_runtime"]["pre_dispatch_cleanup_faults"]
+        .as_array()
+        .ok_or_else(|| std::io::Error::other("fault list missing"))?;
+    assert!(
+        faults
+            .iter()
+            .any(|fault| fault["step"] == "runtime_admission_release"),
+        "the fault list must name the failing runtime-admission release step: {faults:?}"
     );
     Ok(())
 }

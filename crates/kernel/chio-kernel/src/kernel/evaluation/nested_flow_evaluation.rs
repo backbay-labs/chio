@@ -478,7 +478,7 @@ impl ChioKernel {
             request,
             cap,
             Some(matched_grant_index),
-            budget_mutation.charge_result(),
+            &budget_mutation,
             payment_authorization.as_ref(),
             PostAdmissionReceiptContext {
                 extra_metadata: runtime_admission_metadata.clone(),

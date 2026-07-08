@@ -87,14 +87,23 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
                 }
             })
         });
-        let charge = monetary.then(make_fabricated_drop_charge);
+        if monetary {
+            // A monetary drop reverses a real hold; authorize one so the
+            // pre-dispatch unwind is clean (a failed reversal would, after
+            // RFC-0002 Finding C, record a fault receipt).
+            authorize_fabricated_drop_hold(&kernel, &cap.id);
+        }
+        let budget_mutation = match monetary.then(make_fabricated_drop_charge) {
+            Some(charge) => PreExecutionBudgetMutation::Charge(charge),
+            None => PreExecutionBudgetMutation::None,
+        };
 
         let mut guard = PostAdmissionDropGuard::new(
             &kernel,
             &request,
             &cap,
             Some(0),
-            charge.as_ref(),
+            &budget_mutation,
             None,
             PostAdmissionReceiptContext {
                 extra_metadata,
