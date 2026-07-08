@@ -14,7 +14,6 @@
   },
   "devDependencies": {
     "@bytecodealliance/jco": "^1.17.6",
-    "@bytecodealliance/componentize-js": "^0.20.0",
     "esbuild": "^0.28.1",
     "typescript": "~5.7.0"
   }
