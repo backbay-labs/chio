@@ -32,19 +32,26 @@ impl RuntimeAdmissionHook for CountingReleaseRuntimeAdmissionHook {
     }
 }
 
-proptest! {
-    #![proptest_config(ProptestConfig {
-        cases: 32,
-        failure_persistence: None,
-        .. ProptestConfig::default()
-    })]
+// Exhaustively enumerated rather than randomly sampled: with only 8 cells
+// in the {monetary} x {dispatch phase} x {lease} table, a per-run random
+// draw of all three bools leaves roughly an 11% chance of any single cell
+// going undrawn across 32 cases. Walking all 8 combinations deterministically
+// guarantees full coverage on every run while keeping proptest's
+// prop_assert! machinery (TestCaseError) for the per-case assertions.
+#[test]
+fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
+    let combinations: [(bool, bool, bool); 8] = [
+        (false, false, false),
+        (false, false, true),
+        (false, true, false),
+        (false, true, true),
+        (true, false, false),
+        (true, false, true),
+        (true, true, false),
+        (true, true, true),
+    ];
 
-    #[test]
-    fn drop_guard_disposition_table(
-        monetary in any::<bool>(),
-        dispatch_started in any::<bool>(),
-        lease_present in any::<bool>(),
-    ) {
+    for (monetary, dispatch_started, lease_present) in combinations {
         let mut kernel = make_kernel(make_config());
         let releases = std::sync::Arc::new(AtomicU64::new(0));
         kernel.set_runtime_admission_hook(std::sync::Arc::new(
@@ -145,4 +152,6 @@ proptest! {
             );
         }
     }
+
+    Ok(())
 }

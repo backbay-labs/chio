@@ -1965,7 +1965,10 @@ impl ToolServerConnection for ParkingServer {
         _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<serde_json::Value, KernelError> {
         self.invocations.fetch_add(1, Ordering::SeqCst);
-        self.started.notify_waiters();
+        // notify_one() stores a permit if the waiter has not yet called
+        // .notified().await, avoiding the lost-wakeup race that
+        // notify_waiters() has when the waiter has not yet polled.
+        self.started.notify_one();
         std::future::pending::<Result<serde_json::Value, KernelError>>().await
     }
 }
@@ -2203,6 +2206,13 @@ async fn drop_post_dispatch_retains_and_marks_reservations(
     assert_eq!(
         metadata["chio_runtime"]["reserved_destructive_lease_id"],
         "lease-drop-retained"
+    );
+    assert!(
+        metadata["chio_runtime"]
+            .get("retained_swarm_continuation_id")
+            .is_none(),
+        "no swarm continuation was reserved by this fixture, so the retained \
+         marker for it must be absent"
     );
     Ok(())
 }
