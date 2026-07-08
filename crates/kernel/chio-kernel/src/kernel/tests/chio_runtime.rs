@@ -60,6 +60,19 @@ struct IncompleteAfterSideEffectServer {
     side_effects: std::sync::Arc<AtomicU64>,
 }
 
+// A registered tool server (passes the pre-dispatch
+// `ensure_registered_tool_target` check, so the runtime admission hook
+// still fires and reserves) whose dispatch call itself fails with
+// `KernelError::ToolNotRegistered`. This is the only way to exercise the
+// generic-error arm's `dispatch_error_precedes_tool_side_effect(&e) ==
+// true` branch: after Task 3's pre-dispatch hoist, an actually-unregistered
+// server_id is denied before the admission hook ever runs, so it can never
+// reach that arm.
+struct ToolNotRegisteredDispatchServer {
+    id: String,
+    tools: Vec<String>,
+}
+
 struct NoopNestedFlowClient;
 
 impl RuntimeAdmissionHook for DenyingRuntimeAdmissionHook {
@@ -465,6 +478,48 @@ impl ToolServerConnection for IncompleteAfterSideEffectServer {
     ) -> Result<serde_json::Value, KernelError> {
         Err(KernelError::Internal(
             "unexpected invoke after incomplete request".to_string(),
+        ))
+    }
+}
+
+impl ToolNotRegisteredDispatchServer {
+    fn new(id: &str, tools: Vec<&str>) -> Self {
+        Self {
+            id: id.to_string(),
+            tools: tools.into_iter().map(String::from).collect(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for ToolNotRegisteredDispatchServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        self.tools.clone()
+    }
+
+    async fn invoke_stream(
+        &self,
+        tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<Option<ToolServerStreamResult>, KernelError> {
+        Err(KernelError::ToolNotRegistered(format!(
+            "tool \"{tool_name}\" withdrawn from server roster before dispatch"
+        )))
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        Err(KernelError::Internal(
+            "unexpected invoke after tool-not-registered dispatch error".to_string(),
         ))
     }
 }
@@ -2056,5 +2111,308 @@ fn nested_flow_drop_post_dispatch_records_cancellation_receipt(
         return Err("expected a cancelled decision on the nested drop receipt".into());
     };
     assert_eq!(reason, "tool evaluation future dropped after admission");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn drop_post_dispatch_retains_and_marks_reservations(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let started = std::sync::Arc::new(tokio::sync::Notify::new());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(ParkingServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&started),
+        std::sync::Arc::clone(&invocations),
+    )));
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chio-runtime-drop-retained",
+            admission_id: "adm-drop-retained",
+            lease_id: "lease-drop-retained",
+            continuation_id: Some("continuation-drop-retained"),
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chio-runtime-drop-retained",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let kernel = std::sync::Arc::new(kernel);
+    let eval = {
+        let kernel = std::sync::Arc::clone(&kernel);
+        tokio::spawn(async move { kernel.evaluate_tool_call(&request).await })
+    };
+
+    tokio::time::timeout(std::time::Duration::from_secs(5), started.notified())
+        .await
+        .map_err(|_| std::io::Error::other("parking tool server was never invoked"))?;
+    eval.abort();
+    assert!(eval.await.is_err(), "aborted evaluation must not complete");
+
+    // Retention: the mock hook's release_reserved was never called, so the
+    // consumed lease stays consumed (a retry would be rejected with
+    // destructive_lease_replay by the real store, per
+    // chio-runtime-core/src/store/memory.rs:136-151).
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        0,
+        "a post-dispatch drop must retain runtime-admission reservations"
+    );
+    let receipt_log = kernel.receipt_log();
+    assert_eq!(receipt_log.len(), 1);
+    let receipt = receipt_log
+        .get(0)
+        .ok_or_else(|| std::io::Error::other("drop receipt missing"))?;
+    assert!(receipt.is_cancelled());
+    let metadata = receipt
+        .metadata
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("drop receipt metadata missing"))?;
+    assert_eq!(
+        metadata["chio_runtime"]["reservations_retained_fail_closed"],
+        true
+    );
+    assert_eq!(
+        metadata["chio_runtime"]["retained_destructive_lease_id"],
+        "lease-drop-retained"
+    );
+    assert_eq!(
+        metadata["chio_runtime"]["retained_treaty_continuation_id"],
+        "continuation-drop-retained"
+    );
+    assert_eq!(
+        metadata["chio_runtime"]["reserved_destructive_lease_id"],
+        "lease-drop-retained"
+    );
+    Ok(())
+}
+
+#[test]
+fn request_cancelled_marks_reservations_retained(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let side_effects = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(CancellationAfterSideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&side_effects),
+    )));
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chio-runtime-cancel-marked",
+            admission_id: "adm-cancel-marked",
+            lease_id: "lease-cancel-marked",
+            continuation_id: Some("continuation-cancel-marked"),
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chio-runtime-cancel-marked",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(side_effects.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        0,
+        "ambiguous cancellation must retain reservations"
+    );
+    assert!(response.receipt.is_cancelled());
+    let metadata = response
+        .receipt
+        .metadata
+        .ok_or_else(|| std::io::Error::other("cancel receipt metadata missing"))?;
+    assert_eq!(
+        metadata["chio_runtime"]["reservations_retained_fail_closed"],
+        true
+    );
+    assert_eq!(
+        metadata["chio_runtime"]["retained_destructive_lease_id"],
+        "lease-cancel-marked"
+    );
+    assert_eq!(
+        metadata["chio_runtime"]["retained_treaty_continuation_id"],
+        "continuation-cancel-marked"
+    );
+    Ok(())
+}
+
+#[test]
+fn request_incomplete_marks_reservations_retained(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let side_effects = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(IncompleteAfterSideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&side_effects),
+    )));
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chio-runtime-incomplete-marked",
+            admission_id: "adm-incomplete-marked",
+            lease_id: "lease-incomplete-marked",
+            continuation_id: Some("continuation-incomplete-marked"),
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chio-runtime-incomplete-marked",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(side_effects.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        0,
+        "ambiguous incompletion must retain reservations"
+    );
+    let metadata = response
+        .receipt
+        .metadata
+        .ok_or_else(|| std::io::Error::other("incomplete receipt metadata missing"))?;
+    assert_eq!(
+        metadata["chio_runtime"]["reservations_retained_fail_closed"],
+        true
+    );
+    assert_eq!(
+        metadata["chio_runtime"]["retained_destructive_lease_id"],
+        "lease-incomplete-marked"
+    );
+    Ok(())
+}
+
+#[test]
+fn generic_error_pre_side_effect_releases_without_marker(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // A registered tool server whose dispatch call fails with
+    // ToolNotRegistered (e.g. the tool was withdrawn from its roster
+    // between admission and dispatch). The server_id itself IS registered,
+    // so the pre-dispatch `ensure_registered_tool_target` check passes and
+    // the runtime admission hook fires and reserves normally; the failure
+    // surfaces only from the dispatch call itself, landing in the
+    // generic-error arm. ToolNotRegistered precedes any side effect, so
+    // reservations are RELEASED and the deny receipt must NOT carry the
+    // retained marker.
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(ToolNotRegisteredDispatchServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+    )));
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(
+        ReleaseTrackingRuntimeAdmissionHook {
+            calls: std::sync::Arc::clone(&admission_calls),
+            releases: std::sync::Arc::clone(&releases),
+            expected_request_id: "req-chio-runtime-tool-not-registered",
+            admission_id: "adm-tool-not-registered",
+            lease_id: "lease-tool-not-registered",
+            continuation_id: None,
+        },
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chio-runtime-tool-not-registered",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(response
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("destructive_update")));
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        1,
+        "ToolNotRegistered precedes any side effect, so reservations are released"
+    );
+    let metadata = response
+        .receipt
+        .metadata
+        .ok_or_else(|| std::io::Error::other("deny receipt metadata missing"))?;
+    let runtime = metadata["chio_runtime"]
+        .as_object()
+        .ok_or_else(|| std::io::Error::other("chio_runtime block missing"))?;
+    assert!(
+        !runtime.contains_key("reservations_retained_fail_closed"),
+        "a released reservation must not be marked as retained"
+    );
+    assert!(!runtime.contains_key("retained_destructive_lease_id"));
     Ok(())
 }

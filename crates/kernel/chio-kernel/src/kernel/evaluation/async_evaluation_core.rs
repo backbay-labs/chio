@@ -565,17 +565,19 @@ impl ChioKernel {
                             &reason,
                             now,
                             Some(matched_grant_index),
-                            match (budget_mutation.charge_result(), unwind.as_ref()) {
-                                (Some(charge), Some(reverse)) => self
-                                    .merge_budget_receipt_metadata(
-                                        extra_metadata.clone(),
-                                        self.budget_execution_receipt_metadata(
-                                            charge,
-                                            Some(("reversed", reverse)),
+                            self.mark_runtime_admission_reservations_retained_fail_closed(
+                                match (budget_mutation.charge_result(), unwind.as_ref()) {
+                                    (Some(charge), Some(reverse)) => self
+                                        .merge_budget_receipt_metadata(
+                                            extra_metadata.clone(),
+                                            self.budget_execution_receipt_metadata(
+                                                charge,
+                                                Some(("reversed", reverse)),
+                                            ),
                                         ),
-                                    ),
-                                _ => extra_metadata.clone(),
-                            },
+                                    _ => extra_metadata.clone(),
+                                },
+                            ),
                         )
                     },
                 );
@@ -601,17 +603,19 @@ impl ChioKernel {
                             &reason,
                             now,
                             Some(matched_grant_index),
-                            match (budget_mutation.charge_result(), unwind.as_ref()) {
-                                (Some(charge), Some(reverse)) => self
-                                    .merge_budget_receipt_metadata(
-                                        extra_metadata.clone(),
-                                        self.budget_execution_receipt_metadata(
-                                            charge,
-                                            Some(("reversed", reverse)),
+                            self.mark_runtime_admission_reservations_retained_fail_closed(
+                                match (budget_mutation.charge_result(), unwind.as_ref()) {
+                                    (Some(charge), Some(reverse)) => self
+                                        .merge_budget_receipt_metadata(
+                                            extra_metadata.clone(),
+                                            self.budget_execution_receipt_metadata(
+                                                charge,
+                                                Some(("reversed", reverse)),
+                                            ),
                                         ),
-                                    ),
-                                _ => extra_metadata.clone(),
-                            },
+                                    _ => extra_metadata.clone(),
+                                },
+                            ),
                         )
                     },
                 );
@@ -623,7 +627,8 @@ impl ChioKernel {
                     budget_mutation.charge_result(),
                     payment_authorization.as_ref(),
                 )?;
-                if dispatch_error_precedes_tool_side_effect(&e) {
+                let released_pre_side_effect = dispatch_error_precedes_tool_side_effect(&e);
+                if released_pre_side_effect {
                     self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
                 }
                 let msg = e.to_string();
@@ -631,22 +636,30 @@ impl ChioKernel {
                 return self.with_pre_invocation_guard_evidence(
                     &pre_invocation_guard_evidence,
                     || {
+                        let deny_metadata = match (budget_mutation.charge_result(), unwind.as_ref())
+                        {
+                            (Some(charge), Some(reverse)) => self.merge_budget_receipt_metadata(
+                                extra_metadata.clone(),
+                                self.budget_execution_receipt_metadata(
+                                    charge,
+                                    Some(("reversed", reverse)),
+                                ),
+                            ),
+                            _ => extra_metadata.clone(),
+                        };
+                        let deny_metadata = if released_pre_side_effect {
+                            deny_metadata
+                        } else {
+                            self.mark_runtime_admission_reservations_retained_fail_closed(
+                                deny_metadata,
+                            )
+                        };
                         self.build_deny_response_with_metadata(
                             request,
                             &msg,
                             now,
                             Some(matched_grant_index),
-                            match (budget_mutation.charge_result(), unwind.as_ref()) {
-                                (Some(charge), Some(reverse)) => self
-                                    .merge_budget_receipt_metadata(
-                                        extra_metadata.clone(),
-                                        self.budget_execution_receipt_metadata(
-                                            charge,
-                                            Some(("reversed", reverse)),
-                                        ),
-                                    ),
-                                _ => extra_metadata.clone(),
-                            },
+                            deny_metadata,
                         )
                     },
                 );

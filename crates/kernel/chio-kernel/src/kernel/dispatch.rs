@@ -403,6 +403,54 @@ impl ChioKernel {
         hook.release_reserved(metadata)
     }
 
+    /// Record, in receipt metadata, that runtime-admission reservations
+    /// consumed at admission were deliberately NOT released because a tool
+    /// side effect may have executed. The reserved ids are copied so an
+    /// operator can locate and re-issue the burned lease/continuation from
+    /// the signed receipt alone. Fail-closed: metadata without a
+    /// `chio_runtime` block is returned unchanged.
+    pub(crate) fn mark_runtime_admission_reservations_retained_fail_closed(
+        &self,
+        metadata: Option<serde_json::Value>,
+    ) -> Option<serde_json::Value> {
+        let mut retained = serde_json::Map::new();
+        {
+            let Some(runtime) = metadata
+                .as_ref()
+                .and_then(|value| value.get("chio_runtime"))
+                .and_then(serde_json::Value::as_object)
+            else {
+                return metadata;
+            };
+            retained.insert(
+                "reservations_retained_fail_closed".to_string(),
+                serde_json::Value::Bool(true),
+            );
+            for (source, target) in [
+                (
+                    "reserved_destructive_lease_id",
+                    "retained_destructive_lease_id",
+                ),
+                (
+                    "reserved_treaty_continuation_id",
+                    "retained_treaty_continuation_id",
+                ),
+                (
+                    "reserved_swarm_continuation_id",
+                    "retained_swarm_continuation_id",
+                ),
+            ] {
+                if let Some(id) = runtime.get(source).and_then(serde_json::Value::as_str) {
+                    retained.insert(target.to_string(), serde_json::json!(id));
+                }
+            }
+        }
+        merge_metadata_objects(
+            metadata,
+            Some(serde_json::json!({ "chio_runtime": retained })),
+        )
+    }
+
     pub(crate) fn release_runtime_admission_reservations_for_pre_dispatch_denial(
         &self,
         metadata: Option<serde_json::Value>,

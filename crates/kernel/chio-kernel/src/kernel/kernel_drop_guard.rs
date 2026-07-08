@@ -131,7 +131,13 @@ impl Drop for PostAdmissionDropGuard<'_> {
         // admission reservations (releasing a single-use destructive lease
         // here would license a replay) and ALWAYS record a cancellation
         // receipt so the executed-or-not side effect is on the append-only
-        // log (closes F02).
+        // log (closes F02). The retained reservations are marked in the
+        // receipt metadata so the burned lease is auditable and
+        // operator-recoverable (closes the F08 audit gap).
+        let receipt_metadata = self
+            .kernel
+            .mark_runtime_admission_reservations_retained_fail_closed(reversed_metadata);
+
         let _guard_evidence_scope = scope_pre_invocation_guard_evidence(
             self.receipt_context.pre_invocation_guard_evidence.clone(),
         );
@@ -140,7 +146,7 @@ impl Drop for PostAdmissionDropGuard<'_> {
             POST_ADMISSION_DROP_REASON,
             current_unix_timestamp(),
             self.matched_grant_index,
-            reversed_metadata,
+            receipt_metadata,
         ) {
             warn!(
                 request_id = %self.request.request_id,
