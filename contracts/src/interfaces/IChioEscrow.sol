@@ -83,6 +83,7 @@ interface IChioEscrow {
         bytes32 escrowId,
         bytes32 receiptHash,
         uint256 settledAmount,
+        uint64 operatorEpoch,
         uint8 v,
         bytes32 r,
         bytes32 s

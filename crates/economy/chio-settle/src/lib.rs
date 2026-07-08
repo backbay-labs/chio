@@ -47,8 +47,8 @@ pub use evm::{
     static_validate_call, submit_call, BondLockRequest, DualSignReleaseInput,
     EscrowDispatchRequest, EscrowExecutionAmount, EscrowSnapshot, EvmBondSnapshot, EvmLogEntry,
     EvmSignature, EvmTransactionReceipt, PreparedBondExpiry, PreparedBondImpair, PreparedBondLock,
-    PreparedBondRelease, PreparedDualSignRelease, PreparedErc20Approval, PreparedEscrowCreate,
-    PreparedEscrowRefund, PreparedEvmCall, PreparedMerkleRelease,
+    PreparedBondProofRoot, PreparedBondRelease, PreparedDualSignRelease, PreparedErc20Approval,
+    PreparedEscrowCreate, PreparedEscrowRefund, PreparedEvmCall, PreparedMerkleRelease,
 };
 pub use hook::{
     SettlementHook, SettlementHookError, SettlementObservation, SettlementOutcome,

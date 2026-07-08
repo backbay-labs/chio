@@ -14,6 +14,7 @@ interface IChioBondVault {
         uint256 expiresAt;
         uint16 reserveRequirementRatioBps;
         address operator;
+        bytes32 operatorKeyHash;
     }
 
     event BondLocked(

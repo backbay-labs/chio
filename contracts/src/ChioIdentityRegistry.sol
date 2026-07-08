@@ -22,6 +22,7 @@ contract ChioIdentityRegistry is IChioIdentityRegistry {
     error EntityNotFound();
     error EntityNotActive();
     error InvalidEntity();
+    error InvalidOperatorKeyHash();
     error InvalidSignature();
     error NotPendingAdmin();
 
@@ -65,13 +66,16 @@ contract ChioIdentityRegistry is IChioIdentityRegistry {
         bytes calldata bindingProof
     ) external onlyAdmin {
         if (operatorAddress == address(0) || settlementKey == address(0)) revert ZeroAddress();
+        if (edKeyHash == bytes32(0)) revert InvalidOperatorKeyHash();
         OperatorRecord storage record = operatorRecords[operatorAddress];
         if (record.active) revert OperatorAlreadyRegistered();
+        uint64 nextEpoch = record.operatorEpoch + 1;
 
         operatorRecords[operatorAddress] = OperatorRecord({
             edKeyHash: edKeyHash,
             settlementKey: settlementKey,
             registeredAt: uint64(block.timestamp),
+            operatorEpoch: nextEpoch,
             active: true
         });
 
@@ -82,6 +86,7 @@ contract ChioIdentityRegistry is IChioIdentityRegistry {
     function deactivateOperator(address operatorAddress) external onlyAdmin {
         OperatorRecord storage record = operatorRecords[operatorAddress];
         if (!record.active) revert OperatorNotActive();
+        record.operatorEpoch += 1;
         record.active = false;
         emit OperatorDeactivated(operatorAddress);
     }
@@ -91,6 +96,7 @@ contract ChioIdentityRegistry is IChioIdentityRegistry {
         OperatorRecord storage record = operatorRecords[operatorAddress];
         if (record.registeredAt == 0) revert OperatorNotActive();
         if (record.active) revert OperatorAlreadyRegistered();
+        record.operatorEpoch += 1;
         record.active = true;
         emit OperatorReactivated(operatorAddress);
     }

@@ -149,6 +149,7 @@ pub(super) fn dual_sign_digest(
     escrow_id: &B256,
     receipt_hash: &B256,
     amount_minor_units: u128,
+    operator_epoch: u64,
 ) -> Result<B256, SettlementError> {
     let chain_id = parse_eip155_chain_id(&config.chain_id)?;
     let domain_separator = keccak256(
@@ -167,11 +168,13 @@ pub(super) fn dual_sign_digest(
     let struct_hash = keccak256(
         (
             keccak256(
-                "ChioEscrowRelease(bytes32 escrowId,bytes32 receiptHash,uint256 amount)".as_bytes(),
+                "ChioEscrowRelease(bytes32 escrowId,bytes32 receiptHash,uint256 amount,uint64 operatorEpoch)"
+                    .as_bytes(),
             ),
             *escrow_id,
             *receipt_hash,
             U256::from(amount_minor_units),
+            U256::from(operator_epoch),
         )
             .abi_encode(),
     );
@@ -187,13 +190,7 @@ pub(super) fn sign_digest(
     digest: &B256,
 ) -> Result<EvmSignature, SettlementError> {
     let secp = Secp256k1::new();
-    let raw = hex::decode(private_key_hex.trim_start_matches("0x"))
-        .map_err(|error| SettlementError::Signature(error.to_string()))?;
-    let secret =
-        SecretKey::from_byte_array(raw.try_into().map_err(|_| {
-            SettlementError::Signature("expected a 32-byte private key".to_string())
-        })?)
-        .map_err(|error| SettlementError::Signature(error.to_string()))?;
+    let secret = parse_secret_key(private_key_hex)?;
     let message = Message::from_digest(*digest.as_ref());
     let signature: RecoverableSignature = secp.sign_ecdsa_recoverable(message, &secret);
     let (recovery_id, bytes) = signature.serialize_compact();
@@ -201,4 +198,26 @@ pub(super) fn sign_digest(
     let r = format!("0x{}", hex::encode(&bytes[..32]));
     let s = format!("0x{}", hex::encode(&bytes[32..]));
     Ok(EvmSignature { v, r, s })
+}
+
+pub(super) fn signer_address_from_private_key(
+    private_key_hex: &str,
+) -> Result<Address, SettlementError> {
+    let secp = Secp256k1::new();
+    let secret = parse_secret_key(private_key_hex)?;
+    let public = SecpPublicKey::from_secret_key(&secp, &secret);
+    let encoded = public.serialize_uncompressed();
+    let hash = keccak256(&encoded[1..]);
+    Ok(Address::from_slice(&hash.as_slice()[12..]))
+}
+
+fn parse_secret_key(private_key_hex: &str) -> Result<SecretKey, SettlementError> {
+    let raw = hex::decode(private_key_hex.trim_start_matches("0x"))
+        .map_err(|error| SettlementError::Signature(error.to_string()))?;
+    SecretKey::from_byte_array(
+        raw.try_into().map_err(|_| {
+            SettlementError::Signature("expected a 32-byte private key".to_string())
+        })?,
+    )
+    .map_err(|error| SettlementError::Signature(error.to_string()))
 }

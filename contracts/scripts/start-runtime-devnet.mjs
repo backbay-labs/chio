@@ -157,6 +157,7 @@ async function main() {
       ethers.toUtf8Bytes("binding:operator"),
     )
   ).wait();
+  const operatorRecord = await identityRegistry.getOperator(wallets.operator.address);
   await (await escrow.setTokenAllowed(await mockUsdc.getAddress(), true)).wait();
   await (await bondVault.setTokenAllowed(await mockUsdc.getAddress(), true)).wait();
   await (
@@ -184,6 +185,7 @@ async function main() {
     rpc_url: RPC_URL,
     deployed_at: new Date().toISOString(),
     operator_address: wallets.operator.address,
+    operator_epoch: Number(operatorRecord.operatorEpoch),
     delegate_address: wallets.delegate.address,
     settlement_token_symbol: "mUSDC",
     settlement_token_address: await mockUsdc.getAddress(),

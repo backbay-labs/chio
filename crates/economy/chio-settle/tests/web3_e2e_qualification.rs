@@ -51,7 +51,7 @@ use chio_settle::{
     prepare_bond_lock, prepare_bond_proof_root_publication, prepare_dual_sign_release,
     prepare_erc20_approval, prepare_escrow_refund, prepare_web3_escrow_dispatch,
     project_escrow_execution_receipt, submit_call, BondLockRequest, DualSignReleaseInput,
-    EscrowDispatchRequest, ExecutionProjectionInput, LocalDevnetDeployment,
+    EscrowDispatchRequest, ExecutionProjectionInput, LocalDevnetDeployment, PreparedBondProofRoot,
     SettlementFinalityStatus, SettlementRecoveryAction,
 };
 use reqwest::Client;
@@ -819,7 +819,24 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
             operator_private_key_hex: OPERATOR_PRIVATE_KEY.to_string(),
             observed_amount: dual_amount.clone(),
         },
-    )?;
+    )
+    .await?;
+    assert_eq!(
+        dual_release
+            .identity_registry_evidence
+            .identity_registry_contract,
+        config.identity_registry_contract
+    );
+    assert_eq!(
+        dual_release.identity_registry_evidence.operator_address,
+        config.operator_address
+    );
+    assert_ne!(
+        dual_release.identity_registry_evidence.block_hash,
+        "0x0000000000000000000000000000000000000000000000000000000000000000"
+    );
+    assert!(dual_release.identity_registry_evidence.block_number > 0);
+    assert!(dual_release.identity_registry_evidence.active);
     let gas_estimate = estimate_call_gas(&config, &dual_release.call).await?;
     let dual_release_tx = e2e_step(
         "submit dual escrow release",
@@ -839,6 +856,9 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
             observed_at: Some(dual_release_receipt.observed_at.saturating_add(3_601)),
             observed_amount: dual_amount.clone(),
             anchor_proof: None,
+            identity_registry_evidence: Some(
+                dual_release.identity_registry_evidence.clone().into(),
+            ),
             oracle_evidence: Some(&oracle_evidence),
             failure_reason: None,
             reversal_of: None,
@@ -857,6 +877,15 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     assert_eq!(
         dual_projection
             .receipt
+            .identity_registry_evidence
+            .as_ref()
+            .test_expect("dual-sign registry evidence")
+            .operator_key_hash,
+        dual_release.identity_registry_evidence.operator_key_hash
+    );
+    assert_eq!(
+        dual_projection
+            .receipt
             .oracle_evidence
             .as_ref()
             .test_expect("oracle evidence")
@@ -871,6 +900,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         "escrowId": dual_projection.receipt.dispatch.escrow_id,
         "txHash": dual_release_tx,
         "gasEstimate": gas_estimate,
+        "identityRegistryEvidence": dual_release.identity_registry_evidence,
         "finalityStatus": dual_projection.finality.status,
         "lifecycleState": dual_projection.receipt.lifecycle_state,
         "oracleAuthority": dual_projection.receipt.oracle_evidence.as_ref().map(|e| e.authority.clone()),
@@ -955,6 +985,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
                 currency: "USD".to_string(),
             },
             anchor_proof: None,
+            identity_registry_evidence: None,
             oracle_evidence: None,
             failure_reason: Some("escrow deadline elapsed before release".to_string()),
             reversal_of: None,
@@ -1076,6 +1107,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
             principal_address: accounts.principal.clone(),
             bond: impair_bond,
         },
+        &binding,
     )
     .await?;
     let impair_approval = prepare_erc20_approval(
@@ -1104,8 +1136,8 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     let impair_active = observe_bond(&config, &impair_lock.vault_id).await?;
     let impair_call = prepare_bond_impair(
         &config,
-        &impair_lock.vault_id,
         &config.operator_address,
+        &impair_active.snapshot,
         &MonetaryAmount {
             units: 250,
             currency: "USD".to_string(),
@@ -1119,8 +1151,8 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     )?;
     let impair_root_call = prepare_bond_proof_root_publication(
         &config,
-        &impair_call.merkle_root,
-        &operator_ed_key_hash,
+        &impair_active.snapshot,
+        PreparedBondProofRoot::Impair(&impair_call),
         2,
         2,
     )?;
@@ -1191,6 +1223,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
             principal_address: accounts.principal.clone(),
             bond: expiry_bond,
         },
+        &binding,
     )
     .await?;
     let expiry_approval = prepare_erc20_approval(

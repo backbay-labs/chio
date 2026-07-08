@@ -54,7 +54,13 @@ const input = {
     evmVersion: "paris",
     outputSelection: {
       "*": {
-        "*": ["abi", "evm.bytecode.object", "evm.deployedBytecode.object", "metadata"],
+        "*": [
+          "abi",
+          "evm.bytecode.object",
+          "evm.deployedBytecode.object",
+          "evm.deployedBytecode.immutableReferences",
+          "metadata",
+        ],
       },
     },
   },
@@ -84,6 +90,7 @@ for (const [sourceName, contracts] of Object.entries(output.contracts ?? {})) {
     const outDir = path.join(artifactsDir, path.dirname(sourceStem));
     const bytecode = artifact.evm?.bytecode?.object ?? "";
     const deployedBytecode = artifact.evm?.deployedBytecode?.object ?? "";
+    const immutableReferences = artifact.evm?.deployedBytecode?.immutableReferences ?? {};
     ensureDir(outDir);
     fs.writeFileSync(
       path.join(outDir, `${contractName}.json`),
@@ -94,6 +101,7 @@ for (const [sourceName, contracts] of Object.entries(output.contracts ?? {})) {
           abi: artifact.abi,
           bytecode,
           deployedBytecode,
+          immutableReferences,
           creationBytecodeHash: hashBytecode(bytecode),
           deployedRuntimeCodehash: hashBytecode(deployedBytecode),
           metadata: artifact.metadata,

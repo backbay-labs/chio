@@ -711,6 +711,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
             observed_at: Some(merkle_receipt.observed_at),
             observed_amount: create_amount.clone(),
             anchor_proof: Some(&anchor_proof),
+            identity_registry_evidence: None,
             oracle_evidence: None,
             failure_reason: None,
             reversal_of: None,
@@ -798,6 +799,7 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
                 currency: "USD".to_string(),
             },
             anchor_proof: None,
+            identity_registry_evidence: None,
             oracle_evidence: None,
             failure_reason: Some("escrow deadline elapsed before release".to_string()),
             reversal_of: None,
@@ -874,7 +876,26 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
                 currency: "USD".to_string(),
             },
         },
-    )?;
+    )
+    .await?;
+    assert_eq!(
+        dual_sign_release
+            .identity_registry_evidence
+            .identity_registry_contract,
+        config.identity_registry_contract
+    );
+    assert_eq!(
+        dual_sign_release
+            .identity_registry_evidence
+            .operator_address,
+        config.operator_address
+    );
+    assert_ne!(
+        dual_sign_release.identity_registry_evidence.block_hash,
+        "0x0000000000000000000000000000000000000000000000000000000000000000"
+    );
+    assert!(dual_sign_release.identity_registry_evidence.block_number > 0);
+    assert!(dual_sign_release.identity_registry_evidence.active);
     static_validate_call(&config, &dual_sign_release.call)
         .await
         .map_err(|error| std::io::Error::other(format!("validate dual release: {error}")))?;

@@ -23,11 +23,13 @@ contract ChioRootRegistry is IChioRootRegistry {
     IChioIdentityRegistry public immutable identityRegistry;
 
     mapping(address => mapping(uint64 => RootEntry)) private rootEntries;
-    mapping(address => mapping(bytes32 => bool)) private publishedRoots;
-    mapping(address => mapping(bytes32 => uint64)) private rootTreeSizes;
+    mapping(address => mapping(bytes32 => mapping(bytes32 => uint64))) private rootTreeSizesByKey;
+    mapping(address => mapping(bytes32 => mapping(bytes32 => uint64))) private rootOperatorEpochsByKey;
     mapping(address => uint64) private latestSeq;
     mapping(address => uint64) private latestBatchEndSeq;
     mapping(address => mapping(address => uint64)) private delegateExpiries;
+    mapping(address => mapping(address => bytes32)) private delegateKeyHashes;
+    mapping(address => mapping(address => uint64)) private delegateOperatorEpochs;
     mapping(address => address[]) private delegateSlots;
 
     constructor(address identityRegistry_) {
@@ -98,8 +100,11 @@ contract ChioRootRegistry is IChioRootRegistry {
         if (delegate == address(0) || delegate == msg.sender || expiresAt <= block.timestamp) {
             revert InvalidDelegate();
         }
+        IChioIdentityRegistry.OperatorRecord memory record = identityRegistry.getOperator(msg.sender);
+        if (!record.active) revert OperatorNotAuthorized();
+        if (record.edKeyHash == bytes32(0)) revert OperatorKeyHashMismatch();
 
-        _pruneExpiredDelegates(msg.sender);
+        _pruneInactiveDelegates(msg.sender, record.edKeyHash, record.operatorEpoch);
         uint64 currentExpiry = delegateExpiries[msg.sender][delegate];
         bool currentlyActive = currentExpiry > block.timestamp;
         if (!currentlyActive) {
@@ -110,6 +115,8 @@ contract ChioRootRegistry is IChioRootRegistry {
         }
 
         delegateExpiries[msg.sender][delegate] = expiresAt;
+        delegateKeyHashes[msg.sender][delegate] = record.edKeyHash;
+        delegateOperatorEpochs[msg.sender][delegate] = record.operatorEpoch;
         emit DelegateRegistered(msg.sender, delegate, expiresAt);
     }
 
@@ -117,6 +124,8 @@ contract ChioRootRegistry is IChioRootRegistry {
         uint64 currentExpiry = delegateExpiries[msg.sender][delegate];
         if (currentExpiry == 0) revert InvalidDelegate();
         delete delegateExpiries[msg.sender][delegate];
+        delete delegateKeyHashes[msg.sender][delegate];
+        delete delegateOperatorEpochs[msg.sender][delegate];
         _removeDelegateSlot(msg.sender, delegate);
         emit DelegateRevoked(msg.sender, delegate);
     }
@@ -129,9 +138,41 @@ contract ChioRootRegistry is IChioRootRegistry {
         if (publisher == operator) {
             return identityRegistry.isOperator(operator);
         }
-        return
-            identityRegistry.isOperator(operator)
-                && delegateExpiries[operator][publisher] > block.timestamp;
+        if (!identityRegistry.isOperator(operator)) {
+            return false;
+        }
+        IChioIdentityRegistry.OperatorRecord memory record = identityRegistry.getOperator(operator);
+        return delegateExpiries[operator][publisher] > block.timestamp
+            && delegateKeyHashes[operator][publisher] == record.edKeyHash
+            && delegateOperatorEpochs[operator][publisher] == record.operatorEpoch;
+    }
+
+    function isAuthorizedPublisherForKeyHash(
+        address operator,
+        address publisher,
+        bytes32 operatorKeyHash
+    ) public view returns (bool) {
+        if (operatorKeyHash == bytes32(0)) {
+            return false;
+        }
+        if (publisher == operator) {
+            if (!identityRegistry.isOperator(operator)) {
+                return false;
+            }
+            IChioIdentityRegistry.OperatorRecord memory record =
+                identityRegistry.getOperator(operator);
+            return record.active && record.edKeyHash == operatorKeyHash;
+        }
+        if (!identityRegistry.isOperator(operator)) {
+            return false;
+        }
+        IChioIdentityRegistry.OperatorRecord memory operatorRecord =
+            identityRegistry.getOperator(operator);
+        return operatorRecord.active
+            && operatorRecord.edKeyHash == operatorKeyHash
+            && delegateExpiries[operator][publisher] > block.timestamp
+            && delegateKeyHashes[operator][publisher] == operatorKeyHash
+            && delegateOperatorEpochs[operator][publisher] == operatorRecord.operatorEpoch;
     }
 
     function verifyInclusion(
@@ -144,16 +185,43 @@ contract ChioRootRegistry is IChioRootRegistry {
     }
 
     function verifyInclusionDetailed(
+        ChioMerkle.Proof calldata,
+        bytes32,
+        bytes32,
+        address
+    ) external pure returns (bool) {
+        revert ProofMetadataRequired();
+    }
+
+    function verifyInclusionDetailedForKeyHash(
         ChioMerkle.Proof calldata proof,
         bytes32 root,
         bytes32 leafHash,
-        address operator
+        address operator,
+        bytes32 operatorKeyHash
     ) external view returns (bool) {
-        if (!publishedRoots[operator][root]) {
+        return _verifyInclusionDetailed(proof, root, leafHash, operator, operatorKeyHash);
+    }
+
+    function _verifyInclusionDetailed(
+        ChioMerkle.Proof calldata proof,
+        bytes32 root,
+        bytes32 leafHash,
+        address operator,
+        bytes32 operatorKeyHash
+    ) private view returns (bool) {
+        if (operatorKeyHash == bytes32(0)) return false;
+        if (!identityRegistry.isOperator(operator)) return false;
+        IChioIdentityRegistry.OperatorRecord memory operatorRecord =
+            identityRegistry.getOperator(operator);
+        if (!operatorRecord.active || operatorRecord.edKeyHash != operatorKeyHash) {
             return false;
         }
-        uint64 treeSize = rootTreeSizes[operator][root];
+        uint64 treeSize = rootTreeSizesByKey[operator][operatorKeyHash][root];
         if (treeSize == 0 || proof.treeSize != uint256(treeSize)) {
+            return false;
+        }
+        if (rootOperatorEpochsByKey[operator][operatorKeyHash][root] != operatorRecord.operatorEpoch) {
             return false;
         }
         return ChioMerkle.verifyRFC6962(proof, root, leafHash);
@@ -175,13 +243,19 @@ contract ChioRootRegistry is IChioRootRegistry {
         return latestSeq[operator];
     }
 
-    function _pruneExpiredDelegates(address operator) private {
+    function _pruneInactiveDelegates(address operator, bytes32 operatorKeyHash, uint64 operatorEpoch) private {
         address[] storage slots = delegateSlots[operator];
         uint256 index = 0;
         while (index < slots.length) {
             address delegate = slots[index];
-            if (delegateExpiries[operator][delegate] <= block.timestamp) {
+            if (
+                delegateExpiries[operator][delegate] <= block.timestamp
+                    || delegateKeyHashes[operator][delegate] != operatorKeyHash
+                    || delegateOperatorEpochs[operator][delegate] != operatorEpoch
+            ) {
                 delete delegateExpiries[operator][delegate];
+                delete delegateKeyHashes[operator][delegate];
+                delete delegateOperatorEpochs[operator][delegate];
                 uint256 lastIndex = slots.length - 1;
                 if (index != lastIndex) {
                     slots[index] = slots[lastIndex];
@@ -217,9 +291,14 @@ contract ChioRootRegistry is IChioRootRegistry {
         uint64 treeSize,
         bytes32 operatorKeyHash
     ) internal {
-        if (!isAuthorizedPublisher(operator, publisher)) revert OperatorNotAuthorized();
         if (merkleRoot == bytes32(0)) revert InvalidMerkleRoot();
-        if (batchStartSeq > batchEndSeq || treeSize == 0) revert InvalidBatchRange();
+        if (operatorKeyHash == bytes32(0)) revert OperatorKeyHashMismatch();
+        if (batchStartSeq > batchEndSeq || batchEndSeq == type(uint64).max || treeSize == 0) {
+            revert InvalidBatchRange();
+        }
+        if (!isAuthorizedPublisherForKeyHash(operator, publisher, operatorKeyHash)) {
+            revert OperatorNotAuthorized();
+        }
         if (checkpointSeq != latestSeq[operator] + 1) revert InvalidCheckpointSequence();
         uint64 previousBatchEndSeq = latestBatchEndSeq[operator];
         if (
@@ -228,11 +307,10 @@ contract ChioRootRegistry is IChioRootRegistry {
         ) {
             revert InvalidBatchRange();
         }
-        uint64 storedTreeSize = rootTreeSizes[operator][merkleRoot];
-        if (storedTreeSize != 0 && storedTreeSize != treeSize) revert InvalidMerkleRoot();
-
         IChioIdentityRegistry.OperatorRecord memory record = identityRegistry.getOperator(operator);
         if (record.edKeyHash != operatorKeyHash) revert OperatorKeyHashMismatch();
+        uint64 storedTreeSizeForKey = rootTreeSizesByKey[operator][operatorKeyHash][merkleRoot];
+        if (storedTreeSizeForKey != 0) revert InvalidMerkleRoot();
 
         RootEntry memory entry = RootEntry({
             merkleRoot: merkleRoot,
@@ -241,14 +319,15 @@ contract ChioRootRegistry is IChioRootRegistry {
             batchEndSeq: batchEndSeq,
             treeSize: treeSize,
             publishedAt: uint64(block.timestamp),
-            operatorKeyHash: operatorKeyHash
+            operatorKeyHash: operatorKeyHash,
+            operatorEpoch: record.operatorEpoch
         });
 
         rootEntries[operator][checkpointSeq] = entry;
         latestSeq[operator] = checkpointSeq;
         latestBatchEndSeq[operator] = batchEndSeq;
-        publishedRoots[operator][merkleRoot] = true;
-        rootTreeSizes[operator][merkleRoot] = treeSize;
+        rootTreeSizesByKey[operator][operatorKeyHash][merkleRoot] = treeSize;
+        rootOperatorEpochsByKey[operator][operatorKeyHash][merkleRoot] = record.operatorEpoch;
 
         emit RootPublished(
             operator,
@@ -259,7 +338,8 @@ contract ChioRootRegistry is IChioRootRegistry {
             batchEndSeq,
             treeSize,
             entry.publishedAt,
-            operatorKeyHash
+            operatorKeyHash,
+            record.operatorEpoch
         );
     }
 }

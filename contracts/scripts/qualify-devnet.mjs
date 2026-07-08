@@ -8,9 +8,12 @@ import ganache from "ganache";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
+const repoRoot = path.resolve(rootDir, "..");
 const artifactsDir = path.join(rootDir, "artifacts");
 const deploymentsDir = path.join(rootDir, "deployments");
 const reportsDir = path.join(rootDir, "reports");
+const contractPackagePath = path.join(repoRoot, "docs/standards/CHIO_WEB3_CONTRACT_PACKAGE.json");
+const deploymentPolicyPath = path.join(repoRoot, "docs/standards/CHIO_WEB3_DEPLOYMENT_POLICY.json");
 
 const PORT = 8545;
 const RPC_URL = `http://127.0.0.1:${PORT}`;
@@ -31,6 +34,7 @@ const ESCROW_RELEASE_TYPES = {
     { name: "escrowId", type: "bytes32" },
     { name: "receiptHash", type: "bytes32" },
     { name: "amount", type: "uint256" },
+    { name: "operatorEpoch", type: "uint64" },
   ],
 };
 const ENTITY_BINDING_TYPES = {
@@ -42,7 +46,7 @@ const ENTITY_BINDING_TYPES = {
 };
 const BOND_PROOF_LEAF_TYPEHASH = ethers.keccak256(
   ethers.toUtf8Bytes(
-    "ChioBondProof(uint256 chainId,address vault,bytes32 vaultId,bytes32 evidenceHash,uint8 action,uint256 slashAmount,bytes32 distributionHash)",
+    "ChioBondProof(uint256 chainId,address vault,bytes32 vaultId,bytes32 operatorKeyHash,bytes32 evidenceHash,uint8 action,uint256 slashAmount,bytes32 distributionHash)",
   ),
 );
 const ZERO_BYTES32 = ethers.ZeroHash;
@@ -50,9 +54,17 @@ const BOND_ACTION_RELEASE = 0;
 const BOND_ACTION_IMPAIR = 1;
 const PAUSED_SELECTOR = ethers.id("Paused()").slice(0, 10);
 const INVALID_SIGNATURE_SELECTOR = ethers.id("InvalidSignature()").slice(0, 10);
+const INVALID_RELEASE_AMOUNT_SELECTOR = ethers.id("InvalidReleaseAmount()").slice(0, 10);
+const INVALID_BATCH_RANGE_SELECTOR = ethers.id("InvalidBatchRange()").slice(0, 10);
+const INVALID_MERKLE_ROOT_SELECTOR = ethers.id("InvalidMerkleRoot()").slice(0, 10);
 const INVALID_TIMESTAMP_SELECTOR = ethers.id("InvalidTimestamp()").slice(0, 10);
+const INVALID_ROUND_SELECTOR = ethers.id("InvalidRound()").slice(0, 10);
 const INVALID_SLASH_DISTRIBUTION_SELECTOR = ethers.id("InvalidSlashDistribution()").slice(0, 10);
+const INVALID_EVIDENCE_SELECTOR = ethers.id("InvalidEvidence()").slice(0, 10);
 const BOND_NO_LONGER_LIVE_SELECTOR = ethers.id("BondNoLongerLive()").slice(0, 10);
+const OPERATOR_KEY_HASH_MISMATCH_SELECTOR = ethers.id("OperatorKeyHashMismatch()").slice(0, 10);
+const RECEIPT_ALREADY_USED_SELECTOR = ethers.id("ReceiptAlreadyUsed()").slice(0, 10);
+const EVIDENCE_ALREADY_USED_SELECTOR = ethers.id("EvidenceAlreadyUsed()").slice(0, 10);
 const SECP256K1_ORDER = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
 
 const ACCOUNT_CONFIG = [
@@ -63,6 +75,7 @@ const ACCOUNT_CONFIG = [
   { name: "depositor", privateKey: "0x1000000000000000000000000000000000000000000000000000000000000005" },
   { name: "principal", privateKey: "0x1000000000000000000000000000000000000000000000000000000000000006" },
   { name: "outsider", privateKey: "0x1000000000000000000000000000000000000000000000000000000000000007" },
+  { name: "rotatingOperator", privateKey: "0x1000000000000000000000000000000000000000000000000000000000000008" },
 ];
 
 function ensureDir(dirPath) {
@@ -73,14 +86,236 @@ function artifactPath(name) {
   return path.join(artifactsDir, `${name}.json`);
 }
 
+function abiEntry(artifact, type, name) {
+  return artifact.abi.find((entry) => entry.type === type && entry.name === name);
+}
+
+function assertErrorInAbi(artifact, contractName, errorName) {
+  assert.ok(
+    abiEntry(artifact, "error", errorName),
+    `${contractName} artifact is stale: missing ${errorName} error`,
+  );
+}
+
+function hashArtifactBytecode(contractName, fieldName, bytecode) {
+  assert.equal(typeof bytecode, "string", `${contractName} artifact ${fieldName} must be a string`);
+  if (bytecode.length === 0) {
+    return "";
+  }
+  assert.match(bytecode, /^[0-9a-fA-F]+$/, `${contractName} artifact ${fieldName} must be hex`);
+  return ethers.keccak256(`0x${bytecode}`);
+}
+
+function validateArtifactShape(name, artifact) {
+  if (
+    Object.hasOwn(artifact, "bytecode") ||
+    Object.hasOwn(artifact, "deployedBytecode") ||
+    Object.hasOwn(artifact, "creationBytecodeHash") ||
+    Object.hasOwn(artifact, "deployedRuntimeCodehash")
+  ) {
+    assert.equal(
+      artifact.creationBytecodeHash,
+      hashArtifactBytecode(name, "bytecode", artifact.bytecode),
+      `${name} artifact creationBytecodeHash is stale`,
+    );
+    assert.equal(
+      artifact.deployedRuntimeCodehash,
+      hashArtifactBytecode(name, "deployedBytecode", artifact.deployedBytecode),
+      `${name} artifact deployedRuntimeCodehash is stale`,
+    );
+  }
+
+  if (name === "ChioBondVault") {
+    const lockBond = abiEntry(artifact, "function", "lockBond");
+    const componentNames = lockBond?.inputs?.[0]?.components?.map((component) => component.name) ?? [];
+    assert.ok(
+      componentNames.includes("operatorKeyHash"),
+      "ChioBondVault artifact is stale: lockBond BondTerms missing operatorKeyHash",
+    );
+    assertErrorInAbi(artifact, name, "OperatorKeyHashMismatch");
+  }
+
+  if (name === "ChioEscrow") {
+    const createEscrow = abiEntry(artifact, "function", "createEscrow");
+    const componentNames = createEscrow?.inputs?.[0]?.components?.map((component) => component.name) ?? [];
+    assert.ok(
+      componentNames.includes("operatorKeyHash"),
+      "ChioEscrow artifact is stale: createEscrow EscrowTerms missing operatorKeyHash",
+    );
+    const releaseWithSignature = abiEntry(artifact, "function", "releaseWithSignature");
+    const signatureInputs = releaseWithSignature?.inputs?.map((input) => input.name) ?? [];
+    assert.equal(
+      signatureInputs[3],
+      "operatorEpoch",
+      "ChioEscrow artifact is stale: releaseWithSignature missing operatorEpoch",
+    );
+    assertErrorInAbi(artifact, name, "OperatorKeyHashMismatch");
+  }
+
+  if (name === "ChioIdentityRegistry") {
+    assertErrorInAbi(artifact, name, "InvalidOperatorKeyHash");
+    const getOperator = abiEntry(artifact, "function", "getOperator");
+    const outputNames = getOperator?.outputs?.[0]?.components?.map((component) => component.name) ?? [];
+    assert.ok(
+      outputNames.includes("operatorEpoch"),
+      "ChioIdentityRegistry artifact is stale: OperatorRecord missing operatorEpoch",
+    );
+  }
+
+  if (name === "ChioPriceResolver") {
+    assertErrorInAbi(artifact, name, "InvalidRound");
+  }
+
+  if (name === "ChioRootRegistry") {
+    const legacyDetailed = abiEntry(artifact, "function", "verifyInclusionDetailed");
+    assert.equal(
+      legacyDetailed?.stateMutability,
+      "pure",
+      "ChioRootRegistry artifact is stale: legacy detailed verifier must be pure/reverting",
+    );
+    assert.ok(
+      abiEntry(artifact, "function", "verifyInclusionDetailedForKeyHash"),
+      "ChioRootRegistry artifact is stale: missing keyed detailed verifier",
+    );
+    assert.ok(
+      abiEntry(artifact, "function", "isAuthorizedPublisherForKeyHash"),
+      "ChioRootRegistry artifact is stale: missing keyed publisher authorization preflight",
+    );
+    const getRoot = abiEntry(artifact, "function", "getRoot");
+    const rootFields = getRoot?.outputs?.[0]?.components?.map((component) => component.name) ?? [];
+    assert.ok(
+      rootFields.includes("operatorEpoch"),
+      "ChioRootRegistry artifact is stale: RootEntry missing operatorEpoch",
+    );
+    const rootPublished = abiEntry(artifact, "event", "RootPublished");
+    const eventFields = rootPublished?.inputs?.map((input) => input.name) ?? [];
+    assert.ok(
+      eventFields.includes("operatorEpoch"),
+      "ChioRootRegistry artifact is stale: RootPublished missing operatorEpoch",
+    );
+  }
+}
+
 function readArtifact(name) {
-  return JSON.parse(fs.readFileSync(artifactPath(name), "utf8"));
+  const artifact = JSON.parse(fs.readFileSync(artifactPath(name), "utf8"));
+  validateArtifactShape(name, artifact);
+  return artifact;
+}
+
+function readContractPackageRuntimeCodehashes() {
+  const contractPackage = JSON.parse(fs.readFileSync(contractPackagePath, "utf8"));
+  return new Map(
+    contractPackage.contracts.map((contract) => [
+      contract.kind,
+      contract.deployed_runtime_codehash,
+    ]),
+  );
+}
+
+function assertGasBudgets(gasEstimates) {
+  const deploymentPolicy = JSON.parse(fs.readFileSync(deploymentPolicyPath, "utf8"));
+  const gasBudgets = deploymentPolicy.gasBudgets ?? {};
+  const gasChecks = {
+    register_operator: "registerOperator",
+    register_delegate: "registerDelegate",
+    publish_root_operator: "publishRoot",
+    publish_root_delegate: "publishRoot",
+    register_feed: "registerFeed",
+    price_read: "getPrice",
+    create_escrow: "createEscrow",
+    merkle_partial_release: "merklePartialRelease",
+    dual_sign_release: "dualSignRelease",
+    lock_bond: "lockBond",
+    bond_release: "releaseBond",
+  };
+
+  for (const [estimateKey, budgetKey] of Object.entries(gasChecks)) {
+    const rawEstimate = gasEstimates[estimateKey];
+    const estimate = typeof rawEstimate === "string" ? Number(rawEstimate) : rawEstimate;
+    const budget = gasBudgets[budgetKey];
+    assert.ok(
+      Number.isSafeInteger(estimate) && estimate > 0,
+      `local-devnet gas estimate ${estimateKey} is missing or invalid`,
+    );
+    assert.ok(
+      Number.isSafeInteger(budget) && budget > 0,
+      `deployment policy gas budget ${budgetKey} is missing or invalid`,
+    );
+    assert.ok(
+      estimate <= budget,
+      `local-devnet gas estimate ${estimateKey} exceeds ${budgetKey} budget: ${estimate} > ${budget}`,
+    );
+  }
+}
+
+function normalizeDeployedCodeForImmutableReferences(label, artifact, deployedCode) {
+  const deployedHex = deployedCode.toLowerCase().replace(/^0x/, "");
+  const templateHex = artifact.deployedBytecode.toLowerCase();
+  assert.equal(
+    deployedHex.length,
+    templateHex.length,
+    `${label} deployed runtime bytecode length does not match compiled artifact`,
+  );
+  let normalized = deployedHex;
+  for (const references of Object.values(artifact.immutableReferences ?? {})) {
+    for (const reference of references) {
+      const start = reference.start * 2;
+      const end = start + reference.length * 2;
+      normalized = `${normalized.slice(0, start)}${templateHex.slice(start, end)}${normalized.slice(end)}`;
+    }
+  }
+  return `0x${normalized}`;
+}
+
+async function assertDeployedRuntimeCodehash(provider, label, contract, artifact, expectedPackageHash) {
+  const address = await contract.getAddress();
+  let observedBlock = await provider.getBlock("latest");
+  let deployedCode = await provider.getCode(address, observedBlock.number);
+  let observationSource = "eth_getCode";
+  if (!deployedCode || deployedCode === "0x") {
+    const network = await provider.getNetwork();
+    if (network.chainId === 31337n || network.chainId === 1337n) {
+      deployedCode = await provider.getCode(address);
+      observedBlock = await provider.getBlock("latest");
+      observationSource = "eth_getCode:latest-local-fallback";
+    }
+  }
+  assert.notEqual(deployedCode, "0x", `${label} deployed bytecode is empty`);
+  const actualRuntimeCodehash = ethers.keccak256(deployedCode);
+  const normalizedRuntimeCodehash = ethers.keccak256(
+    normalizeDeployedCodeForImmutableReferences(label, artifact, deployedCode),
+  );
+  assert.equal(
+    normalizedRuntimeCodehash,
+    artifact.deployedRuntimeCodehash,
+    `${label} immutable-normalized deployed runtime codehash does not match compiled artifact`,
+  );
+  assert.equal(
+    typeof expectedPackageHash,
+    "string",
+    `${label} contract package runtime codehash is missing`,
+  );
+  assert.equal(
+    normalizedRuntimeCodehash,
+    expectedPackageHash,
+    `${label} immutable-normalized deployed runtime codehash does not match contract package`,
+  );
+  return {
+    actual_runtime_codehash: actualRuntimeCodehash,
+    immutable_normalized_runtime_codehash: normalizedRuntimeCodehash,
+    package_runtime_codehash: expectedPackageHash,
+    observed_block_number: Number(observedBlock.number),
+    observed_block_hash: observedBlock.hash,
+    observation_source: observationSource,
+  };
 }
 
 async function deploy(name, signer, ...args) {
   const artifact = readArtifact(name);
   const factory = new ethers.ContractFactory(artifact.abi, artifact.bytecode, signer);
   const contract = await factory.deploy(...args);
+  const receipt = await contract.deploymentTransaction().wait();
+  assert.equal(receipt?.status, 1, `${name} deployment transaction failed`);
   await contract.waitForDeployment();
   return contract;
 }
@@ -227,15 +462,16 @@ function entityBindingDomain(chainId, identityRegistryAddress) {
   };
 }
 
-function bondProofLeaf(chainId, bondVaultAddress, vaultId, evidenceHash, action, slashAmount, distributionHash) {
+function bondProofLeaf(chainId, bondVaultAddress, vaultId, operatorKeyHash, evidenceHash, action, slashAmount, distributionHash) {
   return ethers.keccak256(
     ethers.AbiCoder.defaultAbiCoder().encode(
-      ["bytes32", "uint256", "address", "bytes32", "bytes32", "uint8", "uint256", "bytes32"],
+      ["bytes32", "uint256", "address", "bytes32", "bytes32", "bytes32", "uint8", "uint256", "bytes32"],
       [
         BOND_PROOF_LEAF_TYPEHASH,
         BigInt(chainId),
         bondVaultAddress,
         vaultId,
+        operatorKeyHash,
         evidenceHash,
         action,
         slashAmount,
@@ -506,6 +742,49 @@ async function main() {
       wallets.admin.address,
       await sequencerFeed.getAddress(),
     );
+    const packageRuntimeCodehashes = readContractPackageRuntimeCodehashes();
+    const deployedRuntimeCodehashes = {
+      identity_registry: await assertDeployedRuntimeCodehash(
+        provider,
+        "ChioIdentityRegistry",
+        identityRegistry,
+        readArtifact("ChioIdentityRegistry"),
+        packageRuntimeCodehashes.get("identity_registry"),
+      ),
+      root_registry: await assertDeployedRuntimeCodehash(
+        provider,
+        "ChioRootRegistry",
+        rootRegistry,
+        readArtifact("ChioRootRegistry"),
+        packageRuntimeCodehashes.get("root_registry"),
+      ),
+      escrow: await assertDeployedRuntimeCodehash(
+        provider,
+        "ChioEscrow",
+        escrow,
+        readArtifact("ChioEscrow"),
+        packageRuntimeCodehashes.get("escrow"),
+      ),
+      bond_vault: await assertDeployedRuntimeCodehash(
+        provider,
+        "ChioBondVault",
+        bondVault,
+        readArtifact("ChioBondVault"),
+        packageRuntimeCodehashes.get("bond_vault"),
+      ),
+      price_resolver: await assertDeployedRuntimeCodehash(
+        provider,
+        "ChioPriceResolver",
+        priceResolver,
+        readArtifact("ChioPriceResolver"),
+        packageRuntimeCodehashes.get("price_resolver"),
+      ),
+    };
+    checks.push({
+      id: "deployment.runtime_codehashes",
+      outcome: "pass",
+      note: "Deployed local-devnet bytecode hashes match compiled artifacts and the reviewed contract package.",
+    });
     checks.push({
       id: "deployment.constructor_wiring",
       outcome: "pass",
@@ -529,6 +808,17 @@ async function main() {
         ethers.toUtf8Bytes("binding:operator"),
       )
     ).wait();
+    const operatorRecord = await identityRegistry.getOperator(wallets.operator.address);
+    const operatorEpoch = operatorRecord.operatorEpoch;
+    assert.notEqual(operatorEpoch, 0n);
+    await expectRevert("identity zero operator key hash", async () => {
+      await identityRegistry.registerOperator.staticCall(
+        deterministicAddress(0x70),
+        ZERO_BYTES32,
+        wallets.operator.address,
+        ethers.toUtf8Bytes("binding:zero-operator-key"),
+      );
+    });
     checks.push({
       id: "identity.operator_registration",
       outcome: "pass",
@@ -711,6 +1001,7 @@ async function main() {
       expiresAt: BigInt(now + 7200),
       reserveRequirementRatioBps: 2500,
       operator: wallets.operator.address,
+      operatorKeyHash: operatorEdKeyHash,
     };
     const bondPausedTx = await bondVault.setPaused(true);
     const bondPausedReceipt = await waitForReceipt(provider, bondPausedTx);
@@ -882,6 +1173,23 @@ async function main() {
         .connect(wallets.outsider)
         .publishRoot(wallets.operator.address, toBytes32Label("unauthorized-root"), 1, 1, 1, 1, operatorEdKeyHash);
     });
+    await expectRevertSelector(
+      "zero operator key root publication",
+      async () => {
+        await rootRegistry
+          .connect(wallets.operator)
+          .publishRoot.staticCall(
+            wallets.operator.address,
+            toBytes32Label("zero-key-root"),
+            1,
+            1,
+            1,
+            1,
+            ZERO_BYTES32,
+          );
+      },
+      OPERATOR_KEY_HASH_MISMATCH_SELECTOR,
+    );
     await expectRevert("missing latest root", async () => {
       await rootRegistry.getLatestRoot(wallets.outsider.address);
     });
@@ -905,11 +1213,14 @@ async function main() {
           operatorEdKeyHash,
         )
     ).toString();
-    await (
+    const operatorRootReceipt = await (
       await rootRegistry
         .connect(wallets.operator)
         .publishRoot(wallets.operator.address, operatorRoot, 1, 1, 1, 1, operatorEdKeyHash)
     ).wait();
+    const operatorRootEvent = await findContractEvent(operatorRootReceipt, rootRegistry, "RootPublished");
+    assert.equal(operatorRootEvent.args.operatorEpoch, operatorEpoch);
+    assert.equal((await rootRegistry.getRoot(wallets.operator.address, 1)).operatorEpoch, operatorEpoch);
 
     const delegateReceiptHash = toBytes32Label("delegate-proof-leaf");
     gasEstimates.publish_root_delegate = (
@@ -952,21 +1263,31 @@ async function main() {
         .connect(wallets.operator)
         .publishRoot(wallets.operator.address, twoLeafRoot, 3, 3, 4, 2, operatorEdKeyHash)
     ).wait();
-    assert.equal(
+    await expectRevert("legacy detailed verifier disabled", async () => {
       await rootRegistry.verifyInclusionDetailed(
         { auditPath: [proofLeafB], leafIndex: 0, treeSize: 2 },
         twoLeafRoot,
         proofLeafA,
         wallets.operator.address,
+      );
+    });
+    assert.equal(
+      await rootRegistry.verifyInclusionDetailedForKeyHash(
+        { auditPath: [proofLeafB], leafIndex: 0, treeSize: 2 },
+        twoLeafRoot,
+        proofLeafA,
+        wallets.operator.address,
+        operatorEdKeyHash,
       ),
       true,
     );
     assert.equal(
-      await rootRegistry.verifyInclusionDetailed(
+      await rootRegistry.verifyInclusionDetailedForKeyHash(
         { auditPath: [], leafIndex: 0, treeSize: 1 },
         twoLeafRoot,
         twoLeafRoot,
         wallets.operator.address,
+        operatorEdKeyHash,
       ),
       false,
     );
@@ -1009,6 +1330,70 @@ async function main() {
           operatorEdKeyHash,
         );
     });
+    await expectRevertSelector(
+      "duplicate root publication",
+      async () => {
+        await rootRegistry
+          .connect(wallets.operator)
+          .publishRoot.staticCall(
+            wallets.operator.address,
+            operatorRoot,
+            4,
+            5,
+            5,
+            1,
+            operatorEdKeyHash,
+          );
+      },
+      INVALID_MERKLE_ROOT_SELECTOR,
+    );
+    const terminalBatchEndSeq = (1n << 64n) - 1n;
+    await expectRevertSelector(
+      "terminal batch end root publication",
+      async () => {
+        await rootRegistry
+          .connect(wallets.operator)
+          .publishRoot.staticCall(
+            wallets.operator.address,
+            toBytes32Label("terminal-batch-end-root"),
+            4,
+            5,
+            terminalBatchEndSeq,
+            1,
+            operatorEdKeyHash,
+          );
+      },
+      INVALID_BATCH_RANGE_SELECTOR,
+    );
+    await expectRevertSelector(
+      "delegate terminal batch end root publication",
+      async () => {
+        await rootRegistry
+          .connect(wallets.delegate)
+          .publishRoot.staticCall(
+            wallets.operator.address,
+            toBytes32Label("delegate-terminal-batch-end-root"),
+            4,
+            5,
+            terminalBatchEndSeq,
+            1,
+            operatorEdKeyHash,
+          );
+      },
+      INVALID_BATCH_RANGE_SELECTOR,
+    );
+    const wideRangeSingleLeaf = toBytes32Label("wide-range-single-leaf-root");
+    await rootRegistry
+      .connect(wallets.operator)
+      .publishRoot.staticCall(
+        wallets.operator.address,
+        wideRangeSingleLeaf,
+        4,
+        5,
+        104,
+        1,
+        operatorEdKeyHash,
+      );
     const excessiveBatchCount = 33;
     await expectRevert("root batch cap", async () => {
       await rootRegistry
@@ -1180,6 +1565,42 @@ async function main() {
     await expectRevert("future price timestamp", async () => {
       await priceResolver.getPrice(priceBase, priceQuote);
     });
+    await (
+      await ethUsdFeed.setRoundData(
+        10,
+        3000n * 10n ** 8n,
+        BigInt(oracleWindowBase),
+        BigInt(oracleWindowBase),
+        9,
+      )
+    ).wait();
+    await expectRevertSelector("price answered in stale round", async () => {
+      await priceResolver.getPrice(priceBase, priceQuote);
+    }, INVALID_ROUND_SELECTOR);
+    await (
+      await ethUsdFeed.setRoundData(
+        0,
+        3000n * 10n ** 8n,
+        BigInt(oracleWindowBase),
+        BigInt(oracleWindowBase),
+        0,
+      )
+    ).wait();
+    await expectRevertSelector("zero price round", async () => {
+      await priceResolver.getPrice(priceBase, priceQuote);
+    }, INVALID_ROUND_SELECTOR);
+    await (
+      await ethUsdFeed.setRoundData(
+        11,
+        3000n * 10n ** 8n,
+        BigInt(oracleWindowBase + 30),
+        BigInt(oracleWindowBase),
+        11,
+      )
+    ).wait();
+    await expectRevertSelector("price started after update", async () => {
+      await priceResolver.getPrice(priceBase, priceQuote);
+    }, INVALID_TIMESTAMP_SELECTOR);
     await (await ethUsdFeed.setAnswer(3000n * 10n ** 8n)).wait();
 
     await (
@@ -1216,6 +1637,42 @@ async function main() {
     }, INVALID_TIMESTAMP_SELECTOR);
     await (
       await sequencerFeed.setRoundData(
+        10,
+        0n,
+        BigInt(sequencerRecoveredAt - 7200),
+        BigInt(sequencerRecoveredAt - 7200),
+        9,
+      )
+    ).wait();
+    await expectRevertSelector("sequencer answered in stale round", async () => {
+      await priceResolver.getPrice(priceBase, priceQuote);
+    }, INVALID_ROUND_SELECTOR);
+    await (
+      await sequencerFeed.setRoundData(
+        0,
+        0n,
+        BigInt(sequencerRecoveredAt - 7200),
+        BigInt(sequencerRecoveredAt - 7200),
+        0,
+      )
+    ).wait();
+    await expectRevertSelector("zero sequencer round", async () => {
+      await priceResolver.getPrice(priceBase, priceQuote);
+    }, INVALID_ROUND_SELECTOR);
+    await (
+      await sequencerFeed.setRoundData(
+        11,
+        0n,
+        BigInt(sequencerRecoveredAt - 7000),
+        BigInt(sequencerRecoveredAt - 7200),
+        11,
+      )
+    ).wait();
+    await expectRevertSelector("sequencer started after update", async () => {
+      await priceResolver.getPrice(priceBase, priceQuote);
+    }, INVALID_TIMESTAMP_SELECTOR);
+    await (
+      await sequencerFeed.setRoundData(
         5,
         0n,
         BigInt(sequencerRecoveredAt),
@@ -1238,10 +1695,557 @@ async function main() {
     checks.push({
       id: "oracle.fail_closed",
       outcome: "pass",
-      note: "Price resolver rejects invalid feeds, stale feeds, zero or future sequencer timestamps, sequencer downtime, and sequencer grace-period reads.",
+      note: "Price resolver rejects invalid feeds, stale feeds, stale round metadata, zero or future sequencer timestamps, sequencer downtime, and sequencer grace-period reads.",
     });
 
     const oneLeafProof = { auditPath: [], leafIndex: 0, treeSize: 1 };
+    const rotatingOperatorKeyA = toBytes32Label("chio-rotating-operator-key-a");
+    const rotatingOperatorKeyB = toBytes32Label("chio-rotating-operator-key-b");
+    logStep("escrow: exercising rotated-key publication denial");
+    await (
+      await identityRegistry.registerOperator(
+        wallets.rotatingOperator.address,
+        rotatingOperatorKeyA,
+        wallets.rotatingOperator.address,
+        ethers.toUtf8Bytes("binding:rotating-operator-a"),
+      )
+    ).wait();
+    const rotatingDelegateExpiry = BigInt(now + 3600);
+    await (
+      await rootRegistry
+        .connect(wallets.rotatingOperator)
+        .registerDelegate(wallets.delegate.address, rotatingDelegateExpiry)
+    ).wait();
+    assert.equal(
+      await rootRegistry.isAuthorizedPublisherForKeyHash(
+        wallets.rotatingOperator.address,
+        wallets.delegate.address,
+        rotatingOperatorKeyA,
+      ),
+      true,
+    );
+    const rotatedEscrowTerms = {
+      capabilityId: toBytes32Label("capability:rotated-key"),
+      depositor: wallets.depositor.address,
+      beneficiary: wallets.beneficiary.address,
+      token: await mockUsdc.getAddress(),
+      maxAmount: 100_000n,
+      deadline: BigInt(now + 7200),
+      operator: wallets.rotatingOperator.address,
+      operatorKeyHash: rotatingOperatorKeyB,
+    };
+    const rotatedEscrowId = await escrow
+      .connect(wallets.depositor)
+      .deriveEscrowId(rotatedEscrowTerms);
+    const rotatedReceiptHash = toBytes32Label("rotated-key-escrow-receipt");
+    const rotatedLeaf = escrowProofLeaf(
+      chainId,
+      await escrow.getAddress(),
+      rotatedEscrowId,
+      rotatedEscrowTerms.token,
+      rotatedEscrowTerms.beneficiary,
+      rotatedEscrowTerms.operatorKeyHash,
+      rotatedReceiptHash,
+      rotatedEscrowTerms.maxAmount,
+      false,
+    );
+    const rotatedBondTerms = {
+      bondId: toBytes32Label("bond:rotated-key"),
+      facilityId: toBytes32Label("facility:rotated-key"),
+      principal: wallets.principal.address,
+      token: await mockUsdc.getAddress(),
+      collateralAmount: 100_000n,
+      reserveRequirementAmount: 25_000n,
+      expiresAt: BigInt(now + 7200),
+      reserveRequirementRatioBps: 2500,
+      operator: wallets.rotatingOperator.address,
+      operatorKeyHash: rotatingOperatorKeyB,
+    };
+    const rotatedBondVaultId = await bondVault
+      .connect(wallets.principal)
+      .deriveVaultId(rotatedBondTerms);
+    const rotatedBondEvidenceHash = toBytes32Label("rotated-key-bond-evidence");
+    const rotatedBondReleaseLeaf = bondProofLeaf(
+      chainId,
+      await bondVault.getAddress(),
+      rotatedBondVaultId,
+      rotatedBondTerms.operatorKeyHash,
+      rotatedBondEvidenceHash,
+      BOND_ACTION_RELEASE,
+      0n,
+      ZERO_BYTES32,
+    );
+    const staleKeyEscrowTerms = {
+      capabilityId: toBytes32Label("capability:stale-key"),
+      depositor: wallets.depositor.address,
+      beneficiary: wallets.beneficiary.address,
+      token: await mockUsdc.getAddress(),
+      maxAmount: 100_000n,
+      deadline: BigInt(now + 7200),
+      operator: wallets.rotatingOperator.address,
+      operatorKeyHash: rotatingOperatorKeyA,
+    };
+    const staleKeyEscrowId = await escrow
+      .connect(wallets.depositor)
+      .deriveEscrowId(staleKeyEscrowTerms);
+    const staleKeyReceiptHash = toBytes32Label("stale-key-escrow-receipt");
+    const staleKeyEscrowLeaf = escrowProofLeaf(
+      chainId,
+      await escrow.getAddress(),
+      staleKeyEscrowId,
+      staleKeyEscrowTerms.token,
+      staleKeyEscrowTerms.beneficiary,
+      staleKeyEscrowTerms.operatorKeyHash,
+      staleKeyReceiptHash,
+      staleKeyEscrowTerms.maxAmount,
+      false,
+    );
+    const staleKeyBondTerms = {
+      bondId: toBytes32Label("bond:stale-key"),
+      facilityId: toBytes32Label("facility:stale-key"),
+      principal: wallets.principal.address,
+      token: await mockUsdc.getAddress(),
+      collateralAmount: 100_000n,
+      reserveRequirementAmount: 25_000n,
+      expiresAt: BigInt(now + 7200),
+      reserveRequirementRatioBps: 2500,
+      operator: wallets.rotatingOperator.address,
+      operatorKeyHash: rotatingOperatorKeyA,
+    };
+    const staleKeyBondVaultId = await bondVault
+      .connect(wallets.principal)
+      .deriveVaultId(staleKeyBondTerms);
+    const staleKeyBondEvidenceHash = toBytes32Label("stale-key-bond-evidence");
+    const staleKeyBondReleaseLeaf = bondProofLeaf(
+      chainId,
+      await bondVault.getAddress(),
+      staleKeyBondVaultId,
+      staleKeyBondTerms.operatorKeyHash,
+      staleKeyBondEvidenceHash,
+      BOND_ACTION_RELEASE,
+      0n,
+      ZERO_BYTES32,
+    );
+    await (
+      await rootRegistry
+        .connect(wallets.rotatingOperator)
+        .publishRoot(
+          wallets.rotatingOperator.address,
+          rotatedLeaf,
+          1,
+          1,
+          1,
+          1,
+          rotatingOperatorKeyA,
+        )
+    ).wait();
+    await (
+      await rootRegistry
+        .connect(wallets.rotatingOperator)
+        .publishRoot(
+          wallets.rotatingOperator.address,
+          rotatedBondReleaseLeaf,
+          2,
+          2,
+          2,
+          1,
+          rotatingOperatorKeyA,
+        )
+    ).wait();
+    await (
+      await rootRegistry
+        .connect(wallets.rotatingOperator)
+        .publishRoot(
+          wallets.rotatingOperator.address,
+          staleKeyEscrowLeaf,
+          3,
+          3,
+          3,
+          1,
+          rotatingOperatorKeyA,
+        )
+    ).wait();
+    await (
+      await rootRegistry
+        .connect(wallets.rotatingOperator)
+        .publishRoot(
+          wallets.rotatingOperator.address,
+          staleKeyBondReleaseLeaf,
+          4,
+          4,
+          4,
+          1,
+          rotatingOperatorKeyA,
+        )
+    ).wait();
+    assert.equal(
+      await rootRegistry.verifyInclusionDetailedForKeyHash(
+        oneLeafProof,
+        rotatedLeaf,
+        rotatedLeaf,
+        wallets.rotatingOperator.address,
+        rotatingOperatorKeyA,
+      ),
+      true,
+    );
+    await (
+      await mockUsdc
+        .connect(wallets.depositor)
+        .approve(await escrow.getAddress(), staleKeyEscrowTerms.maxAmount)
+    ).wait();
+    await (await escrow.connect(wallets.depositor).createEscrow(staleKeyEscrowTerms)).wait();
+    await (
+      await mockUsdc
+        .connect(wallets.principal)
+        .approve(await bondVault.getAddress(), staleKeyBondTerms.collateralAmount)
+    ).wait();
+    await (await bondVault.connect(wallets.principal).lockBond(staleKeyBondTerms)).wait();
+    const rotatingOperatorEpochA = (await identityRegistry.getOperator(wallets.rotatingOperator.address))
+      .operatorEpoch;
+    const staleEpochSignatureReceiptHash = toBytes32Label("stale-key-epoch-signature-receipt");
+    const staleEpochSignature = ethers.Signature.from(
+      await new ethers.Wallet(wallets.rotatingOperator.privateKey).signTypedData(
+        escrowReleaseDomain(chainId, await escrow.getAddress()),
+        ESCROW_RELEASE_TYPES,
+        {
+          escrowId: staleKeyEscrowId,
+          receiptHash: staleEpochSignatureReceiptHash,
+          amount: staleKeyEscrowTerms.maxAmount,
+          operatorEpoch: rotatingOperatorEpochA,
+        },
+      ),
+    );
+    await (await identityRegistry.deactivateOperator(wallets.rotatingOperator.address)).wait();
+    assert.equal(
+      await rootRegistry.verifyInclusionDetailedForKeyHash(
+        oneLeafProof,
+        staleKeyEscrowLeaf,
+        staleKeyEscrowLeaf,
+        wallets.rotatingOperator.address,
+        rotatingOperatorKeyA,
+      ),
+      false,
+    );
+    await (await identityRegistry.reactivateOperator(wallets.rotatingOperator.address)).wait();
+    assert.equal(
+      await rootRegistry.isAuthorizedPublisherForKeyHash(
+        wallets.rotatingOperator.address,
+        wallets.delegate.address,
+        rotatingOperatorKeyA,
+      ),
+      false,
+    );
+    assert.equal(
+      await rootRegistry.verifyInclusionDetailedForKeyHash(
+        oneLeafProof,
+        staleKeyEscrowLeaf,
+        staleKeyEscrowLeaf,
+        wallets.rotatingOperator.address,
+        rotatingOperatorKeyA,
+      ),
+      false,
+    );
+    await expectRevertSelector(
+      "same-key reactivated stale signature",
+      async () => {
+        await escrow
+          .connect(wallets.beneficiary)
+          .releaseWithSignature.staticCall(
+            staleKeyEscrowId,
+            staleEpochSignatureReceiptHash,
+            staleKeyEscrowTerms.maxAmount,
+            rotatingOperatorEpochA,
+            staleEpochSignature.yParity + 27,
+            staleEpochSignature.r,
+            staleEpochSignature.s,
+          );
+      },
+      OPERATOR_KEY_HASH_MISMATCH_SELECTOR,
+    );
+    await expectRevert("same-key reactivated stale delegate publication", async () => {
+      await rootRegistry
+        .connect(wallets.delegate)
+        .publishRoot.staticCall(
+          wallets.rotatingOperator.address,
+          toBytes32Label("same-key-reactivated-stale-delegate-root"),
+          5,
+          5,
+          5,
+          1,
+          rotatingOperatorKeyA,
+        );
+    });
+    await (await identityRegistry.deactivateOperator(wallets.rotatingOperator.address)).wait();
+    await (
+      await identityRegistry.registerOperator(
+        wallets.rotatingOperator.address,
+        rotatingOperatorKeyA,
+        wallets.rotatingOperator.address,
+        ethers.toUtf8Bytes("binding:rotating-operator-a-reregistered"),
+      )
+    ).wait();
+    const rotatingReregisterEpoch = (await identityRegistry.getOperator(wallets.rotatingOperator.address))
+      .operatorEpoch;
+    assert.equal(
+      await rootRegistry.isAuthorizedPublisherForKeyHash(
+        wallets.rotatingOperator.address,
+        wallets.delegate.address,
+        rotatingOperatorKeyA,
+      ),
+      false,
+    );
+    assert.equal(
+      await rootRegistry.verifyInclusionDetailedForKeyHash(
+        oneLeafProof,
+        staleKeyEscrowLeaf,
+        staleKeyEscrowLeaf,
+        wallets.rotatingOperator.address,
+        rotatingOperatorKeyA,
+      ),
+      false,
+    );
+    await expectRevertSelector(
+      "same-key reregistered stale signature",
+      async () => {
+        await escrow
+          .connect(wallets.beneficiary)
+          .releaseWithSignature.staticCall(
+            staleKeyEscrowId,
+            staleEpochSignatureReceiptHash,
+            staleKeyEscrowTerms.maxAmount,
+            rotatingOperatorEpochA,
+            staleEpochSignature.yParity + 27,
+            staleEpochSignature.r,
+            staleEpochSignature.s,
+          );
+      },
+      OPERATOR_KEY_HASH_MISMATCH_SELECTOR,
+    );
+    await expectRevert("same-key reregistered stale delegate publication", async () => {
+      await rootRegistry
+        .connect(wallets.delegate)
+        .publishRoot.staticCall(
+          wallets.rotatingOperator.address,
+          toBytes32Label("same-key-reregistered-stale-delegate-root"),
+          5,
+          5,
+          5,
+          1,
+          rotatingOperatorKeyA,
+        );
+    });
+    assert.ok(rotatingReregisterEpoch > rotatingOperatorEpochA);
+    await (await identityRegistry.deactivateOperator(wallets.rotatingOperator.address)).wait();
+    await (
+      await identityRegistry.registerOperator(
+        wallets.rotatingOperator.address,
+        rotatingOperatorKeyB,
+        wallets.rotatingOperator.address,
+        ethers.toUtf8Bytes("binding:rotating-operator-b"),
+      )
+    ).wait();
+    assert.equal(
+      await rootRegistry.isAuthorizedPublisher(wallets.rotatingOperator.address, wallets.delegate.address),
+      false,
+    );
+    assert.equal(
+      await rootRegistry.isAuthorizedPublisherForKeyHash(
+        wallets.rotatingOperator.address,
+        wallets.delegate.address,
+        rotatingOperatorKeyA,
+      ),
+      false,
+    );
+    assert.equal(
+      await rootRegistry.isAuthorizedPublisherForKeyHash(
+        wallets.rotatingOperator.address,
+        wallets.delegate.address,
+        rotatingOperatorKeyB,
+      ),
+      false,
+    );
+    await expectRevert("stale delegate key-epoch publication", async () => {
+      await rootRegistry
+        .connect(wallets.delegate)
+        .publishRoot.staticCall(
+          wallets.rotatingOperator.address,
+          toBytes32Label("stale-delegate-key-root"),
+          5,
+          5,
+          5,
+          1,
+          rotatingOperatorKeyB,
+        );
+    });
+    await (
+      await rootRegistry
+        .connect(wallets.rotatingOperator)
+        .registerDelegate(wallets.delegate.address, rotatingDelegateExpiry)
+    ).wait();
+    assert.equal(
+      await rootRegistry.isAuthorizedPublisherForKeyHash(
+        wallets.rotatingOperator.address,
+        wallets.delegate.address,
+        rotatingOperatorKeyB,
+      ),
+      true,
+    );
+    await rootRegistry
+      .connect(wallets.delegate)
+      .publishRoot.staticCall(
+        wallets.rotatingOperator.address,
+        toBytes32Label("rotated-delegate-key-root"),
+        5,
+        5,
+        5,
+        1,
+        rotatingOperatorKeyB,
+      );
+    await expectRevertSelector(
+      "stale-key escrow release after rotation",
+      async () => {
+        await escrow
+          .connect(wallets.beneficiary)
+          .releaseWithProofDetailed.staticCall(
+            staleKeyEscrowId,
+            oneLeafProof,
+            staleKeyEscrowLeaf,
+            staleKeyReceiptHash,
+            staleKeyEscrowTerms.maxAmount,
+          );
+      },
+      OPERATOR_KEY_HASH_MISMATCH_SELECTOR,
+    );
+    await expectRevertSelector(
+      "stale-key bond release after rotation",
+      async () => {
+        await bondVault
+          .connect(wallets.rotatingOperator)
+          .releaseBondDetailed.staticCall(
+            staleKeyBondVaultId,
+            oneLeafProof,
+            staleKeyBondReleaseLeaf,
+            staleKeyBondEvidenceHash,
+          );
+      },
+      OPERATOR_KEY_HASH_MISMATCH_SELECTOR,
+    );
+    await (
+      await mockUsdc
+        .connect(wallets.depositor)
+        .approve(await escrow.getAddress(), rotatedEscrowTerms.maxAmount)
+    ).wait();
+    await (await escrow.connect(wallets.depositor).createEscrow(rotatedEscrowTerms)).wait();
+    assert.equal(
+      await rootRegistry.verifyInclusionDetailedForKeyHash(
+        oneLeafProof,
+        rotatedLeaf,
+        rotatedLeaf,
+        wallets.rotatingOperator.address,
+        rotatingOperatorKeyB,
+      ),
+      false,
+    );
+    await expectRevertSelector(
+      "rotated-key old root replay",
+      async () => {
+        await escrow
+          .connect(wallets.beneficiary)
+          .releaseWithProofDetailed.staticCall(
+            rotatedEscrowId,
+            oneLeafProof,
+            rotatedLeaf,
+            rotatedReceiptHash,
+            rotatedEscrowTerms.maxAmount,
+          );
+      },
+      INVALID_SIGNATURE_SELECTOR,
+    );
+    await (
+      await rootRegistry
+        .connect(wallets.rotatingOperator)
+        .publishRoot(
+          wallets.rotatingOperator.address,
+          rotatedLeaf,
+          5,
+          5,
+          5,
+          1,
+          rotatingOperatorKeyB,
+        )
+    ).wait();
+    assert.equal(
+      await rootRegistry.verifyInclusionDetailedForKeyHash(
+        oneLeafProof,
+        rotatedLeaf,
+        rotatedLeaf,
+        wallets.rotatingOperator.address,
+        rotatingOperatorKeyB,
+      ),
+      true,
+    );
+    await escrow
+      .connect(wallets.beneficiary)
+      .releaseWithProofDetailed.staticCall(
+        rotatedEscrowId,
+        oneLeafProof,
+        rotatedLeaf,
+        rotatedReceiptHash,
+          rotatedEscrowTerms.maxAmount,
+      );
+    await (
+      await mockUsdc
+        .connect(wallets.principal)
+        .approve(await bondVault.getAddress(), rotatedBondTerms.collateralAmount)
+    ).wait();
+    await (await bondVault.connect(wallets.principal).lockBond(rotatedBondTerms)).wait();
+    assert.equal(
+      await rootRegistry.verifyInclusionDetailedForKeyHash(
+        oneLeafProof,
+        rotatedBondReleaseLeaf,
+        rotatedBondReleaseLeaf,
+        wallets.rotatingOperator.address,
+        rotatingOperatorKeyB,
+      ),
+      false,
+    );
+    await expectRevert("rotated-key old bond root replay", async () => {
+      await bondVault
+        .connect(wallets.rotatingOperator)
+        .releaseBondDetailed.staticCall(
+          rotatedBondVaultId,
+          oneLeafProof,
+          rotatedBondReleaseLeaf,
+          rotatedBondEvidenceHash,
+        );
+    });
+    await (
+      await rootRegistry
+        .connect(wallets.rotatingOperator)
+        .publishRoot(
+          wallets.rotatingOperator.address,
+          rotatedBondReleaseLeaf,
+          6,
+          6,
+          6,
+          1,
+          rotatingOperatorKeyB,
+        )
+    ).wait();
+    await bondVault
+      .connect(wallets.rotatingOperator)
+      .releaseBondDetailed.staticCall(
+        rotatedBondVaultId,
+        oneLeafProof,
+        rotatedBondReleaseLeaf,
+        rotatedBondEvidenceHash,
+      );
+    checks.push({
+      id: "escrow_and_bond.rotated_key_root_replay_denied",
+      outcome: "pass",
+      note: "Escrow and bond proof roots must be published under the operator key epoch they claim.",
+    });
+
     const inactiveOperatorKeyHash = toBytes32Label("chio-inactive-operator-key");
     logStep("escrow: setting up inactive-operator release denial");
     await (
@@ -1321,20 +2325,6 @@ async function main() {
     ).wait();
     const inactiveBondEvidenceHash = toBytes32Label("inactive-operator-bond-evidence");
     const inactiveBondOperatorSigner = await provider.getSigner(wallets.delegate.address);
-    await (
-      await rootRegistry
-        .connect(inactiveBondOperatorSigner)
-        .publishRoot(
-          wallets.delegate.address,
-          inactiveBondEvidenceHash,
-          1,
-          1,
-          1,
-          1,
-          inactiveBondOperatorKeyHash,
-          { gasLimit: 500_000n },
-        )
-    ).wait();
     const inactiveOperatorBondTerms = {
       bondId: toBytes32Label("bond:inactive-operator"),
       facilityId: toBytes32Label("facility:inactive-operator"),
@@ -1345,17 +2335,54 @@ async function main() {
       expiresAt: BigInt(now + 7200),
       reserveRequirementRatioBps: 2500,
       operator: wallets.delegate.address,
+      operatorKeyHash: inactiveBondOperatorKeyHash,
     };
+    const inactiveOperatorVaultId = await bondVault
+      .connect(wallets.principal)
+      .deriveVaultId(inactiveOperatorBondTerms);
+    const inactiveBondReleaseLeaf = bondProofLeaf(
+      chainId,
+      await bondVault.getAddress(),
+      inactiveOperatorVaultId,
+      inactiveBondOperatorKeyHash,
+      inactiveBondEvidenceHash,
+      BOND_ACTION_RELEASE,
+      0n,
+      ZERO_BYTES32,
+    );
+    await (
+      await rootRegistry
+        .connect(inactiveBondOperatorSigner)
+        .publishRoot(
+          wallets.delegate.address,
+          inactiveBondReleaseLeaf,
+          1,
+          1,
+          1,
+          1,
+          inactiveBondOperatorKeyHash,
+          { gasLimit: 500_000n },
+        )
+    ).wait();
     await (
       await mockUsdc
         .connect(wallets.principal)
         .approve(await bondVault.getAddress(), inactiveOperatorBondTerms.collateralAmount)
     ).wait();
-    const inactiveOperatorVaultId = await bondVault
-      .connect(wallets.principal)
-      .deriveVaultId(inactiveOperatorBondTerms);
     await (await bondVault.connect(wallets.principal).lockBond(inactiveOperatorBondTerms)).wait();
     await (await identityRegistry.deactivateOperator(wallets.delegate.address)).wait();
+    await expectRevert("inactive operator bond release", async () => {
+      const tx = await bondVault
+        .connect(inactiveBondOperatorSigner)
+        .releaseBondDetailed(
+          inactiveOperatorVaultId,
+          oneLeafProof,
+          inactiveBondReleaseLeaf,
+          inactiveBondEvidenceHash,
+          { gasLimit: 500_000n },
+        );
+      await tx.wait();
+    });
     await expectRevert("inactive operator bond impairment", async () => {
       const tx = await bondVault
         .connect(inactiveBondOperatorSigner)
@@ -1372,9 +2399,9 @@ async function main() {
       await tx.wait();
     });
     checks.push({
-      id: "bond.inactive_operator_impair_denied",
+      id: "bond.inactive_operator_release_and_impair_denied",
       outcome: "pass",
-      note: "Bond impairment rechecks operator activation before moving collateral.",
+      note: "Bond release and impairment recheck operator activation before moving collateral.",
     });
 
     const noReturnEscrowTerms = {
@@ -1473,6 +2500,7 @@ async function main() {
       expiresAt: BigInt(now + 7200),
       reserveRequirementRatioBps: 2500,
       operator: wallets.operator.address,
+      operatorKeyHash: operatorEdKeyHash,
     };
     await expectRevert("unlisted token bond", async () => {
       await bondVault.connect(wallets.principal).lockBond.staticCall(feeBondTerms);
@@ -1541,6 +2569,13 @@ async function main() {
       operator: wallets.operator.address,
       operatorKeyHash: operatorEdKeyHash,
     };
+    await expectRevert("zero operator key escrow", async () => {
+      await escrow.connect(wallets.depositor).createEscrow.staticCall({
+        ...escrowTerms,
+        capabilityId: toBytes32Label("capability:zero-operator-key"),
+        operatorKeyHash: ZERO_BYTES32,
+      });
+    });
 
     await (
       await mockUsdc.connect(wallets.depositor).approve(await escrow.getAddress(), escrowTerms.maxAmount)
@@ -1670,6 +2705,54 @@ async function main() {
           500_000n,
         );
     });
+    const crossReplayEscrowTerms = {
+      capabilityId: toBytes32Label("capability:cross-replay"),
+      depositor: wallets.depositor.address,
+      beneficiary: wallets.beneficiary.address,
+      token: await mockUsdc.getAddress(),
+      maxAmount: 100_000n,
+      deadline: BigInt(now + 10800),
+      operator: wallets.operator.address,
+      operatorKeyHash: operatorEdKeyHash,
+    };
+    await (
+      await mockUsdc
+        .connect(wallets.depositor)
+        .approve(await escrow.getAddress(), crossReplayEscrowTerms.maxAmount)
+    ).wait();
+    const crossReplayEscrowId = await escrow
+      .connect(wallets.depositor)
+      .deriveEscrowId(crossReplayEscrowTerms);
+    await (await escrow.connect(wallets.depositor).createEscrow(crossReplayEscrowTerms)).wait();
+    const crossReplaySignature = ethers.Signature.from(
+      await new ethers.Wallet(wallets.operator.privateKey).signTypedData(
+        escrowReleaseDomain(chainId, await escrow.getAddress()),
+        ESCROW_RELEASE_TYPES,
+        {
+          escrowId: crossReplayEscrowId,
+          receiptHash: delegateReceiptHash,
+          amount: crossReplayEscrowTerms.maxAmount,
+          operatorEpoch,
+        },
+      ),
+    );
+    await expectRevertSelector(
+      "cross-escrow receipt replay",
+      async () => {
+        await escrow
+          .connect(wallets.beneficiary)
+          .releaseWithSignature.staticCall(
+            crossReplayEscrowId,
+            delegateReceiptHash,
+            crossReplayEscrowTerms.maxAmount,
+            operatorEpoch,
+            crossReplaySignature.yParity + 27,
+            crossReplaySignature.r,
+            crossReplaySignature.s,
+          );
+      },
+      RECEIPT_ALREADY_USED_SELECTOR,
+    );
     checks.push({
       id: "escrow.merkle_partial_release",
       outcome: "pass",
@@ -1681,10 +2764,18 @@ async function main() {
       escrowId,
       receiptHash: finalReceiptHash,
       amount: 1_000_000n,
+      operatorEpoch,
     };
     const signatureDigest = ethers.solidityPackedKeccak256(
-      ["uint256", "address", "bytes32", "bytes32", "uint256"],
-      [chainId, await escrow.getAddress(), signatureValue.escrowId, signatureValue.receiptHash, signatureValue.amount],
+      ["uint256", "address", "bytes32", "bytes32", "uint256", "uint64"],
+      [
+        chainId,
+        await escrow.getAddress(),
+        signatureValue.escrowId,
+        signatureValue.receiptHash,
+        signatureValue.amount,
+        signatureValue.operatorEpoch,
+      ],
     );
     const rawOperatorSignature = new ethers.SigningKey(wallets.operator.privateKey).sign(signatureDigest);
     const typedOperatorSignature = ethers.Signature.from(
@@ -1706,6 +2797,29 @@ async function main() {
         signatureValue,
       ),
     );
+    const zeroReceiptSignatureValue = {
+      ...signatureValue,
+      receiptHash: ZERO_BYTES32,
+    };
+    const zeroReceiptSignature = ethers.Signature.from(
+      await new ethers.Wallet(wallets.operator.privateKey).signTypedData(
+        escrowReleaseDomain(chainId, await escrow.getAddress()),
+        ESCROW_RELEASE_TYPES,
+        zeroReceiptSignatureValue,
+      ),
+    );
+    const partialSignatureValue = {
+      ...signatureValue,
+      receiptHash: toBytes32Label("escrow-dual-sign-partial-receipt"),
+      amount: 1n,
+    };
+    const partialTypedSignature = ethers.Signature.from(
+      await new ethers.Wallet(wallets.operator.privateKey).signTypedData(
+        escrowReleaseDomain(chainId, await escrow.getAddress()),
+        ESCROW_RELEASE_TYPES,
+        partialSignatureValue,
+      ),
+    );
 
     await (await escrow.connect(adminRpcSigner).setPaused(true)).wait();
     await expectRevertSelector(
@@ -1717,6 +2831,7 @@ async function main() {
             signatureValue.escrowId,
             signatureValue.receiptHash,
             signatureValue.amount,
+            signatureValue.operatorEpoch,
             typedOperatorSignature.yParity + 27,
             typedOperatorSignature.r,
             typedOperatorSignature.s,
@@ -1733,6 +2848,7 @@ async function main() {
           escrowId,
           finalReceiptHash,
           1_000_000n,
+          signatureValue.operatorEpoch,
           outsiderSignature.yParity + 27,
           outsiderSignature.r,
           outsiderSignature.s,
@@ -1745,6 +2861,7 @@ async function main() {
           signatureValue.escrowId,
           signatureValue.receiptHash,
           signatureValue.amount,
+          signatureValue.operatorEpoch,
           rawOperatorSignature.yParity + 27,
           rawOperatorSignature.r,
           rawOperatorSignature.s,
@@ -1757,11 +2874,46 @@ async function main() {
           signatureValue.escrowId,
           signatureValue.receiptHash,
           signatureValue.amount,
+          signatureValue.operatorEpoch,
           malleatedTypedSignatureV,
           typedOperatorSignature.r,
           malleatedTypedSignatureS,
         );
     });
+    await expectRevertSelector(
+      "zero receipt hash signature release",
+      async () => {
+        await escrow
+          .connect(wallets.beneficiary)
+          .releaseWithSignature.staticCall(
+            zeroReceiptSignatureValue.escrowId,
+            zeroReceiptSignatureValue.receiptHash,
+            zeroReceiptSignatureValue.amount,
+            zeroReceiptSignatureValue.operatorEpoch,
+            zeroReceiptSignature.yParity + 27,
+            zeroReceiptSignature.r,
+            zeroReceiptSignature.s,
+          );
+      },
+      INVALID_SIGNATURE_SELECTOR,
+    );
+    await expectRevertSelector(
+      "partial amount through dual-sign release",
+      async () => {
+        await escrow
+          .connect(wallets.beneficiary)
+          .releaseWithSignature.staticCall(
+            partialSignatureValue.escrowId,
+            partialSignatureValue.receiptHash,
+            partialSignatureValue.amount,
+            partialSignatureValue.operatorEpoch,
+            partialTypedSignature.yParity + 27,
+            partialTypedSignature.r,
+            partialTypedSignature.s,
+          );
+      },
+      INVALID_RELEASE_AMOUNT_SELECTOR,
+    );
     logStep("escrow: invalid signature rejected");
 
     logStep("escrow: estimating valid dual-sign release gas");
@@ -1772,6 +2924,7 @@ async function main() {
           signatureValue.escrowId,
           signatureValue.receiptHash,
           signatureValue.amount,
+          signatureValue.operatorEpoch,
           typedOperatorSignature.yParity + 27,
           typedOperatorSignature.r,
           typedOperatorSignature.s,
@@ -1784,6 +2937,7 @@ async function main() {
         signatureValue.escrowId,
         signatureValue.receiptHash,
         signatureValue.amount,
+        signatureValue.operatorEpoch,
         typedOperatorSignature.yParity + 27,
         typedOperatorSignature.r,
         typedOperatorSignature.s,
@@ -1851,6 +3005,21 @@ async function main() {
       PAUSED_SELECTOR,
     );
     await (await escrow.connect(adminRpcSigner).setPaused(false)).wait();
+    await expectRevertSelector(
+      "non-partial proof release must cover full remaining escrow balance",
+      async () => {
+        await escrow
+          .connect(beneficiaryRpcSigner)
+          .releaseWithProofDetailed.staticCall(
+            escrowId,
+            oneLeafProof,
+            finalProofLeaf,
+            finalReceiptHash,
+            999_999n,
+          );
+      },
+      INVALID_RELEASE_AMOUNT_SELECTOR,
+    );
     logStep("escrow: submitting final proof-backed release");
     const finalProofReleaseGas = await escrow
       .connect(beneficiaryRpcSigner)
@@ -1975,6 +3144,7 @@ async function main() {
       expiresAt: BigInt(now + 7200),
       reserveRequirementRatioBps: 2500,
       operator: wallets.operator.address,
+      operatorKeyHash: operatorEdKeyHash,
     };
     await (
       await mockUsdc.connect(wallets.principal).approve(await bondVault.getAddress(), bondTerms.collateralAmount)
@@ -2018,6 +3188,7 @@ async function main() {
       CHAIN_ID,
       await bondVault.getAddress(),
       bondVaultId,
+      operatorEdKeyHash,
       bondEvidenceHash,
       BOND_ACTION_RELEASE,
       0n,
@@ -2116,6 +3287,7 @@ async function main() {
       expiresAt: BigInt(now + 7200),
       reserveRequirementRatioBps: 2500,
       operator: await reentrantBondToken.getAddress(),
+      operatorKeyHash: reentrantOperatorKeyHash,
     };
     await (
       await reentrantBondToken
@@ -2134,6 +3306,7 @@ async function main() {
       CHAIN_ID,
       await bondVault.getAddress(),
       reentrantVaultId,
+      reentrantOperatorKeyHash,
       reentrantSlashEvidenceHash,
       BOND_ACTION_IMPAIR,
       400_000n,
@@ -2143,6 +3316,7 @@ async function main() {
       CHAIN_ID,
       await bondVault.getAddress(),
       reentrantVaultId,
+      reentrantOperatorKeyHash,
       reentrantReleaseEvidenceHash,
       BOND_ACTION_RELEASE,
       0n,
@@ -2224,6 +3398,7 @@ async function main() {
       expiresAt: BigInt(now + 10800),
       reserveRequirementRatioBps: 2500,
       operator: wallets.operator.address,
+      operatorKeyHash: operatorEdKeyHash,
     };
     const driftBondTermsB = {
       bondId: toBytes32Label("bond:drift:b"),
@@ -2235,6 +3410,7 @@ async function main() {
       expiresAt: BigInt(now + 10800),
       reserveRequirementRatioBps: 2500,
       operator: wallets.operator.address,
+      operatorKeyHash: operatorEdKeyHash,
     };
     await (
       await mockUsdc
@@ -2262,6 +3438,7 @@ async function main() {
       CHAIN_ID,
       await bondVault.getAddress(),
       predictedVaultA,
+      operatorEdKeyHash,
       bondImpairEvidenceHash,
       BOND_ACTION_IMPAIR,
       100_000n,
@@ -2344,6 +3521,7 @@ async function main() {
       CHAIN_ID,
       await bondVault.getAddress(),
       predictedVaultA,
+      operatorEdKeyHash,
       excessiveImpairEvidenceHash,
       BOND_ACTION_IMPAIR,
       170_000n,
@@ -2372,6 +3550,7 @@ async function main() {
       CHAIN_ID,
       await bondVault.getAddress(),
       predictedVaultA,
+      operatorEdKeyHash,
       zeroBeneficiaryEvidenceHash,
       BOND_ACTION_IMPAIR,
       100_000n,
@@ -2399,6 +3578,38 @@ async function main() {
       },
       INVALID_SLASH_DISTRIBUTION_SELECTOR,
     );
+    const zeroEvidenceLeaf = bondProofLeaf(
+      CHAIN_ID,
+      await bondVault.getAddress(),
+      predictedVaultA,
+      operatorEdKeyHash,
+      ZERO_BYTES32,
+      BOND_ACTION_IMPAIR,
+      100_000n,
+      bondImpairDistributionHash,
+    );
+    await (
+      await rootRegistry
+        .connect(wallets.operator)
+        .publishRoot(wallets.operator.address, zeroEvidenceLeaf, 14, 15, 15, 1, operatorEdKeyHash)
+    ).wait();
+    await expectRevertSelector(
+      "bond impairment zero evidence hash",
+      async () => {
+        await bondVault
+          .connect(wallets.operator)
+          .impairBondDetailed.staticCall(
+            predictedVaultA,
+            100_000n,
+            [wallets.beneficiary.address],
+            [100_000n],
+            oneLeafProof,
+            zeroEvidenceLeaf,
+            ZERO_BYTES32,
+          );
+      },
+      INVALID_EVIDENCE_SELECTOR,
+    );
     await (
       await bondVault
         .connect(wallets.operator)
@@ -2425,11 +3636,44 @@ async function main() {
           bondImpairEvidenceHash,
         );
     });
+    const crossReplayBondImpairLeaf = bondProofLeaf(
+      CHAIN_ID,
+      await bondVault.getAddress(),
+      predictedVaultB,
+      operatorEdKeyHash,
+      bondImpairEvidenceHash,
+      BOND_ACTION_IMPAIR,
+      100_000n,
+      bondImpairDistributionHash,
+    );
+    await (
+      await rootRegistry
+        .connect(wallets.operator)
+        .publishRoot(wallets.operator.address, crossReplayBondImpairLeaf, 15, 16, 16, 1, operatorEdKeyHash)
+    ).wait();
+    await expectRevertSelector(
+      "cross-vault bond evidence replay",
+      async () => {
+        await bondVault
+          .connect(wallets.operator)
+          .impairBondDetailed.staticCall(
+            predictedVaultB,
+            100_000n,
+            [wallets.beneficiary.address],
+            [100_000n],
+            oneLeafProof,
+            crossReplayBondImpairLeaf,
+            bondImpairEvidenceHash,
+          );
+      },
+      EVIDENCE_ALREADY_USED_SELECTOR,
+    );
     const expiredReleaseEvidenceHash = toBytes32Label("bond-expired-release");
     const expiredReleaseLeaf = bondProofLeaf(
       CHAIN_ID,
       await bondVault.getAddress(),
       predictedVaultA,
+      operatorEdKeyHash,
       expiredReleaseEvidenceHash,
       BOND_ACTION_RELEASE,
       0n,
@@ -2438,13 +3682,14 @@ async function main() {
     await (
       await rootRegistry
         .connect(wallets.operator)
-        .publishRoot(wallets.operator.address, expiredReleaseLeaf, 14, 15, 15, 1, operatorEdKeyHash)
+        .publishRoot(wallets.operator.address, expiredReleaseLeaf, 16, 17, 17, 1, operatorEdKeyHash)
     ).wait();
     const expiredImpairEvidenceHash = toBytes32Label("bond-expired-impair");
     const expiredImpairLeaf = bondProofLeaf(
       CHAIN_ID,
       await bondVault.getAddress(),
       predictedVaultA,
+      operatorEdKeyHash,
       expiredImpairEvidenceHash,
       BOND_ACTION_IMPAIR,
       100_000n,
@@ -2453,7 +3698,7 @@ async function main() {
     await (
       await rootRegistry
         .connect(wallets.operator)
-        .publishRoot(wallets.operator.address, expiredImpairLeaf, 15, 16, 16, 1, operatorEdKeyHash)
+        .publishRoot(wallets.operator.address, expiredImpairLeaf, 17, 18, 18, 1, operatorEdKeyHash)
     ).wait();
     await mineAt(provider, Number(driftBondTermsA.expiresAt) + 1);
     await expectRevertSelector(
@@ -2505,6 +3750,13 @@ async function main() {
       note: "Bond identity remains deterministic under interleaving submissions and duplicate replays fail closed.",
     });
 
+    assertGasBudgets(gasEstimates);
+    checks.push({
+      id: "deployment.gas_budget",
+      outcome: "pass",
+      note: "Local-devnet gas estimates are within the deployment policy budgets.",
+    });
+
     logStep("writing deployment and qualification reports");
     const localDeployment = {
       manifest_id: "chio.web3-deployment.local-devnet.v1",
@@ -2513,6 +3765,7 @@ async function main() {
       rpc_url: RPC_URL,
       deployed_at: new Date().toISOString(),
       operator_address: wallets.operator.address,
+      operator_epoch: Number(operatorEpoch),
       delegate_address: wallets.delegate.address,
       settlement_token_symbol: "mUSDC",
       settlement_token_address: await mockUsdc.getAddress(),
@@ -2523,6 +3776,7 @@ async function main() {
         bond_vault: await bondVault.getAddress(),
         price_resolver: await priceResolver.getAddress(),
       },
+      deployed_runtime_codehashes: deployedRuntimeCodehashes,
       mocks: {
         eth_usd_feed: await ethUsdFeed.getAddress(),
         sequencer_uptime_feed: await sequencerFeed.getAddress(),
@@ -2539,6 +3793,7 @@ async function main() {
       generated_at: new Date().toISOString(),
       chain_id: `eip155:${chainId}`,
       gas_estimates: gasEstimates,
+      deployed_runtime_codehashes: deployedRuntimeCodehashes,
       checks,
     };
 

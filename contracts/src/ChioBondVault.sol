@@ -9,7 +9,7 @@ import {ChioRootRegistry} from "./ChioRootRegistry.sol";
 
 contract ChioBondVault is IChioBondVault {
     bytes32 private constant BOND_PROOF_LEAF_TYPEHASH =
-        keccak256("ChioBondProof(uint256 chainId,address vault,bytes32 vaultId,bytes32 evidenceHash,uint8 action,uint256 slashAmount,bytes32 distributionHash)");
+        keccak256("ChioBondProof(uint256 chainId,address vault,bytes32 vaultId,bytes32 operatorKeyHash,bytes32 evidenceHash,uint8 action,uint256 slashAmount,bytes32 distributionHash)");
     uint8 private constant BOND_ACTION_RELEASE = 0;
     uint8 private constant BOND_ACTION_IMPAIR = 1;
     uint256 private constant MAX_IMPAIR_BENEFICIARIES = 16;
@@ -31,6 +31,7 @@ contract ChioBondVault is IChioBondVault {
     error TokenNotAllowed();
     error Paused();
     error InvalidRegistry();
+    error OperatorKeyHashMismatch();
 
     struct BondState {
         BondTerms terms;
@@ -47,6 +48,7 @@ contract ChioBondVault is IChioBondVault {
 
     mapping(bytes32 => BondState) private bonds;
     mapping(bytes32 => mapping(bytes32 => bool)) private consumedEvidence;
+    mapping(bytes32 => bool) private consumedEvidenceHashes;
     mapping(address => bool) public tokenAllowed;
     uint256 private reentrancyStatus;
 
@@ -105,11 +107,15 @@ contract ChioBondVault is IChioBondVault {
             terms.token == address(0) ||
             terms.collateralAmount == 0 ||
             terms.expiresAt <= block.timestamp ||
+            terms.operatorKeyHash == bytes32(0) ||
             !identityRegistry.isOperator(terms.operator)
         ) {
             revert InvalidTerms();
         }
         if (!tokenAllowed[terms.token]) revert TokenNotAllowed();
+        IChioIdentityRegistry.OperatorRecord memory operatorRecord =
+            identityRegistry.getOperator(terms.operator);
+        if (operatorRecord.edKeyHash != terms.operatorKeyHash) revert OperatorKeyHashMismatch();
 
         vaultId = _deriveVaultId(terms);
         if (bonds[vaultId].terms.principal != address(0)) revert BondAlreadyExists();
@@ -153,9 +159,17 @@ contract ChioBondVault is IChioBondVault {
         if (msg.sender != bond.terms.operator) revert UnauthorizedCaller();
         if (bond.released || bond.expired) revert AlreadyClosed();
         _ensureBondLive(bond);
-        _ensureOperatorActive(bond.terms.operator);
-        bytes32 leafHash = _proofLeaf(vaultId, evidenceHash, BOND_ACTION_RELEASE, 0, bytes32(0));
-        if (!rootRegistry.verifyInclusionDetailed(proof, root, leafHash, bond.terms.operator)) {
+        _requireCurrentOperatorKey(bond.terms.operator, bond.terms.operatorKeyHash);
+        bytes32 leafHash = _proofLeaf(bond, vaultId, evidenceHash, BOND_ACTION_RELEASE, 0, bytes32(0));
+        if (
+            !rootRegistry.verifyInclusionDetailedForKeyHash(
+                proof,
+                root,
+                leafHash,
+                bond.terms.operator,
+                bond.terms.operatorKeyHash
+            )
+        ) {
             revert InvalidEvidence();
         }
 
@@ -193,28 +207,18 @@ contract ChioBondVault is IChioBondVault {
         if (msg.sender != bond.terms.operator) revert UnauthorizedCaller();
         if (bond.released || bond.expired) revert AlreadyClosed();
         _ensureBondLive(bond);
-        _ensureOperatorActive(bond.terms.operator);
-        if (
-            beneficiaries.length == 0 ||
-            beneficiaries.length > MAX_IMPAIR_BENEFICIARIES ||
-            beneficiaries.length != shares.length ||
-            slashAmount == 0 ||
-            slashAmount > bond.lockedAmount - bond.slashedAmount
-        ) {
-            revert InvalidSlashDistribution();
-        }
-
-        uint256 totalShares = 0;
-        for (uint256 i = 0; i < shares.length; ++i) {
-            if (beneficiaries[i] == address(0)) revert InvalidSlashDistribution();
-            totalShares += shares[i];
-        }
-        if (totalShares != slashAmount) revert InvalidSlashDistribution();
-
-        bytes32 distributionHash = keccak256(abi.encode(beneficiaries, shares));
+        _requireCurrentOperatorKey(bond.terms.operator, bond.terms.operatorKeyHash);
         bytes32 leafHash =
-            _proofLeaf(vaultId, evidenceHash, BOND_ACTION_IMPAIR, slashAmount, distributionHash);
-        if (!rootRegistry.verifyInclusionDetailed(proof, root, leafHash, bond.terms.operator)) {
+            _impairProofLeaf(bond, vaultId, evidenceHash, slashAmount, beneficiaries, shares);
+        if (
+            !rootRegistry.verifyInclusionDetailedForKeyHash(
+                proof,
+                root,
+                leafHash,
+                bond.terms.operator,
+                bond.terms.operatorKeyHash
+            )
+        ) {
             revert InvalidEvidence();
         }
 
@@ -257,12 +261,62 @@ contract ChioBondVault is IChioBondVault {
     }
 
     function _consumeEvidence(bytes32 vaultId, bytes32 evidenceHash) internal {
-        if (consumedEvidence[vaultId][evidenceHash]) revert EvidenceAlreadyUsed();
+        if (evidenceHash == bytes32(0)) {
+            revert InvalidEvidence();
+        }
+        if (consumedEvidence[vaultId][evidenceHash] || consumedEvidenceHashes[evidenceHash]) {
+            revert EvidenceAlreadyUsed();
+        }
         consumedEvidence[vaultId][evidenceHash] = true;
+        consumedEvidenceHashes[evidenceHash] = true;
+    }
+
+    function _impairProofLeaf(
+        BondState storage bond,
+        bytes32 vaultId,
+        bytes32 evidenceHash,
+        uint256 slashAmount,
+        address[] calldata beneficiaries,
+        uint256[] calldata shares
+    ) internal view returns (bytes32) {
+        if (
+            beneficiaries.length == 0 ||
+            beneficiaries.length > MAX_IMPAIR_BENEFICIARIES ||
+            beneficiaries.length != shares.length ||
+            slashAmount == 0 ||
+            slashAmount > bond.lockedAmount - bond.slashedAmount
+        ) {
+            revert InvalidSlashDistribution();
+        }
+
+        uint256 totalShares = 0;
+        for (uint256 i = 0; i < shares.length; ++i) {
+            if (beneficiaries[i] == address(0)) revert InvalidSlashDistribution();
+            totalShares += shares[i];
+        }
+        if (totalShares != slashAmount) revert InvalidSlashDistribution();
+        return _proofLeaf(
+            bond,
+            vaultId,
+            evidenceHash,
+            BOND_ACTION_IMPAIR,
+            slashAmount,
+            keccak256(abi.encode(beneficiaries, shares))
+        );
     }
 
     function _ensureOperatorActive(address operator) internal view {
         if (!identityRegistry.isOperator(operator)) revert OperatorNotActive();
+    }
+
+    function _requireCurrentOperatorKey(address operator, bytes32 operatorKeyHash)
+        internal
+        view
+        returns (IChioIdentityRegistry.OperatorRecord memory operatorRecord)
+    {
+        operatorRecord = identityRegistry.getOperator(operator);
+        if (!operatorRecord.active) revert OperatorNotActive();
+        if (operatorRecord.edKeyHash != operatorKeyHash) revert OperatorKeyHashMismatch();
     }
 
     function _ensureBondLive(BondState storage bond) internal view {
@@ -270,6 +324,7 @@ contract ChioBondVault is IChioBondVault {
     }
 
     function _proofLeaf(
+        BondState storage bond,
         bytes32 vaultId,
         bytes32 evidenceHash,
         uint8 action,
@@ -282,6 +337,7 @@ contract ChioBondVault is IChioBondVault {
                 block.chainid,
                 address(this),
                 vaultId,
+                bond.terms.operatorKeyHash,
                 evidenceHash,
                 action,
                 slashAmount,
@@ -337,7 +393,8 @@ contract ChioBondVault is IChioBondVault {
                 terms.reserveRequirementAmount,
                 terms.expiresAt,
                 terms.reserveRequirementRatioBps,
-                terms.operator
+                terms.operator,
+                terms.operatorKeyHash
             )
         );
     }

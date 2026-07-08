@@ -29,9 +29,11 @@ use chio_core::web3::settlement::{
 };
 use chio_core::web3::trust_profile::Web3SettlementPath;
 use chio_egress_contract::{client_builder_with_contract, send_with_contract};
-use chio_web3_bindings::{ChioMerkleProof, IChioBondVault, IChioEscrow, IChioRootRegistry};
+use chio_web3_bindings::{
+    ChioMerkleProof, IChioBondVault, IChioEscrow, IChioIdentityRegistry, IChioRootRegistry,
+};
 use secp256k1::ecdsa::RecoverableSignature;
-use secp256k1::{Message, Secp256k1, SecretKey};
+use secp256k1::{Message, PublicKey as SecpPublicKey, Secp256k1, SecretKey};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -264,6 +266,19 @@ mod tests {
             .test_expect("checkpoint statement signs");
         proof.checkpoint_statement.signature = signature;
         proof
+    }
+
+    fn align_config_to_anchor_proof(
+        config: &mut SettlementChainConfig,
+        proof: &AnchorInclusionProof,
+    ) {
+        let chain_anchor = proof
+            .chain_anchor
+            .as_ref()
+            .test_expect("sample proof includes chain anchor");
+        config.chain_id = chain_anchor.chain_id.clone();
+        config.root_registry_contract = chain_anchor.contract_address.clone();
+        config.operator_address = chain_anchor.operator_address.clone();
     }
 
     fn operator_keypair() -> Keypair {
@@ -658,6 +673,7 @@ mod tests {
             &escrow_id,
             &receipt_hash,
             1_500_000,
+            1,
         )
         .test_unwrap();
         let signature = sign_digest(
@@ -822,6 +838,7 @@ mod tests {
             vault_id: "0xold".to_string(),
             bond_id_hash: bond_id_hash.clone(),
             facility_id_hash: facility_id_hash.clone(),
+            operator_key_hash: format_b256(B256::from([0x33; 32])),
             collateral_minor_units: 5,
             reserve_requirement_minor_units: 2,
             call: PreparedEvmCall {
@@ -1098,6 +1115,11 @@ mod tests {
                     refunded: true,
                 })
             ))),
+            rpc_result(json!({
+                "number": "0x65",
+                "hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+                "timestamp": "0x6553f100"
+            })),
             rpc_result(json!(encode_hex(
                 IChioBondVault::getBondCall::abi_encode_returns(&IChioBondVault::getBondReturn {
                     terms: IChioBondVault::BondTerms {
@@ -1113,6 +1135,7 @@ mod tests {
                         reserveRequirementRatioBps: 2500,
                         operator: Address::from_str("0x1000000000000000000000000000000000000007",)
                             .test_unwrap(),
+                        operatorKeyHash: B256::from([0x33; 32]),
                     },
                     lockedAmount: U256::from(2_000_000_u64),
                     slashedAmount: U256::from(125_000_u64),
@@ -1148,11 +1171,14 @@ mod tests {
         assert_eq!(bond.locked_minor_units, 2_000_000);
         assert_eq!(bond.reserve_requirement_minor_units, 250_000);
         assert_eq!(bond.reserve_requirement_ratio_bps, 2500);
+        assert_eq!(bond.observed_at, 1_700_000_000);
         assert_eq!(bond.slashed_minor_units, 125_000);
         assert!(!bond.released);
         assert!(bond.expired);
         assert_eq!(requests[0]["method"], "eth_call");
-        assert_eq!(requests[1]["method"], "eth_call");
+        assert_eq!(requests[1]["method"], "eth_getBlockByNumber");
+        assert_eq!(requests[2]["method"], "eth_call");
+        assert_eq!(requests[2]["params"][1], "0x65");
     }
 
     #[tokio::test]
@@ -1265,8 +1291,8 @@ mod tests {
         drop(provenance_error);
     }
 
-    #[test]
-    fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_paths() {
+    #[tokio::test]
+    async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_paths() {
         let mut config = sample_config();
         let proof = sample_primary_proof();
         let mut dispatch = sample_dispatch();
@@ -1274,6 +1300,7 @@ mod tests {
             "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
         config.chain_id = dispatch.chain_id.clone();
         config.escrow_contract = dispatch.escrow_contract.clone();
+        align_config_to_anchor_proof(&mut config, &proof);
 
         let full = prepare_merkle_release(&config, &dispatch, &proof, EscrowExecutionAmount::Full)
             .test_expect("full merkle release should prepare");
@@ -1329,6 +1356,23 @@ mod tests {
             full.merkle_root,
             proof.receipt_inclusion.merkle_root.to_hex_prefixed()
         );
+        let mut mismatched_receipt_dispatch = dispatch.clone();
+        mismatched_receipt_dispatch.capital_instruction = sample_capital_instruction(
+            &config,
+            &dispatch.beneficiary_address,
+            "different-receipt",
+            dispatch.settlement_amount.units,
+        );
+        let mismatched_receipt_error = prepare_merkle_release(
+            &config,
+            &mismatched_receipt_dispatch,
+            &proof,
+            EscrowExecutionAmount::Full,
+        )
+        .test_expect_err("anchor receipt mismatch should fail");
+        assert!(mismatched_receipt_error
+            .to_string()
+            .contains("governed_receipt_id"));
         let root_publication =
             prepare_merkle_release_root_publication(&config, &dispatch, &full, 2, 2)
                 .test_expect("typed settlement root publication should prepare");
@@ -1422,6 +1466,62 @@ mod tests {
         .test_expect_err("malformed operator key hash should fail");
         assert!(invalid_key_hash.to_string().contains("operator_key_hash"));
 
+        let mut missing_chain_anchor_proof = proof.clone();
+        missing_chain_anchor_proof.chain_anchor = None;
+        let missing_chain_anchor = prepare_merkle_release(
+            &config,
+            &dispatch,
+            &missing_chain_anchor_proof,
+            EscrowExecutionAmount::Full,
+        )
+        .test_expect_err("missing chain anchor should fail");
+        assert!(missing_chain_anchor.to_string().contains("chain_anchor"));
+
+        let mut wrong_registry_proof = proof.clone();
+        wrong_registry_proof
+            .chain_anchor
+            .as_mut()
+            .test_expect("sample proof has chain anchor")
+            .contract_address = "0x2000000000000000000000000000000000000001".to_string();
+        let wrong_registry = prepare_merkle_release(
+            &config,
+            &dispatch,
+            &wrong_registry_proof,
+            EscrowExecutionAmount::Full,
+        )
+        .test_expect_err("wrong registry anchor should fail");
+        assert!(wrong_registry
+            .to_string()
+            .contains("root_registry_contract"));
+
+        let mut wrong_operator_config = config.clone();
+        wrong_operator_config.operator_address =
+            "0x2000000000000000000000000000000000000002".to_string();
+        let wrong_operator = prepare_merkle_release(
+            &wrong_operator_config,
+            &dispatch,
+            &proof,
+            EscrowExecutionAmount::Full,
+        )
+        .test_expect_err("wrong operator anchor should fail");
+        assert!(wrong_operator.to_string().contains("operator_address"));
+
+        let mut wrong_key_proof = proof.clone();
+        wrong_key_proof
+            .chain_anchor
+            .as_mut()
+            .test_expect("sample proof has chain anchor")
+            .operator_key_hash =
+            "0x2222222222222222222222222222222222222222222222222222222222222222".to_string();
+        let wrong_key = prepare_merkle_release(
+            &config,
+            &dispatch,
+            &wrong_key_proof,
+            EscrowExecutionAmount::Full,
+        )
+        .test_expect_err("wrong operator key anchor should fail");
+        assert!(wrong_key.to_string().contains("operator_key_hash"));
+
         let mut mismatched_escrow_config = config.clone();
         mismatched_escrow_config.escrow_contract =
             "0x765F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string();
@@ -1451,7 +1551,39 @@ mod tests {
             .contains("settlement_token_address"));
 
         let dual_dispatch = hex_dispatch();
-        let mut dual_config = config.clone();
+        let operator_private_key =
+            "0x1000000000000000000000000000000000000000000000000000000000000002";
+        let registry_block_hash =
+            "0xabababababababababababababababababababababababababababababababab";
+        let settlement_key = signer_address_from_private_key(operator_private_key).test_unwrap();
+        let server = MockJsonRpcServer::spawn(vec![
+            rpc_result(json!({
+                "number": "0x65",
+                "hash": registry_block_hash,
+                "timestamp": "0x6553f100"
+            })),
+            rpc_result(json!(encode_hex(
+                IChioIdentityRegistry::getOperatorCall::abi_encode_returns(
+                    &IChioIdentityRegistry::OperatorRecord {
+                        edKeyHash: parse_b256_hex(
+                            &dual_dispatch.operator_key_hash,
+                            "dual_dispatch.operator_key_hash",
+                        )
+                        .test_unwrap(),
+                        settlementKey: settlement_key,
+                        registeredAt: 7,
+                        operatorEpoch: 1,
+                        active: true,
+                    },
+                )
+            ))),
+            rpc_result(json!({
+                "number": "0x65",
+                "hash": registry_block_hash,
+                "timestamp": "0x6553f100"
+            })),
+        ]);
+        let mut dual_config = sample_config_with_rpc_url(server.base_url());
         dual_config.chain_id = dual_dispatch.chain_id.clone();
         dual_config.escrow_contract = dual_dispatch.escrow_contract.clone();
         let receipt = sample_receipt(
@@ -1461,24 +1593,137 @@ mod tests {
             dual_dispatch.settlement_amount.units,
             &dual_dispatch.beneficiary_address,
         );
-        let release =
-            prepare_dual_sign_release(
-                &dual_config,
-                &dual_dispatch,
-                &receipt,
-                &DualSignReleaseInput {
-                    operator_private_key_hex:
-                        "0x1000000000000000000000000000000000000000000000000000000000000002"
-                            .to_string(),
-                    observed_amount: dual_dispatch.settlement_amount.clone(),
-                },
-            )
-            .test_expect("dual-sign release should prepare");
+        let release = prepare_dual_sign_release(
+            &dual_config,
+            &dual_dispatch,
+            &receipt,
+            &DualSignReleaseInput {
+                operator_private_key_hex: operator_private_key.to_string(),
+                observed_amount: dual_dispatch.settlement_amount.clone(),
+            },
+        )
+        .await
+        .test_expect("dual-sign release should prepare");
 
         assert_eq!(release.call.to_address, dual_config.escrow_contract);
         assert_eq!(release.observed_amount, dual_dispatch.settlement_amount);
+        assert_eq!(release.operator_epoch, 1);
+        assert_eq!(release.identity_registry_evidence.block_number, 101);
+        assert_eq!(
+            release.identity_registry_evidence.block_hash,
+            registry_block_hash
+        );
+        assert_eq!(
+            release.identity_registry_evidence.operator_key_hash,
+            dual_dispatch.operator_key_hash
+        );
+        assert_eq!(
+            release.identity_registry_evidence.settlement_key,
+            format!("{settlement_key:?}")
+        );
+        assert_eq!(release.identity_registry_evidence.registered_at, 7);
+        assert_eq!(release.identity_registry_evidence.operator_epoch, 1);
+        assert!(release.identity_registry_evidence.active);
         assert!(release.signature.v >= 27);
         assert!(release.digest.starts_with("0x"));
+        let requests = server.requests();
+        assert_eq!(requests[0]["method"], "eth_getBlockByNumber");
+        assert_eq!(requests[0]["params"], json!(["latest", false]));
+        assert_eq!(requests[1]["method"], "eth_call");
+        assert_eq!(requests[1]["params"][1], "0x65");
+        assert_eq!(requests[2]["method"], "eth_getBlockByNumber");
+        assert_eq!(requests[2]["params"], json!(["0x65", false]));
+        server.join();
+    }
+
+    #[tokio::test]
+    async fn dual_sign_release_rejects_identity_registry_key_hash_mismatch() {
+        let dual_dispatch = hex_dispatch();
+        let operator_private_key =
+            "0x1000000000000000000000000000000000000000000000000000000000000002";
+        let registry_block_hash =
+            "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd";
+        let server = MockJsonRpcServer::spawn(vec![
+            rpc_result(json!({
+                "number": "0x65",
+                "hash": registry_block_hash,
+                "timestamp": "0x6553f100"
+            })),
+            rpc_result(json!(encode_hex(
+                IChioIdentityRegistry::getOperatorCall::abi_encode_returns(
+                    &IChioIdentityRegistry::OperatorRecord {
+                        edKeyHash: B256::from([0x99; 32]),
+                        settlementKey: signer_address_from_private_key(operator_private_key)
+                            .test_unwrap(),
+                        registeredAt: 1,
+                        operatorEpoch: 1,
+                        active: true,
+                    },
+                )
+            ))),
+            rpc_result(json!({
+                "number": "0x65",
+                "hash": registry_block_hash,
+                "timestamp": "0x6553f100"
+            })),
+        ]);
+        let mut config = sample_config_with_rpc_url(server.base_url());
+        config.chain_id = dual_dispatch.chain_id.clone();
+        config.escrow_contract = dual_dispatch.escrow_contract.clone();
+        let receipt = sample_receipt(
+            &operator_keypair(),
+            "cap-dual-mismatch",
+            "rcpt-dual-mismatch",
+            dual_dispatch.settlement_amount.units,
+            &dual_dispatch.beneficiary_address,
+        );
+        let error = prepare_dual_sign_release(
+            &config,
+            &dual_dispatch,
+            &receipt,
+            &DualSignReleaseInput {
+                operator_private_key_hex: operator_private_key.to_string(),
+                observed_amount: dual_dispatch.settlement_amount.clone(),
+            },
+        )
+        .await
+        .test_expect_err("registry key hash mismatch should block dual-sign prep");
+        assert!(error.to_string().contains("operator key hash"));
+        server.join();
+    }
+
+    #[tokio::test]
+    async fn dual_sign_release_rejects_unpinned_registry_block() {
+        let dual_dispatch = hex_dispatch();
+        let operator_private_key =
+            "0x1000000000000000000000000000000000000000000000000000000000000002";
+        let server = MockJsonRpcServer::spawn(vec![rpc_result(json!({
+            "number": "0x65",
+            "timestamp": "0x6553f100"
+        }))]);
+        let mut config = sample_config_with_rpc_url(server.base_url());
+        config.chain_id = dual_dispatch.chain_id.clone();
+        config.escrow_contract = dual_dispatch.escrow_contract.clone();
+        let receipt = sample_receipt(
+            &operator_keypair(),
+            "cap-dual-unpinned",
+            "rcpt-dual-unpinned",
+            dual_dispatch.settlement_amount.units,
+            &dual_dispatch.beneficiary_address,
+        );
+        let error = prepare_dual_sign_release(
+            &config,
+            &dual_dispatch,
+            &receipt,
+            &DualSignReleaseInput {
+                operator_private_key_hex: operator_private_key.to_string(),
+                observed_amount: dual_dispatch.settlement_amount.clone(),
+            },
+        )
+        .await
+        .test_expect_err("missing registry block hash should block dual-sign prep");
+        assert!(error.to_string().contains("block missing hash"));
+        server.join();
     }
 
     #[tokio::test]
@@ -1487,7 +1732,9 @@ mod tests {
         let server = MockJsonRpcServer::spawn(vec![rpc_result(json!(encode_hex(
             IChioBondVault::deriveVaultIdCall::abi_encode_returns(&expected_vault_id)
         )))]);
-        let config = sample_config_with_rpc_url(server.base_url());
+        let primary_proof = sample_primary_proof();
+        let mut config = sample_config_with_rpc_url(server.base_url());
+        align_config_to_anchor_proof(&mut config, &primary_proof);
         let bond = sample_credit_bond("bond-unit", "facility-unit", 400, 250);
         let prepared = prepare_bond_lock(
             &config,
@@ -1495,6 +1742,7 @@ mod tests {
                 principal_address: "0x1000000000000000000000000000000000000005".to_string(),
                 bond,
             },
+            &sample_binding_for_config(&config),
         )
         .await
         .test_expect("bond lock should prepare");
@@ -1507,18 +1755,42 @@ mod tests {
         assert_eq!(prepared.reserve_requirement_minor_units, 2_500_000);
         assert_eq!(prepared.call.to_address, config.bond_vault_contract);
         assert_eq!(requests[0]["method"], "eth_call");
+        let fixture_operator_key_hash = primary_proof
+            .chain_anchor
+            .as_ref()
+            .test_expect("sample proof includes chain anchor")
+            .operator_key_hash
+            .clone();
+        assert_eq!(
+            fixture_operator_key_hash,
+            "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975"
+        );
+        assert_eq!(prepared.operator_key_hash, fixture_operator_key_hash);
+        let prepared_snapshot = EvmBondSnapshot {
+            vault_id: prepared.vault_id.clone(),
+            principal_address: "0x1000000000000000000000000000000000000005".to_string(),
+            operator_key_hash: prepared.operator_key_hash.clone(),
+            expires_at: 1_800_000_000,
+            observed_at: 1_799_999_000,
+            locked_minor_units: prepared.collateral_minor_units,
+            reserve_requirement_minor_units: prepared.reserve_requirement_minor_units,
+            reserve_requirement_ratio_bps: 6_250,
+            slashed_minor_units: 0,
+            released: false,
+            expired: false,
+        };
 
         let release = prepare_bond_release(
             &config,
-            &prepared.vault_id,
             &config.operator_address,
-            &sample_primary_proof(),
+            &prepared_snapshot,
+            &primary_proof,
         )
         .test_expect("bond release should prepare");
         let impair = prepare_bond_impair(
             &config,
-            &prepared.vault_id,
             &config.operator_address,
+            &prepared_snapshot,
             &MonetaryAmount {
                 units: 250,
                 currency: "USD".to_string(),
@@ -1528,31 +1800,289 @@ mod tests {
                 units: 250,
                 currency: "USD".to_string(),
             }],
-            &sample_primary_proof(),
+            &primary_proof,
         )
         .test_expect("bond impair should prepare");
 
         assert_eq!(release.call.to_address, config.bond_vault_contract);
         assert_eq!(release.vault_id, prepared.vault_id);
-        let anchor_root = sample_primary_proof()
+        assert_eq!(release.operator_key_hash, prepared.operator_key_hash);
+        let anchor_root = primary_proof
             .receipt_inclusion
             .merkle_root
             .to_hex_prefixed();
         assert_ne!(release.merkle_root, anchor_root);
         assert_eq!(impair.slash_amount_minor_units, 2_500_000);
         assert_eq!(impair.call.to_address, config.bond_vault_contract);
+        assert_eq!(impair.operator_key_hash, prepared.operator_key_hash);
         assert_ne!(impair.merkle_root, anchor_root);
         assert_ne!(release.merkle_root, impair.merkle_root);
+
+        let batched_proof = batched_primary_proof();
+        let batched_release = prepare_bond_release(
+            &config,
+            &config.operator_address,
+            &prepared_snapshot,
+            &batched_proof,
+        )
+        .test_expect("batched bond release proof should prepare");
+        let batched_release_call = IChioBondVault::releaseBondDetailedCall::abi_decode(
+            &decode_hex_bytes(&batched_release.call.data)
+                .test_expect("batched release call data decodes"),
+        )
+        .test_expect("batched release call decodes");
+        assert!(batched_release_call.proof.auditPath.is_empty());
+        assert_eq!(batched_release_call.proof.leafIndex, U256::from(0_u8));
+        assert_eq!(batched_release_call.proof.treeSize, U256::from(1_u8));
+        assert_ne!(
+            batched_release.merkle_root,
+            batched_proof
+                .receipt_inclusion
+                .merkle_root
+                .to_hex_prefixed()
+        );
+
+        let wrong_bond_operator_key_hash = format_b256(B256::from([0x22; 32]));
+        let mut wrong_bond_snapshot = prepared_snapshot.clone();
+        wrong_bond_snapshot.operator_key_hash = wrong_bond_operator_key_hash.clone();
+        let wrong_bond_key_release = prepare_bond_release(
+            &config,
+            &config.operator_address,
+            &wrong_bond_snapshot,
+            &primary_proof,
+        )
+        .test_expect_err("bond release rejects bond operator key drift");
+        assert!(wrong_bond_key_release
+            .to_string()
+            .contains("operator_key_hash"));
+        let wrong_bond_key_impair = prepare_bond_impair(
+            &config,
+            &config.operator_address,
+            &wrong_bond_snapshot,
+            &MonetaryAmount {
+                units: 250,
+                currency: "USD".to_string(),
+            },
+            &["0x1000000000000000000000000000000000000006".to_string()],
+            &[MonetaryAmount {
+                units: 250,
+                currency: "USD".to_string(),
+            }],
+            &primary_proof,
+        )
+        .test_expect_err("bond impair rejects bond operator key drift");
+        assert!(wrong_bond_key_impair
+            .to_string()
+            .contains("operator_key_hash"));
+
         let root_publication = prepare_bond_proof_root_publication(
             &config,
-            &impair.merkle_root,
-            &format_b256(B256::from([0x22; 32])),
+            &prepared_snapshot,
+            PreparedBondProofRoot::Impair(&impair),
             2,
             2,
         )
         .test_expect("bond proof root publication should prepare");
         assert_eq!(root_publication.from_address, config.operator_address);
         assert_eq!(root_publication.to_address, config.root_registry_contract);
+        let publish_call = IChioRootRegistry::publishRootCall::abi_decode(
+            &decode_hex_bytes(&root_publication.data).test_expect("publish root calldata decodes"),
+        )
+        .test_expect("publish root call decodes");
+        assert_eq!(
+            publish_call.merkleRoot,
+            parse_b256_hex(&impair.merkle_root, "root").test_expect("impair root parses")
+        );
+        assert_eq!(publish_call.treeSize, 1);
+        let mut tampered_impair_root = impair.clone();
+        tampered_impair_root.merkle_root = format_b256(B256::from([0x99; 32]));
+        let tampered_root_error = prepare_bond_proof_root_publication(
+            &config,
+            &prepared_snapshot,
+            PreparedBondProofRoot::Impair(&tampered_impair_root),
+            2,
+            2,
+        )
+        .test_expect_err("bond root publication rejects tampered prepared root");
+        assert!(tampered_root_error.to_string().contains("merkle_root"));
+
+        let decoded_impair_call = IChioBondVault::impairBondDetailedCall::abi_decode(
+            &decode_hex_bytes(&impair.call.data).test_expect("impair call data decodes"),
+        )
+        .test_expect("impair call decodes");
+        let mut tampered_impair_call = impair.clone();
+        tampered_impair_call.call.data = encode_call(IChioBondVault::impairBondDetailedCall {
+            root: B256::from([0xcc; 32]),
+            ..decoded_impair_call
+        });
+        let tampered_call_error = prepare_bond_proof_root_publication(
+            &config,
+            &prepared_snapshot,
+            PreparedBondProofRoot::Impair(&tampered_impair_call),
+            2,
+            2,
+        )
+        .test_expect_err("bond root publication rejects tampered impair calldata");
+        assert!(tampered_call_error.to_string().contains("merkle_root"));
+
+        let decoded_zero_beneficiary_impair_call =
+            IChioBondVault::impairBondDetailedCall::abi_decode(
+                &decode_hex_bytes(&impair.call.data).test_expect("impair call data decodes"),
+            )
+            .test_expect("impair call decodes");
+        let mut zero_beneficiary_impair = impair.clone();
+        zero_beneficiary_impair.call.data = encode_call(IChioBondVault::impairBondDetailedCall {
+            beneficiaries: vec![Address::ZERO],
+            shares: decoded_zero_beneficiary_impair_call.shares.clone(),
+            ..decoded_zero_beneficiary_impair_call
+        });
+        let zero_beneficiary_publication = prepare_bond_proof_root_publication(
+            &config,
+            &prepared_snapshot,
+            PreparedBondProofRoot::Impair(&zero_beneficiary_impair),
+            2,
+            2,
+        )
+        .test_expect_err("bond root publication rejects zero beneficiary impair distribution");
+        assert!(zero_beneficiary_publication
+            .to_string()
+            .contains("InvalidSlashDistribution"));
+
+        let decoded_release_call = IChioBondVault::releaseBondDetailedCall::abi_decode(
+            &decode_hex_bytes(&release.call.data).test_expect("release call data decodes"),
+        )
+        .test_expect("release call decodes");
+        let mut tampered_release_call = release.clone();
+        tampered_release_call.call.data = encode_call(IChioBondVault::releaseBondDetailedCall {
+            root: B256::from([0xdd; 32]),
+            ..decoded_release_call
+        });
+        let tampered_release_error = prepare_bond_proof_root_publication(
+            &config,
+            &prepared_snapshot,
+            PreparedBondProofRoot::Release(&tampered_release_call),
+            2,
+            2,
+        )
+        .test_expect_err("bond root publication rejects tampered release calldata");
+        assert!(tampered_release_error.to_string().contains("call data"));
+
+        let mut wrong_publication_config = config.clone();
+        wrong_publication_config.chain_id = "eip155:42161".to_string();
+        let wrong_publication = prepare_bond_proof_root_publication(
+            &wrong_publication_config,
+            &prepared_snapshot,
+            PreparedBondProofRoot::Impair(&impair),
+            2,
+            2,
+        )
+        .test_expect_err("bond root publication rejects prepared chain drift");
+        assert!(wrong_publication.to_string().contains("chain_id"));
+
+        let mut released_publication_snapshot = prepared_snapshot.clone();
+        released_publication_snapshot.released = true;
+        let closed_publication = prepare_bond_proof_root_publication(
+            &config,
+            &released_publication_snapshot,
+            PreparedBondProofRoot::Release(&release),
+            2,
+            2,
+        )
+        .test_expect_err("bond root publication rejects released snapshot");
+        assert!(closed_publication.to_string().contains("already closed"));
+
+        let mut time_expired_publication_snapshot = prepared_snapshot.clone();
+        time_expired_publication_snapshot.observed_at =
+            time_expired_publication_snapshot.expires_at + 1;
+        let time_expired_publication = prepare_bond_proof_root_publication(
+            &config,
+            &time_expired_publication_snapshot,
+            PreparedBondProofRoot::Release(&release),
+            2,
+            2,
+        )
+        .test_expect_err("bond root publication rejects time-expired snapshot");
+        assert!(time_expired_publication.to_string().contains("expires_at"));
+
+        let mut over_impair_publication_snapshot = prepared_snapshot.clone();
+        over_impair_publication_snapshot.slashed_minor_units = 2_000_001;
+        let over_impair_publication = prepare_bond_proof_root_publication(
+            &config,
+            &over_impair_publication_snapshot,
+            PreparedBondProofRoot::Impair(&impair),
+            2,
+            2,
+        )
+        .test_expect_err("bond root publication rejects over-impairing snapshot");
+        assert!(over_impair_publication
+            .to_string()
+            .contains("remaining bond collateral"));
+
+        let mut wrong_chain_proof = primary_proof.clone();
+        wrong_chain_proof
+            .chain_anchor
+            .as_mut()
+            .test_expect("sample proof includes chain anchor")
+            .chain_id = "eip155:42161".to_string();
+        let wrong_chain = prepare_bond_release(
+            &config,
+            &config.operator_address,
+            &prepared_snapshot,
+            &wrong_chain_proof,
+        )
+        .test_expect_err("bond release rejects chain drift");
+        assert!(wrong_chain.to_string().contains("chain_anchor.chain_id"));
+
+        let mut wrong_registry_proof = primary_proof.clone();
+        wrong_registry_proof
+            .chain_anchor
+            .as_mut()
+            .test_expect("sample proof includes chain anchor")
+            .contract_address = "0x2000000000000000000000000000000000000001".to_string();
+        let wrong_registry = prepare_bond_release(
+            &config,
+            &config.operator_address,
+            &prepared_snapshot,
+            &wrong_registry_proof,
+        )
+        .test_expect_err("bond release rejects registry drift");
+        assert!(wrong_registry
+            .to_string()
+            .contains("root_registry_contract"));
+
+        let mut wrong_operator_config = config.clone();
+        wrong_operator_config.operator_address =
+            "0x2000000000000000000000000000000000000002".to_string();
+        let wrong_operator = prepare_bond_release(
+            &wrong_operator_config,
+            &wrong_operator_config.operator_address,
+            &prepared_snapshot,
+            &primary_proof,
+        )
+        .test_expect_err("bond release rejects operator drift");
+        assert!(wrong_operator.to_string().contains("operator_address"));
+
+        let mut zero_operator_key_proof = primary_proof.clone();
+        zero_operator_key_proof
+            .chain_anchor
+            .as_mut()
+            .test_expect("sample proof includes chain anchor")
+            .operator_key_hash =
+            "0x0000000000000000000000000000000000000000000000000000000000000000".to_string();
+        let zero_operator_key = prepare_bond_release(
+            &config,
+            &config.operator_address,
+            &prepared_snapshot,
+            &zero_operator_key_proof,
+        )
+        .test_expect_err("bond release rejects zero operator key hash");
+        let zero_operator_key_message = zero_operator_key.to_string();
+        assert!(
+            zero_operator_key_message.contains("operator key hash")
+                || zero_operator_key_message.contains("operator_key_hash")
+                || zero_operator_key_message.contains("verification"),
+            "{zero_operator_key_message}"
+        );
     }
 
     #[test]
@@ -1562,6 +2092,7 @@ mod tests {
         let leaf = bond_proof_leaf(
             &config,
             B256::from([0x44; 32]),
+            B256::from([0x77; 32]),
             B256::from([0x55; 32]),
             1,
             2_500_000,
@@ -1571,7 +2102,7 @@ mod tests {
 
         assert_eq!(
             format_b256(leaf),
-            "0x186322b91d7f071e24a2137b0b4852137f10fbd13613675736407276e2ccc815"
+            "0x3a66861348ce8a462d949911aee62b7c4f011d600927e8f19a23391756844aa6"
         );
     }
 
@@ -1593,12 +2124,108 @@ mod tests {
 
     #[test]
     fn settlement_prep_helpers_fail_closed_on_invalid_inputs() {
-        let config = sample_config();
+        let proof = sample_primary_proof();
+        let mut config = sample_config();
+        align_config_to_anchor_proof(&mut config, &proof);
         let invalid_dispatch = hex_dispatch();
+        let sample_bond_snapshot = EvmBondSnapshot {
+            vault_id: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                .to_string(),
+            principal_address: "0x1000000000000000000000000000000000000005".to_string(),
+            operator_key_hash: "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975"
+                .to_string(),
+            expires_at: 1_800_000_000,
+            observed_at: 1_799_999_000,
+            locked_minor_units: 4_000_000,
+            reserve_requirement_minor_units: 2_500_000,
+            reserve_requirement_ratio_bps: 6_250,
+            slashed_minor_units: 0,
+            released: false,
+            expired: false,
+        };
+        let mut released_snapshot = sample_bond_snapshot.clone();
+        released_snapshot.released = true;
+        let closed_release_error = prepare_bond_release(
+            &config,
+            &config.operator_address,
+            &released_snapshot,
+            &proof,
+        )
+        .test_expect_err("released bond snapshot should fail before calldata");
+        assert!(closed_release_error.to_string().contains("already closed"));
+
+        let mut expired_snapshot = sample_bond_snapshot.clone();
+        expired_snapshot.expired = true;
+        let closed_impair_error = prepare_bond_impair(
+            &config,
+            &config.operator_address,
+            &expired_snapshot,
+            &MonetaryAmount {
+                units: 10,
+                currency: "USD".to_string(),
+            },
+            &["0x1000000000000000000000000000000000000002".to_string()],
+            &[MonetaryAmount {
+                units: 10,
+                currency: "USD".to_string(),
+            }],
+            &proof,
+        )
+        .test_expect_err("expired bond snapshot should fail before calldata");
+        assert!(closed_impair_error.to_string().contains("already closed"));
+
+        let mut time_expired_snapshot = sample_bond_snapshot.clone();
+        time_expired_snapshot.observed_at = time_expired_snapshot.expires_at + 1;
+        let time_expired_release = prepare_bond_release(
+            &config,
+            &config.operator_address,
+            &time_expired_snapshot,
+            &proof,
+        )
+        .test_expect_err("time-expired bond snapshot should fail before release calldata");
+        assert!(time_expired_release.to_string().contains("expires_at"));
+        let time_expired_impair = prepare_bond_impair(
+            &config,
+            &config.operator_address,
+            &time_expired_snapshot,
+            &MonetaryAmount {
+                units: 10,
+                currency: "USD".to_string(),
+            },
+            &["0x1000000000000000000000000000000000000002".to_string()],
+            &[MonetaryAmount {
+                units: 10,
+                currency: "USD".to_string(),
+            }],
+            &proof,
+        )
+        .test_expect_err("time-expired bond snapshot should fail before impair calldata");
+        assert!(time_expired_impair.to_string().contains("expires_at"));
+
+        let over_impair_error = prepare_bond_impair(
+            &config,
+            &config.operator_address,
+            &sample_bond_snapshot,
+            &MonetaryAmount {
+                units: 401,
+                currency: "USD".to_string(),
+            },
+            &["0x1000000000000000000000000000000000000002".to_string()],
+            &[MonetaryAmount {
+                units: 401,
+                currency: "USD".to_string(),
+            }],
+            &proof,
+        )
+        .test_expect_err("over-impairment should fail before calldata");
+        assert!(over_impair_error
+            .to_string()
+            .contains("remaining bond collateral"));
+
         let share_error = prepare_bond_impair(
             &config,
-            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "0x1000000000000000000000000000000000000001",
+            &config.operator_address,
+            &sample_bond_snapshot,
             &MonetaryAmount {
                 units: 10,
                 currency: "USD".to_string(),
@@ -1608,12 +2235,78 @@ mod tests {
                 units: 9,
                 currency: "USD".to_string(),
             }],
-            &sample_primary_proof(),
+            &proof,
         )
         .test_expect_err("mismatched shares should fail");
         assert!(share_error
             .to_string()
             .contains("slash shares must sum to slash_amount"));
+
+        let zero_slash_error = prepare_bond_impair(
+            &config,
+            &config.operator_address,
+            &sample_bond_snapshot,
+            &MonetaryAmount {
+                units: 0,
+                currency: "USD".to_string(),
+            },
+            &["0x1000000000000000000000000000000000000002".to_string()],
+            &[MonetaryAmount {
+                units: 0,
+                currency: "USD".to_string(),
+            }],
+            &proof,
+        )
+        .test_expect_err("zero slash should fail");
+        assert!(zero_slash_error
+            .to_string()
+            .contains("slash_amount must be greater than zero"));
+
+        let zero_beneficiary_error = prepare_bond_impair(
+            &config,
+            &config.operator_address,
+            &sample_bond_snapshot,
+            &MonetaryAmount {
+                units: 10,
+                currency: "USD".to_string(),
+            },
+            &["0x0000000000000000000000000000000000000000".to_string()],
+            &[MonetaryAmount {
+                units: 10,
+                currency: "USD".to_string(),
+            }],
+            &proof,
+        )
+        .test_expect_err("zero beneficiary should fail");
+        assert!(zero_beneficiary_error
+            .to_string()
+            .contains("InvalidSlashDistribution"));
+
+        let many_beneficiaries = (0..17_u64)
+            .map(|index| format!("0x{:040x}", 0x1000_u64 + index))
+            .collect::<Vec<_>>();
+        let many_shares = (0..17)
+            .map(|_| MonetaryAmount {
+                units: 1,
+                currency: "USD".to_string(),
+            })
+            .collect::<Vec<_>>();
+        let many_beneficiaries_error = prepare_bond_impair(
+            &config,
+            "0x1000000000000000000000000000000000000001",
+            &sample_bond_snapshot,
+            &MonetaryAmount {
+                units: 17,
+                currency: "USD".to_string(),
+            },
+            &many_beneficiaries,
+            &many_shares,
+            &proof,
+        )
+        .test_expect_err("too many beneficiaries should fail");
+        assert!(many_beneficiaries_error
+            .to_string()
+            .contains("beneficiary count"));
 
         let finalize_error = finalize_escrow_dispatch(
             &PreparedEscrowCreate {

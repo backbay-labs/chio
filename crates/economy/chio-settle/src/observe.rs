@@ -1,8 +1,8 @@
 use chio_core::web3::anchors::{AnchorInclusionProof, OracleConversionEvidence};
 use chio_core::web3::settlement::{
     validate_web3_settlement_execution_receipt, Web3SettlementDispatchArtifact,
-    Web3SettlementExecutionReceiptArtifact, Web3SettlementLifecycleState,
-    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+    Web3SettlementExecutionReceiptArtifact, Web3SettlementIdentityRegistryEvidence,
+    Web3SettlementLifecycleState, CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
 };
 use chio_egress_contract::{client_builder_with_contract, send_with_contract};
 use serde::{Deserialize, Serialize};
@@ -94,6 +94,7 @@ pub struct ExecutionProjectionInput<'a> {
     pub observed_at: Option<u64>,
     pub observed_amount: chio_core::capability::scope::MonetaryAmount,
     pub anchor_proof: Option<&'a AnchorInclusionProof>,
+    pub identity_registry_evidence: Option<Web3SettlementIdentityRegistryEvidence>,
     pub oracle_evidence: Option<&'a OracleConversionEvidence>,
     pub failure_reason: Option<String>,
     pub reversal_of: Option<String>,
@@ -221,6 +222,7 @@ pub async fn project_escrow_execution_receipt(
         lifecycle_state,
         settlement_reference: input.settlement_reference,
         reconciled_anchor_proof: input.anchor_proof.cloned(),
+        identity_registry_evidence: input.identity_registry_evidence,
         oracle_evidence: input.oracle_evidence.cloned(),
         settled_amount,
         reversal_of: input.reversal_of.clone(),
@@ -245,7 +247,8 @@ pub async fn observe_bond(
     vault_id: &str,
 ) -> Result<BondLifecycleObservation, SettlementError> {
     let snapshot = read_bond_snapshot(config, vault_id).await?;
-    let status = if snapshot.expired {
+    let time_expired = snapshot.observed_at > snapshot.expires_at;
+    let status = if snapshot.expired || time_expired {
         BondLifecycleStatus::Expired
     } else if snapshot.released {
         BondLifecycleStatus::Released
@@ -254,7 +257,9 @@ pub async fn observe_bond(
     } else {
         BondLifecycleStatus::Active
     };
-    let recovery_action = if matches!(
+    let recovery_action = if time_expired && !snapshot.expired {
+        Some(SettlementRecoveryAction::ExpireBond)
+    } else if matches!(
         status,
         BondLifecycleStatus::Active | BondLifecycleStatus::Expired
     ) {
@@ -1007,6 +1012,7 @@ mod tests {
                 observed_at: Some(1_743_292_900),
                 observed_amount: dispatch.settlement_amount.clone(),
                 anchor_proof: None,
+                identity_registry_evidence: None,
                 oracle_evidence: None,
                 failure_reason: None,
                 reversal_of: None,
@@ -1091,6 +1097,7 @@ mod tests {
                     currency: dispatch.settlement_amount.currency.clone(),
                 },
                 anchor_proof: None,
+                identity_registry_evidence: None,
                 oracle_evidence: None,
                 failure_reason: Some("partial release".to_string()),
                 reversal_of: None,
@@ -1121,11 +1128,19 @@ mod tests {
     #[tokio::test]
     async fn observe_bond_classifies_statuses_and_recovery_actions() {
         let cases = [
-            (false, false, 0_u64, BondLifecycleStatus::Active, None),
+            (
+                false,
+                false,
+                0_u64,
+                1_700_000_000_u64,
+                BondLifecycleStatus::Active,
+                None,
+            ),
             (
                 true,
                 false,
                 0_u64,
+                1_700_000_000_u64,
                 BondLifecycleStatus::Released,
                 Some(SettlementRecoveryAction::ManualReview),
             ),
@@ -1133,35 +1148,74 @@ mod tests {
                 false,
                 false,
                 5_u64,
+                1_700_000_000_u64,
                 BondLifecycleStatus::Impaired,
                 Some(SettlementRecoveryAction::ManualReview),
             ),
-            (false, true, 0_u64, BondLifecycleStatus::Expired, None),
+            (
+                false,
+                false,
+                0_u64,
+                1_700_100_001_u64,
+                BondLifecycleStatus::Expired,
+                Some(SettlementRecoveryAction::ExpireBond),
+            ),
+            (
+                false,
+                true,
+                0_u64,
+                1_700_100_001_u64,
+                BondLifecycleStatus::Expired,
+                None,
+            ),
         ];
 
-        for (released, expired, slashed_minor_units, expected_status, expected_recovery) in cases {
-            let server = MockJsonRpcServer::spawn(vec![rpc_result(json!(encode_hex(
-                IChioBondVault::getBondCall::abi_encode_returns(&IChioBondVault::getBondReturn {
-                    terms: IChioBondVault::BondTerms {
-                        bondId: B256::from([0x55; 32]),
-                        facilityId: B256::from([0x66; 32]),
-                        principal: Address::from_str("0x1000000000000000000000000000000000000001",)
-                            .test_unwrap(),
-                        token: Address::from_str("0x1000000000000000000000000000000000000002",)
-                            .test_unwrap(),
-                        collateralAmount: U256::from(1_000_u64),
-                        reserveRequirementAmount: U256::from(250_u64),
-                        expiresAt: U256::from(1_700_100_000_u64),
-                        reserveRequirementRatioBps: 2_500_u16,
-                        operator: Address::from_str("0x1000000000000000000000000000000000000003",)
-                            .test_unwrap(),
-                    },
-                    lockedAmount: U256::from(1_000_u64),
-                    slashedAmount: U256::from(slashed_minor_units),
-                    released,
-                    expired,
-                })
-            )))]);
+        for (
+            released,
+            expired,
+            slashed_minor_units,
+            observed_at,
+            expected_status,
+            expected_recovery,
+        ) in cases
+        {
+            let server = MockJsonRpcServer::spawn(vec![
+                rpc_result(json!({
+                    "number": "0x65",
+                    "timestamp": format!("0x{observed_at:x}")
+                })),
+                rpc_result(json!(encode_hex(
+                    IChioBondVault::getBondCall::abi_encode_returns(
+                        &IChioBondVault::getBondReturn {
+                            terms: IChioBondVault::BondTerms {
+                                bondId: B256::from([0x55; 32]),
+                                facilityId: B256::from([0x66; 32]),
+                                principal: Address::from_str(
+                                    "0x1000000000000000000000000000000000000001",
+                                )
+                                .test_unwrap(),
+                                token: Address::from_str(
+                                    "0x1000000000000000000000000000000000000002",
+                                )
+                                .test_unwrap(),
+                                collateralAmount: U256::from(1_000_u64),
+                                reserveRequirementAmount: U256::from(250_u64),
+                                expiresAt: U256::from(1_700_100_000_u64),
+                                reserveRequirementRatioBps: 2_500_u16,
+                                operator: Address::from_str(
+                                    "0x1000000000000000000000000000000000000003",
+                                )
+                                .test_unwrap(),
+                                operatorKeyHash: B256::from([0x77; 32]),
+                            },
+                            lockedAmount: U256::from(1_000_u64),
+                            slashedAmount: U256::from(slashed_minor_units),
+                            released,
+                            expired,
+                        }
+                    )
+                ))),
+            ]);
             let config = sample_config(server.base_url());
 
             let observation = observe_bond(

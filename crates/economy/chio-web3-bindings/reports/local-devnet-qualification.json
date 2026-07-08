@@ -5,22 +5,69 @@
   "environment": "local-devnet",
   "network_tier": "development",
   "note": "Ephemeral local-devnet test run.",
-  "generated_at": "2026-07-08T03:10:41.750Z",
+  "generated_at": "2026-07-08T20:13:33.908Z",
   "chain_id": "eip155:31337",
   "gas_estimates": {
-    "register_operator": "74724",
-    "register_delegate": "84718",
-    "publish_root_operator": "218005",
-    "publish_root_delegate": "186126",
+    "register_operator": "97958",
+    "register_delegate": "140272",
+    "publish_root_operator": "245584",
+    "publish_root_delegate": "218332",
     "register_feed": "123638",
-    "price_read": "60488",
-    "create_escrow": "298366",
-    "merkle_partial_release": "166296",
-    "dual_sign_release": "129712",
-    "lock_bond": "293267",
-    "bond_release": "146062"
+    "price_read": "60926",
+    "create_escrow": "300719",
+    "merkle_partial_release": "198001",
+    "dual_sign_release": "154052",
+    "lock_bond": "322524",
+    "bond_release": "179991"
+  },
+  "deployed_runtime_codehashes": {
+    "identity_registry": {
+      "actual_runtime_codehash": "0x9906b1307e5908dd97f3025fb788d790abab45d8580bcf2f30b342510898e15b",
+      "immutable_normalized_runtime_codehash": "0x9906b1307e5908dd97f3025fb788d790abab45d8580bcf2f30b342510898e15b",
+      "package_runtime_codehash": "0x9906b1307e5908dd97f3025fb788d790abab45d8580bcf2f30b342510898e15b",
+      "observed_block_number": 10,
+      "observed_block_hash": "0x1c594602ba4753bebdaa3255a2f8493e4892656ffd72040134cb6f021a70306e",
+      "observation_source": "eth_getCode"
+    },
+    "root_registry": {
+      "actual_runtime_codehash": "0xced7b8b03efc162451bbeb61a108cbf2ca47fb374506029ccd22b5a2ba780274",
+      "immutable_normalized_runtime_codehash": "0xe470364708c8a51536699d2cfb7856096c6e5510e72804625a613bdb63d3114c",
+      "package_runtime_codehash": "0xe470364708c8a51536699d2cfb7856096c6e5510e72804625a613bdb63d3114c",
+      "observed_block_number": 10,
+      "observed_block_hash": "0x1c594602ba4753bebdaa3255a2f8493e4892656ffd72040134cb6f021a70306e",
+      "observation_source": "eth_getCode"
+    },
+    "escrow": {
+      "actual_runtime_codehash": "0x6e740e8e7412129044edc39c613825cc787466ba3ee3143c507e9e6ab6beb042",
+      "immutable_normalized_runtime_codehash": "0x864fc83713b3c8bbcb0ed06ec409c08513375cb5474f4b0e702cc0dfd6eb7b8a",
+      "package_runtime_codehash": "0x864fc83713b3c8bbcb0ed06ec409c08513375cb5474f4b0e702cc0dfd6eb7b8a",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xe43cb30346c746f5120add3eff17db2f2db7781f2a939e38403563f21ace51f2",
+      "observation_source": "eth_getCode"
+    },
+    "bond_vault": {
+      "actual_runtime_codehash": "0x07ef291531607347396d6f95f9c4e8df882053f4dd2df3426a47fcf5354c8e18",
+      "immutable_normalized_runtime_codehash": "0x7b5092d138d20ed0bdb03faab42424ed0fb64fd98b33e10c721b2752724e7aff",
+      "package_runtime_codehash": "0x7b5092d138d20ed0bdb03faab42424ed0fb64fd98b33e10c721b2752724e7aff",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xe43cb30346c746f5120add3eff17db2f2db7781f2a939e38403563f21ace51f2",
+      "observation_source": "eth_getCode"
+    },
+    "price_resolver": {
+      "actual_runtime_codehash": "0xd4b2f46c778b73dfcca67679d54ef7d4ceaf13249afd9d231815302fe890e1c8",
+      "immutable_normalized_runtime_codehash": "0x47da56923b8635d468efc71558e0c383d8f427484fd815804d0929ac89718e66",
+      "package_runtime_codehash": "0x47da56923b8635d468efc71558e0c383d8f427484fd815804d0929ac89718e66",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xe43cb30346c746f5120add3eff17db2f2db7781f2a939e38403563f21ace51f2",
+      "observation_source": "eth_getCode"
+    }
   },
   "checks": [
+    {
+      "id": "deployment.runtime_codehashes",
+      "outcome": "pass",
+      "note": "Deployed local-devnet bytecode hashes match compiled artifacts and the reviewed contract package."
+    },
     {
       "id": "deployment.constructor_wiring",
       "outcome": "pass",
@@ -94,7 +141,12 @@
     {
       "id": "oracle.fail_closed",
       "outcome": "pass",
-      "note": "Price resolver rejects invalid feeds, stale feeds, zero or future sequencer timestamps, sequencer downtime, and sequencer grace-period reads."
+      "note": "Price resolver rejects invalid feeds, stale feeds, stale round metadata, zero or future sequencer timestamps, sequencer downtime, and sequencer grace-period reads."
+    },
+    {
+      "id": "escrow_and_bond.rotated_key_root_replay_denied",
+      "outcome": "pass",
+      "note": "Escrow and bond proof roots must be published under the operator key epoch they claim."
     },
     {
       "id": "escrow.inactive_operator_release_denied",
@@ -102,9 +154,9 @@
       "note": "Escrow release rechecks operator activation before moving funds."
     },
     {
-      "id": "bond.inactive_operator_impair_denied",
+      "id": "bond.inactive_operator_release_and_impair_denied",
       "outcome": "pass",
-      "note": "Bond impairment rechecks operator activation before moving collateral."
+      "note": "Bond release and impairment recheck operator activation before moving collateral."
     },
     {
       "id": "escrow.optional_return_token",
@@ -165,6 +217,11 @@
       "id": "bond.identity_reconciliation_under_nonce_drift",
       "outcome": "pass",
       "note": "Bond identity remains deterministic under interleaving submissions and duplicate replays fail closed."
+    },
+    {
+      "id": "deployment.gas_budget",
+      "outcome": "pass",
+      "note": "Local-devnet gas estimates are within the deployment policy budgets."
     }
   ]
 }

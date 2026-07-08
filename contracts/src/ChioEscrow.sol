@@ -14,7 +14,7 @@ contract ChioEscrow is IChioEscrow {
     bytes32 private constant EIP712_DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 private constant ESCROW_RELEASE_TYPEHASH =
-        keccak256("ChioEscrowRelease(bytes32 escrowId,bytes32 receiptHash,uint256 amount)");
+        keccak256("ChioEscrowRelease(bytes32 escrowId,bytes32 receiptHash,uint256 amount,uint64 operatorEpoch)");
     bytes32 private constant EIP712_NAME_HASH = keccak256("ChioEscrow");
     bytes32 private constant EIP712_VERSION_HASH = keccak256("1");
     uint256 private constant SECP256K1_HALF_ORDER =
@@ -55,6 +55,7 @@ contract ChioEscrow is IChioEscrow {
 
     mapping(bytes32 => EscrowState) private escrows;
     mapping(bytes32 => mapping(bytes32 => bool)) private consumedReceipts;
+    mapping(bytes32 => bool) private consumedReceiptHashes;
     mapping(address => bool) public tokenAllowed;
     uint256 private reentrancyStatus;
 
@@ -157,9 +158,20 @@ contract ChioEscrow is IChioEscrow {
         _requireBeneficiary(escrow);
         _ensureLive(escrow);
         _ensureReleaseAmount(escrow, settledAmount);
-        _ensureOperatorActive(escrow.terms.operator);
+        if (settledAmount != escrow.deposited - escrow.released) {
+            revert InvalidReleaseAmount();
+        }
+        _requireCurrentOperatorKey(escrow.terms.operator, escrow.terms.operatorKeyHash);
         bytes32 leafHash = _proofLeaf(escrow, escrowId, receiptHash, settledAmount, false);
-        if (!rootRegistry.verifyInclusionDetailed(proof, root, leafHash, escrow.terms.operator)) {
+        if (
+            !rootRegistry.verifyInclusionDetailedForKeyHash(
+                proof,
+                root,
+                leafHash,
+                escrow.terms.operator,
+                escrow.terms.operatorKeyHash
+            )
+        ) {
             revert InvalidSignature();
         }
         _consumeReceipt(escrowId, receiptHash);
@@ -170,6 +182,7 @@ contract ChioEscrow is IChioEscrow {
         bytes32 escrowId,
         bytes32 receiptHash,
         uint256 settledAmount,
+        uint64 operatorEpoch,
         uint8 v,
         bytes32 r,
         bytes32 s
@@ -178,15 +191,16 @@ contract ChioEscrow is IChioEscrow {
         _requireBeneficiary(escrow);
         _ensureLive(escrow);
         _ensureReleaseAmount(escrow, settledAmount);
-        _ensureOperatorActive(escrow.terms.operator);
-
+        if (settledAmount != escrow.deposited - escrow.released) {
+            revert InvalidReleaseAmount();
+        }
         IChioIdentityRegistry.OperatorRecord memory operatorRecord =
-            identityRegistry.getOperator(escrow.terms.operator);
-        if (operatorRecord.edKeyHash != escrow.terms.operatorKeyHash) {
+            _requireCurrentOperatorKey(escrow.terms.operator, escrow.terms.operatorKeyHash);
+        if (operatorRecord.operatorEpoch != operatorEpoch) {
             revert OperatorKeyHashMismatch();
         }
 
-        address signer = _recoverSigner(_releaseDigest(escrowId, receiptHash, settledAmount), v, r, s);
+        address signer = _recoverSigner(_releaseDigest(escrowId, receiptHash, settledAmount, operatorEpoch), v, r, s);
         if (signer != operatorRecord.settlementKey) {
             revert InvalidSignature();
         }
@@ -216,9 +230,17 @@ contract ChioEscrow is IChioEscrow {
         _requireBeneficiary(escrow);
         _ensureLive(escrow);
         _ensureReleaseAmount(escrow, amount);
-        _ensureOperatorActive(escrow.terms.operator);
+        _requireCurrentOperatorKey(escrow.terms.operator, escrow.terms.operatorKeyHash);
         bytes32 leafHash = _proofLeaf(escrow, escrowId, receiptHash, amount, true);
-        if (!rootRegistry.verifyInclusionDetailed(proof, root, leafHash, escrow.terms.operator)) {
+        if (
+            !rootRegistry.verifyInclusionDetailedForKeyHash(
+                proof,
+                root,
+                leafHash,
+                escrow.terms.operator,
+                escrow.terms.operatorKeyHash
+            )
+        ) {
             revert InvalidSignature();
         }
         _consumeReceipt(escrowId, receiptHash);
@@ -251,10 +273,11 @@ contract ChioEscrow is IChioEscrow {
         if (
             terms.capabilityId == bytes32(0) ||
             terms.beneficiary == address(0) ||
-            terms.token == address(0) ||
-            terms.maxAmount == 0 ||
-            terms.deadline <= block.timestamp ||
-            !identityRegistry.isOperator(terms.operator)
+                terms.token == address(0) ||
+                terms.maxAmount == 0 ||
+                terms.operatorKeyHash == bytes32(0) ||
+                terms.deadline <= block.timestamp ||
+                !identityRegistry.isOperator(terms.operator)
         ) {
             revert InvalidTerms();
         }
@@ -327,6 +350,16 @@ contract ChioEscrow is IChioEscrow {
         if (!identityRegistry.isOperator(operator)) revert OperatorNotActive();
     }
 
+    function _requireCurrentOperatorKey(address operator, bytes32 operatorKeyHash)
+        internal
+        view
+        returns (IChioIdentityRegistry.OperatorRecord memory operatorRecord)
+    {
+        operatorRecord = identityRegistry.getOperator(operator);
+        if (!operatorRecord.active) revert OperatorNotActive();
+        if (operatorRecord.edKeyHash != operatorKeyHash) revert OperatorKeyHashMismatch();
+    }
+
     function _proofLeaf(
         EscrowState storage escrow,
         bytes32 escrowId,
@@ -350,7 +383,7 @@ contract ChioEscrow is IChioEscrow {
         );
     }
 
-    function _releaseDigest(bytes32 escrowId, bytes32 receiptHash, uint256 amount)
+    function _releaseDigest(bytes32 escrowId, bytes32 receiptHash, uint256 amount, uint64 operatorEpoch)
         internal
         view
         returns (bytes32)
@@ -365,14 +398,20 @@ contract ChioEscrow is IChioEscrow {
             )
         );
         bytes32 structHash = keccak256(
-            abi.encode(ESCROW_RELEASE_TYPEHASH, escrowId, receiptHash, amount)
+            abi.encode(ESCROW_RELEASE_TYPEHASH, escrowId, receiptHash, amount, operatorEpoch)
         );
         return keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
     }
 
     function _consumeReceipt(bytes32 escrowId, bytes32 receiptHash) internal {
-        if (consumedReceipts[escrowId][receiptHash]) revert ReceiptAlreadyUsed();
+        if (receiptHash == bytes32(0)) {
+            revert InvalidSignature();
+        }
+        if (consumedReceipts[escrowId][receiptHash] || consumedReceiptHashes[receiptHash]) {
+            revert ReceiptAlreadyUsed();
+        }
         consumedReceipts[escrowId][receiptHash] = true;
+        consumedReceiptHashes[receiptHash] = true;
     }
 
     function _recoverSigner(bytes32 digest, uint8 v, bytes32 r, bytes32 s)

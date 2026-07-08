@@ -8,17 +8,17 @@
     "summary": "Mainnet deployment, non-testnet custody, and non-testnet promotion require external audit, testnet soak, artifact digest, runtime codehash, and minimum-bar gates with security-owner sign-off.",
     "historical_evidence": [
       "contracts/reports/local-devnet-qualification.json",
+      "contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md",
       "contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md"
     ],
-    "current_blockers": [
-      "F1-root-forgery",
-      "F3-settlement-replay",
-      "escrow-proof-release-unbound",
-      "F2-unbound-commitments",
-      "F4-delegate-brick",
-      "bondvault-impair-reentrancy-slash-cap-bypass",
-      "CHIO-AC-01",
-      "no-emergency-stop-deactivation-ineffective"
+    "external_assurance_blockers": [
+      "independent external audit with zero unresolved critical/high findings",
+      "four-week testnet soak evidence",
+      "artifact digest gate evidence",
+      "deployed runtime codehash gate evidence",
+      "security-owner signed minimum-bar checklist",
+      "hosted qualification observation on the candidate revision",
+      "operator-approved target-chain manifests and approval records"
     ]
   },
   "source_roots": [
@@ -46,9 +46,21 @@
     "contracts/deployments/local-devnet.json"
   ],
   "qualification_reports": [
-    "contracts/reports/local-devnet-qualification.json",
-    "contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md",
-    "contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md"
+    {
+      "path": "contracts/reports/local-devnet-qualification.json",
+      "classification": "historical-devnet-fixture",
+      "promotion_signal": false
+    },
+    {
+      "path": "contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md",
+      "classification": "historical-budget-context",
+      "promotion_signal": false
+    },
+    {
+      "path": "contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md",
+      "classification": "historical-review-context",
+      "promotion_signal": false
+    }
   ],
   "operator_tooling": [
     "contracts/scripts/deploy-base-sepolia-dependencies.mjs",

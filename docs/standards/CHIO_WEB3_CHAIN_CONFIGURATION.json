@@ -7,44 +7,72 @@
       "chain_id": "eip155:8453",
       "network_name": "Base",
       "role": "primary",
+      "deployment_status": "template_blocked_pending_external_assurance",
       "settlement_token_symbol": "USDC",
-      "settlement_token_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
-      "root_registry_address": "0x4e7ab9246fd70c81e8a8e3169b7488a72f23e305",
-      "escrow_address": "0x79c652a6c0cf8f01c995063e234d8f2a1f5e8437",
-      "bond_vault_address": "0xb84ff630739b2d79e5f250826d8f74e66d08f2c4",
-      "identity_registry_address": "0x63e49e89f2d8f74ee2f97ec14b0cc915f4ec8f8d",
-      "price_resolver_address": "0xc083e8a9153ff2d98219b0081c9e02074758c957",
-      "operator_address": "0xea4a6c63e29c520abef5507b132ec5f9954776ae"
+      "live_external_addresses": {
+        "settlement_token_address": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+      },
+      "planned_contract_addresses": {
+        "root_registry_address": "0x4e7ab9246fd70c81e8a8e3169b7488a72f23e305",
+        "escrow_address": "0x79c652a6c0cf8f01c995063e234d8f2a1f5e8437",
+        "bond_vault_address": "0xb84ff630739b2d79e5f250826d8f74e66d08f2c4",
+        "identity_registry_address": "0x63e49e89f2d8f74ee2f97ec14b0cc915f4ec8f8d",
+        "price_resolver_address": "0xc083e8a9153ff2d98219b0081c9e02074758c957"
+      },
+      "deployed_contract_addresses": null,
+      "planned_operator_address": "0xea4a6c63e29c520abef5507b132ec5f9954776ae",
+      "deployed_operator_address": null,
+      "deployment_plan": {
+        "source_manifest_path": "contracts/deployments/base-mainnet.template.json",
+        "source_manifest_sha256": "531f5ddf7d3e9f8d736fae1564b1a4bd66741c1c33d4c9407ce790dfabf18951",
+        "create2_factory_address": null,
+        "create2_factory_source": "target-chain approval artifact",
+        "salt_namespace": "chio.web3.v0.1.0"
+      }
     },
     {
       "chain_id": "eip155:42161",
       "network_name": "Arbitrum",
       "role": "secondary",
+      "deployment_status": "template_blocked_pending_external_assurance",
       "settlement_token_symbol": "USDC",
-      "settlement_token_address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
-      "root_registry_address": "0x9f50e8d6b4c23179c54f3a31d8e29a576d0a4bce",
-      "escrow_address": "0x52c6761c298e3fd83fc9da4b7e9de0d7f1c2a940",
-      "bond_vault_address": "0x6ad34438e7b2fdb0a8df49f5b47fde81d6aa0932",
-      "identity_registry_address": "0x38b4c32e60bf18e54039b6b2dc39140fe91ecf84",
-      "price_resolver_address": "0x94f1780f492fbd3a6e278d51324cce89b3704f71",
-      "operator_address": "0xea4a6c63e29c520abef5507b132ec5f9954776ae"
+      "live_external_addresses": {
+        "settlement_token_address": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
+      },
+      "planned_contract_addresses": {
+        "root_registry_address": "0x9f50e8d6b4c23179c54f3a31d8e29a576d0a4bce",
+        "escrow_address": "0x52c6761c298e3fd83fc9da4b7e9de0d7f1c2a940",
+        "bond_vault_address": "0x6ad34438e7b2fdb0a8df49f5b47fde81d6aa0932",
+        "identity_registry_address": "0x38b4c32e60bf18e54039b6b2dc39140fe91ecf84",
+        "price_resolver_address": "0x94f1780f492fbd3a6e278d51324cce89b3704f71"
+      },
+      "deployed_contract_addresses": null,
+      "planned_operator_address": "0xea4a6c63e29c520abef5507b132ec5f9954776ae",
+      "deployed_operator_address": null,
+      "deployment_plan": {
+        "source_manifest_path": "contracts/deployments/arbitrum-one.template.json",
+        "source_manifest_sha256": "6e7755004a5d88e382e8987ef69d64f361be07f4356b1e327de00df319cd7aad",
+        "create2_factory_address": null,
+        "create2_factory_source": "target-chain approval artifact",
+        "salt_namespace": "chio.web3.v0.1.0"
+      }
     }
   ],
   "gas_profiles": [
     {
       "chain_id": "eip155:8453",
-      "publish_root_gas": 175000,
-      "dual_sign_settlement_gas": 80000,
-      "merkle_settlement_gas": 105000,
-      "bond_release_gas": 85000,
+      "publish_root_gas": 260000,
+      "dual_sign_settlement_gas": 165000,
+      "merkle_settlement_gas": 210000,
+      "bond_release_gas": 190000,
       "price_read_gas": 65000
     },
     {
       "chain_id": "eip155:42161",
-      "publish_root_gas": 185000,
-      "dual_sign_settlement_gas": 85000,
-      "merkle_settlement_gas": 110000,
-      "bond_release_gas": 90000,
+      "publish_root_gas": 270000,
+      "dual_sign_settlement_gas": 175000,
+      "merkle_settlement_gas": 220000,
+      "bond_release_gas": 200000,
       "price_read_gas": 70000
     }
   ]

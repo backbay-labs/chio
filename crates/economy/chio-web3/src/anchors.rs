@@ -1,9 +1,10 @@
+use alloy_primitives::keccak256;
 use serde::{Deserialize, Serialize};
 
 pub use chio_core_types::oracle::OracleConversionEvidence;
 
 use crate::canonical::canonical_json_bytes;
-use crate::crypto::{Keypair, PublicKey, Signature};
+use crate::crypto::{Keypair, PublicKey, Signature, SigningAlgorithm};
 use crate::error::Web3ContractError;
 use crate::hashing::Hash;
 use crate::identity::{
@@ -54,6 +55,8 @@ pub struct Web3ChainAnchorRecord {
     pub tx_hash: String,
     pub block_number: u64,
     pub block_hash: String,
+    pub operator_key_hash: String,
+    pub operator_epoch: u64,
     pub anchored_merkle_root: Hash,
     pub anchored_checkpoint_seq: u64,
 }
@@ -90,6 +93,18 @@ pub struct AnchorInclusionProof {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub super_root_inclusion: Option<Web3SuperRootInclusion>,
     pub key_binding_certificate: SignedWeb3IdentityBinding,
+}
+
+pub(crate) fn expected_operator_key_hash(
+    public_key: &PublicKey,
+) -> Result<Hash, Web3ContractError> {
+    if public_key.algorithm() != SigningAlgorithm::Ed25519 {
+        return Err(Web3ContractError::InvalidBinding(format!(
+            "operator key hash requires an Ed25519 public key, got {:?}",
+            public_key.algorithm()
+        )));
+    }
+    Ok(Hash::from_bytes(*keccak256(public_key.as_bytes()).as_ref()))
 }
 
 pub fn validate_oracle_conversion_evidence(
@@ -333,6 +348,30 @@ pub fn validate_anchor_inclusion_proof(
             &chain_anchor.block_hash,
             "anchor_inclusion.chain_anchor.block_hash",
         )?;
+        let operator_key_hash =
+            Hash::from_hex(&chain_anchor.operator_key_hash).map_err(|error| {
+                Web3ContractError::InvalidBinding(format!(
+                    "chain anchor operator_key_hash must be a 32-byte hex hash: {error}"
+                ))
+            })?;
+        if operator_key_hash == Hash::zero() {
+            return Err(Web3ContractError::InvalidBinding(
+                "chain anchor operator_key_hash must not be zero".to_string(),
+            ));
+        }
+        if chain_anchor.operator_epoch == 0 {
+            return Err(Web3ContractError::InvalidBinding(
+                "chain anchor operator_epoch must be non-zero".to_string(),
+            ));
+        }
+        let expected_operator_key =
+            expected_operator_key_hash(&proof.key_binding_certificate.certificate.chio_public_key)?;
+        if operator_key_hash != expected_operator_key {
+            return Err(Web3ContractError::InvalidBinding(
+                "chain anchor operator_key_hash must match binding certificate public key"
+                    .to_string(),
+            ));
+        }
         if chain_anchor.anchored_checkpoint_seq != proof.checkpoint_statement.checkpoint_seq {
             return Err(Web3ContractError::InvalidProof(
                 "chain anchor checkpoint seq must match checkpoint statement".to_string(),

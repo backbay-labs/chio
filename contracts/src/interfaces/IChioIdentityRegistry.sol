@@ -6,6 +6,7 @@ interface IChioIdentityRegistry {
         bytes32 edKeyHash;
         address settlementKey;
         uint64 registeredAt;
+        uint64 operatorEpoch;
         bool active;
     }
 

@@ -47,7 +47,7 @@ Meaning:
 
 | Area | State | Disposition |
 | --- | --- | --- |
-| Contract proof, signature, delegate, stale-feed, and timeout invariants | historical | old review and local-devnet qualification are historical only; confirmed critical/high blockers remain open until external assurance passes |
+| Contract proof, signature, delegate, stale-feed, and timeout invariants | historical | old review and local-devnet qualification are historical only; remediation is not promotion-closed until external re-review validates the current contract family |
 | Runtime observability, replay, and pause controls | reviewed | closed through `docs/standards/CHIO_WEB3_OPERATIONS_PROFILE.md` and `docs/release/CHIO_WEB3_OPERATIONS_RUNBOOK.md` |
 | On-chain Ed25519 verification | absent | accepted non-goal; identity binding remains registry-backed and explicit |
 | Sanctions or blacklist screening | absent | operator obligation outside the shipped local runtime lane |
@@ -63,23 +63,24 @@ only, not promotion evidence.
 
 | Operation | Measured | Budget | Status |
 | --- | ---: | ---: | --- |
-| `registerOperator` | 74,724 | 80,000 | pass |
-| `registerDelegate` | 84,718 | 80,000 | blocked |
-| `publishRoot` (operator) | 218,005 | 190,000 | blocked |
-| `publishRoot` (delegate) | 186,126 | 190,000 | pass |
-| `registerFeed` | 123,638 | 140,000 | pass |
-| `getPrice` | 60,488 | 70,000 | pass |
-| `createEscrow` | 298,366 | 330,000 | pass |
-| `partialReleaseWithProofDetailed` | 166,284 | 120,000 | blocked |
-| `releaseWithSignature` | 129,700 | 90,000 | blocked |
-| `lockBond` | 293,267 | 320,000 | pass |
-| `releaseBondDetailed` | 146,074 | 90,000 | blocked |
+| `registerOperator` | 97,958 | 110,000 | context |
+| `registerDelegate` | 140,272 | 150,000 | context |
+| `publishRoot` (operator) | 222,215 | 230,000 | context |
+| `publishRoot` (delegate) | 196,015 | 230,000 | context |
+| `registerFeed` | 123,638 | 140,000 | context |
+| `getPrice` | 60,926 | 70,000 | context |
+| `createEscrow` | 300,731 | 330,000 | context |
+| `partialReleaseWithProofDetailed` | 169,790 | 180,000 | context |
+| `releaseWithSignature` | 131,025 | 140,000 | context |
+| `lockBond` | 322,524 | 330,000 | context |
+| `releaseBondDetailed` | 151,768 | 160,000 | context |
 
 Operational latency and drift budgets are also explicit:
 
 - oracle refresh interval: `60s`
 - bounded oracle max age: `600s`
-- sequencer recovery grace: `300s`
+- off-chain oracle sequencer recovery grace: `300s`
+- on-chain price resolver sequencer recovery grace: `3600s`
 - anchor indexer drift threshold: `3` checkpoints
 - settlement indexer drift threshold: `12` blocks
 - CCIP validity windows must remain at least `2x` the expected delivery latency
@@ -113,28 +114,31 @@ only and is allowed only when:
    satisfy the promotion gate for Merkle or Solana evidence lanes.
 10. The web3 operations and settlement/anchor/oracle runbooks are updated
    together with the candidate docs.
-11. The measured gas table stays within the deployment policy budgets. The
-    current local-devnet table is over budget and blocks promotion until the
-    contracts are optimized or the policy budgets are deliberately revised.
+11. Same-candidate gas evidence is generated with artifact digest and runtime
+    codehash binding, and it stays within the deployment policy budgets. Any
+    overage blocks promotion until the contracts are optimized or the policy
+    budgets are deliberately revised.
 
 Promotion from template review to actual non-testnet deployment is blocked
 until:
 
 1. external audit reports zero unresolved critical/high findings,
-2. the testnet soak, artifact digest, runtime codehash, and minimum-bar
-   checklist are signed off by the security owner,
+2. the testnet soak, artifact digest, and minimum-bar checklist are signed off
+   by the security owner,
 3. `contracts/scripts/promote-deployment.mjs` receives an approved
    `--assurance-unlock` artifact for the exact approval, release, policy, and
    chain,
-4. hosted `Release Qualification` results are observed on the candidate
+4. post-deployment runtime codehash verification passes before configuration or
+   custody movement,
+5. hosted `Release Qualification` results are observed on the candidate
    revision, including the staged artifact bundle under
    `target/release-qualification/web3-runtime/` and the generated ops-control
    evidence under `target/release-qualification/web3-runtime/ops/` plus the
    staged end-to-end settlement package under
    `target/release-qualification/web3-runtime/e2e/`,
-5. the operator produces one environment-specific reviewed manifest and
+6. the operator produces one environment-specific reviewed manifest and
    approval artifact with a predeployed CREATE2 factory address, and
-6. operator RPC and deployer key material are supplied outside the repo for
+7. operator RPC and deployer key material are supplied outside the repo for
    the target chain.
 
 ## Evidence

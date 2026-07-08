@@ -3,8 +3,9 @@
   "network_name": "Ganache Local Devnet",
   "chain_id": "eip155:31337",
   "rpc_url": "http://127.0.0.1:8545",
-  "deployed_at": "2026-07-08T03:10:41.750Z",
+  "deployed_at": "2026-07-08T20:13:33.908Z",
   "operator_address": "0x8d6d63c22D114C18C2a0dA6Db0A8972Ed9C40343",
+  "operator_epoch": 1,
   "delegate_address": "0x9567397B445998E7E405D5Fc3d239391bf5d0200",
   "settlement_token_symbol": "mUSDC",
   "settlement_token_address": "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8",
@@ -14,6 +15,48 @@
     "escrow": "0x06f1E13f59C84110Dc4D716Ab64C9d9555840E6c",
     "bond_vault": "0xE3D4207F1d5233AF8126416c80A6573480d5DBD5",
     "price_resolver": "0x0FeB1b332258f98feB5B529BDE41989f8af71780"
+  },
+  "deployed_runtime_codehashes": {
+    "identity_registry": {
+      "actual_runtime_codehash": "0x9906b1307e5908dd97f3025fb788d790abab45d8580bcf2f30b342510898e15b",
+      "immutable_normalized_runtime_codehash": "0x9906b1307e5908dd97f3025fb788d790abab45d8580bcf2f30b342510898e15b",
+      "package_runtime_codehash": "0x9906b1307e5908dd97f3025fb788d790abab45d8580bcf2f30b342510898e15b",
+      "observed_block_number": 10,
+      "observed_block_hash": "0x1c594602ba4753bebdaa3255a2f8493e4892656ffd72040134cb6f021a70306e",
+      "observation_source": "eth_getCode"
+    },
+    "root_registry": {
+      "actual_runtime_codehash": "0xced7b8b03efc162451bbeb61a108cbf2ca47fb374506029ccd22b5a2ba780274",
+      "immutable_normalized_runtime_codehash": "0xe470364708c8a51536699d2cfb7856096c6e5510e72804625a613bdb63d3114c",
+      "package_runtime_codehash": "0xe470364708c8a51536699d2cfb7856096c6e5510e72804625a613bdb63d3114c",
+      "observed_block_number": 10,
+      "observed_block_hash": "0x1c594602ba4753bebdaa3255a2f8493e4892656ffd72040134cb6f021a70306e",
+      "observation_source": "eth_getCode"
+    },
+    "escrow": {
+      "actual_runtime_codehash": "0x6e740e8e7412129044edc39c613825cc787466ba3ee3143c507e9e6ab6beb042",
+      "immutable_normalized_runtime_codehash": "0x864fc83713b3c8bbcb0ed06ec409c08513375cb5474f4b0e702cc0dfd6eb7b8a",
+      "package_runtime_codehash": "0x864fc83713b3c8bbcb0ed06ec409c08513375cb5474f4b0e702cc0dfd6eb7b8a",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xe43cb30346c746f5120add3eff17db2f2db7781f2a939e38403563f21ace51f2",
+      "observation_source": "eth_getCode"
+    },
+    "bond_vault": {
+      "actual_runtime_codehash": "0x07ef291531607347396d6f95f9c4e8df882053f4dd2df3426a47fcf5354c8e18",
+      "immutable_normalized_runtime_codehash": "0x7b5092d138d20ed0bdb03faab42424ed0fb64fd98b33e10c721b2752724e7aff",
+      "package_runtime_codehash": "0x7b5092d138d20ed0bdb03faab42424ed0fb64fd98b33e10c721b2752724e7aff",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xe43cb30346c746f5120add3eff17db2f2db7781f2a939e38403563f21ace51f2",
+      "observation_source": "eth_getCode"
+    },
+    "price_resolver": {
+      "actual_runtime_codehash": "0xd4b2f46c778b73dfcca67679d54ef7d4ceaf13249afd9d231815302fe890e1c8",
+      "immutable_normalized_runtime_codehash": "0x47da56923b8635d468efc71558e0c383d8f427484fd815804d0929ac89718e66",
+      "package_runtime_codehash": "0x47da56923b8635d468efc71558e0c383d8f427484fd815804d0929ac89718e66",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xe43cb30346c746f5120add3eff17db2f2db7781f2a939e38403563f21ace51f2",
+      "observation_source": "eth_getCode"
+    }
   },
   "mocks": {
     "eth_usd_feed": "0xb0F71e4a65baeF5ceC68184EFBDeD5e4FBaBF21B",

@@ -177,6 +177,18 @@ const PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL";
 const PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS";
+const PUBLIC_SETTLEMENT_TRUSTED_CONTRACT_PACKAGE_ID_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CONTRACT_PACKAGE_ID";
+const PUBLIC_SETTLEMENT_TRUSTED_REVIEWED_MANIFEST_HASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_REVIEWED_MANIFEST_HASH";
+const PUBLIC_SETTLEMENT_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH";
+const PUBLIC_SETTLEMENT_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH";
+const PUBLIC_SETTLEMENT_TRUSTED_ESCROW_RUNTIME_CODEHASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ESCROW_RUNTIME_CODEHASH";
+const PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH";
 const PUBLIC_SETTLEMENT_REORGED_INDEPENDENT_CHAIN_HEAD_JSON: &str =
     "{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"latest_block_number\":12345701}";
 const PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV: &str =
@@ -399,6 +411,21 @@ fn parse_string_list(env_name: &str, values: &str) -> Result<Vec<String>, String
 fn required_string_list_from_env(env_name: &str, label: &str) -> Result<Vec<String>, String> {
     match env::var(env_name) {
         Ok(values) => parse_string_list(env_name, &values),
+        Err(env::VarError::NotPresent) => Err(format!("{env_name} must pin trusted {label}")),
+        Err(env::VarError::NotUnicode(_)) => Err(format!("{env_name} must be valid UTF-8")),
+    }
+}
+
+fn required_string_from_env(env_name: &str, label: &str) -> Result<String, String> {
+    match env::var(env_name) {
+        Ok(value) => {
+            let value = value.trim();
+            if value.is_empty() {
+                Err(format!("{env_name} must pin trusted {label}"))
+            } else {
+                Ok(value.to_string())
+            }
+        }
         Err(env::VarError::NotPresent) => Err(format!("{env_name} must pin trusted {label}")),
         Err(env::VarError::NotUnicode(_)) => Err(format!("{env_name} must be valid UTF-8")),
     }
@@ -682,6 +709,34 @@ pub(crate) fn public_settlement_verifier_trust_from_env(
         verifier_now_unix_seconds: optional_u64_from_env(
             PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS_ENV,
         )?,
+        trusted_runtime_codehashes: Some(
+            chio_web3::settlement_proof::PublicSettlementRuntimeCodehashTrust {
+                contract_package_id: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_CONTRACT_PACKAGE_ID_ENV,
+                    "public settlement contract package id",
+                )?,
+                reviewed_manifest_hash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_REVIEWED_MANIFEST_HASH_ENV,
+                    "public settlement reviewed manifest hash",
+                )?,
+                root_registry_runtime_codehash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH_ENV,
+                    "public settlement root registry runtime codehash",
+                )?,
+                identity_registry_runtime_codehash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH_ENV,
+                    "public settlement identity registry runtime codehash",
+                )?,
+                escrow_runtime_codehash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_ESCROW_RUNTIME_CODEHASH_ENV,
+                    "public settlement escrow runtime codehash",
+                )?,
+                bond_vault_runtime_codehash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH_ENV,
+                    "public settlement bond vault runtime codehash",
+                )?,
+            },
+        ),
     })
 }
 

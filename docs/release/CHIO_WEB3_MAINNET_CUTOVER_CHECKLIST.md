@@ -22,11 +22,15 @@ themselves.
 - The smoke report includes transaction hashes for operator/entity setup, USDC
   approval, escrow create, partial release, final release, timeout refund, root
   publication, and oracle price readback.
-- The staged hosted artifact bundle includes runtime, promotion, e2e, ops, and
-  Base Sepolia smoke evidence.
+- The staged hosted artifact bundle includes runtime, promotion, e2e, ops,
+  Base Sepolia smoke evidence, contract artifact JSON, contract release
+  record, contract package, chain configuration, and schema manifest.
 - The old `contracts/reports/local-devnet-qualification.json` and
   `contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md` are historical
   fixtures only.
+- `contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md` is historical
+  budget evidence only. It is not promotion evidence without fresh artifact
+  digest and deployed runtime codehash gates.
 - External audit, testnet soak, artifact digest, runtime codehash,
   minimum-bar checklist, and security-owner sign-off are complete.
 - The reviewed mainnet approval has a matching approved `--assurance-unlock`

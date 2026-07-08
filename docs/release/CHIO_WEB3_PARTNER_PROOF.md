@@ -35,10 +35,11 @@ External deployment, non-testnet custody, and non-testnet promotion remain
 
 ## What Reviewers Can Rely On
 
-- one official contract family where root registry, escrow, bond vault, and
-  price resolver are immutable, while the identity registry remains the one
-  owner-managed mutable contract for operator registration and key-binding
-  changes. This is a package-shape statement only; it is not mainnet approval.
+- one official non-proxy contract family where root registry, escrow, bond
+  vault, and price resolver have fixed deployed bytecode, while identity
+  registry, price feed admin, token allowlists, pause controls, delegates, and
+  operator records remain explicit governed surfaces. This is a package-shape
+  statement only; it is not mainnet approval.
 - one bounded reviewed-manifest CREATE2 deployment runner that binds rollout
   to an exact manifest hash, release id, deployment policy id, and explicit
   rollback behavior
@@ -59,26 +60,45 @@ External deployment, non-testnet custody, and non-testnet promotion remain
   traces, and emergency modes that narrow write authority rather than
   widening trust
 
-## Core Evidence Set
+## Promotion Gate Evidence
 
 - `./scripts/qualify-web3-runtime.sh`
 - `./scripts/qualify-web3-e2e.sh`
 - `./scripts/qualify-web3-ops-controls.sh`
 - `./scripts/qualify-web3-promotion.sh`
-- `contracts/reports/local-devnet-qualification.json` (historical local evidence)
-- `contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md` (historical review)
-- `contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md`
-- `contracts/deployments/local-devnet.reviewed.json`
+- `contracts/release/CHIO_WEB3_CONTRACT_RELEASE.json`
+- `contracts/artifacts/ChioRootRegistry.json`
+- `contracts/artifacts/ChioIdentityRegistry.json`
+- `contracts/artifacts/ChioEscrow.json`
+- `contracts/artifacts/ChioBondVault.json`
+- `contracts/artifacts/ChioPriceResolver.json`
+- `contracts/artifacts/interfaces/IChioRootRegistry.json`
+- `contracts/artifacts/interfaces/IChioIdentityRegistry.json`
+- `contracts/artifacts/interfaces/IChioEscrow.json`
+- `contracts/artifacts/interfaces/IChioBondVault.json`
+- `contracts/artifacts/interfaces/IChioPriceResolver.json`
+- `contracts/deployments/base-mainnet.template.json`
+- `contracts/deployments/base-sepolia.template.json`
+- `contracts/deployments/arbitrum-one.template.json`
+- `docs/standards/CHIO_WEB3_CONTRACT_PACKAGE.json`
+- `docs/standards/CHIO_WEB3_CHAIN_CONFIGURATION.json`
 - `docs/standards/CHIO_WEB3_DEPLOYMENT_POLICY.json`
 - `docs/standards/CHIO_WEB3_DEPLOYMENT_APPROVAL_EXAMPLE.json`
 - `docs/standards/CHIO_WEB3_DEPLOYMENT_PROMOTION_REPORT_EXAMPLE.json`
 - `docs/standards/CHIO_WEB3_DEPLOYMENT_ROLLBACK_PLAN_EXAMPLE.json`
+- `docs/standards/CHIO_WEB3_OPERATOR_ENVIRONMENT.example`
 - `docs/standards/CHIO_WEB3_OPERATIONS_PROFILE.md`
+- `docs/standards/CHIO_WEB3_OPERATIONS_QUALIFICATION_MATRIX.json`
 - `docs/standards/CHIO_WEB3_EXTERNAL_QUALIFICATION_MATRIX.json`
 - `docs/release/CHIO_WEB3_READINESS_AUDIT.md`
 - `docs/release/CHIO_WEB3_OPERATIONS_RUNBOOK.md`
 - `docs/release/CHIO_WEB3_DEPLOYMENT_PROMOTION.md`
+- `spec/schemas/MANIFEST.sha256`
+- `spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json`
 - `target/release-qualification/web3-runtime/artifact-manifest.json`
+- `target/release-qualification/web3-runtime/docs/standards/CHIO_WEB3_CONTRACT_PACKAGE.json`
+- `target/release-qualification/web3-runtime/docs/standards/CHIO_WEB3_CHAIN_CONFIGURATION.json`
+- `target/release-qualification/web3-runtime/spec/schemas/MANIFEST.sha256`
 - `target/release-qualification/web3-runtime/logs/qualification.log`
 - `target/release-qualification/web3-runtime/logs/e2e-qualification.log`
 - `target/release-qualification/web3-runtime/logs/ops-qualification.log`
@@ -93,7 +113,56 @@ External deployment, non-testnet custody, and non-testnet promotion remain
 - `target/release-qualification/web3-runtime/ops/runtime-reports/chio-link-runtime-report.json`
 - `target/release-qualification/web3-runtime/ops/runtime-reports/chio-anchor-runtime-report.json`
 - `target/release-qualification/web3-runtime/ops/runtime-reports/chio-settle-runtime-report.json`
+- `target/release-qualification/web3-runtime/ops/control-state/chio-link-control-state.json`
+- `target/release-qualification/web3-runtime/ops/control-state/chio-anchor-control-state.json`
+- `target/release-qualification/web3-runtime/ops/control-state/chio-settle-control-state.json`
+- `target/release-qualification/web3-runtime/ops/control-traces/chio-link-control-trace.json`
+- `target/release-qualification/web3-runtime/ops/control-traces/chio-anchor-control-trace.json`
+- `target/release-qualification/web3-runtime/ops/control-traces/chio-settle-control-trace.json`
 - `target/release-qualification/web3-runtime/promotion/promotion-qualification.json`
+- `target/release-qualification/web3-runtime/promotion/run-a/approval.json`
+- `target/release-qualification/web3-runtime/promotion/run-a/promotion-report.json`
+- `target/release-qualification/web3-runtime/promotion/run-a/rollback-plan.json`
+- `target/release-qualification/web3-runtime/promotion/run-a/deployment.json`
+- `target/release-qualification/web3-runtime/promotion/run-b/promotion-report.json`
+- `target/release-qualification/web3-runtime/promotion/resume-existing/promotion-report.json`
+- `target/release-qualification/web3-runtime/promotion/negative-approval/promotion-report.json`
+- `target/release-qualification/web3-runtime/promotion/negative-rollback/promotion-report.json`
+- `target/release-qualification/web3-runtime/promotion/negative-rollback/rollback-plan.json`
+
+Cutover-only staged evidence is required when
+`scripts/stage-web3-release-artifacts.sh --require-cutover-evidence` is used:
+
+- `target/release-qualification/web3-runtime/live/base-sepolia/promotion/deployment.json`
+- `target/release-qualification/web3-runtime/live/base-sepolia/promotion/promotion-report.json`
+- `target/release-qualification/web3-runtime/live/base-sepolia/base-sepolia-smoke.json`
+- `target/release-qualification/web3-runtime/live/base-sepolia/dependencies/dependencies.json`
+- `target/release-qualification/web3-runtime/live/base-sepolia/dependencies/base-sepolia.review-inputs.json`
+- `target/release-qualification/web3-runtime/examples/internet-of-agents-web3-network/review-result.json`
+- `target/release-qualification/web3-runtime/examples/internet-of-agents-web3-network/summary.json`
+- `target/release-qualification/web3-runtime/examples/internet-of-agents-web3-network/web3/validation-index.json`
+- `target/release-qualification/web3-runtime/examples/internet-of-agents-web3-network/evidence/cutover-readiness.json`
+- `target/release-qualification/web3-runtime/examples/internet-of-agents-web3-network/contracts/settlement-packet.json`
+- `target/release-qualification/web3-runtime/examples/internet-of-agents-web3-network/contracts/web3-settlement-dispatch.json`
+- `target/release-qualification/web3-runtime/examples/internet-of-agents-web3-network/contracts/web3-settlement-receipt.json`
+- `target/release-qualification/web3-runtime/examples/internet-of-agents-web3-network/bundle-manifest.json`
+
+## Historical Context
+
+These artifacts may be staged under
+`target/release-qualification/web3-runtime/historical/` when present, but they
+are not promotion gate evidence and do not authorize testnet or non-testnet
+promotion:
+
+- `contracts/reports/local-devnet-qualification.json`
+- `contracts/deployments/local-devnet.json`
+- `contracts/deployments/local-devnet.reviewed.json`
+- `contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md`
+- `contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md`
+
+The local-devnet deployment JSON files may also appear in the staged bundle, but
+only as deterministic devnet fixture metadata for reproducibility. They are not
+promotion evidence.
 
 ## End-To-End Trace
 
@@ -127,6 +196,8 @@ Reviewers can trace one bounded runtime path end to end:
   local qualification evidence.
 - The contract-family local qualification and old security review are
   historical evidence and are not promotion signals.
+- The staged local-devnet deployment JSON is deterministic fixture metadata,
+  not a testnet or non-testnet promotion signal.
 - The repo does not yet claim unattended testnet or mainnet deployment.
 - The repo does not yet claim public chain publication from local evidence
   alone.

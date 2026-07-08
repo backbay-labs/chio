@@ -42,6 +42,8 @@ const PUBLIC_SETTLEMENT_BUNDLE_SIGNATURE_SEED: [u8; 32] = [9; 32];
 const PUBLIC_SETTLEMENT_BUNDLE_SIGNATURE_ALGORITHM: &str = "ed25519-rfc8785-v1";
 const PUBLIC_SETTLEMENT_ORACLE_SIGNATURE_SEED: [u8; 32] = [15; 32];
 const PUBLIC_SETTLEMENT_ANCHOR_SIGNATURE_SEED: [u8; 32] = [7; 32];
+const PUBLIC_SETTLEMENT_OPERATOR_KEY_HASH: &str =
+    "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975";
 const PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON";
 const PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV: &str =
@@ -51,6 +53,7 @@ const CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA: &str = "chio.anchor-proof-bundle.v1";
 const SOLANA_MEMO_PROGRAM_ID: &str = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
 const PUBLIC_SETTLEMENT_REORGED_INDEPENDENT_CHAIN_HEAD_JSON: &str =
     "{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"latest_block_number\":12345701}";
+const CHIO_WEB3_CONTRACT_PACKAGE_PATH: &str = "docs/standards/CHIO_WEB3_CONTRACT_PACKAGE.json";
 const RUNTIME_TOOL_SERVER_SIGNATURE_SEED: [u8; 32] = [45; 32];
 const RUNTIME_JOIN_RECEIPT_SIGNATURE_SEED: [u8; 32] = [46; 32];
 const DISCLOSURE_AGENT_WEB_BBS_KEY_MATERIAL: &[u8] = b"chio-proof-disclosure-agent-web-bbs-key";
@@ -2526,6 +2529,95 @@ fn strip_standalone_public_settlement_trust_market_refs(bundle: &Path) -> Result
     write_json_line_file(&settlement_proof_path, &settlement_proof)
 }
 
+struct PublicSettlementRuntimeHashes {
+    root_registry: String,
+    identity_registry: String,
+    escrow: String,
+    bond_vault: String,
+}
+
+fn public_settlement_runtime_hashes(
+    bundle: &Path,
+    expected_package_id: &str,
+    context_path: &Path,
+) -> Result<PublicSettlementRuntimeHashes, CliError> {
+    let package_path = find_chio_web3_contract_package(bundle)?;
+    let package = read_json_value(&package_path)?;
+    let package_id = required_json_string(&package, "package_id", &package_path)?;
+    if package_id != expected_package_id {
+        return Err(CliError::cli_other_error(format!(
+            "public settlement contract package mismatch for {}: expected {}, package {} declares {}",
+            context_path.display(),
+            expected_package_id,
+            package_path.display(),
+            package_id
+        )));
+    }
+    Ok(PublicSettlementRuntimeHashes {
+        root_registry: contract_package_runtime_hash(&package, "root_registry", &package_path)?,
+        identity_registry: contract_package_runtime_hash(
+            &package,
+            "identity_registry",
+            &package_path,
+        )?,
+        escrow: contract_package_runtime_hash(&package, "escrow", &package_path)?,
+        bond_vault: contract_package_runtime_hash(&package, "bond_vault", &package_path)?,
+    })
+}
+
+fn find_chio_web3_contract_package(bundle: &Path) -> Result<std::path::PathBuf, CliError> {
+    let mut candidates = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join(CHIO_WEB3_CONTRACT_PACKAGE_PATH));
+    }
+    for ancestor in bundle.ancestors() {
+        candidates.push(ancestor.join(CHIO_WEB3_CONTRACT_PACKAGE_PATH));
+    }
+    for candidate in candidates {
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+    Err(CliError::cli_other_error(format!(
+        "could not locate {CHIO_WEB3_CONTRACT_PACKAGE_PATH} for public settlement fixture {}",
+        bundle.display()
+    )))
+}
+
+fn contract_package_runtime_hash(
+    package: &serde_json::Value,
+    kind: &str,
+    package_path: &Path,
+) -> Result<String, CliError> {
+    let contracts = package
+        .get("contracts")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            CliError::cli_other_error(format!(
+                "web3 contract package contracts must be an array: {}",
+                package_path.display()
+            ))
+        })?;
+    for contract in contracts {
+        if contract.get("kind").and_then(serde_json::Value::as_str) == Some(kind) {
+            return contract
+                .get("deployed_runtime_codehash")
+                .and_then(serde_json::Value::as_str)
+                .map(ToString::to_string)
+                .ok_or_else(|| {
+                    CliError::cli_other_error(format!(
+                        "web3 contract package kind {kind} missing deployed_runtime_codehash: {}",
+                        package_path.display()
+                    ))
+                });
+        }
+    }
+    Err(CliError::cli_other_error(format!(
+        "web3 contract package missing contract kind {kind}: {}",
+        package_path.display()
+    )))
+}
+
 fn add_public_settlement_deployment_provenance_to_bundle(bundle: &Path) -> Result<(), CliError> {
     let settlement_proof_path = bundle.join("settlement-proof-bundle.json");
     let mut settlement_proof = read_json_value(&settlement_proof_path)?;
@@ -2542,6 +2634,11 @@ fn add_public_settlement_deployment_provenance_to_bundle(bundle: &Path) -> Resul
         "/chain_snapshot/root_registry_address",
         &settlement_proof_path,
     )?;
+    let identity_registry_address = required_json_pointer_string(
+        &settlement_proof,
+        "/chain_snapshot/identity_registry_address",
+        &settlement_proof_path,
+    )?;
     let escrow_contract = required_json_pointer_string(
         &settlement_proof,
         "/settlement_receipt/dispatch/escrow_contract",
@@ -2552,6 +2649,12 @@ fn add_public_settlement_deployment_provenance_to_bundle(bundle: &Path) -> Resul
         "/settlement_receipt/dispatch/bond_vault_contract",
         &settlement_proof_path,
     )?;
+    let settlement_token_address = settlement_proof
+        .pointer("/settlement_receipt/dispatch/settlement_token_address")
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8")
+        .to_string();
     let registry_root = required_json_pointer_string(
         &settlement_proof,
         "/chain_snapshot/registry_root",
@@ -2572,18 +2675,70 @@ fn add_public_settlement_deployment_provenance_to_bundle(bundle: &Path) -> Resul
         "/settlement_receipt/reconciled_anchor_proof/chain_anchor/anchored_checkpoint_seq",
         &settlement_proof_path,
     )?;
+    let runtime_hashes =
+        public_settlement_runtime_hashes(bundle, &contract_package_id, &settlement_proof_path)?;
+    let root_registry_runtime_codehash = runtime_hashes.root_registry;
+    let identity_registry_runtime_codehash = runtime_hashes.identity_registry;
+    let escrow_runtime_codehash = runtime_hashes.escrow;
+    let bond_vault_runtime_codehash = runtime_hashes.bond_vault;
+    let reviewed_manifest_hash = public_settlement_reviewed_manifest_hash(
+        &chain_id,
+        &contract_package_id,
+        &root_registry_address,
+        &root_registry_runtime_codehash,
+        &identity_registry_address,
+        &identity_registry_runtime_codehash,
+        &escrow_contract,
+        &escrow_runtime_codehash,
+        &bond_vault_contract,
+        &bond_vault_runtime_codehash,
+        &settlement_token_address,
+    )?;
+
+    settlement_proof["settlement_receipt"]["schema"] =
+        serde_json::Value::String("chio.web3-settlement-execution-receipt.v2".to_string());
+    settlement_proof["settlement_receipt"]["dispatch"]["schema"] =
+        serde_json::Value::String("chio.web3-settlement-dispatch.v2".to_string());
+    settlement_proof["settlement_receipt"]["dispatch"]["settlement_token_address"] =
+        serde_json::Value::String(settlement_token_address.clone());
+    settlement_proof["settlement_receipt"]["dispatch"]["operator_key_hash"] =
+        serde_json::Value::String(PUBLIC_SETTLEMENT_OPERATOR_KEY_HASH.to_string());
+    settlement_proof["settlement_receipt"]["reconciled_anchor_proof"]["chain_anchor"]
+        ["operator_key_hash"] =
+        serde_json::Value::String(PUBLIC_SETTLEMENT_OPERATOR_KEY_HASH.to_string());
+    settlement_proof["chain_snapshot"]["root_registry_runtime_codehash"] =
+        serde_json::Value::String(root_registry_runtime_codehash.to_string());
+    settlement_proof["chain_snapshot"]["identity_registry_address"] =
+        serde_json::Value::String(identity_registry_address.to_string());
+    settlement_proof["chain_snapshot"]["identity_registry_runtime_codehash"] =
+        serde_json::Value::String(identity_registry_runtime_codehash.to_string());
+    settlement_proof["chain_snapshot"]["escrow"]["escrow_runtime_codehash"] =
+        serde_json::Value::String(escrow_runtime_codehash.to_string());
+    settlement_proof["chain_snapshot"]["escrow"]["settlement_token_address"] =
+        serde_json::Value::String(settlement_token_address.clone());
+    settlement_proof["chain_snapshot"]["escrow"]["refunded"] = serde_json::Value::Bool(false);
+    if settlement_proof["chain_snapshot"]["bond"].is_object() {
+        settlement_proof["chain_snapshot"]["bond"]["bond_vault_runtime_codehash"] =
+            serde_json::Value::String(bond_vault_runtime_codehash.to_string());
+    }
 
     settlement_proof["deployment_provenance"] = serde_json::json!({
         "provenance_id": format!("deployment-provenance-{bundle_id}"),
-        "chain_id": chain_id,
-        "contract_package_id": contract_package_id,
-        "reviewed_manifest_hash": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "chain_id": chain_id.clone(),
+        "contract_package_id": contract_package_id.clone(),
+        "reviewed_manifest_hash": reviewed_manifest_hash,
         "approval_hash": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         "create2_factory": "0x1000000000000000000000000000000000000000",
         "salt_namespace": "chio-official-web3-stack-v1",
-        "root_registry_address": root_registry_address,
-        "escrow_contract": escrow_contract,
-        "bond_vault_contract": bond_vault_contract
+        "settlement_token_address": settlement_token_address.clone(),
+        "root_registry_address": root_registry_address.clone(),
+        "root_registry_runtime_codehash": root_registry_runtime_codehash.clone(),
+        "identity_registry_address": identity_registry_address.clone(),
+        "identity_registry_runtime_codehash": identity_registry_runtime_codehash.clone(),
+        "escrow_contract": escrow_contract.clone(),
+        "escrow_runtime_codehash": escrow_runtime_codehash.clone(),
+        "bond_vault_contract": bond_vault_contract.clone(),
+        "bond_vault_runtime_codehash": bond_vault_runtime_codehash.clone()
     });
     let witness_id = format!("public-witness-{bundle_id}");
     let witness_body = serde_json::json!({
@@ -2591,6 +2746,15 @@ fn add_public_settlement_deployment_provenance_to_bundle(bundle: &Path) -> Resul
         "mode": "verified_cache",
         "chain_id": chain_id,
         "registry_root": registry_root,
+        "root_registry_address": root_registry_address,
+        "root_registry_runtime_codehash": root_registry_runtime_codehash,
+        "identity_registry_address": identity_registry_address,
+        "identity_registry_runtime_codehash": identity_registry_runtime_codehash,
+        "escrow_contract": escrow_contract,
+        "escrow_runtime_codehash": escrow_runtime_codehash,
+        "settlement_token_address": settlement_token_address,
+        "bond_vault_contract": bond_vault_contract,
+        "bond_vault_runtime_codehash": bond_vault_runtime_codehash,
         "anchor_tx_hash": anchor_tx_hash,
         "anchored_merkle_root": anchored_merkle_root,
         "anchored_checkpoint_seq": anchored_checkpoint_seq,
@@ -2603,6 +2767,54 @@ fn add_public_settlement_deployment_provenance_to_bundle(bundle: &Path) -> Resul
     sign_public_settlement_proof_bundle(&mut settlement_proof, &settlement_proof_path)?;
     write_json_line_file(&settlement_proof_path, &settlement_proof)?;
     write_public_settlement_anchor_proof_bundle(bundle, &settlement_proof, &settlement_proof_path)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn public_settlement_reviewed_manifest_hash(
+    chain_id: &str,
+    contract_package_id: &str,
+    root_registry_address: &str,
+    root_registry_runtime_codehash: &str,
+    identity_registry_address: &str,
+    identity_registry_runtime_codehash: &str,
+    escrow_contract: &str,
+    escrow_runtime_codehash: &str,
+    bond_vault_contract: &str,
+    bond_vault_runtime_codehash: &str,
+    settlement_token_address: &str,
+) -> Result<String, CliError> {
+    let reviewed_manifest = serde_json::json!({
+        "schema": "chio.web3-public-settlement-fixture-reviewed-manifest.v1",
+        "chain_id": chain_id,
+        "contract_package_id": contract_package_id,
+        "create2_factory": "0x1000000000000000000000000000000000000000",
+        "salt_namespace": "chio-official-web3-stack-v1",
+        "settlement_token_address": settlement_token_address,
+        "contracts": {
+            "root_registry": {
+                "address": root_registry_address,
+                "runtime_codehash": root_registry_runtime_codehash,
+            },
+            "identity_registry": {
+                "address": identity_registry_address,
+                "runtime_codehash": identity_registry_runtime_codehash,
+            },
+            "escrow": {
+                "address": escrow_contract,
+                "runtime_codehash": escrow_runtime_codehash,
+            },
+            "bond_vault": {
+                "address": bond_vault_contract,
+                "runtime_codehash": bond_vault_runtime_codehash,
+            },
+        },
+    });
+    let canonical = chio_core_types::canonical_json_bytes(&reviewed_manifest).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "public settlement reviewed manifest canonicalization failed: {error}"
+        ))
+    })?;
+    Ok(format!("0x{}", chio_core::sha256_hex(&canonical)))
 }
 
 fn sign_public_settlement_proof_bundle(
@@ -2939,6 +3151,15 @@ fn public_settlement_witness_body_hash(witness: &serde_json::Value) -> Result<St
         "mode": required_public_settlement_witness_string(witness, "mode")?,
         "chain_id": required_public_settlement_witness_string(witness, "chain_id")?,
         "registry_root": required_public_settlement_witness_string(witness, "registry_root")?,
+        "root_registry_address": required_public_settlement_witness_string(witness, "root_registry_address")?,
+        "root_registry_runtime_codehash": required_public_settlement_witness_string(witness, "root_registry_runtime_codehash")?,
+        "identity_registry_address": required_public_settlement_witness_string(witness, "identity_registry_address")?,
+        "identity_registry_runtime_codehash": required_public_settlement_witness_string(witness, "identity_registry_runtime_codehash")?,
+        "escrow_contract": required_public_settlement_witness_string(witness, "escrow_contract")?,
+        "escrow_runtime_codehash": required_public_settlement_witness_string(witness, "escrow_runtime_codehash")?,
+        "settlement_token_address": required_public_settlement_witness_string(witness, "settlement_token_address")?,
+        "bond_vault_contract": required_public_settlement_witness_string(witness, "bond_vault_contract")?,
+        "bond_vault_runtime_codehash": required_public_settlement_witness_string(witness, "bond_vault_runtime_codehash")?,
         "anchor_tx_hash": required_public_settlement_witness_string(witness, "anchor_tx_hash")?,
         "anchored_merkle_root": required_public_settlement_witness_string(witness, "anchored_merkle_root")?,
         "anchored_checkpoint_seq": required_public_settlement_witness_u64(witness, "anchored_checkpoint_seq")?,

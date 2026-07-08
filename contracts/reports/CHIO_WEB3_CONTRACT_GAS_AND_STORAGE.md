@@ -18,17 +18,17 @@ final Base or Arbitrum mainnet budgeting.
 
 | Operation | Measured Gas |
 | --- | ---: |
-| `registerOperator` | 74,658 |
-| `registerDelegate` | 84,718 |
-| `publishRoot` (operator) | 218,005 |
-| `publishRoot` (delegate) | 186,126 |
+| `registerOperator` | 97,958 |
+| `registerDelegate` | 140,272 |
+| `publishRoot` (operator) | 222,215 |
+| `publishRoot` (delegate) | 196,015 |
 | `registerFeed` | 123,638 |
-| `getPrice` | 60,488 |
-| `createEscrow` | 298,366 |
-| `partialReleaseWithProofDetailed` | 166,284 |
-| `releaseWithSignature` | 129,700 |
-| `lockBond` | 293,267 |
-| `releaseBondDetailed` | 146,074 |
+| `getPrice` | 60,926 |
+| `createEscrow` | 300,731 |
+| `partialReleaseWithProofDetailed` | 169,790 |
+| `releaseWithSignature` | 131,025 |
+| `lockBond` | 322,524 |
+| `releaseBondDetailed` | 151,768 |
 
 ## Canonical Budget Mapping
 
@@ -55,9 +55,11 @@ The package intentionally keeps storage sparse and append-only where possible:
 - `ChioRootRegistry`
   - one immutable identity-registry pointer
   - one root entry per `(operator, checkpointSeq)`
-  - one published-root membership bit per `(operator, merkleRoot)`
+  - one root tree-size binding per `(operator, merkleRoot)`
+  - one root tree-size binding per `(operator, operatorKeyHash, merkleRoot)`
   - one latest-sequence slot per operator
   - one bounded delegate-expiry slot per `(operator, delegate)`
+  - one delegate key-epoch slot per `(operator, delegate)`
 - `ChioEscrow`
   - one immutable root-registry pointer
   - one immutable identity-registry pointer

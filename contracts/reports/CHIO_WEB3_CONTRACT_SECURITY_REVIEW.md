@@ -63,9 +63,11 @@ This review covers the official Chio web3 contract family:
   - Escrow release is beneficiary-driven today. The research discussed
     beneficiary-or-relayer authorization, but a relayer allowlist is not part
     of the current runtime surface.
-- No CREATE2 deploy script yet
-  - The package now ships deterministic deployment templates, but live chain
-    execution still needs an operator-specific deployment runner.
+- Live CREATE2 deploy script is assurance-gated
+  - This historical review predates the current reviewed-manifest runner.
+    `contracts/scripts/promote-deployment.mjs` now covers deterministic
+    CREATE2 execution, but non-testnet use remains blocked on target-specific
+    approval and external assurance evidence.
 - No proxy upgrade path
   - This is intentional, but it means defect fixes require replacement
     deployments and config migration rather than in-place upgrades.

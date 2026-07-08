@@ -85,6 +85,8 @@
     "tx_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "block_number": 12345678,
     "block_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "operator_key_hash": "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975",
+    "operator_epoch": 1,
     "anchored_merkle_root": "0xfba90da7db4859cf33cd97a64b2ce07f244c8fcafe51c19ddd67b03c8490c3eb",
     "anchored_checkpoint_seq": 1042
   },

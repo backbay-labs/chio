@@ -135,7 +135,15 @@ pub(super) async fn eth_call_raw(
     config: &SettlementChainConfig,
     call: &PreparedEvmCall,
 ) -> Result<String, SettlementError> {
-    let result = rpc_call(config, "eth_call", json!([request_value(call), "latest"])).await?;
+    eth_call_raw_at_block(config, call, "latest").await
+}
+
+pub(super) async fn eth_call_raw_at_block(
+    config: &SettlementChainConfig,
+    call: &PreparedEvmCall,
+    block_tag: &str,
+) -> Result<String, SettlementError> {
+    let result = rpc_call(config, "eth_call", json!([request_value(call), block_tag])).await?;
     result
         .as_str()
         .map(ToString::to_string)

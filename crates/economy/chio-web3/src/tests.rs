@@ -1,13 +1,16 @@
 use crate::anchors::{
-    checkpoint_statement_body, sign_oracle_conversion_evidence, validate_anchor_inclusion_proof,
-    validate_oracle_conversion_evidence, verify_anchor_inclusion_proof, AnchorInclusionProof,
-    OracleConversionEvidence, Web3ChainAnchorRecord, Web3CheckpointStatement, Web3ReceiptInclusion,
+    checkpoint_statement_body, expected_operator_key_hash, sign_oracle_conversion_evidence,
+    validate_anchor_inclusion_proof, validate_oracle_conversion_evidence,
+    verify_anchor_inclusion_proof, AnchorInclusionProof, OracleConversionEvidence,
+    Web3ChainAnchorRecord, Web3CheckpointStatement, Web3ReceiptInclusion,
     CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA, CHIO_CHECKPOINT_STATEMENT_SCHEMA,
     CHIO_LINK_ORACLE_AUTHORITY, CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA,
 };
 use crate::canonical::canonical_json_bytes;
 use crate::capability::scope::MonetaryAmount;
-use crate::chain::{validate_web3_chain_configuration, Web3ChainConfiguration};
+use crate::chain::{
+    validate_web3_chain_configuration, Web3ChainConfiguration, Web3ChainContractAddresses,
+};
 use crate::contracts::{validate_web3_contract_package, Web3ContractPackage};
 use crate::credit::{
     CapitalBookEvidenceKind, CapitalBookEvidenceReference, CapitalBookQuery, CapitalBookSourceKind,
@@ -31,16 +34,18 @@ use crate::receipt::{
 use crate::settlement::{
     settlement_anchor_receipt_content_hash_parts, validate_web3_settlement_dispatch,
     validate_web3_settlement_execution_receipt, Web3SettlementDispatchArtifact,
-    Web3SettlementExecutionReceiptArtifact, Web3SettlementLifecycleState,
-    Web3SettlementSupportBoundary, CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA,
-    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+    Web3SettlementExecutionReceiptArtifact, Web3SettlementIdentityRegistryEvidence,
+    Web3SettlementLifecycleState, Web3SettlementSupportBoundary,
+    CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA, CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA,
+    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA, CHIO_WEB3_SETTLEMENT_RECEIPT_V1_SCHEMA,
 };
 use crate::settlement_proof::{
     public_settlement_witness_body_hash, verify_public_settlement_proof,
     PublicSettlementBlockSnapshot, PublicSettlementBundleSignature,
     PublicSettlementDeploymentProvenance, PublicSettlementDisputePosture,
     PublicSettlementDisputeSnapshot, PublicSettlementIndependentChainHead,
-    PublicSettlementOrderBinding, PublicSettlementProofBundle, PublicSettlementTrustMarketContext,
+    PublicSettlementOrderBinding, PublicSettlementProofBundle,
+    PublicSettlementRuntimeCodehashTrust, PublicSettlementTrustMarketContext,
     PublicSettlementVerifierTrust, PublicSettlementWitnessMode, PublicSettlementWitnessReport,
     CHIO_PUBLIC_SETTLEMENT_VERIFIER_REPORT_SCHEMA, CHIO_WEB3_SETTLEMENT_DISPUTE_SCHEMA,
     CHIO_WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA, CLAIM_PUBLIC_SETTLEMENT_CHAIN_CONTEXT_VERIFIED,
@@ -57,6 +62,15 @@ use crate::trust_profile::{
 };
 use serde_json::json;
 use std::collections::BTreeSet;
+
+const SAMPLE_ROOT_REGISTRY_RUNTIME_CODEHASH: &str =
+    "0xb6b329fd1a0ea21d4e4b4be608730ab82abb07d0c8a5bb4bdb8540b57126f04a";
+const SAMPLE_IDENTITY_REGISTRY_RUNTIME_CODEHASH: &str =
+    "0x9906b1307e5908dd97f3025fb788d790abab45d8580bcf2f30b342510898e15b";
+const SAMPLE_ESCROW_RUNTIME_CODEHASH: &str =
+    "0x5703310e41942082779a50b63969b4a8c6d0e2533983382dcc492763d88b9f72";
+const SAMPLE_BOND_VAULT_RUNTIME_CODEHASH: &str =
+    "0xcea2c0f91dc267a1ad00fce242cbc731bcfafdd67d5007ce5b8cc7d3330003f8";
 
 fn operator_keypair() -> Keypair {
     Keypair::from_seed(&[7u8; 32])
@@ -138,6 +152,12 @@ fn sample_binding() -> SignedWeb3IdentityBinding {
         vec!["eip155:8453", "eip155:42161"],
         "0123456789abcdef0123456789abcdef",
     )
+}
+
+fn sample_operator_key_hash() -> String {
+    expected_operator_key_hash(&operator_keypair().public_key())
+        .unwrap()
+        .to_hex_prefixed()
 }
 
 fn sample_beneficiary_binding() -> SignedWeb3IdentityBinding {
@@ -365,6 +385,8 @@ fn sample_anchor_inclusion_proof_for_receipt(receipt: ChioReceipt) -> AnchorIncl
             block_number: 12_345_678,
             block_hash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
                 .to_string(),
+            operator_key_hash: sample_operator_key_hash(),
+            operator_epoch: 1,
             anchored_merkle_root: merkle_root,
             anchored_checkpoint_seq: 1_042,
         }),
@@ -558,8 +580,7 @@ pub(super) fn sample_dispatch() -> Web3SettlementDispatchArtifact {
         bond_vault_contract: "0x1000000000000000000000000000000000000003".to_string(),
         settlement_token_address: "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string(),
         beneficiary_address: "0x2222222222222222222222222222222222222222".to_string(),
-        operator_key_hash: "0x9999999999999999999999999999999999999999999999999999999999999999"
-            .to_string(),
+        operator_key_hash: sample_operator_key_hash(),
         support_boundary: Web3SettlementSupportBoundary {
             real_dispatch_supported: true,
             anchor_proof_required: true,
@@ -571,6 +592,23 @@ pub(super) fn sample_dispatch() -> Web3SettlementDispatchArtifact {
             "Dispatches one governed escrow release over the official Base-first contract stack."
                 .to_string(),
         ),
+    }
+}
+
+fn sample_identity_registry_evidence() -> Web3SettlementIdentityRegistryEvidence {
+    Web3SettlementIdentityRegistryEvidence {
+        chain_id: "eip155:8453".to_string(),
+        identity_registry_contract: "0x1000000000000000000000000000000000000004".to_string(),
+        operator_address: "0x1111111111111111111111111111111111111111".to_string(),
+        block_number: 12345678,
+        block_hash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            .to_string(),
+        observed_at: 1_743_292_850,
+        operator_key_hash: sample_operator_key_hash(),
+        settlement_key: "0x1111111111111111111111111111111111111111".to_string(),
+        registered_at: 1_743_292_700,
+        operator_epoch: 1,
+        active: true,
     }
 }
 
@@ -593,6 +631,7 @@ fn sample_execution_receipt() -> Web3SettlementExecutionReceiptArtifact {
         lifecycle_state: Web3SettlementLifecycleState::Settled,
         settlement_reference: "settlement-web3-1".to_string(),
         reconciled_anchor_proof: Some(sample_anchor_inclusion_proof()),
+        identity_registry_evidence: None,
         oracle_evidence: Some(sample_oracle_evidence()),
         settled_amount: MonetaryAmount {
             units: 150,
@@ -658,9 +697,15 @@ fn sample_public_settlement_deployment_provenance() -> PublicSettlementDeploymen
             .to_string(),
         create2_factory: "0x1000000000000000000000000000000000000000".to_string(),
         salt_namespace: "chio-official-web3-stack-v1".to_string(),
+        settlement_token_address: "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string(),
         root_registry_address: "0x1000000000000000000000000000000000000001".to_string(),
+        root_registry_runtime_codehash: SAMPLE_ROOT_REGISTRY_RUNTIME_CODEHASH.to_string(),
+        identity_registry_address: "0x1000000000000000000000000000000000000004".to_string(),
+        identity_registry_runtime_codehash: SAMPLE_IDENTITY_REGISTRY_RUNTIME_CODEHASH.to_string(),
         escrow_contract: "0x1000000000000000000000000000000000000002".to_string(),
+        escrow_runtime_codehash: SAMPLE_ESCROW_RUNTIME_CODEHASH.to_string(),
         bond_vault_contract: "0x1000000000000000000000000000000000000003".to_string(),
+        bond_vault_runtime_codehash: SAMPLE_BOND_VAULT_RUNTIME_CODEHASH.to_string(),
     }
 }
 
@@ -668,12 +713,22 @@ fn sample_public_settlement_witness_report() -> PublicSettlementWitnessReport {
     let anchor = sample_anchor_inclusion_proof()
         .chain_anchor
         .expect("sample public settlement anchor exists");
+    let provenance = sample_public_settlement_deployment_provenance();
     let mut witness = PublicSettlementWitnessReport {
         witness_id: "public-witness-base-cache-1".to_string(),
         mode: PublicSettlementWitnessMode::VerifiedCache,
         body_hash: String::new(),
         chain_id: anchor.chain_id,
         registry_root: anchor.anchored_merkle_root.to_hex_prefixed(),
+        root_registry_address: provenance.root_registry_address,
+        root_registry_runtime_codehash: provenance.root_registry_runtime_codehash,
+        identity_registry_address: provenance.identity_registry_address,
+        identity_registry_runtime_codehash: provenance.identity_registry_runtime_codehash,
+        escrow_contract: provenance.escrow_contract,
+        escrow_runtime_codehash: provenance.escrow_runtime_codehash,
+        settlement_token_address: provenance.settlement_token_address,
+        bond_vault_contract: provenance.bond_vault_contract,
+        bond_vault_runtime_codehash: provenance.bond_vault_runtime_codehash,
         anchor_tx_hash: anchor.tx_hash,
         anchored_merkle_root: anchor.anchored_merkle_root.to_hex_prefixed(),
         anchored_checkpoint_seq: anchor.anchored_checkpoint_seq,
@@ -704,6 +759,7 @@ fn sample_public_settlement_order_binding() -> PublicSettlementOrderBinding {
 }
 
 pub(super) fn sample_public_settlement_verifier_trust() -> PublicSettlementVerifierTrust {
+    let provenance = sample_public_settlement_deployment_provenance();
     PublicSettlementVerifierTrust {
         trusted_bundle_signer_keys: vec![settlement_bundle_keypair().public_key()],
         trusted_capital_signer_keys: vec![treasury_keypair().public_key()],
@@ -723,6 +779,14 @@ pub(super) fn sample_public_settlement_verifier_trust() -> PublicSettlementVerif
         }),
         trusted_dispute_event_blocks: Vec::new(),
         verifier_now_unix_seconds: Some(1_743_293_860),
+        trusted_runtime_codehashes: Some(PublicSettlementRuntimeCodehashTrust {
+            contract_package_id: provenance.contract_package_id,
+            reviewed_manifest_hash: provenance.reviewed_manifest_hash,
+            root_registry_runtime_codehash: provenance.root_registry_runtime_codehash,
+            identity_registry_runtime_codehash: provenance.identity_registry_runtime_codehash,
+            escrow_runtime_codehash: provenance.escrow_runtime_codehash,
+            bond_vault_runtime_codehash: provenance.bond_vault_runtime_codehash,
+        }),
     }
 }
 
@@ -796,6 +860,9 @@ fn sample_public_settlement_chain_snapshot_json() -> serde_json::Value {
         "latest_block_number": 12_345_701,
         "max_block_lag": 128,
         "root_registry_address": "0x1000000000000000000000000000000000000001",
+        "root_registry_runtime_codehash": SAMPLE_ROOT_REGISTRY_RUNTIME_CODEHASH,
+        "identity_registry_address": "0x1000000000000000000000000000000000000004",
+        "identity_registry_runtime_codehash": SAMPLE_IDENTITY_REGISTRY_RUNTIME_CODEHASH,
         "registry_root": registry_root,
         "block": {
             "block_number": 12_345_678,
@@ -808,6 +875,8 @@ fn sample_public_settlement_chain_snapshot_json() -> serde_json::Value {
         "escrow": {
             "escrow_id": "escrow-web3-1",
             "escrow_contract": "0x1000000000000000000000000000000000000002",
+            "escrow_runtime_codehash": SAMPLE_ESCROW_RUNTIME_CODEHASH,
+            "settlement_token_address": "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8",
             "beneficiary_address": "0x2222222222222222222222222222222222222222",
             "locked_amount": {
                 "units": 150,
@@ -816,10 +885,12 @@ fn sample_public_settlement_chain_snapshot_json() -> serde_json::Value {
             "released_amount": {
                 "units": 150,
                 "currency": "USD"
-            }
+            },
+            "refunded": false
         },
         "bond": {
             "bond_vault_contract": "0x1000000000000000000000000000000000000003",
+            "bond_vault_runtime_codehash": SAMPLE_BOND_VAULT_RUNTIME_CODEHASH,
             "posted_amount": {
                 "units": 150,
                 "currency": "USD"
@@ -938,6 +1009,39 @@ fn anchor_inclusion_proof_verifies_receipt_and_merkle_root() {
 }
 
 #[test]
+fn anchor_inclusion_proof_rejects_zero_operator_key_hash() {
+    let mut proof = sample_anchor_inclusion_proof();
+    let Some(chain_anchor) = proof.chain_anchor.as_mut() else {
+        panic!("sample anchor proof has chain anchor");
+    };
+    chain_anchor.operator_key_hash =
+        "0x0000000000000000000000000000000000000000000000000000000000000000".to_string();
+
+    assert!(matches!(
+        validate_anchor_inclusion_proof(&proof),
+        Err(Web3ContractError::InvalidBinding(message))
+            if message.contains("operator_key_hash")
+    ));
+}
+
+#[test]
+fn anchor_inclusion_proof_rejects_operator_key_hash_binding_mismatch() {
+    let mut proof = sample_anchor_inclusion_proof();
+    let Some(chain_anchor) = proof.chain_anchor.as_mut() else {
+        panic!("sample anchor proof has chain anchor");
+    };
+    chain_anchor.operator_key_hash =
+        "0x9999999999999999999999999999999999999999999999999999999999999999".to_string();
+
+    assert!(matches!(
+        validate_anchor_inclusion_proof(&proof),
+        Err(Web3ContractError::InvalidBinding(message))
+            if message.contains("operator_key_hash")
+                && message.contains("binding certificate public key")
+    ));
+}
+
+#[test]
 fn oracle_evidence_requires_non_zero_denominator() {
     let mut evidence = sample_oracle_evidence();
     evidence.rate_denominator = 0;
@@ -1001,13 +1105,38 @@ fn web3_chain_configuration_rejects_placeholder_addresses() {
         "0x1234",
     ] {
         let mut configuration = sample_chain_configuration();
-        configuration.deployments[0].root_registry_address = address.to_string();
+        let Some(planned_addresses) = configuration.deployments[0]
+            .planned_contract_addresses
+            .as_mut()
+        else {
+            panic!("sample chain configuration has planned contract addresses");
+        };
+        planned_addresses.root_registry_address = address.to_string();
         assert!(matches!(
             validate_web3_chain_configuration(&configuration),
             Err(Web3ContractError::InvalidBinding(message))
-                if message.contains("web3_chain_configuration.deployments.root_registry_address")
+                if message.contains("web3_chain_configuration.deployments.planned_contract_addresses.root_registry_address")
         ));
     }
+}
+
+#[test]
+fn web3_chain_configuration_rejects_deployed_addresses_for_blocked_templates() {
+    let mut configuration = sample_chain_configuration();
+    configuration.deployments[0].deployed_contract_addresses = Some(Web3ChainContractAddresses {
+        root_registry_address: "0x4e7ab9246fd70c81e8a8e3169b7488a72f23e305".to_string(),
+        escrow_address: "0x79c652a6c0cf8f01c995063e234d8f2a1f5e8437".to_string(),
+        bond_vault_address: "0xb84ff630739b2d79e5f250826d8f74e66d08f2c4".to_string(),
+        identity_registry_address: "0x63e49e89f2d8f74ee2f97ec14b0cc915f4ec8f8d".to_string(),
+        price_resolver_address: "0xc083e8a9153ff2d98219b0081c9e02074758c957".to_string(),
+    });
+
+    assert!(matches!(
+        validate_web3_chain_configuration(&configuration),
+        Err(Web3ContractError::InvalidBinding(message))
+            if message.contains("template-blocked deployments")
+                && message.contains("deployed_contract_addresses")
+    ));
 }
 
 #[test]
@@ -1048,6 +1177,31 @@ fn web3_dispatch_rejects_malformed_operator_key_hash() {
         validate_web3_settlement_dispatch(&dispatch),
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("operator_key_hash")
+    ));
+}
+
+#[test]
+fn web3_dispatch_rejects_zero_operator_key_hash() {
+    let mut dispatch = sample_dispatch();
+    dispatch.operator_key_hash =
+        "0x0000000000000000000000000000000000000000000000000000000000000000".to_string();
+
+    assert!(matches!(
+        validate_web3_settlement_dispatch(&dispatch),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("operator_key_hash")
+    ));
+}
+
+#[test]
+fn web3_dispatch_rejects_malformed_v2_settlement_token_address() {
+    let mut dispatch = sample_dispatch();
+    dispatch.settlement_token_address = "not-an-address".to_string();
+
+    assert!(matches!(
+        validate_web3_settlement_dispatch(&dispatch),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("settlement_token_address")
     ));
 }
 
@@ -1118,6 +1272,62 @@ fn merkle_settlement_receipt_rejects_unrelated_anchor_receipt() {
 }
 
 #[test]
+fn merkle_settlement_receipt_rejects_dispatch_anchor_key_hash_mismatch() {
+    let mut receipt = sample_execution_receipt();
+    receipt.dispatch.operator_key_hash =
+        "0x8888888888888888888888888888888888888888888888888888888888888888".to_string();
+
+    assert!(matches!(
+        validate_web3_settlement_execution_receipt(&receipt),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("dispatch operator_key_hash")
+    ));
+}
+
+#[test]
+fn dual_sign_settlement_receipt_requires_registry_evidence() {
+    let mut receipt = sample_execution_receipt();
+    receipt.dispatch.settlement_path = Web3SettlementPath::DualSignature;
+    receipt.dispatch.support_boundary.anchor_proof_required = false;
+    receipt.reconciled_anchor_proof = None;
+
+    assert!(matches!(
+        validate_web3_settlement_execution_receipt(&receipt),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("identity_registry_evidence")
+    ));
+}
+
+#[test]
+fn dual_sign_settlement_receipt_rejects_registry_key_hash_mismatch() {
+    let mut receipt = sample_execution_receipt();
+    receipt.dispatch.settlement_path = Web3SettlementPath::DualSignature;
+    receipt.dispatch.support_boundary.anchor_proof_required = false;
+    receipt.reconciled_anchor_proof = None;
+    let mut evidence = sample_identity_registry_evidence();
+    evidence.operator_key_hash =
+        "0x8888888888888888888888888888888888888888888888888888888888888888".to_string();
+    receipt.identity_registry_evidence = Some(evidence);
+
+    assert!(matches!(
+        validate_web3_settlement_execution_receipt(&receipt),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("operator_key_hash")
+    ));
+}
+
+#[test]
+fn dual_sign_settlement_receipt_accepts_registry_evidence() {
+    let mut receipt = sample_execution_receipt();
+    receipt.dispatch.settlement_path = Web3SettlementPath::DualSignature;
+    receipt.dispatch.support_boundary.anchor_proof_required = false;
+    receipt.reconciled_anchor_proof = None;
+    receipt.identity_registry_evidence = Some(sample_identity_registry_evidence());
+
+    validate_web3_settlement_execution_receipt(&receipt).unwrap();
+}
+
+#[test]
 fn merkle_settlement_receipt_rejects_anchor_receipt_with_unrelated_content_hash() {
     let mut receipt = sample_execution_receipt();
     receipt.reconciled_anchor_proof = Some(sample_anchor_inclusion_proof_for_receipt(
@@ -1155,6 +1365,32 @@ fn timed_out_settlement_receipt_allows_refund_after_execution_window() {
         .not_after
         + 1;
     receipt.issued_at = receipt.observed_execution.observed_at;
+
+    validate_web3_settlement_execution_receipt(&receipt).unwrap();
+}
+
+#[test]
+fn failed_settlement_receipt_rejects_non_transaction_failure_reference_with_amount() {
+    let mut receipt = sample_execution_receipt();
+    receipt.lifecycle_state = Web3SettlementLifecycleState::Failed;
+    receipt.failure_reason = Some("provider rejected before transaction submission".to_string());
+    receipt.reconciled_anchor_proof = None;
+    receipt.oracle_evidence = None;
+    receipt.observed_execution.external_reference_id =
+        "incident:provider-rejected-before-chain".to_string();
+
+    assert!(matches!(
+        validate_web3_settlement_execution_receipt(&receipt),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("non-zero amount requires transaction reference")
+    ));
+}
+
+#[test]
+fn failed_settlement_receipt_accepts_transaction_failure_reference_with_amount() {
+    let mut receipt = sample_execution_receipt();
+    receipt.lifecycle_state = Web3SettlementLifecycleState::Failed;
+    receipt.failure_reason = Some("on-chain settlement reverted".to_string());
 
     validate_web3_settlement_execution_receipt(&receipt).unwrap();
 }
@@ -1483,6 +1719,142 @@ fn public_settlement_proof_rejects_deployment_contract_package_mismatch() {
         verify_sample_public_settlement_proof(&bundle),
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("public settlement deployment contract package mismatch")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_wrong_escrow_runtime_codehash() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.chain_snapshot.escrow.escrow_runtime_codehash =
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("escrow runtime codehash")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_self_consistent_untrusted_runtime_codehash() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    let wrong_hash =
+        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+    bundle
+        .deployment_provenance
+        .as_mut()
+        .expect("sample bundle has deployment provenance")
+        .escrow_runtime_codehash = wrong_hash.clone();
+    bundle.chain_snapshot.escrow.escrow_runtime_codehash = wrong_hash.clone();
+    let witness = bundle
+        .public_witness
+        .as_mut()
+        .expect("sample bundle has witness");
+    witness.escrow_runtime_codehash = wrong_hash;
+    witness.body_hash =
+        public_settlement_witness_body_hash(witness).expect("sample witness body hashes");
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("escrow runtime codehash is not trusted")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_self_consistent_untrusted_identity_registry_codehash() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    let wrong_hash =
+        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+    bundle
+        .deployment_provenance
+        .as_mut()
+        .expect("sample bundle has deployment provenance")
+        .identity_registry_runtime_codehash = wrong_hash.clone();
+    bundle.chain_snapshot.identity_registry_runtime_codehash = wrong_hash.clone();
+    let witness = bundle
+        .public_witness
+        .as_mut()
+        .expect("sample bundle has witness");
+    witness.identity_registry_runtime_codehash = wrong_hash;
+    witness.body_hash =
+        public_settlement_witness_body_hash(witness).expect("sample witness body hashes");
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("identity registry runtime codehash is not trusted")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_untrusted_reviewed_manifest_hash() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle
+        .deployment_provenance
+        .as_mut()
+        .expect("sample bundle has deployment provenance")
+        .reviewed_manifest_hash =
+        "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string();
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("reviewed manifest hash is not trusted")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_token_mismatch_against_deployment() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle
+        .deployment_provenance
+        .as_mut()
+        .expect("sample bundle has deployment provenance")
+        .settlement_token_address = "0x2000000000000000000000000000000000000004".to_string();
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("settlement token mismatch")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_v1_receipt_schema() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.settlement_receipt.schema = CHIO_WEB3_SETTLEMENT_RECEIPT_V1_SCHEMA.to_string();
+    bundle.settlement_receipt.dispatch.schema = CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA.to_string();
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("requires v2 receipt and dispatch")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_missing_dispatch_token() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.settlement_receipt.dispatch.settlement_token_address = String::new();
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("settlement_token_address")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_dispatch_operator_key_hash_mismatch() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.settlement_receipt.dispatch.operator_key_hash =
+        "0x8888888888888888888888888888888888888888888888888888888888888888".to_string();
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("dispatch operator_key_hash")
     ));
 }
 
@@ -2171,7 +2543,7 @@ fn public_settlement_proof_rejects_refunded_posture_without_reversal() {
 }
 
 #[test]
-fn public_settlement_v1_fixture_remains_verifiable() {
+fn public_settlement_fixture_remains_verifiable() {
     let bundle: PublicSettlementProofBundle = serde_json::from_str(include_str!(
         "../../../../fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json"
     ))

@@ -131,6 +131,15 @@ fn public_settlement_proof_accepts_equivalent_mixed_case_evm_addresses() {
     bundle.chain_snapshot.beneficiary_identity_binding = Some(
         sample_beneficiary_binding_for_address("0x4234567890abcdef1234567890abcdef12345678"),
     );
+    let witness = bundle
+        .public_witness
+        .as_mut()
+        .expect("sample bundle has witness");
+    witness.root_registry_address = "0x1234567890ABCDEF1234567890ABCDEF12345678".to_string();
+    witness.escrow_contract = "0x2234567890abcdef1234567890abcdef12345678".to_string();
+    witness.bond_vault_contract = "0x3234567890ABCDEF1234567890ABCDEF12345678".to_string();
+    witness.body_hash =
+        public_settlement_witness_body_hash(witness).expect("sample witness body hashes");
 
     assert!(verify_sample_public_settlement_proof(&bundle).is_ok());
 }

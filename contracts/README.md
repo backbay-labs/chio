@@ -151,8 +151,10 @@ For non-local rollout the same runner requires operator-owned `--rpc-url`,
 files, and an approval artifact that binds the exact manifest hash, release id,
 deployment policy id, predeployed CREATE2 factory, and salt namespace.
 For any non-testnet chain it also requires `--assurance-unlock <reviewed-json>` with
-approved external audit, testnet soak, artifact digest, runtime codehash,
-minimum-bar, zero critical/high finding, and security-owner sign-off evidence.
+detached, digest-bound external audit, testnet soak, artifact digest,
+minimum-bar, zero critical/high finding, and a recoverable security-owner
+signature before deployment. The runner then verifies deployed runtime codehashes
+after CREATE2 deployment and before post-deployment configuration.
 Set `CHIO_BASE_BUILDER_CODE` or pass `--base-builder-code` to append a Base
 ERC-8021 attribution suffix to CREATE2 factory calls. Strict ABI registry and
 oracle configuration calls are not suffixed because some public RPC paths reject
