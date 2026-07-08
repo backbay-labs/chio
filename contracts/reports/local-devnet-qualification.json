@@ -5,7 +5,7 @@
   "environment": "local-devnet",
   "network_tier": "development",
   "note": "Ephemeral local-devnet test run.",
-  "generated_at": "2026-07-04T12:23:46.972Z",
+  "generated_at": "2026-07-08T03:10:41.750Z",
   "chain_id": "eip155:31337",
   "gas_estimates": {
     "register_operator": "74724",
@@ -16,9 +16,9 @@
     "price_read": "60488",
     "create_escrow": "298366",
     "merkle_partial_release": "166296",
-    "dual_sign_release": "129700",
+    "dual_sign_release": "129712",
     "lock_bond": "293267",
-    "bond_release": "143902"
+    "bond_release": "146062"
   },
   "checks": [
     {

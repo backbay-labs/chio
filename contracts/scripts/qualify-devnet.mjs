@@ -52,6 +52,7 @@ const PAUSED_SELECTOR = ethers.id("Paused()").slice(0, 10);
 const INVALID_SIGNATURE_SELECTOR = ethers.id("InvalidSignature()").slice(0, 10);
 const INVALID_TIMESTAMP_SELECTOR = ethers.id("InvalidTimestamp()").slice(0, 10);
 const INVALID_SLASH_DISTRIBUTION_SELECTOR = ethers.id("InvalidSlashDistribution()").slice(0, 10);
+const BOND_NO_LONGER_LIVE_SELECTOR = ethers.id("BondNoLongerLive()").slice(0, 10);
 const SECP256K1_ORDER = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
 
 const ACCOUNT_CONFIG = [
@@ -2424,8 +2425,69 @@ async function main() {
           bondImpairEvidenceHash,
         );
     });
-    await (await bondVault.connect(adminRpcSigner).setPaused(true)).wait();
+    const expiredReleaseEvidenceHash = toBytes32Label("bond-expired-release");
+    const expiredReleaseLeaf = bondProofLeaf(
+      CHAIN_ID,
+      await bondVault.getAddress(),
+      predictedVaultA,
+      expiredReleaseEvidenceHash,
+      BOND_ACTION_RELEASE,
+      0n,
+      ZERO_BYTES32,
+    );
+    await (
+      await rootRegistry
+        .connect(wallets.operator)
+        .publishRoot(wallets.operator.address, expiredReleaseLeaf, 14, 15, 15, 1, operatorEdKeyHash)
+    ).wait();
+    const expiredImpairEvidenceHash = toBytes32Label("bond-expired-impair");
+    const expiredImpairLeaf = bondProofLeaf(
+      CHAIN_ID,
+      await bondVault.getAddress(),
+      predictedVaultA,
+      expiredImpairEvidenceHash,
+      BOND_ACTION_IMPAIR,
+      100_000n,
+      bondImpairDistributionHash,
+    );
+    await (
+      await rootRegistry
+        .connect(wallets.operator)
+        .publishRoot(wallets.operator.address, expiredImpairLeaf, 15, 16, 16, 1, operatorEdKeyHash)
+    ).wait();
     await mineAt(provider, Number(driftBondTermsA.expiresAt) + 1);
+    await expectRevertSelector(
+      "expired bond proof release",
+      async () => {
+        await bondVault
+          .connect(wallets.operator)
+          .releaseBondDetailed.staticCall(
+            predictedVaultA,
+            oneLeafProof,
+            expiredReleaseLeaf,
+            expiredReleaseEvidenceHash,
+          );
+      },
+      BOND_NO_LONGER_LIVE_SELECTOR,
+    );
+    await expectRevertSelector(
+      "expired bond proof impairment",
+      async () => {
+        await bondVault
+          .connect(wallets.operator)
+          .impairBondDetailed.staticCall(
+            predictedVaultA,
+            100_000n,
+            [wallets.beneficiary.address],
+            [100_000n],
+            oneLeafProof,
+            expiredImpairLeaf,
+            expiredImpairEvidenceHash,
+          );
+      },
+      BOND_NO_LONGER_LIVE_SELECTOR,
+    );
+    await (await bondVault.connect(adminRpcSigner).setPaused(true)).wait();
     await (
       await bondVault
         .connect(await provider.getSigner(wallets.outsider.address))

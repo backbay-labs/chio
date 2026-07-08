@@ -41,6 +41,8 @@ interface IChioBondVault {
 
     event PausedSet(address indexed admin, bool paused);
 
+    error BondNoLongerLive();
+
     function admin() external view returns (address);
 
     function paused() external view returns (bool);

@@ -152,6 +152,7 @@ contract ChioBondVault is IChioBondVault {
         BondState storage bond = _requireBond(vaultId);
         if (msg.sender != bond.terms.operator) revert UnauthorizedCaller();
         if (bond.released || bond.expired) revert AlreadyClosed();
+        _ensureBondLive(bond);
         _ensureOperatorActive(bond.terms.operator);
         bytes32 leafHash = _proofLeaf(vaultId, evidenceHash, BOND_ACTION_RELEASE, 0, bytes32(0));
         if (!rootRegistry.verifyInclusionDetailed(proof, root, leafHash, bond.terms.operator)) {
@@ -191,6 +192,7 @@ contract ChioBondVault is IChioBondVault {
         BondState storage bond = _requireBond(vaultId);
         if (msg.sender != bond.terms.operator) revert UnauthorizedCaller();
         if (bond.released || bond.expired) revert AlreadyClosed();
+        _ensureBondLive(bond);
         _ensureOperatorActive(bond.terms.operator);
         if (
             beneficiaries.length == 0 ||
@@ -261,6 +263,10 @@ contract ChioBondVault is IChioBondVault {
 
     function _ensureOperatorActive(address operator) internal view {
         if (!identityRegistry.isOperator(operator)) revert OperatorNotActive();
+    }
+
+    function _ensureBondLive(BondState storage bond) internal view {
+        if (block.timestamp > bond.terms.expiresAt) revert BondNoLongerLive();
     }
 
     function _proofLeaf(

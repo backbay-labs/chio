@@ -63,16 +63,17 @@ only, not promotion evidence.
 
 | Operation | Measured | Budget | Status |
 | --- | ---: | ---: | --- |
-| `registerOperator` | 74,658 | 80,000 | pass |
-| `registerDelegate` | 74,559 | 80,000 | pass |
-| `publishRoot` | 172,426 | 190,000 | pass |
-| `registerFeed` | 123,625 | 140,000 | pass |
-| `getPrice` | 60,173 | 70,000 | pass |
-| `createEscrow` | 305,476 | 330,000 | pass |
-| `partialReleaseWithProofDetailed` | 103,764 | 120,000 | pass |
-| `releaseWithSignature` | 76,289 | 90,000 | pass |
-| `lockBond` | 299,787 | 320,000 | pass |
-| `releaseBondDetailed` | 83,260 | 90,000 | pass |
+| `registerOperator` | 74,724 | 80,000 | pass |
+| `registerDelegate` | 84,718 | 80,000 | blocked |
+| `publishRoot` (operator) | 218,005 | 190,000 | blocked |
+| `publishRoot` (delegate) | 186,126 | 190,000 | pass |
+| `registerFeed` | 123,638 | 140,000 | pass |
+| `getPrice` | 60,488 | 70,000 | pass |
+| `createEscrow` | 298,366 | 330,000 | pass |
+| `partialReleaseWithProofDetailed` | 166,284 | 120,000 | blocked |
+| `releaseWithSignature` | 129,700 | 90,000 | blocked |
+| `lockBond` | 293,267 | 320,000 | pass |
+| `releaseBondDetailed` | 146,074 | 90,000 | blocked |
 
 Operational latency and drift budgets are also explicit:
 
@@ -112,7 +113,9 @@ only and is allowed only when:
    satisfy the promotion gate for Merkle or Solana evidence lanes.
 10. The web3 operations and settlement/anchor/oracle runbooks are updated
    together with the candidate docs.
-11. The measured gas table stays within the deployment policy budgets.
+11. The measured gas table stays within the deployment policy budgets. The
+    current local-devnet table is over budget and blocks promotion until the
+    contracts are optimized or the policy budgets are deliberately revised.
 
 Promotion from template review to actual non-testnet deployment is blocked
 until:

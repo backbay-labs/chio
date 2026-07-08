@@ -42,7 +42,8 @@
   "historicalEvidence": [
     "contracts/reports/local-devnet-qualification.json",
     "crates/economy/chio-web3-bindings/reports/local-devnet-qualification.json",
-    "contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md"
+    "contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md",
+    "contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md"
   ],
   "requiredExternalAssurance": [
     "independent external audit with zero unresolved critical/high findings",
@@ -62,7 +63,6 @@
     "scripts/qualify-web3-examples.sh",
     "contracts/deployments/local-devnet.reviewed.json",
     "contracts/deployments/base-sepolia.template.json",
-    "contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md",
     "docs/standards/CHIO_WEB3_DEPLOYMENT_APPROVAL_EXAMPLE.json",
     "docs/standards/CHIO_WEB3_DEPLOYMENT_PROMOTION_REPORT_EXAMPLE.json",
     "docs/standards/CHIO_WEB3_DEPLOYMENT_ROLLBACK_PLAN_EXAMPLE.json",

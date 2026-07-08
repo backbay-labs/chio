@@ -10,6 +10,8 @@
       "interface_name": "IChioRootRegistry",
       "abi_reference": "contracts/artifacts/interfaces/IChioRootRegistry.json",
       "implementation_reference": "contracts/src/ChioRootRegistry.sol",
+      "creation_bytecode_hash": "0x5572936ab99865db2b3743f6cd5b2635ae02f60d0d052966e2e60b6a3375c54d",
+      "deployed_runtime_codehash": "0x57393b6ce3cd2cc08185af84d549e3be43d0948c76ac3143c39b9f90e52ccbba",
       "immutable": true
     },
     {
@@ -18,6 +20,8 @@
       "interface_name": "IChioEscrow",
       "abi_reference": "contracts/artifacts/interfaces/IChioEscrow.json",
       "implementation_reference": "contracts/src/ChioEscrow.sol",
+      "creation_bytecode_hash": "0x0e02340004bd147e73522be1404bc965778bfca097e3db480ebf50404db3f294",
+      "deployed_runtime_codehash": "0xbae921e6a9d22af740f43e0cb4dfd71c6fe827ab1666ca894c9f90b987e7d01a",
       "immutable": true
     },
     {
@@ -26,6 +30,8 @@
       "interface_name": "IChioBondVault",
       "abi_reference": "contracts/artifacts/interfaces/IChioBondVault.json",
       "implementation_reference": "contracts/src/ChioBondVault.sol",
+      "creation_bytecode_hash": "0xfd80218fbf9ec191d4acf454dca143fb60bb0e64c4679f291d99f6700c138c83",
+      "deployed_runtime_codehash": "0xb1b5a1bdcd94cb74abfad14397689865fa519f01a15b3998e558c22d6326392f",
       "immutable": true
     },
     {
@@ -34,6 +40,8 @@
       "interface_name": "IChioIdentityRegistry",
       "abi_reference": "contracts/artifacts/interfaces/IChioIdentityRegistry.json",
       "implementation_reference": "contracts/src/ChioIdentityRegistry.sol",
+      "creation_bytecode_hash": "0x4b1626d4d5c3dd7402ee08cad77b631c96448e234f61ff8d99060c02e5438953",
+      "deployed_runtime_codehash": "0xf81aaefd76daadf7b68e77e73d6a54a9c1ca7db177b5cc9c6cf5fa9fde47c039",
       "immutable": false
     },
     {
@@ -42,6 +50,8 @@
       "interface_name": "IChioPriceResolver",
       "abi_reference": "contracts/artifacts/interfaces/IChioPriceResolver.json",
       "implementation_reference": "contracts/src/ChioPriceResolver.sol",
+      "creation_bytecode_hash": "0xbd4c2c734e8d67c05f91ef88d9e7abcf345129ce01a50efc7b9337279a92e53d",
+      "deployed_runtime_codehash": "0x4c1ecd5b2267972bda0081e6a4254e946c68af109c32139b9aa331dc4170b6ff",
       "immutable": true
     }
   ],

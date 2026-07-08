@@ -1335,6 +1335,42 @@ mod tests {
         assert_eq!(root_publication.from_address, config.operator_address);
         assert_eq!(root_publication.to_address, config.root_registry_contract);
 
+        let mut forged_root_release = full.clone();
+        forged_root_release.merkle_root =
+            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let forged_root_error =
+            prepare_merkle_release_root_publication(&config, &dispatch, &forged_root_release, 2, 2)
+                .test_expect_err("forged release root should fail");
+        assert!(forged_root_error.to_string().contains("merkle_root"));
+
+        let mut forged_amount_release = full.clone();
+        forged_amount_release.settlement_amount_minor_units += 1;
+        let forged_amount_error = prepare_merkle_release_root_publication(
+            &config,
+            &dispatch,
+            &forged_amount_release,
+            2,
+            2,
+        )
+        .test_expect_err("forged release amount should fail");
+        assert!(forged_amount_error
+            .to_string()
+            .contains("settlement_amount_minor_units"));
+
+        let mut forged_call_release = full.clone();
+        let call_data = decode_hex_bytes(&forged_call_release.call.data)
+            .test_expect("release call data should decode");
+        let release_call = IChioEscrow::releaseWithProofDetailedCall::abi_decode(&call_data)
+            .test_expect("release call should decode");
+        forged_call_release.call.data = encode_call(IChioEscrow::releaseWithProofDetailedCall {
+            root: B256::from([0xcc; 32]),
+            ..release_call
+        });
+        let forged_call_error =
+            prepare_merkle_release_root_publication(&config, &dispatch, &forged_call_release, 2, 2)
+                .test_expect_err("forged release call should fail");
+        assert!(forged_call_error.to_string().contains("call data"));
+
         let mut mismatched_root_config = config.clone();
         mismatched_root_config.chain_id = "eip155:42161".to_string();
         let invalid_root_config = prepare_merkle_release_root_publication(

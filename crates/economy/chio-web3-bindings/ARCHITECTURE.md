@@ -14,7 +14,7 @@ The trust boundary is package integrity. Callers depend on the included artifact
 
 ## Artifact Validation
 
-Implementation artifacts are validated separately from interface artifacts: packaged contracts must carry non-empty implementation bytecode while interface artifacts must not carry implementation bytecode. This crate is a Rust compatibility boundary. Release decisions still require independent deployed runtime codehash and security review evidence.
+Implementation artifacts are validated separately from interface artifacts: packaged contracts must carry non-empty implementation and deployed runtime bytecode plus matching bytecode hashes, while interface artifacts must not carry implementation bytecode. This crate is a Rust compatibility boundary. Release decisions still require independent deployed-address and security review evidence.
 
 ## Verification Focus
 

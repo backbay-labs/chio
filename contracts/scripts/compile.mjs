@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { keccak256 } from "ethers";
 import solc from "solc";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -30,6 +31,13 @@ function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
+function hashBytecode(bytecode) {
+  if (!bytecode) {
+    return "";
+  }
+  return keccak256(`0x${bytecode}`);
+}
+
 const sourceFiles = walkSolidityFiles(srcDir);
 const sources = Object.fromEntries(
   sourceFiles.map((filePath) => [
@@ -46,7 +54,7 @@ const input = {
     evmVersion: "paris",
     outputSelection: {
       "*": {
-        "*": ["abi", "evm.bytecode.object", "metadata"],
+        "*": ["abi", "evm.bytecode.object", "evm.deployedBytecode.object", "metadata"],
       },
     },
   },
@@ -74,6 +82,8 @@ for (const [sourceName, contracts] of Object.entries(output.contracts ?? {})) {
   for (const [contractName, artifact] of Object.entries(contracts)) {
     const sourceStem = sourceName.replace(/^src\//, "").replace(/\.sol$/, "");
     const outDir = path.join(artifactsDir, path.dirname(sourceStem));
+    const bytecode = artifact.evm?.bytecode?.object ?? "";
+    const deployedBytecode = artifact.evm?.deployedBytecode?.object ?? "";
     ensureDir(outDir);
     fs.writeFileSync(
       path.join(outDir, `${contractName}.json`),
@@ -82,7 +92,10 @@ for (const [sourceName, contracts] of Object.entries(output.contracts ?? {})) {
           contractName,
           sourceName,
           abi: artifact.abi,
-          bytecode: artifact.evm?.bytecode?.object ?? "",
+          bytecode,
+          deployedBytecode,
+          creationBytecodeHash: hashBytecode(bytecode),
+          deployedRuntimeCodehash: hashBytecode(deployedBytecode),
           metadata: artifact.metadata,
         },
         null,

@@ -15,6 +15,20 @@ pub(crate) fn ensure_non_empty(value: &str, field: &'static str) -> Result<(), W
     Ok(())
 }
 
+pub(crate) fn ensure_b256_hex(value: &str, field: &'static str) -> Result<(), Web3ContractError> {
+    let hex = value.strip_prefix("0x").ok_or_else(|| {
+        Web3ContractError::InvalidBinding(format!(
+            "{field} must be a 0x-prefixed 32-byte hex value"
+        ))
+    })?;
+    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(Web3ContractError::InvalidBinding(format!(
+            "{field} must be a 0x-prefixed 32-byte hex value"
+        )));
+    }
+    Ok(())
+}
+
 pub(crate) fn evm_addresses_match(left: &str, right: &str) -> Result<bool, Web3ContractError> {
     let left_hex = evm_address_hex(left).ok_or_else(invalid_evm_address)?;
     let right_hex = evm_address_hex(right).ok_or_else(invalid_evm_address)?;

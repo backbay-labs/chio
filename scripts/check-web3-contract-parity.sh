@@ -18,8 +18,20 @@ diff -u contracts/deployments/local-devnet.json \
   crates/economy/chio-web3-bindings/deployments/local-devnet.json
 diff -u contracts/reports/local-devnet-qualification.json \
   crates/economy/chio-web3-bindings/reports/local-devnet-qualification.json
+jq -e '
+  .bytecode != "" and
+  .deployedBytecode != "" and
+  (.creationBytecodeHash | test("^0x[0-9a-fA-F]{64}$")) and
+  (.deployedRuntimeCodehash | test("^0x[0-9a-fA-F]{64}$"))
+' \
+  contracts/artifacts/ChioRootRegistry.json \
+  contracts/artifacts/ChioEscrow.json \
+  contracts/artifacts/ChioBondVault.json \
+  contracts/artifacts/ChioIdentityRegistry.json \
+  contracts/artifacts/ChioPriceResolver.json >/dev/null
 jq empty \
   docs/standards/CHIO_WEB3_CONTRACT_PACKAGE.json \
+  docs/standards/CHIO_WEB3_DEPLOYMENT_POLICY.json \
   docs/standards/CHIO_WEB3_CHAIN_CONFIGURATION.json \
   docs/standards/CHIO_WEB3_QUALIFICATION_MATRIX.json \
   docs/standards/CHIO_WEB3_SETTLEMENT_RECEIPT_EXAMPLE.json

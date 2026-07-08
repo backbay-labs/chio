@@ -339,6 +339,107 @@ fn validate_merkle_dispatch_config(
     Ok(())
 }
 
+fn validate_merkle_release_matches_dispatch(
+    config: &SettlementChainConfig,
+    dispatch: &Web3SettlementDispatchArtifact,
+    release: &PreparedMerkleRelease,
+) -> Result<B256, SettlementError> {
+    if release.chain_id != dispatch.chain_id || release.escrow_id != dispatch.escrow_id {
+        return Err(SettlementError::InvalidDispatch(
+            "settlement root publication release does not match dispatch".to_string(),
+        ));
+    }
+    let scaled_amount = scale_chio_amount_to_token_minor_units(&release.observed_amount, config)?;
+    if scaled_amount != release.settlement_amount_minor_units {
+        return Err(SettlementError::InvalidDispatch(
+            "release settlement_amount_minor_units does not match observed_amount".to_string(),
+        ));
+    }
+    let partial = release.observed_amount != dispatch.settlement_amount;
+    if release.partial != partial {
+        return Err(SettlementError::InvalidDispatch(
+            "release partial flag does not match observed_amount".to_string(),
+        ));
+    }
+
+    let escrow_id = parse_b256_hex(&release.escrow_id, "release.escrow_id")?;
+    let receipt_hash = parse_b256_hex(&release.receipt_hash, "release.receipt_hash")?;
+    parse_b256_hex(&release.receipt_leaf_hash, "release.receipt_leaf_hash")?;
+    let expected_root = escrow_proof_leaf(
+        dispatch,
+        escrow_id,
+        receipt_hash,
+        release.settlement_amount_minor_units,
+        release.partial,
+    )?;
+    if parse_b256_hex(&release.merkle_root, "release.merkle_root")? != expected_root {
+        return Err(SettlementError::InvalidDispatch(
+            "release merkle_root does not match dispatch commitment".to_string(),
+        ));
+    }
+
+    if parse_address(&release.call.from_address, "release.call.from_address")?
+        != parse_address(
+            &dispatch.beneficiary_address,
+            "dispatch.beneficiary_address",
+        )?
+    {
+        return Err(SettlementError::InvalidDispatch(
+            "release call from_address does not match dispatch beneficiary".to_string(),
+        ));
+    }
+    if parse_address(&release.call.to_address, "release.call.to_address")?
+        != parse_address(&config.escrow_contract, "config.escrow_contract")?
+    {
+        return Err(SettlementError::InvalidDispatch(
+            "release call to_address does not match config escrow_contract".to_string(),
+        ));
+    }
+
+    let call_data = decode_hex_bytes(&release.call.data)?;
+    if release.partial {
+        let call = IChioEscrow::partialReleaseWithProofDetailedCall::abi_decode(&call_data)
+            .map_err(|error| {
+                SettlementError::InvalidDispatch(format!(
+                    "partial release call data does not decode: {error}"
+                ))
+            })?;
+        if call.escrowId != escrow_id
+            || call.root != expected_root
+            || call.receiptHash != receipt_hash
+            || call.amount != U256::from(release.settlement_amount_minor_units)
+            || call.proof.treeSize != U256::from(1_u8)
+            || call.proof.leafIndex != U256::from(0_u8)
+            || !call.proof.auditPath.is_empty()
+        {
+            return Err(SettlementError::InvalidDispatch(
+                "partial release call data does not match release commitment".to_string(),
+            ));
+        }
+    } else {
+        let call =
+            IChioEscrow::releaseWithProofDetailedCall::abi_decode(&call_data).map_err(|error| {
+                SettlementError::InvalidDispatch(format!(
+                    "release call data does not decode: {error}"
+                ))
+            })?;
+        if call.escrowId != escrow_id
+            || call.root != expected_root
+            || call.receiptHash != receipt_hash
+            || call.settledAmount != U256::from(release.settlement_amount_minor_units)
+            || call.proof.treeSize != U256::from(1_u8)
+            || call.proof.leafIndex != U256::from(0_u8)
+            || !call.proof.auditPath.is_empty()
+        {
+            return Err(SettlementError::InvalidDispatch(
+                "release call data does not match release commitment".to_string(),
+            ));
+        }
+    }
+
+    Ok(expected_root)
+}
+
 pub fn prepare_merkle_release_root_publication(
     config: &SettlementChainConfig,
     dispatch: &Web3SettlementDispatchArtifact,
@@ -355,14 +456,10 @@ pub fn prepare_merkle_release_root_publication(
             "settlement root publication sequence values must be non-zero".to_string(),
         ));
     }
-    if release.chain_id != dispatch.chain_id || release.escrow_id != dispatch.escrow_id {
-        return Err(SettlementError::InvalidDispatch(
-            "settlement root publication release does not match dispatch".to_string(),
-        ));
-    }
+    let merkle_root = validate_merkle_release_matches_dispatch(config, dispatch, release)?;
     let call = IChioRootRegistry::publishRootCall {
         operator: parse_address(&config.operator_address, "operator_address")?,
-        merkleRoot: parse_b256_hex(&release.merkle_root, "release.merkle_root")?,
+        merkleRoot: merkle_root,
         checkpointSeq: checkpoint_seq,
         batchStartSeq: batch_seq,
         batchEndSeq: batch_seq,
