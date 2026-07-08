@@ -91,7 +91,8 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
             // A monetary drop reverses a real hold; authorize one so the
             // pre-dispatch unwind is clean (a failed reversal would, after
             // RFC-0002 Finding C, record a fault receipt).
-            authorize_fabricated_drop_hold(&kernel, &cap.id);
+            authorize_fabricated_drop_hold(&kernel, &cap.id)
+                .map_err(|error| TestCaseError::fail(error.to_string()))?;
         }
         let budget_mutation = match monetary.then(make_fabricated_drop_charge) {
             Some(charge) => PreExecutionBudgetMutation::Charge(charge),

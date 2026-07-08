@@ -1904,7 +1904,10 @@ fn make_fabricated_drop_charge() -> BudgetChargeResult {
 /// the monetary reversal fails and (after RFC-0002 Finding C) records a fault
 /// receipt. Authorizing the hold first models the real admission so the
 /// pre-dispatch monetary unwind is a genuine, clean, receipt-free reversal.
-fn authorize_fabricated_drop_hold(kernel: &ChioKernel, capability_id: &str) {
+fn authorize_fabricated_drop_hold(
+    kernel: &ChioKernel,
+    capability_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     kernel
         .with_budget_store(|store| {
             let decision =
@@ -1928,7 +1931,10 @@ fn authorize_fabricated_drop_hold(kernel: &ChioKernel, capability_id: &str) {
             );
             Ok(())
         })
-        .expect("authorize fabricated drop hold");
+        .map_err(|error| -> Box<dyn std::error::Error> {
+            format!("authorize fabricated drop hold: {error}").into()
+        })?;
+    Ok(())
 }
 
 #[test]
@@ -2055,7 +2061,7 @@ fn drop_pre_dispatch_monetary_unwinds_without_receipt(
     // Model the real admission behind the fabricated charge so the monetary
     // reversal is a genuine, clean unwind (RFC-0002 Finding C would otherwise
     // record a fault receipt for the un-reversible fabricated hold).
-    authorize_fabricated_drop_hold(&kernel, &cap.id);
+    authorize_fabricated_drop_hold(&kernel, &cap.id)?;
     let mutation = PreExecutionBudgetMutation::Charge(make_fabricated_drop_charge());
     let authorization = PaymentAuthorization {
         authorization_id: "auth-monetary-pre-dispatch-drop".to_string(),
