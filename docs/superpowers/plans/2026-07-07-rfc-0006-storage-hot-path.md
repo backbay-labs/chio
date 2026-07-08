@@ -24,7 +24,7 @@
 Before Task 1, create the branch:
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 git checkout main && git pull && git checkout -b chio/rfc-0006-storage
 ```
 
@@ -190,7 +190,16 @@ impl WriterHandle {
         }
         match result.recv() {
             Ok(outcome) => outcome,
-            Err(_) => Err(receipt_actor_unavailable_error()),
+            Err(_) => {
+                // Accepted-then-lost: the actor took the command but died
+                // before responding. Undo the speculative increment and count
+                // the failure, mirroring `ReceiptCommitActor::append` so
+                // `health.writer.inflight` never reports a permanently stuck
+                // write after a writer failure (honest-health invariant).
+                atomic_saturating_sub(&self.health.inflight, 1);
+                self.health.failed_total.fetch_add(1, Ordering::SeqCst);
+                Err(receipt_actor_unavailable_error())
+            }
         }
     }
 }
@@ -289,7 +298,7 @@ fn handle_non_append_command(
 - [ ] **Step 1.6: Commit.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 cargo build --workspace && cargo test -p chio-store-sqlite && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check
 git add crates/platform/chio-store-sqlite/src/receipt_store.rs
 git commit -m "feat(store-sqlite): add generic Write command and WriterHandle::run_write to the receipt commit actor
@@ -481,7 +490,7 @@ Copy lines :126-193 verbatim into the closure (INSERT with `ON CONFLICT(receipt_
 - [ ] **Step 2.10: Commit.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check
 git add crates/platform/chio-store-sqlite
 git commit -m "feat(store-sqlite): route all receipt-store write paths through the single writer
@@ -651,7 +660,7 @@ and in `insert`, after the existing encode/convert prefix (:84-99):
 - [ ] **Step 3.6: Commit.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 cargo test --workspace && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check
 git add crates/platform/chio-store-sqlite/src/iou_store.rs
 git commit -m "feat(store-sqlite): route IOU envelope writes through the shared receipt writer
@@ -872,7 +881,7 @@ Caller at :543 (`append_chio_receipt_canonical_returning_seq`) passes `false`.
 - [ ] **Step 4.6: Commit.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check
 git add crates/platform/chio-store-sqlite
 git commit -m "feat(store-sqlite): fold receipt and lineage inserts into one group-commit transaction
@@ -1137,7 +1146,7 @@ mod model {
 - [ ] **Step 5.5: Commit.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check
 git add crates/platform/chio-store-sqlite
 git commit -m "test(store-sqlite): writer serialization stress test and loom accounting model
@@ -1482,7 +1491,7 @@ In `checkpoint_validate.rs`, widen visibility: `fn validate_checkpoint_base` (:3
 - [ ] **Step 6.5: Commit.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 cargo build --workspace && cargo test -p chio-store-sqlite && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check
 git add crates/platform/chio-store-sqlite
 git commit -m "feat(store-sqlite): VerifiedHead cache, one-time seeding, and O(1)/O(b) verification primitives
@@ -2175,7 +2184,7 @@ fn append_receipt_batch(
 - [ ] **Step 7.9: Commit.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check
 git add crates/platform/chio-store-sqlite
 git commit -m "feat(store-sqlite): incremental verified-head append path behind incremental_verification
@@ -2300,7 +2309,7 @@ proptest! {
 - [ ] **Step 8.3: Commit.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 cargo build --workspace && cargo test -p chio-store-sqlite && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check
 git add crates/platform/chio-store-sqlite
 git commit -m "test(store-sqlite): prop_incremental_head_matches_full_audit
@@ -2546,7 +2555,7 @@ and make the legacy verb a documented alias: replace the body of `cmd_receipt_ch
 - [ ] **Step 9.9: Commit.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check
 git add crates/platform/chio-store-sqlite crates/products/chio-cli
 git commit -m "feat(cli): chio receipt audit [--repair] promotes full verification to the operator surface
@@ -2936,7 +2945,7 @@ pub(crate) fn insert_checkpoint_incremental_tx(
 - [ ] **Step 10.5: Commit.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check
 git add crates/platform/chio-store-sqlite
 git commit -m "feat(store-sqlite): background checkpoint construction on the writer actor
@@ -3139,7 +3148,7 @@ fn background_checkpoints_are_installed_at_store_attach_and_fire_off_the_request
 - [ ] **Step 11.8: Commit.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check
 git add crates/kernel/chio-kernel crates/platform/chio-store-sqlite
 git commit -m "feat(kernel): drop request-path checkpoint construction; install the background signer at store attach
@@ -3256,7 +3265,7 @@ fn append_scale_proof_is_batch_bounded_across_history_sizes(
 - [ ] **Step 12.5: Commit.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check
 git add crates/platform/chio-store-sqlite
 git commit -m "test(store-sqlite): append scale proof across 1e3/1e5/1e6 receipt histories
@@ -3279,7 +3288,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 - [ ] **Step 13.1: Full workspace gate.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check
 ```
 
@@ -3319,7 +3328,7 @@ Expected: all pass. The only permitted diff to these tests across the whole PR i
 - [ ] **Step 13.7: Push and open the PR.**
 
 ```bash
-cd /home/connor/backbay/arc
+cd "$(git rev-parse --show-toplevel)"
 git push -u origin chio/rfc-0006-storage
 gh pr create --base main --title "feat(store): RFC-0006 storage hot path (verified head, background checkpoints, true single writer)" --body "$(cat <<'EOF'
 Implements RFC-0006 (docs/architecture/reliability/RFC-0006-storage-hot-path.md), closing F22/F28/F29/F07 in the RFC's rollout order:
