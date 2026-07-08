@@ -363,7 +363,14 @@ gate in the test plan):
    dead-letter, never only with `outcome="ok"`.
 2. Fail-closed observability. A missing series is a fault, not a default. Every
    alert whose `expr` is `increase(...) > 0` gains an `absent_over_time`
-   companion so "the producer is gone" is loud rather than a silent green.
+   companion so "the producer is gone" is loud rather than a silent green. Any
+   family that backs an `absent_over_time` alert MUST pre-register its known
+   label sets at zero at startup (`LabeledCounter::preregister`,
+   `LabeledHistogram::preregister`), so the backstop distinguishes a vanished
+   producer from an event that has simply not occurred yet. Because
+   `LabeledCounter` renders only label sets an increment created, an unseeded
+   counter that never fired looks identical to an absent metric, which would trip
+   the backstop on a healthy deployment.
 3. One producer per family, colocated with the truth. Each crate that owns a
    truth source owns the emission and a `render_*_prometheus()` function over its
    process-global state, following `chio-http-core::render_http_core_metrics_prometheus`
@@ -398,6 +405,18 @@ impl LabeledCounter {
         // resolve-or-insert Arc<AtomicU64>, fetch_add(1, Relaxed)
     }
 
+    /// Pre-register a label set at zero so the series exists before its first
+    /// event. `render` only emits label sets that an increment created, so
+    /// without this a counter that has legitimately never fired ("no event yet")
+    /// is byte-for-byte identical to a vanished producer ("metric absent"), and
+    /// the `absent_over_time` backstop (rule 2) fires falsely on a healthy
+    /// deployment. Called once at startup for every KNOWN label value. Same
+    /// cold-path resolve-or-insert as `incr`, but leaves the cell at 0.
+    pub fn preregister(&self, values: &[&str]) {
+        let Ok(mut cells) = self.cells.lock() else { return };
+        // resolve-or-insert Arc<AtomicU64> at 0 (no fetch_add)
+    }
+
     /// Render all label sets in Prometheus text form. Callers never see a lock.
     pub fn render(&self, out: &mut String) { /* # HELP/# TYPE from descriptor_for(name) */ }
 }
@@ -426,6 +445,22 @@ registry-declared bucket bounds. Both `render` into the exact
   The same counter is incremented at any other unenforced-forward site (the
   api-protect evaluation-error path, if a future fail-open mode is added there),
   always with a distinct `surface` label.
+
+  Seed the series at zero at startup so the `absent_over_time` backstop below
+  only fires on a true scrape gap, never on a deployment that has simply never
+  failed open. The `chio-tower` metrics init pre-registers every known `surface`
+  value once, before the layer serves:
+
+  ```rust
+  // chio-tower metrics init, run once at layer construction (before serving):
+  metrics::FAIL_OPEN_SUSPECTED.preregister(&["tower"]);
+  // ... plus each additional unenforced-forward surface as it is introduced,
+  //     using the same fixed set of known `surface` label values ...
+  ```
+
+  Each family in this part follows the same rule: the known label sets an
+  `absent_over_time` alert watches are pre-registered at zero, so "healthy and
+  quiet" renders as `0` rather than as a missing series.
 - Dispatch failure (`chio_dispatch_failure_total{surface, outcome}`). Emit from
   the kernel/authority dispatch path when a tool dispatch fails WITHOUT bypassing
   mediation (that is, the request was denied or errored, enforcement held). This
@@ -457,8 +492,12 @@ producer is loud:
 ```
 
 The p0 `ChioFailOpenSuspected` alert is unchanged; it now sits on a real series
-plus an absence backstop, so either a fail-open event OR a missing producer
-pages.
+(pre-registered at zero from startup, so it exists even before the first
+fail-open event) plus an absence backstop. Because the series is present at `0`
+on a healthy deployment, `absent_over_time` only fires on a genuine scrape gap (a
+vanished producer), not on a deployment that has never failed open. Either a
+fail-open event OR a missing producer pages; a healthy-and-quiet deployment does
+neither.
 
 ### C. Back the kernel guard families with real values (F75)
 

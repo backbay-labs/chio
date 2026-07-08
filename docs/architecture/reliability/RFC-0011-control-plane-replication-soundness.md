@@ -435,8 +435,14 @@ leader URL that wrote it (`cluster_budget.rs:184-188`, and it is persisted as
 No new column is required; the origin of a durably-imported event is its
 `authority_id`.
 
-Each node computes, over its own `budget_mutation_events`, the highest imported
-`event_seq` per origin, and reports it in `cluster_status`:
+Each node computes, over its own `budget_mutation_events`, the highest
+*contiguous* imported `event_seq` per origin (the largest `S` such that every
+event from that origin in `[origin_start..S]` is present with no gap), and
+reports it in `cluster_status`. Reporting `MAX(event_seq)` would be unsound: the
+puller hardening (D1) only checks that pages advance, not that they are
+gap-free, so a peer that skips event 41 and then imports 42 must not be treated
+as having acked 41. The contiguous head caps the ack at the last event before
+the first gap, so a gap can never be counted as an ack:
 
 ```rust
 // service_types/cluster_budget.rs
@@ -444,6 +450,8 @@ Each node computes, over its own `budget_mutation_events`, the highest imported
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BudgetOriginAck {
     pub(crate) origin_id: String,
+    /// Contiguous ack head: the highest event_seq S from `origin_id` such that
+    /// every event in [origin_start..S] is present (no gap). NOT MAX(event_seq).
     pub(crate) event_seq: u64,
 }
 
@@ -453,7 +461,16 @@ pub(crate) struct BudgetOriginAck {
 ```
 
 New store read, mirroring the existing private `max_budget_mutation_event_seq`
-helper (`budget_store/replication.rs:134-143`):
+helper (`budget_store/replication.rs:134-143`). It returns the contiguous head
+per origin, not `MAX`. The window-function form uses the gaps-and-islands
+identity: within a partition ordered by `event_seq`, a run that increments by
+exactly 1 has a constant `event_seq - ROW_NUMBER()`. The first island (the run
+that begins at the origin's minimum imported seq) is the one whose island key
+equals `origin_start - 1`; the first gap moves the key, so restricting to that
+island and taking its `MAX` yields the contiguous prefix head. A per-origin
+event's `event_seq` values are consecutive integers by construction (each leader
+numbers its own mutation events), so consecutive-integer contiguity is the right
+test:
 
 ```rust
 // SqliteBudgetStore
@@ -461,25 +478,45 @@ pub fn budget_ack_heads(&self) -> Result<Vec<BudgetOriginAck>, BudgetStoreError>
     let connection = self.connection()?;
     let mut statement = connection.prepare(
         r#"
-        SELECT authority_id, MAX(event_seq)
-        FROM budget_mutation_events
-        WHERE authority_id IS NOT NULL AND event_seq IS NOT NULL
+        WITH imported AS (
+            SELECT
+                authority_id,
+                event_seq,
+                event_seq - ROW_NUMBER() OVER (
+                    PARTITION BY authority_id ORDER BY event_seq
+                ) AS island,
+                MIN(event_seq) OVER (PARTITION BY authority_id) AS origin_start
+            FROM budget_mutation_events
+            WHERE authority_id IS NOT NULL AND event_seq IS NOT NULL
+        )
+        SELECT authority_id, MAX(event_seq) AS ack_head
+        FROM imported
+        WHERE island = origin_start - 1  -- first island only: the contiguous prefix
         GROUP BY authority_id
         "#,
     )?;
     let rows = statement.query_map([], |row| {
         Ok(BudgetOriginAck {
             origin_id: row.get::<_, String>(0)?,
-            event_seq: budget_u64_from_row(row, 1, "event_seq")?,
+            event_seq: budget_u64_from_row(row, 1, "ack_head")?,
         })
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(BudgetStoreError::from)
 }
 ```
 
+A peer that has imported events `{40, 42}` for an origin (41 skipped) reports a
+contiguous head of `40`, not `42`, so a write at seq `41` is never witnessed by
+that peer until the gap is filled. A late-joining peer whose snapshot baseline
+seeds a contiguous run from a higher `origin_start` is handled the same way: the
+head advances only across events it actually holds with no gap above that
+baseline. An equivalent Rust-side computation (sort each origin's imported seqs,
+walk from the minimum, stop at the first `seq != previous + 1`) is acceptable if
+the SQLite build lacks window functions.
+
 `PeerSyncState` (`state.rs:80-94`) gains
-`budget_import_acks: BTreeMap<String, u64>` (origin_id -> highest imported
-event_seq for that origin, as reported by that peer). `sync_peer`
+`budget_import_acks: BTreeMap<String, u64>` (origin_id -> highest *contiguous*
+imported event_seq for that origin, as reported by that peer). `sync_peer`
 (`deltas.rs:231`) already fetches `cluster_status` first; it now records the
 peer's `budget_ack_heads` into `budget_import_acks` via a new
 `update_peer_budget_acks` helper in `cluster/partition.rs` (same lock pattern as
@@ -544,11 +581,14 @@ fn budget_write_quorum_commit_view_locked(
 }
 ```
 
-A peer counts only when it has durably imported an event whose origin is exactly
-this write's origin and whose seq is at least this write's seq. An unrelated peer
-event can no longer satisfy the witness, because it is grouped under a different
-`origin_id`. Legacy events with a NULL `authority_id` are excluded from
-`budget_ack_heads` and so never witness a new write (fail-closed).
+A peer counts only when its contiguous ack head for exactly this write's origin
+is at least this write's seq. Because the head is the gap-free prefix rather than
+`MAX`, a peer that skipped a lower event for that origin does not witness the
+write until the gap is filled: a hole below the write's seq caps the reported
+head beneath it. An unrelated peer event can no longer satisfy the witness,
+because it is grouped under a different `origin_id`. Legacy events with a NULL
+`authority_id` are excluded from `budget_ack_heads` and so never witness a new
+write (fail-closed).
 
 `self` is still counted as one witness (the leader always durably holds its own
 write before responding), consistent with ADR-0006's atomic local commit.

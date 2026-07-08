@@ -101,6 +101,7 @@ The primary live release documents. Auditors and operators start here.
 - Canonical spec: [spec/PROTOCOL.md](../spec/PROTOCOL.md)
 - [Architecture notes](architecture/) - [Final Architecture](architecture/CHIO_FINAL_ARCHITECTURE.md), [Runtime Boundaries](architecture/CHIO_RUNTIME_BOUNDARIES.md), [Workspace Structure](architecture/WORKSPACE_STRUCTURE.md)
 - [Architecture Decision Records](adr/README.md) - numbered ADRs (ADR-0001 through ADR-0014)
+- [Reliability program](architecture/reliability/README.md) - RFC and PLAN series for the fail-closed reliability, durability, and control-plane replication-soundness work (hot-path deadlines, post-admission unwind, dispatch-intent journal, storage hot path, observability wiring, and replication quorum)
 - [Protocol integration notes](protocols/) - framework, transport, and ecosystem integration designs (Temporal, LangGraph, Envoy, AWS Lambda, K8s, and more), plus the [Trust Model and Key Management](protocols/TRUST-MODEL-AND-KEY-MANAGEMENT.md)
 - [Standards profiles](standards/) - qualification profiles and JSON conformance matrices (anchor, federation, automation, extension, bounded operational profile, cross-protocol matrix)
 

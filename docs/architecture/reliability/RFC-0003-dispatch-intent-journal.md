@@ -392,12 +392,31 @@ tool dispatch at 525-527):
 // Fail-closed: for side-effecting or monetary calls, write and durably commit a
 // dispatch-intent row BEFORE any external effect. On failure we deny here, before
 // the effect, converting the old post-effect ReceiptPersistence error into a safe
-// pre-effect deny.
+// pre-effect deny. The budget hold (check_and_increment_budget, line 252) is
+// already applied at this point, so a persistence failure must reverse it before
+// returning, exactly as the other pre-dispatch abort arms do; a bare `?` here
+// would leak the hold on a denied-before-dispatch call.
 let dispatch_intent = match self.record_dispatch_intent_if_side_effecting(
     request, cap, matched_grant_index,
-)? {
-    Some(handle) => Some(handle),
-    None => None, // read-only class: no journal write, TTFRH unchanged
+) {
+    Ok(Some(handle)) => Some(handle),
+    Ok(None) => None, // read-only class: no journal write, TTFRH unchanged
+    Err(error) => {
+        // Reverse the pre-execution hold through the same charge-gated primitive
+        // the authorize/admission abort arms use (RFC-0002). payment auth is None
+        // (authorize runs later, line 469); a non-monetary side-effecting call
+        // holds no charge, so this is a no-op. A reversal error is recorded but
+        // never masks the deny.
+        if let Err(unwind_error) = self.unwind_aborted_monetary_invocation(
+            request, cap, budget_mutation.charge_result(), None,
+        ) {
+            tracing::error!(
+                error = %unwind_error,
+                "failed to reverse budget hold after dispatch-intent persistence failure"
+            );
+        }
+        return Err(error);
+    }
 };
 ```
 
@@ -419,7 +438,10 @@ before ever returning `SafeToReplay`. Given a class, the method:
   (`decision.rs:44`), sets `rail` to the configured adapter id for monetary calls
   (leaving `rail_authorization_id = None` until authorize returns), and calls
   `store.record_dispatch_intent(&intent)`. Any error maps to a new fail-closed
-  variant and denies before dispatch.
+  variant, reverses the already-applied pre-execution budget hold (routed through
+  `unwind_aborted_monetary_invocation`, the same charge-gated reversal the
+  authorize and admission abort arms use, so no hold leaks), and denies before
+  dispatch.
 
 Money path (F70, extended by RFC-0013): after `authorize_payment_if_needed`
 (line 469) returns a `PaymentAuthorization`, attach its `authorization_id` to the

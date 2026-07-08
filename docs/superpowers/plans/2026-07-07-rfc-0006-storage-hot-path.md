@@ -2619,9 +2619,9 @@ fn maybe_build_checkpoint_builds_one_checkpoint_per_crossed_threshold(
             sample_receipt_with_keypair(&format!("rcpt-bg-{i}"), (i + 1) as u64, &keypair);
         store.append_chio_receipt_returning_seq(&receipt)?;
     }
-    // Flush is the synchronization barrier: the actor builds checkpoints
-    // inside the same command iteration as the batch commit, and a Flush
-    // enqueued afterwards is only served once that iteration finishes.
+    // Flush is the checkpoint barrier: the actor builds every checkpoint a
+    // batch owes BEFORE it releases that batch's flush waiters, so once
+    // flush_receipt_writes returns, the owed checkpoints are durable.
     store.flush_receipt_writes()?;
 
     let first = store.load_checkpoint_by_seq(1)?.ok_or("checkpoint 1 missing")?;
@@ -2769,7 +2769,14 @@ Re-export in `lib.rs`: `pub use receipt_store::BackgroundCheckpointSigner;` (add
         }
 ```
 
-Placement is load-bearing for ADR-0013 latency: `commit_receipt_batch` sends the per-request responses (callers unblock as soon as their batch is durable), so the checkpoint build runs AFTER `commit_receipt_batch` returns, still inside the same loop iteration (a Flush enqueued behind the appends is therefore only served after any due checkpoints are durable, which is the synchronization barrier the tests rely on). In `receipt_commit_actor_loop`, immediately after `pending_flush_error = commit_receipt_batch(...)`:
+Ordering here is load-bearing, and it differs for appends versus flushes:
+
+- `commit_receipt_batch` fans out the per-request APPEND responses as soon as the batch is durable, so `append_*` callers unblock immediately. This is the ADR-0013 latency rule: durability returns BEFORE checkpoint construction. A plain append deliberately returns before its checkpoint exists.
+- The co-drained flush waiters are NOT answered inside `commit_receipt_batch`. It hands them back to the loop, which builds any due checkpoints and only then releases them. So a Flush is an unconditional checkpoint barrier: whether it arrived behind the batch (a later loop iteration, after this block has run) or was co-drained into it (the drain loop's `flushes.push(response); break` at the Task 1 loop, :237-240), `flush_receipt_writes` returns only after every checkpoint the just-committed batch owes is durable.
+
+The exact per-iteration order is therefore: drain appends and any trailing flush -> commit the batch and fan out append durability responses -> build due checkpoints -> release this batch's flush waiters. That order is what makes the barrier the tests use (`flush_receipt_writes()` then `load_checkpoint_by_seq(...)`) sound even under concurrent writers, where a flush issued from another thread can be co-drained into an append batch. The earlier note (Task 3, :1959-1961) that `commit_receipt_batch` fans out flush responses inline was correct only while no checkpoints existed; installing the signer refines it, moving flush-waiter release into the loop so it can sequence strictly after the checkpoint build.
+
+Refine `commit_receipt_batch` (Task 3, :1940): drop the `flushes` argument from its response fan-out and keep `flushes` owned by the loop (it still owns the append response fan-out and `pending_flush_error` derivation). In `receipt_commit_actor_loop`, immediately after `pending_flush_error = commit_receipt_batch(&pool, &mut head_state, incremental_verification, requests, &health)` (note: no longer passed `flushes`):
 
 ```rust
                 if pending_flush_error.is_none() {
@@ -2784,6 +2791,17 @@ Placement is load-bearing for ADR-0013 latency: `commit_receipt_batch` sends the
                             health.store_head_snapshot(head);
                         }
                     }
+                }
+                // Release the co-drained flush waiters ONLY now, after this batch's
+                // checkpoints are durable, so a flush is a true checkpoint barrier.
+                // (Append durability responses already fanned out inside
+                // commit_receipt_batch, preserving the ADR-0013 append latency.)
+                for flush in flushes {
+                    let result = match &pending_flush_error {
+                        Some(error) => Err(receipt_store_error_snapshot(error)),
+                        None => Ok(()),
+                    };
+                    let _ = flush.send(result);
                 }
 ```
 
