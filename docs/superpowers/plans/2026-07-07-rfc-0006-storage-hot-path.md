@@ -124,7 +124,7 @@ Note on the closure signature: the RFC sketches `FnOnce(&mut SqliteStoreConnecti
     }
 ```
 
-- [ ] **Step 1.2: Run the tests to verify they fail.** `cargo test -p chio-store-sqlite run_write_ 2>&1 | tail -20`. Expected: compile errors (`cannot find WriterHandle`, `no variant named Write`, `no method named writer_handle`). A compile failure is the failing state for this step.
+- [ ] **Step 1.2: Run the tests to verify they fail.** `set -o pipefail; cargo test -p chio-store-sqlite run_write_ 2>&1 | tail -20`. Expected: compile errors (`cannot find WriterHandle`, `no variant named Write`, `no method named writer_handle`). A compile failure is the failing state for this step.
 
 - [ ] **Step 1.3: Write the implementation.** In `crates/platform/chio-store-sqlite/src/receipt_store.rs`:
 
@@ -341,8 +341,8 @@ and later commands still make progress:
 RFC-0007's retention plan already assumes this `catch_unwind` isolation, so it
 is specified here rather than deferred.
 
-- [ ] **Step 1.4: Run the tests to verify they pass.** `cargo test -p chio-store-sqlite run_write_ 2>&1 | tail -5`. Expected: `test result: ok. 2 passed`.
-- [ ] **Step 1.5: Keep the existing actor suite green.** `cargo test -p chio-store-sqlite receipt_commit 2>&1 | tail -5` (covers `receipt_commit_actor_channel_has_fixed_capacity`, `receipt_commit_actor_append_fails_closed_when_queue_is_full`, `receipt_commit_actor_flush_honors_timeout`, `receipt_commit_flush_waits_for_queued_receipts`, `receipt_commit_flush_reports_queued_batch_error`). Expected: all pass.
+- [ ] **Step 1.4: Run the tests to verify they pass.** `set -o pipefail; cargo test -p chio-store-sqlite run_write_ 2>&1 | tail -5`. Expected: `test result: ok. 2 passed`.
+- [ ] **Step 1.5: Keep the existing actor suite green.** `set -o pipefail; cargo test -p chio-store-sqlite receipt_commit 2>&1 | tail -5` (covers `receipt_commit_actor_channel_has_fixed_capacity`, `receipt_commit_actor_append_fails_closed_when_queue_is_full`, `receipt_commit_actor_flush_honors_timeout`, `receipt_commit_flush_waits_for_queued_receipts`, `receipt_commit_flush_reports_queued_batch_error`). Expected: all pass.
 - [ ] **Step 1.6: Commit.**
 
 ```bash
@@ -374,7 +374,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 These are pure-refactor steps: a failing test is impossible because behavior is preserved (only the executing connection changes). The cycle per RFC/superpowers rules is therefore: run the behavioral tests that must KEEP passing, refactor, run them green again, commit. Stage-1 discipline: the full-verification calls that currently live inside these writers (`validate_claim_receipt_log_entries`, `verify_latest_checkpoint_integrity`) move INTO the closures unchanged; they are removed only in Task 7 (stage 2).
 
-- [ ] **Step 2.1: Record the green baseline.** `cargo test -p chio-store-sqlite 2>&1 | tail -3` and note the pass count. Expected: all green (this is the covering suite for the refactor: `receipt_store::tests::lineage`, `::insert`, `::checkpoint`, `::query`, `::bootstrap` all exercise these writers).
+- [ ] **Step 2.1: Record the green baseline.** `set -o pipefail; cargo test -p chio-store-sqlite 2>&1 | tail -3` and note the pass count. Expected: all green (this is the covering suite for the refactor: `receipt_store::tests::lineage`, `::insert`, `::checkpoint`, `::query`, `::bootstrap` all exercise these writers).
 - [ ] **Step 2.2: Rewrite the three lineage record writers.** In `store_impl.rs` replace the bodies of `record_session_anchor_record` (:4-27), `record_request_lineage_record` (:30-55), `record_receipt_lineage_statement_record` (:58-87). Owned captures are required because the closure is `'static`:
 
 ```rust
@@ -412,7 +412,7 @@ These are pure-refactor steps: a failing test is impossible because behavior is 
 ```
 
 `record_request_lineage_record` is identical in shape: own `session_id`, `request_id`, `parent_request_id: Option<String>`, `session_anchor_id: Option<String>`, `request_fingerprint: Option<String>`, clone `lineage_json`, and call `persist_request_lineage_tx(&tx, &session_id, &request_id, parent_request_id.as_deref(), session_anchor_id.as_deref(), recorded_at, request_fingerprint.as_deref(), REQUEST_LINEAGE_SOURCE_KIND, &lineage_json)?` inside the closure. `record_receipt_lineage_statement_record` likewise owns `child_receipt_id` plus the six `Option<&str>` params as `Option<String>`, clones `statement_json`, and calls `persist_receipt_lineage_statement_tx(&tx, &child_receipt_id, request_id.as_deref(), session_id.as_deref(), session_anchor_id.as_deref(), parent_request_id.as_deref(), parent_receipt_id.as_deref(), chain_id.as_deref(), recorded_at, RECEIPT_LINEAGE_SOURCE_KIND, &statement_json)?` (argument order exactly as the current body at :72-84).
-- [ ] **Step 2.3: Run green.** `cargo test -p chio-store-sqlite lineage 2>&1 | tail -3`. Expected: same pass count as baseline for that filter, zero failures.
+- [ ] **Step 2.3: Run green.** `set -o pipefail; cargo test -p chio-store-sqlite lineage 2>&1 | tail -3`. Expected: same pass count as baseline for that filter, zero failures.
 - [ ] **Step 2.4: Rewrite the two lazy-lineage "readers" (they write).** Replace `list_receipt_lineage_statement_links` (:89-100) and `receipt_lineage_verification` (:102-112):
 
 ```rust
@@ -534,7 +534,7 @@ Copy lines :126-193 verbatim into the closure (INSERT with `ON CONFLICT(receipt_
     pub(crate) fn connection(&self) -> Result<SqliteStoreConnection, ReceiptStoreError> {
 ```
 
-- [ ] **Step 2.9: Run the full store suite green.** `cargo test -p chio-store-sqlite 2>&1 | tail -3`. Expected: identical pass count to the Step 2.1 baseline (notably `append_chio_receipt_consuming_authorization_rejects_reuse_after_reopen`, `create_next_receipt_checkpoint_respects_max_batch`, `concurrent_create_next_receipt_checkpoint_produces_one_checkpoint`, `store_checkpoint_projects_tree_heads_and_predecessor_witnesses`, `record_checkpoint_publication_trust_anchor_binding_is_idempotent_and_visible_in_export_summary`, and the whole `lineage` module).
+- [ ] **Step 2.9: Run the full store suite green.** `set -o pipefail; cargo test -p chio-store-sqlite 2>&1 | tail -3`. Expected: identical pass count to the Step 2.1 baseline (notably `append_chio_receipt_consuming_authorization_rejects_reuse_after_reopen`, `create_next_receipt_checkpoint_respects_max_batch`, `concurrent_create_next_receipt_checkpoint_produces_one_checkpoint`, `store_checkpoint_projects_tree_heads_and_predecessor_witnesses`, `record_checkpoint_publication_trust_anchor_binding_is_idempotent_and_visible_in_export_summary`, and the whole `lineage` module).
 - [ ] **Step 2.10: Commit.**
 
 ```bash
@@ -598,7 +598,7 @@ This is again a keep-green refactor plus one new behavioral test.
     }
 ```
 
-- [ ] **Step 3.2: Run to verify it fails.** `cargo test -p chio-store-sqlite iou_store 2>&1 | tail -10`. Expected: compile error `no field writer on type ...` (the failing state).
+- [ ] **Step 3.2: Run to verify it fails.** `set -o pipefail; cargo test -p chio-store-sqlite iou_store 2>&1 | tail -10`. Expected: compile error `no field writer on type ...` (the failing state).
 - [ ] **Step 3.3: Implement.**
 
 (a) Struct and constructors:
@@ -703,8 +703,8 @@ and in `insert`, after the existing encode/convert prefix (:84-99):
 ```
 
 (the nested `Result<Result<bool, IouEnvelopeStoreError>, ReceiptStoreError>` flattens with the trailing `?` + expression position). `get_by_receipt_id` (:157) stays on `self.pool` (read-only).
-- [ ] **Step 3.4: Run to verify it passes.** `cargo test -p chio-store-sqlite iou 2>&1 | tail -3`. Expected: all five iou tests pass (`insert_then_get_round_trip`, `duplicate_insert_is_idempotent`, `conflicting_envelope_for_same_receipt_id_errors`, `get_missing_returns_none`, `open_alongside_routes_writes_through_the_receipt_writer`).
-- [ ] **Step 3.5: Check `open_alongside` callers still compile.** `cargo build --workspace 2>&1 | tail -3`. Expected: clean (the public signature did not change).
+- [ ] **Step 3.4: Run to verify it passes.** `set -o pipefail; cargo test -p chio-store-sqlite iou 2>&1 | tail -3`. Expected: all five iou tests pass (`insert_then_get_round_trip`, `duplicate_insert_is_idempotent`, `conflicting_envelope_for_same_receipt_id_errors`, `get_missing_returns_none`, `open_alongside_routes_writes_through_the_receipt_writer`).
+- [ ] **Step 3.5: Check `open_alongside` callers still compile.** `set -o pipefail; cargo build --workspace 2>&1 | tail -3`. Expected: clean (the public signature did not change).
 - [ ] **Step 3.6: Commit.**
 
 ```bash
@@ -804,7 +804,7 @@ fn receipt_and_lineage_commit_atomically() -> Result<(), Box<dyn std::error::Err
 }
 ```
 
-- [ ] **Step 4.2: Run to verify it fails.** `cargo test -p chio-store-sqlite receipt_and_lineage_commit_atomically 2>&1 | tail -10`. Expected: compile error (`test_hooks` unresolved). Failing state confirmed.
+- [ ] **Step 4.2: Run to verify it fails.** `set -o pipefail; cargo test -p chio-store-sqlite receipt_and_lineage_commit_atomically 2>&1 | tail -10`. Expected: compile error (`test_hooks` unresolved). Failing state confirmed.
 - [ ] **Step 4.3: Implement.** In `crates/platform/chio-store-sqlite/src/receipt_store.rs`:
 
 (a) The test hook (place right after `receipt_store_error_snapshot`, before the `mod` declarations at :468):
@@ -924,8 +924,8 @@ Caller at :543 (`append_chio_receipt_canonical_returning_seq`) passes `false`.
 (f) The inherent `append_chio_receipt_returning_seq` (evidence_retention.rs:9-15) forwards `false` (it never ensured lineage): `self.append_verified_chio_receipt_record(receipt, &raw_json, false)`.
 
 (g) Mechanically add `ensure_lineage: false,` to the two `ReceiptCommitRequest` struct literals in `tests/insert.rs` (`receipt_commit_flush_waits_for_queued_receipts` :309-317 and `receipt_commit_flush_reports_queued_batch_error` in the :340 region). Semantics of those durability tests are unchanged.
-- [ ] **Step 4.4: Run to verify it passes.** `cargo test -p chio-store-sqlite receipt_and_lineage_commit_atomically 2>&1 | tail -5`. Expected: `1 passed`.
-- [ ] **Step 4.5: Full store suite + kernel suite green.** `cargo test -p chio-store-sqlite 2>&1 | tail -3 && cargo test -p chio-kernel 2>&1 | tail -3`. Expected: no regressions (the trait append still returns the same seqs; lineage rows are now written in the same tx, which `lineage` module tests already assert the presence of).
+- [ ] **Step 4.4: Run to verify it passes.** `set -o pipefail; cargo test -p chio-store-sqlite receipt_and_lineage_commit_atomically 2>&1 | tail -5`. Expected: `1 passed`.
+- [ ] **Step 4.5: Full store suite + kernel suite green.** `set -o pipefail; cargo test -p chio-store-sqlite 2>&1 | tail -3 && cargo test -p chio-kernel 2>&1 | tail -3`. Expected: no regressions (the trait append still returns the same seqs; lineage rows are now written in the same tx, which `lineage` module tests already assert the presence of).
 - [ ] **Step 4.6: Commit.**
 
 ```bash
@@ -1046,7 +1046,7 @@ Register it in `crates/platform/chio-store-sqlite/src/receipt_store/tests.rs` (a
 mod single_writer;
 ```
 
-- [ ] **Step 5.2: Run to verify it fails informatively first.** `cargo test -p chio-store-sqlite writer_commands_serialize 2>&1 | tail -5`. Since Tasks 1-4 landed, this should PASS immediately; if imports are missing (`Mutex`, `BTreeSet`, `thread` come via `use super::super::*;` from receipt_store.rs:1-10), fix imports until green. (This step is the keep-green variant: the test is new coverage over already-landed behavior.)
+- [ ] **Step 5.2: Run to verify it fails informatively first.** `set -o pipefail; cargo test -p chio-store-sqlite writer_commands_serialize 2>&1 | tail -5`. Since Tasks 1-4 landed, this should PASS immediately; if imports are missing (`Mutex`, `BTreeSet`, `thread` come via `use super::super::*;` from receipt_store.rs:1-10), fix imports until green. (This step is the keep-green variant: the test is new coverage over already-landed behavior.)
 - [ ] **Step 5.3: Add the loom model.** In `crates/platform/chio-store-sqlite/Cargo.toml`, replace `[lints]\nworkspace = true` with the kernel-precedent local tables and add the dev-dep:
 
 ```toml
@@ -1190,7 +1190,7 @@ mod model {
 }
 ```
 
-- [ ] **Step 5.4: Run both.** Default gate: `cargo test -p chio-store-sqlite writer_commands_serialize 2>&1 | tail -3` (PASS). Opt-in model: `RUSTFLAGS="--cfg chio_store_sqlite_loom" cargo test -p chio-store-sqlite --test loom_receipt_writer --release 2>&1 | tail -3` (PASS). Also confirm the un-cfg'd build stays warning-free: `cargo clippy -p chio-store-sqlite --all-targets -- -D warnings`.
+- [ ] **Step 5.4: Run both.** Default gate: `set -o pipefail; cargo test -p chio-store-sqlite writer_commands_serialize 2>&1 | tail -3` (PASS). Opt-in model: `set -o pipefail; RUSTFLAGS="--cfg chio_store_sqlite_loom" cargo test -p chio-store-sqlite --test loom_receipt_writer --release 2>&1 | tail -3` (PASS). Also confirm the un-cfg'd build stays warning-free: `cargo clippy -p chio-store-sqlite --all-targets -- -D warnings`.
 - [ ] **Step 5.5: Commit.**
 
 ```bash
@@ -1336,7 +1336,7 @@ fn claim_log_delta_aggregate_is_scoped_to_the_floor() -> Result<(), Box<dyn std:
 ```
 
 Note on the helper: `sample_receipt_with_keypair(id, timestamp, &keypair)` exists at tests/support.rs:211; check its exact parameter order when wiring (it is `(id: &str, timestamp: u64, keypair: &Keypair)` shaped; adjust the call if the signature differs, the compiler will say so).
-- [ ] **Step 6.2: Run to verify failure.** `cargo test -p chio-store-sqlite verified_head 2>&1 | tail -10`. Expected: compile errors (`seed_verified_head` etc. unresolved).
+- [ ] **Step 6.2: Run to verify failure.** `set -o pipefail; cargo test -p chio-store-sqlite verified_head 2>&1 | tail -10`. Expected: compile errors (`seed_verified_head` etc. unresolved).
 - [ ] **Step 6.3: Implement the head types and primitives.** In `crates/platform/chio-store-sqlite/src/receipt_store.rs`, after `atomic_saturating_sub` (:365):
 
 ```rust
@@ -1535,7 +1535,7 @@ impl ReceiptCommitWriterHealth {
 ```
 
 In `checkpoint_validate.rs`, widen visibility: `fn validate_checkpoint_base` (:324) and `fn validate_checkpoint_projection_rows` (:688) become `pub(crate) fn` (the latter is consumed in Task 10). Suppress dead-code churn if any new function is not yet referenced from non-test code by wiring it in Task 7 within the same PR; if clippy flags `dead_code` at THIS commit, add `#[allow(dead_code)] // wired in the incremental append path (same PR)` on `seed_head_snapshot` only, and remove it in Task 7.
-- [ ] **Step 6.4: Run to verify green.** `cargo test -p chio-store-sqlite verified_head 2>&1 | tail -5`. Expected: `4 passed`.
+- [ ] **Step 6.4: Run to verify green.** `set -o pipefail; cargo test -p chio-store-sqlite verified_head 2>&1 | tail -5`. Expected: `4 passed`.
 - [ ] **Step 6.5: Commit.**
 
 ```bash
@@ -1790,7 +1790,7 @@ fn reader_pool_never_begins_a_write_transaction() -> Result<(), Box<dyn std::err
 }
 ```
 
-- [ ] **Step 7.2: Run to verify failure.** `cargo test -p chio-store-sqlite verified_head 2>&1 | tail -10` and `cargo test -p chio-store-sqlite reader_pool_never 2>&1 | tail -10`. Expected: compile errors (`SqliteStoreOptions`, `writer_head_snapshot`, `open_existing_with_options`, `incremental_verification_enabled` unresolved).
+- [ ] **Step 7.2: Run to verify failure.** `set -o pipefail; cargo test -p chio-store-sqlite verified_head 2>&1 | tail -10` and `set -o pipefail; cargo test -p chio-store-sqlite reader_pool_never 2>&1 | tail -10`. Expected: compile errors (`SqliteStoreOptions`, `writer_head_snapshot`, `open_existing_with_options`, `incremental_verification_enabled` unresolved).
 - [ ] **Step 7.3: Implement the options plumbing.** In `lib.rs`, after `SqlitePoolConfig` (:61-73):
 
 ```rust
@@ -2290,7 +2290,7 @@ fn append_receipt_batch(
 ```
 
 `receipt_store_health` (:614) and `receipt_checkpoint_status` (:667) stay full-fat on purpose: they are the operator status/audit surfaces the RFC names as the surviving homes of full verification. If `validate_claim_receipt_log_projection_current` (:763) has no remaining callers besides those two, leave it; if it becomes dead, delete it and let the compiler confirm.
-- [ ] **Step 7.8: Run everything.** `cargo test -p chio-store-sqlite 2>&1 | tail -5`. Expected: the four new verified_head tests pass, `reader_pool_never_begins_a_write_transaction` passes, and the pre-existing suite is green (watch `insert::`, `checkpoint::`, `bootstrap::`, `errors::` modules; any test that relied on per-append full verification catching claim-log tampering must now observe the same failure through `receipt_checkpoint_status`/`receipt_store_health` or via the fallback flag; adjust only by routing the assertion through those surfaces, never by weakening it). Then `cargo test -p chio-kernel 2>&1 | tail -5` (kernel checkpointing still on the request path until Task 11; the store still creates checkpoints through the writer-routed manual path, and the two-kernel test exercises the catch-up logic).
+- [ ] **Step 7.8: Run everything.** `set -o pipefail; cargo test -p chio-store-sqlite 2>&1 | tail -5`. Expected: the four new verified_head tests pass, `reader_pool_never_begins_a_write_transaction` passes, and the pre-existing suite is green (watch `insert::`, `checkpoint::`, `bootstrap::`, `errors::` modules; any test that relied on per-append full verification catching claim-log tampering must now observe the same failure through `receipt_checkpoint_status`/`receipt_store_health` or via the fallback flag; adjust only by routing the assertion through those surfaces, never by weakening it). Then `set -o pipefail; cargo test -p chio-kernel 2>&1 | tail -5` (kernel checkpointing still on the request path until Task 11; the store still creates checkpoints through the writer-routed manual path, and the two-kernel test exercises the catch-up logic).
 - [ ] **Step 7.9: Commit.**
 
 ```bash
@@ -2415,7 +2415,7 @@ proptest! {
 }
 ```
 
-- [ ] **Step 8.2: Run to verify it fails first, then passes.** First run: `cargo test -p chio-store-sqlite prop_incremental_head_matches_full_audit 2>&1 | tail -10`. If Task 7 is correct this passes immediately; to confirm the property has teeth, temporarily break the resync (comment out the `verify_head_against_latest_checkpoint` call inside `resync_head_after_write`), rerun, and observe the property FAIL with a minimal counterexample containing a `Checkpoint` op; restore the line and rerun green. This mutation check is mandatory, not optional.
+- [ ] **Step 8.2: Run to verify it fails first, then passes.** First run: `set -o pipefail; cargo test -p chio-store-sqlite prop_incremental_head_matches_full_audit 2>&1 | tail -10`. If Task 7 is correct this passes immediately; to confirm the property has teeth, temporarily break the resync (comment out the `verify_head_against_latest_checkpoint` call inside `resync_head_after_write`), rerun, and observe the property FAIL with a minimal counterexample containing a `Checkpoint` op; restore the line and rerun green. This mutation check is mandatory, not optional.
 - [ ] **Step 8.3: Commit.**
 
 ```bash
@@ -2506,7 +2506,7 @@ fn reseed_clears_a_poisoned_head_after_repairing_the_database(
 ```
 
 Nuance the implementer must know: after the tampered append is denied, `commit_receipt_batch` records that batch error in `last_error`; a subsequent successful batch overwrites it with `None` (receipt_store.rs:342-344), so the final assertion is stable.
-- [ ] **Step 9.2: Run to verify failure.** `cargo test -p chio-store-sqlite reseed_clears_a_poisoned_head 2>&1 | tail -5`. Expected: compile error (`reseed_verified_head` unresolved).
+- [ ] **Step 9.2: Run to verify failure.** `set -o pipefail; cargo test -p chio-store-sqlite reseed_clears_a_poisoned_head 2>&1 | tail -5`. Expected: compile error (`reseed_verified_head` unresolved).
 - [ ] **Step 9.3: Implement the store side.**
 
 (a) Enum variant (Task 1 enum):
@@ -2575,7 +2575,7 @@ Nuance the implementer must know: after the tampered append is denied, `commit_r
         }
 ```
 
-- [ ] **Step 9.4: Run the store test green.** `cargo test -p chio-store-sqlite reseed_clears_a_poisoned_head 2>&1 | tail -5`. Expected: `1 passed`.
+- [ ] **Step 9.4: Run the store test green.** `set -o pipefail; cargo test -p chio-store-sqlite reseed_clears_a_poisoned_head 2>&1 | tail -5`. Expected: `1 passed`.
 - [ ] **Step 9.5: Write the failing CLI test.** Append to the `receipt_operator_tests` module in `crates/products/chio-cli/src/cli/trust/receipt/health.rs`:
 
 ```rust
@@ -2599,7 +2599,7 @@ Nuance the implementer must know: after the tampered append is denied, `commit_r
     }
 ```
 
-- [ ] **Step 9.6: Run to verify failure.** `cargo test -p chio-cli receipt_audit 2>&1 | tail -5`. Expected: compile error (`cmd_receipt_audit` unresolved).
+- [ ] **Step 9.6: Run to verify failure.** `set -o pipefail; cargo test -p chio-cli receipt_audit 2>&1 | tail -5`. Expected: compile error (`cmd_receipt_audit` unresolved).
 - [ ] **Step 9.7: Implement the CLI side.**
 
 (a) `format.rs` (after :10): `pub(crate) const CHIO_CLI_RECEIPT_AUDIT_SCHEMA: &str = "chio.cli.receipt.audit.v1";`
@@ -2661,7 +2661,7 @@ and make the legacy verb a documented alias: replace the body of `cmd_receipt_ch
 ```
 
 (e) Export plumbing: add `cmd_receipt_audit` and `CHIO_CLI_RECEIPT_AUDIT_SCHEMA` to the `pub(crate) use` lists in `cli/trust/receipt/mod.rs` (:27 consts list, :32 cmd list) and, if `src/main.rs` imports these symbols directly (:166 cmds, :219 consts), mirror there; the compiler tells you exactly which lists need the additions.
-- [ ] **Step 9.8: Run green.** `cargo test -p chio-cli receipt 2>&1 | tail -5` (new test + the existing operator tests, including `receipt_operator_entrypoints_work_against_local_temp_db` and `receipt_operator_entrypoints_reject_remote_control_backend_first`, must pass). Then `cargo test -p chio-store-sqlite 2>&1 | tail -3`.
+- [ ] **Step 9.8: Run green.** `set -o pipefail; cargo test -p chio-cli receipt 2>&1 | tail -5` (new test + the existing operator tests, including `receipt_operator_entrypoints_work_against_local_temp_db` and `receipt_operator_entrypoints_reject_remote_control_backend_first`, must pass). Then `set -o pipefail; cargo test -p chio-store-sqlite 2>&1 | tail -3`.
 - [ ] **Step 9.9: Commit.**
 
 ```bash
@@ -2826,7 +2826,7 @@ fn background_and_writer_routed_child_appends_share_the_threshold(
 }
 ```
 
-- [ ] **Step 10.2: Run to verify failure.** `cargo test -p chio-store-sqlite background_checkpoints 2>&1 | tail -10`. Expected: compile errors (`BackgroundCheckpointSigner`, `enable_background_checkpoints` unresolved).
+- [ ] **Step 10.2: Run to verify failure.** `set -o pipefail; cargo test -p chio-store-sqlite background_checkpoints 2>&1 | tail -10`. Expected: compile errors (`BackgroundCheckpointSigner`, `enable_background_checkpoints` unresolved).
 - [ ] **Step 10.3: Implement the store side.**
 
 (a) In `receipt_store.rs`, the public signer type (near `VerifiedHead`) plus enum variant and installer:
@@ -3088,7 +3088,7 @@ pub(crate) fn insert_checkpoint_incremental_tx(
 ```
 
 `create_next_receipt_checkpoint_atomic` (:393) is the manual/audit path and KEEPS its full `verify_checkpoint_chain_integrity` at :400 (that is its documented job); it continues to call `store_kernel_checkpoint_tx`, which now costs one row-parse instead of three chain rebuilds.
-- [ ] **Step 10.4: Run to verify green.** `cargo test -p chio-store-sqlite background_checkpoints 2>&1 | tail -5` (4 passed) and the checkpoint regression net: `cargo test -p chio-store-sqlite checkpoint 2>&1 | tail -5` (`store_and_load_checkpoint_by_seq`, `store_checkpoint_rejects_first_checkpoint_that_skips_committed_prefix`, `store_checkpoint_rejects_contiguous_successor_without_predecessor_digest`, `trait_store_checkpoint_enforces_predecessor_continuity`, `trait_store_checkpoint_installs_immutable_checkpoint_triggers`, `create_next_receipt_checkpoint_respects_max_batch`, `concurrent_create_next_receipt_checkpoint_produces_one_checkpoint`, `store_checkpoint_accepts_contiguous_predecessor`, `store_checkpoint_projects_tree_heads_and_predecessor_witnesses`, `open_backfills_claim_log_and_checkpoint_transparency_projections` must all still pass; they pin the semantics the slimming must preserve).
+- [ ] **Step 10.4: Run to verify green.** `set -o pipefail; cargo test -p chio-store-sqlite background_checkpoints 2>&1 | tail -5` (4 passed) and the checkpoint regression net: `set -o pipefail; cargo test -p chio-store-sqlite checkpoint 2>&1 | tail -5` (`store_and_load_checkpoint_by_seq`, `store_checkpoint_rejects_first_checkpoint_that_skips_committed_prefix`, `store_checkpoint_rejects_contiguous_successor_without_predecessor_digest`, `trait_store_checkpoint_enforces_predecessor_continuity`, `trait_store_checkpoint_installs_immutable_checkpoint_triggers`, `create_next_receipt_checkpoint_respects_max_batch`, `concurrent_create_next_receipt_checkpoint_produces_one_checkpoint`, `store_checkpoint_accepts_contiguous_predecessor`, `store_checkpoint_projects_tree_heads_and_predecessor_witnesses`, `open_backfills_claim_log_and_checkpoint_transparency_projections` must all still pass; they pin the semantics the slimming must preserve).
 - [ ] **Step 10.5: Commit.**
 
 ```bash
@@ -3179,7 +3179,7 @@ fn background_checkpoints_are_installed_at_store_attach_and_fire_off_the_request
 }
 ```
 
-- [ ] **Step 11.2: Run to verify failure.** `cargo test -p chio-kernel background_checkpoints_are_installed 2>&1 | tail -10`. Expected: test FAILS at the `expect` ("background checkpoint must exist...") because nothing installs the signer yet (the kernel's request-path checkpointing would actually create it today, so run this test AFTER Step 11.3's deletions if it passes spuriously; the honest failing order is: do Step 11.3 deletions first, watch this test fail, then do Step 11.4 install and watch it pass. Follow that order.)
+- [ ] **Step 11.2: Run to verify failure.** `set -o pipefail; cargo test -p chio-kernel background_checkpoints_are_installed 2>&1 | tail -10`. Expected: test FAILS at the `expect` ("background checkpoint must exist...") because nothing installs the signer yet (the kernel's request-path checkpointing would actually create it today, so run this test AFTER Step 11.3's deletions if it passes spuriously; the honest failing order is: do Step 11.3 deletions first, watch this test fail, then do Step 11.4 install and watch it pass. Follow that order.)
 - [ ] **Step 11.3: Delete the kernel request-path checkpointing.**
   - `receipt_persistence.rs`: `record_chio_receipt` (:164) keeps only append + local-log inside the critical section:
 
@@ -3290,8 +3290,8 @@ fn background_checkpoints_are_installed_at_store_attach_and_fire_off_the_request
   - `checkpoint_counters_restore_when_store_is_reattached` (:497): TWO barriers: on `first_kernel` after the first loop (:534, before `make_kernel(second_config)` at :536) so the restarted kernel's hydration sees checkpoint 1, and on `restarted_kernel` after the second loop (:569, before `let store = ...` at :571).
   - `checkpoint_counters_refresh_across_kernels_sharing_store` (:589): barrier on `first_kernel` after its evaluate (:628, before `second_kernel.evaluate_tool_call_blocking` at :629) so store 2's verified head can catch up to checkpoint 1 deterministically, and on `second_kernel` after its evaluate (:644, before `let store = ...` at :646). This test is the in-tree proof of the Task 6 catch-up logic (two store instances, one file).
   - `inclusion_proof_verifies_against_stored_checkpoint` (:688): after the loop (:722), before `let store2 = ...` (:725).
-- [ ] **Step 11.6: Run the kernel suite.** `cargo test -p chio-kernel 2>&1 | tail -5`. Expected: all green including the five patched tests, the new install test, and `receipt_store_install_fails_closed_on_checkpoint_hydration_error` (:664, unaffected: hydration failure still precedes the install call). If any OTHER kernel test asserts a checkpoint immediately after an evaluate, apply the same barrier recipe; do not weaken any assertion.
-- [ ] **Step 11.7: Run the workspace.** `cargo test --workspace 2>&1 | tail -20`. Products embedding the kernel (chio-cli, control plane, arena) may have end-to-end tests with the same shape; triage any failure of the form "checkpoint N should exist" with the flush-barrier recipe only.
+- [ ] **Step 11.6: Run the kernel suite.** `set -o pipefail; cargo test -p chio-kernel 2>&1 | tail -5`. Expected: all green including the five patched tests, the new install test, and `receipt_store_install_fails_closed_on_checkpoint_hydration_error` (:664, unaffected: hydration failure still precedes the install call). If any OTHER kernel test asserts a checkpoint immediately after an evaluate, apply the same barrier recipe; do not weaken any assertion.
+- [ ] **Step 11.7: Run the workspace.** `set -o pipefail; cargo test --workspace 2>&1 | tail -20`. Products embedding the kernel (chio-cli, control plane, arena) may have end-to-end tests with the same shape; triage any failure of the form "checkpoint N should exist" with the flush-barrier recipe only.
 - [ ] **Step 11.8: Commit.**
 
 ```bash
@@ -3406,8 +3406,8 @@ fn append_scale_proof_is_batch_bounded_across_history_sizes(
 }
 ```
 
-- [ ] **Step 12.2: Sanity-run the small tier first.** Temporarily change the three calls to `(1_000, "1e3")`, `(2_000, "1e5")`, `(4_000, "1e6")` and run `cargo test -p chio-store-sqlite --release -- --ignored append_scale_proof 2>&1 | tail -8` to shake out compile/logic issues quickly (expect PASS with ratio near 1x). Restore the real sizes.
-- [ ] **Step 12.3: Run the real proof.** `cargo test -p chio-store-sqlite --release -- --ignored append_scale_proof 2>&1 | tail -8`. Expected: PASS, with the printed ratios pasted into the PR description as the RFC's headline evidence (record the 1e6/1e3 ratio; against the pre-RFC code this test would not terminate in reasonable time, which is the point).
+- [ ] **Step 12.2: Sanity-run the small tier first.** Temporarily change the three calls to `(1_000, "1e3")`, `(2_000, "1e5")`, `(4_000, "1e6")` and run `set -o pipefail; cargo test -p chio-store-sqlite --release -- --ignored append_scale_proof 2>&1 | tail -8` to shake out compile/logic issues quickly (expect PASS with ratio near 1x). Restore the real sizes.
+- [ ] **Step 12.3: Run the real proof.** `set -o pipefail; cargo test -p chio-store-sqlite --release -- --ignored append_scale_proof 2>&1 | tail -8`. Expected: PASS, with the printed ratios pasted into the PR description as the RFC's headline evidence (record the 1e6/1e3 ratio; against the pre-RFC code this test would not terminate in reasonable time, which is the point).
 - [ ] **Step 12.4: Verify default CI is unaffected.** `cargo test -p chio-store-sqlite 2>&1 | grep -c "ignored"` shows the test is skipped by default.
 - [ ] **Step 12.5: Commit.**
 
@@ -3461,7 +3461,7 @@ cargo test -p chio-store-sqlite \
 
 Expected: all pass. The only permitted diff to these tests across the whole PR is the mechanical `ensure_lineage: false` field addition in two struct literals (Task 4 Step 4.3g).
 - [ ] **Step 13.3: Scale proof on record.** Re-run Task 12 Step 12.3 if not already captured on the final tree; paste the printed ratios into the PR body.
-- [ ] **Step 13.4: Opt-in loom model.** `RUSTFLAGS="--cfg chio_store_sqlite_loom" cargo test -p chio-store-sqlite --test loom_receipt_writer --release 2>&1 | tail -3`. Expected: pass.
+- [ ] **Step 13.4: Opt-in loom model.** `set -o pipefail; RUSTFLAGS="--cfg chio_store_sqlite_loom" cargo test -p chio-store-sqlite --test loom_receipt_writer --release 2>&1 | tail -3`. Expected: pass.
 - [ ] **Step 13.5: Refresh the knowledge graph.** `graphify update .` (house rule; AST-only).
 - [ ] **Step 13.6: Walk RFC-0006's acceptance criteria as a checklist** (each item names its proof artifact):
   - [ ] Per-append work independent of total history: `append_scale_proof_is_batch_bounded_across_history_sizes` PASSES with 1e6 within the asserted bound of 1e3 (target 2x, record the measured ratio).

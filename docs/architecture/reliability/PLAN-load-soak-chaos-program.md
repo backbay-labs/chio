@@ -474,9 +474,16 @@ so all eight whitelisted fixtures are regenerated from real runs.
 
 ### 4. Loom nightly (F52) and wasm-guards PR gate (F54)
 
-- `loom-nightly.yml` (nightly cron): `RUSTFLAGS="--cfg loom" cargo test --release -p
-  chio-kernel -p chio-otel-receipt-exporter -p chio-wasm-guards` with `LOOM_MAX_PREEMPTIONS`
-  bounded (start at 3). Separately, port `loom_concurrency.rs` from its hand-built
+- `loom-nightly.yml` (nightly cron): scope `--cfg loom` to ONLY the loom test target in each
+  crate (never the whole package), so the crate's normal integration tests are not compiled
+  under the loom cfg. `chio-otel-receipt-exporter` and `chio-wasm-guards` hide their normal
+  exports behind `#[cfg(not(loom))]` (for example `chio-wasm-guards` exposes only
+  `LOOM_MODEL_ONLY` under `loom`), so a package-wide `cargo test -p <crate>` under `--cfg loom`
+  fails to compile the blocklist/reload tests. Run one target per invocation:
+  `RUSTFLAGS="--cfg loom" cargo test --release -p chio-kernel --test loom_concurrency`,
+  `RUSTFLAGS="--cfg loom" cargo test --release -p chio-otel-receipt-exporter --test loom_ring_sender_vs_shutdown`,
+  and `RUSTFLAGS="--cfg loom" cargo test --release -p chio-wasm-guards --test loom_instance_pre_reload_vs_checkout`,
+  each with `LOOM_MAX_PREEMPTIONS` bounded (start at 3). Separately, port `loom_concurrency.rs` from its hand-built
   `ModelSession` to the real session-table types (the exporter test already models the real
   `BoundedDropOldestQueue`), so the lane checks shipped code. Runtime budget 20-60 minutes;
   raise preemptions only as the models stabilize.
