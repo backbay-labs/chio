@@ -520,4 +520,77 @@ mod tests {
 
         assert!(matches!(error, KernelServiceError::Timeout));
     }
+
+    struct ParkingServer {
+        invoked: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl ToolServerConnection for ParkingServer {
+        fn server_id(&self) -> &str {
+            "srv-a"
+        }
+
+        fn tool_names(&self) -> Vec<String> {
+            vec!["echo".to_string()]
+        }
+
+        async fn invoke(
+            &self,
+            _tool_name: &str,
+            _arguments: serde_json::Value,
+            _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+        ) -> Result<serde_json::Value, KernelError> {
+            self.invoked
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            std::future::pending::<Result<serde_json::Value, KernelError>>().await
+        }
+
+        async fn invoke_stream(
+            &self,
+            _tool_name: &str,
+            _arguments: serde_json::Value,
+            _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+        ) -> Result<Option<ToolServerStreamResult>, KernelError> {
+            Ok(None)
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn build_layered_timeout_drop_records_cancellation_receipt() {
+        let invoked = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut kernel = ChioKernel::new(make_config());
+        kernel.register_tool_server(Box::new(ParkingServer {
+            invoked: Arc::clone(&invoked),
+        }));
+        let request = make_kernel_request(&kernel);
+        let kernel = Arc::new(kernel);
+        let mut service = build_layered(Arc::clone(&kernel), 16, Duration::from_millis(1));
+
+        let result = service
+            .ready()
+            .await
+            .unwrap_or_else(|error| panic!("service ready failed: {error}"))
+            .call(request)
+            .await;
+        let Err(error) = result else {
+            panic!("a parked dispatch must time out");
+        };
+        assert!(matches!(error, KernelServiceError::Timeout));
+        assert!(
+            invoked.load(std::sync::atomic::Ordering::SeqCst),
+            "tool dispatch must have been entered before the timeout elapsed"
+        );
+
+        let receipt_log = kernel.receipt_log();
+        assert_eq!(
+            receipt_log.len(),
+            1,
+            "build_layered timeout must record exactly one cancellation receipt"
+        );
+        let Some(receipt) = receipt_log.get(0) else {
+            panic!("cancellation receipt missing from the kernel receipt log");
+        };
+        assert!(receipt.is_cancelled());
+    }
 }
