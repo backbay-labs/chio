@@ -7,7 +7,9 @@
   discipline for the store this journal rides on; RFC-0006 sequences itself before
   this RFC). Related: RFC-0009 (alert routing for dead-letter incidents), RFC-0013
   (money-path idempotency contract)
-- Closes findings: F04, F31, F70 (see ./README.md and the wave-3 readiness review)
+- Closes findings: F04, F31. Provides groundwork for F70 only, which is owned
+  and closed by RFC-0013 (payment journal and idempotent adapter contract), not
+  this RFC (see ./README.md and the wave-3 readiness review)
 
 ## Summary
 

@@ -53,7 +53,7 @@ invariants.
 | [RFC-0001](./RFC-0001-hot-path-deadlines.md) | Hot-path deadlines and watchdogs | F01, F07 (with RFC-0006), F14 (with RFC-0011) | ADR-0006, ADR-0013 | RFC-0002 | ready |
 | [RFC-0002](./RFC-0002-unconditional-post-admission-unwind.md) | Unconditional post-admission unwind | F02, F08 | ADR-0003, ADR-0006 | none | ready |
 | [RFC-0003](./RFC-0003-dispatch-intent-journal.md) | Durable dispatch-intent journal | F04, F31, F70 (with RFC-0013) | ADR-0008, ADR-0013 | RFC-0006 | ready |
-| [RFC-0004](./RFC-0004-bounded-memory-enomem-analog.md) | Bounded-memory architecture and the ENOMEM analog | F03, F06, F10, F12, F21, F25, F38, F39, F63 (with RFC-0010) | none | RFC-0006 | ready |
+| [RFC-0004](./RFC-0004-bounded-memory-enomem-analog.md) | Bounded-memory architecture and the ENOMEM analog | F03, F06, F10, F12, F21, F25, F38, F39, F63 (with RFC-0010) | none | none | ready |
 | [RFC-0005](./RFC-0005-durable-by-default-wiring.md) | Durable-by-default store wiring and schema versioning | F19, F26, F60, F62, F64, F65 | ADR-0004, ADR-0013 | none | ready |
 | [RFC-0006](./RFC-0006-storage-hot-path.md) | Storage hot path: incremental verification, background checkpoints, single writer | F07, F22, F28, F29 | ADR-0008, ADR-0013 | none | ready |
 | [RFC-0007](./RFC-0007-retention-without-bricking.md) | Retention and compaction that preserve the append invariant | F23, F24, F30 | ADR-0008 | RFC-0006 | minor-gaps |
@@ -73,12 +73,13 @@ document lists them explicitly in its risks or open-questions section).
 
 ## 3. Dependency graph
 
-Five documents have no prerequisites and can start immediately:
+Six documents have no prerequisites and can start immediately:
 
 - RFC-0002 (unwind) and RFC-0006 (storage hot path) are the keystones; between
   them they gate seven other documents.
-- RFC-0005 (durable wiring), RFC-0009 (observability), and RFC-0011
-  (control-plane replication) are independent roots.
+- RFC-0004 (bounded memory, the memory keystone), RFC-0005 (durable wiring),
+  RFC-0009 (observability), and RFC-0011 (control-plane replication) are
+  independent roots.
 
 Sequencing, as a prerequisite list (a document may begin once everything on
 its right has landed):
@@ -86,13 +87,13 @@ its right has landed):
 ```
 RFC-0002  <- (none)                          keystone: unwind
 RFC-0006  <- (none)                          keystone: storage hot path
+RFC-0004  <- (none)                          keystone: bounded memory
 RFC-0005  <- (none)
 RFC-0009  <- (none)
 RFC-0011  <- (none)
 
 RFC-0001  <- RFC-0002
 RFC-0003  <- RFC-0006
-RFC-0004  <- RFC-0006                        keystone: bounded memory
 RFC-0007  <- RFC-0006
 
 RFC-0008  <- RFC-0001, RFC-0002, RFC-0009
@@ -118,9 +119,8 @@ RFC-0006 (storage hot path)
   +-- RFC-0003 (intent journal)
   |     +-- RFC-0013 (money path)
   |     +-- RFC-0012 (federation transport; also needs RFC-0001)
-  +-- RFC-0004 (bounded memory)
-  |     +-- PLAN-load-chaos (also needs RFC-0006)
   +-- RFC-0007 (retention)
+  +-- PLAN-load-chaos (also needs RFC-0004)
 ```
 
 Notes for the scheduler:

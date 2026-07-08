@@ -166,7 +166,20 @@ impl WriterHandle {
         let (response, result) = mpsc::sync_channel(1);
         let boxed: WriterClosure = Box::new(move |connection| {
             let outcome = match connection {
-                Ok(connection) => job(connection),
+                // Panic isolation (RFC-0006 whole-store-death fix): every
+                // writer-routed `job` now runs on the single writer thread, so
+                // an unwinding panic would kill the actor and fail every later
+                // append/checkpoint/rotation behind a dead writer. Wrap the job
+                // in catch_unwind and convert a caught panic into a typed error
+                // (`receipt_writer_job_panic_error`), so only THIS job fails
+                // closed and the actor stays alive. `AssertUnwindSafe` is sound
+                // because the actor re-acquires a fresh connection per command
+                // (see `handle_non_append_command`); no state from the
+                // panicking closure is reused afterward.
+                Ok(connection) => {
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| job(connection)))
+                        .unwrap_or_else(|payload| Err(receipt_writer_job_panic_error(&payload)))
+                }
                 Err(error) => Err(error),
             };
             let _ = response.send(outcome);
@@ -292,6 +305,28 @@ fn handle_non_append_command(
     }
 }
 ```
+
+Panic isolation is a load-bearing invariant of the single writer: because every
+write family now runs on the one writer thread, an unwinding panic must fail
+only the offending unit of work, never the actor. Three call sites are wrapped
+in `std::panic::catch_unwind(std::panic::AssertUnwindSafe(...))`, each
+converting a caught panic into a typed `ReceiptStoreError` via a new
+`receipt_writer_job_panic_error(&payload)` helper so the writer thread survives
+and later commands still make progress:
+
+- the per-job funnel above (`run_write`), so any panicking bypass-writer
+  closure fails closed to its caller;
+- the `commit_receipt_batch` call in `receipt_commit_actor_loop` (Task 3),
+  where the request and flush response channels are cloned before the call so a
+  caught panic can still be fanned out to every waiter (a
+  `fan_out_batch_panic_error` on the pre-cloned senders) rather than leaving
+  them blocked on a dead actor;
+- the `build_due_checkpoints` call (Task 6), wrapped by a
+  `build_due_checkpoints_and_record` helper that records a caught panic in
+  `last_error` and leaves the cached head untouched.
+
+RFC-0007's retention plan already assumes this `catch_unwind` isolation, so it
+is specified here rather than deferred.
 
 - [ ] **Step 1.4: Run the tests to verify they pass.** `cargo test -p chio-store-sqlite run_write_ 2>&1 | tail -5`. Expected: `test result: ok. 2 passed`.
 - [ ] **Step 1.5: Keep the existing actor suite green.** `cargo test -p chio-store-sqlite receipt_commit 2>&1 | tail -5` (covers `receipt_commit_actor_channel_has_fixed_capacity`, `receipt_commit_actor_append_fails_closed_when_queue_is_full`, `receipt_commit_actor_flush_honors_timeout`, `receipt_commit_flush_waits_for_queued_receipts`, `receipt_commit_flush_reports_queued_batch_error`). Expected: all pass.
@@ -1897,14 +1932,38 @@ fn receipt_commit_actor_loop(
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     }
                 }
-                pending_flush_error = commit_receipt_batch(
-                    &pool,
-                    &mut head_state,
-                    incremental_verification,
-                    requests,
-                    flushes,
-                    &health,
-                );
+                // Batch panic isolation (RFC-0006 whole-store-death fix):
+                // clone the request and flush response channels before handing
+                // `requests`/`flushes` to the panicking call. If
+                // `commit_receipt_batch` unwinds (a bad append transaction, the
+                // lineage fold), those owned values are dropped mid-function,
+                // so the only way left to answer every caller is through these
+                // pre-cloned senders; `fan_out_batch_panic_error` fails them
+                // closed and the actor thread survives.
+                let request_responses: Vec<_> = requests
+                    .iter()
+                    .map(|request| request.response.clone())
+                    .collect();
+                let flush_responses = flushes.clone();
+                pending_flush_error =
+                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        commit_receipt_batch(
+                            &pool,
+                            &mut head_state,
+                            incremental_verification,
+                            requests,
+                            flushes,
+                            &health,
+                        )
+                    })) {
+                        Ok(flush_error) => flush_error,
+                        Err(payload) => Some(fan_out_batch_panic_error(
+                            &health,
+                            request_responses,
+                            flush_responses,
+                            receipt_writer_job_panic_error(&payload),
+                        )),
+                    };
                 if let Some(command) = deferred {
                     handle_non_append_command(
                         &pool,
@@ -1999,19 +2058,40 @@ fn handle_non_append_command(
                         job(Err(error));
                         return;
                     }
-                    job(Ok(&mut connection));
-                    // Post-resync: absorb whatever the closure committed
-                    // (claim-log rows via projection triggers, checkpoint
-                    // rows via the manual path) so the next append's
-                    // cross-check cannot false-Conflict.
-                    if let Err(error) = resync_head_after_write(&connection, head) {
-                        if let Ok(mut last_error) = health.last_error.lock() {
-                            *last_error = Some(error.to_string());
+                    // `job` is the catch_unwind-wrapped `WriterClosure` from
+                    // `run_write` (Task 1), so a panicking writer-routed job
+                    // fails closed to its caller and cannot kill this actor.
+                    //
+                    // Ordering (fail-closed): a receipt-appending Write must NOT
+                    // release its caller with `Ok` until the post-commit resync
+                    // has confirmed the head. `resync_head_after_write` absorbs
+                    // whatever the closure committed (claim-log rows via
+                    // projection triggers, checkpoint rows via the manual path)
+                    // so the next append's cross-check cannot false-Conflict,
+                    // but it can also DETECT projection or checkpoint drift. If
+                    // the closure sent its own response first (as the naive
+                    // `job(Ok(&mut connection))` sketch did), a resync failure
+                    // would poison the head AFTER the caller already observed
+                    // success, letting it proceed on a write the actor is about
+                    // to reject. So the receipt-appending path defers the caller
+                    // response: the closure commits and returns its outcome to
+                    // the actor WITHOUT sending, the actor runs the resync, and
+                    // only then releases the caller with the resync result
+                    // folded into the outcome.
+                    let outcome = run_job_deferring_response(job, &mut connection);
+                    let resync = resync_head_after_write(&connection, head);
+                    match &resync {
+                        Ok(()) => health.store_head_snapshot(head),
+                        Err(error) => {
+                            if let Ok(mut last_error) = health.last_error.lock() {
+                                *last_error = Some(error.to_string());
+                            }
+                            *head_state = WriterHeadState::Poisoned(error.to_string());
                         }
-                        *head_state = WriterHeadState::Poisoned(error.to_string());
-                        return;
                     }
-                    health.store_head_snapshot(head);
+                    // A resync failure overrides a committed `Ok`: the caller
+                    // observes the error, never a success it cannot trust.
+                    release_write_caller(outcome, resync);
                 }
             }
         }
@@ -2037,6 +2117,23 @@ fn resync_head_after_write(
     verify_head_against_latest_checkpoint(connection, head)
 }
 ```
+
+Deferred-response note (resync must reach the writer caller): the Task-1
+`WriterClosure` releases its caller inline (`response.send(outcome)` inside the
+closure). For a receipt-appending Write that is unsafe, because the post-commit
+`resync_head_after_write` runs on the actor AFTER the closure has already
+answered `Ok`; a resync failure would then only poison the head while the caller
+walks away believing its child receipt / consuming-auth append succeeded. The
+corrected contract, sketched above with `run_job_deferring_response` and
+`release_write_caller`, holds the caller's response until the actor has run the
+resync and folds a resync error into that response, so a writer-routed append
+fails closed to its caller exactly as an inline append would. `run_write` gates
+the deferral on the write kind (a metadata-only Write may still release inline;
+only a receipt-appending Write needs the resync fold), matching the
+`appends_receipts` flag the writer command already carries. The concrete
+`run_write` wiring for this deferral is a code change on the rfc-0006 storage
+branch and is tracked there; this plan specifies the target ordering it must
+satisfy.
 
 - [ ] **Step 7.5: Rewrite `append_receipt_batch`** (:376) with the incremental fast path, the fallback, and the in-transaction baseline read (the baseline read makes concurrent out-of-band appends by a second store instance indistinguishable from "already counted", which the two-kernel kernel test requires; on the single-process hot path `pre_delta` is always 0):
 
@@ -2783,10 +2880,29 @@ Refine `commit_receipt_batch` (Task 3, :1940): drop the `flushes` argument from 
                     if let (WriterHeadState::Verified(head), Some(signer)) =
                         (&mut head_state, checkpoint_signer.as_ref())
                     {
-                        if let Err(error) = build_due_checkpoints(&pool, head, signer) {
+                        // Checkpoint panic isolation (RFC-0006 whole-store-death
+                        // fix): a panic mid-build (Merkle, Ed25519 sign, serde)
+                        // is caught and folded into an Err, so it neither kills
+                        // the actor nor silently drops the flush barrier.
+                        let build = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                            || build_due_checkpoints(&pool, head, signer),
+                        ))
+                        .unwrap_or_else(|payload| Err(receipt_writer_job_panic_error(&payload)));
+                        if let Err(error) = build {
                             if let Ok(mut last_error) = health.last_error.lock() {
                                 *last_error = Some(error.to_string());
                             }
+                            // Flush is a checkpoint barrier: a failed (or
+                            // panicking) checkpoint build means the barrier the
+                            // co-drained flush waiters are blocked on is not
+                            // durable, so they MUST observe this error, not
+                            // Ok(()). Recording only `last_error` would release
+                            // them with a success the missing checkpoint does
+                            // not back (disk-full, checkpoint-validation
+                            // failure), breaking the flush-is-a-checkpoint
+                            // promise. Surfacing it as `pending_flush_error`
+                            // fails those waiters closed.
+                            pending_flush_error = Some(error);
                         } else {
                             health.store_head_snapshot(head);
                         }
@@ -2805,7 +2921,7 @@ Refine `commit_receipt_batch` (Task 3, :1940): drop the `flushes` argument from 
                 }
 ```
 
-and in `handle_non_append_command`, after a successful `Write` resync (`store_head_snapshot` already runs there), the same block without the `pending_flush_error` guard (writer-routed child appends can cross the threshold too). A checkpoint-build failure is recorded in `last_error` and surfaces through `receipt_store_health` (`healthy = false` via the writer counters check at receipt_store.rs:626-631); it does not fail the already-durable appends. `build_due_checkpoints` grabs the writer connection and delegates:
+and in `handle_non_append_command`, after a successful `Write` resync (`store_head_snapshot` already runs there), build any due checkpoints too (writer-routed child appends can cross the threshold), with two differences from the batch path. First, a Write has no co-drained flush waiters, so this path sets no `pending_flush_error`; a checkpoint-build failure (or caught panic) is recorded in `last_error` and surfaces through `receipt_store_health` (`healthy = false` via the writer counters check at receipt_store.rs:626-631) without failing the already-durable append. Second, the Write arm still HOLDS the single writer-pool connection it acquired for the job (the `pool.get()` at the top of the arm), and the writer pool is size 1 (`DEFAULT_WRITER_POOL_MAX_SIZE = 1`); because `build_due_checkpoints` calls `pool.get()` for its own connection, the held connection MUST be dropped first or the actor would block on itself forever. So the arm runs the resync, releases the caller, then `drop(connection); build_due_checkpoints_and_record(pool, head, checkpoint_signer, health);` (the same catch_unwind-wrapping, `last_error`-recording helper the batch path uses; see the panic-isolation note in Task 1). `build_due_checkpoints` then grabs a fresh writer connection and delegates:
 
 ```rust
 fn build_due_checkpoints(

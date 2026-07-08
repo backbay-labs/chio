@@ -4,7 +4,7 @@
 - Date: 2026-07-04
 - Extends: none
 - Depends on: none (the soak and chaos acceptance items gate on the PLAN-load-chaos harness)
-- Closes findings: F03, F06, F10, F12, F21, F25, F38, F39 (see ./README.md and the readiness review)
+- Closes findings: F03, F06, F10, F12, F21, F25, F38, F39, F63 (with RFC-0010, which owns the systemd/restart half) (see ./README.md and the readiness review)
 
 ## Summary
 
