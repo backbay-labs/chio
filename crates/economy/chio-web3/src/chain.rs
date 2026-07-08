@@ -232,9 +232,10 @@ fn ensure_chain_deployment_addresses(
         || deployment.planned_operator_address.is_some()
         || deployment.deployment_plan.is_some()
     {
-        return Err(Web3ContractError::InvalidBinding(format!(
+        return Err(Web3ContractError::InvalidBinding(
             "deployed chain configurations must omit planned contract, operator, and deployment-plan fields"
-        )));
+                .to_string(),
+        ));
     }
     let Some(deployed_addresses) = deployment.deployed_contract_addresses.as_ref() else {
         return Err(Web3ContractError::MissingField(
