@@ -211,12 +211,12 @@ def test_receipt_id_and_signature_use_v1_content_addressing() -> None:
     assert "decision" not in receipt
 
 
-def test_receipt_verifier_accepts_uppercase_content_addressed_id() -> None:
+def test_receipt_verifier_rejects_uppercase_content_addressed_id() -> None:
     receipt = _sample_receipt()
     receipt["id"] = receipt["id"].upper()
     receipt["signature"] = _v1_signature(receipt)
 
-    assert verify_receipt(receipt)
+    assert not verify_receipt(receipt)
 
 
 def test_receipt_verifier_rejects_symbolic_ids_even_when_legacy_signed() -> None:
@@ -265,6 +265,11 @@ def test_receipt_verifier_rejects_invalid_v1_trace_receipts() -> None:
     mismatched_id["id"] = "0" * 64
     mismatched_id["signature"] = _v1_signature(mismatched_id)
     assert not verify_receipt(mismatched_id)
+
+    uppercase_id = _sample_receipt()
+    uppercase_id["id"] = uppercase_id["id"].upper()
+    uppercase_id["signature"] = _v1_signature(uppercase_id)
+    assert not verify_receipt(uppercase_id)
 
     missing_trust_level = _sample_receipt()
     missing_trust_level.pop("trust_level")
@@ -494,8 +499,8 @@ def test_verify_trusted_receipt_returns_structured_outcome() -> None:
         trusted_kernel_keys=[_TRUSTED_PUB_HEX],
         invocation_parameters=params,
     )
-    assert uppercase.ok is True
-    assert uppercase.receipt_id_ok is True
+    assert uppercase.ok is False
+    assert uppercase.receipt_id_ok is False
     assert uppercase.signature_ok is True
 
     untrusted = verify_trusted_receipt(

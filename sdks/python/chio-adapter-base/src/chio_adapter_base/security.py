@@ -41,6 +41,7 @@ import asyncio
 import dataclasses
 import os
 import pathlib
+import re
 import shlex
 import subprocess
 import threading
@@ -111,6 +112,10 @@ _ENV_DENY_EXACT: frozenset[str] = frozenset(
         "GIT_ALTERNATE_OBJECT_DIRECTORIES",
         "GIT_OBJECT_DIRECTORY",
     }
+)
+
+_WINDOWS_ABSOLUTE_TOKEN_RE = re.compile(
+    r"(?:^|\s)[\"']?(?P<token>(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+[\\/])\S*)"
 )
 
 
@@ -244,6 +249,12 @@ def reject_shell_argv_escape(
     except ValueError:
         return
     root_path = pathlib.Path(str(root)).resolve() if root is not None else None
+    if root_path is not None:
+        raw_windows_absolute = _WINDOWS_ABSOLUTE_TOKEN_RE.search(command or "")
+        if raw_windows_absolute is not None:
+            raise ChioPathEscapeError(
+                raw_windows_absolute.group("token"), "outside_workspace"
+            )
     for token in argv:
         normalised = token.replace("\\", "/")
         segments = normalised.split("/")

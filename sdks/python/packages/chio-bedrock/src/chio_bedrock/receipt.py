@@ -65,7 +65,9 @@ def _canonicalize_float(value: float) -> str:
         if "." in decimal:
             decimal = decimal.rstrip("0").rstrip(".")
         return decimal
-    return _EXPONENT_RE.sub(lambda match: f"e{match.group(1)}{match.group(2)}", rendered)
+    return _EXPONENT_RE.sub(
+        lambda match: f"e{match.group(1)}{match.group(2)}", rendered
+    )
 
 
 def _canonical_json(value: Any) -> str:
@@ -86,7 +88,8 @@ def _canonical_json(value: Any) -> str:
             raise ValueError("canonical JSON object keys must be strings")
         items = sorted(value.items(), key=lambda item: item[0].encode("utf-16-be"))
         return "{" + ",".join(
-            f"{json.dumps(key, ensure_ascii=False, separators=(',', ':'))}:{_canonical_json(entry_value)}"
+            f"{json.dumps(key, ensure_ascii=False, separators=(',', ':'))}:"
+            f"{_canonical_json(entry_value)}"
             for key, entry_value in items
         ) + "}"
     raise TypeError(f"canonical JSON does not support {type(value).__name__}")
@@ -127,12 +130,10 @@ def _sign_body(body: Mapping[str, Any], signing_key: str) -> str:
 
 
 def _is_sha256_hex(value: Any) -> bool:
-    if not isinstance(value, str):
-        return False
-    text = value.lower()
     return (
-        len(text) == 64
-        and all(character in "0123456789abcdef" for character in text)
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
     )
 
 
@@ -419,7 +420,7 @@ def verify_trusted_receipt(
         receipt_id_ok = (
             isinstance(receipt_id, str)
             and _is_sha256_hex(receipt_id)
-            and receipt_id.lower() == expected_id
+            and receipt_id == expected_id
         )
         if not receipt_id_ok:
             reasons.append("receipt id is not the content-addressed v1 hash")
@@ -457,7 +458,9 @@ def verify_trusted_receipt(
     )
 
 
-def verify_receipt(receipt: Mapping[str, Any], signing_key: str = DEFAULT_SIGNING_KEY) -> bool:
+def verify_receipt(
+    receipt: Mapping[str, Any], signing_key: str = DEFAULT_SIGNING_KEY
+) -> bool:
     """Verify the local SDK receipt signature and required Bedrock metadata."""
 
     try:
@@ -499,7 +502,7 @@ def verify_receipt(receipt: Mapping[str, Any], signing_key: str = DEFAULT_SIGNIN
             return False
         if not _validate_trace_receipt(body):
             return False
-        if _content_addressed_receipt_id(body) != body["id"].lower():
+        if _content_addressed_receipt_id(body) != body["id"]:
             return False
         expected_signature = _sign_body(body, signing_key)
         return hmac.compare_digest(expected_signature, signature)
