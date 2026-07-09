@@ -590,6 +590,26 @@ mod tests {
         dispatch
     }
 
+    fn sample_identity_registry_evidence(
+        dispatch: &Web3SettlementDispatchArtifact,
+        config: &SettlementChainConfig,
+    ) -> Web3SettlementIdentityRegistryEvidence {
+        Web3SettlementIdentityRegistryEvidence {
+            chain_id: dispatch.chain_id.clone(),
+            identity_registry_contract: config.identity_registry_contract.clone(),
+            operator_address: config.operator_address.clone(),
+            block_number: 120,
+            block_hash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                .to_string(),
+            observed_at: 1_743_292_850,
+            operator_key_hash: dispatch.operator_key_hash.clone(),
+            settlement_key: dispatch.beneficiary_address.clone(),
+            registered_at: 1_743_292_700,
+            operator_epoch: 1,
+            active: true,
+        }
+    }
+
     fn rpc_result(result: Value) -> Value {
         json!({
             "jsonrpc": "2.0",
@@ -1097,7 +1117,9 @@ mod tests {
                     currency: dispatch.settlement_amount.currency.clone(),
                 },
                 anchor_proof: None,
-                identity_registry_evidence: None,
+                identity_registry_evidence: Some(sample_identity_registry_evidence(
+                    &dispatch, &config,
+                )),
                 oracle_evidence: None,
                 failure_reason: Some("partial release".to_string()),
                 reversal_of: None,
@@ -1182,6 +1204,7 @@ mod tests {
             let server = MockJsonRpcServer::spawn(vec![
                 rpc_result(json!({
                     "number": "0x65",
+                    "hash": "0xabababababababababababababababababababababababababababababababab",
                     "timestamp": format!("0x{observed_at:x}")
                 })),
                 rpc_result(json!(encode_hex(
