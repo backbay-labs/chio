@@ -15,8 +15,10 @@ contract ChioPriceResolver is IChioPriceResolver {
     error InvalidRound();
     error SequencerGracePeriodActive();
     error NotPendingAdmin();
+    error InvalidStaleness();
 
     uint256 private constant SEQUENCER_GRACE_PERIOD_SECONDS = 3600;
+    uint256 public constant MAX_FEED_STALENESS_SECONDS = 7 days;
 
     address public admin;
     address public pendingAdmin;
@@ -56,6 +58,12 @@ contract ChioPriceResolver is IChioPriceResolver {
         uint256 maxStalenessSeconds
     ) external onlyAdmin {
         if (aggregator == address(0)) revert ZeroAddress();
+        if (
+            maxStalenessSeconds == 0 ||
+            maxStalenessSeconds > MAX_FEED_STALENESS_SECONDS
+        ) {
+            revert InvalidStaleness();
+        }
         feeds[_feedKey(base, quote)] = PriceFeed({
             aggregator: aggregator,
             maxStalenessSeconds: maxStalenessSeconds,

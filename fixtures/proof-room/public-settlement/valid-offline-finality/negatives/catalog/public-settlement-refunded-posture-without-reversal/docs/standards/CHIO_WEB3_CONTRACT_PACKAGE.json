@@ -10,8 +10,8 @@
       "interface_name": "IChioRootRegistry",
       "abi_reference": "contracts/artifacts/interfaces/IChioRootRegistry.json",
       "implementation_reference": "contracts/src/ChioRootRegistry.sol",
-      "creation_bytecode_hash": "0xb8e770c0cc4e2e7229458a1d51d7adbe2f4438d60ada7227bf2e0ea1db23e4c2",
-      "deployed_runtime_codehash": "0xe470364708c8a51536699d2cfb7856096c6e5510e72804625a613bdb63d3114c",
+      "creation_bytecode_hash": "0x848341a08f308cc3080f205caf6d2a8ffd0f8bb92a6310fdfcd7d79a106f3b40",
+      "deployed_runtime_codehash": "0xfc5d76d87b02096c6ae32ce644a2b98ca0bdf3c56700ad16731fad2062e6bd7f",
       "immutable": true
     },
     {
@@ -20,8 +20,8 @@
       "interface_name": "IChioEscrow",
       "abi_reference": "contracts/artifacts/interfaces/IChioEscrow.json",
       "implementation_reference": "contracts/src/ChioEscrow.sol",
-      "creation_bytecode_hash": "0x0f42712a274c082faa9da102ee4555b822a8b8bcb4162719047050b431f414ad",
-      "deployed_runtime_codehash": "0x864fc83713b3c8bbcb0ed06ec409c08513375cb5474f4b0e702cc0dfd6eb7b8a",
+      "creation_bytecode_hash": "0x2e7aa86e065fe77801a7b45fd7bdfe1e2c86c32e18e33aeb6e870cfd1cd38c4b",
+      "deployed_runtime_codehash": "0x03d8f545c330922a33db6473430c50eafd527e04474f31abee2dc1f8c6ab2d36",
       "immutable": true
     },
     {
@@ -30,8 +30,8 @@
       "interface_name": "IChioBondVault",
       "abi_reference": "contracts/artifacts/interfaces/IChioBondVault.json",
       "implementation_reference": "contracts/src/ChioBondVault.sol",
-      "creation_bytecode_hash": "0xf1c8df6f97df7f94c07b26dc899dec495ca7263f560c3ddf6b8e14ff9476567f",
-      "deployed_runtime_codehash": "0x7b5092d138d20ed0bdb03faab42424ed0fb64fd98b33e10c721b2752724e7aff",
+      "creation_bytecode_hash": "0x81eb23fd105e9e72a90b1c53926d905580b7e7f9cc2ee94696c64c8b5d499ebd",
+      "deployed_runtime_codehash": "0x17f7936469584b38404765ac44bd7e2384337983e4bc6448a3500d0637711f09",
       "immutable": true
     },
     {
@@ -40,8 +40,8 @@
       "interface_name": "IChioIdentityRegistry",
       "abi_reference": "contracts/artifacts/interfaces/IChioIdentityRegistry.json",
       "implementation_reference": "contracts/src/ChioIdentityRegistry.sol",
-      "creation_bytecode_hash": "0xa5f3c7c25e6a6198169af3462d50268a494f013a9d182ab0bc64909329d8eabd",
-      "deployed_runtime_codehash": "0x9906b1307e5908dd97f3025fb788d790abab45d8580bcf2f30b342510898e15b",
+      "creation_bytecode_hash": "0x781a8f132b76852226402d23385cfd2ee9cbeb4305945fa512f6111840225005",
+      "deployed_runtime_codehash": "0xd4f87cc63c00d0640c8f232c8fac5e5cb99bc6cf185ef912225e07fa438614cc",
       "immutable": false
     },
     {
@@ -50,8 +50,8 @@
       "interface_name": "IChioPriceResolver",
       "abi_reference": "contracts/artifacts/interfaces/IChioPriceResolver.json",
       "implementation_reference": "contracts/src/ChioPriceResolver.sol",
-      "creation_bytecode_hash": "0x30cb399df33d27ba027e424f94a58ba23bdd7ae0883a8c828e7c1e508a82817e",
-      "deployed_runtime_codehash": "0x47da56923b8635d468efc71558e0c383d8f427484fd815804d0929ac89718e66",
+      "creation_bytecode_hash": "0x544b7e7ea49f87842aa25cc66e19969d95045ca51d2ea2630478da604714f0c3",
+      "deployed_runtime_codehash": "0x912ef07d9652b99f9a5d7919247da89f7dc5be72163722c325ae7c2a02cbf04e",
       "immutable": true
     }
   ],

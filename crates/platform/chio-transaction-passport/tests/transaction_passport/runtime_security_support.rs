@@ -328,7 +328,7 @@ pub(super) fn sign_runtime_join_receipt_with_fixture_authority(value: &mut Value
     value["signature"] = Value::String(sign_runtime_join_receipt(value, &signing_key));
 }
 
-fn sign_runtime_join_receipt(value: &Value, signing_key: &Keypair) -> String {
+pub(super) fn sign_runtime_join_receipt(value: &Value, signing_key: &Keypair) -> String {
     let mut body = value.clone();
     body.as_object_mut()
         .test_expect("runtime join receipt is object")

@@ -70,6 +70,7 @@ pub fn verify_public_settlement_proof(
     validate_public_settlement_verifier_policy(bundle, trust)?;
     validate_chain_binding(bundle)?;
     validate_deployment_provenance(bundle, trust)?;
+    validate_identity_registry_evidence_binding(bundle)?;
     validate_order_binding(bundle)?;
     validate_chain_snapshot(bundle)?;
     validate_independent_chain_head(bundle, trust)?;
@@ -507,6 +508,71 @@ fn hashes_match(left: &str, right: &str) -> Result<bool, Web3ContractError> {
         Web3ContractError::InvalidProof(format!("runtime codehash invalid: {error}"))
     })?;
     Ok(left == right)
+}
+
+fn validate_identity_registry_evidence_binding(
+    bundle: &PublicSettlementProofBundle,
+) -> Result<(), Web3ContractError> {
+    let Some(evidence) = bundle
+        .settlement_receipt
+        .identity_registry_evidence
+        .as_ref()
+    else {
+        return Ok(());
+    };
+    let provenance = bundle.deployment_provenance.as_ref().ok_or_else(|| {
+        Web3ContractError::InvalidProof(
+            "public settlement deployment provenance missing".to_string(),
+        )
+    })?;
+    let chain_anchor = required_chain_anchor(bundle)?;
+    if !evm_addresses_match(
+        &evidence.identity_registry_contract,
+        &provenance.identity_registry_address,
+    )? {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence contract mismatch".to_string(),
+        ));
+    }
+    if !evm_addresses_match(
+        &evidence.identity_registry_contract,
+        &bundle.chain_snapshot.identity_registry_address,
+    )? {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence snapshot mismatch".to_string(),
+        ));
+    }
+    if !evm_addresses_match(&evidence.operator_address, &chain_anchor.operator_address)? {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence operator mismatch".to_string(),
+        ));
+    }
+    if !hashes_match(&evidence.operator_key_hash, &chain_anchor.operator_key_hash)? {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence operator key mismatch".to_string(),
+        ));
+    }
+    if evidence.operator_epoch != chain_anchor.operator_epoch {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence operator epoch mismatch".to_string(),
+        ));
+    }
+    if evidence.block_number > chain_anchor.block_number
+        || evidence.block_number > bundle.chain_snapshot.observed_block_number
+    {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence block exceeds observed chain state"
+                .to_string(),
+        ));
+    }
+    if evidence.block_number == chain_anchor.block_number
+        && evidence.block_hash != chain_anchor.block_hash
+    {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence block hash mismatch".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_public_witness(

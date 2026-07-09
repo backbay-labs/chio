@@ -32,6 +32,7 @@ contract ChioBondVault is IChioBondVault {
     error Paused();
     error InvalidRegistry();
     error OperatorKeyHashMismatch();
+    error NotPendingAdmin();
 
     struct BondState {
         BondTerms terms;
@@ -43,7 +44,8 @@ contract ChioBondVault is IChioBondVault {
 
     ChioRootRegistry public immutable rootRegistry;
     IChioIdentityRegistry public immutable identityRegistry;
-    address public immutable admin;
+    address public admin;
+    address public pendingAdmin;
     bool public paused;
 
     mapping(bytes32 => BondState) private bonds;
@@ -62,7 +64,9 @@ contract ChioBondVault is IChioBondVault {
         ) {
             revert InvalidRegistry();
         }
-        rootRegistry = ChioRootRegistry(rootRegistry_);
+        ChioRootRegistry root = ChioRootRegistry(rootRegistry_);
+        if (address(root.identityRegistry()) != identityRegistry_) revert InvalidRegistry();
+        rootRegistry = root;
         identityRegistry = IChioIdentityRegistry(identityRegistry_);
         admin = admin_;
     }
@@ -91,6 +95,20 @@ contract ChioBondVault is IChioBondVault {
     function setPaused(bool paused_) external onlyAdmin {
         paused = paused_;
         emit PausedSet(msg.sender, paused_);
+    }
+
+    function transferAdmin(address newAdmin) external onlyAdmin {
+        if (newAdmin == address(0)) revert InvalidTerms();
+        pendingAdmin = newAdmin;
+        emit AdminTransferStarted(msg.sender, newAdmin);
+    }
+
+    function acceptAdmin() external {
+        if (msg.sender != pendingAdmin) revert NotPendingAdmin();
+        address previous = admin;
+        admin = msg.sender;
+        pendingAdmin = address(0);
+        emit AdminTransferred(previous, msg.sender);
     }
 
     function setTokenAllowed(address token, bool allowed) external onlyAdmin {

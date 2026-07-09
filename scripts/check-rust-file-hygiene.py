@@ -143,8 +143,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-transaction-passport/tests/transaction_passport.rs": allow(
         "2026-07-31",
-        "launch transaction passport integration suite; capped to current size until split",
-        max_lines=2_401,
+        "transaction passport integration suite with runtime-security review regressions; capped until split",
+        max_lines=2_445,
     ),
     "crates/protocol/chio-mcp-remote/src/remote_mcp/tests.rs": allow(
         "2026-07-31",
@@ -163,8 +163,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/economy/chio-web3/src/tests.rs": allow(
         "2026-07-31",
-        "existing oversized web3 test module; capped to current size until split",
-        max_lines=2_609,
+        "web3 test module with public-settlement review regressions; capped until split",
+        max_lines=2_680,
     ),
     "crates/kernel/chio-runtime-proof-parity/src/lib.rs": allow(
         "2026-07-31",
@@ -178,8 +178,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-transaction-passport/src/runtime_security/artifacts.rs": allow(
         "2026-07-31",
-        "runtime security artifact verifier surface; capped to current size until split",
-        max_lines=2_308,
+        "runtime security artifact verifier with trusted join and overflow hardening; capped until split",
+        max_lines=2_322,
     ),
     "crates/products/chio-cli/tests/proof_cli_contract/fixture.rs": allow(
         "2026-07-31",
@@ -198,8 +198,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/economy/chio-settle/src/evm/tests.rs": allow(
         "2026-07-31",
-        "EVM settlement unit test module split from the production module; capped to current size until split",
-        max_lines=2_269,
+        "EVM settlement unit test module with anchor content-hash regression coverage; capped until split",
+        max_lines=2_305,
     ),
 }
 

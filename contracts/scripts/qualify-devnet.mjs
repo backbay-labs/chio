@@ -44,6 +44,13 @@ const ENTITY_BINDING_TYPES = {
     { name: "operator", type: "address" },
   ],
 };
+const OPERATOR_BINDING_TYPES = {
+  ChioOperatorBinding: [
+    { name: "operatorAddress", type: "address" },
+    { name: "edKeyHash", type: "bytes32" },
+    { name: "settlementKey", type: "address" },
+  ],
+};
 const BOND_PROOF_LEAF_TYPEHASH = ethers.keccak256(
   ethers.toUtf8Bytes(
     "ChioBondProof(uint256 chainId,address vault,bytes32 vaultId,bytes32 operatorKeyHash,bytes32 evidenceHash,uint8 action,uint256 slashAmount,bytes32 distributionHash)",
@@ -462,6 +469,14 @@ function entityBindingDomain(chainId, identityRegistryAddress) {
   };
 }
 
+async function operatorBindingSignature(chainId, identityRegistryAddress, adminPrivateKey, operatorAddress, edKeyHash, settlementKey) {
+  return new ethers.Wallet(adminPrivateKey).signTypedData(
+    entityBindingDomain(chainId, identityRegistryAddress),
+    OPERATOR_BINDING_TYPES,
+    { operatorAddress, edKeyHash, settlementKey },
+  );
+}
+
 function bondProofLeaf(chainId, bondVaultAddress, vaultId, operatorKeyHash, evidenceHash, action, slashAmount, distributionHash) {
   return ethers.keccak256(
     ethers.AbiCoder.defaultAbiCoder().encode(
@@ -643,6 +658,11 @@ async function main() {
       wallets.admin,
       await identityRegistry.getAddress(),
     );
+    const divergentIdentityRegistry = await deploy(
+      "ChioIdentityRegistry",
+      wallets.admin,
+      wallets.admin.address,
+    );
     await expectDeployRevert(
       "escrow zero root registry",
       provider,
@@ -679,6 +699,15 @@ async function main() {
       wallets.admin.address,
       wallets.admin.address,
     );
+    await expectDeployRevert(
+      "escrow divergent identity registry",
+      provider,
+      "ChioEscrow",
+      wallets.admin,
+      await rootRegistry.getAddress(),
+      await divergentIdentityRegistry.getAddress(),
+      wallets.admin.address,
+    );
     const escrow = await deploy(
       "ChioEscrow",
       wallets.admin,
@@ -686,6 +715,7 @@ async function main() {
       await identityRegistry.getAddress(),
       wallets.admin.address,
     );
+    assert.equal(await escrow.identityRegistry(), await rootRegistry.identityRegistry());
     await expectDeployRevert(
       "bond zero root registry",
       provider,
@@ -722,6 +752,15 @@ async function main() {
       wallets.admin.address,
       wallets.admin.address,
     );
+    await expectDeployRevert(
+      "bond divergent identity registry",
+      provider,
+      "ChioBondVault",
+      wallets.admin,
+      await rootRegistry.getAddress(),
+      await divergentIdentityRegistry.getAddress(),
+      wallets.admin.address,
+    );
     const bondVault = await deploy(
       "ChioBondVault",
       wallets.admin,
@@ -729,6 +768,7 @@ async function main() {
       await identityRegistry.getAddress(),
       wallets.admin.address,
     );
+    assert.equal(await bondVault.identityRegistry(), await rootRegistry.identityRegistry());
     const reentrantBondToken = await deploy(
       "mocks/ReentrantBondToken",
       wallets.admin,
@@ -792,12 +832,20 @@ async function main() {
     });
 
     logStep("registering identity bindings");
+    const operatorBindingProof = await operatorBindingSignature(
+      chainId,
+      await identityRegistry.getAddress(),
+      wallets.admin.privateKey,
+      wallets.operator.address,
+      operatorEdKeyHash,
+      wallets.operator.address,
+    );
     gasEstimates.register_operator = (
       await identityRegistry.registerOperator.estimateGas(
         wallets.operator.address,
         operatorEdKeyHash,
         wallets.operator.address,
-        ethers.toUtf8Bytes("binding:operator"),
+        operatorBindingProof,
       )
     ).toString();
     await (
@@ -805,7 +853,7 @@ async function main() {
         wallets.operator.address,
         operatorEdKeyHash,
         wallets.operator.address,
-        ethers.toUtf8Bytes("binding:operator"),
+        operatorBindingProof,
       )
     ).wait();
     const operatorRecord = await identityRegistry.getOperator(wallets.operator.address);
@@ -819,6 +867,18 @@ async function main() {
         ethers.toUtf8Bytes("binding:zero-operator-key"),
       );
     });
+    await expectRevertSelector(
+      "identity operator binding proof",
+      async () => {
+        await identityRegistry.registerOperator.staticCall(
+          deterministicAddress(0x72),
+          toBytes32Label("chio-invalid-operator-binding"),
+          wallets.operator.address,
+          ethers.toUtf8Bytes("binding:invalid-operator"),
+        );
+      },
+      INVALID_SIGNATURE_SELECTOR,
+    );
     checks.push({
       id: "identity.operator_registration",
       outcome: "pass",
@@ -831,13 +891,21 @@ async function main() {
       await contractAdmin.getAddress(),
     );
     const contractAdminOperatorKeyHash = toBytes32Label("chio-contract-admin-operator-key");
+    const contractAdminOperatorBindingProof = await operatorBindingSignature(
+      chainId,
+      await contractAdminRegistry.getAddress(),
+      wallets.admin.privateKey,
+      wallets.operator.address,
+      contractAdminOperatorKeyHash,
+      wallets.operator.address,
+    );
     const registerContractAdminOperatorCall = contractAdminRegistry.interface.encodeFunctionData(
       "registerOperator",
       [
         wallets.operator.address,
         contractAdminOperatorKeyHash,
         wallets.operator.address,
-        ethers.toUtf8Bytes("binding:contract-admin-operator"),
+        contractAdminOperatorBindingProof,
       ],
     );
     await (
@@ -875,22 +943,38 @@ async function main() {
     const lifecycleOperator = deterministicAddress(0x71);
     const lifecycleOperatorKeyHash = toBytes32Label("chio-lifecycle-operator-key");
     const replacementOperatorKeyHash = toBytes32Label("chio-lifecycle-replacement-key");
+    const lifecycleOperatorBindingProof = await operatorBindingSignature(
+      chainId,
+      await identityRegistry.getAddress(),
+      wallets.admin.privateKey,
+      lifecycleOperator,
+      lifecycleOperatorKeyHash,
+      wallets.principal.address,
+    );
     await (
       await identityRegistry.registerOperator(
         lifecycleOperator,
         lifecycleOperatorKeyHash,
         wallets.principal.address,
-        ethers.toUtf8Bytes("binding:lifecycle-operator"),
+        lifecycleOperatorBindingProof,
       )
     ).wait();
     const lifecycleRecordBefore = await identityRegistry.getOperator(lifecycleOperator);
     await (await identityRegistry.deactivateOperator(lifecycleOperator)).wait();
+    const replacementOperatorBindingProof = await operatorBindingSignature(
+      chainId,
+      await identityRegistry.getAddress(),
+      wallets.admin.privateKey,
+      lifecycleOperator,
+      replacementOperatorKeyHash,
+      wallets.outsider.address,
+    );
     await (
       await identityRegistry.registerOperator(
         lifecycleOperator,
         replacementOperatorKeyHash,
         wallets.outsider.address,
-        ethers.toUtf8Bytes("binding:replacement-operator"),
+        replacementOperatorBindingProof,
       )
     ).wait();
     const lifecycleRecordAfter = await identityRegistry.getOperator(lifecycleOperator);
@@ -904,12 +988,20 @@ async function main() {
       note: "Inactive operator re-registration replaces reviewed key material and returns the record to active.",
     });
 
+    const reentrantOperatorBindingProof = await operatorBindingSignature(
+      chainId,
+      await identityRegistry.getAddress(),
+      wallets.admin.privateKey,
+      await reentrantBondToken.getAddress(),
+      reentrantOperatorKeyHash,
+      await reentrantBondToken.getAddress(),
+    );
     await (
       await identityRegistry.registerOperator(
         await reentrantBondToken.getAddress(),
         reentrantOperatorKeyHash,
         await reentrantBondToken.getAddress(),
-        ethers.toUtf8Bytes("binding:reentrant-operator"),
+        reentrantOperatorBindingProof,
       )
     ).wait();
 
@@ -947,6 +1039,46 @@ async function main() {
     await (await bondVault.setTokenAllowed(await reentrantBondToken.getAddress(), true)).wait();
     assert.equal(await escrow.tokenAllowed(await mockUsdc.getAddress()), true);
     assert.equal(await bondVault.tokenAllowed(await mockUsdc.getAddress()), true);
+    assert.equal(typeof escrow.transferAdmin, "function");
+    assert.equal(typeof escrow.acceptAdmin, "function");
+    assert.equal(typeof bondVault.transferAdmin, "function");
+    assert.equal(typeof bondVault.acceptAdmin, "function");
+    await expectRevert("escrow transfer zero admin", async () => {
+      await escrow.transferAdmin.staticCall(ethers.ZeroAddress);
+    });
+    await (await escrow.transferAdmin(wallets.outsider.address)).wait();
+    assert.equal(await escrow.admin(), wallets.admin.address);
+    assert.equal(await escrow.pendingAdmin(), wallets.outsider.address);
+    await expectRevert("escrow admin accept caller", async () => {
+      await escrow.acceptAdmin.staticCall();
+    });
+    await (await escrow.connect(wallets.outsider).acceptAdmin()).wait();
+    assert.equal(await escrow.admin(), wallets.outsider.address);
+    assert.equal(await escrow.pendingAdmin(), ethers.ZeroAddress);
+    await expectRevert("escrow old admin allowlist", async () => {
+      await escrow.setTokenAllowed.staticCall(await feeToken.getAddress(), true);
+    });
+    await (await escrow.connect(wallets.outsider).transferAdmin(wallets.admin.address)).wait();
+    await (await escrow.acceptAdmin()).wait();
+    assert.equal(await escrow.admin(), wallets.admin.address);
+    await expectRevert("bond transfer zero admin", async () => {
+      await bondVault.transferAdmin.staticCall(ethers.ZeroAddress);
+    });
+    await (await bondVault.transferAdmin(wallets.outsider.address)).wait();
+    assert.equal(await bondVault.admin(), wallets.admin.address);
+    assert.equal(await bondVault.pendingAdmin(), wallets.outsider.address);
+    await expectRevert("bond admin accept caller", async () => {
+      await bondVault.acceptAdmin.staticCall();
+    });
+    await (await bondVault.connect(wallets.outsider).acceptAdmin()).wait();
+    assert.equal(await bondVault.admin(), wallets.outsider.address);
+    assert.equal(await bondVault.pendingAdmin(), ethers.ZeroAddress);
+    await expectRevert("bond old admin allowlist", async () => {
+      await bondVault.setTokenAllowed.staticCall(await feeToken.getAddress(), true);
+    });
+    await (await bondVault.connect(wallets.outsider).transferAdmin(wallets.admin.address)).wait();
+    await (await bondVault.acceptAdmin()).wait();
+    assert.equal(await bondVault.admin(), wallets.admin.address);
     assert.equal(typeof escrow.setPaused, "function");
     assert.equal(typeof bondVault.setPaused, "function");
     await expectRevert("escrow pause admin", async () => {
@@ -1500,6 +1632,23 @@ async function main() {
       note: "Price resolver admin handoff requires the nominated account to accept.",
     });
 
+    await expectRevert("price zero staleness", async () => {
+      await priceResolver.registerFeed.staticCall(
+        priceBase,
+        priceQuote,
+        await ethUsdFeed.getAddress(),
+        0,
+      );
+    });
+    const maxFeedStaleness = await priceResolver.MAX_FEED_STALENESS_SECONDS();
+    await expectRevert("price excessive staleness", async () => {
+      await priceResolver.registerFeed.staticCall(
+        priceBase,
+        priceQuote,
+        await ethUsdFeed.getAddress(),
+        maxFeedStaleness + 1n,
+      );
+    });
     gasEstimates.register_feed = (
       await priceResolver.registerFeed.estimateGas(
         priceBase,
@@ -1702,12 +1851,20 @@ async function main() {
     const rotatingOperatorKeyA = toBytes32Label("chio-rotating-operator-key-a");
     const rotatingOperatorKeyB = toBytes32Label("chio-rotating-operator-key-b");
     logStep("escrow: exercising rotated-key publication denial");
+    const rotatingOperatorBindingProofA = await operatorBindingSignature(
+      chainId,
+      await identityRegistry.getAddress(),
+      wallets.admin.privateKey,
+      wallets.rotatingOperator.address,
+      rotatingOperatorKeyA,
+      wallets.rotatingOperator.address,
+    );
     await (
       await identityRegistry.registerOperator(
         wallets.rotatingOperator.address,
         rotatingOperatorKeyA,
         wallets.rotatingOperator.address,
-        ethers.toUtf8Bytes("binding:rotating-operator-a"),
+        rotatingOperatorBindingProofA,
       )
     ).wait();
     const rotatingDelegateExpiry = BigInt(now + 3600);
@@ -1943,8 +2100,17 @@ async function main() {
         wallets.rotatingOperator.address,
         rotatingOperatorKeyA,
       ),
-      false,
+      true,
     );
+    await escrow
+      .connect(wallets.beneficiary)
+      .releaseWithProofDetailed.staticCall(
+        staleKeyEscrowId,
+        oneLeafProof,
+        staleKeyEscrowLeaf,
+        staleKeyReceiptHash,
+        staleKeyEscrowTerms.maxAmount,
+      );
     await expectRevertSelector(
       "same-key reactivated stale signature",
       async () => {
@@ -1976,12 +2142,20 @@ async function main() {
         );
     });
     await (await identityRegistry.deactivateOperator(wallets.rotatingOperator.address)).wait();
+    const rotatingOperatorReregisterBindingProofA = await operatorBindingSignature(
+      chainId,
+      await identityRegistry.getAddress(),
+      wallets.admin.privateKey,
+      wallets.rotatingOperator.address,
+      rotatingOperatorKeyA,
+      wallets.rotatingOperator.address,
+    );
     await (
       await identityRegistry.registerOperator(
         wallets.rotatingOperator.address,
         rotatingOperatorKeyA,
         wallets.rotatingOperator.address,
-        ethers.toUtf8Bytes("binding:rotating-operator-a-reregistered"),
+        rotatingOperatorReregisterBindingProofA,
       )
     ).wait();
     const rotatingReregisterEpoch = (await identityRegistry.getOperator(wallets.rotatingOperator.address))
@@ -2002,8 +2176,17 @@ async function main() {
         wallets.rotatingOperator.address,
         rotatingOperatorKeyA,
       ),
-      false,
+      true,
     );
+    await escrow
+      .connect(wallets.beneficiary)
+      .releaseWithProofDetailed.staticCall(
+        staleKeyEscrowId,
+        oneLeafProof,
+        staleKeyEscrowLeaf,
+        staleKeyReceiptHash,
+        staleKeyEscrowTerms.maxAmount,
+      );
     await expectRevertSelector(
       "same-key reregistered stale signature",
       async () => {
@@ -2036,12 +2219,20 @@ async function main() {
     });
     assert.ok(rotatingReregisterEpoch > rotatingOperatorEpochA);
     await (await identityRegistry.deactivateOperator(wallets.rotatingOperator.address)).wait();
+    const rotatingOperatorBindingProofB = await operatorBindingSignature(
+      chainId,
+      await identityRegistry.getAddress(),
+      wallets.admin.privateKey,
+      wallets.rotatingOperator.address,
+      rotatingOperatorKeyB,
+      wallets.rotatingOperator.address,
+    );
     await (
       await identityRegistry.registerOperator(
         wallets.rotatingOperator.address,
         rotatingOperatorKeyB,
         wallets.rotatingOperator.address,
-        ethers.toUtf8Bytes("binding:rotating-operator-b"),
+        rotatingOperatorBindingProofB,
       )
     ).wait();
     assert.equal(
@@ -2248,12 +2439,20 @@ async function main() {
 
     const inactiveOperatorKeyHash = toBytes32Label("chio-inactive-operator-key");
     logStep("escrow: setting up inactive-operator release denial");
+    const inactiveOperatorBindingProof = await operatorBindingSignature(
+      chainId,
+      await identityRegistry.getAddress(),
+      wallets.admin.privateKey,
+      wallets.outsider.address,
+      inactiveOperatorKeyHash,
+      wallets.outsider.address,
+    );
     await (
       await identityRegistry.registerOperator(
         wallets.outsider.address,
         inactiveOperatorKeyHash,
         wallets.outsider.address,
-        ethers.toUtf8Bytes("binding:inactive-operator"),
+        inactiveOperatorBindingProof,
       )
     ).wait();
     const inactiveOperatorReceiptHash = toBytes32Label("inactive-operator-escrow-receipt");
@@ -2315,12 +2514,20 @@ async function main() {
     });
 
     const inactiveBondOperatorKeyHash = toBytes32Label("chio-inactive-bond-operator-key");
+    const inactiveBondOperatorBindingProof = await operatorBindingSignature(
+      chainId,
+      await identityRegistry.getAddress(),
+      wallets.admin.privateKey,
+      wallets.delegate.address,
+      inactiveBondOperatorKeyHash,
+      wallets.delegate.address,
+    );
     await (
       await identityRegistry.registerOperator(
         wallets.delegate.address,
         inactiveBondOperatorKeyHash,
         wallets.delegate.address,
-        ethers.toUtf8Bytes("binding:inactive-bond-operator"),
+        inactiveBondOperatorBindingProof,
       )
     ).wait();
     const inactiveBondEvidenceHash = toBytes32Label("inactive-operator-bond-evidence");

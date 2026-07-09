@@ -64,13 +64,13 @@ use serde_json::json;
 use std::collections::BTreeSet;
 
 const SAMPLE_ROOT_REGISTRY_RUNTIME_CODEHASH: &str =
-    "0xb6b329fd1a0ea21d4e4b4be608730ab82abb07d0c8a5bb4bdb8540b57126f04a";
+    "0xfc5d76d87b02096c6ae32ce644a2b98ca0bdf3c56700ad16731fad2062e6bd7f";
 const SAMPLE_IDENTITY_REGISTRY_RUNTIME_CODEHASH: &str =
-    "0x9906b1307e5908dd97f3025fb788d790abab45d8580bcf2f30b342510898e15b";
+    "0xd4f87cc63c00d0640c8f232c8fac5e5cb99bc6cf185ef912225e07fa438614cc";
 const SAMPLE_ESCROW_RUNTIME_CODEHASH: &str =
-    "0x5703310e41942082779a50b63969b4a8c6d0e2533983382dcc492763d88b9f72";
+    "0x03d8f545c330922a33db6473430c50eafd527e04474f31abee2dc1f8c6ab2d36";
 const SAMPLE_BOND_VAULT_RUNTIME_CODEHASH: &str =
-    "0xcea2c0f91dc267a1ad00fce242cbc731bcfafdd67d5007ce5b8cc7d3330003f8";
+    "0x17f7936469584b38404765ac44bd7e2384337983e4bc6448a3500d0637711f09";
 
 fn operator_keypair() -> Keypair {
     Keypair::from_seed(&[7u8; 32])
@@ -1788,6 +1788,69 @@ fn public_settlement_proof_rejects_self_consistent_untrusted_identity_registry_c
 }
 
 #[test]
+fn public_settlement_proof_binds_identity_registry_evidence_to_deployment_and_anchor() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.settlement_receipt.identity_registry_evidence =
+        Some(sample_identity_registry_evidence());
+
+    verify_sample_public_settlement_proof(&bundle).unwrap();
+
+    let mut wrong_registry = bundle.clone();
+    wrong_registry
+        .settlement_receipt
+        .identity_registry_evidence
+        .as_mut()
+        .expect("sample proof carries registry evidence")
+        .identity_registry_contract = "0x2000000000000000000000000000000000000004".to_string();
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&wrong_registry),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("identity registry evidence contract mismatch")
+    ));
+
+    let mut wrong_operator = bundle.clone();
+    wrong_operator
+        .settlement_receipt
+        .identity_registry_evidence
+        .as_mut()
+        .expect("sample proof carries registry evidence")
+        .operator_address = "0x2000000000000000000000000000000000000001".to_string();
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&wrong_operator),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("identity registry evidence operator mismatch")
+    ));
+
+    let mut wrong_key = bundle.clone();
+    wrong_key
+        .settlement_receipt
+        .identity_registry_evidence
+        .as_mut()
+        .expect("sample proof carries registry evidence")
+        .operator_key_hash =
+        "0x8888888888888888888888888888888888888888888888888888888888888888".to_string();
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&wrong_key),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("operator_key_hash")
+                || message.contains("identity registry evidence operator key mismatch")
+    ));
+
+    let mut future_block = bundle;
+    future_block
+        .settlement_receipt
+        .identity_registry_evidence
+        .as_mut()
+        .expect("sample proof carries registry evidence")
+        .block_number = 12_345_679;
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&future_block),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("identity registry evidence block exceeds observed chain state")
+    ));
+}
+
+#[test]
 fn public_settlement_proof_rejects_untrusted_reviewed_manifest_hash() {
     let mut bundle = sample_public_settlement_proof_bundle();
     bundle
@@ -2548,10 +2611,18 @@ fn public_settlement_fixture_remains_verifiable() {
         "../../../../fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json"
     ))
     .unwrap();
+    let provenance = bundle.deployment_provenance.clone().unwrap();
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_runtime_codehashes = Some(PublicSettlementRuntimeCodehashTrust {
+        contract_package_id: provenance.contract_package_id,
+        reviewed_manifest_hash: provenance.reviewed_manifest_hash,
+        root_registry_runtime_codehash: provenance.root_registry_runtime_codehash,
+        identity_registry_runtime_codehash: provenance.identity_registry_runtime_codehash,
+        escrow_runtime_codehash: provenance.escrow_runtime_codehash,
+        bond_vault_runtime_codehash: provenance.bond_vault_runtime_codehash,
+    });
 
-    let report =
-        verify_public_settlement_proof(&bundle, &sample_public_settlement_verifier_trust())
-            .unwrap();
+    let report = verify_public_settlement_proof(&bundle, &trust).unwrap();
 
     assert_eq!(report.finality_decision.status, "final");
 }

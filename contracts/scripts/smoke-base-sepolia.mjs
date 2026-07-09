@@ -22,6 +22,13 @@ const ENTITY_BINDING_TYPES = {
     { name: "operator", type: "address" }
   ]
 };
+const OPERATOR_BINDING_TYPES = {
+  ChioOperatorBinding: [
+    { name: "operatorAddress", type: "address" },
+    { name: "edKeyHash", type: "bytes32" },
+    { name: "settlementKey", type: "address" }
+  ]
+};
 const ERC20_ABI = [
   "function balanceOf(address account) view returns (uint256)",
   "function allowance(address owner, address spender) view returns (uint256)",
@@ -335,7 +342,15 @@ async function main() {
         actor,
         operatorEdKeyHash,
         actor,
-        ethers.toUtf8Bytes("base-sepolia-smoke:operator")
+        await identityAdminSigner.signTypedData(
+          entityBindingDomain(network.chainId, await identityRegistry.getAddress()),
+          OPERATOR_BINDING_TYPES,
+          {
+            operatorAddress: actor,
+            edKeyHash: operatorEdKeyHash,
+            settlementKey: actor
+          }
+        )
       );
       const receipt = await waitForReceipt(tx);
       transactions.push(txSummary("identity.operator_registration", tx, receipt));

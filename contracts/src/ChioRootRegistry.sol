@@ -221,9 +221,7 @@ contract ChioRootRegistry is IChioRootRegistry {
         if (treeSize == 0 || proof.treeSize != uint256(treeSize)) {
             return false;
         }
-        if (rootOperatorEpochsByKey[operator][operatorKeyHash][root] != operatorRecord.operatorEpoch) {
-            return false;
-        }
+        if (rootOperatorEpochsByKey[operator][operatorKeyHash][root] == 0) return false;
         return ChioMerkle.verifyRFC6962(proof, root, leafHash);
     }
 

@@ -22,10 +22,11 @@ use chio_core::web3::identity::{
     verify_web3_identity_binding, SignedWeb3IdentityBinding, Web3KeyBindingPurpose,
 };
 use chio_core::web3::settlement::{
-    validate_web3_settlement_dispatch, validate_web3_settlement_execution_receipt,
-    Web3SettlementDispatchArtifact, Web3SettlementExecutionReceiptArtifact,
-    Web3SettlementLifecycleState, Web3SettlementSupportBoundary,
-    CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA, CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+    settlement_anchor_receipt_content_hash_parts, validate_web3_settlement_dispatch,
+    validate_web3_settlement_execution_receipt, Web3SettlementDispatchArtifact,
+    Web3SettlementExecutionReceiptArtifact, Web3SettlementLifecycleState,
+    Web3SettlementSupportBoundary, CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA,
+    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
 };
 use chio_core::web3::trust_profile::Web3SettlementPath;
 use chio_egress_contract::{client_builder_with_contract, send_with_contract};

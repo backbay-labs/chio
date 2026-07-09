@@ -18,6 +18,13 @@ const CHAIN_ID = 31337;
 const USDC_UNITS = 10n ** 6n;
 const DEPLOYMENT_NAME = process.env.CHIO_RUNTIME_DEPLOYMENT_NAME ?? "runtime-devnet.json";
 const OPERATOR_ED_KEY_HASH = process.env.CHIO_OPERATOR_ED_KEY_HASH;
+const OPERATOR_BINDING_TYPES = {
+  ChioOperatorBinding: [
+    { name: "operatorAddress", type: "address" },
+    { name: "edKeyHash", type: "bytes32" },
+    { name: "settlementKey", type: "address" },
+  ],
+};
 
 if (!OPERATOR_ED_KEY_HASH) {
   throw new Error("CHIO_OPERATOR_ED_KEY_HASH is required");
@@ -51,6 +58,19 @@ async function deploy(name, signer, ...args) {
   const contract = await factory.deploy(...args);
   await contract.waitForDeployment();
   return contract;
+}
+
+async function operatorBindingSignature(chainId, identityRegistryAddress, adminPrivateKey, operatorAddress, edKeyHash, settlementKey) {
+  return new ethers.Wallet(adminPrivateKey).signTypedData(
+    {
+      name: "ChioIdentityRegistry",
+      version: "1",
+      chainId,
+      verifyingContract: identityRegistryAddress,
+    },
+    OPERATOR_BINDING_TYPES,
+    { operatorAddress, edKeyHash, settlementKey },
+  );
 }
 
 function toHexBalance(amount) {
@@ -154,7 +174,14 @@ async function main() {
       wallets.operator.address,
       OPERATOR_ED_KEY_HASH,
       wallets.operator.address,
-      ethers.toUtf8Bytes("binding:operator"),
+      await operatorBindingSignature(
+        CHAIN_ID,
+        await identityRegistry.getAddress(),
+        wallets.admin.privateKey,
+        wallets.operator.address,
+        OPERATOR_ED_KEY_HASH,
+        wallets.operator.address,
+      ),
     )
   ).wait();
   const operatorRecord = await identityRegistry.getOperator(wallets.operator.address);

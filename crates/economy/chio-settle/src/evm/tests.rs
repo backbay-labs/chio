@@ -209,6 +209,13 @@ fn align_config_to_anchor_proof(config: &mut SettlementChainConfig, proof: &Anch
     config.operator_address = chain_anchor.operator_address.clone();
 }
 
+fn sample_anchor_content_binding() -> SettlementAnchorContentBinding {
+    SettlementAnchorContentBinding {
+        execution_receipt_id: "receipt-web3-1".to_string(),
+        settlement_reference: "settlement-web3-1".to_string(),
+    }
+}
+
 fn operator_keypair() -> Keypair {
     Keypair::from_seed(&[7u8; 32])
 }
@@ -1225,8 +1232,15 @@ async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_pat
     config.escrow_contract = dispatch.escrow_contract.clone();
     align_config_to_anchor_proof(&mut config, &proof);
 
-    let full = prepare_merkle_release(&config, &dispatch, &proof, EscrowExecutionAmount::Full)
-        .test_expect("full merkle release should prepare");
+    let anchor_content = sample_anchor_content_binding();
+    let full = prepare_merkle_release(
+        &config,
+        &dispatch,
+        &proof,
+        &anchor_content,
+        EscrowExecutionAmount::Full,
+    )
+    .test_expect("full merkle release should prepare");
     let partial_amount = MonetaryAmount {
         units: dispatch.settlement_amount.units / 2,
         currency: dispatch.settlement_amount.currency.clone(),
@@ -1235,6 +1249,7 @@ async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_pat
         &config,
         &dispatch,
         &proof,
+        &anchor_content,
         EscrowExecutionAmount::Partial(partial_amount.clone()),
     )
     .test_expect("partial merkle release should prepare");
@@ -1249,6 +1264,7 @@ async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_pat
         &config,
         &dispatch,
         &batched_primary_proof(),
+        &anchor_content,
         EscrowExecutionAmount::Full,
     )
     .test_expect("batched anchor proof should prepare");
@@ -1290,12 +1306,26 @@ async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_pat
         &config,
         &mismatched_receipt_dispatch,
         &proof,
+        &anchor_content,
         EscrowExecutionAmount::Full,
     )
     .test_expect_err("anchor receipt mismatch should fail");
     assert!(mismatched_receipt_error
         .to_string()
         .contains("governed_receipt_id"));
+    let mut wrong_content = anchor_content.clone();
+    wrong_content.settlement_reference = "settlement-other".to_string();
+    let mismatched_content_error = prepare_merkle_release(
+        &config,
+        &dispatch,
+        &proof,
+        &wrong_content,
+        EscrowExecutionAmount::Full,
+    )
+    .test_expect_err("anchor receipt content hash mismatch should fail");
+    assert!(mismatched_content_error
+        .to_string()
+        .contains("content hash"));
     let root_publication = prepare_merkle_release_root_publication(&config, &dispatch, &full, 2, 2)
         .test_expect("typed settlement root publication should prepare");
     assert_eq!(root_publication.from_address, config.operator_address);
@@ -1373,6 +1403,7 @@ async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_pat
         &config,
         &invalid_dispatch,
         &proof,
+        &anchor_content,
         EscrowExecutionAmount::Full,
     )
     .test_expect_err("malformed operator key hash should fail");
@@ -1384,6 +1415,7 @@ async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_pat
         &config,
         &dispatch,
         &missing_chain_anchor_proof,
+        &anchor_content,
         EscrowExecutionAmount::Full,
     )
     .test_expect_err("missing chain anchor should fail");
@@ -1399,6 +1431,7 @@ async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_pat
         &config,
         &dispatch,
         &wrong_registry_proof,
+        &anchor_content,
         EscrowExecutionAmount::Full,
     )
     .test_expect_err("wrong registry anchor should fail");
@@ -1413,6 +1446,7 @@ async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_pat
         &wrong_operator_config,
         &dispatch,
         &proof,
+        &anchor_content,
         EscrowExecutionAmount::Full,
     )
     .test_expect_err("wrong operator anchor should fail");
@@ -1429,6 +1463,7 @@ async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_pat
         &config,
         &dispatch,
         &wrong_key_proof,
+        &anchor_content,
         EscrowExecutionAmount::Full,
     )
     .test_expect_err("wrong operator key anchor should fail");
@@ -1441,6 +1476,7 @@ async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_pat
         &mismatched_escrow_config,
         &dispatch,
         &proof,
+        &anchor_content,
         EscrowExecutionAmount::Full,
     )
     .test_expect_err("escrow contract drift should fail");
@@ -1455,6 +1491,7 @@ async fn prepare_merkle_release_and_dual_sign_release_cover_full_and_partial_pat
         &config,
         &invalid_token_dispatch,
         &proof,
+        &anchor_content,
         EscrowExecutionAmount::Full,
     )
     .test_expect_err("settlement token drift should fail");

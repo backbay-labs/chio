@@ -2187,6 +2187,29 @@ fn runtime_security_rejects_execution_lease_without_budget_pool_binding() {
 }
 
 #[test]
+fn runtime_security_rejects_overflowing_budget_allocation_total() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    update_runtime_artifact(&mut bundle, "budget-pool.json", |budget_pool| {
+        let allocation = budget_pool["allocations"]
+            .as_array_mut()
+            .and_then(|allocations| allocations.first_mut())
+            .test_expect("runtime fixture has a budget allocation");
+        allocation["reservedUnits"] = Value::from(u64::MAX);
+        allocation["activeUnits"] = Value::from(1_u64);
+        allocation["maxUnits"] = Value::from(u64::MAX);
+    });
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("overflowing budget allocation total must fail");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("execution lease budget allocation exceeds max units"),
+        "{error}"
+    );
+}
+
+#[test]
 fn runtime_security_rejects_execution_lease_without_join_receipt_binding() {
     let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
     remove_runtime_graph_nodes_by_role(&mut bundle, "swarm-join-receipt");
@@ -2217,6 +2240,27 @@ fn runtime_security_rejects_tampered_join_receipt_signature() {
     let error = error.to_string();
 
     assert!(error.contains("join receipt signature invalid"), "{error}");
+}
+
+#[test]
+fn runtime_security_rejects_untrusted_join_receipt_issuer() {
+    let mut bundle = load_runtime_security_fixture("valid-side-effecting-call");
+    let attacker_key = Keypair::from_seed(&[91u8; 32]);
+    let attacker_identity = format!("did:chio:{}", attacker_key.public_key().to_hex());
+    update_runtime_artifact(&mut bundle, "join-receipt.json", |join_receipt| {
+        join_receipt["issuer"] = Value::String(attacker_identity);
+        join_receipt["signature"] =
+            Value::String(sign_runtime_join_receipt(join_receipt, &attacker_key));
+    });
+
+    let error = verify_runtime_security_fixture(&bundle)
+        .test_expect_err("side-effecting execution lease must reject untrusted join issuer");
+    let error = error.to_string();
+
+    assert!(
+        error.contains("join receipt issuer is not trusted"),
+        "{error}"
+    );
 }
 
 #[test]

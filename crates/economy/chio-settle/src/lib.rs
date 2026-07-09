@@ -49,6 +49,7 @@ pub use evm::{
     EvmSignature, EvmTransactionReceipt, PreparedBondExpiry, PreparedBondImpair, PreparedBondLock,
     PreparedBondProofRoot, PreparedBondRelease, PreparedDualSignRelease, PreparedErc20Approval,
     PreparedEscrowCreate, PreparedEscrowRefund, PreparedEvmCall, PreparedMerkleRelease,
+    SettlementAnchorContentBinding,
 };
 pub use hook::{
     SettlementHook, SettlementHookError, SettlementObservation, SettlementOutcome,

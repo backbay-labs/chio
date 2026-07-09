@@ -80,13 +80,15 @@ pub(super) fn ensure_instruction_ready(
                 "capital instruction destination_account_ref is required".to_string(),
             )
         })?;
-    if destination != beneficiary_address {
+    let destination_address =
+        parse_address(destination, "capital instruction destination_account_ref")?;
+    let beneficiary_address = parse_address(beneficiary_address, "beneficiary_address")?;
+    if destination_address != beneficiary_address {
         return Err(SettlementError::InvalidDispatch(
             "beneficiary address must match capital instruction destination_account_ref"
                 .to_string(),
         ));
     }
-    parse_address(beneficiary_address, "beneficiary_address")?;
     Ok(())
 }
 
@@ -114,7 +116,13 @@ pub(super) fn ensure_settlement_binding(
             config.chain_id
         )));
     }
-    if binding.certificate.settlement_address != config.operator_address {
+    let binding_settlement_address = parse_address(
+        &binding.certificate.settlement_address,
+        "binding settlement address",
+    )?;
+    let config_operator_address =
+        parse_address(&config.operator_address, "config.operator_address")?;
+    if binding_settlement_address != config_operator_address {
         return Err(SettlementError::InvalidBinding(
             "binding settlement address does not match the configured operator".to_string(),
         ));

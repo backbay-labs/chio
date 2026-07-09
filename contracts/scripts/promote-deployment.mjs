@@ -59,6 +59,13 @@ const DEFAULT_ASSURANCE_COMPONENT_PATHS = {
   minimum_bar_checklist: "target/web3-external-assurance/minimum-bar-checklist.json",
   runtime_codehash_gate: "target/web3-external-assurance/deployed-runtime-codehash-gate.json"
 };
+const OPERATOR_BINDING_TYPES = {
+  ChioOperatorBinding: [
+    { name: "operatorAddress", type: "address" },
+    { name: "edKeyHash", type: "bytes32" },
+    { name: "settlementKey", type: "address" }
+  ]
+};
 
 const ACCOUNT_CONFIG = [
   { name: "admin", privateKey: "0x1000000000000000000000000000000000000000000000000000000000000001" },
@@ -717,6 +724,19 @@ function labelHash(label) {
   return ethers.keccak256(ethers.toUtf8Bytes(label));
 }
 
+async function operatorBindingSignature(chainId, identityRegistryAddress, adminPrivateKey, operatorAddress, edKeyHash, settlementKey) {
+  return new ethers.Wallet(adminPrivateKey).signTypedData(
+    {
+      name: "ChioIdentityRegistry",
+      version: "1",
+      chainId,
+      verifyingContract: identityRegistryAddress
+    },
+    OPERATOR_BINDING_TYPES,
+    { operatorAddress, edKeyHash, settlementKey }
+  );
+}
+
 function normalizeDeployedCodeForImmutableReferences(label, artifact, deployedCode) {
   const deployedHex = deployedCode.toLowerCase().replace(/^0x/, "");
   const templateHex = (artifact.deployedBytecode ?? "").toLowerCase().replace(/^0x/, "");
@@ -1330,6 +1350,13 @@ async function main() {
       bondVaultArtifact.abi,
       wallets.admin
     );
+    const rootIdentityRegistry = ethers.getAddress(await rootRegistry.identityRegistry());
+    if (ethers.getAddress(await escrow.identityRegistry()) !== rootIdentityRegistry) {
+      throw new Error("escrow identity registry must match root registry identity registry");
+    }
+    if (ethers.getAddress(await bondVault.identityRegistry()) !== rootIdentityRegistry) {
+      throw new Error("bond vault identity registry must match root registry identity registry");
+    }
     const rawSettlementTokenAddress = resolveValue(manifest.settlement_token?.address, state);
     if (!rawSettlementTokenAddress) {
       throw new Error("manifest settlement_token.address is required");
@@ -1362,6 +1389,14 @@ async function main() {
         );
       }
     } else {
+      const bindingProof = await operatorBindingSignature(
+        network.chainId,
+        await identityRegistry.getAddress(),
+        wallets.admin.privateKey,
+        operatorConfig.operator_address,
+        expectedEdKeyHash,
+        operatorConfig.operator_address
+      );
       operatorTx = await sendContractCall(
         identityRegistry,
         "registerOperator",
@@ -1369,7 +1404,7 @@ async function main() {
           operatorConfig.operator_address,
           expectedEdKeyHash,
           operatorConfig.operator_address,
-          ethers.toUtf8Bytes("deployment-runner:operator")
+          bindingProof
         ],
         null
       );

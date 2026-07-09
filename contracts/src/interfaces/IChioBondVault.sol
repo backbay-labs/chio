@@ -42,11 +42,21 @@ interface IChioBondVault {
 
     event PausedSet(address indexed admin, bool paused);
 
+    event AdminTransferStarted(address indexed currentAdmin, address indexed pendingAdmin);
+
+    event AdminTransferred(address indexed previousAdmin, address indexed newAdmin);
+
     error BondNoLongerLive();
 
     function admin() external view returns (address);
 
+    function pendingAdmin() external view returns (address);
+
     function paused() external view returns (bool);
+
+    function transferAdmin(address newAdmin) external;
+
+    function acceptAdmin() external;
 
     function setPaused(bool paused_) external;
 

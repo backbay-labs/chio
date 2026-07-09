@@ -38,7 +38,7 @@ use chio_settle::{
     prepare_merkle_release, prepare_merkle_release_root_publication, prepare_web3_escrow_dispatch,
     project_escrow_execution_receipt, read_escrow_snapshot, static_validate_call, submit_call,
     DualSignReleaseInput, EscrowDispatchRequest, EscrowExecutionAmount, LocalDevnetDeployment,
-    SettlementFinalityStatus,
+    SettlementAnchorContentBinding, SettlementFinalityStatus,
 };
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -678,6 +678,10 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &config,
         &prepared_dispatch.dispatch,
         &anchor_proof,
+        &SettlementAnchorContentBinding {
+            execution_receipt_id: execution_receipt_id.to_string(),
+            settlement_reference: settlement_reference.to_string(),
+        },
         EscrowExecutionAmount::Full,
     )?;
     let settlement_root_call = prepare_merkle_release_root_publication(

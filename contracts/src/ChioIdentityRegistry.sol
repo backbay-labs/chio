@@ -6,6 +6,8 @@ import {IChioIdentityRegistry} from "./interfaces/IChioIdentityRegistry.sol";
 contract ChioIdentityRegistry is IChioIdentityRegistry {
     bytes32 private constant ENTITY_BINDING_TYPEHASH =
         keccak256("ChioEntityBinding(bytes32 chioEntityId,address settlementAddress,address operator)");
+    bytes32 private constant OPERATOR_BINDING_TYPEHASH =
+        keccak256("ChioOperatorBinding(address operatorAddress,bytes32 edKeyHash,address settlementKey)");
     bytes32 private constant EIP712_DOMAIN_TYPEHASH =
         keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
     bytes32 private constant EIP712_NAME_HASH = keccak256("ChioIdentityRegistry");
@@ -67,6 +69,7 @@ contract ChioIdentityRegistry is IChioIdentityRegistry {
     ) external onlyAdmin {
         if (operatorAddress == address(0) || settlementKey == address(0)) revert ZeroAddress();
         if (edKeyHash == bytes32(0)) revert InvalidOperatorKeyHash();
+        _requireOperatorBinding(operatorAddress, edKeyHash, settlementKey, bindingProof);
         OperatorRecord storage record = operatorRecords[operatorAddress];
         if (record.active) revert OperatorAlreadyRegistered();
         uint64 nextEpoch = record.operatorEpoch + 1;
@@ -178,12 +181,31 @@ contract ChioIdentityRegistry is IChioIdentityRegistry {
         return operatorRecords[operator];
     }
 
+    function _requireOperatorBinding(
+        address operatorAddress,
+        bytes32 edKeyHash,
+        address settlementKey,
+        bytes calldata bindingProof
+    ) internal view {
+        bytes32 structHash = keccak256(
+            abi.encode(OPERATOR_BINDING_TYPEHASH, operatorAddress, edKeyHash, settlementKey)
+        );
+        _requireAdminSignature(structHash, bindingProof);
+    }
+
     function _requireEntityBinding(
         bytes32 chioEntityId,
         address settlementAddress,
         address operatorAddress,
         bytes calldata bindingProof
     ) internal view {
+        bytes32 structHash = keccak256(
+            abi.encode(ENTITY_BINDING_TYPEHASH, chioEntityId, settlementAddress, operatorAddress)
+        );
+        _requireAdminSignature(structHash, bindingProof);
+    }
+
+    function _requireAdminSignature(bytes32 structHash, bytes calldata bindingProof) internal view {
         bytes32 domainSeparator = keccak256(
             abi.encode(
                 EIP712_DOMAIN_TYPEHASH,
@@ -192,9 +214,6 @@ contract ChioIdentityRegistry is IChioIdentityRegistry {
                 block.chainid,
                 address(this)
             )
-        );
-        bytes32 structHash = keccak256(
-            abi.encode(ENTITY_BINDING_TYPEHASH, chioEntityId, settlementAddress, operatorAddress)
         );
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
         if (admin.code.length == 0) {

@@ -92,6 +92,12 @@ pub(crate) fn scale_token_minor_units_to_chio_amount(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettlementAnchorContentBinding {
+    pub execution_receipt_id: String,
+    pub settlement_reference: String,
+}
+
 pub fn prepare_erc20_approval(
     token_address: &str,
     owner_address: &str,
@@ -243,6 +249,7 @@ pub fn prepare_merkle_release(
     config: &SettlementChainConfig,
     dispatch: &Web3SettlementDispatchArtifact,
     anchor_proof: &AnchorInclusionProof,
+    anchor_content: &SettlementAnchorContentBinding,
     amount: EscrowExecutionAmount,
 ) -> Result<PreparedMerkleRelease, SettlementError> {
     config.validate()?;
@@ -251,7 +258,7 @@ pub fn prepare_merkle_release(
     validate_merkle_dispatch_config(config, dispatch)?;
     verify_anchor_inclusion_proof(anchor_proof)
         .map_err(|error| SettlementError::Verification(error.to_string()))?;
-    ensure_escrow_anchor_matches_config(config, dispatch, anchor_proof)?;
+    ensure_escrow_anchor_matches_config(config, dispatch, anchor_proof, anchor_content)?;
 
     let receipt_bytes = canonical_json_bytes(&anchor_proof.receipt.body())
         .map_err(|error| SettlementError::Serialization(error.to_string()))?;
@@ -317,8 +324,9 @@ fn ensure_escrow_anchor_matches_config(
     config: &SettlementChainConfig,
     dispatch: &Web3SettlementDispatchArtifact,
     anchor_proof: &AnchorInclusionProof,
+    anchor_content: &SettlementAnchorContentBinding,
 ) -> Result<(), SettlementError> {
-    ensure_anchor_receipt_binds_dispatch(dispatch, anchor_proof)?;
+    ensure_anchor_receipt_binds_dispatch(dispatch, anchor_proof, anchor_content)?;
     let chain_anchor = anchor_proof.chain_anchor.as_ref().ok_or_else(|| {
         SettlementError::InvalidDispatch(
             "escrow release anchor proof requires an on-chain chain_anchor".to_string(),
@@ -377,6 +385,7 @@ fn ensure_escrow_anchor_matches_config(
 fn ensure_anchor_receipt_binds_dispatch(
     dispatch: &Web3SettlementDispatchArtifact,
     anchor_proof: &AnchorInclusionProof,
+    anchor_content: &SettlementAnchorContentBinding,
 ) -> Result<(), SettlementError> {
     let governed_receipt_id = dispatch
         .capital_instruction
@@ -404,6 +413,18 @@ fn ensure_anchor_receipt_binds_dispatch(
     if receipt_nonce != governed_receipt_id {
         return Err(SettlementError::InvalidDispatch(
             "anchor proof receipt must match dispatch governed_receipt_id".to_string(),
+        ));
+    }
+    let expected_content_hash = settlement_anchor_receipt_content_hash_parts(
+        &anchor_content.execution_receipt_id,
+        &anchor_content.settlement_reference,
+        &dispatch.dispatch_id,
+        governed_receipt_id,
+    )
+    .map_err(|error| SettlementError::InvalidDispatch(error.to_string()))?;
+    if anchor_proof.receipt.content_hash != expected_content_hash {
+        return Err(SettlementError::InvalidDispatch(
+            "anchor proof receipt content hash must bind settlement execution".to_string(),
         ));
     }
     Ok(())
