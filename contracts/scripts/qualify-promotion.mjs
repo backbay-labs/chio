@@ -204,6 +204,20 @@ function missingArtifactManifest(manifest) {
   return copy;
 }
 
+function qualifyPromotionScriptOperatorKeyHash() {
+  const source = fs.readFileSync(path.join(contractsDir, "scripts", "promote-deployment.mjs"), "utf8");
+  assert.match(
+    source,
+    /operatorConfig\.operator_key_hash/,
+    "promotion must read the reviewed runtime operator_key_hash"
+  );
+  assert.doesNotMatch(
+    source,
+    /const\s+expectedEdKeyHash\s*=\s*labelHash\(operatorLabel\)/,
+    "promotion must not register a label hash as the operator Ed25519 key hash"
+  );
+}
+
 function prepareBaseMainnetManifest(outputRoot, deployerAddress) {
   const manifestPath = path.join(outputRoot, "base-mainnet.reviewed.json");
   const valuesPath = path.join(outputRoot, "base-mainnet.review-inputs.json");
@@ -213,6 +227,7 @@ function prepareBaseMainnetManifest(outputRoot, deployerAddress) {
     operator_address: deployerAddress,
     delegate_address: deployerAddress,
     operator_ed_key_label: "chio-non-testnet-negative-operator",
+    operator_key_hash: "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975",
     delegate_expiry_seconds: 3600
   });
   runNode([
@@ -379,6 +394,7 @@ async function main() {
       : path.join(repoRoot, "target", "web3-promotion-qualification");
 
   ensureDir(outputRoot);
+  qualifyPromotionScriptOperatorKeyHash();
 
   const manifestPath = path.join(contractsDir, "deployments", "local-devnet.reviewed.json");
   const manifest = readJson(manifestPath);

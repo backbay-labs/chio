@@ -150,6 +150,12 @@ function validateAddress(label, value) {
   }
 }
 
+function validateBytes32(label, value) {
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error(`${label} must be a bytes32 hex string`);
+  }
+}
+
 function validateManifestAddresses(manifest) {
   validateAddress(
     "operator_configuration.registry_admin_address",
@@ -161,6 +167,7 @@ function validateManifestAddresses(manifest) {
   );
   validateAddress("operator_configuration.operator_address", manifest.operator_configuration?.operator_address);
   validateAddress("operator_configuration.delegate_address", manifest.operator_configuration?.delegate_address);
+  validateBytes32("operator_configuration.operator_key_hash", manifest.operator_configuration?.operator_key_hash);
   if (typeof manifest.settlement_token?.address === "string" && manifest.settlement_token.address.startsWith("0x")) {
     validateAddress("settlement_token.address", manifest.settlement_token.address);
   }
@@ -247,7 +254,7 @@ async function main() {
 
   if (!templatePath || !outputPath || !environment) {
     throw new Error(
-      "usage: node contracts/scripts/prepare-reviewed-manifest.mjs --template <path> --output <path> --environment <name> [--approval-output <path>] [--values-file <path>] [--role-address <address>] [--registry-admin-address <address>] [--price-admin-address <address>] [--operator-address <address>] [--delegate-address <address>] [--operator-ed-key-label <label>] [--delegate-expiry-seconds <seconds>] [--candidate-release-id <id>] [--deployment-policy-id <id>] [--create2-factory-mode <mode>] [--create2-factory-address <address>] [--manifest-id <id>] [--set <key=value> ...]"
+      "usage: node contracts/scripts/prepare-reviewed-manifest.mjs --template <path> --output <path> --environment <name> [--approval-output <path>] [--values-file <path>] [--role-address <address>] [--registry-admin-address <address>] [--price-admin-address <address>] [--operator-address <address>] [--delegate-address <address>] --operator-key-hash <bytes32> [--operator-ed-key-label <label>] [--delegate-expiry-seconds <seconds>] [--candidate-release-id <id>] [--deployment-policy-id <id>] [--create2-factory-mode <mode>] [--create2-factory-address <address>] [--manifest-id <id>] [--set <key=value> ...]"
     );
   }
 
@@ -304,6 +311,11 @@ async function main() {
     args["operator-ed-key-label"] ??
     valuesFile.operator_ed_key_label ??
     "chio-operator-ed25519-key";
+  const operatorKeyHash = requireValue(
+    "operator-key-hash",
+    args["operator-key-hash"] ?? valuesFile.operator_key_hash
+  );
+  validateBytes32("operator-key-hash", operatorKeyHash);
   const delegateExpirySeconds = Number(
     args["delegate-expiry-seconds"] ?? valuesFile.delegate_expiry_seconds ?? 3600
   );
@@ -332,6 +344,7 @@ async function main() {
     price_admin_address: priceAdminAddress,
     operator_address: operatorAddress,
     operator_ed_key_label: operatorEdKeyLabel,
+    operator_key_hash: operatorKeyHash,
     delegate_address: delegateAddress,
     delegate_expiry_seconds: delegateExpirySeconds
   };

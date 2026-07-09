@@ -165,6 +165,33 @@ fn public_settlement_proof_accepts_later_partial_release_with_release_event() {
 }
 
 #[test]
+fn public_settlement_proof_accepts_later_partial_release_at_exact_finality_threshold() {
+    let (mut bundle, mut release_block, mut release_log) = make_later_partial_release_bundle(true);
+    let exact_release_block = bundle
+        .chain_snapshot
+        .latest_block_number
+        .saturating_sub(u64::from(bundle.required_confirmations))
+        .saturating_add(1);
+    release_block.block_number = exact_release_block;
+    release_log.block_number = exact_release_block;
+    bundle
+        .chain_snapshot
+        .escrow
+        .release_event
+        .as_mut()
+        .expect("sample carries release event")
+        .block
+        .block_number = exact_release_block;
+
+    verify_sample_public_settlement_proof_with_release_event_evidence(
+        &bundle,
+        release_block,
+        release_log,
+    )
+    .unwrap();
+}
+
+#[test]
 fn public_settlement_proof_rejects_later_partial_release_without_release_event() {
     let (mut bundle, release_block, release_log) = make_later_partial_release_bundle(false);
     sign_sample_public_settlement_bundle(&mut bundle);

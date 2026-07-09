@@ -724,6 +724,15 @@ function labelHash(label) {
   return ethers.keccak256(ethers.toUtf8Bytes(label));
 }
 
+function reviewedOperatorKeyHash(operatorConfig) {
+  const keyHash = operatorConfig.operator_key_hash;
+  requireBytes32("manifest operator_configuration.operator_key_hash", keyHash);
+  if (keyHash.toLowerCase() === `0x${"00".repeat(32)}`) {
+    throw new Error("manifest operator_configuration.operator_key_hash must not be zero");
+  }
+  return keyHash;
+}
+
 async function operatorBindingSignature(chainId, identityRegistryAddress, adminPrivateKey, operatorAddress, edKeyHash, settlementKey) {
   return new ethers.Wallet(adminPrivateKey).signTypedData(
     {
@@ -1364,8 +1373,7 @@ async function main() {
     const settlementTokenAddress = ethers.getAddress(rawSettlementTokenAddress);
 
     const operatorConfig = manifest.operator_configuration ?? {};
-    const operatorLabel = operatorConfig.operator_ed_key_label ?? "chio-operator-ed25519-key";
-    const expectedEdKeyHash = labelHash(operatorLabel);
+    const expectedEdKeyHash = reviewedOperatorKeyHash(operatorConfig);
     const expectedSettlementKey = ethers.getAddress(operatorConfig.operator_address);
     const existingOperator = await identityRegistry.getOperator(operatorConfig.operator_address);
     let operatorTx = null;

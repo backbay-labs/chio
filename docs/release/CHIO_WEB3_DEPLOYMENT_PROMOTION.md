@@ -142,6 +142,7 @@ pnpm --dir contracts deploy:base-sepolia-deps \
   --rpc-url "$CHIO_BASE_SEPOLIA_RPC_URL" \
   --deployer-key "$CHIO_BASE_SEPOLIA_DEPLOYER_KEY" \
   --role-address "$CHIO_BASE_SEPOLIA_WALLET" \
+  --operator-key-hash "$CHIO_BASE_SEPOLIA_OPERATOR_KEY_HASH" \
   --base-builder-code "$CHIO_BASE_BUILDER_CODE" \
   --output-dir target/web3-live-rollout/base-sepolia/dependencies
 
@@ -175,10 +176,12 @@ pnpm --dir contracts smoke:base-sepolia \
 
 The dependency step is for public testnet rehearsal only. It deploys a Base
 Sepolia CREATE2 factory plus mock Chainlink-compatible aggregators and emits
-`base-sepolia.review-inputs.json`. Mainnet promotion must replace those mock
-feed placeholders with reviewed live Chainlink feed addresses. Refresh the
-testnet mock feed timestamps before delayed readback or any rehearsal that waits
-longer than the configured heartbeat windows.
+`base-sepolia.review-inputs.json`. The `CHIO_BASE_SEPOLIA_OPERATOR_KEY_HASH`
+value is the runtime Ed25519 public-key hash that promotion registers on chain.
+Mainnet promotion must replace those mock feed placeholders with reviewed live
+Chainlink feed addresses. Refresh the testnet mock feed timestamps before
+delayed readback or any rehearsal that waits longer than the configured
+heartbeat windows.
 
 The Base Sepolia smoke reads the promoted deployment record, then executes the
 minimum public-chain transaction path: operator/entity setup, mock feed refresh,
@@ -187,10 +190,10 @@ proof release, final proof release, and timeout refund. It must finish with
 `status: pass` and preserve transaction hashes under
 `target/web3-live-rollout/base-sepolia/base-sepolia-smoke.json`.
 
-For a one-wallet pilot, the review-inputs file can set only `role_address`;
-`prepare-reviewed-manifest.mjs` will use it as registry admin, price admin,
-operator, and delegate. Production promotion should split those roles before
-mainnet approval.
+For a one-wallet pilot, the review-inputs file can set `role_address` plus
+`operator_key_hash`; `prepare-reviewed-manifest.mjs` will use the role address
+as registry admin, price admin, operator, and delegate. Production promotion
+should split those roles before mainnet approval.
 
 Prepare one reviewed chain manifest from one shipped template:
 

@@ -93,6 +93,7 @@ pnpm --dir contracts deploy:base-sepolia-deps \
   --rpc-url "$CHIO_BASE_SEPOLIA_RPC_URL" \
   --deployer-key "$CHIO_BASE_SEPOLIA_DEPLOYER_KEY" \
   --role-address "$CHIO_BASE_SEPOLIA_WALLET" \
+  --operator-key-hash "$CHIO_BASE_SEPOLIA_OPERATOR_KEY_HASH" \
   --base-builder-code "$CHIO_BASE_BUILDER_CODE" \
   --output-dir target/web3-live-rollout/base-sepolia/dependencies
 
@@ -107,9 +108,10 @@ node contracts/scripts/prepare-reviewed-manifest.mjs \
 The dependency step deploys a public Base Sepolia CREATE2 factory plus mock
 Chainlink-compatible aggregators for the testnet dress rehearsal, then writes
 the review-inputs JSON consumed by the manifest helper. The review-inputs JSON
-supplies the one-wallet role address, CREATE2 factory details, and template
-placeholders such as testnet feed addresses. The generated approval scaffold is
-intentionally emitted with `status: pending-review` so the operator must still
+supplies the one-wallet role address, runtime operator key hash, CREATE2 factory
+details, and template placeholders such as testnet feed addresses. The generated
+approval scaffold is intentionally emitted with `status: pending-review` so the
+operator must still
 complete approval explicitly before rollout. Mainnet manifests must use
 reviewed live Chainlink feed addresses instead of the testnet mock feeds.
 Refresh testnet mock feed timestamps before readback or any delayed rehearsal:

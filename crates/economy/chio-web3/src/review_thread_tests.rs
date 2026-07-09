@@ -71,12 +71,16 @@ fn web3_dispatch_rejects_equal_malformed_evm_beneficiary_refs() {
 }
 
 #[test]
-fn public_settlement_proof_accepts_settlement_tx_after_anchor_block() {
+fn public_settlement_proof_rejects_settlement_tx_after_anchor_block_without_release_event() {
     let bundle = sample_public_settlement_proof_bundle_with_chain_snapshot(|bundle| {
         bundle["chain_snapshot"]["block"]["transaction_hashes"] =
             json!(["0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]);
     });
-    assert!(verify_sample_public_settlement_proof(&bundle).is_ok());
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement release tx hash missing from block evidence")
+    ));
 }
 
 #[test]

@@ -1473,13 +1473,38 @@ fn validate_escrow_snapshot(
                 "public settlement non-timeout escrow includes refund evidence".to_string(),
             ));
         }
-        if escrow.released_amount.units == bundle.settlement_receipt.settled_amount.units {
-            if escrow.release_event.is_some() {
-                validate_release_event(bundle, escrow, trust)?;
-            }
+        if escrow.released_amount.units == bundle.settlement_receipt.settled_amount.units
+            && escrow.release_event.is_none()
+        {
+            validate_release_tx_in_anchor_block(bundle)?;
         } else {
             validate_release_event(bundle, escrow, trust)?;
         }
+    }
+    Ok(())
+}
+
+fn validate_release_tx_in_anchor_block(
+    bundle: &PublicSettlementProofBundle,
+) -> Result<(), Web3ContractError> {
+    let settlement_tx_hash = &bundle
+        .settlement_receipt
+        .observed_execution
+        .external_reference_id;
+    Hash::from_hex(settlement_tx_hash).map_err(|error| {
+        Web3ContractError::InvalidProof(format!(
+            "public settlement release tx hash invalid: {error}"
+        ))
+    })?;
+    let block = required_block_snapshot(bundle)?;
+    let anchor_block_has_release_tx = block
+        .transaction_hashes
+        .iter()
+        .any(|tx_hash| tx_hash == settlement_tx_hash);
+    if !anchor_block_has_release_tx {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement release tx hash missing from block evidence".to_string(),
+        ));
     }
     Ok(())
 }

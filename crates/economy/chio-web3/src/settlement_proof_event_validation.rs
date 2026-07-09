@@ -343,7 +343,8 @@ fn validate_release_event_block(
     let confirmations = bundle
         .chain_snapshot
         .latest_block_number
-        .saturating_sub(block.block_number);
+        .saturating_sub(block.block_number)
+        .saturating_add(1);
     if confirmations < u64::from(bundle.required_confirmations) {
         return Err(Web3ContractError::InvalidProof(
             "public settlement release event block lacks required confirmations".to_string(),
