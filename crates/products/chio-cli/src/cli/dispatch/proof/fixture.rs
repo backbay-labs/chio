@@ -3069,6 +3069,7 @@ fn public_settlement_witness_body_hash(witness: &serde_json::Value) -> Result<St
         "root_registry_runtime_codehash": required_public_settlement_witness_string(witness, "root_registry_runtime_codehash")?,
         "identity_registry_address": required_public_settlement_witness_string(witness, "identity_registry_address")?,
         "identity_registry_runtime_codehash": required_public_settlement_witness_string(witness, "identity_registry_runtime_codehash")?,
+        "identity_registry_operator": witness.get("identity_registry_operator").cloned().unwrap_or(serde_json::Value::Null),
         "escrow_contract": required_public_settlement_witness_string(witness, "escrow_contract")?,
         "escrow_runtime_codehash": required_public_settlement_witness_string(witness, "escrow_runtime_codehash")?,
         "settlement_token_address": required_public_settlement_witness_string(witness, "settlement_token_address")?,
