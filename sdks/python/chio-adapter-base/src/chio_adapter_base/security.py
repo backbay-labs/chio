@@ -153,6 +153,18 @@ def sanitised_env(*, base: Mapping[str, str] | None = None) -> dict[str, str]:
     return {k: v for k, v in source.items() if not _is_denied_env(k)}
 
 
+_GIT_GLOBAL_OPTIONS_WITH_VALUES: frozenset[str] = frozenset(
+    {
+        "--config-env",
+        "--exec-path",
+        "--git-dir",
+        "--namespace",
+        "--super-prefix",
+        "--work-tree",
+    }
+)
+
+
 def harden_git_argv(argv: list[str]) -> list[str]:
     """Inject ``--no-verify`` into ``git commit`` argv; reject ``--verify``.
 
@@ -187,23 +199,20 @@ def _git_subcommand_index(argv: list[str]) -> int | None:
         arg = argv[index]
         if arg == "--":
             return None
-        if arg == "-C":
+        if arg in ("-C", "-c"):
             index += 2
             continue
-        if arg.startswith("-C") and arg != "-C":
+        if (arg.startswith("-C") or arg.startswith("-c")) and len(arg) > 2:
             index += 1
             continue
-        if arg == "-c":
+        if arg in _GIT_GLOBAL_OPTIONS_WITH_VALUES:
             index += 2
             continue
-        if arg.startswith("-c") and arg != "-c":
+        if any(
+            arg.startswith(f"{option}=")
+            for option in _GIT_GLOBAL_OPTIONS_WITH_VALUES
+        ):
             index += 1
-            continue
-        if arg.startswith("--config-env="):
-            index += 1
-            continue
-        if arg == "--config-env":
-            index += 2
             continue
         if arg.startswith("-"):
             index += 1

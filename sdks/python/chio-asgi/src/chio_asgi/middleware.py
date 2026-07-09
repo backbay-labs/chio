@@ -109,14 +109,13 @@ class ChioASGIMiddleware:
         if "route" in scope and hasattr(scope["route"], "path"):
             route_pattern = scope["route"].path
 
-        # Read the full request body for hashing before evaluating policy.
-        body_chunks: list[bytes] = []
-        buffered_messages: list[dict[str, Any]] = []
+        # Read the request body for hashing before evaluating policy.
+        body_buffer = bytearray()
         body_length = 0
+        replay_message: dict[str, Any] | None = None
 
         while True:
             message = await receive()
-            buffered_messages.append(message)
             if message.get("type") == "http.request":
                 body = message.get("body", b"")
                 if body:
@@ -129,26 +128,31 @@ class ChioASGIMiddleware:
                             "RequestBodyTooLarge",
                         )
                         return
-                    body_chunks.append(body)
+                    body_buffer.extend(body)
                 if not message.get("more_body", False):
                     break
                 continue
+            replay_message = message
             break
 
         body_hash: str | None = None
-        if body_chunks:
-            raw_body = b"".join(body_chunks)
-            body_hash = hashlib.sha256(raw_body).hexdigest()
+        if body_buffer:
+            body_hash = hashlib.sha256(body_buffer).hexdigest()
 
         # Replay the buffered body for the inner app.
-        replay_index = 0
+        replay_sent = False
 
         async def replay_receive() -> dict[str, Any]:
-            nonlocal replay_index
-            if replay_index < len(buffered_messages):
-                message = buffered_messages[replay_index]
-                replay_index += 1
-                return message
+            nonlocal replay_sent
+            if not replay_sent:
+                replay_sent = True
+                if replay_message is not None:
+                    return replay_message
+                return {
+                    "type": "http.request",
+                    "body": bytes(body_buffer),
+                    "more_body": False,
+                }
             return await receive()
 
         # Evaluate via sidecar

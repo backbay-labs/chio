@@ -226,7 +226,7 @@ test("paginate() fails when the server repeats a cursor", async () => {
   let callCount = 0;
   const responses = [
     { totalCount: 1, nextCursor: 5, receipts: [FAKE_RECEIPT] },
-    { totalCount: 1, nextCursor: 5, receipts: [] },
+    { totalCount: 1, nextCursor: 5, receipts: [{ ...FAKE_RECEIPT, id: "dup" }] },
   ];
   const mockFetch: typeof fetch = async () => {
     const response = responses[Math.min(callCount, responses.length - 1)];
@@ -256,7 +256,7 @@ test("paginate() fails when the server regresses a cursor", async () => {
   let callCount = 0;
   const responses = [
     { totalCount: 1, nextCursor: 10, receipts: [FAKE_RECEIPT] },
-    { totalCount: 1, nextCursor: 5, receipts: [] },
+    { totalCount: 1, nextCursor: 5, receipts: [{ ...FAKE_RECEIPT, id: "dup" }] },
   ];
   const mockFetch: typeof fetch = async () => {
     const response = responses[Math.min(callCount, responses.length - 1)];

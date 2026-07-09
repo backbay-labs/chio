@@ -119,6 +119,19 @@ def test_harden_git_argv_skips_value_taking_c_global() -> None:
         harden_git_argv(["-C", "repo", "commit", "--verify"])
 
 
+def test_harden_git_argv_skips_git_global_values_named_commit() -> None:
+    assert harden_git_argv(["-C", "commit", "status"]) == [
+        "-C",
+        "commit",
+        "status",
+    ]
+    assert harden_git_argv(["--git-dir", "commit", "status"]) == [
+        "--git-dir",
+        "commit",
+        "status",
+    ]
+
+
 def test_harden_git_argv_allows_git_binary_prefix() -> None:
     out = harden_git_argv(["git", "-c", "user.name=x", "commit", "-m", "y"])
     assert out == ["git", "-c", "user.name=x", "commit", "--no-verify", "-m", "y"]
