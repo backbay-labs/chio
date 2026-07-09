@@ -110,6 +110,10 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
                 extra_metadata,
                 pre_invocation_guard_evidence: Vec::new(),
             },
+            // Root cap (no delegation parent): the child-budget release is a
+            // no-op regardless, so the newly-inserted gate does not alter this
+            // disposition-table coverage. `true` keeps the prior behavior.
+            true,
         );
         if dispatch_started {
             guard.mark_dispatch_started();

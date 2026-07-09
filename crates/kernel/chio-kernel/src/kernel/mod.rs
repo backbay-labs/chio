@@ -20,7 +20,8 @@ pub use kernel_struct::{
 };
 
 pub(crate) use kernel_drop_guard::{
-    dispatch_error_precedes_tool_side_effect, PostAdmissionDropGuard, PostAdmissionReceiptContext,
+    dispatch_error_precedes_tool_side_effect, reserved_runtime_admission_ids,
+    PostAdmissionDropGuard, PostAdmissionReceiptContext,
 };
 pub(crate) use kernel_scopes::{
     current_scoped_receipt_federation_admission, current_scoped_receipt_tenant_id,

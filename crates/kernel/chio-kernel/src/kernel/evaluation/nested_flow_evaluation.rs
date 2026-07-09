@@ -495,6 +495,7 @@ impl ChioKernel {
                 extra_metadata: runtime_admission_metadata.clone(),
                 pre_invocation_guard_evidence: pre_invocation_guard_evidence.clone(),
             },
+            admitted_new_child,
         );
         // Mark dispatch started before lending the child-receipt buffer to the
         // bridge: the bridge borrows the guard for the whole dispatch block, so
@@ -560,17 +561,23 @@ impl ChioKernel {
                 // valid siblings. The error is still returned so the
                 // elicitations payload propagates to the edge, which registers
                 // them and returns the url-elicitation-required response.
-                // Finding 2 (codex round 8): RECORD a runtime-reservation
-                // release failure and CONTINUE the remaining cleanup rather
-                // than `?`-short-circuiting on it, matching the generic
-                // pre-dispatch denial path. A transient release failure must
-                // not leave the invocation slot / child share consumed, nor
-                // replace the elicitation response with an internal cleanup
-                // error. The returned metadata is discarded because this arm
-                // returns Err(UrlElicitationsRequired) so the elicitations
-                // payload (not a receipt) propagates to the edge.
-                let _ = self.release_runtime_admission_reservations_for_pre_dispatch_denial(
+                // Finding 2 (codex round 8) / round 9: RELEASE the runtime-
+                // reservation and CONTINUE the remaining cleanup rather than
+                // `?`-short-circuiting, matching the generic pre-dispatch denial
+                // path. A transient release failure must not leave the
+                // invocation slot / child share consumed, nor replace the
+                // elicitation response with an internal cleanup error. But if
+                // the release FAILS the stuck lease must still land on the
+                // append-only log: this arm returns Err(UrlElicitationsRequired)
+                // and records no terminal receipt, so a discarded failure would
+                // burn the lease silently. The helper records a signed fault
+                // receipt naming the stuck lease on failure, and is a no-op on a
+                // clean release; the elicitation error is still returned below.
+                self.release_runtime_admission_reservations_for_url_elicitation_cleanup(
+                    request,
+                    matched_grant_index,
                     runtime_admission_metadata,
+                    &pre_invocation_guard_evidence,
                 );
                 // Finding 1 (codex round 8): release the sibling-sum child
                 // admission ONLY when this evaluation inserted it. An idempotent

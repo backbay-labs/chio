@@ -1609,6 +1609,7 @@ fn chio_post_admission_drop_guard_retains_non_monetary_runtime_reservations(
             extra_metadata: Some(metadata),
             pre_invocation_guard_evidence: Vec::new(),
         },
+        true,
     );
     guard.mark_dispatch_started();
     drop(guard);
@@ -1995,6 +1996,7 @@ fn drop_pre_dispatch_releases_reservations_no_receipt(
             extra_metadata: Some(metadata),
             pre_invocation_guard_evidence: Vec::new(),
         },
+        true,
     ));
 
     assert_eq!(
@@ -2080,6 +2082,7 @@ fn drop_pre_dispatch_monetary_unwinds_without_receipt(
             extra_metadata: Some(metadata),
             pre_invocation_guard_evidence: Vec::new(),
         },
+        true,
     ));
 
     assert_eq!(
@@ -2139,6 +2142,7 @@ fn drop_pre_dispatch_reverses_invocation_budget() -> Result<(), Box<dyn std::err
             extra_metadata: None,
             pre_invocation_guard_evidence: Vec::new(),
         },
+        true,
     ));
 
     // The slot must be free again: a retry increment succeeds.
@@ -2194,6 +2198,9 @@ fn drop_pre_dispatch_releases_admitted_child_budget() -> Result<(), Box<dyn std:
             extra_metadata: None,
             pre_invocation_guard_evidence: Vec::new(),
         },
+        // Genuinely-new admission (child_a inserted above): the drop MUST
+        // release it, so child_b can admit. Verifies no under-release leak.
+        true,
     ));
 
     // child_a's share must have been released: child_b can now admit within
@@ -2207,6 +2214,85 @@ fn drop_pre_dispatch_releases_admitted_child_budget() -> Result<(), Box<dyn std:
         kernel.receipt_log().len(),
         0,
         "a clean child-budget release on a pre-dispatch drop is receipt-free"
+    );
+    Ok(())
+}
+
+#[test]
+fn drop_pre_dispatch_retains_idempotently_readmitted_child_budget(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Codex follow-up: the post-admission drop guard must gate its child-budget
+    // release on newly-inserted, mirroring the pre-dispatch denial path. An
+    // EARLIER evaluation admits child_a (a genuinely-new insert, owning the
+    // reservation). A SECOND evaluation idempotently re-admits the same child_a
+    // (Ok(false), no new insert) and is then DROPPED before dispatch. The drop
+    // must NOT release child_a's live share: releasing it would free the first
+    // evaluation's reservation and let an oversubscribing sibling child_b
+    // bypass the parent cap. RED before the gate (child_b wrongly admits);
+    // GREEN after (child_b stays denied).
+    let SiblingSumMonetaryFixture {
+        kernel,
+        child_a,
+        child_b,
+        path: _path,
+        ..
+    } = make_sibling_sum_monetary_fixture("chio-runtime-pre-dispatch-idempotent-readmit");
+
+    // Earlier evaluation: genuinely-new admission of child_a (4000 of 5000 bps).
+    let first = kernel
+        .admit_capability_budget(&child_a)
+        .map_err(std::io::Error::other)?;
+    assert!(
+        first,
+        "the first admission of child_a must report a newly-inserted edge"
+    );
+
+    // Second evaluation: idempotent re-admit of the same child_a + share. This
+    // is a no-op whose reservation belongs to the first evaluation.
+    let second = kernel
+        .admit_capability_budget(&child_a)
+        .map_err(std::io::Error::other)?;
+    assert!(
+        !second,
+        "an idempotent re-admit of child_a must report NO new insert (Ok(false))"
+    );
+
+    let request = make_request_with_arguments(
+        "req-chio-runtime-pre-dispatch-idempotent-readmit",
+        &child_a,
+        "compute",
+        "cost-srv",
+        serde_json::json!({}),
+    );
+    let mutation = PreExecutionBudgetMutation::None;
+    // The second evaluation's future is dropped before dispatch. Because THIS
+    // evaluation did not insert the edge, admitted_new_child is false.
+    drop(PostAdmissionDropGuard::new(
+        &kernel,
+        &request,
+        &child_a,
+        Some(0),
+        &mutation,
+        None,
+        PostAdmissionReceiptContext {
+            extra_metadata: None,
+            pre_invocation_guard_evidence: Vec::new(),
+        },
+        false,
+    ));
+
+    // child_a's share must still be held (owned by the first evaluation), so an
+    // oversubscribing sibling child_b (4000 + 4000 > 5000 bps) stays DENIED.
+    let sibling = kernel.admit_capability_budget(&child_b);
+    assert!(
+        sibling.is_err(),
+        "a dropped idempotent re-admit must NOT release child_a's live share, so \
+         the oversubscribing sibling child_b stays denied: {sibling:?}"
+    );
+    assert_eq!(
+        kernel.receipt_log().len(),
+        0,
+        "a pre-dispatch drop that releases nothing (idempotent re-admit) is receipt-free"
     );
     Ok(())
 }
@@ -2263,6 +2349,7 @@ fn drop_pre_dispatch_records_receipt_on_cleanup_fault() -> Result<(), Box<dyn st
             extra_metadata: Some(metadata),
             pre_invocation_guard_evidence: Vec::new(),
         },
+        true,
     ));
 
     assert_eq!(
@@ -3676,6 +3763,14 @@ fn url_elicitation_release_failure_continues_full_budget_cleanup(
         slot_reusable,
         "cleanup must CONTINUE past the runtime-release failure and reverse the invocation slot"
     );
+    // Round-9 finding: the arm returns Err(UrlElicitationsRequired) and records
+    // no terminal receipt, so a failed runtime-admission release would leave the
+    // stuck lease with NO append-only entry. A signed fault receipt naming the
+    // stuck lease must now be recorded.
+    assert_url_elicitation_release_fault_recorded(
+        &kernel,
+        "lease-url-elicitation-release-failure",
+    )?;
     Ok(())
 }
 
@@ -3751,6 +3846,60 @@ fn url_elicitation_release_failure_continues_full_budget_cleanup_nested_flow(
         slot_reusable,
         "the nested cleanup must CONTINUE past the release failure and reverse the invocation slot"
     );
+    // Round-9 finding (nested mirror): the stuck lease must land a signed fault
+    // receipt on the append-only log even though the arm returns
+    // Err(UrlElicitationsRequired).
+    assert_url_elicitation_release_fault_recorded(
+        &kernel,
+        "lease-url-elicitation-release-failure-nested",
+    )?;
+    Ok(())
+}
+
+/// Assert that a failed runtime-admission release during a URL-elicitation
+/// pre-dispatch unwind recorded a signed cancellation fault receipt naming the
+/// stuck `lease_id` (round-9 finding). Shared by the async and nested-flow
+/// release-failure tests.
+fn assert_url_elicitation_release_fault_recorded(
+    kernel: &ChioKernel,
+    lease_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let receipt_log = kernel.receipt_log();
+    let fault_receipt = receipt_log
+        .receipts()
+        .iter()
+        .find(|receipt| {
+            receipt.is_cancelled()
+                && receipt.metadata.as_ref().is_some_and(|metadata| {
+                    metadata["chio_runtime"]["reservation_release_failed"] == true
+                })
+        })
+        .ok_or_else(|| {
+            std::io::Error::other(
+                "a failed URL-elicitation runtime-admission release must record a signed fault receipt",
+            )
+        })?;
+    let receipt_metadata = fault_receipt
+        .metadata
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("fault receipt metadata missing"))?;
+    // The stuck lease id must survive so an operator can locate the reservation.
+    assert_eq!(
+        receipt_metadata["chio_runtime"]["reserved_destructive_lease_id"],
+        lease_id
+    );
+    let faults = receipt_metadata["chio_runtime"]["pre_dispatch_cleanup_faults"]
+        .as_array()
+        .ok_or_else(|| std::io::Error::other("fault list missing"))?;
+    assert!(
+        faults.iter().any(|fault| {
+            fault["step"] == "url_elicitation_runtime_admission_release"
+                && fault["hold_ids"]
+                    .as_array()
+                    .is_some_and(|ids| ids.iter().any(|id| id == lease_id))
+        }),
+        "the fault must name the URL-elicitation release step and the stuck lease id: {faults:?}"
+    );
     Ok(())
 }
 
@@ -3794,6 +3943,7 @@ fn drop_pre_dispatch_cleanup_fault_receipt_includes_monetary_hold_id(
             extra_metadata: None,
             pre_invocation_guard_evidence: Vec::new(),
         },
+        true,
     ));
 
     let receipt_log = kernel.receipt_log();

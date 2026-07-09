@@ -36,7 +36,7 @@ struct PreDispatchCleanupFault {
 /// Extract the reserved runtime-admission lease / continuation ids carried in
 /// the admission metadata so a runtime-admission release fault can name the
 /// possibly-stuck reservations directly in its fault entry.
-fn reserved_runtime_admission_ids(metadata: Option<&serde_json::Value>) -> Vec<String> {
+pub(crate) fn reserved_runtime_admission_ids(metadata: Option<&serde_json::Value>) -> Vec<String> {
     let Some(runtime) = metadata
         .and_then(|value| value.get("chio_runtime"))
         .and_then(serde_json::Value::as_object)
@@ -69,11 +69,21 @@ pub(crate) struct PostAdmissionDropGuard<'a> {
     /// a post-dispatch drop can still flush them onto the append-only log,
     /// preserving receipt-completeness for nested child operations (RFC-0002).
     child_receipts: Vec<ChildRequestReceipt>,
+    /// Whether THIS evaluation actually inserted the child/delegated
+    /// capability's sibling-sum budget edge (the `Ok(true)` from
+    /// `admit_capability_budget`). `false` means the admission was an idempotent
+    /// re-admit of an edge an EARLIER still-valid evaluation owns, so a
+    /// pre-dispatch drop here must NOT release it: freeing it would return the
+    /// earlier evaluation's live share and let an oversubscribing sibling bypass
+    /// the parent cap. Gates the step-4 child-budget release in
+    /// `handle_pre_dispatch_drop`.
+    admitted_new_child: bool,
     armed: bool,
     dispatch_started: bool,
 }
 
 impl<'a> PostAdmissionDropGuard<'a> {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         kernel: &'a ChioKernel,
         request: &'a ToolCallRequest,
@@ -82,6 +92,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
         budget_mutation: &'a PreExecutionBudgetMutation,
         payment_authorization: Option<&'a PaymentAuthorization>,
         receipt_context: PostAdmissionReceiptContext,
+        admitted_new_child: bool,
     ) -> Self {
         Self {
             kernel,
@@ -92,6 +103,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
             payment_authorization,
             receipt_context,
             child_receipts: Vec::new(),
+            admitted_new_child,
             armed: true,
             dispatch_started: false,
         }
@@ -253,28 +265,40 @@ impl<'a> PostAdmissionDropGuard<'a> {
             });
         }
 
-        // 4. Admitted child/delegated capability budget release (Finding B). A
-        //    delegated capability admitted its share of the parent budget at
-        //    admission; release it or the share stays permanently recorded.
-        //    Mirrors the pre-dispatch denial path.
-        if let Err(error) = self.kernel.release_admitted_capability_budget(self.cap) {
-            let reason = redacted!(&error).to_string();
-            warn!(
-                request_id = %self.request.request_id,
-                reason = %reason,
-                "failed to release admitted capability budget on pre-dispatch drop"
-            );
-            // Name the delegated child capability id and its parent so the stuck
-            // sibling-sum share is locatable from the fault entry.
-            let mut hold_ids = vec![self.cap.id.clone()];
-            if let Some(parent_link) = self.cap.delegation_chain.last() {
-                hold_ids.push(parent_link.capability_id.clone());
+        // 4. Admitted child/delegated capability budget release (Finding B),
+        //    gated on newly-inserted (codex follow-up). A delegated capability
+        //    admitted its share of the parent budget at admission; release it or
+        //    the share stays permanently recorded. Release ONLY when THIS
+        //    evaluation actually inserted the child edge (`admitted_new_child`).
+        //    An idempotent re-admit's reservation belongs to an EARLIER
+        //    still-valid evaluation, which owns the release; freeing it here
+        //    would return that live share and let an oversubscribing sibling
+        //    bypass the parent cap. Fail-closed: when this evaluation did not
+        //    provably insert the edge (`admitted_new_child == false`) do NOT
+        //    release, because over-releasing another evaluation's live share
+        //    (a budget bypass) is the worse failure than under-releasing (a
+        //    leak the earlier owner still tracks and can reconcile). Mirrors the
+        //    pre-dispatch denial path.
+        if self.admitted_new_child {
+            if let Err(error) = self.kernel.release_admitted_capability_budget(self.cap) {
+                let reason = redacted!(&error).to_string();
+                warn!(
+                    request_id = %self.request.request_id,
+                    reason = %reason,
+                    "failed to release admitted capability budget on pre-dispatch drop"
+                );
+                // Name the delegated child capability id and its parent so the
+                // stuck sibling-sum share is locatable from the fault entry.
+                let mut hold_ids = vec![self.cap.id.clone()];
+                if let Some(parent_link) = self.cap.delegation_chain.last() {
+                    hold_ids.push(parent_link.capability_id.clone());
+                }
+                faults.push(PreDispatchCleanupFault {
+                    step: "child_budget_release",
+                    reason,
+                    hold_ids,
+                });
             }
-            faults.push(PreDispatchCleanupFault {
-                step: "child_budget_release",
-                reason,
-                hold_ids,
-            });
         }
 
         // 5. Fault receipt (Finding C). Clean cleanup is receipt-free (the
