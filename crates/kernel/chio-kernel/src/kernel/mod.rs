@@ -20,7 +20,8 @@ pub use kernel_struct::{
 };
 
 pub(crate) use kernel_drop_guard::{
-    dispatch_error_precedes_tool_side_effect, PostAdmissionDropGuard, PostAdmissionReceiptContext,
+    dispatch_error_precedes_tool_side_effect, reserved_runtime_admission_ids,
+    PostAdmissionDropGuard, PostAdmissionReceiptContext,
 };
 pub(crate) use kernel_scopes::{
     current_scoped_receipt_federation_admission, current_scoped_receipt_tenant_id,
@@ -501,6 +502,12 @@ pub(crate) struct BudgetChargeResult {
 }
 
 impl BudgetChargeResult {
+    /// The rail/store hold id for the monetary budget charge, so a cleanup
+    /// fault can name the stuck budget hold that needs manual recovery.
+    pub(crate) fn budget_hold_id(&self) -> &str {
+        &self.budget_hold_id
+    }
+
     fn reverse_event_id(&self) -> String {
         format!("{}:reverse", self.budget_hold_id)
     }

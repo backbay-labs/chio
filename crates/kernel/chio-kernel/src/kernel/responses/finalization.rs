@@ -39,7 +39,15 @@ impl ChioKernel {
                 reason,
                 timestamp,
                 Some(matched_grant_index),
-                post_invocation.extra_metadata,
+                // The tool already ran (a side effect may have committed)
+                // before this post-invocation guard blocked the returned
+                // output, so any runtime-admission lease consumed at admission
+                // is retained, not released. Mark it so the burned lease is
+                // recoverable from the receipt, matching the incomplete-stream
+                // and RequestIncomplete arms.
+                self.mark_runtime_admission_reservations_retained_fail_closed(
+                    post_invocation.extra_metadata,
+                ),
             );
         }
 
@@ -66,7 +74,14 @@ impl ChioKernel {
                     &reason,
                     timestamp,
                     Some(matched_grant_index),
-                    post_invocation.extra_metadata,
+                    // The tool ran (a side effect may have committed) but the
+                    // stream ended incomplete, so any runtime-admission lease
+                    // consumed at admission is retained, not released. Mark it
+                    // so the burned lease is recoverable from the receipt,
+                    // matching the RequestIncomplete error arm.
+                    self.mark_runtime_admission_reservations_retained_fail_closed(
+                        post_invocation.extra_metadata,
+                    ),
                 ),
         }
     }

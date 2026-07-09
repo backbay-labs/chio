@@ -299,7 +299,29 @@ impl ChioKernel {
     /// The split between pre-admit verification and budget admission
     /// enforces the ordering rule "signature first, admit last", so a
     /// denied request never starves later valid siblings.
-    pub(crate) fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<(), String> {
+    /// Admit `cap`'s sibling-sum budget share under its parent, acquiring one
+    /// per-evaluation holder lease on the child admission edge.
+    ///
+    /// Returns `Ok(true)` when THIS evaluation acquired a lease: the capability
+    /// has a parent and the admit succeeded, whether it INSERTED a fresh edge
+    /// or took an additional holder on an edge an overlapping evaluation
+    /// already inserted (an idempotent re-admit). Returns `Ok(false)` only when
+    /// the capability has no parent to admit against (no lease exists to
+    /// release). A failed admit (oversubscribe / cap-exceed / different share)
+    /// acquires NO lease and returns `Err`.
+    ///
+    /// The lease increment happens inside `try_admit_child` under the registry
+    /// lock, so it is atomic with the insert/holder decision (no TOCTOU). The
+    /// boolean tells a pre-dispatch cleanup path whether THIS evaluation holds a
+    /// lease it must release: exactly the evaluations that acquired a lease
+    /// release one (via `release_admitted_capability_budget`), and the edge is
+    /// freed only when the last holder releases. Reference counting - rather
+    /// than a "newly inserted" owner flag - is required because overlapping
+    /// evaluations of the same delegated capability concurrently depend on the
+    /// single registry edge; freeing it on the inserting evaluation's cleanup
+    /// would return a re-admitting sibling's live share and let an
+    /// oversubscribing sibling bypass the parent cap.
+    pub(crate) fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<bool, String> {
         if let Some(parent_link) = cap.delegation_chain.last() {
             use chio_kernel_core::BudgetRegistry;
             let proposed_share = cap
@@ -316,9 +338,12 @@ impl ChioKernel {
                     proposed_share,
                 )
                 .map_err(|err| err.to_string())?;
+            // The admit succeeded against a parent link, so this evaluation now
+            // holds a lease it is responsible for releasing on cleanup.
+            return Ok(true);
         }
 
-        Ok(())
+        Ok(false)
     }
 
     pub(crate) fn release_admitted_capability_budget(
@@ -1142,7 +1167,14 @@ impl ChioKernel {
                     &reason,
                     timestamp,
                     Some(charge.grant_index),
-                    merged_extra_metadata,
+                    // The tool ran (a side effect may have committed) but the
+                    // stream ended incomplete, so any runtime-admission lease
+                    // consumed at admission is retained, not released. Mark it
+                    // so the burned lease is recoverable from the receipt,
+                    // matching the RequestIncomplete error arm.
+                    self.mark_runtime_admission_reservations_retained_fail_closed(
+                        merged_extra_metadata,
+                    ),
                 ),
         }
     }
