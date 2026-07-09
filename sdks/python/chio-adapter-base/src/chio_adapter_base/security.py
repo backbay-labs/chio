@@ -187,6 +187,12 @@ def _git_subcommand_index(argv: list[str]) -> int | None:
         arg = argv[index]
         if arg == "--":
             return None
+        if arg == "-C":
+            index += 2
+            continue
+        if arg.startswith("-C") and arg != "-C":
+            index += 1
+            continue
         if arg == "-c":
             index += 2
             continue

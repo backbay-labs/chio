@@ -149,10 +149,11 @@ export function chio(config: ChioElysiaConfig = {}) {
         bodyLength,
         routePattern,
         capabilityId,
+        forwardHeaders: resolved.forwardHeaders,
       });
 
       try {
-      const result = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
+        const result = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
 
         if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(result.receipt)) {
           set.status = verdictStatus(result.verdict);

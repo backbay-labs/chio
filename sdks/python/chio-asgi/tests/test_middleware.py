@@ -7,12 +7,15 @@ import hashlib
 from typing import Any, Awaitable, Callable
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from chio_asgi.config import ChioASGIConfig
 from chio_asgi.middleware import ChioASGIMiddleware, _extract_capability_token
 from chio_sdk.errors import ChioConnectionError
-from chio_sdk.models import EvaluateResponse, HttpReceipt, Verdict, VerifyReceiptResponse
+from chio_sdk.models import (
+    EvaluateResponse,
+    HttpReceipt,
+    Verdict,
+    VerifyReceiptResponse,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +284,33 @@ class TestAllowedRequest:
             )
             assert body_msg["body"] == expected_body
 
+    async def test_rejects_body_larger_than_buffer_limit(self) -> None:
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            instance = MockClient.return_value
+            instance.evaluate_http_request = AsyncMock()
+
+            config = ChioASGIConfig(
+                sidecar_url="http://mock:9090", max_body_bytes=5
+            )
+            mw = ChioASGIMiddleware(_body_echo_app, config=config)
+
+            scope = _make_scope(method="POST")
+            send, messages = _make_send()
+            await mw(scope, _make_chunked_receive([b"abc", b"def"]), send)
+
+            instance.evaluate_http_request.assert_not_awaited()
+            start_msg = next(
+                m for m in messages if m.get("type") == "http.response.start"
+            )
+            assert start_msg["status"] == 413
+            body_msg = next(
+                m for m in messages if m.get("type") == "http.response.body"
+            )
+            body = json.loads(body_msg["body"])
+            assert body["error"] == "RequestBodyTooLarge"
+
 
 class TestDeniedRequest:
     async def test_returns_error_on_deny(self) -> None:
@@ -368,7 +398,9 @@ class TestReceiptVerification:
         ) as MockClient:
             instance = MockClient.return_value
             instance.evaluate_http_request = AsyncMock(return_value=evaluation)
-            instance.verify_http_receipt = AsyncMock(return_value=_make_verification(False))
+            instance.verify_http_receipt = AsyncMock(
+                return_value=_make_verification(False)
+            )
 
             config = ChioASGIConfig(sidecar_url="http://mock:9090")
             mw = ChioASGIMiddleware(_echo_app, config=config)
@@ -416,6 +448,7 @@ class TestConfig:
         assert config.sidecar_url == "http://127.0.0.1:9090"
         assert "OPTIONS" in config.exclude_methods
         assert config.receipt_header == "X-Chio-Receipt"
+        assert config.max_body_bytes == 1_048_576
 
     def test_custom(self) -> None:
         config = ChioASGIConfig(

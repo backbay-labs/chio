@@ -10,14 +10,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-import time
 import uuid
 from typing import Any, Callable, Awaitable
 from urllib.parse import parse_qsl
 
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioConnectionError, ChioError, ChioTimeoutError
-from chio_sdk.models import CallerIdentity, HttpReceipt
+from chio_sdk.models import HttpReceipt
 
 from chio_asgi.config import ChioASGIConfig
 from chio_asgi.extractors import CompositeExtractor, IdentityExtractor
@@ -113,6 +112,7 @@ class ChioASGIMiddleware:
         # Read the full request body for hashing before evaluating policy.
         body_chunks: list[bytes] = []
         buffered_messages: list[dict[str, Any]] = []
+        body_length = 0
 
         while True:
             message = await receive()
@@ -120,6 +120,15 @@ class ChioASGIMiddleware:
             if message.get("type") == "http.request":
                 body = message.get("body", b"")
                 if body:
+                    body_length += len(body)
+                    if body_length > self._config.max_body_bytes:
+                        await _send_error_response(
+                            send,
+                            413,
+                            "request body exceeds Chio ASGI buffering limit",
+                            "RequestBodyTooLarge",
+                        )
+                        return
                     body_chunks.append(body)
                 if not message.get("more_body", False):
                     break
@@ -155,7 +164,7 @@ class ChioASGIMiddleware:
                 query=_query_params(scope),
                 headers=_selected_headers(scope),
                 body_hash=body_hash,
-                body_length=len(b"".join(body_chunks)) if body_chunks else 0,
+                body_length=body_length,
                 capability_token=_extract_capability_token(scope),
             )
         except (ChioConnectionError, ChioTimeoutError):

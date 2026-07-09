@@ -112,6 +112,13 @@ def test_harden_git_argv_skips_leading_global_flags() -> None:
     assert out == ["-c", "user.name=x", "commit", "--no-verify", "-m", "y"]
 
 
+def test_harden_git_argv_skips_value_taking_c_global() -> None:
+    out = harden_git_argv(["-C", "repo", "commit", "-m", "y"])
+    assert out == ["-C", "repo", "commit", "--no-verify", "-m", "y"]
+    with pytest.raises(PermissionError):
+        harden_git_argv(["-C", "repo", "commit", "--verify"])
+
+
 def test_harden_git_argv_allows_git_binary_prefix() -> None:
     out = harden_git_argv(["git", "-c", "user.name=x", "commit", "-m", "y"])
     assert out == ["git", "-c", "user.name=x", "commit", "--no-verify", "-m", "y"]

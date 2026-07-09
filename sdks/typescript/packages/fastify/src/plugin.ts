@@ -190,6 +190,7 @@ const chioPlugin: FastifyPluginAsync<ChioFastifyConfig> = async (
       bodyLength,
       routePattern,
       capabilityId,
+      forwardHeaders: resolved.forwardHeaders,
     });
 
     try {
