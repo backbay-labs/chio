@@ -76,23 +76,27 @@ class ChioClient:
         if initialize_response.status != 200 or not session_id:
             raise RuntimeError("initialize did not return a session id")
 
-        initialize_message = terminal_message(initialize_response.messages, 0)
-        negotiated_protocol_version = initialize_message.get("result", {}).get("protocolVersion")
-        if not isinstance(negotiated_protocol_version, str):
-            raise RuntimeError("initialize did not negotiate a protocol version")
-
-        session = ChioSession(
-            auth_token=self.auth_token,
-            base_url=self.base_url,
-            session_id=session_id,
-            protocol_version=negotiated_protocol_version,
-            client=self._client,
-            handshake=None,
-        )
-        callback = None
-        if on_message is not None:
-            callback = lambda message: on_message(message, session)
         try:
+            initialize_message = terminal_message(initialize_response.messages, 0)
+            negotiated_protocol_version = initialize_message.get("result", {}).get(
+                "protocolVersion"
+            )
+            if not isinstance(negotiated_protocol_version, str):
+                raise RuntimeError("initialize did not negotiate a protocol version")
+
+            session = ChioSession(
+                auth_token=self.auth_token,
+                base_url=self.base_url,
+                session_id=session_id,
+                protocol_version=negotiated_protocol_version,
+                client=self._client,
+                handshake=None,
+            )
+            callback = None
+            if on_message is not None:
+                def callback(message: dict[str, Any]) -> None:
+                    on_message(message, session)
+
             initialized_response = session.notification(
                 "notifications/initialized",
                 on_message=callback,

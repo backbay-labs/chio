@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import http, { type IncomingHttpHeaders } from "node:http";
+import { PassThrough } from "node:stream";
 import { describe, it, expect } from "vitest";
 import {
   buildChioHttpRequest,
@@ -369,6 +370,47 @@ describe("request body preservation", () => {
       expect(response.body).toBe("ok");
     } finally {
       server.close();
+      sidecar.server.close();
+    }
+  });
+
+  it("reads complete but not drained IncomingMessage bodies", async () => {
+    let lastEvaluateBody: string | undefined;
+    const sidecar = await startMockSidecar((body) => {
+      lastEvaluateBody = body;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+    const body = "complete body";
+    const req = new PassThrough() as PassThrough & http.IncomingMessage;
+    req.method = "POST";
+    req.url = "/upload";
+    req.headers = { "content-type": "text/plain" };
+    Object.defineProperty(req, "complete", {
+      configurable: true,
+      value: true,
+    });
+    req.end(body);
+    const res = new http.ServerResponse(req);
+
+    try {
+      const outcome = await interceptNodeRequest(req, res, resolved);
+      expect(outcome.responseSent).toBe(false);
+
+      const parsed = JSON.parse(lastEvaluateBody ?? "{}") as {
+        body_hash?: string;
+        body_length?: number;
+      };
+      expect(parsed.body_length).toBe(Buffer.byteLength(body));
+      expect(parsed.body_hash).toBe(
+        createHash("sha256").update(Buffer.from(body, "utf-8")).digest("hex"),
+      );
+
+      const replayed: Buffer[] = [];
+      for await (const chunk of req) {
+        replayed.push(Buffer.from(chunk));
+      }
+      expect(Buffer.concat(replayed).toString("utf-8")).toBe(body);
+    } finally {
       sidecar.server.close();
     }
   });

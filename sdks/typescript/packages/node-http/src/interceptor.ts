@@ -566,7 +566,7 @@ async function getNodeRequestBody(req: IncomingMessage): Promise<Buffer> {
 }
 
 function readBody(req: IncomingMessage): Promise<Buffer> {
-  if (req.readableEnded || req.complete) {
+  if (req.readableEnded) {
     return Promise.resolve(Buffer.alloc(0));
   }
 

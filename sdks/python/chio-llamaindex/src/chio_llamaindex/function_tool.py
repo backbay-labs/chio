@@ -136,7 +136,7 @@ class ChioFunctionTool(FunctionTool):
             else RedactionPolicy.chio_default()
         )
         self._last_receipt: ChioReceipt | None = None
-        self._tool_callable = fn or async_fn
+        self._tool_callable = async_fn or fn
 
     # ------------------------------------------------------------------
     # Accessors
