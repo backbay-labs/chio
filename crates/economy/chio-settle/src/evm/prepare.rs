@@ -1118,6 +1118,11 @@ pub async fn prepare_dual_sign_release(
         receipt_hash: format_b256(receipt_hash),
         digest: format_b256(digest),
         operator_epoch: registry_evidence.operator_epoch,
+        identity_registry_evidence_binding: DualSignRegistryEvidenceBinding {
+            identity_registry_contract: config.identity_registry_contract.clone(),
+            operator_address: config.operator_address.clone(),
+            settlement_key: format!("{signer_address:?}"),
+        },
         identity_registry_evidence: registry_evidence,
         settlement_amount_minor_units: amount_minor_units,
         observed_amount: input.observed_amount.clone(),

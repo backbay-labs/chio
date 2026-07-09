@@ -58,6 +58,13 @@ pub(crate) const PUBLIC_SETTLEMENT_FINALITY_REPORT_STATUSES: &[&str] = &[
 mod settlement_proof_types;
 pub use settlement_proof_types::*;
 
+#[path = "settlement_proof_event_validation.rs"]
+mod settlement_proof_event_validation;
+use settlement_proof_event_validation::{
+    validate_dispute_event_block, validate_dispute_event_blocks,
+    validate_identity_registry_operator_snapshot, validate_release_event,
+};
+
 pub fn verify_public_settlement_proof(
     bundle: &PublicSettlementProofBundle,
     trust: &PublicSettlementVerifierTrust,
@@ -72,7 +79,7 @@ pub fn verify_public_settlement_proof(
     validate_deployment_provenance(bundle, trust)?;
     validate_identity_registry_evidence_binding(bundle)?;
     validate_order_binding(bundle)?;
-    validate_chain_snapshot(bundle)?;
+    validate_chain_snapshot(bundle, trust)?;
     validate_independent_chain_head(bundle, trust)?;
     validate_finality(bundle)?;
     validate_dispute_posture(bundle, trust)?;
@@ -552,9 +559,70 @@ fn validate_identity_registry_evidence_binding(
             "public settlement identity registry evidence operator key mismatch".to_string(),
         ));
     }
+    let operator_snapshot = bundle
+        .chain_snapshot
+        .identity_registry_operator
+        .as_ref()
+        .ok_or_else(|| {
+            Web3ContractError::InvalidProof(
+                "public settlement identity registry operator snapshot missing".to_string(),
+            )
+        })?;
+    validate_identity_registry_operator_snapshot(bundle, operator_snapshot)?;
+    if !evm_addresses_match(
+        &evidence.identity_registry_contract,
+        &operator_snapshot.identity_registry_contract,
+    )? {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence operator snapshot contract mismatch"
+                .to_string(),
+        ));
+    }
+    if !evm_addresses_match(
+        &evidence.operator_address,
+        &operator_snapshot.operator_address,
+    )? {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence operator snapshot address mismatch"
+                .to_string(),
+        ));
+    }
+    if !hashes_match(
+        &evidence.operator_key_hash,
+        &operator_snapshot.operator_key_hash,
+    )? {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence operator snapshot key mismatch"
+                .to_string(),
+        ));
+    }
+    if !evm_addresses_match(&evidence.settlement_key, &operator_snapshot.settlement_key)? {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence settlement key mismatch".to_string(),
+        ));
+    }
+    if evidence.active != operator_snapshot.active {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence active flag mismatch".to_string(),
+        ));
+    }
     if evidence.operator_epoch != chain_anchor.operator_epoch {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement identity registry evidence operator epoch mismatch".to_string(),
+        ));
+    }
+    if evidence.operator_epoch != operator_snapshot.operator_epoch {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence operator snapshot epoch mismatch"
+                .to_string(),
+        ));
+    }
+    if evidence.block_number != operator_snapshot.block_number
+        || evidence.block_hash != operator_snapshot.block_hash
+    {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence operator snapshot block mismatch"
+                .to_string(),
         ));
     }
     if evidence.block_number > chain_anchor.block_number
@@ -1026,7 +1094,10 @@ fn validate_chain_binding(bundle: &PublicSettlementProofBundle) -> Result<(), We
     Ok(())
 }
 
-fn validate_chain_snapshot(bundle: &PublicSettlementProofBundle) -> Result<(), Web3ContractError> {
+fn validate_chain_snapshot(
+    bundle: &PublicSettlementProofBundle,
+    trust: &PublicSettlementVerifierTrust,
+) -> Result<(), Web3ContractError> {
     let snapshot = &bundle.chain_snapshot;
     ensure_non_empty(
         &snapshot.chain_id,
@@ -1102,8 +1173,11 @@ fn validate_chain_snapshot(bundle: &PublicSettlementProofBundle) -> Result<(), W
             "public settlement registry root mismatch".to_string(),
         ));
     }
+    if let Some(operator_snapshot) = snapshot.identity_registry_operator.as_ref() {
+        validate_identity_registry_operator_snapshot(bundle, operator_snapshot)?;
+    }
 
-    validate_escrow_snapshot(bundle, &snapshot.escrow)?;
+    validate_escrow_snapshot(bundle, &snapshot.escrow, trust)?;
     validate_bond_snapshot(bundle, required_bond_snapshot(bundle)?)?;
     validate_block_snapshot(required_block_snapshot(bundle)?, chain_anchor)?;
     validate_beneficiary_identity_binding(bundle, required_beneficiary_identity_binding(bundle)?)?;
@@ -1261,6 +1335,7 @@ fn validate_beneficiary_identity_binding(
 fn validate_escrow_snapshot(
     bundle: &PublicSettlementProofBundle,
     escrow: &PublicSettlementEscrowSnapshot,
+    trust: &PublicSettlementVerifierTrust,
 ) -> Result<(), Web3ContractError> {
     ensure_non_empty(
         &escrow.escrow_id,
@@ -1324,6 +1399,11 @@ fn validate_escrow_snapshot(
             "public settlement escrow balance below required amount".to_string(),
         ));
     }
+    if escrow.released_amount.units > escrow.locked_amount.units {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement escrow released amount exceeds locked amount".to_string(),
+        ));
+    }
     if bundle.settlement_receipt.lifecycle_state == Web3SettlementLifecycleState::TimedOut {
         if !escrow.refunded {
             return Err(Web3ContractError::InvalidSettlement(
@@ -1351,10 +1431,12 @@ fn validate_escrow_snapshot(
                 "public settlement non-timeout escrow includes refund evidence".to_string(),
             ));
         }
-        if escrow.released_amount.units != bundle.settlement_receipt.settled_amount.units {
-            return Err(Web3ContractError::InvalidSettlement(
-                "public settlement escrow released amount mismatch".to_string(),
-            ));
+        if escrow.released_amount.units == bundle.settlement_receipt.settled_amount.units {
+            if escrow.release_event.is_some() {
+                validate_release_event(bundle, escrow, trust)?;
+            }
+        } else {
+            validate_release_event(bundle, escrow, trust)?;
         }
     }
     Ok(())
@@ -1821,128 +1903,6 @@ fn validate_dispute_snapshot(
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement active dispute missing".to_string(),
         ));
-    }
-    Ok(())
-}
-
-fn validate_dispute_event_blocks(
-    bundle: &PublicSettlementProofBundle,
-    dispute: &PublicSettlementDisputeSnapshot,
-    trusted_blocks: &[PublicSettlementBlockSnapshot],
-) -> Result<(), Web3ContractError> {
-    for tx_hash in &dispute.chain_event_tx_hashes {
-        ensure_non_empty(tx_hash, "public_settlement.dispute.chain_event_tx_hashes")?;
-        Hash::from_hex(tx_hash)
-            .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
-    }
-    if dispute.chain_event_tx_hashes.is_empty() {
-        if dispute.posture != PublicSettlementDisputePosture::Undisputed {
-            return Err(Web3ContractError::InvalidProof(
-                "public settlement dispute event evidence missing".to_string(),
-            ));
-        }
-        if !dispute.chain_event_blocks.is_empty() {
-            return Err(Web3ContractError::InvalidProof(
-                "public settlement dispute event block without tx hash".to_string(),
-            ));
-        }
-        return Ok(());
-    }
-    if dispute.chain_event_blocks.is_empty() {
-        return Err(Web3ContractError::InvalidProof(
-            "public settlement dispute event block evidence missing".to_string(),
-        ));
-    }
-    if trusted_blocks.is_empty() {
-        return Err(Web3ContractError::InvalidProof(
-            "public settlement dispute event trusted block evidence missing".to_string(),
-        ));
-    }
-    let chain_anchor = required_chain_anchor(bundle)?;
-    for block in &dispute.chain_event_blocks {
-        validate_dispute_event_block(block, chain_anchor.block_number, bundle)?;
-        let Some(trusted_block) = trusted_blocks.iter().find(|trusted_block| {
-            trusted_block.block_number == block.block_number
-                && trusted_block.block_hash == block.block_hash
-        }) else {
-            return Err(Web3ContractError::InvalidProof(
-                "public settlement dispute event block is not trusted".to_string(),
-            ));
-        };
-        validate_dispute_event_block(trusted_block, chain_anchor.block_number, bundle)?;
-    }
-    for tx_hash in &dispute.chain_event_tx_hashes {
-        if !dispute.chain_event_blocks.iter().any(|block| {
-            block
-                .transaction_hashes
-                .iter()
-                .any(|block_tx_hash| block_tx_hash == tx_hash)
-        }) {
-            return Err(Web3ContractError::InvalidProof(
-                "public settlement dispute event tx hash not included in event block".to_string(),
-            ));
-        }
-        if !trusted_blocks.iter().any(|block| {
-            dispute.chain_event_blocks.iter().any(|bundle_block| {
-                bundle_block.block_number == block.block_number
-                    && bundle_block.block_hash == block.block_hash
-            }) && block
-                .transaction_hashes
-                .iter()
-                .any(|block_tx_hash| block_tx_hash == tx_hash)
-        }) {
-            return Err(Web3ContractError::InvalidProof(
-                "public settlement dispute event tx hash not included in trusted event block"
-                    .to_string(),
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn validate_dispute_event_block(
-    block: &PublicSettlementBlockSnapshot,
-    anchor_block_number: u64,
-    bundle: &PublicSettlementProofBundle,
-) -> Result<(), Web3ContractError> {
-    ensure_non_empty(
-        &block.block_hash,
-        "public_settlement.dispute.chain_event_blocks.block_hash",
-    )?;
-    Hash::from_hex(&block.block_hash)
-        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
-    if block.block_number < anchor_block_number {
-        return Err(Web3ContractError::InvalidProof(
-            "public settlement dispute event block predates anchor block".to_string(),
-        ));
-    }
-    if block.block_number > bundle.chain_snapshot.latest_block_number {
-        return Err(Web3ContractError::InvalidProof(
-            "public settlement dispute event block exceeds latest block".to_string(),
-        ));
-    }
-    let confirmations = bundle
-        .chain_snapshot
-        .latest_block_number
-        .saturating_sub(block.block_number)
-        .saturating_add(1);
-    if confirmations < u64::from(bundle.required_confirmations) {
-        return Err(Web3ContractError::InvalidProof(
-            "public settlement dispute event block below finality threshold".to_string(),
-        ));
-    }
-    if block.transaction_hashes.is_empty() {
-        return Err(Web3ContractError::InvalidProof(
-            "public settlement dispute event block transaction list is empty".to_string(),
-        ));
-    }
-    for tx_hash in &block.transaction_hashes {
-        ensure_non_empty(
-            tx_hash,
-            "public_settlement.dispute.chain_event_blocks.transaction_hashes",
-        )?;
-        Hash::from_hex(tx_hash)
-            .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
     }
     Ok(())
 }

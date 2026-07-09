@@ -103,6 +103,14 @@ pub struct Web3SettlementIdentityRegistryEvidence {
     pub active: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Web3SettlementIdentityRegistryEvidenceBinding {
+    pub identity_registry_contract: String,
+    pub operator_address: String,
+    pub settlement_key: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Web3SettlementExecutionReceiptArtifact {
@@ -117,6 +125,8 @@ pub struct Web3SettlementExecutionReceiptArtifact {
     pub reconciled_anchor_proof: Option<AnchorInclusionProof>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity_registry_evidence: Option<Web3SettlementIdentityRegistryEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_registry_evidence_binding: Option<Web3SettlementIdentityRegistryEvidenceBinding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oracle_evidence: Option<OracleConversionEvidence>,
     pub settled_amount: MonetaryAmount,
@@ -438,6 +448,13 @@ pub fn validate_web3_settlement_execution_receipt(
     }
     if let Some(registry_evidence) = receipt.identity_registry_evidence.as_ref() {
         validate_identity_registry_evidence(receipt, registry_evidence)?;
+        if let Some(binding) = receipt.identity_registry_evidence_binding.as_ref() {
+            validate_identity_registry_evidence_binding(registry_evidence, binding)?;
+        }
+    } else if receipt.identity_registry_evidence_binding.is_some() {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity_registry_evidence_binding requires identity_registry_evidence",
+        ));
     }
     let requires_registry_evidence = receipt_v2
         && receipt.dispatch.settlement_path == Web3SettlementPath::DualSignature
@@ -448,6 +465,11 @@ pub fn validate_web3_settlement_execution_receipt(
     if requires_registry_evidence && receipt.identity_registry_evidence.is_none() {
         return Err(Web3ContractError::invalid_settlement(
             "dual-sign settlement receipts require identity_registry_evidence",
+        ));
+    }
+    if requires_registry_evidence && receipt.identity_registry_evidence_binding.is_none() {
+        return Err(Web3ContractError::invalid_settlement(
+            "dual-sign settlement receipts require identity_registry_evidence_binding",
         ));
     }
     if receipt
@@ -595,6 +617,43 @@ fn validate_identity_registry_evidence(
     if evidence_operator_key != dispatch_operator_key {
         return Err(Web3ContractError::invalid_settlement(
             "identity registry evidence operator_key_hash must match dispatch operator_key_hash",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_identity_registry_evidence_binding(
+    evidence: &Web3SettlementIdentityRegistryEvidence,
+    binding: &Web3SettlementIdentityRegistryEvidenceBinding,
+) -> Result<(), Web3ContractError> {
+    ensure_non_zero_evm_address(
+        &binding.identity_registry_contract,
+        "identity_registry_evidence_binding.identity_registry_contract",
+    )?;
+    ensure_non_zero_evm_address(
+        &binding.operator_address,
+        "identity_registry_evidence_binding.operator_address",
+    )?;
+    ensure_non_zero_evm_address(
+        &binding.settlement_key,
+        "identity_registry_evidence_binding.settlement_key",
+    )?;
+    if !evm_addresses_match(
+        &evidence.identity_registry_contract,
+        &binding.identity_registry_contract,
+    )? {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence contract must match binding",
+        ));
+    }
+    if !evm_addresses_match(&evidence.operator_address, &binding.operator_address)? {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence operator must match binding",
+        ));
+    }
+    if !evm_addresses_match(&evidence.settlement_key, &binding.settlement_key)? {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence settlement_key must match binding",
         ));
     }
     Ok(())

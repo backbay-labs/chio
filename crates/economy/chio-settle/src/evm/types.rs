@@ -158,6 +158,26 @@ impl From<DualSignRegistryEvidence>
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
+pub struct DualSignRegistryEvidenceBinding {
+    pub identity_registry_contract: String,
+    pub operator_address: String,
+    pub settlement_key: String,
+}
+
+impl From<DualSignRegistryEvidenceBinding>
+    for chio_core::web3::settlement::Web3SettlementIdentityRegistryEvidenceBinding
+{
+    fn from(binding: DualSignRegistryEvidenceBinding) -> Self {
+        Self {
+            identity_registry_contract: binding.identity_registry_contract,
+            operator_address: binding.operator_address,
+            settlement_key: binding.settlement_key,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct PreparedDualSignRelease {
     pub escrow_id: String,
     pub chain_id: String,
@@ -165,6 +185,7 @@ pub struct PreparedDualSignRelease {
     pub digest: String,
     pub operator_epoch: u64,
     pub identity_registry_evidence: DualSignRegistryEvidence,
+    pub identity_registry_evidence_binding: DualSignRegistryEvidenceBinding,
     pub settlement_amount_minor_units: u128,
     pub observed_amount: MonetaryAmount,
     pub signature: EvmSignature,

@@ -35,9 +35,10 @@ use crate::settlement::{
     settlement_anchor_receipt_content_hash_parts, validate_web3_settlement_dispatch,
     validate_web3_settlement_execution_receipt, Web3SettlementDispatchArtifact,
     Web3SettlementExecutionReceiptArtifact, Web3SettlementIdentityRegistryEvidence,
-    Web3SettlementLifecycleState, Web3SettlementSupportBoundary,
-    CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA, CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA,
-    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA, CHIO_WEB3_SETTLEMENT_RECEIPT_V1_SCHEMA,
+    Web3SettlementIdentityRegistryEvidenceBinding, Web3SettlementLifecycleState,
+    Web3SettlementSupportBoundary, CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA,
+    CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA, CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+    CHIO_WEB3_SETTLEMENT_RECEIPT_V1_SCHEMA,
 };
 use crate::settlement_proof::{
     public_settlement_witness_body_hash, verify_public_settlement_proof,
@@ -595,7 +596,7 @@ pub(super) fn sample_dispatch() -> Web3SettlementDispatchArtifact {
     }
 }
 
-fn sample_identity_registry_evidence() -> Web3SettlementIdentityRegistryEvidence {
+pub(super) fn sample_identity_registry_evidence() -> Web3SettlementIdentityRegistryEvidence {
     Web3SettlementIdentityRegistryEvidence {
         chain_id: "eip155:8453".to_string(),
         identity_registry_contract: "0x1000000000000000000000000000000000000004".to_string(),
@@ -612,7 +613,16 @@ fn sample_identity_registry_evidence() -> Web3SettlementIdentityRegistryEvidence
     }
 }
 
-fn sample_execution_receipt() -> Web3SettlementExecutionReceiptArtifact {
+pub(super) fn sample_identity_registry_evidence_binding(
+) -> Web3SettlementIdentityRegistryEvidenceBinding {
+    Web3SettlementIdentityRegistryEvidenceBinding {
+        identity_registry_contract: "0x1000000000000000000000000000000000000004".to_string(),
+        operator_address: "0x1111111111111111111111111111111111111111".to_string(),
+        settlement_key: "0x1111111111111111111111111111111111111111".to_string(),
+    }
+}
+
+pub(super) fn sample_execution_receipt() -> Web3SettlementExecutionReceiptArtifact {
     Web3SettlementExecutionReceiptArtifact {
         schema: CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA.to_string(),
         execution_receipt_id: "receipt-web3-1".to_string(),
@@ -632,6 +642,7 @@ fn sample_execution_receipt() -> Web3SettlementExecutionReceiptArtifact {
         settlement_reference: "settlement-web3-1".to_string(),
         reconciled_anchor_proof: Some(sample_anchor_inclusion_proof()),
         identity_registry_evidence: None,
+        identity_registry_evidence_binding: None,
         oracle_evidence: Some(sample_oracle_evidence()),
         settled_amount: MonetaryAmount {
             units: 150,
@@ -778,6 +789,7 @@ pub(super) fn sample_public_settlement_verifier_trust() -> PublicSettlementVerif
             latest_block_number: 12_345_701,
         }),
         trusted_dispute_event_blocks: Vec::new(),
+        trusted_release_event_blocks: Vec::new(),
         verifier_now_unix_seconds: Some(1_743_293_860),
         trusted_runtime_codehashes: Some(PublicSettlementRuntimeCodehashTrust {
             contract_package_id: provenance.contract_package_id,
@@ -863,6 +875,16 @@ fn sample_public_settlement_chain_snapshot_json() -> serde_json::Value {
         "root_registry_runtime_codehash": SAMPLE_ROOT_REGISTRY_RUNTIME_CODEHASH,
         "identity_registry_address": "0x1000000000000000000000000000000000000004",
         "identity_registry_runtime_codehash": SAMPLE_IDENTITY_REGISTRY_RUNTIME_CODEHASH,
+        "identity_registry_operator": {
+            "identity_registry_contract": "0x1000000000000000000000000000000000000004",
+            "operator_address": "0x1111111111111111111111111111111111111111",
+            "operator_key_hash": sample_operator_key_hash(),
+            "settlement_key": "0x1111111111111111111111111111111111111111",
+            "operator_epoch": 1,
+            "active": true,
+            "block_number": 12_345_678,
+            "block_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
         "registry_root": registry_root,
         "block": {
             "block_number": 12_345_678,
@@ -1282,49 +1304,6 @@ fn merkle_settlement_receipt_rejects_dispatch_anchor_key_hash_mismatch() {
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("dispatch operator_key_hash")
     ));
-}
-
-#[test]
-fn dual_sign_settlement_receipt_requires_registry_evidence() {
-    let mut receipt = sample_execution_receipt();
-    receipt.dispatch.settlement_path = Web3SettlementPath::DualSignature;
-    receipt.dispatch.support_boundary.anchor_proof_required = false;
-    receipt.reconciled_anchor_proof = None;
-
-    assert!(matches!(
-        validate_web3_settlement_execution_receipt(&receipt),
-        Err(Web3ContractError::InvalidSettlement(message))
-            if message.contains("identity_registry_evidence")
-    ));
-}
-
-#[test]
-fn dual_sign_settlement_receipt_rejects_registry_key_hash_mismatch() {
-    let mut receipt = sample_execution_receipt();
-    receipt.dispatch.settlement_path = Web3SettlementPath::DualSignature;
-    receipt.dispatch.support_boundary.anchor_proof_required = false;
-    receipt.reconciled_anchor_proof = None;
-    let mut evidence = sample_identity_registry_evidence();
-    evidence.operator_key_hash =
-        "0x8888888888888888888888888888888888888888888888888888888888888888".to_string();
-    receipt.identity_registry_evidence = Some(evidence);
-
-    assert!(matches!(
-        validate_web3_settlement_execution_receipt(&receipt),
-        Err(Web3ContractError::InvalidSettlement(message))
-            if message.contains("operator_key_hash")
-    ));
-}
-
-#[test]
-fn dual_sign_settlement_receipt_accepts_registry_evidence() {
-    let mut receipt = sample_execution_receipt();
-    receipt.dispatch.settlement_path = Web3SettlementPath::DualSignature;
-    receipt.dispatch.support_boundary.anchor_proof_required = false;
-    receipt.reconciled_anchor_proof = None;
-    receipt.identity_registry_evidence = Some(sample_identity_registry_evidence());
-
-    validate_web3_settlement_execution_receipt(&receipt).unwrap();
 }
 
 #[test]
@@ -1836,6 +1815,19 @@ fn public_settlement_proof_binds_identity_registry_evidence_to_deployment_and_an
                 || message.contains("identity registry evidence operator key mismatch")
     ));
 
+    let mut wrong_settlement_key = bundle.clone();
+    wrong_settlement_key
+        .chain_snapshot
+        .identity_registry_operator
+        .as_mut()
+        .expect("sample proof carries registry operator snapshot")
+        .settlement_key = "0x2000000000000000000000000000000000000001".to_string();
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&wrong_settlement_key),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("settlement key mismatch")
+    ));
+
     let mut future_block = bundle;
     future_block
         .settlement_receipt
@@ -1846,7 +1838,8 @@ fn public_settlement_proof_binds_identity_registry_evidence_to_deployment_and_an
     assert!(matches!(
         verify_sample_public_settlement_proof(&future_block),
         Err(Web3ContractError::InvalidSettlement(message))
-            if message.contains("identity registry evidence block exceeds observed chain state")
+            if message.contains("block exceeds observed chain state")
+                || message.contains("operator snapshot block mismatch")
     ));
 }
 

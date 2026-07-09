@@ -859,6 +859,12 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
             identity_registry_evidence: Some(
                 dual_release.identity_registry_evidence.clone().into(),
             ),
+            identity_registry_evidence_binding: Some(
+                dual_release
+                    .identity_registry_evidence_binding
+                    .clone()
+                    .into(),
+            ),
             oracle_evidence: Some(&oracle_evidence),
             failure_reason: None,
             reversal_of: None,
@@ -986,6 +992,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
             },
             anchor_proof: None,
             identity_registry_evidence: None,
+            identity_registry_evidence_binding: None,
             oracle_evidence: None,
             failure_reason: Some("escrow deadline elapsed before release".to_string()),
             reversal_of: None,

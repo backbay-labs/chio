@@ -134,6 +134,7 @@ pub struct PublicSettlementVerifierTrust {
     pub expected_trust_market_context: Option<PublicSettlementTrustMarketContext>,
     pub independent_chain_head: Option<PublicSettlementIndependentChainHead>,
     pub trusted_dispute_event_blocks: Vec<PublicSettlementBlockSnapshot>,
+    pub trusted_release_event_blocks: Vec<PublicSettlementBlockSnapshot>,
     pub verifier_now_unix_seconds: Option<u64>,
     pub trusted_runtime_codehashes: Option<PublicSettlementRuntimeCodehashTrust>,
 }
@@ -169,6 +170,8 @@ pub struct PublicSettlementChainSnapshot {
     pub root_registry_runtime_codehash: String,
     pub identity_registry_address: String,
     pub identity_registry_runtime_codehash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_registry_operator: Option<PublicSettlementIdentityRegistryOperatorSnapshot>,
     pub registry_root: String,
     pub escrow: PublicSettlementEscrowSnapshot,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -177,6 +180,19 @@ pub struct PublicSettlementChainSnapshot {
     pub block: Option<PublicSettlementBlockSnapshot>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub beneficiary_identity_binding: Option<SignedWeb3IdentityBinding>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicSettlementIdentityRegistryOperatorSnapshot {
+    pub identity_registry_contract: String,
+    pub operator_address: String,
+    pub operator_key_hash: String,
+    pub settlement_key: String,
+    pub operator_epoch: u64,
+    pub active: bool,
+    pub block_number: u64,
+    pub block_hash: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,7 +207,22 @@ pub struct PublicSettlementEscrowSnapshot {
     pub released_amount: crate::capability::scope::MonetaryAmount,
     pub refunded: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_event: Option<PublicSettlementReleaseEvent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refund_event: Option<PublicSettlementRefundEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicSettlementReleaseEvent {
+    pub escrow_id: String,
+    pub release_tx_hash: String,
+    pub receipt_hash: String,
+    pub amount: crate::capability::scope::MonetaryAmount,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remaining_amount: Option<crate::capability::scope::MonetaryAmount>,
+    pub partial: bool,
+    pub block: PublicSettlementBlockSnapshot,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

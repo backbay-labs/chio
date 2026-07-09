@@ -2,7 +2,8 @@ use chio_core::web3::anchors::{AnchorInclusionProof, OracleConversionEvidence};
 use chio_core::web3::settlement::{
     validate_web3_settlement_execution_receipt, Web3SettlementDispatchArtifact,
     Web3SettlementExecutionReceiptArtifact, Web3SettlementIdentityRegistryEvidence,
-    Web3SettlementLifecycleState, CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
+    Web3SettlementIdentityRegistryEvidenceBinding, Web3SettlementLifecycleState,
+    CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA,
 };
 use chio_egress_contract::{client_builder_with_contract, send_with_contract};
 use serde::{Deserialize, Serialize};
@@ -95,6 +96,7 @@ pub struct ExecutionProjectionInput<'a> {
     pub observed_amount: chio_core::capability::scope::MonetaryAmount,
     pub anchor_proof: Option<&'a AnchorInclusionProof>,
     pub identity_registry_evidence: Option<Web3SettlementIdentityRegistryEvidence>,
+    pub identity_registry_evidence_binding: Option<Web3SettlementIdentityRegistryEvidenceBinding>,
     pub oracle_evidence: Option<&'a OracleConversionEvidence>,
     pub failure_reason: Option<String>,
     pub reversal_of: Option<String>,
@@ -223,6 +225,7 @@ pub async fn project_escrow_execution_receipt(
         settlement_reference: input.settlement_reference,
         reconciled_anchor_proof: input.anchor_proof.cloned(),
         identity_registry_evidence: input.identity_registry_evidence,
+        identity_registry_evidence_binding: input.identity_registry_evidence_binding,
         oracle_evidence: input.oracle_evidence.cloned(),
         settled_amount,
         reversal_of: input.reversal_of.clone(),
@@ -607,6 +610,17 @@ mod tests {
             registered_at: 1_743_292_700,
             operator_epoch: 1,
             active: true,
+        }
+    }
+
+    fn sample_identity_registry_evidence_binding(
+        dispatch: &Web3SettlementDispatchArtifact,
+        config: &SettlementChainConfig,
+    ) -> Web3SettlementIdentityRegistryEvidenceBinding {
+        Web3SettlementIdentityRegistryEvidenceBinding {
+            identity_registry_contract: config.identity_registry_contract.clone(),
+            operator_address: config.operator_address.clone(),
+            settlement_key: dispatch.beneficiary_address.clone(),
         }
     }
 
@@ -1033,6 +1047,7 @@ mod tests {
                 observed_amount: dispatch.settlement_amount.clone(),
                 anchor_proof: None,
                 identity_registry_evidence: None,
+                identity_registry_evidence_binding: None,
                 oracle_evidence: None,
                 failure_reason: None,
                 reversal_of: None,
@@ -1120,6 +1135,9 @@ mod tests {
                 identity_registry_evidence: Some(sample_identity_registry_evidence(
                     &dispatch, &config,
                 )),
+                identity_registry_evidence_binding: Some(
+                    sample_identity_registry_evidence_binding(&dispatch, &config),
+                ),
                 oracle_evidence: None,
                 failure_reason: Some("partial release".to_string()),
                 reversal_of: None,

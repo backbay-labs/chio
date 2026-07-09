@@ -1,9 +1,13 @@
+use alloy_primitives::keccak256;
+
 use crate::anchors::validate_anchor_inclusion_proof;
+use crate::canonical::canonical_json_bytes;
 use crate::error::Web3ContractError;
+use crate::hashing::Hash;
 use crate::settlement::Web3SettlementLifecycleState;
 use crate::settlement_proof::{
     verify_public_settlement_proof, PublicSettlementBlockSnapshot, PublicSettlementDisputePosture,
-    PublicSettlementRefundEvent,
+    PublicSettlementRefundEvent, PublicSettlementReleaseEvent,
 };
 use serde_json::json;
 
@@ -27,6 +31,75 @@ fn sample_dispute_event_block() -> PublicSettlementBlockSnapshot {
     }
 }
 
+fn sample_release_event_block() -> PublicSettlementBlockSnapshot {
+    PublicSettlementBlockSnapshot {
+        block_number: 12_345_679,
+        block_hash: "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            .to_string(),
+        transaction_hashes: vec![
+            "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".to_string(),
+        ],
+    }
+}
+
+fn anchored_receipt_hash(bundle: &crate::settlement_proof::PublicSettlementProofBundle) -> String {
+    let anchor_proof = bundle
+        .settlement_receipt
+        .reconciled_anchor_proof
+        .as_ref()
+        .expect("sample proof has reconciled anchor proof");
+    let receipt_bytes = canonical_json_bytes(&anchor_proof.receipt.body())
+        .expect("anchored receipt body canonicalizes");
+    let receipt_hash = keccak256(receipt_bytes);
+    let mut bytes = [0_u8; 32];
+    bytes.copy_from_slice(receipt_hash.as_slice());
+    Hash::from_bytes(bytes).to_hex_prefixed()
+}
+
+fn make_later_partial_release_bundle(
+    with_release_event: bool,
+) -> (
+    crate::settlement_proof::PublicSettlementProofBundle,
+    PublicSettlementBlockSnapshot,
+) {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    let release_block = sample_release_event_block();
+    bundle.settlement_receipt.lifecycle_state = Web3SettlementLifecycleState::PartiallySettled;
+    bundle.settlement_receipt.settled_amount.units = 30;
+    bundle.settlement_receipt.observed_execution.amount.units = 30;
+    bundle.chain_snapshot.escrow.released_amount.units = 50;
+    if with_release_event {
+        bundle.chain_snapshot.escrow.release_event = Some(PublicSettlementReleaseEvent {
+            escrow_id: bundle.chain_snapshot.escrow.escrow_id.clone(),
+            release_tx_hash: bundle
+                .settlement_receipt
+                .observed_execution
+                .external_reference_id
+                .clone(),
+            receipt_hash: anchored_receipt_hash(&bundle),
+            amount: bundle.settlement_receipt.settled_amount.clone(),
+            remaining_amount: Some(crate::capability::scope::MonetaryAmount {
+                units: 100,
+                currency: "USD".to_string(),
+            }),
+            partial: true,
+            block: release_block.clone(),
+        });
+    }
+    (bundle, release_block)
+}
+
+fn verify_sample_public_settlement_proof_with_release_event_evidence(
+    bundle: &crate::settlement_proof::PublicSettlementProofBundle,
+    event_block: PublicSettlementBlockSnapshot,
+) -> Result<crate::settlement_proof::PublicSettlementVerifierReport, Web3ContractError> {
+    let mut signed_bundle = bundle.clone();
+    sign_sample_public_settlement_bundle(&mut signed_bundle);
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_release_event_blocks = vec![event_block];
+    verify_public_settlement_proof(&signed_bundle, &trust)
+}
+
 #[test]
 fn anchor_inclusion_proof_accepts_operator_address_case_mismatch() {
     let mut proof = sample_anchor_inclusion_proof();
@@ -38,6 +111,63 @@ fn anchor_inclusion_proof_accepts_operator_address_case_mismatch() {
         "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string();
 
     validate_anchor_inclusion_proof(&proof).unwrap();
+}
+
+#[test]
+fn public_settlement_proof_accepts_later_partial_release_with_release_event() {
+    let (bundle, release_block) = make_later_partial_release_bundle(true);
+    let report =
+        verify_sample_public_settlement_proof_with_release_event_evidence(&bundle, release_block)
+            .unwrap();
+
+    assert_eq!(report.finality_decision.status, "partially_settled");
+    assert_eq!(report.recomputed_settlement_state, "partially_settled");
+}
+
+#[test]
+fn public_settlement_proof_rejects_later_partial_release_without_release_event() {
+    let (mut bundle, release_block) = make_later_partial_release_bundle(false);
+    sign_sample_public_settlement_bundle(&mut bundle);
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_release_event_blocks = vec![release_block];
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &trust),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement escrow release event missing")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_partial_release_event_amount_mismatch() {
+    let (mut bundle, release_block) = make_later_partial_release_bundle(true);
+    bundle
+        .chain_snapshot
+        .escrow
+        .release_event
+        .as_mut()
+        .expect("sample carries release event")
+        .amount
+        .units = 29;
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof_with_release_event_evidence(&bundle, release_block),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("public settlement release event amount mismatch")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_partial_release_event_untrusted_block() {
+    let (mut bundle, _) = make_later_partial_release_bundle(true);
+    sign_sample_public_settlement_bundle(&mut bundle);
+    let trust = sample_public_settlement_verifier_trust();
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &trust),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("trusted release event block")
+    ));
 }
 
 #[test]

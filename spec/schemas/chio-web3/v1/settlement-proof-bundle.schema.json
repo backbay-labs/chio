@@ -230,6 +230,9 @@
           "type": "string",
           "pattern": "^0x[0-9a-fA-F]{64}$"
         },
+        "identity_registry_operator": {
+          "$ref": "#/$defs/identityRegistryOperatorSnapshot"
+        },
         "registry_root": {
           "type": "string",
           "pattern": "^0x[0-9a-fA-F]{64}$"
@@ -389,7 +392,74 @@
         "locked_amount": { "$ref": "#/$defs/money" },
         "released_amount": { "$ref": "#/$defs/nonNegativeMoney" },
         "refunded": { "type": "boolean" },
+        "release_event": { "$ref": "#/$defs/releaseEvent" },
         "refund_event": { "$ref": "#/$defs/refundEvent" }
+      }
+    },
+    "identityRegistryOperatorSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity_registry_contract",
+        "operator_address",
+        "operator_key_hash",
+        "settlement_key",
+        "operator_epoch",
+        "active",
+        "block_number",
+        "block_hash"
+      ],
+      "properties": {
+        "identity_registry_contract": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        },
+        "operator_address": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        },
+        "operator_key_hash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "settlement_key": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{40}$"
+        },
+        "operator_epoch": { "type": "integer", "minimum": 1 },
+        "active": { "type": "boolean" },
+        "block_number": { "type": "integer", "minimum": 1 },
+        "block_hash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        }
+      }
+    },
+    "releaseEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "escrow_id",
+        "release_tx_hash",
+        "receipt_hash",
+        "amount",
+        "partial",
+        "block"
+      ],
+      "properties": {
+        "escrow_id": { "type": "string", "minLength": 1 },
+        "release_tx_hash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "receipt_hash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "amount": { "$ref": "#/$defs/nonNegativeMoney" },
+        "remaining_amount": { "$ref": "#/$defs/nonNegativeMoney" },
+        "partial": { "type": "boolean" },
+        "block": { "$ref": "#/$defs/blockSnapshot" }
       }
     },
     "refundEvent": {

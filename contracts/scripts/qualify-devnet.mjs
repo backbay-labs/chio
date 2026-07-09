@@ -3281,17 +3281,33 @@ async function main() {
     logStep(`escrow: waiting past refund deadline ${refundTerms.deadline}`);
     const refundRpcSigner = await provider.getSigner(wallets.outsider.address);
     await (await escrow.connect(adminRpcSigner).setPaused(true)).wait();
+    assert.equal(
+      await escrow.paused(),
+      true,
+      "escrow pause must be active while proving timeout refund remains open",
+    );
     logStep("escrow: submitting refund transaction");
     const refundTx = await escrow
       .connect(refundRpcSigner)
       .refund(refundEscrowId, { gasLimit: 250_000n });
-    await waitForReceipt(provider, refundTx);
+    const refundReceipt = await waitForReceipt(provider, refundTx);
+    const refundEvent = await findContractEvent(refundReceipt, escrow, "EscrowRefunded");
+    assert.equal(refundEvent.args.escrowId, refundEscrowId);
+    assert.equal(refundEvent.args.amount, refundTerms.maxAmount);
+    const [, , refundReleased, refundClosed] = await escrow.getEscrow(refundEscrowId);
+    assert.equal(refundReleased, 0n);
+    assert.equal(refundClosed, true);
     await (await escrow.connect(adminRpcSigner).setPaused(false)).wait();
     logStep("escrow: refund completed");
     checks.push({
       id: "escrow.timeout_refund",
       outcome: "pass",
       note: "Escrow refunds only after expiry and not before.",
+    });
+    checks.push({
+      id: "escrow.paused_timeout_refund_exit",
+      outcome: "pass",
+      note: "Expired escrow refund remains open while contract pause is active; pause gates create and release paths, not deadline recovery.",
     });
 
     logStep("escrow: qualifying deterministic identity under interleaving and replay");
@@ -3940,17 +3956,29 @@ async function main() {
       BOND_NO_LONGER_LIVE_SELECTOR,
     );
     await (await bondVault.connect(adminRpcSigner).setPaused(true)).wait();
-    await (
-      await bondVault
-        .connect(await provider.getSigner(wallets.outsider.address))
-        .expireRelease(predictedVaultA, { gasLimit: 250_000n })
-    ).wait();
+    assert.equal(
+      await bondVault.paused(),
+      true,
+      "bond pause must be active while proving expired principal exit remains open",
+    );
+    const expiryTx = await bondVault
+      .connect(await provider.getSigner(wallets.outsider.address))
+      .expireRelease(predictedVaultA, { gasLimit: 250_000n });
+    const expiryReceipt = await waitForReceipt(provider, expiryTx);
+    const expiredEvent = await findContractEvent(expiryReceipt, bondVault, "BondExpired");
+    assert.equal(expiredEvent.args.vaultId, predictedVaultA);
+    assert.equal(expiredEvent.args.returnedAmount, driftBondTermsA.collateralAmount - 100_000n);
     const [, , expiredBondSlashed, expiredBondReleased, expiredBondExpired] =
       await bondVault.getBond(predictedVaultA);
     assert.equal(expiredBondSlashed, 100_000n);
     assert.equal(expiredBondReleased, false);
     assert.equal(expiredBondExpired, true);
     await (await bondVault.connect(adminRpcSigner).setPaused(false)).wait();
+    checks.push({
+      id: "bond.paused_expiry_principal_exit",
+      outcome: "pass",
+      note: "Expired bond principal recovery remains open while contract pause is active; pause gates lock, release, and impair paths, not post-expiry principal exit.",
+    });
     checks.push({
       id: "bond.identity_reconciliation_under_nonce_drift",
       outcome: "pass",
