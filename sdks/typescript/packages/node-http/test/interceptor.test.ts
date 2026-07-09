@@ -299,6 +299,36 @@ describe("request body preservation", () => {
     }
   });
 
+  it("allows known-empty parsed bodies to evaluate as empty requests", async () => {
+    let observed: { body_hash?: string; body_length?: number } | undefined;
+    const sidecar = await startMockSidecar((body) => {
+      observed = JSON.parse(body) as { body_hash?: string; body_length?: number };
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    const server = http.createServer(async (req, res) => {
+      (req as http.IncomingMessage & { body?: unknown }).body = {};
+
+      const outcome = await interceptNodeRequest(req, res, resolved);
+      if (outcome.responseSent) {
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(server, "GET", "/empty");
+      expect(response.status).toBe(200);
+      expect(observed?.body_length).toBe(0);
+      expect(observed).not.toHaveProperty("body_hash");
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
   it("preserves IncomingMessage bodies for downstream consumers", async () => {
     const sidecar = await startMockSidecar();
     const resolved = resolveConfig({ sidecarUrl: sidecar.url });

@@ -569,7 +569,7 @@ async function getNodeRequestBody(req: IncomingMessage): Promise<Buffer> {
     return preBuffered;
   }
 
-  if (replayable.rawBody != null || replayable.body != null) {
+  if ((replayable.rawBody != null || replayable.body != null) && hasBodySignal(req)) {
     throw new RequestBodyUnavailableError(
       "request body was parsed before Chio evaluation without a hashable raw body",
     );
@@ -610,6 +610,22 @@ function hasPositiveContentLength(req: IncomingMessage): boolean {
   }
   const length = Number.parseInt(value, 10);
   return Number.isFinite(length) && length > 0;
+}
+
+function hasBodySignal(req: IncomingMessage): boolean {
+  return (
+    hasPositiveContentLength(req) ||
+    hasHeaderValue(req, "transfer-encoding") ||
+    req.readableLength > 0
+  );
+}
+
+function hasHeaderValue(req: IncomingMessage, name: string): boolean {
+  const value = req.headers[name];
+  if (Array.isArray(value)) {
+    return value.some((entry) => entry.length > 0);
+  }
+  return typeof value === "string" && value.length > 0;
 }
 
 function sendJsonResponse(res: ServerResponse, status: number, body: ChioErrorResponse): void {
