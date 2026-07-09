@@ -3179,3 +3179,116 @@ fn generic_error_pre_side_effect_releases_without_marker(
     assert!(!runtime.contains_key("retained_destructive_lease_id"));
     Ok(())
 }
+
+#[test]
+fn dispatch_not_registered_releases_full_budget_state() -> Result<(), Box<dyn std::error::Error>> {
+    // RFC-0002: when a registered server's dispatch fails with ToolNotRegistered
+    // (no tool side effect), the async generic-error arm must reverse ALL
+    // pre-dispatch budget state, not just runtime-admission reservations. A
+    // max_invocations grant consumes an invocation slot at admission via
+    // check_and_increment_budget; unwind_aborted_monetary_invocation is a no-op
+    // for a non-monetary Invocation mutation, so before this fix the slot leaked
+    // and a valid retry under the same grant was wrongly denied for budget
+    // exhaustion even though nothing ever dispatched.
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(ToolNotRegisteredDispatchServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_invocation_limited_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+            1,
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-dispatch-not-registered-full-budget-async",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+    assert_eq!(response.verdict, Verdict::Deny);
+
+    // The single invocation slot consumed at admission must be free again: the
+    // dispatch produced no side effect, so the pre-execution increment is
+    // reversed and a retry re-admits.
+    let slot_reusable =
+        kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
+    assert!(
+        slot_reusable,
+        "a pre-side-effect dispatch error must reverse the invocation increment so a retry re-admits"
+    );
+    Ok(())
+}
+
+#[test]
+fn dispatch_not_registered_releases_full_budget_state_nested_flow(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Mirror of dispatch_not_registered_releases_full_budget_state for the
+    // nested-flow evaluation arm. Its generic-error arm previously released only
+    // the runtime-admission reservations on a pre-side-effect dispatch error,
+    // leaking the pre-execution budget mutation (and the sibling-sum capability
+    // admission). It must now route through the full pre-dispatch cleanup.
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(ToolNotRegisteredDispatchServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_invocation_limited_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+            1,
+        )]),
+        300,
+    );
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        "req-dispatch-not-registered-full-budget-nested",
+        &agent_kp.public_key().to_hex(),
+    );
+    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
+    let request = make_request_with_arguments(
+        "req-dispatch-not-registered-full-budget-nested",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let response = rt.block_on(async {
+        let mut client = NoopNestedFlowClient;
+        kernel
+            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
+            .await
+    })?;
+    assert_eq!(response.verdict, Verdict::Deny);
+
+    // The nested-flow arm must also reverse the invocation increment on a
+    // pre-side-effect dispatch error so the slot is reusable.
+    let slot_reusable =
+        kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
+    assert!(
+        slot_reusable,
+        "the nested-flow pre-side-effect dispatch error must reverse the invocation increment so a retry re-admits"
+    );
+    Ok(())
+}

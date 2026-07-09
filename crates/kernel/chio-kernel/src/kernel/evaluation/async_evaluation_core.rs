@@ -621,18 +621,42 @@ impl ChioKernel {
                 );
             }
             Err(e) => {
+                let msg = e.to_string();
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool server error");
+                if dispatch_error_precedes_tool_side_effect(&e) {
+                    // No tool side effect occurred (e.g. ToolNotRegistered). The
+                    // post-admission drop guard is already disarmed, so this arm
+                    // owns the unwind and must reverse ALL pre-dispatch state:
+                    // the runtime-admission reservations, the sibling-sum
+                    // capability admission, and the pre-execution budget
+                    // mutation. Releasing only the runtime reservations leaks the
+                    // consumed child share / invocation slot and wrongly starves
+                    // later valid siblings or retries under the same grant.
+                    return self.with_pre_invocation_guard_evidence(
+                        &pre_invocation_guard_evidence,
+                        || {
+                            self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                                request,
+                                reason: &msg,
+                                timestamp: now,
+                                matched_grant_index,
+                                cap,
+                                budget_mutation: &budget_mutation,
+                                payment_authorization: payment_authorization.as_ref(),
+                                runtime_admission_metadata: extra_metadata,
+                            })
+                        },
+                    );
+                }
+                // A tool side effect may have executed: retain the runtime
+                // admission reservations (fail-closed) and reverse only the
+                // monetary charge.
                 let unwind = self.unwind_aborted_monetary_invocation(
                     request,
                     cap,
                     budget_mutation.charge_result(),
                     payment_authorization.as_ref(),
                 )?;
-                let released_pre_side_effect = dispatch_error_precedes_tool_side_effect(&e);
-                if released_pre_side_effect {
-                    self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
-                }
-                let msg = e.to_string();
-                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool server error");
                 return self.with_pre_invocation_guard_evidence(
                     &pre_invocation_guard_evidence,
                     || {
@@ -647,13 +671,10 @@ impl ChioKernel {
                             ),
                             _ => extra_metadata.clone(),
                         };
-                        let deny_metadata = if released_pre_side_effect {
-                            deny_metadata
-                        } else {
-                            self.mark_runtime_admission_reservations_retained_fail_closed(
+                        let deny_metadata = self
+                            .mark_runtime_admission_reservations_retained_fail_closed(
                                 deny_metadata,
-                            )
-                        };
+                            );
                         self.build_deny_response_with_metadata(
                             request,
                             &msg,
