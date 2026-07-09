@@ -450,13 +450,27 @@ this RFC removes them and documents `--authority-seed-file` instead.
 ### E. Schema versioning and a fail-closed migration runner (F62)
 
 Add a shared module `chio-store-sqlite/src/schema_version.rs` used by every
-store's open path. Stamp `PRAGMA application_id` (to distinguish a Chio store
-from an unrelated SQLite file) and `PRAGMA user_version` (the schema revision),
-and refuse to open a database whose version is newer than the binary supports.
+store's open path. Stamp `PRAGMA application_id` (database-wide, to distinguish a
+Chio store from an unrelated SQLite file) and, in a Chio-owned
+`chio_module_schema_version` table, a per-module schema revision (NOT the single
+database-wide `PRAGMA user_version`, which cannot hold an independent version per
+store module that shares the file), and refuse to open a database whose module
+version is newer than the binary supports.
 
 ```rust
 /// ASCII "CHIO" as a big-endian i32, stamped into every Chio operator store.
+/// `application_id` is genuinely database-wide, so it marks the whole file as a
+/// Chio store exactly once no matter how many store modules share the file.
 const CHIO_SQLITE_APPLICATION_ID: i32 = 0x4348_494f;
+
+/// Chio-owned per-module schema-version table. `PRAGMA user_version` holds ONE
+/// value for the WHOLE SQLite file, so it cannot carry an independent version per
+/// store module: in a shared file (an IOU store opened alongside the receipt
+/// store) one module bumping `user_version` would look like a future schema to
+/// another module with a lower constant and wrongly refuse the same valid Chio
+/// database. Each module instead owns a row keyed by its stable module name, so a
+/// bump in one module never trips the version check of another.
+const MODULE_VERSION_TABLE: &str = "chio_module_schema_version";
 
 #[derive(Debug, thiserror::Error)]
 pub enum SchemaVersionError {
@@ -464,30 +478,35 @@ pub enum SchemaVersionError {
     Sqlite(#[from] rusqlite::Error),
     #[error("database application_id {found:#x} is not a Chio store (expected {expected:#x})")]
     ForeignDatabase { found: i32, expected: i32 },
-    #[error("database schema version {found} is newer than this binary supports ({supported}); refusing to open")]
-    FutureSchema { found: i32, supported: i32 },
+    #[error("module {module} schema version {found} is newer than this binary supports ({supported}); refusing to open")]
+    FutureSchema { module: String, found: i32, supported: i32 },
 }
 
-/// Read and validate the schema stamp. Returns the on-disk version so the
-/// caller can run additive migrations up to `supported_version`. A zero stamp
-/// (application_id == 0 and user_version == 0) is adopted and stamped ONLY when
-/// the on-disk contents prove the database is ours: either it has no user tables
-/// (fresh) or it carries one of this store's `legacy_tables` (a pre-stamping Chio
-/// store). `legacy_tables` is the set of table names the store has shipped since
-/// before stamping existed (for the receipt store, e.g. `["chio_tool_receipts"]`).
+/// Read and validate the schema stamp for ONE store module sharing this file.
+/// `application_id` (database-wide) proves the whole file is a Chio store;
+/// `module` selects this store's own row in the Chio-owned version table so
+/// modules that share a file version independently. Returns this module's on-disk
+/// version so the caller can run additive migrations up to `supported_version`.
+/// A zero-`application_id` file is adopted and stamped ONLY when the on-disk
+/// contents prove the database is ours: either it has no user tables (fresh) or
+/// it carries one of this store's `legacy_tables` (a pre-stamping Chio store).
+/// `legacy_tables` is the set of table names the store has shipped since before
+/// stamping existed (for the receipt store, e.g. `["chio_tool_receipts"]`).
 pub fn check_schema_version(
     conn: &Connection,
+    module: &str,
     supported_version: i32,
     legacy_tables: &[&str],
 ) -> Result<i32, SchemaVersionError> {
     let app_id: i32 = conn.query_row("PRAGMA application_id", [], |row| row.get(0))?;
-    let user_version: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
 
-    if app_id == 0 && user_version == 0 {
-        // A zero stamp is ambiguous: it is shared by a fresh DB, a legacy
+    if app_id == 0 {
+        // A zero application_id is ambiguous: it is shared by a fresh DB, a legacy
         // pre-stamping Chio DB, AND countless unrelated SQLite files. Adopt and
-        // stamp ONLY when the contents prove provenance; otherwise fail closed
-        // rather than commingling Chio tables into a foreign database.
+        // stamp the database-wide marker ONLY when the contents prove provenance;
+        // otherwise fail closed rather than commingling Chio tables into a foreign
+        // file. `user_version` is NOT part of this check: it is database-wide, so
+        // it cannot certify a single module's provenance.
         if !zero_stamp_is_adoptable(conn, legacy_tables)? {
             return Err(SchemaVersionError::ForeignDatabase {
                 found: app_id,
@@ -495,15 +514,42 @@ pub fn check_schema_version(
             });
         }
         conn.execute_batch(&format!("PRAGMA application_id = {CHIO_SQLITE_APPLICATION_ID};"))?;
-        return Ok(0);
+        // Database-wide marker set; this module still owns no version row yet.
+        return Ok(read_module_version(conn, module)?.unwrap_or(0));
     }
     if app_id != CHIO_SQLITE_APPLICATION_ID {
         return Err(SchemaVersionError::ForeignDatabase { found: app_id, expected: CHIO_SQLITE_APPLICATION_ID });
     }
-    if user_version > supported_version {
-        return Err(SchemaVersionError::FutureSchema { found: user_version, supported: supported_version });
+    // Per-module version. An absent row means this module has never been stamped
+    // in this file (e.g. a second store module opening a file the first store
+    // created), which is version 0, NOT a foreign or a future schema. Only THIS
+    // module's row can trip its own future-schema check.
+    let found = read_module_version(conn, module)?.unwrap_or(0);
+    if found > supported_version {
+        return Err(SchemaVersionError::FutureSchema {
+            module: module.to_string(),
+            found,
+            supported: supported_version,
+        });
     }
-    Ok(user_version)
+    Ok(found)
+}
+
+/// Read this module's schema version, or `None` if it has no row yet. The version
+/// table is created lazily so a fresh or legacy file needs no prior migration.
+fn read_module_version(conn: &Connection, module: &str) -> Result<Option<i32>, SchemaVersionError> {
+    conn.execute_batch(&format!(
+        "CREATE TABLE IF NOT EXISTS {MODULE_VERSION_TABLE} \
+         (module TEXT PRIMARY KEY, version INTEGER NOT NULL);"
+    ))?;
+    let version = conn
+        .query_row(
+            &format!("SELECT version FROM {MODULE_VERSION_TABLE} WHERE module = ?1"),
+            [module],
+            |row| row.get::<_, i32>(0),
+        )
+        .optional()?; // rusqlite::OptionalExtension
+    Ok(version)
 }
 
 /// A zero-stamped database is adoptable only if it is empty (no user tables, so a
@@ -532,26 +578,47 @@ fn zero_stamp_is_adoptable(conn: &Connection, legacy_tables: &[&str]) -> Result<
     Ok(false) // tables present but none recognizable: a foreign database
 }
 
-/// Stamp the schema revision after migrations have run. `PRAGMA` does not accept
-/// bound parameters; `version` is a compile-time constant, not caller input.
-pub fn stamp_schema_version(conn: &Connection, version: i32) -> Result<(), SchemaVersionError> {
-    conn.execute_batch(&format!("PRAGMA user_version = {version};"))?;
+/// Stamp THIS module's schema revision after its migrations have run. Writes the
+/// module's own row in the Chio-owned version table, leaving other modules that
+/// share the file untouched (unlike `PRAGMA user_version`, which is database-wide
+/// and would overwrite every module's version at once). `module`/`version` are
+/// compile-time constants, not caller input, and the table name is a constant, so
+/// the format string is not an injection surface.
+pub fn stamp_schema_version(conn: &Connection, module: &str, version: i32) -> Result<(), SchemaVersionError> {
+    conn.execute_batch(&format!(
+        "CREATE TABLE IF NOT EXISTS {MODULE_VERSION_TABLE} \
+         (module TEXT PRIMARY KEY, version INTEGER NOT NULL);"
+    ))?;
+    conn.execute(
+        &format!(
+            "INSERT INTO {MODULE_VERSION_TABLE} (module, version) VALUES (?1, ?2) \
+             ON CONFLICT(module) DO UPDATE SET version = excluded.version"
+        ),
+        rusqlite::params![module, version],
+    )?;
     Ok(())
 }
 ```
 
 Integration order in each store's `open` (receipt, authority, budget,
 revocation, approval, execution-nonce): (1) configure durability pragmas; (2)
-`check_schema_version(conn, THIS_STORE_SUPPORTED_VERSION, LEGACY_ANCHOR_TABLES)`
-and propagate its error (a future DB is refused before any write, and a 0/0 file
-that is neither empty nor a recognizable legacy Chio store is refused as
-`ForeignDatabase` before it is stamped); (3) run the existing
-`CREATE TABLE IF NOT EXISTS` bootstrap and additive `ALTER TABLE` migrations up
-to the supported version; (4) `stamp_schema_version(conn, THIS_STORE_SUPPORTED_VERSION)`.
-Each store owns a `const SUPPORTED_SCHEMA_VERSION: i32`, bumped on every
-schema-affecting change, and a `const LEGACY_ANCHOR_TABLES: &[&str]` naming the
-tables it shipped before stamping existed (empty only for a store with no
-pre-stamping deployments, which then adopts a 0/0 file only when it is empty). The six stores above are the ones wired through the
+`check_schema_version(conn, THIS_MODULE_NAME, THIS_STORE_SUPPORTED_VERSION, LEGACY_ANCHOR_TABLES)`
+and propagate its error (a module whose own version row is ahead of this binary is
+refused before any write, and a zero-`application_id` file that is neither empty nor
+a recognizable legacy Chio store is refused as `ForeignDatabase` before it is
+stamped); (3) run the existing `CREATE TABLE IF NOT EXISTS` bootstrap and additive
+`ALTER TABLE` migrations up to the supported version; (4)
+`stamp_schema_version(conn, THIS_MODULE_NAME, THIS_STORE_SUPPORTED_VERSION)`.
+Each store owns a `const MODULE_NAME: &str` (its stable key in the shared
+`chio_module_schema_version` table), a `const SUPPORTED_SCHEMA_VERSION: i32`, bumped
+on every schema-affecting change, and a `const LEGACY_ANCHOR_TABLES: &[&str]` naming
+the tables it shipped before stamping existed (empty only for a store with no
+pre-stamping deployments, which then adopts a zero-`application_id` file only when it
+is empty). Because the version lives in a per-module row rather than the single
+database-wide `PRAGMA user_version`, stores that share one SQLite file (an IOU store
+opened alongside the receipt store) each carry and check their OWN schema version, so
+one module bumping its version never makes another module reject the same valid Chio
+database. The six stores above are the ones wired through the
 kernel and CLI dispatch paths; the remaining `chio-store-sqlite` store modules
 (batch approval, IOU, dead letters, memory provenance, capability lineage,
 encrypted blob, evidence export) open their connections the same way and adopt
@@ -594,9 +661,12 @@ where they are stored and whether the process boots, not their bytes.
 
 New non-wire surface:
 
-- SQLite metadata: `PRAGMA application_id` (constant `0x4348494f`) and
-  `PRAGMA user_version` (per-store `SUPPORTED_SCHEMA_VERSION`, starting at 0).
-  These are database-file metadata, not protocol wire.
+- SQLite metadata: `PRAGMA application_id` (constant `0x4348494f`, database-wide)
+  and a Chio-owned `chio_module_schema_version(module, version)` table holding one
+  row per store module (each at its `SUPPORTED_SCHEMA_VERSION`, starting at 0). The
+  single database-wide `PRAGMA user_version` is deliberately NOT used as the schema
+  revision, so modules that share a file version independently. These are
+  database-file metadata, not protocol wire.
 - New `KernelConfig`/policy field `allow_ephemeral_revocation_store` (bool,
   default false). Policy files are YAML, not signed wire; the field is additive
   and defaults fail-closed.
@@ -628,10 +698,10 @@ Behavior change is staged:
    explicit opt-ins (part A).
 2. Land the schema-version runner (F62): independent, low risk. A fresh or
    legacy unstamped DB is adopted at v0 and stamped; a future-version DB is
-   refused. Old binaries (pre-runner) ignore `user_version` and still open, so
-   the runbook must document that rollback across a schema bump is unsafe and
-   requires the state restore (making runbook section 7 step 3 unconditional
-   for schema-affecting releases).
+   refused. Old binaries (pre-runner) ignore both `application_id` and the
+   `chio_module_schema_version` table and still open, so the runbook must document
+   that rollback across a schema bump is unsafe and requires the state restore
+   (making runbook section 7 step 3 unconditional for schema-affecting releases).
 3. Wire durable stores into `api-protect` and add the CLI gate.
 4. Fix manifests and docs.
 5. Flip `HttpAuthority::new`/`ChioEvaluator::new`/`ChioLayer::new` to
@@ -664,8 +734,10 @@ and no `--allow-ephemeral-receipts` exit non-zero with the gate message; with
 boot durable. Name: `api_protect_refuses_ephemeral_without_optin`.
 
 Property (PR gate): schema-version monotonicity - for any
-`v_disk <= v_bin`, open then reopen leaves `user_version == v_bin` and never
-downgrades; for any `v_disk > v_bin`, open refuses and does not mutate the file.
+`v_disk <= v_bin`, open then reopen leaves this module's row in
+`chio_module_schema_version` at `v_bin` and never downgrades, and does not disturb
+any other module's row in the same file; for any `v_disk > v_bin`, open refuses and
+does not mutate the file.
 
 Soak / chaos (nightly, ties to the wave-3 load-chaos program in ./README.md):
 `durable_receipts_survive_kill` - issue N mediated allows against a
@@ -699,8 +771,9 @@ allow is recoverable after crash", already stated informally in ADR-0013.
 - `ensure_revocation_durability_ready` denies on an empty in-memory revocation
   store unless `allow_ephemeral_revocation_store` is set; kernel health reports
   `receipt_backend` and `revocation_backend`.
-- Every operator SQLite store stamps `application_id` and `user_version` and
-  refuses to open a future-version database.
+- Every operator SQLite store stamps the database-wide `application_id` and its own
+  per-module row in `chio_module_schema_version`, and refuses to open a database
+  whose module version is ahead of the binary.
 - All three manifests pass `--receipt-store` (durable volume) and
   `--authority-seed-file`; Azure additionally passes `--spec` and mounts config.
 - `CLOUD-SIDECAR-INTEGRATION.md` sections 6.3, 7, 9 and `deploy/README.md` no
@@ -740,8 +813,9 @@ embedder.
 
 Rejected alternative: a full migration framework (versioned up/down scripts).
 Rejected as over-scoped for F62; the additive `ALTER TABLE` pattern already in
-the stores plus a `user_version` stamp and a future-version refusal closes the
-concrete blast radius (undetected rollback and future non-additive change).
+the stores plus a per-module `chio_module_schema_version` stamp and a
+future-version refusal closes the concrete blast radius (undetected rollback and
+future non-additive change).
 
 ## Rollout and sequencing
 

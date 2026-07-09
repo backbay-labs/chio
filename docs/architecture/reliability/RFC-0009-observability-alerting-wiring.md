@@ -614,9 +614,17 @@ storing progress in a separate SIEM-owned cursor DB.
   is targeted, not a full replay.
 - Malformed rows (F80). A deserialize failure no longer silently advances. It
   increments `chio_soc_export_total{exporter="_", outcome="malformed"}` and
-  pushes a `FailedEvent` carrying the raw `seq` to the DLQ so the row is
-  replayable once the schema skew is fixed. The cursor for a malformed row
-  advances only after it is safely dead-lettered.
+  DURABLY dead-letters a `FailedEvent` carrying the raw `seq` so the row is
+  replayable once the schema skew is fixed. The existing DLQ is in-memory and
+  drop-oldest, so an in-memory push alone is lost on a restart or a DLQ overflow
+  while `acked_seq` would have skipped the receipt permanently, breaking the
+  at-least-once invariant. The SIEM cursor DB (the same read-write file that holds
+  `acked_seq`) therefore gains a `dead_letters(seq INTEGER PRIMARY KEY, event_json
+  TEXT, error TEXT, failed_at INTEGER, exporter_name TEXT)` table; the cursor for a
+  malformed row advances ONLY after the row is durably recorded there. If the
+  durable write fails, the cursor is left behind the malformed row so it is re-read
+  after restart. The drain/retry pass reads from this table, and the in-memory DLQ
+  is a fast-path mirror, not the system of record.
 
   ```rust
   // manager.rs poll_once, replacing the warn-and-advance arm at :243-254
@@ -627,14 +635,37 @@ storing progress in a separate SIEM-owned cursor DB.
           .duration_since(UNIX_EPOCH)
           .map(|d| d.as_secs())
           .unwrap_or(0);
-      self.dlq.push(FailedEvent {
+      let entry = FailedEvent {
           event_json: format!("{{\"raw_seq\":{seq}}}"),
           error: redact_for_operator_log(&error).to_string(),
           failed_at,
           exporter_name: "_deserialize".to_string(),
-      });
-      // advance past this row only because it is now captured in the DLQ
-      if *seq > max_seq { max_seq = *seq; }
+      };
+      // DURABLY dead-letter BEFORE advancing the cursor. The in-memory DLQ is
+      // drop-oldest and does not survive a restart or an overflow, so advancing
+      // `acked_seq` after only an in-memory push would skip this receipt forever
+      // while the `raw_seq` marker is lost - a broken at-least-once. Persist into
+      // the SIEM cursor DB (the same read-write file as `acked_seq`) first, then
+      // mirror into the in-memory DLQ for the fast drain pass.
+      match self.cursor_store.record_dead_letter(*seq, &entry) {
+          Ok(()) => {
+              self.dlq.push(entry);
+              // Safe to advance: the row is now durably captured.
+              if *seq > max_seq { max_seq = *seq; }
+          }
+          Err(persist_error) => {
+              // Could not dead-letter durably: leave the cursor BEHIND this row
+              // (do not advance `max_seq`) and stop this poll so the row is
+              // re-read next round / after restart instead of being skipped.
+              self.metrics.record_export("_", ExportOutcome::Error);
+              warn!(
+                  raw_seq = *seq,
+                  error = %redact_for_operator_log(&persist_error),
+                  "failed to durably dead-letter malformed SIEM row; holding cursor behind it"
+              );
+              break;
+          }
+      }
   }
   ```
 

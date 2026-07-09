@@ -422,6 +422,14 @@ pub struct SupervisorConfig {
 pub enum SupervisedOutcome {
     /// The worker observed the shutdown flag and exited cleanly. Do not restart.
     Shutdown,
+    /// One iteration completed successfully (a one-shot tick such as a single
+    /// `sync_cluster_once`). Loop again WITHOUT recording a failure or backing
+    /// off. This is the success path: a healthy one-shot iteration reports
+    /// `Continue`, so it is never misclassified as a `Restart` failure that
+    /// increments the failure counter and eventually escalates to `Failed`. The
+    /// worker records its own healthy heartbeat (`health.record_ok`) before
+    /// returning it.
+    Continue,
     /// The worker returned or failed and should be restarted.
     Restart,
 }
@@ -489,6 +497,8 @@ fn supervise_loop<F>(
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| worker(&shutdown)));
         match outcome {
             Ok(SupervisedOutcome::Shutdown) => return,
+            // Healthy one-shot tick: loop again with no failure recorded and no backoff.
+            Ok(SupervisedOutcome::Continue) => continue,
             Ok(SupervisedOutcome::Restart) | Err(_) => {
                 if shutdown.load(Ordering::SeqCst) {
                     return;
@@ -557,6 +567,8 @@ where
             };
             match outcome {
                 SupervisedOutcome::Shutdown => return,
+                // Healthy one-shot tick: loop again with no failure recorded and no backoff.
+                SupervisedOutcome::Continue => continue,
                 SupervisedOutcome::Restart => {
                     let count = health.record_failure(
                         format!("{} iteration panicked or failed", config.name),
@@ -697,8 +709,10 @@ Retain the handle and add a staleness surface. `init.rs:26` becomes
 `state.set_sync_task(supervise_task(cfg, health, || async { sync_iteration(&state).await }));`,
 storing the `JoinHandle` and `HealthFlag` in `TrustServiceState`. `sync_iteration`
 wraps one `sync_cluster_once` (`deltas.rs:200`): on `Ok` it calls
-`health.record_ok(now)` and stamps `last_sync_completed_at` in cluster state; on `Err`
-or a caught `spawn_blocking` panic it returns `SupervisedOutcome::Restart`. The health
+`health.record_ok(now)`, stamps `last_sync_completed_at` in cluster state, and returns
+`SupervisedOutcome::Continue` (a healthy tick, so the supervisor loops without recording
+a failure); on `Err` or a caught `spawn_blocking` panic it returns
+`SupervisedOutcome::Restart`. The health
 snapshot (`health.rs:432-454`) adds a freshness check: a peer whose `last_contact_at`
 is older than N sync intervals is reported `Unknown/stale` rather than counted at its
 frozen last value, and a `chio_cluster_sync_staleness_seconds` gauge (RFC-0009) exports

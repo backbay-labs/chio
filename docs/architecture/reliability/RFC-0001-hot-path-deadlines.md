@@ -509,6 +509,14 @@ async fn dispatch_within_budget(
     let call = self.dispatch_tool_call_with_cost_after_nonce_check(request, has_monetary);
     match self.config.deadlines.dispatch_budget_for(&request.server_id) {
         None => call.await,
+        // `tokio::time::timeout` needs a timer driver. On the no-runtime
+        // `futures::executor::block_on` fallback (mod.rs:232) there is none, so
+        // wrapping the call in a timeout would panic rather than degrade. Probe
+        // for a runtime exactly like `run_guards_within_budget` does (section 3)
+        // and run the dispatch inline when absent, so the no-runtime path is a
+        // defined, fail-closed inline dispatch (bounded only by the sync caller)
+        // rather than a panic. This is the runtime probe section 5 promises.
+        Some(_) if tokio::runtime::Handle::try_current().is_err() => call.await,
         Some(budget) => match tokio::time::timeout(budget, call).await {
             Ok(result) => result,
             Err(_elapsed) => Err(KernelError::HotPathDeadlineExceeded {

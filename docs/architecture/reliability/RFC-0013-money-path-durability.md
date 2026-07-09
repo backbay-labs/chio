@@ -322,9 +322,16 @@ fn close_payment_journal(&self, _request_id: &str) -> Result<bool, BudgetStoreEr
 }
 
 /// Rows in a non-terminal state older than `older_than_unix_ms`, for boot reconcile.
+/// Fail closed like the write-side journal defaults above: a store that persists
+/// `HoldPlaced`/`Settling` rows but leaves listing unimplemented MUST NOT silently
+/// report zero incomplete payments, because that would skip boot reconciliation
+/// entirely and strand in-flight holds. An unsupported listing is an explicit,
+/// operator-visible error, never an empty success.
 fn list_incomplete_payment_journal(&self, _older_than_unix_ms: u64)
     -> Result<Vec<PaymentJournalRecord>, BudgetStoreError> {
-    Ok(Vec::new())
+    Err(BudgetStoreError::Invariant(
+        "payment journal listing is not supported by this budget store".to_string(),
+    ))
 }
 ```
 
@@ -367,6 +374,27 @@ The `PaymentAdapter` trait is amended to make replay-based recovery sound. Three
 additions (the idempotency contract plus two defaulted methods, both fail-closed):
 
 ```rust
+/// Side-effect-free snapshot of the rail's view of a prior authorization, keyed on
+/// the durable `reference`. Distinct from `PaymentResult` because the HoldPlaced
+/// crash-window query MUST be able to return the rail-assigned `authorization_id`
+/// even though no funds have moved and no `transaction_id` exists yet; `PaymentResult`
+/// (payment.rs:19-25) carries only `transaction_id`/`settlement_status`/`metadata` and
+/// cannot convey the id, which would force adapters to smuggle it through ad hoc
+/// metadata and leave reconciliation unable to call `release`/`capture` reliably.
+pub enum RailSettlementState {
+    /// The rail has no hold or settlement for this reference: `authorize` never took
+    /// effect. Reconciliation reverses the local budget hold and closes the journal.
+    NoAuthorization,
+    /// A hold exists but no funds have moved. Carries the rail-assigned
+    /// `authorization_id` so reconciliation can persist it (advance the journal to
+    /// `Authorized`) and drive the idempotent `release`/`capture` APIs.
+    Held { authorization_id: String },
+    /// Funds already moved on the rail. Carries the rail-assigned `authorization_id`
+    /// and the settled `PaymentResult` so reconciliation can record the id and emit a
+    /// signed receipt for the already-moved amount.
+    Settled { authorization_id: String, result: PaymentResult },
+}
+
 pub trait PaymentAdapter: Send + Sync {
     // ... authorize / capture / release / refund unchanged in signature ...
 
@@ -399,11 +427,15 @@ pub trait PaymentAdapter: Send + Sync {
     /// moving funds. Idempotent and side-effect-free. Keyed on `reference` (the durable
     /// `request_id` written into the journal before authorize), so it stays answerable
     /// in the HoldPlaced crash window where no `authorization_id` is durable yet;
-    /// `authorization_id` is an optional refinement passed once known. Defaulted to
-    /// Unavailable so an adapter that cannot answer forces a fail-closed operator
-    /// incident rather than a silent close during reconciliation.
+    /// `authorization_id` is an optional refinement passed once known. Returns a
+    /// `RailSettlementState` that explicitly carries the rail-assigned `authorization_id`
+    /// when a hold or settlement exists, so boot reconciliation can record it and act on
+    /// it (persist, release, or capture) instead of discarding it or relying on adapters
+    /// to hide it in `PaymentResult.metadata`. Defaulted to `Unavailable` so an adapter
+    /// that cannot answer forces a fail-closed operator incident rather than a silent
+    /// close during reconciliation.
     fn settlement_state(&self, reference: &str, authorization_id: Option<&str>)
-        -> Result<PaymentResult, PaymentError> {
+        -> Result<RailSettlementState, PaymentError> {
         let _ = (reference, authorization_id);
         Err(PaymentError::Unavailable(
             "settlement_state query not implemented by this adapter".to_string(),
@@ -418,10 +450,14 @@ serving RFC-0003's `MonetaryReconciled` resolution) iterates
 discretion, mirroring ADR-0015 D3/D5):
 
 - `HoldPlaced`: authorize may or may not have fired, and no `authorization_id` is
-  durable. Query `settlement_state(request_id, None)` by the durable reference. If the
-  rail has no such authorization, close the journal and reverse the budget hold (funds
-  never moved). If the rail reports a hold, record the returned `authorization_id`,
-  advance, and complete per the state below.
+  durable. Query `settlement_state(request_id, None)` by the durable reference and match
+  the returned `RailSettlementState`: `NoAuthorization` closes the journal and reverses
+  the budget hold (funds never moved); `Held { authorization_id }` records the returned
+  `authorization_id`, advances the journal to `Authorized`, and completes per the
+  `Authorized` state below; `Settled { authorization_id, result }` records the id and
+  completes per the `Settled` state below (the money already moved). An `Unavailable`
+  error is `ReconcileFailed`, never a silent close. Because the id is carried by the
+  return type, recovery never has to guess or reconstruct it from ad hoc metadata.
 - `Authorized`: authorize succeeded but no terminal action was ever committed (the crash
   predates step 3, so `settle_action` is NULL). No capture amount was chosen, so the only
   sound, price-free completion is to `release` the hold (idempotent) and close; funds

@@ -3274,7 +3274,13 @@ fn background_checkpoints_are_installed_at_store_attach_and_fire_off_the_request
 ```rust
     /// Install a background checkpoint signer on stores that build their own
     /// checkpoints on the writer thread (RFC-0006). Returns `Ok(false)` when
-    /// the store does not support background checkpointing (default).
+    /// the store does not support background checkpointing (default). A store
+    /// that returns `true` from `supports_kernel_signed_checkpoints()` MUST
+    /// override this to install the signer and return `Ok(true)`: request-path
+    /// checkpoint construction is deleted in Step 11.3, so the attach path
+    /// (Step 11.4) treats the default `Ok(false)` under that branch as an error
+    /// and refuses to attach, because the alternative is a store that silently
+    /// produces no checkpoints at all.
     fn enable_background_checkpoints(
         &self,
         _keypair: Keypair,
@@ -3308,13 +3314,27 @@ fn background_checkpoints_are_installed_at_store_attach_and_fire_off_the_request
 
 ```rust
         if receipt_store.supports_kernel_signed_checkpoints() {
-            receipt_store
+            let installed = receipt_store
                 .enable_background_checkpoints(self.config.keypair.clone(), self.checkpoint_batch_size)
                 .map_err(|error| {
                     KernelError::Internal(format!(
                         "failed to enable background receipt checkpoints: {error}"
                     ))
                 })?;
+            // A store that CLAIMS checkpoint support must actually install the
+            // signer. With request-path checkpoint construction deleted (Step
+            // 11.3), `Ok(false)` here means no signer AND no request-path
+            // checkpoints: checkpoints would silently stop being produced. Fail
+            // closed at attach rather than run a store that emits no checkpoints.
+            if !installed {
+                return Err(KernelError::Internal(
+                    "receipt store returns supports_kernel_signed_checkpoints() = true but \
+                     enable_background_checkpoints() returned false; no checkpoint signer was \
+                     installed and request-path checkpointing is removed, so no checkpoints \
+                     would be produced. Refusing to attach."
+                        .to_string(),
+                ));
+            }
         }
 ```
 

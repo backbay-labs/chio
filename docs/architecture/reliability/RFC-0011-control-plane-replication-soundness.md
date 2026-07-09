@@ -732,7 +732,22 @@ pub(crate) async fn wait_for_budget_write_quorum_commit(
             }
             // Park until the background loop advances acks, or the outer timeout fires.
             if rx.changed().await.is_err() {
-                return Ok(None); // sender dropped: treat as not-clustered
+                // The progress sender was dropped: the background sync/progress task
+                // died. `progress` was `Some` at entry, so by the invariant below
+                // `state.cluster` is still `Some` - this IS a clustered node whose
+                // quorum machinery is gone, NOT the not-clustered path. Returning
+                // `Ok(None)` here would be indistinguishable from "not clustered" and
+                // callers (e.g. `handle_try_charge_cost`, which only rolls back on
+                // `Err`) would render it as a successful leader-visible commit WITHOUT
+                // quorum. Fail closed with a 503 while `state.cluster` is present so the
+                // local budget write is rolled back instead of acked quorum-less.
+                return Err(plain_http_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    &format!(
+                        "budget write became leader-visible at commit index {} for authority term {} but the cluster progress task exited before quorum",
+                        write.event_seq, write.budget_term
+                    ),
+                ));
             }
         }
     })
