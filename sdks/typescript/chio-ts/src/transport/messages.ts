@@ -45,6 +45,10 @@ export function parseRpcMessages(rawBody: string): JsonRpcMessage[] {
   return messages;
 }
 
+function isTerminalMessage(message: JsonRpcMessage, expectedId: JsonRpcId | undefined): boolean {
+  return expectedId !== undefined && rpcIdsEqual(message.id, expectedId) && !message.method;
+}
+
 export async function readRpcMessagesUntilTerminal(
   response: Response,
   expectedId?: JsonRpcId,
@@ -53,10 +57,9 @@ export async function readRpcMessagesUntilTerminal(
   if (!response.body) {
     const messages = parseRpcMessages(await response.text());
     for (const message of messages) {
-      if (expectedId !== undefined && rpcIdsEqual(message.id, expectedId) && !message.method) {
-        continue;
+      if (!isTerminalMessage(message, expectedId)) {
+        await onMessage(message);
       }
-      await onMessage(message);
     }
     return messages;
   }
@@ -86,7 +89,7 @@ export async function readRpcMessagesUntilTerminal(
         if (eventData.length > 0) {
           const message = parseJsonRpcMessage(eventData.join("\n"));
           messages.push(message);
-          if (expectedId !== undefined && rpcIdsEqual(message.id, expectedId) && !message.method) {
+          if (isTerminalMessage(message, expectedId)) {
             await reader.cancel();
             return messages;
           }
@@ -110,19 +113,17 @@ export async function readRpcMessagesUntilTerminal(
   if (eventData.length > 0) {
     const message = parseJsonRpcMessage(eventData.join("\n"));
     messages.push(message);
-    if (expectedId !== undefined && rpcIdsEqual(message.id, expectedId) && !message.method) {
-      return messages;
+    if (!isTerminalMessage(message, expectedId)) {
+      await onMessage(message);
     }
-    await onMessage(message);
   }
   if (messages.length === 0) {
     const parsedMessages = parseRpcMessages(rawBody);
     messages.push(...parsedMessages);
     for (const message of parsedMessages) {
-      if (expectedId !== undefined && rpcIdsEqual(message.id, expectedId) && !message.method) {
-        continue;
+      if (!isTerminalMessage(message, expectedId)) {
+        await onMessage(message);
       }
-      await onMessage(message);
     }
   }
   return messages;
