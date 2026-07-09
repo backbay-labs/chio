@@ -372,8 +372,9 @@ describe("ChioSidecarClient.evaluate", () => {
     const result: EvaluateResponse = {
       verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
       receipt: {
-        ...legacyBareReceipt(),
+        ...authoritativeAllowReceipt(),
         verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+        response_status: 403,
       },
       evidence: [],
     };
@@ -385,6 +386,28 @@ describe("ChioSidecarClient.evaluate", () => {
       const client = new ChioSidecarClient({ sidecarUrl: url });
       await expect(client.evaluate(testRequest())).resolves.toEqual(result);
       expect(verifyCalls).toBe(0);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("rejects non-allow responses with receipts missing semantics fields", async () => {
+    const result: EvaluateResponse = {
+      verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      receipt: {
+        ...legacyBareReceipt(),
+        verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      },
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_evaluation_failed",
+      );
     } finally {
       await closeServer(server);
     }

@@ -112,6 +112,14 @@ export class ChioSidecarClient {
         );
       }
       const result = parsed;
+      if (!hasRequiredReceiptSemantics(result.receipt)) {
+        throw new SidecarError(
+          isAllowShapedResult(result)
+            ? CHIO_ERROR_CODES.INVALID_RECEIPT
+            : CHIO_ERROR_CODES.EVALUATION_FAILED,
+          "sidecar evaluate response receipt missing required semantics fields",
+        );
+      }
       if (isAllowShapedResult(result)) {
         await this.assertAuthorizedAllowResult(result);
       }
@@ -283,6 +291,35 @@ function isVerdict(value: unknown): value is Verdict {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function hasRequiredReceiptSemantics(receipt: HttpReceipt): boolean {
+  const record = receipt as unknown as Record<string, unknown>;
+  return isOneOf(record["receipt_kind"], [
+    "mediated_decision",
+    "trace_observation",
+    "advisory_evaluation",
+  ])
+    && isOneOf(record["boundary_class"], ["prevent", "detect_only", "advisory_only"])
+    && isOneOf(record["tool_origin"], [
+      "caller_executed",
+      "host_executed_provider_reported",
+      "host_executed_unmediated",
+    ])
+    && isOneOf(record["redaction_mode"], ["none", "summary", "redacted"])
+    && isOptionalOneOf(record["observation_outcome"], ["observed", "evaluated", "dropped"])
+    && isOneOf(record["trust_level"], ["mediated", "verified", "advisory"]);
+}
+
+function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {
+  return typeof value === "string" && (allowed as readonly string[]).includes(value);
+}
+
+function isOptionalOneOf<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+): value is T | undefined {
+  return value === undefined || isOneOf(value, allowed);
 }
 
 function isSidecarTransportFailure(statusCode: number): boolean {

@@ -164,8 +164,18 @@ pub async fn project_escrow_execution_receipt(
     .await?;
 
     let lifecycle_state = lifecycle_state_for_projection(finality.status, &escrow_snapshot);
+    let finality_pending = matches!(
+        finality.status,
+        SettlementFinalityStatus::AwaitingConfirmations
+            | SettlementFinalityStatus::AwaitingDisputeWindow
+    );
 
     let failure_reason = match lifecycle_state {
+        Web3SettlementLifecycleState::Failed if finality_pending => {
+            Some(input.failure_reason.clone().unwrap_or_else(|| {
+                "settlement finality is pending before durable reconciliation".to_string()
+            }))
+        }
         Web3SettlementLifecycleState::TimedOut => Some(
             input
                 .failure_reason
@@ -388,15 +398,14 @@ fn lifecycle_state_for_projection(
     if finality_status == SettlementFinalityStatus::Reorged {
         return Web3SettlementLifecycleState::Reorged;
     }
+    if finality_status != SettlementFinalityStatus::Finalized {
+        return Web3SettlementLifecycleState::Failed;
+    }
     if escrow_snapshot.refunded {
         return Web3SettlementLifecycleState::TimedOut;
     }
     if escrow_snapshot.released_minor_units == 0 {
-        if finality_status == SettlementFinalityStatus::Finalized {
-            Web3SettlementLifecycleState::Failed
-        } else {
-            Web3SettlementLifecycleState::EscrowLocked
-        }
+        Web3SettlementLifecycleState::Failed
     } else if escrow_snapshot.released_minor_units < escrow_snapshot.deposited_minor_units {
         Web3SettlementLifecycleState::PartiallySettled
     } else {
@@ -635,6 +644,30 @@ mod tests {
             operator_address: config.operator_address.clone(),
             settlement_key: dispatch.beneficiary_address.clone(),
         }
+    }
+
+    fn escrow_result(released_minor_units: u64) -> Value {
+        rpc_result(json!(encode_hex(
+            IChioEscrow::getEscrowCall::abi_encode_returns(&IChioEscrow::getEscrowReturn {
+                terms: IChioEscrow::EscrowTerms {
+                    capabilityId: B256::from([0x99; 32]),
+                    depositor: Address::from_str("0x1000000000000000000000000000000000000001",)
+                        .test_unwrap(),
+                    beneficiary: Address::from_str("0x1000000000000000000000000000000000000002",)
+                        .test_unwrap(),
+                    token: Address::from_str("0x1000000000000000000000000000000000000003",)
+                        .test_unwrap(),
+                    maxAmount: U256::from(1_500_000_u64),
+                    deadline: U256::from(1_700_050_000_u64),
+                    operator: Address::from_str("0x1000000000000000000000000000000000000004",)
+                        .test_unwrap(),
+                    operatorKeyHash: B256::from([0xaa; 32]),
+                },
+                deposited: U256::from(1_500_000_u64),
+                released: U256::from(released_minor_units),
+                refunded: false,
+            })
+        )))
     }
 
     fn rpc_result(result: Value) -> Value {
@@ -1258,11 +1291,82 @@ mod tests {
         );
         assert_eq!(
             projection.receipt.lifecycle_state,
-            Web3SettlementLifecycleState::PartiallySettled
+            Web3SettlementLifecycleState::Failed
         );
         assert_eq!(
             projection.recovery_action,
             Some(SettlementRecoveryAction::WaitForDisputeWindow)
+        );
+        assert_eq!(
+            projection.receipt.failure_reason.as_deref(),
+            Some("settlement finality is pending before durable reconciliation")
+        );
+    }
+
+    #[tokio::test]
+    async fn project_escrow_execution_receipt_waits_for_confirmations_without_release() {
+        let mut dispatch = sample_dispatch();
+        let finality_amount = chio_core::capability::scope::MonetaryAmount {
+            units: 500_000,
+            currency: dispatch.settlement_amount.currency.clone(),
+        };
+        dispatch.settlement_amount = finality_amount.clone();
+        dispatch.capital_instruction.body.amount = Some(finality_amount);
+        let server = MockJsonRpcServer::spawn(vec![
+            escrow_result(0),
+            rpc_result(json!({
+                "blockHash": "0xabc",
+                "blockNumber": "0x64",
+                "status": "0x1",
+                "gasUsed": "0x5208",
+                "from": "0x1000000000000000000000000000000000000001",
+                "to": "0x1000000000000000000000000000000000000002",
+                "logs": []
+            })),
+            rpc_result(json!({
+                "timestamp": "0x6553f100"
+            })),
+            rpc_result(json!({ "number": "0x69" })),
+            rpc_result(json!({ "hash": "0xabc" })),
+        ]);
+        let config = sample_config(server.base_url());
+
+        let projection = project_escrow_execution_receipt(
+            &config,
+            ExecutionProjectionInput {
+                dispatch: &dispatch,
+                tx_hash: "0xpending",
+                execution_receipt_id: "exec-pending-zero".to_string(),
+                settlement_reference: "settlement-pending-zero".to_string(),
+                observed_at: Some(1_700_001_000),
+                observed_amount: dispatch.settlement_amount.clone(),
+                anchor_proof: None,
+                oracle_evidence: None,
+                failure_reason: None,
+                reversal_of: None,
+                note: None,
+            },
+        )
+        .await
+        .test_expect("pending zero-release projection should still return a wait action");
+
+        server.join();
+
+        assert_eq!(
+            projection.finality.status,
+            SettlementFinalityStatus::AwaitingConfirmations
+        );
+        assert_eq!(
+            projection.receipt.lifecycle_state,
+            Web3SettlementLifecycleState::Failed
+        );
+        assert_eq!(
+            projection.recovery_action,
+            Some(SettlementRecoveryAction::WaitForConfirmations)
+        );
+        assert_eq!(
+            projection.receipt.failure_reason.as_deref(),
+            Some("settlement finality is pending before durable reconciliation")
         );
     }
 

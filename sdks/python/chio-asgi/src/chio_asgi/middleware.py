@@ -106,8 +106,12 @@ class ChioASGIMiddleware:
             selected_headers = _selected_headers_from(headers)
             query = _query_params(scope)
             capability_token = _extract_capability_token_from(headers, query)
+            advertised_body_length = _content_length_from(headers)
         except ValueError as exc:
             await _send_error_response(send, 400, str(exc), "MalformedRequest")
+            return
+        if advertised_body_length > self._config.max_body_bytes:
+            await _send_body_too_large(send, self._config.max_body_bytes)
             return
 
         # Extract caller identity after rejecting ambiguous policy inputs.
@@ -121,28 +125,34 @@ class ChioASGIMiddleware:
         # Read the complete request body for hashing before sidecar evaluation.
         body_chunks: list[bytes] = []
         buffered_messages: list[dict[str, Any]] = []
-        body_length = 0
+        body_complete = False
+        body_too_large = False
+        body_size = 0
 
-        while True:
+        async def receive_wrapper() -> dict[str, Any]:
+            nonlocal body_complete, body_size, body_too_large
             message = await receive()
             buffered_messages.append(message)
             if message.get("type") == "http.request":
                 body = message.get("body", b"")
                 if body:
-                    body_length += len(body)
-                    if body_length > self._config.max_body_bytes:
-                        await _send_error_response(
-                            send,
-                            413,
-                            "request body exceeds Chio ASGI buffering limit",
-                            "RequestBodyTooLarge",
-                        )
-                        return
+                    if body_size + len(body) > self._config.max_body_bytes:
+                        body_too_large = True
+                        body_complete = True
+                        return message
+                    body_size += len(body)
                     body_chunks.append(body)
                 if not message.get("more_body", False):
-                    break
-                continue
-            break
+                    body_complete = True
+            return message
+
+        while not body_complete:
+            message = await receive_wrapper()
+            if message.get("type") != "http.request":
+                break
+        if body_too_large:
+            await _send_body_too_large(send, self._config.max_body_bytes)
+            return
 
         raw_body = b"".join(body_chunks)
         body_hash: str | None = None
@@ -173,7 +183,7 @@ class ChioASGIMiddleware:
                 query=query,
                 headers=selected_headers,
                 body_hash=body_hash,
-                body_length=body_length,
+                body_length=body_size,
                 capability_token=capability_token,
             )
         except (ChioConnectionError, ChioTimeoutError):
@@ -240,7 +250,6 @@ class ChioASGIMiddleware:
 
 _POLICY_SINGLETON_HEADERS = frozenset({
     "authorization",
-    "cookie",
     "content-length",
     "content-type",
     "x-api-key",
@@ -253,10 +262,15 @@ def _headers_by_name(scope: Scope) -> dict[str, str]:
     seen: set[str] = set()
     for raw_name, raw_value in scope.get("headers", []):
         name = raw_name.decode("latin-1").lower()
+        value = raw_value.decode("latin-1")
+        if name == "cookie" and name in headers:
+            headers[name] = f"{headers[name]}; {value}"
+            seen.add(name)
+            continue
         if name in seen and name in _POLICY_SINGLETON_HEADERS:
             raise ValueError(f"duplicate policy header: {name}")
         seen.add(name)
-        headers[name] = raw_value.decode("latin-1")
+        headers[name] = value
     return headers
 
 
@@ -291,6 +305,19 @@ def _selected_headers_from(headers: dict[str, str]) -> dict[str, str]:
     return selected
 
 
+def _content_length_from(headers: dict[str, str]) -> int:
+    value = headers.get("content-length")
+    if value is None:
+        return 0
+    try:
+        content_length = int(value)
+    except ValueError:
+        raise ValueError("invalid content-length header") from None
+    if content_length < 0:
+        raise ValueError("invalid content-length header")
+    return content_length
+
+
 def _query_params(scope: Scope) -> dict[str, str]:
     params: dict[str, str] = {}
     qs = scope.get("query_string", b"").decode("latin-1")
@@ -302,6 +329,15 @@ def _query_params(scope: Scope) -> dict[str, str]:
             raise ValueError(f"duplicate query parameter: {key}")
         params[key] = value
     return params
+
+
+async def _send_body_too_large(send: Send, max_body_bytes: int) -> None:
+    await _send_error_response(
+        send,
+        413,
+        f"request body exceeds {max_body_bytes}-byte limit",
+        "PayloadTooLarge",
+    )
 
 
 async def _send_error_response(

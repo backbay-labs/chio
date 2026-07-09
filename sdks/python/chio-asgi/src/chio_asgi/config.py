@@ -25,7 +25,7 @@ class ChioASGIConfig:
         Legacy option retained for source compatibility. Current v1 always
         fails closed when the sidecar is unreachable.
     max_body_bytes:
-        Maximum request body bytes to buffer for hashing and replay.
+        Maximum request body bytes buffered for hashing and replay (default 8 MiB).
     """
 
     sidecar_url: str = "http://127.0.0.1:9090"
@@ -33,5 +33,5 @@ class ChioASGIConfig:
     exclude_paths: frozenset[str] = frozenset()
     exclude_methods: frozenset[str] = frozenset({"OPTIONS"})
     receipt_header: str = "X-Chio-Receipt"
+    max_body_bytes: int = 8 * 1024 * 1024
     fail_open: bool = False
-    max_body_bytes: int = 1_048_576

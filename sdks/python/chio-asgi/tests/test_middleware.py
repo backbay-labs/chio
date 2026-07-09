@@ -252,6 +252,34 @@ class TestAllowedRequest:
             assert b"x-chio-receipt" in header_dict
             assert header_dict[b"x-chio-receipt"] == b"r-allow"
 
+    async def test_accepts_split_cookie_headers_for_cookie_identity(self) -> None:
+        evaluation = _make_evaluation(allowed=True, receipt_id="r-cookie")
+
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            instance = MockClient.return_value
+            instance.evaluate_http_request = AsyncMock(return_value=evaluation)
+            instance.verify_http_receipt = AsyncMock(return_value=_make_verification())
+
+            config = ChioASGIConfig(sidecar_url="http://mock:9090")
+            mw = ChioASGIMiddleware(_echo_app, config=config)
+            scope = _make_scope()
+            scope["headers"] = [
+                (b"cookie", b"session=abc123"),
+                (b"cookie", b"other=xyz"),
+            ]
+            send, messages = _make_send()
+
+            await mw(scope, _make_receive(), send)
+
+            start_msg = next(
+                m for m in messages if m.get("type") == "http.response.start"
+            )
+            assert start_msg["status"] == 200
+            kwargs = instance.evaluate_http_request.await_args.kwargs
+            assert kwargs["caller"].auth_method.method == "cookie"
+
     async def test_hashes_and_replays_full_chunked_body(self) -> None:
         evaluation = _make_evaluation(allowed=True, receipt_id="r-chunked")
         chunks = [b"hello ", b"chunked ", b"world"]
@@ -281,23 +309,21 @@ class TestAllowedRequest:
             )
             assert body_msg["body"] == expected_body
 
-    async def test_rejects_body_larger_than_buffer_limit(self) -> None:
+    async def test_rejects_chunked_body_that_exceeds_configured_limit(self) -> None:
         with patch(
             "chio_asgi.middleware.ChioClient", autospec=True
         ) as MockClient:
-            instance = MockClient.return_value
-            instance.evaluate_http_request = AsyncMock()
-
             config = ChioASGIConfig(
-                sidecar_url="http://mock:9090", max_body_bytes=5
+                sidecar_url="http://mock:9090",
+                max_body_bytes=4,
             )
             mw = ChioASGIMiddleware(_body_echo_app, config=config)
-
             scope = _make_scope(method="POST")
             send, messages = _make_send()
-            await mw(scope, _make_chunked_receive([b"abc", b"def"]), send)
 
-            instance.evaluate_http_request.assert_not_awaited()
+            await mw(scope, _make_chunked_receive([b"ab", b"cde"]), send)
+
+            MockClient.return_value.evaluate_http_request.assert_not_called()
             start_msg = next(
                 m for m in messages if m.get("type") == "http.response.start"
             )
@@ -306,7 +332,7 @@ class TestAllowedRequest:
                 m for m in messages if m.get("type") == "http.response.body"
             )
             body = json.loads(body_msg["body"])
-            assert body["error"] == "RequestBodyTooLarge"
+            assert body["error"] == "PayloadTooLarge"
 
     async def test_rejects_duplicate_policy_headers_before_evaluation(self) -> None:
         with patch(
@@ -481,7 +507,7 @@ class TestConfig:
         assert config.sidecar_url == "http://127.0.0.1:9090"
         assert "OPTIONS" in config.exclude_methods
         assert config.receipt_header == "X-Chio-Receipt"
-        assert config.max_body_bytes == 1_048_576
+        assert config.max_body_bytes == 8 * 1024 * 1024
 
     def test_custom(self) -> None:
         config = ChioASGIConfig(
