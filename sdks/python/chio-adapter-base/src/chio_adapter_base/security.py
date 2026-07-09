@@ -265,8 +265,10 @@ def reject_shell_argv_escape(
             and normalised[0].isalpha()
             and normalised[1] == ":"
             and normalised[2] == "/"
-        )
-        is_absolute_token = normalised.startswith("/") or is_windows_absolute
+        ) or normalised.startswith("//")
+        if root_path is not None and is_windows_absolute:
+            raise ChioPathEscapeError(token, "outside_workspace")
+        is_absolute_token = normalised.startswith("/")
         if root_path is not None and is_absolute_token:
             try:
                 resolved = pathlib.Path(token).resolve()

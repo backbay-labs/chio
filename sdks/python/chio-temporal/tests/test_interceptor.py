@@ -386,9 +386,32 @@ class TestDenyVerdict:
         assert receipt.metadata["sidecar_receipt_id"] == opaque_receipt_id
         assert receipt.is_denied
 
-    def test_is_sha256_hex_accepts_mixed_case_digest(self) -> None:
+    def test_deny_receipt_hashes_mixed_case_sidecar_receipt_id(self) -> None:
+        import hashlib
+
+        mixed_case_receipt_id = "A" * 64
+        info = _default_info(activity_type="send_email")
+        receipt = _deny_receipt_from_error(
+            info=info,
+            capability_id="cap-1",
+            tool_server="srv",
+            parameters={"payload": "secret"},
+            exc=ChioDeniedError(
+                "denied",
+                guard="ScopeGuard",
+                reason="no write perms",
+                receipt_id=mixed_case_receipt_id,
+            ),
+        )
+
+        expected_id = hashlib.sha256(mixed_case_receipt_id.encode("utf-8")).hexdigest()
+        assert receipt.id == expected_id
+        assert receipt.id != mixed_case_receipt_id.lower()
+        assert receipt.metadata["sidecar_receipt_id"] == mixed_case_receipt_id
+
+    def test_is_sha256_hex_accepts_only_lowercase_digest(self) -> None:
         assert _is_sha256_hex("a" * 64)
-        assert _is_sha256_hex("A" * 64)
+        assert not _is_sha256_hex("A" * 64)
         assert not _is_sha256_hex("not-a-digest")
         assert not _is_sha256_hex("a" * 63)
 

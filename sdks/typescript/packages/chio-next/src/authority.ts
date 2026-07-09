@@ -14,7 +14,7 @@ export interface ChioAuthorityFields {
 }
 
 function isAuthorizedResult(result: string | undefined): boolean {
-  return result === "allow" || result === "authorized" || result === "Authorized";
+  return result === "allow";
 }
 
 export function isAuthorizedEvaluation(
