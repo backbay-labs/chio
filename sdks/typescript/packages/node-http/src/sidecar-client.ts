@@ -96,6 +96,12 @@ export class ChioSidecarClient {
       }
 
       const result = (await response.json()) as EvaluateResponse;
+      if (result.receipt == null) {
+        throw new SidecarError(
+          CHIO_ERROR_CODES.INVALID_RECEIPT,
+          "sidecar evaluation response omitted receipt",
+        );
+      }
       if (isAllowShapedResult(result)) {
         await this.assertAuthorizedAllowResult(result);
       }

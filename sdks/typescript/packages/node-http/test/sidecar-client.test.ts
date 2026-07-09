@@ -358,7 +358,7 @@ describe("ChioSidecarClient.evaluate", () => {
     }
   });
 
-  it("does not throw when a deny response omits the receipt field", async () => {
+  it("rejects deny responses that omit the receipt field", async () => {
     const result = {
       verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
       evidence: [],
@@ -367,7 +367,10 @@ describe("ChioSidecarClient.evaluate", () => {
 
     try {
       const client = new ChioSidecarClient({ sidecarUrl: url });
-      await expect(client.evaluate(testRequest())).resolves.toEqual(result);
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_invalid_receipt",
+      );
     } finally {
       await closeServer(server);
     }

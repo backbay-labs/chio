@@ -153,7 +153,15 @@ def _shell_requires_approval(handle: RuntimeHandle, command: str) -> bool:
         return False
     try:
         return bool(policy.check_shell(command))
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        try:
+            from chio_code_agent.errors import (
+                ChioCodeAgentDeniedError as denied_error_type,
+            )
+        except Exception:
+            denied_error_type = None
+        if denied_error_type is not None and isinstance(exc, denied_error_type):
+            raise
         # Fail closed for HITL: a broken approval policy must not let the
         # command bypass the approval queue.
         return True
