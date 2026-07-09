@@ -376,6 +376,10 @@ fn reject_if_over_precise_fractional(token: &str) -> Result<()> {
     Ok(())
 }
 
+fn is_integer_valued_f64(value: f64) -> bool {
+    value % 1.0 == 0.0
+}
+
 /// Extract the significant decimal digits of a JSON number token, in order.
 ///
 /// Only the mantissa (the portion before any `e`/`E`) contributes; leading and
