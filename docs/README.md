@@ -178,6 +178,14 @@ The primary live release documents. Auditors and operators start here.
 
 - [Trust boundary: browser signing](trust-boundary-browser-signing.md) - where signing happens for browser-originated requests
 
+## Formal verification
+
+- [Formal verification docs](formal/README.md) - index for the review and planning set
+- [Current state](formal/CURRENT_STATE.md) - the six evidence lanes (Lean 4, Aeneas, Creusot, Kani, TLA+/Apalache, diff-tests), governance layer, and CI cadence as surveyed 2026-07-09
+- [Gap analysis](formal/GAP_ANALYSIS.md) - the six load-bearing gaps (G1-G6) with evidence
+- [Hygiene pass](formal/HYGIENE_PASS.md) - fifteen mechanical fixes with exact edits
+- [Roadmap](formal/ROADMAP.md) - waves, dependencies, and claims impact for the 23 plan specs under [docs/formal/plan/](formal/plan/)
+
 ## Fuzzing
 
 - [Continuous Fuzzing Runbook](fuzzing/continuous.md) - layered fuzzing strategy (in-tree matrix, ClusterFuzzLite bridge, OSS-Fuzz primary), CI budget enforcement, target inventory
