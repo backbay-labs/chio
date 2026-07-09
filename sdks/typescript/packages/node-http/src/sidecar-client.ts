@@ -111,7 +111,7 @@ export class ChioSidecarClient {
           "sidecar evaluate response missing structured verdict or receipt fields",
         );
       }
-      const result = parsed;
+      const result = normalizeEvaluateResponse(parsed);
       if (!hasRequiredReceiptSemantics(result.receipt)) {
         throw new SidecarError(
           isAllowShapedResult(result)
@@ -257,19 +257,30 @@ function isEvaluateResponse(value: unknown): value is EvaluateResponse {
 
 function isHttpReceipt(value: unknown): value is HttpReceipt {
   if (!isRecord(value)) return false;
+  const evidence = value["evidence"];
   return typeof value["id"] === "string"
     && typeof value["request_id"] === "string"
     && typeof value["route_pattern"] === "string"
     && typeof value["method"] === "string"
     && typeof value["caller_identity_hash"] === "string"
     && isVerdict(value["verdict"])
-    && Array.isArray(value["evidence"])
+    && (evidence === undefined || Array.isArray(evidence))
     && typeof value["response_status"] === "number"
     && typeof value["timestamp"] === "number"
     && typeof value["content_hash"] === "string"
     && typeof value["policy_hash"] === "string"
     && typeof value["kernel_key"] === "string"
     && typeof value["signature"] === "string";
+}
+
+function normalizeEvaluateResponse(response: EvaluateResponse): EvaluateResponse {
+  return {
+    ...response,
+    receipt: {
+      ...response.receipt,
+      evidence: response.receipt.evidence ?? [],
+    },
+  };
 }
 
 function isVerdict(value: unknown): value is Verdict {

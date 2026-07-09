@@ -291,6 +291,25 @@ describe("ChioSidecarClient.evaluate", () => {
     }
   });
 
+  it("normalizes omitted receipt evidence to an empty array", async () => {
+    const receipt = authoritativeAllowReceipt() as Partial<HttpReceipt>;
+    delete receipt.evidence;
+    const result = {
+      verdict: { verdict: "allow" },
+      receipt,
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      const evaluated = await client.evaluate(testRequest());
+      expect(evaluated.receipt.evidence).toEqual([]);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
   it("rejects allow-shaped responses without structural receipt authority", async () => {
     const result: EvaluateResponse = {
       verdict: { verdict: "allow" },
