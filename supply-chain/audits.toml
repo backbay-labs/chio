@@ -259,6 +259,12 @@ criteria = "safe-to-deploy"
 version = "1.0.102"
 notes = "Widely used error type by dtolnay; pure Rust, no network IO or unsafe-heavy code."
 
+[[audits.anyhow]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "1.0.103"
+notes = "Reviewed dtolnay error-wrapper update for current workspace use; build script probes rustc cfg only, with no network IO and unsafe limited to typed error storage internals."
+
 [[audits.asn1-rs]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
