@@ -138,6 +138,7 @@ pub struct PublicSettlementVerifierTrust {
     pub trusted_dispute_event_blocks: Vec<PublicSettlementBlockSnapshot>,
     pub trusted_release_event_blocks: Vec<PublicSettlementBlockSnapshot>,
     pub trusted_release_event_logs: Vec<PublicSettlementReleaseEventLog>,
+    pub trusted_refund_event_logs: Vec<PublicSettlementRefundEventLog>,
     pub verifier_now_unix_seconds: Option<u64>,
     pub trusted_runtime_codehashes: Option<PublicSettlementRuntimeCodehashTrust>,
 }
@@ -258,6 +259,18 @@ pub struct PublicSettlementRefundEvent {
     pub refund_tx_hash: String,
     pub amount: crate::capability::scope::MonetaryAmount,
     pub block: PublicSettlementBlockSnapshot,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicSettlementRefundEventLog {
+    pub contract_address: String,
+    pub escrow_id: String,
+    pub refund_tx_hash: String,
+    pub amount: crate::capability::scope::MonetaryAmount,
+    pub block_number: u64,
+    pub block_hash: String,
+    pub log_index: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

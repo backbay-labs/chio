@@ -7,7 +7,8 @@ use crate::hashing::Hash;
 use crate::settlement::Web3SettlementLifecycleState;
 use crate::settlement_proof::{
     verify_public_settlement_proof, PublicSettlementBlockSnapshot, PublicSettlementDisputePosture,
-    PublicSettlementRefundEvent, PublicSettlementReleaseEvent, PublicSettlementReleaseEventKind,
+    PublicSettlementProofBundle, PublicSettlementRefundEvent, PublicSettlementRefundEventLog,
+    PublicSettlementReleaseEvent, PublicSettlementReleaseEventKind,
     PublicSettlementReleaseEventLog,
 };
 use serde_json::json;
@@ -29,6 +30,30 @@ fn sample_dispute_event_block() -> PublicSettlementBlockSnapshot {
         block_hash: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
             .to_string(),
         transaction_hashes: vec![sample_dispute_event_tx_hash()],
+    }
+}
+
+fn bind_observed_settlement_tx(bundle: &mut PublicSettlementProofBundle, tx_hash: &str) {
+    bundle.order_binding.settlement_tx_hash = tx_hash.to_string();
+    bundle
+        .settlement_receipt
+        .observed_execution
+        .external_reference_id = tx_hash.to_string();
+}
+
+fn sample_refund_event_log(
+    bundle: &PublicSettlementProofBundle,
+    block: &PublicSettlementBlockSnapshot,
+    refund_tx_hash: &str,
+) -> PublicSettlementRefundEventLog {
+    PublicSettlementRefundEventLog {
+        contract_address: bundle.chain_snapshot.escrow.escrow_contract.clone(),
+        escrow_id: bundle.chain_snapshot.escrow.escrow_id.clone(),
+        refund_tx_hash: refund_tx_hash.to_string(),
+        amount: bundle.settlement_receipt.settled_amount.clone(),
+        block_number: block.block_number,
+        block_hash: block.block_hash.clone(),
+        log_index: 0,
     }
 }
 
@@ -447,6 +472,64 @@ fn public_settlement_proof_reports_refunded_reversal_status() {
 fn public_settlement_proof_accepts_refunded_timed_out_escrow_with_zero_released_amount() {
     let mut bundle = sample_public_settlement_proof_bundle();
     let event_block = sample_dispute_event_block();
+    let refund_tx_hash = sample_dispute_event_tx_hash();
+    let timeout_at = bundle
+        .settlement_receipt
+        .dispatch
+        .capital_instruction
+        .body
+        .execution_window
+        .not_after
+        + 1;
+    bind_observed_settlement_tx(&mut bundle, &refund_tx_hash);
+    bundle.dispute_posture = PublicSettlementDisputePosture::Refunded;
+    bundle.settlement_receipt.lifecycle_state = Web3SettlementLifecycleState::TimedOut;
+    bundle.settlement_receipt.failure_reason = Some("escrow refunded after deadline".to_string());
+    bundle.settlement_receipt.observed_execution.observed_at = timeout_at;
+    bundle.settlement_receipt.issued_at = timeout_at;
+    bundle.chain_snapshot.escrow.released_amount.units = 0;
+    bundle.chain_snapshot.escrow.refunded = true;
+    bundle.chain_snapshot.escrow.refund_event = Some(PublicSettlementRefundEvent {
+        escrow_id: bundle.chain_snapshot.escrow.escrow_id.clone(),
+        refund_tx_hash: refund_tx_hash.clone(),
+        amount: bundle.settlement_receipt.settled_amount.clone(),
+        block: event_block.clone(),
+    });
+    let Some(dispute_snapshot) = bundle.dispute_snapshot.as_mut() else {
+        panic!("sample public settlement proof bundle has dispute snapshot");
+    };
+    dispute_snapshot.posture = PublicSettlementDisputePosture::Refunded;
+    dispute_snapshot.dispute_id = "dispute-public-settlement-timeout-refund".to_string();
+    dispute_snapshot
+        .linked_receipt_ids
+        .push(bundle.settlement_receipt.execution_receipt_id.clone());
+    dispute_snapshot.chain_event_tx_hashes = vec![refund_tx_hash.clone()];
+    dispute_snapshot.chain_event_blocks = vec![event_block.clone()];
+    dispute_snapshot.challenge_window_secs = 600;
+    dispute_snapshot.window_closed_at = timeout_at + dispute_snapshot.challenge_window_secs;
+    dispute_snapshot.observed_at = dispute_snapshot.window_closed_at;
+    let verifier_now = dispute_snapshot.observed_at + 1;
+
+    let mut signed_bundle = bundle.clone();
+    sign_sample_public_settlement_bundle(&mut signed_bundle);
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_dispute_event_blocks = vec![event_block.clone()];
+    trust.trusted_refund_event_logs = vec![sample_refund_event_log(
+        &bundle,
+        &event_block,
+        &refund_tx_hash,
+    )];
+    trust.verifier_now_unix_seconds = Some(verifier_now);
+    let report = verify_public_settlement_proof(&signed_bundle, &trust).unwrap();
+
+    assert_eq!(report.finality_decision.status, "refunded");
+    assert_eq!(report.recomputed_settlement_state, "timed_out");
+}
+
+#[test]
+fn public_settlement_proof_rejects_timed_out_refund_tx_mismatch() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    let event_block = sample_dispute_event_block();
     let timeout_at = bundle
         .settlement_receipt
         .dispatch
@@ -488,10 +571,67 @@ fn public_settlement_proof_accepts_refunded_timed_out_escrow_with_zero_released_
     let mut trust = sample_public_settlement_verifier_trust();
     trust.trusted_dispute_event_blocks = vec![event_block];
     trust.verifier_now_unix_seconds = Some(verifier_now);
-    let report = verify_public_settlement_proof(&signed_bundle, &trust).unwrap();
 
-    assert_eq!(report.finality_decision.status, "refunded");
-    assert_eq!(report.recomputed_settlement_state, "timed_out");
+    assert!(matches!(
+        verify_public_settlement_proof(&signed_bundle, &trust),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("refund event tx hash mismatch")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_timed_out_refund_without_trusted_refund_log() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    let event_block = sample_dispute_event_block();
+    let refund_tx_hash = sample_dispute_event_tx_hash();
+    let timeout_at = bundle
+        .settlement_receipt
+        .dispatch
+        .capital_instruction
+        .body
+        .execution_window
+        .not_after
+        + 1;
+    bind_observed_settlement_tx(&mut bundle, &refund_tx_hash);
+    bundle.dispute_posture = PublicSettlementDisputePosture::Refunded;
+    bundle.settlement_receipt.lifecycle_state = Web3SettlementLifecycleState::TimedOut;
+    bundle.settlement_receipt.failure_reason = Some("escrow refunded after deadline".to_string());
+    bundle.settlement_receipt.observed_execution.observed_at = timeout_at;
+    bundle.settlement_receipt.issued_at = timeout_at;
+    bundle.chain_snapshot.escrow.released_amount.units = 0;
+    bundle.chain_snapshot.escrow.refunded = true;
+    bundle.chain_snapshot.escrow.refund_event = Some(PublicSettlementRefundEvent {
+        escrow_id: bundle.chain_snapshot.escrow.escrow_id.clone(),
+        refund_tx_hash: refund_tx_hash.clone(),
+        amount: bundle.settlement_receipt.settled_amount.clone(),
+        block: event_block.clone(),
+    });
+    let Some(dispute_snapshot) = bundle.dispute_snapshot.as_mut() else {
+        panic!("sample public settlement proof bundle has dispute snapshot");
+    };
+    dispute_snapshot.posture = PublicSettlementDisputePosture::Refunded;
+    dispute_snapshot.dispute_id = "dispute-public-settlement-timeout-refund".to_string();
+    dispute_snapshot
+        .linked_receipt_ids
+        .push(bundle.settlement_receipt.execution_receipt_id.clone());
+    dispute_snapshot.chain_event_tx_hashes = vec![refund_tx_hash];
+    dispute_snapshot.chain_event_blocks = vec![event_block.clone()];
+    dispute_snapshot.challenge_window_secs = 600;
+    dispute_snapshot.window_closed_at = timeout_at + dispute_snapshot.challenge_window_secs;
+    dispute_snapshot.observed_at = dispute_snapshot.window_closed_at;
+    let verifier_now = dispute_snapshot.observed_at + 1;
+
+    let mut signed_bundle = bundle.clone();
+    sign_sample_public_settlement_bundle(&mut signed_bundle);
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_dispute_event_blocks = vec![event_block];
+    trust.verifier_now_unix_seconds = Some(verifier_now);
+
+    assert!(matches!(
+        verify_public_settlement_proof(&signed_bundle, &trust),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("trusted refund event log evidence missing")
+    ));
 }
 
 #[test]
@@ -545,6 +685,7 @@ fn public_settlement_proof_rejects_timed_out_refund_without_refund_event() {
 fn public_settlement_proof_rejects_timed_out_refund_wrong_event_amount() {
     let mut bundle = sample_public_settlement_proof_bundle();
     let event_block = sample_dispute_event_block();
+    let refund_tx_hash = sample_dispute_event_tx_hash();
     let timeout_at = bundle
         .settlement_receipt
         .dispatch
@@ -553,6 +694,7 @@ fn public_settlement_proof_rejects_timed_out_refund_wrong_event_amount() {
         .execution_window
         .not_after
         + 1;
+    bind_observed_settlement_tx(&mut bundle, &refund_tx_hash);
     bundle.dispute_posture = PublicSettlementDisputePosture::Refunded;
     bundle.settlement_receipt.lifecycle_state = Web3SettlementLifecycleState::TimedOut;
     bundle.settlement_receipt.failure_reason = Some("escrow refunded after deadline".to_string());
@@ -564,7 +706,7 @@ fn public_settlement_proof_rejects_timed_out_refund_wrong_event_amount() {
     wrong_amount.units -= 1;
     bundle.chain_snapshot.escrow.refund_event = Some(PublicSettlementRefundEvent {
         escrow_id: bundle.chain_snapshot.escrow.escrow_id.clone(),
-        refund_tx_hash: sample_dispute_event_tx_hash(),
+        refund_tx_hash: refund_tx_hash.clone(),
         amount: wrong_amount,
         block: event_block.clone(),
     });
@@ -576,7 +718,7 @@ fn public_settlement_proof_rejects_timed_out_refund_wrong_event_amount() {
     dispute_snapshot
         .linked_receipt_ids
         .push(bundle.settlement_receipt.execution_receipt_id.clone());
-    dispute_snapshot.chain_event_tx_hashes = vec![sample_dispute_event_tx_hash()];
+    dispute_snapshot.chain_event_tx_hashes = vec![refund_tx_hash];
     dispute_snapshot.chain_event_blocks = vec![event_block.clone()];
     dispute_snapshot.challenge_window_secs = 600;
     dispute_snapshot.window_closed_at = timeout_at + dispute_snapshot.challenge_window_secs;
@@ -616,6 +758,7 @@ fn public_settlement_proof_rejects_refund_event_not_declared_as_dispute_event() 
         .execution_window
         .not_after
         + 1;
+    bind_observed_settlement_tx(&mut bundle, &refund_tx_hash);
     bundle.dispute_posture = PublicSettlementDisputePosture::Refunded;
     bundle.settlement_receipt.lifecycle_state = Web3SettlementLifecycleState::TimedOut;
     bundle.settlement_receipt.failure_reason = Some("escrow refunded after deadline".to_string());

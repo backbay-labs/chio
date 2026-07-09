@@ -557,6 +557,7 @@ pub(super) fn public_settlement_verifier_trust_from_env(
         trusted_dispute_event_blocks: Vec::new(),
         trusted_release_event_blocks: Vec::new(),
         trusted_release_event_logs: Vec::new(),
+        trusted_refund_event_logs: Vec::new(),
         verifier_now_unix_seconds: optional_u64_from_env(
             PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS_ENV,
         )?,

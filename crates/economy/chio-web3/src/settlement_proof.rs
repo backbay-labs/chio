@@ -1278,6 +1278,11 @@ fn validate_independent_chain_head(
             "public settlement observed confirmations exceed independent head".to_string(),
         ));
     }
+    if bundle.chain_snapshot.latest_block_number > head.latest_block_number {
+        return Err(Web3ContractError::InvalidProof(
+            "public settlement chain snapshot exceeds independent head".to_string(),
+        ));
+    }
     Ok(())
 }
 
@@ -1466,7 +1471,7 @@ fn validate_escrow_snapshot(
                 "public settlement escrow refunded amount mismatch".to_string(),
             ));
         }
-        validate_refund_event(bundle, escrow, refunded_amount)?;
+        validate_refund_event(bundle, escrow, refunded_amount, trust)?;
     } else {
         if escrow.refunded || escrow.refund_event.is_some() {
             return Err(Web3ContractError::InvalidSettlement(
@@ -1513,6 +1518,7 @@ fn validate_refund_event(
     bundle: &PublicSettlementProofBundle,
     escrow: &PublicSettlementEscrowSnapshot,
     refunded_amount: u64,
+    trust: &PublicSettlementVerifierTrust,
 ) -> Result<(), Web3ContractError> {
     let refund_event = escrow.refund_event.as_ref().ok_or_else(|| {
         Web3ContractError::InvalidProof(
@@ -1526,6 +1532,16 @@ fn validate_refund_event(
     }
     Hash::from_hex(&refund_event.refund_tx_hash)
         .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    if refund_event.refund_tx_hash
+        != bundle
+            .settlement_receipt
+            .observed_execution
+            .external_reference_id
+    {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement refund event tx hash mismatch".to_string(),
+        ));
+    }
     let dispute_snapshot = required_dispute_snapshot(bundle)?;
     if !dispute_snapshot
         .chain_event_tx_hashes
@@ -1556,6 +1572,60 @@ fn validate_refund_event(
     {
         return Err(Web3ContractError::InvalidProof(
             "public settlement refund tx hash not included in event block".to_string(),
+        ));
+    }
+    let trusted_log = required_trusted_refund_event_log(refund_event, escrow, trust)?;
+    validate_trusted_refund_event_log(trusted_log, refund_event, escrow)?;
+    if refund_event.amount != trusted_log.amount {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement refund event amount mismatch against trusted log".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn required_trusted_refund_event_log<'a>(
+    refund_event: &PublicSettlementRefundEvent,
+    escrow: &PublicSettlementEscrowSnapshot,
+    trust: &'a PublicSettlementVerifierTrust,
+) -> Result<&'a PublicSettlementRefundEventLog, Web3ContractError> {
+    trust
+        .trusted_refund_event_logs
+        .iter()
+        .find(|log| {
+            log.refund_tx_hash == refund_event.refund_tx_hash
+                && log.block_number == refund_event.block.block_number
+                && log.block_hash == refund_event.block.block_hash
+                && log.escrow_id == escrow.escrow_id
+        })
+        .ok_or_else(|| {
+            Web3ContractError::InvalidProof(
+                "public settlement trusted refund event log evidence missing".to_string(),
+            )
+        })
+}
+
+fn validate_trusted_refund_event_log(
+    trusted_log: &PublicSettlementRefundEventLog,
+    refund_event: &PublicSettlementRefundEvent,
+    escrow: &PublicSettlementEscrowSnapshot,
+) -> Result<(), Web3ContractError> {
+    ensure_evm_address(
+        &trusted_log.contract_address,
+        "public_settlement.trust.trusted_refund_event_logs.contract_address",
+    )?;
+    if !evm_addresses_match(&trusted_log.contract_address, &escrow.escrow_contract)? {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement trusted refund event contract mismatch".to_string(),
+        ));
+    }
+    Hash::from_hex(&trusted_log.refund_tx_hash)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    Hash::from_hex(&trusted_log.block_hash)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    if trusted_log.escrow_id != refund_event.escrow_id {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement trusted refund event escrow id mismatch".to_string(),
         ));
     }
     Ok(())

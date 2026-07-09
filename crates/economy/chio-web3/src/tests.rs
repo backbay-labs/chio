@@ -803,6 +803,7 @@ pub(super) fn sample_public_settlement_verifier_trust() -> PublicSettlementVerif
         trusted_dispute_event_blocks: Vec::new(),
         trusted_release_event_blocks: Vec::new(),
         trusted_release_event_logs: Vec::new(),
+        trusted_refund_event_logs: Vec::new(),
         verifier_now_unix_seconds: Some(1_743_293_860),
         trusted_runtime_codehashes: Some(PublicSettlementRuntimeCodehashTrust {
             contract_package_id: provenance.contract_package_id,
@@ -2190,6 +2191,19 @@ fn public_settlement_proof_accepts_matching_independent_head() {
     });
 
     assert!(verify_public_settlement_proof(&bundle, &trust).is_ok());
+}
+
+#[test]
+fn public_settlement_proof_rejects_chain_snapshot_ahead_of_independent_head() {
+    let bundle = sample_public_settlement_proof_bundle_with_chain_snapshot(|bundle| {
+        bundle["chain_snapshot"]["latest_block_number"] = json!(12_345_702);
+    });
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&bundle),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("public settlement chain snapshot exceeds independent head")
+    ));
 }
 
 #[test]
