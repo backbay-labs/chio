@@ -159,18 +159,28 @@ CI files isolated).
 - Verify: `lake build` green under the stable pin; `#print axioms` output
   unchanged for the headline theorems.
 
-## H11. Fuzz budget "hard halt" claims vs warn-only default
+## H11. Fuzz budget hard-halt contract not enforced in behavior
 
 - Files: `.github/workflows/cflite_pr.yml`, `.github/workflows/mutants.yml`
-  (budget step comments), `scripts/check-fuzz-budget.sh`.
-- Defect: two workflows describe the 1800-minute/30-day budget as a hard
-  halt; the script's `cap_mode` defaults to `warn` and no lane sets
-  `GH_FUZZ_BUDGET_CAP_MODE=fail`, so every lane is advisory.
-- Fix: pick per-lane modes deliberately (recommendation in
-  [plan/FV-E4](plan/FV-E4-fuzz-plumbing-repair.md): `fail` on scheduled batch
-  lanes, `warn` on the PR lane) and make comments match the configuration.
-- Verify: grep for "hard halt"; each mention corresponds to a lane that sets
-  `GH_FUZZ_BUDGET_CAP_MODE=fail`.
+  (PR budget steps), `scripts/check-fuzz-budget.sh`,
+  `scripts/tests/fuzz-budget-hard-halt.test.sh`,
+  `.github/workflows/ci.yml`.
+- Defect: the repository contract says PR-time budget gates hard halt while
+  scheduled lanes are advisory (`docs/fuzzing/continuous.md`, both PR
+  budget-step comments, and the dedicated contract test
+  `scripts/tests/fuzz-budget-hard-halt.test.sh`, which rejects an explicit
+  warn on those steps). But neither PR budget step sets
+  `GH_FUZZ_BUDGET_CAP_MODE` at all, the script defaults `cap_mode` to warn
+  (`check-fuzz-budget.sh:54`), and the contract test is wired into no CI
+  job. Effective behavior is warn everywhere; only the four scheduled lanes
+  set warn explicitly and deliberately.
+- Fix: set `GH_FUZZ_BUDGET_CAP_MODE: fail` explicitly on the two PR budget
+  steps, harden the contract test to require the explicit fail (rejecting
+  only an explicit warn is vacuous against a warn default), and wire the
+  test into the required check job. Scheduled lanes stay warn. Full design
+  in [plan/FV-E4](plan/FV-E4-fuzz-plumbing-repair.md) item 6.
+- Verify: `bash scripts/tests/fuzz-budget-hard-halt.test.sh` passes, runs in
+  ci.yml, and fails locally when either PR step's fail setting is removed.
 
 ## H12. Placeholder directories that mislead
 

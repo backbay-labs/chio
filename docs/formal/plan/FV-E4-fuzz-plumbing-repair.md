@@ -9,7 +9,7 @@ Related docs: [../GAP_ANALYSIS.md](../GAP_ANALYSIS.md) (G6), `docs/fuzzing/conti
 
 ## Summary
 
-The fuzz estate's plumbing leaks in seven specific places (gap G6): three orphaned corpus directories hold the richest seeds while the live bin-named directories hold 1-3 files; four targets have no seed corpus at all; the smoke and inventory tests in `fuzz/tests/smoke.rs` run in no CI job; `scripts/check-corpus-metadata.sh` is wired to no workflow; `fuzz/owners.toml` is missing five targets, which breaks `scripts/promote_fuzz_seed.sh` owner resolution; and two workflows plus one doc claim the 1800 min/30d budget cap is a "hard halt" while `scripts/check-fuzz-budget.sh` defaults to warn and no lane sets `GH_FUZZ_BUDGET_CAP_MODE=fail`. Every item is cheap; this document is the exhaustive repair checklist with exact commands, paths, and a verification step per item. It is also the definition of done for future targets: the wasm guard-smith target from FV-D4 and the ledger-ops target from FV-B3 must land with every item on this list satisfied.
+The fuzz estate's plumbing leaks in seven specific places (gap G6): three orphaned corpus directories hold the richest seeds while the live bin-named directories hold 1-3 files; four targets have no seed corpus at all; the smoke and inventory tests in `fuzz/tests/smoke.rs` run in no CI job; `scripts/check-corpus-metadata.sh` is wired to no workflow; `fuzz/owners.toml` is missing five targets, which breaks `scripts/promote_fuzz_seed.sh` owner resolution; and the budget-cap contract (PR lanes hard halt, scheduled lanes advisory) is written into the docs, the workflow comments, and a dedicated contract test, yet neither PR budget step sets `GH_FUZZ_BUDGET_CAP_MODE`, `scripts/check-fuzz-budget.sh` defaults to warn, and the contract test runs in no CI job. Every item is cheap; this document is the exhaustive repair checklist with exact commands, paths, and a verification step per item. It is also the definition of done for future targets: the wasm guard-smith target from FV-D4 and the ledger-ops target from FV-B3 must land with every item on this list satisfied.
 
 ## Motivation and evidence
 
@@ -21,7 +21,7 @@ All verified this session:
 - `fuzz/tests/smoke.rs` contains 13 corpus smoke tests plus two inventory tests (`fuzz_workflow_matrix_matches_cargo_bins` at line 157, `all_matrix_targets_have_declared_smoke_posture` at line 162). `fuzz/` is a standalone cargo workspace excluded from `cargo test --workspace`; no CI job runs any of it.
 - `scripts/check-corpus-metadata.sh` enforces one `[[seed]]` entry per corpus file with sha256, source enum, and adversarial class/threat pairing, fail-closed; `grep -rn check-corpus-metadata .github/workflows/` finds nothing.
 - `fuzz/owners.toml` maps 20 targets; the workflow matrix has 25. Missing: `wasm_guard_escape`, `fuzz_policy_parse_compile`, `fuzz_sql_parser`, `fuzz_merkle_checkpoint`, `fuzz_tool_action`. `scripts/promote_fuzz_seed.sh` exits with "target not found in fuzz/owners.toml" (line 225) for all five, so a crash in any of them cannot be promoted.
-- Budget honesty: `cflite_pr.yml:10` ("the budget script is the hard halt") and `:68-70`, `mutants.yml:16-17` and `:139-141` all claim a hard halt; `scripts/check-fuzz-budget.sh:54` defaults `cap_mode` to warn and lines 110-113 continue on over-cap; no workflow sets `GH_FUZZ_BUDGET_CAP_MODE=fail`. `mutants-nightly` alone sets it explicitly (to warn, `mutants.yml:348`). `docs/fuzzing/continuous.md:18-19,39` repeats the hard-halt claim and its line 60-62 claim that the script "counts only cflite_* minutes" is stale (the script sums five workflows, `check-fuzz-budget.sh:29`).
+- Budget honesty: the contract is PR-hard-halt, scheduled-advisory. `cflite_pr.yml:10` ("the budget script is the hard halt") and `:68-70`, `mutants.yml:16-17` and `:139-141`, and `docs/fuzzing/continuous.md:18-19,39` state it, and `scripts/tests/fuzz-budget-hard-halt.test.sh` enforces the wording (it rejects an explicit warn on either PR budget step and requires the hard-halt text). But `scripts/check-fuzz-budget.sh:54` defaults `cap_mode` to warn (lines 110-113 continue on over-cap), neither PR budget step sets the variable at all, and the contract test is invoked by no workflow, so effective behavior is warn everywhere. The four scheduled lanes set warn explicitly and deliberately (`cflite_batch.yml:47`, `fuzz.yml:96`, `mutants.yml:348`, `mutants-fuzz-cocoverage.yml:110`). Separately, `continuous.md:60-62`'s claim that the script "counts only cflite_* minutes" is stale (the script sums five workflows, `check-fuzz-budget.sh:29`).
 
 ## Current state
 
@@ -124,19 +124,21 @@ Verification: two layers. (1) One-off: for each of the five, run `scripts/promot
 
 ### Item 6: budget cap honesty
 
-Action: set `GH_FUZZ_BUDGET_CAP_MODE` explicitly in every lane that calls `scripts/check-fuzz-budget.sh`, and rewrite the comments to match the configured reality. Recommended postures:
+The contract here is already decided; the defect is that it is not enforced in behavior. `docs/fuzzing/continuous.md:18-19,39` and both PR budget-step comments (`cflite_pr.yml:68-70`, `mutants.yml:139-141`) say PR-time budget gates hard halt because they are release qualification signals, the four scheduled lanes deliberately opt into warn for measurement continuity, and a dedicated contract test (`scripts/tests/fuzz-budget-hard-halt.test.sh`) rejects an explicit warn on either PR budget step and requires the hard-halt wording. Meanwhile neither PR budget step sets `GH_FUZZ_BUDGET_CAP_MODE` at all, so the script's warn default (`check-fuzz-budget.sh:54`) applies, and the contract test itself is invoked by no workflow. The absence-of-warn check is vacuous against a warn default.
+
+Action: make behavior match the contract instead of rewording the contract to match behavior.
 
 | Lane | Setting | Why |
 | --- | --- | --- |
-| `cflite_batch.yml`, `fuzz.yml` (scheduled) | `fail` | Scheduled batch lanes are the dominant budget consumers and nobody is blocked when they halt; failing closed at the cap is what protects the envelope. |
-| `cflite_pr.yml` budget-check | `warn` (explicit) | An over-cap trailing window is almost always caused by scheduled lanes; blocking unrelated PR merges over a 60 s sample lane punishes the wrong actor. The PR lane's own consumption is small and bounded by its 30-minute job timeout. |
-| `mutants.yml` mutants-pr (when revived per [FV-E3](FV-E3-pr-formal-smoke-tier.md)) | `warn` (explicit) | Same PR-availability argument; the in-diff scope keeps consumption small. |
-| `mutants.yml` mutants-nightly | `warn` (already explicit at line 348) | Deliberate, documented measurement-must-keep-flowing posture; unchanged. |
-| `mutants-fuzz-cocoverage.yml` | `warn` (explicit) | Advisory measurement lane by design. |
+| `cflite_pr.yml` budget-check | `fail` (explicit, new) | PR-time fuzz is a release qualification signal; the step's own comment, `continuous.md`, and the contract test already promise a hard halt. |
+| `mutants.yml` mutants-pr (when revived per [FV-E3](FV-E3-pr-formal-smoke-tier.md)) | `fail` (explicit, new) | Same contract; the contract test checks exactly this block. |
+| `cflite_batch.yml:47`, `fuzz.yml:96`, `mutants.yml:348` (nightly), `mutants-fuzz-cocoverage.yml:110` | `warn` (already explicit) | Deliberate, documented measurement-must-keep-flowing posture; unchanged. |
 
-Comment fixes in the same change: `cflite_pr.yml:10` and `:68-70` ("hard halt" becomes "advisory report; scheduled lanes enforce the cap"); `mutants.yml:16-17` and `:139-141` likewise; `docs/fuzzing/continuous.md:18-19` and `:39` (hard halt applies to scheduled lanes only) and `:60-62` (the script sums cflite_pr, cflite_batch, fuzz, mutants, and mutants-fuzz-cocoverage, per `check-fuzz-budget.sh:29`).
+In the same change: harden `scripts/tests/fuzz-budget-hard-halt.test.sh` to require the explicit `GH_FUZZ_BUDGET_CAP_MODE: fail` on both PR budget steps (not merely the absence of warn), and wire it into the required check job's structural-gates step alongside the other `scripts/tests/*.test.sh` invocations (`ci.yml:82-123`). The only comment fix left is `docs/fuzzing/continuous.md:60-62`, whose claim that the script "counts only cflite_* minutes" is stale (the script sums five workflows, `check-fuzz-budget.sh:29`).
 
-Verification: `grep -rn "check-fuzz-budget" .github/workflows/ | xargs -I{} sh -c '...'` review shows every call site paired with an explicit `GH_FUZZ_BUDGET_CAP_MODE`; run `GH_FUZZ_BUDGET_MINUTES=1 GH_FUZZ_BUDGET_CAP_MODE=fail scripts/check-fuzz-budget.sh` locally and confirm exit 1, then with `=warn` and confirm exit 0 with the warning line.
+Availability note: an over-cap trailing window is usually consumed by the scheduled lanes, and a hard halt on the PR gate then blocks fuzz-scoped PRs until the window drains. That trade is the documented, tested contract choice. If it proves too aggressive in practice, the escape is a deliberate contract revision (continuous.md, both step comments, and the contract test changed together in one PR), never a silent divergence between comment and configuration.
+
+Verification: `bash scripts/tests/fuzz-budget-hard-halt.test.sh` passes and appears in `ci.yml`; removing either PR step's `fail` setting makes it fail locally; `GH_FUZZ_BUDGET_MINUTES=1 GH_FUZZ_BUDGET_CAP_MODE=fail scripts/check-fuzz-budget.sh` exits 1, and with `=warn` exits 0 with the warning line.
 
 ### Item 7: update declared smoke postures for newly seeded targets
 
@@ -149,14 +151,14 @@ Verification: `cd fuzz && cargo test --test smoke` green; the posture lists and 
 1. Phase 1 - corpus consolidation (items 1, 2, 7). Files to modify: `fuzz/corpus_metadata.toml`, `fuzz/tests/smoke.rs`; files to add: `fuzz/corpus/eval_receipt_bundle/*`, `fuzz/corpus/federation_trust_establishment/*`, `fuzz/corpus/underwriting_policy_input/*`, `fuzz/corpus/revocation_oracle_merkle/*`; files to remove: the three orphan dirs (contents moved via `git mv`).
 2. Phase 2 - gates (items 4, 5). Files to modify: `.github/workflows/ci.yml` (one line in the structural-gates step), `fuzz/owners.toml`, `fuzz/tests/smoke.rs` (owners inventory test).
 3. Phase 3 - CI wiring for the fuzz test lane (item 3). Files to add or modify: `.github/workflows/formal-pr-smoke.yml` (new path-scoped job) or `.github/workflows/fuzz-smoke.yml`; `.github/workflows/nightly.yml` (nightly `fuzz-smoke` job).
-4. Phase 4 - budget posture (item 6). Files to modify: `.github/workflows/cflite_batch.yml`, `.github/workflows/fuzz.yml`, `.github/workflows/cflite_pr.yml`, `.github/workflows/mutants.yml`, `.github/workflows/mutants-fuzz-cocoverage.yml`, `docs/fuzzing/continuous.md`.
+4. Phase 4 - budget posture (item 6). Files to modify: `.github/workflows/cflite_pr.yml`, `.github/workflows/mutants.yml` (PR budget steps gain explicit `fail`), `scripts/tests/fuzz-budget-hard-halt.test.sh` (require the explicit fail), `.github/workflows/ci.yml` (wire the contract test), `docs/fuzzing/continuous.md` (stale five-workflow sum note only). Scheduled lanes are untouched.
 5. Phase 5 - close the loop: update `docs/formal/GAP_ANALYSIS.md` G6 status; record in `docs/fuzzing/continuous.md` that this checklist is the definition of done for new targets (FV-D4's `wasm_guard_smith`, FV-B3's ledger-ops target).
 
 ## CI and gating changes
 
 - Required check job gains one cheap structural gate (`check-corpus-metadata.sh`), the only change to a required context in this document.
 - New path-scoped PR job and nightly job for the fuzz workspace tests (advisory by virtue of not being ruleset-required; [FV-E5](FV-E5-lane-ratchets.md) can promote the PR job once stable).
-- Budget-cap env made explicit in five workflows; scheduled batch lanes become genuinely fail-closed at the cap, matching the fail-closed house rule.
+- Both PR budget steps become genuinely fail-closed at the cap, matching their own documented contract and the fail-closed house rule; the four scheduled lanes keep their explicit advisory posture; the hardened contract test joins the required check job.
 - No changes to fuzz execution lanes themselves (cflite build scripts, oss-fuzz mirrors) beyond corpus paths already handled by item 1's bookkeeping; `.clusterfuzzlite/build.sh` and `fuzz/oss-fuzz/build.sh` reference targets, not corpus dirs, and need no edit (re-verify during phase 1 per `target-map.toml:8-10`'s lockstep note).
 
 ## Acceptance criteria
@@ -166,7 +168,7 @@ Verification: `cd fuzz && cargo test --test smoke` green; the posture lists and 
 - [ ] `bash scripts/check-corpus-metadata.sh` runs in the required check job and passes (item 4).
 - [ ] `cd fuzz && cargo test` runs in CI on fuzz-touching PRs and nightly; the inventory tests plus the new owners test are among them (items 3, 5).
 - [ ] `fuzz/owners.toml` covers all 25 targets; `promote_fuzz_seed.sh` resolves each (item 5).
-- [ ] Every `check-fuzz-budget.sh` call site sets `GH_FUZZ_BUDGET_CAP_MODE` explicitly; no workflow or doc claims a hard halt where warn is configured (item 6).
+- [ ] Both PR budget steps set `GH_FUZZ_BUDGET_CAP_MODE: fail` explicitly; the four scheduled lanes keep their explicit `warn`; `scripts/tests/fuzz-budget-hard-halt.test.sh` requires the explicit fail settings and runs in the required check job (item 6).
 - [ ] The three formerly orphaned seed sets (2 + 13 + 6 files) are loaded by their targets in a `-runs=0` replay (item 1 verification).
 - [ ] G6 in `docs/formal/GAP_ANALYSIS.md` updated to point here with status.
 
@@ -174,7 +176,7 @@ Verification: `cd fuzz && cargo test --test smoke` green; the posture lists and 
 
 - Moved seeds crash their targets (they were never actually run against current code). Mitigation: that is signal, not risk; triage as ordinary fuzz findings, and land the move even if some seeds get quarantined into `fuzz/corpus_quarantine/` with metadata (better than dead orphan dirs).
 - The fuzz workspace test build is slow enough to annoy PR authors. Mitigation: path-scoped so only fuzz-touching PRs pay; `Swatinem/rust-cache` on the fuzz workspace; fallback python inventory check specified in item 3.
-- Enforcing `fail` on scheduled batch lanes silences fuzzing for the rest of a window after a budget spike. Mitigation: intended behavior (the cap exists to stay inside the public-repo free tier per `docs/fuzzing/continuous.md:18-19`); the warn-mode measurement lanes keep the dashboard alive, and the cap value remains tunable via `GH_FUZZ_BUDGET_MINUTES`.
+- Hard-halting the PR budget gates means an over-cap trailing window (usually consumed by the scheduled lanes) blocks fuzz-scoped PRs until the window drains. Mitigation: this is the contract the repository already documents and tests for (`cflite_pr.yml:68-70`, `scripts/tests/fuzz-budget-hard-halt.test.sh`); the cap stays tunable via `GH_FUZZ_BUDGET_MINUTES`, the warn-mode scheduled lanes keep the dashboard alive, and if the trade proves too aggressive the escape is a deliberate one-PR contract revision (docs, comments, and contract test together), never a silent divergence between comment and configuration.
 - corpus_metadata edits are fiddly by hand (21 path/target rewrites). Mitigation: a 15-line one-off python script in the PR description (not committed) or careful sed; `check-corpus-metadata.sh` catches every mistake fail-closed, which is the point of item 4 landing in the same effort.
 - Owners for the five added targets drift from `target-map.toml` crates. Mitigation: the standing owners inventory test cross-checks names; crate fields are copied from target-map, the single source that cflite already trusts.
 

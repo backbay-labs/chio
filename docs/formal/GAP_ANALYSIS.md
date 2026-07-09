@@ -188,9 +188,14 @@ Evidence:
 - `scripts/check-corpus-metadata.sh` is wired to no workflow.
 - `fuzz/owners.toml` is missing 5 targets, which breaks
   `scripts/promote_fuzz_seed.sh` owner resolution.
-- The fuzz budget cap is documented in two workflows as a hard halt, but
-  `scripts/check-fuzz-budget.sh` defaults to `warn` and no lane sets
-  `GH_FUZZ_BUDGET_CAP_MODE=fail`.
+- The budget-cap contract (PR lanes hard halt, scheduled lanes advisory) is
+  written into `docs/fuzzing/continuous.md`, both PR budget-step comments,
+  and a dedicated contract test
+  (`scripts/tests/fuzz-budget-hard-halt.test.sh`), but neither PR budget
+  step sets `GH_FUZZ_BUDGET_CAP_MODE` (the script defaults to warn) and the
+  contract test is wired into no CI job, so effective behavior is warn
+  everywhere; only the four scheduled lanes set warn explicitly and
+  deliberately.
 
 Consequence: fuzzing effectiveness silently degrades (empty corpora, unused
 seeds) and inventory-sync regressions land unnoticed. All items are cheap to

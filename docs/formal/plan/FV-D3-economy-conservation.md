@@ -103,7 +103,7 @@ Netting outcomes that are published (the netted view is a signed report surface)
 ## Implementation plan
 
 1. Post-merge re-verification. Re-cite every branch-qualified location against main after the M2 merge; adjust names if the netting module moved. Files: this document's Current state section (line-number refresh only).
-2. Scalar core absorption. Add `crates/economy/chio-credit/src/formal_economy.rs` (the two scalar helpers); modify `crates/economy/chio-credit/src/netting.rs` so `convert`/`convert_floor` delegate to them (behavior-identical; existing unit tests unchanged). Add the Aeneas extraction entry to `formal/aeneas/production.toml` and the equivalence theorem stubs to `formal/lean4/Chio/Chio/Proofs/AeneasEquivalence.lean` or a sibling.
+2. Scalar core absorption. Add `crates/economy/chio-credit/src/formal_economy.rs` (the two scalar helpers); modify `crates/economy/chio-credit/src/netting.rs` so `convert`/`convert_floor` delegate to them (behavior-identical; existing unit tests unchanged). Then extend the Aeneas production lane so it actually covers a second source: `scripts/check-aeneas-production.sh:6` hard-codes `crates/kernel/chio-kernel-core/src/formal_aeneas.rs`, and `scripts/check-aeneas-equivalence.sh` hard-codes the same path plus a fixed symbol list (lines 6, 21, 25), so a `formal/aeneas/production.toml` entry alone is dead data the gates would never extract or check. Preferred: generalize both scripts to iterate (source path, expected symbols) entries read from `production.toml`, then add the economy entry (the committed-snapshot flow of [FV-A2](FV-A2-aeneas-generated-equivalence.md) applies per entry). Fallback: host the two scalar helpers in the existing kernel-core `formal_aeneas.rs`, which the scripts already extract, at the cost of placing economy semantics in the kernel crate; take this only if the script generalization stalls. Add the equivalence theorem stubs to `formal/lean4/Chio/Chio/Proofs/AeneasEquivalence.lean` or a sibling.
 3. Kani harnesses. Add `crates/economy/chio-credit/src/kani_public_harnesses.rs` and the `chio-web3` state-id harness; add the `kani` feature to both Cargo.tomls (with `unexpected_cfgs` check-cfg registration, copying `chio-anchor/Cargo.toml` L85-89); register all rows in `.kani/harnesses.toml`.
 4. Creusot contracts. Annotate `checked_aggregate_add`, the collapse loop, and `outstanding_exposure_units`; register in `formal/rust-verification/creusot-contracts.toml`.
 5. Lean model. Add `formal/lean4/Chio/Chio/Economy/Netting.lean`; add to `root_modules`; prove L1-L4 theorems.
@@ -114,12 +114,13 @@ Netting outcomes that are published (the netted view is a signed report surface)
 
 - Kani rows enter the existing multi-crate runner via `.kani/harnesses.toml` additively; per the registry's own note (L203-206), no workflow edits are needed for new harnesses. PR-lane wall-clock must be measured; any harness over budget ships as `lane = "nightly"` with a registry note naming the runtime tests that cover the gap PR-time (the chio-anchor L274-281 convention).
 - Creusot rides the required `check-rust-verification-gates.sh` lane.
+- The Aeneas gates must demonstrably exercise the economy symbols: until `check-aeneas-production.sh` and `check-aeneas-equivalence.sh` are manifest-driven they extract only the hard-coded kernel-core source, so phase 2's script generalization (or the kernel-core fallback) is a gating prerequisite, not optional cleanup.
 - Lean rides `check-formal-proofs.sh`; the G1 PR-latency caveat applies until [FV-E3](FV-E3-pr-formal-smoke-tier.md).
 - The P11 PR must keep `./scripts/check-proof-report.sh` green (claim gate consistency).
 
 ## Acceptance criteria
 
-- [ ] `formal_economy.rs` scalar helpers exist, are called by the production `convert`/`convert_floor` (absorption verified by grep-level call-site check), and are Aeneas-extracted with Lean envelope theorems (L2).
+- [ ] `formal_economy.rs` scalar helpers exist, are called by the production `convert`/`convert_floor` (absorption verified by grep-level call-site check), and are Aeneas-extracted with Lean envelope theorems (L2); removing an economy symbol from the generated Lean makes the extraction gate fail, proving the lane reads the new source rather than only the hard-coded kernel-core path.
 - [ ] All six Kani harnesses pass and are registered; at least four call real `pub fn`s directly; any model-only harness carries an explicit honesty-boundary note naming its runtime-test cover.
 - [ ] Creusot contracts on the three named functions verify in the required lane.
 - [ ] Lean theorems L1, L3, L4 are root-imported and sorry-free.
