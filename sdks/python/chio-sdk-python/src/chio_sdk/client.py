@@ -590,7 +590,7 @@ class ChioClient:
         ``count`` field is dropped to match the documented signature
         from the chio-hermes integration plan.
         """
-        data = await self._get("/approvals/pending")
+        data = await self._get("/approvals/pending", allow_array=True)
         # The sidecar response is `{"approvals": [...], "count": N}`.
         # Tolerate a bare list response for forward compatibility.
         payload = (
@@ -739,7 +739,9 @@ class ChioClient:
     # Internal HTTP helpers
     # ------------------------------------------------------------------
 
-    async def _get(self, path: str) -> dict[str, Any]:
+    async def _get(
+        self, path: str, *, allow_array: bool = False
+    ) -> dict[str, Any] | list[Any]:
         try:
             resp = await self._http.get(path)
         except httpx.ConnectError as exc:
@@ -750,7 +752,7 @@ class ChioClient:
             raise ChioTimeoutError(
                 f"Request to {path} timed out"
             ) from exc
-        return self._handle_response(resp)
+        return self._handle_response(resp, allow_array=allow_array)
 
     async def _post(
         self,
@@ -772,7 +774,9 @@ class ChioClient:
         return self._handle_response(resp)
 
     @staticmethod
-    def _handle_response(resp: httpx.Response) -> dict[str, Any]:
+    def _handle_response(
+        resp: httpx.Response, *, allow_array: bool = False
+    ) -> dict[str, Any] | list[Any]:
         if resp.status_code == 403:
             try:
                 data = resp.json()
@@ -807,6 +811,8 @@ class ChioClient:
                 "Chio sidecar returned malformed JSON response",
                 code="INVALID_RESPONSE",
             ) from exc
+        if allow_array and isinstance(data, list):
+            return data
         if not isinstance(data, dict):
             raise ChioError(
                 f"Chio sidecar returned invalid JSON response: {data!r}",
