@@ -4231,3 +4231,230 @@ fn drop_pre_dispatch_cleanup_fault_receipt_includes_monetary_hold_id(
     );
     Ok(())
 }
+
+#[test]
+fn retained_marker_requires_a_real_reservation() -> Result<(), Box<dyn std::error::Error>> {
+    // Codex round 12 Finding 2: a `chio_runtime` block that merely carries a
+    // route / observe-only key with NO reserved lease id must NOT be marked
+    // `reservations_retained_fail_closed`. There is nothing to burn, so the
+    // marker would send an operator hunting for a lease that never existed.
+    let kernel = make_kernel(make_config());
+
+    // (a) chio_runtime present, but no reserved_* id: NOT marked retained; the
+    // metadata is returned unchanged.
+    let route_only = serde_json::json!({
+        "chio_runtime": { "admission_id": "adm-observe-only", "accepted": true }
+    });
+    let marked = kernel
+        .mark_runtime_admission_reservations_retained_fail_closed(Some(route_only))
+        .ok_or_else(|| std::io::Error::other("metadata must be returned"))?;
+    let runtime = marked["chio_runtime"]
+        .as_object()
+        .ok_or_else(|| std::io::Error::other("chio_runtime block must be preserved"))?;
+    assert!(
+        !runtime.contains_key("reservations_retained_fail_closed"),
+        "metadata with no real reservation must not be marked retained: {runtime:?}"
+    );
+    assert!(!runtime.contains_key("retained_destructive_lease_id"));
+
+    // (b) an empty reserved id is not a real reservation either.
+    let empty_id = serde_json::json!({
+        "chio_runtime": { "reserved_destructive_lease_id": "" }
+    });
+    let marked_empty = kernel
+        .mark_runtime_admission_reservations_retained_fail_closed(Some(empty_id))
+        .ok_or_else(|| std::io::Error::other("metadata must be returned"))?;
+    assert!(
+        !marked_empty["chio_runtime"]
+            .as_object()
+            .is_some_and(|runtime| runtime.contains_key("reservations_retained_fail_closed")),
+        "an empty reserved id is not a real reservation"
+    );
+
+    // (c) a real, non-empty reserved lease id IS marked retained and copied so
+    // an operator can burn/recover the stuck lease from the signed receipt.
+    let real = serde_json::json!({
+        "chio_runtime": { "reserved_destructive_lease_id": "lease-real-42" }
+    });
+    let marked_real = kernel
+        .mark_runtime_admission_reservations_retained_fail_closed(Some(real))
+        .ok_or_else(|| std::io::Error::other("metadata must be returned"))?;
+    let runtime_real = marked_real["chio_runtime"]
+        .as_object()
+        .ok_or_else(|| std::io::Error::other("chio_runtime block must be preserved"))?;
+    assert_eq!(
+        runtime_real["reservations_retained_fail_closed"],
+        serde_json::Value::Bool(true),
+        "a real reserved lease must be marked retained"
+    );
+    assert_eq!(
+        runtime_real["retained_destructive_lease_id"], "lease-real-42",
+        "the stuck lease id must be copied for operator recovery"
+    );
+    Ok(())
+}
+
+/// A [`PaymentAdapter`] that authorizes cleanly but FAILS on release, so a
+/// monetary UrlElicitationsRequired cleanup exercises the payment-release
+/// failure arm of `unwind_aborted_monetary_invocation` (Finding 3). The
+/// authorization id is deterministic so a test can assert it lands in the
+/// recorded fault's `hold_ids`.
+struct FailingReleasePaymentAdapter;
+
+impl PaymentAdapter for FailingReleasePaymentAdapter {
+    fn authorize(
+        &self,
+        _request: &PaymentAuthorizeRequest,
+    ) -> Result<PaymentAuthorization, PaymentError> {
+        Ok(PaymentAuthorization {
+            authorization_id: "auth_failing_release".to_string(),
+            settled: false,
+            metadata: serde_json::json!({ "adapter": "failing-release" }),
+        })
+    }
+
+    fn capture(
+        &self,
+        _authorization_id: &str,
+        _amount_units: u64,
+        _currency: &str,
+        _reference: &str,
+    ) -> Result<PaymentResult, PaymentError> {
+        Err(PaymentError::RailError("capture should not run".to_string()))
+    }
+
+    fn release(
+        &self,
+        _authorization_id: &str,
+        _reference: &str,
+    ) -> Result<PaymentResult, PaymentError> {
+        Err(PaymentError::RailError(
+            "injected payment release failure".to_string(),
+        ))
+    }
+
+    fn refund(
+        &self,
+        _transaction_id: &str,
+        _amount_units: u64,
+        _currency: &str,
+        _reference: &str,
+    ) -> Result<PaymentResult, PaymentError> {
+        Err(PaymentError::RailError("refund should not run".to_string()))
+    }
+}
+
+#[test]
+fn url_elicitation_monetary_reversal_failure_records_monetary_hold_ids_async(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Codex round 12 Finding 3: when a MONETARY request hits
+    // UrlElicitationsRequired and the payment release fails during cleanup, the
+    // append-only fault must name the stuck MONETARY hold (the payment
+    // authorization id), not just the capability id, so an operator can locate
+    // the hold to recover from the signed fault alone. RED before the fix: the
+    // fault recorded only cap.id.
+    let mut kernel = make_kernel(make_monetary_config());
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
+        "cost-srv",
+        vec!["compute"],
+        std::sync::Arc::clone(&stream_attempts),
+    )));
+    kernel.set_payment_adapter(Box::new(FailingReleasePaymentAdapter));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_monetary_grant("cost-srv", "compute", 100, 1_000, "USD")]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-url-elicitation-monetary-reversal-failure-async",
+        &cap,
+        "compute",
+        "cost-srv",
+        serde_json::json!({}),
+    );
+
+    let result = kernel.evaluate_tool_call_blocking(&request);
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "a monetary reversal failure must not replace the elicitation: {result:?}"
+    );
+    assert_eq!(
+        stream_attempts.load(Ordering::SeqCst),
+        1,
+        "dispatch must have been attempted so the reversal ran on the monetary arm"
+    );
+    // The stuck payment authorization id must land in the fault hold_ids.
+    assert_url_elicitation_budget_cleanup_fault_recorded(
+        &kernel,
+        "url_elicitation_budget_reversal",
+        "auth_failing_release",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn url_elicitation_monetary_reversal_failure_records_monetary_hold_ids_nested_flow(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Nested-flow mirror of the async monetary-reversal-failure test: the
+    // nested arm must ALSO name the stuck payment authorization id in the fault.
+    let mut kernel = make_kernel(make_monetary_config());
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
+        "cost-srv",
+        vec!["compute"],
+        std::sync::Arc::clone(&stream_attempts),
+    )));
+    kernel.set_payment_adapter(Box::new(FailingReleasePaymentAdapter));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_monetary_grant("cost-srv", "compute", 100, 1_000, "USD")]),
+        300,
+    );
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        "req-url-elicitation-monetary-reversal-failure-nested",
+        &agent_kp.public_key().to_hex(),
+    );
+    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
+    let request = make_request_with_arguments(
+        "req-url-elicitation-monetary-reversal-failure-nested",
+        &cap,
+        "compute",
+        "cost-srv",
+        serde_json::json!({}),
+    );
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let result = rt.block_on(async {
+        let mut client = NoopNestedFlowClient;
+        kernel
+            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
+            .await
+    });
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "the nested monetary reversal failure must not mask the elicitation: {result:?}"
+    );
+    assert_eq!(
+        stream_attempts.load(Ordering::SeqCst),
+        1,
+        "dispatch must have been attempted so the reversal ran on the monetary arm"
+    );
+    assert_url_elicitation_budget_cleanup_fault_recorded(
+        &kernel,
+        "url_elicitation_budget_reversal",
+        "auth_failing_release",
+    )?;
+    Ok(())
+}

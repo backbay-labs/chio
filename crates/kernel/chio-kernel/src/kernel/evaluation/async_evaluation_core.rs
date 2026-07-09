@@ -629,12 +629,24 @@ impl ChioKernel {
                         .map(|_| ()),
                 };
                 if let Err(reversal_error) = budget_reversal {
+                    // Record the stuck MONETARY hold ids, not just the capability
+                    // id (round-11): on the monetary-reversal-failure path the
+                    // payment authorization id and the budget_hold_id are the
+                    // actual holds that need manual recovery, so an operator can
+                    // locate them from the signed fault alone.
+                    let mut hold_ids = vec![cap.id.clone()];
+                    if let Some(payment_authorization) = payment_authorization.as_ref() {
+                        hold_ids.push(payment_authorization.authorization_id.clone());
+                    }
+                    if let Some(charge) = budget_mutation.charge_result() {
+                        hold_ids.push(charge.budget_hold_id().to_string());
+                    }
                     self.record_url_elicitation_budget_cleanup_fault(
                         request,
                         matched_grant_index,
                         "url_elicitation_budget_reversal",
                         &redacted!(&reversal_error).to_string(),
-                        vec![cap.id.clone()],
+                        hold_ids,
                         extra_metadata,
                         &pre_invocation_guard_evidence,
                     );

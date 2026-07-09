@@ -502,6 +502,12 @@ pub(crate) struct BudgetChargeResult {
 }
 
 impl BudgetChargeResult {
+    /// The rail/store hold id for the monetary budget charge, so a cleanup
+    /// fault can name the stuck budget hold that needs manual recovery.
+    pub(crate) fn budget_hold_id(&self) -> &str {
+        &self.budget_hold_id
+    }
+
     fn reverse_event_id(&self) -> String {
         format!("{}:reverse", self.budget_hold_id)
     }

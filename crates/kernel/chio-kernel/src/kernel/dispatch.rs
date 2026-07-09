@@ -408,7 +408,10 @@ impl ChioKernel {
     /// side effect may have executed. The reserved ids are copied so an
     /// operator can locate and re-issue the burned lease/continuation from
     /// the signed receipt alone. Fail-closed: metadata without a
-    /// `chio_runtime` block is returned unchanged.
+    /// `chio_runtime` block, or a `chio_runtime` block that carries no real
+    /// reservation (no present, non-empty `reserved_*` id), is returned
+    /// unchanged. Marking such metadata retained would claim a reservation was
+    /// burned when there was nothing to recover, which misleads operators.
     pub(crate) fn mark_runtime_admission_reservations_retained_fail_closed(
         &self,
         metadata: Option<serde_json::Value>,
@@ -422,10 +425,10 @@ impl ChioKernel {
             else {
                 return metadata;
             };
-            retained.insert(
-                "reservations_retained_fail_closed".to_string(),
-                serde_json::Value::Bool(true),
-            );
+            // Copy across only the ids that name a REAL reservation: a present,
+            // non-empty reserved lease/continuation id. A `chio_runtime` route
+            // block that merely carries the key with no (or an empty) value had
+            // nothing to burn.
             for (source, target) in [
                 (
                     "reserved_destructive_lease_id",
@@ -440,10 +443,25 @@ impl ChioKernel {
                     "retained_swarm_continuation_id",
                 ),
             ] {
-                if let Some(id) = runtime.get(source).and_then(serde_json::Value::as_str) {
+                if let Some(id) = runtime
+                    .get(source)
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|id| !id.is_empty())
+                {
                     retained.insert(target.to_string(), serde_json::json!(id));
                 }
             }
+            // Only mark retained when at least one real reservation was actually
+            // retained. An observe-only admission or a metadata-only
+            // `chio_runtime` route block has no `reserved_*` id to recover, so
+            // it must not carry the fail-closed marker.
+            if retained.is_empty() {
+                return metadata;
+            }
+            retained.insert(
+                "reservations_retained_fail_closed".to_string(),
+                serde_json::Value::Bool(true),
+            );
         }
         merge_metadata_objects(
             metadata,

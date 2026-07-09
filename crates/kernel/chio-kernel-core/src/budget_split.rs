@@ -48,11 +48,18 @@ pub const MAX_BUDGET_SHARE_BPS: u16 = 10_000;
 /// inserted it" owner is unsound: if the inserting evaluation is cancelled it
 /// would free the edge while a re-admitting sibling evaluation still holds the
 /// capability, letting an oversubscribing sibling be admitted against the
-/// wrongly-returned share. Every successful admit (fresh insert OR idempotent
-/// re-admit) takes one lease (`holders += 1`); every release drops one
-/// (`holders -= 1`). The edge is freed - and its share returned to the parent -
-/// only when the LAST holder releases (`holders` reaches 0). Present entries
-/// always have `holders >= 1`.
+/// wrongly-returned share. Every [`AdmitMode::Lease`] admit (fresh insert OR
+/// idempotent re-admit) takes one lease (`holders += 1`); every release drops
+/// one (`holders -= 1`). The edge is freed - and its share returned to the
+/// parent - only when the LAST real holder releases (`holders` reaches 0).
+///
+/// `holders` counts ONLY live releasable holders. An edge can legitimately
+/// have `holders == 0`: a verifier-only surface (see [`AdmitMode::VerifyOnly`])
+/// commits a fresh child's share for sibling-sum accounting without acquiring a
+/// lease, because it has no cleanup path that would ever release one. Such a
+/// committed edge is never pinned past its real holders: a later real dispatch
+/// that leases it (`0 -> 1`) and releases (`1 -> 0`) frees the edge, and a
+/// verify-only re-admit never touches the count.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChildAdmission {
     /// The share this child claimed when it was first admitted, in basis
@@ -179,6 +186,32 @@ impl fmt::Display for BudgetSplitError {
     }
 }
 
+/// Whether an admit acquires a releasable holder lease or only checks
+/// admissibility.
+///
+/// Verifier-only surfaces (portable/preflight verdicts, adapter one-shot
+/// evaluations) answer "would this child admit?" as part of producing a
+/// verdict, but they have NO cleanup path that would release a lease. Taking a
+/// holder lease on those paths leaks the refcount upward forever: a later real
+/// dispatch that unwinds its own lease can never drive `holders` back to zero,
+/// so the edge stays pinned and oversubscribing siblings are wrongly denied
+/// until the parent is evicted. `VerifyOnly` runs the same admissibility checks
+/// (and commits a fresh child's share for sibling-sum accounting) WITHOUT
+/// acquiring a lease it will never release.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdmitMode {
+    /// Acquire one holder lease the caller MUST release on its cleanup/drop
+    /// path. A fresh edge is inserted with `holders == 1`; an idempotent
+    /// re-admit takes an ADDITIONAL lease (`holders += 1`).
+    Lease,
+    /// Check admissibility only. A fresh admissible child commits its share
+    /// with `holders == 0` (charged for sibling-sum accounting, but no
+    /// releasable holder exists); an already-present edge is left completely
+    /// unchanged. Never increments `holders`, so a surface with no release path
+    /// cannot pin the edge past its real holders.
+    VerifyOnly,
+}
+
 impl BudgetSplit {
     /// Build an empty split for `parent_token_id` with the given parent
     /// share. The parent share is clamped to [`MAX_BUDGET_SHARE_BPS`] by the
@@ -244,6 +277,35 @@ impl BudgetSplit {
         child_id: String,
         share_bps: u16,
     ) -> Result<(), BudgetSplitError> {
+        self.admit_child(child_id, share_bps, AdmitMode::Lease)
+    }
+
+    /// Check whether `child_id` at `share_bps` would admit under this parent
+    /// WITHOUT acquiring a holder lease (see [`AdmitMode::VerifyOnly`]).
+    ///
+    /// Runs the same per-token cap, sibling-sum oversubscription, and
+    /// duplicate-share checks as [`Self::try_admit_child`]. A fresh admissible
+    /// child commits its share (so a later sibling sees it in the running sum)
+    /// but records `holders == 0`; an already-present child is left untouched.
+    /// This is the entry point for verifier-only surfaces (portable/preflight
+    /// verdicts, adapter one-shot evaluations) that produce a verdict but have
+    /// no cleanup path to release a lease. Because it never increments
+    /// `holders`, a later real dispatch that unwinds its own lease can still
+    /// drive the edge back to zero and free it.
+    pub fn verify_child_admission(
+        &mut self,
+        child_id: String,
+        share_bps: u16,
+    ) -> Result<(), BudgetSplitError> {
+        self.admit_child(child_id, share_bps, AdmitMode::VerifyOnly)
+    }
+
+    fn admit_child(
+        &mut self,
+        child_id: String,
+        share_bps: u16,
+        mode: AdmitMode,
+    ) -> Result<(), BudgetSplitError> {
         if share_bps > MAX_BUDGET_SHARE_BPS {
             return Err(BudgetSplitError::ChildShareExceedsCap {
                 child_id,
@@ -252,10 +314,16 @@ impl BudgetSplit {
         }
         if let Some(existing) = self.children.get_mut(&child_id) {
             if existing.share_bps == share_bps {
-                // Idempotent re-admit by an overlapping evaluation: the share is
-                // already charged against the parent, so take an extra lease on
-                // the existing edge rather than touching the running sum.
-                existing.holders = existing.holders.saturating_add(1);
+                // Idempotent re-admit: the share is already charged against the
+                // parent, so never touch the running sum. A Lease takes an
+                // EXTRA holder on the existing edge so an overlapping
+                // evaluation's later release cannot free an edge another live
+                // evaluation still depends on. A VerifyOnly check leaves the
+                // holder count untouched: it never releases, so incrementing
+                // here would pin the edge upward forever.
+                if let AdmitMode::Lease = mode {
+                    existing.holders = existing.holders.saturating_add(1);
+                }
                 return Ok(());
             }
             return Err(BudgetSplitError::DuplicateChild { child_id });
@@ -270,14 +338,15 @@ impl BudgetSplit {
                 parent_share_bps: self.parent_share_bps,
             });
         }
-        // First holder of a fresh edge.
-        self.children.insert(
-            child_id,
-            ChildAdmission {
-                share_bps,
-                holders: 1,
-            },
-        );
+        // Fresh edge. A Lease records itself as the first live holder; a
+        // VerifyOnly commit charges the share for sibling-sum accounting but
+        // records NO holder, so it never has to be released to free the edge.
+        let holders = match mode {
+            AdmitMode::Lease => 1,
+            AdmitMode::VerifyOnly => 0,
+        };
+        self.children
+            .insert(child_id, ChildAdmission { share_bps, holders });
         Ok(())
     }
 
@@ -354,6 +423,21 @@ pub trait BudgetRegistry {
         share_bps: u16,
     ) -> Result<(), BudgetSplitError>;
 
+    /// Check whether a child token would admit under the given parent WITHOUT
+    /// acquiring a holder lease.
+    ///
+    /// Same fail-closed checks as [`BudgetRegistry::try_admit_child`] (unknown
+    /// parents fail closed), but a fresh admissible child is committed with no
+    /// releasable holder and an already-present child is left untouched. This
+    /// is the entry point for verifier-only surfaces that produce a verdict but
+    /// never release a lease. See [`AdmitMode::VerifyOnly`].
+    fn verify_child_admission(
+        &mut self,
+        parent_token_id: &str,
+        child_token_id: String,
+        share_bps: u16,
+    ) -> Result<(), BudgetSplitError>;
+
     /// Release a previously admitted child token under the given parent.
     ///
     /// Unknown parents and missing children are idempotent no-ops so cleanup
@@ -392,6 +476,15 @@ impl BudgetRegistry for NoopBudgetRegistry {
     }
 
     fn try_admit_child(
+        &mut self,
+        _parent_token_id: &str,
+        _child_token_id: String,
+        _share_bps: u16,
+    ) -> Result<(), BudgetSplitError> {
+        Ok(())
+    }
+
+    fn verify_child_admission(
         &mut self,
         _parent_token_id: &str,
         _child_token_id: String,
@@ -475,6 +568,20 @@ impl BudgetRegistry for InMemoryBudgetRegistry {
     ) -> Result<(), BudgetSplitError> {
         match self.splits.get_mut(parent_token_id) {
             Some(split) => split.try_admit_child(child_token_id, share_bps),
+            None => Err(BudgetSplitError::UnknownParent {
+                parent_token_id: parent_token_id.into(),
+            }),
+        }
+    }
+
+    fn verify_child_admission(
+        &mut self,
+        parent_token_id: &str,
+        child_token_id: String,
+        share_bps: u16,
+    ) -> Result<(), BudgetSplitError> {
+        match self.splits.get_mut(parent_token_id) {
+            Some(split) => split.verify_child_admission(child_token_id, share_bps),
             None => Err(BudgetSplitError::UnknownParent {
                 parent_token_id: parent_token_id.into(),
             }),
@@ -764,6 +871,128 @@ mod tests {
         registry
             .try_admit_child("p", "sibling".to_string(), MAX_BUDGET_SHARE_BPS)
             .expect("full parent headroom is restored after the release");
+    }
+
+    #[test]
+    fn verify_only_readmit_does_not_change_holders() {
+        // Codex round 12 Finding 1: a verifier-only re-admit (portable/preflight
+        // verdict) has NO release path, so it MUST NOT take a holder lease. A
+        // real dispatch holds child's edge (holders == 1). Repeated verify-only
+        // re-admits of the SAME child must leave the count at the real-holder
+        // count, so the real dispatch's later release still frees the edge. RED
+        // before the fix: each verify-only re-admit did `holders += 1`, so the
+        // release dropped to a non-zero count and the edge stayed pinned.
+        let mut registry = InMemoryBudgetRegistry::new();
+        registry
+            .register_parent("p".to_string(), MAX_BUDGET_SHARE_BPS)
+            .expect("register parent");
+
+        // A real dispatch leases child's edge (holders == 1).
+        registry
+            .try_admit_child("p", "child".to_string(), 6_000)
+            .expect("real dispatch leases the child");
+        // Several verifier-only re-admits of the SAME child (each Ok, admissible)
+        // must not touch the holder count.
+        for _ in 0..3 {
+            registry
+                .verify_child_admission("p", "child".to_string(), 6_000)
+                .expect("verify-only re-admit is admissible");
+        }
+        assert_eq!(
+            registry
+                .split("p")
+                .and_then(|split| split.child_holders("child")),
+            Some(1),
+            "verifier-only re-admits must leave holders at the real-holder count"
+        );
+
+        // The single real holder releases: holders 1 -> 0, so the edge is freed
+        // and the full parent share is returned despite the verify-only traffic.
+        registry
+            .release_child("p", "child", 6_000)
+            .expect("the real holder releases its only lease");
+        assert_eq!(
+            registry
+                .split("p")
+                .and_then(|split| split.child_holders("child")),
+            None,
+            "the last REAL holder's release must free the edge (verify-only did not leak)"
+        );
+        registry
+            .try_admit_child("p", "sibling".to_string(), MAX_BUDGET_SHARE_BPS)
+            .expect("full headroom restored: no verify-only lease was leaked");
+    }
+
+    #[test]
+    fn verify_only_fresh_admit_commits_share_without_a_holder() {
+        // A verifier-only admit of a FRESH child commits its share for
+        // sibling-sum accounting (so a later sibling is denied at the hot path)
+        // but records NO releasable holder: holders == 0.
+        let mut registry = InMemoryBudgetRegistry::new();
+        registry
+            .register_parent("p".to_string(), 5_000)
+            .expect("register parent");
+        registry
+            .verify_child_admission("p", "child-a".to_string(), 4_000)
+            .expect("fresh verify-only admit is admissible");
+        assert_eq!(
+            registry
+                .split("p")
+                .and_then(|split| split.child_share_bps("child-a")),
+            Some(4_000),
+            "a fresh verify-only admit must commit the child's share"
+        );
+        assert_eq!(
+            registry
+                .split("p")
+                .and_then(|split| split.child_holders("child-a")),
+            Some(0),
+            "a verify-only commit records no releasable holder"
+        );
+        // The committed share is visible to the oversubscription check: a
+        // second sibling that would exceed the parent share is denied.
+        let denied = registry
+            .verify_child_admission("p", "child-b".to_string(), 4_000)
+            .expect_err("4_000 + 4_000 > 5_000 parent share must be denied");
+        assert!(matches!(
+            denied,
+            BudgetSplitError::OversubscribedSiblings { .. }
+        ));
+    }
+
+    #[test]
+    fn verify_only_commit_is_superseded_by_real_lease_lifecycle() {
+        // A verify-only commit (holders == 0) that is later leased by a real
+        // dispatch (holders 0 -> 1) is freed when that real holder releases
+        // (holders 1 -> 0): the edge is never pinned past its real holders.
+        let mut registry = InMemoryBudgetRegistry::new();
+        registry
+            .register_parent("p".to_string(), MAX_BUDGET_SHARE_BPS)
+            .expect("register parent");
+        registry
+            .verify_child_admission("p", "child".to_string(), 6_000)
+            .expect("verify-only commits the fresh edge");
+        // A real dispatch leases the already-committed edge.
+        registry
+            .try_admit_child("p", "child".to_string(), 6_000)
+            .expect("real dispatch leases the committed edge");
+        assert_eq!(
+            registry
+                .split("p")
+                .and_then(|split| split.child_holders("child")),
+            Some(1),
+            "the real lease is the sole holder on the verify-only-committed edge"
+        );
+        registry
+            .release_child("p", "child", 6_000)
+            .expect("the real holder releases");
+        assert_eq!(
+            registry
+                .split("p")
+                .and_then(|split| split.child_holders("child")),
+            None,
+            "releasing the last real holder frees the edge (no verify-only pin)"
+        );
     }
 
     #[test]
