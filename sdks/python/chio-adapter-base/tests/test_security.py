@@ -214,6 +214,17 @@ def test_reject_shell_argv_escape_rejects_unquoted_windows_absolute_path(
     assert excinfo.value.reason == "outside_workspace"
 
 
+def test_reject_shell_argv_escape_allows_windows_absolute_inside_workspace() -> None:
+    reject_shell_argv_escape(
+        r"type C:\repo\README.md",
+        root=r"C:\repo",
+    )
+    reject_shell_argv_escape(
+        r"type 'C:\repo\docs\guide.md'",
+        root=r"C:\repo",
+    )
+
+
 def test_reject_shell_argv_escape_allows_colon_arguments(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

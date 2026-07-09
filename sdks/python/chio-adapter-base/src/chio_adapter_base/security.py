@@ -146,6 +146,22 @@ def _is_denied_env(name: str) -> bool:
     return False
 
 
+def _reject_windows_absolute_escape(token: str, root: str) -> None:
+    normalised = token.replace("\\", "/")
+    if any(seg == ".." for seg in normalised.split("/")):
+        raise ChioPathEscapeError(token, "dotdot_segment")
+
+    token_path = pathlib.PureWindowsPath(token)
+    root_path = pathlib.PureWindowsPath(root)
+    if not token_path.is_absolute() or not root_path.is_absolute():
+        raise ChioPathEscapeError(token, "outside_workspace")
+
+    token_parts = tuple(part.casefold() for part in token_path.parts)
+    root_parts = tuple(part.casefold() for part in root_path.parts)
+    if len(token_parts) < len(root_parts) or token_parts[: len(root_parts)] != root_parts:
+        raise ChioPathEscapeError(token, "outside_workspace")
+
+
 def sanitised_env(*, base: Mapping[str, str] | None = None) -> dict[str, str]:
     """Return a copy of ``base`` (default ``os.environ``) with secrets removed.
 
@@ -248,12 +264,13 @@ def reject_shell_argv_escape(
         argv = shlex.split(command or "")
     except ValueError:
         return
-    root_path = pathlib.Path(str(root)).resolve() if root is not None else None
+    root_text = str(root) if root is not None else None
+    root_path = pathlib.Path(root_text).resolve() if root_text is not None else None
     if root_path is not None:
-        raw_windows_absolute = _WINDOWS_ABSOLUTE_TOKEN_RE.search(command or "")
-        if raw_windows_absolute is not None:
-            raise ChioPathEscapeError(
-                raw_windows_absolute.group("token"), "outside_workspace"
+        for raw_windows_absolute in _WINDOWS_ABSOLUTE_TOKEN_RE.finditer(command or ""):
+            _reject_windows_absolute_escape(
+                raw_windows_absolute.group("token"),
+                root_text or "",
             )
     for token in argv:
         normalised = token.replace("\\", "/")
@@ -266,8 +283,9 @@ def reject_shell_argv_escape(
             and normalised[1] == ":"
             and normalised[2] == "/"
         ) or normalised.startswith("//")
-        if root_path is not None and is_windows_absolute:
-            raise ChioPathEscapeError(token, "outside_workspace")
+        if root_text is not None and is_windows_absolute:
+            _reject_windows_absolute_escape(token, root_text)
+            continue
         is_absolute_token = normalised.startswith("/")
         if root_path is not None and is_absolute_token:
             try:
