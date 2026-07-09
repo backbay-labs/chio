@@ -138,7 +138,7 @@ export function resolveConfig(config: ChioConfig): ResolvedConfig {
     routePatternResolver: config.routePatternResolver ?? defaultRoutePatternResolver,
     onSidecarError: "deny",
     timeoutMs: config.timeoutMs ?? 5000,
-    forwardHeaders: config.forwardHeaders ?? [...defaultForwardHeaders],
+    forwardHeaders: [...(config.forwardHeaders ?? defaultForwardHeaders)],
     client,
   };
 }

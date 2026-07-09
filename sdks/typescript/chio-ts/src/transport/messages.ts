@@ -20,11 +20,9 @@ export function parseRpcMessages(rawBody: string): JsonRpcMessage[] {
   if (!trimmed) {
     return [];
   }
-  if (trimmed.startsWith("{")) {
-    return [parseJsonRpcMessage(trimmed)];
-  }
-  if (trimmed.startsWith("[")) {
-    return JSON.parse(trimmed) as JsonRpcMessage[];
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    const parsed = JSON.parse(trimmed) as JsonRpcMessage | JsonRpcMessage[];
+    return Array.isArray(parsed) ? parsed : [parsed];
   }
 
   const messages: JsonRpcMessage[] = [];
@@ -55,6 +53,9 @@ export async function readRpcMessagesUntilTerminal(
   if (!response.body) {
     const messages = parseRpcMessages(await response.text());
     for (const message of messages) {
+      if (expectedId !== undefined && rpcIdsEqual(message.id, expectedId) && !message.method) {
+        continue;
+      }
       await onMessage(message);
     }
     return messages;
@@ -115,7 +116,14 @@ export async function readRpcMessagesUntilTerminal(
     await onMessage(message);
   }
   if (messages.length === 0) {
-    messages.push(...parseRpcMessages(rawBody));
+    const parsedMessages = parseRpcMessages(rawBody);
+    messages.push(...parsedMessages);
+    for (const message of parsedMessages) {
+      if (expectedId !== undefined && rpcIdsEqual(message.id, expectedId) && !message.method) {
+        continue;
+      }
+      await onMessage(message);
+    }
   }
   return messages;
 }

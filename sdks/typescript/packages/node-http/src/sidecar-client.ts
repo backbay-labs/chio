@@ -97,6 +97,9 @@ export class ChioSidecarClient {
 
       const result = (await response.json()) as EvaluateResponse;
       if (result.receipt == null) {
+        if (!isAllowed(result.verdict)) {
+          return result;
+        }
         throw new SidecarError(
           CHIO_ERROR_CODES.INVALID_RECEIPT,
           "sidecar evaluation response omitted receipt",
@@ -188,15 +191,20 @@ export class ChioSidecarClient {
   }
 
   private async assertAuthorizedAllowResult(result: EvaluateResponse): Promise<void> {
-    if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(result.receipt)) {
+    const receipt = result.receipt;
+    if (
+      receipt == null ||
+      !isAllowed(result.verdict) ||
+      !isAuthorizedHttpReceipt(receipt)
+    ) {
       throw new SidecarError(
         CHIO_ERROR_CODES.INVALID_RECEIPT,
         "sidecar returned an allow-shaped response without an authoritative Chio receipt",
       );
     }
 
-    const verification = await this.verifyReceipt(result.receipt);
-    if (!isAuthoritativeVerification(verification, result.receipt)) {
+    const verification = await this.verifyReceipt(receipt);
+    if (!isAuthoritativeVerification(verification, receipt)) {
       throw new SidecarError(
         CHIO_ERROR_CODES.INVALID_RECEIPT,
         "sidecar returned an unverified allow receipt",
@@ -227,7 +235,10 @@ export class ChioSidecarClient {
 }
 
 function isAllowShapedResult(result: EvaluateResponse): boolean {
-  return isAllowed(result.verdict) || (result.receipt != null && isAllowed(result.receipt.verdict));
+  return (
+    isAllowed(result.verdict) ||
+    (result.receipt != null && isAllowed(result.receipt.verdict))
+  );
 }
 
 function isSidecarTransportFailure(statusCode: number): boolean {

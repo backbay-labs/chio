@@ -149,6 +149,54 @@ test("readRpcMessagesUntilTerminal skips onMessage for terminal EOF data", async
   ]);
 });
 
+test("readRpcMessagesUntilTerminal dispatches batch body notifications", async () => {
+  const seen: unknown[] = [];
+  const response = new Response(
+    JSON.stringify([
+      {
+        jsonrpc: "2.0",
+        method: "notifications/message",
+        params: { index: 1 },
+      },
+      {
+        jsonrpc: "2.0",
+        id: 7,
+        result: { ok: true },
+      },
+    ]),
+    {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+      },
+    },
+  );
+
+  const messages = await readRpcMessagesUntilTerminal(response, 7, async (message) => {
+    seen.push(message);
+  });
+
+  assert.deepEqual(messages, [
+    {
+      jsonrpc: "2.0",
+      method: "notifications/message",
+      params: { index: 1 },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 7,
+      result: { ok: true },
+    },
+  ]);
+  assert.deepEqual(seen, [
+    {
+      jsonrpc: "2.0",
+      method: "notifications/message",
+      params: { index: 1 },
+    },
+  ]);
+});
+
 test("readRpcMessagesUntilTerminal keeps JSON-RPC id types strict", async () => {
   const response = streamResponse(
     [
