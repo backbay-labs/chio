@@ -194,7 +194,10 @@ def harden_git_argv(argv: list[str]) -> list[str]:
 
 
 def _git_subcommand_index(argv: list[str]) -> int | None:
-    index = 1 if argv and pathlib.PurePath(argv[0]).name == "git" else 0
+    executable_name = (
+        argv[0].replace("\\", "/").rsplit("/", 1)[-1].lower() if argv else ""
+    )
+    index = 1 if executable_name in {"git", "git.exe"} else 0
     while index < len(argv):
         arg = argv[index]
         if arg == "--":

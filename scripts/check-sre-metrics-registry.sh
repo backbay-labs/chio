@@ -37,9 +37,13 @@ if command -v rg >/dev/null 2>&1; then
     "${scan_paths[@]}" \
     > "${observed_raw}" || scan_status=$?
 else
-  git grep -h -E -o '(^|[^A-Za-z0-9_])chio_[a-z0-9_]*(seconds|total|depth|bytes|ready|size)([^A-Za-z0-9_]|$)' \
+  git grep -h -E '(^|[^A-Za-z0-9_])chio_[a-z0-9_]*(seconds|total|depth|bytes|ready|size)([^A-Za-z0-9_]|$)' \
     -- "${scan_paths[@]}" \
-    | sed -E 's/.*(chio_[a-z0-9_]*(seconds|total|depth|bytes|ready|size)).*/\1/' \
+    | python3 -c 'import re, sys
+pattern = re.compile(r"(?<![A-Za-z0-9_])chio_[a-z0-9_]*(?:seconds|total|depth|bytes|ready|size)(?![A-Za-z0-9_])")
+for line in sys.stdin:
+    for match in pattern.finditer(line):
+        print(match.group(0))' \
     > "${observed_raw}" || scan_status=$?
 fi
 
