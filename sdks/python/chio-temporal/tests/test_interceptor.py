@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from chio_sdk.errors import ChioDeniedError
+from chio_sdk.errors import ChioDeniedError, ChioValidationError
 from chio_sdk.models import (
     CapabilityToken,
     ChioScope,
@@ -153,6 +153,21 @@ async def _mint_token(
     store[token.id] = token
     chio._tokens = store  # type: ignore[attr-defined]
     return token
+
+
+def _install_minting_attenuation(chio: MockChioClient) -> None:
+    async def attenuate_capability(
+        token: CapabilityToken,
+        *,
+        new_scope: ChioScope,
+    ) -> CapabilityToken:
+        if not new_scope.is_subset_of(token.scope):
+            raise ChioValidationError(
+                "new_scope must be a subset of the parent token scope"
+            )
+        return await _mint_token(chio, subject=token.subject, scope=new_scope)
+
+    chio.attenuate_capability = attenuate_capability  # type: ignore[method-assign]
 
 
 def _scope_aware_policy(chio: MockChioClient) -> Any:
@@ -408,6 +423,7 @@ class TestDenyVerdict:
 class TestAttenuatedGrant:
     async def test_activity_override_narrows_scope_and_is_enforced(self) -> None:
         chio = MockChioClient()
+        _install_minting_attenuation(chio)
         chio.set_policy(_scope_aware_policy(chio))
 
         parent = await _mint_token(
@@ -428,8 +444,6 @@ class TestAttenuatedGrant:
         child_grant = await parent_grant.attenuate_for_activity(
             chio, new_scope=child_scope
         )
-        # Index child token for the policy.
-        chio._tokens[child_grant.token.id] = child_grant.token  # type: ignore[attr-defined]
 
         interceptor = ChioActivityInterceptor(chio_client=chio)
         interceptor.register_workflow_grant(parent_grant)
