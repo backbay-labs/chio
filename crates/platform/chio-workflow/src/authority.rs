@@ -433,7 +433,11 @@ impl WorkflowAuthority {
         let duration_ms = completed_at
             .saturating_sub(execution.started_at)
             .saturating_mul(1000);
-        if execution.terminal_outcome.is_none() {
+        let has_recorded_failure = execution
+            .step_records
+            .iter()
+            .any(|step| matches!(step.outcome, StepOutcome::Failed | StepOutcome::Denied));
+        if execution.terminal_outcome.is_none() && !has_recorded_failure {
             if let Some(limit_secs) = execution.time_limit_secs {
                 let elapsed_secs = completed_at.saturating_sub(execution.started_at);
                 if elapsed_secs >= limit_secs {
