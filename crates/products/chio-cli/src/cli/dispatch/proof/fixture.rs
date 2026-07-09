@@ -20,6 +20,9 @@ use fixture_agent_web::{
 #[path = "fixture_cleanup.rs"]
 mod fixture_cleanup;
 use fixture_cleanup::strip_collected_bundle_outputs;
+#[path = "fixture_public_settlement_runtime.rs"]
+mod fixture_public_settlement_runtime;
+use fixture_public_settlement_runtime::public_settlement_runtime_hashes;
 
 const PROOF_FIXTURE_ROOT_ENV: &str = "CHIO_PROOF_FIXTURE_ROOT";
 const PROOF_FIXTURE_CATALOG_FILE: &str = "catalog.json";
@@ -2527,113 +2530,6 @@ fn strip_standalone_public_settlement_trust_market_refs(bundle: &Path) -> Result
     object.remove("sla_remedy_ref");
     object.remove("slash_authority_ref");
     write_json_line_file(&settlement_proof_path, &settlement_proof)
-}
-
-struct PublicSettlementRuntimeHashes {
-    root_registry: String,
-    identity_registry: String,
-    escrow: String,
-    bond_vault: String,
-}
-
-fn public_settlement_runtime_hashes(
-    bundle: &Path,
-    expected_package_id: &str,
-    context_path: &Path,
-) -> Result<PublicSettlementRuntimeHashes, CliError> {
-    let package_path = ensure_chio_web3_contract_package_in_bundle(bundle)?;
-    let package = read_json_value(&package_path)?;
-    let package_id = required_json_string(&package, "package_id", &package_path)?;
-    if package_id != expected_package_id {
-        return Err(CliError::cli_other_error(format!(
-            "public settlement contract package mismatch for {}: expected {}, package {} declares {}",
-            context_path.display(),
-            expected_package_id,
-            package_path.display(),
-            package_id
-        )));
-    }
-    Ok(PublicSettlementRuntimeHashes {
-        root_registry: contract_package_runtime_hash(&package, "root_registry", &package_path)?,
-        identity_registry: contract_package_runtime_hash(
-            &package,
-            "identity_registry",
-            &package_path,
-        )?,
-        escrow: contract_package_runtime_hash(&package, "escrow", &package_path)?,
-        bond_vault: contract_package_runtime_hash(&package, "bond_vault", &package_path)?,
-    })
-}
-
-fn find_chio_web3_contract_package(bundle: &Path) -> Result<std::path::PathBuf, CliError> {
-    let mut candidates = Vec::new();
-    if let Ok(cwd) = std::env::current_dir() {
-        candidates.push(cwd.join(CHIO_WEB3_CONTRACT_PACKAGE_PATH));
-    }
-    candidates.push(
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../")
-            .join(CHIO_WEB3_CONTRACT_PACKAGE_PATH),
-    );
-    for ancestor in bundle.ancestors() {
-        candidates.push(ancestor.join(CHIO_WEB3_CONTRACT_PACKAGE_PATH));
-    }
-    for candidate in candidates {
-        if candidate.is_file() {
-            return Ok(candidate);
-        }
-    }
-    Err(CliError::cli_other_error(format!(
-        "could not locate {CHIO_WEB3_CONTRACT_PACKAGE_PATH} for public settlement fixture {}",
-        bundle.display()
-    )))
-}
-
-fn ensure_chio_web3_contract_package_in_bundle(bundle: &Path) -> Result<PathBuf, CliError> {
-    let source = find_chio_web3_contract_package(bundle)?;
-    let destination = bundle.join(CHIO_WEB3_CONTRACT_PACKAGE_PATH);
-    if source == destination {
-        return Ok(destination);
-    }
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::copy(&source, &destination)?;
-    Ok(destination)
-}
-
-fn contract_package_runtime_hash(
-    package: &serde_json::Value,
-    kind: &str,
-    package_path: &Path,
-) -> Result<String, CliError> {
-    let contracts = package
-        .get("contracts")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| {
-            CliError::cli_other_error(format!(
-                "web3 contract package contracts must be an array: {}",
-                package_path.display()
-            ))
-        })?;
-    for contract in contracts {
-        if contract.get("kind").and_then(serde_json::Value::as_str) == Some(kind) {
-            return contract
-                .get("deployed_runtime_codehash")
-                .and_then(serde_json::Value::as_str)
-                .map(ToString::to_string)
-                .ok_or_else(|| {
-                    CliError::cli_other_error(format!(
-                        "web3 contract package kind {kind} missing deployed_runtime_codehash: {}",
-                        package_path.display()
-                    ))
-                });
-        }
-    }
-    Err(CliError::cli_other_error(format!(
-        "web3 contract package missing contract kind {kind}: {}",
-        package_path.display()
-    )))
 }
 
 fn add_public_settlement_deployment_provenance_to_bundle(bundle: &Path) -> Result<(), CliError> {
