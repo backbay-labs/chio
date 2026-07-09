@@ -360,14 +360,15 @@ impl ChioKernel {
             });
         }
 
-        // Capture whether THIS evaluation newly inserted the sibling-sum child
-        // admission. `admit_capability_budget` is idempotent for the same child
-        // id + share, so a later pre-dispatch cleanup must release the admission
-        // only when this evaluation created it; over-releasing an idempotent
-        // re-admit would free a still-valid sibling reservation and let an
-        // oversubscribing sibling bypass the parent cap.
-        let admitted_new_child = match self.admit_capability_budget(cap) {
-            Ok(newly_inserted) => newly_inserted,
+        // Capture whether THIS evaluation acquired a sibling-sum child-budget
+        // holder lease. Every successful `admit_capability_budget` against a
+        // parent takes one lease (fresh insert OR idempotent re-admit); a later
+        // pre-dispatch cleanup releases exactly this evaluation's lease. The
+        // reference-counted release frees the shared edge only when the last
+        // holder releases, so an overlapping evaluation that still holds it
+        // keeps its share and an oversubscribing sibling stays denied.
+        let budget_lease_acquired = match self.admit_capability_budget(cap) {
+            Ok(lease_acquired) => lease_acquired,
             Err(reason) => {
                 let msg = format!("sibling-sum budget admission failed: {reason}");
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
@@ -383,9 +384,9 @@ impl ChioKernel {
                             budget_mutation: &budget_mutation,
                             payment_authorization: None,
                             runtime_admission_metadata,
-                            // Admission failed: this evaluation inserted no child
-                            // edge, so there is nothing for cleanup to release.
-                            admitted_new_child: false,
+                            // Admission failed: this evaluation acquired no
+                            // lease, so there is nothing for cleanup to release.
+                            budget_lease_acquired: false,
                         })
                     },
                 );
@@ -401,7 +402,7 @@ impl ChioKernel {
                     cap,
                     &budget_mutation,
                     runtime_admission_metadata,
-                    admitted_new_child,
+                    budget_lease_acquired,
                 )
             });
         }
@@ -425,7 +426,7 @@ impl ChioKernel {
                             budget_mutation: &budget_mutation,
                             payment_authorization: None,
                             runtime_admission_metadata,
-                            admitted_new_child,
+                            budget_lease_acquired,
                         })
                     },
                 );
@@ -445,7 +446,7 @@ impl ChioKernel {
                     budget_mutation: &budget_mutation,
                     payment_authorization: payment_authorization.as_ref(),
                     runtime_admission_metadata,
-                    admitted_new_child,
+                    budget_lease_acquired,
                 })
             });
         }
@@ -480,7 +481,7 @@ impl ChioKernel {
                     budget_mutation: &budget_mutation,
                     payment_authorization: payment_authorization.as_ref(),
                     runtime_admission_metadata,
-                    admitted_new_child,
+                    budget_lease_acquired,
                 })
             });
         };
@@ -495,7 +496,7 @@ impl ChioKernel {
                 extra_metadata: runtime_admission_metadata.clone(),
                 pre_invocation_guard_evidence: pre_invocation_guard_evidence.clone(),
             },
-            admitted_new_child,
+            budget_lease_acquired,
         );
         // Mark dispatch started before lending the child-receipt buffer to the
         // bridge: the bridge borrows the guard for the whole dispatch block, so
@@ -576,31 +577,62 @@ impl ChioKernel {
                 self.release_runtime_admission_reservations_for_url_elicitation_cleanup(
                     request,
                     matched_grant_index,
-                    runtime_admission_metadata,
+                    runtime_admission_metadata.clone(),
                     &pre_invocation_guard_evidence,
                 );
-                // Finding 1 (codex round 8): release the sibling-sum child
-                // admission ONLY when this evaluation inserted it. An idempotent
-                // re-admit's reservation belongs to an earlier still-valid
-                // evaluation; releasing it here would free a live sibling
-                // reservation and let an oversubscribing sibling bypass the cap.
-                if admitted_new_child {
-                    self.release_admitted_capability_budget(cap)
-                        .map_err(KernelError::DelegationInvalid)?;
+                // Finding 1 (codex round 8) + refcount: release this
+                // evaluation's sibling-sum child-budget lease ONLY when it
+                // acquired one. The reference-counted release frees the shared
+                // edge only when the last holder releases, so an overlapping
+                // evaluation that still holds it keeps its share. RECORD-AND-
+                // CONTINUE on failure (Fix #2): a transient budget-store failure
+                // must not replace the Err(UrlElicitationsRequired) response, so
+                // record a signed fault receipt naming the stuck child share and
+                // keep unwinding rather than `?`-short-circuiting.
+                if budget_lease_acquired {
+                    if let Err(reason) = self.release_admitted_capability_budget(cap) {
+                        let mut hold_ids = vec![cap.id.clone()];
+                        if let Some(parent_link) = cap.delegation_chain.last() {
+                            hold_ids.push(parent_link.capability_id.clone());
+                        }
+                        self.record_url_elicitation_budget_cleanup_fault(
+                            request,
+                            matched_grant_index,
+                            "url_elicitation_child_budget_release",
+                            &redacted!(&reason).to_string(),
+                            hold_ids,
+                            runtime_admission_metadata.clone(),
+                            &pre_invocation_guard_evidence,
+                        );
+                    }
                 }
-                match payment_authorization.as_ref() {
-                    Some(payment_authorization) => {
-                        let _ = self.unwind_aborted_monetary_invocation(
+                // Pre-execution budget reversal (monetary unwind or the
+                // invocation-slot / budget-charge reversal). RECORD-AND-CONTINUE
+                // on failure (Fix #2) so a budget-store fault does not mask the
+                // elicitation error; the stuck slot lands a signed fault receipt.
+                let budget_reversal = match payment_authorization.as_ref() {
+                    Some(payment_authorization) => self
+                        .unwind_aborted_monetary_invocation(
                             request,
                             cap,
                             budget_mutation.charge_result(),
                             Some(payment_authorization),
-                        )?;
-                    }
-                    None => {
-                        let _ =
-                            self.reverse_pre_execution_budget_mutation(cap, &budget_mutation)?;
-                    }
+                        )
+                        .map(|_| ()),
+                    None => self
+                        .reverse_pre_execution_budget_mutation(cap, &budget_mutation)
+                        .map(|_| ()),
+                };
+                if let Err(reversal_error) = budget_reversal {
+                    self.record_url_elicitation_budget_cleanup_fault(
+                        request,
+                        matched_grant_index,
+                        "url_elicitation_budget_reversal",
+                        &redacted!(&reversal_error).to_string(),
+                        vec![cap.id.clone()],
+                        runtime_admission_metadata,
+                        &pre_invocation_guard_evidence,
+                    );
                 }
                 warn!(
                     request_id = %request.request_id,
@@ -713,7 +745,7 @@ impl ChioKernel {
                                 budget_mutation: &budget_mutation,
                                 payment_authorization: payment_authorization.as_ref(),
                                 runtime_admission_metadata,
-                                admitted_new_child,
+                                budget_lease_acquired,
                             })
                         },
                     );

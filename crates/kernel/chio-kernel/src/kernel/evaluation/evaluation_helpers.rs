@@ -8,6 +8,15 @@ use super::*;
 const URL_ELICITATION_CLEANUP_FAULT_REASON: &str =
     "runtime-admission reservation release failed during URL-elicitation pre-dispatch cleanup";
 
+/// Reason recorded on the signed fault receipt when a BUDGET cleanup step (the
+/// sibling-sum child-budget lease release or the pre-execution budget reversal)
+/// FAILS during a URL-elicitation pre-dispatch unwind. Like the runtime-release
+/// fault, the elicitation arm returns `Err(UrlElicitationsRequired)` and records
+/// no terminal receipt, so this fault receipt is the only append-only entry that
+/// locates the stuck child share or invocation/budget slot.
+const URL_ELICITATION_BUDGET_CLEANUP_FAULT_REASON: &str =
+    "budget cleanup failed during URL-elicitation pre-dispatch cleanup";
+
 pub(super) struct PreDispatchCleanupDeny<'a> {
     pub(super) request: &'a ToolCallRequest,
     pub(super) reason: &'a str,
@@ -17,11 +26,12 @@ pub(super) struct PreDispatchCleanupDeny<'a> {
     pub(super) budget_mutation: &'a PreExecutionBudgetMutation,
     pub(super) payment_authorization: Option<&'a PaymentAuthorization>,
     pub(super) runtime_admission_metadata: Option<serde_json::Value>,
-    /// Whether THIS evaluation newly inserted the sibling-sum child admission
+    /// Whether THIS evaluation acquired a sibling-sum child-budget holder lease
     /// (the `admit_capability_budget` return). Only then may cleanup release
-    /// it: releasing an idempotent re-admit would free a still-valid sibling
-    /// reservation and let an oversubscribing sibling bypass the parent cap.
-    pub(super) admitted_new_child: bool,
+    /// one: the reference-counted release frees the shared edge only when the
+    /// last holder releases, so an overlapping evaluation that still holds it
+    /// keeps its share and an oversubscribing sibling stays denied.
+    pub(super) budget_lease_acquired: bool,
 }
 
 impl ChioKernel {
@@ -109,6 +119,62 @@ impl ChioKernel {
         }
     }
 
+    /// Record a signed fault receipt for a BUDGET cleanup step that FAILED
+    /// during the URL-elicitation pre-dispatch unwind (Fix: the child-budget
+    /// lease release and the pre-execution budget reversal now RECORD-AND-
+    /// CONTINUE instead of `?`-short-circuiting, so a transient budget-store
+    /// failure cannot replace the `Err(UrlElicitationsRequired)` response). The
+    /// arm returns the elicitation error and records no terminal receipt, so
+    /// without this the stuck child share / budget slot would land on NO
+    /// append-only entry. Best-effort: a receipt-recording failure is logged
+    /// with an `audit_fault` field; the caller still returns the elicitation
+    /// error.
+    // The fault receipt legitimately needs the request, grant, failing step,
+    // reason, stuck hold ids, admission metadata, and guard evidence to locate
+    // the stuck reservation; grouping them into a params struct would only
+    // rename the same inputs.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn record_url_elicitation_budget_cleanup_fault(
+        &self,
+        request: &ToolCallRequest,
+        matched_grant_index: usize,
+        step: &'static str,
+        reason: &str,
+        hold_ids: Vec<String>,
+        metadata: Option<serde_json::Value>,
+        pre_invocation_guard_evidence: &[chio_core::receipt::metadata::GuardEvidence],
+    ) {
+        let fault_metadata = merge_metadata_objects(
+            metadata,
+            Some(serde_json::json!({
+                "chio_runtime": {
+                    "pre_dispatch_cleanup_failed": true,
+                    "pre_dispatch_cleanup_faults": [{
+                        "step": step,
+                        "reason": reason,
+                        "hold_ids": hold_ids,
+                    }],
+                }
+            })),
+        );
+        let _guard_evidence_scope =
+            scope_pre_invocation_guard_evidence(pre_invocation_guard_evidence.to_vec());
+        if let Err(error) = self.build_cancelled_response_with_metadata(
+            request,
+            URL_ELICITATION_BUDGET_CLEANUP_FAULT_REASON,
+            current_unix_timestamp(),
+            Some(matched_grant_index),
+            fault_metadata,
+        ) {
+            warn!(
+                request_id = %request.request_id,
+                reason = %redacted!(&error),
+                audit_fault = "url_elicitation_budget_cleanup_fault_unrecorded",
+                "failed to record URL-elicitation budget cleanup fault receipt"
+            );
+        }
+    }
+
     pub(super) fn build_pre_dispatch_cleanup_deny_response(
         &self,
         denial: PreDispatchCleanupDeny<'_>,
@@ -117,7 +183,7 @@ impl ChioKernel {
             .release_runtime_admission_reservations_for_pre_dispatch_denial(
                 denial.runtime_admission_metadata,
             );
-        if denial.admitted_new_child {
+        if denial.budget_lease_acquired {
             self.release_admitted_capability_budget(denial.cap)
                 .map_err(KernelError::DelegationInvalid)?;
         }
@@ -161,7 +227,7 @@ impl ChioKernel {
 
     // The preflight-allow cleanup legitimately threads the full pre-dispatch
     // state (request, grant, capability, budget mutation, admission metadata,
-    // and the admitted-new-child gate) needed to reverse it; grouping them into
+    // and the budget-lease gate) needed to reverse it; grouping them into
     // a params struct would only rename the same inputs.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn build_execution_nonce_preflight_allow_response_after_cleanup(
@@ -172,16 +238,16 @@ impl ChioKernel {
         cap: &CapabilityToken,
         budget_mutation: &PreExecutionBudgetMutation,
         runtime_admission_metadata: Option<serde_json::Value>,
-        admitted_new_child: bool,
+        budget_lease_acquired: bool,
     ) -> Result<ToolCallResponse, KernelError> {
         let runtime_admission_metadata = self
             .release_runtime_admission_reservations_for_pre_dispatch_denial(
                 runtime_admission_metadata,
             );
-        // Release the sibling-sum child admission only when this evaluation
-        // inserted it; an idempotent re-admit's reservation belongs to an
-        // earlier evaluation (see `admit_capability_budget`).
-        if admitted_new_child {
+        // Release this evaluation's sibling-sum child-budget lease only when it
+        // acquired one; the reference-counted release frees the shared edge
+        // only when the last holder releases (see `admit_capability_budget`).
+        if budget_lease_acquired {
             self.release_admitted_capability_budget(cap)
                 .map_err(KernelError::DelegationInvalid)?;
         }

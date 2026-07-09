@@ -69,15 +69,14 @@ pub(crate) struct PostAdmissionDropGuard<'a> {
     /// a post-dispatch drop can still flush them onto the append-only log,
     /// preserving receipt-completeness for nested child operations (RFC-0002).
     child_receipts: Vec<ChildRequestReceipt>,
-    /// Whether THIS evaluation actually inserted the child/delegated
-    /// capability's sibling-sum budget edge (the `Ok(true)` from
-    /// `admit_capability_budget`). `false` means the admission was an idempotent
-    /// re-admit of an edge an EARLIER still-valid evaluation owns, so a
-    /// pre-dispatch drop here must NOT release it: freeing it would return the
-    /// earlier evaluation's live share and let an oversubscribing sibling bypass
-    /// the parent cap. Gates the step-4 child-budget release in
-    /// `handle_pre_dispatch_drop`.
-    admitted_new_child: bool,
+    /// Whether THIS evaluation acquired a sibling-sum child-budget holder lease
+    /// (the `Ok(true)` from `admit_capability_budget`). `false` means the
+    /// capability had no parent to admit against, so there is no lease to drop.
+    /// When `true`, a pre-dispatch drop releases exactly this evaluation's one
+    /// lease; the shared edge is freed only when the last holder releases, so an
+    /// overlapping evaluation that still holds it keeps its share protected.
+    /// Gates the step-4 child-budget release in `handle_pre_dispatch_drop`.
+    budget_lease_acquired: bool,
     armed: bool,
     dispatch_started: bool,
 }
@@ -92,7 +91,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
         budget_mutation: &'a PreExecutionBudgetMutation,
         payment_authorization: Option<&'a PaymentAuthorization>,
         receipt_context: PostAdmissionReceiptContext,
-        admitted_new_child: bool,
+        budget_lease_acquired: bool,
     ) -> Self {
         Self {
             kernel,
@@ -103,7 +102,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
             payment_authorization,
             receipt_context,
             child_receipts: Vec::new(),
-            admitted_new_child,
+            budget_lease_acquired,
             armed: true,
             dispatch_started: false,
         }
@@ -265,21 +264,21 @@ impl<'a> PostAdmissionDropGuard<'a> {
             });
         }
 
-        // 4. Admitted child/delegated capability budget release (Finding B),
-        //    gated on newly-inserted (codex follow-up). A delegated capability
-        //    admitted its share of the parent budget at admission; release it or
-        //    the share stays permanently recorded. Release ONLY when THIS
-        //    evaluation actually inserted the child edge (`admitted_new_child`).
-        //    An idempotent re-admit's reservation belongs to an EARLIER
-        //    still-valid evaluation, which owns the release; freeing it here
-        //    would return that live share and let an oversubscribing sibling
-        //    bypass the parent cap. Fail-closed: when this evaluation did not
-        //    provably insert the edge (`admitted_new_child == false`) do NOT
-        //    release, because over-releasing another evaluation's live share
-        //    (a budget bypass) is the worse failure than under-releasing (a
-        //    leak the earlier owner still tracks and can reconcile). Mirrors the
-        //    pre-dispatch denial path.
-        if self.admitted_new_child {
+        // 4. Admitted child/delegated capability budget lease release (Finding
+        //    B), gated on this evaluation having acquired a lease. A delegated
+        //    capability took a holder lease on its share of the parent budget at
+        //    admission; drop it or the lease stays permanently recorded. Release
+        //    ONLY when THIS evaluation acquired a lease (`budget_lease_acquired`).
+        //    The release is reference-counted: it decrements the holder count
+        //    and frees the edge (returning the share to the parent) only when
+        //    this was the LAST holder. An overlapping evaluation that still holds
+        //    the edge keeps its share, so an oversubscribing sibling stays
+        //    denied. Fail-closed: an evaluation that never acquired a lease
+        //    (`budget_lease_acquired == false`) releases nothing, because
+        //    over-releasing (dropping a holder this evaluation never took) would
+        //    free another evaluation's live share (a budget bypass), the worse
+        //    failure. Mirrors the pre-dispatch denial path.
+        if self.budget_lease_acquired {
             if let Err(error) = self.kernel.release_admitted_capability_budget(self.cap) {
                 let reason = redacted!(&error).to_string();
                 warn!(

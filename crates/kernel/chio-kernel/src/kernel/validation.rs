@@ -299,15 +299,27 @@ impl ChioKernel {
     /// The split between pre-admit verification and budget admission
     /// enforces the ordering rule "signature first, admit last", so a
     /// denied request never starves later valid siblings.
-    /// Admit `cap`'s sibling-sum budget share under its parent.
+    /// Admit `cap`'s sibling-sum budget share under its parent, acquiring one
+    /// per-evaluation holder lease on the child admission edge.
     ///
-    /// Returns `Ok(true)` when THIS call newly inserted the child edge, and
-    /// `Ok(false)` when the admission was an idempotent no-op (the child was
-    /// already admitted with the same share) or the capability has no parent
-    /// to admit against. `try_admit_child` is idempotent for the same child
-    /// id + share, so the boolean lets a pre-dispatch cleanup path release
-    /// ONLY an admission it actually inserted: releasing an idempotent
-    /// re-admit would free a still-valid sibling reservation and let an
+    /// Returns `Ok(true)` when THIS evaluation acquired a lease: the capability
+    /// has a parent and the admit succeeded, whether it INSERTED a fresh edge
+    /// or took an additional holder on an edge an overlapping evaluation
+    /// already inserted (an idempotent re-admit). Returns `Ok(false)` only when
+    /// the capability has no parent to admit against (no lease exists to
+    /// release). A failed admit (oversubscribe / cap-exceed / different share)
+    /// acquires NO lease and returns `Err`.
+    ///
+    /// The lease increment happens inside `try_admit_child` under the registry
+    /// lock, so it is atomic with the insert/holder decision (no TOCTOU). The
+    /// boolean tells a pre-dispatch cleanup path whether THIS evaluation holds a
+    /// lease it must release: exactly the evaluations that acquired a lease
+    /// release one (via `release_admitted_capability_budget`), and the edge is
+    /// freed only when the last holder releases. Reference counting - rather
+    /// than a "newly inserted" owner flag - is required because overlapping
+    /// evaluations of the same delegated capability concurrently depend on the
+    /// single registry edge; freeing it on the inserting evaluation's cleanup
+    /// would return a re-admitting sibling's live share and let an
     /// oversubscribing sibling bypass the parent cap.
     pub(crate) fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<bool, String> {
         if let Some(parent_link) = cap.delegation_chain.last() {
@@ -319,15 +331,6 @@ impl ChioKernel {
                 Ok(guard) => guard,
                 Err(poisoned) => poisoned.into_inner(),
             };
-            // Snapshot whether this child edge already exists (same share)
-            // under the same lock as the admit, so the insertion decision is
-            // atomic with the mutation. A pre-existing edge means this admit is
-            // an idempotent no-op and its reservation belongs to an earlier
-            // evaluation, which owns the release.
-            let newly_inserted = budgets
-                .split(parent_link.capability_id.as_str())
-                .and_then(|split| split.child_share_bps(cap.id.as_str()))
-                != Some(proposed_share);
             budgets
                 .try_admit_child(
                     parent_link.capability_id.as_str(),
@@ -335,7 +338,9 @@ impl ChioKernel {
                     proposed_share,
                 )
                 .map_err(|err| err.to_string())?;
-            return Ok(newly_inserted);
+            // The admit succeeded against a parent link, so this evaluation now
+            // holds a lease it is responsible for releasing on cleanup.
+            return Ok(true);
         }
 
         Ok(false)

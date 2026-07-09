@@ -2219,54 +2219,52 @@ fn drop_pre_dispatch_releases_admitted_child_budget() -> Result<(), Box<dyn std:
 }
 
 #[test]
-fn drop_pre_dispatch_retains_idempotently_readmitted_child_budget(
+fn drop_pre_dispatch_overlapping_readmit_keeps_sibling_denied(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Codex follow-up: the post-admission drop guard must gate its child-budget
-    // release on newly-inserted, mirroring the pre-dispatch denial path. An
-    // EARLIER evaluation admits child_a (a genuinely-new insert, owning the
-    // reservation). A SECOND evaluation idempotently re-admits the same child_a
-    // (Ok(false), no new insert) and is then DROPPED before dispatch. The drop
-    // must NOT release child_a's live share: releasing it would free the first
-    // evaluation's reservation and let an oversubscribing sibling child_b
-    // bypass the parent cap. RED before the gate (child_b wrongly admits);
-    // GREEN after (child_b stays denied).
+    // Refcount model (replaces the old boolean-owner gate). Two OVERLAPPING
+    // evaluations hold the SAME delegated child edge. An EARLIER evaluation
+    // admits child_a (lease 1). A SECOND overlapping evaluation idempotently
+    // re-admits the same child_a (lease 2) and is then DROPPED before dispatch.
+    // The drop releases only the SECOND evaluation's lease (holders 2 -> 1); it
+    // must NOT free the edge the first evaluation still holds, so an
+    // oversubscribing sibling child_b stays DENIED. RED under a non-refcounted
+    // release (the drop would free child_a's only edge and child_b would
+    // wrongly admit); GREEN with the refcount.
     let SiblingSumMonetaryFixture {
         kernel,
         child_a,
         child_b,
         path: _path,
         ..
-    } = make_sibling_sum_monetary_fixture("chio-runtime-pre-dispatch-idempotent-readmit");
+    } = make_sibling_sum_monetary_fixture("chio-runtime-pre-dispatch-overlapping-readmit");
 
-    // Earlier evaluation: genuinely-new admission of child_a (4000 of 5000 bps).
+    // Earlier evaluation: fresh admission of child_a (4000 of 5000 bps).
     let first = kernel
         .admit_capability_budget(&child_a)
         .map_err(std::io::Error::other)?;
-    assert!(
-        first,
-        "the first admission of child_a must report a newly-inserted edge"
-    );
+    assert!(first, "the first admission of child_a must acquire a lease");
 
-    // Second evaluation: idempotent re-admit of the same child_a + share. This
-    // is a no-op whose reservation belongs to the first evaluation.
+    // Second overlapping evaluation: the idempotent re-admit takes a second
+    // lease on the same edge (holders 2).
     let second = kernel
         .admit_capability_budget(&child_a)
         .map_err(std::io::Error::other)?;
     assert!(
-        !second,
-        "an idempotent re-admit of child_a must report NO new insert (Ok(false))"
+        second,
+        "an idempotent re-admit of child_a must also acquire a lease (holders 2)"
     );
 
     let request = make_request_with_arguments(
-        "req-chio-runtime-pre-dispatch-idempotent-readmit",
+        "req-chio-runtime-pre-dispatch-overlapping-readmit",
         &child_a,
         "compute",
         "cost-srv",
         serde_json::json!({}),
     );
     let mutation = PreExecutionBudgetMutation::None;
-    // The second evaluation's future is dropped before dispatch. Because THIS
-    // evaluation did not insert the edge, admitted_new_child is false.
+    // The second evaluation's future is dropped before dispatch. It acquired a
+    // lease, so the refcounted release drops ONE holder (holders 2 -> 1) and
+    // leaves the edge intact.
     drop(PostAdmissionDropGuard::new(
         &kernel,
         &request,
@@ -2278,21 +2276,21 @@ fn drop_pre_dispatch_retains_idempotently_readmitted_child_budget(
             extra_metadata: None,
             pre_invocation_guard_evidence: Vec::new(),
         },
-        false,
+        true,
     ));
 
-    // child_a's share must still be held (owned by the first evaluation), so an
+    // child_a's share is still held by the first evaluation (holders 1), so an
     // oversubscribing sibling child_b (4000 + 4000 > 5000 bps) stays DENIED.
     let sibling = kernel.admit_capability_budget(&child_b);
     assert!(
         sibling.is_err(),
-        "a dropped idempotent re-admit must NOT release child_a's live share, so \
-         the oversubscribing sibling child_b stays denied: {sibling:?}"
+        "the second evaluation's drop must release only its own lease, leaving \
+         child_a's share held by the first evaluation, so child_b stays denied: {sibling:?}"
     );
     assert_eq!(
         kernel.receipt_log().len(),
         0,
-        "a pre-dispatch drop that releases nothing (idempotent re-admit) is receipt-free"
+        "a pre-dispatch drop whose refcounted release does not free the edge is receipt-free"
     );
     Ok(())
 }
@@ -3593,12 +3591,13 @@ fn make_sibling_sum_url_fixture(prefix: &str) -> SiblingSumInvocationFixture {
 #[test]
 fn url_elicitation_idempotent_readmit_preserves_sibling_budget(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Finding 1 (codex round 8): admit_capability_budget is idempotent for the
-    // same child id + share. When child_a was already admitted by an earlier
-    // call, a second evaluation that hits UrlElicitationsRequired must NOT
-    // release child_a's still-valid reservation on cleanup. Over-releasing the
-    // idempotent re-admit would free the parent share and let the
-    // oversubscribing sibling child_b admit while child_a is still valid.
+    // Finding 1 (codex round 8) + refcount: admit_capability_budget takes a
+    // holder lease per evaluation. An earlier evaluation holds child_a's edge
+    // (lease 1). A second overlapping evaluation that hits UrlElicitationsRequired
+    // takes a second lease and releases only that one on cleanup (holders 2 ->
+    // 1); it must NOT free child_a's edge while the earlier holder remains, or
+    // the oversubscribing sibling child_b would admit while child_a is still
+    // valid.
     let SiblingSumInvocationFixture {
         kernel,
         child_a,
@@ -3608,15 +3607,15 @@ fn url_elicitation_idempotent_readmit_preserves_sibling_budget(
         ..
     } = make_sibling_sum_url_fixture("chio-runtime-url-idempotent-readmit");
 
-    // Earlier successful admission of child_a's share (persists for the
-    // capability lifetime, not per invocation).
+    // Earlier evaluation holds child_a's edge (lease 1) for the duration.
     let first = kernel
         .admit_capability_budget(&child_a)
         .map_err(std::io::Error::other)?;
-    assert!(first, "the first admission must newly insert child_a's share");
+    assert!(first, "the first admission must acquire child_a's lease");
 
-    // Second evaluation on the SAME child_a hits UrlElicitationsRequired; its
-    // internal admit is an idempotent no-op.
+    // Second overlapping evaluation on the SAME child_a hits
+    // UrlElicitationsRequired; its internal admit takes (and its cleanup drops)
+    // a second lease, leaving the earlier holder's share intact.
     let request = make_request_with_arguments(
         "req-url-idempotent-readmit-async",
         &child_a,
@@ -3630,12 +3629,13 @@ fn url_elicitation_idempotent_readmit_preserves_sibling_budget(
         "the delegated child must reach dispatch and surface UrlElicitationsRequired: {result:?}"
     );
 
-    // child_a's share must still be recorded, so the oversubscribing sibling
-    // child_b (4000 + 4000 > 5000 parent share) must still be DENIED.
+    // child_a's edge is still held by the earlier evaluation, so the
+    // oversubscribing sibling child_b (4000 + 4000 > 5000 parent share) must
+    // still be DENIED.
     let readmit_b = kernel.admit_capability_budget(&child_b);
     assert!(
         readmit_b.is_err(),
-        "the idempotent re-admit's cleanup must NOT release child_a's live share, so child_b stays oversubscribed: {readmit_b:?}"
+        "the second evaluation's cleanup must drop only its own lease, leaving child_a held so child_b stays oversubscribed: {readmit_b:?}"
     );
     Ok(())
 }
@@ -3644,8 +3644,8 @@ fn url_elicitation_idempotent_readmit_preserves_sibling_budget(
 fn url_elicitation_idempotent_readmit_preserves_sibling_budget_nested_flow(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Nested-flow mirror of the async idempotent-readmit test: the nested arm's
-    // UrlElicitationsRequired cleanup must also release only an admission it
-    // inserted, leaving a pre-admitted sibling reservation intact.
+    // UrlElicitationsRequired cleanup must also drop only its own holder lease,
+    // leaving the earlier holder's sibling reservation intact.
     let SiblingSumInvocationFixture {
         kernel,
         child_a,
@@ -3658,7 +3658,7 @@ fn url_elicitation_idempotent_readmit_preserves_sibling_budget_nested_flow(
     let first = kernel
         .admit_capability_budget(&child_a)
         .map_err(std::io::Error::other)?;
-    assert!(first, "the first admission must newly insert child_a's share");
+    assert!(first, "the first admission must acquire child_a's lease");
 
     let session_id = kernel.open_session(child_a_kp.public_key().to_hex(), vec![child_a.clone()])?;
     kernel.activate_session(&session_id)?;
@@ -3693,7 +3693,7 @@ fn url_elicitation_idempotent_readmit_preserves_sibling_budget_nested_flow(
     let readmit_b = kernel.admit_capability_budget(&child_b);
     assert!(
         readmit_b.is_err(),
-        "the nested idempotent re-admit's cleanup must NOT release child_a's live share: {readmit_b:?}"
+        "the nested second evaluation's cleanup must drop only its own lease, leaving child_a held: {readmit_b:?}"
     );
     Ok(())
 }
@@ -3900,6 +3900,260 @@ fn assert_url_elicitation_release_fault_recorded(
         }),
         "the fault must name the URL-elicitation release step and the stuck lease id: {faults:?}"
     );
+    Ok(())
+}
+
+/// A [`BudgetStore`] wrapper that fails the pre-execution BUDGET reversal
+/// (`reverse_charge_cost`) so a URL-elicitation cleanup exercises the
+/// record-and-continue budget path (Fix #2). All other operations delegate to a
+/// real in-memory store so admission still increments the invocation slot.
+struct FailingReverseBudgetStore {
+    inner: InMemoryBudgetStore,
+}
+
+impl FailingReverseBudgetStore {
+    fn new() -> Self {
+        Self {
+            inner: InMemoryBudgetStore::new(),
+        }
+    }
+}
+
+impl BudgetStore for FailingReverseBudgetStore {
+    fn try_increment(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+    ) -> Result<bool, BudgetStoreError> {
+        self.inner
+            .try_increment(capability_id, grant_index, max_invocations)
+    }
+
+    fn try_charge_cost(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+    ) -> Result<bool, BudgetStoreError> {
+        self.inner.try_charge_cost(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+        )
+    }
+
+    fn reverse_charge_cost(
+        &self,
+        _capability_id: &str,
+        _grant_index: usize,
+        _cost_units: u64,
+    ) -> Result<(), BudgetStoreError> {
+        // Injected transient budget-store fault on the reversal path.
+        Err(BudgetStoreError::Invariant(
+            "injected reverse_charge_cost failure".to_string(),
+        ))
+    }
+
+    fn reduce_charge_cost(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        cost_units: u64,
+    ) -> Result<(), BudgetStoreError> {
+        self.inner
+            .reduce_charge_cost(capability_id, grant_index, cost_units)
+    }
+
+    fn settle_charge_cost(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        exposed_cost_units: u64,
+        realized_cost_units: u64,
+    ) -> Result<(), BudgetStoreError> {
+        self.inner.settle_charge_cost(
+            capability_id,
+            grant_index,
+            exposed_cost_units,
+            realized_cost_units,
+        )
+    }
+
+    fn list_usages(
+        &self,
+        limit: usize,
+        capability_id: Option<&str>,
+    ) -> Result<Vec<BudgetUsageRecord>, BudgetStoreError> {
+        self.inner.list_usages(limit, capability_id)
+    }
+
+    fn get_usage(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+    ) -> Result<Option<BudgetUsageRecord>, BudgetStoreError> {
+        self.inner.get_usage(capability_id, grant_index)
+    }
+}
+
+/// Assert that a failed BUDGET reversal during a URL-elicitation pre-dispatch
+/// unwind recorded a signed cancellation fault receipt naming the `step` and
+/// the stuck `hold_id` (Fix #2). Shared by the async and nested-flow tests.
+fn assert_url_elicitation_budget_cleanup_fault_recorded(
+    kernel: &ChioKernel,
+    step: &str,
+    hold_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let receipt_log = kernel.receipt_log();
+    let found = receipt_log.receipts().iter().any(|receipt| {
+        receipt.is_cancelled()
+            && receipt.metadata.as_ref().is_some_and(|metadata| {
+                metadata["chio_runtime"]["pre_dispatch_cleanup_failed"] == true
+                    && metadata["chio_runtime"]["pre_dispatch_cleanup_faults"]
+                        .as_array()
+                        .is_some_and(|faults| {
+                            faults.iter().any(|fault| {
+                                fault["step"] == step
+                                    && fault["hold_ids"].as_array().is_some_and(|ids| {
+                                        ids.iter().any(|id| id == hold_id)
+                                    })
+                            })
+                        })
+            })
+    });
+    assert!(
+        found,
+        "a failed URL-elicitation budget reversal must record a signed fault receipt naming step `{step}` and the stuck hold `{hold_id}`"
+    );
+    Ok(())
+}
+
+#[test]
+fn url_elicitation_budget_reversal_failure_preserves_elicitation_async(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Fix #2: a transient BUDGET-store failure while reversing the
+    // pre-execution invocation slot during a UrlElicitationsRequired cleanup
+    // must be RECORDED and the arm must still return
+    // Err(UrlElicitationsRequired) - not the internal budget error - so the
+    // elicitations payload still reaches the edge. RED before the fix (the `?`
+    // on reverse_pre_execution_budget_mutation replaces the elicitation error).
+    let mut kernel = make_kernel(make_config());
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&stream_attempts),
+    )));
+    kernel.set_budget_store_handle(std::sync::Arc::new(FailingReverseBudgetStore::new()));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_invocation_limited_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+            1,
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-url-elicitation-budget-reversal-failure-async",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let result = kernel.evaluate_tool_call_blocking(&request);
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "a budget-reversal failure must not replace the elicitation with an internal cleanup error: {result:?}"
+    );
+    assert_eq!(
+        stream_attempts.load(Ordering::SeqCst),
+        1,
+        "dispatch must have been attempted so the error came from dispatch, not admission"
+    );
+    assert_url_elicitation_budget_cleanup_fault_recorded(
+        &kernel,
+        "url_elicitation_budget_reversal",
+        &cap.id,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn url_elicitation_budget_reversal_failure_preserves_elicitation_nested_flow(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Nested-flow mirror of the async budget-reversal-failure test (Fix #2,
+    // both arms).
+    let mut kernel = make_kernel(make_config());
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&stream_attempts),
+    )));
+    kernel.set_budget_store_handle(std::sync::Arc::new(FailingReverseBudgetStore::new()));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_invocation_limited_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+            1,
+        )]),
+        300,
+    );
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        "req-url-elicitation-budget-reversal-failure-nested",
+        &agent_kp.public_key().to_hex(),
+    );
+    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
+    let request = make_request_with_arguments(
+        "req-url-elicitation-budget-reversal-failure-nested",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let result = rt.block_on(async {
+        let mut client = NoopNestedFlowClient;
+        kernel
+            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
+            .await
+    });
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "the nested budget-reversal failure must not mask the elicitation error: {result:?}"
+    );
+    assert_eq!(
+        stream_attempts.load(Ordering::SeqCst),
+        1,
+        "dispatch must have been attempted so the error came from dispatch, not admission"
+    );
+    assert_url_elicitation_budget_cleanup_fault_recorded(
+        &kernel,
+        "url_elicitation_budget_reversal",
+        &cap.id,
+    )?;
     Ok(())
 }
 
