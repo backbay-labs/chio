@@ -134,10 +134,10 @@ def synthesize_deny_receipt(
 ) -> ChioReceipt:
     """Build a deny receipt when the sidecar raised instead of returning one.
 
-    Signature and kernel_key are empty, metadata carries the synthetic
-    marker, and the reason is prefixed ``[unsigned]`` so DLQ analytics
-    surface it without reading metadata. Parameter hash stays consistent
-    with what the sidecar would have computed.
+    Signature and kernel_key keep schema-valid placeholders, metadata
+    carries the synthetic marker, and the reason is prefixed ``[unsigned]``
+    so DLQ analytics surface it without reading metadata. Parameter hash
+    stays consistent with what the sidecar would have computed.
     """
     canonical = json.dumps(
         parameters, sort_keys=True, separators=(",", ":"), ensure_ascii=True
