@@ -203,6 +203,7 @@ const CREDENTIAL_HEADER_DENYLIST = new Set([
   "set-cookie",
   "x-api-key",
   "x-chio-capability",
+  "x-chio-capability-token",
 ]);
 
 /** Build a ChioHttpRequest from extracted request parts. */

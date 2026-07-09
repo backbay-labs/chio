@@ -94,7 +94,7 @@ fn no_chio_alloc_uses_offset_zero() {
 }
 
 #[test]
-fn get_config_reports_copied_length_for_truncated_buffer() {
+fn get_config_reports_full_length_for_truncated_buffer() {
     let wat = r#"
             (module
                 (import "chio" "get_config" (func $get_config (param i32 i32 i32 i32) (result i32)))
@@ -108,7 +108,7 @@ fn get_config_reports_copied_length_for_truncated_buffer() {
                             (i32.const 6)
                             (i32.const 32)
                             (i32.const 4)))
-                    (if (result i32) (i32.eq (local.get $copied) (i32.const 4))
+                    (if (result i32) (i32.eq (local.get $copied) (i32.const 6))
                         (then (i32.const 0))
                         (else (i32.const 1))
                     )
@@ -126,7 +126,7 @@ fn get_config_reports_copied_length_for_truncated_buffer() {
     let result = backend.evaluate(&req).unwrap();
     assert!(
         result.is_allow(),
-        "expected ALLOW when get_config returned the copied byte count, got: {result:?}"
+        "expected ALLOW when get_config returned the full value byte count, got: {result:?}"
     );
 }
 

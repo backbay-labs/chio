@@ -250,6 +250,7 @@ describe("buildChioHttpRequest", () => {
         authorization: "Bearer policy-token",
         "x-api-key": "api-key-secret",
         "x-chio-capability": "{\"id\":\"cap-123\"}",
+        "x-chio-capability-token": "cap-token-secret",
         "x-tenant-id": "tenant-a",
       },
       caller: {
@@ -266,6 +267,7 @@ describe("buildChioHttpRequest", () => {
         "cookie",
         "x-api-key",
         "x-chio-capability",
+        "x-chio-capability-token",
         "x-tenant-id",
       ],
     };
