@@ -19,11 +19,41 @@ pub(crate) struct PostAdmissionReceiptContext {
 }
 
 /// A single pre-dispatch cleanup step that failed. Collected so a signed fault
-/// receipt can name the failing step and its redacted reason, letting an
-/// operator locate a hold or reservation that may be stuck.
+/// receipt can name the failing step, its redacted reason, and the hold /
+/// reservation ids that step was unwinding, letting an operator locate a hold
+/// or reservation that may be stuck without cross-referencing the top-level
+/// admission metadata.
 struct PreDispatchCleanupFault {
     step: &'static str,
     reason: String,
+    /// Ids of the holds / reservations this step was releasing (budget hold id,
+    /// payment authorization id, delegated child / parent capability id, or the
+    /// reserved runtime lease / continuation ids). Empty when the failing step
+    /// carries no locatable id.
+    hold_ids: Vec<String>,
+}
+
+/// Extract the reserved runtime-admission lease / continuation ids carried in
+/// the admission metadata so a runtime-admission release fault can name the
+/// possibly-stuck reservations directly in its fault entry.
+fn reserved_runtime_admission_ids(metadata: Option<&serde_json::Value>) -> Vec<String> {
+    let Some(runtime) = metadata
+        .and_then(|value| value.get("chio_runtime"))
+        .and_then(serde_json::Value::as_object)
+    else {
+        return Vec::new();
+    };
+    let mut ids = Vec::new();
+    for key in [
+        "reserved_destructive_lease_id",
+        "reserved_treaty_continuation_id",
+        "reserved_swarm_continuation_id",
+    ] {
+        if let Some(id) = runtime.get(key).and_then(serde_json::Value::as_str) {
+            ids.push(id.to_string());
+        }
+    }
+    ids
 }
 
 pub(crate) struct PostAdmissionDropGuard<'a> {
@@ -153,9 +183,20 @@ impl<'a> PostAdmissionDropGuard<'a> {
                     reason = %reason,
                     "failed to unwind dropped pre-dispatch monetary invocation"
                 );
+                // Name the budget hold (and payment authorization, if any) the
+                // failed reversal was unwinding so an operator can locate the
+                // possibly-stuck monetary hold from the fault entry alone.
+                let mut hold_ids = Vec::new();
+                if let Some(charge) = self.budget_mutation.charge_result() {
+                    hold_ids.push(charge.budget_hold_id.clone());
+                }
+                if let Some(authorization) = self.payment_authorization {
+                    hold_ids.push(authorization.authorization_id.clone());
+                }
                 faults.push(PreDispatchCleanupFault {
                     step: "monetary_unwind",
                     reason,
+                    hold_ids,
                 });
             }
         }
@@ -183,6 +224,9 @@ impl<'a> PostAdmissionDropGuard<'a> {
                 faults.push(PreDispatchCleanupFault {
                     step: "invocation_reversal",
                     reason,
+                    // The invocation slot is keyed by the capability id; name it
+                    // so the stuck slot is locatable from the fault entry.
+                    hold_ids: vec![self.cap.id.clone()],
                 });
             }
         }
@@ -201,6 +245,11 @@ impl<'a> PostAdmissionDropGuard<'a> {
             faults.push(PreDispatchCleanupFault {
                 step: "runtime_admission_release",
                 reason,
+                // Name the reserved lease / continuation ids so an operator can
+                // locate the possibly-stuck reservation from the fault entry.
+                hold_ids: reserved_runtime_admission_ids(
+                    self.receipt_context.extra_metadata.as_ref(),
+                ),
             });
         }
 
@@ -215,9 +264,16 @@ impl<'a> PostAdmissionDropGuard<'a> {
                 reason = %reason,
                 "failed to release admitted capability budget on pre-dispatch drop"
             );
+            // Name the delegated child capability id and its parent so the stuck
+            // sibling-sum share is locatable from the fault entry.
+            let mut hold_ids = vec![self.cap.id.clone()];
+            if let Some(parent_link) = self.cap.delegation_chain.last() {
+                hold_ids.push(parent_link.capability_id.clone());
+            }
             faults.push(PreDispatchCleanupFault {
                 step: "child_budget_release",
                 reason,
+                hold_ids,
             });
         }
 
@@ -263,6 +319,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
                 serde_json::json!({
                     "step": fault.step,
                     "reason": fault.reason,
+                    "hold_ids": fault.hold_ids,
                 })
             })
             .collect();

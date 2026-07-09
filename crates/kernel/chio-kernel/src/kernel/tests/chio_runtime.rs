@@ -3429,3 +3429,401 @@ fn url_elicitation_required_releases_full_budget_state_nested_flow(
     );
     Ok(())
 }
+
+/// Sibling-sum delegation fixture whose child capabilities target a tool server
+/// that returns `UrlElicitationsRequired` before any side effect. Parent share
+/// is 5000 bps and each child claims 4000 bps, so child_a alone fits but
+/// child_a + child_b oversubscribes the parent. Mirrors
+/// `make_sibling_sum_invocation_fixture` but swaps the tool server so the
+/// evaluation reaches dispatch and surfaces the URL-elicitation error.
+fn make_sibling_sum_url_fixture(prefix: &str) -> SiblingSumInvocationFixture {
+    let path = unique_receipt_db_path(prefix);
+    let seed_store = SqliteReceiptStore::open(&path).unwrap();
+    let mut kernel = make_kernel(make_monetary_config());
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
+        "url-srv",
+        vec!["compute"],
+        stream_attempts,
+    )));
+
+    let parent_kp = make_keypair();
+    let child_a_kp = make_keypair();
+    let child_b_kp = make_keypair();
+    let mut parent_grant = make_grant("url-srv", "compute");
+    parent_grant.operations.push(Operation::Delegate);
+    let parent_scope = make_scope(vec![parent_grant]);
+    let child_scope = make_scope(vec![make_grant("url-srv", "compute")]);
+    let parent = make_capability(&kernel, &parent_kp, parent_scope.clone(), 300);
+    seed_store
+        .record_capability_snapshot(&parent, None)
+        .unwrap();
+    drop(seed_store);
+    kernel
+        .set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()))
+        .unwrap();
+    kernel
+        .register_budget_parent(parent.id.clone(), 5_000)
+        .unwrap();
+    kernel.set_capability_trust_root(
+        kernel.config.keypair.public_key(),
+        scope_hash(&parent_scope).unwrap(),
+    );
+
+    let child_a_id = format!("cap-{prefix}-child-a");
+    let child_a = make_v2_delegated_child(V2DelegatedChildInput {
+        kernel: &kernel,
+        parent: &parent,
+        parent_kp: &parent_kp,
+        child_kp: &child_a_kp,
+        parent_scope: &parent_scope,
+        child_scope: child_scope.clone(),
+        id: &child_a_id,
+        share_bps: 4_000,
+    });
+    let child_b_id = format!("cap-{prefix}-child-b");
+    let child_b = make_v2_delegated_child(V2DelegatedChildInput {
+        kernel: &kernel,
+        parent: &parent,
+        parent_kp: &parent_kp,
+        child_kp: &child_b_kp,
+        parent_scope: &parent_scope,
+        child_scope,
+        id: &child_b_id,
+        share_bps: 4_000,
+    });
+
+    SiblingSumInvocationFixture {
+        kernel,
+        child_a,
+        child_b,
+        child_a_kp,
+        child_b_kp,
+        path,
+    }
+}
+
+#[test]
+fn url_elicitation_idempotent_readmit_preserves_sibling_budget(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Finding 1 (codex round 8): admit_capability_budget is idempotent for the
+    // same child id + share. When child_a was already admitted by an earlier
+    // call, a second evaluation that hits UrlElicitationsRequired must NOT
+    // release child_a's still-valid reservation on cleanup. Over-releasing the
+    // idempotent re-admit would free the parent share and let the
+    // oversubscribing sibling child_b admit while child_a is still valid.
+    let SiblingSumInvocationFixture {
+        kernel,
+        child_a,
+        child_b,
+        child_a_kp: _child_a_kp,
+        path: _path,
+        ..
+    } = make_sibling_sum_url_fixture("chio-runtime-url-idempotent-readmit");
+
+    // Earlier successful admission of child_a's share (persists for the
+    // capability lifetime, not per invocation).
+    let first = kernel
+        .admit_capability_budget(&child_a)
+        .map_err(std::io::Error::other)?;
+    assert!(first, "the first admission must newly insert child_a's share");
+
+    // Second evaluation on the SAME child_a hits UrlElicitationsRequired; its
+    // internal admit is an idempotent no-op.
+    let request = make_request_with_arguments(
+        "req-url-idempotent-readmit-async",
+        &child_a,
+        "compute",
+        "url-srv",
+        serde_json::json!({}),
+    );
+    let result = kernel.evaluate_tool_call_blocking(&request);
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "the delegated child must reach dispatch and surface UrlElicitationsRequired: {result:?}"
+    );
+
+    // child_a's share must still be recorded, so the oversubscribing sibling
+    // child_b (4000 + 4000 > 5000 parent share) must still be DENIED.
+    let readmit_b = kernel.admit_capability_budget(&child_b);
+    assert!(
+        readmit_b.is_err(),
+        "the idempotent re-admit's cleanup must NOT release child_a's live share, so child_b stays oversubscribed: {readmit_b:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn url_elicitation_idempotent_readmit_preserves_sibling_budget_nested_flow(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Nested-flow mirror of the async idempotent-readmit test: the nested arm's
+    // UrlElicitationsRequired cleanup must also release only an admission it
+    // inserted, leaving a pre-admitted sibling reservation intact.
+    let SiblingSumInvocationFixture {
+        kernel,
+        child_a,
+        child_b,
+        child_a_kp,
+        path: _path,
+        ..
+    } = make_sibling_sum_url_fixture("chio-runtime-url-idempotent-readmit-nested");
+
+    let first = kernel
+        .admit_capability_budget(&child_a)
+        .map_err(std::io::Error::other)?;
+    assert!(first, "the first admission must newly insert child_a's share");
+
+    let session_id = kernel.open_session(child_a_kp.public_key().to_hex(), vec![child_a.clone()])?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        "req-url-idempotent-readmit-nested",
+        &child_a_kp.public_key().to_hex(),
+    );
+    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
+    let request = make_request_with_arguments(
+        "req-url-idempotent-readmit-nested",
+        &child_a,
+        "compute",
+        "url-srv",
+        serde_json::json!({}),
+    );
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let result = rt.block_on(async {
+        let mut client = NoopNestedFlowClient;
+        kernel
+            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
+            .await
+    });
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "the nested delegated child must surface UrlElicitationsRequired: {result:?}"
+    );
+
+    let readmit_b = kernel.admit_capability_budget(&child_b);
+    assert!(
+        readmit_b.is_err(),
+        "the nested idempotent re-admit's cleanup must NOT release child_a's live share: {readmit_b:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn url_elicitation_release_failure_continues_full_budget_cleanup(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Finding 2 (codex round 8): a runtime-reservation release failure during
+    // the UrlElicitationsRequired cleanup must be RECORDED and the remaining
+    // cleanup (the invocation-slot reversal) must still run. The response must
+    // stay Err(UrlElicitationsRequired) - not an internal cleanup error - so
+    // the elicitations payload still reaches the edge.
+    let mut kernel = make_kernel(make_config());
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&stream_attempts),
+    )));
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(FailingReleaseRuntimeAdmissionHook {
+        calls: std::sync::Arc::clone(&admission_calls),
+        releases: std::sync::Arc::clone(&releases),
+        expected_request_id: "req-url-elicitation-release-failure-async",
+        admission_id: "adm-url-elicitation-release-failure",
+        lease_id: "lease-url-elicitation-release-failure",
+    }));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_invocation_limited_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+            1,
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-url-elicitation-release-failure-async",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let result = kernel.evaluate_tool_call_blocking(&request);
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "a runtime-release failure must not replace the elicitation with an internal cleanup error: {result:?}"
+    );
+    assert_eq!(
+        stream_attempts.load(Ordering::SeqCst),
+        1,
+        "dispatch must have been attempted so the error came from dispatch, not admission"
+    );
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        1,
+        "the failing runtime-admission release must be attempted"
+    );
+    let slot_reusable =
+        kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
+    assert!(
+        slot_reusable,
+        "cleanup must CONTINUE past the runtime-release failure and reverse the invocation slot"
+    );
+    Ok(())
+}
+
+#[test]
+fn url_elicitation_release_failure_continues_full_budget_cleanup_nested_flow(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Nested-flow mirror of the async continue-on-release-failure test.
+    let mut kernel = make_kernel(make_config());
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&stream_attempts),
+    )));
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(FailingReleaseRuntimeAdmissionHook {
+        calls: std::sync::Arc::clone(&admission_calls),
+        releases: std::sync::Arc::clone(&releases),
+        expected_request_id: "req-url-elicitation-release-failure-nested",
+        admission_id: "adm-url-elicitation-release-failure-nested",
+        lease_id: "lease-url-elicitation-release-failure-nested",
+    }));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_invocation_limited_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+            1,
+        )]),
+        300,
+    );
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        "req-url-elicitation-release-failure-nested",
+        &agent_kp.public_key().to_hex(),
+    );
+    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
+    let request = make_request_with_arguments(
+        "req-url-elicitation-release-failure-nested",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let result = rt.block_on(async {
+        let mut client = NoopNestedFlowClient;
+        kernel
+            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
+            .await
+    });
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "the nested runtime-release failure must not mask the elicitation error: {result:?}"
+    );
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        1,
+        "the failing runtime-admission release must be attempted"
+    );
+    let slot_reusable =
+        kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
+    assert!(
+        slot_reusable,
+        "the nested cleanup must CONTINUE past the release failure and reverse the invocation slot"
+    );
+    Ok(())
+}
+
+#[test]
+fn drop_pre_dispatch_cleanup_fault_receipt_includes_monetary_hold_id(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Finding 3 (codex round 8): when a pre-dispatch drop hits a monetary
+    // cleanup failure, the fault entry must name the budget hold id it was
+    // unwinding so an operator can locate the possibly-stuck hold from the
+    // fault receipt alone. The fabricated charge has no matching open hold in
+    // the store, so the monetary reversal fails and records a fault.
+    let kernel = make_kernel(make_config());
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-chio-runtime-monetary-cleanup-fault-hold-id",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    // Charge WITHOUT authorizing the matching hold: the monetary reversal fails
+    // and records a monetary_unwind fault (no mark_dispatch_started, so this is
+    // the pre-dispatch drop branch).
+    let mutation = PreExecutionBudgetMutation::Charge(make_fabricated_drop_charge());
+    drop(PostAdmissionDropGuard::new(
+        &kernel,
+        &request,
+        &cap,
+        Some(0),
+        &mutation,
+        None,
+        PostAdmissionReceiptContext {
+            extra_metadata: None,
+            pre_invocation_guard_evidence: Vec::new(),
+        },
+    ));
+
+    let receipt_log = kernel.receipt_log();
+    assert_eq!(
+        receipt_log.len(),
+        1,
+        "a failed monetary pre-dispatch cleanup must record exactly one fault receipt"
+    );
+    let receipt = receipt_log
+        .get(0)
+        .ok_or_else(|| std::io::Error::other("monetary cleanup fault receipt missing"))?;
+    let receipt_metadata = receipt
+        .metadata
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("fault receipt metadata missing"))?;
+    let faults = receipt_metadata["chio_runtime"]["pre_dispatch_cleanup_faults"]
+        .as_array()
+        .ok_or_else(|| std::io::Error::other("fault list missing"))?;
+    let monetary_fault = faults
+        .iter()
+        .find(|fault| fault["step"] == "monetary_unwind")
+        .ok_or_else(|| std::io::Error::other("monetary_unwind fault entry missing"))?;
+    let hold_ids = monetary_fault["hold_ids"]
+        .as_array()
+        .ok_or_else(|| std::io::Error::other("monetary_unwind fault must carry hold_ids"))?;
+    assert!(
+        hold_ids
+            .iter()
+            .any(|id| id == "hold-drop-guard-tests"),
+        "the monetary_unwind fault must name the budget hold id: {hold_ids:?}"
+    );
+    Ok(())
+}

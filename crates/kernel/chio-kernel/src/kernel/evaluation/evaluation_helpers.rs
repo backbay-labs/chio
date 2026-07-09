@@ -9,6 +9,11 @@ pub(super) struct PreDispatchCleanupDeny<'a> {
     pub(super) budget_mutation: &'a PreExecutionBudgetMutation,
     pub(super) payment_authorization: Option<&'a PaymentAuthorization>,
     pub(super) runtime_admission_metadata: Option<serde_json::Value>,
+    /// Whether THIS evaluation newly inserted the sibling-sum child admission
+    /// (the `admit_capability_budget` return). Only then may cleanup release
+    /// it: releasing an idempotent re-admit would free a still-valid sibling
+    /// reservation and let an oversubscribing sibling bypass the parent cap.
+    pub(super) admitted_new_child: bool,
 }
 
 impl ChioKernel {
@@ -29,8 +34,10 @@ impl ChioKernel {
             .release_runtime_admission_reservations_for_pre_dispatch_denial(
                 denial.runtime_admission_metadata,
             );
-        self.release_admitted_capability_budget(denial.cap)
-            .map_err(KernelError::DelegationInvalid)?;
+        if denial.admitted_new_child {
+            self.release_admitted_capability_budget(denial.cap)
+                .map_err(KernelError::DelegationInvalid)?;
+        }
         let reverse = match denial.payment_authorization {
             Some(payment_authorization) => self.unwind_aborted_monetary_invocation(
                 denial.request,
@@ -69,6 +76,11 @@ impl ChioKernel {
         )
     }
 
+    // The preflight-allow cleanup legitimately threads the full pre-dispatch
+    // state (request, grant, capability, budget mutation, admission metadata,
+    // and the admitted-new-child gate) needed to reverse it; grouping them into
+    // a params struct would only rename the same inputs.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn build_execution_nonce_preflight_allow_response_after_cleanup(
         &self,
         request: &ToolCallRequest,
@@ -77,13 +89,19 @@ impl ChioKernel {
         cap: &CapabilityToken,
         budget_mutation: &PreExecutionBudgetMutation,
         runtime_admission_metadata: Option<serde_json::Value>,
+        admitted_new_child: bool,
     ) -> Result<ToolCallResponse, KernelError> {
         let runtime_admission_metadata = self
             .release_runtime_admission_reservations_for_pre_dispatch_denial(
                 runtime_admission_metadata,
             );
-        self.release_admitted_capability_budget(cap)
-            .map_err(KernelError::DelegationInvalid)?;
+        // Release the sibling-sum child admission only when this evaluation
+        // inserted it; an idempotent re-admit's reservation belongs to an
+        // earlier evaluation (see `admit_capability_budget`).
+        if admitted_new_child {
+            self.release_admitted_capability_budget(cap)
+                .map_err(KernelError::DelegationInvalid)?;
+        }
         let reverse = self.reverse_pre_execution_budget_mutation(cap, budget_mutation)?;
         let budget_metadata = match (budget_mutation.charge_result(), reverse.as_ref()) {
             (Some(charge), Some(reverse)) => {

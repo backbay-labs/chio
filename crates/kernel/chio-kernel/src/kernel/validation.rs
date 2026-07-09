@@ -299,7 +299,17 @@ impl ChioKernel {
     /// The split between pre-admit verification and budget admission
     /// enforces the ordering rule "signature first, admit last", so a
     /// denied request never starves later valid siblings.
-    pub(crate) fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<(), String> {
+    /// Admit `cap`'s sibling-sum budget share under its parent.
+    ///
+    /// Returns `Ok(true)` when THIS call newly inserted the child edge, and
+    /// `Ok(false)` when the admission was an idempotent no-op (the child was
+    /// already admitted with the same share) or the capability has no parent
+    /// to admit against. `try_admit_child` is idempotent for the same child
+    /// id + share, so the boolean lets a pre-dispatch cleanup path release
+    /// ONLY an admission it actually inserted: releasing an idempotent
+    /// re-admit would free a still-valid sibling reservation and let an
+    /// oversubscribing sibling bypass the parent cap.
+    pub(crate) fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<bool, String> {
         if let Some(parent_link) = cap.delegation_chain.last() {
             use chio_kernel_core::BudgetRegistry;
             let proposed_share = cap
@@ -309,6 +319,15 @@ impl ChioKernel {
                 Ok(guard) => guard,
                 Err(poisoned) => poisoned.into_inner(),
             };
+            // Snapshot whether this child edge already exists (same share)
+            // under the same lock as the admit, so the insertion decision is
+            // atomic with the mutation. A pre-existing edge means this admit is
+            // an idempotent no-op and its reservation belongs to an earlier
+            // evaluation, which owns the release.
+            let newly_inserted = budgets
+                .split(parent_link.capability_id.as_str())
+                .and_then(|split| split.child_share_bps(cap.id.as_str()))
+                != Some(proposed_share);
             budgets
                 .try_admit_child(
                     parent_link.capability_id.as_str(),
@@ -316,9 +335,10 @@ impl ChioKernel {
                     proposed_share,
                 )
                 .map_err(|err| err.to_string())?;
+            return Ok(newly_inserted);
         }
 
-        Ok(())
+        Ok(false)
     }
 
     pub(crate) fn release_admitted_capability_budget(

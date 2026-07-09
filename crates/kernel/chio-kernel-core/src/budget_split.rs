@@ -171,6 +171,19 @@ impl BudgetSplit {
         self.children.values().map(|share| u32::from(*share)).sum()
     }
 
+    /// Return the share currently recorded for `child_id`, if this child has
+    /// already been admitted under this parent.
+    ///
+    /// Callers use this to distinguish a fresh admission from an idempotent
+    /// re-admit before calling [`Self::try_admit_child`]: pre-dispatch cleanup
+    /// must only release a child admission it actually inserted. Releasing an
+    /// idempotent re-admit would free a still-valid sibling reservation and let
+    /// an oversubscribing sibling bypass the parent cap.
+    #[must_use]
+    pub fn child_share_bps(&self, child_id: &str) -> Option<u16> {
+        self.children.get(child_id).copied()
+    }
+
     /// Try to admit a new child under this parent.
     ///
     /// Returns `Ok(())` when the child is admitted. The child is recorded in

@@ -436,22 +436,37 @@ impl ChioKernel {
             });
         }
 
-        if let Err(reason) = self.admit_capability_budget(cap) {
-            let msg = format!("sibling-sum budget admission failed: {reason}");
-            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
-            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
-                self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
-                    request,
-                    reason: &msg,
-                    timestamp: now,
-                    matched_grant_index,
-                    cap,
-                    budget_mutation: &budget_mutation,
-                    payment_authorization: None,
-                    runtime_admission_metadata: extra_metadata,
-                })
-            });
-        }
+        // Capture whether THIS evaluation newly inserted the sibling-sum child
+        // admission. `admit_capability_budget` is idempotent for the same child
+        // id + share, so a later pre-dispatch cleanup must release the admission
+        // only when this evaluation created it; over-releasing an idempotent
+        // re-admit would free a still-valid sibling reservation and let an
+        // oversubscribing sibling bypass the parent cap.
+        let admitted_new_child = match self.admit_capability_budget(cap) {
+            Ok(newly_inserted) => newly_inserted,
+            Err(reason) => {
+                let msg = format!("sibling-sum budget admission failed: {reason}");
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason: &msg,
+                            timestamp: now,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            runtime_admission_metadata: extra_metadata,
+                            // Admission failed: this evaluation inserted no child
+                            // edge, so there is nothing for cleanup to release.
+                            admitted_new_child: false,
+                        })
+                    },
+                );
+            }
+        };
 
         if self.execution_nonce_preflight_required(request) {
             return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
@@ -462,6 +477,7 @@ impl ChioKernel {
                     cap,
                     &budget_mutation,
                     extra_metadata,
+                    admitted_new_child,
                 )
             });
         }
@@ -485,6 +501,7 @@ impl ChioKernel {
                             budget_mutation: &budget_mutation,
                             payment_authorization: None,
                             runtime_admission_metadata: extra_metadata,
+                            admitted_new_child,
                         })
                     },
                 );
@@ -504,6 +521,7 @@ impl ChioKernel {
                     budget_mutation: &budget_mutation,
                     payment_authorization: payment_authorization.as_ref(),
                     runtime_admission_metadata: extra_metadata,
+                    admitted_new_child,
                 })
             });
         }
@@ -547,9 +565,26 @@ impl ChioKernel {
                 // valid siblings. The error is still returned so the
                 // elicitations payload propagates to the edge, which registers
                 // them and returns the url-elicitation-required response.
-                self.release_runtime_admission_reservations(extra_metadata.as_ref())?;
-                self.release_admitted_capability_budget(cap)
-                    .map_err(KernelError::DelegationInvalid)?;
+                // Finding 2 (codex round 8): RECORD a runtime-reservation
+                // release failure and CONTINUE the remaining cleanup rather
+                // than `?`-short-circuiting on it, matching the generic
+                // pre-dispatch denial path. A transient release failure must
+                // not leave the invocation slot / child share consumed, nor
+                // replace the elicitation response with an internal cleanup
+                // error. The returned metadata is discarded because this arm
+                // returns Err(UrlElicitationsRequired) so the elicitations
+                // payload (not a receipt) propagates to the edge.
+                let _ = self
+                    .release_runtime_admission_reservations_for_pre_dispatch_denial(extra_metadata);
+                // Finding 1 (codex round 8): release the sibling-sum child
+                // admission ONLY when this evaluation inserted it. An idempotent
+                // re-admit's reservation belongs to an earlier still-valid
+                // evaluation; releasing it here would free a live sibling
+                // reservation and let an oversubscribing sibling bypass the cap.
+                if admitted_new_child {
+                    self.release_admitted_capability_budget(cap)
+                        .map_err(KernelError::DelegationInvalid)?;
+                }
                 match payment_authorization.as_ref() {
                     Some(payment_authorization) => {
                         let _ = self.unwind_aborted_monetary_invocation(
@@ -670,6 +705,7 @@ impl ChioKernel {
                                 budget_mutation: &budget_mutation,
                                 payment_authorization: payment_authorization.as_ref(),
                                 runtime_admission_metadata: extra_metadata,
+                                admitted_new_child,
                             })
                         },
                     );
