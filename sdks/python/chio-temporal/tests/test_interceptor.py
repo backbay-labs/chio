@@ -115,6 +115,23 @@ class _NextInterceptor:
         return self.result
 
 
+class AttenuatingMockChioClient(MockChioClient):
+    async def attenuate_capability(
+        self,
+        token: CapabilityToken,
+        *,
+        new_scope: ChioScope,
+    ) -> CapabilityToken:
+        child = await self.create_capability(
+            subject=getattr(token, "subject", "agent:attenuated"),
+            scope=new_scope,
+        )
+        store: dict[str, Any] = getattr(self, "_tokens", {})
+        store[child.id] = child
+        self._tokens = store  # type: ignore[attr-defined]
+        return child
+
+
 @contextmanager
 def _patched_activity_info(info: activity.Info):
     """Temporarily patch ``activity.info()`` to return ``info``."""
@@ -425,7 +442,7 @@ class TestDenyVerdict:
 
 class TestAttenuatedGrant:
     async def test_activity_override_narrows_scope_and_is_enforced(self) -> None:
-        chio = MockChioClient()
+        chio = AttenuatingMockChioClient()
         chio.set_policy(_scope_aware_policy(chio))
 
         parent = await _mint_token(
