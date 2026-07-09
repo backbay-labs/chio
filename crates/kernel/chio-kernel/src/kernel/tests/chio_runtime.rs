@@ -3292,3 +3292,140 @@ fn dispatch_not_registered_releases_full_budget_state_nested_flow(
     );
     Ok(())
 }
+
+#[test]
+fn url_elicitation_required_releases_full_budget_state() -> Result<(), Box<dyn std::error::Error>> {
+    // RFC-0002 codex follow-up: UrlElicitationsRequired is classified by
+    // dispatch_error_precedes_tool_side_effect() as a no-side-effect dispatch
+    // error, exactly like ToolNotRegistered. The tool never runs; the client
+    // completes the URL elicitations and re-sends a FRESH tool call that
+    // re-admits from scratch, so ALL pre-dispatch budget state must be reversed.
+    // A max_invocations grant consumes an invocation slot at admission;
+    // unwind_aborted_monetary_invocation is a no-op for a non-monetary
+    // Invocation mutation, so before this fix the slot leaked and the authorize
+    // -> retry could never re-admit under the same grant. The async arm returns
+    // Err(UrlElicitationsRequired) (so the elicitations payload propagates to
+    // the edge), not a Deny response, so the slot reusability is asserted
+    // directly against the budget store.
+    let mut kernel = make_kernel(make_config());
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&stream_attempts),
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_invocation_limited_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+            1,
+        )]),
+        300,
+    );
+    let request = make_request_with_arguments(
+        "req-url-elicitation-full-budget-async",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let result = kernel.evaluate_tool_call_blocking(&request);
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "URL elicitation must surface as an error to the caller"
+    );
+    assert_eq!(
+        stream_attempts.load(Ordering::SeqCst),
+        1,
+        "dispatch must have been attempted so the error came from dispatch, not admission"
+    );
+
+    // The single invocation slot consumed at admission must be free again: no
+    // side effect occurred, so the pre-execution increment is reversed and a
+    // retry (after the client completes the elicitations) re-admits.
+    let slot_reusable =
+        kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
+    assert!(
+        slot_reusable,
+        "UrlElicitationsRequired precedes any side effect, so the invocation increment must be reversed for the retry to re-admit"
+    );
+    Ok(())
+}
+
+#[test]
+fn url_elicitation_required_releases_full_budget_state_nested_flow(
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Mirror of url_elicitation_required_releases_full_budget_state for the
+    // nested-flow evaluation arm, which carried the same leak: it released only
+    // the runtime-admission reservations on a UrlElicitationsRequired dispatch
+    // error, leaking the pre-execution budget mutation (and the sibling-sum
+    // capability admission).
+    let mut kernel = make_kernel(make_config());
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
+        "srv-chio-runtime",
+        vec!["destructive_update"],
+        std::sync::Arc::clone(&stream_attempts),
+    )));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_invocation_limited_grant(
+            "srv-chio-runtime",
+            "destructive_update",
+            1,
+        )]),
+        300,
+    );
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        "req-url-elicitation-full-budget-nested",
+        &agent_kp.public_key().to_hex(),
+    );
+    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
+    let request = make_request_with_arguments(
+        "req-url-elicitation-full-budget-nested",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let result = rt.block_on(async {
+        let mut client = NoopNestedFlowClient;
+        kernel
+            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
+            .await
+    });
+    assert!(
+        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
+        "the nested-flow URL elicitation must surface as an error to the caller"
+    );
+    assert_eq!(
+        stream_attempts.load(Ordering::SeqCst),
+        1,
+        "dispatch must have been attempted so the error came from dispatch, not admission"
+    );
+
+    // The nested-flow arm must also reverse the invocation increment on a
+    // UrlElicitationsRequired dispatch error so the slot is reusable.
+    let slot_reusable =
+        kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
+    assert!(
+        slot_reusable,
+        "the nested-flow UrlElicitationsRequired must reverse the invocation increment so a retry re-admits"
+    );
+    Ok(())
+}

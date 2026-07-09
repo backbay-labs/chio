@@ -525,13 +525,39 @@ impl ChioKernel {
         let tool_output = match tool_output_result {
             Ok(output) => output,
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
-                let _ = self.unwind_aborted_monetary_invocation(
-                    request,
-                    cap,
-                    budget_mutation.charge_result(),
-                    payment_authorization.as_ref(),
-                )?;
+                // UrlElicitationsRequired precedes any tool side effect
+                // (dispatch_error_precedes_tool_side_effect == true): the tool
+                // did not execute. The client completes the URL elicitations and
+                // re-sends a FRESH tool call that re-admits from scratch; there
+                // is no in-kernel resume that reuses this admission. The
+                // post-admission drop guard is disarmed above, so this arm owns
+                // the unwind and must reverse ALL pre-dispatch state: the
+                // runtime-admission reservations, the sibling-sum capability
+                // admission, and the pre-execution budget mutation (monetary
+                // unwind or the invocation-slot / budget-charge reversal).
+                // Reversing only the runtime reservations leaked a delegated
+                // capability's admitted child share and a max_invocations
+                // grant's consumed slot, wrongly starving the retry or later
+                // valid siblings. The error is still returned so the
+                // elicitations payload propagates to the edge, which registers
+                // them and returns the url-elicitation-required response.
                 self.release_runtime_admission_reservations(runtime_admission_metadata.as_ref())?;
+                self.release_admitted_capability_budget(cap)
+                    .map_err(KernelError::DelegationInvalid)?;
+                match payment_authorization.as_ref() {
+                    Some(payment_authorization) => {
+                        let _ = self.unwind_aborted_monetary_invocation(
+                            request,
+                            cap,
+                            budget_mutation.charge_result(),
+                            Some(payment_authorization),
+                        )?;
+                    }
+                    None => {
+                        let _ =
+                            self.reverse_pre_execution_budget_mutation(cap, &budget_mutation)?;
+                    }
+                }
                 warn!(
                     request_id = %request.request_id,
                     reason = %redacted!(&error),
