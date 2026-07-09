@@ -279,7 +279,12 @@ impl InMemoryExecutionNonceStore {
             }
             cache.pop(&key);
         }
-        let retain_until = now.checked_add(retention).unwrap_or(now);
+        let Some(retain_until) = now.checked_add(retention) else {
+            error!("execution nonce retention overflow; denying fail-closed");
+            return Err(KernelError::Internal(
+                "execution nonce retention overflow; fail-closed".to_string(),
+            ));
+        };
         cache.put(key, retain_until);
         Ok(true)
     }
@@ -600,6 +605,20 @@ mod tests {
         assert!(store.reserve_until("long-lived", expires_at).unwrap());
         thread::sleep(Duration::from_millis(5));
         assert!(!store.reserve_until("long-lived", expires_at).unwrap());
+    }
+
+    #[test]
+    fn reserve_with_retention_fails_closed_on_overflow() {
+        let store = InMemoryExecutionNonceStore::default();
+        let err = store
+            .reserve_with_retention("overflow", Duration::MAX)
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            KernelError::Internal(reason)
+                if reason.contains("execution nonce retention overflow")
+        ));
     }
 
     #[test]

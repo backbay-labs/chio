@@ -402,7 +402,7 @@ fn core_module_get_config(
         mem_data[val_out_ptr..val_out_ptr + copy_len].copy_from_slice(&value_bytes[..copy_len]);
     }
 
-    let actual_len = i32::try_from(copy_len).unwrap_or(i32::MAX);
+    let actual_len = i32::try_from(value_bytes.len()).unwrap_or(i32::MAX);
     set_i32_result(results, actual_len)
 }
 
@@ -639,6 +639,57 @@ mod tests {
         .expect("get config");
 
         assert_eq!(value, None);
+    }
+
+    #[test]
+    fn core_host_get_config_returns_actual_length_for_probe_and_truncation() {
+        let engine = wasmtime::Engine::default();
+        let mut linker = wasmtime::Linker::new(&engine);
+        register_host_functions(&mut linker).expect("register host functions");
+
+        let wasm = wat::parse_str(
+            r#"
+            (module
+              (import "chio" "get_config"
+                (func $get_config (param i32 i32 i32 i32) (result i32)))
+              (memory (export "memory") 1)
+              (data (i32.const 0) "mode")
+              (func (export "probe_zero") (result i32)
+                (call $get_config
+                  (i32.const 0) (i32.const 4) (i32.const 32) (i32.const 0)))
+              (func (export "read_small") (result i32)
+                (call $get_config
+                  (i32.const 0) (i32.const 4) (i32.const 32) (i32.const 3))))
+            "#,
+        )
+        .expect("wat parses");
+        let module = wasmtime::Module::new(&engine, wasm).expect("module compiles");
+
+        let mut config = HashMap::new();
+        config.insert("mode".to_string(), "allow-if".to_string());
+        let mut store = wasmtime::Store::new(&engine, WasmHostState::new(config));
+        let instance = linker
+            .instantiate(&mut store, &module)
+            .expect("module instantiates");
+
+        let probe = instance
+            .get_typed_func::<(), i32>(&mut store, "probe_zero")
+            .expect("probe export");
+        assert_eq!(probe.call(&mut store, ()).expect("probe call"), 8);
+
+        let read_small = instance
+            .get_typed_func::<(), i32>(&mut store, "read_small")
+            .expect("read export");
+        assert_eq!(read_small.call(&mut store, ()).expect("read call"), 8);
+
+        let memory = instance
+            .get_memory(&mut store, "memory")
+            .expect("memory export");
+        let mut copied = [0_u8; 3];
+        memory
+            .read(&store, 32, &mut copied)
+            .expect("read copied config prefix");
+        assert_eq!(&copied, b"all");
     }
 
     #[test]

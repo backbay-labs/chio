@@ -279,67 +279,61 @@ impl WorkflowAuthority {
             ));
         }
 
-        if let Err(WorkflowError::TimeLimitExceeded {
-            elapsed_secs,
-            limit_secs,
-        }) = validate_time_limit(execution)
-        {
-            execution.active = false;
-            execution.terminal_outcome = Some(WorkflowOutcome::TimedOut {
-                limit_secs,
-                elapsed_secs,
-            });
-            return Err(WorkflowError::TimeLimitExceeded {
+        let time_limit_exceeded = match validate_time_limit(execution) {
+            Ok(()) => None,
+            Err(WorkflowError::TimeLimitExceeded {
                 elapsed_secs,
                 limit_secs,
-            });
-        }
+            }) => Some((elapsed_secs, limit_secs)),
+            Err(err) => return Err(err),
+        };
 
-        if let Some(ref cost) = input.cost {
+        let budget_currency_mismatch = input.cost.as_ref().and_then(|cost| {
             if let Some(ref limit) = step.budget_limit {
                 if cost.currency != limit.currency {
-                    execution.active = false;
-                    execution.terminal_outcome = Some(WorkflowOutcome::Denied {
-                        reason: format!(
+                    return Some((
+                        limit.currency.clone(),
+                        cost.currency.clone(),
+                        format!(
                             "step cost currency {} does not match budget currency {}",
                             cost.currency, limit.currency
                         ),
-                    });
-                    return Err(WorkflowError::BudgetCurrencyMismatch {
-                        expected_currency: limit.currency.clone(),
-                        actual_currency: cost.currency.clone(),
-                    });
+                    ));
                 }
             }
             if let Some(ref limit) = execution.budget_limit {
                 if cost.currency != limit.currency {
-                    execution.active = false;
-                    execution.terminal_outcome = Some(WorkflowOutcome::Denied {
-                        reason: format!(
+                    return Some((
+                        limit.currency.clone(),
+                        cost.currency.clone(),
+                        format!(
                             "step cost currency {} does not match budget currency {}",
                             cost.currency, limit.currency
                         ),
-                    });
-                    return Err(WorkflowError::BudgetCurrencyMismatch {
-                        expected_currency: limit.currency.clone(),
-                        actual_currency: cost.currency.clone(),
-                    });
+                    ));
                 }
             }
-        }
-
-        let step_budget_exceeded = input.cost.as_ref().and_then(|cost| {
-            step.budget_limit.as_ref().and_then(|limit| {
-                if cost.units > limit.units {
-                    Some((limit.units, cost.units, limit.currency.clone()))
-                } else {
-                    None
-                }
-            })
+            None
         });
 
-        if let Some(ref c) = input.cost {
-            execution.budget_spent = execution.budget_spent.saturating_add(c.units);
+        let step_budget_exceeded = if budget_currency_mismatch.is_none() {
+            input.cost.as_ref().and_then(|cost| {
+                step.budget_limit.as_ref().and_then(|limit| {
+                    if cost.units > limit.units {
+                        Some((limit.units, cost.units, limit.currency.clone()))
+                    } else {
+                        None
+                    }
+                })
+            })
+        } else {
+            None
+        };
+
+        if budget_currency_mismatch.is_none() {
+            if let Some(ref c) = input.cost {
+                execution.budget_spent = execution.budget_spent.saturating_add(c.units);
+            }
         }
 
         // Always record the step so the audit trail is complete, even when
@@ -362,6 +356,15 @@ impl WorkflowAuthority {
         };
 
         execution.step_records.push(record);
+
+        if let Some((expected_currency, actual_currency, reason)) = budget_currency_mismatch {
+            execution.active = false;
+            execution.terminal_outcome = Some(WorkflowOutcome::Denied { reason });
+            return Err(WorkflowError::BudgetCurrencyMismatch {
+                expected_currency,
+                actual_currency,
+            });
+        }
 
         if let Some((limit_units, spent_units, currency)) = step_budget_exceeded {
             execution.active = false;
@@ -397,6 +400,18 @@ impl WorkflowAuthority {
                     currency: limit.currency.clone(),
                 });
             }
+        }
+
+        if let Some((elapsed_secs, limit_secs)) = time_limit_exceeded {
+            execution.active = false;
+            execution.terminal_outcome = Some(WorkflowOutcome::TimedOut {
+                limit_secs,
+                elapsed_secs,
+            });
+            return Err(WorkflowError::TimeLimitExceeded {
+                elapsed_secs,
+                limit_secs,
+            });
         }
 
         if input.outcome == StepOutcome::Failed || input.outcome == StepOutcome::Denied {
@@ -517,10 +532,6 @@ impl WorkflowAuthority {
 }
 
 fn determine_outcome(execution: &WorkflowExecution) -> WorkflowOutcome {
-    if let Some(outcome) = execution.terminal_outcome.clone() {
-        return outcome;
-    }
-
     for step in &execution.step_records {
         if step.outcome == StepOutcome::Failed {
             return WorkflowOutcome::StepFailed {
@@ -534,6 +545,10 @@ fn determine_outcome(execution: &WorkflowExecution) -> WorkflowOutcome {
                 reason: "step denied by policy".to_string(),
             };
         }
+    }
+
+    if let Some(outcome) = execution.terminal_outcome.clone() {
+        return outcome;
     }
 
     if let Some(ref limit) = execution.budget_limit {
@@ -905,10 +920,20 @@ mod tests {
             }) if expected_currency == "USD" && actual_currency == "EUR"
         ));
         assert_eq!(execution.budget_spent, 0);
+        assert_eq!(execution.step_records.len(), 1);
+        assert_eq!(execution.step_records[0].step_index, 0);
+        assert_eq!(
+            execution.step_records[0]
+                .cost
+                .as_ref()
+                .map(|cost| cost.currency.as_str()),
+            Some("EUR")
+        );
         assert!(!execution.active);
 
         let receipt = authority.finalize(execution).unwrap();
         assert!(matches!(receipt.outcome, WorkflowOutcome::Denied { .. }));
+        assert_eq!(receipt.steps.len(), 1);
         assert!(receipt.total_cost.is_none());
     }
 
@@ -945,7 +970,8 @@ mod tests {
             result,
             Err(WorkflowError::TimeLimitExceeded { limit_secs: 1, .. })
         ));
-        assert!(execution.step_records.is_empty());
+        assert_eq!(execution.step_records.len(), 1);
+        assert_eq!(execution.step_records[0].step_index, 0);
         assert!(!execution.active);
 
         let receipt = authority.finalize(execution).unwrap();
@@ -953,6 +979,7 @@ mod tests {
             receipt.outcome,
             WorkflowOutcome::TimedOut { limit_secs: 1, .. }
         ));
+        assert_eq!(receipt.steps.len(), 1);
     }
 
     #[test]
@@ -1013,6 +1040,51 @@ mod tests {
         // Trying to validate next step should fail
         let result = authority.validate_step(&execution, &manifest.steps[1], &grant);
         assert!(matches!(result, Err(WorkflowError::InvalidState(_))));
+    }
+
+    #[test]
+    fn failed_step_finalized_late_preserves_step_failed_outcome() {
+        let manifest = make_manifest();
+        let mut grant = make_grant();
+        grant.max_duration_secs = Some(1);
+        let authority = WorkflowAuthority::new(Keypair::generate());
+
+        let mut execution = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-1".to_string(),
+                "cap-1".to_string(),
+                None,
+            )
+            .unwrap();
+
+        authority
+            .record_step(
+                &mut execution,
+                &manifest.steps[0],
+                StepExecutionRecordInput {
+                    outcome: StepOutcome::Failed,
+                    duration_ms: 50,
+                    cost: None,
+                    tool_receipt_id: Some("tool-receipt-1".to_string()),
+                    output_hash: Some("output-hash-1".to_string()),
+                },
+            )
+            .unwrap();
+
+        execution.started_at = current_unix_secs().saturating_sub(2);
+
+        let receipt = authority.finalize(execution).unwrap();
+        assert!(matches!(
+            receipt.outcome,
+            WorkflowOutcome::StepFailed { step_index: 0, .. }
+        ));
+        assert_eq!(receipt.steps.len(), 1);
+        assert_eq!(
+            receipt.steps[0].tool_receipt_id.as_deref(),
+            Some("tool-receipt-1")
+        );
     }
 
     #[test]
