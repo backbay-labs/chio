@@ -5,9 +5,8 @@ from __future__ import annotations
 import json
 from unittest.mock import patch, MagicMock
 
-import pytest
+from django.http import JsonResponse
 from django.test import RequestFactory, TestCase, override_settings
-from django.http import HttpResponse, JsonResponse
 
 from chio_django.middleware import ChioDjangoMiddleware, _extract_caller
 
