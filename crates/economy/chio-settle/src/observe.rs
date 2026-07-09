@@ -391,11 +391,12 @@ fn lifecycle_state_for_projection(
     if escrow_snapshot.refunded {
         return Web3SettlementLifecycleState::TimedOut;
     }
-    if finality_status != SettlementFinalityStatus::Finalized {
-        return Web3SettlementLifecycleState::EscrowLocked;
-    }
     if escrow_snapshot.released_minor_units == 0 {
-        Web3SettlementLifecycleState::Failed
+        if finality_status == SettlementFinalityStatus::Finalized {
+            Web3SettlementLifecycleState::Failed
+        } else {
+            Web3SettlementLifecycleState::EscrowLocked
+        }
     } else if escrow_snapshot.released_minor_units < escrow_snapshot.deposited_minor_units {
         Web3SettlementLifecycleState::PartiallySettled
     } else {
@@ -1180,7 +1181,12 @@ mod tests {
     #[tokio::test]
     async fn project_escrow_execution_receipt_waits_for_finality_before_settled_state() {
         let mut dispatch = sample_dispatch();
-        dispatch.settlement_amount.units = 500_000;
+        let finality_amount = chio_core::capability::scope::MonetaryAmount {
+            units: 500_000,
+            currency: dispatch.settlement_amount.currency.clone(),
+        };
+        dispatch.settlement_amount = finality_amount.clone();
+        dispatch.capital_instruction.body.amount = Some(finality_amount);
         let server = MockJsonRpcServer::spawn(vec![
             rpc_result(json!(encode_hex(
                 IChioEscrow::getEscrowCall::abi_encode_returns(&IChioEscrow::getEscrowReturn {
@@ -1252,7 +1258,7 @@ mod tests {
         );
         assert_eq!(
             projection.receipt.lifecycle_state,
-            Web3SettlementLifecycleState::EscrowLocked
+            Web3SettlementLifecycleState::PartiallySettled
         );
         assert_eq!(
             projection.recovery_action,

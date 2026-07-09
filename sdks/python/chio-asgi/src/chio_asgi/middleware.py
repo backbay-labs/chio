@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from typing import Any, Callable, Awaitable
+from typing import Any, Awaitable, Callable
 from urllib.parse import parse_qsl
 
 from chio_sdk.client import ChioClient

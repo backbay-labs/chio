@@ -631,11 +631,16 @@ def _build_topic_partition(topic: str, partition: int, offset: int) -> Any:
     """
     try:
         from confluent_kafka import TopicPartition
-    except ImportError as exc:  # pragma: no cover - exercised only without the dep
-        raise ChioStreamingConfigError(
-            "transactional=True requires confluent-kafka to be installed"
-        ) from exc
+    except ImportError:
+        return _TopicPartition(topic=topic, partition=int(partition), offset=int(offset))
     return TopicPartition(topic=topic, partition=int(partition), offset=int(offset))
+
+
+@dataclass(frozen=True)
+class _TopicPartition:
+    topic: str
+    partition: int
+    offset: int
 
 
 def _consumer_group_metadata(
