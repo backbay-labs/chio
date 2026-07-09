@@ -4,9 +4,11 @@ use crate::settlement::{
 };
 use crate::trust_profile::Web3SettlementPath;
 
+use super::settlement_proof::public_settlement_witness_body_hash;
 use super::tests::{
     sample_execution_receipt, sample_identity_registry_evidence,
-    sample_identity_registry_evidence_binding,
+    sample_identity_registry_evidence_binding, sample_public_settlement_proof_bundle,
+    verify_sample_public_settlement_proof,
 };
 
 #[test]
@@ -110,4 +112,92 @@ fn dual_sign_settlement_receipt_rejects_registry_binding_mismatches() {
             "expected {field} binding mismatch to fail"
         );
     }
+}
+
+#[test]
+fn public_settlement_proof_binds_identity_registry_evidence_to_deployment_and_anchor() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.settlement_receipt.identity_registry_evidence =
+        Some(sample_identity_registry_evidence());
+
+    verify_sample_public_settlement_proof(&bundle).unwrap();
+
+    let mut wrong_registry = bundle.clone();
+    wrong_registry
+        .settlement_receipt
+        .identity_registry_evidence
+        .as_mut()
+        .expect("sample proof carries registry evidence")
+        .identity_registry_contract = "0x2000000000000000000000000000000000000004".to_string();
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&wrong_registry),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("identity registry evidence contract mismatch")
+    ));
+
+    let mut wrong_operator = bundle.clone();
+    wrong_operator
+        .settlement_receipt
+        .identity_registry_evidence
+        .as_mut()
+        .expect("sample proof carries registry evidence")
+        .operator_address = "0x2000000000000000000000000000000000000001".to_string();
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&wrong_operator),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("identity registry evidence operator mismatch")
+    ));
+
+    let mut wrong_key = bundle.clone();
+    wrong_key
+        .settlement_receipt
+        .identity_registry_evidence
+        .as_mut()
+        .expect("sample proof carries registry evidence")
+        .operator_key_hash =
+        "0x8888888888888888888888888888888888888888888888888888888888888888".to_string();
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&wrong_key),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("operator_key_hash")
+                || message.contains("identity registry evidence operator key mismatch")
+    ));
+
+    let mut wrong_settlement_key = bundle.clone();
+    wrong_settlement_key
+        .chain_snapshot
+        .identity_registry_operator
+        .as_mut()
+        .expect("sample proof carries registry operator snapshot")
+        .settlement_key = "0x2000000000000000000000000000000000000001".to_string();
+    let witness = wrong_settlement_key
+        .public_witness
+        .as_mut()
+        .expect("sample proof carries public witness");
+    witness
+        .identity_registry_operator
+        .as_mut()
+        .expect("sample proof witness carries registry operator snapshot")
+        .settlement_key = "0x2000000000000000000000000000000000000001".to_string();
+    witness.body_hash =
+        public_settlement_witness_body_hash(witness).expect("sample witness body hashes");
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&wrong_settlement_key),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("settlement key mismatch")
+    ));
+
+    let mut future_block = bundle;
+    future_block
+        .settlement_receipt
+        .identity_registry_evidence
+        .as_mut()
+        .expect("sample proof carries registry evidence")
+        .block_number = 12_345_679;
+    assert!(matches!(
+        verify_sample_public_settlement_proof(&future_block),
+        Err(Web3ContractError::InvalidSettlement(message))
+            if message.contains("block exceeds observed chain state")
+                || message.contains("operator snapshot block mismatch")
+    ));
 }

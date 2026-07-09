@@ -102,6 +102,8 @@ pub struct PublicSettlementWitnessReport {
     pub root_registry_runtime_codehash: String,
     pub identity_registry_address: String,
     pub identity_registry_runtime_codehash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_registry_operator: Option<PublicSettlementIdentityRegistryOperatorSnapshot>,
     pub escrow_contract: String,
     pub escrow_runtime_codehash: String,
     pub settlement_token_address: String,
@@ -135,6 +137,7 @@ pub struct PublicSettlementVerifierTrust {
     pub independent_chain_head: Option<PublicSettlementIndependentChainHead>,
     pub trusted_dispute_event_blocks: Vec<PublicSettlementBlockSnapshot>,
     pub trusted_release_event_blocks: Vec<PublicSettlementBlockSnapshot>,
+    pub trusted_release_event_logs: Vec<PublicSettlementReleaseEventLog>,
     pub verifier_now_unix_seconds: Option<u64>,
     pub trusted_runtime_codehashes: Option<PublicSettlementRuntimeCodehashTrust>,
 }
@@ -182,7 +185,7 @@ pub struct PublicSettlementChainSnapshot {
     pub beneficiary_identity_binding: Option<SignedWeb3IdentityBinding>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PublicSettlementIdentityRegistryOperatorSnapshot {
     pub identity_registry_contract: String,
@@ -223,6 +226,29 @@ pub struct PublicSettlementReleaseEvent {
     pub remaining_amount: Option<crate::capability::scope::MonetaryAmount>,
     pub partial: bool,
     pub block: PublicSettlementBlockSnapshot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PublicSettlementReleaseEventKind {
+    EscrowReleased,
+    EscrowPartialRelease,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PublicSettlementReleaseEventLog {
+    pub contract_address: String,
+    pub event: PublicSettlementReleaseEventKind,
+    pub escrow_id: String,
+    pub release_tx_hash: String,
+    pub receipt_hash: String,
+    pub amount: crate::capability::scope::MonetaryAmount,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remaining_amount: Option<crate::capability::scope::MonetaryAmount>,
+    pub block_number: u64,
+    pub block_hash: String,
+    pub log_index: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -52,6 +52,28 @@
     },
     "bundle_signature": { "$ref": "#/$defs/bundleSignature" }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "settlement_receipt": {
+            "required": ["identity_registry_evidence"]
+          }
+        },
+        "required": ["settlement_receipt"]
+      },
+      "then": {
+        "properties": {
+          "public_witness": {
+            "required": ["identity_registry_operator"]
+          },
+          "chain_snapshot": {
+            "required": ["identity_registry_operator"]
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "bundleSignature": {
       "type": "object",
@@ -299,6 +321,9 @@
           "type": "string",
           "pattern": "^0x[0-9a-fA-F]{64}$"
         },
+        "identity_registry_operator": {
+          "$ref": "#/$defs/identityRegistryOperatorSnapshot"
+        },
         "registry_root": {
           "type": "string",
           "pattern": "^0x[0-9a-fA-F]{64}$"
@@ -460,7 +485,23 @@
         "remaining_amount": { "$ref": "#/$defs/nonNegativeMoney" },
         "partial": { "type": "boolean" },
         "block": { "$ref": "#/$defs/blockSnapshot" }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "partial": { "const": true } },
+            "required": ["partial"]
+          },
+          "then": { "required": ["remaining_amount"] }
+        },
+        {
+          "if": {
+            "properties": { "partial": { "const": false } },
+            "required": ["partial"]
+          },
+          "then": { "not": { "required": ["remaining_amount"] } }
+        }
+      ]
     },
     "refundEvent": {
       "type": "object",

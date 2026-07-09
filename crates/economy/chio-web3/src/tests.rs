@@ -44,14 +44,14 @@ use crate::settlement_proof::{
     public_settlement_witness_body_hash, verify_public_settlement_proof,
     PublicSettlementBlockSnapshot, PublicSettlementBundleSignature,
     PublicSettlementDeploymentProvenance, PublicSettlementDisputePosture,
-    PublicSettlementDisputeSnapshot, PublicSettlementIndependentChainHead,
-    PublicSettlementOrderBinding, PublicSettlementProofBundle,
-    PublicSettlementRuntimeCodehashTrust, PublicSettlementTrustMarketContext,
-    PublicSettlementVerifierTrust, PublicSettlementWitnessMode, PublicSettlementWitnessReport,
-    CHIO_PUBLIC_SETTLEMENT_VERIFIER_REPORT_SCHEMA, CHIO_WEB3_SETTLEMENT_DISPUTE_SCHEMA,
-    CHIO_WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA, CLAIM_PUBLIC_SETTLEMENT_CHAIN_CONTEXT_VERIFIED,
-    CLAIM_PUBLIC_SETTLEMENT_DISPUTE_POSTURE_BOUND, CLAIM_PUBLIC_SETTLEMENT_FINALITY_VERIFIED,
-    CLAIM_PUBLIC_SETTLEMENT_ORACLE_CONVERSION_BOUND,
+    PublicSettlementDisputeSnapshot, PublicSettlementIdentityRegistryOperatorSnapshot,
+    PublicSettlementIndependentChainHead, PublicSettlementOrderBinding,
+    PublicSettlementProofBundle, PublicSettlementRuntimeCodehashTrust,
+    PublicSettlementTrustMarketContext, PublicSettlementVerifierTrust, PublicSettlementWitnessMode,
+    PublicSettlementWitnessReport, CHIO_PUBLIC_SETTLEMENT_VERIFIER_REPORT_SCHEMA,
+    CHIO_WEB3_SETTLEMENT_DISPUTE_SCHEMA, CHIO_WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA,
+    CLAIM_PUBLIC_SETTLEMENT_CHAIN_CONTEXT_VERIFIED, CLAIM_PUBLIC_SETTLEMENT_DISPUTE_POSTURE_BOUND,
+    CLAIM_PUBLIC_SETTLEMENT_FINALITY_VERIFIED, CLAIM_PUBLIC_SETTLEMENT_ORACLE_CONVERSION_BOUND,
     CLAIM_PUBLIC_SETTLEMENT_ORDER_BINDING_VERIFIED,
     CLAIM_PUBLIC_SETTLEMENT_PUBLIC_WITNESS_VERIFIED,
     CLAIM_PUBLIC_SETTLEMENT_TRUST_MARKET_REFS_BOUND, PUBLIC_SETTLEMENT_FINALITY_REPORT_STATUSES,
@@ -725,6 +725,17 @@ fn sample_public_settlement_witness_report() -> PublicSettlementWitnessReport {
         .chain_anchor
         .expect("sample public settlement anchor exists");
     let provenance = sample_public_settlement_deployment_provenance();
+    let operator_snapshot = PublicSettlementIdentityRegistryOperatorSnapshot {
+        identity_registry_contract: provenance.identity_registry_address.clone(),
+        operator_address: "0x1111111111111111111111111111111111111111".to_string(),
+        operator_key_hash: sample_operator_key_hash(),
+        settlement_key: "0x1111111111111111111111111111111111111111".to_string(),
+        operator_epoch: 1,
+        active: true,
+        block_number: 12_345_678,
+        block_hash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            .to_string(),
+    };
     let mut witness = PublicSettlementWitnessReport {
         witness_id: "public-witness-base-cache-1".to_string(),
         mode: PublicSettlementWitnessMode::VerifiedCache,
@@ -735,6 +746,7 @@ fn sample_public_settlement_witness_report() -> PublicSettlementWitnessReport {
         root_registry_runtime_codehash: provenance.root_registry_runtime_codehash,
         identity_registry_address: provenance.identity_registry_address,
         identity_registry_runtime_codehash: provenance.identity_registry_runtime_codehash,
+        identity_registry_operator: Some(operator_snapshot),
         escrow_contract: provenance.escrow_contract,
         escrow_runtime_codehash: provenance.escrow_runtime_codehash,
         settlement_token_address: provenance.settlement_token_address,
@@ -790,6 +802,7 @@ pub(super) fn sample_public_settlement_verifier_trust() -> PublicSettlementVerif
         }),
         trusted_dispute_event_blocks: Vec::new(),
         trusted_release_event_blocks: Vec::new(),
+        trusted_release_event_logs: Vec::new(),
         verifier_now_unix_seconds: Some(1_743_293_860),
         trusted_runtime_codehashes: Some(PublicSettlementRuntimeCodehashTrust {
             contract_package_id: provenance.contract_package_id,
@@ -1763,83 +1776,6 @@ fn public_settlement_proof_rejects_self_consistent_untrusted_identity_registry_c
         verify_sample_public_settlement_proof(&bundle),
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("identity registry runtime codehash is not trusted")
-    ));
-}
-
-#[test]
-fn public_settlement_proof_binds_identity_registry_evidence_to_deployment_and_anchor() {
-    let mut bundle = sample_public_settlement_proof_bundle();
-    bundle.settlement_receipt.identity_registry_evidence =
-        Some(sample_identity_registry_evidence());
-
-    verify_sample_public_settlement_proof(&bundle).unwrap();
-
-    let mut wrong_registry = bundle.clone();
-    wrong_registry
-        .settlement_receipt
-        .identity_registry_evidence
-        .as_mut()
-        .expect("sample proof carries registry evidence")
-        .identity_registry_contract = "0x2000000000000000000000000000000000000004".to_string();
-    assert!(matches!(
-        verify_sample_public_settlement_proof(&wrong_registry),
-        Err(Web3ContractError::InvalidSettlement(message))
-            if message.contains("identity registry evidence contract mismatch")
-    ));
-
-    let mut wrong_operator = bundle.clone();
-    wrong_operator
-        .settlement_receipt
-        .identity_registry_evidence
-        .as_mut()
-        .expect("sample proof carries registry evidence")
-        .operator_address = "0x2000000000000000000000000000000000000001".to_string();
-    assert!(matches!(
-        verify_sample_public_settlement_proof(&wrong_operator),
-        Err(Web3ContractError::InvalidSettlement(message))
-            if message.contains("identity registry evidence operator mismatch")
-    ));
-
-    let mut wrong_key = bundle.clone();
-    wrong_key
-        .settlement_receipt
-        .identity_registry_evidence
-        .as_mut()
-        .expect("sample proof carries registry evidence")
-        .operator_key_hash =
-        "0x8888888888888888888888888888888888888888888888888888888888888888".to_string();
-    assert!(matches!(
-        verify_sample_public_settlement_proof(&wrong_key),
-        Err(Web3ContractError::InvalidSettlement(message))
-            if message.contains("operator_key_hash")
-                || message.contains("identity registry evidence operator key mismatch")
-    ));
-
-    let mut wrong_settlement_key = bundle.clone();
-    wrong_settlement_key
-        .chain_snapshot
-        .identity_registry_operator
-        .as_mut()
-        .expect("sample proof carries registry operator snapshot")
-        .settlement_key = "0x2000000000000000000000000000000000000001".to_string();
-    assert!(matches!(
-        verify_sample_public_settlement_proof(&wrong_settlement_key),
-        Err(Web3ContractError::InvalidSettlement(message))
-            if message.contains("settlement key mismatch")
-    ));
-
-    let mut future_block = bundle;
-    future_block
-        .settlement_receipt
-        .identity_registry_evidence
-        .as_mut()
-        .expect("sample proof carries registry evidence")
-        .block_number = 12_345_679;
-    assert!(matches!(
-        verify_sample_public_settlement_proof(&future_block),
-        Err(Web3ContractError::InvalidSettlement(message))
-            if message.contains("block exceeds observed chain state")
-                || message.contains("operator snapshot block mismatch")
     ));
 }
 

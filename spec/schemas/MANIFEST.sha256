@@ -1,4 +1,4 @@
-2ccf4d5683507a1d444ad0142a88b38f9591cd7346792f373f14282b52819bf3  spec/schemas/MANIFEST.sha256
+fb4e599fe49338f166ef2e030c8ae93db6fa2a3116f9d2049ad5165e68d39c4a  spec/schemas/MANIFEST.sha256
 59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03  spec/schemas/VERSION
 e90c7bc3c555c335559650c71f7fda1e3c13d134a5ff8ceaa0041000536c2ea9  spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json
 1cd24132ad8f98fad89bb62aa756304c2dee0b51aacd69c922e0f786dce2abec  spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json
@@ -250,7 +250,7 @@ da129d09dc8ffccc16740f32a7bd3cd802df17e708d488ac5d060a4d7ad8684d  spec/schemas/c
 5a7d11b9b6a2b67b5ec296fa6589be675084704824fa4b3c833363c67a398f0d  spec/schemas/chio-web3/v1/public-settlement-verifier-report.schema.json
 b338458880dab8cba5c47ebbd66f00459c0fc3d443c2ca48e5786944f1605538  spec/schemas/chio-web3/v1/settlement-dispatch.schema.json
 c0f2f15a0704602f5b808efaf60e2e34c54ed8785f98ea04f8c0597097ec1b74  spec/schemas/chio-web3/v1/settlement-execution-receipt.schema.json
-2067e40e0b07e67a200f979b1f8a1cf251c5ebf7ee7580cafd96213f486736e3  spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json
+e387c7baa6fed74b58704d5b08c9cc5bcafeac63b21e9e16cae9e9e82cf6b9f1  spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json
 56657c55e7f7a9a55236409e4d224c928f6ae7b560a6b5b0f7421e7007ff737e  spec/schemas/chio-web3/v2/settlement-dispatch.schema.json
 f822a0541bada26bd762465311bd987f0c86131ffcfa7b44c5257a05f97383b8  spec/schemas/chio-web3/v2/settlement-execution-receipt.schema.json
 79919a3cf6f16b03fa5c44eb00e6a79d7fe3b70b8223cace0dd520ea71179b18  spec/schemas/chio-wire/v1/agent/heartbeat.schema.json

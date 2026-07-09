@@ -285,10 +285,7 @@ fn optional_u64_from_env(env_name: &str) -> Result<Option<u64>, String> {
     }
 }
 
-fn parse_public_keys(
-    env_name: &str,
-    keys: &str,
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+fn parse_public_keys(env_name: &str, keys: &str) -> Result<Vec<PublicKey>, String> {
     if keys.trim().is_empty() {
         return Err(format!(
             "{env_name} must contain comma-separated public keys"
@@ -301,14 +298,13 @@ fn parse_public_keys(
             if key.is_empty() {
                 return Err(format!("{env_name} must not contain empty public keys"));
             }
-            chio_core_types::PublicKey::from_hex(key)
+            PublicKey::from_hex(key)
                 .map_err(|error| format!("{env_name} contains invalid public key: {error}"))
         })
         .collect()
 }
 
-pub(crate) fn trust_market_trusted_authority_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn trust_market_trusted_authority_keys_from_env() -> Result<Vec<PublicKey>, String> {
     match env::var(TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV) {
         Ok(keys) => parse_public_keys(TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV, &keys),
         Err(env::VarError::NotPresent) => Err(format!(
@@ -320,8 +316,7 @@ pub(crate) fn trust_market_trusted_authority_keys_from_env(
     }
 }
 
-pub(crate) fn enterprise_trusted_approval_signer_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn enterprise_trusted_approval_signer_keys_from_env() -> Result<Vec<PublicKey>, String> {
     required_public_keys_from_env(
         ENTERPRISE_TRUSTED_APPROVAL_KEYS_ENV,
         "enterprise approval signer",
@@ -329,36 +324,33 @@ pub(crate) fn enterprise_trusted_approval_signer_keys_from_env(
 }
 
 pub(crate) fn enterprise_trusted_risk_comptroller_signer_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+) -> Result<Vec<PublicKey>, String> {
     required_public_keys_from_env(
         ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS_ENV,
         "enterprise risk comptroller signer",
     )
 }
 
-pub(crate) fn enterprise_trusted_receipt_kernel_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn enterprise_trusted_receipt_kernel_keys_from_env() -> Result<Vec<PublicKey>, String> {
     required_public_keys_from_env(
         ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS_ENV,
         "enterprise receipt kernel",
     )
 }
 
-pub(crate) fn commerce_trusted_provider_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn commerce_trusted_provider_keys_from_env() -> Result<Vec<PublicKey>, String> {
     required_public_keys_from_env(COMMERCE_TRUSTED_PROVIDER_KEYS_ENV, "commerce provider")
 }
 
 pub(crate) fn commerce_trusted_event_authority_receipt_kernel_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+) -> Result<Vec<PublicKey>, String> {
     required_public_keys_from_env(
         COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS_ENV,
         "commerce event authority receipt kernel",
     )
 }
 
-pub(crate) fn commerce_trusted_payment_signer_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn commerce_trusted_payment_signer_keys_from_env() -> Result<Vec<PublicKey>, String> {
     required_public_keys_from_env(
         COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS_ENV,
         "commerce payment signer",
@@ -380,10 +372,7 @@ pub(crate) fn disclosure_lineage_verifier_trust_from_env(
     )
 }
 
-fn required_public_keys_from_env(
-    env_name: &str,
-    label: &str,
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+fn required_public_keys_from_env(env_name: &str, label: &str) -> Result<Vec<PublicKey>, String> {
     match env::var(env_name) {
         Ok(keys) => parse_public_keys(env_name, &keys),
         Err(env::VarError::NotPresent) => Err(format!("{env_name} must pin trusted {label} keys")),
@@ -707,6 +696,7 @@ pub(crate) fn public_settlement_verifier_trust_from_env(
         )?,
         trusted_dispute_event_blocks: Vec::new(),
         trusted_release_event_blocks: Vec::new(),
+        trusted_release_event_logs: Vec::new(),
         verifier_now_unix_seconds: optional_u64_from_env(
             PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS_ENV,
         )?,
@@ -741,8 +731,7 @@ pub(crate) fn public_settlement_verifier_trust_from_env(
     })
 }
 
-pub(crate) fn transaction_trusted_root_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn transaction_trusted_root_keys_from_env() -> Result<Vec<PublicKey>, String> {
     match env::var(TRANSACTION_TRUSTED_ROOT_KEYS_ENV) {
         Ok(keys) => parse_public_keys(TRANSACTION_TRUSTED_ROOT_KEYS_ENV, &keys),
         Err(env::VarError::NotPresent) => Err(format!(
@@ -772,8 +761,7 @@ pub(crate) fn runtime_trust_from_env(
     })
 }
 
-pub(crate) fn swarm_trusted_witness_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn swarm_trusted_witness_keys_from_env() -> Result<Vec<PublicKey>, String> {
     match env::var(SWARM_TRUSTED_WITNESS_KEYS_ENV) {
         Ok(keys) => parse_public_keys(SWARM_TRUSTED_WITNESS_KEYS_ENV, &keys),
         Err(env::VarError::NotPresent) => Err(format!(
@@ -787,7 +775,7 @@ pub(crate) fn swarm_trusted_witness_keys_from_env(
 
 pub(crate) fn swarm_trusted_witness_keys_for_bundle(
     _bundle: &chio_swarm_authority::SwarmAuthorityBundle,
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+) -> Result<Vec<PublicKey>, String> {
     swarm_trusted_witness_keys_from_env()
 }
 
@@ -821,7 +809,7 @@ fn parse_proof_room_public_key_set(env_name: &str, keys: &str) -> Result<BTreeSe
             if key.is_empty() {
                 return Err(format!("{env_name} must not contain empty public keys"));
             }
-            chio_core_types::PublicKey::from_hex(key)
+            PublicKey::from_hex(key)
                 .map(|key| key.to_hex())
                 .map_err(|error| format!("{env_name} contains invalid public key: {error}"))
         })

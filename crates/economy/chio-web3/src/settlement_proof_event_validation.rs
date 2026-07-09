@@ -129,39 +129,12 @@ pub(super) fn validate_release_event(
             "public settlement release event tx hash mismatch".to_string(),
         ));
     }
-    if release_event.amount != bundle.settlement_receipt.settled_amount {
-        return Err(Web3ContractError::InvalidSettlement(
-            "public settlement release event amount mismatch".to_string(),
-        ));
-    }
-    let _prior_released = escrow
-        .released_amount
-        .units
-        .checked_sub(release_event.amount.units)
-        .ok_or_else(|| {
-            Web3ContractError::InvalidSettlement(
-                "public settlement release event amount exceeds released amount".to_string(),
-            )
-        })?;
     let expected_partial =
         bundle.settlement_receipt.lifecycle_state == Web3SettlementLifecycleState::PartiallySettled;
     if release_event.partial != expected_partial {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement release event partial flag mismatch".to_string(),
         ));
-    }
-    if let Some(remaining_amount) = release_event.remaining_amount.as_ref() {
-        if remaining_amount.currency != escrow.locked_amount.currency {
-            return Err(Web3ContractError::InvalidSettlement(
-                "public settlement release event remaining currency mismatch".to_string(),
-            ));
-        }
-        let remaining = escrow.locked_amount.units - escrow.released_amount.units;
-        if remaining_amount.units != remaining {
-            return Err(Web3ContractError::InvalidSettlement(
-                "public settlement release event remaining amount mismatch".to_string(),
-            ));
-        }
     }
     let Some(anchor_proof) = bundle.settlement_receipt.reconciled_anchor_proof.as_ref() else {
         return Err(Web3ContractError::InvalidProof(
@@ -202,6 +175,145 @@ pub(super) fn validate_release_event(
         return Err(Web3ContractError::InvalidProof(
             "public settlement release tx hash not included in trusted release event block"
                 .to_string(),
+        ));
+    }
+    let trusted_log = required_trusted_release_event_log(release_event, escrow, trust)?;
+    validate_trusted_release_event_log(trusted_log, release_event, escrow, expected_partial)?;
+    if release_event.amount != trusted_log.amount {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement release event amount mismatch against trusted log".to_string(),
+        ));
+    }
+    if trusted_log.amount != bundle.settlement_receipt.settled_amount {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement trusted release event amount mismatch".to_string(),
+        ));
+    }
+    let _prior_released = escrow
+        .released_amount
+        .units
+        .checked_sub(trusted_log.amount.units)
+        .ok_or_else(|| {
+            Web3ContractError::InvalidSettlement(
+                "public settlement release event amount exceeds released amount".to_string(),
+            )
+        })?;
+    validate_release_event_remaining_amount(release_event, trusted_log, escrow, expected_partial)?;
+    Ok(())
+}
+
+fn required_trusted_release_event_log<'a>(
+    release_event: &PublicSettlementReleaseEvent,
+    escrow: &PublicSettlementEscrowSnapshot,
+    trust: &'a PublicSettlementVerifierTrust,
+) -> Result<&'a PublicSettlementReleaseEventLog, Web3ContractError> {
+    trust
+        .trusted_release_event_logs
+        .iter()
+        .find(|log| {
+            log.release_tx_hash == release_event.release_tx_hash
+                && log.block_number == release_event.block.block_number
+                && log.block_hash == release_event.block.block_hash
+                && log.escrow_id == escrow.escrow_id
+        })
+        .ok_or_else(|| {
+            Web3ContractError::InvalidProof(
+                "public settlement trusted release event log evidence missing".to_string(),
+            )
+        })
+}
+
+fn validate_trusted_release_event_log(
+    trusted_log: &PublicSettlementReleaseEventLog,
+    release_event: &PublicSettlementReleaseEvent,
+    escrow: &PublicSettlementEscrowSnapshot,
+    expected_partial: bool,
+) -> Result<(), Web3ContractError> {
+    ensure_evm_address(
+        &trusted_log.contract_address,
+        "public_settlement.trust.trusted_release_event_logs.contract_address",
+    )?;
+    if !evm_addresses_match(&trusted_log.contract_address, &escrow.escrow_contract)? {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement trusted release event contract mismatch".to_string(),
+        ));
+    }
+    Hash::from_hex(&trusted_log.release_tx_hash)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    Hash::from_hex(&trusted_log.receipt_hash)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    Hash::from_hex(&trusted_log.block_hash)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    if trusted_log.escrow_id != release_event.escrow_id {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement trusted release event escrow id mismatch".to_string(),
+        ));
+    }
+    if trusted_log.receipt_hash != release_event.receipt_hash {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement trusted release event receipt hash mismatch".to_string(),
+        ));
+    }
+    let expected_kind = if expected_partial {
+        PublicSettlementReleaseEventKind::EscrowPartialRelease
+    } else {
+        PublicSettlementReleaseEventKind::EscrowReleased
+    };
+    if trusted_log.event != expected_kind {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement trusted release event kind mismatch".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_release_event_remaining_amount(
+    release_event: &PublicSettlementReleaseEvent,
+    trusted_log: &PublicSettlementReleaseEventLog,
+    escrow: &PublicSettlementEscrowSnapshot,
+    expected_partial: bool,
+) -> Result<(), Web3ContractError> {
+    if !expected_partial {
+        if release_event.remaining_amount.is_some() || trusted_log.remaining_amount.is_some() {
+            return Err(Web3ContractError::InvalidSettlement(
+                "public settlement full release event must not carry remaining amount".to_string(),
+            ));
+        }
+        return Ok(());
+    }
+    let event_remaining = release_event.remaining_amount.as_ref().ok_or_else(|| {
+        Web3ContractError::InvalidProof(
+            "public settlement partial release event remaining amount missing".to_string(),
+        )
+    })?;
+    let log_remaining = trusted_log.remaining_amount.as_ref().ok_or_else(|| {
+        Web3ContractError::InvalidProof(
+            "public settlement partial release trusted log remaining amount missing".to_string(),
+        )
+    })?;
+    if event_remaining != log_remaining {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement release event remaining amount mismatch against trusted log"
+                .to_string(),
+        ));
+    }
+    if event_remaining.currency != escrow.locked_amount.currency {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement release event remaining currency mismatch".to_string(),
+        ));
+    }
+    let remaining = escrow
+        .locked_amount
+        .units
+        .checked_sub(escrow.released_amount.units)
+        .ok_or_else(|| {
+            Web3ContractError::InvalidSettlement(
+                "public settlement release event remaining amount underflow".to_string(),
+            )
+        })?;
+    if event_remaining.units != remaining {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement release event remaining amount mismatch".to_string(),
         ));
     }
     Ok(())

@@ -7,7 +7,8 @@ use crate::hashing::Hash;
 use crate::settlement::Web3SettlementLifecycleState;
 use crate::settlement_proof::{
     verify_public_settlement_proof, PublicSettlementBlockSnapshot, PublicSettlementDisputePosture,
-    PublicSettlementRefundEvent, PublicSettlementReleaseEvent,
+    PublicSettlementRefundEvent, PublicSettlementReleaseEvent, PublicSettlementReleaseEventKind,
+    PublicSettlementReleaseEventLog,
 };
 use serde_json::json;
 
@@ -56,11 +57,44 @@ fn anchored_receipt_hash(bundle: &crate::settlement_proof::PublicSettlementProof
     Hash::from_bytes(bytes).to_hex_prefixed()
 }
 
+fn sample_release_event_log(
+    bundle: &crate::settlement_proof::PublicSettlementProofBundle,
+    event_block: &PublicSettlementBlockSnapshot,
+) -> PublicSettlementReleaseEventLog {
+    let partial =
+        bundle.settlement_receipt.lifecycle_state == Web3SettlementLifecycleState::PartiallySettled;
+    PublicSettlementReleaseEventLog {
+        contract_address: bundle.chain_snapshot.escrow.escrow_contract.clone(),
+        event: if partial {
+            PublicSettlementReleaseEventKind::EscrowPartialRelease
+        } else {
+            PublicSettlementReleaseEventKind::EscrowReleased
+        },
+        escrow_id: bundle.chain_snapshot.escrow.escrow_id.clone(),
+        release_tx_hash: bundle
+            .settlement_receipt
+            .observed_execution
+            .external_reference_id
+            .clone(),
+        receipt_hash: anchored_receipt_hash(bundle),
+        amount: bundle.settlement_receipt.settled_amount.clone(),
+        remaining_amount: partial.then(|| crate::capability::scope::MonetaryAmount {
+            units: bundle.chain_snapshot.escrow.locked_amount.units
+                - bundle.chain_snapshot.escrow.released_amount.units,
+            currency: bundle.chain_snapshot.escrow.locked_amount.currency.clone(),
+        }),
+        block_number: event_block.block_number,
+        block_hash: event_block.block_hash.clone(),
+        log_index: 0,
+    }
+}
+
 fn make_later_partial_release_bundle(
     with_release_event: bool,
 ) -> (
     crate::settlement_proof::PublicSettlementProofBundle,
     PublicSettlementBlockSnapshot,
+    PublicSettlementReleaseEventLog,
 ) {
     let mut bundle = sample_public_settlement_proof_bundle();
     let release_block = sample_release_event_block();
@@ -86,17 +120,20 @@ fn make_later_partial_release_bundle(
             block: release_block.clone(),
         });
     }
-    (bundle, release_block)
+    let release_log = sample_release_event_log(&bundle, &release_block);
+    (bundle, release_block, release_log)
 }
 
 fn verify_sample_public_settlement_proof_with_release_event_evidence(
     bundle: &crate::settlement_proof::PublicSettlementProofBundle,
     event_block: PublicSettlementBlockSnapshot,
+    event_log: PublicSettlementReleaseEventLog,
 ) -> Result<crate::settlement_proof::PublicSettlementVerifierReport, Web3ContractError> {
     let mut signed_bundle = bundle.clone();
     sign_sample_public_settlement_bundle(&mut signed_bundle);
     let mut trust = sample_public_settlement_verifier_trust();
     trust.trusted_release_event_blocks = vec![event_block];
+    trust.trusted_release_event_logs = vec![event_log];
     verify_public_settlement_proof(&signed_bundle, &trust)
 }
 
@@ -115,10 +152,13 @@ fn anchor_inclusion_proof_accepts_operator_address_case_mismatch() {
 
 #[test]
 fn public_settlement_proof_accepts_later_partial_release_with_release_event() {
-    let (bundle, release_block) = make_later_partial_release_bundle(true);
-    let report =
-        verify_sample_public_settlement_proof_with_release_event_evidence(&bundle, release_block)
-            .unwrap();
+    let (bundle, release_block, release_log) = make_later_partial_release_bundle(true);
+    let report = verify_sample_public_settlement_proof_with_release_event_evidence(
+        &bundle,
+        release_block,
+        release_log,
+    )
+    .unwrap();
 
     assert_eq!(report.finality_decision.status, "partially_settled");
     assert_eq!(report.recomputed_settlement_state, "partially_settled");
@@ -126,10 +166,11 @@ fn public_settlement_proof_accepts_later_partial_release_with_release_event() {
 
 #[test]
 fn public_settlement_proof_rejects_later_partial_release_without_release_event() {
-    let (mut bundle, release_block) = make_later_partial_release_bundle(false);
+    let (mut bundle, release_block, release_log) = make_later_partial_release_bundle(false);
     sign_sample_public_settlement_bundle(&mut bundle);
     let mut trust = sample_public_settlement_verifier_trust();
     trust.trusted_release_event_blocks = vec![release_block];
+    trust.trusted_release_event_logs = vec![release_log];
 
     assert!(matches!(
         verify_public_settlement_proof(&bundle, &trust),
@@ -140,7 +181,7 @@ fn public_settlement_proof_rejects_later_partial_release_without_release_event()
 
 #[test]
 fn public_settlement_proof_rejects_partial_release_event_amount_mismatch() {
-    let (mut bundle, release_block) = make_later_partial_release_bundle(true);
+    let (mut bundle, release_block, release_log) = make_later_partial_release_bundle(true);
     bundle
         .chain_snapshot
         .escrow
@@ -151,17 +192,58 @@ fn public_settlement_proof_rejects_partial_release_event_amount_mismatch() {
         .units = 29;
 
     assert!(matches!(
-        verify_sample_public_settlement_proof_with_release_event_evidence(&bundle, release_block),
+        verify_sample_public_settlement_proof_with_release_event_evidence(
+            &bundle,
+            release_block,
+            release_log,
+        ),
         Err(Web3ContractError::InvalidSettlement(message))
             if message.contains("public settlement release event amount mismatch")
     ));
 }
 
 #[test]
-fn public_settlement_proof_rejects_partial_release_event_untrusted_block() {
-    let (mut bundle, _) = make_later_partial_release_bundle(true);
+fn public_settlement_proof_rejects_partial_release_without_trusted_log() {
+    let (mut bundle, release_block, _) = make_later_partial_release_bundle(true);
     sign_sample_public_settlement_bundle(&mut bundle);
-    let trust = sample_public_settlement_verifier_trust();
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_release_event_blocks = vec![release_block];
+
+    assert!(matches!(
+        verify_public_settlement_proof(&bundle, &trust),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("trusted release event log evidence missing")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_partial_release_missing_remaining_amount() {
+    let (mut bundle, release_block, release_log) = make_later_partial_release_bundle(true);
+    bundle
+        .chain_snapshot
+        .escrow
+        .release_event
+        .as_mut()
+        .expect("sample carries release event")
+        .remaining_amount = None;
+
+    assert!(matches!(
+        verify_sample_public_settlement_proof_with_release_event_evidence(
+            &bundle,
+            release_block,
+            release_log,
+        ),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("partial release event remaining amount missing")
+    ));
+}
+
+#[test]
+fn public_settlement_proof_rejects_partial_release_event_untrusted_block() {
+    let (mut bundle, _, release_log) = make_later_partial_release_bundle(true);
+    sign_sample_public_settlement_bundle(&mut bundle);
+    let mut trust = sample_public_settlement_verifier_trust();
+    trust.trusted_release_event_logs = vec![release_log];
 
     assert!(matches!(
         verify_public_settlement_proof(&bundle, &trust),

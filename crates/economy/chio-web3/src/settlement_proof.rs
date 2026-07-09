@@ -568,7 +568,22 @@ fn validate_identity_registry_evidence_binding(
                 "public settlement identity registry operator snapshot missing".to_string(),
             )
         })?;
+    let witness_operator = bundle
+        .public_witness
+        .as_ref()
+        .and_then(|witness| witness.identity_registry_operator.as_ref())
+        .ok_or_else(|| {
+            Web3ContractError::InvalidProof(
+                "public settlement witness identity registry operator snapshot missing".to_string(),
+            )
+        })?;
     validate_identity_registry_operator_snapshot(bundle, operator_snapshot)?;
+    validate_identity_registry_operator_snapshot(bundle, witness_operator)?;
+    if witness_operator != operator_snapshot {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry witness operator snapshot mismatch".to_string(),
+        ));
+    }
     if !evm_addresses_match(
         &evidence.identity_registry_contract,
         &operator_snapshot.identity_registry_contract,
@@ -599,6 +614,12 @@ fn validate_identity_registry_evidence_binding(
     if !evm_addresses_match(&evidence.settlement_key, &operator_snapshot.settlement_key)? {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement identity registry evidence settlement key mismatch".to_string(),
+        ));
+    }
+    if !evm_addresses_match(&evidence.settlement_key, &witness_operator.settlement_key)? {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement identity registry evidence witness settlement key mismatch"
+                .to_string(),
         ));
     }
     if evidence.active != operator_snapshot.active {
@@ -782,6 +803,25 @@ fn validate_public_witness(
             "public settlement witness runtime surface mismatch".to_string(),
         ));
     }
+    if let Some(operator_snapshot) = bundle.chain_snapshot.identity_registry_operator.as_ref() {
+        let witness_operator = witness.identity_registry_operator.as_ref().ok_or_else(|| {
+            Web3ContractError::InvalidProof(
+                "public settlement witness identity registry operator snapshot missing".to_string(),
+            )
+        })?;
+        validate_identity_registry_operator_snapshot(bundle, witness_operator)?;
+        if witness_operator != operator_snapshot {
+            return Err(Web3ContractError::InvalidSettlement(
+                "public settlement witness identity registry operator snapshot mismatch"
+                    .to_string(),
+            ));
+        }
+    } else if witness.identity_registry_operator.is_some() {
+        return Err(Web3ContractError::InvalidSettlement(
+            "public settlement witness identity registry operator snapshot without chain snapshot"
+                .to_string(),
+        ));
+    }
     if witness.mode == PublicSettlementWitnessMode::VerifiedCache {
         let verifier_now = verifier_now_unix_seconds.ok_or_else(|| {
             Web3ContractError::InvalidProof(
@@ -868,6 +908,7 @@ struct PublicSettlementWitnessBody<'a> {
     root_registry_runtime_codehash: &'a str,
     identity_registry_address: &'a str,
     identity_registry_runtime_codehash: &'a str,
+    identity_registry_operator: Option<&'a PublicSettlementIdentityRegistryOperatorSnapshot>,
     escrow_contract: &'a str,
     escrow_runtime_codehash: &'a str,
     settlement_token_address: &'a str,
@@ -891,6 +932,7 @@ pub(crate) fn public_settlement_witness_body_hash(
         root_registry_runtime_codehash: &witness.root_registry_runtime_codehash,
         identity_registry_address: &witness.identity_registry_address,
         identity_registry_runtime_codehash: &witness.identity_registry_runtime_codehash,
+        identity_registry_operator: witness.identity_registry_operator.as_ref(),
         escrow_contract: &witness.escrow_contract,
         escrow_runtime_codehash: &witness.escrow_runtime_codehash,
         settlement_token_address: &witness.settlement_token_address,
