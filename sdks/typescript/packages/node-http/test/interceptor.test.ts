@@ -337,7 +337,10 @@ describe("request body preservation", () => {
   });
 
   it("does not hang when the request stream was already consumed", async () => {
-    const sidecar = await startMockSidecar();
+    let evaluateCalls = 0;
+    const sidecar = await startMockSidecar(() => {
+      evaluateCalls += 1;
+    });
     const resolved = resolveConfig({ sidecarUrl: sidecar.url });
 
     const server = http.createServer((req, res) => {
@@ -359,15 +362,22 @@ describe("request body preservation", () => {
     await new Promise<void>((resolve) => server.listen(0, resolve));
 
     try {
+      const body = "already consumed";
       const response = await request(
         server,
         "POST",
         "/upload",
-        "already consumed",
-        { "content-type": "text/plain" },
+        body,
+        {
+          "content-length": String(Buffer.byteLength(body)),
+          "content-type": "text/plain",
+        },
       );
-      expect(response.status).toBe(200);
-      expect(response.body).toBe("ok");
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.body)).toMatchObject({
+        error: "chio_evaluation_failed",
+      });
+      expect(evaluateCalls).toBe(0);
     } finally {
       server.close();
       sidecar.server.close();

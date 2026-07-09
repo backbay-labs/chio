@@ -109,7 +109,9 @@ class ChioSession:
     def list_tools(self) -> dict[str, Any]:
         return self.request_result("tools/list")
 
-    def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+    def call_tool(
+        self, name: str, arguments: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         return self.request_result(
             "tools/call",
             {"name": name, "arguments": arguments or {}},
@@ -133,8 +135,12 @@ class ChioSession:
     def list_prompts(self) -> dict[str, Any]:
         return self.request_result("prompts/list")
 
-    def get_prompt(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self.request_result("prompts/get", {"name": name, "arguments": arguments or {}})
+    def get_prompt(
+        self, name: str, arguments: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        return self.request_result(
+            "prompts/get", {"name": name, "arguments": arguments or {}}
+        )
 
     def complete(self, params: dict[str, Any]) -> dict[str, Any]:
         return self.request_result("completion/complete", params)
@@ -173,32 +179,34 @@ def initialize_session(
     client: Any | None = None,
     on_message=None,
 ) -> ChioSession:
-    try:
-        initialize_response = post_rpc(
-            client=client,
-            base_url=base_url.rstrip("/"),
-            auth_token=auth_token,
-            body={
-                "jsonrpc": "2.0",
-                "id": 0,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": protocol_version,
-                    "capabilities": capabilities or {},
-                    "clientInfo": client_info or default_client_info(),
-                },
+    normalized_base_url = base_url.rstrip("/")
+    initialize_response = post_rpc(
+        client=client,
+        base_url=normalized_base_url,
+        auth_token=auth_token,
+        body={
+            "jsonrpc": "2.0",
+            "id": 0,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": protocol_version,
+                "capabilities": capabilities or {},
+                "clientInfo": client_info or default_client_info(),
             },
-        )
-        session_id = initialize_response.headers.get("mcp-session-id")
-        if initialize_response.status != 200 or not session_id:
-            raise ChioTransportError("initialize did not return a session id")
+        },
+    )
+    session_id = initialize_response.headers.get("mcp-session-id")
+    if initialize_response.status != 200 or not session_id:
+        raise ChioTransportError("initialize did not return a session id")
 
+    try:
         initialize_message = terminal_message(initialize_response.messages, 0)
-        negotiated_protocol_version = initialize_message.get("result", {}).get("protocolVersion")
+        negotiated_protocol_version = initialize_message.get("result", {}).get(
+            "protocolVersion"
+        )
         if not isinstance(negotiated_protocol_version, str):
             raise ChioTransportError("initialize did not negotiate a protocol version")
 
-        normalized_base_url = base_url.rstrip("/")
         session = ChioSession(
             auth_token=auth_token,
             base_url=normalized_base_url,
@@ -207,25 +215,22 @@ def initialize_session(
             client=client,
             handshake=None,
         )
-        try:
-            initialized_response = session.notification(
-                "notifications/initialized",
-                on_message=on_message,
-            )
-            if initialized_response.status not in (200, 202):
-                raise ChioTransportError("notifications/initialized did not succeed")
-        except Exception:
-            _cleanup_session_after_failed_handshake(
-                client=client,
-                base_url=normalized_base_url,
-                auth_token=auth_token,
-                session_id=session_id,
-            )
-            raise
-        session.handshake = SessionHandshake(
-            initialize_response=initialize_response,
-            initialized_response=initialized_response,
+        initialized_response = session.notification(
+            "notifications/initialized",
+            on_message=on_message,
         )
-        return session
+        if initialized_response.status not in (200, 202):
+            raise ChioTransportError("notifications/initialized did not succeed")
     except Exception:
+        _cleanup_session_after_failed_handshake(
+            client=client,
+            base_url=normalized_base_url,
+            auth_token=auth_token,
+            session_id=session_id,
+        )
         raise
+    session.handshake = SessionHandshake(
+        initialize_response=initialize_response,
+        initialized_response=initialized_response,
+    )
+    return session

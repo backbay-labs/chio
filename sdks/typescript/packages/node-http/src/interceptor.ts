@@ -34,6 +34,8 @@ const bufferedNodeBodies = new WeakMap<IncomingMessage, Buffer>();
 
 // -- Helpers --
 
+class RequestBodyUnavailableError extends Error {}
+
 function sha256Hex(input: Uint8Array | string): string {
   return createHash("sha256").update(input).digest("hex");
 }
@@ -269,8 +271,19 @@ export async function interceptNodeRequest(
   const caller = resolved.identityExtractor(req.headers as Record<string, string | string[] | undefined>);
   const routePattern = resolved.routePatternResolver(method, path);
 
-  // Read body for hashing and replay it for downstream consumers.
-  const bodyBytes = await getNodeRequestBody(req);
+  let bodyBytes: Buffer;
+  try {
+    bodyBytes = await getNodeRequestBody(req);
+  } catch (error) {
+    sendJsonResponse(res, 400, {
+      error: CHIO_ERROR_CODES.EVALUATION_FAILED,
+      message:
+        error instanceof RequestBodyUnavailableError
+          ? error.message
+          : `request body could not be read: ${error instanceof Error ? error.message : String(error)}`,
+    });
+    return { responseSent: true, result: null, passthrough: null };
+  }
   const bodyHash = bodyBytes.length > 0 ? sha256Hex(bodyBytes) : undefined;
   const bodyLength = bodyBytes.length;
 
@@ -547,13 +560,19 @@ export function preserveReadableBody(
 
 async function getNodeRequestBody(req: IncomingMessage): Promise<Buffer> {
   const replayable = req as ReplayableIncomingMessage;
-  const preBuffered =
-    bufferedBodyFromValue(replayable.rawBody) ??
-    bufferedBodyFromValue(replayable.body);
+  const rawBuffered = bufferedBodyFromValue(replayable.rawBody);
+  const bodyBuffered = bufferedBodyFromValue(replayable.body);
+  const preBuffered = rawBuffered ?? bodyBuffered;
   if (preBuffered != null) {
     bufferedNodeBodies.set(req, preBuffered);
     replayable.rawBody = preBuffered;
     return preBuffered;
+  }
+
+  if (replayable.rawBody != null || replayable.body != null) {
+    throw new RequestBodyUnavailableError(
+      "request body was parsed before Chio evaluation without a hashable raw body",
+    );
   }
 
   const bodyBytes = await readBody(req);
@@ -567,6 +586,11 @@ async function getNodeRequestBody(req: IncomingMessage): Promise<Buffer> {
 
 function readBody(req: IncomingMessage): Promise<Buffer> {
   if (req.readableEnded) {
+    if (hasPositiveContentLength(req)) {
+      throw new RequestBodyUnavailableError(
+        "request body was consumed before Chio evaluation",
+      );
+    }
     return Promise.resolve(Buffer.alloc(0));
   }
 
@@ -576,6 +600,16 @@ function readBody(req: IncomingMessage): Promise<Buffer> {
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
+}
+
+function hasPositiveContentLength(req: IncomingMessage): boolean {
+  const raw = req.headers["content-length"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== "string") {
+    return false;
+  }
+  const length = Number.parseInt(value, 10);
+  return Number.isFinite(length) && length > 0;
 }
 
 function sendJsonResponse(res: ServerResponse, status: number, body: ChioErrorResponse): void {
