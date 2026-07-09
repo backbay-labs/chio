@@ -1345,6 +1345,18 @@ fn fx_sensitive_settlement_receipt_requires_oracle_evidence() {
 }
 
 #[test]
+fn escrow_locked_execution_receipt_records_zero_settled_amount() {
+    let mut receipt = sample_execution_receipt();
+    receipt.lifecycle_state = Web3SettlementLifecycleState::EscrowLocked;
+    receipt.observed_execution.amount.units = 0;
+    receipt.settled_amount.units = 0;
+    receipt.reconciled_anchor_proof = None;
+    receipt.oracle_evidence = None;
+
+    validate_web3_settlement_execution_receipt(&receipt).unwrap();
+}
+
+#[test]
 fn timed_out_settlement_receipt_allows_refund_after_execution_window() {
     let mut receipt = sample_execution_receipt();
     receipt.lifecycle_state = Web3SettlementLifecycleState::TimedOut;

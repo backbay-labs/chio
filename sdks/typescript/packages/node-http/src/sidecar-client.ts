@@ -308,7 +308,27 @@ function hasRequiredReceiptSemantics(receipt: HttpReceipt): boolean {
     ])
     && isOneOf(record["redaction_mode"], ["none", "summary", "redacted"])
     && isOptionalOneOf(record["observation_outcome"], ["observed", "evaluated", "dropped"])
-    && isOneOf(record["trust_level"], ["mediated", "verified", "advisory"]);
+    && isOneOf(record["trust_level"], ["mediated", "verified", "advisory"])
+    && hasCoherentReceiptSemantics(record);
+}
+
+function hasCoherentReceiptSemantics(record: Record<string, unknown>): boolean {
+  switch (record["receipt_kind"]) {
+    case "mediated_decision":
+      return record["boundary_class"] === "prevent"
+        && record["trust_level"] === "mediated"
+        && record["observation_outcome"] === undefined;
+    case "trace_observation":
+      return record["boundary_class"] === "detect_only"
+        && record["trust_level"] === "verified"
+        && isOneOf(record["observation_outcome"], ["observed", "evaluated", "dropped"]);
+    case "advisory_evaluation":
+      return record["boundary_class"] === "advisory_only"
+        && record["trust_level"] === "advisory"
+        && isOneOf(record["observation_outcome"], ["observed", "evaluated", "dropped"]);
+    default:
+      return false;
+  }
 }
 
 function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {

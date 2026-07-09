@@ -413,6 +413,54 @@ describe("ChioSidecarClient.evaluate", () => {
     }
   });
 
+  it("rejects mediated decision receipts with observation outcomes", async () => {
+    const result: EvaluateResponse = {
+      verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      receipt: {
+        ...authoritativeAllowReceipt(),
+        verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+        response_status: 403,
+        observation_outcome: "observed",
+      },
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_evaluation_failed",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("rejects advisory receipts without observation outcomes", async () => {
+    const result: EvaluateResponse = {
+      verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      receipt: {
+        ...advisoryAllowReceipt(),
+        verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+        response_status: 403,
+        observation_outcome: undefined,
+      },
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_evaluation_failed",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
   it("throws evaluation-failed SidecarError for malformed JSON evaluate responses", async () => {
     const { server, url } = await startEvaluateRawSidecar("{not json");
 

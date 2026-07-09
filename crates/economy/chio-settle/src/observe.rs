@@ -164,18 +164,8 @@ pub async fn project_escrow_execution_receipt(
     .await?;
 
     let lifecycle_state = lifecycle_state_for_projection(finality.status, &escrow_snapshot);
-    let finality_pending = matches!(
-        finality.status,
-        SettlementFinalityStatus::AwaitingConfirmations
-            | SettlementFinalityStatus::AwaitingDisputeWindow
-    );
 
     let failure_reason = match lifecycle_state {
-        Web3SettlementLifecycleState::Failed if finality_pending => {
-            Some(input.failure_reason.clone().unwrap_or_else(|| {
-                "settlement finality is pending before durable reconciliation".to_string()
-            }))
-        }
         Web3SettlementLifecycleState::TimedOut => Some(
             input
                 .failure_reason
@@ -201,6 +191,11 @@ pub async fn project_escrow_execution_receipt(
             &input.dispatch.settlement_amount.currency,
             config,
         )?
+    } else if lifecycle_state == Web3SettlementLifecycleState::EscrowLocked {
+        chio_core::capability::scope::MonetaryAmount {
+            units: 0,
+            currency: input.dispatch.settlement_amount.currency.clone(),
+        }
     } else {
         input.observed_amount.clone()
     };
@@ -399,7 +394,7 @@ fn lifecycle_state_for_projection(
         return Web3SettlementLifecycleState::Reorged;
     }
     if finality_status != SettlementFinalityStatus::Finalized {
-        return Web3SettlementLifecycleState::Failed;
+        return Web3SettlementLifecycleState::EscrowLocked;
     }
     if escrow_snapshot.refunded {
         return Web3SettlementLifecycleState::TimedOut;
@@ -1291,16 +1286,15 @@ mod tests {
         );
         assert_eq!(
             projection.receipt.lifecycle_state,
-            Web3SettlementLifecycleState::Failed
+            Web3SettlementLifecycleState::EscrowLocked
         );
         assert_eq!(
             projection.recovery_action,
             Some(SettlementRecoveryAction::WaitForDisputeWindow)
         );
-        assert_eq!(
-            projection.receipt.failure_reason.as_deref(),
-            Some("settlement finality is pending before durable reconciliation")
-        );
+        assert_eq!(projection.receipt.settled_amount.units, 0);
+        assert_eq!(projection.receipt.observed_execution.amount.units, 0);
+        assert_eq!(projection.receipt.failure_reason, None);
     }
 
     #[tokio::test]
@@ -1358,16 +1352,15 @@ mod tests {
         );
         assert_eq!(
             projection.receipt.lifecycle_state,
-            Web3SettlementLifecycleState::Failed
+            Web3SettlementLifecycleState::EscrowLocked
         );
         assert_eq!(
             projection.recovery_action,
             Some(SettlementRecoveryAction::WaitForConfirmations)
         );
-        assert_eq!(
-            projection.receipt.failure_reason.as_deref(),
-            Some("settlement finality is pending before durable reconciliation")
-        );
+        assert_eq!(projection.receipt.settled_amount.units, 0);
+        assert_eq!(projection.receipt.observed_execution.amount.units, 0);
+        assert_eq!(projection.receipt.failure_reason, None);
     }
 
     #[tokio::test]
