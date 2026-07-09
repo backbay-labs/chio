@@ -178,6 +178,17 @@ def test_receipt_buffer_record_swallows_json_serialization_failure(
     assert "receipt JSONL write failed" in caplog.text
 
 
+def test_receipt_buffer_record_swallows_json_type_failure(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    log = tmp_path / "receipts.jsonl"
+    buf = ReceiptBuffer(log_path_factory=lambda: log)
+    buf.record({"status": "allowed", "raw": b"not-json"})
+    assert buf.recent(1)[0]["raw"] == b"not-json"
+    assert not log.exists()
+    assert "receipt JSONL write failed" in caplog.text
+
+
 def test_receipt_buffer_pending_total_aggregates() -> None:
     buf = ReceiptBuffer()
     buf.push("A", {"i": 1})

@@ -177,7 +177,7 @@ class ReceiptBuffer:
             if self._log_path_factory is not None:
                 try:
                     append_jsonl(self._log_path_factory(), record_copy)
-                except (OSError, ValueError) as exc:
+                except (OSError, TypeError, ValueError) as exc:
                     _logger.warning("receipt JSONL write failed: %s", exc)
 
     def recent(self, n: int = 5) -> list[dict[str, Any]]:

@@ -202,8 +202,19 @@ def test_reject_shell_argv_escape_rejects_windows_absolute_path(
     tmp_path: Path,
 ) -> None:
     with pytest.raises(ChioPathEscapeError) as excinfo:
-        reject_shell_argv_escape("cat C:\\outside\\secret.txt", root=tmp_path)
+        reject_shell_argv_escape("cat 'C:\\outside\\secret.txt'", root=tmp_path)
     assert excinfo.value.reason == "outside_workspace"
+
+
+def test_reject_shell_argv_escape_allows_colon_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    service_cwd = tmp_path / "service"
+    workspace.mkdir()
+    service_cwd.mkdir()
+    monkeypatch.chdir(service_cwd)
+    reject_shell_argv_escape("echo a:b C:tmp", root=workspace)
 
 
 def test_reject_shell_argv_escape_allows_workspace_path(tmp_path: Path) -> None:
