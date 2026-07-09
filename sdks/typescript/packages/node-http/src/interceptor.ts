@@ -586,7 +586,7 @@ async function getNodeRequestBody(req: IncomingMessage): Promise<Buffer> {
 
 function readBody(req: IncomingMessage): Promise<Buffer> {
   if (req.readableEnded) {
-    if (hasPositiveContentLength(req)) {
+    if (hasBodySignal(req)) {
       throw new RequestBodyUnavailableError(
         "request body was consumed before Chio evaluation",
       );

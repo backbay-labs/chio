@@ -414,6 +414,50 @@ describe("request body preservation", () => {
     }
   });
 
+  it("fails closed when a chunked request stream was already consumed", async () => {
+    let evaluateCalls = 0;
+    const sidecar = await startMockSidecar(() => {
+      evaluateCalls += 1;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    const server = http.createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        void (async () => {
+          const outcome = await interceptNodeRequest(req, res, resolved);
+          if (outcome.responseSent) {
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "text/plain" });
+          res.end("ok");
+        })().catch((error: unknown) => {
+          res.writeHead(500, { "Content-Type": "text/plain" });
+          res.end(error instanceof Error ? error.message : String(error));
+        });
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(
+        server,
+        "POST",
+        "/upload",
+        "already consumed",
+        { "content-type": "text/plain" },
+      );
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.body)).toMatchObject({
+        error: "chio_evaluation_failed",
+      });
+      expect(evaluateCalls).toBe(0);
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
   it("reads complete but not drained IncomingMessage bodies", async () => {
     let lastEvaluateBody: string | undefined;
     const sidecar = await startMockSidecar((body) => {
