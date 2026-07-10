@@ -263,9 +263,10 @@ fn concurrent_create_next_receipt_checkpoint_produces_one_checkpoint() {
     }
     drop(store);
 
-    let barrier = Arc::new(Barrier::new(2));
+    const CONCURRENT_OPENERS: usize = 8;
+    let barrier = Arc::new(Barrier::new(CONCURRENT_OPENERS));
     let mut handles = Vec::new();
-    for _ in 0..2 {
+    for _ in 0..CONCURRENT_OPENERS {
         let path = path.clone();
         let barrier = Arc::clone(&barrier);
         handles.push(thread::spawn(move || {

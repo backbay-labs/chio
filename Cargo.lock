@@ -4561,6 +4561,7 @@ dependencies = [
  "clap 4.6.0",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 

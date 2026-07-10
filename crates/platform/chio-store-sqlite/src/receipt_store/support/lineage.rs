@@ -1031,10 +1031,8 @@ pub(crate) fn load_receipt_lineage_statement_links(
 }
 
 pub(crate) fn backfill_provenance_lineage_tables(
-    connection: &mut Connection,
+    tx: &rusqlite::Transaction<'_>,
 ) -> Result<(), ReceiptStoreError> {
-    let tx = connection.transaction()?;
-
     let child_rows = {
         let mut statement = tx.prepare(
             "SELECT seq, raw_json FROM chio_child_receipts ORDER BY timestamp ASC, seq ASC",
@@ -1053,7 +1051,7 @@ pub(crate) fn backfill_provenance_lineage_tables(
             Some(seq.max(0) as u64),
         )?;
         persist_request_lineage_tx(
-            &tx,
+            tx,
             receipt.session_id.as_str(),
             receipt.request_id.as_str(),
             Some(receipt.parent_request_id.as_str()),
@@ -1074,9 +1072,8 @@ pub(crate) fn backfill_provenance_lineage_tables(
         rows
     };
     for receipt_id in tool_receipt_ids {
-        ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt_id)?;
+        ensure_receipt_lineage_statement_for_receipt_id_tx(tx, &receipt_id)?;
     }
 
-    tx.commit()?;
     Ok(())
 }

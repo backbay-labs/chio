@@ -1,7 +1,7 @@
 use super::*;
 
 pub(crate) fn backfill_claim_receipt_log_entries(
-    connection: &mut Connection,
+    connection: &rusqlite::Transaction<'_>,
 ) -> Result<(), ReceiptStoreError> {
     validate_or_backfill_claim_receipt_log_entries(connection, true)
 }
@@ -53,11 +53,9 @@ fn validate_or_backfill_claim_receipt_log_entries(
                 "claim receipt log projection is missing for persisted receipt rows".to_string(),
             ));
         }
-        let tx = connection.unchecked_transaction()?;
         for row in &expected {
-            insert_claim_receipt_log_projection_row(&tx, row)?;
+            insert_claim_receipt_log_projection_row(connection, row)?;
         }
-        tx.commit()?;
         return Ok(());
     }
 
