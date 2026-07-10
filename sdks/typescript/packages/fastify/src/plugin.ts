@@ -38,11 +38,11 @@ import {
 import { createHash } from "node:crypto";
 import { PassThrough } from "node:stream";
 
-function safeDecodeURIComponent(value: string): string {
+function decodeQueryComponent(value: string): string | undefined {
   try {
-    return decodeURIComponent(value);
+    return decodeURIComponent(value.replace(/\+/g, " "));
   } catch {
-    return value;
+    return undefined;
   }
 }
 
@@ -136,10 +136,26 @@ const chioPlugin: FastifyPluginAsync<ChioFastifyConfig> = async (
       for (const pair of qs.split("&")) {
         const eqIndex = pair.indexOf("=");
         if (eqIndex === -1) {
-          query[safeDecodeURIComponent(pair)] = "";
+          const key = decodeQueryComponent(pair);
+          if (key == null) {
+            reply.code(400).send({
+              error: CHIO_ERROR_CODES.EVALUATION_FAILED,
+              message: "malformed query parameter encoding",
+            });
+            return reply;
+          }
+          query[key] = "";
         } else {
-          query[safeDecodeURIComponent(pair.slice(0, eqIndex))] =
-            safeDecodeURIComponent(pair.slice(eqIndex + 1));
+          const key = decodeQueryComponent(pair.slice(0, eqIndex));
+          const value = decodeQueryComponent(pair.slice(eqIndex + 1));
+          if (key == null || value == null) {
+            reply.code(400).send({
+              error: CHIO_ERROR_CODES.EVALUATION_FAILED,
+              message: "malformed query parameter encoding",
+            });
+            return reply;
+          }
+          query[key] = value;
         }
       }
     }

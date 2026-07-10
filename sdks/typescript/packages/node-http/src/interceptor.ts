@@ -53,30 +53,42 @@ function headersToRecord(headers: Record<string, string | string[] | undefined>)
   return result;
 }
 
-function safeDecodeURIComponent(value: string): string {
+interface ParsedQueryString {
+  query: Record<string, string>;
+  error?: string;
+}
+
+function decodeQueryComponent(value: string): string | undefined {
   try {
-    return decodeURIComponent(value);
+    return decodeURIComponent(value.replace(/\+/g, " "));
   } catch {
-    return value;
+    return undefined;
   }
 }
 
-function parseQueryString(url: string): Record<string, string> {
+function parseQueryString(url: string): ParsedQueryString {
   const query: Record<string, string> = {};
   const qIndex = url.indexOf("?");
-  if (qIndex === -1) return query;
+  if (qIndex === -1) return { query };
   const qs = url.slice(qIndex + 1);
   for (const pair of qs.split("&")) {
     const eqIndex = pair.indexOf("=");
     if (eqIndex === -1) {
-      query[safeDecodeURIComponent(pair)] = "";
+      const key = decodeQueryComponent(pair);
+      if (key == null) {
+        return { query: {}, error: "malformed query parameter encoding" };
+      }
+      query[key] = "";
     } else {
-      const key = safeDecodeURIComponent(pair.slice(0, eqIndex));
-      const value = safeDecodeURIComponent(pair.slice(eqIndex + 1));
+      const key = decodeQueryComponent(pair.slice(0, eqIndex));
+      const value = decodeQueryComponent(pair.slice(eqIndex + 1));
+      if (key == null || value == null) {
+        return { query: {}, error: "malformed query parameter encoding" };
+      }
       query[key] = value;
     }
   }
-  return query;
+  return { query };
 }
 
 function extractPath(url: string): string {
@@ -243,7 +255,15 @@ export async function interceptNodeRequest(
 
   const url = req.url ?? "/";
   const path = extractPath(url);
-  const query = parseQueryString(url);
+  const queryResult = parseQueryString(url);
+  if (queryResult.error != null) {
+    sendJsonResponse(res, 400, {
+      error: CHIO_ERROR_CODES.EVALUATION_FAILED,
+      message: queryResult.error,
+    });
+    return { responseSent: true, result: null, passthrough: null };
+  }
+  const query = queryResult.query;
   const rawHeaders = headersToRecord(req.headers as Record<string, string | string[] | undefined>);
   const caller = resolved.identityExtractor(req.headers as Record<string, string | string[] | undefined>);
   const routePattern = resolved.routePatternResolver(method, path);

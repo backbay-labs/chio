@@ -270,9 +270,12 @@ function nonAuthorizingEvaluation(evaluation: ChioEvaluation): ChioEvaluation {
 function collectToolUses(request: LanguageModelInvocation): ToolUseCandidate[] {
   const explicitCalls = request.toolCalls ?? request.experimental_toolCalls;
   if (Array.isArray(explicitCalls)) {
-    return explicitCalls
+    const candidates = explicitCalls
       .map(candidateFromCall)
       .filter((candidate): candidate is ToolUseCandidate => candidate != null);
+    if (candidates.length > 0) {
+      return candidates;
+    }
   }
 
   if (request.tools != null && typeof request.tools === "object") {

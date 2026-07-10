@@ -132,6 +132,27 @@ describe("wrapWithChio", () => {
     expect(seen).toEqual(["fetch_url", "search"]);
   });
 
+  it("falls back to declared tools when explicit toolCalls is empty", async () => {
+    const seen: string[] = [];
+    const wrapped = wrapWithChio({
+      async doGenerate() {
+        return { text: "ok" };
+      },
+    }, {
+      evaluate: ({ toolUse }) => {
+        seen.push(toolUse?.name ?? "<missing>");
+        return authorizedAllow();
+      },
+    });
+
+    await wrapped.doGenerate({
+      tools: { search: {} },
+      toolCalls: [],
+    });
+
+    expect(seen).toEqual(["search"]);
+  });
+
   it("createChioMiddleware exposes AI SDK wrapGenerate/wrapStream hooks", async () => {
     // The Vercel AI SDK invokes `wrapGenerate({ doGenerate, params })` and
     // `wrapStream({ doStream, params })` once per call. Without these

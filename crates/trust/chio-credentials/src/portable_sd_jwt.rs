@@ -466,7 +466,7 @@ pub fn verify_chio_passport_sd_jwt_vc(
             "portable credential iat must be before or equal to exp".to_string(),
         ));
     }
-    if now > expires_at {
+    if now >= expires_at {
         return Err(CredentialError::InvalidOid4vciCredentialResponse(
             "portable credential has expired".to_string(),
         ));

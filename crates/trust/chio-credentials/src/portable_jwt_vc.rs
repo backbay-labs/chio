@@ -171,7 +171,7 @@ pub fn verify_chio_passport_jwt_vc_json(
             "portable jwt vc is not yet valid".to_string(),
         ));
     }
-    if now > expires_at {
+    if now >= expires_at {
         return Err(CredentialError::InvalidOid4vciCredentialResponse(
             "portable jwt vc has expired".to_string(),
         ));

@@ -177,6 +177,30 @@ describe("chio fastify plugin", () => {
     await fastify.close();
   });
 
+  it("returns a controlled error for malformed query encoding", async () => {
+    const fastify = Fastify();
+    let handlerReached = false;
+    await fastify.register(chio, {
+      sidecarUrl: "http://127.0.0.1:1",
+      timeoutMs: 500,
+    });
+
+    fastify.get("/test", async () => {
+      handlerReached = true;
+      return { data: "reached handler" };
+    });
+
+    const response = await fastify.inject({
+      method: "GET",
+      url: "/test?bad=%E0%A4%A",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body).message).toBe("malformed query parameter encoding");
+    expect(handlerReached).toBe(false);
+    await fastify.close();
+  });
+
   it("skip patterns with regex work", async () => {
     const fastify = Fastify();
     await fastify.register(chio, {
