@@ -402,7 +402,7 @@ export async function requestCapability(
       'requestCapability requires rpId, audience, and issuerUrl',
     );
   }
-  if (!Array.isArray(options.scopes)) {
+  if (!Array.isArray(options.scopes) || !options.scopes.every(scope => typeof scope === 'string')) {
     throw new RequestCapabilityError(
       'urn:chio:error:custody:internal-encoding',
       'requestCapability requires scopes to be an array of strings',

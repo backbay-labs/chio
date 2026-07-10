@@ -132,6 +132,17 @@ async def test_chio_git_add_rejects_forbidden_expansion(
     assert payload["guard"] == "forbidden_path"
 
 
+def test_chio_git_add_string_path_is_not_split_into_characters() -> None:
+    assert _handlers._coerce_git_add_paths(".env") == [".env"]
+
+
+def test_chio_git_add_rejects_non_string_paths() -> None:
+    from chio_code_agent.errors import ChioCodeAgentDeniedError
+
+    with pytest.raises(ChioCodeAgentDeniedError):
+        _handlers._coerce_git_add_paths([{"path": ".env"}])
+
+
 def test_filter_directory_entries_drops_dotenv(tmp_workspace: Path) -> None:
     runtime = make_configured_runtime(cwd=tmp_workspace)
     raw = {

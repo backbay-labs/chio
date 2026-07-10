@@ -248,6 +248,30 @@ describe('requestCapability', () => {
     );
   });
 
+  test('rejects non-string scopes before contacting issuer', async () => {
+    let fetchCalls = 0;
+    const fetchImpl = (() => {
+      fetchCalls += 1;
+      return Promise.reject(new Error('unreachable'));
+    }) as typeof fetch;
+    let err: unknown;
+    try {
+      await requestCapability(
+        baseOpts({
+          fetchImpl,
+          scopes: [42 as unknown as string],
+        }),
+      );
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(RequestCapabilityError);
+    expect((err as RequestCapabilityError).code).toBe(
+      'urn:chio:error:custody:internal-encoding',
+    );
+    expect(fetchCalls).toBe(0);
+  });
+
   test('credentials.get rejection becomes assertion-rejected', async () => {
     const fetchImpl = makeFetch([
       async () =>

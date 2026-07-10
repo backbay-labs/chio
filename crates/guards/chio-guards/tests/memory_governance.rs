@@ -227,6 +227,64 @@ fn max_retention_ttl_honored() {
 }
 
 #[test]
+fn max_content_size_denies_unknown_or_oversized_content() {
+    let guard = MemoryGovernanceGuard::with_config(MemoryGovernanceConfig {
+        max_content_size_bytes: Some(4),
+        ..MemoryGovernanceConfig::default()
+    })
+    .expect("build guard");
+    let scope = ChioScope::default();
+    let kp = Keypair::generate();
+
+    let v = eval_at(
+        &guard,
+        &kp,
+        &scope,
+        "vector_upsert",
+        serde_json::json!({"collection": "agent-notes", "id": "missing-content"}),
+        None,
+    );
+    assert!(
+        matches!(v, Verdict::Deny),
+        "missing content size must Deny, got {v:?}"
+    );
+
+    let v = eval_at(
+        &guard,
+        &kp,
+        &scope,
+        "vector_upsert",
+        serde_json::json!({
+            "collection": "agent-notes",
+            "id": "oversized",
+            "content": "hello",
+        }),
+        None,
+    );
+    assert!(
+        matches!(v, Verdict::Deny),
+        "oversized content must Deny, got {v:?}"
+    );
+
+    let v = eval_at(
+        &guard,
+        &kp,
+        &scope,
+        "vector_upsert",
+        serde_json::json!({
+            "collection": "agent-notes",
+            "id": "small",
+            "content": "ok",
+        }),
+        None,
+    );
+    assert!(
+        matches!(v, Verdict::Allow),
+        "small content must Allow, got {v:?}"
+    );
+}
+
+#[test]
 fn config_store_allowlist_composes_with_grant_allowlist() {
     let guard = MemoryGovernanceGuard::with_config(MemoryGovernanceConfig {
         store_allowlist: vec!["deployment-wide".to_string()],
