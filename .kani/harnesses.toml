@@ -138,6 +138,13 @@ lane = "pr"
 
 [[harness]]
 crate = "chio-kernel-core"
+harness = "verify_revocation_admission_projection"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
 harness = "verify_delegation_chain_step"
 default_unwind = 8
 timeout_secs = 1800
@@ -153,6 +160,13 @@ lane = "pr"
 [[harness]]
 crate = "chio-kernel-core"
 harness = "verify_budget_checked_add_no_overflow"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+
+[[harness]]
+crate = "chio-kernel-core"
+harness = "verify_budget_admission_projection"
 default_unwind = 8
 timeout_secs = 1800
 lane = "pr"

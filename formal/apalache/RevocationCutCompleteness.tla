@@ -10,7 +10,7 @@
 (*   - crates/kernel/chio-kernel/src/kernel/validation.rs                  *)
 (*       ChioKernel::check_revocation                                      *)
 (*   - crates/kernel/chio-kernel/src/kernel/delegation.rs                  *)
-(*       consult_revocation_view                                           *)
+(*       consult_revocation_view, consult_revocation_view_at               *)
 (*   - crates/kernel/chio-kernel-core/src/revocation_view.rs               *)
 (*       RevocationSnapshot::is_revoked, RevocationView::is_revoked        *)
 (* These are abstraction anchors registered in formal/proof-manifest.toml. *)

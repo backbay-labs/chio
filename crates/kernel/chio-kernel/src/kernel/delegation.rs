@@ -27,7 +27,10 @@
 use std::sync::Arc;
 
 use chio_core_types::capability::token::CapabilityToken;
-use chio_kernel_core::{RevocationSnapshot, RevocationView, RevocationViewSubject};
+use chio_kernel_core::{
+    revocation_lookup_denies, RevocationCheckTarget, RevocationSnapshot, RevocationView,
+    RevocationViewSubject,
+};
 
 use crate::kernel::{current_unix_timestamp, KernelError};
 
@@ -71,7 +74,8 @@ fn consult_revocation_view_at(
 
     for link in &cap.delegation_chain {
         let subject = RevocationViewSubject::new(link.capability_id.clone());
-        if snapshot.is_revoked(&subject) {
+        let ancestor_revoked = snapshot.is_revoked(&subject);
+        if revocation_lookup_denies(RevocationCheckTarget::Ancestor, ancestor_revoked) {
             return Err(KernelError::DelegationChainRevoked(
                 link.capability_id.clone(),
             ));
@@ -79,7 +83,8 @@ fn consult_revocation_view_at(
     }
 
     let leaf_subject = RevocationViewSubject::new(cap.id.clone());
-    if snapshot.is_revoked(&leaf_subject) {
+    let token_revoked = snapshot.is_revoked(&leaf_subject);
+    if revocation_lookup_denies(RevocationCheckTarget::PresentedToken, token_revoked) {
         return Err(KernelError::CapabilityRevoked(cap.id.clone()));
     }
 

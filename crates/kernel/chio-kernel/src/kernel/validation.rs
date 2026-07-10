@@ -464,11 +464,20 @@ impl ChioKernel {
     /// delegation chain. If any ancestor is revoked, the capability is
     /// rejected.
     pub(crate) fn check_revocation(&self, cap: &CapabilityToken) -> Result<(), KernelError> {
-        if self.with_revocation_store(|store| Ok(store.is_revoked(&cap.id)?))? {
+        let token_revoked = self.with_revocation_store(|store| Ok(store.is_revoked(&cap.id)?))?;
+        if chio_kernel_core::revocation_lookup_denies(
+            chio_kernel_core::RevocationCheckTarget::PresentedToken,
+            token_revoked,
+        ) {
             return Err(KernelError::CapabilityRevoked(cap.id.clone()));
         }
         for link in &cap.delegation_chain {
-            if self.with_revocation_store(|store| Ok(store.is_revoked(&link.capability_id)?))? {
+            let ancestor_revoked =
+                self.with_revocation_store(|store| Ok(store.is_revoked(&link.capability_id)?))?;
+            if chio_kernel_core::revocation_lookup_denies(
+                chio_kernel_core::RevocationCheckTarget::Ancestor,
+                ancestor_revoked,
+            ) {
                 return Err(KernelError::DelegationChainRevoked(
                     link.capability_id.clone(),
                 ));

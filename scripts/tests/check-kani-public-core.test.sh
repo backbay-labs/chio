@@ -4,8 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 mapfile -t pr_harnesses < <(scripts/check-kani-public-core.sh --lane pr --list)
-if [[ "${#pr_harnesses[@]}" -ne 20 ]]; then
-  echo "expected 20 public core PR harnesses, found ${#pr_harnesses[@]}" >&2
+if [[ "${#pr_harnesses[@]}" -ne 22 ]]; then
+  echo "expected 22 public core PR harnesses, found ${#pr_harnesses[@]}" >&2
   exit 1
 fi
 

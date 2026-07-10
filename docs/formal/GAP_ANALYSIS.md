@@ -15,7 +15,7 @@ Closure:
 
 - `.github/workflows/formal-pr-smoke.yml` now classifies affected paths and
   runs Lean compilation, sorry scanning, proof-registry cross-references, all
-  20 public kernel-core PR Kani harnesses, the 12 non-core PR Kani harnesses,
+  22 public kernel-core PR Kani harnesses, the 12 non-core PR Kani harnesses,
   and explicitly metadata-only Rust verification checks.
 - `.github/workflows/mutants.yml` now triggers on changes to six
   trust-boundary crates and skips untouched matrix packages before tool setup.
@@ -29,27 +29,42 @@ no-op behavior remain governed by
 detection remains tracked by
 [plan/FV-A4-mirror-drift-hashes.md](plan/FV-A4-mirror-drift-hashes.md).
 
-## G2: The proven code is often not the running code
+## G2: The proven code is often not the running code (resolved 2026-07-10)
 
-Evidence:
+Closure:
 
-- `crates/kernel/chio-kernel-core/src/formal_core.rs` carries
+- The eight admission helpers are curated public exports from
+  `chio-kernel-core`. Shared projection functions on the production budget,
+  DPoP, nonce replay, guard, revocation, and receipt-signing paths require the
+  corresponding helper decisions before continuation or signing.
+- Retained equivalence properties cover every projection family. Public Kani
+  harnesses bind the exact shared budget and lazy revocation projection
+  functions used by both production backends or callers, and both Kani
+  catalogs plus `formal/MAPPING.md` register them. These harnesses do not model
+  storage IO, snapshot freshness, mutation journals, or ledger transitions.
+- The proof manifest names every absorbed helper and its runtime shell
+  entrypoints. Hold settlement and release remain outside this closure because
+  they implement a separate ledger law.
+
+Original evidence:
+
+- At proposal time, `crates/kernel/chio-kernel-core/src/formal_core.rs` carried
   `#![allow(dead_code)]`. Its verified helpers `budget_precheck`,
   `budget_commit`, `dpop_freshness_valid`, `dpop_admits`, `nonce_admits`,
   `guard_pipeline_allows`, `revocation_snapshot_denies`, and
   `receipt_fields_coupled` are called by Kani harnesses, Creusot contracts,
   and the Lean model, but not by production code. The runtime logic they
-  mirror lives separately in chio-kernel (budget store, DPoP admission, guard
-  verdict fold, revocation view, receipt assembly).
-- Only two helper families are absorbed today: the time-window classifier
-  (called from real token verification in `capability_verify.rs`) and the
-  five subset helpers (called from `NormalizedToolGrant::is_subset_of` in
-  `normalized.rs`).
+  mirrored lived separately in chio-kernel (budget store, DPoP admission,
+  guard verdict fold, revocation view, receipt assembly).
+- At proposal time only two helper families were absorbed: the time-window
+  classifier (called from real token verification in `capability_verify.rs`)
+  and the five subset helpers (called from `NormalizedToolGrant::is_subset_of`
+  in `normalized.rs`).
 
-Consequence: for the unabsorbed families, theorems and proofs attach to a
-parallel model, so a divergence between model and runtime is invisible to the
-proof lanes. This is precisely the class of claim the CLAIM_REGISTRY
-downgrades (approved-with-scope rather than implementation-linked).
+Consequence resolved: the bounded predicates now execute in the runtime
+decision paths. Storage, clocks, cryptography, orchestration, and ledger
+settlement remain explicitly scoped rather than being implied by the absorbed
+pure decisions.
 
 Addressed by:
 [plan/FV-A1-absorb-verified-helpers.md](plan/FV-A1-absorb-verified-helpers.md)

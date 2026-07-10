@@ -1,8 +1,9 @@
 use crate::formal_core::{
     budget_commit, budget_precheck, classify_time_window, dpop_admits, dpop_freshness_valid,
-    guard_pipeline_allows, monetary_cap_is_subset_by_parts, nonce_admits,
-    optional_u32_cap_is_subset, receipt_fields_coupled, required_true_is_preserved,
-    revocation_snapshot_denies, GuardStep, TimeWindowStatus,
+    dpop_verification_admits, guard_pipeline_allows, guard_projection_allows_continuation,
+    guard_step_admits, monetary_cap_is_subset_by_parts, nonce_admits, optional_u32_cap_is_subset,
+    receipt_fields_coupled, required_true_is_preserved, revocation_snapshot_denies, GuardStep,
+    TimeWindowStatus,
 };
 
 fn guard_step(value: u8) -> GuardStep {
@@ -77,6 +78,13 @@ fn dpop_required_missing_or_invalid_fails_closed() {
     if !proof_present || !proof_valid || !nonce_fresh {
         assert!(!admitted);
     }
+
+    let atomic_required = kani::any::<bool>();
+    let verification_succeeded = kani::any::<bool>();
+    assert_eq!(
+        dpop_verification_admits(atomic_required, proof_present, verification_succeeded,),
+        !atomic_required || (proof_present && verification_succeeded),
+    );
 }
 
 #[kani::proof]
@@ -155,6 +163,23 @@ fn guard_deny_or_error_dominates_pipeline() {
     if !core_authorized || guards.iter().any(|guard| *guard != GuardStep::Allow) {
         assert!(!allowed);
     }
+
+    for step in guards {
+        let projected = guard_step_admits(step);
+        assert_eq!(projected, step == GuardStep::Allow);
+        assert_eq!(
+            guard_projection_allows_continuation(projected, step),
+            step == GuardStep::Allow,
+        );
+        if step != GuardStep::Allow {
+            assert!(!guard_projection_allows_continuation(true, step));
+        }
+    }
+
+    assert!(!guard_projection_allows_continuation(
+        false,
+        GuardStep::Allow,
+    ));
 }
 
 #[kani::proof]

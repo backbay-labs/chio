@@ -26,6 +26,45 @@ fn guard_denies_request() {
 }
 
 #[test]
+fn pending_guard_fails_closed_with_original_reason_and_evidence() {
+    struct PendingGuard;
+
+    impl Guard for PendingGuard {
+        fn name(&self) -> &str {
+            "pending-guard"
+        }
+
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+            Ok(GuardDecision::pending_approval(vec![GuardEvidence {
+                guard_name: "pending-guard".to_string(),
+                verdict: false,
+                details: Some("approval is unsupported in this guard path".to_string()),
+            }]))
+        }
+    }
+
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["tool"])));
+    kernel.add_guard(Box::new(PendingGuard));
+
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "tool")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+    let request = make_request("req-pending-guard", &cap, "tool", "srv-a");
+
+    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
+    assert_eq!(response.verdict, Verdict::Deny);
+    let reason = response.reason.as_deref().unwrap_or("");
+    assert_eq!(
+        reason,
+        "guard denied the request: guard \"pending-guard\" returned an unsupported approval verdict"
+    );
+    assert_eq!(response.receipt.evidence.len(), 1);
+    assert_eq!(response.receipt.evidence[0].guard_name, "pending-guard");
+    assert!(!response.receipt.evidence[0].verdict);
+}
+
+#[test]
 fn allowing_guard_evidence_is_signed_into_success_receipt() {
     let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
@@ -319,7 +358,10 @@ fn guard_error_treated_as_deny() {
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
     assert_eq!(response.verdict, Verdict::Deny);
     let reason = response.reason.as_deref().unwrap_or("");
-    assert!(reason.contains("fail-closed"), "reason was: {reason}");
+    assert_eq!(
+        reason,
+        "guard denied the request: guard \"broken\" error (fail-closed): internal error: guard crashed"
+    );
 }
 
 #[test]

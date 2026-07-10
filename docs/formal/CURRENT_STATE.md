@@ -24,7 +24,7 @@ model-checked:
           |                |              |               |                  |
    formal_core.rs    Charon->Aeneas   Creusot         Kani harnesses    Lean models
    (typed facade;    extraction to    contracts       (12 model +       (hand mirrors
-   called by real    Lean under       (7 duplicated   20 public-API     with "Mirrors:"
+   called by real    Lean under       (7 duplicated   22 public-API     with "Mirrors:"
    verify/subset     target/formal/   bodies in       in kernel-core)   headers)
    paths)            aeneas-production formal/rust-
                      + equivalence     verification/
@@ -93,7 +93,7 @@ Two lanes, one diagnostic fixture and one production lane:
 The extraction discipline in `formal_aeneas.rs` is strict: no traits, no
 generics, no borrows, no `Option`/`Result`, no strings or slices or `Vec`, no
 heap; callers project strings and structs to booleans and bounded integers
-before crossing the boundary. `formal_core.rs` (214 lines) is the typed,
+before crossing the boundary. `formal_core.rs` (341 lines) is the typed,
 `pub(crate)` facade that does those projections.
 
 ## Lane 3: Creusot (`formal/rust-verification/creusot-core`)
@@ -110,29 +110,39 @@ before crossing the boundary. `formal_core.rs` (214 lines) is the typed,
 ## Lane 4: Kani
 
 - Registry-driven. `.kani/harnesses.toml` (schema `chio.kani.multi-crate.v1`)
-  covers four crates: chio-kernel-core (20 public harnesses), chio-anchor (5,
+  covers four crates: chio-kernel-core (22 public harnesses), chio-anchor (5,
   behind a `kani = ["web3"]` feature), chio-attest-verify (4), chio-weights
   (4). kernel-core additionally has 12 internal model-level harnesses in
   `kani_harnesses.rs`. Kani is version-pinned (`CHIO_KANI_VERSION=0.67.0`).
-- The public kernel-core lane (`kani_public_harnesses.rs`, ~1280 lines) calls
-  the real public API (`verify_capability`, `evaluate`,
-  `NormalizedScope::is_subset_of`, `resolve_matching_grants`, `sign_receipt`)
-  with deterministic key fixtures and a signing-backend stub. Highlights:
+- The public kernel-core lane (`kani_public_harnesses.rs`, ~1350 lines) calls
+  the real public API and shared public projections (`verify_capability`,
+  `evaluate`, `NormalizedScope::is_subset_of`, `resolve_matching_grants`,
+  `sign_receipt`, the budget admission projections, and the lazy revocation
+  projection) with deterministic key fixtures and a signing-backend stub.
+  Highlights:
   - `verify_delegation_chain_step`: a 22-axis symbolic one-step attenuation
     predicate proved reflexive, non-widening, and expiry-monotone, then bound
     to the real `NormalizedToolGrant::is_subset_of` with `assert_eq`, so a
     runtime regression trips the proof.
-  - `verify_budget_checked_add_no_overflow`: a two-phase model of the kernel
-    budget store's checked-add ordering (dense small bounds, then
+  - `verify_budget_checked_add_no_overflow`: a two-phase standalone model of
+    the kernel budget store's checked-add ordering (dense small bounds, then
     `current = u64::MAX - tail` so the overflow arm is non-vacuous), proving
-    fail-closed no-partial-commit and retry idempotence.
+    fail-closed no-partial-commit and retry idempotence for that model. It does
+    not execute either concrete store.
+  - `verify_budget_admission_projection`: verifies the exact shared scalar
+    projections called by both InMemory and SQLite budget backends, including
+    optional caps and total-cost overflow. Store mutation and reservation
+    conservation are outside this harness.
+  - `verify_revocation_admission_projection`: verifies the exact shared lazy
+    token/ancestor projection called by both production revocation paths.
+    Store IO and view freshness are outside this harness.
   - `verify_receipt_roundtrip`: an explicit EUF-CMA-style algebraic signature
     model with documented rationale for why real ed25519/RFC 8785 is
     intractable under CBMC.
   - Where a harness is model-only (for example the anchor witness-policy
     harness), the module docs state the honesty boundary and name the runtime
     tests covering the gap.
-- Cadence: `formal-pr-smoke.yml` runs the 20 public kernel-core `lanes.pr`
+- Cadence: `formal-pr-smoke.yml` runs the 22 public kernel-core `lanes.pr`
   harnesses and the 12 non-core manifest PR harnesses on scoped pull-request
   changes. `kani-public-nightly` in `nightly.yml` runs the union of core PR and
   nightly-only lanes plus every non-core PR and nightly manifest entry.
@@ -228,12 +238,12 @@ explicit there.
 
 - `formal/proof-manifest.toml` (schema `chio.proof-manifest.v1`) is the hub:
   `root_modules` (21 Lean files), `gate_commands` (12 commands), 7
-  `covered_rust_modules`, 21 `covered_rust_symbols`, 2 `shell_entrypoints`,
+  `covered_rust_modules`, 32 `covered_rust_symbols`, 14 `shell_entrypoints`,
   the P1-P10 `property_matrix` with per-property evidence-lane tags,
   `rust_refinement_lanes`, `allowed_axioms` (exactly one),
-  `excluded_surfaces`, and `discharged_assumptions`. Thirty-four `[[mirror]]`
-  entries bind 80 parser-resolved Rust symbol references to five Lean models
-  and five TLA+ models with ordered rollup and per-symbol hashes. Lean entries
+  `excluded_surfaces`, and `discharged_assumptions`. Thirty-nine `[[mirror]]`
+  entries bind 91 parser-resolved Rust symbol references to five Lean models
+  and six TLA+ models with ordered rollup and per-symbol hashes. Lean entries
   are transliterations; TLA+ entries are explicitly labeled abstraction
   anchors. `cargo xtask check formal-mirrors` enforces those hashes in required
   PR CI.
@@ -270,7 +280,7 @@ explicit there.
 | Cadence | Formal content |
 | --- | --- |
 | Every PR (required) | diff-tests via workspace tests; `cargo xtask check crate-paths` (manifest path integrity); `cargo xtask check formal-mirrors` (Rust-to-model review tripwire); proptest invariant-naming gate; regression-test deletion gate; threat-model coverage gate; registry status ban (`implementation_backed`) |
-| PR, path-scoped | Apalache safety (6 spec/cfg pairs); Lean build plus sorry and manifest checks; 20 core and 12 non-core Kani PR harnesses; Rust verification metadata with no Creusot proofs; ClusterFuzzLite change-scoped fuzzing; cargo-mutants for touched trust-boundary crates |
+| PR, path-scoped | Apalache safety (6 spec/cfg pairs); Lean build plus sorry and manifest checks; 22 core and 12 non-core Kani PR harnesses; Rust verification metadata with no Creusot proofs; ClusterFuzzLite change-scoped fuzzing; cargo-mutants for touched trust-boundary crates |
 | Nightly | Kani (all lanes), Lean/Aeneas/Creusot proof report (`formal-qualification`), Apalache temporal (liveness; known-unreliable), proptest 4096-case tier, mutants full sweeps (advisory), mutants-fuzz co-coverage, dudect, fuzz rotation and native sweep |
 | Push to main / release | `release-qualification.yml` runs the full gate battery: `check-formal-proofs.sh`, both Aeneas checks, equivalence, Creusot and Kani strict lanes, adapter no-bypass, portable kernel, proof report |
 

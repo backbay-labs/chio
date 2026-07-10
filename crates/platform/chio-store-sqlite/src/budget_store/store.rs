@@ -176,9 +176,12 @@ impl SqliteBudgetStore {
                 record.grant_index as i64,
                 record.invocation_count as i64,
                 record.updated_at,
-                record.seq as i64,
-                record.total_cost_exposed as i64,
-                record.total_cost_realized_spend as i64,
+                budget_sqlite_i64(record.seq, "budget usage sequence")?,
+                budget_sqlite_i64(record.total_cost_exposed, "total_cost_exposed")?,
+                budget_sqlite_i64(
+                    record.total_cost_realized_spend,
+                    "total_cost_realized_spend",
+                )?,
             ],
         )?;
         Ok(())
@@ -296,19 +299,34 @@ impl SqliteBudgetStore {
                     record.kind.as_str(),
                     record.allowed.map(|value| if value { 1_i64 } else { 0_i64 }),
                     record.recorded_at,
-                    record.event_seq as i64,
-                    record.usage_seq.map(|value| value as i64),
-                    record.exposure_units as i64,
-                    record.realized_spend_units as i64,
+                    budget_sqlite_i64(record.event_seq, "budget event sequence")?,
+                    optional_budget_sqlite_i64(record.usage_seq, "budget usage sequence")?,
+                    budget_sqlite_i64(record.exposure_units, "exposure_units")?,
+                    budget_sqlite_i64(record.realized_spend_units, "realized_spend_units")?,
                     record.max_invocations.map(i64::from),
-                    record.max_cost_per_invocation.map(|value| value as i64),
-                    record.max_total_cost_units.map(|value| value as i64),
+                    optional_budget_sqlite_i64(
+                        record.max_cost_per_invocation,
+                        "max_exposure_per_invocation",
+                    )?,
+                    optional_budget_sqlite_i64(
+                        record.max_total_cost_units,
+                        "max_total_exposure_units",
+                    )?,
                     i64::from(record.invocation_count_after),
-                    record.total_cost_exposed_after as i64,
-                    record.total_cost_realized_spend_after as i64,
+                    budget_sqlite_i64(
+                        record.total_cost_exposed_after,
+                        "total_cost_exposed_after",
+                    )?,
+                    budget_sqlite_i64(
+                        record.total_cost_realized_spend_after,
+                        "total_cost_realized_spend_after",
+                    )?,
                     record.authority.as_ref().map(|value| value.authority_id.as_str()),
                     record.authority.as_ref().map(|value| value.lease_id.as_str()),
-                    record.authority.as_ref().map(|value| value.lease_epoch as i64),
+                    optional_budget_sqlite_i64(
+                        record.authority.as_ref().map(|value| value.lease_epoch),
+                        "lease_epoch",
+                    )?,
                 ],
             )?;
             false
@@ -366,7 +384,10 @@ impl SqliteBudgetStore {
             "#,
         )?;
         let rows = statement.query_map(
-            params![after_seq.map(|value| value as i64), limit as i64],
+            params![
+                optional_budget_sqlite_i64(after_seq, "budget usage sequence")?,
+                limit as i64
+            ],
             record_from_row,
         )?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -427,9 +448,13 @@ impl SqliteBudgetStore {
             LIMIT ?2
             "#,
         )?;
-        let rows = statement.query_map(params![after_event_seq as i64, limit as i64], |row| {
-            mutation_record_from_row(row)
-        })?;
+        let rows = statement.query_map(
+            params![
+                budget_sqlite_i64(after_event_seq, "budget event sequence")?,
+                limit as i64
+            ],
+            mutation_record_from_row,
+        )?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
@@ -574,12 +599,15 @@ impl SqliteBudgetStore {
                 hold_id,
                 capability_id,
                 grant_index as i64,
-                authorized_exposure_units as i64,
-                authorized_exposure_units as i64,
+                budget_sqlite_i64(authorized_exposure_units, "authorized_exposure_units")?,
+                budget_sqlite_i64(authorized_exposure_units, "remaining_exposure_units")?,
                 HoldDisposition::Open.as_str(),
                 authority.map(|value| value.authority_id.as_str()),
                 authority.map(|value| value.lease_id.as_str()),
-                authority.map(|value| value.lease_epoch as i64),
+                optional_budget_sqlite_i64(
+                    authority.map(|value| value.lease_epoch),
+                    "lease_epoch",
+                )?,
                 now,
             ],
         )?;
@@ -606,11 +634,14 @@ impl SqliteBudgetStore {
             "#,
             params![
                 hold_id,
-                remaining_exposure_units as i64,
+                budget_sqlite_i64(remaining_exposure_units, "remaining_exposure_units")?,
                 disposition.as_str(),
                 authority.map(|value| value.authority_id.as_str()),
                 authority.map(|value| value.lease_id.as_str()),
-                authority.map(|value| value.lease_epoch as i64),
+                optional_budget_sqlite_i64(
+                    authority.map(|value| value.lease_epoch),
+                    "lease_epoch",
+                )?,
                 unix_now(),
             ],
         )?;
@@ -661,12 +692,15 @@ impl SqliteBudgetStore {
                 hold_id,
                 capability_id,
                 grant_index as i64,
-                authorized_exposure_units as i64,
-                remaining_exposure_units as i64,
+                budget_sqlite_i64(authorized_exposure_units, "authorized_exposure_units")?,
+                budget_sqlite_i64(remaining_exposure_units, "remaining_exposure_units")?,
                 disposition.as_str(),
                 authority.map(|value| value.authority_id.as_str()),
                 authority.map(|value| value.lease_id.as_str()),
-                authority.map(|value| value.lease_epoch as i64),
+                optional_budget_sqlite_i64(
+                    authority.map(|value| value.lease_epoch),
+                    "lease_epoch",
+                )?,
                 now,
             ],
         )?;
@@ -1163,19 +1197,31 @@ impl SqliteBudgetStore {
                 kind.as_str(),
                 allowed.map(|value| if value { 1_i64 } else { 0_i64 }),
                 unix_now(),
-                event_seq as i64,
-                usage_seq.map(|value| value as i64),
-                exposure_units as i64,
-                realized_spend_units as i64,
+                budget_sqlite_i64(event_seq, "budget event sequence")?,
+                optional_budget_sqlite_i64(usage_seq, "budget usage sequence")?,
+                budget_sqlite_i64(exposure_units, "exposure_units")?,
+                budget_sqlite_i64(realized_spend_units, "realized_spend_units")?,
                 max_invocations.map(i64::from),
-                max_cost_per_invocation.map(|value| value as i64),
-                max_total_cost_units.map(|value| value as i64),
+                optional_budget_sqlite_i64(
+                    max_cost_per_invocation,
+                    "max_exposure_per_invocation",
+                )?,
+                optional_budget_sqlite_i64(
+                    max_total_cost_units,
+                    "max_total_exposure_units",
+                )?,
                 invocation_count_after as i64,
-                total_cost_exposed_after as i64,
-                total_cost_realized_spend_after as i64,
+                budget_sqlite_i64(total_cost_exposed_after, "total_cost_exposed_after")?,
+                budget_sqlite_i64(
+                    total_cost_realized_spend_after,
+                    "total_cost_realized_spend_after",
+                )?,
                 authority.map(|value| value.authority_id.as_str()),
                 authority.map(|value| value.lease_id.as_str()),
-                authority.map(|value| value.lease_epoch as i64),
+                optional_budget_sqlite_i64(
+                    authority.map(|value| value.lease_epoch),
+                    "lease_epoch",
+                )?,
             ],
         )?;
         Ok(())
@@ -1222,32 +1268,31 @@ impl SqliteBudgetStore {
         let (current, total_cost_exposed, total_cost_realized_spend) = current.unwrap_or((0, 0, 0));
         let updated_at = unix_now();
 
-        if let Some(max) = max_invocations {
-            if current >= max {
-                let event_seq = allocate_budget_replication_seq(&transaction)?;
-                SqliteBudgetStore::append_mutation_event(
-                    &transaction,
-                    event_id,
-                    None,
-                    None,
-                    capability_id,
-                    grant_index,
-                    BudgetMutationKind::IncrementInvocation,
-                    Some(false),
-                    event_seq,
-                    None,
-                    0,
-                    0,
-                    max_invocations,
-                    None,
-                    None,
-                    current,
-                    total_cost_exposed,
-                    total_cost_realized_spend,
-                )?;
-                transaction.commit()?;
-                return Ok(false);
-            }
+        let allowed = budget_increment_admits(current, max_invocations);
+        if !allowed {
+            let event_seq = allocate_budget_replication_seq(&transaction)?;
+            SqliteBudgetStore::append_mutation_event(
+                &transaction,
+                event_id,
+                None,
+                None,
+                capability_id,
+                grant_index,
+                BudgetMutationKind::IncrementInvocation,
+                Some(false),
+                event_seq,
+                None,
+                0,
+                0,
+                max_invocations,
+                None,
+                None,
+                current,
+                total_cost_exposed,
+                total_cost_realized_spend,
+            )?;
+            transaction.commit()?;
+            return Ok(false);
         }
 
         let seq = allocate_budget_replication_seq(&transaction)?;
@@ -1272,7 +1317,7 @@ impl SqliteBudgetStore {
                 grant_index as i64,
                 current.saturating_add(1) as i64,
                 updated_at,
-                seq as i64,
+                budget_sqlite_i64(seq, "budget usage sequence")?,
             ],
         )?;
         SqliteBudgetStore::append_mutation_event(

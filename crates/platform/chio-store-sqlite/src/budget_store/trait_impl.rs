@@ -193,29 +193,24 @@ impl BudgetStore for SqliteBudgetStore {
             }
         }
 
-        let mut allowed = true;
-
-        if let Some(max) = max_invocations {
-            if current_count >= max {
-                allowed = false;
-            }
-        }
-        if let Some(max_per) = max_cost_per_invocation {
-            if cost_units > max_per {
-                allowed = false;
-            }
-        }
-        if let Some(max_total) = max_total_cost_units {
-            let current_total = checked_committed_cost_units(current_exposed, current_realized)?;
-            let new_total = current_total.checked_add(cost_units).ok_or_else(|| {
-                BudgetStoreError::Overflow(
-                    "authorized exposure + cost_units overflowed u64".to_string(),
-                )
-            })?;
-            if new_total > max_total {
-                allowed = false;
-            }
-        }
+        let committed_cost_units = if max_total_cost_units.is_some() {
+            checked_committed_cost_units(current_exposed, current_realized)?
+        } else {
+            0
+        };
+        let allowed = budget_charge_admits(
+            current_count,
+            committed_cost_units,
+            cost_units,
+            max_invocations,
+            max_cost_per_invocation,
+            max_total_cost_units,
+        )
+        .map_err(|error| match error {
+            BudgetAdmissionProjectionError::TotalCostOverflow => BudgetStoreError::Overflow(
+                "authorized exposure + cost_units overflowed u64".to_string(),
+            ),
+        })?;
 
         let (
             invocation_count_after,
@@ -410,9 +405,9 @@ impl BudgetStore for SqliteBudgetStore {
                     grant_index as i64,
                     (current_count.saturating_add(1)) as i64,
                     updated_at,
-                    seq as i64,
-                    new_total_cost_exposed as i64,
-                    current_realized as i64,
+                    budget_sqlite_i64(seq, "budget usage sequence")?,
+                    budget_sqlite_i64(new_total_cost_exposed, "total_cost_exposed")?,
+                    budget_sqlite_i64(current_realized, "total_cost_realized_spend")?,
                 ],
             )?;
             if let Some(hold_id) = hold_id {
@@ -594,8 +589,8 @@ impl BudgetStore for SqliteBudgetStore {
                 grant_index as i64,
                 invocation_count - 1,
                 unix_now(),
-                seq as i64,
-                new_total_cost_exposed as i64,
+                budget_sqlite_i64(seq, "budget usage sequence")?,
+                budget_sqlite_i64(new_total_cost_exposed, "total_cost_exposed")?,
             ],
         )?;
         if let Some(hold_id) = hold_id {
@@ -768,8 +763,8 @@ impl BudgetStore for SqliteBudgetStore {
                 capability_id,
                 grant_index as i64,
                 unix_now(),
-                seq as i64,
-                new_total_cost_exposed as i64,
+                budget_sqlite_i64(seq, "budget usage sequence")?,
+                budget_sqlite_i64(new_total_cost_exposed, "total_cost_exposed")?,
             ],
         )?;
         if let Some(hold_id) = hold_id {
@@ -979,9 +974,9 @@ impl BudgetStore for SqliteBudgetStore {
                 capability_id,
                 grant_index as i64,
                 unix_now(),
-                seq as i64,
-                new_total_cost_exposed as i64,
-                new_total_cost_realized_spend as i64,
+                budget_sqlite_i64(seq, "budget usage sequence")?,
+                budget_sqlite_i64(new_total_cost_exposed, "total_cost_exposed")?,
+                budget_sqlite_i64(new_total_cost_realized_spend, "total_cost_realized_spend",)?,
             ],
         )?;
         if let Some(hold_id) = hold_id {

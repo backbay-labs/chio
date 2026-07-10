@@ -18,9 +18,10 @@ use crate::capability_verify::CapabilityError;
 use crate::clock::FixedClock;
 use crate::evaluate::EvaluateInput;
 use crate::formal_core::{
-    guard_pipeline_allows, monetary_cap_is_subset_by_parts, optional_u32_cap_is_subset,
-    receipt_fields_coupled, required_true_is_preserved, revocation_snapshot_denies,
-    time_window_valid, GuardStep,
+    budget_charge_admits, budget_increment_admits, guard_pipeline_allows,
+    monetary_cap_is_subset_by_parts, optional_u32_cap_is_subset, receipt_fields_coupled,
+    required_true_is_preserved, revocation_lookup_denies, revocation_snapshot_denies,
+    time_window_valid, BudgetAdmissionProjectionError, GuardStep, RevocationCheckTarget,
 };
 use crate::guard::PortableToolCallRequest;
 use crate::normalized::{NormalizedOperation, NormalizedScope, NormalizedToolGrant};
@@ -498,6 +499,28 @@ pub fn verify_revocation_predicate_idempotent() {
     let mirrored_second = revocation_snapshot_denies(token_revoked, token_revoked);
     assert_eq!(mirrored_first, mirrored_second);
     assert_eq!(mirrored_first, token_revoked);
+}
+
+#[kani::proof]
+pub fn verify_revocation_admission_projection() {
+    let token_revoked = kani::any::<bool>();
+    let ancestor_revoked = kani::any::<bool>();
+
+    let store_denied =
+        if revocation_lookup_denies(RevocationCheckTarget::PresentedToken, token_revoked) {
+            true
+        } else {
+            revocation_lookup_denies(RevocationCheckTarget::Ancestor, ancestor_revoked)
+        };
+    let view_denied = if revocation_lookup_denies(RevocationCheckTarget::Ancestor, ancestor_revoked)
+    {
+        true
+    } else {
+        revocation_lookup_denies(RevocationCheckTarget::PresentedToken, token_revoked)
+    };
+
+    assert_eq!(store_denied, token_revoked || ancestor_revoked);
+    assert_eq!(view_denied, token_revoked || ancestor_revoked);
 }
 
 // Single-step delegation attenuation has two algebraic pillars in Chio:
@@ -1101,6 +1124,48 @@ pub fn verify_budget_checked_add_no_overflow() {
         assert_eq!(retry_post, overflow_post);
         assert_eq!(retry_result.is_err(), overflow_result.is_err());
     }
+}
+
+#[kani::proof]
+pub fn verify_budget_admission_projection() {
+    let invocation_count = kani::any::<u32>();
+    let max_invocations = kani::any::<u32>();
+    let has_invocation_cap = kani::any::<bool>();
+    let invocation_cap = has_invocation_cap.then_some(max_invocations);
+    let invocation_projection = budget_increment_admits(invocation_count, invocation_cap);
+    assert_eq!(
+        invocation_projection,
+        !has_invocation_cap || invocation_count < max_invocations,
+    );
+
+    let cost_units = kani::any::<u64>();
+    let max_per_invocation = kani::any::<u64>();
+    let has_per_invocation_cap = kani::any::<bool>();
+    let committed_cost_units = kani::any::<u64>();
+    let max_total_cost_units = kani::any::<u64>();
+    let has_total_cap = kani::any::<bool>();
+    let actual = budget_charge_admits(
+        invocation_count,
+        committed_cost_units,
+        cost_units,
+        invocation_cap,
+        has_per_invocation_cap.then_some(max_per_invocation),
+        has_total_cap.then_some(max_total_cost_units),
+    );
+    let expected = if has_total_cap && committed_cost_units.checked_add(cost_units).is_none() {
+        Err(BudgetAdmissionProjectionError::TotalCostOverflow)
+    } else {
+        let invocation_allowed = !has_invocation_cap || invocation_count < max_invocations;
+        let per_invocation_allowed = !has_per_invocation_cap || cost_units <= max_per_invocation;
+        let total_allowed = !has_total_cap
+            || committed_cost_units
+                .checked_add(cost_units)
+                .is_some_and(|total| {
+                    committed_cost_units <= max_total_cost_units && total <= max_total_cost_units
+                });
+        Ok(invocation_allowed && per_invocation_allowed && total_allowed)
+    };
+    assert_eq!(actual, expected);
 }
 
 // =====================================================================

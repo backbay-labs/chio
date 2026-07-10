@@ -5,6 +5,7 @@
 //! recording.
 
 use crate::budget_store::BudgetReverseHoldDecision;
+use chio_kernel_core::{guard_projection_allows_continuation, guard_step_admits, GuardStep};
 use chio_log_redact::redacted;
 
 use super::*;
@@ -276,13 +277,31 @@ impl ChioKernel {
 
         let mut evidence = Vec::new();
         for guard in &self.guards {
-            match guard.evaluate(&ctx) {
+            let evaluation = guard.evaluate(&ctx);
+            let step = match &evaluation {
+                Ok(decision) => GuardStep::from(decision.verdict),
+                Err(_) => GuardStep::Error,
+            };
+            let projected_allows = guard_step_admits(step);
+            let continuation_evidence = match &evaluation {
+                Ok(decision)
+                    if guard_projection_allows_continuation(projected_allows, step)
+                        && decision.verdict == Verdict::Allow =>
+                {
+                    Some(&decision.evidence)
+                }
+                _ => None,
+            };
+            if let Some(continuation_evidence) = continuation_evidence {
+                evidence.extend_from_slice(continuation_evidence);
+                debug!(guard = guard.name(), "guard passed");
+                continue;
+            }
+
+            match evaluation {
                 Ok(decision) => {
                     evidence.extend(decision.evidence);
                     match decision.verdict {
-                        Verdict::Allow => {
-                            debug!(guard = guard.name(), "guard passed");
-                        }
                         Verdict::Deny => {
                             return Err(GuardRunError::new(
                                 KernelError::GuardDenied(format!(
@@ -299,6 +318,15 @@ impl ChioKernel {
                             return Err(GuardRunError::new(
                                 KernelError::GuardDenied(format!(
                                     "guard \"{}\" returned an unsupported approval verdict",
+                                    guard.name()
+                                )),
+                                evidence,
+                            ));
+                        }
+                        Verdict::Allow => {
+                            return Err(GuardRunError::new(
+                                KernelError::GuardDenied(format!(
+                                    "guard \"{}\" failed the admission projection",
                                     guard.name()
                                 )),
                                 evidence,

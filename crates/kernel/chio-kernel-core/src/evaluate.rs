@@ -49,6 +49,7 @@ use crate::guard::{Guard, GuardContext, PortableToolCallRequest};
 use crate::normalized::{NormalizationError, NormalizedEvaluationVerdict};
 use crate::scope::resolve_matching_grants;
 use crate::Verdict;
+use crate::{guard_projection_allows_continuation, guard_step_admits, GuardStep};
 
 /// Inputs to [`evaluate`]. Grouped into a struct so the call site stays
 /// tidy and future fields (e.g. a policy-digest override) can be added
@@ -385,9 +386,20 @@ fn finish_verified_evaluation(
     };
 
     for guard in input.guards {
-        match guard.evaluate(&ctx) {
-            Ok(Verdict::Allow) => {}
-            Ok(Verdict::Deny) | Ok(Verdict::PendingApproval) => {
+        let evaluation = guard.evaluate(&ctx);
+        let step = match &evaluation {
+            Ok(verdict) => GuardStep::from(*verdict),
+            Err(_) => GuardStep::Error,
+        };
+        let projected_allows = guard_step_admits(step);
+        if guard_projection_allows_continuation(projected_allows, step)
+            && matches!(&evaluation, Ok(Verdict::Allow))
+        {
+            continue;
+        }
+
+        match evaluation {
+            Ok(_) => {
                 // PendingApproval is reserved for the full kernel orchestration
                 // layer (chio-kernel::approval::ApprovalGuard); if a sync guard
                 // surfaces it here we fail closed.
@@ -510,6 +522,63 @@ mod tests {
         }
     }
 
+    fn direct_capability(issuer: &Keypair, subject: &Keypair) -> CapabilityToken {
+        match CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "direct-capability".to_string(),
+                issuer: issuer.public_key(),
+                subject: subject.public_key(),
+                scope: ChioScope {
+                    grants: vec![grant("srv-a", "echo")],
+                    resource_grants: vec![],
+                    prompt_grants: vec![],
+                },
+                issued_at: 100,
+                expires_at: 200,
+                delegation_chain: vec![],
+            },
+            issuer,
+        ) {
+            Ok(token) => token,
+            Err(error) => panic!("failed to sign direct capability: {error:?}"),
+        }
+    }
+
+    struct FixedGuard {
+        name: &'static str,
+        result: Result<Verdict, KernelCoreError>,
+    }
+
+    impl Guard for FixedGuard {
+        fn name(&self) -> &str {
+            self.name
+        }
+
+        fn evaluate(&self, _ctx: &GuardContext<'_>) -> Result<Verdict, KernelCoreError> {
+            self.result.clone()
+        }
+    }
+
+    fn evaluate_fixed_guard(guard: &dyn Guard) -> EvaluationVerdict {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let capability = direct_capability(&issuer, &subject);
+        let mut request = request();
+        request.agent_id = subject.public_key().to_hex();
+        let trusted = [issuer.public_key()];
+        let clock = crate::FixedClock::new(150);
+        let guards = [guard];
+
+        evaluate(EvaluateInput {
+            request: &request,
+            capability: &capability,
+            trusted_issuers: &trusted,
+            clock: &clock,
+            guards: &guards,
+            session_filesystem_roots: None,
+        })
+    }
+
     #[test]
     fn resolve_matched_grant_index_uses_scope_specificity_order() {
         let scope = ChioScope {
@@ -539,6 +608,44 @@ mod tests {
                 tool: "echo".to_string(),
                 server: "srv-a".to_string(),
             })
+        );
+    }
+
+    #[test]
+    fn guard_projection_preserves_deny_and_pending_error_attribution() {
+        let denied = evaluate_fixed_guard(&FixedGuard {
+            name: "deny-guard",
+            result: Ok(Verdict::Deny),
+        });
+        assert_eq!(
+            denied.reason.as_deref(),
+            Some("guard \"deny-guard\" denied the request")
+        );
+
+        let pending = evaluate_fixed_guard(&FixedGuard {
+            name: "pending-guard",
+            result: Ok(Verdict::PendingApproval),
+        });
+        assert_eq!(
+            pending.reason.as_deref(),
+            Some("guard \"pending-guard\" denied the request")
+        );
+    }
+
+    #[test]
+    fn guard_projection_preserves_fail_closed_error_reason() {
+        let verdict = evaluate_fixed_guard(&FixedGuard {
+            name: "error-guard",
+            result: Err(KernelCoreError::ConstraintError {
+                reason: "projection failure".to_string(),
+            }),
+        });
+
+        assert_eq!(
+            verdict.reason.as_deref(),
+            Some(
+                "guard \"error-guard\" error (fail-closed): constraint evaluation failed: projection failure"
+            )
         );
     }
 

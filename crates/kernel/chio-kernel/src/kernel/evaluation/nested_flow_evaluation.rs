@@ -145,12 +145,21 @@ impl ChioKernel {
         // DPoP enforcement before budget charge: if any matching grant requires
         // DPoP, verify the proof now so an attacker cannot drain the budget with
         // a valid capability token but missing or invalid DPoP proof.
-        if matching_grants
+        let dpop_required = matching_grants
             .iter()
-            .any(|m| m.grant.dpop_required == Some(true))
-        {
-            if let Err(e) = self.verify_dpop_for_request(request, cap) {
-                let msg = e.to_string();
+            .any(|m| m.grant.dpop_required == Some(true));
+        if dpop_required {
+            let verification = self.verify_dpop_for_request(request, cap);
+            let admitted = chio_kernel_core::dpop_verification_admits(
+                dpop_required,
+                request.dpop_proof.is_some(),
+                verification.is_ok(),
+            );
+            if !admitted {
+                let msg = match verification {
+                    Ok(()) => "DPoP admission rejected a verified proof".to_string(),
+                    Err(error) => error.to_string(),
+                };
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "DPoP verification failed");
                 return self.build_deny_response(request, &msg, now, None);
             }

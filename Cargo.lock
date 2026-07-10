@@ -4381,6 +4381,7 @@ dependencies = [
  "chio-core-types",
  "chio-credit",
  "chio-kernel",
+ "chio-kernel-core",
  "chio-settle",
  "chio-test-support",
  "criterion",

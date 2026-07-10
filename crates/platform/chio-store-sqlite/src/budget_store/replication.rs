@@ -33,7 +33,10 @@ pub(super) fn initialize_budget_replication_seq(
         next_seq = next_seq.saturating_add(1);
         transaction.execute(
             "UPDATE capability_grant_budgets SET seq = ?1 WHERE rowid = ?2",
-            params![next_seq as i64, rowid],
+            params![
+                budget_sqlite_i64(next_seq, "budget replication sequence")?,
+                rowid
+            ],
         )?;
     }
 
@@ -59,7 +62,10 @@ pub(super) fn initialize_budget_replication_seq(
             event_seq = event_seq.saturating_add(1);
             transaction.execute(
                 "UPDATE budget_mutation_events SET event_seq = ?1 WHERE rowid = ?2",
-                params![event_seq as i64, rowid],
+                params![
+                    budget_sqlite_i64(event_seq, "budget event sequence")?,
+                    rowid
+                ],
             )?;
         }
         next_seq = next_seq.max(event_seq);
@@ -80,7 +86,10 @@ pub(super) fn initialize_budget_replication_seq(
             next_seq = next_seq.saturating_add(1);
             transaction.execute(
                 "UPDATE budget_mutation_events SET event_seq = ?1 WHERE rowid = ?2",
-                params![next_seq as i64, rowid],
+                params![
+                    budget_sqlite_i64(next_seq, "budget replication sequence")?,
+                    rowid
+                ],
             )?;
         }
     }
@@ -148,7 +157,7 @@ fn set_budget_replication_seq(
 ) -> Result<(), BudgetStoreError> {
     transaction.execute(
         "UPDATE budget_replication_meta SET next_seq = ?1 WHERE singleton = 1",
-        params![seq as i64],
+        params![budget_sqlite_i64(seq, "budget replication sequence")?],
     )?;
     Ok(())
 }

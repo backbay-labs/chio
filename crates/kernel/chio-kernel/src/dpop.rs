@@ -35,6 +35,7 @@ use chio_core::capability::token::CapabilityToken;
 use chio_core::crypto::{
     sign_canonical_with_backend, Keypair, PublicKey, Signature, SigningBackend,
 };
+use chio_kernel_core::{dpop_freshness_valid, nonce_admits};
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use tracing::error;
@@ -163,6 +164,18 @@ pub struct DpopNonceStore {
     ttl: Duration,
 }
 
+/// Project production clock and configuration inputs into the verified DPoP
+/// freshness predicate.
+#[must_use]
+pub fn dpop_freshness_admits(now_secs: u64, issued_at: u64, config: &DpopConfig) -> bool {
+    dpop_freshness_valid(
+        now_secs,
+        issued_at,
+        config.proof_ttl_secs,
+        config.max_clock_skew_secs,
+    )
+}
+
 impl DpopNonceStore {
     /// Create a new nonce store.
     ///
@@ -196,12 +209,13 @@ impl DpopNonceStore {
             )
         })?;
 
-        if let Some(first_seen) = cache.peek(&key) {
-            if first_seen.elapsed() < self.ttl {
-                // Nonce is still live -- replay detected.
-                return Ok(false);
-            }
-            // TTL has elapsed; remove the stale entry so we can re-insert.
+        let already_live = cache
+            .peek(&key)
+            .is_some_and(|first_seen| first_seen.elapsed() < self.ttl);
+        if !nonce_admits(already_live) {
+            return Ok(false);
+        }
+        if cache.peek(&key).is_some() {
             cache.pop(&key);
         }
 
@@ -272,18 +286,13 @@ pub fn verify_dpop_proof_stateless(
     // Proof must not be future-dated beyond clock skew tolerance: issued_at <= now + skew.
     // Check this first so that an astronomically large issued_at (e.g. u64::MAX) is
     // rejected here before the expiry arithmetic below can overflow.
-    if proof.body.issued_at > now_secs.saturating_add(config.max_clock_skew_secs) {
-        return Err(KernelError::DpopVerificationFailed(format!(
-            "proof issued_at={} is too far in the future (now={}, skew={})",
-            proof.body.issued_at, now_secs, config.max_clock_skew_secs
-        )));
-    }
-
-    // Proof must not be expired: issued_at + ttl >= now.
-    // Use saturating_add as a defence-in-depth measure; the future-dated check
-    // above ensures issued_at is near now, so saturation should never trigger
-    // in practice for well-formed proofs.
-    if proof.body.issued_at.saturating_add(config.proof_ttl_secs) < now_secs {
+    if !dpop_freshness_admits(now_secs, proof.body.issued_at, config) {
+        if proof.body.issued_at > now_secs.saturating_add(config.max_clock_skew_secs) {
+            return Err(KernelError::DpopVerificationFailed(format!(
+                "proof issued_at={} is too far in the future (now={}, skew={})",
+                proof.body.issued_at, now_secs, config.max_clock_skew_secs
+            )));
+        }
         return Err(KernelError::DpopVerificationFailed(format!(
             "proof expired: issued_at={} ttl={} now={}",
             proof.body.issued_at, config.proof_ttl_secs, now_secs
@@ -293,8 +302,11 @@ pub fn verify_dpop_proof_stateless(
     // Proof must not be too far in the past beyond TTL + clock skew.
     // A valid proof satisfies: issued_at >= now - (proof_ttl_secs + max_clock_skew_secs).
     // This guards against proofs with timestamps so old they predate any plausible clock skew.
-    let stale_threshold =
-        now_secs.saturating_sub(config.proof_ttl_secs + config.max_clock_skew_secs);
+    let stale_threshold = now_secs.saturating_sub(
+        config
+            .proof_ttl_secs
+            .saturating_add(config.max_clock_skew_secs),
+    );
     if proof.body.issued_at < stale_threshold {
         return Err(KernelError::DpopVerificationFailed(format!(
             "proof issued_at={} is too far in the past (now={}, ttl={}, skew={})",

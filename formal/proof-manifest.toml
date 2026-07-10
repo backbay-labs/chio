@@ -65,6 +65,7 @@ covered_rust_symbols = [
   "chio_kernel_core::scope::resolve_matching_grants",
   "chio_kernel_core::scope::resolve_capability_grants",
   "chio_kernel_core::evaluate::evaluate",
+  "chio_kernel_core::evaluate::finish_verified_evaluation",
   "chio_kernel_core::normalized::NormalizedToolGrant::is_subset_of",
   "chio_kernel_core::normalized::NormalizedResourceGrant::is_subset_of",
   "chio_kernel_core::normalized::NormalizedPromptGrant::is_subset_of",
@@ -72,10 +73,20 @@ covered_rust_symbols = [
   "chio_kernel_core::normalized::NormalizedEvaluationVerdict::try_from_evaluation",
   "chio_kernel_core::receipts::sign_receipt",
   "chio_kernel_core::formal_core::classify_time_window",
+  "chio_kernel_core::formal_core::budget_precheck",
   "chio_kernel_core::formal_core::budget_commit",
+  "chio_kernel_core::formal_core::budget_increment_admits",
+  "chio_kernel_core::formal_core::budget_charge_admits",
+  "chio_kernel_core::formal_core::dpop_freshness_valid",
   "chio_kernel_core::formal_core::dpop_admits",
+  "chio_kernel_core::formal_core::dpop_verification_admits",
+  "chio_kernel_core::formal_core::nonce_admits",
   "chio_kernel_core::formal_core::guard_pipeline_allows",
+  "chio_kernel_core::formal_core::GuardStep::from",
+  "chio_kernel_core::formal_core::guard_step_admits",
+  "chio_kernel_core::formal_core::guard_projection_allows_continuation",
   "chio_kernel_core::formal_core::revocation_snapshot_denies",
+  "chio_kernel_core::formal_core::revocation_lookup_denies",
   "chio_kernel_core::formal_core::receipt_fields_coupled",
   # Surfaces witnessed by the Kani harnesses and Lean
   # delegation theorems.
@@ -86,8 +97,20 @@ covered_rust_symbols = [
 ]
 
 shell_entrypoints = [
+  "<chio_kernel_core::GuardStep as From<chio_kernel::runtime::Verdict>>::from",
+  "chio_kernel::DpopNonceStore::check_and_insert",
+  "chio_kernel::InMemoryBudgetStore::try_charge_cost",
+  "chio_kernel::InMemoryBudgetStore::try_increment",
+  "chio_kernel::ChioKernel::check_revocation",
+  "chio_kernel::kernel::delegation::consult_revocation_view_at",
   "chio_kernel::ChioKernel::evaluate_portable_verdict",
+  "chio_kernel::ChioKernel::run_guards",
   "chio_kernel::ChioKernel::build_and_sign_receipt",
+  "chio_kernel::dpop::dpop_freshness_admits",
+  "chio_kernel::dpop::verify_dpop_proof_stateless",
+  "chio_kernel::receipt_body_fields_coupled",
+  "chio_store_sqlite::SqliteBudgetStore::try_charge_cost",
+  "chio_store_sqlite::SqliteBudgetStore::try_increment_with_event_id",
 ]
 
 required_property_ids = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10"]
@@ -156,8 +179,9 @@ excluded_surfaces = [
 
 notes = [
   "The implementation-linked protocol core is the pure security decision surface plus bounded models for adjacent state transitions. Concrete platform effects are tracked as audited assumptions.",
+  "The budget-admission and revocation-projection public Kani harnesses verify shared scalar projection functions called by both production backends or callers; they do not verify storage IO, mutation journals, snapshot freshness, or reservation-ledger transitions. The separate budget checked-add harness remains model-level.",
   "Lean assets are release evidence only when root-imported, sorry-free, and mapped to property_matrix entries.",
-  "Creusot and Kani are required strict-CI lanes for production implementation linkage; public Kani harnesses target verify_capability, NormalizedScope::is_subset_of, resolve_matching_grants, evaluate, and sign_receipt.",
+  "Creusot and Kani are required strict-CI lanes for production implementation linkage; public Kani harnesses target verify_capability, NormalizedScope::is_subset_of, resolve_matching_grants, evaluate, sign_receipt, and the shared budget and revocation admission projections.",
   "Aeneas production extraction covers the pure numeric/boolean core and is paired with tracked Lean equivalence theorems.",
   "The post-admission drop lifecycle is model-checked at two invocations and one buffered child per invocation. Its evidence requires both a positive NoError result and every paired negative mutation producing a registered ITF counterexample.",
   "Release-facing formal claims must name this manifest, the theorem inventory, and the audited assumptions.",
@@ -274,9 +298,9 @@ model_kind = "lean"
 relationship = "transliteration"
 rust_source = "crates/kernel/chio-kernel/src/kernel/validation.rs"
 rust_symbols = ["ChioKernel::check_revocation"]
-normalized_sha256 = "529d5019fc7042c5cdaed5464db980c471bb4e92b831ce562deddf5d552dce7f"
+normalized_sha256 = "dd3467773bc3812a1fe81f6a03e9f2bde348b498d8e2004a99c70853c7f9a481"
 symbol_sha256 = [
-  { symbol = "ChioKernel::check_revocation", sha256 = "bc9a6778cb8139e7d2eadf47eac6b018426d27c8735931e0121b8bb316f4631f" },
+  { symbol = "ChioKernel::check_revocation", sha256 = "0a6fcfb26024a3a77e360d86ca1690a1e2cf2e67164876260909ddf1226d8644" },
 ]
 
 [[mirror]]
@@ -411,15 +435,16 @@ symbol_sha256 = [
 # TLA records are abstraction anchors. Their hashes force model review when the
 # named implementation changes, but a matching hash does not establish a TLA
 # invariant in Rust.
+
 [[mirror]]
 model_file = "formal/tla/RevocationPropagation.tla"
 model_kind = "tla"
 relationship = "abstraction_anchor"
 rust_source = "crates/kernel/chio-kernel/src/kernel/validation.rs"
 rust_symbols = ["ChioKernel::check_revocation", "ChioKernel::validate_delegation_admission"]
-normalized_sha256 = "8d52117f92dfd0efbfc6785cbe0feb79c239a79247cc0471f210124d91cf0b58"
+normalized_sha256 = "a826bcff47bd75178c7be841aa86fc298513fc801dbdc5bdb5562a47b3668485"
 symbol_sha256 = [
-  { symbol = "ChioKernel::check_revocation", sha256 = "bc9a6778cb8139e7d2eadf47eac6b018426d27c8735931e0121b8bb316f4631f" },
+  { symbol = "ChioKernel::check_revocation", sha256 = "0a6fcfb26024a3a77e360d86ca1690a1e2cf2e67164876260909ddf1226d8644" },
   { symbol = "ChioKernel::validate_delegation_admission", sha256 = "22abdcd2d8f4d26aa28c1095ca59881a3e3eeed01745683c7bad2ea853d86b8c" },
 ]
 
@@ -440,9 +465,9 @@ model_kind = "tla"
 relationship = "abstraction_anchor"
 rust_source = "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs"
 rust_symbols = ["ChioKernel::evaluate_tool_call_async_with_session_context"]
-normalized_sha256 = "131a2397f982d123f4ce12868c2e87a472ea9110f765d8e1c55dd588722d78ad"
+normalized_sha256 = "0b720cf7c25c21dd5a5d5539e4a4823c7dbae47946bd0676ff583b21884ea063"
 symbol_sha256 = [
-  { symbol = "ChioKernel::evaluate_tool_call_async_with_session_context", sha256 = "fbe8d2d4bf4d24cec5da02ddc17b6285d836f0bcb009bdf1592d75777eb75a7c" },
+  { symbol = "ChioKernel::evaluate_tool_call_async_with_session_context", sha256 = "34cc7d20c68cd19fe3d959210c3eeed461a8c2f28d3c71b6e003be3de8fadb01" },
 ]
 
 [[mirror]]
@@ -589,9 +614,9 @@ model_kind = "tla"
 relationship = "abstraction_anchor"
 rust_source = "crates/kernel/chio-kernel/src/kernel/validation.rs"
 rust_symbols = ["ChioKernel::check_revocation"]
-normalized_sha256 = "529d5019fc7042c5cdaed5464db980c471bb4e92b831ce562deddf5d552dce7f"
+normalized_sha256 = "dd3467773bc3812a1fe81f6a03e9f2bde348b498d8e2004a99c70853c7f9a481"
 symbol_sha256 = [
-  { symbol = "ChioKernel::check_revocation", sha256 = "bc9a6778cb8139e7d2eadf47eac6b018426d27c8735931e0121b8bb316f4631f" },
+  { symbol = "ChioKernel::check_revocation", sha256 = "0a6fcfb26024a3a77e360d86ca1690a1e2cf2e67164876260909ddf1226d8644" },
 ]
 
 [[mirror]]
@@ -599,10 +624,11 @@ model_file = "formal/apalache/RevocationCutCompleteness.tla"
 model_kind = "tla"
 relationship = "abstraction_anchor"
 rust_source = "crates/kernel/chio-kernel/src/kernel/delegation.rs"
-rust_symbols = ["consult_revocation_view"]
-normalized_sha256 = "1361c5c1474b2e7e36b699a4be0365681d1dcca11964053bad051f220f930ab8"
+rust_symbols = ["consult_revocation_view", "consult_revocation_view_at"]
+normalized_sha256 = "4913b3f750ad41a44a1831eca3b44f98972873b7744e089dc58081dc2976758c"
 symbol_sha256 = [
   { symbol = "consult_revocation_view", sha256 = "7ba67f47c58fdd51c523f22b0cf1687bc9bd955565c792a46b116d103af81f27" },
+  { symbol = "consult_revocation_view_at", sha256 = "8d81fbbf3f53335a1be8f3ee6760a073f9cc1e0c21e583044a7c69f4683c84b7" },
 ]
 
 [[mirror]]
@@ -719,4 +745,26 @@ rust_symbols = ["ChioKernel::finalize_tool_output_with_metadata"]
 normalized_sha256 = "038d17758bbecaf997809248f9ee91f434fa928eb55bf707fa90eade67241a3d"
 symbol_sha256 = [
   { symbol = "ChioKernel::finalize_tool_output_with_metadata", sha256 = "8d9b619b9a8dbd510a49277a94493fba491b73f138676fdd907f1b0163f4d5a0" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Protocol.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/kernel/chio-kernel-core/src/evaluate.rs"
+rust_symbols = ["finish_verified_evaluation"]
+normalized_sha256 = "d7694e9d974054637b0873022c1df5b5fce91d07f71ddc14ee5543e9e77bae22"
+symbol_sha256 = [
+  { symbol = "finish_verified_evaluation", sha256 = "9a19dd961e9eef473a4698089c0cc8efda66017aab8e817129596f48812f5ce2" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Revocation.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/kernel/chio-kernel/src/kernel/delegation.rs"
+rust_symbols = ["consult_revocation_view_at"]
+normalized_sha256 = "8ddea5aab9990a12163a919f4aacc576f76c165bf4ce193670ae71c381470158"
+symbol_sha256 = [
+  { symbol = "consult_revocation_view_at", sha256 = "8d81fbbf3f53335a1be8f3ee6760a073f9cc1e0c21e583044a7c69f4683c84b7" },
 ]

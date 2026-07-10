@@ -13,6 +13,23 @@ pub(super) fn checked_committed_cost_units(
         })
 }
 
+pub(super) fn budget_sqlite_i64(value: u64, field_name: &str) -> Result<i64, BudgetStoreError> {
+    i64::try_from(value).map_err(|_| {
+        BudgetStoreError::Overflow(format!(
+            "{field_name} value {value} exceeds SQLite INTEGER range"
+        ))
+    })
+}
+
+pub(super) fn optional_budget_sqlite_i64(
+    value: Option<u64>,
+    field_name: &str,
+) -> Result<Option<i64>, BudgetStoreError> {
+    value
+        .map(|value| budget_sqlite_i64(value, field_name))
+        .transpose()
+}
+
 pub(super) fn record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<BudgetUsageRecord> {
     let total_cost_exposed = budget_u64_from_row(row, 5, "total_cost_exposed")?;
     let total_cost_realized_spend = budget_u64_from_row(row, 6, "total_cost_realized_spend")?;

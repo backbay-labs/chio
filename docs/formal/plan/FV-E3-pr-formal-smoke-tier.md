@@ -19,7 +19,7 @@ workflow has four verification jobs:
 
 1. `lean-build (lake + sorry scan + manifest cross-ref)` runs
    `scripts/check-formal-proofs.sh` with cached elan and Lake state.
-2. `kani-public-pr (lanes.pr sweep)` runs the 20 public kernel-core harnesses
+2. `kani-public-pr (lanes.pr sweep)` runs the 22 public kernel-core harnesses
    declared in `formal/rust-verification/kani-public-harnesses.toml`.
 3. `kani-manifest-pr (non-core lanes.pr sweep)` runs the 12 PR harnesses for
    chio-attest-verify, chio-anchor, and chio-weights from
@@ -51,7 +51,7 @@ qualification.
   Its default is `--lane pr`, `--lane all` supplies the nightly union, and
   `--list` supports proof-free integrity checks.
 - Keep non-core Kani coverage in a separate job. This preserves a precise
-  20-harness public-core check while adding the 12 non-core PR harnesses.
+  22-harness public-core check while adding the 12 non-core PR harnesses.
 - Keep strict Creusot off the PR path. The PR job is named and logged as
   metadata-only so it cannot be mistaken for proof execution.
 - Revive the existing mutation PR machinery rather than delete it. Package
@@ -89,7 +89,7 @@ These values remain estimates until hosted runs provide measurements:
 | Job | Cold estimate | Warm estimate | Dominant cost |
 | --- | --- | --- | --- |
 | lean-build | 4-6 min | 1-3 min | elan and Lake build |
-| kani-public-pr | 12-15 min | 8-10 min | Kani setup and 20 harnesses |
+| kani-public-pr | 12-15 min | 8-10 min | Kani setup and 22 harnesses |
 | kani-manifest-pr | 15-45 min | 10-35 min | feature builds and 12 harnesses |
 | rust-verification-metadata | about 2 min | about 1 min | checkout and schema checks |
 | mutants-pr, per selected crate | 15-45 min | similar | baseline build and in-diff mutants |
@@ -111,7 +111,7 @@ measured evidence before changing coverage.
 
 ## Acceptance Criteria
 
-- [x] The public-core runner lists exactly the 20 registered PR harnesses
+- [x] The public-core runner lists exactly the 22 registered PR harnesses
   without invoking Kani.
 - [x] The non-core manifest runner lists exactly 12 registered PR harnesses
   when chio-kernel-core is excluded.
@@ -125,7 +125,7 @@ measured evidence before changing coverage.
 - [x] Kani and elan pins match between PR and nightly workflows.
 - [ ] Observe a hosted Lean PR failure for a broken proof or introduced
   `sorry`, then record the run.
-- [ ] Observe a hosted core Kani PR run executing all 20 harnesses.
+- [ ] Observe a hosted core Kani PR run executing all 22 harnesses.
 - [ ] Measure three warm hosted Kani runs and keep the public-core job at or
   below 10 minutes, or propose named lane changes with evidence.
 - [ ] Observe mutation comment, advisory result, and under-one-minute no-op

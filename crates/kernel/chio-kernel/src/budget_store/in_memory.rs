@@ -2,6 +2,10 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chio_kernel_core::{
+    budget_charge_admits, budget_increment_admits, BudgetAdmissionProjectionError,
+};
+
 use super::{
     budget_commit_metadata, checked_committed_cost_units, AuthorizedBudgetHold,
     BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetCaptureHoldDecision,
@@ -245,7 +249,7 @@ impl InMemoryBudgetStoreInner {
             .get(&key)
             .cloned()
             .unwrap_or_else(|| Self::default_usage_record(capability_id, grant_index));
-        let allowed = max_invocations.is_none_or(|max| current.invocation_count < max);
+        let allowed = budget_increment_admits(current.invocation_count, max_invocations);
         let recorded_at = unix_now();
         let event_seq = self.next_seq.saturating_add(1);
         self.next_seq = event_seq;
@@ -372,31 +376,27 @@ impl InMemoryBudgetStoreInner {
             .cloned()
             .unwrap_or_else(|| Self::default_usage_record(capability_id, grant_index));
 
-        let mut allowed = true;
-        if let Some(max) = max_invocations {
-            if current.invocation_count >= max {
-                allowed = false;
-            }
-        }
-        if let Some(max_per) = max_cost_per_invocation {
-            if cost_units > max_per {
-                allowed = false;
-            }
-        }
-        if let Some(max_total) = max_total_cost_units {
-            let current_total = checked_committed_cost_units(
+        let committed_cost_units = if max_total_cost_units.is_some() {
+            checked_committed_cost_units(
                 current.total_cost_exposed,
                 current.total_cost_realized_spend,
-            )?;
-            let new_total = current_total.checked_add(cost_units).ok_or_else(|| {
-                BudgetStoreError::Overflow(
-                    "authorized exposure + cost_units overflowed u64".to_string(),
-                )
-            })?;
-            if new_total > max_total {
-                allowed = false;
-            }
-        }
+            )?
+        } else {
+            0
+        };
+        let allowed = budget_charge_admits(
+            current.invocation_count,
+            committed_cost_units,
+            cost_units,
+            max_invocations,
+            max_cost_per_invocation,
+            max_total_cost_units,
+        )
+        .map_err(|error| match error {
+            BudgetAdmissionProjectionError::TotalCostOverflow => BudgetStoreError::Overflow(
+                "authorized exposure + cost_units overflowed u64".to_string(),
+            ),
+        })?;
 
         let recorded_at = unix_now();
         let (invocation_count_after, total_cost_exposed_after, total_cost_realized_spend_after);

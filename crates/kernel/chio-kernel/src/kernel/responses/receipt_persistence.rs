@@ -1,5 +1,18 @@
 use super::*;
 
+fn require_receipt_body_fields_coupled(
+    body: &ChioReceiptBody,
+    expected: &ReceiptCouplingExpectation<'_>,
+) -> Result<(), KernelError> {
+    if receipt_body_fields_coupled(body, expected) {
+        Ok(())
+    } else {
+        Err(KernelError::ReceiptSigningFailed(
+            "receipt fields diverged from the admitted decision inputs".to_string(),
+        ))
+    }
+}
+
 impl ChioKernel {
     /// Build and sign a receipt from a `ReceiptParams` descriptor.
     pub(crate) fn build_and_sign_receipt(
@@ -40,15 +53,15 @@ impl ChioKernel {
             capability_id: params.capability_id.to_string(),
             tool_server: params.server_id.to_string(),
             tool_name: params.tool_name.to_string(),
-            action: params.action,
-            decision: Some(params.decision),
+            action: params.action.clone(),
+            decision: Some(params.decision.clone()),
             receipt_kind: ReceiptKind::MediatedDecision,
             boundary_class: BoundaryClass::Prevent,
             observation_outcome: None,
             tool_origin: ToolOrigin::CallerExecuted,
             redaction_mode: RedactionMode::None,
             actor_chain: Vec::new(),
-            content_hash: params.content_hash,
+            content_hash: params.content_hash.clone(),
             policy_hash: self.config.policy_hash.clone(),
             evidence,
             metadata,
@@ -57,6 +70,18 @@ impl ChioKernel {
             kernel_key: self.config.keypair.public_key(),
             bbs_projection_version: None,
         };
+
+        let expected = ReceiptCouplingExpectation {
+            capability_id: params.capability_id,
+            server_id: params.server_id,
+            tool_name: params.tool_name,
+            action: &params.action,
+            decision: &params.decision,
+            content_hash: &params.content_hash,
+            policy_hash: &self.config.policy_hash,
+            trust_level: params.trust_level,
+        };
+        require_receipt_body_fields_coupled(&body, &expected)?;
 
         // WYSIWYS: bind the signature to the exact content this receipt's
         // `content_hash` was derived from. The handle recomputes
@@ -265,5 +290,152 @@ impl ChioKernel {
             }
         }
         Ok(latest)
+    }
+}
+
+#[cfg(test)]
+mod coupling_tests {
+    use super::*;
+
+    struct Fixture {
+        body: ChioReceiptBody,
+        action: ToolCallAction,
+        decision: Decision,
+        content_hash: String,
+        policy_hash: String,
+    }
+
+    impl Fixture {
+        fn expectation(&self) -> ReceiptCouplingExpectation<'_> {
+            ReceiptCouplingExpectation {
+                capability_id: "cap",
+                server_id: "server",
+                tool_name: "tool",
+                action: &self.action,
+                decision: &self.decision,
+                content_hash: &self.content_hash,
+                policy_hash: &self.policy_hash,
+                trust_level: chio_core::receipt::kinds::TrustLevel::Mediated,
+            }
+        }
+    }
+
+    fn fixture() -> Fixture {
+        let action = ToolCallAction::from_parameters(serde_json::json!({"key": "value"}))
+            .expect("test action is canonicalizable");
+        let decision = Decision::Allow;
+        let content_hash = "content-hash".to_string();
+        let policy_hash = "policy-hash".to_string();
+        let body = ChioReceiptBody {
+            id: "receipt".to_string(),
+            timestamp: 1,
+            capability_id: "cap".to_string(),
+            tool_server: "server".to_string(),
+            tool_name: "tool".to_string(),
+            action: action.clone(),
+            decision: Some(decision.clone()),
+            receipt_kind: ReceiptKind::MediatedDecision,
+            boundary_class: BoundaryClass::Prevent,
+            observation_outcome: None,
+            tool_origin: ToolOrigin::CallerExecuted,
+            redaction_mode: RedactionMode::None,
+            actor_chain: Vec::new(),
+            content_hash: content_hash.clone(),
+            policy_hash: policy_hash.clone(),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: chio_core::receipt::kinds::TrustLevel::Mediated,
+            tenant_id: None,
+            kernel_key: Keypair::from_seed(&[7; 32]).public_key(),
+            bbs_projection_version: None,
+        };
+        Fixture {
+            body,
+            action,
+            decision,
+            content_hash,
+            policy_hash,
+        }
+    }
+
+    fn assert_signing_refused(fixture: &Fixture) {
+        assert!(matches!(
+            require_receipt_body_fields_coupled(&fixture.body, &fixture.expectation()),
+            Err(KernelError::ReceiptSigningFailed(_))
+        ));
+    }
+
+    fn assert_body_mutation_refused(mutate: impl FnOnce(&mut ChioReceiptBody)) {
+        let mut fixture = fixture();
+        mutate(&mut fixture.body);
+        assert_signing_refused(&fixture);
+    }
+
+    #[test]
+    fn rejects_capability_mismatch() {
+        let mut fixture = fixture();
+        fixture.body.capability_id = "other-cap".to_string();
+        assert_signing_refused(&fixture);
+    }
+
+    #[test]
+    fn rejects_request_mismatch() {
+        assert_body_mutation_refused(|body| body.tool_name = "other-tool".to_string());
+    }
+
+    #[test]
+    fn rejects_every_request_subfield_mismatch() {
+        assert_body_mutation_refused(|body| body.tool_server = "other-server".to_string());
+        assert_body_mutation_refused(|body| {
+            body.action.parameters = serde_json::json!({"other": "value"});
+        });
+        assert_body_mutation_refused(|body| {
+            body.action.parameter_hash = "other-parameter-hash".to_string();
+        });
+        assert_body_mutation_refused(|body| body.content_hash = "other-content".to_string());
+    }
+
+    #[test]
+    fn rejects_verdict_mismatch() {
+        let mut fixture = fixture();
+        fixture.body.decision = Some(Decision::Deny {
+            reason: "denied".to_string(),
+            guard: "guard".to_string(),
+        });
+        assert_signing_refused(&fixture);
+    }
+
+    #[test]
+    fn rejects_policy_hash_mismatch() {
+        let mut fixture = fixture();
+        fixture.body.policy_hash = "other-policy".to_string();
+        assert_signing_refused(&fixture);
+    }
+
+    #[test]
+    fn rejects_evidence_class_mismatch() {
+        assert_body_mutation_refused(|body| body.boundary_class = BoundaryClass::AdvisoryOnly);
+    }
+
+    #[test]
+    fn rejects_every_evidence_subfield_mismatch() {
+        assert_body_mutation_refused(|body| body.receipt_kind = ReceiptKind::TraceObservation);
+        assert_body_mutation_refused(|body| {
+            body.observation_outcome =
+                Some(chio_core::receipt::kinds::ObservationOutcome::Observed);
+        });
+        assert_body_mutation_refused(|body| {
+            body.tool_origin = ToolOrigin::HostExecutedProviderReported;
+        });
+        assert_body_mutation_refused(|body| body.redaction_mode = RedactionMode::Summary);
+        assert_body_mutation_refused(|body| {
+            body.actor_chain = vec![chio_core::receipt::metadata::ActorRef {
+                actor_id: "actor".to_string(),
+                actor_kind: None,
+            }];
+        });
+        assert_body_mutation_refused(|body| {
+            body.trust_level = chio_core::receipt::kinds::TrustLevel::Verified;
+        });
     }
 }

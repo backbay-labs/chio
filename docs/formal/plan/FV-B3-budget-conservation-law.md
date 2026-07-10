@@ -3,7 +3,7 @@
 Status: Proposed (2026-07-09)
 Theme: B - Aim the formal tools at the actual bug generator
 Effort: M
-Depends on: [FV-B1](FV-B1-drop-guard-model.md) (lane a), [FV-A1](FV-A1-absorb-verified-helpers.md) phase 1 (lane b's production linkage)
+Depends on: [FV-B1](FV-B1-drop-guard-model.md) (lane a); [FV-A1](FV-A1-absorb-verified-helpers.md) supplies the scalar-admission baseline but does not link lane b's ledger transitions
 Feeds: [FV-D3](FV-D3-economy-conservation.md), [FV-B4](FV-B4-loom-registry-and-dst.md)
 Related docs: [../GAP_ANALYSIS.md](../GAP_ANALYSIS.md) (G3, G2), [FV-A3](FV-A3-creusot-dedup.md), [FV-E4](FV-E4-fuzz-plumbing-repair.md)
 
@@ -14,8 +14,8 @@ Every drop-guard fix in the recent family is, at bottom, a violation of one law:
 ## Motivation and evidence
 
 - `a6d26dbc4` (Finding A: invocation slot never reversed on pre-dispatch drop; Finding B: child budget share never released) and `c201afbd0` (aborted unwind paths left reservations unmarked) are conservation violations: value left in `reserved` forever. `84e98b9d0` and `58abf33d2` are misclassification violations: value moved to the wrong terminal state (`released` semantics where `retained` was required). A single ledger law covers all five [commit family verified via `git show --stat` this session].
-- The verified budget helpers already in-tree stop short of a ledger. `crates/kernel/chio-kernel-core/src/formal_aeneas.rs` has `budget_precheck` (line 68) and `budget_commit` (line 77) over bounded ints, modeled by Lean, Kani, and Creusot, but they express a single admit decision, not the reserve/settle/reverse/release lifecycle, and production does not call them (gap G2) [v].
-- The Kani harness `verify_budget_checked_add_no_overflow` proves fail-closed no-partial-commit, Overflow-before-CapExceeded dispatch order, and retry idempotence for the `checked_add` ordering in `budget_store.rs`, in two phases (dense u8 bounds, then `current = u64::MAX - tail` to de-vacuate the overflow arm) [v]. That is the arithmetic floor this law builds on: FV-B3 adds the lifecycle dimension the overflow harness deliberately does not model.
+- The verified budget helpers already in-tree stop short of a ledger. `crates/kernel/chio-kernel-core/src/formal_aeneas.rs` has `budget_precheck` (line 68) and `budget_commit` (line 77) over bounded ints, modeled by Lean, Kani, and Creusot. Shared scalar admission projections now call them from both production budget backends, but they still express a single admit decision, not the reserve/settle/reverse/release lifecycle [v].
+- The Kani harness `verify_budget_checked_add_no_overflow` proves fail-closed no-partial-commit, Overflow-before-CapExceeded dispatch order, and retry idempotence for a standalone model of the store's `checked_add` ordering, in two phases (dense u8 bounds, then `current = u64::MAX - tail` to de-vacuate the overflow arm) [v]. Runtime budget tests, not that harness, bind concrete mutations. This is the arithmetic floor this law builds on: FV-B3 adds the lifecycle dimension the overflow harness deliberately does not model.
 - The child-split half already has a Lean anchor: `formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean` proves `sibling_sum_soundness` (line 82) and `sibling_sum_after_admit_bounded` (line 97) over a `BudgetSplit`/`admitChild` model of `BudgetSplit::try_admit_child` (implementation at `crates/kernel/chio-kernel-core/src/budget_split.rs:184`). The law's clause 3 below composes with those theorems rather than restating them.
 
 ## Current state
@@ -99,7 +99,7 @@ Witnesses:
 - Creusot: `ledger_apply_conservation_contract` in `formal/rust-verification/creusot-core/`, registered in `formal/rust-verification/creusot-contracts.toml` `covered_symbols` and `contract_twin` metadata (pattern verified by the `budget_commit_contract` mapping).
 - Lean: new module `formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean` (one file per law, following the `SiblingSumBudget.lean` precedent) with `ledger_apply` mirrored, `theorem ledger_conservation` (fold of valid ops preserves the partition sum) and `theorem ledger_terminal_unique`, plus a lemma importing `Chio.Proofs.SiblingSumBudget.sibling_sum_soundness` to state clause 3 as: an admitted child's `Reserve` is bounded by the parent's outstanding share. Same `status = "assumed"` caveat as SiblingSumBudget while the Lean toolchain is CI-unavailable (stated in that file's header, lines 19-21).
 
-G2 honesty clause: like `budget_precheck`/`budget_commit`, `ledger_apply` starts life uncalled by production. Its production linkage is [FV-A1](FV-A1-absorb-verified-helpers.md) phase 1 territory (absorb verified helpers into the call path); until that lands, lanes (c) and (d) are the anti-drift binding between this model and the real store, and the MAPPING.md row must say "model-level; production linkage tracked by FV-A1" rather than implying refinement.
+Implementation-linkage honesty clause: `ledger_apply` starts life uncalled by production. The completed scalar-admission absorption covers only cap admission and does not link reservation conservation or any ledger state transition. Until a separate ledger linkage lands, lanes (c) and (d) are the anti-drift binding between this model and the real store, and the `MAPPING.md` row must say "model-level; production ledger linkage not established" rather than implying refinement.
 
 ### Lane (c): debug-assertions conservation audit in the real kernel
 
@@ -140,7 +140,7 @@ New test `crates/kernel/chio-kernel/tests/property_reservation_ledger.rs` (sibli
 - [ ] Kani harness green in the manifest sweep; Creusot contract green in the strict lane; Lean module builds when the toolchain is available and is registered `assumed` until then.
 - [ ] Lane (c) call sites cover all six transition-point groups listed above; a deliberate ledger bug (e.g. commenting out the child-budget release, reproducing `a6d26dbc4` Finding B) trips lane (c) or lane (d) in a documented dry run.
 - [ ] Lane (d) survives 10k mixed-sequence cases locally and the nightly case count in CI.
-- [ ] The G2 caveat ("model-level until FV-A1") appears in the MAPPING rows and the proof-manifest note; no doc claims refinement.
+- [ ] The implementation-linkage caveat ("scalar admission linked; production ledger linkage not established") appears in the `MAPPING.md` rows and proof-manifest note; no doc claims ledger refinement.
 
 ## Risks and mitigations
 
@@ -161,5 +161,5 @@ New test `crates/kernel/chio-kernel/tests/property_reservation_ledger.rs` (sibli
 - `.kani/harnesses.toml`: one `[[harness]]` entry (`crate = "chio-kernel-core"`, `harness = "verify_reservation_ledger_conservation"`, `lane = "pr"`, `default_unwind` = op-sequence bound + 1, `timeout_secs = 1800`, notes citing this doc).
 - `formal/rust-verification/creusot-contracts.toml`: append `formal/rust-verification/creusot-core::ledger_apply_conservation_contract` to `covered_symbols` and map it to `formal_aeneas::ledger_apply` in `contract_twin`.
 - `formal/theorem-inventory.json`: new entries `theorem.budget.reservation_conservation` and `theorem.budget.reservation_terminal_unique` (`kind = "theorem"`, `status = "assumed"` until Lean CI exists, `mapsTo = ["P1"]`, notes citing the four lanes and the fix-commit family), mirroring the `theorem.budget.sibling_sum_soundness` entry shape (verified at `formal/theorem-inventory.json:753`).
-- `formal/proof-manifest.toml`: add `formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean` to `root_modules`; append a `notes` line stating the conservation law, its four lanes, and the G2/FV-A1 linkage caveat. No `property_matrix` change (P1-P10 are fixed; the law slots under P1's budget clause via `mapsTo`).
+- `formal/proof-manifest.toml`: add `formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean` to `root_modules`; append a `notes` line stating the conservation law, its four lanes, and the implementation-linkage caveat that scalar admission is linked while ledger transitions are not. No `property_matrix` change (P1-P10 are fixed; the law slots under P1's budget clause via `mapsTo`).
 - `formal/assumptions.toml`: no change (the law is structural plus ASSUME-SQLITE-ATOMICITY already covering per-row store writes).

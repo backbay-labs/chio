@@ -603,7 +603,7 @@
       "rootImported": true,
       "claimClass": "aeneas_equivalence",
       "mapsTo": ["P3"],
-      "notes": "Aeneas-extracted budget commit mirror is equivalent to the handwritten budgetCommit model."
+      "notes": "Aeneas-extracted budget commit mirror is equivalent to the handwritten budgetCommit model. Both production budget stores call shared admission projections that delegate their scalar cap axes to this model; store mutation and reservation-ledger transitions are outside this theorem."
     },
     {
       "id": "proof.aeneas_dpopAdmits_equiv_model",
@@ -613,7 +613,7 @@
       "rootImported": true,
       "claimClass": "aeneas_equivalence",
       "mapsTo": ["P8"],
-      "notes": "Aeneas-extracted DPoP admission mirror is equivalent to the handwritten DPoP nonce model."
+      "notes": "Aeneas-extracted DPoP admission mirror is equivalent to the handwritten DPoP model. Both production requirement folds call the shared atomic verifier-result projection; cryptographic verification and nonce-store mutation remain outside this theorem."
     },
     {
       "id": "proof.aeneas_revocationSnapshot_equiv_model",
@@ -623,7 +623,7 @@
       "rootImported": true,
       "claimClass": "aeneas_equivalence",
       "mapsTo": ["P2"],
-      "notes": "Aeneas-extracted revocation snapshot mirror is equivalent to the handwritten snapshot denial model."
+      "notes": "Aeneas-extracted revocation snapshot mirror is equivalent to the handwritten snapshot denial model. The production store and view checks both call the shared lazy per-lookup projection; storage and snapshot freshness remain outside this theorem."
     },
     {
       "id": "proof.aeneas_guardStep_equiv_model",
@@ -633,7 +633,7 @@
       "rootImported": true,
       "claimClass": "aeneas_equivalence",
       "mapsTo": ["P3"],
-      "notes": "Aeneas-extracted guard-step mirror is equivalent to one-step handwritten guard composition."
+      "notes": "Aeneas-extracted guard-step mirror is equivalent to one-step handwritten guard composition. Both production loops require its projected approval before continuation and independently reject an observed verdict mismatch while preserving runtime error attribution."
     },
     {
       "id": "proof.aeneas_receiptCoupling_equiv_model",
@@ -643,7 +643,7 @@
       "rootImported": true,
       "claimClass": "aeneas_equivalence",
       "mapsTo": ["P4"],
-      "notes": "Aeneas-extracted receipt coupling mirror is equivalent to the handwritten receiptFieldsCoupled model."
+      "notes": "Aeneas-extracted receipt coupling mirror is equivalent to the handwritten receiptFieldsCoupled model. The exact production body-field projection calls it before signing; body construction, canonicalization, and cryptography remain runtime-owned."
     },
     {
       "id": "proof.delegation_step_allow_requires_attenuation",

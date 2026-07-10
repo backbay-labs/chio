@@ -4,8 +4,6 @@
 //! external crates so Kani, Creusot wrappers, and Aeneas can reason about the
 //! same branch logic used by the portable kernel core.
 
-#![allow(dead_code)]
-
 use crate::formal_aeneas;
 
 /// Time-window classification for capability validity.
@@ -31,6 +29,7 @@ pub fn classify_time_window(now: u64, issued_at: u64, expires_at: u64) -> TimeWi
 
 /// Predicate form of [`classify_time_window`].
 #[must_use]
+#[allow(dead_code)]
 pub fn time_window_valid(now: u64, issued_at: u64, expires_at: u64) -> bool {
     matches!(
         classify_time_window(now, issued_at, expires_at),
@@ -149,6 +148,73 @@ pub fn budget_commit(
     }
 }
 
+/// Failure produced while projecting runtime budget state into the bounded
+/// admission model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BudgetAdmissionProjectionError {
+    /// Adding the requested cost to the committed total overflowed `u64`.
+    TotalCostOverflow,
+}
+
+/// Project an invocation counter and optional cap into the bounded budget
+/// admission predicate used by production budget stores.
+#[must_use]
+pub fn budget_increment_admits(invocation_count: u32, max_invocations: Option<u32>) -> bool {
+    max_invocations.is_none_or(|max| {
+        budget_precheck(
+            u64::from(max.saturating_sub(invocation_count)),
+            u64::MAX,
+            1,
+            0,
+        )
+    })
+}
+
+/// Project a production budget row and optional caps into the bounded budget
+/// admission predicates.
+///
+/// The overflow result is distinct from a cap denial so callers retain their
+/// existing fail-closed error attribution.
+pub fn budget_charge_admits(
+    invocation_count: u32,
+    committed_cost_units: u64,
+    cost_units: u64,
+    max_invocations: Option<u32>,
+    max_cost_per_invocation: Option<u64>,
+    max_total_cost_units: Option<u64>,
+) -> Result<bool, BudgetAdmissionProjectionError> {
+    let invocation_allowed = max_invocations.is_none_or(|max| {
+        budget_commit(
+            u64::from(max.saturating_sub(invocation_count)),
+            u64::MAX,
+            1,
+            0,
+        )
+        .accepted
+    });
+    let per_invocation_allowed = max_cost_per_invocation
+        .is_none_or(|max| budget_commit(u64::MAX, max, 0, cost_units).accepted);
+    let total_allowed = match max_total_cost_units {
+        Some(max_total) => {
+            let new_total = committed_cost_units
+                .checked_add(cost_units)
+                .ok_or(BudgetAdmissionProjectionError::TotalCostOverflow)?;
+            committed_cost_units <= max_total
+                && budget_commit(
+                    u64::MAX,
+                    max_total.saturating_sub(committed_cost_units),
+                    0,
+                    cost_units,
+                )
+                .accepted
+                && new_total <= max_total
+        }
+        None => true,
+    };
+
+    Ok(invocation_allowed && per_invocation_allowed && total_allowed)
+}
+
 /// DPoP freshness window check with saturating arithmetic.
 #[must_use]
 pub fn dpop_freshness_valid(now: u64, issued_at: u64, ttl_secs: u64, max_skew_secs: u64) -> bool {
@@ -166,6 +232,22 @@ pub fn dpop_admits(
     formal_aeneas::dpop_admits(dpop_required, proof_present, proof_valid, nonce_fresh)
 }
 
+/// Project the atomic production verifier result into the four-axis DPoP
+/// admission model.
+#[must_use]
+pub fn dpop_verification_admits(
+    dpop_required: bool,
+    proof_present: bool,
+    verification_succeeded: bool,
+) -> bool {
+    dpop_admits(
+        dpop_required,
+        proof_present,
+        verification_succeeded,
+        verification_succeeded,
+    )
+}
+
 /// Nonce model: an already-live nonce must not be accepted again.
 #[must_use]
 pub fn nonce_admits(already_live: bool) -> bool {
@@ -180,6 +262,16 @@ pub enum GuardStep {
     Error,
 }
 
+impl From<crate::Verdict> for GuardStep {
+    fn from(verdict: crate::Verdict) -> Self {
+        match verdict {
+            crate::Verdict::Allow => Self::Allow,
+            crate::Verdict::Deny => Self::Deny,
+            crate::Verdict::PendingApproval => Self::Error,
+        }
+    }
+}
+
 /// Guard pipeline model. Core authorization must pass, and every guard must
 /// return allow. Deny and error are both fail-closed.
 #[must_use]
@@ -189,10 +281,45 @@ pub fn guard_pipeline_allows(core_authorized: bool, guards: &[GuardStep]) -> boo
     })
 }
 
+/// Decide whether one projected guard result permits pipeline continuation.
+#[must_use]
+pub fn guard_step_admits(step: GuardStep) -> bool {
+    guard_pipeline_allows(true, core::slice::from_ref(&step))
+}
+
+/// Require the verified projection and the observed guard step to agree before
+/// runtime continuation. A mismatched allow result remains fail-closed.
+#[must_use]
+pub fn guard_projection_allows_continuation(
+    projected_allows: bool,
+    observed_step: GuardStep,
+) -> bool {
+    projected_allows && matches!(observed_step, GuardStep::Allow)
+}
+
+/// Runtime branch represented by a revocation lookup result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RevocationCheckTarget {
+    /// The capability presented for dispatch.
+    PresentedToken,
+    /// One capability in the presented delegation chain.
+    Ancestor,
+}
+
 /// Revocation projection model for the presented token and its ancestors.
 #[must_use]
 pub fn revocation_snapshot_denies(token_revoked: bool, ancestor_revoked: bool) -> bool {
     formal_aeneas::revocation_snapshot_denies(token_revoked, ancestor_revoked)
+}
+
+/// Project one production revocation lookup into the verified snapshot
+/// predicate while preserving lazy lookup and error attribution.
+#[must_use]
+pub fn revocation_lookup_denies(target: RevocationCheckTarget, is_revoked: bool) -> bool {
+    match target {
+        RevocationCheckTarget::PresentedToken => revocation_snapshot_denies(is_revoked, false),
+        RevocationCheckTarget::Ancestor => revocation_snapshot_denies(false, is_revoked),
+    }
 }
 
 /// Receipt coupling model for the fields that make a decision auditable.

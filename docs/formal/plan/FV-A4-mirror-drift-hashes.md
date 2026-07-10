@@ -17,8 +17,8 @@ manual Lean transliteration or a TLA+ abstraction anchor changes without a
 deliberate manifest bless. The required PR job runs the gate beside the
 existing crate-path check and needs no Lean, Charon, Kani, or Why3 toolchain.
 
-The proof manifest contains 34 `[[mirror]]` entries covering 80 Rust symbol
-references across five core Lean models and five TLA+ models. Every entry
+The proof manifest contains 39 `[[mirror]]` entries covering 91 Rust symbol
+references across five core Lean models and six TLA+ models. Every entry
 records an ordered rollup and a digest for each symbol. The per-symbol digests
 let a failure name the exact changed item; the rollup binds symbol order and
 the complete entry.
@@ -51,8 +51,14 @@ Nightly proof lanes remain the semantic backstop.
 - Split Capability by its three actual source files. A combined directory or
   file-level hash would fire on unrelated edits and encourage reflexive blesses.
 - Seed Protocol against the nine directly corresponding items in
-  `formal_core.rs`. The extraction facade and runtime stores contain broader
-  surfaces that the bounded Lean model does not transliterate directly.
+  `formal_core.rs` and the private `finish_verified_evaluation` body that
+  applies the projected guard decision. The extraction facade and runtime
+  stores contain broader surfaces that the bounded Lean model does not
+  transliterate directly.
+- Hash `consult_revocation_view_at` directly for the Revocation Lean mirror
+  and alongside its public wrapper for the `RevocationCutCompleteness`
+  abstraction anchor. Wrapper-only hashing would miss changes to the lazy
+  token and ancestor lookup decision.
 - Seed Receipt against receipt bodies, signing, Merkle operations, and
   checkpoints. `ChioReceipt::verify_signature` lives in `receipt/body.rs`, not
   the kernel-core signing wrapper named in the earlier example.
@@ -96,10 +102,11 @@ model_file = "formal/apalache/RevocationCutCompleteness.tla"
 model_kind = "tla"
 relationship = "abstraction_anchor"
 rust_source = "crates/kernel/chio-kernel/src/kernel/delegation.rs"
-rust_symbols = ["consult_revocation_view"]
+rust_symbols = ["consult_revocation_view", "consult_revocation_view_at"]
 normalized_sha256 = "<entry rollup>"
 symbol_sha256 = [
   { symbol = "consult_revocation_view", sha256 = "<symbol digest>" },
+  { symbol = "consult_revocation_view_at", sha256 = "<symbol digest>" },
 ]
 ```
 
@@ -120,14 +127,16 @@ the manifest.
 | Scope | `kernel-core/normalized.rs` | normalized tool and scope subset methods |
 | Revocation | `kernel/validation.rs` | `ChioKernel::check_revocation` |
 | Revocation | `capability/attenuation.rs` | `validate_delegation_chain` |
+| Revocation | `kernel/delegation.rs` | `consult_revocation_view_at` |
 | Revocation | `kernel-core/evaluate.rs` | `evaluate` |
 | Protocol | `kernel-core/formal_core.rs` | 9 pure budget, admission, guard, revocation, and receipt items |
+| Protocol | `kernel-core/evaluate.rs` | `finish_verified_evaluation` |
 | Receipt | `kernel-core/receipts.rs` | `sign_receipt` |
 | Receipt | `receipt/body.rs` | receipt body, receipt, signature verification |
 | Receipt | `merkle.rs` | 9 tree and inclusion-proof items |
 | Receipt | `checkpoint.rs` | 7 checkpoint and inclusion-proof items |
 
-The TLA+ inventory adds 21 entries and 35 symbol references:
+The TLA+ inventory adds 24 entries and 44 symbol references:
 
 | TLA+ model | Rust surfaces |
 | --- | --- |
@@ -137,7 +146,7 @@ The TLA+ inventory adds 21 entries and 35 symbol references:
 | ReceiptBeforeAllow | allow-response construction and receipt persistence |
 | KernelTransitionCancelSafe | post-admission drop guard and pre-execution budget reversal |
 
-The five Lean headers and five TLA+ Code mapping blocks name the registered
+The five Lean headers and six TLA+ Code mapping blocks name the registered
 paths and point authors to the manifest entries. Source-specific symbol lists
 remain authoritative; adding a new model or expanding an abstraction requires
 a new or updated entry.
@@ -178,8 +187,8 @@ formal-mirrors: MIRROR DRIFT in crates/kernel/chio-kernel-core/src/formal_core.r
    formatting-preserving blesses with `toml_edit`.
 2. The xtask CLI and dispatcher expose `check formal-mirrors [--bless]` with a
    dedicated fail-closed error category.
-3. `formal/proof-manifest.toml` contains 34 seeded entries and 80 symbol
-   digests. The five Lean mirror headers and five TLA+ Code mapping blocks use
+3. `formal/proof-manifest.toml` contains 39 seeded entries and 91 symbol
+   digests. The five Lean mirror headers and six TLA+ Code mapping blocks use
    corrected repository paths.
 4. The required CI job runs the checker next to `check crate-paths`.
 5. `formal/OWNERS.md` assigns bless review, and `formal/MAPPING.md` directs new
@@ -215,12 +224,16 @@ formal-mirrors: MIRROR DRIFT in crates/kernel/chio-kernel-core/src/formal_core.r
 - [x] A missing or renamed item fails with `symbol not found`.
 - [x] The schema supports `model_file` and `model_kind`, and validates the
   relationship between Lean transliterations and TLA+ abstraction anchors.
-- [x] `RevocationPropagation.tla` and all four `formal/apalache/` modules have
+- [x] `RevocationPropagation.tla` and all five `formal/apalache/` modules have
   manifest-backed Code mapping blocks with exact Rust items.
 - [x] TLA+ drift diagnostics state that matching hashes do not claim Rust
   enforces the modeled property.
 - [x] A live token-only edit to `consult_revocation_view` fails and names the
   symbol, `RevocationCutCompleteness.tla`, and the abstraction-anchor limit.
+- [x] `finish_verified_evaluation` and `consult_revocation_view_at` have direct
+  Lean transliteration entries rather than relying on public wrapper hashes.
+- [x] The `RevocationCutCompleteness` delegation entry hashes both the public
+  wrapper and its private target-aware semantic body.
 - [x] MonotoneLog documents the model-clock assumption boundary, revocation
   liveness names model-only fairness, and cancellation safety records its
   by-construction snapshot equality while excluding post-dispatch and fault
@@ -242,7 +255,7 @@ formal-mirrors: MIRROR DRIFT in crates/kernel/chio-kernel-core/src/formal_core.r
 
 ## Manifest And Registry Updates
 
-- `formal/proof-manifest.toml`: 34 `[[mirror]]` entries, an enforcement note,
+- `formal/proof-manifest.toml`: 39 `[[mirror]]` entries, an enforcement note,
   relationship labels, and the checker in `gate_commands`.
 - `formal/OWNERS.md`: mirror hash and bless-review responsibility.
 - `formal/MAPPING.md`: cross-reference to the mirror registry and checker.

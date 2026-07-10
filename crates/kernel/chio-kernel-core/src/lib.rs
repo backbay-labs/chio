@@ -91,6 +91,13 @@ pub use evaluate::{
     evaluate, evaluate_with_crypto_floor, evaluate_with_crypto_floor_and_budgets,
     evaluate_with_full_floor, EvaluateInput, EvaluationVerdict, KernelCoreError,
 };
+pub use formal_core::{
+    budget_charge_admits, budget_commit, budget_increment_admits, budget_precheck, dpop_admits,
+    dpop_freshness_valid, dpop_verification_admits, guard_pipeline_allows,
+    guard_projection_allows_continuation, guard_step_admits, nonce_admits, receipt_fields_coupled,
+    revocation_lookup_denies, revocation_snapshot_denies, BudgetAdmissionProjectionError,
+    BudgetCommitResult, GuardStep, RevocationCheckTarget,
+};
 pub use guard::{Guard, GuardContext, PortableToolCallRequest};
 pub use normalized::{
     NormalizationError, NormalizedCapability, NormalizedConstraint, NormalizedEvaluationVerdict,
