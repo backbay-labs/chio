@@ -221,6 +221,21 @@ allow = ["BlueOak-1.0.0"]
 name = "sized-chunks"
 allow = ["MPL-2.0"]
 
+[[licenses.exceptions]]
+# last-checked = 2026-07-10. These Unlicense crates are pulled only through
+# the iroh relay websocket stack. Keep the approval pinned to exact crate names
+# instead of widening the workspace allow-list.
+name = "async_io_stream"
+allow = ["Unlicense"]
+
+[[licenses.exceptions]]
+name = "pharos"
+allow = ["Unlicense"]
+
+[[licenses.exceptions]]
+name = "ws_stream_wasm"
+allow = ["Unlicense"]
+
 # Duplicate-version policy.
 #
 # `multiple-versions = "deny"` is the gate: any NEW duplicated crate name fails
@@ -281,6 +296,13 @@ name = "mio"
 name = "windows-targets"
 
 [[bans.skip]]
+# last-checked = 2026-07-10. `core-foundation` resolves to 0.9.x through
+# iroh -> hickory-resolver -> system-configuration and 0.10.x through
+# alloy/reqwest -> rustls-platform-verifier. This is an upstream macOS
+# platform dependency split.
+name = "core-foundation"
+
+[[bans.skip]]
 # `hashbrown` resolves to 0.12 (tonic 0.12 -> tower 0.4 -> indexmap 1),
 # 0.14 (wasmtime/cranelift 29.x), and 0.15/0.16 (everything else). Cannot
 # unify without bumping tonic or wasmtime, both gated on separate roadmap
@@ -297,6 +319,55 @@ name = "getrandom"
 # `rand` 0.8 (chio-guards/internal), 0.9 (transitive through alloy), and
 # 0.10 (newer crates) coexist. Same cascade as getrandom above.
 name = "rand"
+
+[[bans.skip]]
+# last-checked = 2026-07-10. Ed25519/Curve25519 ecosystem split: stable
+# ed25519-dalek still depends on curve25519-dalek 4.x while newer transitive
+# stacks have started adopting the 5.0.0 release-candidate line.
+name = "curve25519-dalek"
+
+[[bans.skip]]
+name = "ed25519"
+
+[[bans.skip]]
+name = "ed25519-dalek"
+
+[[bans.skip]]
+name = "fiat-crypto"
+
+[[bans.skip]]
+# last-checked = 2026-07-10. Transitive utility splits introduced by the
+# iroh, rustls-platform-verifier, and wasm streaming dependency stacks.
+name = "lru"
+
+[[bans.skip]]
+name = "pem-rfc7468"
+
+[[bans.skip]]
+name = "rustls-platform-verifier"
+
+[[bans.skip]]
+name = "spin"
+
+[[bans.skip]]
+name = "strum"
+
+[[bans.skip]]
+name = "strum_macros"
+
+[[bans.skip]]
+name = "toml_edit"
+
+[[bans.skip]]
+name = "wasm-streams"
+
+[[bans.skip]]
+# last-checked = 2026-07-10. Legacy proc-macro-error remains in transitive
+# codegen paths while proc-macro-error 1.x is pulled by newer stacks.
+name = "proc-macro-error"
+
+[[bans.skip]]
+name = "proc-macro-error-attr"
 
 [[bans.skip]]
 # last-checked = 2026-05-03. `syn` 1.x is a known proc-macro

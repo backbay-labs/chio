@@ -226,4 +226,73 @@ mod tests {
         assert!(scope_reduced(&parent, &child));
         assert!(budget_reduced(&parent, &child));
     }
+
+    #[test]
+    fn orphan_child_grant_is_not_counted_as_reduced() {
+        let parent = ChioScope {
+            grants: vec![
+                ToolGrant {
+                    server_id: "srv".to_string(),
+                    tool_name: "read".to_string(),
+                    operations: vec![Operation::Invoke],
+                    constraints: vec![],
+                    max_invocations: Some(10),
+                    max_cost_per_invocation: None,
+                    max_total_cost: None,
+                    dpop_required: None,
+                },
+                ToolGrant {
+                    server_id: "srv".to_string(),
+                    tool_name: "write".to_string(),
+                    operations: vec![Operation::Invoke],
+                    constraints: vec![],
+                    max_invocations: Some(10),
+                    max_cost_per_invocation: None,
+                    max_total_cost: None,
+                    dpop_required: None,
+                },
+            ],
+            resource_grants: vec![],
+            prompt_grants: vec![],
+        };
+        let child = ChioScope {
+            grants: vec![ToolGrant {
+                server_id: "srv".to_string(),
+                tool_name: "delete".to_string(),
+                operations: vec![Operation::Invoke],
+                constraints: vec![Constraint::PathPrefix("/safe".to_string())],
+                max_invocations: Some(1),
+                max_cost_per_invocation: None,
+                max_total_cost: None,
+                dpop_required: None,
+            }],
+            resource_grants: vec![],
+            prompt_grants: vec![],
+        };
+
+        assert!(!scope_reduced(&parent, &child));
+        assert!(!budget_reduced(&parent, &child));
+    }
+
+    #[test]
+    fn expanded_child_operations_are_not_counted_as_reduced() {
+        let parent_grant = ToolGrant {
+            server_id: "srv".to_string(),
+            tool_name: "write".to_string(),
+            operations: vec![Operation::Invoke],
+            constraints: vec![],
+            max_invocations: Some(10),
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        };
+        let child_grant = ToolGrant {
+            operations: vec![Operation::Invoke, Operation::Delegate],
+            constraints: vec![Constraint::PathPrefix("/safe".to_string())],
+            max_invocations: Some(1),
+            ..parent_grant.clone()
+        };
+
+        assert!(!grant_scope_reduced(&parent_grant, &child_grant));
+    }
 }
