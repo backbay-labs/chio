@@ -63,12 +63,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
+          GH_FUZZ_BUDGET_CAP_MODE: warn
         run: |
           set -euo pipefail
-          # PR-time fuzz is a release qualification signal. Keep the
-          # 1,800 min/30d budget as a hard halt when the trailing window
-          # is over cap; rate-limit API failures remain warning-only so
-          # transient GitHub API availability does not block unrelated PRs.
+          # PR-time CFLite is an advisory release qualification signal. Report
+          # budget exhaustion without blocking unrelated PRs while the shared
+          # trailing window is already over cap.
           scripts/check-fuzz-budget.sh "${{ github.repository }}"
 
   changed-target-sampling:
