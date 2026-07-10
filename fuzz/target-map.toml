@@ -172,6 +172,8 @@ notes    = "ACP NDJSON plus handle_jsonrpc dispatch."
 crate    = "chio-wasm-guards"
 path     = "fuzz/fuzz_targets/wasm_preinstantiate_validate.rs"
 triggers = [
+    "crates/sdk/chio-guard-sdk/**",
+    "crates/sdk/chio-guard-sdk-macros/**",
     "crates/guards/chio-wasm-guards/**",
     "spec/schemas/wasm-guard/**",
 ]
@@ -182,6 +184,8 @@ notes    = "ComponentBackend, WasmtimeBackend, format detect; trust-boundary."
 crate    = "chio-wasm-guards"
 path     = "fuzz/fuzz_targets/wit_host_call_boundary.rs"
 triggers = [
+    "crates/sdk/chio-guard-sdk/**",
+    "crates/sdk/chio-guard-sdk-macros/**",
     "crates/guards/chio-wasm-guards/**",
     "spec/schemas/wasm-guard/**",
 ]
@@ -192,6 +196,7 @@ notes    = "GuardRequest/GuestDenyResponse serde deserialization; trust-boundary
 crate    = "chio-wasm-guards"
 path     = "fuzz/fuzz_targets/wasm_guard_escape.rs"
 triggers = [
+    "crates/sdk/chio-guard-sdk-macros/**",
     "crates/guards/chio-wasm-guards/**",
     "spec/schemas/wasm-guard/**",
 ]

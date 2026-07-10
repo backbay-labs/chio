@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import threading
 from pathlib import Path
 from typing import Any
@@ -103,6 +104,24 @@ def test_record_to_unwritable_path_swallows_oserror(
 
     buf = ReceiptBuffer()
     buf.record({"tool_name": "chio_file_read"})
+
+
+def test_record_swallows_json_serialization_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import chio_hermes.receipts as _receipts
+
+    log = tmp_path / "chio-receipts.jsonl"
+    monkeypatch.setattr(_receipts, "_resolve_log_path", lambda: log)
+
+    buf = ReceiptBuffer()
+    buf.record({"tool_name": "chio_file_read", "duration_ms": math.inf})
+
+    assert buf.recent(1)[0]["duration_ms"] == math.inf
+    assert not log.exists()
+    assert "receipt JSONL write failed" in caplog.text
 
 
 def test_record_writes_under_lock_no_torn_lines(

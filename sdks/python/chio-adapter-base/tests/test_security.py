@@ -11,6 +11,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -184,6 +185,119 @@ def test_reject_shell_argv_escape_rejects_outside_workspace(
     other = tmp_path.parent / "other-tree"
     with pytest.raises(ChioPathEscapeError) as excinfo:
         reject_shell_argv_escape(f"cat {other}/secret.txt", root=tmp_path)
+    assert excinfo.value.reason == "outside_workspace"
+
+
+def test_reject_shell_argv_escape_rejects_unresolvable_absolute_path(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path.parent / "outside" / "secret.txt"
+    with patch.object(Path, "resolve", side_effect=[tmp_path, OSError("missing")]):
+        with pytest.raises(ChioPathEscapeError) as excinfo:
+            reject_shell_argv_escape(f"cat {outside}", root=tmp_path)
+    assert excinfo.value.reason == "outside_workspace"
+
+
+def test_reject_shell_argv_escape_rejects_windows_absolute_path(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ChioPathEscapeError) as excinfo:
+        reject_shell_argv_escape("cat 'C:\\outside\\secret.txt'", root=tmp_path)
+    assert excinfo.value.reason == "outside_workspace"
+
+
+def test_reject_shell_argv_escape_rejects_unquoted_windows_absolute_path(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ChioPathEscapeError) as excinfo:
+        reject_shell_argv_escape("cat C:\\outside\\secret.txt", root=tmp_path)
+    assert excinfo.value.reason == "outside_workspace"
+
+
+def test_reject_shell_argv_escape_rejects_embedded_windows_absolute_path(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ChioPathEscapeError) as excinfo:
+        reject_shell_argv_escape(
+            "tool --config='C:\\outside\\secret.txt'",
+            root=tmp_path,
+        )
+    assert excinfo.value.reason == "outside_workspace"
+
+    with pytest.raises(ChioPathEscapeError) as excinfo:
+        reject_shell_argv_escape(
+            'TOOL_CONFIG="C:\\outside\\secret.txt" tool',
+            root=tmp_path,
+        )
+    assert excinfo.value.reason == "outside_workspace"
+
+
+def test_reject_shell_argv_escape_allows_windows_absolute_inside_workspace() -> None:
+    reject_shell_argv_escape(
+        r"type C:\repo\README.md",
+        root=r"C:\repo",
+    )
+    reject_shell_argv_escape(
+        r"type 'C:\repo\docs\guide.md'",
+        root=r"C:\repo",
+    )
+    reject_shell_argv_escape(
+        r"tool --config='C:\repo\settings.toml'",
+        root=r"C:\repo",
+    )
+
+
+def test_reject_shell_argv_escape_allows_quoted_windows_workspace_with_spaces() -> None:
+    reject_shell_argv_escape(
+        r'type "C:\repo dir\README.md"',
+        root=r"C:\repo dir",
+    )
+    reject_shell_argv_escape(
+        r"tool --config='C:\repo dir\settings.toml'",
+        root=r"C:\repo dir",
+    )
+    reject_shell_argv_escape(
+        r'TOOL_CONFIG="C:\repo dir\settings.toml" tool',
+        root=r"C:\repo dir",
+    )
+
+
+def test_reject_shell_argv_escape_allows_colon_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    service_cwd = tmp_path / "service"
+    workspace.mkdir()
+    service_cwd.mkdir()
+    monkeypatch.chdir(service_cwd)
+    reject_shell_argv_escape("echo a:b C:tmp", root=workspace)
+
+
+def test_reject_shell_argv_escape_allows_url_arguments(tmp_path: Path) -> None:
+    reject_shell_argv_escape("curl https://example.com", root=tmp_path)
+    reject_shell_argv_escape(
+        "git clone https://github.com/org/repo.git",
+        root=tmp_path,
+    )
+    reject_shell_argv_escape(
+        "python -m pip install git+https://github.com/org/repo.git",
+        root=tmp_path,
+    )
+
+
+def test_reject_shell_argv_escape_allows_single_letter_ssh_remotes(
+    tmp_path: Path,
+) -> None:
+    reject_shell_argv_escape("scp a:/var/log/app.log .", root=tmp_path)
+    reject_shell_argv_escape("rsync user@x:/src ./dst", root=tmp_path)
+    reject_shell_argv_escape("sftp z:/srv/export", root=tmp_path)
+
+
+def test_reject_shell_argv_escape_still_rejects_drive_like_non_remote(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ChioPathEscapeError) as excinfo:
+        reject_shell_argv_escape("cat a:/var/log/app.log", root=tmp_path)
     assert excinfo.value.reason == "outside_workspace"
 
 

@@ -171,7 +171,7 @@ class ReceiptBuffer:
             try:
                 module = sys.modules[__name__]
                 module.append_jsonl(module._resolve_log_path(), receipt)
-            except OSError as exc:
+            except (OSError, TypeError, ValueError) as exc:
                 _logger.warning("receipt JSONL write failed: %s", exc)
 
     def recent(self, n: int = 5) -> list[dict[str, Any]]:
