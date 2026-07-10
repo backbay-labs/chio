@@ -1,15 +1,59 @@
 use creusot_std::prelude::*;
 
-#[ensures(result == (issued_at@ <= now@ && now@ < expires_at@))]
-pub fn time_window_valid_contract(now: u64, issued_at: u64, expires_at: u64) -> bool {
-    issued_at <= now && now < expires_at
+#[allow(dead_code)]
+mod aeneas_body {
+    use creusot_std::prelude::*;
+
+    include!("../../../../crates/kernel/chio-kernel-core/src/formal_aeneas.rs");
 }
 
-#[requires(cost@ <= remaining@)]
-#[ensures(result@ == remaining@ - cost@)]
-#[ensures(result@ <= remaining@)]
-pub fn budget_commit_remaining_contract(remaining: u64, cost: u64) -> u64 {
-    remaining - cost
+pub use aeneas_body::BudgetCommitResult;
+
+#[ensures(result == (issued_at@ <= now@ && now@ < expires_at@))]
+pub fn time_window_valid_contract(now: u64, issued_at: u64, expires_at: u64) -> bool {
+    aeneas_body::time_window_valid(now, issued_at, expires_at)
+}
+
+#[ensures(result == (
+    invocation_cost@ <= remaining_invocations@ && unit_cost@ <= remaining_units@
+))]
+pub fn budget_precheck_contract(
+    remaining_invocations: u64,
+    remaining_units: u64,
+    invocation_cost: u64,
+    unit_cost: u64,
+) -> bool {
+    aeneas_body::budget_precheck(
+        remaining_invocations,
+        remaining_units,
+        invocation_cost,
+        unit_cost,
+    )
+}
+
+#[ensures(result.accepted == (
+    invocation_cost@ <= remaining_invocations@ && unit_cost@ <= remaining_units@
+))]
+#[ensures(result.accepted ==>
+    result.remaining_invocations@ == remaining_invocations@ - invocation_cost@)]
+#[ensures(result.accepted ==>
+    result.remaining_units@ == remaining_units@ - unit_cost@)]
+#[ensures(!result.accepted ==>
+    result.remaining_invocations@ == remaining_invocations@)]
+#[ensures(!result.accepted ==>
+    result.remaining_units@ == remaining_units@)]
+pub fn budget_commit_contract(
+    remaining_invocations: u64,
+    remaining_units: u64,
+    invocation_cost: u64,
+    unit_cost: u64,
+) -> BudgetCommitResult {
+    aeneas_body::budget_commit(
+        remaining_invocations,
+        remaining_units,
+        invocation_cost,
+        unit_cost,
+    )
 }
 
 #[ensures(result == (!parent_has_cap || (child_has_cap && child_value@ <= parent_value@)))]
@@ -19,7 +63,12 @@ pub fn optional_u32_cap_subset_contract(
     parent_has_cap: bool,
     parent_value: u32,
 ) -> bool {
-    !parent_has_cap || (child_has_cap && child_value <= parent_value)
+    aeneas_body::optional_u32_cap_is_subset(
+        child_has_cap,
+        child_value,
+        parent_has_cap,
+        parent_value,
+    )
 }
 
 #[ensures(result == (!parent_requires_true || child_requires_true))]
@@ -27,7 +76,7 @@ pub fn required_true_preserved_contract(
     parent_requires_true: bool,
     child_requires_true: bool,
 ) -> bool {
-    !parent_requires_true || child_requires_true
+    aeneas_body::required_true_is_preserved(parent_requires_true, child_requires_true)
 }
 
 #[ensures(result == (!dpop_required || (proof_present && proof_valid && nonce_fresh)))]
@@ -37,12 +86,12 @@ pub fn dpop_admits_contract(
     proof_valid: bool,
     nonce_fresh: bool,
 ) -> bool {
-    !dpop_required || (proof_present && proof_valid && nonce_fresh)
+    aeneas_body::dpop_admits(dpop_required, proof_present, proof_valid, nonce_fresh)
 }
 
 #[ensures(result == (token_revoked || ancestor_revoked))]
 pub fn revocation_snapshot_denies_contract(token_revoked: bool, ancestor_revoked: bool) -> bool {
-    token_revoked || ancestor_revoked
+    aeneas_body::revocation_snapshot_denies(token_revoked, ancestor_revoked)
 }
 
 #[ensures(result == (
@@ -59,9 +108,11 @@ pub fn receipt_fields_coupled_contract(
     policy_hash_matches: bool,
     evidence_class_matches: bool,
 ) -> bool {
-    capability_matches
-        && request_matches
-        && verdict_matches
-        && policy_hash_matches
-        && evidence_class_matches
+    aeneas_body::receipt_fields_coupled(
+        capability_matches,
+        request_matches,
+        verdict_matches,
+        policy_hash_matches,
+        evidence_class_matches,
+    )
 }

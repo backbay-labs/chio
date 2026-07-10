@@ -62,6 +62,7 @@ pub mod budget_split;
 pub mod capability_verify;
 pub mod clock;
 pub mod evaluate;
+#[allow(dead_code)]
 pub(crate) mod formal_aeneas;
 pub(crate) mod formal_core;
 #[cfg(feature = "fuzz")]

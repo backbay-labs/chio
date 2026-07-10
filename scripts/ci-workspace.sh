@@ -14,6 +14,7 @@ python3 scripts/check-architecture-docs.py
 ./scripts/check-aeneas-production.sh
 ./scripts/check-aeneas-equivalence.sh
 ./scripts/check-rust-verification-gates.sh
+bash scripts/tests/check-creusot-contract-sync.test.sh
 ./scripts/check-adapter-no-bypass.sh
 ./scripts/check-portable-kernel.sh
 if [[ "${CHIO_RUST_VERIFICATION_METADATA_ONLY:-0}" == "1" ]]; then
