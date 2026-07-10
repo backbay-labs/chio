@@ -131,9 +131,9 @@ class ChioPathEscapeError(PermissionError):
 
 def _is_denied_env(name: str) -> bool:
     """Return True if the env var ``name`` carries credentials."""
-    if name in _ENV_DENY_EXACT:
-        return True
     upper = name.upper()
+    if upper in _ENV_DENY_EXACT:
+        return True
     if any(upper.startswith(prefix) for prefix in _ENV_DENY_PREFIXES):
         return True
     if any(upper.endswith(suffix) for suffix in _ENV_DENY_SUFFIXES):

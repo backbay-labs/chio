@@ -777,9 +777,10 @@ class ChioClient:
             try:
                 data = resp.json()
             except Exception:
+                body = resp.text.strip()
                 data = {
                     "message": "denied",
-                    "reason": resp.text or "Chio sidecar returned 403",
+                    "reason": body[:200] if body else "Chio sidecar returned 403",
                     "reason_code": "HTTP_403",
                 }
             if not isinstance(data, dict):

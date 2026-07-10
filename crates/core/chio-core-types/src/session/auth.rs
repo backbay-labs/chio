@@ -200,7 +200,7 @@ impl ChioIdentityAssertion {
 
     pub fn validate_at(&self, now: u64) -> core::result::Result<(), String> {
         self.validate()?;
-        if now > self.expires_at {
+        if now >= self.expires_at {
             return Err("identityAssertion is stale".to_string());
         }
         Ok(())

@@ -781,6 +781,7 @@ fn chio_identity_assertion_rejects_stale_or_empty_fields() {
         bound_request_id: None,
     };
     assert!(stale.validate_at(111).unwrap_err().contains("stale"));
+    assert!(stale.validate_at(110).unwrap_err().contains("stale"));
 
     let empty = ChioIdentityAssertion {
         verifier_id: "https://verifier.example.com".to_string(),

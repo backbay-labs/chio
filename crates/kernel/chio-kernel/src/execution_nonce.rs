@@ -32,7 +32,7 @@
 
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::crypto::{Keypair, PublicKey, Signature};
@@ -215,10 +215,9 @@ impl InMemoryExecutionNonceStore {
     /// Create a new in-memory store.
     ///
     /// `capacity` is the maximum number of recently consumed nonces to
-    /// remember. `ttl` is how long a nonce entry is retained. After `ttl`
-    /// elapses the slot can be recycled (which matters only for long-lived
-    /// kernels -- the signed body's `expires_at` still prevents actual
-    /// replay because verify will have already rejected on expiry).
+    /// remember. `ttl` is how long a nonce entry is retained when callers use
+    /// the legacy `reserve` path. `reserve_until` extends retention to cover
+    /// the signed nonce validity window.
     #[must_use]
     pub fn new(capacity: usize, ttl: Duration) -> Self {
         let nz = NonZeroUsize::new(capacity).unwrap_or_else(|| {
@@ -251,21 +250,53 @@ impl Default for InMemoryExecutionNonceStore {
 
 impl ExecutionNonceStore for InMemoryExecutionNonceStore {
     fn reserve(&self, nonce_id: &str) -> Result<bool, KernelError> {
+        self.reserve_with_retention(nonce_id, self.ttl)
+    }
+
+    fn reserve_until(&self, nonce_id: &str, nonce_expires_at: i64) -> Result<bool, KernelError> {
+        let retention = duration_until_unix_secs(nonce_expires_at)
+            .map_or(self.ttl, |remaining| remaining.max(self.ttl));
+        self.reserve_with_retention(nonce_id, retention)
+    }
+}
+
+impl InMemoryExecutionNonceStore {
+    fn reserve_with_retention(
+        &self,
+        nonce_id: &str,
+        retention: Duration,
+    ) -> Result<bool, KernelError> {
         let mut cache = self.inner.lock().map_err(|_| {
             error!("execution nonce store mutex poisoned; denying fail-closed");
             KernelError::Internal("execution nonce store mutex poisoned; fail-closed".to_string())
         })?;
 
         let key = nonce_id.to_string();
-        if let Some(consumed_at) = cache.peek(&key) {
-            if consumed_at.elapsed() < self.ttl {
+        let now = Instant::now();
+        if let Some(retain_until) = cache.peek(&key) {
+            if *retain_until > now {
                 return Ok(false);
             }
             cache.pop(&key);
         }
-        cache.put(key, Instant::now());
+        let Some(retain_until) = now.checked_add(retention) else {
+            error!("execution nonce retention overflow; denying fail-closed");
+            return Err(KernelError::Internal(
+                "execution nonce retention overflow; fail-closed".to_string(),
+            ));
+        };
+        cache.put(key, retain_until);
         Ok(true)
     }
+}
+
+fn duration_until_unix_secs(expires_at: i64) -> Option<Duration> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    let expires_at = u64::try_from(expires_at).ok()?;
+    expires_at.checked_sub(now).map(Duration::from_secs)
 }
 
 // ---------------------------------------------------------------------------
@@ -559,6 +590,35 @@ mod tests {
         assert!(store.reserve("a").unwrap());
         assert!(!store.reserve("a").unwrap());
         assert!(store.reserve("b").unwrap());
+    }
+
+    #[test]
+    fn reserve_until_retains_nonce_after_local_ttl() {
+        let store = InMemoryExecutionNonceStore::new(16, Duration::from_millis(1));
+        let expires_at = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            .saturating_add(30);
+        let expires_at = i64::try_from(expires_at).unwrap();
+
+        assert!(store.reserve_until("long-lived", expires_at).unwrap());
+        thread::sleep(Duration::from_millis(5));
+        assert!(!store.reserve_until("long-lived", expires_at).unwrap());
+    }
+
+    #[test]
+    fn reserve_with_retention_fails_closed_on_overflow() {
+        let store = InMemoryExecutionNonceStore::default();
+        let err = store
+            .reserve_with_retention("overflow", Duration::MAX)
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            KernelError::Internal(reason)
+                if reason.contains("execution nonce retention overflow")
+        ));
     }
 
     #[test]

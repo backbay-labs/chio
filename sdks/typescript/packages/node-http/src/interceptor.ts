@@ -196,6 +196,16 @@ function capabilityIdFromToken(rawToken: string | undefined): string | undefined
   }
 }
 
+const CREDENTIAL_HEADER_DENYLIST = new Set([
+  "authorization",
+  "cookie",
+  "proxy-authorization",
+  "set-cookie",
+  "x-api-key",
+  "x-chio-capability",
+  "x-chio-capability-token",
+]);
+
 /** Build a ChioHttpRequest from extracted request parts. */
 export function buildChioHttpRequest(opts: BuildRequestOptions): ChioHttpRequest {
   return {
@@ -204,7 +214,10 @@ export function buildChioHttpRequest(opts: BuildRequestOptions): ChioHttpRequest
     route_pattern: opts.routePattern,
     path: opts.path,
     query: opts.query,
-    headers: filterHeaders(opts.headers, opts.forwardHeaders ?? ["content-type", "content-length"]),
+    headers: filterHeaders(
+      opts.headers,
+      opts.forwardHeaders ?? ["content-type", "content-length"],
+    ),
     caller: opts.caller,
     body_hash: opts.bodyHash,
     body_length: opts.bodyLength,
@@ -225,7 +238,11 @@ function filterHeaders(
   const result: Record<string, string> = {};
   const allowedSet = new Set(allowed.map((h) => h.toLowerCase()));
   for (const [key, value] of Object.entries(headers)) {
-    if (allowedSet.has(key.toLowerCase())) {
+    const normalized = key.toLowerCase();
+    if (
+      allowedSet.has(normalized) &&
+      !CREDENTIAL_HEADER_DENYLIST.has(normalized)
+    ) {
       result[key] = value;
     }
   }
