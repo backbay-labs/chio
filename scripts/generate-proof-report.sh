@@ -3,6 +3,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+cargo xtask gen proof-coverage --check
+
 run_gates=1
 if [[ "${1:-}" == "--no-run-gates" ]]; then
   run_gates=0
@@ -31,6 +33,7 @@ manifest_path = repo / "formal" / "proof-manifest.toml"
 inventory_path = repo / "formal" / "theorem-inventory.json"
 assumptions_path = repo / "formal" / "assumptions.toml"
 report_path = repo / "target" / "formal" / "proof-report.json"
+coverage_path = repo / "target" / "formal" / "coverage.json"
 
 manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
 inventory = json.loads(inventory_path.read_text(encoding="utf-8"))
@@ -109,14 +112,26 @@ required_claim_terms = [
     "formal/theorem-inventory.json",
     "formal/assumptions.toml",
     "target/formal/proof-report.json",
+    "docs/formal/COVERAGE.md",
 ]
 missing_claim_terms = [term for term in required_claim_terms if term not in claim_registry]
 if missing_claim_terms:
     raise SystemExit(f"claim registry missing report mapping terms: {missing_claim_terms}")
 
 gate_results = []
+coverage_gate_command = "cargo xtask gen proof-coverage --check"
 if run_gates:
     for command in manifest.get("gate_commands", []):
+        if command == coverage_gate_command:
+            gate_results.append(
+                {
+                    "command": command,
+                    "status": "passed",
+                    "exitCode": 0,
+                    "outputTail": "executed before proof report generation",
+                }
+            )
+            continue
         if command.startswith("./scripts/generate-proof-report.sh") or command == "./scripts/check-proof-report.sh":
             continue
         env = os.environ.copy()
@@ -145,9 +160,13 @@ else:
     gate_results = [
         {
             "command": command,
-            "status": "not_run",
-            "exitCode": None,
-            "outputTail": "",
+            "status": "passed" if command == coverage_gate_command else "not_run",
+            "exitCode": 0 if command == coverage_gate_command else None,
+            "outputTail": (
+                "executed before proof report generation"
+                if command == coverage_gate_command
+                else ""
+            ),
         }
         for command in manifest.get("gate_commands", [])
     ]
@@ -166,6 +185,7 @@ tracked_paths = [
     manifest_path,
     inventory_path,
     assumptions_path,
+    repo / "docs/formal/COVERAGE.md",
     repo / "scripts/check-formal-proofs.sh",
     repo / "scripts/check-aeneas-production.sh",
     repo / "scripts/check-aeneas-equivalence.sh",
@@ -184,6 +204,7 @@ for path in tracked_paths:
 
 generated_artifacts = {}
 for path in [
+    coverage_path,
     repo / "target/formal/aeneas-production/llbc/formal_aeneas.llbc",
     repo / "target/formal/aeneas-production/lean/Funs.lean",
     repo / "target/formal/aeneas-production/lean/Types.lean",
@@ -222,6 +243,10 @@ report = {
     "manifest": str(manifest_path),
     "theoremInventory": str(inventory_path),
     "assumptionRegistry": str(assumptions_path),
+    "proofCoverage": {
+        "path": str(coverage_path),
+        "sha256": maybe_hash(coverage_path),
+    },
     "proofBoundaryStatus": manifest.get("proof_boundary_status"),
     "verificationTarget": manifest.get("verification_target"),
     "primaryToolchain": manifest.get("primary_toolchain", []),

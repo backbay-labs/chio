@@ -79,9 +79,8 @@ Theme E - verify the verification, make lanes bite:
   keep the spec updated as the design meets reality. Specs are plans, not
   normative protocol text; wire-level changes must still agree with
   `spec/PROTOCOL.md`.
-- A future generated artifact, `COVERAGE.md` (the proof coverage matrix), is
-  specified by [FV-C5](plan/FV-C5-proof-coverage-map.md) and will live in
-  this directory once the generator lands.
+- [COVERAGE.md](COVERAGE.md) is the generated proof coverage matrix specified
+  by [FV-C5](plan/FV-C5-proof-coverage-map.md).
 
 ## Relationship to claims
 

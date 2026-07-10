@@ -148,6 +148,13 @@ pub enum GenCommand {
         #[arg(long)]
         check: bool,
     },
+    /// Generate the declared verification evidence matrix.
+    #[command(name = "proof-coverage")]
+    ProofCoverage {
+        /// Compare the generated page with the committed page.
+        #[arg(long)]
+        check: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -350,6 +357,22 @@ mod tests {
             parse(&["xtask", "check", "formal-mirrors"]),
             Command::Check {
                 command: CheckCommand::FormalMirrors { bless: false }
+            }
+        ));
+    }
+
+    #[test]
+    fn gen_proof_coverage_parses_check_mode() {
+        assert!(matches!(
+            parse(&["xtask", "gen", "proof-coverage", "--check"]),
+            Command::Gen {
+                command: GenCommand::ProofCoverage { check: true }
+            }
+        ));
+        assert!(matches!(
+            parse(&["xtask", "gen", "proof-coverage"]),
+            Command::Gen {
+                command: GenCommand::ProofCoverage { check: false }
             }
         ));
     }

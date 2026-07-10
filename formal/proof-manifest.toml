@@ -46,6 +46,7 @@ gate_commands = [
   "cargo test -p chio-formal-diff-tests",
   "./scripts/check-portable-kernel.sh",
   "./scripts/check-proof-report.sh",
+  "cargo xtask gen proof-coverage --check",
 ]
 
 covered_rust_modules = [
@@ -160,6 +161,7 @@ notes = [
   "Release-facing formal claims must name this manifest, the theorem inventory, and the audited assumptions.",
   "RETIRED-SQLITE-CROSS-ROW is discharged by the ReceiptBeforeAllow Apalache invariant at the abstract persist-before-publish boundary, while concrete single-row durability remains covered by ASSUME-SQLITE-ATOMICITY. The TLA abstraction-anchor hashes require review but do not prove Rust refinement. See discharged_assumptions below.",
   "Manual Rust-to-model hashes are enforced by cargo xtask check formal-mirrors; transliteration and abstraction-anchor records require review, but matching hashes do not prove semantic equivalence or modeled properties.",
+  "docs/formal/COVERAGE.md is the generated per-surface join of declared verification registries. It reports evidence identity and attribution without licensing claims beyond docs/reference/CLAIM_REGISTRY.md.",
 ]
 
 # Discharged assumptions: prior audited assumptions that are no longer

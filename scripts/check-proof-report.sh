@@ -8,6 +8,7 @@ if [[ ! -f target/formal/proof-report.json ]]; then
 fi
 
 python3 - <<'PY'
+import hashlib
 import json
 from pathlib import Path
 
@@ -22,6 +23,7 @@ required_top = [
     "sourceLocations",
     "git",
     "claimGate",
+    "proofCoverage",
 ]
 missing = [key for key in required_top if key not in report]
 if missing:
@@ -50,6 +52,19 @@ if not report.get("artifactHashes", {}).get("tracked"):
     raise SystemExit("proof report missing tracked artifact hashes")
 if not report.get("sourceLocations"):
     raise SystemExit("proof report missing source theorem locations")
+coverage = report.get("proofCoverage", {})
+coverage_path = coverage.get("path")
+coverage_sha256 = coverage.get("sha256")
+if coverage_path != "target/formal/coverage.json" or not coverage_sha256:
+    raise SystemExit("proof report missing generated proof coverage artifact")
+if report.get("artifactHashes", {}).get("generated", {}).get(coverage_path) != coverage_sha256:
+    raise SystemExit("proof report proof coverage hash is not in generated artifacts")
+coverage_file = Path(coverage_path)
+if not coverage_file.is_file():
+    raise SystemExit("proof report coverage artifact is missing on disk")
+actual_coverage_sha256 = hashlib.sha256(coverage_file.read_bytes()).hexdigest()
+if actual_coverage_sha256 != coverage_sha256:
+    raise SystemExit("proof report coverage artifact hash does not match disk")
 PY
 
 echo "Proof report shape check passed"

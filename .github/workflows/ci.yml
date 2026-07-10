@@ -111,6 +111,9 @@ jobs:
       - name: formal mirror drift guard
         run: cargo xtask check formal-mirrors
 
+      - name: proof coverage drift guard
+        run: cargo xtask gen proof-coverage --check
+
       - name: Workspace format
         env:
           CARGO_BUILD_JOBS: "1"

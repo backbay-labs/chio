@@ -305,6 +305,17 @@ jobs:
             ./scripts/check-proof-report.sh
           fi
 
+      - name: Upload formal proof artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: formal-proof-report
+          path: |
+            target/formal/proof-report.json
+            target/formal/coverage.json
+          if-no-files-found: warn
+          retention-days: 21
+
       - name: Portable browser qualification
         env:
           CARGO_BUILD_JOBS: "1"

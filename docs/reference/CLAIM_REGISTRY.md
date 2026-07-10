@@ -13,6 +13,10 @@ The source-of-truth inputs are:
 - `spec/PROTOCOL.md`
 - `docs/release/RELEASE_AUDIT.md`
 
+`docs/formal/COVERAGE.md` is derived navigation generated from these registries.
+It attributes declared artifacts and review links but is not an evidence class
+and does not license claim wording.
+
 ## Evidence Classes
 
 | Class | Meaning |

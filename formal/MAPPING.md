@@ -7,6 +7,9 @@ they rely on, and a one-line description of each property.
 This file is enforced by `scripts/check-mapping.sh`. The script greps the
 source files for the canonical names listed below and fails the build if
 any appear in the source but are not represented as a row here.
+`cargo xtask gen proof-coverage` also parses these tables, so column changes
+must preserve the generated coverage contract. It validates each source path
+and named property; missing Rust files remain explicit unattributed evidence.
 
 The columns are:
 

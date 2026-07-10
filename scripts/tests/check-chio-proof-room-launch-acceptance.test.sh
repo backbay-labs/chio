@@ -27,8 +27,10 @@ for path in \
   "$out/manifest.json" \
   "$out/bundle-signature.dsse.json" \
   "$out/claims/claim-registry.json" \
+  "$out/claims/formal-claim-registry.md" \
   "$out/claims/homepage-copy-map.json" \
   "$out/claims/non-claims.json" \
+  "$out/claims/proof-coverage.md" \
   "$out/roots/transaction-passport.json" \
   "$out/roots/evidence-graph.json" \
   "$out/verifier/report.json" \
@@ -82,6 +84,8 @@ copy_map = json.loads((root / "claims/homepage-copy-map.json").read_text())
 negative_catalog = json.loads((root / "negatives/catalog.json").read_text())
 tool_versions = json.loads((root / "verifier/tool-versions.json").read_text())
 claim_registry = json.loads((root / "claims/claim-registry.json").read_text())
+proof_coverage = (root / "claims/proof-coverage.md").read_text()
+formal_claim_registry = (root / "claims/formal-claim-registry.md").read_text()
 
 nested_source_catalogs = sorted(
     repo.glob("fixtures/proof-room/**/negatives/catalog/*/negatives/catalog")
@@ -235,6 +239,21 @@ negative_catalog_ids = {
 
 if manifest.get("schema") != "chio.proof-room.launch-acceptance.v1":
     raise SystemExit("manifest schema mismatch")
+if manifest.get("claims", {}).get("proof_coverage", {}).get("path") != "claims/proof-coverage.md":
+    raise SystemExit("manifest proof coverage path mismatch")
+if manifest.get("claims", {}).get("formal_claim_registry", {}).get("path") != "claims/formal-claim-registry.md":
+    raise SystemExit("manifest formal claim registry path mismatch")
+if manifest.get("git_commit") not in proof_coverage:
+    raise SystemExit("proof coverage page missing package commit")
+if "@GIT_COMMIT@" in proof_coverage:
+    raise SystemExit("proof coverage page contains unresolved commit token")
+if "(formal-claim-registry.md)" not in proof_coverage:
+    raise SystemExit("proof coverage page missing bundle-local claim registry link")
+if "../reference/CLAIM_REGISTRY.md" in proof_coverage:
+    raise SystemExit("proof coverage page retains repository-local claim registry link")
+for term in ["FORM-BOUNDARY", "FORM-IMPLEMENTATION-LINKED", "LEAN-4-VERIFIED"]:
+    if term not in formal_claim_registry:
+        raise SystemExit(f"formal claim registry missing governance term: {term}")
 if {stage["fixture_id"] for stage in manifest.get("stages", [])} != expected_stages:
     raise SystemExit("manifest stage set mismatch")
 # This contract test assembles the package with --schema-only, which skips

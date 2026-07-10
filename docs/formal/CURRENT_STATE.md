@@ -220,8 +220,14 @@ nightly).
 
 ## Governance layer
 
+Per-surface evidence attribution is generated in
+[`COVERAGE.md`](COVERAGE.md). The matrix joins registry artifacts without
+turning artifact presence into a completeness claim; unresolved theorem and
+differential-test joins, theorem status, and model-only Kani scope remain
+explicit there.
+
 - `formal/proof-manifest.toml` (schema `chio.proof-manifest.v1`) is the hub:
-  `root_modules` (21 Lean files), `gate_commands` (11 commands), 7
+  `root_modules` (21 Lean files), `gate_commands` (12 commands), 7
   `covered_rust_modules`, 21 `covered_rust_symbols`, 2 `shell_entrypoints`,
   the P1-P10 `property_matrix` with per-property evidence-lane tags,
   `rust_refinement_lanes`, `allowed_axioms` (exactly one),
