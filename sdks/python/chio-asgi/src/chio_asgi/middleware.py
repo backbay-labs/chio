@@ -124,15 +124,14 @@ class ChioASGIMiddleware:
 
         # Read the complete request body for hashing before sidecar evaluation.
         body_chunks: list[bytes] = []
-        buffered_messages: list[dict[str, Any]] = []
+        early_replay_message: dict[str, Any] | None = None
         body_complete = False
         body_too_large = False
         body_size = 0
 
         async def receive_wrapper() -> dict[str, Any]:
-            nonlocal body_complete, body_size, body_too_large
+            nonlocal body_complete, body_size, body_too_large, early_replay_message
             message = await receive()
-            buffered_messages.append(message)
             if message.get("type") == "http.request":
                 body = message.get("body", b"")
                 if body:
@@ -144,6 +143,9 @@ class ChioASGIMiddleware:
                     body_chunks.append(body)
                 if not message.get("more_body", False):
                     body_complete = True
+            else:
+                early_replay_message = message
+                body_complete = True
             return message
 
         while not body_complete:
@@ -159,15 +161,23 @@ class ChioASGIMiddleware:
         if raw_body:
             body_hash = hashlib.sha256(raw_body).hexdigest()
 
-        # Replay the buffered request messages for the inner app.
-        replay_index = 0
+        # Replay a single coalesced request-body frame for the inner app. This
+        # preserves the body while bounding replay memory by body bytes rather
+        # than by untrusted ASGI frame count.
+        replay_step = 0
 
         async def replay_receive() -> dict[str, Any]:
-            nonlocal replay_index
-            if replay_index < len(buffered_messages):
-                message = buffered_messages[replay_index]
-                replay_index += 1
-                return message
+            nonlocal replay_step
+            if replay_step == 0:
+                replay_step = 1
+                return {
+                    "type": "http.request",
+                    "body": raw_body,
+                    "more_body": False,
+                }
+            if replay_step == 1 and early_replay_message is not None:
+                replay_step = 2
+                return early_replay_message
             return await receive()
 
         # Evaluate via sidecar

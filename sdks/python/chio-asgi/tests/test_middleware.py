@@ -309,6 +309,49 @@ class TestAllowedRequest:
             )
             assert body_msg["body"] == expected_body
 
+    async def test_coalesces_many_chunked_request_frames_for_replay(self) -> None:
+        evaluation = _make_evaluation(allowed=True, receipt_id="r-chunked")
+        chunks = [b"x"] * 256
+        expected_body = b"".join(chunks)
+        replayed_messages: list[dict[str, Any]] = []
+
+        async def frame_count_app(
+            _scope: Scope,
+            receive: Receive,
+            send: Send,
+        ) -> None:
+            while True:
+                message = await receive()
+                if message.get("type") != "http.request":
+                    break
+                replayed_messages.append(message)
+                if not message.get("more_body", False):
+                    break
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            instance = MockClient.return_value
+            instance.evaluate_http_request = AsyncMock(return_value=evaluation)
+            instance.verify_http_receipt = AsyncMock(return_value=_make_verification())
+
+            config = ChioASGIConfig(sidecar_url="http://mock:9090")
+            mw = ChioASGIMiddleware(frame_count_app, config=config)
+
+            scope = _make_scope(method="POST")
+            send, _messages = _make_send()
+            await mw(scope, _make_chunked_receive(chunks), send)
+
+        assert replayed_messages == [
+            {
+                "type": "http.request",
+                "body": expected_body,
+                "more_body": False,
+            }
+        ]
+
     async def test_rejects_chunked_body_that_exceeds_configured_limit(self) -> None:
         with patch(
             "chio_asgi.middleware.ChioClient", autospec=True
