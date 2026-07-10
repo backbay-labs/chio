@@ -114,11 +114,18 @@ _ENV_DENY_EXACT: frozenset[str] = frozenset(
     }
 )
 
-_WINDOWS_ABSOLUTE_TOKEN_RE = re.compile(
+_WINDOWS_ABSOLUTE_BARE_TOKEN_RE = re.compile(
     r"(?P<token>"
     r"[A-Za-z]:[\\/][^\s\"']*"
     r"|(?<!:)\\\\[^\\/\s\"']+[\\/][^\\/\s\"']+(?:[\\/][^\s\"']*)?"
     r"|(?<!:)//[^/\s\"']+/[^/\s\"']+(?:/[^\s\"']*)?"
+    r")"
+)
+_WINDOWS_ABSOLUTE_EMBEDDED_TOKEN_RE = re.compile(
+    r"(?P<token>"
+    r"[A-Za-z]:[\\/].*"
+    r"|(?<!:)\\\\[^\\/]+[\\/][^\\/]+(?:[\\/].*)?"
+    r"|(?<!:)//[^/]+/[^/]+(?:/.*)?"
     r")"
 )
 
@@ -164,6 +171,24 @@ def _reject_windows_absolute_escape(token: str, root: str) -> None:
     root_parts = tuple(part.casefold() for part in root_path.parts)
     if len(token_parts) < len(root_parts) or token_parts[: len(root_parts)] != root_parts:
         raise ChioPathEscapeError(token, "outside_workspace")
+
+
+def _without_quoted_shell_spans(command: str) -> str:
+    chars: list[str] = []
+    quote: str | None = None
+    for ch in command:
+        if quote is None:
+            if ch in {"'", '"'}:
+                quote = ch
+                chars.append(" ")
+            else:
+                chars.append(ch)
+            continue
+
+        chars.append(" ")
+        if ch == quote:
+            quote = None
+    return "".join(chars)
 
 
 def sanitised_env(*, base: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -271,7 +296,10 @@ def reject_shell_argv_escape(
     root_text = str(root) if root is not None else None
     root_path = pathlib.Path(root_text).resolve() if root_text is not None else None
     if root_path is not None:
-        for raw_windows_absolute in _WINDOWS_ABSOLUTE_TOKEN_RE.finditer(command or ""):
+        unquoted_command = _without_quoted_shell_spans(command or "")
+        for raw_windows_absolute in _WINDOWS_ABSOLUTE_BARE_TOKEN_RE.finditer(
+            unquoted_command
+        ):
             _reject_windows_absolute_escape(
                 raw_windows_absolute.group("token"),
                 root_text or "",
@@ -282,7 +310,9 @@ def reject_shell_argv_escape(
         if any(seg == ".." for seg in segments):
             raise ChioPathEscapeError(token, "dotdot_segment")
         if root_text is not None:
-            for embedded_windows_absolute in _WINDOWS_ABSOLUTE_TOKEN_RE.finditer(token):
+            for embedded_windows_absolute in _WINDOWS_ABSOLUTE_EMBEDDED_TOKEN_RE.finditer(
+                token
+            ):
                 _reject_windows_absolute_escape(
                     embedded_windows_absolute.group("token"),
                     root_text,

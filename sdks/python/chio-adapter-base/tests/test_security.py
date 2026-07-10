@@ -247,6 +247,21 @@ def test_reject_shell_argv_escape_allows_windows_absolute_inside_workspace() -> 
     )
 
 
+def test_reject_shell_argv_escape_allows_quoted_windows_workspace_with_spaces() -> None:
+    reject_shell_argv_escape(
+        r'type "C:\repo dir\README.md"',
+        root=r"C:\repo dir",
+    )
+    reject_shell_argv_escape(
+        r"tool --config='C:\repo dir\settings.toml'",
+        root=r"C:\repo dir",
+    )
+    reject_shell_argv_escape(
+        r'TOOL_CONFIG="C:\repo dir\settings.toml" tool',
+        root=r"C:\repo dir",
+    )
+
+
 def test_reject_shell_argv_escape_allows_colon_arguments(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

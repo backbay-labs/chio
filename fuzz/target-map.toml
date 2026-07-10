@@ -178,6 +178,7 @@ notes    = "ComponentBackend, WasmtimeBackend, format detect; trust-boundary."
 crate    = "chio-wasm-guards"
 path     = "fuzz/fuzz_targets/wit_host_call_boundary.rs"
 triggers = [
+    "crates/sdk/chio-guard-sdk/**",
     "crates/guards/chio-wasm-guards/**",
     "spec/schemas/wasm-guard/**",
 ]

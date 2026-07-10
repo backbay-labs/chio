@@ -83,6 +83,14 @@ class ReceiptQueryClient:
                 query_params["cursor"] = cursor
             response = self.query(cast(ReceiptQueryParams, query_params))
             next_cursor = response.get("nextCursor")
+            if (
+                next_cursor is not None
+                and cursor is not None
+                and next_cursor <= cursor
+            ):
+                raise ChioQueryError(
+                    "receipt query pagination stalled: regressing nextCursor"
+                )
             if next_cursor is not None and next_cursor in seen_cursors:
                 raise ChioQueryError(
                     "receipt query pagination stalled: repeated nextCursor"
