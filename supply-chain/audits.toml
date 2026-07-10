@@ -259,6 +259,12 @@ criteria = "safe-to-deploy"
 version = "1.0.102"
 notes = "Widely used error type by dtolnay; pure Rust, no network IO or unsafe-heavy code."
 
+[[audits.anyhow]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+version = "1.0.103"
+notes = "Reviewed delta from 1.0.102 to 1.0.103 for current workspace use. Release is the upstream fix for RUSTSEC-2026-0190 in downcast_mut after context; no build script, no new dependencies, and no new unsafe blocks in the delta."
+
 [[audits.asn1-rs]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"
