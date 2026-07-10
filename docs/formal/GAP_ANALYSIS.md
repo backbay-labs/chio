@@ -9,36 +9,25 @@ Six load-bearing gaps (G1-G6), each with evidence, consequence, and the plan
 docs that address it. A full staleness inventory follows; the mechanical
 fixes are specified item-by-item in [HYGIENE_PASS.md](HYGIENE_PASS.md).
 
-## G1: Nothing proof-shaped runs on pull requests
+## G1: Pull requests lacked proof feedback (resolved 2026-07-09)
 
-Evidence:
+Closure:
 
-- `.github/workflows/nightly.yml` (near L69) refers to a PR job
-  "kani-public-pr in ci.yml" that does not exist in any workflow file.
-- `formal/rust-verification/kani-public-harnesses.toml` defines a `lanes.pr`
-  containing all 20 kernel-core public harnesses, with a note that the full
-  sweep takes about 2.2 minutes, within a 6-minute PR budget. That lane
-  executes only inside the nightly job.
-- `.github/workflows/mutants.yml` has `on: schedule` and `workflow_dispatch`
-  only; its `mutants-pr` job is gated on `github.event_name ==
-  'pull_request'` and can never fire. The file header still calls it a
-  required lane.
-- No workflow path-triggers on `formal/lean4/**`. A PR editing Lean proofs
-  merges without a `lake build`; `scripts/check-formal-proofs.sh` runs only
-  on push to main (release qualification) and nightly.
-- The only PR-time formal gates are Apalache safety (path-scoped) and the
-  diff-tests crate (workspace tests).
+- `.github/workflows/formal-pr-smoke.yml` now classifies affected paths and
+  runs Lean compilation, sorry scanning, proof-registry cross-references, all
+  20 public kernel-core PR Kani harnesses, the 12 non-core PR Kani harnesses,
+  and explicitly metadata-only Rust verification checks.
+- `.github/workflows/mutants.yml` now triggers on changes to six
+  trust-boundary crates and skips untouched matrix packages before tool setup.
+- Nightly retains the union of PR and nightly-only Kani coverage, plus strict
+  Creusot and release proof evidence. The PR metadata job cannot substitute for
+  those strict checks.
 
-Consequence: a PR can break any proof, harness, or contract and the breakage
-surfaces the next morning (or at release qualification), after the author has
-moved on. Feedback latency also discourages contributors from touching the
-formal tree at all.
-
-Addressed by: [plan/FV-E3-pr-formal-smoke-tier.md](plan/FV-E3-pr-formal-smoke-tier.md)
-(wiring), [plan/FV-E5-lane-ratchets.md](plan/FV-E5-lane-ratchets.md)
-(promotion to required),
-[plan/FV-A4-mirror-drift-hashes.md](plan/FV-A4-mirror-drift-hashes.md)
-(PR-cheap drift detection without toolchains).
+The new checks are initially advisory. Required-check promotion and run-always
+no-op behavior remain governed by
+[plan/FV-E5-lane-ratchets.md](plan/FV-E5-lane-ratchets.md). Mirror drift
+detection remains tracked by
+[plan/FV-A4-mirror-drift-hashes.md](plan/FV-A4-mirror-drift-hashes.md).
 
 ## G2: The proven code is often not the running code
 

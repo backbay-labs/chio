@@ -28,6 +28,30 @@ console smoke" check is *not* a separate required context: it is a step inside
 the "Build, lint, test" job (see the test-lane section below), so it surfaces
 under that job's context rather than as its own check.
 
+## Formal PR smoke checks are present but not required
+
+[`formal-pr-smoke.yml`](./formal-pr-smoke.yml) provides path-scoped feedback
+without changing the four required contexts above. A lightweight scope job
+classifies the PR diff before any proof toolchain is installed. The reported
+verification check names are:
+
+- "lean-build (lake + sorry scan + manifest cross-ref)"
+- "kani-public-pr (lanes.pr sweep)"
+- "kani-manifest-pr (non-core lanes.pr sweep)"
+- "rust-verification-metadata (schema only, no proofs)"
+
+The core Kani job reads all 20 PR harnesses from
+`formal/rust-verification/kani-public-harnesses.toml`. The non-core job reads
+the 12 matching entries for chio-attest-verify, chio-anchor, and chio-weights
+from `.kani/harnesses.toml`. The metadata job validates registry structure only;
+strict Creusot checks remain in `nightly.yml` and release qualification. These
+checks must not be added to a ruleset until their required-check promotion
+procedure also makes unrelated PRs report a successful no-op result.
+
+The separate [`mutants.yml`](./mutants.yml) workflow also has a path-scoped PR
+lane for six trust-boundary crates. It remains advisory until the evidence
+ratchet in `releases.toml` activates blocking posture.
+
 ### Why the build step MUST stay `--workspace`, not per-crate (`-p`)
 
 A downstream-exhaustiveness break is a class of break a per-crate scoped gate misses: a new enum

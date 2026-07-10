@@ -2,8 +2,8 @@ schema = "chio.kani.multi-crate.v1"
 
 # Multi-crate Kani harness manifest (Kani multi-crate manifest).
 #
-# Each `[[harness]]` entry pins one (crate, harness) pair for the manifest
-# runner. The runner invokes the harness with:
+# Each `[[harness]]` entry pins one (crate, harness) pair the Kani workflows
+# iterate. The runner invokes the harness with:
 #
 #     cargo kani -p <crate> --lib --harness <name> \
 #       --default-unwind <default_unwind> --no-unwinding-checks
@@ -11,21 +11,20 @@ schema = "chio.kani.multi-crate.v1"
 # Wrapped under a per-harness wall-clock cap of `timeout_secs`.
 #
 # Lanes:
-#   * lane = "pr"      Fast tier currently run by the nightly manifest sweep.
-#   * lane = "nightly" Runs only in the nightly Kani sweep workflow.
+#   * lane = "pr"      Runs on scoped PR changes and in the nightly sweep.
+#   * lane = "nightly" Runs only in the nightly Kani sweep.
 #
-# This file is the source of truth for the multi-crate sweep. The
-# legacy `formal/rust-verification/kani-public-harnesses.toml` retains
-# the v1 chio-kernel-core schema for backwards-compatible consumers
-# (`scripts/check-kani-public-core.sh` and the formal-evidence bundle
-# expect `[lanes.pr]`); the entries below for chio-kernel-core mirror
-# that lane so there is exactly one place to extend the sweep.
+# This file is the source of truth for the multi-crate sweep. The public-core
+# runner reads `formal/rust-verification/kani-public-harnesses.toml`; the
+# chio-kernel-core entries below mirror its PR lane for multi-crate consumers.
+# `scripts/tests/check-kani-public-core.test.sh` fails if the two lists drift.
 #
 # Adding a harness:
 #   1. Land the `#[kani::proof]` in `crates/<crate>/src/<file>.rs`,
 #      gated by `#[cfg(kani)]`.
-#   2. Append a `[[harness]]` block here.
-#   3. The CI workflow auto-iterates; no workflow edit required.
+#   2. Append a `[[harness]]` block here. For chio-kernel-core, also update the
+#      public-core registry.
+#   3. The manifest runner auto-iterates; no workflow edit required.
 #
 # Schema:
 #   crate           string  Cargo package name (-p flag value).

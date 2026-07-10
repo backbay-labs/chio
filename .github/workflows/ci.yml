@@ -14,8 +14,9 @@ name: CI
 # elsewhere: the Lean 4 / Aeneas / Creusot proof report, portable browser and
 # mobile qualification, the polyglot SDK-parity lane, and workspace coverage
 # run nightly in nightly.yml; formal model checking is path-scoped in
-# apalache-safety.yml; the Kani lanes run nightly (kani-public-nightly); the
-# JVM SDK build is path-scoped in jvm.yml; macOS coverage stays in
+# apalache-safety.yml; Lean, Kani, and Rust verification metadata are
+# path-scoped in formal-pr-smoke.yml and Kani also runs nightly; the JVM SDK
+# build is path-scoped in jvm.yml; macOS coverage stays in
 # release-binaries.yml for tag releases, where macOS artifact behavior is
 # actually exercised.
 
@@ -69,6 +70,9 @@ jobs:
       # fails this step before the workspace lane builds.
       - name: Proptest invariant coverage
         run: ./scripts/check-proptest-coverage.sh
+
+      - name: Kani public core registry contract
+        run: bash scripts/tests/check-kani-public-core.test.sh
 
       - name: Workspace structural gates
         env:

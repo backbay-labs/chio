@@ -34,6 +34,10 @@ The formal owners (primary and backup) are jointly on the hook for:
   spec-bug vs implementation-bug vs harness-bug, file the appropriate
   ticket, and drive it to closure. Counterexamples must not be silenced
   by widening the invariant without a written justification.
+- **PR smoke tier:** keep the path scopes and toolchain pins in
+  `.github/workflows/formal-pr-smoke.yml` aligned with the proof registries and
+  `nightly.yml`. Investigate failures in the Lean, core Kani, non-core Kani,
+  and Rust verification metadata checks before merging affected changes.
 - **Nightly liveness lane:** own the nightly job that runs the long-form
   liveness / fairness checks (the lane that is too slow for per-PR CI).
   Keep its runtime budget honest, investigate timeouts, and surface

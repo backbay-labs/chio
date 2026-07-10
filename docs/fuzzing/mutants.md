@@ -148,9 +148,13 @@ tests poison the report and surface as false TIMEOUT verdicts.
 Workflow: `.github/workflows/mutants.yml`.
 Two jobs:
 
-- `mutants-pr` -- triggered on PR. Runs
-  `cargo mutants --in-diff "$GIT_DIFF" --no-shuffle --jobs 4` against
-  the PR diff and posts a comment via `scripts/mutants-comment.sh`.
+- `mutants-pr` -- triggered when a PR changes source or mutation controls for
+  one of the six trust-boundary crates. Untouched matrix packages stop before
+  installing Rust or cargo-mutants. A selected package runs
+  `cargo mutants --in-diff "$GIT_DIFF" --no-shuffle --jobs 2` with its
+  per-crate `mutants.toml`. Same-repository PRs receive a summary comment and
+  survivor issues beyond the configured cap; fork PRs skip those token writes
+  while still enforcing the mutation result.
   The workflow sets `CHIO_MUTANTS_GATE=blocking`; the actual pass/fail
   posture still comes from `scripts/mutants-gate.sh` and
   `releases.toml::[mutants]`. Empty `cycle_end_tag` or a recorded
@@ -162,10 +166,10 @@ Two jobs:
   workflow artifact, and reports against the per-crate
   `target_catch_ratio_percent` threshold via `scripts/mutants-gate.sh`.
 
-Both jobs run `scripts/check-mutants-rationale.sh` before spending
-mutation budget. That check fails closed if an `exclude_globs` entry in
-the workspace or per-crate `mutants.toml` files lacks a nearby
-`rationale:` comment.
+Selected packages in both jobs run `scripts/check-mutants-rationale.sh` before
+spending mutation budget. That check fails closed if an `exclude_globs` entry
+in the workspace or per-crate `mutants.toml` files lacks a nearby `rationale:`
+comment.
 
 The lane is **advisory** until the required evidence exists, then flips
 to **blocking** through a release-owned PR. The state machine is driven

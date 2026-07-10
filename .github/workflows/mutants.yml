@@ -1,10 +1,10 @@
 # mutants.yml - cargo-mutants measurement lanes.
 #
 # Two jobs:
-#   mutants-pr      - dormant pull-request job; when triggered, runs
+#   mutants-pr      - path-scoped pull-request job; runs
 #                     `cargo mutants --in-diff`
 #                     against the PR base ref, six crates in parallel,
-#                     posts a Markdown summary via scripts/mutants-comment.sh,
+#                     posts a Markdown summary for same-repository PRs,
 #                     and consults scripts/mutants-gate.sh for advisory-vs-blocking
 #                     posture (driven by releases.toml cycle_end_tag).
 #                     Wall budget: <= 30 min per crate.
@@ -14,7 +14,7 @@
 #                     Uploads mutants.out/ as a workflow artifact.
 #
 # Both jobs share the 1,800 GHA runner-min/30d cap with the fuzz lanes.
-# The dormant PR job treats the cap as a hard halt; the nightly lane keeps an
+# The PR job treats the cap as a hard halt; the nightly lane keeps an
 # advisory posture so dashboard evidence continues flowing.
 #
 # Cutover rule:
@@ -40,10 +40,28 @@
 name: mutants
 
 on:
-  # Mutation testing is heavy (cargo-mutants rebuilds per mutant), so it runs
-  # nightly and on manual dispatch, not as a per-PR gate. The mutants-pr job
-  # below is still gated on `github.event_name == 'pull_request'`, so without a
-  # pull_request trigger it stays inert; only mutants-nightly runs on schedule.
+  # PR runs are scoped to trust-boundary source and mutation-control changes.
+  # Untouched matrix packages stop before installing Rust or cargo-mutants.
+  pull_request:
+    paths:
+      - ".cargo/mutants.toml"
+      - ".github/workflows/mutants.yml"
+      - "crates/kernel/chio-kernel-core/mutants.toml"
+      - "crates/kernel/chio-kernel-core/src/**"
+      - "crates/guards/chio-guards/mutants.toml"
+      - "crates/guards/chio-guards/src/**"
+      - "crates/guards/chio-policy/mutants.toml"
+      - "crates/guards/chio-policy/src/**"
+      - "crates/trust/chio-attest-verify/mutants.toml"
+      - "crates/trust/chio-attest-verify/src/**"
+      - "crates/trust/chio-credentials/mutants.toml"
+      - "crates/trust/chio-credentials/src/**"
+      - "crates/economy/chio-anchor/mutants.toml"
+      - "crates/economy/chio-anchor/src/**"
+      - "releases.toml"
+      - "scripts/check-fuzz-budget.sh"
+      - "scripts/check-mutants-rationale.sh"
+      - "scripts/mutants-*.sh"
   schedule:
     # 05:00 UTC nightly. Sits after fuzz.yml (03:23) and the existing
     # nightly proptest lane (04:23) so the GHA runner pool is not
@@ -94,43 +112,67 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Skip when forced package does not match
-        id: forced
+      - name: Select changed package
+        id: select
         env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           FORCED_PACKAGE: ${{ inputs.package || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           MATRIX_PACKAGE: ${{ matrix.package }}
         run: |
           set -euo pipefail
-          forced="${FORCED_PACKAGE}"
-          if [[ -n "${forced}" && "${forced}" != "${MATRIX_PACKAGE}" ]]; then
-            echo "skip=true" >> "${GITHUB_OUTPUT}"
-            echo "skipping ${MATRIX_PACKAGE} (forced=${forced})"
+          if [[ -n "${FORCED_PACKAGE}" && "${FORCED_PACKAGE}" != "${MATRIX_PACKAGE}" ]]; then
+            echo "selected=false" >> "${GITHUB_OUTPUT}"
+            echo "skipping ${MATRIX_PACKAGE} (forced=${FORCED_PACKAGE})"
+            exit 0
+          fi
+
+          case "${MATRIX_PACKAGE}" in
+            chio-kernel-core) crate_path="crates/kernel/chio-kernel-core" ;;
+            chio-policy) crate_path="crates/guards/chio-policy" ;;
+            chio-guards) crate_path="crates/guards/chio-guards" ;;
+            chio-credentials) crate_path="crates/trust/chio-credentials" ;;
+            chio-attest-verify) crate_path="crates/trust/chio-attest-verify" ;;
+            chio-anchor) crate_path="crates/economy/chio-anchor" ;;
+            *)
+              echo "unknown mutation package: ${MATRIX_PACKAGE}" >&2
+              exit 1
+              ;;
+          esac
+
+          changed="${RUNNER_TEMP}/mutants-pr-paths.txt"
+          merge_base="$(git merge-base "${BASE_SHA}" "${HEAD_SHA}")"
+          git diff --name-only "${merge_base}" "${HEAD_SHA}" > "${changed}"
+          global='^(\.cargo/mutants\.toml|\.github/workflows/mutants\.yml|releases\.toml|scripts/(check-fuzz-budget\.sh|check-mutants-rationale\.sh|mutants-.*\.sh))$'
+          if grep -Eq "${global}|^${crate_path}/(src/|mutants\.toml$)" "${changed}"; then
+            echo "selected=true" >> "${GITHUB_OUTPUT}"
           else
-            echo "skip=false" >> "${GITHUB_OUTPUT}"
+            echo "selected=false" >> "${GITHUB_OUTPUT}"
+            echo "no mutation-relevant changes for ${MATRIX_PACKAGE}"
           fi
 
       - name: Install Rust toolchain
-        if: steps.forced.outputs.skip == 'false'
+        if: steps.select.outputs.selected == 'true'
         run: |
           set -euo pipefail
           rustup toolchain install stable --profile minimal
           rustup default stable
 
       - name: Install cargo-mutants 25.x
-        if: steps.forced.outputs.skip == 'false'
+        if: steps.select.outputs.selected == 'true'
         run: |
           set -euo pipefail
           # Keep cargo-mutants on the 25.x line; do not float to the next major.
           cargo install cargo-mutants --version '~25' --locked
 
       - name: Check mutation skip rationales
-        if: steps.forced.outputs.skip == 'false'
+        if: steps.select.outputs.selected == 'true'
         run: |
           set -euo pipefail
           bash scripts/check-mutants-rationale.sh
 
       - name: Verify shared 30-day fuzz/mutants budget
-        if: steps.forced.outputs.skip == 'false'
+        if: steps.select.outputs.selected == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
@@ -150,7 +192,7 @@ jobs:
 
       - name: Capture PR diff for --in-diff scoping
         id: diff
-        if: steps.forced.outputs.skip == 'false'
+        if: steps.select.outputs.selected == 'true'
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref || 'main' }}
         run: |
@@ -168,7 +210,7 @@ jobs:
 
       - name: Run cargo-mutants --in-diff against PR base
         id: mutate
-        if: steps.forced.outputs.skip == 'false'
+        if: steps.select.outputs.selected == 'true'
         run: |
           set -euo pipefail
           mkdir -p mutants-out/${{ matrix.package }}
@@ -198,7 +240,7 @@ jobs:
 
       - name: Read survivor issue budget
         id: survivor-cap
-        if: steps.forced.outputs.skip == 'false'
+        if: steps.select.outputs.selected == 'true'
         run: |
           set -euo pipefail
           cap="$(awk -F '=' '
@@ -217,7 +259,7 @@ jobs:
 
       - name: Apply gate posture (advisory or blocking per releases.toml)
         id: gate
-        if: steps.forced.outputs.skip == 'false'
+        if: steps.select.outputs.selected == 'true'
         continue-on-error: true
         env:
           MUTANTS_PACKAGE: ${{ matrix.package }}
@@ -238,7 +280,7 @@ jobs:
           bash scripts/mutants-gate.sh
 
       - name: Post mutation summary as PR comment
-        if: always() && steps.forced.outputs.skip == 'false' && github.event.pull_request.number != ''
+        if: always() && steps.select.outputs.selected == 'true' && github.event.pull_request.number != '' && github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
           MUTANTS_PACKAGE: ${{ matrix.package }}
@@ -252,7 +294,7 @@ jobs:
             "mutants-out/${{ matrix.package }}"
 
       - name: File survivor issues beyond PR cap
-        if: always() && steps.forced.outputs.skip == 'false' && github.event.pull_request.number != ''
+        if: always() && steps.select.outputs.selected == 'true' && github.event.pull_request.number != '' && github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
           MUTANTS_PACKAGE: ${{ matrix.package }}
@@ -267,13 +309,13 @@ jobs:
             "mutants-out/${{ matrix.package }}"
 
       - name: Enforce mutation gate result
-        if: always() && steps.forced.outputs.skip == 'false' && steps.gate.outcome == 'failure'
+        if: always() && steps.select.outputs.selected == 'true' && steps.gate.outcome == 'failure'
         run: |
           echo "::error::mutants gate failed after triage output was preserved" >&2
           exit 1
 
       - name: Upload mutation report
-        if: always() && steps.forced.outputs.skip == 'false'
+        if: always() && steps.select.outputs.selected == 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: mutants-pr-${{ matrix.package }}

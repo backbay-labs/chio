@@ -17,9 +17,8 @@ env:
   CHIO_CI_RUSTFLAGS: "-D warnings -C link-arg=-Wl,--threads=1"
   # Nightly-tier proptest case count; the PR-tier (256) lives in ci.yml.
   PROPTEST_CASES: "4096"
-  # Pinned cargo-kani version; must agree with CHIO_KANI_VERSION in ci.yml.
+  # These pins must agree with formal-pr-smoke.yml.
   CHIO_KANI_VERSION: 0.67.0
-  # Formal-verification toolchain pins for the qualification job.
   CHIO_ELAN_VERSION: v4.2.1
   CHIO_ELAN_TARBALL_SHA256: 4e717523217af592fa2d7b9c479410a31816c065d66ccbf0c2149337cfec0f5c
   CHIO_AENEAS_RELEASE_TAG: build-2026.04.22.215158-38d10a22642d75d051e14006cc6e45055381f10e
@@ -65,8 +64,9 @@ jobs:
   # preserving the formal OWNERS nightly-liveness obligation.
 
   # Nightly Kani lane: runs the union of `lanes.pr` and `lanes.nightly_only`
-  # from formal/rust-verification/kani-public-harnesses.toml. No PR Kani job
-  # exists yet, so this is currently the only workflow exercising either tier.
+  # from formal/rust-verification/kani-public-harnesses.toml. The PR job in
+  # formal-pr-smoke.yml runs only `lanes.pr`; nightly runs everything so
+  # harnesses in `lanes.nightly_only` still get daily coverage.
   kani-public-nightly:
     name: kani-public-nightly (lanes.pr + lanes.nightly_only)
     # owner: Chio maintainers
@@ -109,34 +109,7 @@ jobs:
           CARGO_BUILD_JOBS: "1"
         run: |
           set -euo pipefail
-          mapfile -t HARNESSES < <(python3 - <<'PY'
-          from pathlib import Path
-          try:
-              import tomllib
-          except ModuleNotFoundError:
-              import tomli as tomllib
-          data = tomllib.loads(
-              Path("formal/rust-verification/kani-public-harnesses.toml").read_text(encoding="utf-8")
-          )
-          seen = set()
-          for lane in ("pr", "nightly_only"):
-              for h in data["lanes"][lane]["harnesses"]:
-                  if h not in seen:
-                      seen.add(h)
-                      print(h)
-          PY
-          )
-          if [[ "${#HARNESSES[@]}" -eq 0 ]]; then
-            echo "lanes.pr + lanes.nightly_only are both empty" >&2
-            exit 1
-          fi
-          for harness in "${HARNESSES[@]}"; do
-            echo "::group::cargo kani --harness ${harness}"
-            cargo kani -p chio-kernel-core --lib --harness "${harness}" \
-              --default-unwind 8 --no-unwinding-checks
-            echo "::endgroup::"
-          done
-          echo "Nightly chio-kernel-core Kani sweep passed (${#HARNESSES[@]} harnesses)"
+          bash scripts/check-kani-public-core.sh --lane all
 
       # Multi-crate manifest sweep (Kani multi-crate manifest). Picks up every
       # `[[harness]]` entry in `.kani/harnesses.toml` whose `lane = "pr"`

@@ -132,10 +132,10 @@ before crossing the boundary. `formal_core.rs` (214 lines) is the typed,
   - Where a harness is model-only (for example the anchor witness-policy
     harness), the module docs state the honesty boundary and name the runtime
     tests covering the gap.
-- Cadence: all Kani lanes execute nightly only (`kani-public-nightly` in
-  `nightly.yml`). The `lanes.pr` name inside
-  `formal/rust-verification/kani-public-harnesses.toml` is aspirational; see
-  [GAP_ANALYSIS.md](GAP_ANALYSIS.md) G1.
+- Cadence: `formal-pr-smoke.yml` runs the 20 public kernel-core `lanes.pr`
+  harnesses and the 12 non-core manifest PR harnesses on scoped pull-request
+  changes. `kani-public-nightly` in `nightly.yml` runs the union of core PR and
+  nightly-only lanes plus every non-core PR and nightly manifest entry.
 
 ## Lane 5: TLA+ and Apalache (`formal/tla`, `formal/apalache`)
 
@@ -204,12 +204,13 @@ nightly).
   rotation; nightly native sweep) plus automated crash triage (tmin, sha
   dedupe, auto-filed issues with SLOs) and weekly corpus sync. OSS-Fuzz
   integration files are complete; acceptance is pending.
-- Mutation testing: cargo-mutants across 6 crates nightly (advisory;
-  `releases.toml` ratchet at 0 observed consecutive green nights; measured
-  trust-boundary kill rate 30.7% against an 80% activation target), plus a
-  novel nightly co-coverage lane replaying the fuzz corpus against surviving
-  mutants (`mutants-fuzz-cocoverage.yml`). The formal modules themselves are
-  excluded from mutation with the rationale "covered by the proof lane".
+- Mutation testing: cargo-mutants runs path-scoped PR sweeps and full nightly
+  sweeps across 6 crates. The PR matrix stops untouched packages before tool
+  installation and remains advisory through the `releases.toml` ratchet, which
+  is at 0 observed consecutive green nights against an 80% activation target.
+  A nightly co-coverage lane replays the fuzz corpus against surviving mutants
+  (`mutants-fuzz-cocoverage.yml`). The formal modules themselves are excluded
+  from mutation with the rationale "covered by the proof lane".
 - Concurrency: chio-kernel has a loom dev-dependency and a drop-guard race
   model test; there is no loom registry or dedicated CI lane.
 - Timing: nightly dudect harnesses with a two-consecutive-nightly threshold
@@ -257,7 +258,7 @@ nightly).
 | Cadence | Formal content |
 | --- | --- |
 | Every PR (required) | diff-tests via workspace tests; `cargo xtask check crate-paths` (manifest path integrity); proptest invariant-naming gate; regression-test deletion gate; threat-model coverage gate; registry status ban (`implementation_backed`) |
-| PR, path-scoped | Apalache safety (6 spec/cfg pairs) on `formal/apalache/**`, `formal/tla/**`; ClusterFuzzLite change-scoped fuzzing on `crates/**`, `fuzz/**` |
+| PR, path-scoped | Apalache safety (6 spec/cfg pairs); Lean build plus sorry and manifest checks; 20 core and 12 non-core Kani PR harnesses; Rust verification metadata with no Creusot proofs; ClusterFuzzLite change-scoped fuzzing; cargo-mutants for touched trust-boundary crates |
 | Nightly | Kani (all lanes), Lean/Aeneas/Creusot proof report (`formal-qualification`), Apalache temporal (liveness; known-unreliable), proptest 4096-case tier, mutants full sweeps (advisory), mutants-fuzz co-coverage, dudect, fuzz rotation and native sweep |
 | Push to main / release | `release-qualification.yml` runs the full gate battery: `check-formal-proofs.sh`, both Aeneas checks, equivalence, Creusot and Kani strict lanes, adapter no-bypass, portable kernel, proof report |
 

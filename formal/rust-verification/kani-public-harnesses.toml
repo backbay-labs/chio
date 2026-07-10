@@ -48,16 +48,15 @@ covered_symbols = [
 # `public_verify_capability` and `public_evaluate` exercise the full
 # canonical-JSON serialise plus Ed25519/P-384 verify path, while the
 # algebraic harnesses model signatures with `model_sign`/`model_verify`
-# and finish in 1-3 seconds. The full sweep is ~2.2 min locally, within
-# the 6-minute target budget, so every harness is classified in `lanes.pr`,
-# including the two WYSIWYS `sign_receipt` content-hash recompute harnesses.
-# Those harnesses sign concrete fixtures and finish in seconds.
+# and finish in 1-3 seconds. The full sweep is ~2.2 min locally, within the
+# 10-minute warm PR target, so every harness lands in `lanes.pr`, including
+# the two WYSIWYS `sign_receipt` content-hash recompute harnesses, which sign
+# concrete fixtures and finish in seconds.
 #
 # The nightly Kani job runs the union of `lanes.pr` and
-# `lanes.nightly_only`. The `pr` name identifies the fast tier, but no pull
-# request workflow currently consumes it.
+# `lanes.nightly_only`; the pull-request workflow runs only `lanes.pr`.
 [lanes.pr]
-description = "Fast Kani harnesses exercised by the nightly full sweep"
+description = "Kani harnesses run on pull requests touching the scoped paths (full sweep)"
 harnesses = [
   "public_verify_capability_rejects_untrusted_issuer_before_signature",
   "public_normalized_scope_subset_rejects_widened_child",
