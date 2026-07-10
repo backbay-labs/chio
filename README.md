@@ -219,8 +219,12 @@ qualification audit.
 
 Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the
 workflow and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations.
-Before opening a pull request, run the full verification gate (the same one CI
-enforces):
+Before opening a pull request, run the verification gate (`make gate` for the
+minimal check, or `make ci` for the full PR-tier lane CI enforces):
+
+```bash
+make gate
+```
 
 ```bash
 cargo build --workspace && \
