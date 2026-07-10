@@ -16,6 +16,13 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from chio_sdk._generated.receipt.record_schema import (
+    BoundaryClass,
+    ReceiptKind,
+    RedactionMode,
+    ToolOrigin,
+    TrustLevel,
+)
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, Decision, ToolCallAction
 
@@ -127,10 +134,10 @@ def synthesize_deny_receipt(
 ) -> ChioReceipt:
     """Build a deny receipt when the sidecar raised instead of returning one.
 
-    Signature and kernel_key are empty, metadata carries the synthetic
-    marker, and the reason is prefixed ``[unsigned]`` so DLQ analytics
-    surface it without reading metadata. Parameter hash stays consistent
-    with what the sidecar would have computed.
+    Signature and kernel_key keep schema-valid placeholders, metadata
+    carries the synthetic marker, and the reason is prefixed ``[unsigned]``
+    so DLQ analytics surface it without reading metadata. Parameter hash
+    stays consistent with what the sidecar would have computed.
     """
     canonical = json.dumps(
         parameters, sort_keys=True, separators=(",", ":"), ensure_ascii=True
@@ -138,7 +145,7 @@ def synthesize_deny_receipt(
     param_hash = hashlib.sha256(canonical).hexdigest()
     annotated_reason = reason if reason.startswith("[unsigned]") else f"[unsigned] {reason}"
     return ChioReceipt(
-        id=f"chio-streaming-synth-{uuid.uuid4().hex[:10]}",
+        id=hashlib.sha256(f"{SYNTHETIC_RECEIPT_MARKER}:{uuid.uuid4().hex}".encode()).hexdigest(),
         timestamp=int(time.time()),
         capability_id=capability_id,
         tool_server=tool_server,
@@ -148,15 +155,20 @@ def synthesize_deny_receipt(
             parameter_hash=param_hash,
         ),
         decision=Decision.deny(reason=annotated_reason, guard=guard),
+        receipt_kind=ReceiptKind.mediated_decision,
+        boundary_class=BoundaryClass.prevent,
+        tool_origin=ToolOrigin.caller_executed,
+        redaction_mode=RedactionMode.none,
         content_hash=param_hash,
-        policy_hash="",
+        policy_hash="0" * 64,
         evidence=[],
         metadata={
             "chio_streaming_synthetic": True,
             "chio_streaming_synthetic_marker": SYNTHETIC_RECEIPT_MARKER,
         },
-        kernel_key="",
-        signature="",
+        trust_level=TrustLevel.mediated,
+        kernel_key="0" * 64,
+        signature="0" * 128,
     )
 
 

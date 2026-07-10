@@ -119,7 +119,7 @@ pub extern "C" fn chio_deny_reason(buf_ptr: i32, buf_len: i32) -> i32 {
         None => return -1,
     };
 
-    if buf_len < 0 || json_bytes.len() > buf_len as usize {
+    if buf_ptr <= 0 || buf_len < 0 || json_bytes.len() > buf_len as usize {
         return -1;
     }
 
@@ -234,6 +234,14 @@ mod tests {
         // (We cannot safely call chio_deny_reason on 64-bit native because the
         // i32 buf_ptr truncates the heap pointer.)
         assert!(json_bytes.len() > 2, "Buffer of 2 would be too small");
+    }
+
+    #[test]
+    fn chio_deny_reason_rejects_invalid_buffer_pointer() {
+        super::encode_verdict(GuardVerdict::deny("blocked"));
+
+        assert_eq!(super::chio_deny_reason(0, 4096), -1);
+        assert_eq!(super::chio_deny_reason(-1, 4096), -1);
     }
 
     #[test]

@@ -1180,7 +1180,7 @@ fn liability_placement_rejects_expired_quote() {
         "quoted terms",
     )
     .expires_at;
-    placement.issued_at = expires_at + 1;
+    placement.issued_at = expires_at;
 
     let error = require_err(placement.validate(), "expired quote rejected");
     assert!(error.contains("cannot be issued after the quote expires"));

@@ -52,6 +52,13 @@ test("canonical vectors round-trip through the TS invariant helper", async () =>
   }
 });
 
+test("canonical JSON rejects duplicate object keys", () => {
+  assert.throws(
+    () => canonicalizeJsonString('{"scope":"read","scope":"write"}'),
+    (error) => error instanceof ChioInvariantError && /duplicate object key/.test(error.message),
+  );
+});
+
 test("hashing vectors round-trip through the TS invariant helpers", async () => {
   const fixture = await readJson("tests/bindings/vectors/hashing/v1.json") as {
     cases: Array<{

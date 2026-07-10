@@ -1,14 +1,14 @@
-import http from "node:http";
 import { describe, it, expect } from "vitest";
 import { Elysia } from "elysia";
+import http from "node:http";
 import { chio } from "../src/index.js";
 import type { EvaluateResponse } from "@chio-protocol/node-http";
 
-function allowResponse(): EvaluateResponse {
+function allowResponse(receiptId = "rcpt-1"): EvaluateResponse {
   return {
     verdict: { verdict: "allow" },
     receipt: {
-      id: "rcpt-1",
+      id: receiptId,
       request_id: "req-1",
       route_pattern: "/tenant",
       method: "GET",
@@ -49,6 +49,7 @@ function verifyResponse() {
 
 async function startMockSidecar(
   onEvaluate?: (requestBody: string) => void,
+  receiptId = "rcpt-1",
 ): Promise<{ server: http.Server; url: string }> {
   const server = http.createServer((req, res) => {
     if (req.method === "POST" && req.url === "/chio/evaluate") {
@@ -57,7 +58,7 @@ async function startMockSidecar(
       req.on("end", () => {
         onEvaluate?.(Buffer.concat(chunks).toString("utf-8"));
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(allowResponse()));
+        res.end(JSON.stringify(allowResponse(receiptId)));
       });
       return;
     }
@@ -72,12 +73,16 @@ async function startMockSidecar(
     res.end();
   });
 
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  if (address == null || typeof address === "string") {
-    throw new Error("mock sidecar did not bind to a TCP port");
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const addr = server.address();
+  if (addr == null || typeof addr === "string") {
+    throw new Error("sidecar not listening");
   }
-  return { server, url: `http://127.0.0.1:${address.port}` };
+
+  return {
+    server,
+    url: `http://127.0.0.1:${addr.port}`,
+  };
 }
 
 describe("chio elysia plugin", () => {
@@ -181,23 +186,65 @@ describe("chio elysia plugin", () => {
       )
       .get("/tenant", () => ({ ok: true }));
 
-    const response = await app.handle(
-      new Request("http://localhost/tenant", {
-        method: "GET",
-        headers: {
-          "content-type": "application/json",
-          "x-tenant-id": "tenant-1",
-          "x-secret": "drop-me",
-        },
-      }),
-    );
+    try {
+      const response = await app.handle(
+        new Request("http://localhost/tenant", {
+          method: "GET",
+          headers: {
+            "content-type": "application/json",
+            "x-tenant-id": "tenant-a",
+            "x-secret": "do-not-forward",
+          },
+        }),
+      );
 
-    expect(response.status).toBe(200);
-    expect(observedHeaders).toMatchObject({
-      "content-type": "application/json",
-      "x-tenant-id": "tenant-1",
+      expect(response.status).toBe(200);
+      expect(observedHeaders?.["content-type"]).toBe("application/json");
+      expect(observedHeaders?.["x-tenant-id"]).toBe("tenant-a");
+      expect(observedHeaders?.["x-secret"]).toBeUndefined();
+    } finally {
+      sidecar.server.close();
+    }
+  });
+
+  it("stores verified evaluation result on downstream context", async () => {
+    const sidecar = await startMockSidecar(undefined, "rcpt-elysia");
+    const app = new Elysia()
+      .use(chio({ sidecarUrl: sidecar.url }))
+      .post("/test", ({ chioResult }) => ({
+        receiptId: chioResult?.receipt.id,
+      }));
+
+    try {
+      const response = await app.handle(
+        new Request("http://localhost/test", {
+          method: "POST",
+          body: "hello",
+        }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("X-Chio-Receipt-Id")).toBe("rcpt-elysia");
+      expect(await response.json()).toEqual({ receiptId: "rcpt-elysia" });
+    } finally {
+      sidecar.server.close();
+    }
+  });
+
+  it("fails closed when a request body cannot be cloned for hashing", async () => {
+    const request = new Request("http://localhost/test", {
+      method: "POST",
+      body: "already consumed",
     });
-    expect(observedHeaders).not.toHaveProperty("x-secret");
-    sidecar.server.close();
+    await request.text();
+
+    const app = new Elysia()
+      .use(chio({ sidecarUrl: "http://127.0.0.1:1" }))
+      .post("/test", () => ({ reached: true }));
+
+    const response = await app.handle(request);
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe("chio_evaluation_failed");
   });
 });

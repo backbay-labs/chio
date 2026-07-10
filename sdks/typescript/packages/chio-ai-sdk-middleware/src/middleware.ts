@@ -239,8 +239,6 @@ export function isAuthorizedEvaluation(evaluation: ChioEvaluation): boolean {
     && evaluation.boundary_class === "prevent"
     && evaluation.observation_outcome == null
     && evaluation.trust_level === "mediated"
-    // The sidecar's /chio/verify returns "allow"; verifyReceipt implementations
-    // may also return "authorized". Both authorize identically (see isAuthorizedResult()).
     && isAuthorizedResult(evaluation.result)
     && evaluation.authorized === true
     && evaluation.ok === true
@@ -251,9 +249,7 @@ export function isAuthorizedEvaluation(evaluation: ChioEvaluation): boolean {
 }
 
 function isAuthorizedResult(result: string | undefined): boolean {
-  return result === "allow"
-    || result === "authorized"
-    || result === "Authorized";
+  return result === "allow";
 }
 
 function nonAuthorizingEvaluation(evaluation: ChioEvaluation): ChioEvaluation {

@@ -65,7 +65,9 @@ def _canonicalize_float(value: float) -> str:
         if "." in decimal:
             decimal = decimal.rstrip("0").rstrip(".")
         return decimal
-    return _EXPONENT_RE.sub(lambda match: f"e{match.group(1)}{match.group(2)}", rendered)
+    return _EXPONENT_RE.sub(
+        lambda match: f"e{match.group(1)}{match.group(2)}", rendered
+    )
 
 
 def _canonical_json(value: Any) -> str:
@@ -86,7 +88,8 @@ def _canonical_json(value: Any) -> str:
             raise ValueError("canonical JSON object keys must be strings")
         items = sorted(value.items(), key=lambda item: item[0].encode("utf-16-be"))
         return "{" + ",".join(
-            f"{json.dumps(key, ensure_ascii=False, separators=(',', ':'))}:{_canonical_json(entry_value)}"
+            f"{json.dumps(key, ensure_ascii=False, separators=(',', ':'))}:"
+            f"{_canonical_json(entry_value)}"
             for key, entry_value in items
         ) + "}"
     raise TypeError(f"canonical JSON does not support {type(value).__name__}")
@@ -158,12 +161,12 @@ def _validate_trace_receipt(body: Mapping[str, Any]) -> bool:
     action = body.get("action")
     if not isinstance(action, Mapping):
         return False
-    if "parameters" not in action:
-        return False
     parameter_hash = action.get("parameter_hash")
-    if not isinstance(parameter_hash, str):
+    if not _is_sha256_hex(parameter_hash):
         return False
-    if parameter_hash != _hash_value(action["parameters"]):
+    if body.get("redaction_mode") == "redacted" and "parameters" in action:
+        return False
+    if "parameters" in action and parameter_hash != _hash_value(action["parameters"]):
         return False
     return True
 
@@ -198,8 +201,8 @@ def issue_receipt(
     safe_response: Mapping[str, Any] = response or {}
     issued_at = timestamp if timestamp is not None else int(time.time())
     action = {
-        "parameters": dict(parameters),
         "parameter_hash": _hash_value(dict(parameters)),
+        "parameter_summary": {"model_id": model_id},
     }
     metadata = {
         "surface": "aws-bedrock",
@@ -455,7 +458,9 @@ def verify_trusted_receipt(
     )
 
 
-def verify_receipt(receipt: Mapping[str, Any], signing_key: str = DEFAULT_SIGNING_KEY) -> bool:
+def verify_receipt(
+    receipt: Mapping[str, Any], signing_key: str = DEFAULT_SIGNING_KEY
+) -> bool:
     """Verify the local SDK receipt signature and required Bedrock metadata."""
 
     try:

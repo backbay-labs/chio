@@ -385,7 +385,7 @@ wheels = [
 
 [[package]]
 name = "chio-adapter-base"
-version = "0.1.0"
+version = "0.2.0"
 source = { directory = "../chio-adapter-base" }
 dependencies = [
     { name = "chio-sdk-python" },
@@ -394,6 +394,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "chio-sdk-python", directory = "../chio-sdk-python" },
+    { name = "hypothesis", marker = "extra == 'dev'", specifier = ">=6,<7" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<9" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23,<1" },

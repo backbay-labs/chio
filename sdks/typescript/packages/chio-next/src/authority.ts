@@ -13,6 +13,10 @@ export interface ChioAuthorityFields {
   parameter_hash_valid?: boolean | undefined;
 }
 
+function isAuthorizedResult(result: string | undefined): boolean {
+  return result === "allow";
+}
+
 export function isAuthorizedEvaluation(
   evaluation: ChioAuthorityFields & { verdict: "allow" | "deny" },
 ): boolean {
@@ -22,7 +26,7 @@ export function isAuthorizedEvaluation(
     && evaluation.boundary_class === "prevent"
     && evaluation.observation_outcome == null
     && evaluation.trust_level === "mediated"
-    && evaluation.result === "allow"
+    && isAuthorizedResult(evaluation.result)
     && evaluation.authorized === true
     && evaluation.ok === true
     && evaluation.signer_trusted === true

@@ -190,6 +190,18 @@ class TestHealth:
             data = await client.health()
             assert data["status"] == "healthy"
 
+    @respx.mock
+    async def test_403_with_non_json_body_raises_denied(self) -> None:
+        respx.get(f"{BASE}/chio/health").mock(
+            return_value=httpx.Response(403, text="forbidden")
+        )
+        async with ChioClient(BASE) as client:
+            with pytest.raises(ChioDeniedError) as exc_info:
+                await client.health()
+        assert exc_info.value.message == "denied"
+        assert exc_info.value.reason == "forbidden"
+        assert exc_info.value.reason_code == "HTTP_403"
+
 
 # ---------------------------------------------------------------------------
 # Capabilities
@@ -618,6 +630,16 @@ class TestErrorHandling:
             assert exc_info.value.message == "denied"
             assert exc_info.value.reason == "<html>forbidden</html>"
             assert exc_info.value.reason_code == "HTTP_403"
+
+    @respx.mock
+    async def test_malformed_success_raises_typed_chio_error(self) -> None:
+        respx.get(f"{BASE}/chio/health").mock(
+            return_value=httpx.Response(200, text="not json")
+        )
+        async with ChioClient(BASE) as client:
+            with pytest.raises(ChioError) as exc_info:
+                await client.health()
+            assert exc_info.value.code == "INVALID_RESPONSE"
 
     @respx.mock
     async def test_server_error(self) -> None:
