@@ -158,7 +158,7 @@ async function ensureExpressBufferedBody(req: ChioRequest): Promise<Buffer> {
 
   const rawBody = Buffer.concat(chunks);
   req.rawBody = rawBody;
-  preserveReadableBody(req, rawBody, { bindAsyncIterator: false });
+  preserveReadableBody(req, rawBody);
   return rawBody;
 }
 
