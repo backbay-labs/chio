@@ -368,6 +368,39 @@ impl ChioKernel {
         )
     }
 
+    /// Persist a signed local deny receipt for an RSS/allocation load-shed.
+    ///
+    /// The shed is checked on the same pre-negotiation fast path as the
+    /// emergency stop, which already records a signed deny receipt. Recording
+    /// one here keeps overload denials inside the same receipt-totality audit
+    /// trail every other admission decision has, and makes the `OverloadResource`
+    /// actually appear in a receipt deny reason as `error.rs` documents. The
+    /// caller still returns [`KernelError::Overloaded`] so the
+    /// tower load-shed edge surfaces backpressure; this only records evidence and
+    /// never changes the error. A receipt-persist failure is surfaced to the
+    /// caller, which logs it without masking the shed decision (fail-closed).
+    pub(crate) fn record_overload_shed_deny_receipt(
+        &self,
+        request: &ToolCallRequest,
+        resource: crate::OverloadResource,
+        timestamp: u64,
+        extra_metadata: Option<serde_json::Value>,
+    ) -> Result<(), KernelError> {
+        let reason =
+            format!("kernel shed load to stay within its memory budget (resource: {resource:?})");
+        // Local, non-federated v1 deny receipt: the shed runs before receipt
+        // negotiation and peer pinning, exactly like the emergency-stop path.
+        let _response = self.build_local_v1_failclosed_deny_response_with_metadata(
+            request,
+            &reason,
+            timestamp,
+            None,
+            extra_metadata,
+            "kernel.overload",
+        )?;
+        Ok(())
+    }
+
     /// Build a Deny response for pre-dispatch receipt persistence admission.
     /// Federated dispatches require a durable local receipt store before any
     /// tool side effect, even when the negotiated receipt version is v1.

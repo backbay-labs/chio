@@ -688,3 +688,213 @@ fn federated_request_with_fresh_peer_but_missing_cosigner_fails_closed_post_disp
         "unexpected deny reason for missing-cosigner-with-fresh-peer scenario: {reason}"
     );
 }
+
+#[test]
+fn installed_artifact_store_preserves_cosign_evidence_across_cache_eviction() {
+    // A federated deployment producing more than federation_cache_capacity receipts
+    // drops evicted DualSignedReceipt / DSSE artifacts from the bounded in-memory
+    // caches. Installing a write-through FederationArtifactStore via
+    // set_federation_artifact_store makes the co-sign hook write through to the
+    // store before the cache, so an artifact evicted from the front cache still
+    // resolves from the store (as long as the store itself has not evicted it) and
+    // dual_signed_receipt / federation_dsse_envelope keep resolving older receipts
+    // instead of returning None.
+    let origin_kp = Keypair::generate();
+    let origin_kernel_id = "kernel.org-a";
+
+    // A cache capacity of 1 evicts the first receipt the moment the second is
+    // co-signed, exercising the eviction path deterministically.
+    let mut config = make_config();
+    config.memory_budget.federation_cache_capacity = 1;
+
+    let mut kernel = make_kernel(config);
+    let tool_host_public_key = kernel.config.keypair.public_key();
+    let tool_host_kernel_id = "kernel.org-b";
+    kernel.set_federation_local_kernel_id(tool_host_kernel_id);
+    let path = unique_receipt_db_path("federation-artifact-store-eviction");
+    kernel
+        .set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()))
+        .unwrap();
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-fed", vec!["file_read"])));
+
+    let trust = KernelTrustExchange::new(tool_host_kernel_id, kernel.config.keypair.clone())
+        .with_trusted_peer(origin_kernel_id, origin_kp.public_key());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let peer = handshake_and_pin(&trust, origin_kernel_id, &origin_kp, now);
+    let mut kernel = kernel.with_federation_peers(vec![peer]);
+    kernel.set_federation_cosigner(std::sync::Arc::new(InProcessCoSigner::new(
+        origin_kernel_id,
+        origin_kp.clone(),
+        tool_host_public_key.clone(),
+    )));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(TreatyDsseAdmissionHook));
+
+    // Install the durable artifact store via the new setter.
+    kernel.set_federation_artifact_store(std::sync::Arc::new(
+        crate::federation_artifact_store::InMemoryFederationArtifactStore::default(),
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-fed", "file_read")]),
+        300,
+    );
+
+    // First federated request -> first receipt, cached and stored.
+    let mut request_a = make_request_with_arguments(
+        "req-fed-evict-a",
+        &cap,
+        "file_read",
+        "srv-fed",
+        serde_json::json!({ "path": "/data/fed-a.txt" }),
+    );
+    request_a.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
+    let response_a = kernel.evaluate_tool_call_blocking(&request_a).unwrap();
+    assert_eq!(response_a.verdict, Verdict::Allow);
+    let receipt_a_id = response_a.receipt.id.clone();
+
+    // Second federated request -> distinct receipt; co-signing it evicts A from
+    // the capacity-1 in-memory cache.
+    let mut request_b = make_request_with_arguments(
+        "req-fed-evict-b",
+        &cap,
+        "file_read",
+        "srv-fed",
+        serde_json::json!({ "path": "/data/fed-b.txt" }),
+    );
+    request_b.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
+    let response_b = kernel.evaluate_tool_call_blocking(&request_b).unwrap();
+    assert_eq!(response_b.verdict, Verdict::Allow);
+    let receipt_b_id = response_b.receipt.id.clone();
+    assert_ne!(receipt_a_id, receipt_b_id);
+
+    // The bounded cache holds only the most recent artifact (A was evicted).
+    let dual_gauge = kernel
+        .bounded_structure_gauges()
+        .into_iter()
+        .find(|(label, _)| *label == "federation_dual_receipts")
+        .map(|(_, count)| count)
+        .expect("federation_dual_receipts gauge must exist");
+    assert_eq!(dual_gauge, 1, "cap-1 cache must hold only the newest artifact");
+
+    // The evicted receipt A is no longer in the cache (gauge == 1 holds only B),
+    // so it can only still resolve via the durable store fallback.
+    let dual_a = kernel
+        .dual_signed_receipt(&receipt_a_id)
+        .expect("evicted dual-signed receipt must resolve from the artifact store");
+    assert_eq!(dual_a.body.id, receipt_a_id);
+    dual_a
+        .verify(&origin_kp.public_key(), &tool_host_public_key)
+        .expect("store-served dual-signed receipt must still verify against both peers");
+    assert!(
+        kernel.federation_dsse_envelope(&receipt_a_id).is_some(),
+        "evicted DSSE envelope must resolve from the artifact store"
+    );
+
+    // The most recent receipt B resolves from the cache.
+    assert!(kernel.dual_signed_receipt(&receipt_b_id).is_some());
+
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn bounded_in_memory_artifact_store_loses_evidence_when_both_layers_evict() {
+    // The bundled InMemoryFederationArtifactStore is a bounded cache, not durable
+    // storage. When BOTH the kernel front cache and the store are capacity 1, the
+    // second co-sign evicts the first receipt from the store as well as the cache,
+    // so the older artifact is unrecoverable. This is why an installed store is
+    // NOT assumed to make evicted artifacts resolvable unless it reports itself
+    // durable: a bounded store can lose the same evidence the cache did.
+    let origin_kp = Keypair::generate();
+    let origin_kernel_id = "kernel.org-a";
+
+    let mut config = make_config();
+    config.memory_budget.federation_cache_capacity = 1;
+
+    let mut kernel = make_kernel(config);
+    let tool_host_public_key = kernel.config.keypair.public_key();
+    let tool_host_kernel_id = "kernel.org-b";
+    kernel.set_federation_local_kernel_id(tool_host_kernel_id);
+    let path = unique_receipt_db_path("federation-artifact-store-bounded-loss");
+    kernel
+        .set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap()))
+        .unwrap();
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-fed", vec!["file_read"])));
+
+    let trust = KernelTrustExchange::new(tool_host_kernel_id, kernel.config.keypair.clone())
+        .with_trusted_peer(origin_kernel_id, origin_kp.public_key());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let peer = handshake_and_pin(&trust, origin_kernel_id, &origin_kp, now);
+    let mut kernel = kernel.with_federation_peers(vec![peer]);
+    kernel.set_federation_cosigner(std::sync::Arc::new(InProcessCoSigner::new(
+        origin_kernel_id,
+        origin_kp.clone(),
+        tool_host_public_key.clone(),
+    )));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(TreatyDsseAdmissionHook));
+
+    // Install a capacity-1 in-memory store: it drop-evicts exactly like the front
+    // cache, so it cannot durably retain an evicted artifact.
+    kernel.set_federation_artifact_store(std::sync::Arc::new(
+        crate::federation_artifact_store::InMemoryFederationArtifactStore::with_capacity(1, 3600),
+    ));
+
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-fed", "file_read")]),
+        300,
+    );
+
+    let mut request_a = make_request_with_arguments(
+        "req-fed-bounded-a",
+        &cap,
+        "file_read",
+        "srv-fed",
+        serde_json::json!({ "path": "/data/fed-a.txt" }),
+    );
+    request_a.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
+    let response_a = kernel.evaluate_tool_call_blocking(&request_a).unwrap();
+    assert_eq!(response_a.verdict, Verdict::Allow);
+    let receipt_a_id = response_a.receipt.id.clone();
+
+    // Co-signing B evicts A from the store (capacity 1) BEFORE evicting it from the
+    // capacity-1 cache, so A is gone from both layers.
+    let mut request_b = make_request_with_arguments(
+        "req-fed-bounded-b",
+        &cap,
+        "file_read",
+        "srv-fed",
+        serde_json::json!({ "path": "/data/fed-b.txt" }),
+    );
+    request_b.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
+    let response_b = kernel.evaluate_tool_call_blocking(&request_b).unwrap();
+    assert_eq!(response_b.verdict, Verdict::Allow);
+    let receipt_b_id = response_b.receipt.id.clone();
+    assert_ne!(receipt_a_id, receipt_b_id);
+
+    // The bounded store did NOT preserve A: both layers evicted it, so it is
+    // unrecoverable. Treating this store as durable would have masked the loss.
+    assert!(
+        kernel.dual_signed_receipt(&receipt_a_id).is_none(),
+        "a bounded in-memory store must not be relied on to durably retain evicted artifacts"
+    );
+    assert!(
+        kernel.federation_dsse_envelope(&receipt_a_id).is_none(),
+        "a bounded in-memory store must not be relied on to durably retain evicted envelopes"
+    );
+
+    // The most recent receipt B still resolves from the surviving layers.
+    assert!(kernel.dual_signed_receipt(&receipt_b_id).is_some());
+
+    let _ = std::fs::remove_file(path);
+}

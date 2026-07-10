@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -72,6 +73,11 @@ pub enum KernelServiceError {
     /// Tenant or global service saturation caused load shedding.
     #[error("overloaded")]
     Overloaded,
+    /// The per-tenant bucket table is at capacity and this tenant has no bucket.
+    /// Distinct from `Overloaded` (a per-tenant concurrency shed) so a full table
+    /// is observable separately; maps to the same shed edge.
+    #[error("tenant bucket table is full")]
+    TenantTableFull,
     /// Request exceeded the configured tower timeout.
     #[error("timeout")]
     Timeout,
@@ -94,9 +100,32 @@ impl Service<KernelRequest> for KernelService {
         let kernel = Arc::clone(&self.kernel);
 
         Box::pin(async move {
-            let response = kernel.evaluate_tool_call(&req.call).await?;
+            // Translate the kernel error explicitly rather than via the blanket
+            // `?`/`From` conversion so an RSS soft-ceiling shed surfaces as the
+            // retryable service overload variant (see `map_kernel_error`).
+            let response = kernel
+                .evaluate_tool_call(&req.call)
+                .await
+                .map_err(map_kernel_error)?;
             Ok(response)
         })
+    }
+}
+
+/// Translate a kernel evaluation error into the tower service error.
+///
+/// The RSS soft ceiling sheds new admissions with
+/// [`chio_kernel::KernelError::Overloaded`]. The blanket `From<KernelError>` maps
+/// that into the opaque [`KernelServiceError::Kernel`], which callers keying
+/// retry/backpressure on [`KernelServiceError::Overloaded`] (the variant tower
+/// load shedding produces) would treat as an ordinary kernel failure. Map
+/// `Overloaded` explicitly to the retryable service overload variant so an RSS
+/// shed reaches the same shed edge as tower-side load shedding. Every other
+/// kernel error keeps the `Kernel` shape.
+fn map_kernel_error(error: chio_kernel::KernelError) -> KernelServiceError {
+    match error {
+        chio_kernel::KernelError::Overloaded { .. } => KernelServiceError::Overloaded,
+        other => KernelServiceError::Kernel(other),
     }
 }
 
@@ -177,6 +206,10 @@ where
     }
 }
 
+/// Default idle window after which an unused tenant bucket may be reaped to make
+/// room for a new tenant.
+const DEFAULT_TENANT_IDLE_REAP_SECS: u64 = 3600;
+
 /// Per-tenant concurrency limiter for kernel requests.
 ///
 /// Each tenant key gets its own bounded tower concurrency service. Waiting for
@@ -186,6 +219,7 @@ where
 pub struct TenantConcurrencyLimitLayer {
     per_tenant_limit: usize,
     max_tenants: usize,
+    tenant_idle_reap_secs: u64,
 }
 
 impl TenantConcurrencyLimitLayer {
@@ -194,12 +228,20 @@ impl TenantConcurrencyLimitLayer {
         Self {
             per_tenant_limit,
             max_tenants: DEFAULT_MAX_TENANT_CONCURRENCY_BUCKETS,
+            tenant_idle_reap_secs: DEFAULT_TENANT_IDLE_REAP_SECS,
         }
     }
 
     /// Set the maximum number of tenant limiter buckets retained at once.
     pub fn with_max_tenants(mut self, max_tenants: usize) -> Self {
         self.max_tenants = max_tenants;
+        self
+    }
+
+    /// Set the idle window after which an unused tenant bucket may be reaped so
+    /// a new tenant is not permanently blocked by a full table.
+    pub fn with_tenant_idle_reap_secs(mut self, secs: u64) -> Self {
+        self.tenant_idle_reap_secs = secs;
         self
     }
 }
@@ -212,6 +254,7 @@ impl<S> Layer<S> for TenantConcurrencyLimitLayer {
             inner,
             per_tenant_limit: self.per_tenant_limit,
             max_tenants: self.max_tenants,
+            tenant_idle_reap_secs: self.tenant_idle_reap_secs,
             tenants: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -223,10 +266,28 @@ pub struct TenantConcurrencyLimitService<S> {
     inner: S,
     per_tenant_limit: usize,
     max_tenants: usize,
-    tenants: Arc<Mutex<HashMap<TenantId, TenantBucketService<S>>>>,
+    tenant_idle_reap_secs: u64,
+    tenants: Arc<Mutex<HashMap<TenantId, TenantBucketEntry<S>>>>,
 }
 
 type TenantBucketService<S> = LoadShed<ConcurrencyLimit<S>>;
+/// A tenant's bucket service, its last-use instant (for idle reap), and a live
+/// in-flight-call counter so a bucket with active calls is never reaped.
+type TenantBucketEntry<S> = (TenantBucketService<S>, std::time::Instant, Arc<AtomicUsize>);
+
+/// RAII guard that decrements a tenant bucket's in-flight counter when a
+/// dispatched call finishes (or its future is dropped/cancelled). Held for the
+/// full duration of `call` so an idle-reap sweep skips buckets with active
+/// calls: reaping an active bucket and recreating a fresh semaphore would let a
+/// tenant exceed `per_tenant_limit`.
+#[derive(Debug)]
+struct InFlightGuard(Arc<AtomicUsize>);
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::SeqCst);
+    }
+}
 
 impl<S> TenantConcurrencyLimitService<S>
 where
@@ -235,23 +296,47 @@ where
     fn service_for_tenant(
         &self,
         tenant_id: &TenantId,
-    ) -> Result<TenantBucketService<S>, KernelServiceError> {
+    ) -> Result<(TenantBucketService<S>, InFlightGuard), KernelServiceError> {
         let mut tenants = self.tenants.lock().map_err(|_| {
             KernelServiceError::Middleware("tenant concurrency limit state poisoned".to_string())
         })?;
-        if !tenants.contains_key(tenant_id) && tenants.len() >= self.max_tenants {
-            return Err(KernelServiceError::Overloaded);
+
+        if let Some((service, last_use, in_flight)) = tenants.get_mut(tenant_id) {
+            *last_use = std::time::Instant::now();
+            in_flight.fetch_add(1, Ordering::SeqCst);
+            return Ok((service.clone(), InFlightGuard(Arc::clone(in_flight))));
         }
 
-        let service = tenants
-            .entry(tenant_id.clone())
-            .or_insert_with(|| {
-                let service =
-                    ConcurrencyLimitLayer::new(self.per_tenant_limit).layer(self.inner.clone());
-                LoadShedLayer::new().layer(service)
-            })
-            .clone();
-        Ok(service)
+        if tenants.len() >= self.max_tenants {
+            // Reap the most-idle tenant so a new tenant is not permanently
+            // blocked; only then declare the table full. Never reap a bucket that
+            // still has in-flight calls: recreating its
+            // semaphore would let that tenant exceed `per_tenant_limit`.
+            let idle = std::time::Duration::from_secs(self.tenant_idle_reap_secs);
+            let victim = tenants
+                .iter()
+                .filter(|(_, (_, last, in_flight))| {
+                    last.elapsed() >= idle && in_flight.load(Ordering::SeqCst) == 0
+                })
+                .max_by_key(|(_, (_, last, _))| last.elapsed())
+                .map(|(k, _)| k.clone());
+            match victim {
+                Some(v) => {
+                    tenants.remove(&v);
+                }
+                None => return Err(KernelServiceError::TenantTableFull),
+            }
+        }
+
+        let service = ConcurrencyLimitLayer::new(self.per_tenant_limit).layer(self.inner.clone());
+        let service = LoadShedLayer::new().layer(service);
+        let in_flight = Arc::new(AtomicUsize::new(1));
+        let guard = InFlightGuard(Arc::clone(&in_flight));
+        tenants.insert(
+            tenant_id.clone(),
+            (service.clone(), std::time::Instant::now(), in_flight),
+        );
+        Ok((service, guard))
     }
 }
 
@@ -271,10 +356,12 @@ where
     }
 
     fn call(&mut self, req: KernelRequest) -> Self::Future {
-        let service = self.service_for_tenant(&req.tenant_id);
+        let acquired = self.service_for_tenant(&req.tenant_id);
 
         Box::pin(async move {
-            let mut service = service?;
+            // Hold the in-flight guard for the whole call so a concurrent
+            // idle-reap sweep never evicts this tenant's active bucket.
+            let (mut service, _in_flight) = acquired?;
             poll_ready_once(&mut service)?;
             service.call(req).await.map_err(normalize_tower_error)
         })
@@ -411,6 +498,80 @@ mod tests {
         }
     }
 
+    #[test]
+    fn table_full_is_distinct_from_per_tenant_overload() {
+        // At cap, a third distinct tenant sees the distinct TenantTableFull (not
+        // the per-tenant Overloaded), and a non-idle table does not reap, so the
+        // third tenant is refused rather than admitted.
+        #[derive(Clone, Debug)]
+        struct MockInner;
+
+        let service = TenantConcurrencyLimitLayer::new(1)
+            .with_max_tenants(2)
+            .layer(MockInner);
+        assert!(service.service_for_tenant(&"tenant-a".to_string()).is_ok());
+        assert!(service.service_for_tenant(&"tenant-b".to_string()).is_ok());
+        match service.service_for_tenant(&"tenant-c".to_string()) {
+            Err(KernelServiceError::TenantTableFull) => {}
+            other => panic!("expected TenantTableFull, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn idle_tenant_is_reaped_to_admit_a_new_tenant() {
+        // With a zero idle window every existing tenant is immediately reapable,
+        // so a full table admits a new tenant by evicting the most-idle one.
+        #[derive(Clone, Debug)]
+        struct MockInner;
+
+        let service = TenantConcurrencyLimitLayer::new(1)
+            .with_max_tenants(2)
+            .with_tenant_idle_reap_secs(0)
+            .layer(MockInner);
+        assert!(service.service_for_tenant(&"tenant-a".to_string()).is_ok());
+        assert!(service.service_for_tenant(&"tenant-b".to_string()).is_ok());
+        assert!(
+            service.service_for_tenant(&"tenant-c".to_string()).is_ok(),
+            "an idle tenant should be reaped to admit a new one"
+        );
+    }
+
+    #[test]
+    fn in_flight_tenant_is_not_reaped_even_when_idle_timed() {
+        // A bucket with an in-flight call must never be reaped. Recreating its
+        // semaphore would let the tenant exceed per_tenant_limit.
+        #[derive(Clone, Debug)]
+        struct MockInner;
+
+        let service = TenantConcurrencyLimitLayer::new(1)
+            .with_max_tenants(1)
+            .with_tenant_idle_reap_secs(0)
+            .layer(MockInner);
+
+        // Hold tenant-a's in-flight guard so its bucket has an active call.
+        let held = match service.service_for_tenant(&"tenant-a".to_string()) {
+            Ok(acquired) => acquired,
+            Err(error) => panic!("tenant-a should be admitted: {error:?}"),
+        };
+
+        // Table is full (max_tenants=1). Even with a zero idle window
+        // (time-reapable), tenant-a has an in-flight call, so it must NOT be
+        // reaped and the new tenant is refused.
+        match service.service_for_tenant(&"tenant-b".to_string()) {
+            Err(KernelServiceError::TenantTableFull) => {}
+            other => {
+                panic!("expected TenantTableFull (active tenant not reaped), got {other:?}")
+            }
+        }
+
+        // Once the in-flight call finishes, the idle tenant becomes reapable.
+        drop(held);
+        assert!(
+            service.service_for_tenant(&"tenant-b".to_string()).is_ok(),
+            "an idle tenant with no in-flight call should be reaped"
+        );
+    }
+
     fn make_config() -> KernelConfig {
         KernelConfig {
             keypair: Keypair::generate(),
@@ -426,6 +587,7 @@ mod tests {
             allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
+            memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         }
     }
 
@@ -519,6 +681,36 @@ mod tests {
         };
 
         assert!(matches!(error, KernelServiceError::Timeout));
+    }
+
+    #[test]
+    fn rss_shed_kernel_overload_maps_to_service_overloaded() {
+        // An RSS soft-ceiling shed surfaces as KernelError::Overloaded and must
+        // reach the RETRYABLE service overload variant, not the opaque Kernel
+        // wrapper, so callers keying retry/backpressure on Overloaded treat the
+        // shed as backpressure.
+        let mapped = map_kernel_error(KernelError::Overloaded {
+            resource: chio_kernel::OverloadResource::Allocation,
+        });
+        assert!(
+            matches!(mapped, KernelServiceError::Overloaded),
+            "an RSS shed must map to the retryable Overloaded variant, got {mapped:?}"
+        );
+
+        // The blanket `From`/`?` conversion maps the same shed to the opaque
+        // Kernel variant, which is why call() must use map_kernel_error instead.
+        let via_from: KernelServiceError = KernelError::Overloaded {
+            resource: chio_kernel::OverloadResource::Allocation,
+        }
+        .into();
+        assert!(
+            matches!(via_from, KernelServiceError::Kernel(_)),
+            "the blanket From maps Overloaded to Kernel; call() must use map_kernel_error"
+        );
+
+        // Every other kernel error keeps the Kernel shape.
+        let other = map_kernel_error(KernelError::Internal("boom".to_string()));
+        assert!(matches!(other, KernelServiceError::Kernel(_)));
     }
 
     struct ParkingServer {

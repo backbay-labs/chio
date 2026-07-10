@@ -53,6 +53,7 @@ async fn kernel_e2e_a2a_invocation_produces_allow_receipt() {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(adapter));
 
@@ -146,6 +147,7 @@ async fn kernel_e2e_a2a_runtime_admission_denies_before_send_message() {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.set_runtime_admission_hook(Arc::new(DenyingA2aRuntimeAdmissionHook));
     kernel.register_tool_server(Box::new(adapter));
@@ -216,6 +218,7 @@ async fn kernel_e2e_a2a_query_api_key_invocation_produces_allow_receipt() {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(adapter));
 
@@ -283,6 +286,7 @@ async fn kernel_e2e_a2a_basic_auth_invocation_produces_allow_receipt() {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(adapter));
 
@@ -359,6 +363,7 @@ async fn kernel_e2e_a2a_mtls_invocation_produces_allow_receipt() {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(adapter));
 
@@ -428,6 +433,7 @@ async fn kernel_e2e_a2a_get_task_follow_up_produces_allow_receipt() {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(adapter));
 
@@ -556,6 +562,7 @@ async fn kernel_e2e_a2a_deferred_get_task_runtime_admission_denies_before_remote
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(adapter));
 
@@ -675,6 +682,7 @@ async fn kernel_e2e_a2a_cancel_task_produces_allow_receipt() {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(adapter));
 
@@ -743,6 +751,7 @@ async fn kernel_e2e_a2a_streaming_invocation_produces_allow_receipt() {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(adapter));
 
@@ -808,6 +817,7 @@ async fn kernel_e2e_a2a_incomplete_streaming_invocation_produces_incomplete_rece
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(adapter));
 
@@ -879,6 +889,7 @@ async fn kernel_e2e_a2a_subscribe_task_produces_allow_receipt() {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(adapter));
 
@@ -946,6 +957,7 @@ async fn kernel_e2e_a2a_incomplete_subscribe_task_produces_incomplete_receipt() 
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(adapter));
 
@@ -1017,6 +1029,7 @@ async fn kernel_e2e_missing_required_bearer_security_denies_request() {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(adapter));
 
@@ -1082,6 +1095,7 @@ async fn kernel_e2e_oauth_client_credentials_allows_request() {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(adapter));
 

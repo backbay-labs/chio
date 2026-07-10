@@ -57,6 +57,21 @@ pub struct KernelConfig {
     /// indefinitely. When `Some(config)`, the kernel will archive receipts
     /// that exceed the time or size threshold.
     pub retention_config: Option<crate::receipt_store::RetentionConfig>,
+
+    /// Per-process memory budget (bounded-structure caps + RSS soft ceiling).
+    pub memory_budget: MemoryBudgetConfig,
+}
+
+impl KernelConfig {
+    pub(crate) fn memory_budget_receipt_mirror_capacity(&self) -> usize {
+        self.memory_budget.receipt_mirror_capacity
+    }
+    pub(crate) fn memory_budget_federation_cache_capacity(&self) -> usize {
+        self.memory_budget.federation_cache_capacity
+    }
+    pub(crate) fn memory_budget_federation_cache_idle_ttl_secs(&self) -> u64 {
+        self.memory_budget.federation_cache_idle_ttl_secs
+    }
 }
 
 /// Boot-time configuration for the kernel-side hybrid signing path.
@@ -118,9 +133,146 @@ pub(crate) fn receipt_crypto_floor(
 
 pub const DEFAULT_MAX_STREAM_DURATION_SECS: u64 = 300;
 pub const DEFAULT_MAX_STREAM_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
+/// Default cap on the number of chunks RETAINED from one streamed tool result.
+/// Bounds the accumulator `Vec<ToolCallChunk>` length and the per-chunk
+/// receipt-signing preimage even when every chunk is tiny and the byte cap is
+/// never reached. Generous for legitimate streams; `0` disables the cap.
+pub const DEFAULT_MAX_STREAM_CHUNKS: u64 = 1_048_576;
 pub const DEFAULT_CHECKPOINT_BATCH_SIZE: u64 = 100;
 pub const DEFAULT_RETENTION_DAYS: u64 = 90;
 pub const DEFAULT_MAX_SIZE_BYTES: u64 = 10_737_418_240;
+
+/// Per-process memory budget: bounded-structure capacities plus a process RSS
+/// soft ceiling. The soft ceiling is the in-process analog of the cgroup hard
+/// limit: the kernel sheds (Overloaded) before the OS OOM-kills it.
+#[derive(Debug, Clone)]
+pub struct MemoryBudgetConfig {
+    pub receipt_mirror_capacity: usize,
+    pub federation_cache_capacity: usize,
+    pub federation_cache_idle_ttl_secs: u64,
+    pub velocity_bucket_cap: usize,
+    pub admission_key_cap: usize,
+    pub journal_entry_cap: usize,
+    /// Max number of chunks retained from one streamed tool result. Bounds the
+    /// retained `Vec<ToolCallChunk>` and the per-chunk signing preimage so a flood
+    /// of tiny chunks that never trips `max_stream_total_bytes` still cannot grow
+    /// memory without bound. `0` disables the cap.
+    pub max_stream_chunks: u64,
+    /// Max number of DISTINCT tool names retained in each session journal's
+    /// cumulative `tool_counts` map. Unlike the `entries` and
+    /// `tool_sequence` rings, `tool_counts` is cumulative (it survives ring
+    /// eviction so the behavioral-sequence guard can answer "was this tool ever
+    /// invoked"), so a ring cannot bound it. Once a session reaches this many
+    /// distinct tool names a previously-unseen name is dropped fail-closed: a
+    /// dependent required-predecessor check then treats it as never-invoked and
+    /// denies. Sized well above any legitimate (registry-bounded) tool set.
+    pub journal_tool_counts_cap: usize,
+    /// Process RSS soft ceiling in bytes. When set and exceeded, new admissions
+    /// shed with Overloaded { Allocation }. Set to roughly 85-90% of the cgroup
+    /// memory.max so the graceful stop fires before the kill. Stage A ships None.
+    pub rss_soft_limit_bytes: Option<u64>,
+    /// How often the RSS sampler reads /proc/self/statm.
+    pub rss_sample_interval_secs: u64,
+}
+
+impl MemoryBudgetConfig {
+    pub fn defaults() -> Self {
+        Self {
+            receipt_mirror_capacity: 4096,
+            federation_cache_capacity: 8192,
+            federation_cache_idle_ttl_secs: 3600,
+            velocity_bucket_cap: 65_536,
+            admission_key_cap: 4096,
+            journal_entry_cap: 4096,
+            max_stream_chunks: DEFAULT_MAX_STREAM_CHUNKS,
+            journal_tool_counts_cap: 4096,
+            rss_soft_limit_bytes: None,
+            rss_sample_interval_secs: 30,
+        }
+    }
+}
+
+impl Default for MemoryBudgetConfig {
+    fn default() -> Self {
+        Self::defaults()
+    }
+}
+
+/// Owns the RSS sampler thread; signals stop and joins on drop. On non-Linux
+/// hosts the sampler is a no-op and the soft limit is inert (cgroup and
+/// try_reserve backstops still apply).
+pub(crate) struct RssSamplerHandle {
+    stop: Arc<AtomicBool>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
+impl RssSamplerHandle {
+    pub(crate) fn spawn(shed: Arc<AtomicBool>, soft_limit_bytes: u64, interval_secs: u64) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker_stop = Arc::clone(&stop);
+        let interval = std::time::Duration::from_secs(interval_secs.max(1));
+        let join = std::thread::spawn(move || {
+            use std::sync::atomic::Ordering;
+            while !worker_stop.load(Ordering::SeqCst) {
+                if let Some(rss) = read_process_rss_bytes() {
+                    shed.store(rss > soft_limit_bytes, Ordering::Relaxed);
+                }
+                let mut waited = std::time::Duration::ZERO;
+                let slice = std::time::Duration::from_millis(200);
+                while waited < interval && !worker_stop.load(Ordering::SeqCst) {
+                    std::thread::sleep(slice);
+                    waited += slice;
+                }
+            }
+        });
+        Self {
+            stop,
+            join: Some(join),
+        }
+    }
+}
+
+impl Drop for RssSamplerHandle {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn read_process_rss_bytes() -> Option<u64> {
+    let statm = std::fs::read_to_string("/proc/self/statm").ok()?;
+    let resident_pages: u64 = statm.split_whitespace().nth(1)?.parse().ok()?;
+    Some(resident_pages.saturating_mul(linux_page_size()))
+}
+
+/// Real system page size in bytes, read once via `sysconf(_SC_PAGESIZE)` and
+/// cached. Hosts with non-4-KiB pages (for example common 64-KiB-page ARM
+/// deployments) would otherwise undercount RSS by the page-size ratio and shed
+/// far past the configured soft ceiling. Falls back to 4096 only if the query
+/// fails.
+#[cfg(target_os = "linux")]
+fn linux_page_size() -> u64 {
+    use std::sync::OnceLock;
+    static PAGE_SIZE: OnceLock<u64> = OnceLock::new();
+    *PAGE_SIZE.get_or_init(|| {
+        // SAFETY: `sysconf` with a compile-time constant name has no
+        // preconditions; it returns the configured page size, or -1 on failure.
+        let raw = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+        if raw > 0 {
+            raw as u64
+        } else {
+            4096
+        }
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn read_process_rss_bytes() -> Option<u64> {
+    None
+}
 
 /// The Chio Runtime Kernel.
 ///
@@ -143,6 +295,12 @@ pub struct ChioKernel {
     pub(super) sessions: DashMap<SessionId, Arc<Session>>,
     pub(super) receipt_log: Mutex<ReceiptLog>,
     pub(super) child_receipt_log: Mutex<ChildReceiptLog>,
+    /// Live entry-count gauges for the two receipt mirrors. Cloned from the
+    /// ring's gauge at construction so telemetry and the
+    /// bounded-structure registry (`bounded_structure_gauges`) can read the
+    /// count without locking the log.
+    pub(super) receipt_mirror_gauge: chio_bounded::SizeGauge,
+    pub(super) child_receipt_mirror_gauge: chio_bounded::SizeGauge,
     pub(super) receipt_store: Option<Arc<dyn ReceiptStore>>,
     pub(super) receipt_store_write_lock: Mutex<()>,
     pub(super) payment_adapter: Option<Box<dyn PaymentAdapter>>,
@@ -222,13 +380,22 @@ pub struct ChioKernel {
     /// Populated only when the post-sign hook fires successfully. Kept
     /// in-memory; persistent storage plugs in via the federation-state
     /// APIs already in chio-federation.
+    /// Capped, idle-swept, gauged instead of an unbounded DashMap: federated
+    /// calls no longer grow kernel RSS without bound.
     pub(super) federation_dual_receipts:
-        DashMap<String, chio_federation::bilateral::DualSignedReceipt>,
+        Mutex<chio_bounded::BoundedMap<String, chio_federation::bilateral::DualSignedReceipt>>,
+    pub(super) federation_dual_receipts_gauge: chio_bounded::SizeGauge,
     /// DSSE signature-slice envelopes, indexed by ChioReceipt.id.
     /// These are emitted through the federation cosigner protocol rather than
     /// by loading Org A private key material in the tool-host kernel.
     pub(super) federation_dsse_envelopes:
-        DashMap<String, chio_federation::bilateral_dsse::DsseEnvelope>,
+        Mutex<chio_bounded::BoundedMap<String, chio_federation::bilateral_dsse::DsseEnvelope>>,
+    pub(super) federation_dsse_envelopes_gauge: chio_bounded::SizeGauge,
+    /// Optional durable backing for bilateral co-sign artifacts. When set, the
+    /// co-sign hook writes through to it before caching and the
+    /// accessors fall through to it on a cache miss.
+    pub(super) federation_artifact_store:
+        Option<std::sync::Arc<dyn crate::federation_artifact_store::FederationArtifactStore>>,
     /// Request-keyed tenant scope for receipts. Async evaluate futures
     /// can resume on a different worker after dispatch, so the scope is
     /// stored in this map rather than a thread-local.
@@ -264,6 +431,12 @@ pub struct ChioKernel {
     /// shape stays feature-flag agnostic.
     pub(super) revocation_view: Option<std::sync::Arc<chio_kernel_core::RevocationView>>,
     pub(super) budget_registry: Mutex<chio_kernel_core::InMemoryBudgetRegistry>,
+    /// RSS soft-ceiling shed flag. Set by the sampler when process RSS exceeds
+    /// `memory_budget.rss_soft_limit_bytes`; read on the
+    /// admission fast path alongside the emergency stop.
+    pub(super) rss_shed: Arc<AtomicBool>,
+    /// Owns the sampler thread when a soft limit is configured; joins on drop.
+    pub(super) rss_sampler: Option<RssSamplerHandle>,
 }
 
 impl ChioKernel {

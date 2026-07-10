@@ -73,6 +73,245 @@ fn receipt_log_basics() {
 }
 
 #[test]
+fn store_miss_falls_back_to_local_mirror() {
+    // A durable store that appends but cannot point-load (an append-only or remote
+    // store, like RemoteReceiptStore) must not disable the local mirror. A receipt
+    // appended and mirrored locally has to resolve on a store miss.
+    let mut kernel = make_kernel(make_config());
+    kernel.set_receipt_store(Box::new(AppendOnlyReceiptStore)).unwrap();
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
+
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+    let request = make_request("req-store-miss-mirror", &cap, "read_file", "srv-a");
+
+    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
+    assert_eq!(response.verdict, Verdict::Allow);
+
+    // The receipt is in the local mirror; AppendOnlyReceiptStore's load_* miss.
+    let receipt_id = kernel.receipt_log().receipts()[0].id.clone();
+    assert!(
+        kernel.has_local_receipt_id(&receipt_id).unwrap(),
+        "store miss must fall back to the local mirror"
+    );
+    assert!(
+        kernel.local_receipt_artifact(&receipt_id).unwrap().is_some(),
+        "store miss must return the mirrored artifact"
+    );
+}
+
+#[test]
+fn store_read_error_propagates_and_is_not_mirror_served() {
+    // A durable store READ error must fail closed. A receipt present in the local
+    // mirror must NOT mask a store read failure; only a genuine miss (`Ok(None)`)
+    // may fall back to the mirror. Here the store appends fine (so the mirror holds
+    // the receipt) but errors on every point load, so both lookups must PROPAGATE
+    // the error, not serve the mirror copy.
+    let mut kernel = make_kernel(make_config());
+    kernel.set_receipt_store(Box::new(ErroringReceiptStore)).unwrap();
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
+
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+    let request = make_request("req-store-read-error", &cap, "read_file", "srv-a");
+
+    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
+    assert_eq!(response.verdict, Verdict::Allow);
+
+    let receipt_id = kernel.receipt_log().receipts()[0].id.clone();
+    assert!(
+        kernel.has_local_receipt_id(&receipt_id).is_err(),
+        "store read error must propagate, not fall back to the mirror"
+    );
+    assert!(
+        kernel.local_receipt_artifact(&receipt_id).is_err(),
+        "store read error must propagate, not serve the mirrored artifact"
+    );
+}
+
+#[test]
+fn point_load_store_resolves_parent_receipt_after_mirror_eviction() {
+    // The receipt mirror is bounded, so it is NOT a durable point-lookup source. A
+    // store-authoritative deployment whose store implements point loads (here
+    // SqliteReceiptStore) must still resolve a parent receipt by id AFTER the
+    // bounded mirror has evicted it, so governed call-chain validation of an older
+    // parent_receipt_id does not falsely deny.
+    let mut config = make_config();
+    config.memory_budget.receipt_mirror_capacity = 2;
+    let mut kernel = make_kernel(config);
+    kernel
+        .set_receipt_store(Box::new(PointLookupReceiptStore::default()))
+        .unwrap();
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
+
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+
+    let first = kernel
+        .evaluate_tool_call_blocking(&make_request_with_arguments(
+            "req-evict-1",
+            &cap,
+            "read_file",
+            "srv-a",
+            serde_json::json!({ "path": "/f-1" }),
+        ))
+        .unwrap();
+    let first_id = first.receipt.id.clone();
+
+    // Push more receipts than the mirror cap so the first is evicted from it.
+    for i in 2..=5 {
+        kernel
+            .evaluate_tool_call_blocking(&make_request_with_arguments(
+                &format!("req-evict-{i}"),
+                &cap,
+                "read_file",
+                "srv-a",
+                serde_json::json!({ "path": format!("/f-{i}") }),
+            ))
+            .unwrap();
+    }
+
+    assert!(
+        !kernel
+            .receipt_log()
+            .receipts()
+            .iter()
+            .any(|r| r.id == first_id),
+        "precondition: first receipt must be evicted from the bounded mirror"
+    );
+    // A point-load-capable store still resolves the evicted parent receipt.
+    assert!(
+        kernel.has_local_receipt_id(&first_id).unwrap(),
+        "point-load store must resolve an evicted parent receipt by id"
+    );
+    assert!(kernel.local_receipt_artifact(&first_id).unwrap().is_some());
+}
+
+#[test]
+fn append_only_store_fails_closed_for_parent_receipt_after_mirror_eviction() {
+    // The documented boundary for an append-only or remote store that does NOT
+    // implement point loads: it relies entirely on the bounded mirror. Once the
+    // mirror evicts a receipt, an older parent_receipt_id resolves in neither the
+    // store nor the mirror, so governed call-chain validation fails closed (a safe
+    // deny, never a false allow). Deployments that must avoid this MUST implement
+    // ReceiptStore::load_chio_receipt.
+    let mut config = make_config();
+    config.memory_budget.receipt_mirror_capacity = 2;
+    let mut kernel = make_kernel(config);
+    kernel
+        .set_receipt_store(Box::new(AppendOnlyReceiptStore))
+        .unwrap();
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
+
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+
+    let first = kernel
+        .evaluate_tool_call_blocking(&make_request_with_arguments(
+            "req-ao-1",
+            &cap,
+            "read_file",
+            "srv-a",
+            serde_json::json!({ "path": "/f-1" }),
+        ))
+        .unwrap();
+    let first_id = first.receipt.id.clone();
+
+    // While still in the mirror, the receipt resolves via the mirror fallback.
+    assert!(
+        kernel.has_local_receipt_id(&first_id).unwrap(),
+        "receipt must resolve from the mirror before eviction"
+    );
+
+    // Push more receipts than the mirror cap so the first is evicted.
+    for i in 2..=5 {
+        kernel
+            .evaluate_tool_call_blocking(&make_request_with_arguments(
+                &format!("req-ao-{i}"),
+                &cap,
+                "read_file",
+                "srv-a",
+                serde_json::json!({ "path": format!("/f-{i}") }),
+            ))
+            .unwrap();
+    }
+
+    assert!(
+        !kernel
+            .receipt_log()
+            .receipts()
+            .iter()
+            .any(|r| r.id == first_id),
+        "precondition: first receipt must be evicted from the bounded mirror"
+    );
+    // Documented boundary: append-only store cannot point-load and the mirror
+    // evicted it, so the lookup fails closed (false = deny of any dependent
+    // call-chain claim, never a false allow).
+    assert!(
+        !kernel.has_local_receipt_id(&first_id).unwrap(),
+        "append-only store + mirror eviction must fail closed (no false allow)"
+    );
+    assert!(kernel.local_receipt_artifact(&first_id).unwrap().is_none());
+}
+
+#[test]
+fn kernel_bounded_registry_lists_every_labelled_structure() {
+    // Every kernel-held bounded structure has a live gauge; the registry enumerates
+    // them so the soak harness and a future long-lived-collection lint can read
+    // them. Fails if a label is dropped.
+    let kernel = make_kernel(make_config());
+    let labels: Vec<&'static str> = kernel
+        .bounded_structure_gauges()
+        .into_iter()
+        .map(|(label, _count)| label)
+        .collect();
+    for expected in [
+        "receipt_mirror",
+        "child_receipt_mirror",
+        "federation_dual_receipts",
+        "federation_dsse_envelopes",
+    ] {
+        assert!(
+            labels.contains(&expected),
+            "bounded registry is missing the gauge label {expected}: {labels:?}"
+        );
+    }
+}
+
+#[test]
+fn receipt_log_ring_caps_and_reports_gauge() {
+    // The mirror is a capacity-bounded ring reporting a live gauge; appends past
+    // the cap evict the oldest, they never grow the Vec.
+    let gauge = chio_bounded::SizeGauge::new();
+    let kp = make_keypair();
+    let mut log = ReceiptLog::with_capacity(4, gauge.clone());
+    // `ChioReceipt::sign` derives the receipt id (content hash), so capture the
+    // ids in append order rather than assuming they equal the body label.
+    let mut appended_ids: Vec<String> = Vec::new();
+    for i in 0..10u32 {
+        let receipt = make_signed_receipt(&kp, &format!("r-{i}"));
+        appended_ids.push(receipt.id.clone());
+        log.append(receipt);
+    }
+    assert_eq!(log.len(), 4, "ring caps at 4");
+    assert_eq!(gauge.get(), 4, "gauge tracks ring len");
+    // Only the last four appended survive, in append order (oldest evicted).
+    let ids: Vec<String> = log.iter().map(|r| r.id.clone()).collect();
+    assert_eq!(ids, appended_ids[6..10].to_vec());
+
+    // Capacity 0 disables the mirror entirely (store-authoritative default).
+    let gauge_zero = chio_bounded::SizeGauge::new();
+    let mut log_zero = ReceiptLog::with_capacity(0, gauge_zero.clone());
+    log_zero.append(make_signed_receipt(&kp, "r-zero"));
+    assert_eq!(log_zero.len(), 0, "capacity 0 stores nothing");
+    assert_eq!(gauge_zero.get(), 0);
+}
+
+#[test]
 fn kernel_persists_child_receipts_to_sqlite_store() {
     let path = unique_receipt_db_path("chio-kernel-child-receipts");
     let mut config = make_config();
@@ -173,6 +412,195 @@ fn kernel_persists_child_receipts_to_sqlite_store() {
 
     drop(connection);
     let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn nested_admission_denied_while_rss_shedding() {
+    // The nested-flow admission path must gate on the RSS soft ceiling just like
+    // the top-level evaluate, so a nested tool call (sampling/elicitation) cannot
+    // allocate and run after the sampler raised the shed flag.
+    let mut config = make_config();
+    config.allow_sampling = true;
+    let mut kernel = make_kernel(config);
+    kernel.register_tool_server(Box::new(NestedFlowServer {
+        id: "nested".to_string(),
+    }));
+
+    let agent_kp = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("nested", "sample_via_client")]),
+        300,
+    );
+    let session_id = kernel
+        .open_session(agent_kp.public_key().to_hex(), vec![capability.clone()])
+        .unwrap();
+    kernel.activate_session(&session_id).unwrap();
+    kernel
+        .set_session_peer_capabilities(
+            &session_id,
+            PeerCapabilities {
+                supports_progress: false,
+                supports_cancellation: false,
+                supports_subscriptions: false,
+                supports_chio_tool_streaming: false,
+                supports_roots: false,
+                roots_list_changed: false,
+                supports_sampling: true,
+                sampling_context: false,
+                sampling_tools: false,
+                supports_elicitation: false,
+                elicitation_form: false,
+                elicitation_url: false,
+            },
+        )
+        .unwrap();
+
+    // Raise the RSS soft-ceiling shed flag, mirroring the sampler crossing the
+    // configured limit.
+    kernel.set_rss_shed_for_test(true);
+
+    let mut client = MockNestedFlowClient {
+        roots: Vec::new(),
+        sampled_message: CreateMessageResult {
+            role: "assistant".to_string(),
+            content: serde_json::json!({ "type": "text", "text": "must never run" }),
+            model: "gpt-test".to_string(),
+            stop_reason: None,
+        },
+        elicited_content: make_elicited_content(),
+        cancel_parent_on_create_message: false,
+        cancel_child_on_create_message: false,
+        completed_elicitation_ids: Vec::new(),
+        resource_updates: Vec::new(),
+        resources_list_changed_count: 0,
+    };
+    let context =
+        make_operation_context(&session_id, "nested-rss-shed", &agent_kp.public_key().to_hex());
+    let operation = ToolCallOperation {
+        capability,
+        server_id: "nested".to_string(),
+        tool_name: "sample_via_client".to_string(),
+        arguments: serde_json::json!({}),
+        governed_intent: None,
+        execution_nonce: None,
+        model_metadata: None,
+        extra_metadata: None,
+    };
+
+    let result = kernel.evaluate_tool_call_operation_with_nested_flow_client(
+        &context,
+        &operation,
+        &mut client,
+    );
+    assert!(
+        matches!(result, Err(KernelError::Overloaded { .. })),
+        "nested admission must be denied Overloaded while RSS-shedding, got {result:?}"
+    );
+
+    // Receipt totality: the nested shed must still persist a signed deny receipt
+    // naming the shed resource, like every other denial.
+    let receipts = kernel.receipt_log().receipts();
+    let shed_receipt = receipts
+        .iter()
+        .find(|receipt| {
+            matches!(
+                receipt.decision.as_ref(),
+                Some(Decision::Deny { guard, .. }) if guard == "kernel.overload"
+            )
+        })
+        .expect("nested shed must persist a signed overload deny receipt");
+    assert!(
+        shed_receipt.verify_signature().unwrap(),
+        "nested shed deny receipt must verify"
+    );
+    match shed_receipt.decision.clone() {
+        Some(Decision::Deny { reason, .. }) => assert!(
+            reason.contains("memory budget") && reason.contains("Allocation"),
+            "nested shed deny reason must name the shed resource, got {reason:?}"
+        ),
+        other => panic!("expected overload deny decision, got {other:?}"),
+    }
+}
+
+#[test]
+fn rss_shed_persists_signed_overload_deny_receipt() {
+    // Receipt totality: an RSS soft-ceiling shed is a denied admission and must
+    // persist a signed deny receipt naming the shed resource, exactly like the
+    // emergency-stop fast path, even though it also returns Overloaded to the
+    // caller for backpressure. error.rs guarantees the OverloadResource appears in
+    // a receipt deny reason.
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+
+    // Raise the RSS soft-ceiling shed flag, mirroring the sampler crossing the
+    // configured limit.
+    kernel.set_rss_shed_for_test(true);
+
+    let request = make_request("req-rss-shed-receipt", &cap, "read_file", "srv-a");
+    let result = kernel.evaluate_tool_call_blocking(&request);
+
+    // Backpressure edge preserved: the shed still surfaces as Overloaded.
+    assert!(
+        matches!(result, Err(KernelError::Overloaded { .. })),
+        "shed must return Overloaded, got {result:?}"
+    );
+
+    // Receipt-totality: exactly one signed deny receipt naming the shed resource.
+    let receipts = kernel.receipt_log().receipts();
+    assert_eq!(
+        receipts.len(),
+        1,
+        "shed must persist exactly one deny receipt"
+    );
+    assert!(
+        receipts[0].verify_signature().unwrap(),
+        "shed deny receipt must verify"
+    );
+    match receipts[0].decision.clone() {
+        Some(Decision::Deny { reason, guard }) => {
+            assert!(
+                reason.contains("memory budget") && reason.contains("Allocation"),
+                "shed deny reason must name the shed resource, got {reason:?}"
+            );
+            assert_eq!(guard, "kernel.overload");
+        }
+        other => panic!("expected overload deny decision, got {other:?}"),
+    }
+}
+
+#[test]
+fn non_tool_admission_denied_while_rss_shedding() {
+    // The RSS soft-ceiling shed must also apply to NON-TOOL admissions. Resource
+    // reads, prompt gets, and completions all funnel through
+    // `validate_non_tool_capability`. Under RSS pressure a large read_resource or
+    // prompt completion must not allocate and execute while tool calls are being
+    // shed, or the soft ceiling would not shed all new admissions. The helper must
+    // shed uniformly (fail-closed Overloaded).
+    let kernel = make_kernel(make_config());
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+    let agent_id = agent_kp.public_key().to_hex();
+
+    // Sanity: with shedding OFF the non-tool admission helper passes (valid cap).
+    kernel
+        .validate_non_tool_capability(&cap, &agent_id)
+        .expect("non-tool admission should pass when not shedding");
+
+    // Raise the RSS soft-ceiling shed flag, mirroring the sampler crossing the
+    // configured limit.
+    kernel.set_rss_shed_for_test(true);
+
+    let result = kernel.validate_non_tool_capability(&cap, &agent_id);
+    assert!(
+        matches!(result, Err(KernelError::Overloaded { .. })),
+        "non-tool admission must shed Overloaded while RSS-shedding, got {result:?}"
+    );
 }
 
 #[test]
@@ -351,6 +779,90 @@ fn streamed_tool_byte_limit_truncates_output_and_marks_receipt_incomplete() {
 }
 
 #[test]
+fn redaction_reapplies_stream_chunk_cap() {
+    // apply_stream_limits runs on the ORIGINAL tool output, before the
+    // post-invocation pipeline. A Redact hook that emits a stream with more chunks
+    // than `max_stream_chunks` would otherwise bypass the retained-chunk cap and
+    // grow the final signed output and receipt preimage past the configured budget.
+    // The redacted stream must be re-capped.
+    struct OversizeRedactHook;
+    impl crate::post_invocation::PostInvocationHook for OversizeRedactHook {
+        fn name(&self) -> &str {
+            "oversize-redact"
+        }
+        fn inspect(
+            &self,
+            _ctx: &crate::post_invocation::PostInvocationContext<'_>,
+            _response: &serde_json::Value,
+        ) -> crate::post_invocation::PostInvocationVerdict {
+            // Redact to a 5-chunk COMPLETE stream regardless of the input.
+            crate::post_invocation::PostInvocationVerdict::Redact(serde_json::json!({
+                "kind": "stream",
+                "stream": {
+                    "complete": true,
+                    "chunks": [ {"n": 0}, {"n": 1}, {"n": 2}, {"n": 3}, {"n": 4} ],
+                }
+            }))
+        }
+    }
+
+    let mut config = make_config();
+    config.max_stream_total_bytes = 0; // unlimited bytes: isolate the chunk cap
+    config.memory_budget.max_stream_chunks = 2;
+    let mut kernel = make_kernel(config);
+    kernel.add_post_invocation_hook(Box::new(OversizeRedactHook));
+
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+    let request = make_request("req-redact-recap", &cap, "read_file", "srv-a");
+
+    // The ORIGINAL output is a small 1-chunk stream that passes the first cap pass.
+    let output = ToolServerOutput::Stream(ToolServerStreamResult::Complete(ToolCallStream {
+        chunks: vec![ToolCallChunk {
+            data: serde_json::json!({"orig": true}),
+        }],
+    }));
+
+    let response = kernel
+        .finalize_tool_output_with_metadata(
+            &request,
+            output,
+            std::time::Duration::from_secs(0),
+            100,
+            0,
+            None,
+        )
+        .unwrap();
+
+    // The redacted 5-chunk stream must be truncated to the 2-chunk cap and marked
+    // incomplete, not signed and receipted verbatim.
+    let output_stream = tool_call_stream_output(response.output).expect("expected stream output");
+    assert!(
+        output_stream.chunk_count() <= 2,
+        "redacted stream bypassed the chunk cap: {} chunks",
+        output_stream.chunk_count()
+    );
+    assert!(
+        response
+            .reason
+            .as_deref()
+            .unwrap_or("")
+            .contains("max chunk count of 2"),
+        "unexpected reason: {:?}",
+        response.reason
+    );
+    // The receipt preimage is bounded to the same retained-chunk count.
+    let stream_metadata = response
+        .receipt
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("stream"))
+        .expect("stream metadata");
+    assert_eq!(stream_metadata["chunks_received"].as_u64(), Some(2));
+}
+
+#[test]
 fn apply_stream_limits_marks_duration_exceeded_stream_incomplete() {
     let mut config = make_config();
     config.max_stream_duration_secs = 1;
@@ -374,6 +886,52 @@ fn apply_stream_limits_marks_duration_exceeded_stream_incomplete() {
     .expect("expected limited incomplete stream");
     assert_eq!(stream.chunk_count(), 1);
     assert!(reason.contains("max duration of 1s"));
+}
+
+#[test]
+fn apply_stream_limits_marks_chunk_count_exceeded_stream_incomplete() {
+    // The retained-chunk count is bounded as well as the total bytes. With a huge
+    // byte cap but `max_stream_chunks = 1`, a 3-tiny-chunk stream (well under the
+    // byte cap) is TRUNCATED to one chunk and the receipt is marked incomplete with
+    // a chunk-count reason.
+    let mut config = make_config();
+    config.max_stream_total_bytes = 10_000_000; // never reached by tiny chunks
+    config.memory_budget.max_stream_chunks = 1;
+    let kernel = make_kernel(config);
+    let output = ToolServerOutput::Stream(ToolServerStreamResult::Complete(ToolCallStream {
+        chunks: vec![
+            ToolCallChunk {
+                data: serde_json::json!({"delta": "a"}),
+            },
+            ToolCallChunk {
+                data: serde_json::json!({"delta": "b"}),
+            },
+            ToolCallChunk {
+                data: serde_json::json!({"delta": "c"}),
+            },
+        ],
+    }));
+
+    let limited = kernel
+        .apply_stream_limits(output, std::time::Duration::from_secs(0))
+        .unwrap();
+
+    let (stream, reason) = match limited {
+        ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { stream, reason }) => {
+            Some((stream, reason))
+        }
+        _ => None,
+    }
+    .expect("expected chunk-limited incomplete stream");
+    assert_eq!(
+        stream.chunk_count(),
+        1,
+        "stream must be truncated to the chunk cap"
+    );
+    assert!(
+        reason.contains("max chunk count of 1"),
+        "unexpected reason: {reason}"
+    );
 }
 
 #[test]

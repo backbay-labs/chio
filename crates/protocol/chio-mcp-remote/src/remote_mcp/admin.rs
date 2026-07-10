@@ -225,6 +225,7 @@ async fn handle_admin_tool_receipts(
         Err(response) => return response,
     } {
         return match client.list_tool_receipts(&ToolReceiptQuery {
+            receipt_id: None,
             capability_id: query.capability_id.clone(),
             tool_server: query.tool_server.clone(),
             tool_name: query.tool_name.clone(),
@@ -294,6 +295,7 @@ async fn handle_admin_child_receipts(
         Err(response) => return response,
     } {
         return match client.list_child_receipts(&ChildReceiptQuery {
+            receipt_id: None,
             session_id: query.session_id.clone(),
             parent_request_id: query.parent_request_id.clone(),
             request_id: query.request_id.clone(),

@@ -1024,6 +1024,7 @@ pub(crate) fn cmd_trust_serve(
         certification_public_metadata_ttl_seconds,
         peer_urls: peer_urls.to_vec(),
         cluster_sync_interval: std::time::Duration::from_millis(cluster_sync_interval_ms.max(50)),
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     })
 }
 

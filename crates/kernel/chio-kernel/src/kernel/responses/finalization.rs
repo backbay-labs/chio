@@ -132,6 +132,14 @@ impl ChioKernel {
                 })
             }
             crate::post_invocation::PostInvocationVerdict::Redact(redacted) => {
+                // Redaction replaces the retained stream with hook-supplied
+                // content that never passed `apply_stream_limits` (that ran on the
+                // ORIGINAL output, before this hook). The byte + chunk caps are
+                // re-applied while the redacted chunks are drained so a
+                // sanitizer/custom hook that emits more than
+                // `max_stream_total_bytes` / `max_stream_chunks` cannot make the
+                // kernel materialize the whole redacted stream, nor grow the final
+                // signed output and receipt preimage past the configured budget.
                 Ok(PostInvocationHandling {
                     output: self.apply_redacted_output(redacted)?,
                     extra_metadata: metadata,
@@ -170,11 +178,33 @@ impl ChioKernel {
         }
     }
 
+    /// Parse a post-invocation `Redact` hook's output envelope, enforcing the
+    /// byte + chunk stream retention caps WHILE the redacted chunks are drained.
+    ///
+    /// `apply_stream_limits` runs on the ORIGINAL tool output, before the
+    /// post-invocation pipeline. A `Redact` verdict swaps in hook-supplied content
+    /// that has not been capped, so the caps are re-applied here. Enforcing them
+    /// during accumulation (rather than after the whole envelope is materialized)
+    /// means a hook that emits a huge `chunks` array cannot make the kernel
+    /// allocate the full redacted stream: parsing stops at `max_stream_chunks`
+    /// retained chunks or once retaining the next chunk would exceed
+    /// `max_stream_total_bytes`, and the retained stream can never grow the signed
+    /// output and receipt preimage past the configured budget.
+    ///
+    /// Only the retention caps are enforced. The stream-duration limit is
+    /// intentionally NOT re-evaluated: it bounds tool execution time, not redacted
+    /// content, and was already decided on the original output. A non-stream
+    /// redacted output (a value) is returned unchanged. Any pre-existing
+    /// incomplete reason on the redacted stream is preserved unless a cap fires.
     fn apply_redacted_output(
         &self,
         redacted: serde_json::Value,
     ) -> Result<ToolServerOutput, KernelError> {
-        parse_redacted_output(redacted)
+        parse_redacted_output(
+            redacted,
+            self.config.max_stream_total_bytes,
+            self.config.memory_budget.max_stream_chunks,
+        )
     }
 
     fn post_invocation_metadata(
@@ -228,21 +258,23 @@ impl ChioKernel {
             ToolServerStreamResult::Incomplete { stream, reason } => (stream, Some(reason)),
         };
 
-        let (stream, total_bytes, truncated) =
-            truncate_stream_to_byte_limit(&stream, self.config.max_stream_total_bytes)?;
+        let (stream, total_bytes, truncation_cause) = truncate_stream_to_limits(
+            &stream,
+            self.config.max_stream_total_bytes,
+            self.config.memory_budget.max_stream_chunks,
+        )?;
 
-        let limit_reason = if truncated {
-            Some(format!(
-                "CHIO_SERVER_STREAM_LIMIT: stream exceeded max total bytes of {}",
-                self.config.max_stream_total_bytes
-            ))
-        } else if duration_exceeded {
-            Some(format!(
+        let limit_reason = match truncation_cause {
+            Some(cause) => Some(stream_limit_reason(
+                cause,
+                self.config.max_stream_total_bytes,
+                self.config.memory_budget.max_stream_chunks,
+            )),
+            None if duration_exceeded => Some(format!(
                 "CHIO_SERVER_STREAM_LIMIT: stream exceeded max duration of {}s",
                 self.config.max_stream_duration_secs
-            ))
-        } else {
-            None
+            )),
+            None => None,
         };
 
         if let Some(reason) = limit_reason {
@@ -268,7 +300,11 @@ impl ChioKernel {
     }
 }
 
-fn parse_redacted_output(redacted: serde_json::Value) -> Result<ToolServerOutput, KernelError> {
+fn parse_redacted_output(
+    redacted: serde_json::Value,
+    max_stream_total_bytes: u64,
+    max_stream_chunks: u64,
+) -> Result<ToolServerOutput, KernelError> {
     let envelope = redacted.as_object().ok_or_else(|| {
         KernelError::Internal(
             "post-invocation hook returned a non-object output envelope".to_string(),
@@ -299,19 +335,14 @@ fn parse_redacted_output(redacted: serde_json::Value) -> Result<ToolServerOutput
                         "post-invocation hook output envelope is missing stream".to_string(),
                     )
                 })?;
-            let chunks = stream
+            let raw_chunks = stream
                 .get("chunks")
                 .and_then(serde_json::Value::as_array)
                 .ok_or_else(|| {
                     KernelError::Internal(
                         "post-invocation hook stream envelope is missing chunks".to_string(),
                     )
-                })?
-                .iter()
-                .cloned()
-                .map(|data| ToolCallChunk { data })
-                .collect();
-            let tool_stream = ToolCallStream { chunks };
+                })?;
             let complete = stream
                 .get("complete")
                 .and_then(serde_json::Value::as_bool)
@@ -320,6 +351,31 @@ fn parse_redacted_output(redacted: serde_json::Value) -> Result<ToolServerOutput
                         "post-invocation hook stream envelope is missing complete".to_string(),
                     )
                 })?;
+
+            // Cap the retained stream as the hook's chunk array is drained, so an
+            // oversized redacted stream is bounded during accumulation rather than
+            // after the whole array is materialized. Cloning is lazy: only the
+            // retained prefix (plus the boundary chunk that trips a cap) is copied.
+            let (tool_stream, _total_bytes, cause) = accumulate_stream_under_caps(
+                raw_chunks
+                    .iter()
+                    .map(|data| ToolCallChunk { data: data.clone() }),
+                max_stream_total_bytes,
+                max_stream_chunks,
+            )?;
+
+            if let Some(cause) = cause {
+                return Ok(ToolServerOutput::Stream(
+                    ToolServerStreamResult::Incomplete {
+                        stream: tool_stream,
+                        reason: stream_limit_reason(
+                            cause,
+                            max_stream_total_bytes,
+                            max_stream_chunks,
+                        ),
+                    },
+                ));
+            }
             if complete {
                 Ok(ToolServerOutput::Stream(ToolServerStreamResult::Complete(
                     tool_stream,
@@ -353,12 +409,16 @@ mod tests {
 
     #[test]
     fn redacted_stream_requires_complete_flag() {
-        let err = parse_redacted_output(serde_json::json!({
-            "kind": "stream",
-            "stream": {
-                "chunks": []
-            }
-        }))
+        let err = parse_redacted_output(
+            serde_json::json!({
+                "kind": "stream",
+                "stream": {
+                    "chunks": []
+                }
+            }),
+            0,
+            0,
+        )
         .expect_err("missing complete flag should be rejected");
 
         match err {
@@ -369,6 +429,73 @@ mod tests {
                 );
             }
             other => panic!("expected KernelError::Internal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn redacted_stream_chunk_cap_applies_before_materializing_all_chunks() {
+        // A redaction hook can return an arbitrarily long `chunks` array. The
+        // chunk cap must bound the retained stream WHILE the array is drained, so
+        // the parsed output already carries only `max_stream_chunks` chunks and is
+        // marked incomplete rather than first materializing the whole array.
+        let chunks: Vec<serde_json::Value> = (0..1_000).map(|i| serde_json::json!(i)).collect();
+        let output = parse_redacted_output(
+            serde_json::json!({
+                "kind": "stream",
+                "stream": { "complete": true, "chunks": chunks },
+            }),
+            0,
+            3,
+        )
+        .expect("stream envelope should parse");
+
+        match output {
+            ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { stream, reason }) => {
+                assert_eq!(
+                    stream.chunks.len(),
+                    3,
+                    "retained chunk count must equal the cap, not the hook's array length"
+                );
+                assert!(
+                    reason.contains("max chunk count of 3"),
+                    "unexpected truncation reason: {reason}"
+                );
+            }
+            other => panic!("expected a capped incomplete stream, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn redacted_stream_byte_cap_applies_before_materializing_all_chunks() {
+        // The byte cap likewise bounds the retained stream during accumulation: a
+        // hook emitting more than `max_stream_total_bytes` cannot grow the parsed
+        // stream past the budget.
+        let chunks: Vec<serde_json::Value> = (0..1_000)
+            .map(|i| serde_json::json!(format!("chunk-{i}")))
+            .collect();
+        let output = parse_redacted_output(
+            serde_json::json!({
+                "kind": "stream",
+                "stream": { "complete": true, "chunks": chunks },
+            }),
+            16,
+            0,
+        )
+        .expect("stream envelope should parse");
+
+        match output {
+            ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { stream, reason }) => {
+                assert!(
+                    !stream.chunks.is_empty() && stream.chunks.len() < 1_000,
+                    "byte cap must retain a bounded prefix, got {} chunks",
+                    stream.chunks.len()
+                );
+                assert!(
+                    reason.contains("max total bytes of 16"),
+                    "unexpected truncation reason: {reason}"
+                );
+            }
+            other => panic!("expected a capped incomplete stream, got {other:?}"),
         }
     }
 }

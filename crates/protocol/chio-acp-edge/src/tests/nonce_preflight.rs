@@ -53,6 +53,7 @@ fn test_kernel_config() -> KernelConfig {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     }
 }
 

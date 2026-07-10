@@ -169,6 +169,7 @@ fn trust_control_get_wrappers_encode_queries_and_service_auth() {
         limit: Some(2),
     });
     let _ = client.list_tool_receipts(&ToolReceiptQuery {
+        receipt_id: None,
         capability_id: Some("cap-2".to_string()),
         tool_server: Some("tool/server".to_string()),
         tool_name: Some("echo".to_string()),
@@ -176,6 +177,7 @@ fn trust_control_get_wrappers_encode_queries_and_service_auth() {
         limit: Some(3),
     });
     let _ = client.list_child_receipts(&ChildReceiptQuery {
+        receipt_id: None,
         session_id: Some("session-1".to_string()),
         parent_request_id: Some("parent-1".to_string()),
         request_id: Some("child-1".to_string()),
@@ -782,5 +784,180 @@ fn trust_control_post_wrappers_send_json_bodies_and_encoded_paths() {
         "GET",
         &path_with_encoded_param(LOCAL_REPUTATION_PATH, "subject_key", "subject/key post"),
         &["since=340", "until=350"],
+    );
+}
+
+fn sample_tool_receipt(id: &str) -> ChioReceipt {
+    let keypair = Keypair::generate();
+    ChioReceipt::sign(
+        ChioReceiptBody {
+            id: id.to_string(),
+            timestamp: 11,
+            capability_id: "cap-evicted".to_string(),
+            tool_server: "wrapped-http-mock".to_string(),
+            tool_name: "echo_json".to_string(),
+            action: ToolCallAction::from_parameters(serde_json::json!({"message": "hi"}))
+                .test_unwrap(),
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
+            content_hash: "content-hash".to_string(),
+            policy_hash: "policy-hash".to_string(),
+            evidence: Vec::new(),
+            metadata: None,
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
+            tenant_id: None,
+            kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
+        },
+        &keypair,
+    )
+    .test_unwrap()
+}
+
+fn sample_child_receipt(id: &str) -> ChildRequestReceipt {
+    let keypair = Keypair::generate();
+    ChildRequestReceipt::sign(
+        chio_core::receipt::lineage::ChildRequestReceiptBody {
+            id: id.to_string(),
+            timestamp: 13,
+            session_id: chio_core::session::SessionId::new("sess-evicted".to_string()),
+            parent_request_id: chio_core::session::RequestId::new("parent-evicted".to_string()),
+            request_id: chio_core::session::RequestId::new("child-evicted".to_string()),
+            operation_kind: chio_core::session::OperationKind::CreateMessage,
+            terminal_state: OperationTerminalState::Completed,
+            outcome_hash: "outcome-hash".to_string(),
+            policy_hash: "policy-hash".to_string(),
+            metadata: None,
+            kernel_key: keypair.public_key(),
+        },
+        &keypair,
+    )
+    .test_unwrap()
+}
+
+fn receipt_list_response_body(kind: &str, receipts: Vec<serde_json::Value>) -> String {
+    serde_json::to_string(&ReceiptListResponse {
+        configured: true,
+        backend: "sqlite".to_string(),
+        kind: kind.to_string(),
+        count: receipts.len(),
+        filters: serde_json::json!({ "receiptId": "id" }),
+        receipts,
+    })
+    .test_expect("serialize receipt list response")
+}
+
+#[test]
+fn remote_receipt_store_point_loads_tool_receipt_by_id() {
+    // The RemoteReceiptStore point load must issue a real by-id query over the
+    // control-plane protocol and resolve the receipt, so a store-authoritative
+    // --control-url deployment can recover a parent receipt evicted from the
+    // kernel's bounded mirror.
+    let receipt = sample_tool_receipt("receipt-evicted-1");
+    // `ChioReceipt::sign` content-addresses the id, so resolve it from the signed
+    // receipt rather than the body seed string.
+    let expected_id = receipt.id.clone();
+    let value = serde_json::to_value(&receipt).test_expect("serialize tool receipt");
+    let body = receipt_list_response_body("tool", vec![value]);
+    let server = StaticResponseServer::spawn(200, &body, "application/json", 1);
+
+    let store = super::super::remote_stores::build_remote_receipt_store(&server.url, "secret")
+        .test_expect("build remote receipt store");
+    let loaded = store
+        .load_chio_receipt(&expected_id)
+        .test_expect("point load must not error");
+    let loaded = loaded.test_expect("point load must resolve the receipt (Ok(None) before fix)");
+    assert_eq!(loaded.id, expected_id);
+
+    // The client must have issued a GET to the tool-receipts endpoint carrying
+    // the receiptId point-load filter.
+    let requests = server.requests();
+    assert_bearer_request(&requests[0], "GET", TOOL_RECEIPTS_PATH, &["receiptId="]);
+}
+
+#[test]
+fn remote_receipt_store_point_loads_child_receipt_by_id() {
+    let receipt = sample_child_receipt("child-receipt-evicted-1");
+    let value = serde_json::to_value(&receipt).test_expect("serialize child receipt");
+    let body = receipt_list_response_body("child", vec![value]);
+    let server = StaticResponseServer::spawn(200, &body, "application/json", 1);
+
+    let store = super::super::remote_stores::build_remote_receipt_store(&server.url, "secret")
+        .test_expect("build remote receipt store");
+    let loaded = store
+        .load_child_receipt("child-receipt-evicted-1")
+        .test_expect("point load must not error");
+    let loaded = loaded.test_expect("point load must resolve the child receipt");
+    assert_eq!(loaded.id, "child-receipt-evicted-1");
+
+    let requests = server.requests();
+    assert_bearer_request(&requests[0], "GET", CHILD_RECEIPTS_PATH, &["receiptId="]);
+}
+
+#[test]
+fn remote_receipt_store_point_load_miss_returns_none() {
+    // A genuine miss on the remote store resolves to None (fail-closed: the
+    // caller then denies the dependent claim), distinct from an error.
+    let body = receipt_list_response_body("tool", Vec::new());
+    let server = StaticResponseServer::spawn(200, &body, "application/json", 1);
+
+    let store = super::super::remote_stores::build_remote_receipt_store(&server.url, "secret")
+        .test_expect("build remote receipt store");
+    let loaded = store
+        .load_chio_receipt("receipt-absent")
+        .test_expect("point load must not error on a miss");
+    assert!(loaded.is_none(), "a remote miss must resolve to None");
+}
+
+#[test]
+fn remote_tool_point_load_rejects_mismatched_receipt_id() {
+    // A rolling-upgrade or non-conforming control-plane can ignore the
+    // `receiptId` filter and return an unrelated receipt as the first row.
+    // `has_local_receipt_id` treats any Some(_) as "the requested parent exists",
+    // so accepting a mismatched id would let a governed parent-receipt existence
+    // check pass on the WRONG receipt. The store must verify the returned id and
+    // treat a mismatch as a fail-closed miss.
+    let receipt = sample_tool_receipt("actually-returned-receipt");
+    let returned_id = receipt.id.clone();
+    let value = serde_json::to_value(&receipt).test_expect("serialize tool receipt");
+    let body = receipt_list_response_body("tool", vec![value]);
+    let server = StaticResponseServer::spawn(200, &body, "application/json", 1);
+
+    let store = super::super::remote_stores::build_remote_receipt_store(&server.url, "secret")
+        .test_expect("build remote receipt store");
+    // Ask for a DIFFERENT id than the server returns.
+    let requested_id = format!("{returned_id}-not-this-one");
+    let loaded = store
+        .load_chio_receipt(&requested_id)
+        .test_expect("point load must not error");
+    // A mismatched id is a fail-closed miss, not accepted verbatim as the first
+    // row.
+    assert!(
+        loaded.is_none(),
+        "a receipt whose id does not match the requested id must be rejected as a miss"
+    );
+}
+
+#[test]
+fn remote_child_point_load_rejects_mismatched_receipt_id() {
+    // Same id-verification requirement as the tool point load, for child receipts.
+    let receipt = sample_child_receipt("actually-returned-child");
+    let value = serde_json::to_value(&receipt).test_expect("serialize child receipt");
+    let body = receipt_list_response_body("child", vec![value]);
+    let server = StaticResponseServer::spawn(200, &body, "application/json", 1);
+
+    let store = super::super::remote_stores::build_remote_receipt_store(&server.url, "secret")
+        .test_expect("build remote receipt store");
+    let loaded = store
+        .load_child_receipt("a-different-child-id")
+        .test_expect("point load must not error");
+    assert!(
+        loaded.is_none(),
+        "a child receipt whose id does not match the requested id must be rejected as a miss"
     );
 }

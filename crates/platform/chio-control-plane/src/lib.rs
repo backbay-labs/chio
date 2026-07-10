@@ -342,6 +342,7 @@ pub fn build_kernel(loaded_policy: policy::LoadedPolicy, kernel_kp: &Keypair) ->
         allow_ephemeral_receipt_log: kernel_policy.allow_ephemeral_receipt_log,
         checkpoint_batch_size: kernel_policy.checkpoint_batch_size,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     };
 
     let mut kernel = ChioKernel::new(config);
@@ -654,6 +655,7 @@ mod tests {
             require_web3_evidence,
             checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
+            memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
             allow_ephemeral_receipt_log: true,
         })
     }

@@ -1888,7 +1888,7 @@ fn chio_runtime_live_parent_and_vendor_calls_expose_package_valid_receipts(
     Ok(())
 }
 
-// --- RFC-0002 drop-guard unwind tests ---
+// --- Drop-guard unwind tests ---
 
 fn make_fabricated_drop_charge() -> BudgetChargeResult {
     BudgetChargeResult {
@@ -1913,9 +1913,9 @@ fn make_fabricated_drop_charge() -> BudgetChargeResult {
 /// Authorize a real, open budget hold that exactly matches the fabricated drop
 /// charge (see `make_fabricated_drop_charge`). The drop-guard tests build a
 /// fabricated `BudgetChargeResult`; without a matching open hold in the store,
-/// the monetary reversal fails and (after RFC-0002 Finding C) records a fault
-/// receipt. Authorizing the hold first models the real admission so the
-/// pre-dispatch monetary unwind is a genuine, clean, receipt-free reversal.
+/// the monetary reversal fails and records a fault receipt. Authorizing the hold
+/// first models the real admission so the pre-dispatch monetary unwind is a
+/// genuine, clean, receipt-free reversal.
 fn authorize_fabricated_drop_hold(
     kernel: &ChioKernel,
     capability_id: &str,
@@ -2026,10 +2026,8 @@ fn drop_pre_dispatch_releases_reservations_no_receipt(
 #[test]
 fn drop_pre_dispatch_monetary_unwinds_without_receipt(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Flag-drop delta shipped unconditionally (program decision 2026-07-07):
-    // a MONETARY future dropped before dispatch used to record a
-    // drop-cancellation receipt; it now takes the pre-dispatch branch
-    // instead - hold reversed, reservations released, no receipt.
+    // A MONETARY future dropped before dispatch takes the pre-dispatch branch: the
+    // hold is reversed, reservations released, and no receipt is recorded.
     let mut kernel = make_kernel(make_config());
     let payment = TrackingPaymentAdapter::new();
     kernel.set_payment_adapter(Box::new(payment.clone()));
@@ -2072,8 +2070,8 @@ fn drop_pre_dispatch_monetary_unwinds_without_receipt(
         }
     });
     // Model the real admission behind the fabricated charge so the monetary
-    // reversal is a genuine, clean unwind (RFC-0002 Finding C would otherwise
-    // record a fault receipt for the un-reversible fabricated hold).
+    // reversal is a genuine, clean unwind (an un-reversible fabricated hold would
+    // otherwise record a fault receipt).
     authorize_fabricated_drop_hold(&kernel, &cap.id)?;
     let mutation = PreExecutionBudgetMutation::Charge(make_fabricated_drop_charge());
     let authorization = PaymentAuthorization {
@@ -2116,10 +2114,9 @@ fn drop_pre_dispatch_monetary_unwinds_without_receipt(
 
 #[test]
 fn drop_pre_dispatch_reverses_invocation_budget() -> Result<(), Box<dyn std::error::Error>> {
-    // RFC-0002 Finding A: a non-monetary grant with `max_invocations`
-    // increments an invocation counter at admission. A future dropped BEFORE
-    // dispatch must reverse that increment so a never-dispatched call does not
-    // permanently consume the slot.
+    // A non-monetary grant with `max_invocations` increments an invocation counter
+    // at admission. A future dropped BEFORE dispatch must reverse that increment so
+    // a never-dispatched call does not permanently consume the slot.
     let kernel = make_kernel(make_config());
     let agent_kp = make_keypair();
     let cap = make_capability(
@@ -2173,9 +2170,9 @@ fn drop_pre_dispatch_reverses_invocation_budget() -> Result<(), Box<dyn std::err
 
 #[test]
 fn drop_pre_dispatch_releases_admitted_child_budget() -> Result<(), Box<dyn std::error::Error>> {
-    // RFC-0002 Finding B: a delegated capability admitted its share of the
-    // parent budget at admission. A future dropped BEFORE dispatch must
-    // release that share or the child's claim is permanently recorded.
+    // A delegated capability admitted its share of the parent budget at admission.
+    // A future dropped BEFORE dispatch must release that share or the child's claim
+    // is permanently recorded.
     let SiblingSumMonetaryFixture {
         kernel,
         child_a,
@@ -2232,15 +2229,13 @@ fn drop_pre_dispatch_releases_admitted_child_budget() -> Result<(), Box<dyn std:
 #[test]
 fn drop_pre_dispatch_overlapping_readmit_keeps_sibling_denied(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Refcount model (replaces the old boolean-owner gate). Two OVERLAPPING
-    // evaluations hold the SAME delegated child edge. An EARLIER evaluation
-    // admits child_a (lease 1). A SECOND overlapping evaluation idempotently
-    // re-admits the same child_a (lease 2) and is then DROPPED before dispatch.
-    // The drop releases only the SECOND evaluation's lease (holders 2 -> 1); it
-    // must NOT free the edge the first evaluation still holds, so an
-    // oversubscribing sibling child_b stays DENIED. RED under a non-refcounted
-    // release (the drop would free child_a's only edge and child_b would
-    // wrongly admit); GREEN with the refcount.
+    // Refcount model: two OVERLAPPING evaluations hold the SAME delegated child
+    // edge. An EARLIER evaluation admits child_a (lease 1). A SECOND overlapping
+    // evaluation idempotently re-admits the same child_a (lease 2) and is then
+    // DROPPED before dispatch. The drop releases only the SECOND evaluation's lease
+    // (holders 2 -> 1); it must NOT free the edge the first evaluation still holds,
+    // so an oversubscribing sibling child_b stays DENIED. A non-refcounted release
+    // would free child_a's only edge and wrongly admit child_b.
     let SiblingSumMonetaryFixture {
         kernel,
         child_a,
@@ -2308,10 +2303,9 @@ fn drop_pre_dispatch_overlapping_readmit_keeps_sibling_denied(
 
 #[test]
 fn drop_pre_dispatch_records_receipt_on_cleanup_fault() -> Result<(), Box<dyn std::error::Error>> {
-    // RFC-0002 Finding C: when a pre-dispatch cleanup step FAILS, the drop must
-    // record a signed receipt documenting the fault so a stuck
-    // hold/reservation lands on the append-only log rather than being silently
-    // burned.
+    // When a pre-dispatch cleanup step FAILS, the drop must record a signed receipt
+    // documenting the fault so a stuck hold/reservation lands on the append-only
+    // log rather than being silently burned.
     let mut kernel = make_kernel(make_config());
     let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
     let releases = std::sync::Arc::new(AtomicU64::new(0));
@@ -2597,9 +2591,9 @@ fn nested_flow_drop_post_dispatch_records_cancellation_receipt(
 // A registered tool server whose dispatch first performs a nested CHILD
 // operation through the bridge (which buffers a signed child receipt into the
 // parent evaluation's `child_receipts` sink) and then either parks forever or
-// returns normally. Exercises RFC-0002 receipt-completeness for buffered child
-// receipts across a post-dispatch parent drop, and the no-double-record
-// property on the normal exit.
+// returns normally. Exercises receipt completeness for buffered child receipts
+// across a post-dispatch parent drop, and the no-double-record property on the
+// normal exit.
 struct NestedChildOpServer {
     id: String,
     tools: Vec<String>,
@@ -3278,14 +3272,14 @@ fn generic_error_pre_side_effect_releases_without_marker(
 
 #[test]
 fn dispatch_not_registered_releases_full_budget_state() -> Result<(), Box<dyn std::error::Error>> {
-    // RFC-0002: when a registered server's dispatch fails with ToolNotRegistered
-    // (no tool side effect), the async generic-error arm must reverse ALL
-    // pre-dispatch budget state, not just runtime-admission reservations. A
-    // max_invocations grant consumes an invocation slot at admission via
-    // check_and_increment_budget; unwind_aborted_monetary_invocation is a no-op
-    // for a non-monetary Invocation mutation, so before this fix the slot leaked
-    // and a valid retry under the same grant was wrongly denied for budget
-    // exhaustion even though nothing ever dispatched.
+    // When a registered server's dispatch fails with ToolNotRegistered (no tool
+    // side effect), the async generic-error arm must reverse ALL pre-dispatch
+    // budget state, not just runtime-admission reservations. A max_invocations
+    // grant consumes an invocation slot at admission via check_and_increment_budget,
+    // and unwind_aborted_monetary_invocation is a no-op for a non-monetary
+    // Invocation mutation, so the slot must be released here or a valid retry under
+    // the same grant would be wrongly denied for budget exhaustion even though
+    // nothing ever dispatched.
     let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(ToolNotRegisteredDispatchServer::new(
         "srv-chio-runtime",
@@ -3330,10 +3324,10 @@ fn dispatch_not_registered_releases_full_budget_state() -> Result<(), Box<dyn st
 fn dispatch_not_registered_releases_full_budget_state_nested_flow(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Mirror of dispatch_not_registered_releases_full_budget_state for the
-    // nested-flow evaluation arm. Its generic-error arm previously released only
-    // the runtime-admission reservations on a pre-side-effect dispatch error,
-    // leaking the pre-execution budget mutation (and the sibling-sum capability
-    // admission). It must now route through the full pre-dispatch cleanup.
+    // nested-flow evaluation arm. Its generic-error arm must route a
+    // pre-side-effect dispatch error through the full pre-dispatch cleanup,
+    // releasing the pre-execution budget mutation (and the sibling-sum capability
+    // admission), not just the runtime-admission reservations.
     let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(ToolNotRegisteredDispatchServer::new(
         "srv-chio-runtime",
@@ -3391,14 +3385,14 @@ fn dispatch_not_registered_releases_full_budget_state_nested_flow(
 
 #[test]
 fn url_elicitation_required_releases_full_budget_state() -> Result<(), Box<dyn std::error::Error>> {
-    // RFC-0002 codex follow-up: UrlElicitationsRequired is classified by
+    // UrlElicitationsRequired is classified by
     // dispatch_error_precedes_tool_side_effect() as a no-side-effect dispatch
     // error, exactly like ToolNotRegistered. The tool never runs; the client
     // completes the URL elicitations and re-sends a FRESH tool call that
     // re-admits from scratch, so ALL pre-dispatch budget state must be reversed.
-    // A max_invocations grant consumes an invocation slot at admission;
+    // A max_invocations grant consumes an invocation slot at admission, and
     // unwind_aborted_monetary_invocation is a no-op for a non-monetary
-    // Invocation mutation, so before this fix the slot leaked and the authorize
+    // Invocation mutation, so the slot must be released here or the authorize
     // -> retry could never re-admit under the same grant. The async arm returns
     // Err(UrlElicitationsRequired) (so the elicitations payload propagates to
     // the edge), not a Deny response, so the slot reusability is asserted
@@ -3602,13 +3596,12 @@ fn make_sibling_sum_url_fixture(prefix: &str) -> SiblingSumInvocationFixture {
 #[test]
 fn url_elicitation_idempotent_readmit_preserves_sibling_budget(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Finding 1 (codex round 8) + refcount: admit_capability_budget takes a
-    // holder lease per evaluation. An earlier evaluation holds child_a's edge
-    // (lease 1). A second overlapping evaluation that hits UrlElicitationsRequired
-    // takes a second lease and releases only that one on cleanup (holders 2 ->
-    // 1); it must NOT free child_a's edge while the earlier holder remains, or
-    // the oversubscribing sibling child_b would admit while child_a is still
-    // valid.
+    // Refcount: admit_capability_budget takes a holder lease per evaluation. An
+    // earlier evaluation holds child_a's edge (lease 1). A second overlapping
+    // evaluation that hits UrlElicitationsRequired takes a second lease and releases
+    // only that one on cleanup (holders 2 -> 1); it must NOT free child_a's edge
+    // while the earlier holder remains, or the oversubscribing sibling child_b would
+    // admit while child_a is still valid.
     let SiblingSumInvocationFixture {
         kernel,
         child_a,
@@ -3712,11 +3705,11 @@ fn url_elicitation_idempotent_readmit_preserves_sibling_budget_nested_flow(
 #[test]
 fn url_elicitation_release_failure_continues_full_budget_cleanup(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Finding 2 (codex round 8): a runtime-reservation release failure during
-    // the UrlElicitationsRequired cleanup must be RECORDED and the remaining
-    // cleanup (the invocation-slot reversal) must still run. The response must
-    // stay Err(UrlElicitationsRequired) - not an internal cleanup error - so
-    // the elicitations payload still reaches the edge.
+    // A runtime-reservation release failure during the UrlElicitationsRequired
+    // cleanup must be RECORDED and the remaining cleanup (the invocation-slot
+    // reversal) must still run. The response must stay Err(UrlElicitationsRequired)
+    // (not an internal cleanup error) so the elicitations payload still reaches the
+    // edge.
     let mut kernel = make_kernel(make_config());
     let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
@@ -3774,10 +3767,10 @@ fn url_elicitation_release_failure_continues_full_budget_cleanup(
         slot_reusable,
         "cleanup must CONTINUE past the runtime-release failure and reverse the invocation slot"
     );
-    // Round-9 finding: the arm returns Err(UrlElicitationsRequired) and records
-    // no terminal receipt, so a failed runtime-admission release would leave the
-    // stuck lease with NO append-only entry. A signed fault receipt naming the
-    // stuck lease must now be recorded.
+    // The arm returns Err(UrlElicitationsRequired) and records no terminal receipt,
+    // so a failed runtime-admission release would otherwise leave the stuck lease
+    // with NO append-only entry. A signed fault receipt naming the stuck lease must
+    // be recorded.
     assert_url_elicitation_release_fault_recorded(
         &kernel,
         "lease-url-elicitation-release-failure",
@@ -3857,9 +3850,8 @@ fn url_elicitation_release_failure_continues_full_budget_cleanup_nested_flow(
         slot_reusable,
         "the nested cleanup must CONTINUE past the release failure and reverse the invocation slot"
     );
-    // Round-9 finding (nested mirror): the stuck lease must land a signed fault
-    // receipt on the append-only log even though the arm returns
-    // Err(UrlElicitationsRequired).
+    // Nested mirror: the stuck lease must land a signed fault receipt on the
+    // append-only log even though the arm returns Err(UrlElicitationsRequired).
     assert_url_elicitation_release_fault_recorded(
         &kernel,
         "lease-url-elicitation-release-failure-nested",
@@ -3869,15 +3861,14 @@ fn url_elicitation_release_failure_continues_full_budget_cleanup_nested_flow(
 
 /// Assert that a failed runtime-admission release during a URL-elicitation
 /// pre-dispatch unwind recorded a signed cancellation fault receipt naming the
-/// stuck `lease_id` (round-9 finding). Shared by the async and nested-flow
-/// release-failure tests.
+/// stuck `lease_id`. Shared by the async and nested-flow release-failure tests.
 fn assert_url_elicitation_release_fault_recorded(
     kernel: &ChioKernel,
     lease_id: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let receipt_log = kernel.receipt_log();
-    let fault_receipt = receipt_log
-        .receipts()
+    let receipts = receipt_log.receipts();
+    let fault_receipt = receipts
         .iter()
         .find(|receipt| {
             receipt.is_cancelled()
@@ -3916,8 +3907,8 @@ fn assert_url_elicitation_release_fault_recorded(
 
 /// A [`BudgetStore`] wrapper that fails the pre-execution BUDGET reversal
 /// (`reverse_charge_cost`) so a URL-elicitation cleanup exercises the
-/// record-and-continue budget path (Fix #2). All other operations delegate to a
-/// real in-memory store so admission still increments the invocation slot.
+/// record-and-continue budget path. All other operations delegate to a real
+/// in-memory store so admission still increments the invocation slot.
 struct FailingReverseBudgetStore {
     inner: InMemoryBudgetStore,
 }
@@ -4016,7 +4007,7 @@ impl BudgetStore for FailingReverseBudgetStore {
 
 /// Assert that a failed BUDGET reversal during a URL-elicitation pre-dispatch
 /// unwind recorded a signed cancellation fault receipt naming the `step` and
-/// the stuck `hold_id` (Fix #2). Shared by the async and nested-flow tests.
+/// the stuck `hold_id`. Shared by the async and nested-flow tests.
 fn assert_url_elicitation_budget_cleanup_fault_recorded(
     kernel: &ChioKernel,
     step: &str,
@@ -4049,12 +4040,12 @@ fn assert_url_elicitation_budget_cleanup_fault_recorded(
 #[test]
 fn url_elicitation_budget_reversal_failure_preserves_elicitation_async(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Fix #2: a transient BUDGET-store failure while reversing the
-    // pre-execution invocation slot during a UrlElicitationsRequired cleanup
-    // must be RECORDED and the arm must still return
-    // Err(UrlElicitationsRequired) - not the internal budget error - so the
-    // elicitations payload still reaches the edge. RED before the fix (the `?`
-    // on reverse_pre_execution_budget_mutation replaces the elicitation error).
+    // A transient BUDGET-store failure while reversing the pre-execution invocation
+    // slot during a UrlElicitationsRequired cleanup must be RECORDED and the arm
+    // must still return Err(UrlElicitationsRequired) (not the internal budget error)
+    // so the elicitations payload still reaches the edge. A bare `?` on
+    // reverse_pre_execution_budget_mutation would instead replace the elicitation
+    // error with the budget error.
     let mut kernel = make_kernel(make_config());
     let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
@@ -4104,8 +4095,7 @@ fn url_elicitation_budget_reversal_failure_preserves_elicitation_async(
 #[test]
 fn url_elicitation_budget_reversal_failure_preserves_elicitation_nested_flow(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Nested-flow mirror of the async budget-reversal-failure test (Fix #2,
-    // both arms).
+    // Nested-flow mirror of the async budget-reversal-failure test (both arms).
     let mut kernel = make_kernel(make_config());
     let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
@@ -4171,11 +4161,11 @@ fn url_elicitation_budget_reversal_failure_preserves_elicitation_nested_flow(
 #[test]
 fn drop_pre_dispatch_cleanup_fault_receipt_includes_monetary_hold_id(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Finding 3 (codex round 8): when a pre-dispatch drop hits a monetary
-    // cleanup failure, the fault entry must name the budget hold id it was
-    // unwinding so an operator can locate the possibly-stuck hold from the
-    // fault receipt alone. The fabricated charge has no matching open hold in
-    // the store, so the monetary reversal fails and records a fault.
+    // When a pre-dispatch drop hits a monetary cleanup failure, the fault entry
+    // must name the budget hold id it was unwinding so an operator can locate the
+    // possibly-stuck hold from the fault receipt alone. The fabricated charge has no
+    // matching open hold in the store, so the monetary reversal fails and records a
+    // fault.
     let kernel = make_kernel(make_config());
 
     let agent_kp = make_keypair();
@@ -4245,10 +4235,10 @@ fn drop_pre_dispatch_cleanup_fault_receipt_includes_monetary_hold_id(
 
 #[test]
 fn retained_marker_requires_a_real_reservation() -> Result<(), Box<dyn std::error::Error>> {
-    // Codex round 12 Finding 2: a `chio_runtime` block that merely carries a
-    // route / observe-only key with NO reserved lease id must NOT be marked
-    // `reservations_retained_fail_closed`. There is nothing to burn, so the
-    // marker would send an operator hunting for a lease that never existed.
+    // A `chio_runtime` block that merely carries a route / observe-only key with NO
+    // reserved lease id must NOT be marked `reservations_retained_fail_closed`.
+    // There is nothing to burn, so the marker would send an operator hunting for a
+    // lease that never existed.
     let kernel = make_kernel(make_config());
 
     // (a) chio_runtime present, but no reserved_* id: NOT marked retained; the
@@ -4307,9 +4297,8 @@ fn retained_marker_requires_a_real_reservation() -> Result<(), Box<dyn std::erro
 
 /// A [`PaymentAdapter`] that authorizes cleanly but FAILS on release, so a
 /// monetary UrlElicitationsRequired cleanup exercises the payment-release
-/// failure arm of `unwind_aborted_monetary_invocation` (Finding 3). The
-/// authorization id is deterministic so a test can assert it lands in the
-/// recorded fault's `hold_ids`.
+/// failure arm of `unwind_aborted_monetary_invocation`. The authorization id is
+/// deterministic so a test can assert it lands in the recorded fault's `hold_ids`.
 struct FailingReleasePaymentAdapter;
 
 impl PaymentAdapter for FailingReleasePaymentAdapter {
@@ -4358,12 +4347,10 @@ impl PaymentAdapter for FailingReleasePaymentAdapter {
 #[test]
 fn url_elicitation_monetary_reversal_failure_records_monetary_hold_ids_async(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Codex round 12 Finding 3: when a MONETARY request hits
-    // UrlElicitationsRequired and the payment release fails during cleanup, the
-    // append-only fault must name the stuck MONETARY hold (the payment
-    // authorization id), not just the capability id, so an operator can locate
-    // the hold to recover from the signed fault alone. RED before the fix: the
-    // fault recorded only cap.id.
+    // When a MONETARY request hits UrlElicitationsRequired and the payment release
+    // fails during cleanup, the append-only fault must name the stuck MONETARY hold
+    // (the payment authorization id), not just the capability id, so an operator can
+    // locate the hold to recover from the signed fault alone.
     let mut kernel = make_kernel(make_monetary_config());
     let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(

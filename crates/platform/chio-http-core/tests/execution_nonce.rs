@@ -80,6 +80,7 @@ fn make_kernel_with_nonce() -> ChioKernel {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     });
     kernel.register_tool_server(Box::new(EchoServer {
         id: "srv-a".to_string(),

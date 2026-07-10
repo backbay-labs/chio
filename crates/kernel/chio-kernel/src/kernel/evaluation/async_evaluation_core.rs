@@ -38,6 +38,37 @@ impl ChioKernel {
             );
         }
 
+        // RSS soft ceiling: shed new admissions before the OS OOM-kills the
+        // mediator. Checked on the same atomic-load fast path as the emergency
+        // stop, right after it.
+        if self.is_rss_shedding() {
+            warn!(
+                request_id = %request.request_id,
+                "rss soft ceiling exceeded -- shedding evaluate_tool_call"
+            );
+            // Receipt-totality: persist a signed deny receipt naming the shed
+            // resource, like the emergency-stop fast path above, so the overload
+            // denial has the same audit trail as every other admission decision.
+            // The shed still returns Overloaded so the tower load-shed edge
+            // surfaces backpressure; a receipt-persist failure is logged but must
+            // not mask the shed decision (fail-closed).
+            if let Err(receipt_error) = self.record_overload_shed_deny_receipt(
+                request,
+                crate::OverloadResource::Allocation,
+                now,
+                extra_metadata.clone(),
+            ) {
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&receipt_error.to_string()),
+                    "failed to persist overload-shed deny receipt"
+                );
+            }
+            return Err(KernelError::Overloaded {
+                resource: crate::OverloadResource::Allocation,
+            });
+        }
+
         // Receipt-version negotiation is a TRUST-BOUNDARY admission check
         // that must run BEFORE any dispatch path. The admission snapshot is
         // scoped for every receipt builder below so persistence and federation cosign
@@ -330,17 +361,55 @@ impl ChioKernel {
                     .as_ref()
                     .and_then(|admission| admission.verified_runtime_attestation.clone()),
             );
-        let _governed_call_chain_receipt_evidence_scope =
-            scope_governed_call_chain_receipt_evidence(
-                self.governed_call_chain_receipt_evidence(
+        // A receipt-store read error while resolving the parent call-chain
+        // receipt fails closed, but check_and_increment_budget above already
+        // consumed the pre-execution budget (invocation count / monetary hold).
+        // Route the error through the same reversal + deny path the governed and
+        // guard denial branches use so a transient store failure never burns
+        // quota or holds funds for a call that never dispatches.
+        let governed_call_chain_receipt_evidence = match self.governed_call_chain_receipt_evidence(
+            request,
+            cap,
+            None,
+            validated_governed_admission
+                .as_ref()
+                .and_then(|admission| admission.call_chain_proof.clone()),
+        ) {
+            Ok(evidence) => evidence,
+            Err(error) => {
+                let msg = error.to_string();
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "governed call-chain evidence lookup failed");
+                let reverse = self.reverse_pre_execution_budget_mutation(cap, &budget_mutation)?;
+                if let (Some(charge), Some(reverse)) =
+                    (budget_mutation.charge_result(), reverse.as_ref())
+                {
+                    return self.build_pre_execution_monetary_deny_response_with_metadata(
+                        request,
+                        &msg,
+                        now,
+                        charge,
+                        reverse.committed_cost_units_after,
+                        cap,
+                        self.merge_budget_receipt_metadata(
+                            extra_metadata.clone(),
+                            self.budget_execution_receipt_metadata(
+                                charge,
+                                Some(("reversed", reverse)),
+                            ),
+                        ),
+                    );
+                }
+                return self.build_deny_response_with_metadata(
                     request,
-                    cap,
-                    None,
-                    validated_governed_admission
-                        .as_ref()
-                        .and_then(|admission| admission.call_chain_proof.clone()),
-                ),
-            );
+                    &msg,
+                    now,
+                    Some(matched_grant_index),
+                    extra_metadata.clone(),
+                );
+            }
+        };
+        let _governed_call_chain_receipt_evidence_scope =
+            scope_governed_call_chain_receipt_evidence(governed_call_chain_receipt_evidence);
 
         let pre_invocation_guard_evidence = match self.run_guards(
             request,

@@ -255,6 +255,30 @@ impl ReceiptStore for SqliteReceiptStore {
             .transpose()
     }
 
+    fn load_child_receipt(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ChildRequestReceipt>, ReceiptStoreError> {
+        let connection = self.connection()?;
+        ensure_checkpoint_transparency_guards(&connection)?;
+        verify_latest_checkpoint_integrity(&connection)?;
+        connection
+            .query_row(
+                "SELECT seq, raw_json FROM chio_child_receipts WHERE receipt_id = ?1",
+                params![receipt_id],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            )
+            .optional()?
+            .map(|(seq, raw_json)| {
+                decode_verified_child_receipt(
+                    &raw_json,
+                    "persisted child receipt",
+                    Some(seq.max(0) as u64),
+                )
+            })
+            .transpose()
+    }
+
     fn append_chio_receipt_canonical(
         &self,
         _receipt: &ChioReceipt,

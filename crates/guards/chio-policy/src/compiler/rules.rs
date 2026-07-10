@@ -27,6 +27,7 @@ pub(super) fn compile_rule_guards(
     policy: &HushSpec,
     builder: &mut PipelineBuilder,
     post_invocation: &mut PostInvocationPipeline,
+    memory_budget: &chio_kernel::MemoryBudgetConfig,
 ) -> Result<(), CompileError> {
     let Some(rules) = &policy.rules else {
         return Ok(());
@@ -54,10 +55,16 @@ pub(super) fn compile_rule_guards(
         if v.enabled {
             let (velocity_cfg, agent_cfg) = compile_velocity_rule(v);
             if let Some(cfg) = velocity_cfg {
-                builder.add(VelocityGuard::new(cfg));
+                // Thread the CONFIGURED process memory budget so a lowered
+                // `velocity_bucket_cap` tightens this long-lived collection instead
+                // of silently using the default.
+                builder.add(VelocityGuard::from_memory_budget(cfg, memory_budget));
             }
             if let Some(cfg) = agent_cfg {
-                builder.add(AgentVelocityGuard::new(cfg));
+                // Thread the CONFIGURED process memory budget so a lowered
+                // `velocity_bucket_cap` bounds this guard's agent/session bucket
+                // maps too.
+                builder.add(AgentVelocityGuard::from_memory_budget(cfg, memory_budget));
             }
         }
     }

@@ -31,6 +31,19 @@ impl ChioKernel {
                 EMERGENCY_STOP_DENY_REASON.to_string(),
             ));
         }
+        // RSS soft ceiling: shed new admissions before the OS OOM-kills the
+        // mediator. The tool-call fast path sheds here; a
+        // resource/prompt/completion or any other non-tool capability-backed
+        // operation that flows through this helper must shed on the SAME soft
+        // ceiling, or a large read_resource / prompt completion could still
+        // allocate and execute under RSS pressure while tool calls are being shed.
+        // Fail-closed: return Overloaded so the soft ceiling sheds ALL new
+        // admissions uniformly and the tower load-shed edge surfaces backpressure.
+        if self.is_rss_shedding() {
+            return Err(KernelError::Overloaded {
+                resource: crate::OverloadResource::Allocation,
+            });
+        }
         let now_unix_ms = current_unix_timestamp_ms();
         let now = now_unix_ms / 1000;
         self.verify_capability_full_pre_admit(capability, None, now)

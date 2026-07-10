@@ -34,7 +34,10 @@ pub mod validate;
 pub mod version;
 pub mod weights;
 
-pub use compiler::{compile_policy, compile_policy_with_source, CompileError, CompiledPolicy};
+pub use compiler::{
+    compile_policy, compile_policy_with_memory_budget, compile_policy_with_source, CompileError,
+    CompiledPolicy,
+};
 pub use conditions::{evaluate_condition, Condition, RuntimeContext};
 pub use crypto_floor::{CryptoFloor, CryptoFloorLoadError};
 pub use evaluate::{

@@ -888,6 +888,7 @@ fn make_config() -> KernelConfig {
         allow_ephemeral_receipt_log: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: crate::MemoryBudgetConfig::defaults(),
     }
 }
 
@@ -1906,6 +1907,79 @@ impl ReceiptStore for AppendOnlyReceiptStore {
         _receipt: &ChildRequestReceipt,
     ) -> Result<(), ReceiptStoreError> {
         Ok(())
+    }
+}
+
+/// A store-authoritative point-lookup store: appended chio receipts are retained
+/// in-memory and `load_chio_receipt` resolves them by id. Models a durable store
+/// that implements point loads, so an evicted parent receipt still resolves from
+/// the store after the bounded mirror drops it.
+#[derive(Default)]
+struct PointLookupReceiptStore {
+    chio: std::sync::Mutex<std::collections::HashMap<String, ChioReceipt>>,
+}
+
+impl ReceiptStore for PointLookupReceiptStore {
+    fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        if let Ok(mut map) = self.chio.lock() {
+            map.insert(receipt.id.clone(), receipt.clone());
+        }
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn load_chio_receipt(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        Ok(self
+            .chio
+            .lock()
+            .ok()
+            .and_then(|map| map.get(receipt_id).cloned()))
+    }
+}
+
+/// A store that appends fine (so the local mirror is populated) but fails every
+/// point load with a read-boundary error, exercising the fail-closed
+/// error-propagation path.
+#[derive(Default)]
+struct ErroringReceiptStore;
+
+impl ReceiptStore for ErroringReceiptStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn load_chio_receipt(
+        &self,
+        _receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        Err(ReceiptStoreError::ReadBoundary(
+            "simulated receipt store read failure".to_string(),
+        ))
+    }
+
+    fn load_child_receipt(
+        &self,
+        _receipt_id: &str,
+    ) -> Result<Option<ChildRequestReceipt>, ReceiptStoreError> {
+        Err(ReceiptStoreError::ReadBoundary(
+            "simulated child receipt store read failure".to_string(),
+        ))
     }
 }
 

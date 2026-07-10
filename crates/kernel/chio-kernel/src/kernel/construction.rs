@@ -173,7 +173,20 @@ impl ChioKernel {
                 signing_queued_budget,
             ),
         );
-        Self {
+        // Read the memory-budget-driven caps before `config` is moved into the
+        // struct literal.
+        let receipt_mirror_capacity = config.memory_budget_receipt_mirror_capacity();
+        let federation_cache_capacity = config.memory_budget_federation_cache_capacity();
+        let federation_cache_idle_ttl = config.memory_budget_federation_cache_idle_ttl_secs();
+        let rss_soft_limit_bytes = config.memory_budget.rss_soft_limit_bytes;
+        let rss_sample_interval_secs = config.memory_budget.rss_sample_interval_secs;
+        // Build the bounded-structure gauges first so they can be shared between
+        // each structure and the telemetry / registry readers.
+        let receipt_mirror_gauge;
+        let child_receipt_mirror_gauge;
+        let federation_dual_receipts_gauge;
+        let federation_dsse_envelopes_gauge;
+        let mut kernel = Self {
             config,
             guards: Vec::new(),
             post_invocation_pipeline: crate::post_invocation::PostInvocationPipeline::new(),
@@ -185,8 +198,21 @@ impl ChioKernel {
             resource_providers: Vec::new(),
             prompt_providers: Vec::new(),
             sessions: DashMap::new(),
-            receipt_log: Mutex::new(ReceiptLog::new()),
-            child_receipt_log: Mutex::new(ChildReceiptLog::new()),
+            receipt_log: {
+                let gauge = chio_bounded::SizeGauge::new();
+                receipt_mirror_gauge = gauge.clone();
+                Mutex::new(ReceiptLog::with_capacity(receipt_mirror_capacity, gauge))
+            },
+            child_receipt_log: {
+                let gauge = chio_bounded::SizeGauge::new();
+                child_receipt_mirror_gauge = gauge.clone();
+                Mutex::new(ChildReceiptLog::with_capacity(
+                    receipt_mirror_capacity,
+                    gauge,
+                ))
+            },
+            receipt_mirror_gauge,
+            child_receipt_mirror_gauge,
             receipt_store: None,
             receipt_store_write_lock: Mutex::new(()),
             payment_adapter: None,
@@ -213,8 +239,27 @@ impl ChioKernel {
             capability_trust_roots: ArcSwap::from_pointee(HashMap::new()),
             capability_trust_roots_write_lock: Mutex::new(()),
             federation_cosigner: None,
-            federation_dual_receipts: DashMap::new(),
-            federation_dsse_envelopes: DashMap::new(),
+            federation_dual_receipts: {
+                let gauge = chio_bounded::SizeGauge::new();
+                federation_dual_receipts_gauge = gauge.clone();
+                Mutex::new(chio_bounded::BoundedMap::new(
+                    federation_cache_capacity,
+                    federation_cache_idle_ttl,
+                    gauge,
+                ))
+            },
+            federation_dual_receipts_gauge,
+            federation_dsse_envelopes: {
+                let gauge = chio_bounded::SizeGauge::new();
+                federation_dsse_envelopes_gauge = gauge.clone();
+                Mutex::new(chio_bounded::BoundedMap::new(
+                    federation_cache_capacity,
+                    federation_cache_idle_ttl,
+                    gauge,
+                ))
+            },
+            federation_dsse_envelopes_gauge,
+            federation_artifact_store: None,
             receipt_tenant_ids: Arc::new(DashMap::new()),
             receipt_federation_admissions: Arc::new(DashMap::new()),
             federation_local_kernel_id: ArcSwap::from_pointee(Option::<String>::None),
@@ -222,7 +267,19 @@ impl ChioKernel {
             settlement_observer: None,
             revocation_view: None,
             budget_registry: Mutex::new(chio_kernel_core::InMemoryBudgetRegistry::new()),
+            rss_shed: Arc::new(AtomicBool::new(false)),
+            rss_sampler: None,
+        };
+        // Start the RSS soft-ceiling sampler only when a limit is configured; with
+        // no limit set, no thread is spawned.
+        if let Some(limit) = rss_soft_limit_bytes {
+            kernel.rss_sampler = Some(kernel_struct::RssSamplerHandle::spawn(
+                Arc::clone(&kernel.rss_shed),
+                limit,
+                rss_sample_interval_secs,
+            ));
         }
+        kernel
     }
 
     pub(crate) fn ensure_federated_receipt_persistence_ready(
@@ -699,6 +756,30 @@ impl ChioKernel {
         self.federation_cosigner = Some(cosigner);
     }
 
+    /// Install a durable [`crate::federation_artifact_store::FederationArtifactStore`]
+    /// for bilateral co-sign artifacts.
+    ///
+    /// When set, [`Self::apply_federation_cosign`] writes each
+    /// `DualSignedReceipt` / `DsseEnvelope` through to the store BEFORE inserting
+    /// it into the bounded in-memory caches, and [`Self::dual_signed_receipt`] /
+    /// [`Self::federation_dsse_envelope`] fall back to the store on a cache miss.
+    /// This closes the evidence-loss window where a federated deployment
+    /// producing more than `federation_cache_capacity` receipts would drop
+    /// evicted co-sign artifacts while the durable receipt store keeps only the
+    /// base receipt. Without a store installed, evicted co-sign artifacts are
+    /// lossy by policy (the bounded caches drop-oldest at capacity).
+    ///
+    /// A deployment requiring durable bilateral evidence installs a
+    /// database-backed impl; the bundled
+    /// [`crate::federation_artifact_store::InMemoryFederationArtifactStore`] is a
+    /// capped, idle-swept reference impl and test double.
+    pub fn set_federation_artifact_store(
+        &mut self,
+        store: Arc<dyn crate::federation_artifact_store::FederationArtifactStore>,
+    ) {
+        self.federation_artifact_store = Some(store);
+    }
+
     /// Advertise this kernel's stable identifier as seen by
     /// remote federation peers. When unset, the hex encoding of the
     /// signing public key is used. Setting this is recommended in
@@ -740,18 +821,65 @@ impl ChioKernel {
         &self,
         receipt_id: &str,
     ) -> Option<chio_federation::bilateral::DualSignedReceipt> {
-        self.federation_dual_receipts
-            .get(receipt_id)
-            .map(|entry| entry.value().clone())
+        let now = current_unix_timestamp();
+        {
+            let mut cache = match self.federation_dual_receipts.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            if let Some(hit) = cache.get(&receipt_id.to_string(), now) {
+                return Some(hit.clone());
+            }
+        }
+        self.federation_artifact_store.as_ref().and_then(|store| {
+            // A store READ error is not an admission gate (writes fail closed via
+            // `?` elsewhere), but collapsing Err to None silently makes a transient
+            // read failure indistinguishable from an absent artifact. Log it so the
+            // read-through fallback is observable.
+            match store.get_dual_signed(receipt_id) {
+                Ok(hit) => hit,
+                Err(error) => {
+                    debug!(
+                        receipt_id = %receipt_id,
+                        reason = %redacted!(&error.to_string()),
+                        "federation artifact-store dual-signed read failed; treating as absent"
+                    );
+                    None
+                }
+            }
+        })
     }
 
     pub fn federation_dsse_envelope(
         &self,
         receipt_id: &str,
     ) -> Option<chio_federation::bilateral_dsse::DsseEnvelope> {
-        self.federation_dsse_envelopes
-            .get(receipt_id)
-            .map(|entry| entry.value().clone())
+        let now = current_unix_timestamp();
+        {
+            let mut cache = match self.federation_dsse_envelopes.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            if let Some(hit) = cache.get(&receipt_id.to_string(), now) {
+                return Some(hit.clone());
+            }
+        }
+        self.federation_artifact_store.as_ref().and_then(|store| {
+            // As with the dual-signed read above: log a swallowed store read error
+            // so a transient failure is not silently reported as an absent DSSE
+            // envelope.
+            match store.get_dsse(receipt_id) {
+                Ok(hit) => hit,
+                Err(error) => {
+                    debug!(
+                        receipt_id = %receipt_id,
+                        reason = %redacted!(&error.to_string()),
+                        "federation artifact-store DSSE read failed; treating as absent"
+                    );
+                    None
+                }
+            }
+        })
     }
 
     /// Local kernel identifier used in bilateral co-signing. Falls back
@@ -914,10 +1042,52 @@ impl ChioKernel {
             )
             .map_err(|e| KernelError::Internal(format!("bilateral DSSE co-sign failed: {e}")))?;
 
-        self.federation_dual_receipts
-            .insert(receipt.id.clone(), dual);
-        self.federation_dsse_envelopes
-            .insert(receipt.id.clone(), dsse_envelope);
+        // Write through to the artifact store (if one is installed via
+        // set_federation_artifact_store) BEFORE the bounded caches. An entry
+        // evicted from a cache is only guaranteed resolvable when the store
+        // DURABLY retains it: a bounded in-memory store can evict the same id the
+        // caches did, so only a store that reports itself durable suppresses the
+        // evidence-loss signal below.
+        let durable_store_installed = self
+            .federation_artifact_store
+            .as_ref()
+            .is_some_and(|store| store.is_durable());
+        if let Some(store) = self.federation_artifact_store.as_ref() {
+            store.put_dual_signed(&receipt.id, &dual)?;
+            store.put_dsse(&receipt.id, &dsse_envelope)?;
+        }
+        let now = current_unix_timestamp();
+        {
+            let mut cache = match self.federation_dual_receipts.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            // An evicted entry survives only through a durable store. Without one
+            // the drop is lossy by policy (bounded drop-oldest); log it so the
+            // evidence loss is explicit for operators.
+            if cache.insert(receipt.id.clone(), dual, now).is_some() && !durable_store_installed {
+                debug!(
+                    request_id = %request.request_id,
+                    "dropping an evicted dual-signed co-sign artifact: bounded federation cache is full and no durable FederationArtifactStore is installed"
+                );
+            }
+        }
+        {
+            let mut cache = match self.federation_dsse_envelopes.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            if cache
+                .insert(receipt.id.clone(), dsse_envelope, now)
+                .is_some()
+                && !durable_store_installed
+            {
+                debug!(
+                    request_id = %request.request_id,
+                    "dropping an evicted co-sign DSSE envelope: bounded federation cache is full and no durable FederationArtifactStore is installed"
+                );
+            }
+        }
         Ok(())
     }
 
@@ -974,6 +1144,42 @@ impl ChioKernel {
     #[must_use]
     pub fn is_emergency_stopped(&self) -> bool {
         self.emergency_stopped.load(Ordering::SeqCst)
+    }
+
+    /// Return `true` when the RSS soft-ceiling sampler has flagged that process
+    /// RSS crossed `memory_budget.rss_soft_limit_bytes`. A single relaxed atomic
+    /// load on the admission fast path.
+    #[must_use]
+    pub fn is_rss_shedding(&self) -> bool {
+        self.rss_shed.load(Ordering::Relaxed)
+    }
+
+    /// Enumerate each long-lived bounded structure's telemetry label and its
+    /// current live entry count. This is the registry the size-metric convention
+    /// and the soak harness read; adding a
+    /// new long-lived collection without a gauge here fails the registry test.
+    #[must_use]
+    pub fn bounded_structure_gauges(&self) -> Vec<(&'static str, usize)> {
+        vec![
+            ("receipt_mirror", self.receipt_mirror_gauge.get()),
+            (
+                "child_receipt_mirror",
+                self.child_receipt_mirror_gauge.get(),
+            ),
+            (
+                "federation_dual_receipts",
+                self.federation_dual_receipts_gauge.get(),
+            ),
+            (
+                "federation_dsse_envelopes",
+                self.federation_dsse_envelopes_gauge.get(),
+            ),
+        ]
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_rss_shed_for_test(&self, on: bool) {
+        self.rss_shed.store(on, Ordering::Relaxed);
     }
 
     /// Return the unix timestamp (seconds) at which the kill switch was

@@ -58,6 +58,74 @@ impl ReceiptStore for RemoteReceiptStore {
             .map_err(into_receipt_store_error)
     }
 
+    /// Point-load a tool receipt by id over the control-plane remote protocol so
+    /// a store-authoritative `--control-url` deployment resolves a parent receipt
+    /// that the kernel's bounded in-memory mirror has evicted, rather than
+    /// falsely denying a governed call-chain continuation. The query is bounded
+    /// to a single row.
+    fn load_chio_receipt(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        let response = self
+            .client
+            .list_tool_receipts(&ToolReceiptQuery {
+                receipt_id: Some(receipt_id.to_string()),
+                limit: Some(1),
+                ..ToolReceiptQuery::default()
+            })
+            .map_err(into_receipt_store_error)?;
+        match response.receipts.into_iter().next() {
+            Some(value) => {
+                let receipt: ChioReceipt = serde_json::from_value(value)?;
+                // Verify the returned id matches the REQUESTED id before accepting
+                // the hit. A rolling-upgrade or non-conforming control-plane that
+                // ignores the `receiptId` filter can return an unrelated receipt as
+                // the first row. `has_local_receipt_id` treats any `Some(_)` as
+                // "the requested parent exists", so an unverified hit would let a
+                // governed parent-receipt existence check pass on the WRONG receipt
+                // after the mirror evicts the real one. A mismatch is treated as a
+                // miss (fail-closed): the caller then denies the dependent claim
+                // rather than trusting a substituted receipt.
+                if receipt.id != receipt_id {
+                    return Ok(None);
+                }
+                Ok(Some(receipt))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Point-load a child receipt by id over the control-plane remote protocol
+    /// (same bounded-mirror-eviction rationale as [`Self::load_chio_receipt`]).
+    fn load_child_receipt(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ChildRequestReceipt>, ReceiptStoreError> {
+        let response = self
+            .client
+            .list_child_receipts(&ChildReceiptQuery {
+                receipt_id: Some(receipt_id.to_string()),
+                limit: Some(1),
+                ..ChildReceiptQuery::default()
+            })
+            .map_err(into_receipt_store_error)?;
+        match response.receipts.into_iter().next() {
+            Some(value) => {
+                let receipt: ChildRequestReceipt = serde_json::from_value(value)?;
+                // Same returned-id-must-match-requested-id check as
+                // [`Self::load_chio_receipt`]: a non-conforming control-plane that
+                // ignores the filter cannot substitute a different child receipt
+                // for a governed existence check. A mismatch is a fail-closed miss.
+                if receipt.id != receipt_id {
+                    return Ok(None);
+                }
+                Ok(Some(receipt))
+            }
+            None => Ok(None),
+        }
+    }
+
     fn record_capability_snapshot(
         &self,
         token: &CapabilityToken,

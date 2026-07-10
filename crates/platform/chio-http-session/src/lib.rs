@@ -148,50 +148,140 @@ pub struct SessionJournalSnapshot {
     pub tool_sequence: Vec<String>,
     /// Per-tool invocation counts.
     pub tool_counts: HashMap<String, u64>,
+    /// The tool name of the current consecutive run (the last tool recorded), or
+    /// `None` if nothing has been recorded. Cumulative and O(1): it survives ring
+    /// eviction so a same-tool streak longer than `journal_entry_cap` is still
+    /// counted in full.
+    pub current_streak_tool: Option<String>,
+    /// Length of the current consecutive run of `current_streak_tool`. Resets to
+    /// 1 whenever a different tool is recorded, so it stays bounded semantically
+    /// (a single running count, not a growing collection).
+    pub current_streak_len: u64,
 }
 
 // ---------------------------------------------------------------------------
 // Session journal (inner, not thread-safe)
 // ---------------------------------------------------------------------------
 
+/// Default entry-ring capacity when a journal is created without an explicit
+/// budget, single-sourced from the process memory budget
+/// ([`chio_kernel::MemoryBudgetConfig`]'s `journal_entry_cap`) rather than a
+/// duplicated literal, so lowering the budget lowers this cap. The `entries` and
+/// `tool_sequence` rings are bounded; `data_flow` stays cumulative and
+/// `tool_counts` is cumulative but distinct-key bounded (see
+/// [`default_journal_tool_counts_cap`]).
+fn default_journal_entry_cap() -> usize {
+    chio_kernel::MemoryBudgetConfig::defaults().journal_entry_cap
+}
+
+/// Default distinct-tool-name cap for the cumulative `tool_counts` map,
+/// single-sourced from the process memory budget
+/// ([`chio_kernel::MemoryBudgetConfig`]'s `journal_tool_counts_cap`) so lowering
+/// the budget lowers this cap.
+fn default_journal_tool_counts_cap() -> usize {
+    chio_kernel::MemoryBudgetConfig::defaults().journal_tool_counts_cap
+}
+
+/// Fold an evicted entry's hash into the running head hash so the dropped prefix
+/// stays committed after eviction.
+fn fold_head_hash(prev: Option<&str>, evicted_entry_hash: &str) -> String {
+    let mut hasher = Sha256::new();
+    update_len_prefixed(&mut hasher, prev.unwrap_or(""));
+    update_len_prefixed(&mut hasher, evicted_entry_hash);
+    hex::encode(hasher.finalize())
+}
+
 /// Inner journal state (not thread-safe -- wrapped by `SessionJournal`).
 #[derive(Debug)]
 struct JournalInner {
-    /// The ordered list of entries.
-    entries: Vec<JournalEntry>,
+    /// The capacity-bounded ring of retained entries.
+    entries: chio_bounded::Ring<JournalEntry>,
+    /// Running fold over the hashes of entries evicted from the ring, so the
+    /// chain stays committed after the prefix is dropped. `None` until the first
+    /// eviction.
+    evicted_head_hash: Option<String>,
+    /// Monotonic sequence counter, independent of the (bounded) ring length so
+    /// sequence numbers never repeat after eviction.
+    next_sequence: u64,
     /// Cumulative data flow stats.
     data_flow: CumulativeDataFlow,
-    /// Tool invocation sequence (tool names in order).
-    tool_sequence: Vec<String>,
-    /// Per-tool invocation counts.
+    /// Tool invocation sequence (tool names in order), bounded to the entry cap.
+    tool_sequence: chio_bounded::Ring<String>,
+    /// Per-tool invocation counts (cumulative). The counts survive entry-ring
+    /// eviction so the behavioral-sequence guard can answer "was this tool ever
+    /// invoked", but the set of DISTINCT keys is bounded fail-closed by
+    /// `tool_counts_cap`. See `record` for the overflow rule.
     tool_counts: HashMap<String, u64>,
+    /// Maximum number of distinct tool names retained in `tool_counts`. Once
+    /// reached, a previously-unseen tool name is dropped from the cumulative
+    /// counts (fail-closed): a dependent required-predecessor check then treats
+    /// it as never-invoked and denies. Already-seen tools keep
+    /// counting so legitimate (registry-bounded) predecessor checks stay
+    /// correct across ring eviction.
+    tool_counts_cap: usize,
+    /// The tool name of the current consecutive run, or `None` before the first
+    /// record. Together with `current_streak_len` this is an O(1), bounded
+    /// cumulative streak counter (last-tool plus consecutive-count) that survives
+    /// entry-ring eviction, so a `max_consecutive` check can be enforced even when
+    /// the streak is longer than `journal_entry_cap` and the older part of the
+    /// streak has been evicted from `tool_sequence`.
+    current_streak_tool: Option<String>,
+    /// Length of the current consecutive run of `current_streak_tool`. Reset to 1
+    /// when a different tool is recorded, so it never accumulates unboundedly as a
+    /// collection: it is a single running scalar.
+    current_streak_len: u64,
 }
 
 impl JournalInner {
-    fn new() -> Self {
+    fn new(entry_cap: usize, tool_counts_cap: usize) -> Self {
         Self {
-            entries: Vec::new(),
+            entries: chio_bounded::Ring::with_capacity(entry_cap, chio_bounded::SizeGauge::new()),
+            evicted_head_hash: None,
+            next_sequence: 0,
             data_flow: CumulativeDataFlow::default(),
-            tool_sequence: Vec::new(),
+            tool_sequence: chio_bounded::Ring::with_capacity(
+                entry_cap,
+                chio_bounded::SizeGauge::new(),
+            ),
             tool_counts: HashMap::new(),
+            tool_counts_cap,
+            current_streak_tool: None,
+            current_streak_len: 0,
         }
     }
 
     fn last_hash(&self) -> &str {
         self.entries
+            .iter()
             .last()
             .map(|e| e.entry_hash.as_str())
             .unwrap_or(ZERO_HASH)
+    }
+
+    /// The externally visible head hash. Before any eviction this is the most
+    /// recent retained entry hash; once the ring has evicted a prefix, the head
+    /// folds the running `evicted_head_hash` together with the retained tail so
+    /// the exported head still commits to the dropped prefix. This keeps the
+    /// snapshot/`head_hash()` commitment consistent with the full pre-eviction
+    /// sequence, so an audit can detect truncation or tampering of the evicted
+    /// prefix.
+    fn exported_head_hash(&self) -> String {
+        match self.evicted_head_hash.as_deref() {
+            None => self.last_hash().to_string(),
+            Some(evicted) => fold_head_hash(Some(evicted), self.last_hash()),
+        }
     }
 
     fn snapshot(&self, session_id: &str) -> SessionJournalSnapshot {
         SessionJournalSnapshot {
             session_id: session_id.to_string(),
             entry_count: self.entries.len(),
-            head_hash: self.last_hash().to_string(),
+            head_hash: self.exported_head_hash(),
             data_flow: self.data_flow.clone(),
-            tool_sequence: self.tool_sequence.clone(),
+            tool_sequence: self.tool_sequence.iter().cloned().collect(),
             tool_counts: self.tool_counts.clone(),
+            current_streak_tool: self.current_streak_tool.clone(),
+            current_streak_len: self.current_streak_len,
         }
     }
 }
@@ -243,10 +333,54 @@ impl SessionJournal {
             .map_err(|_| SessionJournalError::LockPoisoned)
     }
 
-    /// Create a new empty journal for the given session.
+    /// Create a new empty journal for the given session using the DEFAULT process
+    /// memory budget caps.
+    ///
+    /// Session-aware guards that hold a CONFIGURED process memory budget should
+    /// prefer [`Self::from_memory_budget`] so lowering `journal_entry_cap` (or
+    /// `journal_tool_counts_cap`) actually tightens each per-session journal
+    /// instead of every caller silently retaining the compiled-in default.
     pub fn new(session_id: String) -> Self {
+        Self::with_caps(
+            session_id,
+            default_journal_entry_cap(),
+            default_journal_tool_counts_cap(),
+        )
+    }
+
+    /// Create a new empty journal whose entry-ring and distinct-tool-name caps come
+    /// from a CONFIGURED process memory budget. Threading the operator's
+    /// [`chio_kernel::MemoryBudgetConfig`] (rather than a fresh `defaults()` read
+    /// inside [`Self::new`]) means lowering `journal_entry_cap` /
+    /// `journal_tool_counts_cap` on the process budget actually bounds each
+    /// per-session journal, so a multi-session workload stays within the configured
+    /// budget instead of every session retaining the default 4096 entries.
+    pub fn from_memory_budget(
+        session_id: String,
+        budget: &chio_kernel::MemoryBudgetConfig,
+    ) -> Self {
+        Self::with_caps(
+            session_id,
+            budget.journal_entry_cap,
+            budget.journal_tool_counts_cap,
+        )
+    }
+
+    /// Create a new empty journal with an explicit entry-ring capacity and the
+    /// default distinct-tool-name cap. The `entries` and `tool_sequence` rings
+    /// are bounded to `entry_cap`; `data_flow` stays cumulative and
+    /// `tool_counts` is cumulative but distinct-key bounded.
+    pub fn with_entry_cap(session_id: String, entry_cap: usize) -> Self {
+        Self::with_caps(session_id, entry_cap, default_journal_tool_counts_cap())
+    }
+
+    /// Create a new empty journal with explicit entry-ring and distinct-tool-name
+    /// caps. `entry_cap` bounds the `entries` and `tool_sequence` rings;
+    /// `tool_counts_cap` bounds the number of DISTINCT tool names retained in the
+    /// cumulative `tool_counts` map fail-closed.
+    pub fn with_caps(session_id: String, entry_cap: usize, tool_counts_cap: usize) -> Self {
         Self {
-            inner: Mutex::new(JournalInner::new()),
+            inner: Mutex::new(JournalInner::new(entry_cap, tool_counts_cap)),
             session_id,
         }
     }
@@ -267,7 +401,8 @@ impl SessionJournal {
 
         let mut inner = self.lock_inner()?;
 
-        let sequence = inner.entries.len() as u64;
+        let sequence = inner.next_sequence;
+        inner.next_sequence = inner.next_sequence.saturating_add(1);
         let prev_hash = inner.last_hash().to_string();
         let timestamp_secs = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -305,12 +440,46 @@ impl SessionJournal {
             .max_delegation_depth
             .max(params.delegation_depth);
 
-        // Update tool sequence and counts.
-        inner.tool_sequence.push(tool_name.clone());
-        let count = inner.tool_counts.entry(tool_name).or_insert(0);
-        *count = count.saturating_add(1);
+        // Update tool sequence and counts. tool_sequence is a bounded ring; the
+        // cumulative tool_counts survive ring eviction so the "ever invoked"
+        // predecessor check stays correct. The distinct-key set
+        // is bounded fail-closed by tool_counts_cap: an already-seen tool keeps
+        // counting, but once the cap is reached a previously-unseen tool name is
+        // NOT inserted, so a dependent required-predecessor check treats it as
+        // never-invoked and denies (fail-closed). This bounds the one long-lived
+        // per-session collection a ring cannot bound, without breaking the
+        // cumulative predecessor semantics for the naturally registry-bounded
+        // legitimate tool set. The append-only entry, sequence ring, and
+        // data-flow totals above are unaffected by the overflow.
+        let _ = inner.tool_sequence.push(tool_name.clone());
 
-        inner.entries.push(entry);
+        // Maintain the cumulative consecutive-run counter (O(1), bounded scalar).
+        // This survives entry-ring eviction so a `max_consecutive` policy is
+        // enforced even when the streak is longer than `journal_entry_cap` and the
+        // older part of the streak has been evicted from `tool_sequence`
+        // (fail-closed): the guard consults this counter, not the truncated ring
+        // tail.
+        if inner.current_streak_tool.as_deref() == Some(tool_name.as_str()) {
+            inner.current_streak_len = inner.current_streak_len.saturating_add(1);
+        } else {
+            inner.current_streak_tool = Some(tool_name.clone());
+            inner.current_streak_len = 1;
+        }
+
+        if inner.tool_counts.contains_key(&tool_name) {
+            if let Some(count) = inner.tool_counts.get_mut(&tool_name) {
+                *count = count.saturating_add(1);
+            }
+        } else if inner.tool_counts.len() < inner.tool_counts_cap {
+            inner.tool_counts.insert(tool_name, 1);
+        }
+
+        if let Some(evicted) = inner.entries.push(entry) {
+            // Fold the evicted prefix into a running head hash so the chain
+            // remains committed after the prefix is dropped.
+            let folded = fold_head_hash(inner.evicted_head_hash.as_deref(), &evicted.entry_hash);
+            inner.evicted_head_hash = Some(folded);
+        }
 
         Ok(sequence)
     }
@@ -331,16 +500,27 @@ impl SessionJournal {
         Ok(inner.snapshot(&self.session_id))
     }
 
-    /// Return the ordered tool invocation sequence.
+    /// Return the ordered tool invocation sequence (bounded to the entry cap).
     pub fn tool_sequence(&self) -> Result<Vec<String>, SessionJournalError> {
         let inner = self.lock_inner()?;
-        Ok(inner.tool_sequence.clone())
+        Ok(inner.tool_sequence.iter().cloned().collect())
     }
 
     /// Return per-tool invocation counts.
     pub fn tool_counts(&self) -> Result<HashMap<String, u64>, SessionJournalError> {
         let inner = self.lock_inner()?;
         Ok(inner.tool_counts.clone())
+    }
+
+    /// Number of DISTINCT tool names currently retained in the cumulative
+    /// `tool_counts` map. Bounded above by the journal's `tool_counts_cap`.
+    /// Exposed so a telemetry exporter or the kernel's
+    /// bounded-structure registry can observe how close the per-session
+    /// distinct-key set is to saturation once the journal is wired into a live
+    /// dispatch path.
+    pub fn tool_counts_len(&self) -> Result<usize, SessionJournalError> {
+        let inner = self.lock_inner()?;
+        Ok(inner.tool_counts.len())
     }
 
     /// Return the number of entries in the journal.
@@ -354,17 +534,18 @@ impl SessionJournal {
         Ok(self.len()? == 0)
     }
 
-    /// Return a clone of all journal entries.
+    /// Return a clone of the retained journal entries (bounded to the entry cap).
     pub fn entries(&self) -> Result<Vec<JournalEntry>, SessionJournalError> {
         let inner = self.lock_inner()?;
-        Ok(inner.entries.clone())
+        Ok(inner.entries.iter().cloned().collect())
     }
 
-    /// Return the most recent N entries (or all if fewer than N exist).
+    /// Return the most recent N entries (or all retained if fewer than N exist).
     pub fn recent_entries(&self, n: usize) -> Result<Vec<JournalEntry>, SessionJournalError> {
         let inner = self.lock_inner()?;
-        let start = inner.entries.len().saturating_sub(n);
-        Ok(inner.entries[start..].to_vec())
+        let all: Vec<JournalEntry> = inner.entries.iter().cloned().collect();
+        let start = all.len().saturating_sub(n);
+        Ok(all[start..].to_vec())
     }
 
     /// Verify the integrity of the hash chain.
@@ -374,12 +555,21 @@ impl SessionJournal {
     pub fn verify_integrity(&self) -> Result<(), SessionJournalError> {
         let inner = self.lock_inner()?;
 
-        for (index, entry) in inner.entries.iter().enumerate() {
+        let entries: Vec<&JournalEntry> = inner.entries.iter().collect();
+        for (index, entry) in entries.iter().enumerate() {
             // Check prev_hash linkage.
             let expected_prev = if index == 0 {
-                ZERO_HASH
+                if inner.evicted_head_hash.is_some() {
+                    // The oldest retained entry links into the evicted prefix,
+                    // which we no longer hold; that prefix is committed via
+                    // evicted_head_hash. Accept this boundary link and verify only
+                    // the entry hash.
+                    entry.prev_hash.as_str()
+                } else {
+                    ZERO_HASH
+                }
             } else {
-                inner.entries[index - 1].entry_hash.as_str()
+                entries[index - 1].entry_hash.as_str()
             };
 
             if entry.prev_hash != expected_prev {
@@ -404,10 +594,13 @@ impl SessionJournal {
         Ok(())
     }
 
-    /// Return the hash of the most recent entry (or the zero hash if empty).
+    /// Return the exported head hash: the most recent entry hash before any
+    /// eviction, or (once a prefix has been evicted) a fold of the evicted
+    /// prefix and the retained tail, so the head stays committed to the full
+    /// sequence across eviction (or the zero hash if empty).
     pub fn head_hash(&self) -> Result<String, SessionJournalError> {
         let inner = self.lock_inner()?;
-        Ok(inner.last_hash().to_string())
+        Ok(inner.exported_head_hash())
     }
 }
 
@@ -437,6 +630,171 @@ mod tests {
         assert_eq!(journal.len().unwrap(), 0);
         assert!(journal.is_empty().unwrap());
         assert_eq!(journal.head_hash().unwrap(), ZERO_HASH);
+    }
+
+    #[test]
+    fn journal_entries_ring_caps_but_counts_stay_cumulative() {
+        // The entries ring is bounded, but data_flow / tool_counts remain
+        // cumulative, and the retained window stays hash-verifiable.
+        let journal = SessionJournal::with_entry_cap("sess-cap".to_string(), 4);
+        for i in 0..10u32 {
+            journal
+                .record(test_params(&format!("tool-{}", i % 2)))
+                .unwrap();
+        }
+        assert!(
+            journal.entries().unwrap().len() <= 4,
+            "entries ring not capped"
+        );
+        let counts = journal.tool_counts().unwrap();
+        let total: u64 = counts.values().sum();
+        assert_eq!(total, 10, "cumulative counts must survive eviction");
+        assert_eq!(
+            journal.data_flow().unwrap().total_invocations,
+            10,
+            "cumulative invocation count must survive eviction"
+        );
+        // Sequence numbers keep climbing past the cap (monotonic, not len-based),
+        // and the retained window remains internally verifiable across the
+        // eviction boundary.
+        let entries = journal.entries().unwrap();
+        assert_eq!(entries.last().map(|e| e.sequence), Some(9));
+        journal.verify_integrity().unwrap();
+    }
+
+    #[test]
+    fn from_memory_budget_honors_lowered_journal_caps() {
+        // The CONFIGURED process memory budget must reach each per-session
+        // journal. A budget lowering `journal_entry_cap` to 4 and
+        // `journal_tool_counts_cap` to 3 must bound this journal at those caps, not
+        // the compiled-in default of 4096; `from_memory_budget` threads the budget
+        // through where `new` would read `defaults()`.
+        let budget = chio_kernel::MemoryBudgetConfig {
+            journal_entry_cap: 4,
+            journal_tool_counts_cap: 3,
+            ..chio_kernel::MemoryBudgetConfig::defaults()
+        };
+        let journal = SessionJournal::from_memory_budget("sess-budget".to_string(), &budget);
+
+        // Flood distinct tool names: entries ring stays <= 4, distinct tool-counts
+        // keys stay <= 3, while cumulative invocation totals still survive.
+        for i in 0..100u32 {
+            journal.record(test_params(&format!("tool-{i}"))).unwrap();
+        }
+        assert!(
+            journal.entries().unwrap().len() <= 4,
+            "configured journal_entry_cap did not take effect: {} entries",
+            journal.entries().unwrap().len()
+        );
+        assert!(
+            journal.tool_counts_len().unwrap() <= 3,
+            "configured journal_tool_counts_cap did not take effect: {} keys",
+            journal.tool_counts_len().unwrap()
+        );
+        assert_eq!(
+            journal.data_flow().unwrap().total_invocations,
+            100,
+            "cumulative invocation total must survive eviction"
+        );
+    }
+
+    #[test]
+    fn tool_counts_distinct_keys_are_capped_fail_closed() {
+        // tool_counts is cumulative (survives ring eviction) but its DISTINCT-KEY
+        // set must be bounded, or a writer that can influence tool
+        // names (the journal only validates non-empty/trimmed/control-free, not
+        // registry membership) could grow one long-lived per-session map without
+        // bound. Cap the distinct keys fail-closed: already-seen tools keep
+        // counting; a previously-unseen tool name past the cap is dropped so a
+        // dependent predecessor check treats it as never-invoked.
+        let journal = SessionJournal::with_caps("sess-tool-cap".to_string(), 1024, 2);
+
+        // Fill the distinct-key cap with two legitimate tools.
+        journal.record(test_params("setup")).unwrap();
+        journal.record(test_params("helper")).unwrap();
+        assert_eq!(journal.tool_counts_len().unwrap(), 2);
+
+        // Already-seen tools keep counting cumulatively past the cap.
+        journal.record(test_params("setup")).unwrap();
+        journal.record(test_params("setup")).unwrap();
+        let counts = journal.tool_counts().unwrap();
+        assert_eq!(
+            counts.get("setup"),
+            Some(&3),
+            "known tool must keep counting"
+        );
+        assert_eq!(counts.get("helper"), Some(&1));
+
+        // Flood with many previously-unseen tool names: none are inserted, so the
+        // distinct-key set never exceeds the cap.
+        for i in 0..10_000u32 {
+            journal
+                .record(test_params(&format!("attacker-tool-{i}")))
+                .unwrap();
+        }
+        assert_eq!(
+            journal.tool_counts_len().unwrap(),
+            2,
+            "distinct-key set must stay at the cap under unbounded new tool names"
+        );
+        let counts = journal.tool_counts().unwrap();
+        assert!(
+            !counts.contains_key("attacker-tool-0"),
+            "an overflow tool name must be treated as never-invoked (fail-closed)"
+        );
+
+        // The append-only journal itself is unaffected: every record still counts
+        // toward the cumulative invocation total and the sequence ring.
+        assert_eq!(journal.data_flow().unwrap().total_invocations, 10_004);
+        journal.verify_integrity().unwrap();
+    }
+
+    #[test]
+    fn exported_head_hash_commits_to_evicted_prefix() {
+        // Once the ring evicts a prefix, the exported head hash must still commit
+        // to the dropped entries -- it must NOT collapse
+        // to a hash of only the retained suffix, so an audit using the snapshot
+        // can detect truncation or tampering of the evicted prefix.
+        let journal = SessionJournal::with_entry_cap("sess-head".to_string(), 2);
+
+        // Fill exactly to the cap: no eviction yet, so the head is the retained
+        // tail entry hash.
+        journal.record(test_params("t0")).unwrap();
+        journal.record(test_params("t1")).unwrap();
+        let retained_tail_before = journal
+            .entries()
+            .unwrap()
+            .last()
+            .map(|e| e.entry_hash.clone())
+            .unwrap();
+        assert_eq!(
+            journal.head_hash().unwrap(),
+            retained_tail_before,
+            "pre-eviction head must be the most recent entry hash"
+        );
+
+        // Push past the cap: this evicts the prefix (t0, then t1).
+        journal.record(test_params("t2")).unwrap();
+        journal.record(test_params("t3")).unwrap();
+
+        let head_after = journal.head_hash().unwrap();
+        let retained_tail_after = journal
+            .entries()
+            .unwrap()
+            .last()
+            .map(|e| e.entry_hash.clone())
+            .unwrap();
+        assert_ne!(
+            head_after, retained_tail_after,
+            "exported head must fold the evicted prefix, not equal the retained suffix tail"
+        );
+
+        // The snapshot's head hash stays consistent with head_hash().
+        assert_eq!(
+            journal.snapshot().unwrap().head_hash,
+            head_after,
+            "snapshot head hash diverged from head_hash()"
+        );
     }
 
     #[test]

@@ -135,6 +135,73 @@ impl ToolCallStream {
     }
 }
 
+/// Sum the canonical byte size of a materialized stream and deny with
+/// `Overloaded { StreamBytes }` if it exceeds `max_total_bytes` (0 = unlimited).
+/// Uses the same per-chunk measurement as truncate_stream_to_limits, so the
+/// at-arrival count and the finalize-time count agree by construction.
+pub fn enforce_stream_byte_limit(
+    stream: &ToolCallStream,
+    max_total_bytes: u64,
+) -> Result<(), KernelError> {
+    if max_total_bytes == 0 {
+        return Ok(());
+    }
+    let mut total: u64 = 0;
+    for chunk in &stream.chunks {
+        let bytes = crate::canonical_json_bytes(&chunk.data)
+            .map_err(|e| KernelError::Internal(format!("failed to size stream chunk: {e}")))?;
+        total = total.saturating_add(bytes.len() as u64);
+        if total > max_total_bytes {
+            return Err(KernelError::Overloaded {
+                resource: crate::OverloadResource::StreamBytes,
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Fallible per-chunk push for KernelError-returning accumulators. Denies before
+/// materializing past `max_total_bytes` (StreamBytes) OR past `max_chunks`
+/// retained chunks (StreamChunks), and maps a failed allocation under strict
+/// overcommit to a typed deny (Allocation) rather than an abort.
+///
+/// The chunk-count bound closes the tiny-chunk gap in the byte-only bound: a
+/// connector using this as its advertised accumulation-time limit could otherwise
+/// accept millions of tiny chunks that each stay under `max_total_bytes` while
+/// `acc` retains millions of `ToolCallChunk` objects (and receipt signing later
+/// allocates a hash per chunk). Both caps use `0 = unlimited`.
+pub fn push_chunk_bounded(
+    acc: &mut Vec<ToolCallChunk>,
+    running_bytes: &mut u64,
+    chunk: ToolCallChunk,
+    max_total_bytes: u64,
+    max_chunks: u64,
+) -> Result<(), KernelError> {
+    // Chunk-count bound: shed before retaining another chunk when the retained
+    // count is already at the cap, so a flood of tiny chunks under the byte cap
+    // still cannot grow `acc` (or the per-chunk signing preimage) without bound.
+    if max_chunks > 0 && acc.len() as u64 >= max_chunks {
+        return Err(KernelError::Overloaded {
+            resource: crate::OverloadResource::StreamChunks,
+        });
+    }
+    let chunk_bytes = crate::canonical_json_bytes(&chunk.data)
+        .map_err(|e| KernelError::Internal(format!("failed to size stream chunk: {e}")))?
+        .len() as u64;
+    let next = running_bytes.saturating_add(chunk_bytes);
+    if max_total_bytes > 0 && next > max_total_bytes {
+        return Err(KernelError::Overloaded {
+            resource: crate::OverloadResource::StreamBytes,
+        });
+    }
+    acc.try_reserve(1).map_err(|_| KernelError::Overloaded {
+        resource: crate::OverloadResource::Allocation,
+    })?;
+    acc.push(chunk);
+    *running_bytes = next;
+    Ok(())
+}
+
 /// Output produced by a tool invocation.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ToolCallOutput {

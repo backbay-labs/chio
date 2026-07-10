@@ -79,9 +79,11 @@ lto = "thin"
 # behaviour is unchanged.
 [profile.dev]
 debug = 0
+split-debuginfo = "off"
 
 [profile.test]
 debug = 0
+split-debuginfo = "off"
 
 [workspace.dependencies]
 async-trait = "0.1"
@@ -110,7 +112,6 @@ miette = { version = "7.6.0", features = ["fancy"] }
 chrono = "0.4"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 fips204 = { version = "0.4.6", default-features = false, features = ["ml-dsa-65"] }
-dcap-rs = "0.1.0"
 sev = { version = "7.1.0", default-features = false, features = ["snp", "crypto_nossl"] }
 coset = { version = "0.4.2", default-features = false }
 x509-parser = "0.16"
@@ -155,6 +156,7 @@ tower-lsp = "0.20.0"
 lsp-types = "0.95.1"
 notify = "6.1.1"
 opentelemetry-semantic-conventions = { version = "=0.29.0", default-features = false, features = ["semconv_experimental"] }
+zeroize = "1.8"
 # Workspace metric registry. Surfaced through workspace.dependencies so edge
 # crates plus chio-wasm-guards consume the registry by
 # `chio-metrics-spec = { workspace = true }` rather than each carrying its own
@@ -186,6 +188,7 @@ chio-attest-verify = { path = "crates/trust/chio-attest-verify" }
 chio-autonomy = { path = "crates/economy/chio-autonomy" }
 chio-bedrock-converse-adapter = { path = "crates/protocol/chio-bedrock-converse-adapter" }
 chio-binding-helpers = { path = "crates/sdk/chio-binding-helpers" }
+chio-bounded = { path = "crates/core/chio-bounded" }
 chio-cohere-tools-adapter = { path = "crates/protocol/chio-cohere-tools-adapter" }
 chio-config = { path = "crates/platform/chio-config" }
 chio-conformance = { path = "crates/tooling/chio-conformance" }
@@ -196,7 +199,11 @@ chio-core-types = { path = "crates/core/chio-core-types" }
 chio-credentials = { path = "crates/trust/chio-credentials" }
 chio-credit = { path = "crates/economy/chio-credit" }
 chio-cross-protocol = { path = "crates/protocol/chio-cross-protocol" }
-chio-custody-hw = { path = "crates/trust/chio-custody-hw" }
+# `default-features = false` at the workspace root so consumers can opt out of
+# the `default = ["passkey", "sqlite-store"]` graph (e.g. mobile staticlib and
+# conformance fixtures that must avoid the webauthn-rs/OpenSSL dependencies).
+# Consumers that need the default custody path re-enable the features explicitly.
+chio-custody-hw = { path = "crates/trust/chio-custody-hw", default-features = false }
 chio-data-guards = { path = "crates/guards/chio-data-guards" }
 chio-data-guards-redactors-default = { path = "crates/guards/chio-data-guards/redactors/default" }
 chio-did = { path = "crates/trust/chio-did" }
@@ -209,6 +216,7 @@ chio-eval-receipt = { path = "crates/sdk/chio-eval-receipt" }
 chio-external-guards = { path = "crates/guards/chio-external-guards" }
 chio-federation = { path = "crates/trust/chio-federation" }
 chio-federation-authority = { path = "crates/trust/chio-federation-authority" }
+chio-federation-transport-iroh = { path = "crates/trust/chio-federation-transport-iroh" }
 chio-gemini-tools-adapter = { path = "crates/protocol/chio-gemini-tools-adapter" }
 chio-governance = { path = "crates/trust/chio-governance" }
 chio-groq-tools-adapter = { path = "crates/protocol/chio-groq-tools-adapter" }

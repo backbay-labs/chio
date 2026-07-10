@@ -6,7 +6,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
 use chio_policy::models::{HumanInLoopTimeoutAction, Rules, VelocityRule};
-use chio_policy::{compile_policy, HushSpec};
+use chio_policy::{compile_policy, compile_policy_with_memory_budget, HushSpec};
 
 fn rule(yaml: &str) -> HushSpec {
     HushSpec::parse(yaml).expect("parse hushspec")
@@ -215,6 +215,37 @@ rules:
     assert!(
         agent_pos < shell_pos,
         "agent-velocity should precede shell-command"
+    );
+}
+
+#[test]
+fn velocity_compile_threads_configured_memory_budget() {
+    // The policy-compiled velocity guard must honor the CONFIGURED process memory
+    // budget's `velocity_bucket_cap`, not the compiled-in default.
+    // `compile_policy_with_memory_budget` threads a lowered budget into
+    // `VelocityGuard::from_memory_budget`; here we assert that entry point compiles
+    // and still emits the velocity guard with a tightened budget. The
+    // cap-is-honored behavior itself is pinned by the guard-level test
+    // `from_memory_budget_honors_lowered_velocity_bucket_cap`.
+    let spec = rule(
+        r#"
+hushspec: "0.1.0"
+rules:
+  velocity:
+    max_invocations_per_window: 40
+    window_secs: 60
+"#,
+    );
+    let budget = chio_kernel::MemoryBudgetConfig {
+        velocity_bucket_cap: 4,
+        ..chio_kernel::MemoryBudgetConfig::defaults()
+    };
+    let compiled = compile_policy_with_memory_budget(&spec, None, &budget)
+        .expect("compile with memory budget should succeed");
+    assert!(
+        compiled.guard_names.contains(&"velocity".to_string()),
+        "expected velocity guard, got {:?}",
+        compiled.guard_names
     );
 }
 

@@ -405,6 +405,13 @@ pub(crate) fn build_federated_delegation_anchor_snapshot(
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ToolReceiptQuery {
+    /// Point-load a single tool receipt by its `receipt_id`. When set, the
+    /// handler resolves exactly this receipt from the durable store (bounded to
+    /// one row) rather than a filtered list, so a store-authoritative
+    /// `--control-url` deployment can resolve a parent receipt that the kernel's
+    /// bounded in-memory mirror has evicted.
+    #[serde(default)]
+    pub receipt_id: Option<String>,
     #[serde(default)]
     pub capability_id: Option<String>,
     #[serde(default)]

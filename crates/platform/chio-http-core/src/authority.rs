@@ -279,6 +279,7 @@ impl HttpAuthority {
             allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
+            memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         });
         kernel.register_tool_server(Box::new(HttpAuthorizationServer));
         kernel.add_guard(Box::new(HttpProjectionGuard));

@@ -576,7 +576,7 @@ impl ChioKernel {
             let local_parent_receipt = if let Some(parent_receipt_id) =
                 continuation_token.parent_receipt_id.as_deref()
             {
-                match self.local_receipt_artifact(parent_receipt_id) {
+                match self.local_receipt_artifact(parent_receipt_id)? {
                     Some(parent_receipt) => {
                         let signature_valid = parent_receipt.verify_signature_with_floor(
                             receipt_crypto_floor(self.capability_crypto_floor),
@@ -1076,8 +1076,14 @@ impl ChioKernel {
         cap: &CapabilityToken,
         parent_context: Option<&OperationContext>,
         validated_proof: Option<ValidatedGovernedCallChainProof>,
-    ) -> Option<GovernedCallChainReceiptEvidence> {
-        let call_chain = request.governed_intent.as_ref()?.call_chain.as_ref()?;
+    ) -> Result<Option<GovernedCallChainReceiptEvidence>, KernelError> {
+        let Some(call_chain) = request
+            .governed_intent
+            .as_ref()
+            .and_then(|intent| intent.call_chain.as_ref())
+        else {
+            return Ok(None);
+        };
         let continuation_token_id = validated_proof
             .as_ref()
             .and_then(|proof| proof.continuation_token_id.clone());
@@ -1093,11 +1099,12 @@ impl ChioKernel {
                         .is_ok()
                 })
             });
-        let local_parent_receipt_id = call_chain
-            .parent_receipt_id
-            .as_ref()
-            .filter(|receipt_id| self.has_local_receipt_id(receipt_id))
-            .cloned();
+        // A store READ ERROR fails closed and propagates; only a genuine
+        // presence check (`Ok(false)`) omits the id.
+        let local_parent_receipt_id = match call_chain.parent_receipt_id.as_ref() {
+            Some(receipt_id) if self.has_local_receipt_id(receipt_id)? => Some(receipt_id.clone()),
+            _ => None,
+        };
         let capability_delegator_subject = cap
             .delegation_chain
             .last()
@@ -1115,10 +1122,10 @@ impl ChioKernel {
             && session_anchor_id.is_none()
             && upstream_proof.is_none()
         {
-            return None;
+            return Ok(None);
         }
 
-        Some(GovernedCallChainReceiptEvidence {
+        Ok(Some(GovernedCallChainReceiptEvidence {
             local_parent_request_id,
             local_parent_receipt_id,
             capability_delegator_subject,
@@ -1126,6 +1133,6 @@ impl ChioKernel {
             upstream_proof,
             continuation_token_id,
             session_anchor_id,
-        })
+        }))
     }
 }

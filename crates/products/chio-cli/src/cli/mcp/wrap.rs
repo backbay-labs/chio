@@ -314,6 +314,7 @@ impl KernelMediatedMcpTransport {
             allow_ephemeral_receipt_log: true,
             checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
+            memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         });
         let nonce_config = chio_kernel::ExecutionNonceConfig {
             nonce_ttl_secs: chio_kernel::DEFAULT_EXECUTION_NONCE_TTL_SECS,
