@@ -3450,11 +3450,14 @@ dependencies = [
 name = "chio-formal-diff-tests"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chio-anchor",
  "chio-core-types",
+ "chio-kernel",
  "chio-kernel-core",
  "getrandom 0.3.4",
  "proptest",
+ "serde",
  "serde_json",
  "wasm-bindgen-test",
 ]
@@ -15330,10 +15333,12 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "chio-eval-receipt",
+ "chio-formal-diff-tests",
  "chio-spec-codegen",
  "chio-spec-validate",
  "clap 4.6.0",
  "jsonschema",
+ "libc",
  "proc-macro2",
  "quote",
  "serde",

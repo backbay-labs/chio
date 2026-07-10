@@ -28,6 +28,11 @@ console smoke" check is *not* a separate required context: it is a step inside
 the "Build, lint, test" job (see the test-lane section below), so it surfaces
 under that job's context rather than as its own check.
 
+The regression-test deletion guard and its scratch-repository self-test also
+run inside "Build, lint, test". On pull requests, a deletion or rename from a
+guarded regression path fails that required context unless a separate same-line
+issue reference names each affected file.
+
 ## Formal PR smoke checks are present but not required
 
 [`formal-pr-smoke.yml`](./formal-pr-smoke.yml) provides path-scoped feedback

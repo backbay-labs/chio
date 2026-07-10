@@ -50,6 +50,11 @@ pub enum Command {
         #[command(subcommand)]
         command: VerifyCommand,
     },
+    /// Formal trace conversion.
+    Formal {
+        #[command(subcommand)]
+        command: FormalCommand,
+    },
     /// Fuzzing orchestration.
     Fuzz {
         #[command(subcommand)]
@@ -230,6 +235,26 @@ pub enum VerifyCommand {
     /// Assemble and verify the public Proof Room launch acceptance package.
     #[command(name = "launch-acceptance")]
     LaunchAcceptance(LaunchAcceptanceArgs),
+}
+
+#[derive(Subcommand, Debug)]
+pub enum FormalCommand {
+    /// Convert an ITF trace into an executable regression test.
+    #[command(name = "itf-to-regression")]
+    ItfToRegression(ItfToRegressionArgs),
+}
+
+#[derive(clap::Args, Debug)]
+pub struct ItfToRegressionArgs {
+    /// Apalache ITF JSON trace.
+    #[arg(long)]
+    pub trace: PathBuf,
+    /// Replay family implemented by the generated test.
+    #[arg(long = "spec")]
+    pub family: String,
+    /// Directory that receives the generated Rust test.
+    #[arg(long, default_value = "formal/diff-tests/tests")]
+    pub out: PathBuf,
 }
 
 #[derive(clap::Args, Debug)]
@@ -473,6 +498,30 @@ mod tests {
                 assert_eq!(args.out, PathBuf::from("target/proof-room/public-bundle"));
             }
             other => panic!("expected verify launch-acceptance, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn formal_itf_conversion_parses() {
+        match parse(&[
+            "xtask",
+            "formal",
+            "itf-to-regression",
+            "--trace",
+            "trace.itf.json",
+            "--spec",
+            "ReceiptBeforeAllow",
+            "--out",
+            "generated",
+        ]) {
+            Command::Formal {
+                command: FormalCommand::ItfToRegression(args),
+            } => {
+                assert_eq!(args.trace, PathBuf::from("trace.itf.json"));
+                assert_eq!(args.family, "ReceiptBeforeAllow");
+                assert_eq!(args.out, PathBuf::from("generated"));
+            }
+            other => panic!("expected formal ITF conversion, got {other:?}"),
         }
     }
 

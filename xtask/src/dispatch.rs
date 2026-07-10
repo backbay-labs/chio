@@ -2,10 +2,11 @@
 //! handler functions.
 
 use crate::cli::{
-    self, CheckCommand, CodegenArgs, ErrorsCompat, GenCommand, Lang, QualifyCommand,
+    self, CheckCommand, CodegenArgs, ErrorsCompat, FormalCommand, GenCommand, Lang, QualifyCommand,
     SnippetsCompat, VerifyCommand,
 };
 use crate::fixtures;
+use crate::formal;
 use crate::formal_mirrors;
 use crate::launch_acceptance;
 use crate::proof_coverage;
@@ -48,6 +49,9 @@ pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
         // -- verify group --
         cli::Command::Verify { command } => match command {
             VerifyCommand::LaunchAcceptance(args) => launch_acceptance::run(&args),
+        },
+        cli::Command::Formal { command } => match command {
+            FormalCommand::ItfToRegression(args) => formal::itf_to_regression::run(&args),
         },
         // -- noun-group parents with no implemented leaves (fail closed) --
         cli::Command::Fuzz { .. }

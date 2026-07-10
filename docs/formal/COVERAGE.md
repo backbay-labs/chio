@@ -396,7 +396,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `docs/fuzzing/trust-boundary-mutants-baseline.toml` (`mutants`) (scope=aggregate): aggregate mutation baseline has no per-crate Rust-surface result
 - `formal/MAPPING.md::Apalache named invariants (kernel-state subset)/KernelTransitionCancelSafe` (`tla`): MAPPING row contains unresolved Rust references: PostAdmissionDropGuard::drop, PostAdmissionDropGuard::handle_pre_dispatch_drop, PostAdmissionDropGuard::mark_dispatch_started Related surfaces: `chio-kernel::kernel/kernel_drop_guard.rs`, `chio-kernel::kernel/validation.rs`.
 - `formal/MAPPING.md::Apalache named invariants (kernel-state subset)/MonotoneLogApalache` (`tla`): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-kernel::kernel/responses/receipt_persistence.rs`, `chio-store-sqlite::receipt_store.rs`, `chio-store-sqlite::receipt_store/evidence_retention.rs`.
-- `formal/MAPPING.md::Apalache named invariants (kernel-state subset)/ReceiptBeforeAllow` (`tla`): MAPPING row contains unresolved Rust references: ChioKernel::build_execution_nonce_preflight_allow_response_with_metadata, ChioKernel::record_chio_receipt Related surfaces: `chio-kernel::kernel/responses/allow_responses.rs`, `chio-kernel::kernel/responses/receipt_persistence.rs`.
+- `formal/MAPPING.md::Apalache named invariants (kernel-state subset)/ReceiptBeforeAllow` (`tla`): MAPPING row contains unresolved Rust references: ChioKernel::build_execution_nonce_preflight_allow_response_with_metadata, ChioKernel::record_chio_receipt Related surfaces: `chio-formal-diff-tests::counterexample.rs`, `chio-kernel::kernel/responses/allow_responses.rs`, `chio-kernel::kernel/responses/receipt_persistence.rs`.
 - `formal/MAPPING.md::Apalache named invariants (kernel-state subset)/RevocationCutCompleteness` (`tla`): MAPPING row contains unresolved Rust references: RevocationView::is_revoked Related surfaces: `chio-kernel-core::revocation_view.rs`, `chio-kernel::kernel/delegation.rs`, `chio-kernel::kernel/validation.rs`.
 - `formal/MAPPING.md::TLA+ named invariants (RevocationPropagation.tla)/AttenuationPreserving` (`tla`): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-core-types::capability/attenuation.rs`, `chio-core-types::capability/scope.rs`, `chio-kernel-core::normalized.rs`, `chio-kernel::kernel/validation.rs`.
 - `formal/MAPPING.md::TLA+ named invariants (RevocationPropagation.tla)/MonotoneLog` (`tla`): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-kernel::kernel/responses/receipt_persistence.rs`, `chio-store-sqlite::receipt_store.rs`, `chio-store-sqlite::receipt_store/evidence_retention.rs`.
@@ -414,6 +414,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `formal/diff-tests/tests/browser_canonical_json_diff.rs` (`diff`): differential-test files have no machine-readable Rust surface registry
 - `formal/diff-tests/tests/canonical_json_diff.rs` (`diff`): differential-test files have no machine-readable Rust surface registry
 - `formal/diff-tests/tests/receipt_encoding_diff.rs` (`diff`): differential-test files have no machine-readable Rust surface registry
+- `formal/diff-tests/tests/regression_formal_receipt_before_allow_c01406cfbbeb.rs` (`diff`): differential-test files have no machine-readable Rust surface registry
 - `formal/diff-tests/tests/scope_diff.rs` (`diff`): differential-test files have no machine-readable Rust surface registry
 - `formal/rust-verification/creusot-contracts.toml::formal/rust-verification/creusot-core::budget_commit_contract` (`creusot`): refinement symbol has no workspace surface
 - `formal/rust-verification/creusot-contracts.toml::formal/rust-verification/creusot-core::budget_precheck_contract` (`creusot`): refinement symbol has no workspace surface
@@ -587,7 +588,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `2`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `f725c58be0a99e9d5dc043b4934007327350084297bf0881e1ea9665588741fc`
+- Input digest: `92690d8341fda946b5f4b2aa1c49efcaba40dd7b07c76203a176dc0122c1a7ed`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -607,7 +608,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/kernel/chio-kernel-core/src/formal_aeneas.rs`: `a11513a0f0571d79bd0f88ca5c7acc6d02b022d2d8eecc1eac7e84eab09b6b30`
 - `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`: `e441359211c4edadc138c53242eec1a1ff53201fd91432a6f845fcf5ecd2a3d9`
 - `docs/fuzzing/trust-boundary-mutants-baseline.toml`: `7331fb69499474ca22b14b6fb5a6f9a966eae2e2a26d3433d9030a4c985efee9`
-- `formal/MAPPING.md`: `09c5427bd40a39c87160b968630631f937785a22299a167236497b7d21b17932`
+- `formal/MAPPING.md`: `66054417dcc5d5bcae5554de655a6f2a169dbc4e7433a63e6f1ab881bd1210a7`
 - `formal/aeneas/pilot.toml`: `86627b363717b47ced94caeb826185d400cf70fe357a55fe34d02ea70670956c`
 - `formal/aeneas/production.toml`: `567b5b5ab3975c95886d323c09293a069c8dc0c31ac1071104c84ffd0960ecc5`
 - `formal/aeneas/verified_core.rs`: `44ef85fbe6c537e8c65a483a67c167f502ca1a108a25293414b27ab2a85046b8`
@@ -621,6 +622,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/diff-tests/tests/browser_canonical_json_diff.rs`: `f7dc5b5cd3e0f74bd1e3e449c0e7c447e3c9b0bdcf0ea5f747c0e2eb332569b0`
 - `formal/diff-tests/tests/canonical_json_diff.rs`: `4eac6b485d23f4c736bf1d7243593e2275c33c7b153574d557cb4581f8ec95d7`
 - `formal/diff-tests/tests/receipt_encoding_diff.rs`: `8d479e72a2a2ec7abdf03e827e0e9da0ac2c244062a9cd8f8b576c648c99a258`
+- `formal/diff-tests/tests/regression_formal_receipt_before_allow_c01406cfbbeb.rs`: `50ee14b6a785532e22e6cd9c4f8b41078556a4c75e18e7dfeea46597a1399deb`
 - `formal/diff-tests/tests/scope_diff.rs`: `c21aaa2cb891fd1fc19482ec6f8dc9c81930b5890af74f86c6fb5dd3104489ab`
 - `formal/lean4/Chio/Chio/Capability/Delegation.lean`: `a6a44ca25cb3fec5385b6a2d6703d933236453d8d5b9b336061a42f675d2cfa6`
 - `formal/proof-manifest.toml`: `4ee22be636f6b011d349068ede685fe5036511ad2715bed524964f7888e964b8`
@@ -631,6 +633,6 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/tla/RevocationPropagation.tla`: `fe16a9b27bd1d3ae3db7b01a67f417e98fb6f6092e9a601e99d509e00f324308`
 - `fuzz/owners.toml`: `1358b162b1fc1a8b389aae7880e5a98035a63053b743fdaaba1a49bee3ae14c6`
 - `fuzz/target-map.toml`: `8d86f3799c637fa3740384c8d874416149a02400e95eb4107562462539c977f1`
-- `git-worktree://rust-files`: `afaa1b38865a910c909f19e59e3a32cdb255ca05db8c1e901427c489ea2b0fb4`
+- `git-worktree://rust-files`: `8fbb28c2f98337cb6d9a8fd6521eddc44ad908220bdb2e931e0619cb881486a9`
 - `releases.toml`: `089a0113e50ac2fba9beb09a5b16157cbdb1ea437c5a0042c1eb03be1a8af897`
 - `xtask/src/proof_coverage.rs`: `22fe2312dfac63928b5bec11d0cd262e07a32df77f14fe59ada4929625e41a41`

@@ -11,8 +11,8 @@
 
 `cargo xtask gen proof-coverage` joins the declared evidence registries into
 `docs/formal/COVERAGE.md` and `target/formal/coverage.json`. The committed page
-contains 35 primary Rust-surface rows, 101 attributed artifacts, 121 explicitly
-unattributed artifacts, 41 content-addressed inputs, and zero mapping parse
+contains 35 primary Rust-surface rows, 101 attributed artifacts, 122 explicitly
+unattributed artifacts, 42 content-addressed inputs, and zero mapping parse
 warnings on the current tree. Required PR CI regenerates the page in memory and
 fails on byte drift.
 

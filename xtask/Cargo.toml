@@ -20,6 +20,10 @@ syn = { version = "2", features = ["full"] }
 toml_edit = "0.22"
 jsonschema = { workspace = true }
 clap = { version = "4", features = ["derive"] }
+libc = "0.2"
 chio-spec-validate = { workspace = true }
 chio-spec-codegen = { workspace = true }
 chio-eval-receipt = { workspace = true }
+
+[dev-dependencies]
+chio-formal-diff-tests = { path = "../formal/diff-tests" }

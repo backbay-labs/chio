@@ -81,7 +81,8 @@ that is already paid for (13 unused rich seeds, unwired smoke tests).
 [FV-C5](plan/FV-C5-proof-coverage-map.md) joins the registries into one
 generated coverage page, which then drives all later prioritization.
 [FV-E2](plan/FV-E2-counterexample-regression-pipeline.md) is small and makes
-every future counterexample durable.
+every future counterexample durable through content-addressed ITF fixtures,
+active production replays, and deletion guarding.
 
 ### Wave 2: aim at the bug generator, wire proofs into production (the core wave)
 

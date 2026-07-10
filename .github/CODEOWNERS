@@ -47,6 +47,7 @@ formal/lean4/Chio/Chio/Capability/Delegation.lean @backbay-labs/chio-maintainers
 formal/tla/**                                @backbay-labs/chio-maintainers
 formal/tla/DelegationDepthBound.tla          @backbay-labs/chio-maintainers
 formal/rust-verification/**                  @backbay-labs/chio-maintainers
+formal/diff-tests/**                         @backbay-labs/chio-maintainers
 fuzz/fuzz_targets/**                         @backbay-labs/chio-maintainers
 fuzz/corpus/**                               @backbay-labs/chio-maintainers
 fuzz/corpora/**                              @backbay-labs/chio-maintainers
@@ -61,7 +62,11 @@ README.md                                    @backbay-labs/chio-maintainers
 AGENTS.md                                    @backbay-labs/chio-maintainers
 CLAUDE.md                                    @backbay-labs/chio-maintainers
 scripts/check-fuzz-budget.sh                 @backbay-labs/chio-maintainers
+scripts/check-regression-tests.sh            @backbay-labs/chio-maintainers
+scripts/tests/check-regression-tests.test.sh @backbay-labs/chio-maintainers
 crates/*/tests/regression_*.rs               @backbay-labs/chio-maintainers
+crates/**/tests/regression_*.rs              @backbay-labs/chio-maintainers
+formal/diff-tests/tests/regression_*.rs       @backbay-labs/chio-maintainers
 tests/regression_*.rs                        @backbay-labs/chio-maintainers
 releases.toml                                @backbay-labs/chio-maintainers
 rust-toolchain.toml                          @backbay-labs/chio-maintainers

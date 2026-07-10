@@ -15,6 +15,7 @@
 //! cargo xtask check crate-paths
 //! cargo xtask check formal-mirrors [--bless]
 //! cargo xtask gen proof-coverage [--check]
+//! cargo xtask formal itf-to-regression --trace <path> --spec <family>
 //! ```
 //!
 //! `validate-scenarios` walks `tests/conformance/scenarios/**/*.json`, looks
@@ -97,6 +98,7 @@ mod dispatch;
 mod error;
 mod eval_receipt_regen;
 mod fixtures;
+mod formal;
 mod formal_mirrors;
 mod launch_acceptance;
 mod proof_coverage;

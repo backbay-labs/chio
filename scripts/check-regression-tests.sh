@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # scripts/check-regression-tests.sh
 #
-# Regression-test deletion guard. Detects deletion of fuzz-promoted regression
-# tests under tests/regression_*.rs or crates/<group>/chio-<crate>/tests/
-# regression_*.rs (grouped layout; the legacy flat crates/<crate>/tests/ shape
-# also matches). Fails CI when any such file disappears between BASE..HEAD
-# without a paired issue link in the PR body or merge commit message.
+# Regression-test deletion guard. Detects deletion of regression tests under
+# tests/regression_*.rs, crates/<group>/chio-<crate>/tests/regression_*.rs, and
+# formal/diff-tests/tests/regression_*.rs. The grouped and legacy flat crate
+# layouts both match. Fails CI when any such file disappears between BASE..HEAD
+# without a paired issue link in the PR body or commit-message range.
 #
 # Mechanism:
-#   1. git diff --diff-filter=D --name-only $BASE..$HEAD
-#   2. filter for tests/regression_*.rs or crates/**/tests/regression_*.rs
+#   1. git diff --no-renames --diff-filter=D --name-only $BASE..$HEAD
+#   2. filter for guarded regression_*.rs locations
 #   3. for each deleted file, look for a paired issue link in:
 #        - the GitHub PR body (PR_BODY env var, set by ci.yml step)
 #        - the range of commit messages between BASE and HEAD
@@ -125,18 +125,18 @@ if [[ -z "$BASE" ]]; then
     fi
 fi
 
-if ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
+if ! git rev-parse --verify --quiet "${BASE}^{commit}" >/dev/null; then
     echo "check-regression-tests: base ref '$BASE' not found" >&2
     exit 2
 fi
-if ! git rev-parse --verify --quiet "$HEAD_REF" >/dev/null; then
+if ! git rev-parse --verify --quiet "${HEAD_REF}^{commit}" >/dev/null; then
     echo "check-regression-tests: head ref '$HEAD_REF' not found" >&2
     exit 2
 fi
 
 # Collect deleted files between BASE..HEAD that match regression-test paths.
-DELETED=$(git diff --diff-filter=D --name-only "$BASE..$HEAD_REF" \
-    | grep -E '(^tests/regression_[^/]+\.rs$|^crates/([^/]+/)+tests/regression_[^/]+\.rs$)' \
+DELETED=$(git diff --no-renames --diff-filter=D --name-only "$BASE..$HEAD_REF" \
+    | grep -E '(^tests/regression_[^/]+\.rs$|^crates/([^/]+/)+tests/regression_[^/]+\.rs$|^formal/diff-tests/tests/regression_[^/]+\.rs$)' \
     || true)
 
 if [[ -z "$DELETED" ]]; then
@@ -157,37 +157,34 @@ SEARCH_TEXT+="$(git log --format='%B' "$BASE..$HEAD_REF" 2>/dev/null || true)"
 PAIR_REGEX='(closes|fixes|resolves|tracks|refs)[[:space:]]+#[0-9]+|https?://github\.com/[^/[:space:]]+/[^/[:space:]]+/(issues|pull)/[0-9]+'
 
 unpaired=0
+declare -A used_pair_lines=()
 echo "check-regression-tests: deleted regression tests detected; checking for paired issue links"
 while IFS= read -r path; do
     [[ -z "$path" ]] && continue
-    # Per-file pairing: a single `closes #N` at the top of the PR body must
-    # NOT silently approve N unrelated regression-test deletions; the contract
-    # is one paired reference per deleted file. We require that either the
-    # full path
-    # OR the file's basename appears in the search text alongside a
-    # paired issue link. Either form ties the link to this specific
-    # deletion rather than treating any link anywhere in the diff as
-    # a wildcard waiver.
+    # Each deletion consumes one line containing both its name and a link.
+    # This prevents one general link from authorizing unrelated deletions.
     base="$(basename "$path")"
     # Escape regex metacharacters in path/basename for safe substring grep.
     path_lit_re="$(printf '%s' "$path" | sed 's/[][\\.^$*+?(){}|/]/\\&/g')"
     base_lit_re="$(printf '%s' "$base" | sed 's/[][\\.^$*+?(){}|/]/\\&/g')"
-    has_link=0
-    has_name=0
-    if echo "$SEARCH_TEXT" | grep -iqE "$PAIR_REGEX"; then
-        has_link=1
-    fi
-    if echo "$SEARCH_TEXT" | grep -qE "(${path_lit_re}|${base_lit_re})"; then
-        has_name=1
-    fi
-    if (( has_link == 1 )) && (( has_name == 1 )); then
+    matched_line=""
+    line_number=0
+    while IFS= read -r line; do
+        line_number=$((line_number + 1))
+        if [[ -n "${used_pair_lines[$line_number]:-}" ]]; then
+            continue
+        fi
+        if printf '%s\n' "$line" | grep -iqE "$PAIR_REGEX" \
+            && printf '%s\n' "$line" | grep -qE "(${path_lit_re}|${base_lit_re})"; then
+            matched_line="$line_number"
+            break
+        fi
+    done <<< "$SEARCH_TEXT"
+    if [[ -n "$matched_line" ]]; then
+        used_pair_lines["$matched_line"]=1
         echo "  PAIRED   $path"
     else
-        if (( has_link == 0 )); then
-            echo "  UNPAIRED $path (no closes/fixes/refs #N or github issue/PR URL)" >&2
-        else
-            echo "  UNPAIRED $path (issue link present but does not name this file; mention the path or basename next to the link)" >&2
-        fi
+        echo "  UNPAIRED $path (no unused line contains both an issue link and this path or basename)" >&2
         unpaired=$((unpaired + 1))
     fi
 done <<< "$DELETED"
@@ -203,11 +200,13 @@ of the commit messages must contain BOTH:
        closes #<n>            (or fixes / resolves / tracks / refs)
        https://github.com/<org>/<repo>/issues/<n>
        https://github.com/<org>/<repo>/pull/<n>
-  2. the deleted file's path or basename next to that reference,
+  2. the deleted file's path or basename on the same line,
      e.g. "closes #123 (drops crates/foo/tests/regression_<sha>.rs)".
 
-Each deleted regression_*.rs corresponds to a fuzz-found crash. Removing
-it without naming a follow-up issue silently regresses crash coverage.
+Use a separate paired line for each deleted regression test.
+
+Each deleted regression_*.rs preserves a captured failure. Removing it without
+naming a follow-up issue silently regresses failure coverage.
 EOF
     exit 1
 fi

@@ -30,18 +30,27 @@ Pick the section that matches the lens and delete the others.
 
 ### Apalache safety counterexample
 
-If Apalache produced a `--counter-example=trace.tla` file, attach it under
-`formal/tla/counterexamples/<sha256>.tla` in the same PR and link the path
-here. Otherwise paste the trace inline.
+Run Apalache with `--output-traces` and commit the resulting ITF JSON under
+`formal/tla/counterexamples/` in the same PR. Convert it with:
 
-```text
-<paste the trace.tla contents or the apalache-mc check stdout, including
- the witnessed invariant violation and the action sequence>
+```bash
+cargo xtask formal itf-to-regression \
+  --trace formal/tla/counterexamples/<trace>.itf.json \
+  --spec <replay-family>
 ```
 
-- **Witnessed invariant**: `<NoAllowAfterRevoke | MonotoneLog | AttenuationPreserving | RevocationEventuallySeen>`
+The converter emits only replay families with completed production mappings.
+If the family is not registered, add its mapping before resolving the issue.
+
+```text
+<paste the apalache-mc check stdout, including the witnessed invariant
+ violation, action sequence, and committed ITF path>
+```
+
+- **Witnessed invariant**:
+  `<ReceiptBeforeAllow | RevocationCutCompleteness | NoAllowAfterRevoke | MonotoneLog | AttenuationPreserving | RevocationEventuallySeen>`
 - **Apalache version**: `<version reported by apalache-mc version>`
-- **Config**: `formal/tla/MCRevocationPropagation.cfg` (PROCS=`<n>`, CAPS=`<n>`, length=`<n>`)
+- **Config**: `<path>` (constants and length: `<values>`)
 - **Action sequence length**: `<n>` steps
 - **First state where invariant breaks**: state `<index>`
 
@@ -82,6 +91,8 @@ triage runbook.
 
 - [ ] Step 1 - regression seed persisted (proptest only) and committed in
       this PR or in the linked PR.
+- [ ] Step 1b - Apalache ITF trace and generated `regression_formal_*.rs`
+      test committed together; both generated tests run without exclusions.
 - [ ] Step 2 - this issue filed with all required fields above.
 - [ ] Step 3 - merge gate set on the offending PR (do not merge until the
       defect is fixed or a documented invariant amendment is signed off
@@ -120,3 +131,4 @@ Link the PR(s) that close this issue and confirm the gate passes:
 - Mapping PR (if invariant text changed): `<#nnn>`
 - Final `scripts/check-mapping.sh` run: `OK` / `FAIL`
 - Final Apalache / Kani / proptest run: `OK` / `FAIL`
+- Generated replay path and result: `<path>` / `OK` / `FAIL`

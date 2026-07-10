@@ -26,15 +26,21 @@ falsifiable. Apalache must report SafetyInv violated within a few states.
 # ReceiptBeforeAllow non-tautology check (must produce a counterexample):
 apalache-mc check \
   --length=4 \
+  --output-traces \
   --config=formal/apalache/_negative_tests/MCReceiptBeforeAllowBroken.cfg \
   formal/apalache/_negative_tests/ReceiptBeforeAllowBroken.tla
 
 # RevocationCutCompleteness non-tautology check (must produce a counterexample):
 apalache-mc check \
   --length=4 \
+  --output-traces \
   --config=formal/apalache/_negative_tests/MCRevocationCutCompletenessBroken.cfg \
   formal/apalache/_negative_tests/RevocationCutCompletenessBroken.tla
 ```
+
+Copy the resulting `.itf.json` file into `formal/tla/counterexamples/`, then
+run `cargo xtask formal itf-to-regression` with a registered replay family.
+The converter refuses to emit a test until that production mapping exists.
 
 If either run reports `NoError`, the production property is unsound or has
 silently regressed to a tautology.

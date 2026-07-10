@@ -74,6 +74,16 @@ jobs:
       - name: Kani public core registry contract
         run: bash scripts/tests/check-kani-public-core.test.sh
 
+      - name: Test regression-test deletion guard
+        run: bash scripts/tests/check-regression-tests.test.sh
+
+      - name: Run regression-test deletion guard
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/check-regression-tests.sh
+
       - name: Workspace structural gates
         env:
           CARGO_BUILD_JOBS: "1"
@@ -279,25 +289,3 @@ jobs:
         run: python3 scripts/check-external-wildcard-deps.py
       - name: cargo deny duplicate baseline
         run: python3 scripts/check-cargo-deny-duplicate-baseline.py
-
-  # Regression-test deletion guard. Detects deletion of fuzz-promoted
-  # regression tests under tests/regression_*.rs or
-  # crates/*/tests/regression_*.rs between the PR base and HEAD. Fails CI
-  # when such a deletion has no paired issue link in the PR body or
-  # commit-message range.
-  check-regression-tests:
-    name: check-regression-tests
-    # owner: Chio maintainers
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
-        with:
-          # fetch-depth: 0 so the guard can git-diff between BASE..HEAD.
-          fetch-depth: 0
-      - name: Run regression-test deletion guard
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          GITHUB_BASE_REF: ${{ github.base_ref }}
-        run: bash scripts/check-regression-tests.sh
