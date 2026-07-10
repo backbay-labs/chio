@@ -141,6 +141,46 @@ impl AlertBackend for RecordingBackend {
     }
 }
 
+#[derive(Default)]
+struct RecordingMetricsSink {
+    dispatches: Mutex<Vec<(String, String)>>,
+}
+
+impl chio_siem::SiemMetricsSink for RecordingMetricsSink {
+    fn record_export(&self, _: &str, _: chio_siem::ExportOutcome) {}
+    fn observe_export_lag(&self, _: &str, _: &str, _: f64) {}
+    fn set_dlq_depth(&self, _: &str, _: u64) {}
+    fn record_alert_dispatch(&self, route: &str, outcome: &str) {
+        self.dispatches
+            .lock()
+            .expect("dispatches lock")
+            .push((route.to_string(), outcome.to_string()));
+    }
+    fn observe_alert_dispatch_latency(&self, _: &str, _: &str, _: f64) {}
+}
+
+#[tokio::test]
+async fn dispatch_records_route_and_outcome() {
+    let (backend, _recorded) = RecordingBackend::new("pagerduty");
+    let sink = Arc::new(RecordingMetricsSink::default());
+    let exporter = AlertingExporter::builder(AlertingConfig::default())
+        .with_backend(Box::new(backend))
+        .with_metrics_sink(Arc::clone(&sink) as Arc<dyn chio_siem::SiemMetricsSink>)
+        .build();
+    // A high-severity deny so should_alert fires and the backend is dispatched.
+    let events = vec![SiemEvent::from_receipt(deny_receipt(
+        "alert-metric-1",
+        "ForbiddenPathGuard",
+    ))];
+    let _ = exporter.export_batch(&events).await.expect("ok");
+
+    let dispatches = sink.dispatches.lock().unwrap().clone();
+    assert!(
+        dispatches.contains(&("pagerduty".to_string(), "success".to_string())),
+        "expected a pagerduty success dispatch: {dispatches:?}"
+    );
+}
+
 #[tokio::test]
 async fn high_severity_deny_dispatches_to_backend() {
     let (backend, recorded) = RecordingBackend::new("test-backend");

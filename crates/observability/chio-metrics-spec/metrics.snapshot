@@ -46,10 +46,12 @@ chio_pheromone_relay_queue_depth|gauge|status||Relay outbox depth by bounded sta
 chio_pheromone_relay_rejections_total|counter|reason||Total live pheromone relay rejections by bounded reason.
 chio_pheromone_relay_stale_directories_total|counter|profile||Total stale peer-directory bundles or documents rejected.
 chio_pheromone_relay_stale_leases|gauge|||Relay scheduler leases past their expiry.
+chio_receipt_seconds_since_last_checkpoint|gauge|||Seconds since the receipt-store checkpoint last advanced while data was pending on the local store.
+chio_receipt_uncheckpointed_seq_range|gauge|||Uncheckpointed receipt entry_seq range (end - start) on the local store.
 chio_receipt_write_latency_seconds|histogram|store,outcome|0.01,0.025,0.05,0.1,0.25,0.5,1.0|Receipt write latency at the local store boundary in seconds.
 chio_receipt_write_total|counter|outcome||Total receipt write outcomes after policy or guard evaluation.
 chio_sidecar_requests_total|counter|outcome||Total sidecar request outcomes at the mediation edge.
-chio_signing_queue_block_total|counter|||Total receipt signing requests blocked by bounded queue capacity.
+chio_signing_queue_block_total|counter|reason||Total receipt signing requests blocked by bounded queue capacity or byte budget.
 chio_soc_export_lag_seconds|histogram|exporter,severity|30,60,120,300,600,1800|SOC export lag in seconds from receipt persistence to sink acknowledgement.
 chio_soc_export_total|counter|exporter,outcome||Total SOC export outcomes for audit rows.
 chio_trust_control_ready|gauge|||Trust-control readiness state, where 1 is ready and 0 is not ready.

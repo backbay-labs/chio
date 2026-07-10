@@ -5,6 +5,23 @@ fn internal_cluster_http_error(context: &'static str, error: &dyn std::fmt::Disp
     plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, context)
 }
 
+/// Observe capability-revocation propagation lag from a capability revoke path.
+/// `revoked_at` is the unix-seconds instant the capability was revoked; the lag
+/// is how long ago that was relative to now, clamped at zero. A locally
+/// originated revoke is ~0; a revoke propagated from a peer carries the real
+/// propagation delay. This is emitted from the capability revoke paths (local
+/// revoke and cluster-delta upserts) so the capability-revocation SLO reflects
+/// real capability revocations rather than passport lifecycle events.
+pub(crate) fn observe_capability_revocation_lag(revoked_at: i64) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(0);
+    let lag_seconds = now.saturating_sub(revoked_at).max(0) as f64;
+    chio_metrics_spec::runtime::families::CAPABILITY_REVOCATION_LAG
+        .observe(&["control_plane"], lag_seconds);
+}
+
 pub(crate) async fn handle_internal_revocations_delta(
     State(state): State<TrustServiceState>,
     Query(query): Query<RevocationDeltaQuery>,
@@ -511,6 +528,9 @@ fn sync_peer_revocations(
                     revoked_at: record.revoked_at,
                 })
                 .map_err(CliError::from)?;
+            // A cluster-delta upsert applies a capability revoke propagated from a
+            // peer; observe the propagation lag against its recorded revoke instant.
+            observe_capability_revocation_lag(record.revoked_at);
             applied = applied.saturating_add(1);
         }
         update_peer_revocation_cursor(state, peer_url, page_head);
@@ -1477,6 +1497,43 @@ pub(crate) fn budget_mutation_record_from_view(
             .as_ref()
             .map(budget_event_authority_from_view),
     })
+}
+
+#[cfg(test)]
+mod capability_revocation_lag_tests {
+    use super::observe_capability_revocation_lag;
+
+    fn lag_count() -> u64 {
+        let mut rendered = String::new();
+        chio_metrics_spec::runtime::families::CAPABILITY_REVOCATION_LAG.render(&mut rendered);
+        rendered
+            .lines()
+            .find(|line| {
+                line.starts_with(
+                    "chio_capability_revocation_lag_seconds_count{authority=\"control_plane\"}",
+                )
+            })
+            .and_then(|line| line.rsplit(' ').next())
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(0)
+    }
+
+    /// A capability revoke path observes the capability-revocation lag family, so
+    /// a backdated (propagated) revoke advances the SLO histogram.
+    #[test]
+    fn capability_revoke_observes_revocation_lag() {
+        let before = lag_count();
+        // Backdate the revoke instant by 45 seconds relative to now.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_secs() as i64)
+            .unwrap_or(0);
+        observe_capability_revocation_lag(now.saturating_sub(45));
+        assert!(
+            lag_count() > before,
+            "a capability revoke must observe a capability-revocation lag sample"
+        );
+    }
 }
 
 #[cfg(test)]

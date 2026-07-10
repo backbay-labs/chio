@@ -31,9 +31,9 @@ pub(crate) use deltas::{
     budget_usage_record_from_view, handle_internal_budgets_delta,
     handle_internal_child_receipts_delta, handle_internal_lineage_delta,
     handle_internal_revocations_delta, handle_internal_tool_receipts_delta, merge_budget_cursor,
-    respond_after_budget_write_quorum_commit, respond_after_leader_visible_write,
-    rollback_budget_authorize_exposure, run_cluster_sync_loop, wait_for_budget_write_quorum_commit,
-    BudgetWriteToken,
+    observe_capability_revocation_lag, respond_after_budget_write_quorum_commit,
+    respond_after_leader_visible_write, rollback_budget_authorize_exposure, run_cluster_sync_loop,
+    wait_for_budget_write_quorum_commit, BudgetWriteToken,
 };
 pub(crate) use partition::{
     clamp_down_peer_budget_acks, handle_internal_cluster_partition, peer_budget_cursor,

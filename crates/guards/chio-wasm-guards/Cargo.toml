@@ -68,7 +68,7 @@ rand_core = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 toml = { workspace = true }
-tracing-subscriber = { version = "0.3", features = ["registry"] }
+tracing-subscriber = { version = "0.3", features = ["registry", "env-filter"] }
 wat = "1.246"
 
 [[bench]]

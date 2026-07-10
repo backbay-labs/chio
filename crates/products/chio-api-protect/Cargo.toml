@@ -19,6 +19,7 @@ public_entrypoint = true
 chio-core-types = { workspace = true }
 chio-http-core = { workspace = true, features = ["reqwest-egress"] }
 chio-kernel = { workspace = true }
+chio-metrics-spec = { workspace = true }
 chio-openapi = { workspace = true }
 chio-store-sqlite = { workspace = true }
 serde = { workspace = true }

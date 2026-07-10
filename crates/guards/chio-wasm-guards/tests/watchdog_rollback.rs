@@ -81,3 +81,122 @@ fn watchdog_rolls_back_after_five_errors_in_sixty_seconds() -> TestResult {
     assert!(!traces.contains("secret"));
     Ok(())
 }
+
+/// A watchdog rollback increments `chio_guard_reload_total{outcome="rolled_back"}`,
+/// not merely emits a span, so a rolled-back reload is visible to the alerting
+/// surface. A unique guard id isolates this process-global counter series from
+/// the other tests in this binary.
+#[test]
+fn rollback_increments_reload_total_rolled_back() -> TestResult {
+    use chio_metrics_spec::runtime::families;
+
+    let guard_id = "reload-rolled-back-guard";
+    let temp = tempfile::tempdir()?;
+    let engine = Engine::new(build_backend).without_blocklist();
+    engine.register_guard(
+        guard_id,
+        WasmGuard::new(
+            guard_id.to_string(),
+            build_backend(b"good")?,
+            false,
+            Some("initial".to_string()),
+        ),
+    )?;
+    let writer = IncidentWriter::from_state_home(temp.path());
+    let config = WatchdogConfig {
+        max_errors: 5,
+        window: Duration::from_secs(60),
+        incident_writer: writer,
+    };
+
+    let mut watchdog = engine.reload_with_watchdog(guard_id, b"bad", 7, config)?;
+    for i in 0..5 {
+        watchdog.record_error(EvalTrace::new(
+            format!("req-{i}"),
+            "trap",
+            "redacted backend trap",
+        ))?;
+    }
+    assert!(
+        watchdog.rolled_back(),
+        "five errors must trigger a rollback"
+    );
+
+    let mut body = String::new();
+    families::GUARD_RELOAD.render(&mut body);
+    assert!(
+        body.contains(&format!(
+            "chio_guard_reload_total{{guard_id=\"{guard_id}\",outcome=\"rolled_back\"}} 1"
+        )),
+        "a rolled-back reload must increment the rolled_back outcome: {body}"
+    );
+    Ok(())
+}
+
+/// A rollback whose incident write fails is still a REAL rollback (the module was
+/// restored and `rolled_back` set), so
+/// `chio_guard_reload_total{outcome="rolled_back"}` must still increment. If the
+/// counter incremented only AFTER a successful incident write, an incident-write
+/// failure under I/O pressure would silently under-count a genuine rollback. A
+/// unique guard id isolates this process-global counter series.
+#[test]
+fn rollback_counts_even_when_incident_write_fails() -> TestResult {
+    use chio_metrics_spec::runtime::families;
+
+    let guard_id = "reload-rolled-back-incident-write-fail";
+    let temp = tempfile::tempdir()?;
+    // Root the incident writer at a REGULAR FILE so `create_dir_all` inside
+    // `write_reload_incident` fails and the incident write returns Err on the
+    // rollback path.
+    let blocker = temp.path().join("incident-root-is-a-file");
+    std::fs::write(&blocker, b"not a directory")?;
+    let writer = IncidentWriter::new(&blocker);
+
+    let engine = Engine::new(build_backend).without_blocklist();
+    engine.register_guard(
+        guard_id,
+        WasmGuard::new(
+            guard_id.to_string(),
+            build_backend(b"good")?,
+            false,
+            Some("initial".to_string()),
+        ),
+    )?;
+    let config = WatchdogConfig {
+        max_errors: 5,
+        window: Duration::from_secs(60),
+        incident_writer: writer,
+    };
+
+    let mut watchdog = engine.reload_with_watchdog(guard_id, b"bad", 11, config)?;
+    for i in 0..4 {
+        watchdog.record_error(EvalTrace::new(
+            format!("req-{i}"),
+            "trap",
+            "redacted backend trap",
+        ))?;
+    }
+    // The fifth error crosses the threshold: the module is restored and the
+    // rollback becomes real, but the incident write fails, so this call returns
+    // Err. The counter must already have been incremented.
+    let write_result =
+        watchdog.record_error(EvalTrace::new("req-4", "trap", "redacted backend trap"));
+    assert!(
+        write_result.is_err(),
+        "the incident write must fail for this teeth-test"
+    );
+    assert!(
+        watchdog.rolled_back(),
+        "the rollback is real even though the incident write failed"
+    );
+
+    let mut body = String::new();
+    families::GUARD_RELOAD.render(&mut body);
+    assert!(
+        body.contains(&format!(
+            "chio_guard_reload_total{{guard_id=\"{guard_id}\",outcome=\"rolled_back\"}} 1"
+        )),
+        "a real rollback whose incident write fails must still increment rolled_back exactly once: {body}"
+    );
+    Ok(())
+}

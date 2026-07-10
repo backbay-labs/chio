@@ -499,24 +499,33 @@ pub(crate) async fn handle_revoke_capability(
         Err(response) => return response,
     };
     match store.revoke(&payload.capability_id) {
-        Ok(newly_revoked) => respond_after_leader_visible_write(
-            &state,
-            "revocation was not visible on the leader after write",
-            || {
-                let revoked = store.is_revoked(&payload.capability_id).map_err(|error| {
-                    plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
-                })?;
-                if revoked {
-                    Ok(Some(RevokeCapabilityResponse {
-                        capability_id: payload.capability_id.clone(),
-                        revoked: true,
-                        newly_revoked,
-                    }))
-                } else {
-                    Ok(None)
-                }
-            },
-        ),
+        Ok(newly_revoked) => {
+            if newly_revoked {
+                // A locally originated capability revoke: the revoke instant is
+                // now, so the propagation lag is ~0. Emit so the
+                // capability-revocation SLO reflects real capability revokes.
+                let revoked_now = i64::try_from(unix_timestamp_now()).unwrap_or(0);
+                super::cluster::observe_capability_revocation_lag(revoked_now);
+            }
+            respond_after_leader_visible_write(
+                &state,
+                "revocation was not visible on the leader after write",
+                || {
+                    let revoked = store.is_revoked(&payload.capability_id).map_err(|error| {
+                        plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+                    })?;
+                    if revoked {
+                        Ok(Some(RevokeCapabilityResponse {
+                            capability_id: payload.capability_id.clone(),
+                            revoked: true,
+                            newly_revoked,
+                        }))
+                    } else {
+                        Ok(None)
+                    }
+                },
+            )
+        }
         Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
     }
 }

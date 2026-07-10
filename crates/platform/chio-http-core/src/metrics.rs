@@ -98,6 +98,16 @@ pub fn record_guard_evaluation(outcome: &str) {
     }
 }
 
+/// +1 on chio_dispatch_failure_total for a genuine mediation-edge failure: the
+/// request could not be evaluated (a fail-open/dispatch condition). `outcome` is
+/// "error". A normal policy/capability deny is an expected fail-closed decision,
+/// NOT a dispatch failure, and must never feed this counter or it would page the
+/// P0 alert on every rejected request. Denies are tracked by the guard-verdict
+/// metrics instead. Never called on allow.
+pub fn record_dispatch_failure(surface: &str, outcome: &str) {
+    chio_metrics_spec::runtime::families::DISPATCH_FAILURE.incr(&[surface, outcome]);
+}
+
 /// Observe a kernel decision latency sample in nanoseconds.
 pub fn observe_decision_latency_nanos(nanos: u64) {
     observe_decision_latency_nanos_for_outcome(GUARD_OUTCOME_ALLOW, nanos);
@@ -248,6 +258,31 @@ mod tests {
         assert_eq!(
             CHIO_KERNEL_DECISION_LATENCY_SECONDS,
             "chio_kernel_decision_latency_seconds"
+        );
+    }
+
+    #[test]
+    fn dispatch_failure_records_error_never_deny_or_allow() {
+        // Only a genuine evaluation error feeds the paging counter. A normal
+        // deny is NOT a dispatch failure, so the "denied" outcome is not
+        // produced anywhere.
+        record_dispatch_failure(GUARD_LABEL_HTTP_AUTHORITY, "error");
+        let mut body = String::new();
+        chio_metrics_spec::runtime::families::DISPATCH_FAILURE.render(&mut body);
+        assert!(
+            body.contains(
+                "chio_dispatch_failure_total{surface=\"http_authority\",outcome=\"error\"}"
+            ),
+            "error series missing: {body}"
+        );
+        // Neither a deny nor an allow outcome exists for this family.
+        assert!(
+            !body.contains("outcome=\"denied\""),
+            "a deny must not be recorded as a dispatch failure: {body}"
+        );
+        assert!(
+            !body.contains("outcome=\"allow\""),
+            "must not record allow: {body}"
         );
     }
 }

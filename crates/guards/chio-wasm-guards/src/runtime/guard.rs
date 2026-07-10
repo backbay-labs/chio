@@ -7,9 +7,10 @@ use tracing::{debug, warn};
 
 use crate::abi::{GuardRequest, GuardVerdict, WasmGuardAbi};
 use crate::epoch::EpochId;
+use crate::metrics::{classify_deny_reason_class, REASON_CLASS_MALFORMED};
 use crate::observability::{
-    guard_digest_or_unknown, guard_evaluate_span, DEFAULT_GUARD_VERSION, VERDICT_ALLOW,
-    VERDICT_DENY, VERDICT_ERROR,
+    guard_digest_or_unknown, guard_evaluate_span, DEFAULT_GUARD_VERSION, RELOAD_APPLIED,
+    VERDICT_ALLOW, VERDICT_DENY, VERDICT_ERROR,
 };
 
 use super::evidence::LastEvaluationEvidence;
@@ -128,8 +129,14 @@ impl WasmGuard {
     }
 
     /// Record the latest reload sequence for evaluation spans.
+    ///
+    /// Only the successful hot-reload apply path calls this, so the reload
+    /// counter uses the documented `applied` outcome (matching the
+    /// `RELOAD_APPLIED` span and the descriptor's declared outcome values) rather
+    /// than an undeclared `ok` series.
     pub fn record_reload_seq(&self, reload_seq: u64) {
         self.reload_seq.store(reload_seq, Ordering::SeqCst);
+        chio_metrics_spec::runtime::families::GUARD_RELOAD.incr(&[&self.name, RELOAD_APPLIED]);
     }
 
     /// Reserve and return the next monotonic epoch identifier.
@@ -321,12 +328,23 @@ impl std::fmt::Debug for WasmGuard {
     }
 }
 
+/// Emit the per-evaluation guard families: verdict count, evaluation duration,
+/// and fuel consumed. Called from every verdict arm so allow, deny, and error
+/// all record.
+fn emit_guard_eval_metrics(guard_id: &str, verdict: &str, elapsed: std::time::Duration, fuel: u64) {
+    use chio_metrics_spec::runtime::families;
+    families::GUARD_VERDICT.incr(&[guard_id, verdict]);
+    families::GUARD_EVAL_DURATION.observe(&[guard_id, verdict], elapsed.as_secs_f64());
+    families::GUARD_FUEL_CONSUMED.incr_by(&[guard_id], fuel);
+}
+
 impl Guard for WasmGuard {
     fn name(&self) -> &str {
         &self.name
     }
 
     fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
+        let eval_started = std::time::Instant::now();
         let request = Self::build_request(ctx);
         if request.action_type.as_deref() == Some("malformed_arguments") {
             warn!(
@@ -335,6 +353,13 @@ impl Guard for WasmGuard {
                 field = %request.extracted_target.as_deref().unwrap_or("unknown"),
                 "WASM guard host action extraction failed, failing closed"
             );
+            // Record the fail-closed deny so malformed-argument denials are
+            // observable in the verdict/deny/duration families instead of
+            // silently returning before the metrics path. The bounded `malformed`
+            // reason class keeps cardinality finite.
+            emit_guard_eval_metrics(&self.name, VERDICT_DENY, eval_started.elapsed(), 0);
+            chio_metrics_spec::runtime::families::GUARD_DENY
+                .incr(&[&self.name, REASON_CLASS_MALFORMED]);
             return Ok(GuardDecision::deny(Vec::new()));
         }
 
@@ -353,6 +378,7 @@ impl Guard for WasmGuard {
             Ok(value) => value,
             Err(err) => {
                 span.record("verdict", VERDICT_ERROR);
+                emit_guard_eval_metrics(&self.name, VERDICT_ERROR, eval_started.elapsed(), 0);
                 return Err(err);
             }
         };
@@ -368,6 +394,12 @@ impl Guard for WasmGuard {
         match result {
             Ok(GuardVerdict::Allow) => {
                 span.record("verdict", VERDICT_ALLOW);
+                emit_guard_eval_metrics(
+                    &self.name,
+                    VERDICT_ALLOW,
+                    eval_started.elapsed(),
+                    fuel.unwrap_or(0),
+                );
                 debug!(
                     guard = %self.name,
                     epoch_id = loaded.epoch_id().get(),
@@ -378,6 +410,18 @@ impl Guard for WasmGuard {
             Ok(GuardVerdict::Deny { reason }) => {
                 let reason_str = reason.as_deref().unwrap_or("denied by WASM guard");
                 span.record("verdict", VERDICT_DENY);
+                emit_guard_eval_metrics(
+                    &self.name,
+                    VERDICT_DENY,
+                    eval_started.elapsed(),
+                    fuel.unwrap_or(0),
+                );
+                // Classify the guard-provided reason into a bounded reason class
+                // so `chio_guard_deny_total{reason_class}` cannot explode series
+                // cardinality on free-form strings, and so the breakdown reflects
+                // WHY the guard denied rather than the enforcement mode.
+                let reason_class = classify_deny_reason_class(reason.as_deref());
+                chio_metrics_spec::runtime::families::GUARD_DENY.incr(&[&self.name, reason_class]);
                 if self.advisory {
                     debug!(
                         guard = %self.name,
@@ -399,6 +443,12 @@ impl Guard for WasmGuard {
             Err(e) => {
                 // Fail closed: any error during WASM execution denies.
                 span.record("verdict", VERDICT_ERROR);
+                emit_guard_eval_metrics(
+                    &self.name,
+                    VERDICT_ERROR,
+                    eval_started.elapsed(),
+                    fuel.unwrap_or(0),
+                );
                 warn!(
                     guard = %self.name,
                     epoch_id = loaded.epoch_id().get(),

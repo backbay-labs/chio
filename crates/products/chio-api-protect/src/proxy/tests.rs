@@ -603,6 +603,63 @@ async fn approval_routes_are_handled_before_proxy_catch_all() {
 }
 
 #[tokio::test]
+async fn metrics_route_serves_rule_pack_families_when_authorized() {
+    // Drive at least one guard family so the body is non-trivial.
+    chio_metrics_spec::runtime::families::GUARD_VERDICT.incr(&["route-test-guard", "allow"]);
+    chio_metrics_spec::runtime::preregister_known_label_sets();
+
+    let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+    let request = with_loopback_peer(
+        Request::builder()
+            .method("GET")
+            .uri("/metrics")
+            .body(Body::empty())
+            .test_unwrap(),
+    );
+    let response = build_app(Arc::clone(&state))
+        .oneshot(request)
+        .await
+        .test_unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .test_unwrap();
+    let body = String::from_utf8(bytes.to_vec()).test_unwrap();
+    assert!(
+        body.contains("chio_guard_verdict_total"),
+        "guard family missing: {body}"
+    );
+    assert!(
+        body.contains("chio_fail_open_suspected_total"),
+        "alert-pack family missing: {body}"
+    );
+    assert!(
+        body.contains("chio_dispatch_failure_total"),
+        "alert-pack family missing: {body}"
+    );
+}
+
+#[tokio::test]
+async fn metrics_route_is_gated() {
+    let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+    // No loopback peer and no bearer token: the sidecar-control gate must refuse.
+    let request = Request::builder()
+        .method("GET")
+        .uri("/metrics")
+        .body(Body::empty())
+        .test_unwrap();
+    let response = build_app(Arc::clone(&state))
+        .oneshot(request)
+        .await
+        .test_unwrap();
+    assert_ne!(
+        response.status(),
+        StatusCode::OK,
+        "unauthenticated scrape must be refused"
+    );
+}
+
+#[tokio::test]
 async fn submit_approval_creates_pending_record_signed_by_sidecar() {
     let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
     let subject = Keypair::generate();

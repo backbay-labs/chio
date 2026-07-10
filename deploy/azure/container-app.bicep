@@ -55,6 +55,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: managedEnvironmentId
     configuration: {
       activeRevisionsMode: 'Single'
+      // Prometheus scrape target: the chio-sidecar serves an admin-gated GET
+      // /metrics carrying the kernel/edge/alert-pack families on targetPort 9090.
+      // Azure Container Apps has no native Prometheus scrape annotation, so the
+      // collector sidecar / Managed Prometheus is configured to scrape
+      // http://<app>:9090/metrics.
       ingress: {
         external: true
         targetPort: 9090

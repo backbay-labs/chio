@@ -172,6 +172,36 @@ impl WebhookExporter {
         Ok(Self { config, client })
     }
 
+    /// Construct a webhook SOC export sink from an operator-configured endpoint
+    /// URL, deriving the required [`HttpEgressContract`] from the URL authority
+    /// the same way the alert backends do. This is the
+    /// env-driven production constructor the `chio-wall siem-export` serve path
+    /// uses to register a real durable audit-export consumer.
+    ///
+    /// The generic webhook is the most general SOC receiver: with the default
+    /// `WebhookConfig` (no `min_severity`, no guard filters) it forwards EVERY
+    /// audit row, not just high-severity denials, so it is a complete SOC export
+    /// sink rather than a notification overlay.
+    ///
+    /// `url` must be `https://`. `bearer_token`, when present, is sent as
+    /// `Authorization: Bearer` and wrapped in [`Zeroizing`] so its bytes are
+    /// cleared on drop. Returns an error (fail-closed) when the URL is not HTTPS,
+    /// the derived contract rejects the URL, or the HTTP client cannot be built.
+    pub fn from_endpoint(url: String, bearer_token: Option<String>) -> Result<Self, ExportError> {
+        let egress_contract = crate::alerting::siem_endpoint_egress_contract("webhook", &url)?;
+        let auth = match bearer_token {
+            Some(token) => WebhookAuth::Bearer(Zeroizing::new(token)),
+            None => WebhookAuth::None,
+        };
+        let config = WebhookConfig {
+            url,
+            auth,
+            egress_contract: Some(egress_contract),
+            ..WebhookConfig::default()
+        };
+        Self::new(config)
+    }
+
     /// Create a `WebhookExporter` without TLS scheme validation.
     ///
     /// This constructor is intended for integration tests that run against a
@@ -370,6 +400,23 @@ impl Exporter for WebhookExporter {
         "webhook"
     }
 
+    /// Stable, endpoint-derived durable cursor identity. Every `WebhookExporter`
+    /// reports the name "webhook", so keying the durable cursor by registration
+    /// index would let a config reorder or an inserted same-named sink inherit
+    /// another instance's `acked_seq` and skip receipts. Folding the configured
+    /// endpoint into the identity keeps two
+    /// webhook sinks to different destinations on distinct cursors and makes the
+    /// key depend only on configuration, not registration order. Userinfo and
+    /// query are stripped (via `sanitize_url_for_error`) so no secret material
+    /// lands in the cursor DB; the metric label stays the bare "webhook".
+    fn cursor_identity(&self) -> String {
+        format!(
+            "{}@{}",
+            self.name(),
+            sanitize_url_for_error(&self.config.url)
+        )
+    }
+
     fn export_batch<'a>(&'a self, events: &'a [SiemEvent]) -> ExportFuture<'a> {
         Box::pin(async move {
             if events.is_empty() {
@@ -419,6 +466,7 @@ impl Exporter for WebhookExporter {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -447,5 +495,71 @@ mod tests {
     #[test]
     fn default_auth_is_none() {
         assert!(matches!(WebhookAuth::default(), WebhookAuth::None));
+    }
+
+    #[test]
+    fn from_endpoint_builds_a_real_https_soc_consumer() {
+        // The env-driven serve constructor derives the egress contract from the
+        // URL and yields a real, named "webhook" SOC export consumer offline (no
+        // DNS resolution at construction).
+        let exporter =
+            WebhookExporter::from_endpoint("https://soc.example.test/ingest".to_string(), None)
+                .expect("https endpoint builds a webhook SOC sink");
+        assert_eq!(exporter.name(), "webhook");
+        // The default config forwards EVERY audit row (no severity/guard filter),
+        // so it is a complete SOC export sink, not a notification overlay.
+        assert!(exporter.config.min_severity.is_none());
+        assert!(exporter.config.include_guards.is_empty());
+        assert!(matches!(exporter.config.auth, WebhookAuth::None));
+    }
+
+    #[test]
+    fn from_endpoint_carries_bearer_token_and_rejects_plaintext() {
+        let with_token = WebhookExporter::from_endpoint(
+            "https://soc.example.test/ingest".to_string(),
+            Some("soc-secret".to_string()),
+        )
+        .expect("bearer-authenticated https endpoint builds");
+        assert!(matches!(with_token.config.auth, WebhookAuth::Bearer(_)));
+
+        let plaintext =
+            WebhookExporter::from_endpoint("http://soc.example.test/ingest".to_string(), None);
+        assert!(
+            plaintext.is_err(),
+            "a plaintext http SOC endpoint must be rejected"
+        );
+    }
+
+    #[test]
+    fn cursor_identity_is_endpoint_derived_and_stable() {
+        // The durable cursor identity is derived from the configured endpoint,
+        // not the bare name, so two webhook sinks to different destinations keep
+        // distinct cursors and a config reorder cannot remap one onto the other.
+        let a = WebhookExporter::from_endpoint("https://soc.example.test/a".to_string(), None)
+            .expect("build a");
+        let b = WebhookExporter::from_endpoint("https://soc.example.test/b".to_string(), None)
+            .expect("build b");
+        assert_ne!(
+            a.cursor_identity(),
+            b.cursor_identity(),
+            "different endpoints must get distinct cursor identities"
+        );
+        // Stable and endpoint-bearing (not the bare metric name).
+        assert_eq!(a.cursor_identity(), a.cursor_identity());
+        assert_ne!(a.cursor_identity(), a.name());
+        assert!(a.cursor_identity().starts_with("webhook@"));
+        // sanitize_url_for_error strips query/fragment, so no query-string secret
+        // material lands in the durable cursor key. (userinfo is already rejected
+        // at construction by the egress contract.)
+        let with_query = WebhookExporter::from_endpoint(
+            "https://soc.example.test/a?token=abc".to_string(),
+            None,
+        )
+        .expect("build with query string");
+        assert!(
+            !with_query.cursor_identity().contains("token=abc"),
+            "query-string material must not leak into the cursor identity: {}",
+            with_query.cursor_identity()
+        );
     }
 }

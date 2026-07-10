@@ -137,3 +137,78 @@ fn canary_mismatch_aborts_swap() -> TestResult {
     assert_eq!(guard.current_epoch_id(), EpochId::INITIAL);
     Ok(())
 }
+
+/// A canary-failed reload increments
+/// `chio_guard_reload_total{outcome="canary_failed"}`, not merely emits a span,
+/// so the alerting surface sees a failed reload. A unique guard id isolates this
+/// process-global counter series from the other tests in this binary.
+#[test]
+fn canary_failure_increments_reload_total_canary_failed() -> TestResult {
+    use chio_metrics_spec::runtime::families;
+
+    let guard_id = "reload-canary-failed-guard";
+    let corpus = CanaryCorpus::from_dir(guard_id, canary_dir())?;
+    let engine = Engine::new(build_backend);
+    engine.register_guard(
+        guard_id,
+        WasmGuard::new(
+            guard_id.to_string(),
+            build_backend(b"baseline")?,
+            false,
+            Some("initial".to_string()),
+        ),
+    )?;
+
+    let outcome = engine.reload_with_canary(guard_id, b"canary-drift", &corpus);
+    assert!(
+        matches!(outcome, Err(HotReloadError::CanaryFailed { .. })),
+        "canary drift must abort the swap: {outcome:?}"
+    );
+
+    let mut body = String::new();
+    families::GUARD_RELOAD.render(&mut body);
+    assert!(
+        body.contains(&format!(
+            "chio_guard_reload_total{{guard_id=\"{guard_id}\",outcome=\"canary_failed\"}} 1"
+        )),
+        "a canary-failed reload must increment the canary_failed outcome: {body}"
+    );
+    Ok(())
+}
+
+/// A canary-verified (successful) reload also increments
+/// `chio_guard_reload_total{outcome="applied"}`. reload_with_canary replaces the
+/// module directly rather than via record_reload_seq, so it must count the
+/// applied outcome itself; otherwise the alerting surface stays blind to
+/// successful canary reloads. A unique guard id isolates this process-global
+/// counter series from the other tests here.
+#[test]
+fn canary_success_increments_reload_total_applied() -> TestResult {
+    use chio_metrics_spec::runtime::families;
+
+    let guard_id = "reload-canary-applied-guard";
+    let corpus = CanaryCorpus::from_dir(guard_id, canary_dir())?;
+    let engine = Engine::new(build_backend);
+    engine.register_guard(
+        guard_id,
+        WasmGuard::new(
+            guard_id.to_string(),
+            build_backend(b"baseline")?,
+            false,
+            Some("initial".to_string()),
+        ),
+    )?;
+
+    let epoch = engine.reload_with_canary(guard_id, b"canary-pass", &corpus)?;
+    assert_eq!(epoch, EpochId::new(1));
+
+    let mut body = String::new();
+    families::GUARD_RELOAD.render(&mut body);
+    assert!(
+        body.contains(&format!(
+            "chio_guard_reload_total{{guard_id=\"{guard_id}\",outcome=\"applied\"}} 1"
+        )),
+        "a canary-verified reload must increment the applied outcome: {body}"
+    );
+    Ok(())
+}

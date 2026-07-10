@@ -356,6 +356,16 @@ impl ReloadWatchdog {
         self.guard
             .restore_loaded_module(Arc::clone(&self.previous_module));
         self.rolled_back = true;
+        // Count the rolled-back outcome AS SOON AS the rollback is real, before
+        // the incident write, so `chio_guard_reload_total{outcome="rolled_back"}`
+        // reflects every genuine rollback even when the incident write fails and
+        // this method returns Err below. Counting after the write would let the
+        // instrument under-count on an incident-write failure, hiding a real
+        // rollback from the alerting surface. The `self.rolled_back` early-return
+        // at the top of this method makes the increment run exactly once per
+        // rollback, so hoisting it here cannot double-count.
+        chio_metrics_spec::runtime::families::GUARD_RELOAD
+            .incr(&[&self.guard_id, RELOAD_ROLLED_BACK]);
         let incident = ReloadIncident {
             guard_id: self.guard_id.clone(),
             reload_seq: self.reload_seq,
@@ -750,6 +760,8 @@ where
                 Ok(verdict) => serialize_canary_verdict(&verdict)?,
                 Err(source) => {
                     let actual = format!("error:{source}");
+                    chio_metrics_spec::runtime::families::GUARD_RELOAD
+                        .incr(&[guard_id, RELOAD_CANARY_FAILED]);
                     let span = guard_reload_span(RELOAD_CANARY_FAILED, guard.current_reload_seq());
                     let _span_guard = span.enter();
                     warn!(
@@ -771,6 +783,8 @@ where
             };
             if actual != fixture.expected_verdict_bytes() {
                 let actual = String::from_utf8_lossy(&actual).into_owned();
+                chio_metrics_spec::runtime::families::GUARD_RELOAD
+                    .incr(&[guard_id, RELOAD_CANARY_FAILED]);
                 let span = guard_reload_span(RELOAD_CANARY_FAILED, guard.current_reload_seq());
                 let _span_guard = span.enter();
                 warn!(
@@ -804,6 +818,10 @@ where
             .ok_or_else(|| HotReloadError::EpochCounterExhausted {
                 guard_id: guard_id.to_string(),
             })?;
+        // reload_with_canary replaces the module directly (not via
+        // record_reload_seq), so it must count the applied outcome itself or a
+        // canary-verified reload never increments chio_guard_reload_total.
+        chio_metrics_spec::runtime::families::GUARD_RELOAD.incr(&[guard_id, RELOAD_APPLIED]);
         let span = guard_reload_span(RELOAD_APPLIED, guard.current_reload_seq());
         let _span_guard = span.enter();
         Ok(epoch_id)

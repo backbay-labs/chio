@@ -39,6 +39,7 @@ pub struct ChioService<S> {
 impl<S> ChioService<S> {
     /// Create a new Chio service wrapping the inner service.
     pub fn new(inner: S, evaluator: ChioEvaluator) -> Self {
+        crate::metrics::seed_fail_open_series();
         Self {
             inner,
             evaluator,
@@ -133,6 +134,7 @@ where
                 Ok(r) => r,
                 Err(e) => {
                     if evaluator.is_fail_open() {
+                        crate::metrics::record_fail_open_suspected("tower");
                         // Fail-open: pass through to inner service. Record the
                         // skipped enforcement so the bypass is auditable.
                         tracing::warn!(
@@ -389,6 +391,50 @@ mod tests {
         let keypair = Keypair::generate();
         let evaluator = ChioEvaluator::new(keypair.clone(), "test-policy".to_string());
         (keypair, evaluator)
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn fail_open_branch_increments_suspected_counter() {
+        let (_kp, evaluator) = make_service();
+        // An unsupported HTTP method makes prepare() return Err (parse_method
+        // rejects it); with fail-open enabled the request forwards unenforced
+        // through the fail-open branch.
+        let evaluator = evaluator.with_fail_open(true);
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+        let mut service = ChioService::new(inner, evaluator);
+
+        let before = {
+            let mut body = String::new();
+            chio_metrics_spec::runtime::families::FAIL_OPEN_SUSPECTED.render(&mut body);
+            body
+        };
+
+        let request = http::Request::builder()
+            .method("FOOBAR")
+            .uri("/anything")
+            .body(Full::new(Bytes::new()))
+            .unwrap_or_else(|e| panic!("request build failed: {e}"));
+        let response = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("ready failed: {e}"))
+            .call(request)
+            .await;
+        assert!(response.is_ok(), "fail-open forwards to inner");
+
+        let mut after = String::new();
+        chio_metrics_spec::runtime::families::FAIL_OPEN_SUSPECTED.render(&mut after);
+        // The tower surface counter advanced by at least one and the series
+        // exists (seeded at zero) even before any event.
+        assert!(
+            after.contains("chio_fail_open_suspected_total{surface=\"tower\"}"),
+            "series must exist: {after}"
+        );
+        assert_ne!(before, after, "the fail-open counter must advance");
     }
 
     // Chio's sync tool-dispatch bridge requires a multi-thread runtime (the

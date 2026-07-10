@@ -16,6 +16,7 @@ async-trait = { workspace = true }
 chio-core-types = { workspace = true }
 chio-http-core = { workspace = true }
 chio-kernel = { workspace = true }
+chio-metrics-spec = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 sha2 = { workspace = true }

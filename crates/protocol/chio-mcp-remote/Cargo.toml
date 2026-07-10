@@ -22,6 +22,7 @@ chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-egress-contract = { workspace = true, features = ["reqwest-egress"] }
 chio-kernel = { workspace = true }
 chio-mcp-adapter = { workspace = true }
+chio-metrics-spec = { workspace = true }
 chio-store-sqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -23,15 +23,14 @@ chio-control-plane = { workspace = true }
 chio-core = { workspace = true }
 chio-guards = { workspace = true }
 chio-kernel = { workspace = true }
+chio-metrics-spec = { workspace = true }
+chio-siem = { workspace = true }
 chio-store-sqlite = { workspace = true }
 chio-wall-core = { workspace = true }
 chrono = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-
-[dev-dependencies]
-chio-siem = { workspace = true }
 tokio = { workspace = true }
 
 [lints]

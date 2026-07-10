@@ -87,68 +87,104 @@ fn descriptors_lock_kinds_labels_and_buckets() {
 }
 
 #[test]
-fn scrape_renders_histogram_buckets_with_locked_bounds() {
-    let body = render_guard_metrics_prometheus();
+fn guard_metrics_report_driven_counts() {
+    use chio_metrics_spec::runtime::families;
+    families::GUARD_VERDICT.incr(&["driven-guard", "allow"]);
+    families::GUARD_VERDICT.incr(&["driven-guard", "deny"]);
+    families::GUARD_DENY.incr(&["driven-guard", "blocking"]);
+    families::GUARD_EVAL_DURATION.observe(&["driven-guard", "allow"], 0.002);
 
-    assert!(body.contains(
-        "chio_guard_eval_duration_seconds_bucket{guard_id=\"\",verdict=\"\",le=\"1.0\"} 0"
-    ));
-    assert!(body.contains(
-        "chio_guard_host_call_duration_seconds_bucket{guard_id=\"\",host_fn=\"\",le=\"0.00001\"} 0"
-    ));
-    assert!(body.contains(
-        "chio_guard_host_call_duration_seconds_bucket{guard_id=\"\",host_fn=\"\",le=\"+Inf\"} 0"
-    ));
+    let body = render_guard_metrics_prometheus();
+    assert!(
+        body.contains("chio_guard_verdict_total{guard_id=\"driven-guard\",verdict=\"allow\"} 1"),
+        "{body}"
+    );
+    assert!(
+        body.contains("chio_guard_verdict_total{guard_id=\"driven-guard\",verdict=\"deny\"} 1"),
+        "{body}"
+    );
+    assert!(
+        body.contains(
+            "chio_guard_deny_total{guard_id=\"driven-guard\",reason_class=\"blocking\"} 1"
+        ),
+        "{body}"
+    );
+    assert!(
+        body.contains(
+            "chio_guard_eval_duration_seconds_count{guard_id=\"driven-guard\",verdict=\"allow\"} 1"
+        ),
+        "{body}"
+    );
+    // No family renders a hardcoded empty-label zero placeholder.
+    assert!(
+        !body.contains("guard_id=\"\""),
+        "no empty-label placeholder: {body}"
+    );
 }
 
 #[test]
-fn scrape_renders_counter_and_gauge_samples() {
+fn signing_block_counter_reports_reason_label() {
+    use chio_metrics_spec::runtime::families;
+    families::SIGNING_QUEUE_BLOCK.incr(&["byte_budget"]);
     let body = render_guard_metrics_prometheus();
-
-    for sample in [
-        "chio_guard_fuel_consumed_total{guard_id=\"\"} 0",
-        "chio_guard_verdict_total{guard_id=\"\",verdict=\"\"} 0",
-        "chio_guard_deny_total{guard_id=\"\",reason_class=\"\"} 0",
-        "chio_guard_reload_total{guard_id=\"\",outcome=\"\"} 0",
-        "chio_guard_module_bytes{guard_id=\"\",epoch=\"\"} 0",
-    ] {
-        assert!(body.contains(sample), "missing sample {sample}");
-    }
+    assert!(
+        body.contains("chio_signing_queue_block_total{reason=\"byte_budget\"}"),
+        "signing family must render the reason label: {body}"
+    );
+    // No unlabeled placeholder line is rendered.
+    assert!(
+        !body.contains("chio_signing_queue_block_total{} 0\n"),
+        "{body}"
+    );
 }
 
 #[test]
-fn scrape_renders_runtime_counter_samples_without_labels() {
-    let body = render_guard_metrics_prometheus();
+fn watchdog_gauges_render_from_health_report() {
+    use chio_kernel::receipt_store::{ReceiptStoreHealthReport, ReceiptWriterCounters};
+    let report = ReceiptStoreHealthReport {
+        healthy: true,
+        writer: ReceiptWriterCounters {
+            last_commit_unix_ms: Some(1_000_000),
+            ..Default::default()
+        },
+        latest_committed_entry_seq: 50,
+        latest_checkpoint_seq: Some(4),
+        latest_checkpointed_entry_seq: 40,
+        uncheckpointed_start_seq: Some(41),
+        uncheckpointed_end_seq: Some(50),
+        checkpoint_error: None,
+        db_size_bytes: None,
+    };
+    // Checkpoint staleness is based on checkpoint PROGRESS, not write-commit
+    // freshness. The first sample seeds the staleness clock at 0; a later sample
+    // with the SAME checkpointed seq and a still-pending backlog reports the
+    // elapsed staleness, even though the write commit timestamp stayed fresh
+    // (writes keep committing while checkpointing stalls). A last-commit-based
+    // gauge would have read ~0 here.
+    chio_kernel::record_receipt_health_gauges(&report, 1_000_000);
+    chio_kernel::record_receipt_health_gauges(&report, 1_030_000); // +30s, checkpoint seq unchanged
+    let body = chio_kernel::render_guard_metrics_prometheus();
+    assert!(
+        body.contains("chio_receipt_uncheckpointed_seq_range 9"),
+        "{body}"
+    ); // 50-41
+    assert!(
+        body.contains("chio_receipt_seconds_since_last_checkpoint 30"),
+        "checkpoint staleness must grow while the checkpoint high-water mark stalls: {body}"
+    );
+}
 
-    for (name, help) in [
-        (
-            "chio_signing_queue_block_total",
-            "Total receipt signing requests blocked by bounded queue capacity.",
-        ),
-        (
-            "chio_otel_ingress_drop_total",
-            "Total OTEL ingress batches dropped by bounded queue admission.",
-        ),
-        (
-            "chio_otel_sink_drop_total",
-            "Total OTEL receipt sink batches dropped before append.",
-        ),
-    ] {
-        assert!(
-            body.contains(&format!("# HELP {name} {help}\n")),
-            "missing HELP for {name}"
-        );
-        assert!(
-            body.contains(&format!("# TYPE {name} counter\n")),
-            "missing TYPE for {name}"
-        );
-        assert!(
-            body.contains(&format!("{name} 0\n")),
-            "missing no-label sample for {name}"
-        );
-        assert!(
-            !body.contains(&format!("{name}{{}} 0\n")),
-            "unexpected empty label block for {name}"
-        );
-    }
+#[test]
+fn metrics_endpoint_serves_prometheus_body() {
+    let response = match guard_metrics_endpoint(GUARD_METRICS_PATH) {
+        Some(response) => response,
+        None => panic!("metrics path serves"),
+    };
+    assert_eq!(response.status, 200);
+    assert!(response
+        .body
+        .contains("# TYPE chio_guard_verdict_total counter"));
+    assert!(response
+        .body
+        .contains("# TYPE chio_signing_queue_block_total counter"));
 }

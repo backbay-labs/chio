@@ -122,6 +122,52 @@ fn flush_receipt_writes_reports_prior_committed_entries() {
     let _ = fs::remove_file(path);
 }
 
+/// The SIEM watchdog samples receipt health via a READ-ONLY open (no
+/// create/WAL/writer-pool). Against a live store the sampler reads the same
+/// committed/checkpointed progress as `receipt_store_health`. The writer is kept
+/// alive (WAL/-shm in place), matching the production deployment where the
+/// kernel owns the DB and the watchdog only reads.
+#[test]
+fn receipt_store_health_read_only_samples_a_live_store() {
+    let path = unique_db_path("chio-receipts-health-ro");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    store
+        .append_chio_receipt(&sample_receipt_with_id("rcpt-ro-1"))
+        .test_unwrap();
+    store
+        .append_chio_receipt(&sample_receipt_with_id_and_timestamp("rcpt-ro-2", 2))
+        .test_unwrap();
+
+    let report = SqliteReceiptStore::receipt_store_health_read_only(&path).test_unwrap();
+    assert!(report.healthy);
+    assert_eq!(report.latest_committed_entry_seq, 2);
+    assert_eq!(report.latest_checkpointed_entry_seq, 0);
+    assert_eq!(report.uncheckpointed_start_seq, Some(1));
+    assert_eq!(report.uncheckpointed_end_seq, Some(2));
+
+    let _ = fs::remove_file(path);
+}
+
+/// A missing receipt DB must report NotFound and must NOT be created. `open`
+/// creates a fresh empty DB on a mistyped path; the read-only sampler never
+/// writes.
+#[test]
+fn receipt_store_health_read_only_missing_db_reports_not_found_without_creating() {
+    let path = unique_db_path("chio-receipts-health-ro-missing");
+    let _ = fs::remove_file(&path);
+    assert!(!path.exists(), "precondition: the DB path must be absent");
+
+    let error = SqliteReceiptStore::receipt_store_health_read_only(&path).test_unwrap_err();
+    assert!(
+        matches!(error, chio_kernel::ReceiptStoreError::NotFound(_)),
+        "unexpected error: {error:?}"
+    );
+    assert!(
+        !path.exists(),
+        "the read-only sampler must not create the missing DB"
+    );
+}
+
 #[test]
 fn empty_store_reports_zero_committed_entry_for_operator_surfaces() {
     let path = unique_db_path("chio-receipts-empty-operator-surfaces");

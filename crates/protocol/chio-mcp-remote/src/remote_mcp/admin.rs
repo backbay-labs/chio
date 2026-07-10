@@ -21,6 +21,7 @@ pub(super) fn install_admin_routes(router: Router<RemoteAppState>) -> Router<Rem
             get(handle_admin_session_trust).post(handle_admin_revoke_session_trust),
         )
         .route(ADMIN_SESSIONS_PATH, get(handle_admin_sessions))
+        .route("/admin/metrics", get(handle_admin_metrics))
         .route(ADMIN_SESSION_DRAIN_PATH, post(handle_admin_session_drain))
         .route(
             ADMIN_SESSION_SHUTDOWN_PATH,
@@ -697,6 +698,31 @@ async fn handle_admin_session_shutdown(
         "ownership": record.ownership,
     }))
     .into_response()
+}
+
+/// Admin-gated Prometheus scrape endpoint, composed from the kernel guard
+/// families and the alert-pack families.
+async fn handle_admin_metrics(State(state): State<RemoteAppState>, request: Request) -> Response {
+    if let Err(response) = validate_admin_request(request.headers(), state.admin_token.as_deref()) {
+        return response;
+    }
+    let alert_pack = || {
+        let mut out = String::new();
+        chio_metrics_spec::runtime::render_alert_pack_families(&mut out);
+        out
+    };
+    let body = chio_metrics_spec::runtime::compose_metrics_body(&[
+        &chio_kernel::render_guard_metrics_prometheus,
+        &alert_pack,
+    ]);
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4",
+        )],
+        body,
+    )
+        .into_response()
 }
 
 fn validate_admin_request(headers: &HeaderMap, admin_token: Option<&str>) -> Result<(), Response> {
