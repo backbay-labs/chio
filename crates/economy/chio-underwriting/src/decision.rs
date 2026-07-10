@@ -386,7 +386,20 @@ pub fn evaluate_underwriting_policy_input(
 
     if let Some(latest_receipt_ref) = latest_receipt_ref.as_ref() {
         if let Some(observed_at) = latest_receipt_ref.observed_at {
-            if input.generated_at.saturating_sub(observed_at) > policy.maximum_receipt_age_seconds {
+            if observed_at > input.generated_at {
+                findings.push(UnderwritingDecisionFinding {
+                    class: UnderwritingRiskClass::Elevated,
+                    outcome: UnderwritingDecisionOutcome::StepUp,
+                    reason: UnderwritingDecisionReasonCode::StaleReceiptHistory,
+                    signal_reason: None,
+                    description: format!(
+                        "latest receipt evidence was observed {}s after the underwriting input was generated",
+                        observed_at - input.generated_at
+                    ),
+                    remediation: Some(UnderwritingRemediation::RefreshReceiptEvidence),
+                    evidence_refs: vec![latest_receipt_ref.clone()],
+                });
+            } else if input.generated_at - observed_at > policy.maximum_receipt_age_seconds {
                 findings.push(UnderwritingDecisionFinding {
                     class: UnderwritingRiskClass::Elevated,
                     outcome: UnderwritingDecisionOutcome::StepUp,
@@ -394,7 +407,7 @@ pub fn evaluate_underwriting_policy_input(
                     signal_reason: None,
                     description: format!(
                         "latest receipt evidence is {}s old, exceeding the {}s freshness window",
-                        input.generated_at.saturating_sub(observed_at),
+                        input.generated_at - observed_at,
                         policy.maximum_receipt_age_seconds
                     ),
                     remediation: Some(UnderwritingRemediation::RefreshReceiptEvidence),
@@ -1067,6 +1080,30 @@ mod tests {
         assert_eq!(report.outcome, UnderwritingDecisionOutcome::StepUp);
         assert!(report.findings.iter().any(|finding| {
             finding.reason == UnderwritingDecisionReasonCode::StaleReceiptHistory
+        }));
+    }
+
+    #[test]
+    fn underwriting_evaluator_steps_up_for_future_receipt_evidence() {
+        let mut input = sample_underwriting_input(1_000_000);
+        input.receipts.receipt_refs = vec![UnderwritingEvidenceReference {
+            kind: UnderwritingEvidenceKind::Receipt,
+            reference_id: "rcpt-future".to_string(),
+            observed_at: Some(1_000_001),
+            digest_sha256: None,
+            locator: Some("receipt:rcpt-future".to_string()),
+        }];
+        let policy = UnderwritingDecisionPolicy {
+            maximum_receipt_age_seconds: 60,
+            ..UnderwritingDecisionPolicy::default()
+        };
+
+        let report = evaluate_underwriting_policy_input(input, &policy).unwrap();
+
+        assert_eq!(report.outcome, UnderwritingDecisionOutcome::StepUp);
+        assert!(report.findings.iter().any(|finding| {
+            finding.reason == UnderwritingDecisionReasonCode::StaleReceiptHistory
+                && finding.description.contains("after the underwriting input")
         }));
     }
 

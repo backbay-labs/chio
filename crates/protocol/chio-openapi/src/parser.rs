@@ -262,7 +262,11 @@ impl OpenApiSpec {
     fn parse_parameters(params_value: &Value, root: &Value) -> Result<Vec<Parameter>> {
         let arr = match params_value.as_array() {
             Some(a) => a,
-            None => return Ok(Vec::new()),
+            None => {
+                return Err(OpenApiError::InvalidSpec(
+                    "parameters must be an array".to_string(),
+                ))
+            }
         };
 
         let mut result = Vec::new();
@@ -293,14 +297,21 @@ impl OpenApiSpec {
             "query" => ParameterLocation::Query,
             "header" => ParameterLocation::Header,
             "cookie" => ParameterLocation::Cookie,
-            _ => ParameterLocation::Query,
+            _ => {
+                return Err(OpenApiError::InvalidSpec(format!(
+                    "parameter.in has unsupported location `{location_value}`"
+                )))
+            }
         };
 
-        let required = value
-            .get("required")
-            .and_then(|v| v.as_bool())
+        let required = if let Some(required_value) = value.get("required") {
+            required_value.as_bool().ok_or_else(|| {
+                OpenApiError::InvalidSpec("parameter.required must be a boolean".to_string())
+            })?
+        } else {
             // Path parameters are always required per the OpenAPI spec.
-            .unwrap_or(location == ParameterLocation::Path);
+            location == ParameterLocation::Path
+        };
 
         let schema = value
             .get("schema")
@@ -766,6 +777,76 @@ paths:
         let err = OpenApiSpec::parse(input).unwrap_err();
 
         assert!(matches!(err, OpenApiError::MissingField(ref field) if field == "parameter.in"));
+    }
+
+    #[test]
+    fn non_array_parameters_rejected() {
+        let input = r##"{
+            "openapi": "3.0.3",
+            "info": {"title": "T", "version": "1"},
+            "paths": {
+                "/pets": {
+                    "get": {
+                        "parameters": {"name": "limit", "in": "query"},
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                }
+            }
+        }"##;
+
+        let err = OpenApiSpec::parse(input).unwrap_err();
+
+        assert!(
+            matches!(err, OpenApiError::InvalidSpec(ref message) if message.contains("parameters must be an array"))
+        );
+    }
+
+    #[test]
+    fn unsupported_parameter_location_rejected() {
+        let input = r##"{
+            "openapi": "3.0.3",
+            "info": {"title": "T", "version": "1"},
+            "paths": {
+                "/pets": {
+                    "get": {
+                        "parameters": [
+                            {"name": "petId", "in": "pat", "required": true}
+                        ],
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                }
+            }
+        }"##;
+
+        let err = OpenApiSpec::parse(input).unwrap_err();
+
+        assert!(
+            matches!(err, OpenApiError::InvalidSpec(ref message) if message.contains("unsupported location"))
+        );
+    }
+
+    #[test]
+    fn non_boolean_parameter_required_rejected() {
+        let input = r##"{
+            "openapi": "3.0.3",
+            "info": {"title": "T", "version": "1"},
+            "paths": {
+                "/pets": {
+                    "get": {
+                        "parameters": [
+                            {"name": "limit", "in": "query", "required": "false"}
+                        ],
+                        "responses": { "200": { "description": "OK" } }
+                    }
+                }
+            }
+        }"##;
+
+        let err = OpenApiSpec::parse(input).unwrap_err();
+
+        assert!(
+            matches!(err, OpenApiError::InvalidSpec(ref message) if message.contains("parameter.required"))
+        );
     }
 
     #[test]
