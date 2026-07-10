@@ -163,17 +163,7 @@ pub async fn project_escrow_execution_receipt(
     )
     .await?;
 
-    let lifecycle_state = if finality.status == SettlementFinalityStatus::Reorged {
-        Web3SettlementLifecycleState::Reorged
-    } else if escrow_snapshot.refunded {
-        Web3SettlementLifecycleState::TimedOut
-    } else if escrow_snapshot.released_minor_units == 0 {
-        Web3SettlementLifecycleState::Failed
-    } else if escrow_snapshot.released_minor_units < escrow_snapshot.deposited_minor_units {
-        Web3SettlementLifecycleState::PartiallySettled
-    } else {
-        Web3SettlementLifecycleState::Settled
-    };
+    let lifecycle_state = lifecycle_state_for_projection(finality.status, &escrow_snapshot);
 
     let failure_reason = match lifecycle_state {
         Web3SettlementLifecycleState::TimedOut => Some(
@@ -201,6 +191,11 @@ pub async fn project_escrow_execution_receipt(
             &input.dispatch.settlement_amount.currency,
             config,
         )?
+    } else if lifecycle_state == Web3SettlementLifecycleState::EscrowLocked {
+        chio_core::capability::scope::MonetaryAmount {
+            units: 0,
+            currency: input.dispatch.settlement_amount.currency.clone(),
+        }
     } else {
         input.observed_amount.clone()
     };
@@ -388,6 +383,28 @@ fn recovery_action_for_projection(
             Web3SettlementLifecycleState::TimedOut => Some(SettlementRecoveryAction::ExecuteRefund),
             _ => None,
         },
+    }
+}
+
+fn lifecycle_state_for_projection(
+    finality_status: SettlementFinalityStatus,
+    escrow_snapshot: &EscrowSnapshot,
+) -> Web3SettlementLifecycleState {
+    if finality_status == SettlementFinalityStatus::Reorged {
+        return Web3SettlementLifecycleState::Reorged;
+    }
+    if finality_status != SettlementFinalityStatus::Finalized {
+        return Web3SettlementLifecycleState::EscrowLocked;
+    }
+    if escrow_snapshot.refunded {
+        return Web3SettlementLifecycleState::TimedOut;
+    }
+    if escrow_snapshot.released_minor_units == 0 {
+        Web3SettlementLifecycleState::Failed
+    } else if escrow_snapshot.released_minor_units < escrow_snapshot.deposited_minor_units {
+        Web3SettlementLifecycleState::PartiallySettled
+    } else {
+        Web3SettlementLifecycleState::Settled
     }
 }
 
@@ -624,6 +641,30 @@ mod tests {
         }
     }
 
+    fn escrow_result(released_minor_units: u64) -> Value {
+        rpc_result(json!(encode_hex(
+            IChioEscrow::getEscrowCall::abi_encode_returns(&IChioEscrow::getEscrowReturn {
+                terms: IChioEscrow::EscrowTerms {
+                    capabilityId: B256::from([0x99; 32]),
+                    depositor: Address::from_str("0x1000000000000000000000000000000000000001",)
+                        .test_unwrap(),
+                    beneficiary: Address::from_str("0x1000000000000000000000000000000000000002",)
+                        .test_unwrap(),
+                    token: Address::from_str("0x1000000000000000000000000000000000000003",)
+                        .test_unwrap(),
+                    maxAmount: U256::from(1_500_000_u64),
+                    deadline: U256::from(1_700_050_000_u64),
+                    operator: Address::from_str("0x1000000000000000000000000000000000000004",)
+                        .test_unwrap(),
+                    operatorKeyHash: B256::from([0xaa; 32]),
+                },
+                deposited: U256::from(1_500_000_u64),
+                released: U256::from(released_minor_units),
+                refunded: false,
+            })
+        )))
+    }
+
     fn rpc_result(result: Value) -> Value {
         json!({
             "jsonrpc": "2.0",
@@ -835,7 +876,8 @@ mod tests {
             rpc_result(json!({ "number": "0x78" })),
             rpc_result(json!({ "hash": "0xaaa" })),
         ]);
-        let config = sample_config(server.base_url());
+        let mut config = sample_config(server.base_url());
+        config.policy.tiers[0].dispute_window_secs = 3_600;
         let receipt = sample_receipt(100, "0xaaa", 1_700_000_000);
 
         let assessment =
@@ -1163,6 +1205,165 @@ mod tests {
         );
         assert_eq!(projection.recovery_action, None);
         assert!(!projection.escrow_snapshot.refunded);
+    }
+
+    #[tokio::test]
+    async fn project_escrow_execution_receipt_waits_for_finality_before_settled_state() {
+        let dispatch = sample_dispatch();
+        let server = MockJsonRpcServer::spawn(vec![
+            rpc_result(json!(encode_hex(
+                IChioEscrow::getEscrowCall::abi_encode_returns(&IChioEscrow::getEscrowReturn {
+                    terms: IChioEscrow::EscrowTerms {
+                        capabilityId: B256::from([0x77; 32]),
+                        depositor: Address::from_str("0x1000000000000000000000000000000000000001",)
+                            .test_unwrap(),
+                        beneficiary: Address::from_str(
+                            "0x1000000000000000000000000000000000000002",
+                        )
+                        .test_unwrap(),
+                        token: Address::from_str("0x1000000000000000000000000000000000000003",)
+                            .test_unwrap(),
+                        maxAmount: U256::from(1_500_000_u64),
+                        deadline: U256::from(1_700_050_000_u64),
+                        operator: Address::from_str("0x1000000000000000000000000000000000000004",)
+                            .test_unwrap(),
+                        operatorKeyHash: B256::from([0x88; 32]),
+                    },
+                    deposited: U256::from(1_500_000_u64),
+                    released: U256::from(750_000_u64),
+                    refunded: false,
+                })
+            ))),
+            rpc_result(json!({
+                "blockHash": "0xabc",
+                "blockNumber": "0x64",
+                "status": "0x1",
+                "gasUsed": "0x5208",
+                "from": "0x1000000000000000000000000000000000000001",
+                "to": "0x1000000000000000000000000000000000000002",
+                "logs": []
+            })),
+            rpc_result(json!({
+                "timestamp": "0x67e88660"
+            })),
+            rpc_result(json!({ "number": "0x78" })),
+            rpc_result(json!({ "hash": "0xabc" })),
+        ]);
+        let mut config = sample_config(server.base_url());
+        config.policy.tiers[0].dispute_window_secs = 3_600;
+
+        let projection = project_escrow_execution_receipt(
+            &config,
+            ExecutionProjectionInput {
+                dispatch: &dispatch,
+                tx_hash: "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+                execution_receipt_id: "exec-pending".to_string(),
+                settlement_reference: "settlement-pending".to_string(),
+                observed_at: Some(1_743_292_900),
+                observed_amount: chio_core::capability::scope::MonetaryAmount {
+                    units: dispatch.settlement_amount.units / 2,
+                    currency: dispatch.settlement_amount.currency.clone(),
+                },
+                anchor_proof: None,
+                identity_registry_evidence: Some(sample_identity_registry_evidence(
+                    &dispatch, &config,
+                )),
+                identity_registry_evidence_binding: Some(
+                    sample_identity_registry_evidence_binding(&dispatch, &config),
+                ),
+                oracle_evidence: None,
+                failure_reason: None,
+                reversal_of: None,
+                note: None,
+            },
+        )
+        .await
+        .test_expect("projection should succeed");
+
+        server.join();
+
+        assert_eq!(
+            projection.finality.status,
+            SettlementFinalityStatus::AwaitingDisputeWindow
+        );
+        assert_eq!(
+            projection.receipt.lifecycle_state,
+            Web3SettlementLifecycleState::EscrowLocked
+        );
+        assert_eq!(
+            projection.recovery_action,
+            Some(SettlementRecoveryAction::WaitForDisputeWindow)
+        );
+        assert_eq!(projection.receipt.settled_amount.units, 0);
+        assert_eq!(projection.receipt.observed_execution.amount.units, 0);
+        assert_eq!(projection.receipt.failure_reason, None);
+    }
+
+    #[tokio::test]
+    async fn project_escrow_execution_receipt_waits_for_confirmations_without_release() {
+        let dispatch = sample_dispatch();
+        let server = MockJsonRpcServer::spawn(vec![
+            escrow_result(0),
+            rpc_result(json!({
+                "blockHash": "0xabc",
+                "blockNumber": "0x64",
+                "status": "0x1",
+                "gasUsed": "0x5208",
+                "from": "0x1000000000000000000000000000000000000001",
+                "to": "0x1000000000000000000000000000000000000002",
+                "logs": []
+            })),
+            rpc_result(json!({
+                "timestamp": "0x6553f100"
+            })),
+            rpc_result(json!({ "number": "0x64" })),
+            rpc_result(json!({ "hash": "0xabc" })),
+        ]);
+        let mut config = sample_config(server.base_url());
+        config.policy.tiers[0].min_confirmations = 2;
+
+        let projection = project_escrow_execution_receipt(
+            &config,
+            ExecutionProjectionInput {
+                dispatch: &dispatch,
+                tx_hash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                execution_receipt_id: "exec-pending-zero".to_string(),
+                settlement_reference: "settlement-pending-zero".to_string(),
+                observed_at: Some(1_743_292_900),
+                observed_amount: dispatch.settlement_amount.clone(),
+                anchor_proof: None,
+                identity_registry_evidence: Some(sample_identity_registry_evidence(
+                    &dispatch, &config,
+                )),
+                identity_registry_evidence_binding: Some(
+                    sample_identity_registry_evidence_binding(&dispatch, &config),
+                ),
+                oracle_evidence: None,
+                failure_reason: None,
+                reversal_of: None,
+                note: None,
+            },
+        )
+        .await
+        .test_expect("pending zero-release projection should still return a wait action");
+
+        server.join();
+
+        assert_eq!(
+            projection.finality.status,
+            SettlementFinalityStatus::AwaitingConfirmations
+        );
+        assert_eq!(
+            projection.receipt.lifecycle_state,
+            Web3SettlementLifecycleState::EscrowLocked
+        );
+        assert_eq!(
+            projection.recovery_action,
+            Some(SettlementRecoveryAction::WaitForConfirmations)
+        );
+        assert_eq!(projection.receipt.settled_amount.units, 0);
+        assert_eq!(projection.receipt.observed_execution.amount.units, 0);
+        assert_eq!(projection.receipt.failure_reason, None);
     }
 
     #[tokio::test]

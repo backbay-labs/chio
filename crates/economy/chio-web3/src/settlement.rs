@@ -340,17 +340,20 @@ pub fn validate_web3_settlement_execution_receipt(
         "web3_settlement_receipt.settlement_reference",
     )?;
     validate_web3_settlement_dispatch(&receipt.dispatch)?;
-    ensure_money(
+    let escrow_locked = receipt.lifecycle_state == Web3SettlementLifecycleState::EscrowLocked;
+    ensure_receipt_money(
         &receipt.observed_execution.amount,
         "web3_settlement_receipt.observed_amount",
+        escrow_locked,
     )?;
     ensure_non_empty(
         &receipt.observed_execution.external_reference_id,
         "web3_settlement_receipt.observed_execution.external_reference_id",
     )?;
-    ensure_money(
+    ensure_receipt_money(
         &receipt.settled_amount,
         "web3_settlement_receipt.settled_amount",
+        escrow_locked,
     )?;
     if receipt.observed_execution.amount.currency != receipt.dispatch.settlement_amount.currency {
         return Err(Web3ContractError::invalid_settlement(
@@ -481,6 +484,7 @@ pub fn validate_web3_settlement_execution_receipt(
             Web3SettlementLifecycleState::TimedOut
                 | Web3SettlementLifecycleState::Failed
                 | Web3SettlementLifecycleState::Reorged
+                | Web3SettlementLifecycleState::EscrowLocked
         )
         && receipt.oracle_evidence.is_none()
     {
@@ -490,11 +494,17 @@ pub fn validate_web3_settlement_execution_receipt(
     }
 
     match receipt.lifecycle_state {
-        Web3SettlementLifecycleState::PendingDispatch
-        | Web3SettlementLifecycleState::EscrowLocked => {
+        Web3SettlementLifecycleState::PendingDispatch => {
             return Err(Web3ContractError::invalid_settlement(
                 "execution receipts must record an observed terminal or reconciled lifecycle state",
             ));
+        }
+        Web3SettlementLifecycleState::EscrowLocked => {
+            if receipt.observed_execution.amount.units != 0 || receipt.settled_amount.units != 0 {
+                return Err(Web3ContractError::invalid_settlement(
+                    "escrow_locked execution receipts must not record durable settlement amount",
+                ));
+            }
         }
         Web3SettlementLifecycleState::PartiallySettled => {
             if receipt.settled_amount.units == 0
@@ -536,7 +546,9 @@ pub fn validate_web3_settlement_execution_receipt(
     let must_have_anchor = receipt.dispatch.support_boundary.anchor_proof_required
         && !matches!(
             receipt.lifecycle_state,
-            Web3SettlementLifecycleState::TimedOut | Web3SettlementLifecycleState::Failed
+            Web3SettlementLifecycleState::TimedOut
+                | Web3SettlementLifecycleState::Failed
+                | Web3SettlementLifecycleState::EscrowLocked
         );
     if must_have_anchor && receipt.reconciled_anchor_proof.is_none() {
         return Err(Web3ContractError::invalid_settlement(
@@ -777,6 +789,32 @@ fn is_eip155_transaction_hash(value: &str) -> bool {
         && hex
             .bytes()
             .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+fn ensure_receipt_money(
+    amount: &MonetaryAmount,
+    field: &'static str,
+    allow_zero: bool,
+) -> Result<(), Web3ContractError> {
+    if amount.units == 0 && allow_zero {
+        if amount.currency.trim().is_empty() {
+            return Err(Web3ContractError::invalid_settlement(format!(
+                "{field} currency is required"
+            )));
+        }
+        if amount.currency.len() != 3
+            || !amount
+                .currency
+                .chars()
+                .all(|character| character.is_ascii_uppercase())
+        {
+            return Err(Web3ContractError::invalid_settlement(format!(
+                "{field} currency must be a 3-letter uppercase code"
+            )));
+        }
+        return Ok(());
+    }
+    ensure_money(amount, field)
 }
 
 fn validate_transfer_completion_flow_binding(

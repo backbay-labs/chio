@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from typing import Any, Callable, Awaitable
+from typing import Any, Awaitable, Callable
 from urllib.parse import parse_qsl
 
 from chio_sdk.client import ChioClient
@@ -101,7 +101,20 @@ class ChioASGIMiddleware:
             await self._app(scope, receive, send)
             return
 
-        # Extract caller identity
+        try:
+            headers = _headers_by_name(scope)
+            selected_headers = _selected_headers_from(headers)
+            query = _query_params(scope)
+            capability_token = _extract_capability_token_from(headers, query)
+            advertised_body_length = _content_length_from(headers)
+        except ValueError as exc:
+            await _send_error_response(send, 400, str(exc), "MalformedRequest")
+            return
+        if advertised_body_length > self._config.max_body_bytes:
+            await _send_body_too_large(send, self._config.max_body_bytes)
+            return
+
+        # Extract caller identity after rejecting ambiguous policy inputs.
         caller = self._extractor.extract(scope)
 
         # Extract route pattern if available (Starlette/FastAPI set this)
@@ -109,50 +122,73 @@ class ChioASGIMiddleware:
         if "route" in scope and hasattr(scope["route"], "path"):
             route_pattern = scope["route"].path
 
-        # Read the request body for hashing before evaluating policy.
-        body_buffer = bytearray()
-        body_length = 0
-        replay_message: dict[str, Any] | None = None
+        # Read the complete request body for hashing before sidecar evaluation.
+        body_chunks: list[bytes] = []
+        early_replay_message: dict[str, Any] | None = None
+        body_complete = False
+        body_interrupted = False
+        body_too_large = False
+        body_size = 0
 
-        while True:
+        async def receive_wrapper() -> dict[str, Any]:
+            nonlocal body_complete, body_interrupted, body_size, body_too_large
+            nonlocal early_replay_message
             message = await receive()
             if message.get("type") == "http.request":
                 body = message.get("body", b"")
                 if body:
-                    body_length += len(body)
-                    if body_length > self._config.max_body_bytes:
-                        await _send_error_response(
-                            send,
-                            413,
-                            "request body exceeds Chio ASGI buffering limit",
-                            "RequestBodyTooLarge",
-                        )
-                        return
-                    body_buffer.extend(body)
+                    if body_size + len(body) > self._config.max_body_bytes:
+                        body_too_large = True
+                        body_complete = True
+                        return message
+                    body_size += len(body)
+                    body_chunks.append(body)
                 if not message.get("more_body", False):
-                    break
-                continue
-            replay_message = message
-            break
+                    body_complete = True
+            else:
+                early_replay_message = message
+                body_interrupted = True
+                body_complete = True
+            return message
 
+        while not body_complete:
+            message = await receive_wrapper()
+            if message.get("type") != "http.request":
+                break
+        if body_too_large:
+            await _send_body_too_large(send, self._config.max_body_bytes)
+            return
+        if body_interrupted:
+            await _send_error_response(
+                send,
+                400,
+                "request body stream ended before the final body frame",
+                "ClientDisconnected",
+            )
+            return
+
+        raw_body = b"".join(body_chunks)
         body_hash: str | None = None
-        if body_buffer:
-            body_hash = hashlib.sha256(body_buffer).hexdigest()
+        if raw_body:
+            body_hash = hashlib.sha256(raw_body).hexdigest()
 
-        # Replay the buffered body for the inner app.
-        replay_sent = False
+        # Replay a single coalesced request-body frame for the inner app. This
+        # preserves the body while bounding replay memory by body bytes rather
+        # than by untrusted ASGI frame count.
+        replay_step = 0
 
         async def replay_receive() -> dict[str, Any]:
-            nonlocal replay_sent
-            if not replay_sent:
-                replay_sent = True
-                if replay_message is not None:
-                    return replay_message
+            nonlocal replay_step
+            if replay_step == 0:
+                replay_step = 1
                 return {
                     "type": "http.request",
-                    "body": bytes(body_buffer),
+                    "body": raw_body,
                     "more_body": False,
                 }
+            if replay_step == 1 and early_replay_message is not None:
+                replay_step = 2
+                return early_replay_message
             return await receive()
 
         # Evaluate via sidecar
@@ -165,11 +201,11 @@ class ChioASGIMiddleware:
                 route_pattern=route_pattern,
                 path=path,
                 caller=caller,
-                query=_query_params(scope),
-                headers=_selected_headers(scope),
+                query=query,
+                headers=selected_headers,
                 body_hash=body_hash,
-                body_length=body_length,
-                capability_token=_extract_capability_token(scope),
+                body_length=body_size,
+                capability_token=capability_token,
             )
         except (ChioConnectionError, ChioTimeoutError):
             await _send_error_response(
@@ -233,34 +269,74 @@ class ChioASGIMiddleware:
         await self._app(scope, replay_receive, send_with_receipt)
 
 
+_POLICY_SINGLETON_HEADERS = frozenset({
+    "authorization",
+    "content-length",
+    "content-type",
+    "x-api-key",
+    "x-chio-capability",
+})
+
+
+def _headers_by_name(scope: Scope) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    seen: set[str] = set()
+    for raw_name, raw_value in scope.get("headers", []):
+        name = raw_name.decode("latin-1").lower()
+        value = raw_value.decode("latin-1")
+        if name == "cookie" and name in headers:
+            headers[name] = f"{headers[name]}; {value}"
+            seen.add(name)
+            continue
+        if name in seen and name in _POLICY_SINGLETON_HEADERS:
+            raise ValueError(f"duplicate policy header: {name}")
+        seen.add(name)
+        headers[name] = value
+    return headers
+
+
 def _extract_capability_token(scope: Scope) -> str | None:
     """Extract the presented Chio capability token from header or query string."""
-    headers = {
-        k.decode("latin-1").lower(): v.decode("latin-1")
-        for k, v in scope.get("headers", [])
-    }
+    headers = _headers_by_name(scope)
+    query = _query_params(scope)
+    return _extract_capability_token_from(headers, query)
+
+
+def _extract_capability_token_from(
+    headers: dict[str, str],
+    query: dict[str, str],
+) -> str | None:
     capability_token = headers.get("x-chio-capability")
     if capability_token:
         return capability_token
 
-    qs = scope.get("query_string", b"").decode("latin-1")
-    for key, value in parse_qsl(qs, keep_blank_values=True):
-        if key == "chio_capability":
-            return value
-    return None
+    return query.get("chio_capability")
 
 
 def _selected_headers(scope: Scope) -> dict[str, str]:
-    headers = {
-        k.decode("latin-1").lower(): v.decode("latin-1")
-        for k, v in scope.get("headers", [])
-    }
+    return _selected_headers_from(_headers_by_name(scope))
+
+
+def _selected_headers_from(headers: dict[str, str]) -> dict[str, str]:
     selected: dict[str, str] = {}
     for key in ("content-type", "content-length"):
         value = headers.get(key)
         if value is not None:
             selected[key] = value
     return selected
+
+
+def _content_length_from(headers: dict[str, str]) -> int:
+    value = headers.get("content-length")
+    if value is None:
+        return 0
+    try:
+        content_length = int(value)
+    except ValueError:
+        raise ValueError("invalid content-length header") from None
+    if content_length < 0:
+        raise ValueError("invalid content-length header")
+    return content_length
 
 
 def _query_params(scope: Scope) -> dict[str, str]:
@@ -270,8 +346,19 @@ def _query_params(scope: Scope) -> dict[str, str]:
         return params
 
     for key, value in parse_qsl(qs, keep_blank_values=True):
+        if key in params:
+            raise ValueError(f"duplicate query parameter: {key}")
         params[key] = value
     return params
+
+
+async def _send_body_too_large(send: Send, max_body_bytes: int) -> None:
+    await _send_error_response(
+        send,
+        413,
+        f"request body exceeds {max_body_bytes}-byte limit",
+        "PayloadTooLarge",
+    )
 
 
 async def _send_error_response(

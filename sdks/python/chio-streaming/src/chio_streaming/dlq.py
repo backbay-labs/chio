@@ -160,7 +160,7 @@ class DLQRouter:
             "reason": reason,
             "guard": guard,
             "receipt_id": receipt.id,
-            "receipt": receipt.model_dump(exclude_none=True),
+            "receipt": receipt.model_dump(mode="json", exclude_none=True),
             "source": {
                 "topic": source_topic,
                 "partition": (int(source_partition) if source_partition is not None else None),

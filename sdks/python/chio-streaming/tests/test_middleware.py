@@ -813,6 +813,21 @@ def test_close_is_idempotent() -> None:
     assert consumer.closed is True
 
 
+async def test_poll_after_close_fails_without_polling_consumer() -> None:
+    chio = allow_all()
+    mw, consumer, _producer = _build_middleware(chio_client=chio)
+    consumer.enqueue(_fake_message(offset=88))
+    mw.close()
+
+    async def handler(_msg: Any, _receipt: Any) -> None:  # pragma: no cover
+        pytest.fail("handler should not run after close")
+
+    with pytest.raises(ChioStreamingError, match="closed"):
+        await mw.poll_and_process(handler)
+
+    assert len(consumer._queue) == 1
+
+
 # ---------------------------------------------------------------------------
 # Transactional DLQ / receipt produce failures inside the transaction
 # ---------------------------------------------------------------------------
