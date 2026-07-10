@@ -660,24 +660,28 @@ fn wait_for_cluster_leader_convergence(
     converged_leader.expect("converged leader url")
 }
 
-/// Polls `try_internal_cluster_status` against `base_url` until it returns `Some`.
+/// Polls until the internal status exposes an authority term accepted by `accepts`.
 ///
-/// The internal cluster status endpoint can transiently fail with HTTP errors during cluster
-/// state transitions (initial bring-up, leader failover, follower restart) even when the node's
-/// `/health` endpoint is already up. Single-shot callers that immediately panic on `None` are
-/// the source of intermittent flakes.
-/// This helper bounds the wait with a deadline and returns the first non-`None` snapshot.
-fn wait_for_internal_cluster_status(
+/// Leader and quorum convergence can precede publication of `authorityLease.term`, especially
+/// during initial bring-up, leader failover, and follower restart.
+fn wait_for_authority_term<F>(
     client: &Client,
     base_url: &str,
     token: &str,
     label: &str,
-) -> Value {
+    mut accepts: F,
+) -> u64
+where
+    F: FnMut(u64) -> bool,
+{
     let timeout = Duration::from_secs(30);
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if let Some(status) = try_internal_cluster_status(client, base_url, token) {
-            return status;
+        if let Some(term) = try_internal_cluster_status(client, base_url, token)
+            .and_then(|status| status["authorityLease"]["term"].as_u64())
+            .filter(|term| accepts(*term))
+        {
+            return term;
         }
         thread::sleep(Duration::from_millis(50));
     }
@@ -687,7 +691,7 @@ fn wait_for_internal_cluster_status(
         "clusterStatus": try_internal_cluster_status(client, base_url, token),
     });
     panic!(
-        "internal cluster status `{label}` did not become available before timeout\n{}",
+        "authority term `{label}` did not satisfy its predicate before timeout\n{}",
         serde_json::to_string_pretty(&diagnostics).expect("serialize timeout diagnostics")
     );
 }
@@ -2090,11 +2094,13 @@ fn trust_control_cluster_rejects_stale_authority_term_after_failover_and_restart
         "initial authority leader convergence",
     );
     assert_eq!(initial_leader, url_a);
-    let initial_status =
-        wait_for_internal_cluster_status(&client, &url_b, service_token, "initial cluster status");
-    let initial_term = initial_status["authorityLease"]["term"]
-        .as_u64()
-        .expect("initial authority lease term");
+    let initial_term = wait_for_authority_term(
+        &client,
+        &url_b,
+        service_token,
+        "initial authority term",
+        |_| true,
+    );
 
     drop(server_a.take());
 
@@ -2121,16 +2127,13 @@ fn trust_control_cluster_rejects_stale_authority_term_after_failover_and_restart
         || cluster_status_diagnostics(&client, &majority_urls, service_token),
     );
 
-    let failover_status = wait_for_internal_cluster_status(
+    let failover_term = wait_for_authority_term(
         &client,
         &url_b,
         service_token,
-        "failover status after leader loss",
+        "failover term after leader loss",
+        |term| term > initial_term,
     );
-    let failover_term = failover_status["authorityLease"]["term"]
-        .as_u64()
-        .expect("failover authority term");
-    assert!(failover_term > initial_term);
 
     let _restarted_a = spawn_trust_service(
         addr_a,
@@ -2155,16 +2158,13 @@ fn trust_control_cluster_rejects_stale_authority_term_after_failover_and_restart
         &urls,
         "restarted cluster reconverges after old leader returns",
     );
-    let restarted_status = wait_for_internal_cluster_status(
+    wait_for_authority_term(
         &client,
         &restarted_leader,
         service_token,
-        "restarted cluster status",
+        "restarted cluster term",
+        |term| term >= failover_term,
     );
-    let restarted_term = restarted_status["authorityLease"]["term"]
-        .as_u64()
-        .expect("restarted authority term");
-    assert!(restarted_term >= failover_term);
 
     let generation_before = get_json(
         &client,
