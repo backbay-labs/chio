@@ -116,7 +116,8 @@ function parseQueryString(url: string): ParsedQueryString {
       status: 403,
     };
   }
-  return { query, capabilityToken: capabilityTokens[0] };
+  const capabilityToken = capabilityTokens[0];
+  return capabilityToken === undefined ? { query } : { query, capabilityToken };
 }
 
 function extractPath(url: string): string {
