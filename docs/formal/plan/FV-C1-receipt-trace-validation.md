@@ -14,7 +14,12 @@ The Apalache lane model-checks revocation propagation and kernel transition safe
 ## Motivation and evidence
 
 - G5 in [../GAP_ANALYSIS.md](../GAP_ANALYSIS.md): proof lanes are never adversarially measured. The TLA+ specs are the sharpest instance - they are checked against themselves, never against the implementation's observable output.
-- The specs are load-bearing, not documentation. The RETIRED-SQLITE-CROSS-ROW assumption discharge cites the `MonotoneLog` invariant and the `ReceiptBeforeAllow` Apalache spec directly (formal/proof-manifest.toml `discharged_assumptions`, formal/assumptions.toml `retired_assumptions`). If the spec's `Evaluate` action drifts from what `crates/kernel/chio-kernel/src/receipt_store.rs` records, that discharge is vacuous and nothing currently notices.
+- The specs are load-bearing, not documentation. `ReceiptBeforeAllow` is
+  currently modeled ordering evidence only; concrete cross-row recovery remains
+  outside the formal claim boundary. If the spec's `Evaluate` action drifts
+  from what the kernel records, the evidence becomes vacuous and nothing
+  currently notices. Trace validation supplies the implementation link needed
+  before any later discharge can be considered.
 - formal/MAPPING.md ties invariant names to Rust call sites, but scripts/check-mapping.sh enforces name presence by grep, not semantic correspondence. Trace validation is the cheapest mechanism that tests the correspondence itself.
 - The decode problem is already solved once: the fuzz lane parses NDJSON receipt logs line by line into `ChioReceipt` and verifies signatures (crates/kernel/chio-kernel-core/src/fuzz.rs:85-102, entry `fuzz_receipt_log_replay` at line 77) [v]. The exporter reuses that approach.
 - Receipts are signed decisions in an append-only Merkle-committed log [v], so a validated trace is also a product story: the same spec the vendor model-checks can be replayed by a customer over logs they hold. That is Theme C in one sentence.
@@ -170,7 +175,9 @@ The exporter keeps a spec-keyed registry of abstraction functions. When FV-B1 la
 
 ## Manifest and registry updates
 
-- formal/proof-manifest.toml: add `./scripts/check-receipt-trace.sh` to `gate_commands` at phase 2; add a `notes` entry stating that TLA+ specs used to discharge assumptions (MonotoneLog, ReceiptBeforeAllow) are trace-validated nightly.
+- formal/proof-manifest.toml: add `./scripts/check-receipt-trace.sh` to
+  `gate_commands` at phase 2; add a `notes` entry stating that TLA+ specs
+  proposed as assumption-narrowing evidence are trace-validated nightly.
 - formal/MAPPING.md: new "Trace validation" section, one row per (spec, abstraction function) pair, e.g. `TraceCheckRevocationPropagation` -> `crates/tooling/chio-trace-validate/src/map/revocation.rs`, with the assumption-discharge column citing ASSUME-ED25519/ASSUME-SHA256 for the crypto-boolean projection.
 - formal/theorem-inventory.json: not applicable (no Lean artifacts in this plan).
 - formal/assumptions.toml: no new assumptions; the projection consumes existing ones.

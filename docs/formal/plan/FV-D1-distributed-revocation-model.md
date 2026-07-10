@@ -39,7 +39,7 @@ Rust side (`crates/trust/chio-federation/src/revocation_gossip.rs`, 1019 lines, 
 
 ### Model shape
 
-New spec `DistributedRevocation` (companion to, not a replacement of, `RevocationPropagation.tla`; the existing spec keeps covering the local-gate discharge already cited by RETIRED-SQLITE-CROSS-ROW evidence).
+New spec `DistributedRevocation` (companion to, not a replacement of, `RevocationPropagation.tla`; the existing spec keeps covering the local revocation gate).
 
 State, per authority `a` in `AUTHS` and origin authority `o`:
 
@@ -86,11 +86,17 @@ Property-to-lane summary (the deliberate design point: everything load-bearing i
 
 ### Assumption narrowing (the retirement walk, done precisely)
 
-`formal/assumptions.toml` L31-37 states the protocol: a retired assumption MUST NOT appear in `required_assumption_ids`, MUST cite the discharging artifact in `discharged_by`, lands via a P3 ticket, and is mirrored in `formal/proof-manifest.toml` `discharged_assumptions`. The narrowing PR therefore makes exactly these edits:
+`formal/assumptions.toml` states the protocol: retirement requires named
+model evidence plus a concrete implementation-refinement gate, and the result
+is mirrored in `formal/proof-manifest.toml` `discharged_assumptions`. The
+narrowing change therefore makes exactly these edits:
 
 1. Add the replacement assumption to `assumptions` and `required_assumption_ids`: `ASSUME-GOSSIP-FAIRNESS-PARTITION-BOUND | audited_transport | Between correct, non-partitioned bilateral peers, queued revocation gossip or catch-up is eventually delivered, and partitions eventually heal within the operator's declared bound. Message loss, duplication, reordering, and bounded clock skew are NOT assumed away; they are modeled. | P2,P8,P9`. This is strictly smaller than ASSUME-NETWORK-TRANSPORT: it assumes only fairness-plus-heal, not integrity (now carried by ASSUME-ED25519/ASSUME-SIG-CHECK plus the fail-closed drop path) and not ordering (modeled).
 2. Move `ASSUME-NETWORK-TRANSPORT` out of `required_assumption_ids` into `retired_assumption_ids`, with a `retired_assumptions` row whose `discharged_by` cites `BoundedStalenessInv`, `NoAllowAfterRevoke` (distributed variant), `PartitionSuspendResume`, and the signer-pinning call sites (`revocation_gossip.rs::validate_envelope`, `RevocationView::install_if_newer`).
-3. Mirror the row in `formal/proof-manifest.toml` `discharged_assumptions` (same `id|artifacts|call_sites|prose` format as the RETIRED-SQLITE-CROSS-ROW row at L170), replace the L173-198 deferral comment with a pointer to the new model, and update `m04_p5_t5_assumptions_decision`.
+3. Mirror the row in `formal/proof-manifest.toml` `discharged_assumptions`
+   using its documented `id|artifacts|call_sites|prose` format, replace the
+   network-transport deferral comment with a pointer to the new model, and
+   update `m04_p5_t5_assumptions_decision`.
 4. Update `docs/reference/CLAIM_REGISTRY.md`: the ASSUME-NETWORK-TRANSPORT row (L42) moves to the retired/downgraded narrative and the new fairness assumption gets an `approved_with_scope` row.
 5. Update `formal/MAPPING.md`: rows for the new invariants, and replace the existing model-only fairness boundary with the newly registered operational assumption where the distributed liveness property applies.
 
@@ -110,14 +116,26 @@ Recommendation: Quint pilot, with the compiled TLA committed and reviewed, mirro
 3. Safety lane. Files: `formal/tla/MCDistributedRevocation.cfg` (PR bounds: AUTHS=3, EPOCH_MAX=4, B=3, SKEW=2; nightly bounds larger); add the cfg|spec pair to the pair list in `.github/workflows/apalache-safety.yml` (L71-72); implement `NoAllowAfterRevoke`, `BoundedStalenessInv`, `PartitionSuspendResume`, `DomainsOK` as `--inv=` targets.
 4. Temporal lane. Files: `formal/tla/MCDistributedRevocationTemporal.cfg`; a second job in `.github/workflows/apalache-temporal.yml` checking `RevocationEventuallyObservedDistributed` via `--temporal=`. The lane stays scheduled/manual and non-required per its own header; promotion is [FV-E5](FV-E5-lane-ratchets.md)'s ratchet, not this plan's.
 5. Falsifiability evidence. Files: `formal/apalache/_negative_tests/DistributedRevocation_*.tla` broken variants (signer pin skipped so a forged higher epoch installs; skew bound removed; catch-up allowed across a partition). Each variant must produce a counterexample, archived per [FV-E2](FV-E2-counterexample-regression-pipeline.md).
-6. Assumption-narrowing PR (separate, lands only after 3-5 are green). Files: `formal/assumptions.toml`, `formal/proof-manifest.toml`, `docs/reference/CLAIM_REGISTRY.md`, `formal/MAPPING.md`, `formal/theorem-inventory.json` (if any Lean cross-reference rows are added).
+6. Implementation-refinement gate. Add
+   `crates/trust/chio-federation/tests/distributed_revocation_refinement.rs`
+   with deterministic loss, duplication, reorder, partition-heal, and catch-up
+   schedules over the production gossip queue, validation, and
+   `RevocationView::install_if_newer` path. Emit the observed actions as ITF
+   and check them with
+   `formal/tla/trace/TraceCheckDistributedRevocation.tla`.
+   `scripts/check-distributed-revocation-refinement.sh` runs the Rust
+   scenarios and trace check fail-closed.
+7. Assumption-narrowing PR (separate, lands only after 3-6 are green). Files: `formal/assumptions.toml`, `formal/proof-manifest.toml`, `docs/reference/CLAIM_REGISTRY.md`, `formal/MAPPING.md`, `formal/theorem-inventory.json` (if any Lean cross-reference rows are added).
 
 ## CI and gating changes
 
 - `apalache-safety.yml`: one new cfg|spec pair; already PR-path-scoped on `formal/tla/**`, so no trigger changes. PR wall-clock budget must be measured at the PR bounds before merge; if the new spec exceeds it, PR runs the smaller AUTHS=2 cfg and nightly runs AUTHS=3+.
 - `apalache-temporal.yml`: one new non-required job. The header's do-not-promote rule (L10-12) is respected verbatim; this plan adds coverage to the lane without changing its status.
 - New scheduled job (may live inside `apalache-safety.yml`'s schedule leg): `scripts/check-quint-compile-drift.sh`, gated on the Quint toolchain being installable; failure opens an issue rather than blocking PRs (the committed TLA is the artifact of record).
-- No gate command changes in `formal/proof-manifest.toml` `gate_commands` until the narrowing PR, which adds the drift script if the Quint route survives the pilot.
+- No gate command changes in `formal/proof-manifest.toml` `gate_commands`
+  until the narrowing PR. That change must add
+  `scripts/check-distributed-revocation-refinement.sh` as a strict gate and
+  may add the drift script if the Quint route survives the pilot.
 
 ## Acceptance criteria
 
@@ -127,7 +145,11 @@ Recommendation: Quint pilot, with the compiled TLA committed and reviewed, mirro
 - [ ] `PartitionSuspendResume` holds: staleness obligations suspend during a cut and reconverge within `B_heal` after heal.
 - [ ] `RevocationEventuallyObservedDistributed` is checked in the nightly temporal lane; its flake rate is recorded for [FV-E5](FV-E5-lane-ratchets.md).
 - [ ] All negative-test variants produce counterexamples (falsifiability shown).
-- [ ] The narrowing PR performs the full retirement walk: new `ASSUME-GOSSIP-FAIRNESS-PARTITION-BOUND` registered; `ASSUME-NETWORK-TRANSPORT` in `retired_assumption_ids` with `discharged_by`; `discharged_assumptions` mirror row; CLAIM_REGISTRY and MAPPING updated from model-only to operational fairness for the distributed property.
+- [ ] `scripts/check-distributed-revocation-refinement.sh` drives production
+  gossip and revocation-view code through deterministic loss, duplicate,
+  reorder, partition-heal, and catch-up scenarios, and every emitted trace is a
+  valid `DistributedRevocation` behavior.
+- [ ] The narrowing PR performs the full retirement walk: the implementation-refinement gate is strict and green; new `ASSUME-GOSSIP-FAIRNESS-PARTITION-BOUND` registered; `ASSUME-NETWORK-TRANSPORT` in `retired_assumption_ids` with `discharged_by`; `discharged_assumptions` mirror row; CLAIM_REGISTRY and MAPPING updated from model-only to operational fairness for the distributed property.
 - [ ] Quint decision recorded: either the committed-compiled-TLA pipeline is in place with a pinned installer, or the fallback to hand-written TLA+ is documented in the spec header.
 
 ## Risks and mitigations
@@ -143,12 +165,12 @@ Recommendation: Quint pilot, with the compiled TLA committed and reviewed, mirro
 - Value of `B` (evaluations before observation) at PR bounds vs the operator-facing statement: is `B` a pure model constant, or should it be derived from `DEFAULT_EPOCH_TICK_MS` and the flush cadence so the prose claim has units?
 - Should catch-up be modeled as the one-shot max-merge above, or as an explicit request/response pair so `CatchupGap` handling is itself model-visible? (One-shot is proposed; the response validation is a local fail-closed check already covered by Rust tests at `revocation_gossip.rs` L966-997.)
 - Does the narrowed assumption's scope need to mention the pheromone gossip lane (`pheromone_gossip.rs`) explicitly out-of-scope, or is revocation-only scoping clear enough from the property names?
-- Whether `RevocationPropagation.tla` should eventually be folded into the distributed spec or kept as the minimal local-gate model (proposal: keep both; the small one is cheap and its invariant names are load-bearing for existing discharge rows).
+- Whether `RevocationPropagation.tla` should eventually be folded into the distributed spec or kept as the minimal local-gate model (proposal: keep both; the small one is cheap and its invariant names remain useful local evidence).
 
 ## Manifest and registry updates
 
 - `formal/assumptions.toml`: add `ASSUME-GOSSIP-FAIRNESS-PARTITION-BOUND` (required); move `ASSUME-NETWORK-TRANSPORT` to `retired_assumption_ids` plus a `retired_assumptions` row with `discharged_by` naming `BoundedStalenessInv`, distributed `NoAllowAfterRevoke`, `PartitionSuspendResume`, and the signer-pinning call sites.
-- `formal/proof-manifest.toml`: new `discharged_assumptions` row mirroring the above; delete/replace the L173-198 deferral comment; update `m04_p5_t5_assumptions_decision` and `m04_p5_t5_rationale_anchor`; add the drift script to `gate_commands` if the Quint route ships.
+- `formal/proof-manifest.toml`: new `discharged_assumptions` row mirroring the above; delete/replace the network-transport deferral comment; update `m04_p5_t5_assumptions_decision` and `m04_p5_t5_rationale_anchor`; add the implementation-refinement script to `gate_commands`, plus the drift script if the Quint route ships.
 - `formal/MAPPING.md`: rows for each new named invariant and the liveness property (source, Rust path constrained, assumption discharge, one-liner); replace the local model-only fairness boundary with the registered distributed assumption where applicable.
 - `formal/theorem-inventory.json`: no Lean changes required by this plan; add cross-reference notes only if a Lean-side freshness lemma is later tied in.
 - `docs/reference/CLAIM_REGISTRY.md`: adjust the ASSUME-NETWORK-TRANSPORT row and add the replacement assumption; both edits ride the same PR as the assumptions.toml change because CLAIM_REGISTRY is a claim-gate input (`proof-manifest.toml` L113-119).

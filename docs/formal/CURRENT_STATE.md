@@ -152,9 +152,9 @@ before crossing the boundary. `formal_core.rs` (214 lines) is the typed,
     `AttenuatedAtEachStep`, `RevokedSubtreeNotObservable`).
 - Bounded kernel-state subset in `formal/apalache/` (Authorities 1..3, CapSet
   1..6, EpochMax 4, length 6, 30-minute per-invariant CI timeout):
-  `MonotoneLogApalache`, `ReceiptBeforeAllow` (the formal discharge evidence
-  for the retired SQLite cross-row assumption; deliberately split into
-  persist and publish actions so the invariant is not tautological),
+  `MonotoneLogApalache`, `ReceiptBeforeAllow` (modeled ordering evidence,
+  deliberately split into persist and publish actions so the invariant is not
+  tautological; concrete cross-row crash recovery remains excluded),
   `RevocationCutCompleteness` (bounded transitive closure maintained
   incrementally as state, keeping SMT depth at 1),
   `KernelTransitionCancelSafe` (clean pre-dispatch snapshot equality; header
@@ -244,10 +244,10 @@ explicit there.
   harnesses, and Lean delegation theorems to Rust call sites.
   `scripts/check-mapping.sh` greps the TLA invariant names and every
   `#[kani::proof]` fn and fails CI unless each has a literal row.
-- `formal/assumptions.toml`: 10 required audited assumptions plus a worked
-  retirement example (`RETIRED-SQLITE-CROSS-ROW`, discharged by the
-  `ReceiptBeforeAllow` invariant, mirrored in the proof manifest with the
-  constrained Rust call sites named).
+- `formal/assumptions.toml`: 10 required audited assumptions. SQLite
+  atomicity is scoped to single-row commits; cross-row recovery remains outside
+  the formal claim boundary until implementation trace validation and
+  crash-reopen conservation establish refinement.
 - `docs/reference/CLAIM_REGISTRY.md`: evidence classes and approved claims
   (`FORM-BOUNDARY`, `FORM-IMPLEMENTATION-LINKED`, P1-P10 approved with
   scope), and explicitly disallowed claims (`FORM-OVERALL`,
@@ -281,7 +281,8 @@ explicit there.
    model-only harnesses that name the runtime tests covering their gap,
    in-file model-gap documentation, disallowed-claim lists.
 3. Negative-test discipline and the falsifiability mindset.
-4. The assumption lifecycle with a worked retirement example.
+4. An assumption lifecycle that requires concrete refinement evidence before
+   retirement.
 5. Registry-driven harness execution (adding a harness is data, not YAML).
 6. Executable drift gates with committed evidence of real catches.
 7. A single whitelisted axiom with a written mechanization path.

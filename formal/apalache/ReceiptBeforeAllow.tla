@@ -1,6 +1,7 @@
 ------------------------ MODULE ReceiptBeforeAllow ------------------------
 (***************************************************************************)
-(* Apalache invariant for the RETIRED-SQLITE-CROSS-ROW handoff.            *)
+(* Abstract persist-before-publish ordering evidence. Concrete cross-row    *)
+(* crash recovery remains outside the current formal claim boundary.       *)
 (* A capability may appear in an authority's allowed set only after an      *)
 (* allow receipt for that authority and capability exists in the log.       *)
 (* Receipt persistence and allow publication are modeled as separate        *)

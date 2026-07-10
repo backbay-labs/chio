@@ -574,7 +574,6 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `ASSUME-SQLITE-ATOMICITY`: required
 - `ASSUME-SUBPROCESS-ISOLATION`: required
 - `ASSUME-TLS`: required
-- `RETIRED-SQLITE-CROSS-ROW`: retired
 
 ## Excluded Surfaces
 
@@ -583,12 +582,13 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - cluster consensus, external settlement rails, and third-party registry availability beyond fail-closed Chio handling
 - Aeneas extraction from async, IO, SQLite, crypto, and string-heavy production modules outside crates/kernel/chio-kernel-core/src/formal_aeneas.rs
 - Symlink resolution and OS filesystem root enforcement beyond Chio's normalized path-prefix fail-closed checks
+- Cross-row receipt and budget crash recovery, ordering, and conservation until implementation trace validation and crash-reopen gates establish refinement
 
 ## Generation
 
 - Generator version: `2`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `92690d8341fda946b5f4b2aa1c49efcaba40dd7b07c76203a176dc0122c1a7ed`
+- Input digest: `c79d70f543894cd3475b20b1128055c54ffa222bd048191fa417b78d1dbb63c2`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -608,15 +608,15 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/kernel/chio-kernel-core/src/formal_aeneas.rs`: `a11513a0f0571d79bd0f88ca5c7acc6d02b022d2d8eecc1eac7e84eab09b6b30`
 - `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`: `e441359211c4edadc138c53242eec1a1ff53201fd91432a6f845fcf5ecd2a3d9`
 - `docs/fuzzing/trust-boundary-mutants-baseline.toml`: `7331fb69499474ca22b14b6fb5a6f9a966eae2e2a26d3433d9030a4c985efee9`
-- `formal/MAPPING.md`: `66054417dcc5d5bcae5554de655a6f2a169dbc4e7433a63e6f1ab881bd1210a7`
+- `formal/MAPPING.md`: `a51fcb55fdfa9729ae47050df130b0f81f4d1753a63903823ddb07b8207a5c13`
 - `formal/aeneas/pilot.toml`: `86627b363717b47ced94caeb826185d400cf70fe357a55fe34d02ea70670956c`
 - `formal/aeneas/production.toml`: `567b5b5ab3975c95886d323c09293a069c8dc0c31ac1071104c84ffd0960ecc5`
 - `formal/aeneas/verified_core.rs`: `44ef85fbe6c537e8c65a483a67c167f502ca1a108a25293414b27ab2a85046b8`
 - `formal/apalache/KernelTransitionCancelSafe.tla`: `7fbece3ae21108a2f80271d680a95ca7b6fc567443d6d02dccbce41446438e95`
 - `formal/apalache/MonotoneLogApalache.tla`: `b77d34434a091b8a991841500daf6a42ca3f1817f440c9e86f8769fadf074759`
-- `formal/apalache/ReceiptBeforeAllow.tla`: `2e7e51748f87b8035892401739e982d47e686657bb7a6d542eff4cfa72270980`
+- `formal/apalache/ReceiptBeforeAllow.tla`: `9987b30a111df2b5ceaa5ee8507583c947c84a756558210ac591ce311de2e008`
 - `formal/apalache/RevocationCutCompleteness.tla`: `03c33ce464053c97d62bee5f39e7f2347284d3140fe77aed400871ec5d74b434`
-- `formal/assumptions.toml`: `b50656c106e8ae5deab49a7a5d05f4dd7e771fc8ff15aa381a31d61752becd64`
+- `formal/assumptions.toml`: `dd6f35aa6a92a613dae72b282a5c420f8a7b8e5c2fcc9526302d812eef3498eb`
 - `formal/diff-tests/tests/anchored_root.rs`: `2a124cb1b9ff64a6be9fdb6ea2cd9b7a65b14c92af48c2a814f7909120979031`
 - `formal/diff-tests/tests/anchored_root_tamper.rs`: `f6a64fefd0c2447e6937300fd35ffe1d35b7fc3ccbe22e8f981b6f5a9a095341`
 - `formal/diff-tests/tests/browser_canonical_json_diff.rs`: `f7dc5b5cd3e0f74bd1e3e449c0e7c447e3c9b0bdcf0ea5f747c0e2eb332569b0`
@@ -625,7 +625,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/diff-tests/tests/regression_formal_receipt_before_allow_c01406cfbbeb.rs`: `50ee14b6a785532e22e6cd9c4f8b41078556a4c75e18e7dfeea46597a1399deb`
 - `formal/diff-tests/tests/scope_diff.rs`: `c21aaa2cb891fd1fc19482ec6f8dc9c81930b5890af74f86c6fb5dd3104489ab`
 - `formal/lean4/Chio/Chio/Capability/Delegation.lean`: `a6a44ca25cb3fec5385b6a2d6703d933236453d8d5b9b336061a42f675d2cfa6`
-- `formal/proof-manifest.toml`: `4ee22be636f6b011d349068ede685fe5036511ad2715bed524964f7888e964b8`
+- `formal/proof-manifest.toml`: `96f64c39b52b407aac6520e2145e64c001183e35f73663f7d4dc4cad798d5a84`
 - `formal/rust-verification/creusot-contracts.toml`: `3126548124cfa8b2a3b7e9edc12a2ff4311329f5e03709749f619f667d0eca15`
 - `formal/rust-verification/kani-harnesses.toml`: `41320fe88275d5e6d6d8f2330c8cb2ec428b7f9fd4cf755a232366ea7a2be521`
 - `formal/rust-verification/kani-public-harnesses.toml`: `bd04d18e1abee3f580117d52ee403e51e86aca3ec2bad063739ac97b8b4a636b`

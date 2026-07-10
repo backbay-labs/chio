@@ -23,7 +23,7 @@ solver, and 30 minute per-invariant timeout in CI.
 | --- | --- | --- | --- |
 | `MonotoneLogApalache` | `MonotoneLogApalache.tla` | `MCMonotoneLogApalache.cfg` | Port of `formal/tla/RevocationPropagation.tla` `MonotoneLog` with explicit Apalache type annotations. |
 | `RevocationCutCompleteness` | `RevocationCutCompleteness.tla` | `MCRevocationCutCompleteness.cfg` | Lifts Lean `revocation_is_cut` into a bounded state-machine invariant over transitive delegation cuts. |
-| `ReceiptBeforeAllow` | `ReceiptBeforeAllow.tla` | `MCReceiptBeforeAllow.cfg` | A capability may appear in an authority's allowed set only after an allow receipt for that authority and capability exists in the log. Receipt persistence and allow publication are separate actions, and the invariant is the named evidence for `RETIRED-SQLITE-CROSS-ROW`. |
+| `ReceiptBeforeAllow` | `ReceiptBeforeAllow.tla` | `MCReceiptBeforeAllow.cfg` | A capability may appear in an authority's allowed set only after an allow receipt for that authority and capability exists in the log. Receipt persistence and allow publication are separate actions. This is modeled ordering evidence, not a discharge of concrete cross-row crash recovery. |
 | `KernelTransitionCancelSafe` | `KernelTransitionCancelSafe.tla` | `MCKernelTransitionCancelSafe.cfg` | Models an interrupted kernel transition and proves rollback leaves budget and receipt state unchanged. |
 
 ## Local smoke commands
