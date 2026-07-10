@@ -272,7 +272,7 @@ fn validate_posture(
                 if let Some(after) = &transition.after {
                     if !is_valid_duration(after) {
                         errors.push(ValidationError::Custom(format!(
-                            "posture.transitions[{index}].after must match ^\\d+[smhd]$"
+                            "posture.transitions[{index}].after must be a positive duration matching ^[1-9]\\d*[smhd]$"
                         )));
                     }
                 }
@@ -282,7 +282,7 @@ fn validate_posture(
                 match transition.after.as_deref() {
                     Some(after) if is_valid_duration(after) => {}
                     Some(_) => errors.push(ValidationError::Custom(format!(
-                        "posture.transitions[{index}].after must match ^\\d+[smhd]$"
+                        "posture.transitions[{index}].after must be a positive duration matching ^[1-9]\\d*[smhd]$"
                     ))),
                     None => errors.push(ValidationError::Custom(format!(
                         "posture.transitions[{index}]: timeout trigger requires 'after' field"
@@ -598,12 +598,13 @@ fn validate_regex_count(count: usize, path: &str, errors: &mut Vec<ValidationErr
 }
 
 fn is_valid_duration(value: &str) -> bool {
-    matches!(
-        value.as_bytes(),
-        [b'0'..=b'9', .., b's' | b'm' | b'h' | b'd']
-    ) && value[..value.len() - 1]
-        .bytes()
-        .all(|byte| byte.is_ascii_digit())
+    if !matches!(value.as_bytes().last(), Some(b's' | b'm' | b'h' | b'd')) {
+        return false;
+    }
+    let number = &value[..value.len() - 1];
+    !number.is_empty()
+        && number.bytes().all(|byte| byte.is_ascii_digit())
+        && number.bytes().any(|byte| byte != b'0')
 }
 
 #[cfg(test)]
@@ -778,7 +779,7 @@ extensions:
         );
         assert_error_contains(
             &result,
-            "posture.transitions[0].after must match ^\\d+[smhd]$",
+            "posture.transitions[0].after must be a positive duration matching ^[1-9]\\d*[smhd]$",
         );
         assert_error_contains(&result, "posture.transitions[1].to cannot be '*'");
         assert_error_contains(
@@ -791,7 +792,7 @@ extensions:
         );
         assert_error_contains(
             &result,
-            "posture.transitions[4].after must match ^\\d+[smhd]$",
+            "posture.transitions[4].after must be a positive duration matching ^[1-9]\\d*[smhd]$",
         );
         assert_warning_contains(
             &result,
@@ -834,6 +835,37 @@ extensions:
             result.errors.is_empty(),
             "zero budgets and valid duration suffixes should pass validation: {:?}",
             result.errors
+        );
+    }
+
+    #[test]
+    fn posture_validation_rejects_zero_duration_windows() {
+        let spec: HushSpec = serde_yml::from_str(
+            r#"
+hushspec: "0.1.0"
+name: posture-zero-duration
+extensions:
+  posture:
+    initial: draft
+    states:
+      draft:
+        capabilities: ["tool_call"]
+      review:
+        capabilities: ["tool_call"]
+    transitions:
+      - from: draft
+        to: review
+        on: timeout
+        after: 0s
+"#,
+        )
+        .unwrap_or_else(|error| unreachable!("test policy should parse: {error}"));
+
+        let result = validate(&spec);
+
+        assert_error_contains(
+            &result,
+            "posture.transitions[0].after must be a positive duration matching ^[1-9]\\d*[smhd]$",
         );
     }
 

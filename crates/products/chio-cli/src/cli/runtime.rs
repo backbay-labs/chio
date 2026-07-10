@@ -1117,7 +1117,12 @@ pub(crate) fn cmd_trust_status(
                 capability_id: Some(capability_id.to_string()),
                 limit: Some(1),
             })?;
-        (response.revoked.unwrap_or(false), url.to_string())
+        let revoked = response.revoked.ok_or_else(|| {
+            CliError::cli_other_error(format!(
+                "trust-control revocation response omitted revoked status for {capability_id}"
+            ))
+        })?;
+        (revoked, url.to_string())
     } else {
         let path = require_revocation_db_path(revocation_db_path)?;
         let store = chio_store_sqlite::SqliteRevocationStore::open(path)?;
