@@ -157,8 +157,10 @@ before crossing the boundary. `formal_core.rs` (214 lines) is the typed,
   persist and publish actions so the invariant is not tautological),
   `RevocationCutCompleteness` (bounded transitive closure maintained
   incrementally as state, keeping SMT depth at 1),
-  `KernelTransitionCancelSafe` (snapshot rollback; header candidly admits the
-  invariant holds by construction and defers commit-vs-cancel races).
+  `KernelTransitionCancelSafe` (clean pre-dispatch snapshot equality; header
+  candidly states that the invariant holds by construction, does not model the
+  Rust reversal transition, and excludes post-dispatch, fault, and
+  commit-vs-cancel paths).
 - Negative-test discipline: `formal/apalache/_negative_tests/` holds
   deliberately-broken spec variants that must produce counterexamples, run
   locally only, with a written rationale for staying out of CI (a green CI
@@ -219,12 +221,16 @@ nightly).
 ## Governance layer
 
 - `formal/proof-manifest.toml` (schema `chio.proof-manifest.v1`) is the hub:
-  `root_modules` (21 Lean files), `gate_commands` (10 scripts), 7
-  `covered_rust_modules`, 22 `covered_rust_symbols`, 2 `shell_entrypoints`,
+  `root_modules` (21 Lean files), `gate_commands` (11 commands), 7
+  `covered_rust_modules`, 21 `covered_rust_symbols`, 2 `shell_entrypoints`,
   the P1-P10 `property_matrix` with per-property evidence-lane tags,
   `rust_refinement_lanes`, `allowed_axioms` (exactly one),
-  `excluded_surfaces`, and `discharged_assumptions`. Sync is by symbol name
-  plus gate scripts; there are no content hashes.
+  `excluded_surfaces`, and `discharged_assumptions`. Thirty-four `[[mirror]]`
+  entries bind 80 parser-resolved Rust symbol references to five Lean models
+  and five TLA+ models with ordered rollup and per-symbol hashes. Lean entries
+  are transliterations; TLA+ entries are explicitly labeled abstraction
+  anchors. `cargo xtask check formal-mirrors` enforces those hashes in required
+  PR CI.
 - `formal/theorem-inventory.json` (83 theorem entries plus a separate
   assumptions block): per-theorem id, Lean name,
   file, kind, `rootImported` flag, claim class, `mapsTo` property ids.
@@ -257,7 +263,7 @@ nightly).
 
 | Cadence | Formal content |
 | --- | --- |
-| Every PR (required) | diff-tests via workspace tests; `cargo xtask check crate-paths` (manifest path integrity); proptest invariant-naming gate; regression-test deletion gate; threat-model coverage gate; registry status ban (`implementation_backed`) |
+| Every PR (required) | diff-tests via workspace tests; `cargo xtask check crate-paths` (manifest path integrity); `cargo xtask check formal-mirrors` (Rust-to-model review tripwire); proptest invariant-naming gate; regression-test deletion gate; threat-model coverage gate; registry status ban (`implementation_backed`) |
 | PR, path-scoped | Apalache safety (6 spec/cfg pairs); Lean build plus sorry and manifest checks; 20 core and 12 non-core Kani PR harnesses; Rust verification metadata with no Creusot proofs; ClusterFuzzLite change-scoped fuzzing; cargo-mutants for touched trust-boundary crates |
 | Nightly | Kani (all lanes), Lean/Aeneas/Creusot proof report (`formal-qualification`), Apalache temporal (liveness; known-unreliable), proptest 4096-case tier, mutants full sweeps (advisory), mutants-fuzz co-coverage, dudect, fuzz rotation and native sweep |
 | Push to main / release | `release-qualification.yml` runs the full gate battery: `check-formal-proofs.sh`, both Aeneas checks, equivalence, Creusot and Kani strict lanes, adapter no-bypass, portable kernel, proof report |

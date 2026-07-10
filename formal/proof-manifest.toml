@@ -41,6 +41,7 @@ gate_commands = [
   "./scripts/check-aeneas-equivalence.sh",
   "./scripts/check-rust-verification-gates.sh",
   "./scripts/check-kani-public-core.sh",
+  "cargo xtask check formal-mirrors",
   "./scripts/check-adapter-no-bypass.sh",
   "cargo test -p chio-formal-diff-tests",
   "./scripts/check-portable-kernel.sh",
@@ -157,7 +158,8 @@ notes = [
   "Creusot and Kani are required strict-CI lanes for production implementation linkage; public Kani harnesses target verify_capability, NormalizedScope::is_subset_of, resolve_matching_grants, evaluate, and sign_receipt.",
   "Aeneas production extraction covers the pure numeric/boolean core and is paired with tracked Lean equivalence theorems.",
   "Release-facing formal claims must name this manifest, the theorem inventory, and the audited assumptions.",
-  "RETIRED-SQLITE-CROSS-ROW is a discharged assumption: prior cross-row SQLite atomicity is now reduced to per single-row write atomicity (ASSUME-SQLITE-ATOMICITY) plus the MonotoneLog TLA invariant on the audit log and the per-row budget invariant in crates/kernel/chio-kernel/src/budget_store.rs. See discharged_assumptions below.",
+  "RETIRED-SQLITE-CROSS-ROW is discharged by the ReceiptBeforeAllow Apalache invariant at the abstract persist-before-publish boundary, while concrete single-row durability remains covered by ASSUME-SQLITE-ATOMICITY. The TLA abstraction-anchor hashes require review but do not prove Rust refinement. See discharged_assumptions below.",
+  "Manual Rust-to-model hashes are enforced by cargo xtask check formal-mirrors; transliteration and abstraction-anchor records require review, but matching hashes do not prove semantic equivalence or modeled properties.",
 ]
 
 # Discharged assumptions: prior audited assumptions that are no longer
@@ -168,7 +170,7 @@ notes = [
 # invariants), and (c) the Rust call sites the discharge constrains.
 # Format: id|discharging_artifacts|rust_call_sites|prose
 discharged_assumptions = [
-  "RETIRED-SQLITE-CROSS-ROW|MonotoneLog (formal/tla/RevocationPropagation.tla),budget_per_row_invariant (crates/kernel/chio-kernel/src/budget_store.rs::BudgetUsageRecord)|crates/kernel/chio-kernel/src/receipt_store.rs,crates/kernel/chio-kernel/src/budget_store.rs,crates/kernel/chio-kernel-core/src/evaluate.rs::evaluate|Cross-row SQLite atomicity for the audit-log append plus budget-state update is no longer assumed. The MonotoneLog TLA invariant proves the per-authority receipt log is append-only and strictly time-monotone, and the per single-row write budget invariant proves BudgetUsageRecord updates are individually atomic and monotone in seq/total_cost. Their conjunction means a partial-pair crash is observable: the next evaluate either sees no receipt (deny) or sees an inconsistent budget row that the per-row invariant rejects (deny). Therefore no allow can outrun its log entry without violating one of two named properties, and the prior cross-row assumption is retired.",
+  "RETIRED-SQLITE-CROSS-ROW|ReceiptBeforeAllow (formal/apalache/ReceiptBeforeAllow.tla)|crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs::ChioKernel::build_allow_response_with_metadata,crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs::ChioKernel::build_execution_nonce_preflight_allow_response_with_metadata,crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs::ChioKernel::record_chio_receipt_with_federation,crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs::ChioKernel::record_chio_receipt,crates/kernel/chio-kernel/src/budget_store.rs|Cross-row SQLite atomicity for the receipt-log append plus budget-state update is no longer assumed. ReceiptBeforeAllow checks the abstract ordering in which an allow is published only after its receipt exists, and the mapped response builders call receipt persistence before returning. Concrete receipt and budget writes still rely on ASSUME-SQLITE-ATOMICITY per single-row write. The abstraction-anchor hashes require review of this mapping but do not prove Rust refinement.",
 ]
 
 # ASSUME-NETWORK-TRANSPORT remains an audited assumption in
@@ -176,7 +178,7 @@ discharged_assumptions = [
 # discharged one.
 #
 # The `RevocationFreshness` invariant in
-# `formal/tla/RevocationPropagation.tla` (~L321) constrains every
+# `formal/tla/RevocationPropagation.tla` (~L344) constrains every
 # recorded local revocation epoch to be strictly less than the global
 # clock value, which discharges only the LOCAL freshness gate
 # (single-authority observed-epoch monotonicity vs the model clock).
@@ -197,3 +199,475 @@ discharged_assumptions = [
 # ships.
 m04_p5_t5_assumptions_decision = "ASSUME-NETWORK-TRANSPORT-unchanged"
 m04_p5_t5_rationale_anchor = "formal/tla/RevocationPropagation.tla::RevocationFreshness"
+
+# Ordered symbol-level hashes for manual Rust-to-model review seams.
+# The rollup uses length-prefixed normalized token streams in rust_symbols order.
+# Per-symbol digests make drift reports precise without consulting Git history.
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Capability.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/core/chio-core-types/src/capability/scope.rs"
+rust_symbols = ["Operation", "Constraint", "ToolGrant", "ChioScope"]
+normalized_sha256 = "efe3c0889bb92b4b1df764ec428ecd377f95f29618109dc3c73f751c1e988d36"
+symbol_sha256 = [
+  { symbol = "Operation", sha256 = "fe28608332bd4700fd795bbac8be595534762cfccd30ba2b8987949326a883dd" },
+  { symbol = "Constraint", sha256 = "75dffd1a8dc30d668956174825e337aec8c249969426d90e38c42ec10849cdc3" },
+  { symbol = "ToolGrant", sha256 = "7ad8417ae9d9ce34196fd253d6d239fb2da629998b51a8d71d7e742d19e4d796" },
+  { symbol = "ChioScope", sha256 = "9f2349b675c3f8655c5880e0c954ed89dc1b84b214612084b841d82bad96f3f1" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Capability.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/core/chio-core-types/src/capability/attenuation.rs"
+rust_symbols = ["Attenuation", "DelegationLink"]
+normalized_sha256 = "c81e026be59f9fbfb9752c566fde9c96fa22adface80fd7277d3f1050fc986bc"
+symbol_sha256 = [
+  { symbol = "Attenuation", sha256 = "0d56e3bed35006a6b3c5c2a1db1c4674309ed52680fe5caba5798eaeed9d1cfc" },
+  { symbol = "DelegationLink", sha256 = "59593c779e6223bc1675e254f8244bb100e68c3d0550f28f72a81497d3d32110" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Capability.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/core/chio-core-types/src/capability/token.rs"
+rust_symbols = ["CapabilityToken", "CapabilityToken::is_valid_at", "CapabilityToken::is_expired_at"]
+normalized_sha256 = "20a8b198b713519f18f9b8b306f601110651714d72f5b7a8908e5e283aee2f55"
+symbol_sha256 = [
+  { symbol = "CapabilityToken", sha256 = "781248401ae3be3f953f4969a39cb22eb5590884fdef2ba059fbff44fe11db1f" },
+  { symbol = "CapabilityToken::is_valid_at", sha256 = "5f6a6b5921beae84abffed358141eb64d6fd75b961b3c788fdbe8158b970bf18" },
+  { symbol = "CapabilityToken::is_expired_at", sha256 = "8155d06ac8056d5d12c2f72e943ec74189da973e69d8d772f9b3dc10eaa92311" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Scope.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/core/chio-core-types/src/capability/scope.rs"
+rust_symbols = ["ToolGrant::is_subset_of", "ChioScope::is_subset_of"]
+normalized_sha256 = "bb7cd8665718a8ca9735aaabb1a53d799971da312299baa0a2ee45a85d4e321e"
+symbol_sha256 = [
+  { symbol = "ToolGrant::is_subset_of", sha256 = "94162b64b51cd08123d388353e4f830c3e567a3e0747fca9fb354334681a7790" },
+  { symbol = "ChioScope::is_subset_of", sha256 = "71c690e3896f57ea492713c5714958b75367f9072e4fdd6d4d87430ba507da2f" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Scope.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/kernel/chio-kernel-core/src/normalized.rs"
+rust_symbols = ["NormalizedToolGrant::is_subset_of", "NormalizedScope::is_subset_of"]
+normalized_sha256 = "9b14cc6134bc6beedc31ea4447dadd945b357c504062e1957ff684e699d59704"
+symbol_sha256 = [
+  { symbol = "NormalizedToolGrant::is_subset_of", sha256 = "b0ab932d13fbb92d2fc890dbceb6006bbc2cc94af68ab26c49fb517d7a38505f" },
+  { symbol = "NormalizedScope::is_subset_of", sha256 = "82a83048a736aaf2092a14b969d81b1c00efd05cc8fbdb59040a570394454345" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Revocation.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/kernel/chio-kernel/src/kernel/validation.rs"
+rust_symbols = ["ChioKernel::check_revocation"]
+normalized_sha256 = "529d5019fc7042c5cdaed5464db980c471bb4e92b831ce562deddf5d552dce7f"
+symbol_sha256 = [
+  { symbol = "ChioKernel::check_revocation", sha256 = "bc9a6778cb8139e7d2eadf47eac6b018426d27c8735931e0121b8bb316f4631f" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Revocation.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/core/chio-core-types/src/capability/attenuation.rs"
+rust_symbols = ["validate_delegation_chain"]
+normalized_sha256 = "8dd8cdd9896021ba46b285954e7c0aac21af2caa5b4875b23adff4bae5351d34"
+symbol_sha256 = [
+  { symbol = "validate_delegation_chain", sha256 = "1fb93ba15c8ab6c12f446c424dbdaf68dcdd84c30706e938073eb825b8b4fb54" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Revocation.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/kernel/chio-kernel-core/src/evaluate.rs"
+rust_symbols = ["evaluate"]
+normalized_sha256 = "91ed2a71889559334eb12ddddf7fbee2c4e14d5404298141ec701f068ae5baf9"
+symbol_sha256 = [
+  { symbol = "evaluate", sha256 = "74820b24db6afaf05cc83bc75b17948f70418e39bef82875f964dbdc4973532a" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Protocol.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/kernel/chio-kernel-core/src/formal_core.rs"
+rust_symbols = [
+  "BudgetCommitResult",
+  "budget_precheck",
+  "budget_commit",
+  "dpop_admits",
+  "nonce_admits",
+  "GuardStep",
+  "guard_pipeline_allows",
+  "revocation_snapshot_denies",
+  "receipt_fields_coupled",
+]
+normalized_sha256 = "2b04c97c2fcf2dfd6dbfa08157bccf4b561bd377896156d76714366b50ef225c"
+symbol_sha256 = [
+  { symbol = "BudgetCommitResult", sha256 = "c12d22113b9327f2060aa7ea50238d81e7f64be174d3e4c04be575c809411778" },
+  { symbol = "budget_precheck", sha256 = "ddb470a9a3a5c8a36d5d3bfa6257714f1eff2dfad96da4074d8d57e5b6c9b406" },
+  { symbol = "budget_commit", sha256 = "853b45670c944e7ce4eee545834dbd1df68fcdcf897c12f119ea51db92a589b0" },
+  { symbol = "dpop_admits", sha256 = "c46c3728ffba51dee41fd348d91dbbcf5631cf3dbad214588fea4342131a2731" },
+  { symbol = "nonce_admits", sha256 = "1b35b5f4a693c95b3d472fda5c332e6aec7f93f4c0a83532a2d330e585437daf" },
+  { symbol = "GuardStep", sha256 = "4dbb0a6a229543748ee96cf61de139ba2ae7fa39e739d7f4cd3a071cf370a5ae" },
+  { symbol = "guard_pipeline_allows", sha256 = "d6ff51dc429e7640ef1cf4104f4c7d6f47ef24072f01f4d9bd8bbeedff5a0719" },
+  { symbol = "revocation_snapshot_denies", sha256 = "8b1dd6dea9870d52eee5232bfb59ed1dc53a19f824e6950097d6af921ecd1f97" },
+  { symbol = "receipt_fields_coupled", sha256 = "367bc9d87aa1003a68cdb309f6b4061e93e86a5ce36d581934e2da08742456c7" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Receipt.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/kernel/chio-kernel-core/src/receipts.rs"
+rust_symbols = ["sign_receipt"]
+normalized_sha256 = "f56a72cbbb928fab41c05b82daa67ce383f08f6dcf3d72df7a8f667bec4e8ceb"
+symbol_sha256 = [
+  { symbol = "sign_receipt", sha256 = "7afeb2a97a209e68505c1ba6774014ffcbf6ccaf8df1cdc80c0c8b97947c7e46" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Receipt.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/core/chio-core-types/src/receipt/body.rs"
+rust_symbols = ["ChioReceiptBody", "ChioReceipt", "ChioReceipt::verify_signature"]
+normalized_sha256 = "85d4012dda69d54abf2d81de780de87ad7fad09f1fb24976d6f543af000c6711"
+symbol_sha256 = [
+  { symbol = "ChioReceiptBody", sha256 = "90fe86e569459e661660ad2eea836ef946dfb74b09fe55d3cfe4d5c891caaf3c" },
+  { symbol = "ChioReceipt", sha256 = "b8b0e499c681ef9280a93db4e8b5d3b746401bfa10ccff6db0dddea53977dd59" },
+  { symbol = "ChioReceipt::verify_signature", sha256 = "d349bb636064ad739af50b0fe2ab037f454e013f504eef207d127a59294a772c" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Receipt.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/core/chio-core-types/src/merkle.rs"
+rust_symbols = [
+  "leaf_hash",
+  "node_hash",
+  "MerkleTree",
+  "MerkleTree::from_leaves",
+  "MerkleTree::root",
+  "MerkleTree::inclusion_proof",
+  "MerkleProof",
+  "MerkleProof::compute_root",
+  "MerkleProof::verify",
+]
+normalized_sha256 = "fc84abe7a587fb1461a08343e2b96da107429a7710ce270cb7879132ed6203ed"
+symbol_sha256 = [
+  { symbol = "leaf_hash", sha256 = "b4db61a20d6638c532d285fb7fe05a601b8a3f2faee5226533463f8ae9374a3d" },
+  { symbol = "node_hash", sha256 = "0aa11b565a8edc8fabaf5a8b7cf29cf3403de1525cb41471e235f4a3a0290b22" },
+  { symbol = "MerkleTree", sha256 = "5c33a91e34394dea1498d2325ab81d2eb0cab31f9105d13038c35b76d2e4a67f" },
+  { symbol = "MerkleTree::from_leaves", sha256 = "fdb3f21e5120fe91e5b6fe925b4896eab7b77e82eafa4f8a0744fdbeb3d699f2" },
+  { symbol = "MerkleTree::root", sha256 = "1a3ee23e8a58937e0afb3fb119df09c159104892e31d113b0e51175ae70139eb" },
+  { symbol = "MerkleTree::inclusion_proof", sha256 = "8aad4f8ca03ef5bede44d85bbcac3b116fe3d37b97abb3684239a0714a19fb5a" },
+  { symbol = "MerkleProof", sha256 = "73a372d92e97db2d3428dfbc7d44d33eae42ac1fb09ca1ac160dec8fb050f40e" },
+  { symbol = "MerkleProof::compute_root", sha256 = "2b90481b412b567a651cb3357aa70f5e11debd9da4a995b48632b57f2a791974" },
+  { symbol = "MerkleProof::verify", sha256 = "6654cd86c9a696878feac7ab0bc67c92eecc22297b725084fe3528f67e6e0358" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/Receipt.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/kernel/chio-kernel/src/checkpoint.rs"
+rust_symbols = [
+  "KernelCheckpointBody",
+  "KernelCheckpoint",
+  "ReceiptInclusionProof",
+  "ReceiptInclusionProof::verify",
+  "build_checkpoint",
+  "build_inclusion_proof",
+  "verify_checkpoint_signature",
+]
+normalized_sha256 = "7234504844c721d78edbcf6086f1b528089601d1ca2678fc3308e993495215b3"
+symbol_sha256 = [
+  { symbol = "KernelCheckpointBody", sha256 = "3e27f4d35baeb86e7b41f812c2dec03ecdbc3cc78e7170e5d5bfcccc971a6ed3" },
+  { symbol = "KernelCheckpoint", sha256 = "bbce7f6b51b09d48efedae5abef0fda71ddd7986f8d7964302df97e77651bdad" },
+  { symbol = "ReceiptInclusionProof", sha256 = "6fb42fed267ef9b1f4b27c67ca0ce9b5436b22bd78c4eb525f154996e2c617b4" },
+  { symbol = "ReceiptInclusionProof::verify", sha256 = "82a61603419f717cd1e34efb414d563d43262642d96c6c8b40b6ddc87ae3b8e7" },
+  { symbol = "build_checkpoint", sha256 = "3c59d00982618b4c839f59d05e35c1e7c4844ecc0be4601f51edb9cf84af380c" },
+  { symbol = "build_inclusion_proof", sha256 = "39fb10be9c0cf8f290ac73e3fd18cf4cc4952c96a20aeb761ce6a34a622ca194" },
+  { symbol = "verify_checkpoint_signature", sha256 = "f332b4e55397bbefdb2db3758735207583d9df7e55a5f8a406f68b37fab65c28" },
+]
+
+# TLA records are abstraction anchors. Their hashes force model review when the
+# named implementation changes, but a matching hash does not establish a TLA
+# invariant in Rust.
+[[mirror]]
+model_file = "formal/tla/RevocationPropagation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel/src/kernel/validation.rs"
+rust_symbols = ["ChioKernel::check_revocation", "ChioKernel::validate_delegation_admission"]
+normalized_sha256 = "8d52117f92dfd0efbfc6785cbe0feb79c239a79247cc0471f210124d91cf0b58"
+symbol_sha256 = [
+  { symbol = "ChioKernel::check_revocation", sha256 = "bc9a6778cb8139e7d2eadf47eac6b018426d27c8735931e0121b8bb316f4631f" },
+  { symbol = "ChioKernel::validate_delegation_admission", sha256 = "22abdcd2d8f4d26aa28c1095ca59881a3e3eeed01745683c7bad2ea853d86b8c" },
+]
+
+[[mirror]]
+model_file = "formal/tla/RevocationPropagation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/core/chio-core-types/src/capability/attenuation.rs"
+rust_symbols = ["validate_delegation_chain"]
+normalized_sha256 = "8dd8cdd9896021ba46b285954e7c0aac21af2caa5b4875b23adff4bae5351d34"
+symbol_sha256 = [
+  { symbol = "validate_delegation_chain", sha256 = "1fb93ba15c8ab6c12f446c424dbdaf68dcdd84c30706e938073eb825b8b4fb54" },
+]
+
+[[mirror]]
+model_file = "formal/tla/RevocationPropagation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs"
+rust_symbols = ["ChioKernel::evaluate_tool_call_async_with_session_context"]
+normalized_sha256 = "131a2397f982d123f4ce12868c2e87a472ea9110f765d8e1c55dd588722d78ad"
+symbol_sha256 = [
+  { symbol = "ChioKernel::evaluate_tool_call_async_with_session_context", sha256 = "fbe8d2d4bf4d24cec5da02ddc17b6285d836f0bcb009bdf1592d75777eb75a7c" },
+]
+
+[[mirror]]
+model_file = "formal/tla/RevocationPropagation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs"
+rust_symbols = ["ChioKernel::record_chio_receipt"]
+normalized_sha256 = "9dde8d140297d704e6a91903804f0c38f97653e6ffc4ce57101df8511c5fde3a"
+symbol_sha256 = [
+  { symbol = "ChioKernel::record_chio_receipt", sha256 = "e2361cc1927a58a3c3d09dafa0445d1b177850e9001507b5c29794e2f4588cdc" },
+]
+
+[[mirror]]
+model_file = "formal/tla/RevocationPropagation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel-core/src/revocation_view.rs"
+rust_symbols = [
+  "RevocationSnapshot",
+  "RevocationSnapshot::is_revoked",
+  "RevocationView::install_if_newer",
+  "RevocationView::is_revoked",
+]
+normalized_sha256 = "e67cb0fc42d2b669b102abf0be1ce082cb9ef73bde1838c5dd784141124e36a0"
+symbol_sha256 = [
+  { symbol = "RevocationSnapshot", sha256 = "7771d67422fe44ea94a14ae374ad8e01113040198af1bfb1d7c4a71fcac1c369" },
+  { symbol = "RevocationSnapshot::is_revoked", sha256 = "1465bbb698a40dbcc07cfc925577136e9d4d05e80eb5ed7780172795263ef0e6" },
+  { symbol = "RevocationView::install_if_newer", sha256 = "1a8f67659eae15575b13aadb5ac2999e64d35126b815b78d6deeff0e02c2dd3c" },
+  { symbol = "RevocationView::is_revoked", sha256 = "318a3cd03d7fd93e59e7a71bdd892184af8f6e164248d82c61072dbbd18b2bf0" },
+]
+
+[[mirror]]
+model_file = "formal/tla/RevocationPropagation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/trust/chio-revocation-oracle/src/freshness.rs"
+rust_symbols = ["FreshnessConfig", "verify_fresh_epoch_root"]
+normalized_sha256 = "0a792bb53472f53bbfc119d219a33a39d92c3775f9ce78cbb3c05debfbcd383b"
+symbol_sha256 = [
+  { symbol = "FreshnessConfig", sha256 = "af932ee351b7daf7c507c7e0ba89f072730bb85500d0d4bcb6d92f477fe67a41" },
+  { symbol = "verify_fresh_epoch_root", sha256 = "34f799d6f916983f21b68df853d2966cf83dc400f0db7381a85e883e4b236370" },
+]
+
+[[mirror]]
+model_file = "formal/tla/RevocationPropagation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/trust/chio-federation/src/revocation_gossip.rs"
+rust_symbols = [
+  "RevocationGossipPushQueue::enqueue_signed_root",
+  "RevocationGossipPushQueue::flush_batches_at",
+  "RevocationCatchupResponse::validate_response",
+  "respond_to_catchup",
+]
+normalized_sha256 = "6a9bab60131a9cdff8f03742f2627b8e834934dcccf3d71ec04a3c17de390406"
+symbol_sha256 = [
+  { symbol = "RevocationGossipPushQueue::enqueue_signed_root", sha256 = "3b5d354a7c60d6b2eee3576c2d882ab455ae1177f1b4a0f4052c62334cfa887f" },
+  { symbol = "RevocationGossipPushQueue::flush_batches_at", sha256 = "8dfa54df18b483260753b717e0912dff99ddeba6c366108e9718c254542d850a" },
+  { symbol = "RevocationCatchupResponse::validate_response", sha256 = "b85b682bf06ef19d489f1d310dcc80381d6c3b66e95d6eb7add17b2fb1fd3864" },
+  { symbol = "respond_to_catchup", sha256 = "e26f9dfd98162c4112e33cd23f491db51fb503e14393114244b81c2af4aa1137" },
+]
+
+[[mirror]]
+model_file = "formal/tla/RevocationPropagation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/core/chio-core-types/src/capability/scope.rs"
+rust_symbols = ["ChioScope::is_subset_of"]
+normalized_sha256 = "1aa26746a7a28b7c5c9ce7a1e17e9ae0ec74ab50aa07e0ec5446b8283fac2d34"
+symbol_sha256 = [
+  { symbol = "ChioScope::is_subset_of", sha256 = "71c690e3896f57ea492713c5714958b75367f9072e4fdd6d4d87430ba507da2f" },
+]
+
+[[mirror]]
+model_file = "formal/tla/RevocationPropagation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel-core/src/normalized.rs"
+rust_symbols = ["NormalizedScope::is_subset_of"]
+normalized_sha256 = "551e3b11dfb8ea26b9af315a67d985ad5a0464415f3ab3eeff0233dc1b3aaca4"
+symbol_sha256 = [
+  { symbol = "NormalizedScope::is_subset_of", sha256 = "82a83048a736aaf2092a14b969d81b1c00efd05cc8fbdb59040a570394454345" },
+]
+
+[[mirror]]
+model_file = "formal/tla/RevocationPropagation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs"
+rust_symbols = ["SqliteReceiptStore::append_chio_receipt_returning_seq"]
+normalized_sha256 = "3120dc04cc4e37bbb2d86c8ae9616e11743bf49a9013c5237d05af0968886d63"
+symbol_sha256 = [
+  { symbol = "SqliteReceiptStore::append_chio_receipt_returning_seq", sha256 = "4be5d5a658248996d03ecd366254b6eb771f27b5b8da1da9bd33818ef649d403" },
+]
+
+[[mirror]]
+model_file = "formal/tla/RevocationPropagation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/platform/chio-store-sqlite/src/receipt_store.rs"
+rust_symbols = ["append_chio_receipt_tx"]
+normalized_sha256 = "e3d48d5999a378967daceee350507986d252a64ea710e0a8280908f14510d088"
+symbol_sha256 = [
+  { symbol = "append_chio_receipt_tx", sha256 = "ff4de2b8c3433b24f17cae297ea5b5c42b38087be8e222675bc0853cda23b16c" },
+]
+
+[[mirror]]
+model_file = "formal/apalache/MonotoneLogApalache.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs"
+rust_symbols = ["ChioKernel::record_chio_receipt"]
+normalized_sha256 = "9dde8d140297d704e6a91903804f0c38f97653e6ffc4ce57101df8511c5fde3a"
+symbol_sha256 = [
+  { symbol = "ChioKernel::record_chio_receipt", sha256 = "e2361cc1927a58a3c3d09dafa0445d1b177850e9001507b5c29794e2f4588cdc" },
+]
+
+[[mirror]]
+model_file = "formal/apalache/MonotoneLogApalache.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs"
+rust_symbols = ["SqliteReceiptStore::append_chio_receipt_returning_seq"]
+normalized_sha256 = "3120dc04cc4e37bbb2d86c8ae9616e11743bf49a9013c5237d05af0968886d63"
+symbol_sha256 = [
+  { symbol = "SqliteReceiptStore::append_chio_receipt_returning_seq", sha256 = "4be5d5a658248996d03ecd366254b6eb771f27b5b8da1da9bd33818ef649d403" },
+]
+
+[[mirror]]
+model_file = "formal/apalache/MonotoneLogApalache.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/platform/chio-store-sqlite/src/receipt_store.rs"
+rust_symbols = ["append_chio_receipt_tx"]
+normalized_sha256 = "e3d48d5999a378967daceee350507986d252a64ea710e0a8280908f14510d088"
+symbol_sha256 = [
+  { symbol = "append_chio_receipt_tx", sha256 = "ff4de2b8c3433b24f17cae297ea5b5c42b38087be8e222675bc0853cda23b16c" },
+]
+
+[[mirror]]
+model_file = "formal/apalache/RevocationCutCompleteness.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel/src/kernel/validation.rs"
+rust_symbols = ["ChioKernel::check_revocation"]
+normalized_sha256 = "529d5019fc7042c5cdaed5464db980c471bb4e92b831ce562deddf5d552dce7f"
+symbol_sha256 = [
+  { symbol = "ChioKernel::check_revocation", sha256 = "bc9a6778cb8139e7d2eadf47eac6b018426d27c8735931e0121b8bb316f4631f" },
+]
+
+[[mirror]]
+model_file = "formal/apalache/RevocationCutCompleteness.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel/src/kernel/delegation.rs"
+rust_symbols = ["consult_revocation_view"]
+normalized_sha256 = "1361c5c1474b2e7e36b699a4be0365681d1dcca11964053bad051f220f930ab8"
+symbol_sha256 = [
+  { symbol = "consult_revocation_view", sha256 = "7ba67f47c58fdd51c523f22b0cf1687bc9bd955565c792a46b116d103af81f27" },
+]
+
+[[mirror]]
+model_file = "formal/apalache/RevocationCutCompleteness.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel-core/src/revocation_view.rs"
+rust_symbols = ["RevocationSnapshot::is_revoked", "RevocationView::is_revoked"]
+normalized_sha256 = "51d4288002444636c32cf7ca04887f20cd81d05f5c3aef66c797403a4bddc0f1"
+symbol_sha256 = [
+  { symbol = "RevocationSnapshot::is_revoked", sha256 = "1465bbb698a40dbcc07cfc925577136e9d4d05e80eb5ed7780172795263ef0e6" },
+  { symbol = "RevocationView::is_revoked", sha256 = "318a3cd03d7fd93e59e7a71bdd892184af8f6e164248d82c61072dbbd18b2bf0" },
+]
+
+[[mirror]]
+model_file = "formal/apalache/ReceiptBeforeAllow.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs"
+rust_symbols = [
+  "ChioKernel::build_allow_response_with_metadata",
+  "ChioKernel::build_execution_nonce_preflight_allow_response_with_metadata",
+]
+normalized_sha256 = "18ff5ce5db77a286342e850a474f72390599de3152a87be8bc01feb2820c1d1e"
+symbol_sha256 = [
+  { symbol = "ChioKernel::build_allow_response_with_metadata", sha256 = "4a2990a97eda83ff124b03e6e959652f61e4d2cb62b08a6dcc16403dabe7cf6e" },
+  { symbol = "ChioKernel::build_execution_nonce_preflight_allow_response_with_metadata", sha256 = "8cfca54e0b0d54f771afcbdcdf0bd5416c91710a7c46e08bf6d659ebdddf26b2" },
+]
+
+[[mirror]]
+model_file = "formal/apalache/ReceiptBeforeAllow.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs"
+rust_symbols = ["ChioKernel::record_chio_receipt_with_federation", "ChioKernel::record_chio_receipt"]
+normalized_sha256 = "0c0312da9d93465152e898879ecfd45f3ce7af5deacf06323d33cf7b312c27f1"
+symbol_sha256 = [
+  { symbol = "ChioKernel::record_chio_receipt_with_federation", sha256 = "a4eef10564905a49ae8bd9583ab7f1a88cb91a192ec010218cab84832945ed97" },
+  { symbol = "ChioKernel::record_chio_receipt", sha256 = "e2361cc1927a58a3c3d09dafa0445d1b177850e9001507b5c29794e2f4588cdc" },
+]
+
+[[mirror]]
+model_file = "formal/apalache/KernelTransitionCancelSafe.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs"
+rust_symbols = [
+  "PostAdmissionDropGuard",
+  "PostAdmissionDropGuard::mark_dispatch_started",
+  "PostAdmissionDropGuard::handle_pre_dispatch_drop",
+  "PostAdmissionDropGuard::drop",
+]
+normalized_sha256 = "b34889d86c0c5ce0049c1b4cb8a9aaed38d5b5ae8e8251ea1fb1adfb4eaf7707"
+symbol_sha256 = [
+  { symbol = "PostAdmissionDropGuard", sha256 = "ec215cf4f4de761dc529408e5e0a5537ea0a195ad316f01f276b11dc1152a8d3" },
+  { symbol = "PostAdmissionDropGuard::mark_dispatch_started", sha256 = "ddf846b1fd9df7b56e38061cef9c9513b037d75bd9635a2a7004ac2c00940b93" },
+  { symbol = "PostAdmissionDropGuard::handle_pre_dispatch_drop", sha256 = "44c6a2176715ddc6b65a434feca2c1bba44582e2f78afc3582416e80f203b7f0" },
+  { symbol = "PostAdmissionDropGuard::drop", sha256 = "e3e2ab3c03e64f4d3ce12a7510b1178490c4827dc3d16f4af4f96ff8e9ef823f" },
+]
+
+[[mirror]]
+model_file = "formal/apalache/KernelTransitionCancelSafe.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel/src/kernel/validation.rs"
+rust_symbols = ["ChioKernel::reverse_pre_execution_budget_mutation"]
+normalized_sha256 = "57e7c5f92c8048742d9c28ee4d036fc8c02818c93a2309babeb4d5fba3de55c9"
+symbol_sha256 = [
+  { symbol = "ChioKernel::reverse_pre_execution_budget_mutation", sha256 = "43b55db37dec0028e25c552dcadf47e177b9dff79eaebea10b5352a8df810697" },
+]

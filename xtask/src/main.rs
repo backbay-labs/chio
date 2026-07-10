@@ -13,6 +13,7 @@
 //! cargo xtask errors regen [--check]
 //! cargo xtask snippets regen [--check]
 //! cargo xtask check crate-paths
+//! cargo xtask check formal-mirrors [--bless]
 //! ```
 //!
 //! `validate-scenarios` walks `tests/conformance/scenarios/**/*.json`, looks
@@ -95,6 +96,7 @@ mod dispatch;
 mod error;
 mod eval_receipt_regen;
 mod fixtures;
+mod formal_mirrors;
 mod launch_acceptance;
 mod qualify;
 mod scenarios;

@@ -68,9 +68,17 @@ def parse_manifest_subset(text):
     manifest = {}
     array_key = None
     array_values = []
+    in_array_table = False
     for raw_line in text.splitlines():
         line = strip_toml_comment(raw_line).strip()
         if not line:
+            continue
+        if line.startswith("[[") and line.endswith("]]"):
+            if array_key is not None:
+                raise SystemExit(f"unterminated proof manifest array: {array_key}")
+            in_array_table = True
+            continue
+        if in_array_table:
             continue
         if array_key is not None:
             if line == "]":

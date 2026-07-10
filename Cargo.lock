@@ -15334,11 +15334,15 @@ dependencies = [
  "chio-spec-validate",
  "clap 4.6.0",
  "jsonschema",
+ "proc-macro2",
+ "quote",
  "serde",
  "serde_json",
  "serde_yml",
  "sha2 0.10.9",
+ "syn 2.0.117",
  "toml 0.8.23",
+ "toml_edit 0.22.27",
 ]
 
 [[package]]

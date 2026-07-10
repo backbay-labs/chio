@@ -1,7 +1,8 @@
 /-
   Scope subsumption logic: ToolGrant.isSubsetOf, ChioScope.isSubsetOf.
-  Mirrors: crates/core/chio-core-types/src/capability/scope.rs
-  (ToolGrant::is_subset_of, ChioScope::is_subset_of)
+  Mirrors: crates/core/chio-core-types/src/capability/scope.rs and
+  crates/kernel/chio-kernel-core/src/normalized.rs.
+  Enforced by the matching [[mirror]] entries in formal/proof-manifest.toml.
 
   This is the core of Chio's capability monotonicity guarantee.
 -/

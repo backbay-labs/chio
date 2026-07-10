@@ -155,6 +155,13 @@ pub enum CheckCommand {
     /// Assert every `crates/chio-*` path literal in config resolves on disk.
     #[command(name = "crate-paths")]
     CratePaths,
+    /// Detect token-level drift in Rust symbols registered to formal models.
+    #[command(name = "formal-mirrors")]
+    FormalMirrors {
+        /// Rewrite recorded hashes after reviewing the affected models.
+        #[arg(long)]
+        bless: bool,
+    },
     /// Run a fixture-and-schema gate by facet name.
     Fixtures {
         /// Facet name. Pheromone facets are in ci-gates/pheromone.toml; the
@@ -323,6 +330,26 @@ mod tests {
             parse(&["xtask", "check", "crate-paths"]),
             Command::Check {
                 command: CheckCommand::CratePaths
+            }
+        ));
+    }
+
+    #[test]
+    fn check_formal_mirrors_parses_bless_flag() {
+        assert!(matches!(
+            parse(&["xtask", "check", "formal-mirrors", "--bless"]),
+            Command::Check {
+                command: CheckCommand::FormalMirrors { bless: true }
+            }
+        ));
+    }
+
+    #[test]
+    fn check_formal_mirrors_defaults_to_check_mode() {
+        assert!(matches!(
+            parse(&["xtask", "check", "formal-mirrors"]),
+            Command::Check {
+                command: CheckCommand::FormalMirrors { bless: false }
             }
         ));
     }

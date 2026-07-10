@@ -70,10 +70,11 @@ Evidence:
   post-dispatch drop (`38cc91471`), retained runtime-admission reservations
   on aborted unwind paths (`c201afbd0`), a `dispatch_started` split of the
   drop unwind (`c2e8be7e3`). None of these commits touched `formal/`.
-- `formal/apalache/KernelTransitionCancelSafe.tla` covers exactly this
-  surface, but its header admits the invariant holds by construction (Commit
-  is guarded on `cancel_pending = FALSE`) and defers concurrent
-  commit-vs-cancel races.
+- `formal/apalache/KernelTransitionCancelSafe.tla` abstracts only the clean
+  pre-dispatch branch. Its header admits the invariant holds by construction
+  (`Commit` is guarded on `cancel_pending = FALSE`), does not model the Rust
+  reversal transition, and excludes post-dispatch, fault, and concurrent
+  commit-vs-cancel paths.
 - A loom race model for the drop guard exists in chio-kernel but has no
   registry or CI lane.
 
@@ -107,23 +108,28 @@ Evidence (details and exact fixes in [HYGIENE_PASS.md](HYGIENE_PASS.md)):
   `theorem-inventory.json` with the stale reason "Lean toolchain unavailable
   in CI", while a third theorem proved under the same conditions is marked
   `proved`.
-- Sync in `proof-manifest.toml` is by symbol name only; nothing hashes the
-  mirrored content, so a semantic change on the Rust side of a mirror is
-  invisible until a human notices.
+- The original `proof-manifest.toml` synchronized mirrors by symbol name only.
+  This is now mechanically closed for the five core Lean models and five TLA+
+  models: 34 mirror entries hash 80 parser-resolved Rust symbol references,
+  with per-symbol diagnostics in required PR CI. The repaired TLA+ records are
+  labeled abstraction anchors so their hashes require review without claiming
+  that the Rust code establishes a modeled property.
 - Confirmed while grounding the plan specs: the Lean core-model "Mirrors:"
   headers drifted in the Phase 6 crate moves (Capability.lean and Scope.lean
   point at a file that no longer exists; Revocation.lean points at a
-  function that moved; Receipt.lean misnames its module), and the MAPPING
-  liveness row cites `ASSUME-PROPAGATE-FAIRNESS`, an id absent from
-  `assumptions.toml`. See H14 and H15.
+  function that moved; Receipt.lean misnames its module). The MAPPING
+  liveness row also cited `ASSUME-PROPAGATE-FAIRNESS`, an id absent from
+  `assumptions.toml`. H14 and H15 are now closed by corrected pointers and an
+  explicit model-only fairness boundary.
 
 Consequence: each individual item is small, but together they show the sync
 layer relies on human discipline where it could be mechanical. Auditors
 sampling these files would find contradictions.
 
 Addressed by: [HYGIENE_PASS.md](HYGIENE_PASS.md) (immediate fixes),
-[plan/FV-A4-mirror-drift-hashes.md](plan/FV-A4-mirror-drift-hashes.md) and
-[plan/FV-A3-creusot-dedup.md](plan/FV-A3-creusot-dedup.md) (mechanical
+[plan/FV-A4-mirror-drift-hashes.md](plan/FV-A4-mirror-drift-hashes.md)
+(implemented Rust-to-model prevention),
+[plan/FV-A3-creusot-dedup.md](plan/FV-A3-creusot-dedup.md) (Creusot
 prevention),
 [plan/FV-C5-proof-coverage-map.md](plan/FV-C5-proof-coverage-map.md)
 (cross-registry join that makes inconsistency visible).
@@ -202,8 +208,10 @@ Complete list with exact edits in [HYGIENE_PASS.md](HYGIENE_PASS.md):
 10. Empty placeholder dirs (`formal/tla/counterexamples/`,
     `formal/diff-tests/proptest-regressions/canonical_json_diff/`) vs the
     live regression file location.
-11. Stale Lean "Mirrors:" headers after the Phase 6 crate moves (H14).
-12. MAPPING citing the unregistered id `ASSUME-PROPAGATE-FAIRNESS` (H15).
+11. Stale Lean "Mirrors:" headers after the Phase 6 crate moves (H14, closed).
+12. MAPPING citing the unregistered id `ASSUME-PROPAGATE-FAIRNESS` (H15,
+    closed by recording model-only fairness rather than inventing a runtime
+    assumption).
 
 ## What is deliberately out of scope here
 

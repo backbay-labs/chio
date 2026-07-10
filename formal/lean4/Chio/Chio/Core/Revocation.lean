@@ -1,8 +1,9 @@
 /-
   Revocation store model and delegation chain validation.
-  Mirrors: crates/kernel/chio-kernel/src/kernel/validation.rs (check_revocation)
-  and crates/core/chio-core-types/src/capability/attenuation.rs
-  (validate_delegation_chain)
+  Mirrors: crates/kernel/chio-kernel/src/kernel/validation.rs,
+  crates/core/chio-core-types/src/capability/attenuation.rs, and
+  crates/kernel/chio-kernel-core/src/evaluate.rs.
+  Enforced by the matching [[mirror]] entries in formal/proof-manifest.toml.
 -/
 
 import Chio.Core.Capability
@@ -20,7 +21,7 @@ def RevocationStore.isRevoked (store : RevocationStore) (capId : CapabilityId) :
 def RevocationStore.revoke (store : RevocationStore) (capId : CapabilityId) : RevocationStore :=
   if store.isRevoked capId then store else capId :: store
 
-/-- Mirrors: Verdict in chio-kernel. -/
+/-- Mirrors: Verdict handling in crates/kernel/chio-kernel-core/src/evaluate.rs. -/
 inductive Decision where
   | allow
   | deny (reason : String)

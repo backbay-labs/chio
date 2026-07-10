@@ -3,7 +3,8 @@
   Constraint, DelegationLink, Attenuation.
   Mirrors: crates/core/chio-core-types/src/capability/token.rs,
   crates/core/chio-core-types/src/capability/scope.rs, and
-  crates/core/chio-core-types/src/capability/attenuation.rs
+  crates/core/chio-core-types/src/capability/attenuation.rs.
+  Enforced by the matching [[mirror]] entries in formal/proof-manifest.toml.
 -/
 
 set_option autoImplicit false
@@ -17,14 +18,14 @@ abbrev PublicKeyHex := String
 abbrev CapabilityId := String
 abbrev Timestamp := Nat
 
-/-- Mirrors: Operation in crates/core/chio-core-types/src/capability/scope.rs -/
+/-- Mirrors: Operation in crates/core/chio-core-types/src/capability/scope.rs. -/
 inductive Operation where
   | invoke
   | readResult
   | delegate
   deriving Repr, BEq, DecidableEq, Inhabited, ReflBEq, LawfulBEq
 
-/-- Mirrors: Constraint in crates/core/chio-core-types/src/capability/scope.rs -/
+/-- Mirrors: Constraint in crates/core/chio-core-types/src/capability/scope.rs. -/
 inductive Constraint where
   | pathPrefix : String → Constraint
   | domainExact : String → Constraint
@@ -34,7 +35,7 @@ inductive Constraint where
   | custom : String → String → Constraint
   deriving Repr, BEq, DecidableEq, ReflBEq, LawfulBEq
 
-/-- Mirrors: ToolGrant in crates/core/chio-core-types/src/capability/scope.rs -/
+/-- Mirrors: ToolGrant in crates/core/chio-core-types/src/capability/scope.rs. -/
 structure ToolGrant where
   serverId : ServerId
   toolName : ToolName
@@ -43,12 +44,12 @@ structure ToolGrant where
   maxInvocations : Option Nat
   deriving Repr, BEq, ReflBEq, LawfulBEq
 
-/-- Mirrors: ChioScope in crates/core/chio-core-types/src/capability/scope.rs -/
+/-- Mirrors: ChioScope in crates/core/chio-core-types/src/capability/scope.rs. -/
 structure ChioScope where
   grants : List ToolGrant
   deriving Repr, BEq, ReflBEq, LawfulBEq
 
-/-- Mirrors: Attenuation in crates/core/chio-core-types/src/capability/attenuation.rs -/
+/-- Mirrors: Attenuation in crates/core/chio-core-types/src/capability/attenuation.rs. -/
 inductive Attenuation where
   | removeTool : ServerId → ToolName → Attenuation
   | removeOperation : ServerId → ToolName → Operation → Attenuation

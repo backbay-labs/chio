@@ -2,7 +2,10 @@
   Bounded receipt/checkpoint model for the formal receipt-proof lane.
   Mirrors the structural contracts in:
   - crates/kernel/chio-kernel-core/src/receipts.rs
+  - crates/core/chio-core-types/src/receipt/body.rs
+  - crates/core/chio-core-types/src/merkle.rs
   - crates/kernel/chio-kernel/src/checkpoint.rs
+  Enforced by the matching [[mirror]] entries in formal/proof-manifest.toml.
 -/
 
 set_option autoImplicit false

@@ -108,6 +108,9 @@ jobs:
       - name: crate-path go-dark guard
         run: cargo xtask check crate-paths
 
+      - name: formal mirror drift guard
+        run: cargo xtask check formal-mirrors
+
       - name: Workspace format
         env:
           CARGO_BUILD_JOBS: "1"
