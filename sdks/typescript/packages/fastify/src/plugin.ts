@@ -195,29 +195,38 @@ const chioPlugin: FastifyPluginAsync<ChioFastifyConfig> = async (
 
     try {
       const result = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
+      const receipt = result.receipt;
 
-      if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(result.receipt)) {
-        reply.code(verdictStatus(result.verdict)).send({
+      if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(receipt)) {
+        const payload: {
+          error: string;
+          message: string;
+          receipt_id?: string;
+          suggestion: string;
+        } = {
           error: CHIO_ERROR_CODES.ACCESS_DENIED,
           message: verdictReason(result.verdict),
-          receipt_id: result.receipt.id,
           suggestion: "provide a valid capability token in the X-Chio-Capability header or chio_capability query parameter",
-        });
+        };
+        if (receipt?.id != null) {
+          payload.receipt_id = receipt.id;
+        }
+        reply.code(verdictStatus(result.verdict)).send(payload);
         return reply;
       }
 
-      const verification = await resolved.client.verifyReceipt(result.receipt);
-      if (!isAuthoritativeVerification(verification, result.receipt)) {
+      const verification = await resolved.client.verifyReceipt(receipt);
+      if (!isAuthoritativeVerification(verification, receipt)) {
         reply.code(502).send({
           error: CHIO_ERROR_CODES.INVALID_RECEIPT,
           message: "sidecar returned an unverified receipt",
-          receipt_id: result.receipt.id,
+          receipt_id: receipt.id,
         });
         return reply;
       }
 
       // Attach receipt ID header after authorization and receipt verification.
-      reply.header("X-Chio-Receipt-Id", result.receipt.id);
+      reply.header("X-Chio-Receipt-Id", receipt.id);
 
       // Attach result for downstream handlers
       request.chioResult = result;
