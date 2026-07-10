@@ -36,6 +36,23 @@ test("parseRpcMessages parses a single JSON body", () => {
   ]);
 });
 
+test("parseRpcMessages parses a JSON-RPC batch array body", () => {
+  assert.deepEqual(
+    parseRpcMessages("[{\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"},{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}]"),
+    [
+      {
+        jsonrpc: "2.0",
+        method: "notifications/message",
+      },
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        result: { ok: true },
+      },
+    ],
+  );
+});
+
 test("parseRpcMessages parses text/event-stream bodies", () => {
   const rawBody = [
     "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{\"index\":1}}",
@@ -123,6 +140,107 @@ test("readRpcMessagesUntilTerminal skips onMessage for terminal EOF data", async
     id: 7,
     result: { ok: true },
   });
+  assert.deepEqual(seen, [
+    {
+      jsonrpc: "2.0",
+      method: "notifications/message",
+      params: { index: 1 },
+    },
+  ]);
+});
+
+test("readRpcMessagesUntilTerminal dispatches batch body notifications", async () => {
+  const seen: unknown[] = [];
+  const response = new Response(
+    JSON.stringify([
+      {
+        jsonrpc: "2.0",
+        method: "notifications/message",
+        params: { index: 1 },
+      },
+      {
+        jsonrpc: "2.0",
+        id: 7,
+        result: { ok: true },
+      },
+    ]),
+    {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+      },
+    },
+  );
+
+  const messages = await readRpcMessagesUntilTerminal(response, 7, async (message) => {
+    seen.push(message);
+  });
+
+  assert.deepEqual(messages, [
+    {
+      jsonrpc: "2.0",
+      method: "notifications/message",
+      params: { index: 1 },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 7,
+      result: { ok: true },
+    },
+  ]);
+  assert.deepEqual(seen, [
+    {
+      jsonrpc: "2.0",
+      method: "notifications/message",
+      params: { index: 1 },
+    },
+  ]);
+});
+
+test("readRpcMessagesUntilTerminal stops batch dispatch after terminal response", async () => {
+  const seen: unknown[] = [];
+  const response = new Response(
+    JSON.stringify([
+      {
+        jsonrpc: "2.0",
+        method: "notifications/message",
+        params: { index: 1 },
+      },
+      {
+        jsonrpc: "2.0",
+        id: 7,
+        result: { ok: true },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "notifications/message",
+        params: { index: 2 },
+      },
+    ]),
+    {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+      },
+    },
+  );
+
+  const messages = await readRpcMessagesUntilTerminal(response, 7, async (message) => {
+    seen.push(message);
+  });
+
+  assert.deepEqual(messages, [
+    {
+      jsonrpc: "2.0",
+      method: "notifications/message",
+      params: { index: 1 },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 7,
+      result: { ok: true },
+    },
+  ]);
   assert.deepEqual(seen, [
     {
       jsonrpc: "2.0",

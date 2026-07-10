@@ -16,7 +16,7 @@ function authorizedAllow() {
     receipt_kind: "mediated_decision" as const,
     boundary_class: "prevent" as const,
     trust_level: "mediated" as const,
-    result: "authorized",
+    result: "allow",
     authorized: true,
     ok: true,
     signer_trusted: true,
@@ -236,6 +236,23 @@ describe("wrapWithChio", () => {
       .toThrow(ChioMiddlewareDeniedError);
     expect(invoked).toBe(false);
   });
+
+  it("denies non-canonical authorized result strings", async () => {
+    let invoked = false;
+    const wrapped = wrapWithChio({
+      async doGenerate() {
+        invoked = true;
+        return { text: "should not run" };
+      },
+    }, {
+      evaluate: () => ({ ...authorizedAllow(), result: "authorized" }),
+    });
+
+    await expect(wrapped.doGenerate({ tools: { search: {} } }))
+      .rejects
+      .toThrow(ChioMiddlewareDeniedError);
+    expect(invoked).toBe(false);
+  });
 });
 
 /// Minimal `/chio/evaluate` response carrying just the verdict and receipt
@@ -259,7 +276,7 @@ function authorityAllow(): ChioReceiptAuthority {
     receipt_kind: "mediated_decision",
     boundary_class: "prevent",
     trust_level: "mediated",
-    result: "authorized",
+    result: "allow",
     authorized: true,
     ok: true,
     signer_trusted: true,
@@ -555,7 +572,7 @@ describe("receipt authority verification", () => {
         receipt_kind: "mediated_decision",
         boundary_class: "prevent",
         trust_level: "mediated",
-        result: "authorized",
+        result: "allow",
         authorized: true,
         ok: true,
         signer_trusted: true,
@@ -668,7 +685,7 @@ describe("receipt authority verification", () => {
             receipt_kind: "mediated_decision",
             boundary_class: "prevent",
             trust_level: "mediated",
-            result: "authorized",
+            result: "allow",
             authorized: true,
             ok: true,
           },

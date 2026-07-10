@@ -285,6 +285,22 @@ def test_reject_shell_argv_escape_allows_url_arguments(tmp_path: Path) -> None:
     )
 
 
+def test_reject_shell_argv_escape_allows_single_letter_ssh_remotes(
+    tmp_path: Path,
+) -> None:
+    reject_shell_argv_escape("scp a:/var/log/app.log .", root=tmp_path)
+    reject_shell_argv_escape("rsync user@x:/src ./dst", root=tmp_path)
+    reject_shell_argv_escape("sftp z:/srv/export", root=tmp_path)
+
+
+def test_reject_shell_argv_escape_still_rejects_drive_like_non_remote(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ChioPathEscapeError) as excinfo:
+        reject_shell_argv_escape("cat a:/var/log/app.log", root=tmp_path)
+    assert excinfo.value.reason == "outside_workspace"
+
+
 def test_reject_shell_argv_escape_allows_workspace_path(tmp_path: Path) -> None:
     inside = tmp_path / "src" / "main.py"
     reject_shell_argv_escape(f"cat {inside}", root=tmp_path)

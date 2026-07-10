@@ -63,19 +63,34 @@ def _make_receive(body: bytes = b"") -> Receive:
 
 
 def _make_chunked_receive(chunks: list[bytes]) -> Receive:
-    """Create an ASGI receive callable that emits multiple body chunks."""
-    index = 0
+    messages = [
+        {
+            "type": "http.request",
+            "body": chunk,
+            "more_body": index < len(chunks) - 1,
+        }
+        for index, chunk in enumerate(chunks)
+    ]
+    if not messages:
+        messages.append({"type": "http.request", "body": b"", "more_body": False})
 
     async def receive() -> dict[str, Any]:
-        nonlocal index
-        if index < len(chunks):
-            body = chunks[index]
-            index += 1
-            return {
-                "type": "http.request",
-                "body": body,
-                "more_body": index < len(chunks),
-            }
+        if messages:
+            return messages.pop(0)
+        return {"type": "http.disconnect"}
+
+    return receive
+
+
+def _make_interrupted_body_receive(body: bytes = b"partial") -> Receive:
+    messages = [
+        {"type": "http.request", "body": body, "more_body": True},
+        {"type": "http.disconnect"},
+    ]
+
+    async def receive() -> dict[str, Any]:
+        if messages:
+            return messages.pop(0)
         return {"type": "http.disconnect"}
 
     return receive
@@ -164,25 +179,21 @@ async def _echo_app(scope: Scope, receive: Receive, send: Send) -> None:
 
 
 async def _body_echo_app(scope: Scope, receive: Receive, send: Send) -> None:
-    """ASGI app that echoes the full request body."""
-    body_chunks: list[bytes] = []
+    chunks: list[bytes] = []
     while True:
         message = await receive()
         if message.get("type") != "http.request":
             break
-        body_chunks.append(message.get("body", b""))
+        chunks.append(message.get("body", b""))
         if not message.get("more_body", False):
             break
-    body = b"".join(body_chunks)
+    body = b"".join(chunks)
     await send({
         "type": "http.response.start",
         "status": 200,
-        "headers": [(b"content-type", b"text/plain")],
+        "headers": [(b"content-length", str(len(body)).encode("latin-1"))],
     })
-    await send({
-        "type": "http.response.body",
-        "body": body,
-    })
+    await send({"type": "http.response.body", "body": body})
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +266,34 @@ class TestAllowedRequest:
             assert b"x-chio-receipt" in header_dict
             assert header_dict[b"x-chio-receipt"] == b"r-allow"
 
+    async def test_accepts_split_cookie_headers_for_cookie_identity(self) -> None:
+        evaluation = _make_evaluation(allowed=True, receipt_id="r-cookie")
+
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            instance = MockClient.return_value
+            instance.evaluate_http_request = AsyncMock(return_value=evaluation)
+            instance.verify_http_receipt = AsyncMock(return_value=_make_verification())
+
+            config = ChioASGIConfig(sidecar_url="http://mock:9090")
+            mw = ChioASGIMiddleware(_echo_app, config=config)
+            scope = _make_scope()
+            scope["headers"] = [
+                (b"cookie", b"session=abc123"),
+                (b"cookie", b"other=xyz"),
+            ]
+            send, messages = _make_send()
+
+            await mw(scope, _make_receive(), send)
+
+            start_msg = next(
+                m for m in messages if m.get("type") == "http.response.start"
+            )
+            assert start_msg["status"] == 200
+            kwargs = instance.evaluate_http_request.await_args.kwargs
+            assert kwargs["caller"].auth_method.method == "cookie"
+
     async def test_hashes_and_replays_full_chunked_body(self) -> None:
         evaluation = _make_evaluation(allowed=True, receipt_id="r-chunked")
         chunks = [b"hello ", b"chunked ", b"world"]
@@ -284,23 +323,86 @@ class TestAllowedRequest:
             )
             assert body_msg["body"] == expected_body
 
-    async def test_rejects_body_larger_than_buffer_limit(self) -> None:
+    async def test_coalesces_many_chunked_request_frames_for_replay(self) -> None:
+        evaluation = _make_evaluation(allowed=True, receipt_id="r-chunked")
+        chunks = [b"x"] * 256
+        expected_body = b"".join(chunks)
+        replayed_messages: list[dict[str, Any]] = []
+
+        async def frame_count_app(
+            _scope: Scope,
+            receive: Receive,
+            send: Send,
+        ) -> None:
+            while True:
+                message = await receive()
+                if message.get("type") != "http.request":
+                    break
+                replayed_messages.append(message)
+                if not message.get("more_body", False):
+                    break
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
         with patch(
             "chio_asgi.middleware.ChioClient", autospec=True
         ) as MockClient:
             instance = MockClient.return_value
-            instance.evaluate_http_request = AsyncMock()
+            instance.evaluate_http_request = AsyncMock(return_value=evaluation)
+            instance.verify_http_receipt = AsyncMock(return_value=_make_verification())
 
-            config = ChioASGIConfig(
-                sidecar_url="http://mock:9090", max_body_bytes=5
-            )
-            mw = ChioASGIMiddleware(_body_echo_app, config=config)
+            config = ChioASGIConfig(sidecar_url="http://mock:9090")
+            mw = ChioASGIMiddleware(frame_count_app, config=config)
 
             scope = _make_scope(method="POST")
-            send, messages = _make_send()
-            await mw(scope, _make_chunked_receive([b"abc", b"def"]), send)
+            send, _messages = _make_send()
+            await mw(scope, _make_chunked_receive(chunks), send)
 
-            instance.evaluate_http_request.assert_not_awaited()
+        assert replayed_messages == [
+            {
+                "type": "http.request",
+                "body": expected_body,
+                "more_body": False,
+            }
+        ]
+
+    async def test_rejects_partial_body_before_disconnect(self) -> None:
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            config = ChioASGIConfig(sidecar_url="http://mock:9090")
+            mw = ChioASGIMiddleware(_body_echo_app, config=config)
+            scope = _make_scope(method="POST")
+            send, messages = _make_send()
+
+            await mw(scope, _make_interrupted_body_receive(), send)
+
+            MockClient.return_value.evaluate_http_request.assert_not_called()
+            start_msg = next(
+                m for m in messages if m.get("type") == "http.response.start"
+            )
+            assert start_msg["status"] == 400
+            body_msg = next(
+                m for m in messages if m.get("type") == "http.response.body"
+            )
+            body = json.loads(body_msg["body"])
+            assert body["error"] == "ClientDisconnected"
+
+    async def test_rejects_chunked_body_that_exceeds_configured_limit(self) -> None:
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            config = ChioASGIConfig(
+                sidecar_url="http://mock:9090",
+                max_body_bytes=4,
+            )
+            mw = ChioASGIMiddleware(_body_echo_app, config=config)
+            scope = _make_scope(method="POST")
+            send, messages = _make_send()
+
+            await mw(scope, _make_chunked_receive([b"ab", b"cde"]), send)
+
+            MockClient.return_value.evaluate_http_request.assert_not_called()
             start_msg = next(
                 m for m in messages if m.get("type") == "http.response.start"
             )
@@ -309,7 +411,43 @@ class TestAllowedRequest:
                 m for m in messages if m.get("type") == "http.response.body"
             )
             body = json.loads(body_msg["body"])
-            assert body["error"] == "RequestBodyTooLarge"
+            assert body["error"] == "PayloadTooLarge"
+
+    async def test_rejects_duplicate_policy_headers_before_evaluation(self) -> None:
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            scope = _make_scope()
+            scope["headers"] = [
+                (b"content-type", b"application/json"),
+                (b"Content-Type", b"text/plain"),
+            ]
+            mw = ChioASGIMiddleware(_echo_app)
+            send, messages = _make_send()
+
+            await mw(scope, _make_receive(), send)
+
+            MockClient.return_value.evaluate_http_request.assert_not_called()
+            start_msg = next(
+                m for m in messages if m.get("type") == "http.response.start"
+            )
+            assert start_msg["status"] == 400
+
+    async def test_rejects_duplicate_query_parameters_before_evaluation(self) -> None:
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            scope = _make_scope(query_string="tenant=a&tenant=b")
+            mw = ChioASGIMiddleware(_echo_app)
+            send, messages = _make_send()
+
+            await mw(scope, _make_receive(), send)
+
+            MockClient.return_value.evaluate_http_request.assert_not_called()
+            start_msg = next(
+                m for m in messages if m.get("type") == "http.response.start"
+            )
+            assert start_msg["status"] == 400
 
 
 class TestDeniedRequest:
@@ -448,7 +586,8 @@ class TestConfig:
         assert config.sidecar_url == "http://127.0.0.1:9090"
         assert "OPTIONS" in config.exclude_methods
         assert config.receipt_header == "X-Chio-Receipt"
-        assert config.max_body_bytes == 1_048_576
+        assert config.fail_open is False
+        assert config.max_body_bytes == 8 * 1024 * 1024
 
     def test_custom(self) -> None:
         config = ChioASGIConfig(
@@ -456,3 +595,17 @@ class TestConfig:
             exclude_paths=frozenset({"/healthz", "/ready"}),
         )
         assert "/healthz" in config.exclude_paths
+
+    def test_positional_fail_open_precedes_max_body_bytes(self) -> None:
+        config = ChioASGIConfig(
+            "http://mock:9090",
+            2.5,
+            frozenset({"/health"}),
+            frozenset({"OPTIONS"}),
+            "X-Test-Receipt",
+            True,
+            10 * 1024 * 1024,
+        )
+
+        assert config.fail_open is True
+        assert config.max_body_bytes == 10 * 1024 * 1024

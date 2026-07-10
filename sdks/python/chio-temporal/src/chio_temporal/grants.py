@@ -110,7 +110,7 @@ class WorkflowGrant:
         """
         if workflow_id is None or workflow_id != self.workflow_id:
             return False
-        if self.run_id is not None and run_id is not None:
+        if self.run_id is not None:
             return run_id == self.run_id
         return True
 

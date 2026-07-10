@@ -117,6 +117,9 @@ class JsonTextCanonicalParser {
       const key = this.parseString();
       this.skipWhitespace();
       this.expect(":");
+      if (entries.has(key)) {
+        throw new ChioInvariantError("json", `input contains duplicate object key: ${key}`);
+      }
       entries.set(key, this.parseValue());
       this.skipWhitespace();
       if (this.consumeIf("}")) {

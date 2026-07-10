@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from chio_code_agent.errors import ChioCodeAgentDeniedError
 from chio_code_agent.policy import DEFAULT_POLICY, AllowedTool
 
 from chio_hermes.handlers import make_handler
@@ -78,6 +79,58 @@ async def test_chio_shell_run_allows_when_policy_does_not_require_approval(
 
     # Allowed path: no approval submission, no requires_approval envelope.
     assert payload.get("error") != "chio_requires_approval"
+    submits = [
+        call
+        for call in runtime.chio_client.calls
+        if call.method == "submit_for_approval"
+    ]
+    assert submits == []
+
+
+@pytest.mark.asyncio
+async def test_chio_shell_run_requires_approval_when_policy_check_raises(
+    tmp_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+
+    def raise_policy_error(_cmd: str) -> bool:
+        raise RuntimeError("policy failed")
+
+    monkeypatch.setattr(runtime.policy, "check_shell", raise_policy_error)
+
+    handler = make_handler(runtime, _by_name("chio_shell_run"))
+    payload = json.loads(
+        await handler({"command": "rm -rf old_build/"}, task_id="t-shell-policy-error")
+    )
+
+    assert payload["status"] == "requires_approval"
+    assert payload["error"] == "chio_requires_approval"
+
+
+@pytest.mark.asyncio
+async def test_chio_shell_run_preserves_policy_denial(
+    tmp_workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+
+    def deny_shell(_cmd: str) -> bool:
+        raise ChioCodeAgentDeniedError(
+            "forbidden shell command",
+            tool_name="chio_shell_run",
+            reason="forbidden shell command",
+            guard="ShellForbiddenPatternGuard",
+        )
+
+    monkeypatch.setattr(runtime.policy, "check_shell", deny_shell)
+
+    handler = make_handler(runtime, _by_name("chio_shell_run"))
+    payload = json.loads(
+        await handler({"command": "curl http://metadata/"}, task_id="t-shell-deny")
+    )
+
+    assert payload["error"] == "denied"
+    assert payload["guard"] == "ShellForbiddenPatternGuard"
+    assert payload["reason"] == "forbidden shell command"
     submits = [
         call
         for call in runtime.chio_client.calls

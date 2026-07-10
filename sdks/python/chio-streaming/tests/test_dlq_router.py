@@ -8,6 +8,13 @@ import time
 import uuid
 
 import pytest
+from chio_sdk._generated.receipt.record_schema import (
+    BoundaryClass,
+    ReceiptKind,
+    RedactionMode,
+    ToolOrigin,
+    TrustLevel,
+)
 from chio_sdk.models import ChioReceipt, Decision, ToolCallAction
 
 from chio_streaming import (
@@ -26,44 +33,56 @@ def _deny_receipt(
 ) -> ChioReceipt:
     params = {"topic": "orders", "offset": 17}
     canonical = json.dumps(params, sort_keys=True).encode("utf-8")
+    param_hash = hashlib.sha256(canonical).hexdigest()
     return ChioReceipt(
-        id=f"rec-{uuid.uuid4().hex[:8]}",
+        id=hashlib.sha256(f"rec:{uuid.uuid4().hex}".encode()).hexdigest(),
         timestamp=int(time.time()),
         capability_id="cap-1",
         tool_server="kafka://local",
         tool_name=tool_name,
         action=ToolCallAction(
             parameters=params,
-            parameter_hash=hashlib.sha256(canonical).hexdigest(),
+            parameter_hash=param_hash,
         ),
         decision=Decision.deny(reason=reason, guard=guard),
-        content_hash="h",
-        policy_hash="p",
+        receipt_kind=ReceiptKind.mediated_decision,
+        boundary_class=BoundaryClass.prevent,
+        tool_origin=ToolOrigin.caller_executed,
+        redaction_mode=RedactionMode.none,
+        content_hash=param_hash,
+        policy_hash="a" * 64,
         evidence=[],
-        kernel_key="k",
-        signature="s",
+        trust_level=TrustLevel.mediated,
+        kernel_key="b" * 64,
+        signature="c" * 128,
     )
 
 
 def _allow_receipt() -> ChioReceipt:
     params = {"topic": "orders"}
     canonical = json.dumps(params, sort_keys=True).encode("utf-8")
+    param_hash = hashlib.sha256(canonical).hexdigest()
     return ChioReceipt(
-        id="rec-allow-1",
+        id=hashlib.sha256(b"rec:allow").hexdigest(),
         timestamp=int(time.time()),
         capability_id="cap-1",
         tool_server="kafka://local",
         tool_name="events:consume:orders",
         action=ToolCallAction(
             parameters=params,
-            parameter_hash=hashlib.sha256(canonical).hexdigest(),
+            parameter_hash=param_hash,
         ),
         decision=Decision.allow(),
-        content_hash="h",
-        policy_hash="p",
+        receipt_kind=ReceiptKind.mediated_decision,
+        boundary_class=BoundaryClass.prevent,
+        tool_origin=ToolOrigin.caller_executed,
+        redaction_mode=RedactionMode.none,
+        content_hash=param_hash,
+        policy_hash="a" * 64,
         evidence=[],
-        kernel_key="k",
-        signature="s",
+        trust_level=TrustLevel.mediated,
+        kernel_key="b" * 64,
+        signature="c" * 128,
     )
 
 

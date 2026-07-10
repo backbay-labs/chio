@@ -128,6 +128,8 @@ _WINDOWS_ABSOLUTE_EMBEDDED_TOKEN_RE = re.compile(
     r"|(?<!:)//[^/]+/[^/]+(?:/.*)?"
     r")"
 )
+_SSH_REMOTE_COMMANDS: frozenset[str] = frozenset({"scp", "rsync", "sftp"})
+_SSH_REMOTE_SPEC_RE = re.compile(r"^(?:[^@\s:/]+@)?[A-Za-z][A-Za-z0-9_.-]*:.+")
 
 
 class ChioPathEscapeError(PermissionError):
@@ -189,6 +191,29 @@ def _without_quoted_shell_spans(command: str) -> str:
         if ch == quote:
             quote = None
     return "".join(chars)
+
+
+def _is_windows_absolute_root(root: str) -> bool:
+    root_path = pathlib.PureWindowsPath(root)
+    return bool(root_path.drive) and root_path.is_absolute()
+
+
+def _ssh_remote_tokens(argv: list[str], root_text: str | None) -> frozenset[str]:
+    if root_text is None or _is_windows_absolute_root(root_text) or not argv:
+        return frozenset()
+    command = argv[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
+    if command not in _SSH_REMOTE_COMMANDS:
+        return frozenset()
+    return frozenset(token for token in argv[1:] if _SSH_REMOTE_SPEC_RE.match(token))
+
+
+def _is_ssh_remote_windows_candidate(
+    candidate: str,
+    remote_tokens: frozenset[str],
+) -> bool:
+    return candidate in remote_tokens or any(
+        remote.endswith(f"@{candidate}") for remote in remote_tokens
+    )
 
 
 def sanitised_env(*, base: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -295,13 +320,17 @@ def reject_shell_argv_escape(
         return
     root_text = str(root) if root is not None else None
     root_path = pathlib.Path(root_text).resolve() if root_text is not None else None
+    ssh_remote_tokens = _ssh_remote_tokens(argv, root_text)
     if root_path is not None:
         unquoted_command = _without_quoted_shell_spans(command or "")
         for raw_windows_absolute in _WINDOWS_ABSOLUTE_BARE_TOKEN_RE.finditer(
             unquoted_command
         ):
+            candidate = raw_windows_absolute.group("token")
+            if _is_ssh_remote_windows_candidate(candidate, ssh_remote_tokens):
+                continue
             _reject_windows_absolute_escape(
-                raw_windows_absolute.group("token"),
+                candidate,
                 root_text or "",
             )
     for token in argv:
@@ -313,8 +342,11 @@ def reject_shell_argv_escape(
             for embedded_windows_absolute in _WINDOWS_ABSOLUTE_EMBEDDED_TOKEN_RE.finditer(
                 token
             ):
+                candidate = embedded_windows_absolute.group("token")
+                if _is_ssh_remote_windows_candidate(candidate, ssh_remote_tokens):
+                    continue
                 _reject_windows_absolute_escape(
-                    embedded_windows_absolute.group("token"),
+                    candidate,
                     root_text,
                 )
         is_windows_absolute = (
@@ -324,6 +356,8 @@ def reject_shell_argv_escape(
             and normalised[2] == "/"
         ) or normalised.startswith("//")
         if root_text is not None and is_windows_absolute:
+            if _is_ssh_remote_windows_candidate(token, ssh_remote_tokens):
+                continue
             _reject_windows_absolute_escape(token, root_text)
             continue
         is_absolute_token = normalised.startswith("/")

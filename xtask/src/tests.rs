@@ -22,6 +22,32 @@ fn resolve_schema_path_rejects_prefix_traversal() {
 }
 
 #[test]
+fn collect_scenario_files_rejects_missing_directory() {
+    let temp = match TempDir::new("xtask-scenarios-missing") {
+        Ok(temp) => temp,
+        Err(err) => panic!("failed to create temp dir: {err}"),
+    };
+    let missing = temp.path().join("scenarios");
+
+    let error = collect_scenario_files(&missing).unwrap_err();
+
+    assert!(format!("{error}").contains("scenarios directory is missing"));
+}
+
+#[test]
+fn build_schema_index_rejects_missing_root() {
+    let temp = match TempDir::new("xtask-schemas-missing") {
+        Ok(temp) => temp,
+        Err(err) => panic!("failed to create temp dir: {err}"),
+    };
+    let missing = temp.path().join("schemas");
+
+    let error = build_schema_index(&missing).unwrap_err();
+
+    assert!(format!("{error}").contains("schema root is missing"));
+}
+
+#[test]
 fn pascal_case_handles_kebab_and_snake() {
     assert_eq!(pascal_case("trust-control"), "TrustControl");
     assert_eq!(pascal_case("tool_call_request"), "ToolCallRequest");

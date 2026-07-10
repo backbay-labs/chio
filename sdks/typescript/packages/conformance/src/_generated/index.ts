@@ -3,7 +3,7 @@
 // Source:     spec/schemas/chio-wire/v1/**/*.schema.json
 // Tool:       json-schema-to-typescript 15.0.4 (see xtask/codegen-tools.lock.toml)
 // Pin file:   sdks/typescript/scripts/package.json
-// Schema SHA: 485d940cd5dd0ad721667bf2a54f75d2b06cbe70282fd8d525e5dbfd19e29a7f
+// Schema SHA: 2afce6316b29ef76098e0a83e46c5581cff83d95522651467829cc38e418bece
 //
 // The schema-sha above is sha256 of `<rel-path>\0<bytes>\0` for every
 // schema in lex order. It changes whenever any schema under
@@ -215,7 +215,7 @@ export namespace Capability_Capabilities {
 // Source: spec/schemas/chio-wire/v1/capability/grant.schema.json
 export namespace Capability_Grant {
   /**
-   * A single grant carried inside a capability token's `scope`. Chio uses three distinct grant kinds (tool, resource, prompt) that share no common discriminator field; this schema accepts any one of them via `oneOf`. Mirrors `ToolGrant`, `ResourceGrant`, and `PromptGrant` in `crates/core/chio-core-types`. The wrapper `ChioScope` partitions grants into three named arrays (`grants`, `resource_grants`, `prompt_grants`); validators that consume a token can dispatch to the appropriate `$defs/*` shape directly without relying on `oneOf` matching.
+   * A single grant carried inside a capability token's `scope`. Chio uses three distinct grant kinds (tool, resource, prompt) that share no common discriminator field; this schema accepts any one of them via `oneOf`. Mirrors `ToolGrant`, `ResourceGrant`, and `PromptGrant` in `crates/core/chio-core-types/src/capability/scope.rs`. The wrapper `ChioScope` partitions grants into three named arrays (`grants`, `resource_grants`, `prompt_grants`); validators that consume a token can dispatch to the appropriate `$defs/*` shape directly without relying on `oneOf` matching.
    */
   export type ChioCapabilityGrant = ToolGrant | ResourceGrant | PromptGrant;
   export type Operation = "invoke" | "read_result" | "read" | "subscribe" | "get" | "delegate";

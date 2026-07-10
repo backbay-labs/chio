@@ -26,7 +26,11 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from chio_adapter_base.redact import RedactionPolicy, bind_and_redact
+from chio_adapter_base.redact import (
+    RedactionPolicy,
+    bind_and_redact,
+    redact_args,
+)
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
@@ -337,13 +341,25 @@ def _materialise_parameters(
     tool_name: str,
     policy: RedactionPolicy,
 ) -> dict[str, Any]:
-    """Collapse ``(*args, **kwargs)`` into a kwargs dict for evaluation.
+    """Collapse ``(*args, **kwargs)`` into a redacted evaluation payload.
 
     LlamaIndex planners call tools with keyword arguments parsed from
-    the LLM's JSON output, so positional arguments are rare. We still
-    preserve them under a synthetic ``_args`` key so the sidecar's
-    parameter hash reflects every value the tool saw.
+    the LLM's JSON output, so positional arguments are rare. When they
+    appear, bind them to the wrapped callable's signature first so
+    protected fields such as ``content`` are still redacted by name.
     """
+    if args and fn is not None:
+        try:
+            bound = inspect.signature(fn).bind_partial(*args, **kwargs)
+        except (TypeError, ValueError):
+            pass
+        else:
+            return redact_args(
+                tool_name,
+                dict(bound.arguments),
+                policy=policy,
+            )
+
     redacted_args, redacted_kwargs = bind_and_redact(
         fn,
         args,

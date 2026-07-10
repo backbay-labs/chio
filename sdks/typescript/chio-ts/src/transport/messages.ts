@@ -20,8 +20,9 @@ export function parseRpcMessages(rawBody: string): JsonRpcMessage[] {
   if (!trimmed) {
     return [];
   }
-  if (trimmed.startsWith("{")) {
-    return [parseJsonRpcMessage(trimmed)];
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    const parsed = JSON.parse(trimmed) as JsonRpcMessage | JsonRpcMessage[];
+    return Array.isArray(parsed) ? parsed : [parsed];
   }
 
   const messages: JsonRpcMessage[] = [];
@@ -44,14 +45,23 @@ export function parseRpcMessages(rawBody: string): JsonRpcMessage[] {
   return messages;
 }
 
+function isTerminalMessage(message: JsonRpcMessage, expectedId: JsonRpcId | undefined): boolean {
+  return expectedId !== undefined && rpcIdsEqual(message.id, expectedId) && !message.method;
+}
+
 export async function readRpcMessagesUntilTerminal(
   response: Response,
   expectedId?: JsonRpcId,
   onMessage: RpcMessageHandler = async () => {},
 ): Promise<JsonRpcMessage[]> {
   if (!response.body) {
-    const messages = parseRpcMessages(await response.text());
-    for (const message of messages) {
+    const parsedMessages = parseRpcMessages(await response.text());
+    const messages: JsonRpcMessage[] = [];
+    for (const message of parsedMessages) {
+      messages.push(message);
+      if (isTerminalMessage(message, expectedId)) {
+        break;
+      }
       await onMessage(message);
     }
     return messages;
@@ -82,7 +92,7 @@ export async function readRpcMessagesUntilTerminal(
         if (eventData.length > 0) {
           const message = parseJsonRpcMessage(eventData.join("\n"));
           messages.push(message);
-          if (expectedId !== undefined && rpcIdsEqual(message.id, expectedId) && !message.method) {
+          if (isTerminalMessage(message, expectedId)) {
             await reader.cancel();
             return messages;
           }
@@ -106,13 +116,19 @@ export async function readRpcMessagesUntilTerminal(
   if (eventData.length > 0) {
     const message = parseJsonRpcMessage(eventData.join("\n"));
     messages.push(message);
-    if (expectedId !== undefined && rpcIdsEqual(message.id, expectedId) && !message.method) {
-      return messages;
+    if (!isTerminalMessage(message, expectedId)) {
+      await onMessage(message);
     }
-    await onMessage(message);
   }
   if (messages.length === 0) {
-    messages.push(...parseRpcMessages(rawBody));
+    const parsedMessages = parseRpcMessages(rawBody);
+    for (const message of parsedMessages) {
+      messages.push(message);
+      if (isTerminalMessage(message, expectedId)) {
+        return messages;
+      }
+      await onMessage(message);
+    }
   }
   return messages;
 }

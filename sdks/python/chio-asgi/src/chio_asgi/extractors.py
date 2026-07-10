@@ -22,7 +22,15 @@ def _sha256_hex(data: str) -> str:
 def _get_headers(scope: dict[str, Any]) -> dict[str, str]:
     """Extract headers from an ASGI scope as a lowercase-keyed dict."""
     raw_headers: list[tuple[bytes, bytes]] = scope.get("headers", [])
-    return {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in raw_headers}
+    headers: dict[str, str] = {}
+    for raw_name, raw_value in raw_headers:
+        name = raw_name.decode("latin-1").lower()
+        value = raw_value.decode("latin-1")
+        if name == "cookie" and name in headers:
+            headers[name] = f"{headers[name]}; {value}"
+        else:
+            headers[name] = value
+    return headers
 
 
 def _parse_cookies(cookie_header: str) -> dict[str, str]:

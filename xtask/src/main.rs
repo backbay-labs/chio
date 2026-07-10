@@ -25,8 +25,8 @@
 //! `$schema` URI but fail to resolve are treated as a hard failure rather
 //! than a SKIP, so a typo in the URI cannot silently bypass validation.
 //! Prints a per-scenario `PASS|FAIL|SKIP` line and exits non-zero on any
-//! FAIL. If the scenarios directory is missing or contains no JSON files,
-//! it prints `no scenarios found` and exits 0.
+//! FAIL. If the scenarios directory or schema root is missing, or no JSON
+//! scenarios are present, validation fails closed.
 //!
 //! `freeze-vectors` walks `tests/bindings/vectors/**/*.json`, computes a
 //! sha256 digest per file, and writes
@@ -109,7 +109,10 @@ pub(crate) use dispatch::dispatch;
 pub(crate) use error::XtaskError;
 pub(crate) use scenarios::validate_scenarios;
 #[cfg(test)]
-pub(crate) use scenarios::{resolve_schema_path, SchemaIndex, SCHEMA_URI_PREFIX};
+pub(crate) use scenarios::{
+    build_schema_index, collect_scenario_files, resolve_schema_path, SchemaIndex,
+    SCHEMA_URI_PREFIX,
+};
 #[cfg(test)]
 pub(crate) use support::TempDir;
 pub(crate) use support::{copy_dir_recursive, display_path, workspace_root};

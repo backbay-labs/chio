@@ -66,6 +66,51 @@ def test_pre_tool_call_returns_block_dict_for_denied_path(
     assert "writing to .env is forbidden" in result["message"]
 
 
+def test_pre_tool_call_blocks_unexpected_policy_errors(
+    monkeypatch: pytest.MonkeyPatch, tmp_workspace: Path
+) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+
+    def _raise(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("policy backend unavailable")
+
+    monkeypatch.setattr(runtime.policy, "check_write", _raise)
+
+    hook = make_pre_tool_call(runtime)
+    result = hook(
+        tool_name="chio_file_write",
+        args={"path": "src/main.py", "content": "x"},
+        task_id="task-policy-error",
+    )
+
+    assert isinstance(result, dict)
+    assert result["action"] == "block"
+    assert result["guard"] == "chio_policy_error"
+    assert result["reason"] == "policy_error"
+
+
+def test_pre_tool_call_treats_git_add_string_as_single_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_workspace: Path
+) -> None:
+    runtime = make_configured_runtime(cwd=tmp_workspace)
+    seen: list[str] = []
+
+    def _record(path: str, **_kwargs: Any) -> None:
+        seen.append(path)
+
+    monkeypatch.setattr(runtime.policy, "check_write", _record)
+
+    hook = make_pre_tool_call(runtime)
+    result = hook(
+        tool_name="chio_git_add",
+        args={"paths": ".env"},
+        task_id="task-git-add-string",
+    )
+
+    assert result is None
+    assert seen == [".env"]
+
+
 def test_pre_tool_call_returns_none_for_allowed_call(
     tmp_workspace: Path,
 ) -> None:

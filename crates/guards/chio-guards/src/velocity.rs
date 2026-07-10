@@ -148,7 +148,17 @@ impl Guard for VelocityGuard {
     }
 
     fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
-        let grant_index = ctx.matched_grant_index.unwrap_or(0);
+        let grant_index = if self.config.max_invocations_per_window.is_some()
+            || self.config.max_spend_per_window.is_some()
+        {
+            ctx.matched_grant_index.ok_or_else(|| {
+                KernelError::Internal(
+                    "velocity guard rate limiting requires matched_grant_index".to_string(),
+                )
+            })?
+        } else {
+            0
+        };
         let key = (ctx.request.capability.id.clone(), grant_index);
 
         let window_secs = self.config.window_secs.max(1);
@@ -350,7 +360,7 @@ mod tests {
         let request = make_request(&cap, &agent, &server);
 
         for i in 0..5 {
-            let ctx = guard_ctx(&request, &scope, &agent, &server, None);
+            let ctx = guard_ctx(&request, &scope, &agent, &server, Some(0));
             let result = guard.evaluate(&ctx).expect("evaluate should not error");
             assert_eq!(
                 result,
@@ -358,6 +368,31 @@ mod tests {
                 "request {i} should be allowed (limit=5)"
             );
         }
+    }
+
+    #[test]
+    fn invocation_velocity_requires_matched_grant_index() {
+        let guard = VelocityGuard::new(VelocityConfig {
+            max_invocations_per_window: Some(5),
+            max_spend_per_window: None,
+            window_secs: 60,
+            burst_factor: 1.0,
+        });
+
+        let kp = Keypair::generate();
+        let cap = signed_cap(&kp, "cap-missing-grant-index");
+        let scope = ChioScope::default();
+        let agent = kp.public_key().to_hex();
+        let server = "srv".to_string();
+        let request = make_request(&cap, &agent, &server);
+
+        let error = guard
+            .evaluate(&guard_ctx(&request, &scope, &agent, &server, None))
+            .expect_err("rate limiting without a matched grant index must fail closed");
+        assert!(
+            error.to_string().contains("matched_grant_index"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
@@ -378,12 +413,12 @@ mod tests {
 
         // Exhaust the 5 allowed tokens.
         for _ in 0..5 {
-            let ctx = guard_ctx(&request, &scope, &agent, &server, None);
+            let ctx = guard_ctx(&request, &scope, &agent, &server, Some(0));
             guard.evaluate(&ctx).expect("should not error");
         }
 
         // 6th request must be denied.
-        let ctx = guard_ctx(&request, &scope, &agent, &server, None);
+        let ctx = guard_ctx(&request, &scope, &agent, &server, Some(0));
         let result = guard.evaluate(&ctx).expect("should not error");
         assert_eq!(result, Verdict::Deny, "6th request should be denied");
     }
@@ -408,13 +443,13 @@ mod tests {
 
         // Exhaust the bucket.
         for _ in 0..2 {
-            let ctx = guard_ctx(&request, &scope, &agent, &server, None);
+            let ctx = guard_ctx(&request, &scope, &agent, &server, Some(0));
             guard.evaluate(&ctx).expect("should not error");
         }
 
         // Verify it denies now.
         {
-            let ctx = guard_ctx(&request, &scope, &agent, &server, None);
+            let ctx = guard_ctx(&request, &scope, &agent, &server, Some(0));
             let result = guard.evaluate(&ctx).expect("should not error");
             assert_eq!(result, Verdict::Deny, "should deny before refill");
         }
@@ -423,7 +458,7 @@ mod tests {
         thread::sleep(Duration::from_millis(1100));
 
         // Must allow again after refill.
-        let ctx = guard_ctx(&request, &scope, &agent, &server, None);
+        let ctx = guard_ctx(&request, &scope, &agent, &server, Some(0));
         let result = guard.evaluate(&ctx).expect("should not error");
         assert_eq!(result, Verdict::Allow, "should allow after refill");
     }
@@ -511,18 +546,18 @@ mod tests {
 
         // Exhaust cap-a.
         {
-            let ctx = guard_ctx(&request_a, &scope, &agent, &server, None);
+            let ctx = guard_ctx(&request_a, &scope, &agent, &server, Some(0));
             guard.evaluate(&ctx).expect("should not error");
         }
         {
-            let ctx = guard_ctx(&request_a, &scope, &agent, &server, None);
+            let ctx = guard_ctx(&request_a, &scope, &agent, &server, Some(0));
             let r = guard.evaluate(&ctx).expect("should not error");
             assert_eq!(r, Verdict::Deny, "cap-a second request denied");
         }
 
         // cap-b should be unaffected.
         {
-            let ctx = guard_ctx(&request_b, &scope, &agent, &server, None);
+            let ctx = guard_ctx(&request_b, &scope, &agent, &server, Some(0));
             let r = guard.evaluate(&ctx).expect("should not error");
             assert_eq!(r, Verdict::Allow, "cap-b first request should allow");
         }
@@ -546,12 +581,12 @@ mod tests {
 
         // Exhaust.
         {
-            let ctx = guard_ctx(&request, &scope, &agent, &server, None);
+            let ctx = guard_ctx(&request, &scope, &agent, &server, Some(0));
             guard.evaluate(&ctx).expect("should not error");
         }
 
         // The result must be Ok(GuardDecision::deny(Vec::new())), not Err.
-        let ctx = guard_ctx(&request, &scope, &agent, &server, None);
+        let ctx = guard_ctx(&request, &scope, &agent, &server, Some(0));
         let result = guard.evaluate(&ctx);
         assert!(result.is_ok(), "rate limit must return Ok, not Err");
         assert_eq!(result.expect("ok"), Verdict::Deny, "must be Verdict::Deny");

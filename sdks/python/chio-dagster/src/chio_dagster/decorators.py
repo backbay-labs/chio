@@ -16,7 +16,7 @@ import inspect
 from collections.abc import Callable
 from typing import Any, TypeVar, cast, overload
 
-from chio_adapter_base.redact import RedactionPolicy, redact_args
+from chio_adapter_base.redact import RedactionPolicy, bind_and_redact
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
@@ -116,6 +116,7 @@ def _looks_like_dagster_context(value: Any) -> bool:
 
 def _compute_parameters(
     *,
+    fn: Callable[..., Any] | None = None,
     context: Any,
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
@@ -125,22 +126,35 @@ def _compute_parameters(
     """Canonicalise compute-fn args + partition into a JSON-safe sidecar payload.
 
     Raw upstream objects are NOT forwarded (they may be DataFrames,
-    arrays, ...); kwargs flow through :func:`redact_args` then
-    :func:`_sanitise_kwargs`.
+    arrays, ...); args and kwargs flow through signature-aware redaction
+    and then through JSON sanitisation.
     """
     partition = extract_partition_info(context) if context is not None else {}
-    redacted = redact_args(tool_name, kwargs, policy=redaction_policy)
+    redacted_args, redacted_kwargs = bind_and_redact(
+        fn,
+        args,
+        kwargs,
+        tool_name=tool_name,
+        policy=redaction_policy,
+    )
+    sanitised_args = _sanitise_args(redacted_args)
     payload: dict[str, Any] = {
         "asset": tool_name,
-        "kwargs": _sanitise_kwargs(redacted),
+        "kwargs": _sanitise_kwargs(redacted_kwargs),
     }
+    if sanitised_args:
+        payload["args"] = sanitised_args
     if partition:
         payload["partition"] = dict(partition)
         # Mirror primary key for guards using the canonical Dagster shape.
         if "partition_key" in partition:
             payload["partition_key"] = partition["partition_key"]
-    _ = args
     return payload
+
+
+def _sanitise_args(args: list[Any]) -> list[Any]:
+    """Sanitise positional values, omitting Dagster context objects."""
+    return [_sanitise_value(value) for value in args if not _looks_like_dagster_context(value)]
 
 
 def _sanitise_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -149,11 +163,14 @@ def _sanitise_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     for key, value in kwargs.items():
         if key == "context":
             continue
-        if _is_json_safe(value):
-            result[key] = value
-        else:
-            result[key] = {"__chio_type__": type(value).__name__}
+        result[key] = _sanitise_value(value)
     return result
+
+
+def _sanitise_value(value: Any) -> Any:
+    if _is_json_safe(value):
+        return value
+    return {"__chio_type__": type(value).__name__}
 
 
 def _is_json_safe(value: Any) -> bool:
@@ -317,6 +334,7 @@ async def _run_with_guard(
     run_id = _context_run_id(context) if context is not None else None
 
     parameters = _compute_parameters(
+        fn=fn,
         context=context,
         args=args,
         kwargs=kwargs,

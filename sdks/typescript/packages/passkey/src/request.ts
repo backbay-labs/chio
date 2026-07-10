@@ -115,6 +115,11 @@ function pickCredentials(opts: RequestCapabilityOptions): CredentialsContainer {
   return nav.credentials;
 }
 
+function returnedScopeIsWithinRequest(returnedScopes: string[], requestedScopes: string[]): boolean {
+  const requested = new Set(requestedScopes);
+  return returnedScopes.every(scope => requested.has(scope));
+}
+
 /** Strip whitespace / trailing slash from a URL prefix and append a path. */
 function joinUrl(base: string, path: string): string {
   const trimmed = base.endsWith('/') ? base.slice(0, -1) : base;
@@ -344,7 +349,20 @@ async function postMint(
   // parser to keep one structural validator on the call path.
   const tokenJson = JSON.stringify(payload.capability);
   try {
-    return parseCapabilityToken(tokenJson);
+    const capability = parseCapabilityToken(tokenJson);
+    if (capability.audience !== opts.audience) {
+      throw new RequestCapabilityError(
+        'urn:chio:error:custody:audience-mismatch',
+        `issuer minted capability for audience ${capability.audience} instead of ${opts.audience}`,
+      );
+    }
+    if (!returnedScopeIsWithinRequest(capability.scope_set, opts.scopes)) {
+      throw new RequestCapabilityError(
+        'urn:chio:error:custody:assertion-rejected',
+        'issuer minted capability scope_set outside the requested scopes',
+      );
+    }
+    return capability;
   } catch (cause) {
     if (cause instanceof Error && 'code' in cause) {
       const code = (cause as { code?: unknown }).code;
@@ -384,7 +402,7 @@ export async function requestCapability(
       'requestCapability requires rpId, audience, and issuerUrl',
     );
   }
-  if (!Array.isArray(options.scopes)) {
+  if (!Array.isArray(options.scopes) || !options.scopes.every(scope => typeof scope === 'string')) {
     throw new RequestCapabilityError(
       'urn:chio:error:custody:internal-encoding',
       'requestCapability requires scopes to be an array of strings',

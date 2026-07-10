@@ -181,7 +181,11 @@ def perform_authorization_code_flow(
         if not location:
             raise RuntimeError("authorization approval did not provide a redirect location")
 
-    code = urllib.parse.parse_qs(urllib.parse.urlparse(location).query).get("code", [None])[0]
+    redirect_query = urllib.parse.parse_qs(urllib.parse.urlparse(location).query)
+    returned_state = redirect_query.get("state", [None])[0]
+    if returned_state != state:
+        raise RuntimeError("authorization approval redirect returned an invalid state")
+    code = redirect_query.get("code", [None])[0]
     if not code:
         raise RuntimeError("authorization approval redirect did not include a code")
 
