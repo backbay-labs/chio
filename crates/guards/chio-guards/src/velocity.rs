@@ -711,12 +711,12 @@ mod tests {
         let request = make_request(&cap, &agent, &server);
 
         let first = guard
-            .evaluate(&guard_ctx(&request, &scope, &agent, &server, None))
+            .evaluate(&guard_ctx(&request, &scope, &agent, &server, Some(0)))
             .expect("first request should not error");
         assert_eq!(first, Verdict::Allow, "first request should be allowed");
 
         let second = guard
-            .evaluate(&guard_ctx(&request, &scope, &agent, &server, None))
+            .evaluate(&guard_ctx(&request, &scope, &agent, &server, Some(0)))
             .expect("second request should not error");
         assert_eq!(
             second,
@@ -761,11 +761,11 @@ mod tests {
         // a and b each spend their single token; the table is now full of two
         // active buckets.
         let a1 = guard
-            .evaluate(&guard_ctx(&req_a, &scope, &agent, &server, None))
+            .evaluate(&guard_ctx(&req_a, &scope, &agent, &server, Some(0)))
             .expect("a first");
         assert_eq!(a1, Verdict::Allow);
         let b1 = guard
-            .evaluate(&guard_ctx(&req_b, &scope, &agent, &server, None))
+            .evaluate(&guard_ctx(&req_b, &scope, &agent, &server, Some(0)))
             .expect("b first");
         assert_eq!(b1, Verdict::Allow);
         assert_eq!(guard.combined_bucket_count(), 2);
@@ -773,7 +773,7 @@ mod tests {
         // c trips the cap while a and b are both in-window: c must be DENIED and no
         // active bucket may be evicted.
         let c1 = guard
-            .evaluate(&guard_ctx(&req_c, &scope, &agent, &server, None))
+            .evaluate(&guard_ctx(&req_c, &scope, &agent, &server, Some(0)))
             .expect("c");
         assert_eq!(
             c1,
@@ -789,7 +789,7 @@ mod tests {
         // a retained its (now empty) bucket: re-evaluating it must still be denied.
         // Were c allowed to evict a, this would return a fresh allowed bucket.
         let a2 = guard
-            .evaluate(&guard_ctx(&req_a, &scope, &agent, &server, None))
+            .evaluate(&guard_ctx(&req_a, &scope, &agent, &server, Some(0)))
             .expect("a replay");
         assert_eq!(
             a2,
@@ -826,14 +826,14 @@ mod tests {
         for _ in 0..4 {
             assert_eq!(
                 guard
-                    .evaluate(&guard_ctx(&req_x, &scope, &agent, &server, None))
+                    .evaluate(&guard_ctx(&req_x, &scope, &agent, &server, Some(0)))
                     .expect("burst request"),
                 Verdict::Allow,
             );
         }
         assert_eq!(
             guard
-                .evaluate(&guard_ctx(&req_x, &scope, &agent, &server, None))
+                .evaluate(&guard_ctx(&req_x, &scope, &agent, &server, Some(0)))
                 .expect("drained request"),
             Verdict::Deny,
             "the burst is drained",
@@ -851,7 +851,7 @@ mod tests {
         let req_y = make_request(&cap_y, &agent, &server);
         assert_eq!(
             guard
-                .evaluate(&guard_ctx(&req_y, &scope, &agent, &server, None))
+                .evaluate(&guard_ctx(&req_y, &scope, &agent, &server, Some(0)))
                 .expect("competing key"),
             Verdict::Deny,
             "a partially refilled burst bucket must not be reaped to admit a new key",
@@ -867,14 +867,14 @@ mod tests {
         for _ in 0..2 {
             assert_eq!(
                 guard
-                    .evaluate(&guard_ctx(&req_x, &scope, &agent, &server, None))
+                    .evaluate(&guard_ctx(&req_x, &scope, &agent, &server, Some(0)))
                     .expect("refilled request"),
                 Verdict::Allow,
             );
         }
         assert_eq!(
             guard
-                .evaluate(&guard_ctx(&req_x, &scope, &agent, &server, None))
+                .evaluate(&guard_ctx(&req_x, &scope, &agent, &server, Some(0)))
                 .expect("post-refill request"),
             Verdict::Deny,
             "the burst was reset to full capacity instead of the steady refill",
@@ -1044,7 +1044,7 @@ mod tests {
         let req_b = make_request(&cap_b, &agent, &server);
 
         let a1 = guard
-            .evaluate(&guard_ctx(&req_a, &scope, &agent, &server, None))
+            .evaluate(&guard_ctx(&req_a, &scope, &agent, &server, Some(0)))
             .expect("a first");
         assert_eq!(a1, Verdict::Allow);
         assert_eq!(guard.combined_bucket_count(), 1);
@@ -1057,7 +1057,7 @@ mod tests {
         // reclaim a's slot, so b is admitted rather than denied, and the table still
         // holds exactly one bucket (bounded).
         let b1 = guard
-            .evaluate(&guard_ctx(&req_b, &scope, &agent, &server, None))
+            .evaluate(&guard_ctx(&req_b, &scope, &agent, &server, Some(0)))
             .expect("b first");
         assert_eq!(
             b1,
