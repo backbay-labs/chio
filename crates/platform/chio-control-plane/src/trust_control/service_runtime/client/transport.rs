@@ -214,11 +214,7 @@ impl TrustControlClient {
             match request.call() {
                 Ok(response) => {
                     self.mark_preferred(index);
-                    return serde_json::from_reader(response.into_reader()).map_err(|error| {
-                        CliError::cli_other_error(format!(
-                            "failed to decode trust control service response body: {error}"
-                        ))
-                    });
+                    return read_capped_json(response.into_reader(), MAX_PEER_RESPONSE_BYTES);
                 }
                 Err(ureq::Error::Status(_, response)) => {
                     last_error = Some(response.into_string().unwrap_or_default());
@@ -256,11 +252,7 @@ impl TrustControlClient {
             match request.send_json(body.clone()) {
                 Ok(response) => {
                     self.mark_preferred(index);
-                    return serde_json::from_reader(response.into_reader()).map_err(|error| {
-                        CliError::cli_other_error(format!(
-                            "failed to decode trust control service response body: {error}"
-                        ))
-                    });
+                    return read_capped_json(response.into_reader(), MAX_PEER_RESPONSE_BYTES);
                 }
                 Err(ureq::Error::Status(_, response)) => {
                     last_error = Some(response.into_string().unwrap_or_default());
@@ -287,11 +279,7 @@ impl TrustControlClient {
             match request(&self.http, &url, &self.token) {
                 Ok(response) => {
                     self.mark_preferred(index);
-                    return serde_json::from_reader(response.into_reader()).map_err(|error| {
-                        CliError::cli_other_error(format!(
-                            "failed to decode trust control service response body: {error}"
-                        ))
-                    });
+                    return read_capped_json(response.into_reader(), MAX_PEER_RESPONSE_BYTES);
                 }
                 Err(ureq::Error::Status(status, response)) if should_retry_status(status) => {
                     last_error = Some(CliError::cli_other_error(format!(
@@ -331,11 +319,7 @@ impl TrustControlClient {
             match request(&self.http, &url) {
                 Ok(response) => {
                     self.mark_preferred(index);
-                    return serde_json::from_reader(response.into_reader()).map_err(|error| {
-                        CliError::cli_other_error(format!(
-                            "failed to decode trust control service response body: {error}"
-                        ))
-                    });
+                    return read_capped_json(response.into_reader(), MAX_PEER_RESPONSE_BYTES);
                 }
                 Err(ureq::Error::Status(status, response)) if should_retry_status(status) => {
                     last_error = Some(CliError::cli_other_error(format!(
@@ -434,5 +418,61 @@ impl TrustControlClient {
             Ok(mut guard) => *guard = index,
             Err(poisoned) => *poisoned.into_inner() = index,
         }
+    }
+}
+
+/// Read at most `cap` bytes from a peer response body and decode as JSON.
+/// Reading `cap + 1` and rejecting on overflow bounds the buffer even for a
+/// peer that streams forever.
+fn read_capped_json<T>(reader: impl std::io::Read, cap: u64) -> Result<T, CliError>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    use std::io::Read as _;
+    let mut limited = reader.take(cap.saturating_add(1));
+    let mut buffer = Vec::new();
+    limited.read_to_end(&mut buffer).map_err(|error| {
+        CliError::cli_other_error(format!("failed to read peer response: {error}"))
+    })?;
+    if buffer.len() as u64 > cap {
+        return Err(CliError::cli_other_error(format!(
+            "peer response exceeded the {cap}-byte cap"
+        )));
+    }
+    serde_json::from_slice(&buffer).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "failed to decode trust control service response body: {error}"
+        ))
+    })
+}
+
+#[cfg(test)]
+mod transport_cap_tests {
+    use super::{read_capped_json, MAX_PEER_RESPONSE_BYTES};
+
+    #[test]
+    fn read_capped_json_rejects_oversized_body() {
+        // A small cap keeps the test cheap; a body one byte over is a typed
+        // error, never buffered whole.
+        let cap = 16u64;
+        let oversized = vec![b' '; (cap + 1) as usize];
+        let result: Result<serde_json::Value, _> =
+            read_capped_json(std::io::Cursor::new(oversized), cap);
+        let Err(error) = result else {
+            panic!("oversized body must fail closed");
+        };
+        assert!(error.to_string().contains("exceeded"));
+    }
+
+    #[test]
+    fn read_capped_json_decodes_within_cap() {
+        let body = br#"{"ok":true}"#.to_vec();
+        let Ok(value) = read_capped_json::<serde_json::Value>(
+            std::io::Cursor::new(body),
+            MAX_PEER_RESPONSE_BYTES,
+        ) else {
+            panic!("within-cap body must decode");
+        };
+        assert_eq!(value["ok"], serde_json::Value::Bool(true));
     }
 }

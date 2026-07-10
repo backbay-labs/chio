@@ -55,8 +55,37 @@ pub(crate) async fn handle_internal_authority_snapshot(
 pub(crate) fn cluster_replication_heads(
     state: &TrustServiceState,
 ) -> Result<ClusterReplicationHeadsView, CliError> {
-    let snapshot = build_cluster_state_snapshot(state)?;
-    Ok(snapshot.replication)
+    let (tool_seq, child_seq, lineage_seq) =
+        if let Some(path) = state.config.receipt_db_path.as_deref() {
+            let store = SqliteReceiptStore::open(path)?;
+            (
+                store.max_tool_receipt_seq()?,
+                store.max_child_receipt_seq()?,
+                store.max_lineage_seq()?,
+            )
+        } else {
+            (0, 0, 0)
+        };
+    let budget_seq = match state.config.budget_db_path.as_deref() {
+        Some(path) => SqliteBudgetStore::open(path)?.max_mutation_event_seq()?,
+        None => 0,
+    };
+    let revocation_cursor = match state.config.revocation_db_path.as_deref() {
+        Some(path) => SqliteRevocationStore::open(path)?.latest_revocation_cursor()?,
+        None => None,
+    };
+    Ok(ClusterReplicationHeadsView {
+        tool_seq,
+        child_seq,
+        lineage_seq,
+        budget_seq,
+        revocation_cursor: revocation_cursor.map(|(revoked_at, capability_id)| {
+            RevocationCursorView {
+                revoked_at,
+                capability_id,
+            }
+        }),
+    })
 }
 
 pub(crate) fn build_cluster_state_snapshot(
@@ -103,6 +132,20 @@ pub(crate) fn build_cluster_state_snapshot(
     } else {
         Vec::new()
     };
+    // Range-encode the abandoned seqs (inclusive (start, end) runs) so a rollback
+    // storm's long contiguous abandoned window stays a few small pairs rather than an
+    // unbounded integer list that would push the snapshot body past
+    // MAX_PEER_RESPONSE_BYTES and permanently break force-snapshot recovery. Computed
+    // in SQL, so the full seq set is never materialized here either.
+    let budget_abandoned_seq_ranges = if let Some(path) = state.config.budget_db_path.as_deref() {
+        SqliteBudgetStore::open(path)?
+            .list_abandoned_event_seq_ranges()?
+            .into_iter()
+            .map(|(start, end)| AbandonedSeqRange { start, end })
+            .collect()
+    } else {
+        Vec::new()
+    };
 
     let replication = ClusterReplicationHeadsView {
         tool_seq: tool_receipts.last().map(|record| record.seq).unwrap_or(0),
@@ -133,6 +176,7 @@ pub(crate) fn build_cluster_state_snapshot(
         lineage,
         budgets,
         budget_mutation_events,
+        budget_abandoned_seq_ranges,
     })
 }
 
@@ -153,6 +197,7 @@ pub(crate) fn apply_cluster_snapshot(
         lineage,
         budgets,
         budget_mutation_events,
+        budget_abandoned_seq_ranges,
     } = snapshot;
 
     if let (Some(path), Some(authority_view)) =
@@ -203,6 +248,20 @@ pub(crate) fn apply_cluster_snapshot(
         store
             .import_snapshot_records(&usage_records, &mutation_records)
             .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        store
+            .record_budget_import_floors(&mutation_records)
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
+        // Learn the leader's abandoned/tombstoned seqs so a fresh follower's
+        // contiguous ack head treats those holes as filled instead of stalling at
+        // them. Carried range-encoded and expanded in SQL, so a rollback-storm run
+        // is never materialized as a huge in-memory list here.
+        let abandoned_ranges = budget_abandoned_seq_ranges
+            .iter()
+            .map(|range| (range.start, range.end))
+            .collect::<Vec<_>>();
+        store
+            .record_abandoned_event_seq_ranges(&abandoned_ranges)
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
         for event in &budget_mutation_events {
             budget_cursor = Some(merge_budget_cursor(
                 budget_cursor,
@@ -225,6 +284,21 @@ pub(crate) fn apply_cluster_snapshot(
         peer.snapshot_applied_count = peer.snapshot_applied_count.saturating_add(1);
         peer.last_snapshot_at = Some(generated_at);
         peer.delta_records_since_snapshot = 0;
+        // Clear the peer's cached witness acks ATOMICALLY with clearing
+        // `force_snapshot`. `force_snapshot` was the ONLY thing excluding this peer's stale
+        // ack head from the witness set (`budget_write_quorum_commit_view`), and this
+        // is the single site that clears it WITHOUT going through
+        // `finalize_peer_sync_round` (which re-records a validated ack via
+        // `update_peer_budget_acks`). If we cleared `force_snapshot` here but left the
+        // old (stale-high) ack map in place, ANY early return after this point (an
+        // authority-sync error, a puller error, a transient failure) would skip
+        // finalize and leave a Healthy, not-force_snapshot peer WITNESSING at an ack
+        // head that this round never validated - an OVER-COUNT / budget double-spend.
+        // Snapshot recovery is precisely our admission that our incremental view of
+        // this peer was broken, so the peer must start witnessing NOTHING until a
+        // completed pull round's finalize re-records a validated ack. Fail-closed and
+        // strictly under-count-safe: this can only SHRINK the witness set.
+        peer.budget_import_acks.clear();
         peer.force_snapshot = false;
     });
 
@@ -414,9 +488,25 @@ fn collect_budget_views(store: &SqliteBudgetStore) -> Result<Vec<BudgetUsageView
 fn collect_budget_mutation_event_views(
     store: &SqliteBudgetStore,
 ) -> Result<Vec<BudgetMutationEventView>, CliError> {
-    Ok(store
-        .list_mutation_events(i64::MAX as usize, None, None)?
-        .into_iter()
-        .map(budget_mutation_event_view)
-        .collect())
+    // Page the FULL mutation-event history in MAX_LIST_LIMIT chunks (like the
+    // receipt/lineage/usage collectors above) rather than one unbounded
+    // i64::MAX-limit query, so a very large budget history does not load in a
+    // single giant query. Semantics are unchanged: the
+    // dense event_seq column is strictly increasing and unique, and both
+    // `list_mutation_events` and `list_mutation_events_after_seq` order by
+    // event_seq ASC, so this yields the identical full, ascending event set.
+    let mut after_seq = 0u64;
+    let mut records = Vec::new();
+    loop {
+        let batch = store.list_mutation_events_after_seq(MAX_LIST_LIMIT, after_seq)?;
+        if batch.is_empty() {
+            break;
+        }
+        after_seq = batch
+            .last()
+            .map(|record| record.event_seq)
+            .unwrap_or(after_seq);
+        records.extend(batch.into_iter().map(budget_mutation_event_view));
+    }
+    Ok(records)
 }

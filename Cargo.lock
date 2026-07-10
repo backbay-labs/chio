@@ -3069,6 +3069,7 @@ dependencies = [
  "hex",
  "p384",
  "percent-encoding",
+ "proptest",
  "rcgen 0.13.2",
  "reqwest 0.13.2",
  "rsa",
