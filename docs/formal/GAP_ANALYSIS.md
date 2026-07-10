@@ -161,34 +161,24 @@ recording and posture ratchets).
 
 ## G6: Fuzz plumbing leaks
 
+Status: Closed (2026-07-09).
+
 Evidence:
 
-- Orphaned corpus directories that no `[[bin]]` name matches:
-  `fuzz/corpus/fuzz_capability_receipt` (13 rich binding vectors),
-  `fuzz_canonical_json` (2), `fuzz_manifest_roundtrip` (6), while the
-  bin-named directories hold 1-3 seeds each. The richer seed sets are unused
-  by default corpus resolution.
-- Four targets have no seed corpus directory at all: `eval_receipt_bundle`,
-  `federation_trust_establishment`, `underwriting_policy_input`,
-  `revocation_oracle_merkle`.
-- `fuzz/tests/smoke.rs` (corpus smoke plus matrix-vs-binaries inventory sync
-  tests) is run by no CI job; `fuzz/` is a standalone workspace excluded from
-  `cargo test --workspace`.
-- `scripts/check-corpus-metadata.sh` is wired to no workflow.
-- `fuzz/owners.toml` is missing 5 targets, which breaks
-  `scripts/promote_fuzz_seed.sh` owner resolution.
-- The budget-cap contract (PR lanes hard halt, scheduled lanes advisory) is
-  written into `docs/fuzzing/continuous.md`, both PR budget-step comments,
-  and a dedicated contract test
-  (`scripts/tests/fuzz-budget-hard-halt.test.sh`), but neither PR budget
-  step sets `GH_FUZZ_BUDGET_CAP_MODE` (the script defaults to warn) and the
-  contract test is wired into no CI job, so effective behavior is warn
-  everywhere; only the four scheduled lanes set warn explicitly and
-  deliberately.
+- Every corpus directory matches a `fuzz/Cargo.toml` binary and contains at
+  least three deterministic seeds.
+- `fuzz/corpus_metadata.toml` indexes every seed by target, path, source, and
+  SHA-256; the required structural lane runs the fail-closed metadata check.
+- The locked fuzz workspace smoke suite cross-checks binaries, the scheduled
+  matrix, owner mappings, and the seed floor. It runs on fuzz-scoped pull
+  requests and nightly.
+- `fuzz/owners.toml` covers all 25 targets, so seed promotion resolves every
+  owning crate.
+- Pull-request fuzz and mutation budget checks explicitly fail at the cap;
+  scheduled measurement lanes retain their explicit advisory setting.
 
-Consequence: fuzzing effectiveness silently degrades (empty corpora, unused
-seeds) and inventory-sync regressions land unnoticed. All items are cheap to
-fix.
+Consequence resolved: corpus and inventory drift now fail before merge, and
+scheduled replay detects upstream panics between fuzz campaigns.
 
 Addressed by:
 [plan/FV-E4-fuzz-plumbing-repair.md](plan/FV-E4-fuzz-plumbing-repair.md).

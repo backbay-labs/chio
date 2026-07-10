@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/formal-pr-smoke.yml"
+      - ".github/workflows/fuzz.yml"
       - ".kani/harnesses.toml"
       - "Cargo.lock"
       - "Cargo.toml"
@@ -26,6 +27,7 @@ on:
       - "formal/proof-manifest.toml"
       - "formal/rust-verification/**"
       - "formal/theorem-inventory.json"
+      - "fuzz/**"
       - "scripts/check-formal-proofs.sh"
       - "scripts/check-kani-public-core.sh"
       - "scripts/check-rust-verification-gates.sh"
@@ -57,6 +59,7 @@ jobs:
       kani_core: ${{ steps.paths.outputs.kani_core }}
       kani_manifest: ${{ steps.paths.outputs.kani_manifest }}
       metadata: ${{ steps.paths.outputs.metadata }}
+      fuzz_smoke: ${{ steps.paths.outputs.fuzz_smoke }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
@@ -72,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-            for output in lean kani_core kani_manifest metadata; do
+            for output in lean kani_core kani_manifest metadata fuzz_smoke; do
               echo "${output}=true" >> "${GITHUB_OUTPUT}"
             done
             exit 0
@@ -99,6 +102,34 @@ jobs:
           set_output kani_core "${rust_common}|^(\.kani/harnesses\.toml$|formal/rust-verification/kani-public-harnesses\.toml$|scripts/check-kani-public-core\.sh$|crates/(kernel/chio-kernel-core|core/chio-core-types|trust/chio-revocation-oracle)/(src/|Cargo\.toml$))"
           set_output kani_manifest "${rust_common}|^(\.kani/harnesses\.toml$|scripts/run-kani-manifest\.sh$|crates/(economy/chio-anchor|trust/chio-attest-verify|trust/chio-weights)/(src/|Cargo\.toml$))"
           set_output metadata "${workflow}|^(formal/rust-verification/|scripts/check-rust-verification-gates\.sh$)"
+          set_output fuzz_smoke "${workflow}|^(\.github/workflows/fuzz\.yml$|fuzz/)"
+
+  fuzz-corpus-smoke-pr:
+    name: fuzz-corpus-smoke-pr (locked replay)
+    needs: scope
+    if: needs.scope.outputs.fuzz_smoke == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
+
+      - name: Install protobuf compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          workspaces: fuzz -> target
+
+      - name: Replay fuzz corpora
+        working-directory: fuzz
+        run: cargo test --locked
 
   lean-build:
     name: lean-build (lake + sorry scan + manifest cross-ref)

@@ -58,6 +58,31 @@ jobs:
           cargo test -p chio-credentials --test property_passport -- --nocapture
           cargo test -p chio-policy --test property_evaluate -- --nocapture
 
+  fuzz-corpus-smoke:
+    name: fuzz corpus smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
+
+      - name: Install protobuf compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          workspaces: fuzz -> target
+
+      - name: Replay fuzz corpora
+        working-directory: fuzz
+        run: cargo test --locked
+
   # The nightly RevocationEventuallySeen liveness check runs in the dedicated
   # fail-closed apalache-temporal.yml workflow at length=24. Keeping it in a
   # separate scheduled workflow avoids duplicating the safety sweep here while

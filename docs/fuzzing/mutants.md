@@ -171,6 +171,10 @@ spending mutation budget. That check fails closed if an `exclude_globs` entry
 in the workspace or per-crate `mutants.toml` files lacks a nearby `rationale:`
 comment.
 
+The PR job sets `GH_FUZZ_BUDGET_CAP_MODE=fail`, so an exhausted shared fuzz
+and mutation budget stops the qualification run. The scheduled job sets the
+mode to `warn` and remains available for measurement continuity.
+
 The lane is **advisory** until the required evidence exists, then flips
 to **blocking** through a release-owned PR. The state machine is driven
 by the `[mutants]` table in `releases.toml` at the repo root:

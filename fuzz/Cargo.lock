@@ -1070,7 +1070,6 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
- "tracing",
  "ureq",
  "url",
  "webpki-roots 0.26.11",
@@ -1115,7 +1114,6 @@ dependencies = [
  "hex",
  "opentimestamps",
  "p256",
- "pem",
  "reqwest 0.13.3",
  "serde",
  "serde_json",
@@ -1152,7 +1150,6 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "tough",
- "tracing",
  "url",
  "x509-cert",
 ]
@@ -1197,9 +1194,6 @@ dependencies = [
  "chio-web3",
  "ed25519-dalek",
  "hex",
- "percent-encoding",
- "rand_core 0.6.4",
- "ryu",
  "serde",
  "serde_json",
  "sha2",
@@ -1262,9 +1256,11 @@ dependencies = [
  "chio-core-types",
  "chio-kernel",
  "chio-manifest",
+ "futures",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]
@@ -1279,6 +1275,7 @@ dependencies = [
  "der",
  "hex",
  "jsonwebtoken",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2",
@@ -1415,7 +1412,6 @@ dependencies = [
  "chio-core-types",
  "chio-listing",
  "serde",
- "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -1426,7 +1422,6 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chio-core",
- "chio-core-types",
  "chio-http-session",
  "chio-kernel",
  "glob",
@@ -1439,7 +1434,6 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
- "zeroize",
 ]
 
 [[package]]
@@ -1453,14 +1447,11 @@ dependencies = [
  "chio-kernel",
  "chio-metrics-spec",
  "chrono",
- "ed25519-dalek",
  "hex",
- "rand_core 0.6.4",
  "serde",
  "serde_json",
  "sha2",
  "thiserror 1.0.69",
- "url",
  "uuid",
 ]
 
@@ -1488,14 +1479,10 @@ dependencies = [
  "chio-credit",
  "chio-custody-hw",
  "chio-federation",
- "chio-governance",
  "chio-kernel-core",
  "chio-link",
- "chio-listing",
  "chio-log-redact",
- "chio-market",
  "chio-metrics-spec",
- "chio-open-market",
  "chio-settle",
  "chio-tool-call-fabric",
  "chio-underwriting",
@@ -1532,7 +1519,6 @@ name = "chio-lineage"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
- "petgraph 0.6.5",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -1557,8 +1543,6 @@ version = "0.1.0"
 dependencies = [
  "chio-core-types",
  "serde",
- "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1590,7 +1574,6 @@ dependencies = [
  "chio-credit",
  "chio-underwriting",
  "serde",
- "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -1607,7 +1590,6 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
  "tokio",
  "tracing",
  "url",
@@ -1624,7 +1606,6 @@ dependencies = [
  "chio-edge-metrics",
  "chio-kernel",
  "chio-manifest",
- "chio-metrics-spec",
  "chrono",
  "serde",
  "serde_json",
@@ -1656,7 +1637,6 @@ dependencies = [
  "chio-governance",
  "chio-listing",
  "serde",
- "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -1741,7 +1721,6 @@ dependencies = [
  "chio-core-types",
  "rs_merkle",
  "serde",
- "serde_json",
  "sha2",
  "thiserror 1.0.69",
 ]
@@ -1787,8 +1766,6 @@ dependencies = [
  "chio-appraisal",
  "chio-core-types",
  "serde",
- "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]

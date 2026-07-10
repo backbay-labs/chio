@@ -11,7 +11,9 @@ corpus, and the source-path globs that trigger it on a PR. That file MUST stay
 in lockstep with `.clusterfuzzlite/build.sh` and `fuzz/oss-fuzz/build.sh`.
 Additional targets add their `[[bin]]` entry in `Cargo.toml` alongside their
 `fuzz_target!` definition under `fuzz_targets/` and a `[targets.<name>]` block
-in `target-map.toml`.
+in `target-map.toml`. Each target also needs an `owners.toml` entry, at least
+three deterministic seeds under `corpus/<name>/`, and one hash-pinned metadata
+entry per seed in `corpus_metadata.toml`.
 
 ## Setup
 
@@ -109,4 +111,11 @@ Build only (the CI build gate):
 
 ```bash
 cargo +nightly fuzz build attest_verify
+```
+
+Replay every in-process corpus entry and validate the binary, workflow, owner,
+and seed-floor inventories with the checked-in lockfile:
+
+```bash
+cargo test --locked
 ```
