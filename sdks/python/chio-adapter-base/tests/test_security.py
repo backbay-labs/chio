@@ -214,6 +214,24 @@ def test_reject_shell_argv_escape_rejects_unquoted_windows_absolute_path(
     assert excinfo.value.reason == "outside_workspace"
 
 
+def test_reject_shell_argv_escape_rejects_embedded_windows_absolute_path(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ChioPathEscapeError) as excinfo:
+        reject_shell_argv_escape(
+            "tool --config='C:\\outside\\secret.txt'",
+            root=tmp_path,
+        )
+    assert excinfo.value.reason == "outside_workspace"
+
+    with pytest.raises(ChioPathEscapeError) as excinfo:
+        reject_shell_argv_escape(
+            'TOOL_CONFIG="C:\\outside\\secret.txt" tool',
+            root=tmp_path,
+        )
+    assert excinfo.value.reason == "outside_workspace"
+
+
 def test_reject_shell_argv_escape_allows_windows_absolute_inside_workspace() -> None:
     reject_shell_argv_escape(
         r"type C:\repo\README.md",
@@ -221,6 +239,10 @@ def test_reject_shell_argv_escape_allows_windows_absolute_inside_workspace() -> 
     )
     reject_shell_argv_escape(
         r"type 'C:\repo\docs\guide.md'",
+        root=r"C:\repo",
+    )
+    reject_shell_argv_escape(
+        r"tool --config='C:\repo\settings.toml'",
         root=r"C:\repo",
     )
 

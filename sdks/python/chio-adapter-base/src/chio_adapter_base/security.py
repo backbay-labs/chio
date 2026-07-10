@@ -115,7 +115,11 @@ _ENV_DENY_EXACT: frozenset[str] = frozenset(
 )
 
 _WINDOWS_ABSOLUTE_TOKEN_RE = re.compile(
-    r"(?:^|\s)[\"']?(?P<token>(?:[A-Za-z]:[\\/]|\\\\[^\\/\s]+[\\/][^\\/\s]+[\\/])\S*)"
+    r"(?P<token>"
+    r"[A-Za-z]:[\\/][^\s\"']*"
+    r"|(?<!:)\\\\[^\\/\s\"']+[\\/][^\\/\s\"']+(?:[\\/][^\s\"']*)?"
+    r"|(?<!:)//[^/\s\"']+/[^/\s\"']+(?:/[^\s\"']*)?"
+    r")"
 )
 
 
@@ -277,6 +281,12 @@ def reject_shell_argv_escape(
         segments = normalised.split("/")
         if any(seg == ".." for seg in segments):
             raise ChioPathEscapeError(token, "dotdot_segment")
+        if root_text is not None:
+            for embedded_windows_absolute in _WINDOWS_ABSOLUTE_TOKEN_RE.finditer(token):
+                _reject_windows_absolute_escape(
+                    embedded_windows_absolute.group("token"),
+                    root_text,
+                )
         is_windows_absolute = (
             len(normalised) >= 3
             and normalised[0].isalpha()
