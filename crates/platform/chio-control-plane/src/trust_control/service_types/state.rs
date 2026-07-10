@@ -7,6 +7,47 @@ pub(crate) struct TrustServiceState {
     pub(crate) verifier_policy_registry: Option<Arc<VerifierPolicyRegistry>>,
     pub(crate) federation_admission_rate_limiter: Arc<Mutex<FederationAdmissionRateLimiter>>,
     pub(crate) cluster: Option<Arc<Mutex<ClusterRuntimeState>>>,
+    /// Progress signal for the single background cluster-sync loop. `Some`
+    /// exactly when `cluster` is `Some`. A budget-write handler parks on this
+    /// watch instead of driving its own inline sync.
+    pub(crate) cluster_progress: Option<Arc<ClusterProgress>>,
+}
+
+/// Coordinates the single background cluster-sync loop with budget-write
+/// waiters. `tick` increments once per completed sync round (waiters watch it);
+/// `kick` lets a waiter ask the loop to run a round now instead of sleeping out
+/// its interval. The loop is the sole driver of cursor and ack advancement, so
+/// N concurrent writes share one sync stream rather than each spawning its own.
+pub(crate) struct ClusterProgress {
+    tick: tokio::sync::watch::Sender<u64>,
+    kick: tokio::sync::Notify,
+}
+
+impl ClusterProgress {
+    pub(crate) fn new() -> Self {
+        let (tick, _rx) = tokio::sync::watch::channel(0);
+        Self {
+            tick,
+            kick: tokio::sync::Notify::new(),
+        }
+    }
+
+    pub(crate) fn notify_round_complete(&self) {
+        self.tick
+            .send_modify(|value| *value = value.wrapping_add(1));
+    }
+
+    pub(crate) fn subscribe(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.tick.subscribe()
+    }
+
+    pub(crate) fn request_sync(&self) {
+        self.kick.notify_one();
+    }
+
+    pub(crate) async fn awaited_kick(&self) {
+        self.kick.notified().await;
+    }
 }
 
 #[derive(Clone)]
@@ -87,6 +128,7 @@ pub(crate) struct PeerSyncState {
     pub(crate) lineage_seq: u64,
     pub(crate) revocation_cursor: Option<RevocationCursor>,
     pub(crate) budget_cursor: Option<BudgetCursor>,
+    pub(crate) budget_import_acks: BTreeMap<String, u64>,
     pub(crate) delta_records_since_snapshot: u64,
     pub(crate) snapshot_applied_count: u64,
     pub(crate) last_snapshot_at: Option<u64>,
@@ -180,6 +222,7 @@ impl Default for PeerSyncState {
             lineage_seq: 0,
             revocation_cursor: None,
             budget_cursor: None,
+            budget_import_acks: BTreeMap::new(),
             delta_records_since_snapshot: 0,
             snapshot_applied_count: 0,
             last_snapshot_at: None,

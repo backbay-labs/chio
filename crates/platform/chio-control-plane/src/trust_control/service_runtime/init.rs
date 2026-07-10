@@ -13,6 +13,7 @@ pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliErr
     let verifier_policy_registry =
         load_verifier_policy_registry(config.verifier_policies_file.as_deref(), "trust_control")?;
     let cluster = build_cluster_state(&config, local_addr)?;
+    let cluster_progress = cluster.as_ref().map(|_| Arc::new(ClusterProgress::new()));
     let state = TrustServiceState {
         config,
         enterprise_provider_registry,
@@ -21,6 +22,7 @@ pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliErr
             FederationAdmissionRateLimiter::default(),
         )),
         cluster,
+        cluster_progress,
     };
     if state.cluster.is_some() {
         tokio::spawn(run_cluster_sync_loop(state.clone()));
