@@ -213,6 +213,41 @@ class TestDefaultPolicyRedacts:
         }
         assert "content" not in forwarded
 
+    async def test_chio_file_write_dict_body_alias_is_redacted(self) -> None:
+        def write_file(path: str, body: str) -> None:
+            del path, body
+
+        async with allow_all() as chio:
+            token = await _mint_token(
+                chio,
+                subject="agent:alice",
+                scope=_scope_for_tools("chio_file_write"),
+            )
+            grant = WorkflowGrant(
+                workflow_id="wf-1",
+                token=token,
+                tool_server="srv",
+            )
+            interceptor = ChioActivityInterceptor(chio_client=chio)
+            interceptor.register_workflow_grant(grant)
+
+            next_i = _NextInterceptor()
+            inbound = _ChioInboundInterceptor(next_i, interceptor)
+
+            payload = {"path": "/tmp/x", "body": "PROD_SECRET=abc123"}
+            info = _default_info(activity_type="chio_file_write")
+            with _patched_activity_info(info):
+                await inbound.execute_activity(_make_input(payload, fn=write_file))
+
+        evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        forwarded = evaluate_calls[0].parameters["args"][0]
+        assert forwarded["path"] == "/tmp/x"
+        assert forwarded["body"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert next_i.received_args == [payload]
+
     async def test_unrelated_activity_passes_args_through(self) -> None:
         async with allow_all() as chio:
             token = await _mint_token(

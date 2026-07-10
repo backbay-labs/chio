@@ -162,31 +162,31 @@ while IFS= read -r path; do
     [[ -z "$path" ]] && continue
     # Per-file pairing: a single `closes #N` at the top of the PR body must
     # NOT silently approve N unrelated regression-test deletions; the contract
-    # is one paired reference per deleted file. We require that either the
-    # full path
-    # OR the file's basename appears in the search text alongside a
-    # paired issue link. Either form ties the link to this specific
-    # deletion rather than treating any link anywhere in the diff as
-    # a wildcard waiver.
+    # is one paired reference per deleted file. Require the issue link and
+    # this deleted file's full path or basename on the same line, rather than
+    # treating any link anywhere in the diff as a wildcard waiver.
     base="$(basename "$path")"
     # Escape regex metacharacters in path/basename for safe substring grep.
     path_lit_re="$(printf '%s' "$path" | sed 's/[][\\.^$*+?(){}|/]/\\&/g')"
     base_lit_re="$(printf '%s' "$base" | sed 's/[][\\.^$*+?(){}|/]/\\&/g')"
-    has_link=0
-    has_name=0
-    if echo "$SEARCH_TEXT" | grep -iqE "$PAIR_REGEX"; then
-        has_link=1
-    fi
-    if echo "$SEARCH_TEXT" | grep -qE "(${path_lit_re}|${base_lit_re})"; then
-        has_name=1
-    fi
-    if (( has_link == 1 )) && (( has_name == 1 )); then
+    paired=0
+    link_seen=0
+    while IFS= read -r line; do
+        if printf '%s\n' "$line" | grep -iqE "$PAIR_REGEX"; then
+            link_seen=1
+            if printf '%s\n' "$line" | grep -qE "(${path_lit_re}|${base_lit_re})"; then
+                paired=1
+                break
+            fi
+        fi
+    done <<< "$SEARCH_TEXT"
+    if (( paired == 1 )); then
         echo "  PAIRED   $path"
     else
-        if (( has_link == 0 )); then
+        if (( link_seen == 0 )); then
             echo "  UNPAIRED $path (no closes/fixes/refs #N or github issue/PR URL)" >&2
         else
-            echo "  UNPAIRED $path (issue link present but does not name this file; mention the path or basename next to the link)" >&2
+            echo "  UNPAIRED $path (issue link present but not on the same line as this file; mention the path or basename next to the link)" >&2
         fi
         unpaired=$((unpaired + 1))
     fi

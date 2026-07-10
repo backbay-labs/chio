@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import http, { type IncomingHttpHeaders } from "node:http";
+import { PassThrough } from "node:stream";
 import { describe, it, expect } from "vitest";
 import {
   buildChioHttpRequest,
@@ -271,6 +272,63 @@ describe("resolveConfig", () => {
 });
 
 describe("request body preservation", () => {
+  it("decodes plus signs in query parameters like URLSearchParams", async () => {
+    let observedQuery: Record<string, string> | undefined;
+    const sidecar = await startMockSidecar((body) => {
+      observedQuery = JSON.parse(body).query as Record<string, string>;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    const server = http.createServer(async (req, res) => {
+      const outcome = await interceptNodeRequest(req, res, resolved);
+      if (outcome.responseSent) {
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(server, "GET", "/search?q=hello+world&flag");
+      expect(response.status).toBe(200);
+      expect(observedQuery).toEqual({ q: "hello world", flag: "" });
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
+  it("allows known-empty parsed bodies to evaluate as empty requests", async () => {
+    let observed: { body_hash?: string; body_length?: number } | undefined;
+    const sidecar = await startMockSidecar((body) => {
+      observed = JSON.parse(body) as { body_hash?: string; body_length?: number };
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    const server = http.createServer(async (req, res) => {
+      (req as http.IncomingMessage & { body?: unknown }).body = {};
+
+      const outcome = await interceptNodeRequest(req, res, resolved);
+      if (outcome.responseSent) {
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(server, "GET", "/empty");
+      expect(response.status).toBe(200);
+      expect(observed?.body_length).toBe(0);
+      expect(observed).not.toHaveProperty("body_hash");
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
   it("preserves IncomingMessage bodies for downstream consumers", async () => {
     const sidecar = await startMockSidecar();
     const resolved = resolveConfig({ sidecarUrl: sidecar.url });
@@ -304,6 +362,139 @@ describe("request body preservation", () => {
       expect(response.body).toBe("hello world");
     } finally {
       server.close();
+      sidecar.server.close();
+    }
+  });
+
+  it("does not hang when the request stream was already consumed", async () => {
+    let evaluateCalls = 0;
+    const sidecar = await startMockSidecar(() => {
+      evaluateCalls += 1;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    const server = http.createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        void (async () => {
+          const outcome = await interceptNodeRequest(req, res, resolved);
+          if (outcome.responseSent) {
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "text/plain" });
+          res.end("ok");
+        })().catch((error: unknown) => {
+          res.writeHead(500, { "Content-Type": "text/plain" });
+          res.end(error instanceof Error ? error.message : String(error));
+        });
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const body = "already consumed";
+      const response = await request(
+        server,
+        "POST",
+        "/upload",
+        body,
+        {
+          "content-length": String(Buffer.byteLength(body)),
+          "content-type": "text/plain",
+        },
+      );
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.body)).toMatchObject({
+        error: "chio_evaluation_failed",
+      });
+      expect(evaluateCalls).toBe(0);
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
+  it("fails closed when a chunked request stream was already consumed", async () => {
+    let evaluateCalls = 0;
+    const sidecar = await startMockSidecar(() => {
+      evaluateCalls += 1;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    const server = http.createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        void (async () => {
+          const outcome = await interceptNodeRequest(req, res, resolved);
+          if (outcome.responseSent) {
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "text/plain" });
+          res.end("ok");
+        })().catch((error: unknown) => {
+          res.writeHead(500, { "Content-Type": "text/plain" });
+          res.end(error instanceof Error ? error.message : String(error));
+        });
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(
+        server,
+        "POST",
+        "/upload",
+        "already consumed",
+        { "content-type": "text/plain" },
+      );
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.body)).toMatchObject({
+        error: "chio_evaluation_failed",
+      });
+      expect(evaluateCalls).toBe(0);
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
+  it("reads complete but not drained IncomingMessage bodies", async () => {
+    let lastEvaluateBody: string | undefined;
+    const sidecar = await startMockSidecar((body) => {
+      lastEvaluateBody = body;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+    const body = "complete body";
+    const req = new PassThrough() as PassThrough & http.IncomingMessage;
+    req.method = "POST";
+    req.url = "/upload";
+    req.headers = { "content-type": "text/plain" };
+    Object.defineProperty(req, "complete", {
+      configurable: true,
+      value: true,
+    });
+    req.end(body);
+    const res = new http.ServerResponse(req);
+
+    try {
+      const outcome = await interceptNodeRequest(req, res, resolved);
+      expect(outcome.responseSent).toBe(false);
+
+      const parsed = JSON.parse(lastEvaluateBody ?? "{}") as {
+        body_hash?: string;
+        body_length?: number;
+      };
+      expect(parsed.body_length).toBe(Buffer.byteLength(body));
+      expect(parsed.body_hash).toBe(
+        createHash("sha256").update(Buffer.from(body, "utf-8")).digest("hex"),
+      );
+
+      const replayed: Buffer[] = [];
+      for await (const chunk of req) {
+        replayed.push(Buffer.from(chunk));
+      }
+      expect(Buffer.concat(replayed).toString("utf-8")).toBe(body);
+    } finally {
       sidecar.server.close();
     }
   });
