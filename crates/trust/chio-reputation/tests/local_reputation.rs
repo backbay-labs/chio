@@ -353,6 +353,68 @@ fn structural_delegation_hygiene_scores_attenuating_delegator_above_passthrough(
 }
 
 #[test]
+fn expanded_child_grants_do_not_score_as_reductions() {
+    let delegator = "agent-delegator";
+    let parent = capability(
+        "parent-expanded",
+        delegator,
+        "ca",
+        1_710_000_000,
+        1_710_200_000,
+        vec![tool_grant(
+            "fs",
+            "read_file",
+            vec![Operation::Invoke],
+            vec![],
+            None,
+        )],
+        None,
+    );
+    let child = capability(
+        "child-expanded",
+        "delegatee",
+        delegator,
+        1_710_010_000,
+        1_710_100_000,
+        vec![tool_grant(
+            "fs",
+            "write_file",
+            vec![Operation::Invoke],
+            vec![],
+            Some(5),
+        )],
+        Some("parent-expanded"),
+    );
+    let corpus = LocalReputationCorpus {
+        receipts: vec![],
+        capabilities: vec![parent, child],
+        budget_usage: vec![],
+        incident_reports: Some(vec![]),
+    };
+
+    let scorecard = compute_local_scorecard(
+        delegator,
+        1_710_020_000,
+        &corpus,
+        &ReputationConfig::default(),
+    );
+
+    assert_eq!(scorecard.delegation_hygiene.delegations_observed, 1);
+    assert_eq!(
+        scorecard.delegation_hygiene.scope_reduction_rate,
+        MetricValue::Known(0.0)
+    );
+    assert_eq!(
+        scorecard.delegation_hygiene.budget_reduction_rate,
+        MetricValue::Known(0.0)
+    );
+    assert_eq!(
+        scorecard.delegation_hygiene.ttl_reduction_rate,
+        MetricValue::Known(1.0)
+    );
+}
+
+#[test]
 fn mature_agent_scores_above_concerning_agent() {
     let kernel = Keypair::generate();
     let now = 1_710_259_200;

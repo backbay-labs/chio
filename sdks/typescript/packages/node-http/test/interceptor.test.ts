@@ -208,6 +208,35 @@ describe("buildChioHttpRequest", () => {
     expect(req.body_length).toBe(42);
     expect(req.capability_id).toBe("cap-123");
   });
+
+  it("honors custom forwarded headers", () => {
+    const opts: BuildRequestOptions = {
+      method: "GET",
+      path: "/tenant",
+      query: {},
+      headers: {
+        "content-type": "application/json",
+        "x-tenant-id": "tenant-a",
+        authorization: "Bearer secret",
+      },
+      caller: {
+        subject: "anonymous",
+        auth_method: { method: "anonymous" },
+        verified: false,
+      },
+      bodyHash: undefined,
+      bodyLength: 0,
+      routePattern: "/tenant",
+      capabilityId: undefined,
+      forwardHeaders: ["content-type", "x-tenant-id"],
+    };
+
+    const req = buildChioHttpRequest(opts);
+
+    expect(req.headers["content-type"]).toBe("application/json");
+    expect(req.headers["x-tenant-id"]).toBe("tenant-a");
+    expect(req.headers["authorization"]).toBeUndefined();
+  });
 });
 
 describe("resolveConfig", () => {
@@ -233,6 +262,11 @@ describe("resolveConfig", () => {
   it("uses custom timeout", () => {
     const resolved = resolveConfig({ timeoutMs: 10000 });
     expect(resolved.timeoutMs).toBe(10000);
+  });
+
+  it("stores custom forwarded headers", () => {
+    const resolved = resolveConfig({ forwardHeaders: ["x-tenant-id"] });
+    expect(resolved.forwardHeaders).toEqual(["x-tenant-id"]);
   });
 });
 
@@ -297,6 +331,45 @@ describe("request body preservation", () => {
         createHash("sha256").update(Buffer.from("hello web", "utf-8")).digest("hex"),
       );
     } finally {
+      sidecar.server.close();
+    }
+  });
+
+  it("forwards configured Node request headers to the sidecar", async () => {
+    let lastEvaluateBody: string | undefined;
+    const sidecar = await startMockSidecar((body) => {
+      lastEvaluateBody = body;
+    });
+    const resolved = resolveConfig({
+      sidecarUrl: sidecar.url,
+      forwardHeaders: ["content-type", "x-tenant-id"],
+    });
+
+    const server = http.createServer(async (req, res) => {
+      const outcome = await interceptNodeRequest(req, res, resolved);
+      if (outcome.responseSent) {
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(
+        server,
+        "GET",
+        "/tenant",
+        undefined,
+        { "content-type": "application/json", "x-tenant-id": "tenant-a" },
+      );
+      expect(response.status).toBe(200);
+      expect(lastEvaluateBody).toBeDefined();
+      const evaluated = JSON.parse(lastEvaluateBody ?? "{}") as { headers: Record<string, string> };
+      expect(evaluated.headers["x-tenant-id"]).toBe("tenant-a");
+      expect(evaluated.headers["content-type"]).toBe("application/json");
+    } finally {
+      server.close();
       sidecar.server.close();
     }
   });

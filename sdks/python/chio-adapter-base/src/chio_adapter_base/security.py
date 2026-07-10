@@ -153,6 +153,18 @@ def sanitised_env(*, base: Mapping[str, str] | None = None) -> dict[str, str]:
     return {k: v for k, v in source.items() if not _is_denied_env(k)}
 
 
+_GIT_GLOBAL_OPTIONS_WITH_VALUES: frozenset[str] = frozenset(
+    {
+        "--config-env",
+        "--exec-path",
+        "--git-dir",
+        "--namespace",
+        "--super-prefix",
+        "--work-tree",
+    }
+)
+
+
 def harden_git_argv(argv: list[str]) -> list[str]:
     """Inject ``--no-verify`` into ``git commit`` argv; reject ``--verify``.
 
@@ -167,9 +179,8 @@ def harden_git_argv(argv: list[str]) -> list[str]:
 
     Returns a new list; does not mutate ``argv``.
     """
-    try:
-        subcommand_idx = argv.index("commit")
-    except ValueError:
+    subcommand_idx = _git_subcommand_index(argv)
+    if subcommand_idx is None or argv[subcommand_idx] != "commit":
         return list(argv)
     tail = argv[subcommand_idx + 1 :]
     if "--verify" in tail:
@@ -180,6 +191,37 @@ def harden_git_argv(argv: list[str]) -> list[str]:
     if "--no-verify" in tail:
         return list(argv)
     return [*argv[: subcommand_idx + 1], "--no-verify", *tail]
+
+
+def _git_subcommand_index(argv: list[str]) -> int | None:
+    executable_name = (
+        argv[0].replace("\\", "/").rsplit("/", 1)[-1].lower() if argv else ""
+    )
+    index = 1 if executable_name in {"git", "git.exe"} else 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--":
+            return None
+        if arg in ("-C", "-c"):
+            index += 2
+            continue
+        if (arg.startswith("-C") or arg.startswith("-c")) and len(arg) > 2:
+            index += 1
+            continue
+        if arg in _GIT_GLOBAL_OPTIONS_WITH_VALUES:
+            index += 2
+            continue
+        if any(
+            arg.startswith(f"{option}=")
+            for option in _GIT_GLOBAL_OPTIONS_WITH_VALUES
+        ):
+            index += 1
+            continue
+        if arg.startswith("-"):
+            index += 1
+            continue
+        return index
+    return None
 
 
 def reject_shell_argv_escape(

@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from typing import Any, Awaitable, Callable
 from unittest.mock import AsyncMock, patch
-
-import pytest
 
 from chio_asgi.config import ChioASGIConfig
 from chio_asgi.middleware import ChioASGIMiddleware, _extract_capability_token
 from chio_sdk.errors import ChioConnectionError
-from chio_sdk.models import EvaluateResponse, HttpReceipt, Verdict, VerifyReceiptResponse
+from chio_sdk.models import (
+    EvaluateResponse,
+    HttpReceipt,
+    Verdict,
+    VerifyReceiptResponse,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +57,25 @@ def _make_receive(body: bytes = b"") -> Receive:
         if not sent:
             sent = True
             return {"type": "http.request", "body": body, "more_body": False}
+        return {"type": "http.disconnect"}
+
+    return receive
+
+
+def _make_chunked_receive(chunks: list[bytes]) -> Receive:
+    """Create an ASGI receive callable that emits multiple body chunks."""
+    index = 0
+
+    async def receive() -> dict[str, Any]:
+        nonlocal index
+        if index < len(chunks):
+            body = chunks[index]
+            index += 1
+            return {
+                "type": "http.request",
+                "body": body,
+                "more_body": index < len(chunks),
+            }
         return {"type": "http.disconnect"}
 
     return receive
@@ -140,6 +163,28 @@ async def _echo_app(scope: Scope, receive: Receive, send: Send) -> None:
     })
 
 
+async def _body_echo_app(scope: Scope, receive: Receive, send: Send) -> None:
+    """ASGI app that echoes the full request body."""
+    body_chunks: list[bytes] = []
+    while True:
+        message = await receive()
+        if message.get("type") != "http.request":
+            break
+        body_chunks.append(message.get("body", b""))
+        if not message.get("more_body", False):
+            break
+    body = b"".join(body_chunks)
+    await send({
+        "type": "http.response.start",
+        "status": 200,
+        "headers": [(b"content-type", b"text/plain")],
+    })
+    await send({
+        "type": "http.response.body",
+        "body": body,
+    })
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -209,6 +254,62 @@ class TestAllowedRequest:
             header_dict = dict(start_msg.get("headers", []))
             assert b"x-chio-receipt" in header_dict
             assert header_dict[b"x-chio-receipt"] == b"r-allow"
+
+    async def test_hashes_and_replays_full_chunked_body(self) -> None:
+        evaluation = _make_evaluation(allowed=True, receipt_id="r-chunked")
+        chunks = [b"hello ", b"chunked ", b"world"]
+        expected_body = b"".join(chunks)
+
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            instance = MockClient.return_value
+            instance.evaluate_http_request = AsyncMock(return_value=evaluation)
+            instance.verify_http_receipt = AsyncMock(return_value=_make_verification())
+
+            config = ChioASGIConfig(sidecar_url="http://mock:9090")
+            mw = ChioASGIMiddleware(_body_echo_app, config=config)
+
+            scope = _make_scope(method="POST")
+            send, messages = _make_send()
+            await mw(scope, _make_chunked_receive(chunks), send)
+
+            instance.evaluate_http_request.assert_awaited_once()
+            kwargs = instance.evaluate_http_request.await_args.kwargs
+            assert kwargs["body_length"] == len(expected_body)
+            assert kwargs["body_hash"] == hashlib.sha256(expected_body).hexdigest()
+
+            body_msg = next(
+                m for m in messages if m.get("type") == "http.response.body"
+            )
+            assert body_msg["body"] == expected_body
+
+    async def test_rejects_body_larger_than_buffer_limit(self) -> None:
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            instance = MockClient.return_value
+            instance.evaluate_http_request = AsyncMock()
+
+            config = ChioASGIConfig(
+                sidecar_url="http://mock:9090", max_body_bytes=5
+            )
+            mw = ChioASGIMiddleware(_body_echo_app, config=config)
+
+            scope = _make_scope(method="POST")
+            send, messages = _make_send()
+            await mw(scope, _make_chunked_receive([b"abc", b"def"]), send)
+
+            instance.evaluate_http_request.assert_not_awaited()
+            start_msg = next(
+                m for m in messages if m.get("type") == "http.response.start"
+            )
+            assert start_msg["status"] == 413
+            body_msg = next(
+                m for m in messages if m.get("type") == "http.response.body"
+            )
+            body = json.loads(body_msg["body"])
+            assert body["error"] == "RequestBodyTooLarge"
 
 
 class TestDeniedRequest:
@@ -297,7 +398,9 @@ class TestReceiptVerification:
         ) as MockClient:
             instance = MockClient.return_value
             instance.evaluate_http_request = AsyncMock(return_value=evaluation)
-            instance.verify_http_receipt = AsyncMock(return_value=_make_verification(False))
+            instance.verify_http_receipt = AsyncMock(
+                return_value=_make_verification(False)
+            )
 
             config = ChioASGIConfig(sidecar_url="http://mock:9090")
             mw = ChioASGIMiddleware(_echo_app, config=config)
@@ -323,6 +426,10 @@ class TestCapabilityIdExtraction:
         scope = _make_scope(query_string="chio_capability=cap-456&other=val")
         assert _extract_capability_token(scope) == "cap-456"
 
+    def test_from_query_string_decodes_url_encoding(self) -> None:
+        scope = _make_scope(query_string="chio_capability=cap%2B456%2Fwith%3Dpadding")
+        assert _extract_capability_token(scope) == "cap+456/with=padding"
+
     def test_none_when_missing(self) -> None:
         scope = _make_scope()
         assert _extract_capability_token(scope) is None
@@ -341,6 +448,7 @@ class TestConfig:
         assert config.sidecar_url == "http://127.0.0.1:9090"
         assert "OPTIONS" in config.exclude_methods
         assert config.receipt_header == "X-Chio-Receipt"
+        assert config.max_body_bytes == 1_048_576
 
     def test_custom(self) -> None:
         config = ChioASGIConfig(

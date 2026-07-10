@@ -222,6 +222,66 @@ test("paginate() with empty first page yields nothing", async () => {
   assert.equal(pages.length, 0, "empty first page should yield no pages");
 });
 
+test("paginate() fails when the server repeats a cursor", async () => {
+  let callCount = 0;
+  const responses = [
+    { totalCount: 1, nextCursor: 5, receipts: [FAKE_RECEIPT] },
+    { totalCount: 1, nextCursor: 5, receipts: [{ ...FAKE_RECEIPT, id: "dup" }] },
+  ];
+  const mockFetch: typeof fetch = async () => {
+    const response = responses[Math.min(callCount, responses.length - 1)];
+    callCount += 1;
+    return new Response(JSON.stringify(response), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  const client = new ReceiptQueryClient("http://localhost:8080", "tok", mockFetch);
+  const iterator = client.paginate();
+
+  const first = await iterator.next();
+  assert.equal(first.done, false);
+  await assert.rejects(
+    () => iterator.next(),
+    (err: unknown) => {
+      assert.ok(err instanceof QueryError);
+      assert.match(err.message, /cursor did not advance/);
+      return true;
+    },
+  );
+});
+
+test("paginate() fails when the server regresses a cursor", async () => {
+  let callCount = 0;
+  const responses = [
+    { totalCount: 1, nextCursor: 10, receipts: [FAKE_RECEIPT] },
+    { totalCount: 1, nextCursor: 5, receipts: [{ ...FAKE_RECEIPT, id: "dup" }] },
+  ];
+  const mockFetch: typeof fetch = async () => {
+    const response = responses[Math.min(callCount, responses.length - 1)];
+    callCount += 1;
+    return new Response(JSON.stringify(response), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+
+  const client = new ReceiptQueryClient("http://localhost:8080", "tok", mockFetch);
+  const iterator = client.paginate();
+
+  const first = await iterator.next();
+  assert.equal(first.done, false);
+  await assert.rejects(
+    () => iterator.next(),
+    (err: unknown) => {
+      assert.ok(err instanceof QueryError);
+      assert.match(err.message, /cursor did not advance/);
+      return true;
+    },
+  );
+});
+
 // --- Package smoke tests ---
 
 async function readPackageJson(): Promise<{ name: string; version: string; private?: boolean }> {

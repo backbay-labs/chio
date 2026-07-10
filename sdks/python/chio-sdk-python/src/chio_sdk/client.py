@@ -774,7 +774,16 @@ class ChioClient:
     @staticmethod
     def _handle_response(resp: httpx.Response) -> dict[str, Any]:
         if resp.status_code == 403:
-            data = resp.json()
+            try:
+                data = resp.json()
+            except Exception:
+                data = {
+                    "message": "denied",
+                    "reason": resp.text or "Chio sidecar returned 403",
+                    "reason_code": "HTTP_403",
+                }
+            if not isinstance(data, dict):
+                data = {"message": "denied", "reason": str(data), "reason_code": "HTTP_403"}
             raise ChioDeniedError(
                 data.get("message", "denied"),
                 guard=data.get("guard"),

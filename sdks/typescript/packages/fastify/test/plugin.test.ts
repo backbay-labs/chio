@@ -255,4 +255,40 @@ describe("chio fastify plugin", () => {
     sidecar.server.close();
     await fastify.close();
   });
+
+  it("forwards configured headers to Chio evaluation", async () => {
+    let observedHeaders: Record<string, string> | undefined;
+    const sidecar = await startMockSidecar((requestBody) => {
+      const parsed = JSON.parse(requestBody) as { headers?: Record<string, string> };
+      observedHeaders = parsed.headers;
+    });
+
+    const fastify = Fastify();
+    await fastify.register(chio, {
+      sidecarUrl: sidecar.url,
+      forwardHeaders: ["content-type", "x-tenant-id"],
+    });
+
+    fastify.post("/tenant", async () => ({ ok: true }));
+
+    const response = await fastify.inject({
+      method: "POST",
+      url: "/tenant",
+      headers: {
+        "content-type": "application/json",
+        "x-tenant-id": "tenant-1",
+        "x-secret": "drop-me",
+      },
+      payload: "{}",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(observedHeaders).toMatchObject({
+      "content-type": "application/json",
+      "x-tenant-id": "tenant-1",
+    });
+    expect(observedHeaders).not.toHaveProperty("x-secret");
+    sidecar.server.close();
+    await fastify.close();
+  });
 });
