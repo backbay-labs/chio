@@ -876,7 +876,8 @@ mod tests {
             rpc_result(json!({ "number": "0x78" })),
             rpc_result(json!({ "hash": "0xaaa" })),
         ]);
-        let config = sample_config(server.base_url());
+        let mut config = sample_config(server.base_url());
+        config.policy.tiers[0].dispute_window_secs = 3_600;
         let receipt = sample_receipt(100, "0xaaa", 1_700_000_000);
 
         let assessment =
@@ -1208,13 +1209,7 @@ mod tests {
 
     #[tokio::test]
     async fn project_escrow_execution_receipt_waits_for_finality_before_settled_state() {
-        let mut dispatch = sample_dispatch();
-        let finality_amount = chio_core::capability::scope::MonetaryAmount {
-            units: 500_000,
-            currency: dispatch.settlement_amount.currency.clone(),
-        };
-        dispatch.settlement_amount = finality_amount.clone();
-        dispatch.capital_instruction.body.amount = Some(finality_amount);
+        let dispatch = sample_dispatch();
         let server = MockJsonRpcServer::spawn(vec![
             rpc_result(json!(encode_hex(
                 IChioEscrow::getEscrowCall::abi_encode_returns(&IChioEscrow::getEscrowReturn {
@@ -1249,26 +1244,33 @@ mod tests {
                 "logs": []
             })),
             rpc_result(json!({
-                "timestamp": "0x6553f100"
+                "timestamp": "0x67e88660"
             })),
             rpc_result(json!({ "number": "0x78" })),
             rpc_result(json!({ "hash": "0xabc" })),
         ]);
-        let config = sample_config(server.base_url());
+        let mut config = sample_config(server.base_url());
+        config.policy.tiers[0].dispute_window_secs = 3_600;
 
         let projection = project_escrow_execution_receipt(
             &config,
             ExecutionProjectionInput {
                 dispatch: &dispatch,
-                tx_hash: "0xfeedbeef",
+                tx_hash: "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
                 execution_receipt_id: "exec-pending".to_string(),
                 settlement_reference: "settlement-pending".to_string(),
-                observed_at: Some(1_700_001_000),
+                observed_at: Some(1_743_292_900),
                 observed_amount: chio_core::capability::scope::MonetaryAmount {
                     units: dispatch.settlement_amount.units / 2,
                     currency: dispatch.settlement_amount.currency.clone(),
                 },
                 anchor_proof: None,
+                identity_registry_evidence: Some(sample_identity_registry_evidence(
+                    &dispatch, &config,
+                )),
+                identity_registry_evidence_binding: Some(
+                    sample_identity_registry_evidence_binding(&dispatch, &config),
+                ),
                 oracle_evidence: None,
                 failure_reason: None,
                 reversal_of: None,
@@ -1299,13 +1301,7 @@ mod tests {
 
     #[tokio::test]
     async fn project_escrow_execution_receipt_waits_for_confirmations_without_release() {
-        let mut dispatch = sample_dispatch();
-        let finality_amount = chio_core::capability::scope::MonetaryAmount {
-            units: 500_000,
-            currency: dispatch.settlement_amount.currency.clone(),
-        };
-        dispatch.settlement_amount = finality_amount.clone();
-        dispatch.capital_instruction.body.amount = Some(finality_amount);
+        let dispatch = sample_dispatch();
         let server = MockJsonRpcServer::spawn(vec![
             escrow_result(0),
             rpc_result(json!({
@@ -1320,21 +1316,28 @@ mod tests {
             rpc_result(json!({
                 "timestamp": "0x6553f100"
             })),
-            rpc_result(json!({ "number": "0x69" })),
+            rpc_result(json!({ "number": "0x64" })),
             rpc_result(json!({ "hash": "0xabc" })),
         ]);
-        let config = sample_config(server.base_url());
+        let mut config = sample_config(server.base_url());
+        config.policy.tiers[0].min_confirmations = 2;
 
         let projection = project_escrow_execution_receipt(
             &config,
             ExecutionProjectionInput {
                 dispatch: &dispatch,
-                tx_hash: "0xpending",
+                tx_hash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 execution_receipt_id: "exec-pending-zero".to_string(),
                 settlement_reference: "settlement-pending-zero".to_string(),
-                observed_at: Some(1_700_001_000),
+                observed_at: Some(1_743_292_900),
                 observed_amount: dispatch.settlement_amount.clone(),
                 anchor_proof: None,
+                identity_registry_evidence: Some(sample_identity_registry_evidence(
+                    &dispatch, &config,
+                )),
+                identity_registry_evidence_binding: Some(
+                    sample_identity_registry_evidence_binding(&dispatch, &config),
+                ),
                 oracle_evidence: None,
                 failure_reason: None,
                 reversal_of: None,
