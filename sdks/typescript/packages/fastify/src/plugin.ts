@@ -197,7 +197,11 @@ const chioPlugin: FastifyPluginAsync<ChioFastifyConfig> = async (
       const result = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
       const receipt = result.receipt;
 
-      if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(receipt)) {
+      if (
+        !isAllowed(result.verdict)
+        || receipt == null
+        || !isAuthorizedHttpReceipt(receipt)
+      ) {
         const payload: {
           error: string;
           message: string;
