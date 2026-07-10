@@ -81,6 +81,24 @@ pub(crate) async fn handle_internal_cluster_status(
             .collect::<Vec<_>>(),
     };
 
+    let budget_ack_heads = match state.config.budget_db_path.as_deref() {
+        Some(path) => {
+            match SqliteBudgetStore::open(path).and_then(|store| store.budget_ack_heads()) {
+                Ok(heads) => heads
+                    .into_iter()
+                    .map(|(origin_id, event_seq)| BudgetOriginAck {
+                        origin_id,
+                        event_seq,
+                    })
+                    .collect(),
+                Err(error) => {
+                    return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
+                }
+            }
+        }
+        None => Vec::new(),
+    };
+
     Json(ClusterStatusResponse {
         self_url: consensus.self_url,
         leader_url: consensus.leader_url,
@@ -92,6 +110,7 @@ pub(crate) async fn handle_internal_cluster_status(
         authority_lease: cluster_authority_lease_view(&state),
         replication,
         peers,
+        budget_ack_heads,
     })
     .into_response()
 }

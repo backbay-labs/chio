@@ -493,6 +493,29 @@ impl SqliteReceiptStore {
             .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
     }
 
+    /// Highest tool-receipt replication seq, or 0 on an empty store. Single
+    /// indexed MAX read; does not materialize the store.
+    pub fn max_tool_receipt_seq(&self) -> Result<u64, ReceiptStoreError> {
+        let connection = self.connection()?;
+        let seq: i64 = connection.query_row(
+            "SELECT COALESCE(MAX(seq), 0) FROM chio_tool_receipts",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(seq.max(0) as u64)
+    }
+
+    /// Highest child-receipt replication seq, or 0 on an empty store.
+    pub fn max_child_receipt_seq(&self) -> Result<u64, ReceiptStoreError> {
+        let connection = self.connection()?;
+        let seq: i64 = connection.query_row(
+            "SELECT COALESCE(MAX(seq), 0) FROM chio_child_receipts",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(seq.max(0) as u64)
+    }
+
     /// Multi-tenant receipt isolation: toggle strict-isolation
     /// mode on tenant-scoped queries.
     ///
