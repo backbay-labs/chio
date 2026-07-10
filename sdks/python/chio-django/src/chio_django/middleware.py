@@ -88,6 +88,7 @@ class ChioDjangoMiddleware:
     Reads configuration from Django settings:
 
     - ``CHIO_SIDECAR_URL``: sidecar base URL (default ``http://127.0.0.1:9090``)
+    - ``CHIO_FAIL_OPEN``: legacy compatibility setting; outages fail closed
     - ``CHIO_EXCLUDE_PATHS``: list of paths to skip (default ``[]``)
     - ``CHIO_EXCLUDE_METHODS``: list of methods to skip (default ``["OPTIONS"]``)
     - ``CHIO_RECEIPT_HEADER``: response header for receipt ID

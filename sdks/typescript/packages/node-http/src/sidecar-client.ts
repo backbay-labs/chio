@@ -108,10 +108,19 @@ export class ChioSidecarClient {
       if (!isEvaluateResponse(parsed)) {
         throw new SidecarError(
           CHIO_ERROR_CODES.EVALUATION_FAILED,
-          "sidecar evaluate response missing structured verdict or receipt fields",
+          "sidecar evaluate response missing structured verdict or evidence fields",
         );
       }
       const result = normalizeEvaluateResponse(parsed);
+      if (result.receipt == null) {
+        if (!isAllowed(result.verdict)) {
+          return result;
+        }
+        throw new SidecarError(
+          CHIO_ERROR_CODES.INVALID_RECEIPT,
+          "sidecar evaluation response omitted receipt",
+        );
+      }
       if (!hasRequiredReceiptSemantics(result.receipt)) {
         throw new SidecarError(
           isAllowShapedResult(result)
@@ -206,15 +215,20 @@ export class ChioSidecarClient {
   }
 
   private async assertAuthorizedAllowResult(result: EvaluateResponse): Promise<void> {
-    if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(result.receipt)) {
+    const receipt = result.receipt;
+    if (
+      receipt == null ||
+      !isAllowed(result.verdict) ||
+      !isAuthorizedHttpReceipt(receipt)
+    ) {
       throw new SidecarError(
         CHIO_ERROR_CODES.INVALID_RECEIPT,
         "sidecar returned an allow-shaped response without an authoritative Chio receipt",
       );
     }
 
-    const verification = await this.verifyReceipt(result.receipt);
-    if (!isAuthoritativeVerification(verification, result.receipt)) {
+    const verification = await this.verifyReceipt(receipt);
+    if (!isAuthoritativeVerification(verification, receipt)) {
       throw new SidecarError(
         CHIO_ERROR_CODES.INVALID_RECEIPT,
         "sidecar returned an unverified allow receipt",
@@ -245,13 +259,16 @@ export class ChioSidecarClient {
 }
 
 function isAllowShapedResult(result: EvaluateResponse): boolean {
-  return isAllowed(result.verdict) || isAllowed(result.receipt.verdict);
+  return (
+    isAllowed(result.verdict) ||
+    (result.receipt != null && isAllowed(result.receipt.verdict))
+  );
 }
 
 function isEvaluateResponse(value: unknown): value is EvaluateResponse {
   if (!isRecord(value)) return false;
   return isVerdict(value["verdict"])
-    && isHttpReceipt(value["receipt"])
+    && (value["receipt"] === undefined || isHttpReceipt(value["receipt"]))
     && Array.isArray(value["evidence"]);
 }
 
@@ -274,6 +291,9 @@ function isHttpReceipt(value: unknown): value is HttpReceipt {
 }
 
 function normalizeEvaluateResponse(response: EvaluateResponse): EvaluateResponse {
+  if (response.receipt == null) {
+    return response;
+  }
   return {
     ...response,
     receipt: {

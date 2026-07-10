@@ -295,9 +295,30 @@ describe("resolveConfig", () => {
     expect(resolved.client).toBeDefined();
   });
 
+  it("returns a fresh default header list", () => {
+    const first = resolveConfig({});
+    first.forwardHeaders.push("authorization");
+
+    expect(resolveConfig({}).forwardHeaders).toEqual([
+      "content-type",
+      "content-length",
+    ]);
+  });
+
   it("coerces fail-open sidecar errors to fail-closed", () => {
     const resolved = resolveConfig({ onSidecarError: "allow" });
     expect(resolved.onSidecarError).toBe("deny");
+  });
+
+  it("returns a fresh default forwarded header list", () => {
+    const first = resolveConfig({});
+    first.forwardHeaders.push("authorization");
+
+    const second = resolveConfig({});
+    expect(second.forwardHeaders).toEqual([
+      "content-type",
+      "content-length",
+    ]);
   });
 
   it("uses custom timeout", () => {

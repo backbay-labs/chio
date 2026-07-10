@@ -181,6 +181,25 @@ class TestMiddlewareSidecarDown(TestCase):
 
         assert response.status_code == 503
 
+    @patch("chio_django.middleware.httpx.post")
+    def test_fail_open_setting_still_fails_closed_when_sidecar_unavailable(
+        self, mock_post: MagicMock
+    ) -> None:
+        import httpx
+        mock_post.side_effect = httpx.ConnectError("connection refused")
+
+        def get_response(request):
+            return JsonResponse({"status": "ok"})
+
+        with override_settings(CHIO_FAIL_OPEN=True):
+            mw = ChioDjangoMiddleware(get_response)
+            factory = RequestFactory()
+            request = factory.get("/protected")
+            response = mw(request)
+
+        assert response.status_code == 503
+        body = json.loads(response.content)
+        assert body["error"]["code"] == "CHIO_SIDECAR_UNAVAILABLE"
 
 class TestMiddlewareReceiptVerification(TestCase):
     @patch("chio_django.middleware.httpx.post")

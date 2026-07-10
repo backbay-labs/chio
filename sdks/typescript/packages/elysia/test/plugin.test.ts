@@ -186,24 +186,25 @@ describe("chio elysia plugin", () => {
       )
       .get("/tenant", () => ({ ok: true }));
 
-    const response = await app.handle(
-      new Request("http://localhost/tenant", {
-        method: "GET",
-        headers: {
-          "content-type": "application/json",
-          "x-tenant-id": "tenant-1",
-          "x-secret": "drop-me",
-        },
-      }),
-    );
+    try {
+      const response = await app.handle(
+        new Request("http://localhost/tenant", {
+          method: "GET",
+          headers: {
+            "content-type": "application/json",
+            "x-tenant-id": "tenant-a",
+            "x-secret": "do-not-forward",
+          },
+        }),
+      );
 
-    expect(response.status).toBe(200);
-    expect(observedHeaders).toMatchObject({
-      "content-type": "application/json",
-      "x-tenant-id": "tenant-1",
-    });
-    expect(observedHeaders).not.toHaveProperty("x-secret");
-    sidecar.server.close();
+      expect(response.status).toBe(200);
+      expect(observedHeaders?.["content-type"]).toBe("application/json");
+      expect(observedHeaders?.["x-tenant-id"]).toBe("tenant-a");
+      expect(observedHeaders?.["x-secret"]).toBeUndefined();
+    } finally {
+      sidecar.server.close();
+    }
   });
 
   it("stores verified evaluation result on downstream context", async () => {

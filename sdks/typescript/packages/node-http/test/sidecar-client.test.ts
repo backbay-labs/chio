@@ -410,6 +410,40 @@ describe("ChioSidecarClient.evaluate", () => {
     }
   });
 
+  it("allows deny responses that omit the receipt field", async () => {
+    const result = {
+      verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      evidence: [],
+    } as unknown as EvaluateResponse;
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expect(client.evaluate(testRequest())).resolves.toEqual(result);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("rejects allow responses that omit the receipt field", async () => {
+    const result = {
+      verdict: { verdict: "allow" },
+      evidence: [],
+    } as unknown as EvaluateResponse;
+
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_invalid_receipt",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
   it("rejects non-allow responses with receipts missing semantics fields", async () => {
     const result: EvaluateResponse = {
       verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
