@@ -191,7 +191,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
                 let reason = redacted!(&error).to_string();
                 warn!(
                     request_id = %self.request.request_id,
-                    reason = %reason,
+                    reason = %redacted!(&error),
                     "failed to unwind dropped pre-dispatch monetary invocation"
                 );
                 // Name the budget hold (and payment authorization, if any) the
@@ -229,7 +229,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
                 let reason = redacted!(&error).to_string();
                 warn!(
                     request_id = %self.request.request_id,
-                    reason = %reason,
+                    reason = %redacted!(&error),
                     "failed to reverse dropped pre-dispatch invocation budget"
                 );
                 faults.push(PreDispatchCleanupFault {
@@ -250,7 +250,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
             let reason = redacted!(&error).to_string();
             warn!(
                 request_id = %self.request.request_id,
-                reason = %reason,
+                reason = %redacted!(&error),
                 "failed to release runtime-admission reservations on pre-dispatch drop"
             );
             faults.push(PreDispatchCleanupFault {
@@ -283,7 +283,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
                 let reason = redacted!(&error).to_string();
                 warn!(
                     request_id = %self.request.request_id,
-                    reason = %reason,
+                    reason = %redacted!(&error),
                     "failed to release admitted capability budget on pre-dispatch drop"
                 );
                 // Name the delegated child capability id and its parent so the

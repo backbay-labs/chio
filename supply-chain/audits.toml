@@ -259,6 +259,12 @@ criteria = "safe-to-deploy"
 version = "1.0.102"
 notes = "Widely used error type by dtolnay; pure Rust, no network IO or unsafe-heavy code."
 
+[[audits.anyhow]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+delta = "1.0.102 -> 1.0.103"
+notes = "Patch release by dtolnay resolving the Error::downcast_mut soundness fix; the diff adds no new unsafe surface, build script, or IO."
+
 [[audits.asn1-rs]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"

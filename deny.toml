@@ -41,6 +41,10 @@ ignore = [
     # private-key signing is confined to tests. No upstream fix yet (tracked
     # in rsa#19).
     "RUSTSEC-2023-0071",
+    # last-checked = 2026-07-10; atomic-polyfill 1.0.3 is unmaintained (superseded by portable-atomic).
+    # It is pulled only transitively through heapless and ships no code Chio calls directly. Clears when
+    # the heapless chain migrates to portable-atomic.
+    "RUSTSEC-2023-0089",
     # last-checked = 2026-05-02; ansi_term is pulled only by dudect-bencher's legacy clap 2 harness for
     # local timing experiments. It is not linked into production binaries.
     "RUSTSEC-2021-0139",
@@ -53,12 +57,6 @@ ignore = [
     # last-checked = 2026-06-08; proc-macro-error2 is unmaintained (RUSTSEC-2026-0173). It is a compile-time
     # transitive through alloy-sol-macro and sigstore/oci-spec codegen. No runtime code is shipped from this crate.
     "RUSTSEC-2026-0173",
-    # last-checked = 2026-07-02; anyhow 1.0.102 unsound in Error::downcast_mut() after Error::context()
-    # (RUSTSEC-2026-0190, UB from a borrow-rule violation). Chio never calls downcast_mut (workspace grep: 0 hits),
-    # so the unsoundness is unreachable/latent. anyhow is a workspace-wide transitive dep and main is on 1.0.102 too;
-    # the real fix is anyhow >=1.0.103, deferred to a coordinated dep bump + cargo-vet re-audit (bumping it alone
-    # fails cargo-vet with an unvetted version). Clears with that batch.
-    "RUSTSEC-2026-0190",
     # last-checked = 2026-07-03; quick-xml 0.39.4 unbounded-allocation memory-exhaustion DoS
     # (RUSTSEC-2026-0194 entity expansion, RUSTSEC-2026-0195 NsReader namespace declarations).
     # Pulled only transitively via iroh -> netwatch -> netdev -> plist for local network-interface
