@@ -198,7 +198,9 @@ class TestHealth:
         async with ChioClient(BASE) as client:
             with pytest.raises(ChioDeniedError) as exc_info:
                 await client.health()
-        assert str(exc_info.value) == "forbidden"
+        assert exc_info.value.message == "denied"
+        assert exc_info.value.reason == "forbidden"
+        assert exc_info.value.reason_code == "HTTP_403"
 
 
 # ---------------------------------------------------------------------------
