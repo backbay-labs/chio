@@ -1,8 +1,8 @@
 /-
   Bounded receipt/checkpoint model for the formal receipt-proof lane.
   Mirrors the structural contracts in:
-  - chio-kernel-core/src/receipt.rs
-  - chio-kernel/src/checkpoint.rs
+  - crates/kernel/chio-kernel-core/src/receipts.rs
+  - crates/kernel/chio-kernel/src/checkpoint.rs
 -/
 
 set_option autoImplicit false

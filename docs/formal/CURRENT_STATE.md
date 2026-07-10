@@ -67,11 +67,12 @@ what may be claimed publicly.
 
 ## Lane 2: Aeneas (`formal/aeneas/`)
 
-Two lanes, one legacy and one live:
+Two lanes, one diagnostic fixture and one production lane:
 
-- Pilot (`pilot.toml`, status `active_pilot`): a standalone 56-line teaching
-  file `formal/aeneas/verified_core.rs` with 6 extracted symbols. Predates the
-  production lane.
+- Toolchain-upgrade fixture (`pilot.toml`, status
+  `toolchain_upgrade_fixture`): a standalone 56-line extraction input with 6
+  symbols, retained to diagnose Aeneas and Charon upgrades independently of
+  the production module.
 - Production (`production.toml`, status `production_extraction`): the source
   is the real in-crate `crates/kernel/chio-kernel-core/src/formal_aeneas.rs`
   (15 symbols). `scripts/check-aeneas-production.sh` drives Charon to LLBC to

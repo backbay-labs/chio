@@ -32,3 +32,7 @@ The normalized proof-facing AST is treated as a third implementation surface, no
 Before changing this crate, read `Cargo.toml`, `src/spec.rs`, `src/generators.rs`, the affected integration tests, `formal/proof-manifest.toml`, and the verified-core section of `spec/PROTOCOL.md`.
 
 Changes should strengthen drift detection without expanding launch claims. If a new property is outside the bounded proof boundary, it belongs in conformance, release qualification, or the owning production crate instead.
+
+Proptest regression seeds for canonical JSON live at
+`tests/canonical_json_diff.proptest-regressions`, next to the owning test
+module as required by proptest's file-per-module convention.

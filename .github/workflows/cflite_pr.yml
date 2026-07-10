@@ -6,8 +6,7 @@
 # each.
 #
 # Opt-in PR label `fuzz: full` switches the run to a full-corpus sweep at
-# 120 seconds per target. The label is honored only if the trailing-30d
-# budget check passes; the budget script is the hard halt.
+# 120 seconds per target. The trailing-30d budget check is a hard halt.
 #
 # Required check name: cflite_pr / changed-target-sampling
 
@@ -63,6 +62,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
+          GH_FUZZ_BUDGET_CAP_MODE: fail
         run: |
           set -euo pipefail
           # PR-time fuzz is a release qualification signal. Keep the

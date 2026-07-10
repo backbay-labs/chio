@@ -14,7 +14,7 @@ commitments; items within a wave are independent unless noted.
 
 | ID | Title | Theme | Effort | Gaps | Wave |
 | --- | --- | --- | --- | --- | --- |
-| [Hygiene](HYGIENE_PASS.md) | 13 mechanical fixes | - | S | G4 | 0 |
+| [Hygiene](HYGIENE_PASS.md) | 15 mechanical fixes | - | S | G4 | 0 |
 | [FV-E3](plan/FV-E3-pr-formal-smoke-tier.md) | PR formal smoke tier | E | S | G1 | 0 |
 | [FV-E4](plan/FV-E4-fuzz-plumbing-repair.md) | Fuzz plumbing repair | E | S | G6 | 0 |
 | [FV-A3](plan/FV-A3-creusot-dedup.md) | Creusot dedup | A | S | G4 | 1 |

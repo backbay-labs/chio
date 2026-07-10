@@ -29,9 +29,9 @@
 (*   - clock            -> kernel monotonic receipt counter                *)
 (*                                                                          *)
 (* CONSTANTS PROCS, CAPS, and DEPTH_MAX are bounded integer counts (set    *)
-(* by the MCRevocationPropagation.cfg companion at PROCS=4, CAPS=8,        *)
-(* DEPTH_MAX=4 for the PR job and PROCS=6, CAPS=16, DEPTH_MAX=4 for the    *)
-(* nightly liveness lane). Internal index sets ProcSet and CapSet are     *)
+(* by the MCRevocationPropagation.cfg companions at PROCS=4, CAPS=8,      *)
+(* DEPTH_MAX=4 for both safety and nightly liveness. Larger bounds remain *)
+(* candidates for a future TLC lane. Internal sets ProcSet and CapSet are *)
 (* derived from PROCS and CAPS.                                             *)
 (***************************************************************************)
 

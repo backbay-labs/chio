@@ -1,8 +1,10 @@
 schema = "chio.aeneas-pilot.v1"
-status = "active_pilot"
+status = "toolchain_upgrade_fixture"
 owner = "formal-verification"
 source = "formal/aeneas/verified_core.rs"
 check_command = "./scripts/check-aeneas-pilot.sh"
+production_lane = "formal/aeneas/production.toml"
+purpose = "Minimal extraction fixture retained for Aeneas and Charon toolchain-upgrade diagnosis; production evidence comes from the production lane."
 
 extracted_symbols = [
   "time_window_valid",

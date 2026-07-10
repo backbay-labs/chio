@@ -36,8 +36,7 @@ fi
 # The named-invariants whitelist below is the canonical set of safety /
 # liveness invariants for RevocationPropagation. We require: any whitelisted name
 # that is *defined* in the .tla file (top-level `<Name> ==`) must appear as
-# a row in MAPPING.md. Whitelisted-but-undefined is fine; that is just
-# "future work" (e.g. RevocationEventuallySeen is not yet landed).
+# a row in MAPPING.md. Undefined whitelist entries are not enforced.
 #
 # Helper definitions like DomainsOK, States, Verdicts, ProcSet, CapSet,
 # DEPTH_MAX, Init, Next, Spec, vars, Receipt, Message, Attenuate, Revoke,

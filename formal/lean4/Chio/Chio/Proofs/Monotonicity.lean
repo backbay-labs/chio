@@ -1,6 +1,6 @@
 /-
   Proofs for capability monotonicity (P1) and related properties.
-  Mirrors: chio-kernel-core/src/capability.rs (is_subset_of)
+  Mirrors: crates/core/chio-core-types/src/capability/scope.rs (is_subset_of)
 -/
 
 import Chio.Core.Capability

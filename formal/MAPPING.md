@@ -29,20 +29,22 @@ same PR or `scripts/check-mapping.sh` will fail.
 
 ## TLA+ named invariants (RevocationPropagation.tla)
 
-Source file: `formal/tla/RevocationPropagation.tla`. The three safety
+Source file: `formal/tla/RevocationPropagation.tla`. The four safety
 names below are model-checked by `formal/tla/MCRevocationPropagation.cfg`
 via the aggregate SafetyInv. The aggregate itself is intentionally NOT a
 row in this table; the script greps for the leaf-named invariants. The
-fourth row is the named liveness property RevocationEventuallySeen, which
-the nightly Apalache lane checks via `--temporal=` (Apalache reserves
-`--inv=` for state invariants, hence the separate flag).
+fifth row is the named liveness property RevocationEventuallySeen, which
+the nightly `.github/workflows/apalache-temporal.yml` lane checks via
+`--temporal=`. The safety rows run in
+`.github/workflows/apalache-safety.yml` through the config's
+`INVARIANT SafetyInv` selection.
 
 | Property                    | Source                                          | Rust path constrained                                                                                          | Assumption discharge                                                                          | One-line description                                                                                                            |
 | --------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `NoAllowAfterRevoke`        | `formal/tla/RevocationPropagation.tla` (~L238) | `crates/kernel/chio-kernel-core/src/evaluate.rs::evaluate`, `crates/kernel/chio-kernel/src/capability_lineage.rs`            | `formal/assumptions.toml` ASSUME-SQLITE-ATOMICITY (per-row); retired-cross-row tracked separately | Every `allow` receipt was issued at a time when the issuing authority had not yet observed any revocation.                      |
 | `MonotoneLog`               | `formal/tla/RevocationPropagation.tla` (~L250) | `crates/kernel/chio-kernel/src/receipt_store.rs`                                                                      | `formal/assumptions.toml` ASSUME-SQLITE-ATOMICITY; evidence for RETIRED-SQLITE-CROSS-ROW | Per-authority receipt-log timestamps are strictly increasing; the log is append-only.                                           |
-| `AttenuationPreserving`     | `formal/tla/RevocationPropagation.tla` (~L262) | `crates/core/chio-core-types/src/capability.rs` (`ChioScope::is_subset_of`), `crates/kernel/chio-kernel-core/src/normalized.rs` | n/a (structural; bounded by `DEPTH_MAX`)                                                      | `depth` stays within `0..DEPTH_MAX`; any cap in the `attenuated` state has been delegated at least once.                        |
-| `RevocationEventuallySeen`  | `formal/tla/RevocationPropagation.tla` (~L336) | `crates/kernel/chio-kernel/src/capability_lineage.rs`, `crates/kernel/chio-kernel/src/receipt_store.rs`                      | `formal/assumptions.toml` ASSUME-PROPAGATE-FAIRNESS (weak fairness on `Propagate`)            | Once one authority observes a non-zero revocation epoch for a cap, every other authority eventually catches up to that epoch.   |
+| `AttenuationPreserving`     | `formal/tla/RevocationPropagation.tla` (~L262) | `crates/core/chio-core-types/src/capability/scope.rs` (`ChioScope::is_subset_of`), `crates/kernel/chio-kernel-core/src/normalized.rs` | n/a (structural; bounded by `DEPTH_MAX`)                                                      | `depth` stays within `0..DEPTH_MAX`; any cap in the `attenuated` state has been delegated at least once.                        |
+| `RevocationEventuallySeen`  | `formal/tla/RevocationPropagation.tla` (~L336) | `crates/kernel/chio-kernel/src/capability_lineage.rs`, `crates/kernel/chio-kernel/src/receipt_store.rs`                      | In-spec `WF_vars(PropagateAny)` fairness condition; distributed transport remains ASSUME-NETWORK-TRANSPORT | Once one authority observes a non-zero revocation epoch for a cap, every other authority eventually catches up to that epoch.   |
 | `RevocationFreshness`       | `formal/tla/RevocationPropagation.tla` (~L320) | `crates/trust/chio-revocation-oracle/src/freshness.rs`, `crates/kernel/chio-kernel-core/src/revocation_view.rs`             | `formal/assumptions.toml` ASSUME-OS-CLOCK; jointly anchors RevocationView::install_if_newer    | Every recorded local revocation epoch is strictly less than the global clock; observed-epoch freshness fail-closed gate.        |
 
 Lean cross-references (informational; the script does not enforce these):
@@ -71,13 +73,14 @@ Lean cross-references (informational; the script does not enforce these):
 ## Apalache named invariants (kernel-state subset)
 
 Source directory: `formal/apalache/`. These rows are the focused kernel-state
-invariant set. They are checked by `.github/workflows/apalache-nightly.yml`
-against the `MC*.cfg` files in the same directory.
+invariant set. They are checked by `.github/workflows/apalache-safety.yml`
+against the `MC*.cfg` files in the same directory; temporal checks use the
+separate `.github/workflows/apalache-temporal.yml` workflow.
 
 | Property | Source | Rust path constrained | Assumption discharge | One-line description |
 | --- | --- | --- | --- | --- |
 | `MonotoneLogApalache` | `formal/apalache/MonotoneLogApalache.tla` | `crates/kernel/chio-kernel/src/receipt_store.rs` | `formal/assumptions.toml` ASSUME-SQLITE-ATOMICITY; single-invariant evidence for `RETIRED-SQLITE-CROSS-ROW` pairing | Per-authority receipt timestamps are strictly increasing in the Apalache-bounded kernel-state subset. |
-| `RevocationCutCompleteness` | `formal/apalache/RevocationCutCompleteness.tla` | `crates/kernel/chio-kernel/src/lib.rs::ChioKernel::check_revocation`, `crates/kernel/chio-kernel-core/src/revocation_view.rs` | `formal/proof-manifest.toml` covered_rust_symbols `formal_core::revocation_snapshot_denies`; Lean theorem `revocation_is_cut` | A revoked capability removes dispatch eligibility for every transitive descendant in each authority view. |
+| `RevocationCutCompleteness` | `formal/apalache/RevocationCutCompleteness.tla` | `crates/kernel/chio-kernel/src/kernel/validation.rs::ChioKernel::check_revocation`, `crates/kernel/chio-kernel-core/src/revocation_view.rs` | `formal/proof-manifest.toml` covered_rust_symbols `formal_core::revocation_snapshot_denies`; Lean theorem `revocation_is_cut` | A revoked capability removes dispatch eligibility for every transitive descendant in each authority view. |
 | `ReceiptBeforeAllow` | `formal/apalache/ReceiptBeforeAllow.tla` | `crates/kernel/chio-kernel/src/receipt_store.rs`, `crates/kernel/chio-kernel-core/src/evaluate.rs::evaluate` | `formal/assumptions.toml` named Apalache evidence for `RETIRED-SQLITE-CROSS-ROW` | An allow decision can be published only after a prior allow receipt for the same authority and capability exists in the log. |
 | `KernelTransitionCancelSafe` | `formal/apalache/KernelTransitionCancelSafe.tla` | `crates/kernel/chio-kernel/src/budget_store.rs`, `crates/kernel/chio-kernel-core/src/evaluate.rs::evaluate` | `formal/proof-manifest.toml` covered_rust_symbols `formal_core::*`; Kani `verify_budget_checked_add_no_overflow` | A canceled in-flight kernel transition preserves the pre-transition budget and receipt state snapshots. |
 
@@ -100,6 +103,8 @@ themselves harnesses and are not enforced.
 | `public_evaluate_rejects_untrusted_issuer_before_dispatch`         | ~L274       | `chio_kernel_core::evaluate::evaluate`                                                                | `formal/proof-manifest.toml` covered_rust_symbols `evaluate`; ASSUME-ED25519          | `evaluate` denies a tool call whose capability has an untrusted issuer before any guard pipeline runs (fail-closed dispatch gate).    |
 | `public_sign_receipt_rejects_kernel_key_mismatch_before_signing`   | ~L339       | `chio_kernel_core::receipts::sign_receipt`                                                            | `formal/proof-manifest.toml` covered_rust_symbols `sign_receipt`                      | `sign_receipt` rejects a body whose `kernel_key` does not match the signing backend, before invoking the backend.                     |
 | `public_sign_receipt_accepts_matching_kernel_key`                  | ~L353       | `chio_kernel_core::receipts::sign_receipt`                                                            | `formal/proof-manifest.toml` covered_rust_symbols `sign_receipt`                      | `sign_receipt` produces a signed receipt with the backend's algorithm when the body's `kernel_key` matches the backend's public key.  |
+| `public_sign_receipt_refuses_content_hash_mismatch`                | ~L395       | `chio_kernel_core::receipts::sign_receipt`                                                            | `formal/proof-manifest.toml` covered_rust_symbols `sign_receipt`                      | `sign_receipt` recomputes canonical content inside the trust boundary and refuses a mismatched claimed content hash before signing.   |
+| `public_sign_receipt_accepts_matching_content_hash`                | ~L423       | `chio_kernel_core::receipts::sign_receipt`                                                            | `formal/proof-manifest.toml` covered_rust_symbols `sign_receipt`                      | `sign_receipt` accepts a body only when its claimed content hash equals the recomputed canonical-content hash.                         |
 | `verify_scope_intersection_associative`                            | ~L379       | `chio_kernel_core::formal_core::optional_u32_cap_is_subset`                                           | `formal/proof-manifest.toml` covered_rust_symbols `formal_core::*`; P1                | Transitivity of `optional_u32_cap_is_subset` plus reflexivity witnesses an associative meet over the bounded cap lattice. |
 | `verify_revocation_predicate_idempotent`                           | ~L406       | `chio_kernel_core::formal_core::revocation_snapshot_denies`                                           | `formal/proof-manifest.toml` covered_rust_symbols `formal_core::*`; P2                | `revocation_snapshot_denies` is idempotent on the same revocation snapshot and reduces to `token_revoked` on the diagonal.            |
 | `verify_delegation_chain_step`                                     | ~L505       | `chio_kernel_core::formal_core::optional_u32_cap_is_subset`, `monetary_cap_is_subset_by_parts`, `required_true_is_preserved`, `time_window_valid` | `formal/proof-manifest.toml` covered_rust_symbols `formal_core::*`; P1, P3, P5        | One delegation step preserves attenuation: identity coverage, ops/constraints monotonicity, no cap widening, dpop preserved, and `is_valid_at(now)` propagates child-to-parent under `expiry(c') <= expiry(c)`. |

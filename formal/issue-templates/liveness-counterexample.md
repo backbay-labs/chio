@@ -65,8 +65,8 @@ apalache-mc check \
     formal/tla/RevocationPropagation.tla
 ```
 
-Config used (PR job is `PROCS=4, CAPS=8`; nightly liveness lane is
-`PROCS=6, CAPS=16`):
+Config used (safety and nightly liveness both use `PROCS=4, CAPS=8`;
+larger bounds are reserved for a future TLC lane):
 
 - `PROCS = <int>`
 - `CAPS  = <int>`

@@ -1,7 +1,8 @@
-# mutants.yml - cargo-mutants required lane.
+# mutants.yml - cargo-mutants measurement lanes.
 #
 # Two jobs:
-#   mutants-pr      - pull_request trigger; runs `cargo mutants --in-diff`
+#   mutants-pr      - dormant pull-request job; when triggered, runs
+#                     `cargo mutants --in-diff`
 #                     against the PR base ref, six crates in parallel,
 #                     posts a Markdown summary via scripts/mutants-comment.sh,
 #                     and consults scripts/mutants-gate.sh for advisory-vs-blocking
@@ -13,8 +14,8 @@
 #                     Uploads mutants.out/ as a workflow artifact.
 #
 # Both jobs share the 1,800 GHA runner-min/30d cap with the fuzz lanes.
-# mutants-pr treats the cap as a hard halt; mutants-nightly keeps an
-# advisory measurement posture so dashboard evidence continues flowing.
+# The dormant PR job treats the cap as a hard halt; the nightly lane keeps an
+# advisory posture so dashboard evidence continues flowing.
 #
 # Cutover rule:
 #   The lane flips after two consecutive nightly runs report >= 80 caught
@@ -133,11 +134,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
+          GH_FUZZ_BUDGET_CAP_MODE: fail
         run: |
           set -euo pipefail
           # Mutation runs share the 1,800 min/30d envelope with fuzz.
-          # PR runs use --in-diff scoping but are still release
-          # qualification gates, so over-cap usage is a hard halt.
+          # PR runs use --in-diff scoping but are release qualification
+          # gates when triggered, so over-cap usage is a hard halt.
           # Full nightly sweeps keep their advisory measurement posture.
           if [[ -x scripts/check-fuzz-budget.sh ]]; then
             scripts/check-fuzz-budget.sh "${{ github.repository }}"

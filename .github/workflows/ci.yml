@@ -93,6 +93,8 @@ jobs:
           bash ./scripts/tests/check-chio-schema-registry.test.sh
           bash ./scripts/check-agent-web-proof-envelope-schema.sh
           bash ./scripts/tests/check-agent-web-proof-envelope-schema.test.sh
+          bash ./scripts/check-mapping.sh
+          bash ./scripts/tests/fuzz-budget-hard-halt.test.sh
 
       - name: Anchor batch async witness lint
         run: bash ./scripts/check-anchor-batch-async-witness.sh

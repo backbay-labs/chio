@@ -8,7 +8,7 @@ lean_root_module = "Chio"
 boundary_doc = "docs/architecture/CHIO_RUNTIME_BOUNDARIES.md"
 spec_anchor = "spec/PROTOCOL.md#55-verified-core-boundary"
 primary_toolchain = ["lean4", "creusot", "kani", "aeneas"]
-pilot_toolchain = []
+pilot_toolchain = ["aeneas"]
 
 root_modules = [
   "formal/lean4/Chio/Chio.lean",
@@ -73,6 +73,7 @@ covered_rust_symbols = [
   "chio_kernel_core::formal_core::budget_commit",
   "chio_kernel_core::formal_core::dpop_admits",
   "chio_kernel_core::formal_core::guard_pipeline_allows",
+  "chio_kernel_core::formal_core::revocation_snapshot_denies",
   "chio_kernel_core::formal_core::receipt_fields_coupled",
   # Surfaces witnessed by the Kani harnesses and Lean
   # delegation theorems.

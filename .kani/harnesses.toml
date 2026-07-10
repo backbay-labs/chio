@@ -2,8 +2,8 @@ schema = "chio.kani.multi-crate.v1"
 
 # Multi-crate Kani harness manifest (Kani multi-crate manifest).
 #
-# Each `[[harness]]` entry pins one (crate, harness) pair the CI
-# `kani-public-pr` job iterates. The job invokes the harness with:
+# Each `[[harness]]` entry pins one (crate, harness) pair for the manifest
+# runner. The runner invokes the harness with:
 #
 #     cargo kani -p <crate> --lib --harness <name> \
 #       --default-unwind <default_unwind> --no-unwinding-checks
@@ -11,7 +11,7 @@ schema = "chio.kani.multi-crate.v1"
 # Wrapped under a per-harness wall-clock cap of `timeout_secs`.
 #
 # Lanes:
-#   * lane = "pr"      Always runs on every PR and on push-to-main.
+#   * lane = "pr"      Fast tier currently run by the nightly manifest sweep.
 #   * lane = "nightly" Runs only in the nightly Kani sweep workflow.
 #
 # This file is the source of truth for the multi-crate sweep. The

@@ -6,6 +6,10 @@
   provenance labels, receipt lineage, and local certification registry state.
   External cryptography, clocks, stores, transports, and hosted services are
   tracked in formal/assumptions.toml.
+
+  Mirrors: crates/kernel/chio-kernel-core/src/formal_core.rs,
+  crates/kernel/chio-kernel/src/budget_store.rs, and
+  crates/kernel/chio-kernel/src/dpop.rs.
 -/
 
 import Chio.Core.Capability

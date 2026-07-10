@@ -16,11 +16,13 @@ covered_symbols = [
   "chio_kernel_core::normalized::NormalizedScope::is_subset_of",
   "chio_kernel_core::normalized::NormalizedEvaluationVerdict::try_from_evaluation",
   "chio_kernel_core::receipts::sign_receipt",
+  "chio_kernel_core::formal_core::revocation_snapshot_denies",
   "formal/rust-verification/creusot-core::time_window_valid_contract",
   "formal/rust-verification/creusot-core::budget_commit_remaining_contract",
   "formal/rust-verification/creusot-core::optional_u32_cap_subset_contract",
   "formal/rust-verification/creusot-core::required_true_preserved_contract",
   "formal/rust-verification/creusot-core::dpop_admits_contract",
+  "formal/rust-verification/creusot-core::revocation_snapshot_denies_contract",
   "formal/rust-verification/creusot-core::receipt_fields_coupled_contract",
 ]
 

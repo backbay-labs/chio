@@ -65,9 +65,8 @@ jobs:
   # preserving the formal OWNERS nightly-liveness obligation.
 
   # Nightly Kani lane: runs the union of `lanes.pr` and `lanes.nightly_only`
-  # from formal/rust-verification/kani-public-harnesses.toml. The PR job
-  # (kani-public-pr in ci.yml) only runs `lanes.pr`; nightly runs everything
-  # so harnesses in `lanes.nightly_only` still get daily coverage.
+  # from formal/rust-verification/kani-public-harnesses.toml. No PR Kani job
+  # exists yet, so this is currently the only workflow exercising either tier.
   kani-public-nightly:
     name: kani-public-nightly (lanes.pr + lanes.nightly_only)
     # owner: Chio maintainers
