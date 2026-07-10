@@ -1,0 +1,100 @@
+schema = "chio.apalache-negative.v1"
+
+[[negative]]
+spec = "formal/apalache/_negative_tests/ReceiptBeforeAllowBroken.tla"
+cfg = "formal/apalache/_negative_tests/MCReceiptBeforeAllowBroken.cfg"
+falsifies = "ReceiptBeforeAllow"
+production_commit = "n/a (non-tautology check predating this registry)"
+runtime_test = "n/a (structural receipt-order check)"
+classification = "spec-mutation"
+length = 4
+timeout_secs = 300
+notes = "PublishAllow omits the prior allow-receipt requirement."
+
+[[negative]]
+spec = "formal/apalache/_negative_tests/RevocationCutCompletenessBroken.tla"
+cfg = "formal/apalache/_negative_tests/MCRevocationCutCompletenessBroken.cfg"
+falsifies = "RevocationCutCompleteness"
+production_commit = "n/a (non-tautology check predating this registry)"
+runtime_test = "n/a (structural transitive-cut check)"
+classification = "spec-mutation"
+length = 4
+timeout_secs = 300
+notes = "Revoke disables only the root capability and leaves descendants eligible."
+
+[[negative]]
+spec = "formal/apalache/_negative_tests/DropGuardDiscardChildBufferBroken.tla"
+cfg = "formal/apalache/_negative_tests/MCDropGuardDiscardChildBufferBroken.cfg"
+falsifies = "ChildReceiptsFlushed"
+production_commit = "38cc914715e4f6a7c4436863e118cd4e9b07854f"
+runtime_test = "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs::nested_flow_drop_post_dispatch_flushes_buffered_child_receipt"
+classification = "spec-mutation"
+length = 4
+timeout_secs = 300
+notes = "Post-dispatch drop clears the child buffer without appending its receipt."
+
+[[negative]]
+spec = "formal/apalache/_negative_tests/DropGuardSkipChildBudgetReleaseBroken.tla"
+cfg = "formal/apalache/_negative_tests/MCDropGuardSkipChildBudgetReleaseBroken.cfg"
+falsifies = "ReservationConservation"
+production_commit = "a6d26dbc4332da3053b64b1a13741139d2dc2ece"
+runtime_test = "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs::drop_pre_dispatch_releases_admitted_child_budget"
+classification = "spec-mutation"
+length = 4
+timeout_secs = 300
+notes = "Pre-dispatch drop leaves the admitted child budget reserved."
+
+[[negative]]
+spec = "formal/apalache/_negative_tests/DropGuardSkipInvocationReversalBroken.tla"
+cfg = "formal/apalache/_negative_tests/MCDropGuardSkipInvocationReversalBroken.cfg"
+falsifies = "ReservationConservation"
+production_commit = "a6d26dbc4332da3053b64b1a13741139d2dc2ece"
+runtime_test = "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs::drop_pre_dispatch_reverses_invocation_budget"
+classification = "spec-mutation"
+length = 4
+timeout_secs = 300
+notes = "Pre-dispatch drop leaves the invocation slot reserved."
+
+[[negative]]
+spec = "formal/apalache/_negative_tests/DropGuardNoFaultReceiptBroken.tla"
+cfg = "formal/apalache/_negative_tests/MCDropGuardNoFaultReceiptBroken.cfg"
+falsifies = "TerminalReceiptExactlyOne"
+production_commit = "a6d26dbc4332da3053b64b1a13741139d2dc2ece"
+runtime_test = "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs::drop_pre_dispatch_records_receipt_on_cleanup_fault"
+classification = "spec-mutation"
+length = 4
+timeout_secs = 300
+notes = "Failed pre-dispatch cleanup reaches terminal fault without a receipt."
+
+[[negative]]
+spec = "formal/apalache/_negative_tests/DropGuardReleaseOnIncompleteStreamBroken.tla"
+cfg = "formal/apalache/_negative_tests/MCDropGuardReleaseOnIncompleteStreamBroken.cfg"
+falsifies = "RetainedIffAborted"
+production_commit = "84e98b9d02f979692bc6772a211cfe49381bec16"
+runtime_test = "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs::incomplete_stream_output_marks_reservations_retained"
+classification = "spec-mutation"
+length = 4
+timeout_secs = 300
+notes = "Incomplete stream releases a lease after side effects may have occurred."
+
+[[negative]]
+spec = "formal/apalache/_negative_tests/DropGuardNoRetainOnPostInvocationDenyBroken.tla"
+cfg = "formal/apalache/_negative_tests/MCDropGuardNoRetainOnPostInvocationDenyBroken.cfg"
+falsifies = "RetainedIffAborted"
+production_commit = "58abf33d2ef3c3230498003b68aa4d555795a9e2"
+runtime_test = "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs::post_invocation_block_marks_reservations_retained"
+classification = "spec-mutation"
+length = 4
+timeout_secs = 300
+notes = "Post-invocation denial leaves the admission lease reserved."
+
+[[negative]]
+spec = "formal/apalache/_negative_tests/DropGuardReleaseOnPostDispatchAbortBroken.tla"
+cfg = "formal/apalache/_negative_tests/MCDropGuardReleaseOnPostDispatchAbortBroken.cfg"
+falsifies = "RetainedIffAborted"
+production_commit = "c201afbd0c97591ce186aadbcfbe6da3ad8ae1db"
+runtime_test = "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs::drop_post_dispatch_retains_and_marks_reservations"
+classification = "spec-mutation"
+length = 4
+timeout_secs = 300
+notes = "Post-dispatch drop releases a lease while side effects remain ambiguous."

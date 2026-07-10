@@ -192,7 +192,7 @@ impl ToolServerConnection for PendingMonetaryServer {
         _arguments: serde_json::Value,
         _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<serde_json::Value, KernelError> {
-        self.started.notify_waiters();
+        self.started.notify_one();
         std::future::pending::<Result<serde_json::Value, KernelError>>().await
     }
 

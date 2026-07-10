@@ -159,6 +159,7 @@ notes = [
   "Lean assets are release evidence only when root-imported, sorry-free, and mapped to property_matrix entries.",
   "Creusot and Kani are required strict-CI lanes for production implementation linkage; public Kani harnesses target verify_capability, NormalizedScope::is_subset_of, resolve_matching_grants, evaluate, and sign_receipt.",
   "Aeneas production extraction covers the pure numeric/boolean core and is paired with tracked Lean equivalence theorems.",
+  "The post-admission drop lifecycle is model-checked at two invocations and one buffered child per invocation. Its evidence requires both a positive NoError result and every paired negative mutation producing a registered ITF counterexample.",
   "Release-facing formal claims must name this manifest, the theorem inventory, and the audited assumptions.",
   "ReceiptBeforeAllow proves the abstract persist-before-publish ordering and its production replay exercises the native happy path. It does not discharge concrete cross-row crash recovery, which remains excluded until implementation trace validation and crash-reopen conservation gates establish refinement.",
   "Manual Rust-to-model hashes are enforced by cargo xtask check formal-mirrors; transliteration and abstraction-anchor records require review, but matching hashes do not prove semantic equivalence or modeled properties.",
@@ -671,4 +672,51 @@ rust_symbols = ["ChioKernel::reverse_pre_execution_budget_mutation"]
 normalized_sha256 = "57e7c5f92c8048742d9c28ee4d036fc8c02818c93a2309babeb4d5fba3de55c9"
 symbol_sha256 = [
   { symbol = "ChioKernel::reverse_pre_execution_budget_mutation", sha256 = "43b55db37dec0028e25c552dcadf47e177b9dff79eaebea10b5352a8df810697" },
+]
+
+[[mirror]]
+model_file = "formal/apalache/PostAdmissionDropGuard.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs"
+rust_symbols = [
+  "PostAdmissionDropGuard",
+  "PostAdmissionDropGuard::mark_dispatch_started",
+  "PostAdmissionDropGuard::handle_pre_dispatch_drop",
+  "PostAdmissionDropGuard::drop",
+]
+normalized_sha256 = "b34889d86c0c5ce0049c1b4cb8a9aaed38d5b5ae8e8251ea1fb1adfb4eaf7707"
+symbol_sha256 = [
+  { symbol = "PostAdmissionDropGuard", sha256 = "ec215cf4f4de761dc529408e5e0a5537ea0a195ad316f01f276b11dc1152a8d3" },
+  { symbol = "PostAdmissionDropGuard::mark_dispatch_started", sha256 = "ddf846b1fd9df7b56e38061cef9c9513b037d75bd9635a2a7004ac2c00940b93" },
+  { symbol = "PostAdmissionDropGuard::handle_pre_dispatch_drop", sha256 = "44c6a2176715ddc6b65a434feca2c1bba44582e2f78afc3582416e80f203b7f0" },
+  { symbol = "PostAdmissionDropGuard::drop", sha256 = "e3e2ab3c03e64f4d3ce12a7510b1178490c4827dc3d16f4af4f96ff8e9ef823f" },
+]
+
+[[mirror]]
+model_file = "formal/apalache/PostAdmissionDropGuard.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel/src/kernel/dispatch.rs"
+rust_symbols = [
+  "ChioKernel::unwind_aborted_monetary_invocation",
+  "ChioKernel::release_runtime_admission_reservations",
+  "ChioKernel::mark_runtime_admission_reservations_retained_fail_closed",
+]
+normalized_sha256 = "06700c942e19ecfb64dd051f27ac09cab472b82b1ea8abe49e151f35b27fb308"
+symbol_sha256 = [
+  { symbol = "ChioKernel::unwind_aborted_monetary_invocation", sha256 = "39a87ecba8cfb8e82de083c5cb31940f06667f2b2f82709dc15cfee4deca5bdc" },
+  { symbol = "ChioKernel::release_runtime_admission_reservations", sha256 = "97211eaf9d4fee74b100a15e7a48b03cfebdc51510407afc7397e578ec2a5a70" },
+  { symbol = "ChioKernel::mark_runtime_admission_reservations_retained_fail_closed", sha256 = "e9097e16d978d4faf00ab5d131a60be98f0ac5079e80201385e33c51d1db0ff1" },
+]
+
+[[mirror]]
+model_file = "formal/apalache/PostAdmissionDropGuard.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel/src/kernel/responses/finalization.rs"
+rust_symbols = ["ChioKernel::finalize_tool_output_with_metadata"]
+normalized_sha256 = "038d17758bbecaf997809248f9ee91f434fa928eb55bf707fa90eade67241a3d"
+symbol_sha256 = [
+  { symbol = "ChioKernel::finalize_tool_output_with_metadata", sha256 = "8d9b619b9a8dbd510a49277a94493fba491b73f138676fdd907f1b0163f4d5a0" },
 ]

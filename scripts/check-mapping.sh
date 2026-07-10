@@ -2,7 +2,8 @@
 # scripts/check-mapping.sh
 #
 # Cross-reference gate for formal/MAPPING.md. Asserts that every named
-# TLA+ safety/liveness invariant in formal/tla/RevocationPropagation.tla
+# TLA+ safety/liveness invariant in formal/tla/RevocationPropagation.tla,
+# every drop-guard invariant in formal/apalache/PostAdmissionDropGuard.tla,
 # and every #[kani::proof] harness in
 # crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs has a
 # corresponding row in formal/MAPPING.md. Exits non-zero with a
@@ -18,11 +19,12 @@ cd "${repo_root}"
 
 mapping="formal/MAPPING.md"
 tla="formal/tla/RevocationPropagation.tla"
+drop_guard_tla="formal/apalache/PostAdmissionDropGuard.tla"
 kani="crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs"
 
 # --- Sanity: source files must exist ----------------------------------------
 missing_inputs=0
-for f in "${mapping}" "${tla}" "${kani}"; do
+for f in "${mapping}" "${tla}" "${drop_guard_tla}" "${kani}"; do
   if [[ ! -f "${f}" ]]; then
     echo "check-mapping: required input is missing: ${f}" >&2
     missing_inputs=1
@@ -59,6 +61,20 @@ for name in "${named_tla_invariants[@]}"; do
   # anchored at the start of the line.
   if grep -qE "^${name}[[:space:]]*==" "${tla}"; then
     defined_tla_invariants+=("${name}")
+  fi
+done
+
+named_drop_guard_invariants=(
+  "ReservationConservation"
+  "TerminalReceiptExactlyOne"
+  "ChildReceiptsFlushed"
+  "RetainedIffAborted"
+)
+
+defined_drop_guard_invariants=()
+for name in "${named_drop_guard_invariants[@]}"; do
+  if grep -qE "^${name}[[:space:]]*==" "${drop_guard_tla}"; then
+    defined_drop_guard_invariants+=("${name}")
   fi
 done
 
@@ -134,6 +150,13 @@ for name in "${defined_tla_invariants[@]}"; do
   fi
 done
 
+unmapped_drop_guard=()
+for name in "${defined_drop_guard_invariants[@]}"; do
+  if ! printf '%s\n' "${table_rows}" | grep -qF "\`${name}\`"; then
+    unmapped_drop_guard+=("${name}")
+  fi
+done
+
 unmapped_kani=()
 # bash 3.2 / `set -u` rejects expansion of empty arrays via `${arr[@]}`.
 # Guard the loop so an empty harness list does not crash the script.
@@ -155,6 +178,10 @@ echo "  TLA+ invariants enforced (${#defined_tla_invariants[@]} of ${#named_tla_
 for name in "${defined_tla_invariants[@]}"; do
   echo "    - ${name}"
 done
+echo "  Drop-guard invariants enforced (${#defined_drop_guard_invariants[@]} of ${#named_drop_guard_invariants[@]} whitelisted defined in ${drop_guard_tla}):"
+for name in "${defined_drop_guard_invariants[@]}"; do
+  echo "    - ${name}"
+done
 echo "  Kani harnesses enforced (${#kani_harnesses[@]} from ${kani}):"
 for name in "${kani_harnesses[@]}"; do
   if [[ -n "${name}" ]]; then
@@ -174,6 +201,18 @@ if [[ "${#unmapped_tla[@]}" -gt 0 ]]; then
   echo "" >&2
   echo "  Add a row to the 'TLA+ named invariants' table in ${mapping}." >&2
   echo "  The literal token must appear as \`${unmapped_tla[0]}\` (backtick-wrapped)." >&2
+fi
+
+if [[ "${#unmapped_drop_guard[@]}" -gt 0 ]]; then
+  failures=$((failures + ${#unmapped_drop_guard[@]}))
+  echo ""
+  echo "check-mapping: FAIL - ${#unmapped_drop_guard[@]} invariant(s) defined in ${drop_guard_tla} but not cited in ${mapping}:" >&2
+  for name in "${unmapped_drop_guard[@]}"; do
+    echo "  - ${name}" >&2
+  done
+  echo "" >&2
+  echo "  Add a row to the 'Apalache named invariants' table in ${mapping}." >&2
+  echo "  The literal token must appear as \`${unmapped_drop_guard[0]}\` (backtick-wrapped)." >&2
 fi
 
 if [[ "${#unmapped_kani[@]}" -gt 0 ]]; then

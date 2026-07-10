@@ -5,7 +5,7 @@
 (* PublishAllow here omits the HasAllowReceipt(a, c) precondition, so an    *)
 (* allow can be published without an allow receipt persisting first.        *)
 (*                                                                          *)
-(* Apalache MUST find a counterexample to SafetyInv on this spec. If it     *)
+(* Apalache MUST find a counterexample to ReceiptBeforeAllow. If it         *)
 (* reports NoError, the property is unsound.                                *)
 (***************************************************************************)
 

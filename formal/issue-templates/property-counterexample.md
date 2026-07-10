@@ -102,6 +102,9 @@ triage runbook.
       `discrepancy` block was added to `formal/proof-manifest.toml`.
 - [ ] Step 5 - if the invariant text changed, `formal/MAPPING.md` was
       updated in the same PR and `bash scripts/check-mapping.sh` exits 0.
+- [ ] Step 5a - if an Apalache invariant changed, every paired entry in
+      `formal/apalache/_negative_tests/REGISTRY.toml` was re-validated with
+      `scripts/check-apalache-negative.sh` in the same PR.
 - [ ] Step 6 - if the property is on a release branch, the regression
       seed (or Kani trace, or Apalache trace) was backported to every
       backport target.

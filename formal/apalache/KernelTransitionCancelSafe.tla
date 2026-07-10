@@ -24,6 +24,8 @@
 (*   `budget_used` or `receipt_count` while a cancel is pending, and the    *)
 (*   invariant holds by construction. The model does not exercise the Rust  *)
 (*   reversal transition or concurrent Commit-vs-Cancel races.             *)
+(*   PostAdmissionDropGuard.tla carries the broader pre-dispatch and         *)
+(*   post-dispatch lifecycle model.                                         *)
 (***************************************************************************)
 
 EXTENDS Naturals, Common

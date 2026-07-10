@@ -92,6 +92,21 @@ separate `.github/workflows/apalache-temporal.yml` workflow.
 | `RevocationCutCompleteness` | `formal/apalache/RevocationCutCompleteness.tla` | `crates/kernel/chio-kernel/src/kernel/validation.rs::ChioKernel::check_revocation`, `crates/kernel/chio-kernel/src/kernel/delegation.rs::consult_revocation_view`, `crates/kernel/chio-kernel-core/src/revocation_view.rs::RevocationSnapshot::is_revoked`, `RevocationView::is_revoked` | `formal/proof-manifest.toml` covered_rust_symbols `formal_core::revocation_snapshot_denies`; Lean theorem `revocation_is_cut` | A revoked capability removes dispatch eligibility for every transitive descendant in each authority view. |
 | `ReceiptBeforeAllow` | `formal/apalache/ReceiptBeforeAllow.tla` | `crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs::ChioKernel::build_allow_response_with_metadata`, `ChioKernel::build_execution_nonce_preflight_allow_response_with_metadata`, `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs::ChioKernel::record_chio_receipt_with_federation`, `ChioKernel::record_chio_receipt`, `chio_formal_diff_tests::counterexample::replay_receipt_before_allow` | Modeled ordering evidence; concrete cross-row crash recovery remains excluded | Returning an allow response is modeled as publication after the corresponding receipt-persistence call, and the committed trace replays that ordering against the kernel. |
 | `KernelTransitionCancelSafe` | `formal/apalache/KernelTransitionCancelSafe.tla` | `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs::PostAdmissionDropGuard`, `PostAdmissionDropGuard::mark_dispatch_started`, `PostAdmissionDropGuard::handle_pre_dispatch_drop`, `PostAdmissionDropGuard::drop`, `crates/kernel/chio-kernel/src/kernel/validation.rs::ChioKernel::reverse_pre_execution_budget_mutation` | Snapshot equality is by construction; the runtime reversal transition is not modeled; post-dispatch and fault cleanup paths are outside this model | The bounded clean pre-dispatch abstraction assumes unchanged budget and receipt snapshots; it does not prove that the Rust reversal restores them. |
+| `ReservationConservation` | `formal/apalache/PostAdmissionDropGuard.tla` | `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`, `crates/kernel/chio-kernel/src/kernel/dispatch.rs` | n/a (structural) | Every resource reserved at admission reaches exactly one terminal disposition: committed, released, or retained. |
+| `TerminalReceiptExactlyOne` | `formal/apalache/PostAdmissionDropGuard.tla` | `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`, `crates/kernel/chio-kernel/src/kernel/responses/finalization.rs` | `formal/assumptions.toml` ASSUME-SQLITE-ATOMICITY | Receipt-bearing terminals append exactly one parent receipt, while a clean pre-dispatch unwind remains receipt-free. |
+| `ChildReceiptsFlushed` | `formal/apalache/PostAdmissionDropGuard.tla` | `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs` | n/a (structural) | Every buffered child receipt is appended before its parent terminal receipt. |
+| `RetainedIffAborted` | `formal/apalache/PostAdmissionDropGuard.tla` | `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`, `crates/kernel/chio-kernel/src/kernel/dispatch.rs`, `crates/kernel/chio-kernel/src/kernel/responses/finalization.rs` | n/a (structural) | An admission lease is retained exactly for an ambiguous post-dispatch abort or a failed lease unwind. |
+
+### Negative falsifiability registry
+
+`formal/apalache/_negative_tests/REGISTRY.toml` maps deliberately broken
+models to the invariant row they falsify, the production fix commit, and the
+runtime regression test for the same defect. `scripts/check-apalache-negative.sh`
+fails unless every entry produces Apalache's violation exit, names exactly the
+registered invariant and Error outcome, and emits a structurally valid ITF
+trace. Registry entries
+naming a property absent from this table are rejected before model checking
+starts.
 
 ## Kani public harnesses (kani_public_harnesses.rs)
 

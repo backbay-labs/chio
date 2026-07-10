@@ -8,7 +8,22 @@ on:
     paths:
       - "formal/apalache/**"
       - "formal/tla/**"
+      - "formal/MAPPING.md"
+      - "formal/proof-manifest.toml"
+      - "crates/kernel/chio-kernel-core/src/evaluate.rs"
+      - "crates/kernel/chio-kernel-core/src/revocation_view.rs"
+      - "crates/kernel/chio-kernel/src/budget_store.rs"
+      - "crates/kernel/chio-kernel/src/receipt_store.rs"
+      - "crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs"
+      - "crates/kernel/chio-kernel/src/kernel/dispatch.rs"
+      - "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs"
+      - "crates/kernel/chio-kernel/src/kernel/evaluation/nested_flow_evaluation.rs"
+      - "crates/kernel/chio-kernel/src/kernel/responses/finalization.rs"
+      - "crates/kernel/chio-kernel/src/kernel/validation.rs"
+      - "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs"
       - "scripts/check-apalache-formal-slice.py"
+      - "scripts/check-apalache-negative.sh"
+      - "scripts/tests/check-apalache-negative.test.sh"
       - "tools/install-apalache.sh"
       - ".github/workflows/apalache-safety.yml"
       - ".github/workflows/apalache-temporal.yml"
@@ -58,16 +73,62 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          while IFS="|" read -r cfg spec; do
-            apalache-mc check \
-              --length=6 \
+          while IFS="|" read -r cfg spec length timeout_secs; do
+            timeout "${timeout_secs}" apalache-mc check \
+              --length="${length}" \
               --config="${cfg}" \
               "${spec}"
           done <<'EOF'
-          formal/apalache/MCMonotoneLogApalache.cfg|formal/apalache/MonotoneLogApalache.tla
-          formal/apalache/MCRevocationCutCompleteness.cfg|formal/apalache/RevocationCutCompleteness.tla
-          formal/apalache/MCReceiptBeforeAllow.cfg|formal/apalache/ReceiptBeforeAllow.tla
-          formal/apalache/MCKernelTransitionCancelSafe.cfg|formal/apalache/KernelTransitionCancelSafe.tla
-          formal/tla/MCRevocationPropagation.cfg|formal/tla/RevocationPropagation.tla
-          formal/tla/MCDelegationDepthBound.cfg|formal/tla/DelegationDepthBound.tla
+          formal/apalache/MCMonotoneLogApalache.cfg|formal/apalache/MonotoneLogApalache.tla|6|1800
+          formal/apalache/MCRevocationCutCompleteness.cfg|formal/apalache/RevocationCutCompleteness.tla|6|1800
+          formal/apalache/MCReceiptBeforeAllow.cfg|formal/apalache/ReceiptBeforeAllow.tla|6|1800
+          formal/apalache/MCKernelTransitionCancelSafe.cfg|formal/apalache/KernelTransitionCancelSafe.tla|6|1800
+          formal/apalache/MCPostAdmissionDropGuard.cfg|formal/apalache/PostAdmissionDropGuard.tla|8|1800
+          formal/tla/MCRevocationPropagation.cfg|formal/tla/RevocationPropagation.tla|6|1800
+          formal/tla/MCDelegationDepthBound.cfg|formal/tla/DelegationDepthBound.tla|6|1800
           EOF
+
+  apalache-negative:
+    name: apalache-negative
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - name: Install Java runtime
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Apalache
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/install-apalache.sh
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Check negative-gate outcomes
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/tests/check-apalache-negative.test.sh
+
+      - name: Reproduce registered counterexamples
+        shell: bash
+        env:
+          CHIO_APALACHE_NEGATIVE_OUTPUT_DIR: target/apalache-negative
+        run: |
+          set -euo pipefail
+          ./scripts/check-apalache-negative.sh
+
+      - name: Upload counterexample traces
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: apalache-negative-${{ github.run_id }}
+          path: target/apalache-negative
+          if-no-files-found: error
+          retention-days: 14
