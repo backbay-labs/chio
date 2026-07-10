@@ -73,6 +73,7 @@ pub fn verify_public_settlement_proof(
     validate_public_settlement_receipt_schema(bundle)?;
     validate_public_settlement_bundle_signature(bundle, trust)?;
     validate_web3_settlement_execution_receipt(&bundle.settlement_receipt)?;
+    validate_finality_settlement_state(bundle)?;
     validate_public_settlement_trust(bundle, trust)?;
     validate_public_settlement_verifier_policy(bundle, trust)?;
     validate_chain_binding(bundle)?;
@@ -86,7 +87,6 @@ pub fn verify_public_settlement_proof(
     let trust_market_context = validate_trust_market_refs(bundle)?;
     let trust_market_context_verified =
         validate_expected_trust_market_context(&trust_market_context, trust)?;
-    validate_finality_settlement_state(bundle)?;
     let bond = required_bond_snapshot(bundle)?;
     let block = required_block_snapshot(bundle)?;
     let chain_anchor = required_chain_anchor(bundle)?;
@@ -1921,7 +1921,9 @@ fn validate_finality_settlement_state(
 ) -> Result<(), Web3ContractError> {
     if matches!(
         bundle.settlement_receipt.lifecycle_state,
-        Web3SettlementLifecycleState::Failed | Web3SettlementLifecycleState::Reorged
+        Web3SettlementLifecycleState::Failed
+            | Web3SettlementLifecycleState::Reorged
+            | Web3SettlementLifecycleState::EscrowLocked
     ) {
         return Err(Web3ContractError::InvalidSettlement(
             "public settlement finality requires successful settlement state".to_string(),

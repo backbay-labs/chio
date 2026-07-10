@@ -586,6 +586,7 @@ class TestConfig:
         assert config.sidecar_url == "http://127.0.0.1:9090"
         assert "OPTIONS" in config.exclude_methods
         assert config.receipt_header == "X-Chio-Receipt"
+        assert config.fail_open is False
         assert config.max_body_bytes == 8 * 1024 * 1024
 
     def test_custom(self) -> None:
@@ -594,3 +595,17 @@ class TestConfig:
             exclude_paths=frozenset({"/healthz", "/ready"}),
         )
         assert "/healthz" in config.exclude_paths
+
+    def test_positional_fail_open_precedes_max_body_bytes(self) -> None:
+        config = ChioASGIConfig(
+            "http://mock:9090",
+            2.5,
+            frozenset({"/health"}),
+            frozenset({"OPTIONS"}),
+            "X-Test-Receipt",
+            True,
+            10 * 1024 * 1024,
+        )
+
+        assert config.fail_open is True
+        assert config.max_body_bytes == 10 * 1024 * 1024

@@ -2443,6 +2443,27 @@ fn public_settlement_proof_rejects_reorged_settlement_before_finality_claims() {
 }
 
 #[test]
+fn public_settlement_proof_rejects_escrow_locked_before_finality_claims() {
+    let mut bundle = sample_public_settlement_proof_bundle();
+    bundle.settlement_receipt.lifecycle_state = Web3SettlementLifecycleState::EscrowLocked;
+    bundle.settlement_receipt.observed_execution.amount.units = 0;
+    bundle.settlement_receipt.settled_amount.units = 0;
+    bundle.settlement_receipt.reconciled_anchor_proof = None;
+    bundle.settlement_receipt.oracle_evidence = None;
+    bundle.chain_snapshot.escrow.released_amount.units = 0;
+
+    let result = verify_sample_public_settlement_proof(&bundle);
+    assert!(
+        matches!(
+            result,
+            Err(Web3ContractError::InvalidSettlement(ref message))
+                if message.contains("public settlement finality requires successful settlement state")
+        ),
+        "{result:?}"
+    );
+}
+
+#[test]
 fn public_settlement_proof_rejects_missing_observed_execution_reference() {
     let mut bundle = sample_public_settlement_proof_bundle();
     bundle

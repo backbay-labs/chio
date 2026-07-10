@@ -33,5 +33,5 @@ class ChioASGIConfig:
     exclude_paths: frozenset[str] = frozenset()
     exclude_methods: frozenset[str] = frozenset({"OPTIONS"})
     receipt_header: str = "X-Chio-Receipt"
-    max_body_bytes: int = 8 * 1024 * 1024
     fail_open: bool = False
+    max_body_bytes: int = 8 * 1024 * 1024
