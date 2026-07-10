@@ -1,3 +1,5 @@
+use alloc::boxed::Box;
+
 use serde::{Deserialize, Serialize};
 
 use super::messages::{CreateElicitationOperation, CreateMessageOperation};

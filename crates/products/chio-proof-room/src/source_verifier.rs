@@ -1240,14 +1240,25 @@ pub(crate) fn verify_transaction_passport_file_with_options(
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string_lossy().into_owned());
-    let report = chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
-        &passport,
-        passport_report_path.clone(),
-        &evidence_graph_bytes,
-        &verifier_policy_bytes,
-        &artifacts,
-        &trusted_root_signer_keys,
-    )
+    let report = if verify_transaction_passport_signature {
+        chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+            &passport,
+            passport_report_path.clone(),
+            &evidence_graph_bytes,
+            &verifier_policy_bytes,
+            &artifacts,
+            &trusted_root_signer_keys,
+        )
+    } else {
+        chio_transaction_passport::verify_standalone_minimal_passport_artifacts_unchecked_signature(
+            &passport,
+            passport_report_path.clone(),
+            &evidence_graph_bytes,
+            &verifier_policy_bytes,
+            &artifacts,
+            &trusted_root_signer_keys,
+        )
+    }
     .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
     let mut report = serde_json::to_value(report)
         .map_err(|error| format!("proof-room.source-verifier.report-encode: {error}"))?;

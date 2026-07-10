@@ -6,6 +6,7 @@ interface IChioIdentityRegistry {
         bytes32 edKeyHash;
         address settlementKey;
         uint64 registeredAt;
+        uint64 operatorEpoch;
         bool active;
     }
 
@@ -25,11 +26,33 @@ interface IChioIdentityRegistry {
 
     event OperatorDeactivated(address indexed operatorAddress);
 
+    event OperatorReactivated(address indexed operatorAddress);
+
     event EntityRegistered(
         bytes32 indexed chioEntityId,
         address indexed settlementAddress,
         address indexed operator
     );
+
+    event EntityDeactivated(bytes32 indexed chioEntityId, address indexed operator);
+
+    event EntityReassigned(
+        bytes32 indexed chioEntityId,
+        address indexed settlementAddress,
+        address indexed operator
+    );
+
+    event AdminTransferStarted(address indexed currentAdmin, address indexed pendingAdmin);
+
+    event AdminTransferred(address indexed previousAdmin, address indexed newAdmin);
+
+    function admin() external view returns (address);
+
+    function pendingAdmin() external view returns (address);
+
+    function transferAdmin(address newAdmin) external;
+
+    function acceptAdmin() external;
 
     function registerOperator(
         address operatorAddress,
@@ -40,9 +63,20 @@ interface IChioIdentityRegistry {
 
     function deactivateOperator(address operatorAddress) external;
 
+    function reactivateOperator(address operatorAddress) external;
+
     function registerEntity(
         bytes32 chioEntityId,
         address settlementAddress,
+        bytes calldata bindingProof
+    ) external;
+
+    function deactivateEntity(bytes32 chioEntityId) external;
+
+    function reassignEntity(
+        bytes32 chioEntityId,
+        address settlementAddress,
+        address operatorAddress,
         bytes calldata bindingProof
     ) external;
 
@@ -54,4 +88,3 @@ interface IChioIdentityRegistry {
 
     function getOperator(address operator) external view returns (OperatorRecord memory);
 }
-

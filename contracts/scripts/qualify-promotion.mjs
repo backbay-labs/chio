@@ -1,13 +1,21 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { ethers } from "ethers";
+import ganache from "ganache";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const contractsDir = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(contractsDir, "..");
+const NON_TESTNET_ASSURANCE_CHAIN_ID = 8453;
+const NON_TESTNET_ASSURANCE_PORT = Number(process.env.CHIO_PROMOTION_ASSURANCE_DEVNET_PORT ?? "0");
+const NON_TESTNET_DEPLOYER_KEY = "0x1000000000000000000000000000000000000000000000000000000000000001";
+const NON_TESTNET_CREATE2_FACTORY = "0x5555555555555555555555555555555555555555";
+const RECOVERABLE_LOOKING_SIGNATURE = `0x${"11".repeat(65)}`;
 
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -41,6 +49,71 @@ function runNode(args, expectSuccess = true) {
     assert.notEqual(result.status, 0, "expected command to fail");
   }
   return result;
+}
+
+function runNodeAsync(args, expectSuccess = true) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("node", args, {
+      cwd: repoRoot,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (status) => {
+      try {
+        if (expectSuccess) {
+          assert.equal(status, 0, stderr || stdout);
+        } else {
+          assert.notEqual(status, 0, "expected command to fail");
+        }
+        resolve({ status, stdout, stderr });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
+
+function startNonTestnetAssuranceDevnet() {
+  const server = ganache.server({
+    logging: { quiet: true },
+    chain: { chainId: NON_TESTNET_ASSURANCE_CHAIN_ID, hardfork: "shanghai" },
+    wallet: {
+      accounts: [
+        {
+          secretKey: NON_TESTNET_DEPLOYER_KEY,
+          balance: ethers.toBeHex(ethers.parseEther("1000"))
+        }
+      ]
+    }
+  });
+  return new Promise((resolve, reject) => {
+    server.listen(NON_TESTNET_ASSURANCE_PORT, (error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      const address = server.address();
+      resolve({
+        server,
+        rpcUrl: `http://127.0.0.1:${address.port}`
+      });
+    });
+  });
+}
+
+function closeServer(server) {
+  const result = server.close();
+  return result && typeof result.then === "function" ? result : Promise.resolve();
 }
 
 function buildApproval({ manifestPath, manifest, manifestHash, status = "approved", environment = "local-devnet" }) {
@@ -77,6 +150,46 @@ function buildApproval({ manifestPath, manifest, manifestHash, status = "approve
   };
 }
 
+function buildNonTestnetApproval({ manifestPath, manifest, manifestHash }) {
+  const approval = buildApproval({
+    manifestPath,
+    manifest,
+    manifestHash,
+    environment: "base-mainnet"
+  });
+  approval.create2 = {
+    factory_mode: "predeployed",
+    factory_address: NON_TESTNET_CREATE2_FACTORY,
+    salt_namespace: manifest.salt_namespace
+  };
+  approval.failure_policy = {
+    rollback_mode: "manual-replacement-deployment",
+    stop_on_error: true,
+    require_manual_retry_after_failure: true
+  };
+  return approval;
+}
+
+function buildAssuranceUnlock({ manifest, manifestHash, approval }) {
+  return {
+    assurance_id: "chio.web3-external-assurance.negative-security-owner.v1",
+    status: "approved",
+    gate: "EXTERNAL_ASSURANCE",
+    chain_id: manifest.chain_id,
+    reviewed_manifest_sha256: manifestHash,
+    candidate_release_id: manifest.review_context.candidate_release_id,
+    deployment_policy_id: manifest.review_context.deployment_policy_id,
+    approval_id: approval.approval_id,
+    unresolved_critical_high_findings: [],
+    security_owner_approval: {
+      status: "approved",
+      actor: "negative-security-owner-fixture",
+      approved_at: "2026-04-02T18:10:00Z",
+      signature: RECOVERABLE_LOOKING_SIGNATURE
+    }
+  };
+}
+
 function duplicateContractManifest(manifest) {
   const copy = structuredClone(manifest);
   copy.contracts.push(structuredClone(manifest.contracts[0]));
@@ -91,6 +204,188 @@ function missingArtifactManifest(manifest) {
   return copy;
 }
 
+function qualifyPromotionScriptOperatorKeyHash() {
+  const source = fs.readFileSync(path.join(contractsDir, "scripts", "promote-deployment.mjs"), "utf8");
+  assert.match(
+    source,
+    /operatorConfig\.operator_key_hash/,
+    "promotion must read the reviewed runtime operator_key_hash"
+  );
+  assert.doesNotMatch(
+    source,
+    /const\s+expectedEdKeyHash\s*=\s*labelHash\(operatorLabel\)/,
+    "promotion must not register a label hash as the operator Ed25519 key hash"
+  );
+}
+
+function prepareBaseMainnetManifest(outputRoot, deployerAddress) {
+  const manifestPath = path.join(outputRoot, "base-mainnet.reviewed.json");
+  const valuesPath = path.join(outputRoot, "base-mainnet.review-inputs.json");
+  writeJson(valuesPath, {
+    registry_admin_address: deployerAddress,
+    price_admin_address: deployerAddress,
+    operator_address: deployerAddress,
+    delegate_address: deployerAddress,
+    operator_ed_key_label: "chio-non-testnet-negative-operator",
+    operator_key_hash: "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975",
+    delegate_expiry_seconds: 3600
+  });
+  runNode([
+    path.join("contracts", "scripts", "prepare-reviewed-manifest.mjs"),
+    "--template",
+    "contracts/deployments/base-mainnet.template.json",
+    "--values-file",
+    repoRelative(valuesPath),
+    "--environment",
+    "base-mainnet",
+    "--output",
+    repoRelative(manifestPath)
+  ]);
+  return {
+    manifestPath,
+    manifest: readJson(manifestPath),
+    manifestHash: sha256File(manifestPath)
+  };
+}
+
+async function qualifyNonTestnetSecurityOwnerNegatives(outputRoot) {
+  const runRoot = path.join(outputRoot, "negative-assurance-security-owner");
+  ensureDir(runRoot);
+  const deployerAddress = new ethers.Wallet(NON_TESTNET_DEPLOYER_KEY).address;
+  const { manifestPath, manifest, manifestHash } = prepareBaseMainnetManifest(runRoot, deployerAddress);
+  const cases = [
+    {
+      name: "top-level-only",
+      mutateApproval(approval) {
+        approval.security_owner_address = deployerAddress;
+      }
+    },
+    {
+      name: "pending-owner",
+      mutateApproval(approval) {
+        approval.security_owner_address = deployerAddress;
+        approval.approvals.push({
+          role: "security-owner",
+          status: "pending",
+          actor: "negative-security-owner-fixture",
+          address: deployerAddress,
+          approved_at: "2026-04-02T18:10:00Z"
+        });
+      }
+    },
+    {
+      name: "missing-owner-approved-at",
+      mutateApproval(approval) {
+        approval.security_owner_address = deployerAddress;
+        approval.approvals.push({
+          role: "security-owner",
+          status: "approved",
+          actor: "negative-security-owner-fixture",
+          address: deployerAddress
+        });
+      }
+    },
+    {
+      name: "conflicting-owner",
+      mutateApproval(approval) {
+        approval.security_owner_address = "0x7777777777777777777777777777777777777777";
+        approval.approvals.push({
+          role: "security-owner",
+          status: "approved",
+          actor: "negative-security-owner-fixture",
+          address: deployerAddress,
+          approved_at: "2026-04-02T18:10:00Z"
+        });
+      }
+    },
+    {
+      name: "conflicting-approved-owners",
+      mutateApproval(approval) {
+        approval.approvals.push(
+          {
+            role: "security-owner",
+            status: "approved",
+            actor: "negative-security-owner-fixture-a",
+            address: deployerAddress,
+            approved_at: "2026-04-02T18:10:00Z"
+          },
+          {
+            role: "security-owner",
+            status: "approved",
+            actor: "negative-security-owner-fixture-b",
+            address: "0x7777777777777777777777777777777777777777",
+            approved_at: "2026-04-02T18:11:00Z"
+          }
+        );
+      }
+    }
+  ];
+
+  const { server, rpcUrl } = await startNonTestnetAssuranceDevnet();
+  try {
+    const reports = [];
+    for (const testCase of cases) {
+      const caseDir = path.join(runRoot, testCase.name);
+      ensureDir(caseDir);
+      const approval = buildNonTestnetApproval({ manifestPath, manifest, manifestHash });
+      testCase.mutateApproval(approval);
+      const approvalPath = path.join(caseDir, "approval.json");
+      writeJson(approvalPath, approval);
+      const unlockPath = path.join(caseDir, "assurance-unlock.json");
+      writeJson(unlockPath, buildAssuranceUnlock({ manifest, manifestHash, approval }));
+      const result = await runNodeAsync(
+        [
+          path.join("contracts", "scripts", "promote-deployment.mjs"),
+          "--manifest",
+          repoRelative(manifestPath),
+          "--approval",
+          repoRelative(approvalPath),
+          "--output-dir",
+          repoRelative(caseDir),
+          "--rpc-url",
+          rpcUrl,
+          "--deployer-key",
+          NON_TESTNET_DEPLOYER_KEY,
+          "--assurance-unlock",
+          repoRelative(unlockPath)
+        ],
+        false
+      );
+      assert.match(
+        `${result.stderr}\n${result.stdout}`,
+        /security-owner/,
+        `${testCase.name} should fail at the security-owner gate`
+      );
+      const reportPath = path.join(caseDir, "promotion-report.json");
+      const report = readJson(reportPath);
+      assert.equal(report.status, "failed");
+      assert.equal(
+        fs.existsSync(path.join(caseDir, "deployment.json")),
+        false,
+        `${testCase.name} should fail before writing deployment evidence`
+      );
+      assert.equal(
+        (report.checks ?? []).some((check) => check.id === "deployment.create2_rollout"),
+        false,
+        `${testCase.name} should fail before CREATE2 rollout`
+      );
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      for (const [contractId, address] of Object.entries(report.planned_contract_addresses ?? {})) {
+        assert.equal(
+          await provider.getCode(address),
+          "0x",
+          `${testCase.name} should not deploy ${contractId}`
+        );
+      }
+      provider.destroy?.();
+      reports.push(repoRelative(reportPath));
+    }
+    return reports;
+  } finally {
+    await closeServer(server);
+  }
+}
+
 async function main() {
   const outputDirIndex = process.argv.indexOf("--output-dir");
   const outputRoot =
@@ -99,6 +394,7 @@ async function main() {
       : path.join(repoRoot, "target", "web3-promotion-qualification");
 
   ensureDir(outputRoot);
+  qualifyPromotionScriptOperatorKeyHash();
 
   const manifestPath = path.join(contractsDir, "deployments", "local-devnet.reviewed.json");
   const manifest = readJson(manifestPath);
@@ -235,6 +531,8 @@ async function main() {
   const rollbackPlan = readJson(path.join(rollbackFailureDir, "rollback-plan.json"));
   assert.equal(rollbackPlan.rollback_executed, true, "rollback should execute on failed local promotion");
 
+  const negativeAssuranceReports = await qualifyNonTestnetSecurityOwnerNegatives(outputRoot);
+
   const summary = {
     report_id: "chio.web3-deployment-promotion-qualification.local-devnet.v1",
     generated_at: new Date().toISOString(),
@@ -264,6 +562,11 @@ async function main() {
         id: "promotion.rollback_on_failure",
         outcome: "pass",
         note: "Duplicate-salt deployment failure triggered explicit local snapshot rollback."
+      },
+      {
+        id: "promotion.non_testnet_security_owner_gate",
+        outcome: "pass",
+        note: "Non-testnet assurance rejects top-level-only, pending, incomplete, or conflicting security-owner approvals before deployment."
       }
     ],
     evidence: {
@@ -271,7 +574,8 @@ async function main() {
       negative_approval_report: repoRelative(path.join(badApprovalDir, "promotion-report.json")),
       resume_existing_report: repoRelative(path.join(resumeDir, "promotion-report.json")),
       negative_rollback_report: repoRelative(path.join(rollbackFailureDir, "promotion-report.json")),
-      negative_rollback_plan: repoRelative(path.join(rollbackFailureDir, "rollback-plan.json"))
+      negative_rollback_plan: repoRelative(path.join(rollbackFailureDir, "rollback-plan.json")),
+      negative_assurance_security_owner_reports: negativeAssuranceReports
     }
   };
 

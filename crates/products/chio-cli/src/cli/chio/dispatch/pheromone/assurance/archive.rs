@@ -615,4 +615,3 @@ fn archive_package_entries(
     }
     Ok(entries)
 }
-

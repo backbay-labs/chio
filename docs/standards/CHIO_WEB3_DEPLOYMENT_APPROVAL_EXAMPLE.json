@@ -6,11 +6,25 @@
   "reviewed_manifest_sha256": "a5d95f8f523b7d2f1c0af1fd8a0d6ab9b3df2ceab0cb0a84fbb27db5ad9cb8a1",
   "environment": "base-mainnet",
   "status": "approved",
+  "deployment_scope": "review-required",
+  "non_testnet_guard": {
+    "status": "external_assurance_required",
+    "requires_external_assurance": true,
+    "note": "Example only. Base mainnet approval requires signed pre-deployment external assurance, zero unresolved critical/high findings, and post-deployment runtime codehash verification before configuration."
+  },
+  "security_owner_address": "0x7777777777777777777777777777777777777777",
   "approvals": [
     {
       "role": "release-reviewer",
       "actor": "chio-release-review-board",
       "approved_at": "2026-04-02T18:00:00Z"
+    },
+    {
+      "role": "security-owner",
+      "status": "approved",
+      "actor": "chio-security-owner",
+      "address": "0x7777777777777777777777777777777777777777",
+      "approved_at": "2026-04-02T18:03:00Z"
     },
     {
       "role": "operator",

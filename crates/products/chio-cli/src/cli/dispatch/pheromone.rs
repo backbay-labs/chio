@@ -664,4 +664,3 @@ pub(crate) fn dispatch_chio_pheromone_command(command: ChioPheromoneCommands) ->
         },
     }
 }
-

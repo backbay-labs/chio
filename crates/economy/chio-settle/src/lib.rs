@@ -40,14 +40,16 @@ pub use config::{
 pub use evm::{
     build_failure_receipt, build_reversal_receipt, confirm_transaction, estimate_call_gas,
     finalize_bond_lock, finalize_escrow_dispatch, prepare_bond_expiry, prepare_bond_impair,
-    prepare_bond_lock, prepare_bond_release, prepare_dual_sign_release, prepare_erc20_approval,
-    prepare_escrow_refund, prepare_merkle_release, prepare_web3_escrow_dispatch,
+    prepare_bond_lock, prepare_bond_proof_root_publication, prepare_bond_release,
+    prepare_dual_sign_release, prepare_erc20_approval, prepare_escrow_refund,
+    prepare_merkle_release, prepare_merkle_release_root_publication, prepare_web3_escrow_dispatch,
     read_bond_snapshot, read_escrow_snapshot, scale_chio_amount_to_token_minor_units,
     static_validate_call, submit_call, BondLockRequest, DualSignReleaseInput,
     EscrowDispatchRequest, EscrowExecutionAmount, EscrowSnapshot, EvmBondSnapshot, EvmLogEntry,
     EvmSignature, EvmTransactionReceipt, PreparedBondExpiry, PreparedBondImpair, PreparedBondLock,
-    PreparedBondRelease, PreparedDualSignRelease, PreparedErc20Approval, PreparedEscrowCreate,
-    PreparedEscrowRefund, PreparedEvmCall, PreparedMerkleRelease,
+    PreparedBondProofRoot, PreparedBondRelease, PreparedDualSignRelease, PreparedErc20Approval,
+    PreparedEscrowCreate, PreparedEscrowRefund, PreparedEvmCall, PreparedMerkleRelease,
+    SettlementAnchorContentBinding,
 };
 pub use hook::{
     SettlementHook, SettlementHookError, SettlementObservation, SettlementOutcome,

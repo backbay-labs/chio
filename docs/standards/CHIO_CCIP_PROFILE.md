@@ -2,8 +2,7 @@
 
 ## Purpose
 
-This profile closes phase `163` by freezing Chio's bounded CCIP coordination
-surface.
+This profile freezes Chio's bounded CCIP coordination surface.
 
 The shipped lane is not a generic bridge. It transports one bounded settlement
 coordination message family and reconciles delivery back to canonical Chio
@@ -17,7 +16,7 @@ Chio now ships one CCIP message family with these properties:
 - the router address, payload size ceiling, execution gas ceiling, and
   expected latency are configured per lane
 - the message payload is derived from one canonical
-  `chio.web3-settlement-execution-receipt.v1`
+  `chio.web3-settlement-execution-receipt.v2`
 - delivery is accepted only if the destination chain and payload hash match
   the prepared message exactly
 - duplicate delivery is suppressed fail closed

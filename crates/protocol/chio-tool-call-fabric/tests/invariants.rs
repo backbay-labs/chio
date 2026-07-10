@@ -552,6 +552,17 @@ proptest! {
         }
     }
 
+    /// (f) `ProviderError` Display is em-dash-free.
+    #[test]
+    fn invariant_f_provider_error_display_has_no_em_dash(error in arb_provider_error()) {
+        let rendered = error.to_string();
+        prop_assert!(
+            !rendered.contains('\u{2014}'),
+            "provider error display contains U+2014: {}",
+            rendered,
+        );
+    }
+
     /// (g) `ProvenanceStamp.received_at` round-trips through canonical JSON
     ///     without precision loss above ms granularity.
     ///

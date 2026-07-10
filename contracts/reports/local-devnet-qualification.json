@@ -1,30 +1,107 @@
 {
   "report_id": "chio.web3-contract-qualification.local-devnet.v1",
-  "generated_at": "2026-04-24T01:52:19.168Z",
+  "status": "pass",
+  "scope": "local-devnet",
+  "environment": "local-devnet",
+  "network_tier": "development",
+  "note": "Ephemeral local-devnet test run.",
+  "generated_at": "2026-07-09T04:37:09.679Z",
   "chain_id": "eip155:31337",
   "gas_estimates": {
-    "register_operator": "74670",
-    "register_delegate": "74559",
-    "publish_root_operator": "172438",
-    "publish_root_delegate": "157662",
-    "register_feed": "123625",
-    "price_read": "60173",
-    "create_escrow": "284016",
-    "merkle_partial_release": "103764",
-    "dual_sign_release": "76277",
-    "lock_bond": "278775",
-    "bond_release": "83641"
+    "register_operator": "104096",
+    "register_delegate": "140272",
+    "publish_root_operator": "245584",
+    "publish_root_delegate": "218332",
+    "register_feed": "123689",
+    "price_read": "60926",
+    "create_escrow": "300749",
+    "merkle_partial_release": "197991",
+    "dual_sign_release": "154063",
+    "lock_bond": "322557",
+    "bond_release": "180009"
+  },
+  "deployed_runtime_codehashes": {
+    "identity_registry": {
+      "actual_runtime_codehash": "0xd4f87cc63c00d0640c8f232c8fac5e5cb99bc6cf185ef912225e07fa438614cc",
+      "immutable_normalized_runtime_codehash": "0xd4f87cc63c00d0640c8f232c8fac5e5cb99bc6cf185ef912225e07fa438614cc",
+      "package_runtime_codehash": "0xd4f87cc63c00d0640c8f232c8fac5e5cb99bc6cf185ef912225e07fa438614cc",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xca0d42cdf921a783d9911e9112922d7dc4e9bddfc2db97a0792220c90115b650",
+      "observation_source": "eth_getCode"
+    },
+    "root_registry": {
+      "actual_runtime_codehash": "0x045c0ee2e1b771685165e792a2940b74f54b2243d6c8f4988c702083f7820287",
+      "immutable_normalized_runtime_codehash": "0xfc5d76d87b02096c6ae32ce644a2b98ca0bdf3c56700ad16731fad2062e6bd7f",
+      "package_runtime_codehash": "0xfc5d76d87b02096c6ae32ce644a2b98ca0bdf3c56700ad16731fad2062e6bd7f",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xca0d42cdf921a783d9911e9112922d7dc4e9bddfc2db97a0792220c90115b650",
+      "observation_source": "eth_getCode"
+    },
+    "escrow": {
+      "actual_runtime_codehash": "0xd1d1e06fbfdd30b7c1d3eb9746d1cd3fdf163e74b7969e15e04da69318c1b9ad",
+      "immutable_normalized_runtime_codehash": "0x03d8f545c330922a33db6473430c50eafd527e04474f31abee2dc1f8c6ab2d36",
+      "package_runtime_codehash": "0x03d8f545c330922a33db6473430c50eafd527e04474f31abee2dc1f8c6ab2d36",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xca0d42cdf921a783d9911e9112922d7dc4e9bddfc2db97a0792220c90115b650",
+      "observation_source": "eth_getCode"
+    },
+    "bond_vault": {
+      "actual_runtime_codehash": "0x9e8e1dfbe39b02d5d80383eb057f0b4485da89126f159e7b79dbe28d5defc32d",
+      "immutable_normalized_runtime_codehash": "0x17f7936469584b38404765ac44bd7e2384337983e4bc6448a3500d0637711f09",
+      "package_runtime_codehash": "0x17f7936469584b38404765ac44bd7e2384337983e4bc6448a3500d0637711f09",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xca0d42cdf921a783d9911e9112922d7dc4e9bddfc2db97a0792220c90115b650",
+      "observation_source": "eth_getCode"
+    },
+    "price_resolver": {
+      "actual_runtime_codehash": "0xcc0820ae6dc866c32416ae4fd90cc515ed496fdcbd511edce5456b9e47b4c7f1",
+      "immutable_normalized_runtime_codehash": "0x912ef07d9652b99f9a5d7919247da89f7dc5be72163722c325ae7c2a02cbf04e",
+      "package_runtime_codehash": "0x912ef07d9652b99f9a5d7919247da89f7dc5be72163722c325ae7c2a02cbf04e",
+      "observed_block_number": 13,
+      "observed_block_hash": "0xf73bd6ae8460b65f3e71c49e6c7cfd4d8a1ddebf05a56765e806fda8bebbe933",
+      "observation_source": "eth_getCode:latest-local-fallback"
+    }
   },
   "checks": [
+    {
+      "id": "deployment.runtime_codehashes",
+      "outcome": "pass",
+      "note": "Deployed local-devnet bytecode hashes match compiled artifacts and the reviewed contract package."
+    },
+    {
+      "id": "deployment.constructor_wiring",
+      "outcome": "pass",
+      "note": "Root registry, escrow, and bond vault reject zero or non-contract registry addresses at construction."
+    },
     {
       "id": "identity.operator_registration",
       "outcome": "pass",
       "note": "Identity registry bound the operator settlement key to the Chio Ed25519 key hash."
     },
     {
+      "id": "identity.contract_admin_entity_registration",
+      "outcome": "pass",
+      "note": "Entity binding authorization accepts a standards-compatible contract admin signature."
+    },
+    {
+      "id": "identity.inactive_operator_reregistration_replaces_keys",
+      "outcome": "pass",
+      "note": "Inactive operator re-registration replaces reviewed key material and returns the record to active."
+    },
+    {
+      "id": "identity.admin_handoff",
+      "outcome": "pass",
+      "note": "Identity registry admin handoff requires the nominated account to accept."
+    },
+    {
       "id": "identity.entity_registration",
       "outcome": "pass",
-      "note": "Operator registered the beneficiary entity binding for settlement parity checks."
+      "note": "Entity bindings require current-admin authorization and can be deactivated or reassigned by the admin."
+    },
+    {
+      "id": "anchor.expired_delegate_slots",
+      "outcome": "pass",
+      "note": "Expired delegates do not consume the active delegate cap."
     },
     {
       "id": "anchor.delegate_registration",
@@ -42,9 +119,19 @@
       "note": "Authorized delegate published a root against the operator namespace with canonical publisher traceability."
     },
     {
+      "id": "anchor.tree_size_bound_proof",
+      "outcome": "pass",
+      "note": "Root registry rejects proof metadata that does not match the published root geometry."
+    },
+    {
       "id": "anchor.delegate_revocation",
       "outcome": "pass",
       "note": "Revoked delegates can no longer publish roots."
+    },
+    {
+      "id": "oracle.admin_handoff",
+      "outcome": "pass",
+      "note": "Price resolver admin handoff requires the nominated account to accept."
     },
     {
       "id": "oracle.price_read",
@@ -54,7 +141,42 @@
     {
       "id": "oracle.fail_closed",
       "outcome": "pass",
-      "note": "Price resolver rejects stale feeds and sequencer-down conditions."
+      "note": "Price resolver rejects invalid feeds, stale feeds, stale round metadata, zero or future sequencer timestamps, sequencer downtime, and sequencer grace-period reads."
+    },
+    {
+      "id": "escrow_and_bond.rotated_key_root_replay_denied",
+      "outcome": "pass",
+      "note": "Escrow and bond proof roots must be published under the operator key epoch they claim."
+    },
+    {
+      "id": "escrow.inactive_operator_release_denied",
+      "outcome": "pass",
+      "note": "Escrow release rechecks operator activation before moving funds."
+    },
+    {
+      "id": "bond.inactive_operator_release_and_impair_denied",
+      "outcome": "pass",
+      "note": "Bond release and impairment recheck operator activation before moving collateral."
+    },
+    {
+      "id": "escrow.optional_return_token",
+      "outcome": "pass",
+      "note": "Escrow custody accepts ERC20 transfers that succeed without return data."
+    },
+    {
+      "id": "escrow.rejects_short_token_receipts",
+      "outcome": "pass",
+      "note": "Escrow custody rejects deposits whose received token balance is below the requested amount."
+    },
+    {
+      "id": "bond.rejects_short_token_receipts",
+      "outcome": "pass",
+      "note": "Bond vault custody rejects collateral whose received token balance is below the requested amount."
+    },
+    {
+      "id": "escrow.permit_allowance_fallback",
+      "outcome": "pass",
+      "note": "Escrow permit creation accepts an already-sufficient allowance if the permit call is unavailable."
     },
     {
       "id": "escrow.merkle_partial_release",
@@ -72,6 +194,11 @@
       "note": "Escrow refunds only after expiry and not before."
     },
     {
+      "id": "escrow.paused_timeout_refund_exit",
+      "outcome": "pass",
+      "note": "Expired escrow refund remains open while contract pause is active; pause gates create and release paths, not deadline recovery."
+    },
+    {
       "id": "escrow.identity_reconciliation_under_nonce_drift",
       "outcome": "pass",
       "note": "Escrow identity remains deterministic under interleaving submissions and duplicate replays fail closed."
@@ -87,9 +214,24 @@
       "note": "Bond vault releases collateral only on the detailed proof path and rejects the under-specified interface."
     },
     {
+      "id": "bond.impair_release_reentry_accounting",
+      "outcome": "pass",
+      "note": "Bond impairment rejects token callbacks that reenter release."
+    },
+    {
+      "id": "bond.paused_expiry_principal_exit",
+      "outcome": "pass",
+      "note": "Expired bond principal recovery remains open while contract pause is active; pause gates lock, release, and impair paths, not post-expiry principal exit."
+    },
+    {
       "id": "bond.identity_reconciliation_under_nonce_drift",
       "outcome": "pass",
       "note": "Bond identity remains deterministic under interleaving submissions and duplicate replays fail closed."
+    },
+    {
+      "id": "deployment.gas_budget",
+      "outcome": "pass",
+      "note": "Local-devnet gas estimates are within the deployment policy budgets."
     }
   ]
 }

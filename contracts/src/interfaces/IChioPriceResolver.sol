@@ -16,6 +16,18 @@ interface IChioPriceResolver {
         uint256 maxStalenessSeconds
     );
 
+    event AdminTransferStarted(address indexed currentAdmin, address indexed pendingAdmin);
+
+    event AdminTransferred(address indexed previousAdmin, address indexed newAdmin);
+
+    function admin() external view returns (address);
+
+    function pendingAdmin() external view returns (address);
+
+    function transferAdmin(address newAdmin) external;
+
+    function acceptAdmin() external;
+
     function getPrice(bytes32 base, bytes32 quote)
         external
         view

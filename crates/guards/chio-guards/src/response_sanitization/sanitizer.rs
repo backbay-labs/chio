@@ -417,6 +417,9 @@ impl OutputSanitizer {
         let mut was_redacted = false;
         let sanitized =
             self.sanitize_value_inner(value, &mut findings, &mut redactions, &mut was_redacted);
+        if !self.config.include_findings {
+            findings.clear();
+        }
         SanitizedValue {
             value: sanitized,
             findings,

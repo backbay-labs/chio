@@ -439,6 +439,20 @@ fn embedding_anomaly_no_embedding_is_allow() {
 }
 
 #[test]
+fn embedding_anomaly_malformed_explicit_embedding_denies() {
+    let guard =
+        EmbeddingAnomalyGuard::from_json(&bundled_pattern_json()).expect("bundled DB parses");
+    for args in [
+        serde_json::json!({"embedding": [0.1, "bad", 0.3]}),
+        serde_json::json!({"vector": "bad"}),
+        serde_json::json!({"embeddings": [[0.1, 0.2], ["bad", 0.4]]}),
+    ] {
+        let v = eval(&guard, "inspect", args);
+        assert!(matches!(v, Verdict::Deny));
+    }
+}
+
+#[test]
 fn embedding_anomaly_threshold_configurable() {
     let db = EmbeddingAnomalyPatternDb::from_json(
         r#"[

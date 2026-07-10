@@ -1311,6 +1311,17 @@ fn chio_runtime_admission_hook_receives_nested_flow_route_metadata_before_dispat
     assert_eq!(response.verdict, Verdict::Allow);
     assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
     assert_eq!(invocations.load(Ordering::SeqCst), 1);
+    let metadata = response
+        .receipt
+        .metadata
+        .as_ref()
+        .ok_or_else(|| "allow metadata missing".to_string())?;
+    assert_eq!(metadata["route"]["bridge"], "mcp");
+    assert_eq!(metadata["route"]["protocolTarget"], "mcp://provider-a");
+    assert_eq!(
+        metadata["chio_runtime"]["admission_id"],
+        "adm-route-metadata"
+    );
     Ok(())
 }
 

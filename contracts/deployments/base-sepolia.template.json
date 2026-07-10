@@ -61,7 +61,8 @@
       "source": "contracts/src/ChioEscrow.sol",
       "constructor_args": [
         "<root_registry_address>",
-        "<identity_registry_address>"
+        "<identity_registry_address>",
+        "<registry_admin_address>"
       ],
       "create2_salt": "chio.escrow.base.v0.1.0"
     },
@@ -71,7 +72,8 @@
       "source": "contracts/src/ChioBondVault.sol",
       "constructor_args": [
         "<root_registry_address>",
-        "<identity_registry_address>"
+        "<identity_registry_address>",
+        "<registry_admin_address>"
       ],
       "create2_salt": "chio.bond-vault.base.v0.1.0"
     },

@@ -2,9 +2,12 @@
 
 ## Status
 
-Mainnet is blocked until the Base Sepolia promotion smoke report passes and the
-operator explicitly approves one reviewed mainnet manifest. This checklist is
-the cutover gate; it is not permission to deploy.
+Mainnet is blocked until external assurance passes: independent external audit
+with zero unresolved critical/high findings, four-week testnet soak, artifact
+digest gate, deployed runtime codehash gate, minimum-bar checklist, and
+security-owner sign-off. Base Sepolia smoke and operator manifest approval
+are necessary after that gate, but they are not permission to deploy by
+themselves.
 
 ## Pre-Cutover Gates
 
@@ -19,15 +22,26 @@ the cutover gate; it is not permission to deploy.
 - The smoke report includes transaction hashes for operator/entity setup, USDC
   approval, escrow create, partial release, final release, timeout refund, root
   publication, and oracle price readback.
-- The staged hosted artifact bundle includes runtime, promotion, e2e, ops, and
-  Base Sepolia smoke evidence.
+- The staged hosted artifact bundle includes runtime, promotion, e2e, ops,
+  Base Sepolia smoke evidence, contract artifact JSON, contract release
+  record, contract package, chain configuration, and schema manifest.
+- The old `contracts/reports/local-devnet-qualification.json` and
+  `contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md` are historical
+  fixtures only.
+- `contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md` is historical
+  budget evidence only. It is not promotion evidence without fresh artifact
+  digest and deployed runtime codehash gates.
+- External audit, testnet soak, artifact digest, runtime codehash,
+  minimum-bar checklist, and security-owner sign-off are complete.
+- The reviewed mainnet approval has a matching approved `--assurance-unlock`
+  artifact.
 - The staged hosted artifact bundle includes
   `examples/internet-of-agents-web3-network/summary.json`,
   `review-result.json`, `chio/topology.json`, Chio receipt and budget
   summaries, passport presentation verdict, federation admission verdict,
   reputation verdict, behavioral baseline status, RFQ selection, subcontractor
   lineage, signed approval, x402 payment proof, rail-selection rationale,
-  dispute remediation, runtime degradation, observability, and all guardrail
+  dispute recovery, runtime degradation, observability, and all guardrail
   and adversarial denial receipts.
 
 ## Chio-Mediated Rehearsal Gate
@@ -95,6 +109,9 @@ only. It does not authorize mainnet transactions.
 
 ## Cutover Execution
 
+Do not execute this section before external assurance and an approved
+`--assurance-unlock` artifact.
+
 1. Export the mainnet RPC URL and signer keys in the operator shell.
 2. Run the promotion runner with the reviewed Base mainnet manifest and
    approved artifact.
@@ -118,6 +135,7 @@ only. It does not authorize mainnet transactions.
 - Any price readback failure, stale feed, or sequencer-down result.
 - Any signer role mismatch against the reviewed approval.
 - Any missing rollback plan after a failed promotion.
+- Any missing, mismatched, or unapproved assurance artifact.
 
 ## Post-Cutover
 

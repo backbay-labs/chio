@@ -2,6 +2,25 @@
   "release_id": "chio.web3-contract-package.release.v0.1.0",
   "package_name": "@chio/web3-contracts",
   "version": "0.1.0",
+  "deployment_status": "EXTERNAL_ASSURANCE_REQUIRED",
+  "non_testnet_guard": {
+    "effective_at": "2026-07-04T01:48:54Z",
+    "summary": "Mainnet deployment, non-testnet custody, and non-testnet promotion require external audit, testnet soak, artifact digest, runtime codehash, and minimum-bar gates with security-owner sign-off.",
+    "historical_evidence": [
+      "contracts/reports/local-devnet-qualification.json",
+      "contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md",
+      "contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md"
+    ],
+    "external_assurance_blockers": [
+      "independent external audit with zero unresolved critical/high findings",
+      "four-week testnet soak evidence",
+      "artifact digest gate evidence",
+      "deployed runtime codehash gate evidence",
+      "security-owner signed minimum-bar checklist",
+      "hosted qualification observation on the candidate revision",
+      "operator-approved target-chain manifests and approval records"
+    ]
+  },
   "source_roots": [
     "contracts/src/ChioIdentityRegistry.sol",
     "contracts/src/ChioRootRegistry.sol",
@@ -27,9 +46,21 @@
     "contracts/deployments/local-devnet.json"
   ],
   "qualification_reports": [
-    "contracts/reports/local-devnet-qualification.json",
-    "contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md",
-    "contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md"
+    {
+      "path": "contracts/reports/local-devnet-qualification.json",
+      "classification": "historical-devnet-fixture",
+      "promotion_signal": false
+    },
+    {
+      "path": "contracts/reports/CHIO_WEB3_CONTRACT_GAS_AND_STORAGE.md",
+      "classification": "historical-budget-context",
+      "promotion_signal": false
+    },
+    {
+      "path": "contracts/reports/CHIO_WEB3_CONTRACT_SECURITY_REVIEW.md",
+      "classification": "historical-review-context",
+      "promotion_signal": false
+    }
   ],
   "operator_tooling": [
     "contracts/scripts/deploy-base-sepolia-dependencies.mjs",
@@ -40,9 +71,9 @@
     "docs/standards/CHIO_WEB3_OPERATOR_ENVIRONMENT.example"
   ],
   "notes": [
-    "The local-devnet qualification path validates the dual-sign settlement lane via static-call plus gas estimate because Ganache on Node 25 hangs while mining that exact path; the Merkle-proof lane is executed end to end on-chain.",
-    "Base remains the primary deployment target and Arbitrum remains the bounded secondary target.",
-    "Base Sepolia is the public testnet rehearsal template for operator-reviewed rollout before Base mainnet promotion.",
-    "Base Sepolia smoke evidence must pass with transaction hashes before a mainnet approval artifact is prepared."
+    "The local-devnet qualification path remains a historical devnet fixture and is not promotion evidence.",
+    "Base and Arbitrum remain intended non-testnet targets only; this release record does not authorize non-testnet promotion.",
+    "Base Sepolia is the public testnet rehearsal template.",
+    "Base Sepolia smoke evidence is necessary for rehearsal but not sufficient for mainnet approval without external assurance."
   ]
 }

@@ -9,7 +9,7 @@ use serde_json::json;
 
 use crate::AnchorError;
 
-use super::hashing::hash_to_b256;
+use super::hashing::{hash_to_b256, operator_key_hash};
 use super::rpc::rpc_call;
 use super::types::EvmAnchorTarget;
 use super::validation::{parse_nonzero_evm_address, parse_validated_evm_anchor_target};
@@ -45,11 +45,12 @@ pub async fn verify_inclusion_onchain(
         leaf_index: U256::from(proof.receipt_inclusion.proof.leaf_index as u64),
         tree_size: U256::from(proof.receipt_inclusion.proof.tree_size as u64),
     };
-    let call = IChioRootRegistry::verifyInclusionDetailedCall {
+    let call = IChioRootRegistry::verifyInclusionDetailedForKeyHashCall {
         proof: evm_proof.into(),
         root: hash_to_b256(&proof.receipt_inclusion.merkle_root),
         leafHash: hash_to_b256(&leaf),
         operator,
+        operatorKeyHash: operator_key_hash(&proof.key_binding_certificate)?,
     };
     let response = rpc_call(
         &target.rpc_url,
@@ -65,11 +66,14 @@ pub async fn verify_inclusion_onchain(
     )
     .await?;
     let raw = response.as_str().ok_or_else(|| {
-        AnchorError::Rpc("eth_call verifyInclusionDetailed did not return data".to_string())
+        AnchorError::Rpc(
+            "eth_call verifyInclusionDetailedForKeyHash did not return data".to_string(),
+        )
     })?;
     let bytes = hex::decode(raw.trim_start_matches("0x"))
         .map_err(|error| AnchorError::Rpc(error.to_string()))?;
-    let verified = IChioRootRegistry::verifyInclusionDetailedCall::abi_decode_returns(&bytes)
-        .map_err(|error| AnchorError::Serialization(error.to_string()))?;
+    let verified =
+        IChioRootRegistry::verifyInclusionDetailedForKeyHashCall::abi_decode_returns(&bytes)
+            .map_err(|error| AnchorError::Serialization(error.to_string()))?;
     Ok(verified)
 }

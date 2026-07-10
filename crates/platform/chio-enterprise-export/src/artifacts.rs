@@ -30,7 +30,7 @@ const ENTERPRISE_TELEMETRY_PROJECTION_SCHEMA: &str = "chio.enterprise.telemetry-
 const RISK_ADJUDICATION_JURISDICTION_RECEIPT_SCHEMA: &str =
     "chio.risk.adjudication-jurisdiction-receipt.v1";
 const RISK_GUARANTEE_DECISION_SCHEMA: &str = "chio.risk.guarantee-decision.v1";
-const WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA: &str = "chio.web3-settlement-execution-receipt.v1";
+const WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA: &str = "chio.web3-settlement-execution-receipt.v2";
 const WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA: &str = "chio.web3-settlement-proof-bundle.v1";
 const MIN_ENTERPRISE_AUDIT_RETENTION_DAYS: u64 = 365;
 

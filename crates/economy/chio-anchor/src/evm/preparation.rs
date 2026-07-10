@@ -10,7 +10,7 @@ use crate::AnchorError;
 
 use super::hashing::hash_to_b256;
 use super::types::{EvmAnchorTarget, PreparedDelegateRegistration, PreparedEvmRootPublication};
-use super::validation::parse_validated_evm_anchor_target;
+use super::validation::{parse_nonzero_evm_address, parse_validated_evm_anchor_target};
 use super::{operator_key_hash, operator_key_hash_hex};
 
 pub fn prepare_root_publication(
@@ -39,7 +39,11 @@ pub fn prepare_root_publication(
             target.chain_id
         )));
     }
-    if binding.certificate.settlement_address != target.operator_address {
+    let binding_operator = parse_nonzero_evm_address(
+        "binding settlement address",
+        &binding.certificate.settlement_address,
+    )?;
+    if binding_operator != validated_target.operator {
         return Err(AnchorError::InvalidBinding(format!(
             "binding settlement address {} does not match operator address {}",
             binding.certificate.settlement_address, target.operator_address
@@ -52,7 +56,7 @@ pub fn prepare_root_publication(
         batchStartSeq: checkpoint.body.batch_start_seq,
         batchEndSeq: checkpoint.body.batch_end_seq,
         treeSize: checkpoint.body.tree_size as u64,
-        operatorKeyHash: operator_key_hash(binding),
+        operatorKeyHash: operator_key_hash(binding)?,
     };
 
     Ok(PreparedEvmRootPublication {
@@ -66,7 +70,7 @@ pub fn prepare_root_publication(
         batch_end_seq: checkpoint.body.batch_end_seq,
         tree_size: checkpoint.body.tree_size as u64,
         merkle_root: checkpoint.body.merkle_root,
-        operator_key_hash: operator_key_hash_hex(binding),
+        operator_key_hash: operator_key_hash_hex(binding)?,
         call_data: format!("0x{}", hex::encode(call.abi_encode())),
         requires_delegate_authorization: validated_target.publisher != validated_target.operator,
     })

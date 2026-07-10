@@ -225,7 +225,7 @@ pub(super) fn build_compiled_patterns() -> Result<Vec<CompiledPattern>, regex::E
             confidence: 0.8,
             recommended: RedactionStrategy::TypeLabel,
             regex: compile_required_pattern(
-                r"\b(?:10|192\.168|172\.(?:1[6-9]|2[0-9]|3[0-1]))\.[0-9]{1,3}\.[0-9]{1,3}\b",
+                r"\b(?:10(?:\.[0-9]{1,3}){3}|192\.168(?:\.[0-9]{1,3}){2}|172\.(?:1[6-9]|2[0-9]|3[0-1])(?:\.[0-9]{1,3}){2})\b",
             )?,
             validator: None,
         },

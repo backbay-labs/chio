@@ -55,4 +55,3 @@ pub(crate) fn make_error_receipt(
 
     chio_core::receipt::body::ChioReceipt::sign(body, &kp)
 }
-

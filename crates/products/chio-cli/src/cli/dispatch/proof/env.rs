@@ -49,6 +49,18 @@ const PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL";
 const PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS";
+const PUBLIC_SETTLEMENT_TRUSTED_CONTRACT_PACKAGE_ID_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CONTRACT_PACKAGE_ID";
+const PUBLIC_SETTLEMENT_TRUSTED_REVIEWED_MANIFEST_HASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_REVIEWED_MANIFEST_HASH";
+const PUBLIC_SETTLEMENT_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH";
+const PUBLIC_SETTLEMENT_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH";
+const PUBLIC_SETTLEMENT_TRUSTED_ESCROW_RUNTIME_CODEHASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ESCROW_RUNTIME_CODEHASH";
+const PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH";
 
 pub(super) fn agent_web_verifier_trust_from_env(
 ) -> Result<chio_control_plane::agent_web::AgentWebVerifierTrust, CliError> {
@@ -233,6 +245,26 @@ fn parse_string_list(env_name: &str, values: &str) -> Result<Vec<String>, CliErr
 fn required_string_list_from_env(env_name: &str, label: &str) -> Result<Vec<String>, CliError> {
     match std::env::var(env_name) {
         Ok(values) => parse_string_list(env_name, &values),
+        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
+            "{env_name} must pin trusted {label}"
+        ))),
+        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
+            "{env_name} must be valid UTF-8"
+        ))),
+    }
+}
+
+fn required_string_from_env(env_name: &str, label: &str) -> Result<String, CliError> {
+    match std::env::var(env_name) {
+        Ok(value) => {
+            let value = value.trim();
+            if value.is_empty() {
+                return Err(CliError::cli_other_error(format!(
+                    "{env_name} must pin trusted {label}"
+                )));
+            }
+            Ok(value.to_string())
+        }
         Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
             "{env_name} must pin trusted {label}"
         ))),
@@ -522,9 +554,41 @@ pub(super) fn public_settlement_verifier_trust_from_env(
         independent_chain_head: optional_public_settlement_independent_chain_head_from_env(
             proof_bundle,
         )?,
+        trusted_dispute_event_blocks: Vec::new(),
+        trusted_release_event_blocks: Vec::new(),
+        trusted_release_event_logs: Vec::new(),
+        trusted_refund_event_logs: Vec::new(),
         verifier_now_unix_seconds: optional_u64_from_env(
             PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS_ENV,
         )?,
+        trusted_runtime_codehashes: Some(
+            chio_web3::settlement_proof::PublicSettlementRuntimeCodehashTrust {
+                contract_package_id: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_CONTRACT_PACKAGE_ID_ENV,
+                    "public settlement contract package id",
+                )?,
+                reviewed_manifest_hash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_REVIEWED_MANIFEST_HASH_ENV,
+                    "public settlement reviewed manifest hash",
+                )?,
+                root_registry_runtime_codehash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH_ENV,
+                    "public settlement root registry runtime codehash",
+                )?,
+                identity_registry_runtime_codehash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH_ENV,
+                    "public settlement identity registry runtime codehash",
+                )?,
+                escrow_runtime_codehash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_ESCROW_RUNTIME_CODEHASH_ENV,
+                    "public settlement escrow runtime codehash",
+                )?,
+                bond_vault_runtime_codehash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH_ENV,
+                    "public settlement bond vault runtime codehash",
+                )?,
+            },
+        ),
     })
 }
 

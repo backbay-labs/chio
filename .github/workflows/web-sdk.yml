@@ -100,13 +100,13 @@ jobs:
         run: npm test --prefix sdks/typescript/packages/conformance -- browser-subset.test.ts
       - name: Browser smoke
         if: matrix.target == 'browser'
-        run: bun run --filter @chio-protocol/browser build
+        run: bun run --filter @chio-protocol/browser typecheck
       - name: Workers smoke (Miniflare)
         if: matrix.target == 'workers'
-        run: bun run --filter @chio-protocol/workers test:miniflare
+        run: bun run --filter @chio-protocol/workers test:miniflare:dist
       - name: Edge smoke
         if: matrix.target == 'edge'
-        run: bun run --filter @chio-protocol/edge test:vercel-edge-sim
+        run: bun run --filter @chio-protocol/edge test:vercel-edge-sim:dist
       - name: Deno smoke
         if: matrix.target == 'deno'
         run: bun run --filter @chio-protocol/deno test:deno

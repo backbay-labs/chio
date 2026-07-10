@@ -286,4 +286,3 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_recovery_drill(
         "Chio relay alert assurance recovery drill report",
     )
 }
-

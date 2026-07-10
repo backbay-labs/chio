@@ -42,6 +42,8 @@ run() {
 }
 
 run "${pnpm_cmd[@]}" --dir contracts install --frozen-lockfile
+run "${pnpm_cmd[@]}" --dir contracts compile
+run ./scripts/check-web3-contract-parity.sh
 run cargo fmt --all --check
 run env CARGO_TARGET_DIR="${cargo_target_dir}" CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 \
   cargo test -p chio-cli web3_evidence -- --test-threads=1
@@ -53,7 +55,6 @@ run env CARGO_TARGET_DIR="${cargo_target_dir}" CARGO_INCREMENTAL=0 CARGO_BUILD_J
   cargo test -p chio-kernel web3_evidence -- --test-threads=1
 run env CARGO_TARGET_DIR="${cargo_target_dir}" CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 \
   cargo test -p chio-kernel cross_currency -- --test-threads=1
-run ./scripts/check-web3-contract-parity.sh
 run env CARGO_TARGET_DIR="${cargo_target_dir}" CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 \
   cargo test -p chio-anchor evidence_bundle -- --test-threads=1
 run env CARGO_TARGET_DIR="${cargo_target_dir}" CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 \
@@ -65,6 +66,13 @@ run env CARGO_TARGET_DIR="${cargo_target_dir}" CARGO_INCREMENTAL=0 CARGO_BUILD_J
 run env CARGO_TARGET_DIR="${cargo_target_dir}" CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 \
   cargo test -p chio-settle --test runtime_devnet -- --nocapture
 run "${pnpm_cmd[@]}" --dir contracts devnet:smoke
+run git diff --exit-code -- \
+  contracts/artifacts \
+  crates/economy/chio-web3-bindings/artifacts \
+  contracts/deployments/local-devnet.json \
+  crates/economy/chio-web3-bindings/deployments/local-devnet.json \
+  contracts/reports/local-devnet-qualification.json \
+  crates/economy/chio-web3-bindings/reports/local-devnet-qualification.json
 run env CARGO_TARGET_DIR="${cargo_target_dir}" ./scripts/qualify-web3-e2e.sh
 run ./scripts/qualify-web3-ops-controls.sh
 run env CARGO_TARGET_DIR="${cargo_target_dir}" CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 \

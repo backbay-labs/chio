@@ -144,6 +144,12 @@ export CHIO_PUBLIC_SETTLEMENT_TRUSTED_BUNDLE_SIGNER_KEYS="${CHIO_PUBLIC_SETTLEME
 export CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS="${CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS:-ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c}"
 export CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS="${CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS:-91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a}"
 export CHIO_PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS="${CHIO_PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS:-d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c}"
+export CHIO_PUBLIC_SETTLEMENT_TRUSTED_CONTRACT_PACKAGE_ID="${CHIO_PUBLIC_SETTLEMENT_TRUSTED_CONTRACT_PACKAGE_ID:-chio.official-web3-contracts}"
+export CHIO_PUBLIC_SETTLEMENT_TRUSTED_REVIEWED_MANIFEST_HASH="${CHIO_PUBLIC_SETTLEMENT_TRUSTED_REVIEWED_MANIFEST_HASH:-0x454a9a92b54a835a2776750196b171501bff6e5c02df1a192616194fc0a095cc}"
+export CHIO_PUBLIC_SETTLEMENT_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH="${CHIO_PUBLIC_SETTLEMENT_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH:-0xfc5d76d87b02096c6ae32ce644a2b98ca0bdf3c56700ad16731fad2062e6bd7f}"
+export CHIO_PUBLIC_SETTLEMENT_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH="${CHIO_PUBLIC_SETTLEMENT_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH:-0xd4f87cc63c00d0640c8f232c8fac5e5cb99bc6cf185ef912225e07fa438614cc}"
+export CHIO_PUBLIC_SETTLEMENT_TRUSTED_ESCROW_RUNTIME_CODEHASH="${CHIO_PUBLIC_SETTLEMENT_TRUSTED_ESCROW_RUNTIME_CODEHASH:-0x03d8f545c330922a33db6473430c50eafd527e04474f31abee2dc1f8c6ab2d36}"
+export CHIO_PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH="${CHIO_PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH:-0x17f7936469584b38404765ac44bd7e2384337983e4bc6448a3500d0637711f09}"
 export CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS="${CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS:-eip155:8453,eip155:42161}"
 export CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS="${CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS:-1}"
 export CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON="${CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON:-{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"latest_block_number\":12345701}}"
@@ -266,27 +272,8 @@ PY
 positive_count=0
 negative_count=0
 proof_room_count=0
-while IFS=$'\t' read -r kind fixture_id fixture_path metadata_path; do
-  case "$kind" in
-    transaction-passport)
-      verify_positive "$fixture_id" "$ROOT/$fixture_path"
-      positive_count=$((positive_count + 1))
-      ;;
-    negative-transaction-passport)
-      verify_negative "$fixture_id" "$ROOT/$fixture_path" "${metadata_path:+$ROOT/$metadata_path}"
-      negative_count=$((negative_count + 1))
-      ;;
-    proof-room)
-      verify_proof_room "$fixture_id" "$ROOT/$fixture_path"
-      proof_room_count=$((proof_room_count + 1))
-      ;;
-    *)
-      echo "unexpected proof fixture kind: $kind" >&2
-      exit 1
-      ;;
-  esac
-done < <(
-  python3 - "$ROOT" "$CATALOG" <<'PY'
+fixture_rows="$tmpdir/transaction-passport-fixtures.tsv"
+python3 - "$ROOT" "$CATALOG" >"$fixture_rows" <<'PY'
 import json
 import pathlib
 import sys
@@ -312,7 +299,27 @@ for entry in catalog.get("fixtures", []):
             raise SystemExit(f"missing fixture passport: {rel}")
     print(f"{kind}\t{fixture_id}\t{rel}\t{metadata}")
 PY
-)
+
+while IFS=$'\t' read -r kind fixture_id fixture_path metadata_path; do
+  case "$kind" in
+    transaction-passport)
+      verify_positive "$fixture_id" "$ROOT/$fixture_path"
+      positive_count=$((positive_count + 1))
+      ;;
+    negative-transaction-passport)
+      verify_negative "$fixture_id" "$ROOT/$fixture_path" "${metadata_path:+$ROOT/$metadata_path}"
+      negative_count=$((negative_count + 1))
+      ;;
+    proof-room)
+      verify_proof_room "$fixture_id" "$ROOT/$fixture_path"
+      proof_room_count=$((proof_room_count + 1))
+      ;;
+    *)
+      echo "unexpected proof fixture kind: $kind" >&2
+      exit 1
+      ;;
+  esac
+done <"$fixture_rows"
 
 printf 'OK transaction-passport verifier gate: %s positive, %s negative, %s proof-room\n' \
   "$positive_count" "$negative_count" "$proof_room_count"

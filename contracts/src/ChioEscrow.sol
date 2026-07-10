@@ -9,6 +9,17 @@ import {ChioMerkle} from "./lib/ChioMerkle.sol";
 import {ChioRootRegistry} from "./ChioRootRegistry.sol";
 
 contract ChioEscrow is IChioEscrow {
+    bytes32 private constant ESCROW_PROOF_LEAF_TYPEHASH =
+        keccak256("ChioEscrowProof(uint256 chainId,address escrow,bytes32 escrowId,address token,address beneficiary,bytes32 operatorKeyHash,bytes32 receiptHash,uint256 amount,bool partial)");
+    bytes32 private constant EIP712_DOMAIN_TYPEHASH =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+    bytes32 private constant ESCROW_RELEASE_TYPEHASH =
+        keccak256("ChioEscrowRelease(bytes32 escrowId,bytes32 receiptHash,uint256 amount,uint64 operatorEpoch)");
+    bytes32 private constant EIP712_NAME_HASH = keccak256("ChioEscrow");
+    bytes32 private constant EIP712_VERSION_HASH = keccak256("1");
+    uint256 private constant SECP256K1_HALF_ORDER =
+        0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0;
+
     error InvalidTerms();
     error EscrowNotFound();
     error EscrowAlreadyExists();
@@ -21,6 +32,15 @@ contract ChioEscrow is IChioEscrow {
     error ProofMetadataRequired();
     error InvalidSignature();
     error OperatorKeyHashMismatch();
+    error ReceiptAlreadyUsed();
+    error OperatorNotActive();
+    error ReentrantCall();
+    error NotAdmin();
+    error TokenNotAllowed();
+    error Paused();
+    error PermitFailed();
+    error InvalidRegistry();
+    error NotPendingAdmin();
 
     struct EscrowState {
         EscrowTerms terms;
@@ -31,22 +51,84 @@ contract ChioEscrow is IChioEscrow {
 
     ChioRootRegistry public immutable rootRegistry;
     IChioIdentityRegistry public immutable identityRegistry;
+    address public admin;
+    address public pendingAdmin;
+    bool public paused;
 
     mapping(bytes32 => EscrowState) private escrows;
+    mapping(bytes32 => mapping(bytes32 => bool)) private consumedReceipts;
+    mapping(bytes32 => bool) private consumedReceiptHashes;
+    mapping(address => bool) public tokenAllowed;
+    uint256 private reentrancyStatus;
 
-    constructor(address rootRegistry_, address identityRegistry_) {
-        rootRegistry = ChioRootRegistry(rootRegistry_);
+    constructor(address rootRegistry_, address identityRegistry_, address admin_) {
+        if (admin_ == address(0)) revert InvalidTerms();
+        if (
+            rootRegistry_ == address(0) ||
+            identityRegistry_ == address(0) ||
+            rootRegistry_.code.length == 0 ||
+            identityRegistry_.code.length == 0
+        ) {
+            revert InvalidRegistry();
+        }
+        ChioRootRegistry root = ChioRootRegistry(rootRegistry_);
+        if (address(root.identityRegistry()) != identityRegistry_) revert InvalidRegistry();
+        rootRegistry = root;
         identityRegistry = IChioIdentityRegistry(identityRegistry_);
+        admin = admin_;
     }
 
     function deriveEscrowId(EscrowTerms calldata terms) external view returns (bytes32 escrowId) {
         return _deriveEscrowId(terms);
     }
 
-    function createEscrow(EscrowTerms calldata terms) external returns (bytes32 escrowId) {
+    modifier nonReentrant() {
+        if (reentrancyStatus == 1) revert ReentrantCall();
+        reentrancyStatus = 1;
+        _;
+        reentrancyStatus = 0;
+    }
+
+    modifier onlyAdmin() {
+        if (msg.sender != admin) revert NotAdmin();
+        _;
+    }
+
+    modifier whenNotPaused() {
+        if (paused) revert Paused();
+        _;
+    }
+
+    function setPaused(bool paused_) external onlyAdmin {
+        paused = paused_;
+        emit PausedSet(msg.sender, paused_);
+    }
+
+    function transferAdmin(address newAdmin) external onlyAdmin {
+        if (newAdmin == address(0)) revert InvalidTerms();
+        pendingAdmin = newAdmin;
+        emit AdminTransferStarted(msg.sender, newAdmin);
+    }
+
+    function acceptAdmin() external {
+        if (msg.sender != pendingAdmin) revert NotPendingAdmin();
+        address previous = admin;
+        admin = msg.sender;
+        pendingAdmin = address(0);
+        emit AdminTransferred(previous, msg.sender);
+    }
+
+    function setTokenAllowed(address token, bool allowed) external onlyAdmin {
+        if (token == address(0)) revert InvalidTerms();
+        tokenAllowed[token] = allowed;
+        emit TokenAllowedSet(token, allowed);
+    }
+
+    function createEscrow(EscrowTerms calldata terms) external nonReentrant whenNotPaused returns (bytes32 escrowId) {
         if (terms.depositor != msg.sender) revert UnauthorizedCaller();
         escrowId = _createEscrow(terms);
-        _transferFromToken(terms.token, msg.sender, address(this), terms.maxAmount);
+        uint256 received = _transferFromToken(terms.token, msg.sender, address(this), terms.maxAmount);
+        escrows[escrowId].deposited = received;
     }
 
     function createEscrowWithPermit(
@@ -55,9 +137,11 @@ contract ChioEscrow is IChioEscrow {
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external returns (bytes32 escrowId) {
+    ) external nonReentrant whenNotPaused returns (bytes32 escrowId) {
         if (terms.depositor != msg.sender) revert UnauthorizedCaller();
-        IERC20Permit(terms.token).permit(
+        if (!tokenAllowed[terms.token]) revert TokenNotAllowed();
+        _permitOrAllowance(
+            terms.token,
             msg.sender,
             address(this),
             terms.maxAmount,
@@ -67,7 +151,8 @@ contract ChioEscrow is IChioEscrow {
             s
         );
         escrowId = _createEscrow(terms);
-        _transferFromToken(terms.token, msg.sender, address(this), terms.maxAmount);
+        uint256 received = _transferFromToken(terms.token, msg.sender, address(this), terms.maxAmount);
+        escrows[escrowId].deposited = received;
     }
 
     function releaseWithProof(
@@ -86,14 +171,28 @@ contract ChioEscrow is IChioEscrow {
         bytes32 root,
         bytes32 receiptHash,
         uint256 settledAmount
-    ) external {
+    ) external nonReentrant whenNotPaused {
         EscrowState storage escrow = _requireEscrow(escrowId);
         _requireBeneficiary(escrow);
         _ensureLive(escrow);
         _ensureReleaseAmount(escrow, settledAmount);
-        if (!rootRegistry.verifyInclusionDetailed(proof, root, receiptHash, escrow.terms.operator)) {
+        if (settledAmount != escrow.deposited - escrow.released) {
+            revert InvalidReleaseAmount();
+        }
+        _requireCurrentOperatorKey(escrow.terms.operator, escrow.terms.operatorKeyHash);
+        bytes32 leafHash = _proofLeaf(escrow, escrowId, receiptHash, settledAmount, false);
+        if (
+            !rootRegistry.verifyInclusionDetailedForKeyHash(
+                proof,
+                root,
+                leafHash,
+                escrow.terms.operator,
+                escrow.terms.operatorKeyHash
+            )
+        ) {
             revert InvalidSignature();
         }
+        _consumeReceipt(escrowId, receiptHash);
         _release(escrowId, escrow, settledAmount, receiptHash, false);
     }
 
@@ -101,31 +200,30 @@ contract ChioEscrow is IChioEscrow {
         bytes32 escrowId,
         bytes32 receiptHash,
         uint256 settledAmount,
+        uint64 operatorEpoch,
         uint8 v,
         bytes32 r,
         bytes32 s
-    ) external {
+    ) external nonReentrant whenNotPaused {
         EscrowState storage escrow = _requireEscrow(escrowId);
         _requireBeneficiary(escrow);
         _ensureLive(escrow);
         _ensureReleaseAmount(escrow, settledAmount);
-
+        if (settledAmount != escrow.deposited - escrow.released) {
+            revert InvalidReleaseAmount();
+        }
         IChioIdentityRegistry.OperatorRecord memory operatorRecord =
-            identityRegistry.getOperator(escrow.terms.operator);
-        if (operatorRecord.edKeyHash != escrow.terms.operatorKeyHash) {
+            _requireCurrentOperatorKey(escrow.terms.operator, escrow.terms.operatorKeyHash);
+        if (operatorRecord.operatorEpoch != operatorEpoch) {
             revert OperatorKeyHashMismatch();
         }
 
-        bytes32 digest = keccak256(
-            abi.encodePacked(
-                block.chainid, address(this), escrowId, receiptHash, settledAmount
-            )
-        );
-        address signer = ecrecover(digest, v, r, s);
-        if (signer == address(0) || signer != operatorRecord.settlementKey) {
+        address signer = _recoverSigner(_releaseDigest(escrowId, receiptHash, settledAmount, operatorEpoch), v, r, s);
+        if (signer != operatorRecord.settlementKey) {
             revert InvalidSignature();
         }
 
+        _consumeReceipt(escrowId, receiptHash);
         _release(escrowId, escrow, settledAmount, receiptHash, false);
     }
 
@@ -145,18 +243,29 @@ contract ChioEscrow is IChioEscrow {
         bytes32 root,
         bytes32 receiptHash,
         uint256 amount
-    ) external {
+    ) external nonReentrant whenNotPaused {
         EscrowState storage escrow = _requireEscrow(escrowId);
         _requireBeneficiary(escrow);
         _ensureLive(escrow);
         _ensureReleaseAmount(escrow, amount);
-        if (!rootRegistry.verifyInclusionDetailed(proof, root, receiptHash, escrow.terms.operator)) {
+        _requireCurrentOperatorKey(escrow.terms.operator, escrow.terms.operatorKeyHash);
+        bytes32 leafHash = _proofLeaf(escrow, escrowId, receiptHash, amount, true);
+        if (
+            !rootRegistry.verifyInclusionDetailedForKeyHash(
+                proof,
+                root,
+                leafHash,
+                escrow.terms.operator,
+                escrow.terms.operatorKeyHash
+            )
+        ) {
             revert InvalidSignature();
         }
+        _consumeReceipt(escrowId, receiptHash);
         _release(escrowId, escrow, amount, receiptHash, true);
     }
 
-    function refund(bytes32 escrowId) external {
+    function refund(bytes32 escrowId) external nonReentrant {
         EscrowState storage escrow = _requireEscrow(escrowId);
         if (escrow.refunded) revert EscrowAlreadyRefunded();
         if (block.timestamp <= escrow.terms.deadline) revert EscrowNotExpired();
@@ -182,13 +291,15 @@ contract ChioEscrow is IChioEscrow {
         if (
             terms.capabilityId == bytes32(0) ||
             terms.beneficiary == address(0) ||
-            terms.token == address(0) ||
-            terms.maxAmount == 0 ||
-            terms.deadline <= block.timestamp ||
-            !identityRegistry.isOperator(terms.operator)
+                terms.token == address(0) ||
+                terms.maxAmount == 0 ||
+                terms.operatorKeyHash == bytes32(0) ||
+                terms.deadline <= block.timestamp ||
+                !identityRegistry.isOperator(terms.operator)
         ) {
             revert InvalidTerms();
         }
+        if (!tokenAllowed[terms.token]) revert TokenNotAllowed();
 
         IChioIdentityRegistry.OperatorRecord memory operatorRecord =
             identityRegistry.getOperator(terms.operator);
@@ -199,7 +310,7 @@ contract ChioEscrow is IChioEscrow {
 
         escrows[escrowId] = EscrowState({
             terms: terms,
-            deposited: terms.maxAmount,
+            deposited: 0,
             released: 0,
             refunded: false
         });
@@ -253,6 +364,90 @@ contract ChioEscrow is IChioEscrow {
         }
     }
 
+    function _ensureOperatorActive(address operator) internal view {
+        if (!identityRegistry.isOperator(operator)) revert OperatorNotActive();
+    }
+
+    function _requireCurrentOperatorKey(address operator, bytes32 operatorKeyHash)
+        internal
+        view
+        returns (IChioIdentityRegistry.OperatorRecord memory operatorRecord)
+    {
+        operatorRecord = identityRegistry.getOperator(operator);
+        if (!operatorRecord.active) revert OperatorNotActive();
+        if (operatorRecord.edKeyHash != operatorKeyHash) revert OperatorKeyHashMismatch();
+    }
+
+    function _proofLeaf(
+        EscrowState storage escrow,
+        bytes32 escrowId,
+        bytes32 receiptHash,
+        uint256 amount,
+        bool isPartial
+    ) internal view returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                ESCROW_PROOF_LEAF_TYPEHASH,
+                block.chainid,
+                address(this),
+                escrowId,
+                escrow.terms.token,
+                escrow.terms.beneficiary,
+                escrow.terms.operatorKeyHash,
+                receiptHash,
+                amount,
+                isPartial
+            )
+        );
+    }
+
+    function _releaseDigest(bytes32 escrowId, bytes32 receiptHash, uint256 amount, uint64 operatorEpoch)
+        internal
+        view
+        returns (bytes32)
+    {
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                EIP712_DOMAIN_TYPEHASH,
+                EIP712_NAME_HASH,
+                EIP712_VERSION_HASH,
+                block.chainid,
+                address(this)
+            )
+        );
+        bytes32 structHash = keccak256(
+            abi.encode(ESCROW_RELEASE_TYPEHASH, escrowId, receiptHash, amount, operatorEpoch)
+        );
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+    }
+
+    function _consumeReceipt(bytes32 escrowId, bytes32 receiptHash) internal {
+        if (receiptHash == bytes32(0)) {
+            revert InvalidSignature();
+        }
+        if (consumedReceipts[escrowId][receiptHash] || consumedReceiptHashes[receiptHash]) {
+            revert ReceiptAlreadyUsed();
+        }
+        consumedReceipts[escrowId][receiptHash] = true;
+        consumedReceiptHashes[receiptHash] = true;
+    }
+
+    function _recoverSigner(bytes32 digest, uint8 v, bytes32 r, bytes32 s)
+        internal
+        pure
+        returns (address)
+    {
+        if (v < 27) {
+            v += 27;
+        }
+        if (v != 27 && v != 28) revert InvalidSignature();
+        if (uint256(s) > SECP256K1_HALF_ORDER) revert InvalidSignature();
+
+        address signer = ecrecover(digest, v, r, s);
+        if (signer == address(0)) revert InvalidSignature();
+        return signer;
+    }
+
     function _release(
         bytes32 escrowId,
         EscrowState storage escrow,
@@ -271,13 +466,47 @@ contract ChioEscrow is IChioEscrow {
         }
     }
 
-    function _transferFromToken(address token, address from, address to, uint256 amount) internal {
-        bool ok = IERC20(token).transferFrom(from, to, amount);
-        if (!ok) revert TransferFailed();
+    function _transferFromToken(address token, address from, address to, uint256 amount)
+        internal
+        returns (uint256 received)
+    {
+        uint256 beforeBalance = IERC20(token).balanceOf(to);
+        bytes memory data = abi.encodeCall(IERC20.transferFrom, (from, to, amount));
+        _callOptionalReturn(token, data);
+        uint256 afterBalance = IERC20(token).balanceOf(to);
+        received = afterBalance - beforeBalance;
+        if (received != amount) revert TransferFailed();
+    }
+
+    function _permitOrAllowance(
+        address token,
+        address owner,
+        address spender,
+        uint256 amount,
+        uint256 permitDeadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) internal {
+        bytes memory data = abi.encodeCall(IERC20Permit.permit, (owner, spender, amount, permitDeadline, v, r, s));
+        (bool ok,) = token.call(data);
+        if (!ok && IERC20(token).allowance(owner, spender) < amount) revert PermitFailed();
     }
 
     function _transferToken(address token, address to, uint256 amount) internal {
-        bool ok = IERC20(token).transfer(to, amount);
+        uint256 beforeBalance = IERC20(token).balanceOf(to);
+        bytes memory data = abi.encodeCall(IERC20.transfer, (to, amount));
+        _callOptionalReturn(token, data);
+        uint256 afterBalance = IERC20(token).balanceOf(to);
+        if (afterBalance - beforeBalance != amount) revert TransferFailed();
+    }
+
+    function _callOptionalReturn(address token, bytes memory data) internal {
+        (bool ok, bytes memory returnData) = token.call(data);
         if (!ok) revert TransferFailed();
+        if (returnData.length == 0) return;
+        if (returnData.length < 32 || !abi.decode(returnData, (bool))) {
+            revert TransferFailed();
+        }
     }
 }

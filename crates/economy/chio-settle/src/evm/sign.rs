@@ -80,13 +80,15 @@ pub(super) fn ensure_instruction_ready(
                 "capital instruction destination_account_ref is required".to_string(),
             )
         })?;
-    if destination != beneficiary_address {
+    let destination_address =
+        parse_address(destination, "capital instruction destination_account_ref")?;
+    let beneficiary_address = parse_address(beneficiary_address, "beneficiary_address")?;
+    if destination_address != beneficiary_address {
         return Err(SettlementError::InvalidDispatch(
             "beneficiary address must match capital instruction destination_account_ref"
                 .to_string(),
         ));
     }
-    parse_address(beneficiary_address, "beneficiary_address")?;
     Ok(())
 }
 
@@ -114,7 +116,13 @@ pub(super) fn ensure_settlement_binding(
             config.chain_id
         )));
     }
-    if binding.certificate.settlement_address != config.operator_address {
+    let binding_settlement_address = parse_address(
+        &binding.certificate.settlement_address,
+        "binding settlement address",
+    )?;
+    let config_operator_address =
+        parse_address(&config.operator_address, "config.operator_address")?;
+    if binding_settlement_address != config_operator_address {
         return Err(SettlementError::InvalidBinding(
             "binding settlement address does not match the configured operator".to_string(),
         ));
@@ -149,14 +157,39 @@ pub(super) fn dual_sign_digest(
     escrow_id: &B256,
     receipt_hash: &B256,
     amount_minor_units: u128,
+    operator_epoch: u64,
 ) -> Result<B256, SettlementError> {
     let chain_id = parse_eip155_chain_id(&config.chain_id)?;
-    let mut packed = Vec::with_capacity(32 + 20 + 32 + 32 + 32);
-    packed.extend_from_slice(&u256_to_bytes32(U256::from(chain_id)));
-    packed.extend_from_slice(parse_address(escrow_contract, "escrow_contract")?.as_slice());
-    packed.extend_from_slice(escrow_id.as_slice());
-    packed.extend_from_slice(receipt_hash.as_slice());
-    packed.extend_from_slice(&u256_to_bytes32(U256::from(amount_minor_units)));
+    let domain_separator = keccak256(
+        (
+            keccak256(
+                "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                    .as_bytes(),
+            ),
+            keccak256("ChioEscrow".as_bytes()),
+            keccak256("1".as_bytes()),
+            U256::from(chain_id),
+            parse_address(escrow_contract, "escrow_contract")?,
+        )
+            .abi_encode(),
+    );
+    let struct_hash = keccak256(
+        (
+            keccak256(
+                "ChioEscrowRelease(bytes32 escrowId,bytes32 receiptHash,uint256 amount,uint64 operatorEpoch)"
+                    .as_bytes(),
+            ),
+            *escrow_id,
+            *receipt_hash,
+            U256::from(amount_minor_units),
+            U256::from(operator_epoch),
+        )
+            .abi_encode(),
+    );
+    let mut packed = Vec::with_capacity(66);
+    packed.extend_from_slice(b"\x19\x01");
+    packed.extend_from_slice(domain_separator.as_slice());
+    packed.extend_from_slice(struct_hash.as_slice());
     Ok(keccak256(packed))
 }
 
@@ -165,13 +198,7 @@ pub(super) fn sign_digest(
     digest: &B256,
 ) -> Result<EvmSignature, SettlementError> {
     let secp = Secp256k1::new();
-    let raw = hex::decode(private_key_hex.trim_start_matches("0x"))
-        .map_err(|error| SettlementError::Signature(error.to_string()))?;
-    let secret =
-        SecretKey::from_byte_array(raw.try_into().map_err(|_| {
-            SettlementError::Signature("expected a 32-byte private key".to_string())
-        })?)
-        .map_err(|error| SettlementError::Signature(error.to_string()))?;
+    let secret = parse_secret_key(private_key_hex)?;
     let message = Message::from_digest(*digest.as_ref());
     let signature: RecoverableSignature = secp.sign_ecdsa_recoverable(message, &secret);
     let (recovery_id, bytes) = signature.serialize_compact();
@@ -179,4 +206,26 @@ pub(super) fn sign_digest(
     let r = format!("0x{}", hex::encode(&bytes[..32]));
     let s = format!("0x{}", hex::encode(&bytes[32..]));
     Ok(EvmSignature { v, r, s })
+}
+
+pub(super) fn signer_address_from_private_key(
+    private_key_hex: &str,
+) -> Result<Address, SettlementError> {
+    let secp = Secp256k1::new();
+    let secret = parse_secret_key(private_key_hex)?;
+    let public = SecpPublicKey::from_secret_key(&secp, &secret);
+    let encoded = public.serialize_uncompressed();
+    let hash = keccak256(&encoded[1..]);
+    Ok(Address::from_slice(&hash.as_slice()[12..]))
+}
+
+fn parse_secret_key(private_key_hex: &str) -> Result<SecretKey, SettlementError> {
+    let raw = hex::decode(private_key_hex.trim_start_matches("0x"))
+        .map_err(|error| SettlementError::Signature(error.to_string()))?;
+    SecretKey::from_byte_array(
+        raw.try_into().map_err(|_| {
+            SettlementError::Signature("expected a 32-byte private key".to_string())
+        })?,
+    )
+    .map_err(|error| SettlementError::Signature(error.to_string()))
 }

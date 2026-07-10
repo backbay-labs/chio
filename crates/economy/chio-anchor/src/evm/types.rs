@@ -62,6 +62,8 @@ pub struct EvmPublicationReceipt {
     pub tx_hash: String,
     pub block_number: u64,
     pub block_hash: String,
+    pub operator_key_hash: String,
+    pub operator_epoch: u64,
     pub published_at: u64,
 }
 
@@ -70,6 +72,7 @@ pub struct EvmPublicationReceipt {
 pub struct EvmPublicationGuard {
     pub chain_id: String,
     pub operator_address: String,
+    pub operator_key_hash: String,
     pub publisher_address: String,
     pub latest_checkpoint_seq: u64,
     pub next_checkpoint_seq_min: u64,

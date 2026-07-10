@@ -497,4 +497,3 @@ pub(crate) fn write_chio_attest_report(
     }
     Ok(())
 }
-

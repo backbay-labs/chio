@@ -62,6 +62,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install web3 contract dependencies
+        run: pnpm --dir contracts install --frozen-lockfile
+
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
 
       # Gate the named capability-algebra invariants. The authoritative name
@@ -76,6 +86,7 @@ jobs:
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: |
           ./scripts/check-release-inputs.sh
+          ./scripts/check-web3-contract-parity.sh
           ./scripts/check-workspace-layering.sh
           python3 scripts/check-review-slices.py
           python3 scripts/check-mutants-examine-globs.py

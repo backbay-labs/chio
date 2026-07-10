@@ -3,17 +3,60 @@
   "network_name": "Ganache Local Devnet",
   "chain_id": "eip155:31337",
   "rpc_url": "http://127.0.0.1:8545",
-  "deployed_at": "2026-04-24T01:52:19.168Z",
+  "deployed_at": "2026-07-09T04:37:09.679Z",
   "operator_address": "0x8d6d63c22D114C18C2a0dA6Db0A8972Ed9C40343",
+  "operator_epoch": 1,
   "delegate_address": "0x9567397B445998E7E405D5Fc3d239391bf5d0200",
   "settlement_token_symbol": "mUSDC",
   "settlement_token_address": "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8",
   "contracts": {
-    "identity_registry": "0x0eAFb60DD4F4b3863eb5490752238aC37A625dc6",
-    "root_registry": "0x3a167ACFC3348a8f8df11BF383aF3cA86a8A2B42",
-    "escrow": "0x69011eD3D9792Ea93595EeBd919EE621764B19e0",
-    "bond_vault": "0x621c302d6EC93b7186bEF18dF5D6436C6ea30125",
-    "price_resolver": "0xb79C8945Ee0Fa7DCdC355150FB5C8aEB24bF8Aa8"
+    "identity_registry": "0x621c302d6EC93b7186bEF18dF5D6436C6ea30125",
+    "root_registry": "0xb79C8945Ee0Fa7DCdC355150FB5C8aEB24bF8Aa8",
+    "escrow": "0xE3D4207F1d5233AF8126416c80A6573480d5DBD5",
+    "bond_vault": "0xF9cD6309A8B073e510732c7Cc8D0A7cc3cFbeDf2",
+    "price_resolver": "0x5D44FC2D4eCDb2262d2031ba7710338911c9D577"
+  },
+  "deployed_runtime_codehashes": {
+    "identity_registry": {
+      "actual_runtime_codehash": "0xd4f87cc63c00d0640c8f232c8fac5e5cb99bc6cf185ef912225e07fa438614cc",
+      "immutable_normalized_runtime_codehash": "0xd4f87cc63c00d0640c8f232c8fac5e5cb99bc6cf185ef912225e07fa438614cc",
+      "package_runtime_codehash": "0xd4f87cc63c00d0640c8f232c8fac5e5cb99bc6cf185ef912225e07fa438614cc",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xca0d42cdf921a783d9911e9112922d7dc4e9bddfc2db97a0792220c90115b650",
+      "observation_source": "eth_getCode"
+    },
+    "root_registry": {
+      "actual_runtime_codehash": "0x045c0ee2e1b771685165e792a2940b74f54b2243d6c8f4988c702083f7820287",
+      "immutable_normalized_runtime_codehash": "0xfc5d76d87b02096c6ae32ce644a2b98ca0bdf3c56700ad16731fad2062e6bd7f",
+      "package_runtime_codehash": "0xfc5d76d87b02096c6ae32ce644a2b98ca0bdf3c56700ad16731fad2062e6bd7f",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xca0d42cdf921a783d9911e9112922d7dc4e9bddfc2db97a0792220c90115b650",
+      "observation_source": "eth_getCode"
+    },
+    "escrow": {
+      "actual_runtime_codehash": "0xd1d1e06fbfdd30b7c1d3eb9746d1cd3fdf163e74b7969e15e04da69318c1b9ad",
+      "immutable_normalized_runtime_codehash": "0x03d8f545c330922a33db6473430c50eafd527e04474f31abee2dc1f8c6ab2d36",
+      "package_runtime_codehash": "0x03d8f545c330922a33db6473430c50eafd527e04474f31abee2dc1f8c6ab2d36",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xca0d42cdf921a783d9911e9112922d7dc4e9bddfc2db97a0792220c90115b650",
+      "observation_source": "eth_getCode"
+    },
+    "bond_vault": {
+      "actual_runtime_codehash": "0x9e8e1dfbe39b02d5d80383eb057f0b4485da89126f159e7b79dbe28d5defc32d",
+      "immutable_normalized_runtime_codehash": "0x17f7936469584b38404765ac44bd7e2384337983e4bc6448a3500d0637711f09",
+      "package_runtime_codehash": "0x17f7936469584b38404765ac44bd7e2384337983e4bc6448a3500d0637711f09",
+      "observed_block_number": 12,
+      "observed_block_hash": "0xca0d42cdf921a783d9911e9112922d7dc4e9bddfc2db97a0792220c90115b650",
+      "observation_source": "eth_getCode"
+    },
+    "price_resolver": {
+      "actual_runtime_codehash": "0xcc0820ae6dc866c32416ae4fd90cc515ed496fdcbd511edce5456b9e47b4c7f1",
+      "immutable_normalized_runtime_codehash": "0x912ef07d9652b99f9a5d7919247da89f7dc5be72163722c325ae7c2a02cbf04e",
+      "package_runtime_codehash": "0x912ef07d9652b99f9a5d7919247da89f7dc5be72163722c325ae7c2a02cbf04e",
+      "observed_block_number": 13,
+      "observed_block_hash": "0xf73bd6ae8460b65f3e71c49e6c7cfd4d8a1ddebf05a56765e806fda8bebbe933",
+      "observation_source": "eth_getCode:latest-local-fallback"
+    }
   },
   "mocks": {
     "eth_usd_feed": "0xb0F71e4a65baeF5ceC68184EFBDeD5e4FBaBF21B",

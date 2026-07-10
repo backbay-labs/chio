@@ -89,4 +89,3 @@ pub(crate) fn emit_lineage_report<T: serde::Serialize>(report: &T, json: bool) -
     }
     Ok(())
 }
-

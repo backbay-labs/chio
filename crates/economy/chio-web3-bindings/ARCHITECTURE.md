@@ -10,11 +10,11 @@ The crate is intentionally narrow: `src/interfaces.rs` invokes `alloy::sol!` aga
 
 ## Trust Invariants
 
-The trust boundary is package integrity. Callers depend on the included artifacts to match the Solidity package under `contracts/`, the standard web3 contract package, and the generated Alloy signatures. Drift must be caught at build or test time before settlement code can prepare calls against stale ABIs or empty implementation bytecode.
+The trust boundary is package integrity. Callers depend on the included artifacts to match the Solidity package under `contracts/`, the standard web3 contract package, and the generated Alloy signatures. Current tests catch ABI signature drift, empty implementation bytecode, schema registry drift, artifact mirror drift, local deployment fixture drift, and qualification report drift.
 
 ## Artifact Validation
 
-Implementation artifacts are validated separately from interface artifacts: packaged contracts must carry non-empty implementation bytecode while interface artifacts must not carry implementation bytecode. This crate is the first Rust boundary that detects artifact drift, before settlement, anchoring, or CLI tooling builds calls from stale package data.
+Implementation artifacts are validated separately from interface artifacts: packaged contracts must carry non-empty implementation and deployed runtime bytecode plus matching bytecode hashes, while interface artifacts must not carry implementation bytecode. This crate is a Rust compatibility boundary. Release decisions still require independent deployed-address and security review evidence.
 
 ## Verification Focus
 

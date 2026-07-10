@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::anchors::{
-    validate_oracle_conversion_evidence, verify_anchor_inclusion_proof, AnchorInclusionProof,
-    OracleConversionEvidence,
+    expected_operator_key_hash, validate_oracle_conversion_evidence, verify_anchor_inclusion_proof,
+    AnchorInclusionProof, OracleConversionEvidence,
 };
 use crate::canonical::canonical_json_bytes;
 use crate::capability::scope::MonetaryAmount;
@@ -13,15 +13,22 @@ use crate::credit::{
 };
 use crate::crypto::sha256_hex;
 use crate::error::Web3ContractError;
+use crate::hashing::Hash;
 use crate::receipt::{
     body::ChioReceipt, lineage::SignedExportEnvelope,
     signing::CHIO_RECEIPT_SIGNING_NONCE_METADATA_KEY,
 };
 use crate::trust_profile::Web3SettlementPath;
-use crate::validation::{ensure_money, ensure_non_empty};
+use crate::validation::{ensure_evm_address, ensure_money, ensure_non_empty, evm_addresses_match};
 
-pub const CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA: &str = "chio.web3-settlement-dispatch.v1";
-pub const CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA: &str = "chio.web3-settlement-execution-receipt.v1";
+pub const CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA: &str = "chio.web3-settlement-dispatch.v1";
+pub const CHIO_WEB3_SETTLEMENT_DISPATCH_V2_SCHEMA: &str = "chio.web3-settlement-dispatch.v2";
+pub const CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA: &str = CHIO_WEB3_SETTLEMENT_DISPATCH_V2_SCHEMA;
+pub const CHIO_WEB3_SETTLEMENT_RECEIPT_V1_SCHEMA: &str =
+    "chio.web3-settlement-execution-receipt.v1";
+pub const CHIO_WEB3_SETTLEMENT_RECEIPT_V2_SCHEMA: &str =
+    "chio.web3-settlement-execution-receipt.v2";
+pub const CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA: &str = CHIO_WEB3_SETTLEMENT_RECEIPT_V2_SCHEMA;
 pub const CHIO_LINK_CONTROL_STATE_SCHEMA: &str = "chio.link.control-state.v1";
 pub const CHIO_LINK_CONTROL_TRACE_SCHEMA: &str = "chio.link.control-trace.v1";
 pub const CHIO_SETTLE_CONTROL_STATE_SCHEMA: &str = "chio.settle.control-state.v1";
@@ -68,13 +75,41 @@ pub struct Web3SettlementDispatchArtifact {
     pub escrow_id: String,
     pub escrow_contract: String,
     pub bond_vault_contract: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub settlement_token_address: String,
     pub beneficiary_address: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub operator_key_hash: String,
     pub support_boundary: Web3SettlementSupportBoundary,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }
 
 pub type SignedWeb3SettlementDispatch = SignedExportEnvelope<Web3SettlementDispatchArtifact>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Web3SettlementIdentityRegistryEvidence {
+    pub chain_id: String,
+    pub identity_registry_contract: String,
+    pub operator_address: String,
+    pub block_number: u64,
+    pub block_hash: String,
+    pub observed_at: u64,
+    pub operator_key_hash: String,
+    pub settlement_key: String,
+    pub registered_at: u64,
+    pub operator_epoch: u64,
+    pub active: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Web3SettlementIdentityRegistryEvidenceBinding {
+    pub identity_registry_contract: String,
+    pub operator_address: String,
+    pub settlement_key: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -88,6 +123,10 @@ pub struct Web3SettlementExecutionReceiptArtifact {
     pub settlement_reference: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reconciled_anchor_proof: Option<AnchorInclusionProof>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_registry_evidence: Option<Web3SettlementIdentityRegistryEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity_registry_evidence_binding: Option<Web3SettlementIdentityRegistryEvidenceBinding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub oracle_evidence: Option<OracleConversionEvidence>,
     pub settled_amount: MonetaryAmount,
@@ -105,11 +144,15 @@ pub type SignedWeb3SettlementExecutionReceipt =
 pub fn validate_web3_settlement_dispatch(
     dispatch: &Web3SettlementDispatchArtifact,
 ) -> Result<(), Web3ContractError> {
-    if dispatch.schema != CHIO_WEB3_SETTLEMENT_DISPATCH_SCHEMA {
-        return Err(Web3ContractError::UnsupportedSchema(
-            dispatch.schema.clone(),
-        ));
-    }
+    let dispatch_v2 = match dispatch.schema.as_str() {
+        CHIO_WEB3_SETTLEMENT_DISPATCH_V2_SCHEMA => true,
+        CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA => false,
+        _ => {
+            return Err(Web3ContractError::UnsupportedSchema(
+                dispatch.schema.clone(),
+            ))
+        }
+    };
     for field in [
         &dispatch.dispatch_id,
         &dispatch.trust_profile_id,
@@ -121,6 +164,32 @@ pub fn validate_web3_settlement_dispatch(
         &dispatch.beneficiary_address,
     ] {
         ensure_non_empty(field, "web3_settlement_dispatch.field")?;
+    }
+    if dispatch_v2 {
+        ensure_non_empty(
+            &dispatch.settlement_token_address,
+            "web3_settlement_dispatch.settlement_token_address",
+        )?;
+        ensure_evm_address(
+            &dispatch.settlement_token_address,
+            "web3_settlement_dispatch.settlement_token_address",
+        )?;
+        ensure_non_empty(
+            &dispatch.operator_key_hash,
+            "web3_settlement_dispatch.operator_key_hash",
+        )?;
+    }
+    if !dispatch.operator_key_hash.is_empty() {
+        let operator_key_hash = Hash::from_hex(&dispatch.operator_key_hash).map_err(|error| {
+            Web3ContractError::invalid_settlement(format!(
+                "web3 settlement dispatch operator_key_hash must be a 32-byte hex hash: {error}"
+            ))
+        })?;
+        if dispatch_v2 && operator_key_hash == Hash::zero() {
+            return Err(Web3ContractError::invalid_settlement(
+                "web3 settlement dispatch operator_key_hash must not be zero",
+            ));
+        }
     }
     ensure_money(
         &dispatch.settlement_amount,
@@ -173,6 +242,26 @@ pub fn validate_web3_settlement_dispatch(
             "web3 settlement dispatch requires capital_instruction rail.kind = web3",
         ));
     }
+    let Some(destination_account_ref) = dispatch
+        .capital_instruction
+        .body
+        .rail
+        .destination_account_ref
+        .as_deref()
+    else {
+        return Err(Web3ContractError::MissingField(
+            "web3_settlement_dispatch.capital_instruction.rail.destination_account_ref",
+        ));
+    };
+    ensure_non_empty(
+        destination_account_ref,
+        "web3_settlement_dispatch.capital_instruction.rail.destination_account_ref",
+    )?;
+    if !evm_addresses_match(destination_account_ref, &dispatch.beneficiary_address)? {
+        return Err(Web3ContractError::invalid_settlement(
+            "web3 settlement dispatch beneficiary_address must match capital_instruction rail.destination_account_ref",
+        ));
+    }
     let Some(amount) = dispatch.capital_instruction.body.amount.as_ref() else {
         return Err(Web3ContractError::MissingField(
             "web3_settlement_dispatch.capital_instruction.amount",
@@ -223,8 +312,24 @@ pub fn validate_web3_settlement_dispatch(
 pub fn validate_web3_settlement_execution_receipt(
     receipt: &Web3SettlementExecutionReceiptArtifact,
 ) -> Result<(), Web3ContractError> {
-    if receipt.schema != CHIO_WEB3_SETTLEMENT_RECEIPT_SCHEMA {
-        return Err(Web3ContractError::UnsupportedSchema(receipt.schema.clone()));
+    let receipt_v2 = match receipt.schema.as_str() {
+        CHIO_WEB3_SETTLEMENT_RECEIPT_V2_SCHEMA => true,
+        CHIO_WEB3_SETTLEMENT_RECEIPT_V1_SCHEMA => false,
+        _ => return Err(Web3ContractError::UnsupportedSchema(receipt.schema.clone())),
+    };
+    let dispatch_v2 = match receipt.dispatch.schema.as_str() {
+        CHIO_WEB3_SETTLEMENT_DISPATCH_V2_SCHEMA => true,
+        CHIO_WEB3_SETTLEMENT_DISPATCH_V1_SCHEMA => false,
+        _ => {
+            return Err(Web3ContractError::UnsupportedSchema(
+                receipt.dispatch.schema.clone(),
+            ))
+        }
+    };
+    if receipt_v2 != dispatch_v2 {
+        return Err(Web3ContractError::invalid_settlement(
+            "web3 settlement receipt schema must match dispatch schema generation",
+        ));
     }
     ensure_non_empty(
         &receipt.execution_receipt_id,
@@ -242,10 +347,6 @@ pub fn validate_web3_settlement_execution_receipt(
     ensure_non_empty(
         &receipt.observed_execution.external_reference_id,
         "web3_settlement_receipt.observed_execution.external_reference_id",
-    )?;
-    validate_observed_execution_reference(
-        &receipt.dispatch.chain_id,
-        &receipt.observed_execution.external_reference_id,
     )?;
     ensure_money(
         &receipt.settled_amount,
@@ -265,6 +366,25 @@ pub fn validate_web3_settlement_execution_receipt(
         return Err(Web3ContractError::invalid_settlement(
             "observed execution amount must equal settled_amount",
         ));
+    }
+    let has_transaction_reference = validate_observed_execution_reference(
+        &receipt.dispatch.chain_id,
+        &receipt.observed_execution.external_reference_id,
+    )
+    .is_ok();
+    if receipt.lifecycle_state == Web3SettlementLifecycleState::Failed {
+        if !has_transaction_reference
+            && (receipt.observed_execution.amount.units != 0 || receipt.settled_amount.units != 0)
+        {
+            return Err(Web3ContractError::invalid_settlement(
+                "failed settlement with non-zero amount requires transaction reference",
+            ));
+        }
+    } else if !has_transaction_reference {
+        validate_observed_execution_reference(
+            &receipt.dispatch.chain_id,
+            &receipt.observed_execution.external_reference_id,
+        )?;
     }
     let execution_window = &receipt.dispatch.capital_instruction.body.execution_window;
     let observed_before_window =
@@ -286,6 +406,36 @@ pub fn validate_web3_settlement_execution_receipt(
                     "anchor proof chain_id must match settlement dispatch chain_id",
                 ));
             }
+            if dispatch_v2 {
+                let dispatch_operator_key =
+                    Hash::from_hex(&receipt.dispatch.operator_key_hash).map_err(|error| {
+                        Web3ContractError::invalid_settlement(format!(
+                            "web3 settlement dispatch operator_key_hash must be a 32-byte hex hash: {error}"
+                        ))
+                    })?;
+                let anchor_operator_key =
+                    Hash::from_hex(&chain_anchor.operator_key_hash).map_err(|error| {
+                        Web3ContractError::invalid_settlement(format!(
+                            "anchor proof operator_key_hash must be a 32-byte hex hash: {error}"
+                        ))
+                    })?;
+                if dispatch_operator_key != anchor_operator_key {
+                    return Err(Web3ContractError::invalid_settlement(
+                        "dispatch operator_key_hash must match anchor proof operator_key_hash",
+                    ));
+                }
+                let binding_operator_key = expected_operator_key_hash(
+                    &anchor_proof
+                        .key_binding_certificate
+                        .certificate
+                        .chio_public_key,
+                )?;
+                if dispatch_operator_key != binding_operator_key {
+                    return Err(Web3ContractError::invalid_settlement(
+                        "dispatch operator_key_hash must match binding certificate public key",
+                    ));
+                }
+            }
         }
     }
     if let Some(oracle_evidence) = receipt.oracle_evidence.as_ref() {
@@ -295,6 +445,32 @@ pub fn validate_web3_settlement_execution_receipt(
                 "oracle conversion grant_currency must match settlement currency",
             ));
         }
+    }
+    if let Some(registry_evidence) = receipt.identity_registry_evidence.as_ref() {
+        validate_identity_registry_evidence(receipt, registry_evidence)?;
+        if let Some(binding) = receipt.identity_registry_evidence_binding.as_ref() {
+            validate_identity_registry_evidence_binding(registry_evidence, binding)?;
+        }
+    } else if receipt.identity_registry_evidence_binding.is_some() {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity_registry_evidence_binding requires identity_registry_evidence",
+        ));
+    }
+    let requires_registry_evidence = receipt_v2
+        && receipt.dispatch.settlement_path == Web3SettlementPath::DualSignature
+        && matches!(
+            receipt.lifecycle_state,
+            Web3SettlementLifecycleState::Settled | Web3SettlementLifecycleState::PartiallySettled
+        );
+    if requires_registry_evidence && receipt.identity_registry_evidence.is_none() {
+        return Err(Web3ContractError::invalid_settlement(
+            "dual-sign settlement receipts require identity_registry_evidence",
+        ));
+    }
+    if requires_registry_evidence && receipt.identity_registry_evidence_binding.is_none() {
+        return Err(Web3ContractError::invalid_settlement(
+            "dual-sign settlement receipts require identity_registry_evidence_binding",
+        ));
     }
     if receipt
         .dispatch
@@ -368,6 +544,131 @@ pub fn validate_web3_settlement_execution_receipt(
         ));
     }
 
+    Ok(())
+}
+
+fn validate_identity_registry_evidence(
+    receipt: &Web3SettlementExecutionReceiptArtifact,
+    evidence: &Web3SettlementIdentityRegistryEvidence,
+) -> Result<(), Web3ContractError> {
+    if evidence.chain_id != receipt.dispatch.chain_id {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence chain_id must match settlement dispatch chain_id",
+        ));
+    }
+    ensure_non_zero_evm_address(
+        &evidence.identity_registry_contract,
+        "identity_registry_evidence.identity_registry_contract",
+    )?;
+    ensure_non_zero_evm_address(
+        &evidence.operator_address,
+        "identity_registry_evidence.operator_address",
+    )?;
+    ensure_non_zero_evm_address(
+        &evidence.settlement_key,
+        "identity_registry_evidence.settlement_key",
+    )?;
+    if evidence.block_number == 0 {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence block_number must be non-zero",
+        ));
+    }
+    if evidence.observed_at == 0 {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence observed_at must be non-zero",
+        ));
+    }
+    if evidence.registered_at == 0 {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence registered_at must be non-zero",
+        ));
+    }
+    if evidence.operator_epoch == 0 {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence operator_epoch must be non-zero",
+        ));
+    }
+    if !evidence.active {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence operator must be active",
+        ));
+    }
+    let block_hash = Hash::from_hex(&evidence.block_hash).map_err(|error| {
+        Web3ContractError::invalid_settlement(format!(
+            "identity_registry_evidence.block_hash must be a 32-byte hex hash: {error}"
+        ))
+    })?;
+    if block_hash.as_bytes().iter().all(|byte| *byte == 0) {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence block_hash must be non-zero",
+        ));
+    }
+    let evidence_operator_key = Hash::from_hex(&evidence.operator_key_hash).map_err(|error| {
+        Web3ContractError::invalid_settlement(format!(
+            "identity_registry_evidence.operator_key_hash must be a 32-byte hex hash: {error}"
+        ))
+    })?;
+    let dispatch_operator_key =
+        Hash::from_hex(&receipt.dispatch.operator_key_hash).map_err(|error| {
+            Web3ContractError::invalid_settlement(format!(
+                "web3 settlement dispatch operator_key_hash must be a 32-byte hex hash: {error}"
+            ))
+        })?;
+    if evidence_operator_key != dispatch_operator_key {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence operator_key_hash must match dispatch operator_key_hash",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_identity_registry_evidence_binding(
+    evidence: &Web3SettlementIdentityRegistryEvidence,
+    binding: &Web3SettlementIdentityRegistryEvidenceBinding,
+) -> Result<(), Web3ContractError> {
+    ensure_non_zero_evm_address(
+        &binding.identity_registry_contract,
+        "identity_registry_evidence_binding.identity_registry_contract",
+    )?;
+    ensure_non_zero_evm_address(
+        &binding.operator_address,
+        "identity_registry_evidence_binding.operator_address",
+    )?;
+    ensure_non_zero_evm_address(
+        &binding.settlement_key,
+        "identity_registry_evidence_binding.settlement_key",
+    )?;
+    if !evm_addresses_match(
+        &evidence.identity_registry_contract,
+        &binding.identity_registry_contract,
+    )? {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence contract must match binding",
+        ));
+    }
+    if !evm_addresses_match(&evidence.operator_address, &binding.operator_address)? {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence operator must match binding",
+        ));
+    }
+    if !evm_addresses_match(&evidence.settlement_key, &binding.settlement_key)? {
+        return Err(Web3ContractError::invalid_settlement(
+            "identity registry evidence settlement_key must match binding",
+        ));
+    }
+    Ok(())
+}
+
+fn ensure_non_zero_evm_address(value: &str, field: &'static str) -> Result<(), Web3ContractError> {
+    ensure_evm_address(value, field)?;
+    if value
+        .strip_prefix("0x")
+        .is_some_and(|hex| hex.bytes().all(|byte| byte == b'0'))
+    {
+        return Err(Web3ContractError::invalid_settlement(format!(
+            "{field} must be non-zero"
+        )));
+    }
     Ok(())
 }
 
