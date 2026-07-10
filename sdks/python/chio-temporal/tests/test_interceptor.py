@@ -115,6 +115,23 @@ class _NextInterceptor:
         return self.result
 
 
+class AttenuatingMockChioClient(MockChioClient):
+    async def attenuate_capability(
+        self,
+        token: CapabilityToken,
+        *,
+        new_scope: ChioScope,
+    ) -> CapabilityToken:
+        child = await self.create_capability(
+            subject=getattr(token, "subject", "agent:attenuated"),
+            scope=new_scope,
+        )
+        store: dict[str, Any] = getattr(self, "_tokens", {})
+        store[child.id] = child
+        self._tokens = store  # type: ignore[attr-defined]
+        return child
+
+
 @contextmanager
 def _patched_activity_info(info: activity.Info):
     """Temporarily patch ``activity.info()`` to return ``info``."""
@@ -249,6 +266,24 @@ class TestAllowVerdict:
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
         assert evaluate_calls[0].tool_server == "email-srv"
+
+    async def test_run_scoped_grant_rejects_missing_run_id(self) -> None:
+        async with allow_all() as chio:
+            token = await _mint_token(
+                chio,
+                subject="agent:alice",
+                scope=_scope_for_tools("send_email"),
+            )
+            grant = WorkflowGrant(
+                workflow_id="wf-1",
+                token=token,
+                tool_server="srv",
+                run_id="run-1",
+            )
+
+        assert grant.matches(workflow_id="wf-1", run_id="run-1")
+        assert not grant.matches(workflow_id="wf-1", run_id="run-2")
+        assert not grant.matches(workflow_id="wf-1", run_id=None)
 
 
 # ---------------------------------------------------------------------------
@@ -407,7 +442,7 @@ class TestDenyVerdict:
 
 class TestAttenuatedGrant:
     async def test_activity_override_narrows_scope_and_is_enforced(self) -> None:
-        chio = MockChioClient()
+        chio = AttenuatingMockChioClient()
         chio.set_policy(_scope_aware_policy(chio))
 
         parent = await _mint_token(

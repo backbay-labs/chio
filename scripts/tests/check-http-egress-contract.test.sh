@@ -131,6 +131,15 @@ pub async fn dispatch() {
 }
 EOF
 
+# Synthetic negative: production directories whose names end in "tests" (for
+# example "contests") must not be skipped as if they were test sources.
+mkdir -p "$work/negative_contests/crates/chio-fake-contests/src/contests"
+cat > "$work/negative_contests/crates/chio-fake-contests/src/contests/helper.rs" <<'EOF'
+pub async fn dispatch() {
+    let _ = reqwest::get("https://example.com").await;
+}
+EOF
+
 # Synthetic negative: blocking top-level reqwest::blocking::get() is also
 # direct egress.
 mkdir -p "$work/negative_blocking_top_level_get/crates/chio-fake-blocking-top-level-get/src"
@@ -208,6 +217,7 @@ negative_aliased_output=$(CHIO_EGRESS_LINT_ROOT="$work/negative_aliased" bash "$
 negative_mention_output=$(CHIO_EGRESS_LINT_ROOT="$work/negative_mention" bash "$LINT" 2>&1) && negative_mention_status=0 || negative_mention_status=$?
 negative_execute_output=$(CHIO_EGRESS_LINT_ROOT="$work/negative_execute" bash "$LINT" 2>&1) && negative_execute_status=0 || negative_execute_status=$?
 negative_top_level_get_output=$(CHIO_EGRESS_LINT_ROOT="$work/negative_top_level_get" bash "$LINT" 2>&1) && negative_top_level_get_status=0 || negative_top_level_get_status=$?
+negative_contests_output=$(CHIO_EGRESS_LINT_ROOT="$work/negative_contests" bash "$LINT" 2>&1) && negative_contests_status=0 || negative_contests_status=$?
 negative_blocking_top_level_get_output=$(CHIO_EGRESS_LINT_ROOT="$work/negative_blocking_top_level_get" bash "$LINT" 2>&1) && negative_blocking_top_level_get_status=0 || negative_blocking_top_level_get_status=$?
 negative_send_without_builder_output=$(CHIO_EGRESS_LINT_ROOT="$work/negative_send_without_builder" bash "$LINT" 2>&1) && negative_send_without_builder_status=0 || negative_send_without_builder_status=$?
 negative_mixed_output=$(CHIO_EGRESS_LINT_ROOT="$work/negative_mixed" bash "$LINT" 2>&1) && negative_mixed_status=0 || negative_mixed_status=$?
@@ -225,6 +235,7 @@ echo "negative aliased case: status=$negative_aliased_status output=$negative_al
 echo "negative mention case: status=$negative_mention_status output=$negative_mention_output"
 echo "negative execute case: status=$negative_execute_status output=$negative_execute_output"
 echo "negative top-level reqwest::get case: status=$negative_top_level_get_status output=$negative_top_level_get_output"
+echo "negative contests path case: status=$negative_contests_status output=$negative_contests_output"
 echo "negative blocking top-level reqwest::blocking::get case: status=$negative_blocking_top_level_get_status output=$negative_blocking_top_level_get_output"
 echo "negative send-without-builder case: status=$negative_send_without_builder_status output=$negative_send_without_builder_output"
 echo "negative mixed case: status=$negative_mixed_status output=$negative_mixed_output"
@@ -283,6 +294,11 @@ fi
 
 if [[ $negative_top_level_get_status -eq 0 ]]; then
     echo "FAIL: lint should reject top-level reqwest::get without contract" >&2
+    exit 1
+fi
+
+if [[ $negative_contests_status -eq 0 ]]; then
+    echo "FAIL: lint should reject production contests/ reqwest egress" >&2
     exit 1
 fi
 
