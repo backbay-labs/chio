@@ -16,8 +16,18 @@ fn validate_or_backfill_claim_receipt_log_entries(
     connection: &Connection,
     repair_empty_projection: bool,
 ) -> Result<(), ReceiptStoreError> {
-    let mut expected = load_tool_claim_receipt_projection_rows(connection)?;
-    expected.extend(load_child_claim_receipt_projection_rows(connection)?);
+    // Every read below must observe the same database snapshot. Without a
+    // shared transaction, each SELECT takes its own WAL snapshot, so a
+    // writer that commits between the source-table scans and the
+    // projection reads can make the projection appear to drift when it has
+    // not (a spurious "set drift detected" conflict). A deferred
+    // transaction pins the snapshot on its first read and keeps the
+    // validator a reader (no write lock) unless the backfill branch below
+    // actually inserts rows.
+    let tx = connection.unchecked_transaction()?;
+
+    let mut expected = load_tool_claim_receipt_projection_rows(&tx)?;
+    expected.extend(load_child_claim_receipt_projection_rows(&tx)?);
     expected.sort_by(|left, right| {
         (
             left.timestamp,
@@ -33,7 +43,7 @@ fn validate_or_backfill_claim_receipt_log_entries(
             ))
     });
 
-    let existing_count = connection.query_row(
+    let existing_count = tx.query_row(
         "SELECT COUNT(*) FROM claim_receipt_log_entries",
         [],
         |row| row.get::<_, i64>(0),
@@ -53,7 +63,6 @@ fn validate_or_backfill_claim_receipt_log_entries(
                 "claim receipt log projection is missing for persisted receipt rows".to_string(),
             ));
         }
-        let tx = connection.unchecked_transaction()?;
         for row in &expected {
             insert_claim_receipt_log_projection_row(&tx, row)?;
         }
@@ -62,8 +71,7 @@ fn validate_or_backfill_claim_receipt_log_entries(
     }
 
     for row in &expected {
-        let Some(existing) = load_claim_receipt_log_projection_row(connection, &row.receipt_id)?
-        else {
+        let Some(existing) = load_claim_receipt_log_projection_row(&tx, &row.receipt_id)? else {
             return Err(ReceiptStoreError::Conflict(format!(
                 "claim receipt log entry `{}` is missing for persisted {} source row",
                 row.receipt_id, row.receipt_kind
@@ -77,7 +85,7 @@ fn validate_or_backfill_claim_receipt_log_entries(
         }
     }
 
-    let existing_receipt_ids = load_claim_receipt_log_receipt_ids(connection)?;
+    let existing_receipt_ids = load_claim_receipt_log_receipt_ids(&tx)?;
     if existing_receipt_ids != expected_receipt_ids {
         let missing = expected_receipt_ids
             .difference(&existing_receipt_ids)
@@ -94,5 +102,6 @@ fn validate_or_backfill_claim_receipt_log_entries(
         )));
     }
 
+    tx.commit()?;
     Ok(())
 }

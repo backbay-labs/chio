@@ -162,108 +162,21 @@ impl ChioKernel {
     }
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
-        // Scope the receipt-store write lock so it is released before
-        // the settlement observer runs. Holding the mutex across
-        // `run_settlement_observer` would serialize all concurrent
-        // receipt persistence behind potentially I/O-bound hook
-        // latency; the observer needs only a fully-persisted receipt,
-        // so the guard is dropped first.
+        // Scope the receipt-store write lock so it is released before the
+        // settlement observer runs. Holding the mutex across
+        // `run_settlement_observer` would serialize all concurrent receipt
+        // persistence behind potentially I/O-bound hook latency; the observer
+        // needs only a fully-persisted receipt, so the guard is dropped first.
+        // Checkpoint construction runs on the store's writer actor, so this
+        // critical section holds no checkpoint work.
         {
             let _receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
                 KernelError::Internal("receipt store write lock poisoned".to_string())
             })?;
-            if let Some(seq) = self
-                .with_receipt_store(|store| Ok(store.append_chio_receipt_returning_seq(receipt)?))?
-                .flatten()
-            {
-                if self.should_checkpoint_after_seq(seq) {
-                    self.maybe_trigger_checkpoint_locked(seq)?;
-                }
-            }
+            self.with_receipt_store(|store| Ok(store.append_chio_receipt_returning_seq(receipt)?))?;
             self.append_chio_receipt_to_local_log(receipt.clone());
         }
         let _settlement_status = self.run_settlement_observer(receipt);
         Ok(())
-    }
-
-    pub(crate) fn should_checkpoint_after_seq(&self, seq: u64) -> bool {
-        let last_checkpoint_seq = self.last_checkpoint_seq.load(Ordering::SeqCst);
-        seq > 0
-            && self.checkpoint_batch_size > 0
-            && seq > last_checkpoint_seq
-            && (seq - last_checkpoint_seq) >= self.checkpoint_batch_size
-    }
-
-    pub(crate) fn maybe_trigger_checkpoint_locked(
-        &self,
-        batch_end_seq: u64,
-    ) -> Result<(), KernelError> {
-        const CHECKPOINT_CONFLICT_RETRIES: usize = 8;
-
-        for attempt in 0..=CHECKPOINT_CONFLICT_RETRIES {
-            self.refresh_checkpoint_counters_from_store()?;
-            let last_checkpoint_seq = self.last_checkpoint_seq.load(Ordering::SeqCst);
-            if batch_end_seq <= last_checkpoint_seq {
-                return Ok(());
-            }
-
-            match self.with_receipt_store(|store| {
-                Ok(store.create_next_receipt_checkpoint(
-                    self.checkpoint_batch_size,
-                    &self.config.keypair,
-                )?)
-            }) {
-                Ok(Some(report)) if report.created => {
-                    if let Some(checkpoint_seq) = report.checkpoint_seq {
-                        self.checkpoint_seq_counter
-                            .store(checkpoint_seq, Ordering::SeqCst);
-                    }
-                    self.last_checkpoint_seq
-                        .store(report.latest_checkpointed_entry_seq, Ordering::SeqCst);
-                    return Ok(());
-                }
-                Ok(Some(_)) | Ok(None) => {
-                    self.refresh_checkpoint_counters_from_store()?;
-                    return Ok(());
-                }
-                Err(KernelError::ReceiptPersistence(ReceiptStoreError::Conflict(_)))
-                    if attempt < CHECKPOINT_CONFLICT_RETRIES =>
-                {
-                    let latest = self.refresh_checkpoint_counters_from_store()?;
-                    if latest
-                        .as_ref()
-                        .is_some_and(|checkpoint| checkpoint.body.batch_end_seq >= batch_end_seq)
-                    {
-                        return Ok(());
-                    }
-                }
-                Err(err) => return Err(err),
-            }
-        }
-
-        Err(KernelError::Internal(
-            "checkpoint store conflict retry budget exhausted".to_string(),
-        ))
-    }
-
-    fn refresh_checkpoint_counters_from_store(
-        &self,
-    ) -> Result<Option<KernelCheckpoint>, KernelError> {
-        let latest = self
-            .with_receipt_store(|store| Ok(store.load_latest_checkpoint()?))?
-            .flatten();
-        match latest.as_ref() {
-            Some(checkpoint) => {
-                self.checkpoint_seq_counter
-                    .store(checkpoint.body.checkpoint_seq, Ordering::SeqCst);
-                self.last_checkpoint_seq
-                    .store(checkpoint.body.batch_end_seq, Ordering::SeqCst);
-            }
-            None => {
-                self.checkpoint_seq_counter.store(0, Ordering::SeqCst);
-                self.last_checkpoint_seq.store(0, Ordering::SeqCst);
-            }
-        }
-        Ok(latest)
     }
 }

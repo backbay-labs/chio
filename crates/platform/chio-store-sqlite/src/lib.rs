@@ -72,6 +72,26 @@ impl Default for SqlitePoolConfig {
     }
 }
 
+/// Receipt-store construction options.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SqliteStoreOptions {
+    pub pool: SqlitePoolConfig,
+    /// When true (default), the append path uses the actor-owned verified
+    /// head (O(1) predecessor check + O(b) delta cross-check). When false,
+    /// the store keeps today's full per-append verification so operators can
+    /// A/B a suspect database. Read-only after open.
+    pub incremental_verification: bool,
+}
+
+impl Default for SqliteStoreOptions {
+    fn default() -> Self {
+        Self {
+            pool: SqlitePoolConfig::default(),
+            incremental_verification: true,
+        }
+    }
+}
+
 pub use approval_store::SqliteApprovalStore;
 pub use authority::SqliteCapabilityAuthority;
 pub use batch_approval_store::SqliteBatchApprovalStore;
@@ -83,5 +103,5 @@ pub use encrypted_blob::{
 pub use execution_nonce_store::{SqliteExecutionNonceStore, SqliteExecutionNonceStoreError};
 pub use iou_store::{SqliteIouEnvelopeStore, IOU_ENVELOPE_MIGRATION};
 pub use memory_provenance_store::{SqliteMemoryProvenanceStore, SqliteMemoryProvenanceStoreError};
-pub use receipt_store::SqliteReceiptStore;
+pub use receipt_store::{BackgroundCheckpointSigner, SqliteReceiptStore};
 pub use revocation_store::SqliteRevocationStore;

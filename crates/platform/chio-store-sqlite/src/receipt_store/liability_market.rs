@@ -19,100 +19,105 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
-        let artifact = &provider.body;
-        let mut connection = self.connection()?;
-        let tx = connection.transaction()?;
-        let existing = tx
+        let provider_owned = provider.clone();
+        self.writer_handle().run_write(move |connection| {
+            let provider = &provider_owned;
+            let artifact = &provider.body;
+            let tx = connection.transaction()?;
+            let existing = tx
             .query_row(
                 "SELECT provider_record_id FROM liability_providers WHERE provider_record_id = ?1",
                 params![artifact.provider_record_id],
                 |row| row.get::<_, String>(0),
             )
             .optional()?;
-        if existing.is_some() {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "liability provider `{}` already exists",
-                artifact.provider_record_id
-            )));
-        }
+            if existing.is_some() {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "liability provider `{}` already exists",
+                    artifact.provider_record_id
+                )));
+            }
 
-        if let Some(supersedes_provider_record_id) =
-            artifact.supersedes_provider_record_id.as_deref()
-        {
-            let state = tx
-                .query_row(
-                    "SELECT raw_json, lifecycle_state, superseded_by_provider_record_id
+            if let Some(supersedes_provider_record_id) =
+                artifact.supersedes_provider_record_id.as_deref()
+            {
+                let state = tx
+                    .query_row(
+                        "SELECT raw_json, lifecycle_state, superseded_by_provider_record_id
                      FROM liability_providers
                      WHERE provider_record_id = ?1",
-                    params![supersedes_provider_record_id],
-                    |row| {
-                        Ok((
-                            row.get::<_, String>(0)?,
-                            row.get::<_, String>(1)?,
-                            row.get::<_, Option<String>>(2)?,
-                        ))
-                    },
-                )
-                .optional()?
-                .ok_or_else(|| {
-                    ReceiptStoreError::NotFound(format!(
+                        params![supersedes_provider_record_id],
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, Option<String>>(2)?,
+                            ))
+                        },
+                    )
+                    .optional()?
+                    .ok_or_else(|| {
+                        ReceiptStoreError::NotFound(format!(
                         "superseded liability provider `{supersedes_provider_record_id}` not found"
                     ))
-                })?;
-            let persisted: SignedLiabilityProvider = serde_json::from_str(&state.0)?;
-            if persisted.body.report.provider_id != artifact.report.provider_id {
-                return Err(ReceiptStoreError::Conflict(format!(
-                    "liability provider `{}` cannot supersede `{}` because provider_id differs",
-                    artifact.provider_record_id, supersedes_provider_record_id
-                )));
+                    })?;
+                let persisted: SignedLiabilityProvider = serde_json::from_str(&state.0)?;
+                if persisted.body.report.provider_id != artifact.report.provider_id {
+                    return Err(ReceiptStoreError::Conflict(format!(
+                        "liability provider `{}` cannot supersede `{}` because provider_id differs",
+                        artifact.provider_record_id, supersedes_provider_record_id
+                    )));
+                }
+                if state.1
+                    != liability_provider_lifecycle_state_label(
+                        LiabilityProviderLifecycleState::Active,
+                    )
+                    || state.2.is_some()
+                {
+                    return Err(ReceiptStoreError::Conflict(format!(
+                        "liability provider `{supersedes_provider_record_id}` is not active"
+                    )));
+                }
             }
-            if state.1
-                != liability_provider_lifecycle_state_label(LiabilityProviderLifecycleState::Active)
-                || state.2.is_some()
-            {
-                return Err(ReceiptStoreError::Conflict(format!(
-                    "liability provider `{supersedes_provider_record_id}` is not active"
-                )));
-            }
-        }
 
-        tx.execute(
-            "INSERT INTO liability_providers (
+            tx.execute(
+                "INSERT INTO liability_providers (
                 provider_record_id, issued_at, provider_id, lifecycle_state,
                 supersedes_provider_record_id, superseded_by_provider_record_id, raw_json,
                 signer_key, signature
              ) VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?8)",
-            params![
-                artifact.provider_record_id,
-                artifact.issued_at as i64,
-                artifact.report.provider_id,
-                liability_provider_lifecycle_state_label(artifact.lifecycle_state),
-                artifact.supersedes_provider_record_id.as_deref(),
-                serde_json::to_string(provider)?,
-                provider.signer_key.to_hex(),
-                provider.signature.to_hex(),
-            ],
-        )?;
-
-        if let Some(supersedes_provider_record_id) =
-            artifact.supersedes_provider_record_id.as_deref()
-        {
-            tx.execute(
-                "UPDATE liability_providers
-                 SET lifecycle_state = ?1, superseded_by_provider_record_id = ?2
-                 WHERE provider_record_id = ?3",
                 params![
-                    liability_provider_lifecycle_state_label(
-                        LiabilityProviderLifecycleState::Superseded,
-                    ),
                     artifact.provider_record_id,
-                    supersedes_provider_record_id,
+                    artifact.issued_at as i64,
+                    artifact.report.provider_id,
+                    liability_provider_lifecycle_state_label(artifact.lifecycle_state),
+                    artifact.supersedes_provider_record_id.as_deref(),
+                    serde_json::to_string(provider)?,
+                    provider.signer_key.to_hex(),
+                    provider.signature.to_hex(),
                 ],
             )?;
-        }
 
-        tx.commit()?;
-        Ok(())
+            if let Some(supersedes_provider_record_id) =
+                artifact.supersedes_provider_record_id.as_deref()
+            {
+                tx.execute(
+                    "UPDATE liability_providers
+                 SET lifecycle_state = ?1, superseded_by_provider_record_id = ?2
+                 WHERE provider_record_id = ?3",
+                    params![
+                        liability_provider_lifecycle_state_label(
+                            LiabilityProviderLifecycleState::Superseded,
+                        ),
+                        artifact.provider_record_id,
+                        supersedes_provider_record_id,
+                    ],
+                )?;
+            }
+
+            tx.commit()?;
+            Ok(())
+        })
     }
 
     pub fn query_liability_providers(
@@ -281,8 +286,10 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
+        let request_owned = request.clone();
+        self.writer_handle().run_write(move |connection| {
+        let request = &request_owned;
         let artifact = &request.body;
-        let mut connection = self.connection()?;
         let tx = connection.transaction()?;
         let existing = tx
             .query_row(
@@ -366,6 +373,7 @@ impl SqliteReceiptStore {
 
         tx.commit()?;
         Ok(())
+        })
     }
 
     pub fn record_liability_quote_response(
@@ -385,8 +393,10 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
+        let response_owned = response.clone();
+        self.writer_handle().run_write(move |connection| {
+        let response = &response_owned;
         let artifact = &response.body;
-        let mut connection = self.connection()?;
         let tx = connection.transaction()?;
         let existing = tx
             .query_row(
@@ -510,6 +520,7 @@ impl SqliteReceiptStore {
 
         tx.commit()?;
         Ok(())
+        })
     }
 
     pub fn record_liability_placement(
@@ -529,107 +540,109 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
-        let artifact = &placement.body;
-        let mut connection = self.connection()?;
-        let tx = connection.transaction()?;
-        let existing = tx
-            .query_row(
-                "SELECT placement_id FROM liability_placements WHERE placement_id = ?1",
-                params![artifact.placement_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        if existing.is_some() {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "liability placement `{}` already exists",
-                artifact.placement_id
-            )));
-        }
+        let placement_owned = placement.clone();
+        self.writer_handle().run_write(move |connection| {
+            let placement = &placement_owned;
+            let artifact = &placement.body;
+            let tx = connection.transaction()?;
+            let existing = tx
+                .query_row(
+                    "SELECT placement_id FROM liability_placements WHERE placement_id = ?1",
+                    params![artifact.placement_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            if existing.is_some() {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "liability placement `{}` already exists",
+                    artifact.placement_id
+                )));
+            }
 
-        let stored_request_raw_json = tx
-            .query_row(
-                "SELECT raw_json
+            let stored_request_raw_json = tx
+                .query_row(
+                    "SELECT raw_json
                  FROM liability_quote_requests
                  WHERE quote_request_id = ?1",
-                params![
-                    artifact
-                        .quote_response
-                        .body
-                        .quote_request
-                        .body
-                        .quote_request_id
-                ],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?
-            .ok_or_else(|| {
-                ReceiptStoreError::NotFound(format!(
-                    "liability quote request `{}` not found",
-                    artifact
-                        .quote_response
-                        .body
-                        .quote_request
-                        .body
-                        .quote_request_id
-                ))
-            })?;
-        let stored_request: SignedLiabilityQuoteRequest =
-            serde_json::from_str(&stored_request_raw_json)?;
-        if stored_request.body != artifact.quote_response.body.quote_request.body {
-            return Err(ReceiptStoreError::Conflict(
-                "liability placement quote_request does not match the persisted request"
-                    .to_string(),
-            ));
-        }
+                    params![
+                        artifact
+                            .quote_response
+                            .body
+                            .quote_request
+                            .body
+                            .quote_request_id
+                    ],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .ok_or_else(|| {
+                    ReceiptStoreError::NotFound(format!(
+                        "liability quote request `{}` not found",
+                        artifact
+                            .quote_response
+                            .body
+                            .quote_request
+                            .body
+                            .quote_request_id
+                    ))
+                })?;
+            let stored_request: SignedLiabilityQuoteRequest =
+                serde_json::from_str(&stored_request_raw_json)?;
+            if stored_request.body != artifact.quote_response.body.quote_request.body {
+                return Err(ReceiptStoreError::Conflict(
+                    "liability placement quote_request does not match the persisted request"
+                        .to_string(),
+                ));
+            }
 
-        let (stored_response_raw_json, superseded_by_quote_response_id) = tx
-            .query_row(
-                "SELECT raw_json, superseded_by_quote_response_id
+            let (stored_response_raw_json, superseded_by_quote_response_id) = tx
+                .query_row(
+                    "SELECT raw_json, superseded_by_quote_response_id
                  FROM liability_quote_responses
                  WHERE quote_response_id = ?1",
-                params![artifact.quote_response.body.quote_response_id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
-            )
-            .optional()?
-            .ok_or_else(|| {
-                ReceiptStoreError::NotFound(format!(
-                    "liability quote response `{}` not found",
+                    params![artifact.quote_response.body.quote_response_id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+                )
+                .optional()?
+                .ok_or_else(|| {
+                    ReceiptStoreError::NotFound(format!(
+                        "liability quote response `{}` not found",
+                        artifact.quote_response.body.quote_response_id
+                    ))
+                })?;
+            if superseded_by_quote_response_id.is_some() {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "liability quote response `{}` is superseded",
                     artifact.quote_response.body.quote_response_id
-                ))
-            })?;
-        if superseded_by_quote_response_id.is_some() {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "liability quote response `{}` is superseded",
-                artifact.quote_response.body.quote_response_id
-            )));
-        }
-        let stored_response: SignedLiabilityQuoteResponse =
-            serde_json::from_str(&stored_response_raw_json)?;
-        if stored_response.body != artifact.quote_response.body {
-            return Err(ReceiptStoreError::Conflict(
-                "liability placement quote_response does not match the persisted response"
-                    .to_string(),
-            ));
-        }
+                )));
+            }
+            let stored_response: SignedLiabilityQuoteResponse =
+                serde_json::from_str(&stored_response_raw_json)?;
+            if stored_response.body != artifact.quote_response.body {
+                return Err(ReceiptStoreError::Conflict(
+                    "liability placement quote_response does not match the persisted response"
+                        .to_string(),
+                ));
+            }
 
-        let existing_request_placement = tx
-            .query_row(
-                "SELECT placement_id
+            let existing_request_placement = tx
+                .query_row(
+                    "SELECT placement_id
                  FROM liability_placements
                  WHERE quote_request_id = ?1",
-                params![
-                    artifact
-                        .quote_response
-                        .body
-                        .quote_request
-                        .body
-                        .quote_request_id
-                ],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        if let Some(existing_request_placement) = existing_request_placement {
-            return Err(ReceiptStoreError::Conflict(format!(
+                    params![
+                        artifact
+                            .quote_response
+                            .body
+                            .quote_request
+                            .body
+                            .quote_request_id
+                    ],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            if let Some(existing_request_placement) = existing_request_placement {
+                return Err(ReceiptStoreError::Conflict(format!(
                 "liability quote request `{}` already has placement `{existing_request_placement}`",
                 artifact
                     .quote_response
@@ -638,38 +651,39 @@ impl SqliteReceiptStore {
                     .body
                     .quote_request_id
             )));
-        }
+            }
 
-        tx.execute(
-            "INSERT INTO liability_placements (
+            tx.execute(
+                "INSERT INTO liability_placements (
                 placement_id, issued_at, quote_request_id, quote_response_id, provider_id,
                 raw_json, signer_key, signature
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                artifact.placement_id,
-                artifact.issued_at as i64,
-                artifact
-                    .quote_response
-                    .body
-                    .quote_request
-                    .body
-                    .quote_request_id,
-                artifact.quote_response.body.quote_response_id,
-                artifact
-                    .quote_response
-                    .body
-                    .quote_request
-                    .body
-                    .provider_policy
-                    .provider_id,
-                serde_json::to_string(placement)?,
-                placement.signer_key.to_hex(),
-                placement.signature.to_hex(),
-            ],
-        )?;
+                params![
+                    artifact.placement_id,
+                    artifact.issued_at as i64,
+                    artifact
+                        .quote_response
+                        .body
+                        .quote_request
+                        .body
+                        .quote_request_id,
+                    artifact.quote_response.body.quote_response_id,
+                    artifact
+                        .quote_response
+                        .body
+                        .quote_request
+                        .body
+                        .provider_policy
+                        .provider_id,
+                    serde_json::to_string(placement)?,
+                    placement.signer_key.to_hex(),
+                    placement.signature.to_hex(),
+                ],
+            )?;
 
-        tx.commit()?;
-        Ok(())
+            tx.commit()?;
+            Ok(())
+        })
     }
 
     pub fn record_liability_pricing_authority(
@@ -689,8 +703,10 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
+        let authority_owned = authority.clone();
+        self.writer_handle().run_write(move |connection| {
+        let authority = &authority_owned;
         let artifact = &authority.body;
-        let mut connection = self.connection()?;
         let tx = connection.transaction()?;
         let existing = tx
             .query_row(
@@ -767,6 +783,7 @@ impl SqliteReceiptStore {
 
         tx.commit()?;
         Ok(())
+        })
     }
 
     pub fn record_liability_bound_coverage(
@@ -786,8 +803,10 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
+        let coverage_owned = coverage.clone();
+        self.writer_handle().run_write(move |connection| {
+        let coverage = &coverage_owned;
         let artifact = &coverage.body;
-        let mut connection = self.connection()?;
         let tx = connection.transaction()?;
         let existing = tx
             .query_row(
@@ -883,6 +902,7 @@ impl SqliteReceiptStore {
 
         tx.commit()?;
         Ok(())
+        })
     }
 
     pub fn record_liability_auto_bind_decision(
@@ -902,8 +922,10 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
+        let decision_owned = decision.clone();
+        self.writer_handle().run_write(move |connection| {
+        let decision = &decision_owned;
         let artifact = &decision.body;
-        let mut connection = self.connection()?;
         let tx = connection.transaction()?;
         let existing = tx
             .query_row(
@@ -1157,6 +1179,7 @@ impl SqliteReceiptStore {
 
         tx.commit()?;
         Ok(())
+        })
     }
 
     pub fn query_liability_market_workflows(

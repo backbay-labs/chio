@@ -58,19 +58,45 @@ impl SqliteReceiptStore {
         path: impl AsRef<Path>,
         pool_config: crate::SqlitePoolConfig,
     ) -> Result<Self, ReceiptStoreError> {
-        Self::open_with_pool_config_and_flags(path, pool_config, true)
+        Self::open_with_options(
+            path,
+            crate::SqliteStoreOptions {
+                pool: pool_config,
+                ..crate::SqliteStoreOptions::default()
+            },
+        )
     }
 
     fn open_existing_with_pool_config(
         path: impl AsRef<Path>,
         pool_config: crate::SqlitePoolConfig,
     ) -> Result<Self, ReceiptStoreError> {
-        Self::open_with_pool_config_and_flags(path, pool_config, false)
+        Self::open_existing_with_options(
+            path,
+            crate::SqliteStoreOptions {
+                pool: pool_config,
+                ..crate::SqliteStoreOptions::default()
+            },
+        )
+    }
+
+    pub fn open_with_options(
+        path: impl AsRef<Path>,
+        options: crate::SqliteStoreOptions,
+    ) -> Result<Self, ReceiptStoreError> {
+        Self::open_with_pool_config_and_flags(path, options, true)
+    }
+
+    pub fn open_existing_with_options(
+        path: impl AsRef<Path>,
+        options: crate::SqliteStoreOptions,
+    ) -> Result<Self, ReceiptStoreError> {
+        Self::open_with_pool_config_and_flags(path, options, false)
     }
 
     fn open_with_pool_config_and_flags(
         path: impl AsRef<Path>,
-        pool_config: crate::SqlitePoolConfig,
+        options: crate::SqliteStoreOptions,
         create_if_missing: bool,
     ) -> Result<Self, ReceiptStoreError> {
         let path = path.as_ref();
@@ -107,21 +133,25 @@ impl SqliteReceiptStore {
 
             let reader_pool = build_receipt_pool(
                 path,
-                pool_config.reader_pool_max_size,
+                options.pool.reader_pool_max_size,
                 "reader",
                 connection_flags,
             )?;
             let writer_pool = build_receipt_pool(
                 path,
-                pool_config.writer_pool_max_size,
+                options.pool.writer_pool_max_size,
                 "writer",
                 connection_flags,
             )?;
 
             return Ok(Self {
-                receipt_commit_actor: ReceiptCommitActor::start(writer_pool),
+                receipt_commit_actor: ReceiptCommitActor::start(
+                    writer_pool,
+                    options.incremental_verification,
+                ),
                 pool: reader_pool,
                 strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
+                incremental_verification: options.incremental_verification,
             });
         }
 
@@ -1059,21 +1089,25 @@ impl SqliteReceiptStore {
 
         let reader_pool = build_receipt_pool(
             path,
-            pool_config.reader_pool_max_size,
+            options.pool.reader_pool_max_size,
             "reader",
             connection_flags,
         )?;
         let writer_pool = build_receipt_pool(
             path,
-            pool_config.writer_pool_max_size,
+            options.pool.writer_pool_max_size,
             "writer",
             connection_flags,
         )?;
 
         Ok(Self {
-            receipt_commit_actor: ReceiptCommitActor::start(writer_pool),
+            receipt_commit_actor: ReceiptCommitActor::start(
+                writer_pool,
+                options.incremental_verification,
+            ),
             pool: reader_pool,
             strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
+            incremental_verification: options.incremental_verification,
         })
     }
 

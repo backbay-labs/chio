@@ -11,13 +11,14 @@ impl SqliteReceiptStore {
         receipt: &ChioReceipt,
     ) -> Result<u64, ReceiptStoreError> {
         let raw_json = serde_json::to_string(receipt)?;
-        self.append_verified_chio_receipt_record(receipt, &raw_json)
+        self.append_verified_chio_receipt_record(receipt, &raw_json, false)
     }
 
     /// Store a signed KernelCheckpoint in the kernel_checkpoints table.
     pub fn store_checkpoint(&self, checkpoint: &KernelCheckpoint) -> Result<(), ReceiptStoreError> {
-        let mut connection = self.connection()?;
-        store_kernel_checkpoint_atomic(&mut connection, checkpoint)
+        let checkpoint = checkpoint.clone();
+        self.writer_handle()
+            .run_write(move |connection| store_kernel_checkpoint_atomic(connection, &checkpoint))
     }
 
     /// Load a KernelCheckpoint by its checkpoint_seq.

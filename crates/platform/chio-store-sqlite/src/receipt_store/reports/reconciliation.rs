@@ -24,26 +24,31 @@ impl SqliteReceiptStore {
         }
 
         let updated_at = unix_timestamp_now_i64();
-        self.connection()?.execute(
-            r#"
-            INSERT INTO settlement_reconciliations (
-                receipt_id,
-                reconciliation_state,
-                note,
-                updated_at
-            ) VALUES (?1, ?2, ?3, ?4)
-            ON CONFLICT(receipt_id) DO UPDATE SET
-                reconciliation_state = excluded.reconciliation_state,
-                note = excluded.note,
-                updated_at = excluded.updated_at
-            "#,
-            params![
-                receipt_id,
-                settlement_reconciliation_state_text(reconciliation_state),
-                note,
-                updated_at
-            ],
-        )?;
+        let receipt_id_owned = receipt_id.to_string();
+        let note_owned = note.map(ToString::to_string);
+        self.writer_handle().run_write(move |connection| {
+            connection.execute(
+                r#"
+                INSERT INTO settlement_reconciliations (
+                    receipt_id,
+                    reconciliation_state,
+                    note,
+                    updated_at
+                ) VALUES (?1, ?2, ?3, ?4)
+                ON CONFLICT(receipt_id) DO UPDATE SET
+                    reconciliation_state = excluded.reconciliation_state,
+                    note = excluded.note,
+                    updated_at = excluded.updated_at
+                "#,
+                params![
+                    receipt_id_owned,
+                    settlement_reconciliation_state_text(reconciliation_state),
+                    note_owned,
+                    updated_at
+                ],
+            )?;
+            Ok(())
+        })?;
 
         Ok(updated_at)
     }
@@ -109,47 +114,54 @@ impl SqliteReceiptStore {
         }
 
         let updated_at = unix_timestamp_now_i64();
-        self.connection()?.execute(
-            r#"
-            INSERT INTO metered_billing_reconciliations (
-                receipt_id,
-                adapter_kind,
-                evidence_id,
-                observed_units,
-                billed_cost_units,
-                billed_cost_currency,
-                evidence_sha256,
-                recorded_at,
-                reconciliation_state,
-                note,
-                updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-            ON CONFLICT(receipt_id) DO UPDATE SET
-                adapter_kind = excluded.adapter_kind,
-                evidence_id = excluded.evidence_id,
-                observed_units = excluded.observed_units,
-                billed_cost_units = excluded.billed_cost_units,
-                billed_cost_currency = excluded.billed_cost_currency,
-                evidence_sha256 = excluded.evidence_sha256,
-                recorded_at = excluded.recorded_at,
-                reconciliation_state = excluded.reconciliation_state,
-                note = excluded.note,
-                updated_at = excluded.updated_at
-            "#,
-            params![
-                receipt_id,
-                &evidence.usage_evidence.evidence_kind,
-                &evidence.usage_evidence.evidence_id,
-                evidence.usage_evidence.observed_units as i64,
-                evidence.billed_cost.units as i64,
-                &evidence.billed_cost.currency,
-                evidence.usage_evidence.evidence_sha256.as_deref(),
-                evidence.recorded_at as i64,
-                metered_billing_reconciliation_state_text(reconciliation_state),
-                note,
-                updated_at
-            ],
-        )?;
+        let receipt_id_owned = receipt_id.to_string();
+        let evidence_owned = evidence.clone();
+        let note_owned = note.map(ToString::to_string);
+        self.writer_handle().run_write(move |connection| {
+            let evidence = &evidence_owned;
+            connection.execute(
+                r#"
+                INSERT INTO metered_billing_reconciliations (
+                    receipt_id,
+                    adapter_kind,
+                    evidence_id,
+                    observed_units,
+                    billed_cost_units,
+                    billed_cost_currency,
+                    evidence_sha256,
+                    recorded_at,
+                    reconciliation_state,
+                    note,
+                    updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                ON CONFLICT(receipt_id) DO UPDATE SET
+                    adapter_kind = excluded.adapter_kind,
+                    evidence_id = excluded.evidence_id,
+                    observed_units = excluded.observed_units,
+                    billed_cost_units = excluded.billed_cost_units,
+                    billed_cost_currency = excluded.billed_cost_currency,
+                    evidence_sha256 = excluded.evidence_sha256,
+                    recorded_at = excluded.recorded_at,
+                    reconciliation_state = excluded.reconciliation_state,
+                    note = excluded.note,
+                    updated_at = excluded.updated_at
+                "#,
+                params![
+                    receipt_id_owned,
+                    &evidence.usage_evidence.evidence_kind,
+                    &evidence.usage_evidence.evidence_id,
+                    evidence.usage_evidence.observed_units as i64,
+                    evidence.billed_cost.units as i64,
+                    &evidence.billed_cost.currency,
+                    evidence.usage_evidence.evidence_sha256.as_deref(),
+                    evidence.recorded_at as i64,
+                    metered_billing_reconciliation_state_text(reconciliation_state),
+                    note_owned,
+                    updated_at
+                ],
+            )?;
+            Ok(())
+        })?;
 
         Ok(updated_at)
     }

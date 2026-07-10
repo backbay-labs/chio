@@ -50,6 +50,18 @@ pub(crate) enum ReceiptCommands {
         #[arg(long, default_value_t = 5000, value_parser = clap::value_parser!(u64).range(1..))]
         timeout_ms: u64,
     },
+    /// Run the full receipt-log audit: claim-log projection validation plus a
+    /// complete checkpoint-chain verification (the deep check).
+    Audit {
+        /// OFFLINE on-disk repair: revalidate the on-disk receipt chain on a
+        /// local connection before reporting. Run this with the kernel STOPPED.
+        /// A running kernel keeps its verified head in-memory in a separate
+        /// process that the CLI cannot reach, so this does NOT clear a live
+        /// poisoned writer; restart the kernel to reseed a clean head from the
+        /// validated on-disk state.
+        #[arg(long, default_value_t = false)]
+        repair: bool,
+    },
     /// Inspect or advance the receipt-checkpoint chain.
     Checkpoint {
         #[command(subcommand)]

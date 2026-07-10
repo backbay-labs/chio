@@ -52,6 +52,15 @@ pub(crate) fn dispatch_receipt(
                 control_url: control_url.as_deref(),
                 control_token: control_token.as_deref(),
             }),
+            ReceiptCommands::Audit { repair } => cmd_receipt_audit(
+                repair,
+                QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
+            ),
             ReceiptCommands::Flush { timeout_ms } => cmd_receipt_flush(
                 timeout_ms,
                 QueryBackend {

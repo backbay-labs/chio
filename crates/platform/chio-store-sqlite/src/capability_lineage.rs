@@ -81,30 +81,37 @@ impl SqliteReceiptStore {
             0
         };
 
-        self.connection()?.execute(
-            r#"
-            INSERT OR IGNORE INTO capability_lineage (
-                capability_id,
-                subject_key,
-                issuer_key,
-                issued_at,
-                expires_at,
-                grants_json,
-                delegation_depth,
-                parent_capability_id
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-            "#,
-            params![
-                token.id,
-                subject_key,
-                issuer_key,
-                token.issued_at as i64,
-                token.expires_at as i64,
-                grants_json,
-                delegation_depth as i64,
-                parent_capability_id,
-            ],
-        )?;
+        let capability_id = token.id.clone();
+        let issued_at = token.issued_at;
+        let expires_at = token.expires_at;
+        let parent_capability_id = parent_capability_id.map(ToString::to_string);
+        self.writer_handle().run_write(move |connection| {
+            connection.execute(
+                r#"
+                INSERT OR IGNORE INTO capability_lineage (
+                    capability_id,
+                    subject_key,
+                    issuer_key,
+                    issued_at,
+                    expires_at,
+                    grants_json,
+                    delegation_depth,
+                    parent_capability_id
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                "#,
+                params![
+                    capability_id,
+                    subject_key,
+                    issuer_key,
+                    issued_at as i64,
+                    expires_at as i64,
+                    grants_json,
+                    delegation_depth as i64,
+                    parent_capability_id,
+                ],
+            )?;
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -117,38 +124,42 @@ impl SqliteReceiptStore {
         &mut self,
         snapshot: &CapabilitySnapshot,
     ) -> Result<(), CapabilityLineageError> {
-        self.connection()?.execute(
-            r#"
-            INSERT INTO capability_lineage (
-                capability_id,
-                subject_key,
-                issuer_key,
-                issued_at,
-                expires_at,
-                grants_json,
-                delegation_depth,
-                parent_capability_id
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-            ON CONFLICT(capability_id) DO UPDATE SET
-                subject_key = excluded.subject_key,
-                issuer_key = excluded.issuer_key,
-                issued_at = excluded.issued_at,
-                expires_at = excluded.expires_at,
-                grants_json = excluded.grants_json,
-                delegation_depth = excluded.delegation_depth,
-                parent_capability_id = excluded.parent_capability_id
-            "#,
-            params![
-                snapshot.capability_id,
-                snapshot.subject_key,
-                snapshot.issuer_key,
-                snapshot.issued_at as i64,
-                snapshot.expires_at as i64,
-                snapshot.grants_json,
-                snapshot.delegation_depth as i64,
-                snapshot.parent_capability_id,
-            ],
-        )?;
+        let snapshot = snapshot.clone();
+        self.writer_handle().run_write(move |connection| {
+            connection.execute(
+                r#"
+                INSERT INTO capability_lineage (
+                    capability_id,
+                    subject_key,
+                    issuer_key,
+                    issued_at,
+                    expires_at,
+                    grants_json,
+                    delegation_depth,
+                    parent_capability_id
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                ON CONFLICT(capability_id) DO UPDATE SET
+                    subject_key = excluded.subject_key,
+                    issuer_key = excluded.issuer_key,
+                    issued_at = excluded.issued_at,
+                    expires_at = excluded.expires_at,
+                    grants_json = excluded.grants_json,
+                    delegation_depth = excluded.delegation_depth,
+                    parent_capability_id = excluded.parent_capability_id
+                "#,
+                params![
+                    snapshot.capability_id,
+                    snapshot.subject_key,
+                    snapshot.issuer_key,
+                    snapshot.issued_at as i64,
+                    snapshot.expires_at as i64,
+                    snapshot.grants_json,
+                    snapshot.delegation_depth as i64,
+                    snapshot.parent_capability_id,
+                ],
+            )?;
+            Ok(())
+        })?;
         Ok(())
     }
 

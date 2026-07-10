@@ -4388,6 +4388,8 @@ dependencies = [
  "chio-settle",
  "chio-test-support",
  "criterion",
+ "loom",
+ "proptest",
  "r2d2",
  "r2d2_sqlite",
  "rusqlite",

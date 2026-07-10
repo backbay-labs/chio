@@ -33,6 +33,10 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 struct SqliteReceiptStore {
     connection: Mutex<Connection>,
+    // Test-double analogue of the real store's writer-actor signer install
+    // (`enable_background_checkpoints`). `None` until installed;
+    // `max_batch == 0` disables checkpointing (ADR-0008).
+    background_checkpoint_signer: Mutex<Option<(std::sync::Arc<Keypair>, u64)>>,
 }
 
 static UNIQUE_RECEIPT_DB_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -108,6 +112,7 @@ impl SqliteReceiptStore {
         )?;
         Ok(Self {
             connection: Mutex::new(connection),
+            background_checkpoint_signer: Mutex::new(None),
         })
     }
 
@@ -117,11 +122,11 @@ impl SqliteReceiptStore {
         })
     }
 
-    fn load_checkpoint_by_seq(
-        &self,
+    fn load_checkpoint_by_seq_locked(
+        connection: &Connection,
         checkpoint_seq: u64,
     ) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
-        self.connection()?
+        connection
             .query_row(
                 "SELECT raw_json FROM kernel_checkpoints WHERE checkpoint_seq = ?1",
                 params![checkpoint_seq as i64],
@@ -131,6 +136,191 @@ impl SqliteReceiptStore {
             .map(|raw_json| serde_json::from_str(&raw_json))
             .transpose()
             .map_err(Into::into)
+    }
+
+    fn load_checkpoint_by_seq(
+        &self,
+        checkpoint_seq: u64,
+    ) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
+        let connection = self.connection()?;
+        Self::load_checkpoint_by_seq_locked(&connection, checkpoint_seq)
+    }
+
+    /// Locked analogue of the `ReceiptStore::load_latest_checkpoint` default,
+    /// usable from a call site that already holds `self.connection`'s guard
+    /// (avoids re-locking the non-reentrant `Mutex<Connection>`).
+    fn load_latest_checkpoint_locked(
+        connection: &Connection,
+    ) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
+        let mut checkpoint_seq = 1;
+        let mut latest = None;
+        loop {
+            let Some(checkpoint) = Self::load_checkpoint_by_seq_locked(connection, checkpoint_seq)?
+            else {
+                return Ok(latest);
+            };
+            checkpoint_seq = checkpoint.body.checkpoint_seq.checked_add(1).ok_or_else(|| {
+                ReceiptStoreError::Conflict(
+                    "checkpoint_seq overflow while loading latest".to_string(),
+                )
+            })?;
+            latest = Some(checkpoint);
+        }
+    }
+
+    fn receipts_canonical_bytes_range_locked(
+        connection: &Connection,
+        start_seq: u64,
+        end_seq: u64,
+    ) -> Result<Vec<(u64, Vec<u8>)>, ReceiptStoreError> {
+        let mut statement = connection.prepare(
+            r#"
+                SELECT seq, raw_json
+                FROM chio_tool_receipts
+                WHERE seq >= ?1 AND seq <= ?2
+                ORDER BY seq ASC
+                "#,
+        )?;
+        let rows = statement.query_map(params![start_seq as i64, end_seq as i64], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        rows.map(|row| {
+            let (seq, raw_json) = row?;
+            let value = serde_json::from_str::<serde_json::Value>(&raw_json)?;
+            let bytes = canonical_json_bytes(&value)
+                .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?;
+            Ok((seq.max(0) as u64, bytes))
+        })
+        .collect()
+    }
+
+    fn store_checkpoint_locked(
+        connection: &Connection,
+        checkpoint: &KernelCheckpoint,
+    ) -> Result<(), ReceiptStoreError> {
+        let raw_json = serde_json::to_string(checkpoint)?;
+        connection.execute(
+            r#"
+                INSERT INTO kernel_checkpoints (checkpoint_seq, raw_json)
+                VALUES (?1, ?2)
+                ON CONFLICT(checkpoint_seq) DO UPDATE SET raw_json = excluded.raw_json
+                "#,
+            params![checkpoint.body.checkpoint_seq as i64, raw_json],
+        )?;
+        Ok(())
+    }
+
+    fn create_next_receipt_checkpoint_locked(
+        connection: &Connection,
+        max_batch: u64,
+        keypair: &Keypair,
+    ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
+        if max_batch == 0 {
+            return Err(ReceiptStoreError::Conflict(
+                "checkpoint max_batch must be greater than zero".to_string(),
+            ));
+        }
+        let latest_committed_entry_seq = connection.query_row(
+            "SELECT COALESCE(MAX(seq), 0) FROM chio_tool_receipts",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        let latest_committed_entry_seq = latest_committed_entry_seq.max(0) as u64;
+        let previous_checkpoint = Self::load_latest_checkpoint_locked(connection)?;
+        let latest_checkpointed_entry_seq = previous_checkpoint
+            .as_ref()
+            .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
+        if latest_committed_entry_seq <= latest_checkpointed_entry_seq {
+            return Ok(ReceiptCheckpointCreateReport {
+                created: false,
+                checkpoint_seq: None,
+                batch_start_seq: None,
+                batch_end_seq: None,
+                latest_committed_entry_seq,
+                latest_checkpointed_entry_seq,
+            });
+        }
+        let batch_start_seq = latest_checkpointed_entry_seq + 1;
+        let batch_end_seq = latest_committed_entry_seq.min(batch_start_seq + max_batch - 1);
+        let receipt_bytes_with_seqs = Self::receipts_canonical_bytes_range_locked(
+            connection,
+            batch_start_seq,
+            batch_end_seq,
+        )?;
+        let expected_len = batch_end_seq - batch_start_seq + 1;
+        if receipt_bytes_with_seqs.len() as u64 != expected_len
+            || receipt_bytes_with_seqs
+                .first()
+                .map(|(seq, _)| *seq)
+                .unwrap_or(0)
+                != batch_start_seq
+            || receipt_bytes_with_seqs
+                .last()
+                .map(|(seq, _)| *seq)
+                .unwrap_or(0)
+                != batch_end_seq
+        {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "checkpoint receipt range {}..={} is not contiguous",
+                batch_start_seq, batch_end_seq
+            )));
+        }
+        let receipt_bytes = receipt_bytes_with_seqs
+            .into_iter()
+            .map(|(_, bytes)| bytes)
+            .collect::<Vec<_>>();
+        let checkpoint_seq = previous_checkpoint
+            .as_ref()
+            .map_or(Ok(1), |checkpoint| {
+                checkpoint.body.checkpoint_seq.checked_add(1).ok_or_else(|| {
+                    ReceiptStoreError::Conflict(
+                        "checkpoint_seq overflow while creating receipt checkpoint".to_string(),
+                    )
+                })
+            })?;
+        let checkpoint = build_checkpoint_with_previous(
+            checkpoint_seq,
+            batch_start_seq,
+            batch_end_seq,
+            &receipt_bytes,
+            keypair,
+            previous_checkpoint.as_ref(),
+        )
+        .map_err(|error| ReceiptStoreError::Conflict(format!("checkpoint build failed: {error}")))?;
+        Self::store_checkpoint_locked(connection, &checkpoint)?;
+        Ok(ReceiptCheckpointCreateReport {
+            created: true,
+            checkpoint_seq: Some(checkpoint.body.checkpoint_seq),
+            batch_start_seq: Some(checkpoint.body.batch_start_seq),
+            batch_end_seq: Some(checkpoint.body.batch_end_seq),
+            latest_committed_entry_seq,
+            latest_checkpointed_entry_seq: checkpoint.body.batch_end_seq,
+        })
+    }
+
+    /// Test-double analogue of the real store's writer-actor checkpoint
+    /// construction: synchronous, but performed under the same
+    /// connection lock as the triggering append, so concurrent callers see
+    /// contiguous batches without needing a conflict-retry loop.
+    fn maybe_build_background_checkpoint_locked(
+        connection: &Connection,
+        seq: u64,
+        signer: &(std::sync::Arc<Keypair>, u64),
+    ) -> Result<(), ReceiptStoreError> {
+        let (keypair, max_batch) = signer;
+        if *max_batch == 0 {
+            return Ok(());
+        }
+        let latest_checkpointed_entry_seq = Self::load_latest_checkpoint_locked(connection)?
+            .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
+        if seq <= latest_checkpointed_entry_seq
+            || (seq - latest_checkpointed_entry_seq) < *max_batch
+        {
+            return Ok(());
+        }
+        Self::create_next_receipt_checkpoint_locked(connection, *max_batch, keypair)?;
+        Ok(())
     }
 
     fn get_delegation_chain(
@@ -257,6 +447,20 @@ impl ReceiptStore for SqliteReceiptStore {
         true
     }
 
+    fn enable_background_checkpoints(
+        &self,
+        keypair: Keypair,
+        max_batch: u64,
+    ) -> Result<bool, ReceiptStoreError> {
+        let mut signer = self.background_checkpoint_signer.lock().map_err(|_| {
+            ReceiptStoreError::Conflict(
+                "background checkpoint signer lock poisoned".to_string(),
+            )
+        })?;
+        *signer = Some((std::sync::Arc::new(keypair), max_batch));
+        Ok(true)
+    }
+
     fn append_chio_receipt_returning_seq(
         &self,
         receipt: &ChioReceipt,
@@ -280,7 +484,48 @@ impl ReceiptStore for SqliteReceiptStore {
                 raw_json,
             ],
         )?;
-        Ok((rows > 0).then(|| connection.last_insert_rowid().max(0) as u64))
+        let seq = (rows > 0).then(|| connection.last_insert_rowid().max(0) as u64);
+        if let Some(seq) = seq {
+            // Test-double analogue of the real store's writer-actor checkpoint
+            // construction: performed synchronously, still under the
+            // connection lock this append holds, so it never observes a
+            // concurrent writer's half-committed state.
+            let signer = self.background_checkpoint_signer.lock().map_err(|_| {
+                ReceiptStoreError::Conflict(
+                    "background checkpoint signer lock poisoned".to_string(),
+                )
+            })?;
+            if let Some(signer) = signer.as_ref() {
+                Self::maybe_build_background_checkpoint_locked(&connection, seq, signer)?;
+            }
+        }
+        Ok(seq)
+    }
+
+    fn flush_receipt_writes(&self) -> Result<ReceiptFlushReport, ReceiptStoreError> {
+        // The double builds checkpoints synchronously, in-line with each
+        // append (see `append_chio_receipt_returning_seq`), so there is
+        // nothing queued to drain; report the current committed and
+        // checkpointed positions.
+        let connection = self.connection()?;
+        let latest_committed_entry_seq = connection.query_row(
+            "SELECT COALESCE(MAX(seq), 0) FROM chio_tool_receipts",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        let latest_committed_entry_seq = latest_committed_entry_seq.max(0) as u64;
+        let latest_checkpoint = Self::load_latest_checkpoint_locked(&connection)?;
+        let latest_checkpointed_entry_seq = latest_checkpoint
+            .as_ref()
+            .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
+        let latest_checkpoint_seq =
+            latest_checkpoint.map(|checkpoint| checkpoint.body.checkpoint_seq);
+        Ok(ReceiptFlushReport {
+            latest_committed_entry_seq,
+            latest_checkpoint_seq,
+            latest_checkpointed_entry_seq,
+            ..Default::default()
+        })
     }
 
     fn append_child_receipt(
@@ -353,16 +598,8 @@ impl ReceiptStore for SqliteReceiptStore {
     }
 
     fn store_checkpoint(&self, checkpoint: &KernelCheckpoint) -> Result<(), ReceiptStoreError> {
-        let raw_json = serde_json::to_string(checkpoint)?;
-        self.connection()?.execute(
-            r#"
-                INSERT INTO kernel_checkpoints (checkpoint_seq, raw_json)
-                VALUES (?1, ?2)
-                ON CONFLICT(checkpoint_seq) DO UPDATE SET raw_json = excluded.raw_json
-                "#,
-            params![checkpoint.body.checkpoint_seq as i64, raw_json],
-        )?;
-        Ok(())
+        let connection = self.connection()?;
+        Self::store_checkpoint_locked(&connection, checkpoint)
     }
 
     fn create_next_receipt_checkpoint(
@@ -370,84 +607,8 @@ impl ReceiptStore for SqliteReceiptStore {
         max_batch: u64,
         keypair: &Keypair,
     ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
-        if max_batch == 0 {
-            return Err(ReceiptStoreError::Conflict(
-                "checkpoint max_batch must be greater than zero".to_string(),
-            ));
-        }
-        let latest_committed_entry_seq = self.connection()?.query_row(
-            "SELECT COALESCE(MAX(seq), 0) FROM chio_tool_receipts",
-            [],
-            |row| row.get::<_, i64>(0),
-        )?;
-        let latest_committed_entry_seq = latest_committed_entry_seq.max(0) as u64;
-        let previous_checkpoint = self.load_latest_checkpoint()?;
-        let latest_checkpointed_entry_seq = previous_checkpoint
-            .as_ref()
-            .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
-        if latest_committed_entry_seq <= latest_checkpointed_entry_seq {
-            return Ok(ReceiptCheckpointCreateReport {
-                created: false,
-                checkpoint_seq: None,
-                batch_start_seq: None,
-                batch_end_seq: None,
-                latest_committed_entry_seq,
-                latest_checkpointed_entry_seq,
-            });
-        }
-        let batch_start_seq = latest_checkpointed_entry_seq + 1;
-        let batch_end_seq = latest_committed_entry_seq.min(batch_start_seq + max_batch - 1);
-        let receipt_bytes_with_seqs =
-            self.receipts_canonical_bytes_range(batch_start_seq, batch_end_seq)?;
-        let expected_len = batch_end_seq - batch_start_seq + 1;
-        if receipt_bytes_with_seqs.len() as u64 != expected_len
-            || receipt_bytes_with_seqs
-                .first()
-                .map(|(seq, _)| *seq)
-                .unwrap_or(0)
-                != batch_start_seq
-            || receipt_bytes_with_seqs
-                .last()
-                .map(|(seq, _)| *seq)
-                .unwrap_or(0)
-                != batch_end_seq
-        {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "checkpoint receipt range {}..={} is not contiguous",
-                batch_start_seq, batch_end_seq
-            )));
-        }
-        let receipt_bytes = receipt_bytes_with_seqs
-            .into_iter()
-            .map(|(_, bytes)| bytes)
-            .collect::<Vec<_>>();
-        let checkpoint_seq = previous_checkpoint
-            .as_ref()
-            .map_or(Ok(1), |checkpoint| {
-                checkpoint.body.checkpoint_seq.checked_add(1).ok_or_else(|| {
-                    ReceiptStoreError::Conflict(
-                        "checkpoint_seq overflow while creating receipt checkpoint".to_string(),
-                    )
-                })
-            })?;
-        let checkpoint = build_checkpoint_with_previous(
-            checkpoint_seq,
-            batch_start_seq,
-            batch_end_seq,
-            &receipt_bytes,
-            keypair,
-            previous_checkpoint.as_ref(),
-        )
-        .map_err(|error| ReceiptStoreError::Conflict(format!("checkpoint build failed: {error}")))?;
-        self.store_checkpoint(&checkpoint)?;
-        Ok(ReceiptCheckpointCreateReport {
-            created: true,
-            checkpoint_seq: Some(checkpoint.body.checkpoint_seq),
-            batch_start_seq: Some(checkpoint.body.batch_start_seq),
-            batch_end_seq: Some(checkpoint.body.batch_end_seq),
-            latest_committed_entry_seq,
-            latest_checkpointed_entry_seq: checkpoint.body.batch_end_seq,
-        })
+        let connection = self.connection()?;
+        Self::create_next_receipt_checkpoint_locked(&connection, max_batch, keypair)
     }
 
     fn load_checkpoint_by_seq(

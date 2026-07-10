@@ -553,7 +553,7 @@ fn open_backfills_claim_log_and_checkpoint_transparency_projections() {
 fn record_checkpoint_publication_trust_anchor_binding_is_idempotent_and_visible_in_export_summary()
 {
     let path = unique_db_path("chio-receipts-publication-binding");
-    let mut store = SqliteReceiptStore::open(&path).test_unwrap();
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
     let first_receipt = sample_receipt_with_id("publication-binding-first");
     let second_receipt = sample_receipt_with_id("publication-binding-second");
     let first_seq = store

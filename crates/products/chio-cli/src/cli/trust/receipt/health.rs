@@ -121,13 +121,63 @@ pub(crate) fn cmd_receipt_checkpoint_create(
     Ok(())
 }
 
+/// Retained as a documented compatibility alias for `chio receipt audit`
+/// (read-only: never passes `--repair`). Keeps emitting the legacy
+/// `CHIO_CLI_RECEIPT_CHECKPOINT_VERIFY_SCHEMA` envelope so existing
+/// automation parsing that schema does not break.
 pub(crate) fn cmd_receipt_checkpoint_verify(backend: QueryBackend<'_>) -> Result<(), CliError> {
-    let store = local_receipt_store(&backend, "receipt checkpoint verify")?;
+    receipt_audit_with_schema(false, CHIO_CLI_RECEIPT_CHECKPOINT_VERIFY_SCHEMA, backend)
+}
+
+/// `chio receipt audit [--repair]`: the promoted full-verification surface
+/// (rollout step 3). Runs validate_claim_receipt_log_entries plus a
+/// complete checkpoint-chain verification via receipt_checkpoint_status.
+///
+/// `--repair` is an OFFLINE operation. It opens a
+/// LOCAL throwaway store and revalidates/reseeds the ON-DISK state on that
+/// connection. The CLI runs in a separate process from a live kernel and cannot
+/// reach that kernel's in-memory writer head, so `--repair` does NOT clear a
+/// live poisoned writer. Run it with the kernel stopped and restart the kernel
+/// to seed a clean verified head from the validated on-disk state.
+pub(crate) fn cmd_receipt_audit(repair: bool, backend: QueryBackend<'_>) -> Result<(), CliError> {
+    receipt_audit_with_schema(repair, CHIO_CLI_RECEIPT_AUDIT_SCHEMA, backend)
+}
+
+/// Honest, cross-process description of what `chio receipt audit --repair`
+/// actually does: it validates the on-disk receipt
+/// state OFFLINE and cannot reseed a running kernel's in-memory writer head.
+/// Kept as a pure function so the wording is unit-testable.
+pub(crate) fn offline_repair_notice() -> &'static str {
+    "receipt audit --repair ran OFFLINE: the on-disk receipt state was revalidated on a local \
+     connection. A running kernel keeps its verified head in-memory in a separate process the CLI \
+     cannot reach, so a live poisoned writer was NOT reseeded. Run this with the kernel stopped, \
+     then restart the kernel to seed a clean verified head from the validated on-disk state."
+}
+
+fn receipt_audit_with_schema(
+    repair: bool,
+    schema: &'static str,
+    backend: QueryBackend<'_>,
+) -> Result<(), CliError> {
+    let store = local_receipt_store(&backend, "receipt audit")?;
+    if repair {
+        // Revalidate + reseed the ON-DISK state on this throwaway local store.
+        // This validates the persisted chain (fail-closed) but cannot reach a
+        // live kernel's in-memory writer head; see `offline_repair_notice`.
+        store.reseed_verified_head()?;
+    }
     let report = store.receipt_checkpoint_status(Some(1))?;
     if backend.json_output {
-        print_receipt_operator_json(CHIO_CLI_RECEIPT_CHECKPOINT_VERIFY_SCHEMA, &report)?;
+        print_receipt_operator_json(schema, &report)?;
+        // Keep stdout pure JSON; surface the honest offline-repair note on stderr.
+        if repair {
+            eprintln!("{}", offline_repair_notice());
+        }
     } else {
         print!("{}", render_receipt_checkpoint_status_human(&report));
+        if repair {
+            println!("{}", offline_repair_notice());
+        }
     }
     if report.healthy {
         Ok(())
@@ -460,5 +510,88 @@ mod receipt_operator_tests {
 
         let _ = std::fs::remove_file(db_path);
         Ok(())
+    }
+
+    #[test]
+    fn receipt_audit_runs_full_verification_and_repair_reseeds(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let db_path = unique_temp_path("receipt-audit", "sqlite3");
+        let keypair = chio_core::crypto::Keypair::generate();
+        let store = chio_store_sqlite::SqliteReceiptStore::open(&db_path)?;
+        store.append_chio_receipt(&operator_sample_receipt_with_keypair(&keypair)?)?;
+        store.flush_receipt_writes()?;
+        drop(store);
+
+        cmd_receipt_audit(false, backend(Some(&db_path), None))?;
+        cmd_receipt_audit(true, backend(Some(&db_path), None))?;
+
+        assert_remote_unsupported(cmd_receipt_audit(false, backend(None, Some("http://127.0.0.1:9977"))));
+
+        let _ = std::fs::remove_file(db_path);
+        Ok(())
+    }
+
+    /// `chio receipt audit` (no `--repair`) is the read-only surface: it must
+    /// return `Err` on an unhealthy report, carrying the divergence detail in
+    /// the error string, rather than reporting success on a diverged store.
+    #[test]
+    fn receipt_audit_without_repair_fails_closed_on_a_diverged_checkpoint(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let db_path = unique_temp_path("receipt-audit-unhealthy", "sqlite3");
+        let keypair = chio_core::crypto::Keypair::generate();
+        let store = chio_store_sqlite::SqliteReceiptStore::open(&db_path)?;
+        store.append_chio_receipt(&operator_sample_receipt_with_keypair(&keypair)?)?;
+        store.flush_receipt_writes()?;
+        store.create_next_receipt_checkpoint(10, &keypair)?;
+        drop(store);
+
+        // Tamper the persisted checkpoint out of band, same mechanics as the
+        // store-side reseed fixtures (drop the immutability trigger, then
+        // mutate a real body field so it no longer matches the batch_end_seq
+        // column recorded alongside it).
+        let connection = rusqlite::Connection::open(&db_path)?;
+        connection.execute_batch("DROP TRIGGER IF EXISTS kernel_checkpoints_reject_update;")?;
+        connection.execute(
+            "UPDATE kernel_checkpoints SET statement_json = replace(statement_json, '\"batch_end_seq\":1', '\"batch_end_seq\":0')",
+            [],
+        )?;
+        drop(connection);
+
+        let error = match cmd_receipt_audit(false, backend(Some(&db_path), None)) {
+            Ok(()) => panic!(
+                "receipt audit without --repair must fail closed on a diverged checkpoint"
+            ),
+            Err(error) => error,
+        };
+        let message = error.to_string();
+        assert!(
+            message.contains("batch_end_seq") && message.contains("checkpoint"),
+            "receipt audit error must carry the divergence detail, got: {message}"
+        );
+
+        let _ = std::fs::remove_file(db_path);
+        Ok(())
+    }
+
+    /// `chio receipt audit --repair` cannot reach a
+    /// running kernel's in-memory writer head (a separate process), so its
+    /// operator-facing wording must be honest about being an OFFLINE on-disk
+    /// operation and must instruct restarting the kernel to clear a live poison
+    /// rather than claim to have reseeded the live writer.
+    #[test]
+    fn receipt_audit_repair_notice_is_offline_honest() {
+        let notice = offline_repair_notice();
+        assert!(
+            notice.contains("OFFLINE"),
+            "repair notice must state it is offline: {notice}"
+        );
+        assert!(
+            notice.contains("restart the kernel"),
+            "repair notice must instruct restarting the kernel: {notice}"
+        );
+        assert!(
+            notice.contains("NOT reseeded") && notice.contains("cannot reach"),
+            "repair notice must be explicit that a live writer was not reseeded: {notice}"
+        );
     }
 }

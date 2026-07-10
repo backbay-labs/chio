@@ -386,6 +386,241 @@ pub(crate) fn load_claim_receipt_log_receipt_ids(
         .map_err(ReceiptStoreError::from)
 }
 
+/// Rebuild the expected claim-log projection for ONE tool receipt straight from
+/// its source row (`chio_tool_receipts`), scoped by receipt_id (indexed unique
+/// key). Mirror of `load_tool_claim_receipt_projection_rows` for a single id;
+/// returns None when no source tool row exists.
+pub(crate) fn load_tool_claim_receipt_projection_row_by_id(
+    connection: &Connection,
+    receipt_id: &str,
+) -> Result<Option<ClaimReceiptLogProjectionRow>, ReceiptStoreError> {
+    connection
+        .query_row(
+            r#"
+            SELECT receipt_id, seq, timestamp, capability_id, subject_key, issuer_key,
+                   tool_server, tool_name, raw_json
+            FROM chio_tool_receipts
+            WHERE receipt_id = ?1
+            "#,
+            params![receipt_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, String>(8)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(ReceiptStoreError::from)?
+        .map(
+            |(
+                receipt_id,
+                source_seq,
+                timestamp,
+                capability_id,
+                subject_key,
+                issuer_key,
+                tool_server,
+                tool_name,
+                raw_json,
+            )| {
+                Ok(ClaimReceiptLogProjectionRow {
+                    receipt_id,
+                    receipt_kind: "tool_receipt".to_string(),
+                    source_seq: sqlite_positive_u64(source_seq, "claim tool source_seq")?,
+                    timestamp: sqlite_u64(timestamp, "claim tool timestamp")?,
+                    capability_id,
+                    session_id: None,
+                    parent_request_id: None,
+                    request_id: None,
+                    subject_key,
+                    issuer_key,
+                    tool_server,
+                    tool_name,
+                    raw_json,
+                })
+            },
+        )
+        .transpose()
+}
+
+/// Rebuild the expected claim-log projection for ONE child receipt straight
+/// from its source row (`chio_child_receipts`), scoped by receipt_id. Mirror of
+/// `load_child_claim_receipt_projection_rows` for a single id; returns None
+/// when no source child row exists.
+pub(crate) fn load_child_claim_receipt_projection_row_by_id(
+    connection: &Connection,
+    receipt_id: &str,
+) -> Result<Option<ClaimReceiptLogProjectionRow>, ReceiptStoreError> {
+    connection
+        .query_row(
+            r#"
+            SELECT receipt_id, seq, timestamp, session_id, parent_request_id,
+                   request_id, raw_json
+            FROM chio_child_receipts
+            WHERE receipt_id = ?1
+            "#,
+            params![receipt_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(ReceiptStoreError::from)?
+        .map(
+            |(
+                receipt_id,
+                source_seq,
+                timestamp,
+                session_id,
+                parent_request_id,
+                request_id,
+                raw_json,
+            )| {
+                Ok(ClaimReceiptLogProjectionRow {
+                    receipt_id,
+                    receipt_kind: "child_receipt".to_string(),
+                    source_seq: sqlite_positive_u64(source_seq, "claim child source_seq")?,
+                    timestamp: sqlite_u64(timestamp, "claim child timestamp")?,
+                    capability_id: None,
+                    session_id,
+                    parent_request_id,
+                    request_id,
+                    subject_key: None,
+                    issuer_key: None,
+                    tool_server: None,
+                    tool_name: None,
+                    raw_json,
+                })
+            },
+        )
+        .transpose()
+}
+
+/// Bounded projection cross-check over the (`floor_entry_seq`,
+/// `max_entry_seq`] delta range ONLY. Every
+/// claim_receipt_log_entries row an append adopts as pre-existing baseline
+/// (rows a shared-DB writer committed past this actor's head) must project
+/// EXACTLY from its source receipt row. Scoped to the delta (O(delta) indexed
+/// lookups); the full-log validator (`validate_claim_receipt_log_entries`) is
+/// NEVER invoked, so the single-writer no-stale-head path (empty delta) is a
+/// no-op and the flat per-append cost holds. Runs inside the caller's
+/// already-open transaction (no nested transaction).
+pub(crate) fn validate_adopted_claim_log_delta(
+    connection: &Connection,
+    floor_entry_seq: u64,
+    max_entry_seq: u64,
+) -> Result<(), ReceiptStoreError> {
+    if max_entry_seq <= floor_entry_seq {
+        return Ok(());
+    }
+    let entries = {
+        let mut statement = connection.prepare(
+            r#"
+            SELECT entry_seq, receipt_id, receipt_kind
+            FROM claim_receipt_log_entries
+            WHERE entry_seq > ?1 AND entry_seq <= ?2
+            ORDER BY entry_seq ASC
+            "#,
+        )?;
+        let rows = statement.query_map(
+            params![
+                sqlite_i64(floor_entry_seq, "adopted delta floor entry_seq")?,
+                sqlite_i64(max_entry_seq, "adopted delta max entry_seq")?,
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )?;
+        rows.map(|row| {
+            let (entry_seq, receipt_id, receipt_kind) = row.map_err(ReceiptStoreError::from)?;
+            Ok::<_, ReceiptStoreError>((
+                sqlite_positive_u64(entry_seq, "adopted delta entry_seq")?,
+                receipt_id,
+                receipt_kind,
+            ))
+        })
+        .collect::<Result<Vec<_>, _>>()?
+    };
+    // Contiguity: the adopted range must be exactly
+    // floor+1, floor+2, ..., max_entry_seq with no missing entry_seq. The
+    // projection loop below only inspects rows that CURRENTLY EXIST, so a hole
+    // (an append or resync adopting a non-contiguous shared-DB delta) would
+    // slip through and a later append would skip the hole as already-verified.
+    // One ordered scan over the already-loaded delta (O(delta), NOT O(N))
+    // catches the first break; a trailing check confirms the range is closed at
+    // max_entry_seq (a row missing at the top of the range). Fail closed on a
+    // gap so the whole adopted delta is rejected, mirroring the contiguity rule
+    // enforced for the checkpoint build range. `entries` is ordered ASC by the
+    // query above.
+    let mut expected_seq = floor_entry_seq.saturating_add(1);
+    for (entry_seq, _, _) in &entries {
+        if *entry_seq != expected_seq {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "adopted claim receipt log delta ({floor_entry_seq}, {max_entry_seq}] is not contiguous: expected entry_seq {expected_seq}, found {entry_seq}; run `chio receipt audit`"
+            )));
+        }
+        expected_seq = expected_seq.saturating_add(1);
+    }
+    if expected_seq != max_entry_seq.saturating_add(1) {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "adopted claim receipt log delta ({floor_entry_seq}, {max_entry_seq}] is missing trailing entries after entry_seq {}; run `chio receipt audit`",
+            expected_seq.saturating_sub(1)
+        )));
+    }
+    for (entry_seq, receipt_id, receipt_kind) in entries {
+        let existing = load_claim_receipt_log_projection_row(connection, &receipt_id)?
+            .ok_or_else(|| {
+                ReceiptStoreError::Conflict(format!(
+                    "adopted claim receipt log entry `{receipt_id}` (entry_seq {entry_seq}) vanished during validation; run `chio receipt audit`"
+                ))
+            })?;
+        let expected = match receipt_kind.as_str() {
+            "tool_receipt" => {
+                load_tool_claim_receipt_projection_row_by_id(connection, &receipt_id)?
+            }
+            "child_receipt" => {
+                load_child_claim_receipt_projection_row_by_id(connection, &receipt_id)?
+            }
+            other => {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "adopted claim receipt log entry `{receipt_id}` (entry_seq {entry_seq}) has unsupported kind `{other}`; run `chio receipt audit`"
+                )));
+            }
+        };
+        let Some(expected) = expected else {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "adopted claim receipt log entry `{receipt_id}` (entry_seq {entry_seq}) has no source {receipt_kind} row; run `chio receipt audit`"
+            )));
+        };
+        if !existing.matches_projection_or_enrichment(&expected) {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "adopted claim receipt log entry `{receipt_id}` (entry_seq {entry_seq}) diverges from its source {receipt_kind} row; run `chio receipt audit`"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn canonical_bytes_from_claim_log_row(
     receipt_kind: &str,
     raw_json: &str,

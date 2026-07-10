@@ -553,16 +553,9 @@ impl ChioKernel {
             let receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
                 KernelError::Internal("receipt store write lock poisoned".to_string())
             })?;
-            if let Some(seq) = self
-                .with_receipt_store(
-                    |store| Ok(store.append_child_receipt_returning_seq(&receipt)?),
-                )?
-                .flatten()
-            {
-                if self.should_checkpoint_after_seq(seq) {
-                    self.maybe_trigger_checkpoint_locked(seq)?;
-                }
-            }
+            self.with_receipt_store(|store| {
+                Ok(store.append_child_receipt_returning_seq(&receipt)?)
+            })?;
             drop(receipt_store_write);
             self.append_child_receipt_to_local_log(receipt);
         }

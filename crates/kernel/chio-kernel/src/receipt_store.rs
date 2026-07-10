@@ -339,6 +339,17 @@ pub trait ReceiptStore: Send + Sync {
         false
     }
 
+    /// Install a background checkpoint signer on stores that build their own
+    /// checkpoints on the writer thread. Returns `Ok(false)` when
+    /// the store does not support background checkpointing (default).
+    fn enable_background_checkpoints(
+        &self,
+        _keypair: Keypair,
+        _max_batch: u64,
+    ) -> Result<bool, ReceiptStoreError> {
+        Ok(false)
+    }
+
     fn record_capability_snapshot(
         &self,
         _token: &CapabilityToken,

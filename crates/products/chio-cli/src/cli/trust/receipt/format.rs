@@ -8,6 +8,7 @@ pub(crate) const CHIO_CLI_RECEIPT_CHECKPOINT_CREATE_SCHEMA: &str =
     "chio.cli.receipt.checkpoint_create.v1";
 pub(crate) const CHIO_CLI_RECEIPT_CHECKPOINT_VERIFY_SCHEMA: &str =
     "chio.cli.receipt.checkpoint_verify.v1";
+pub(crate) const CHIO_CLI_RECEIPT_AUDIT_SCHEMA: &str = "chio.cli.receipt.audit.v1";
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -413,6 +413,12 @@ fn checkpoint_triggers_at_100_receipts() {
             .unwrap();
     }
 
+    // Flush barrier: background checkpoints are built on the writer thread
+    // after the batch commits; a flush drains the actor past that point.
+    kernel
+        .with_receipt_store(|store| Ok(store.flush_receipt_writes()?))
+        .unwrap();
+
     // Verify a checkpoint was stored in the database.
     let store2 = SqliteReceiptStore::open(&path).unwrap();
     let checkpoint = store2.load_checkpoint_by_seq(1).unwrap();
@@ -478,6 +484,10 @@ fn concurrent_receipt_checkpointing_keeps_contiguous_batches() {
         handle.join().unwrap();
     }
 
+    kernel
+        .with_receipt_store(|store| Ok(store.flush_receipt_writes()?))
+        .unwrap();
+
     let store2 = SqliteReceiptStore::open(&path).unwrap();
     for checkpoint_seq in 1..=6 {
         let checkpoint = store2
@@ -533,6 +543,10 @@ fn checkpoint_counters_restore_when_store_is_reattached() {
             .unwrap();
     }
 
+    first_kernel
+        .with_receipt_store(|store| Ok(store.flush_receipt_writes()?))
+        .unwrap();
+
     let mut restarted_kernel = make_kernel(second_config);
     restarted_kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
     restarted_kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
@@ -567,6 +581,10 @@ fn checkpoint_counters_restore_when_store_is_reattached() {
             })
             .unwrap();
     }
+
+    restarted_kernel
+        .with_receipt_store(|store| Ok(store.flush_receipt_writes()?))
+        .unwrap();
 
     let store = SqliteReceiptStore::open(&path).unwrap();
     let first_checkpoint = store
@@ -626,6 +644,9 @@ fn checkpoint_counters_refresh_across_kernels_sharing_store() {
             federated_origin_kernel_id: None,
         })
         .unwrap();
+    first_kernel
+        .with_receipt_store(|store| Ok(store.flush_receipt_writes()?))
+        .unwrap();
     second_kernel
         .evaluate_tool_call_blocking(&ToolCallRequest {
             request_id: "req-two-kernels-2".to_string(),
@@ -641,6 +662,9 @@ fn checkpoint_counters_refresh_across_kernels_sharing_store() {
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
+        .unwrap();
+    second_kernel
+        .with_receipt_store(|store| Ok(store.flush_receipt_writes()?))
         .unwrap();
 
     let store = SqliteReceiptStore::open(&path).unwrap();
@@ -721,6 +745,10 @@ fn inclusion_proof_verifies_against_stored_checkpoint() {
             .unwrap();
     }
 
+    kernel
+        .with_receipt_store(|store| Ok(store.flush_receipt_writes()?))
+        .unwrap();
+
     // Load checkpoint and receipts, build and verify an inclusion proof.
     let store2 = SqliteReceiptStore::open(&path).unwrap();
     let checkpoint = store2
@@ -742,4 +770,206 @@ fn inclusion_proof_verifies_against_stored_checkpoint() {
     );
 
     let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn background_checkpoints_are_installed_at_store_attach_and_fire_off_the_request_path() {
+    let path = unique_receipt_db_path("chio-bg-install");
+    let mut config = make_monetary_config();
+    config.checkpoint_batch_size = 2;
+
+    let mut kernel = make_kernel(config);
+    let agent_kp = Keypair::generate();
+    kernel.register_tool_server(Box::new(EchoServer::new("srv", vec!["echo"])));
+    kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(&path).unwrap())).unwrap();
+
+    let grant = make_grant("srv", "echo");
+    let cap = kernel
+        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
+        .unwrap();
+    for i in 0..2 {
+        kernel
+            .evaluate_tool_call_blocking(&ToolCallRequest {
+                request_id: format!("req-bg-{i}"),
+                capability: cap.clone(),
+                tool_name: "echo".to_string(),
+                server_id: "srv".to_string(),
+                agent_id: agent_kp.public_key().to_hex(),
+                arguments: serde_json::json!({ "i": i }),
+                dpop_proof: None,
+                execution_nonce: None,
+                governed_intent: None,
+                approval_token: None,
+                model_metadata: None,
+                federated_origin_kernel_id: None,
+            })
+            .unwrap();
+    }
+    // Flush barrier: background checkpoints are built on the writer thread
+    // after the batch commits; a flush drains the actor past that point.
+    kernel
+        .with_receipt_store(|store| Ok(store.flush_receipt_writes()?))
+        .unwrap();
+
+    let store2 = SqliteReceiptStore::open(&path).unwrap();
+    let checkpoint = store2
+        .load_checkpoint_by_seq(1)
+        .unwrap()
+        .expect("background checkpoint must exist after threshold crossing");
+    assert_eq!(checkpoint.body.batch_start_seq, 1);
+    assert_eq!(checkpoint.body.batch_end_seq, 2);
+
+    let _ = std::fs::remove_file(&path);
+}
+
+/// Fail-closed attach: a receipt store that reports
+/// `supports_kernel_signed_checkpoints() = true` but relies on the DEFAULT
+/// `enable_background_checkpoints` hook (which returns `Ok(false)`, i.e. never
+/// installs a background signer) would append forever without producing
+/// kernel-signed Web3 checkpoints now that the synchronous checkpoint trigger
+/// is gone. Attaching such a store must fail closed.
+struct CheckpointCapableWithoutBackgroundStore;
+
+impl ReceiptStore for CheckpointCapableWithoutBackgroundStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn supports_kernel_signed_checkpoints(&self) -> bool {
+        true
+    }
+    // `enable_background_checkpoints` intentionally uses the trait default,
+    // which returns `Ok(false)` (no background signer installed).
+}
+
+#[test]
+fn checkpoint_capable_store_without_background_fails_setup() {
+    let mut kernel = make_kernel(make_config());
+    let error = kernel
+        .set_receipt_store(Box::new(CheckpointCapableWithoutBackgroundStore))
+        .expect_err("checkpoint-capable store without a background signer must fail setup");
+    match error {
+        KernelError::Internal(message) => assert!(
+            message.contains("did not install a background checkpoint signer"),
+            "unexpected fail-closed error: {message}"
+        ),
+        other => panic!("expected KernelError::Internal, got {other:?}"),
+    }
+}
+
+/// Positive-install analogue of `CheckpointCapableWithoutBackgroundStore`: a
+/// store that both reports `supports_kernel_signed_checkpoints() = true` AND
+/// genuinely installs a background signer (returns `Ok(true)` from
+/// `enable_background_checkpoints`). Attaching such a store must succeed.
+struct CheckpointCapableWithBackgroundStore;
+
+impl ReceiptStore for CheckpointCapableWithBackgroundStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn supports_kernel_signed_checkpoints(&self) -> bool {
+        true
+    }
+
+    fn enable_background_checkpoints(
+        &self,
+        _keypair: Keypair,
+        _max_batch: u64,
+    ) -> Result<bool, ReceiptStoreError> {
+        // Genuinely installs a signer.
+        Ok(true)
+    }
+}
+
+/// With the synchronous request-path checkpoint
+/// trigger removed, a background signer installed at store attach is the ONLY
+/// producer of kernel-signed checkpoints. So when checkpointing is enabled
+/// (`checkpoint_batch_size > 0`) and the store claims checkpoint support, the
+/// attach path MUST require that `enable_background_checkpoints` actually
+/// installed a signer; a `false`/no-op return is a misconfiguration and must
+/// fail closed rather than attach a silently-checkpointless store. This test
+/// locks all three branches of that invariant in one place.
+#[test]
+fn attach_requires_checkpoint_install_when_supported() {
+    // Branch 1: claims support but relies on the default no-op
+    // `enable_background_checkpoints` (returns `Ok(false)`) -> fail closed.
+    let mut config = make_config();
+    config.checkpoint_batch_size = 2;
+    let mut kernel = make_kernel(config);
+    let error = kernel
+        .set_receipt_store(Box::new(CheckpointCapableWithoutBackgroundStore))
+        .expect_err("store claiming checkpoint support without an installed signer must fail closed");
+    match error {
+        KernelError::Internal(message) => assert!(
+            message.contains("did not install a background checkpoint signer"),
+            "unexpected fail-closed error: {message}"
+        ),
+        other => panic!("expected KernelError::Internal, got {other:?}"),
+    }
+
+    // Branch 2: claims support AND genuinely installs the signer
+    // (`enable_background_checkpoints` returns `Ok(true)`) -> attaches.
+    let mut config = make_config();
+    config.checkpoint_batch_size = 2;
+    let mut kernel = make_kernel(config);
+    kernel
+        .set_receipt_store(Box::new(CheckpointCapableWithBackgroundStore))
+        .expect("store that genuinely installs a background signer must attach");
+
+    // Branch 3: checkpointing disabled (`checkpoint_batch_size == 0`) -> the
+    // requirement is skipped even for a checkpoint-capable store that installs
+    // no signer.
+    let mut config = make_config();
+    config.checkpoint_batch_size = 0;
+    let mut kernel = make_kernel(config);
+    kernel
+        .set_receipt_store(Box::new(CheckpointCapableWithoutBackgroundStore))
+        .expect("batch_size 0 disables checkpointing; attach must not require a signer");
+}
+
+/// KernelConfig documents `checkpoint_batch_size = 0` as DISABLING automatic
+/// checkpointing (non-web3 deployments). The attach-time fail-closed check must
+/// not reject such a configuration: with batch_size 0 the store attaches
+/// without requiring a background signer, while batch_size > 0 still enforces
+/// the check.
+#[test]
+fn attach_honors_disabled_checkpointing() {
+    // Disabled (batch_size 0): attach must succeed even though the store is
+    // checkpoint-capable but installs no background signer.
+    let mut config = make_config();
+    config.checkpoint_batch_size = 0;
+    let mut kernel = make_kernel(config);
+    kernel
+        .set_receipt_store(Box::new(CheckpointCapableWithoutBackgroundStore))
+        .expect("batch_size 0 disables checkpointing; attach must not require a signer");
+
+    // Enabled (batch_size > 0): the fail-closed check still applies.
+    let mut config = make_config();
+    config.checkpoint_batch_size = 2;
+    let mut kernel = make_kernel(config);
+    let error = kernel
+        .set_receipt_store(Box::new(CheckpointCapableWithoutBackgroundStore))
+        .expect_err("batch_size > 0 must still require a background checkpoint signer");
+    match error {
+        KernelError::Internal(message) => assert!(
+            message.contains("did not install a background checkpoint signer"),
+            "unexpected fail-closed error: {message}"
+        ),
+        other => panic!("expected KernelError::Internal, got {other:?}"),
+    }
 }

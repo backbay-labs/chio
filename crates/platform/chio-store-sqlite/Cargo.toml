@@ -40,11 +40,17 @@ zeroize = { workspace = true, features = ["derive"] }
 [dev-dependencies]
 chio-test-support = { workspace = true }
 criterion = { workspace = true }
+loom = { workspace = true }
+proptest = { workspace = true }
 tempfile = { workspace = true }
 
 [[bench]]
 name = "store_receipt_write_throughput"
 harness = false
 
-[lints]
-workspace = true
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)", "cfg(chio_store_sqlite_loom)"] }

@@ -422,6 +422,38 @@ impl ChioKernel {
                 )));
             }
         }
+        // Honor disabled checkpointing: KernelConfig
+        // documents `checkpoint_batch_size = 0` as DISABLING automatic
+        // checkpointing (non-web3 deployments). Only require a background signer
+        // when checkpointing is enabled (batch_size > 0); with 0 the store
+        // attaches with no checkpoint machinery. Web3-enabled deployments that
+        // MUST checkpoint are separately guarded by
+        // `validate_web3_evidence_prerequisites`, which rejects batch_size == 0.
+        if self.checkpoint_batch_size > 0 && receipt_store.supports_kernel_signed_checkpoints() {
+            let background_enabled = receipt_store
+                .enable_background_checkpoints(
+                    self.config.keypair.clone(),
+                    self.checkpoint_batch_size,
+                )
+                .map_err(|error| {
+                    KernelError::Internal(format!(
+                        "failed to enable background receipt checkpoints: {error}"
+                    ))
+                })?;
+            // Fail-closed: a store that claims checkpoint capability but did
+            // not install a background signer (default hook returns
+            // `Ok(false)`) would append forever without producing kernel-signed
+            // Web3 checkpoints now that the synchronous trigger is gone. Reject
+            // the attach rather than serve silently-checkpointless.
+            if !background_enabled {
+                return Err(KernelError::Internal(
+                    "receipt store reports kernel-signed checkpoint support but did not install a \
+                     background checkpoint signer; refusing to attach a store that would append \
+                     without producing checkpoints"
+                        .to_string(),
+                ));
+            }
+        }
         self.receipt_store = Some(receipt_store);
         Ok(())
     }
