@@ -25,10 +25,8 @@ import {
   isAllowed,
   resolveConfig,
   buildChioHttpRequest,
-  VALID_METHODS,
-  verdictStatus,
-  verdictReason,
-  shouldSkip,
+  extractRequestPath,
+  type Verdict,
 } from "@chio-protocol/node-http";
 import { createHash } from "node:crypto";
 
@@ -41,14 +39,21 @@ export interface ChioElysiaConfig extends ChioConfig {
   skip?: Array<string | RegExp> | undefined;
 }
 
-// Note: this plugin keeps its own Web Request handling below rather than
-// delegating to interceptWebRequest from @chio-protocol/node-http (the way
-// Express uses interceptNodeRequest). Elysia's beforeHandle swallows body-read
-// errors (continue without a body hash) and drives responses through
-// `set.status`/`set.headers`, whereas interceptWebRequest throws on unreadable
-// bodies and returns a marker Response. Sharing only the pure helpers
-// (VALID_METHODS/verdictStatus/verdictReason/shouldSkip) keeps behavior
-// byte-for-byte identical.
+/** Valid HTTP methods for Chio evaluation. */
+const VALID_METHODS = new Set<string>([
+  "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS",
+]);
+
+/** Per-request Chio evaluation results keyed by Request object. */
+const requestChioResults = new WeakMap<Request, EvaluateResponse>();
+
+function verdictStatus(verdict: Verdict): number {
+  return "http_status" in verdict ? verdict.http_status : 403;
+}
+
+function verdictReason(verdict: Verdict): string {
+  return "reason" in verdict ? verdict.reason : "request was not authorized";
+}
 
 /**
  * Create an Elysia plugin that evaluates every request against Chio.
@@ -68,15 +73,9 @@ export function chio(config: ChioElysiaConfig = {}) {
   const skipPatterns = config.skip ?? [];
 
   return new Elysia({ name: "@chio-protocol/elysia" })
-    .derive({ as: "global" }, ({ request }) => {
-      // Store the Chio result on the context for downstream handlers
-      return {
-        chioResult: undefined as EvaluateResponse | undefined,
-      };
-    })
     .onBeforeHandle({ as: "global" }, async ({ request, set }) => {
+      const path = extractRequestPath(request.url);
       const url = new URL(request.url);
-      const path = url.pathname;
 
       // Check skip patterns
       if (shouldSkip(path, skipPatterns)) {
@@ -177,6 +176,7 @@ export function chio(config: ChioElysiaConfig = {}) {
 
         // Set receipt header after authorization and receipt verification.
         set.headers["X-Chio-Receipt-Id"] = result.receipt.id;
+        requestChioResults.set(request, result);
 
         // Allow the request to proceed
         return undefined;
@@ -188,5 +188,21 @@ export function chio(config: ChioElysiaConfig = {}) {
           message,
         };
       }
-    });
+    })
+    .resolve({ as: "scoped" }, ({ request }) => ({
+      chioResult: requestChioResults.get(request),
+    }));
+}
+
+// -- Helpers --
+
+function shouldSkip(path: string, patterns: Array<string | RegExp>): boolean {
+  for (const pattern of patterns) {
+    if (typeof pattern === "string") {
+      if (path === pattern) return true;
+    } else {
+      if (pattern.test(path)) return true;
+    }
+  }
+  return false;
 }

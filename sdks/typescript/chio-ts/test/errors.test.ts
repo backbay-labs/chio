@@ -37,6 +37,16 @@ test("unsupported canonical JSON values surface a stable code", () => {
   );
 });
 
+test("undefined object fields are rejected instead of silently dropped", () => {
+  assert.throws(
+    () => canonicalizeJson({ a: undefined }),
+    (error: unknown) =>
+      error instanceof ChioInvariantError &&
+      error.code === "canonical_json" &&
+      error.message === "canonical JSON does not support undefined object fields",
+  );
+});
+
 test("invalid signing seed surfaces a stable code", () => {
   assert.throws(
     () => signUtf8MessageEd25519("hello", "zz"),

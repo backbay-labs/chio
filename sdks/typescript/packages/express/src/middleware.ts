@@ -67,36 +67,17 @@ export function chio(config: ChioExpressConfig = {}): RequestHandler {
       return;
     }
 
-    // Use Express route pattern if available
+    // Use Express route pattern if available. Clone resolved config per request
+    // so concurrent requests cannot clobber a shared routePatternResolver.
     const routePattern = extractRoutePattern(req);
-    if (routePattern != null) {
-      const saved = resolved.routePatternResolver;
-      resolved.routePatternResolver = () => routePattern;
-
-      try {
-        const rawBody = await ensureExpressBufferedBody(req as ChioRequest);
-        const outcome = await interceptNodeRequest(req, res, resolved);
-        if (!outcome.responseSent) {
-          hydrateExpressBody(req as ChioRequest, rawBody);
-          if (outcome.result != null) {
-            (req as ChioRequest).chioResult = outcome.result;
-          }
-          if (outcome.passthrough != null) {
-            (req as ChioRequest).chioPassthrough = outcome.passthrough;
-          }
-          next();
-        }
-      } catch (error) {
-        next(error);
-      } finally {
-        resolved.routePatternResolver = saved;
-      }
-      return;
-    }
+    const requestResolved =
+      routePattern != null
+        ? { ...resolved, routePatternResolver: () => routePattern }
+        : resolved;
 
     try {
       const rawBody = await ensureExpressBufferedBody(req as ChioRequest);
-      const outcome = await interceptNodeRequest(req, res, resolved);
+      const outcome = await interceptNodeRequest(req, res, requestResolved);
       if (!outcome.responseSent) {
         hydrateExpressBody(req as ChioRequest, rawBody);
         if (outcome.result != null) {

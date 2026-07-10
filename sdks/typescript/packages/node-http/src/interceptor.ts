@@ -53,6 +53,14 @@ function headersToRecord(headers: Record<string, string | string[] | undefined>)
   return result;
 }
 
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function parseQueryString(url: string): Record<string, string> {
   const query: Record<string, string> = {};
   const qIndex = url.indexOf("?");
@@ -61,10 +69,10 @@ function parseQueryString(url: string): Record<string, string> {
   for (const pair of qs.split("&")) {
     const eqIndex = pair.indexOf("=");
     if (eqIndex === -1) {
-      query[decodeURIComponent(pair)] = "";
+      query[safeDecodeURIComponent(pair)] = "";
     } else {
-      const key = decodeURIComponent(pair.slice(0, eqIndex));
-      const value = decodeURIComponent(pair.slice(eqIndex + 1));
+      const key = safeDecodeURIComponent(pair.slice(0, eqIndex));
+      const value = safeDecodeURIComponent(pair.slice(eqIndex + 1));
       query[key] = value;
     }
   }
@@ -74,6 +82,21 @@ function parseQueryString(url: string): Record<string, string> {
 function extractPath(url: string): string {
   const qIndex = url.indexOf("?");
   return qIndex === -1 ? url : url.slice(0, qIndex);
+}
+
+/** Preserve percent-encoding in absolute Request URLs. */
+export function extractRequestPath(url: string): string {
+  const withoutQuery = extractPath(url);
+  try {
+    const parsed = new URL(withoutQuery);
+    const prefix = parsed.origin;
+    if (withoutQuery.startsWith(prefix)) {
+      return withoutQuery.slice(prefix.length) || "/";
+    }
+  } catch {
+    // Fall through for relative URLs.
+  }
+  return withoutQuery;
 }
 
 /** Default route pattern resolver -- returns the raw path as pattern. */

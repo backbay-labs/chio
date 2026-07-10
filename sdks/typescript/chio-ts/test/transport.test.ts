@@ -99,6 +99,68 @@ test("readRpcMessagesUntilTerminal stops after the matching terminal response", 
   ]);
 });
 
+test("readRpcMessagesUntilTerminal skips onMessage for terminal EOF data", async () => {
+  const seen: unknown[] = [];
+  const response = streamResponse(
+    [
+      "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{\"index\":1}}\n\n",
+      "data: {\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"ok\":true}}",
+    ],
+    {
+      status: 200,
+      headers: {
+        "content-type": "text/event-stream",
+      },
+    },
+  );
+
+  const messages = await readRpcMessagesUntilTerminal(response, 7, async (message) => {
+    seen.push(message);
+  });
+
+  assert.deepEqual(messages.at(-1), {
+    jsonrpc: "2.0",
+    id: 7,
+    result: { ok: true },
+  });
+  assert.deepEqual(seen, [
+    {
+      jsonrpc: "2.0",
+      method: "notifications/message",
+      params: { index: 1 },
+    },
+  ]);
+});
+
+test("readRpcMessagesUntilTerminal keeps JSON-RPC id types strict", async () => {
+  const response = streamResponse(
+    [
+      "data: {\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"from\":\"string\"}}\n\n",
+      "data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"from\":\"number\"}}\n\n",
+    ],
+    {
+      status: 200,
+      headers: {
+        "content-type": "text/event-stream",
+      },
+    },
+  );
+
+  const messages = await readRpcMessagesUntilTerminal(response, 1, async () => {});
+  assert.deepEqual(messages, [
+    {
+      jsonrpc: "2.0",
+      id: "1",
+      result: { from: "string" },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 1,
+      result: { from: "number" },
+    },
+  ]);
+});
+
 test("header helpers encode session and protocol state", () => {
   assert.deepEqual(buildRpcHeaders("token", "session-1", "2025-11-25"), {
     Authorization: "Bearer token",
