@@ -623,23 +623,13 @@ impl WasmGuardAbi for WasmtimeBackend {
                     if ptr >= 0 && (ptr as usize).saturating_add(request_len as usize) <= mem_size {
                         ptr
                     } else {
-                        // Out-of-bounds pointer -- fall back to offset 0
-                        tracing::warn!(
-                            ptr = ptr,
-                            request_len = request_len,
-                            mem_size = mem_size,
-                            "chio_alloc returned out-of-bounds pointer, falling back to offset 0"
-                        );
-                        0
+                        return Err(WasmGuardError::Memory(format!(
+                            "chio_alloc returned out-of-bounds pointer {ptr} for request length {request_len} and memory size {mem_size}"
+                        )));
                     }
                 }
                 Err(e) => {
-                    // chio_alloc call failed -- fall back to offset 0
-                    tracing::warn!(
-                        error = %e,
-                        "chio_alloc call failed, falling back to offset 0"
-                    );
-                    0
+                    return Err(WasmGuardError::Trap(format!("chio_alloc call failed: {e}")));
                 }
             }
         } else {

@@ -18,6 +18,25 @@ from chio_dagster.decorators import _compute_parameters, _run_with_guard
 
 
 class TestDefaultPolicyRedacts:
+    def test_positional_chio_file_write_content_is_redacted(self) -> None:
+        def chio_file_write(path: str, content: str) -> None:
+            return None
+
+        payload = _compute_parameters(
+            fn=chio_file_write,
+            context=None,
+            args=("/tmp/x", "PROD_SECRET=abc123"),
+            kwargs={},
+            tool_name="chio_file_write",
+            redaction_policy=RedactionPolicy.chio_default(),
+        )
+
+        assert payload["args"] == [
+            "/tmp/x",
+            {"omitted": True, "byte_count": len(b"PROD_SECRET=abc123")},
+        ]
+        assert payload["kwargs"] == {}
+
     def test_chio_file_write_content_is_redacted_in_payload(self) -> None:
         payload = _compute_parameters(
             context=None,
@@ -98,6 +117,25 @@ class _NotJsonSafe:
 
 
 class TestBothPassesCompose:
+    def test_context_arg_is_omitted_but_later_positional_args_are_preserved(self) -> None:
+        class _Context:
+            run_id = "run-1"
+
+        def ingest(context: Any, dataset: str) -> None:
+            return None
+
+        payload = _compute_parameters(
+            fn=ingest,
+            context=_Context(),
+            args=(_Context(), "customers"),
+            kwargs={},
+            tool_name="ingest",
+            redaction_policy=RedactionPolicy.chio_default(),
+        )
+
+        assert payload["args"] == ["customers"]
+        assert payload["kwargs"] == {}
+
     def test_redact_runs_first_then_sanitise(self) -> None:
         payload = _compute_parameters(
             context=None,

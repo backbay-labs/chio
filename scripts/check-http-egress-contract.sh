@@ -168,7 +168,7 @@ for file in "${CANDIDATE_FILES[@]}"; do
 
     # Skip test sources.
     case "$rel" in
-        */tests.rs|*tests/*|*-tests.rs|*/tests/*)
+        */tests.rs|*/tests/*|*-tests.rs)
             continue
             ;;
     esac

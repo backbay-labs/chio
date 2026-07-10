@@ -55,11 +55,14 @@ export async function readRpcMessagesUntilTerminal(
   onMessage: RpcMessageHandler = async () => {},
 ): Promise<JsonRpcMessage[]> {
   if (!response.body) {
-    const messages = parseRpcMessages(await response.text());
-    for (const message of messages) {
-      if (!isTerminalMessage(message, expectedId)) {
-        await onMessage(message);
+    const parsedMessages = parseRpcMessages(await response.text());
+    const messages: JsonRpcMessage[] = [];
+    for (const message of parsedMessages) {
+      messages.push(message);
+      if (isTerminalMessage(message, expectedId)) {
+        break;
       }
+      await onMessage(message);
     }
     return messages;
   }
@@ -119,11 +122,12 @@ export async function readRpcMessagesUntilTerminal(
   }
   if (messages.length === 0) {
     const parsedMessages = parseRpcMessages(rawBody);
-    messages.push(...parsedMessages);
     for (const message of parsedMessages) {
-      if (!isTerminalMessage(message, expectedId)) {
-        await onMessage(message);
+      messages.push(message);
+      if (isTerminalMessage(message, expectedId)) {
+        return messages;
       }
+      await onMessage(message);
     }
   }
   return messages;

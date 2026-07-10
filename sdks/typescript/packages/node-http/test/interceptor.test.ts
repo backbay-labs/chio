@@ -55,14 +55,14 @@ function verifyResponse() {
 }
 
 async function startMockSidecar(
-  onEvaluate?: (body: string) => void,
+  onEvaluate?: (body: string, headers: IncomingHttpHeaders) => void,
 ): Promise<{ server: http.Server; url: string }> {
   const server = http.createServer((req, res) => {
     if (req.method === "POST" && req.url === "/chio/evaluate") {
       const chunks: Buffer[] = [];
       req.on("data", (chunk: Buffer) => chunks.push(chunk));
       req.on("end", () => {
-        onEvaluate?.(Buffer.concat(chunks).toString("utf-8"));
+        onEvaluate?.(Buffer.concat(chunks).toString("utf-8"), req.headers);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(allowResponse()));
       });
@@ -694,5 +694,74 @@ describe("request body preservation", () => {
     expect(result).toBeNull();
     expect(passthrough).toBeNull();
     expect(response.headers.get("X-Chio-Receipt-Id")).toBeNull();
+  });
+
+  it("forwards query capability tokens to the sidecar", async () => {
+    let forwardedCapability: string | string[] | undefined;
+    let evaluatedCapabilityId: string | undefined;
+    const token = JSON.stringify({ id: "cap-query" });
+    const sidecar = await startMockSidecar((body, headers) => {
+      forwardedCapability = headers["x-chio-capability"];
+      evaluatedCapabilityId = JSON.parse(body).capability_id as string | undefined;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    try {
+      const { response } = await interceptWebRequest(
+        new Request(`http://example.com/upload?chio_capability=${encodeURIComponent(token)}`, {
+          method: "GET",
+        }),
+        resolved,
+      );
+
+      expect(response.status).toBe(200);
+      expect(forwardedCapability).toBe(token);
+      expect(evaluatedCapabilityId).toBe("cap-query");
+    } finally {
+      sidecar.server.close();
+    }
+  });
+
+  it("denies duplicate query capability tokens before sidecar evaluation", async () => {
+    let called = false;
+    const sidecar = await startMockSidecar(() => {
+      called = true;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    try {
+      const { response, result } = await interceptWebRequest(
+        new Request("http://example.com/upload?chio_capability=a&chio_capability=b", {
+          method: "GET",
+        }),
+        resolved,
+      );
+
+      expect(response.status).toBe(403);
+      expect(result).toBeNull();
+      expect(called).toBe(false);
+    } finally {
+      sidecar.server.close();
+    }
+  });
+
+  it("fails closed when Web request bodies cannot be cloned", async () => {
+    const sidecar = await startMockSidecar();
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+    const request = new Request("http://example.com/upload", {
+      method: "POST",
+      body: "already consumed",
+    });
+    await request.text();
+
+    try {
+      const { response, result, passthrough } = await interceptWebRequest(request, resolved);
+
+      expect(response.status).toBe(502);
+      expect(result).toBeNull();
+      expect(passthrough).toBeNull();
+    } finally {
+      sidecar.server.close();
+    }
   });
 });

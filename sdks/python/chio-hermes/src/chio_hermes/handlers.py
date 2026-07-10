@@ -664,9 +664,24 @@ def _factory_git_log(handle: RuntimeHandle) -> ToolHandler:
     return _wrap_envelope(handle, "chio_git_log", inner)
 
 
+def _coerce_git_add_paths(raw_paths: Any) -> list[str]:
+    if isinstance(raw_paths, str):
+        return [raw_paths]
+    if not isinstance(raw_paths, list) or not all(isinstance(path, str) for path in raw_paths):
+        from chio_code_agent.errors import ChioCodeAgentDeniedError
+
+        raise ChioCodeAgentDeniedError(
+            "chio_git_add requires paths to be an array of strings",
+            tool_name="git_add",
+            reason="invalid_paths",
+            guard="invalid_args",
+        )
+    return list(raw_paths)
+
+
 def _factory_git_add(handle: RuntimeHandle) -> ToolHandler:
     async def inner(args: dict[str, Any]) -> Any:
-        paths = list(_require(args, "paths"))
+        paths = _coerce_git_add_paths(_require(args, "paths"))
         # `git add src/**` can expand to forbidden paths (`.env`,
         # `.git/**`); resolve via `git ls-files` and policy-check.
         await _reject_git_add_forbidden_expansion(handle, paths)

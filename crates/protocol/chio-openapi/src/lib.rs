@@ -41,6 +41,10 @@ pub enum OpenApiError {
     /// A `$ref` could not be resolved.
     #[error("unresolved reference: {0}")]
     UnresolvedRef(String),
+
+    /// The OpenAPI document contains an invalid value.
+    #[error("invalid OpenAPI spec: {0}")]
+    InvalidSpec(String),
 }
 
 /// Result alias for this crate.

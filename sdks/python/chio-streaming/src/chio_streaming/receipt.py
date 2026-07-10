@@ -124,7 +124,7 @@ def build_envelope(
         "version": ENVELOPE_VERSION,
         "request_id": request_id,
         "verdict": verdict,
-        "receipt": receipt.model_dump(exclude_none=True),
+        "receipt": receipt.model_dump(mode="json", exclude_none=True),
     }
     if source_topic is not None:
         payload["source_topic"] = source_topic

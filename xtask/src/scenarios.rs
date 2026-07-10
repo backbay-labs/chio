@@ -20,8 +20,10 @@ pub(crate) fn validate_scenarios(args: Vec<String>) -> Result<(), XtaskError> {
 
     let scenarios = collect_scenario_files(&scenarios_dir)?;
     if scenarios.is_empty() {
-        println!("no scenarios found under {}", display_path(&scenarios_dir));
-        return Ok(());
+        return Err(XtaskError::Validation(format!(
+            "no scenarios found under {}",
+            display_path(&scenarios_dir)
+        )));
     }
 
     // Build a `$id` URI -> schema-path index by scanning every
@@ -101,10 +103,13 @@ pub(crate) fn validate_scenarios(args: Vec<String>) -> Result<(), XtaskError> {
 /// per `validate-scenarios` invocation by walking `spec/schemas/`.
 pub(crate) type SchemaIndex = BTreeMap<String, PathBuf>;
 
-fn build_schema_index(schemas_root: &Path) -> Result<SchemaIndex, XtaskError> {
+pub(crate) fn build_schema_index(schemas_root: &Path) -> Result<SchemaIndex, XtaskError> {
     let mut index: SchemaIndex = SchemaIndex::new();
     if !schemas_root.exists() {
-        return Ok(index);
+        return Err(XtaskError::Validation(format!(
+            "schema root is missing: {}",
+            display_path(schemas_root)
+        )));
     }
     let mut schema_files: Vec<PathBuf> = Vec::new();
     walk_schema_json(schemas_root, &mut schema_files)?;
@@ -168,10 +173,13 @@ fn schema_path_is_file_under_root(path: &Path, schemas_root: &Path) -> bool {
     candidate.is_file() && candidate.starts_with(root)
 }
 
-fn collect_scenario_files(scenarios_dir: &Path) -> Result<Vec<PathBuf>, XtaskError> {
+pub(crate) fn collect_scenario_files(scenarios_dir: &Path) -> Result<Vec<PathBuf>, XtaskError> {
     let mut out: Vec<PathBuf> = Vec::new();
     if !scenarios_dir.exists() {
-        return Ok(out);
+        return Err(XtaskError::Validation(format!(
+            "scenarios directory is missing: {}",
+            display_path(scenarios_dir)
+        )));
     }
     walk_json(scenarios_dir, &mut out)?;
     out.sort();

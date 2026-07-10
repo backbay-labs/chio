@@ -123,8 +123,12 @@ export function chio(config: ChioElysiaConfig = {}) {
           if (bodyLength > 0) {
             bodyHash = createHash("sha256").update(bodyBytes).digest("hex");
           }
-        } catch {
-          // Body may not be readable; continue without hash
+        } catch (error) {
+          set.status = 400;
+          return {
+            error: CHIO_ERROR_CODES.EVALUATION_FAILED,
+            message: `request body could not be read for Chio evaluation: ${error instanceof Error ? error.message : String(error)}`,
+          };
         }
       }
 

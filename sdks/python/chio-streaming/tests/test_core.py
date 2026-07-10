@@ -12,6 +12,7 @@ import asyncio
 from typing import Any
 
 import pytest
+from chio_sdk.testing import MockChioClient
 
 from chio_streaming.core import (
     SYNTHETIC_RECEIPT_MARKER,
@@ -157,12 +158,26 @@ def test_synthesize_deny_receipt_is_structurally_marked_unsigned() -> None:
         guard="scope",
     )
     assert receipt.is_denied
-    assert receipt.signature == ""
-    assert receipt.kernel_key == ""
+    assert receipt.signature == "0" * 128
+    assert receipt.kernel_key == "0" * 64
     assert receipt.metadata is not None
     assert receipt.metadata["chio_streaming_synthetic"] is True
     assert receipt.metadata["chio_streaming_synthetic_marker"] == SYNTHETIC_RECEIPT_MARKER
     assert (receipt.decision.reason or "").startswith("[unsigned] ")
+
+
+async def test_synthesize_deny_receipt_is_rejected_by_mock_verifier() -> None:
+    receipt = synthesize_deny_receipt(
+        capability_id="cap-x",
+        tool_server="server",
+        tool_name="events:consume:orders",
+        parameters={"k": "v"},
+        reason="forbidden",
+        guard="scope",
+    )
+    chio = MockChioClient()
+
+    assert await chio.verify_receipt(receipt) is False
 
 
 def test_synthesize_deny_receipt_does_not_double_prefix() -> None:

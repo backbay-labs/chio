@@ -158,12 +158,12 @@ def _validate_trace_receipt(body: Mapping[str, Any]) -> bool:
     action = body.get("action")
     if not isinstance(action, Mapping):
         return False
-    if "parameters" not in action:
-        return False
     parameter_hash = action.get("parameter_hash")
-    if not isinstance(parameter_hash, str):
+    if not _is_sha256_hex(parameter_hash):
         return False
-    if parameter_hash != _hash_value(action["parameters"]):
+    if body.get("redaction_mode") == "redacted" and "parameters" in action:
+        return False
+    if "parameters" in action and parameter_hash != _hash_value(action["parameters"]):
         return False
     return True
 
@@ -198,8 +198,8 @@ def issue_receipt(
     safe_response: Mapping[str, Any] = response or {}
     issued_at = timestamp if timestamp is not None else int(time.time())
     action = {
-        "parameters": dict(parameters),
         "parameter_hash": _hash_value(dict(parameters)),
+        "parameter_summary": {"model_id": model_id},
     }
     metadata = {
         "surface": "aws-bedrock",
