@@ -116,14 +116,14 @@ _ENV_DENY_EXACT: frozenset[str] = frozenset(
 
 _WINDOWS_ABSOLUTE_BARE_TOKEN_RE = re.compile(
     r"(?P<token>"
-    r"[A-Za-z]:[\\/][^\s\"']*"
+    r"(?<![A-Za-z0-9+.-])[A-Za-z]:(?:[\\]|/(?!/))[^\s\"']*"
     r"|(?<!:)\\\\[^\\/\s\"']+[\\/][^\\/\s\"']+(?:[\\/][^\s\"']*)?"
     r"|(?<!:)//[^/\s\"']+/[^/\s\"']+(?:/[^\s\"']*)?"
     r")"
 )
 _WINDOWS_ABSOLUTE_EMBEDDED_TOKEN_RE = re.compile(
     r"(?P<token>"
-    r"[A-Za-z]:[\\/].*"
+    r"(?<![A-Za-z0-9+.-])[A-Za-z]:(?:[\\]|/(?!/)).*"
     r"|(?<!:)\\\\[^\\/]+[\\/][^\\/]+(?:[\\/].*)?"
     r"|(?<!:)//[^/]+/[^/]+(?:/.*)?"
     r")"

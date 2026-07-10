@@ -273,6 +273,18 @@ def test_reject_shell_argv_escape_allows_colon_arguments(
     reject_shell_argv_escape("echo a:b C:tmp", root=workspace)
 
 
+def test_reject_shell_argv_escape_allows_url_arguments(tmp_path: Path) -> None:
+    reject_shell_argv_escape("curl https://example.com", root=tmp_path)
+    reject_shell_argv_escape(
+        "git clone https://github.com/org/repo.git",
+        root=tmp_path,
+    )
+    reject_shell_argv_escape(
+        "python -m pip install git+https://github.com/org/repo.git",
+        root=tmp_path,
+    )
+
+
 def test_reject_shell_argv_escape_allows_workspace_path(tmp_path: Path) -> None:
     inside = tmp_path / "src" / "main.py"
     reject_shell_argv_escape(f"cat {inside}", root=tmp_path)
