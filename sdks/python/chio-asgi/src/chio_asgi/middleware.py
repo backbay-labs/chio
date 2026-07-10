@@ -126,11 +126,13 @@ class ChioASGIMiddleware:
         body_chunks: list[bytes] = []
         early_replay_message: dict[str, Any] | None = None
         body_complete = False
+        body_interrupted = False
         body_too_large = False
         body_size = 0
 
         async def receive_wrapper() -> dict[str, Any]:
-            nonlocal body_complete, body_size, body_too_large, early_replay_message
+            nonlocal body_complete, body_interrupted, body_size, body_too_large
+            nonlocal early_replay_message
             message = await receive()
             if message.get("type") == "http.request":
                 body = message.get("body", b"")
@@ -145,6 +147,7 @@ class ChioASGIMiddleware:
                     body_complete = True
             else:
                 early_replay_message = message
+                body_interrupted = True
                 body_complete = True
             return message
 
@@ -154,6 +157,14 @@ class ChioASGIMiddleware:
                 break
         if body_too_large:
             await _send_body_too_large(send, self._config.max_body_bytes)
+            return
+        if body_interrupted:
+            await _send_error_response(
+                send,
+                400,
+                "request body stream ended before the final body frame",
+                "ClientDisconnected",
+            )
             return
 
         raw_body = b"".join(body_chunks)

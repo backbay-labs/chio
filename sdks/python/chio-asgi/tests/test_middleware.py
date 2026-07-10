@@ -82,6 +82,20 @@ def _make_chunked_receive(chunks: list[bytes]) -> Receive:
     return receive
 
 
+def _make_interrupted_body_receive(body: bytes = b"partial") -> Receive:
+    messages = [
+        {"type": "http.request", "body": body, "more_body": True},
+        {"type": "http.disconnect"},
+    ]
+
+    async def receive() -> dict[str, Any]:
+        if messages:
+            return messages.pop(0)
+        return {"type": "http.disconnect"}
+
+    return receive
+
+
 def _make_send() -> tuple[Send, list[dict[str, Any]]]:
     """Create a mock ASGI send callable that records messages."""
     messages: list[dict[str, Any]] = []
@@ -351,6 +365,28 @@ class TestAllowedRequest:
                 "more_body": False,
             }
         ]
+
+    async def test_rejects_partial_body_before_disconnect(self) -> None:
+        with patch(
+            "chio_asgi.middleware.ChioClient", autospec=True
+        ) as MockClient:
+            config = ChioASGIConfig(sidecar_url="http://mock:9090")
+            mw = ChioASGIMiddleware(_body_echo_app, config=config)
+            scope = _make_scope(method="POST")
+            send, messages = _make_send()
+
+            await mw(scope, _make_interrupted_body_receive(), send)
+
+            MockClient.return_value.evaluate_http_request.assert_not_called()
+            start_msg = next(
+                m for m in messages if m.get("type") == "http.response.start"
+            )
+            assert start_msg["status"] == 400
+            body_msg = next(
+                m for m in messages if m.get("type") == "http.response.body"
+            )
+            body = json.loads(body_msg["body"])
+            assert body["error"] == "ClientDisconnected"
 
     async def test_rejects_chunked_body_that_exceeds_configured_limit(self) -> None:
         with patch(
