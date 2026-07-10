@@ -10,11 +10,6 @@ trap 'rm -f "${registry}" "${observed}" "${observed_raw}"' EXIT
 
 cut -d'|' -f1 crates/observability/chio-metrics-spec/metrics.snapshot | sort -u > "${registry}"
 
-if ! command -v rg >/dev/null 2>&1; then
-  echo "check-sre-metrics-registry.sh: rg is required" >&2
-  exit 127
-fi
-
 # Scope includes the edge crates that consume the registry plus
 # `chio-wasm-guards`. The grep is anchored at `crates/<name>/src` to avoid
 # pulling matches out of `target/` artifacts.
