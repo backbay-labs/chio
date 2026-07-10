@@ -6,7 +6,7 @@
 //! capability itself) appears in the revoked set.
 //!
 //! This is the trust-boundary's fail-closed step: when no view is
-//! installed the helper returns `Ok(())`, falling back to the legacy
+//! installed the helper returns `Ok(())`, falling back to the direct
 //! per-row `RevocationStore` lookup that already runs on every dispatch.
 //! When a view IS installed, the helper enforces:
 //!
@@ -17,7 +17,7 @@
 //!
 //! Either condition raises [`crate::kernel::KernelError::DelegationChainRevoked`]
 //! (or [`crate::kernel::KernelError::CapabilityRevoked`] for the leaf),
-//! matching the existing legacy-path error taxonomy so SDK consumers do
+//! matching the existing compatibility-path error taxonomy so SDK consumers do
 //! not have to learn a new error variant.
 //!
 //! The module-level `cfg(feature = "delegation")` gate lives on the
@@ -139,7 +139,7 @@ mod tests {
         };
         let mut chain = Vec::new();
         // Build a fake delegation chain with the requested ids; signatures
-        // do not matter for this consultation helper (the legacy validator
+        // do not matter for this consultation helper (the inline validator
         // re-checks them upstream).
         let mut last_kp = kp.clone();
         for cap_id in chain_ids {

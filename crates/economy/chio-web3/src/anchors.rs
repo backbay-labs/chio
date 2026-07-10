@@ -1,9 +1,10 @@
+use alloy_primitives::keccak256;
 use serde::{Deserialize, Serialize};
 
 pub use chio_core_types::oracle::OracleConversionEvidence;
 
 use crate::canonical::canonical_json_bytes;
-use crate::crypto::{PublicKey, Signature};
+use crate::crypto::{Keypair, PublicKey, Signature, SigningAlgorithm};
 use crate::error::Web3ContractError;
 use crate::hashing::Hash;
 use crate::identity::{
@@ -12,7 +13,7 @@ use crate::identity::{
 };
 use crate::merkle::{leaf_hash, MerkleProof};
 use crate::receipt::body::ChioReceipt;
-use crate::validation::ensure_non_empty;
+use crate::validation::{ensure_non_empty, evm_addresses_match};
 
 pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA: &str = "chio.checkpoint_statement.v1";
 pub const CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA: &str = "chio.anchor-inclusion-proof.v1";
@@ -54,6 +55,8 @@ pub struct Web3ChainAnchorRecord {
     pub tx_hash: String,
     pub block_number: u64,
     pub block_hash: String,
+    pub operator_key_hash: String,
+    pub operator_epoch: u64,
     pub anchored_merkle_root: Hash,
     pub anchored_checkpoint_seq: u64,
 }
@@ -92,6 +95,18 @@ pub struct AnchorInclusionProof {
     pub key_binding_certificate: SignedWeb3IdentityBinding,
 }
 
+pub(crate) fn expected_operator_key_hash(
+    public_key: &PublicKey,
+) -> Result<Hash, Web3ContractError> {
+    if public_key.algorithm() != SigningAlgorithm::Ed25519 {
+        return Err(Web3ContractError::InvalidBinding(format!(
+            "operator key hash requires an Ed25519 public key, got {:?}",
+            public_key.algorithm()
+        )));
+    }
+    Ok(Hash::from_bytes(*keccak256(public_key.as_bytes()).as_ref()))
+}
+
 pub fn validate_oracle_conversion_evidence(
     evidence: &OracleConversionEvidence,
 ) -> Result<(), Web3ContractError> {
@@ -127,12 +142,138 @@ pub fn validate_oracle_conversion_evidence(
             "oracle conversion evidence max_age_seconds must be non-zero".to_string(),
         ));
     }
+    if evidence.cache_age_seconds > evidence.max_age_seconds {
+        return Err(Web3ContractError::InvalidProof(
+            "oracle conversion evidence is stale".to_string(),
+        ));
+    }
     if evidence.original_cost_units == 0 || evidence.converted_cost_units == 0 {
         return Err(Web3ContractError::InvalidProof(
             "oracle conversion evidence cost units must be non-zero".to_string(),
         ));
     }
+    if evidence.base != evidence.original_currency {
+        return Err(Web3ContractError::InvalidProof(
+            "oracle conversion evidence base must match original_currency".to_string(),
+        ));
+    }
+    if evidence.quote != evidence.grant_currency {
+        return Err(Web3ContractError::InvalidProof(
+            "oracle conversion evidence quote must match grant_currency".to_string(),
+        ));
+    }
+    let expected_converted_cost_units = expected_oracle_converted_cost_units(evidence)?;
+    if evidence.converted_cost_units != expected_converted_cost_units {
+        return Err(Web3ContractError::InvalidProof(format!(
+            "oracle conversion evidence converted_cost_units must equal {expected_converted_cost_units}"
+        )));
+    }
     Ok(())
+}
+
+pub fn sign_oracle_conversion_evidence(
+    evidence: &mut OracleConversionEvidence,
+    keypair: &Keypair,
+) -> Result<(), Web3ContractError> {
+    evidence.oracle_public_key = Some(keypair.public_key());
+    evidence.signature = None;
+    let body = oracle_conversion_evidence_signature_body(evidence);
+    let (signature, _) = keypair.sign_canonical(&body).map_err(|error| {
+        Web3ContractError::InvalidProof(format!(
+            "oracle conversion evidence signing failed: {error}"
+        ))
+    })?;
+    evidence.signature = Some(signature);
+    Ok(())
+}
+
+pub fn verify_oracle_conversion_evidence_signature(
+    evidence: &OracleConversionEvidence,
+    trusted_oracle_keys: &[PublicKey],
+) -> Result<(), Web3ContractError> {
+    if trusted_oracle_keys.is_empty() {
+        return Err(Web3ContractError::InvalidProof(
+            "trusted public settlement oracle keys missing".to_string(),
+        ));
+    }
+    let oracle_public_key = evidence.oracle_public_key.as_ref().ok_or_else(|| {
+        Web3ContractError::InvalidProof("oracle conversion evidence signer key missing".to_string())
+    })?;
+    if !trusted_oracle_keys
+        .iter()
+        .any(|trusted_key| trusted_key == oracle_public_key)
+    {
+        return Err(Web3ContractError::InvalidProof(
+            "oracle conversion evidence signer key is not trusted".to_string(),
+        ));
+    }
+    let signature = evidence.signature.as_ref().ok_or_else(|| {
+        Web3ContractError::InvalidProof("oracle conversion evidence signature missing".to_string())
+    })?;
+    let body = oracle_conversion_evidence_signature_body(evidence);
+    let signature_valid = oracle_public_key
+        .verify_canonical(&body, signature)
+        .map_err(|error| {
+            Web3ContractError::InvalidProof(format!(
+                "oracle conversion evidence signature verification failed: {error}"
+            ))
+        })?;
+    if signature_valid {
+        Ok(())
+    } else {
+        Err(Web3ContractError::InvalidProof(
+            "oracle conversion evidence signature verification failed".to_string(),
+        ))
+    }
+}
+
+fn oracle_conversion_evidence_signature_body(
+    evidence: &OracleConversionEvidence,
+) -> OracleConversionEvidence {
+    let mut body = evidence.clone();
+    body.signature = None;
+    body
+}
+
+fn expected_oracle_converted_cost_units(
+    evidence: &OracleConversionEvidence,
+) -> Result<u64, Web3ContractError> {
+    let base_minor_units = oracle_minor_units_per_unit(&evidence.original_currency)?;
+    let quote_minor_units = oracle_minor_units_per_unit(&evidence.grant_currency)?;
+    let numerator = u128::from(evidence.original_cost_units)
+        .checked_mul(u128::from(evidence.rate_numerator))
+        .and_then(|value| value.checked_mul(quote_minor_units))
+        .ok_or_else(|| {
+            Web3ContractError::InvalidProof(
+                "oracle conversion evidence numerator overflowed".to_string(),
+            )
+        })?;
+    let denominator = base_minor_units
+        .checked_mul(u128::from(evidence.rate_denominator))
+        .ok_or_else(|| {
+            Web3ContractError::InvalidProof(
+                "oracle conversion evidence denominator overflowed".to_string(),
+            )
+        })?;
+    let converted = numerator.div_ceil(denominator);
+    u64::try_from(converted).map_err(|_| {
+        Web3ContractError::InvalidProof(
+            "oracle conversion evidence converted_cost_units overflowed".to_string(),
+        )
+    })
+}
+
+fn oracle_minor_units_per_unit(currency: &str) -> Result<u128, Web3ContractError> {
+    match currency {
+        "USD" | "EUR" | "GBP" => Ok(100),
+        "JPY" => Ok(1),
+        "USDC" | "USDT" => Ok(1_000_000),
+        "BTC" => Ok(100_000_000),
+        "ETH" | "LINK" => Ok(1_000_000_000_000_000_000),
+        other => Err(Web3ContractError::InvalidProof(format!(
+            "oracle conversion evidence currency {other} is unsupported"
+        ))),
+    }
 }
 pub fn validate_anchor_inclusion_proof(
     proof: &AnchorInclusionProof,
@@ -207,6 +348,30 @@ pub fn validate_anchor_inclusion_proof(
             &chain_anchor.block_hash,
             "anchor_inclusion.chain_anchor.block_hash",
         )?;
+        let operator_key_hash =
+            Hash::from_hex(&chain_anchor.operator_key_hash).map_err(|error| {
+                Web3ContractError::InvalidBinding(format!(
+                    "chain anchor operator_key_hash must be a 32-byte hex hash: {error}"
+                ))
+            })?;
+        if operator_key_hash == Hash::zero() {
+            return Err(Web3ContractError::InvalidBinding(
+                "chain anchor operator_key_hash must not be zero".to_string(),
+            ));
+        }
+        if chain_anchor.operator_epoch == 0 {
+            return Err(Web3ContractError::InvalidBinding(
+                "chain anchor operator_epoch must be non-zero".to_string(),
+            ));
+        }
+        let expected_operator_key =
+            expected_operator_key_hash(&proof.key_binding_certificate.certificate.chio_public_key)?;
+        if operator_key_hash != expected_operator_key {
+            return Err(Web3ContractError::InvalidBinding(
+                "chain anchor operator_key_hash must match binding certificate public key"
+                    .to_string(),
+            ));
+        }
         if chain_anchor.anchored_checkpoint_seq != proof.checkpoint_statement.checkpoint_seq {
             return Err(Web3ContractError::InvalidProof(
                 "chain anchor checkpoint seq must match checkpoint statement".to_string(),
@@ -217,9 +382,10 @@ pub fn validate_anchor_inclusion_proof(
                 "chain anchor root must match checkpoint statement".to_string(),
             ));
         }
-        if chain_anchor.operator_address
-            != proof.key_binding_certificate.certificate.settlement_address
-        {
+        if !evm_addresses_match(
+            &chain_anchor.operator_address,
+            &proof.key_binding_certificate.certificate.settlement_address,
+        )? {
             return Err(Web3ContractError::InvalidBinding(
                 "chain anchor operator address must match settlement binding".to_string(),
             ));

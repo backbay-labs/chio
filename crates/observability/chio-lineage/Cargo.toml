@@ -13,7 +13,6 @@ name = "chio_lineage"
 
 [dependencies]
 chio-core-types = { workspace = true }
-petgraph = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

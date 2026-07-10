@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-commerce/v1/mandate-allowance-ledger.schema.json",
+  "title": "Chio Commerce Mandate Allowance Ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "order_id",
+    "merchant_subject",
+    "max_amount_minor",
+    "currency",
+    "quote_sha256",
+    "valid_from",
+    "expires_at",
+    "single_use",
+    "used_occurrences",
+    "max_occurrences",
+    "ap2_checkout_mandate_hash",
+    "ap2_payment_mandate_hash",
+    "acp_delegated_payment_token_hash",
+    "x402_payment_requirements_hash",
+    "protocol_projections"
+  ],
+  "properties": {
+    "schema": { "const": "chio.commerce.mandate-allowance-ledger.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "order_id": { "type": "string", "minLength": 1 },
+    "merchant_subject": { "type": "string", "minLength": 1 },
+    "max_amount_minor": { "type": "integer", "minimum": 1 },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "quote_sha256": { "$ref": "#/$defs/sha256" },
+    "valid_from": { "type": "string", "minLength": 1 },
+    "expires_at": { "type": "string", "minLength": 1 },
+    "single_use": { "type": "boolean" },
+    "used_occurrences": { "type": "integer", "minimum": 0 },
+    "max_occurrences": { "type": "integer", "minimum": 1 },
+    "ap2_checkout_mandate_hash": { "$ref": "#/$defs/sha256" },
+    "ap2_payment_mandate_hash": { "$ref": "#/$defs/sha256" },
+    "acp_delegated_payment_token_hash": { "$ref": "#/$defs/sha256" },
+    "x402_payment_requirements_hash": { "$ref": "#/$defs/sha256" },
+    "protocol_projections": {
+      "type": "array",
+      "minItems": 5,
+      "items": { "$ref": "#/$defs/protocolProjection" }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "protocolProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protocol",
+        "purpose",
+        "digest",
+        "payload_path",
+        "order_id",
+        "amount_minor",
+        "currency"
+      ],
+      "properties": {
+        "protocol": {
+          "type": "string",
+          "enum": ["ap2", "acp-commerce", "x402", "chio"]
+        },
+        "purpose": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/sha256" },
+        "payload_path": { "$ref": "#/$defs/bundleRelativePath" },
+        "order_id": { "type": "string", "minLength": 1 },
+        "amount_minor": { "type": "integer", "minimum": 1 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      }
+    },
+    "bundleRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "\\\\" },
+          { "pattern": "(^|/)\\.\\.(/|$)" }
+        ]
+      }
+    }
+  }
+}

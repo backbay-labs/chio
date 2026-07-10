@@ -1,9 +1,5 @@
 # Compliance Evidence Export Plan
 
-**Date:** 2026-03-23
-**Status:** Initial local implementation shipped and verified
-**Roadmap link:** `STRATEGIC_ROADMAP.md` Q2 2027 "Regulatory compliance evidence package"
-
 ## Goal
 
 Produce a turnkey export that a regulated operator can hand to an auditor and
@@ -138,7 +134,7 @@ evidence-package/
   - package manifest types
   - inclusion-proof record types
   - local SQLite export helpers
-- `crates/products/chio-cli/src/evidence_export.rs`
+- `crates/products/chio-cli`
   - CLI orchestration
   - output directory/tar writing
   - policy-file attachment handling

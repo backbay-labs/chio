@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-enterprise/v1/telemetry-projection.schema.json",
+  "title": "Chio Enterprise Telemetry Projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "passport_id",
+    "risk_comptroller_report_ref",
+    "events"
+  ],
+  "properties": {
+    "schema": { "const": "chio.enterprise.telemetry-projection.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "passport_id": { "type": "string", "minLength": 1 },
+    "risk_comptroller_report_ref": { "type": "string", "minLength": 1 },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event" },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_id", "event_kind", "artifact_ref", "artifact_sha256"],
+      "properties": {
+        "event_id": { "type": "string", "minLength": 1 },
+        "event_kind": { "type": "string", "minLength": 1 },
+        "artifact_ref": { "type": "string", "minLength": 1 },
+        "artifact_sha256": { "$ref": "#/$defs/sha256" },
+        "receipt_ref": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

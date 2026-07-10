@@ -10,6 +10,7 @@
     "packages/ai-sdk",
     "packages/chio-ai-sdk-middleware",
     "packages/chio-next",
+    "packages/wasm-core",
     "packages/browser",
     "packages/mobile",
     "packages/passkey",
@@ -29,5 +30,9 @@
   "scripts": {
     "build": "node ./scripts/run-publishable-workspaces.mjs build",
     "test": "node ./scripts/run-publishable-workspaces.mjs test"
+  },
+  "overrides": {
+    "postcss": "8.5.16",
+    "uuid": "11.1.1"
   }
 }

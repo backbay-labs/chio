@@ -206,17 +206,4 @@ mod tests {
         assert_eq!(envelope, back);
         verify_signed_provenance(&back).unwrap();
     }
-
-    #[test]
-    fn provenance_error_display_em_dash_free() {
-        let errs = vec![
-            ProvenanceError::Crypto("bad seed".to_string()),
-            ProvenanceError::SignatureMismatch,
-            ProvenanceError::CanonicalDrift,
-            ProvenanceError::AlgorithmMismatch,
-        ];
-        for e in errs {
-            assert!(!e.to_string().contains('\u{2014}'));
-        }
-    }
 }

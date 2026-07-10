@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-commerce/v1/event-log.schema.json",
+  "title": "Chio Commerce Event Log",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "issued_at", "order_id", "events"],
+  "properties": {
+    "schema": { "const": "chio.commerce.event-log.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "order_id": { "type": "string", "minLength": 1 },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/event" }
+    }
+  },
+  "$defs": {
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "idempotency_key",
+        "actor",
+        "order_id",
+        "prior_state",
+        "next_state",
+        "transition",
+        "occurred_at",
+        "authority_receipt_ref",
+        "evidence_refs",
+        "event_sha256"
+      ],
+      "properties": {
+        "event_id": { "type": "string", "minLength": 1 },
+        "idempotency_key": { "type": "string", "minLength": 1 },
+        "actor": { "type": "string", "minLength": 1 },
+        "order_id": { "type": "string", "minLength": 1 },
+        "prior_state": { "type": "string", "minLength": 1 },
+        "next_state": { "type": "string", "minLength": 1 },
+        "transition": { "type": "string", "minLength": 1 },
+        "occurred_at": { "type": "string", "minLength": 1 },
+        "authority_receipt_ref": { "type": "string", "minLength": 1 },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "event_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

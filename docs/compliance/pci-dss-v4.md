@@ -1,5 +1,4 @@
 ---
-status: draft
 date: 2026-04-16
 framework: PCI DSS v4.0 (March 2022, effective March 2025)
 maintainer: Chio Protocol Team
@@ -14,7 +13,7 @@ maintainer: Chio Protocol Team
 | Framework | Payment Card Industry Data Security Standard v4.0 |
 | Published | March 2022, fully effective March 31, 2025 |
 | Scope | All 12 requirement groups |
-| Chio Profile | Current v1-only pre-release profile; draft originally tracked under internal phase 15 |
+| Chio Profile | Current v1-only pre-release profile |
 | Document Date | 2026-04-16 |
 
 ---
@@ -54,7 +53,7 @@ This mapping covers all 12 requirement groups with coverage level, gaps, and cus
 | 2.2.7 | Non-console admin access uses strong crypto | HTTP endpoints support TLS; mTLS documented for tool-server transport | partial | `min_tls_version` config option is planned, not yet enforced | TLS configuration |
 | 2.3 | Wireless environments secured | N/A | out-of-scope | N/A | Wireless policy |
 | **Req 3** | Protect stored account data | Chio does not store CHD. Receipt content hashes are SHA-256 of arguments (not raw CHD) | partial | Guard evidence (e.g., `response_sanitization` output snippets) may contain sensitive substrings before redaction | Encryption at rest for data stores |
-| 3.2 | Account data storage minimized | Receipts store hashes, not raw arguments; see `crates/core/chio-core-types/src/receipt.rs` | strong | None in receipt payload | PAN minimization in tool servers |
+| 3.2 | Account data storage minimized | Receipts store hashes, not raw arguments; see `crates/core/chio-core-types` | strong | None in receipt payload | PAN minimization in tool servers |
 | 3.3 | SAD is not stored after authorization | N/A | out-of-scope | N/A | SAD handling in tool servers |
 | 3.4 | PAN is rendered unreadable | PAN redaction in guard outputs is configurable via `secret_leak.rs` / `response_sanitization.rs` patterns | partial | No shipped PAN-specific pattern library | PAN pattern set for `response_sanitization` |
 | 3.5 | Cryptographic keys used to protect PAN are secured | Chio signing keys are not PAN-encryption keys; FIPS/HSM path planned (`docs/protocols/COMPLIANCE-ROADMAP.md` section 2) | partial | HSM backends (Vault/KMS) not yet shipped | Key management for PAN |
@@ -71,8 +70,8 @@ This mapping covers all 12 requirement groups with coverage level, gaps, and cus
 | 6.2 | Bespoke and custom software is developed securely | `cargo test --workspace`, `cargo fmt --check`, canonical JSON (RFC 8785) for all signed payloads | strong | None at protocol layer | SDLC evidence |
 | 6.3 | Security vulnerabilities are identified and addressed | GitHub issue tracker; dependency review | partial | No formal vuln disclosure policy | Vuln disclosure policy |
 | 6.4 | Public-facing web applications are protected | Chio is not public-facing by default; `chio trust serve` requires Bearer auth (`docs/RECEIPT_QUERY_API.md`) | partial | No WAF integration | WAF for public endpoints |
-| 6.5 | Changes to systems and software are managed | Policy hash in every receipt (`crates/core/chio-core-types/src/receipt.rs`) ties call to policy version | strong | No change-management workflow shipped | Change-management process |
-| **Req 7** | Restrict access to system components and cardholder data by business need to know | Capability tokens (`crates/core/chio-core-types/src/capability.rs`) scope access to specific tools and servers | strong | None at tool-access layer | Role/permission design |
+| 6.5 | Changes to systems and software are managed | Policy hash in every receipt (`crates/core/chio-core-types`) ties call to policy version | strong | No change-management workflow shipped | Change-management process |
+| **Req 7** | Restrict access to system components and cardholder data by business need to know | Capability tokens (`crates/core/chio-core-types/src/capability`) scope access to specific tools and servers | strong | None at tool-access layer | Role/permission design |
 | 7.2 | Access is defined and assigned appropriately | `ToolGrant` with `scope`, `constraints`, expiry; delegation attenuation in `capability.rs` | strong | None | Role definitions |
 | 7.2.5 | Application and system accounts least-privilege | Capability-based least-privilege is the default | strong | None | Grant design per agent |
 | 7.3 | Access is managed through access-control systems | Capability issuance via `chio-governance` / `chio-control-plane`; revocation via `revocation_runtime.rs` | strong | None | Access-control ownership |
@@ -126,8 +125,8 @@ Customer-responsibility items that implementers must not assume Chio provides:
 
 ## Cross-References
 
-- Capability tokens, grants, delegation: `crates/core/chio-core-types/src/capability.rs`
-- Receipt structure and signing: `crates/core/chio-core-types/src/receipt.rs`, `crates/kernel/chio-kernel/src/receipt_support.rs`
+- Capability tokens, grants, delegation: `crates/core/chio-core-types/src/capability`
+- Receipt structure and signing: `crates/core/chio-core-types`, `crates/kernel/chio-kernel/src/receipt_support`
 - Receipt store and retention: `crates/kernel/chio-kernel/src/receipt_store.rs`, `crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs`
 - Checkpoints: `crates/kernel/chio-kernel/src/checkpoint.rs`
 - DPoP: `crates/kernel/chio-kernel/src/dpop.rs`

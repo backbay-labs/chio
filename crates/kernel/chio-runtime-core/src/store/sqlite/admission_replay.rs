@@ -1,5 +1,7 @@
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 
+use chio_swarm_authority::SwarmAuthorityBundle;
+
 use super::{sqlite_error, SqliteRuntimeOrchestrationStore};
 use crate::hash::runtime_admission_bundle_sha256;
 use crate::store::traits::RuntimeAdmissionStore;
@@ -73,6 +75,13 @@ impl RuntimeAdmissionStore for SqliteRuntimeOrchestrationStore {
         SqliteRuntimeOrchestrationStore::treaty_runtime_artifact(self, evidence_kind, evidence_id)
     }
 
+    fn swarm_authority_bundle(
+        &self,
+        task_graph_id: &str,
+    ) -> Result<Option<SwarmAuthorityBundle>, ChioRuntimeError> {
+        self.load_swarm_authority_bundle(task_graph_id)
+    }
+
     fn consume_destructive_lease(
         &self,
         lease_id: &str,
@@ -139,6 +148,42 @@ impl RuntimeAdmissionStore for SqliteRuntimeOrchestrationStore {
         connection
             .execute(
                 "DELETE FROM runtime_consumed_treaty_continuations WHERE continuation_id = ?1 AND admission_id = ?2",
+                params![continuation_id, admission_id],
+            )
+            .map_err(sqlite_error)?;
+        Ok(())
+    }
+
+    fn consume_swarm_continuation(
+        &self,
+        continuation_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChioRuntimeError> {
+        let connection = self.lock_connection()?;
+        let inserted = connection
+            .execute(
+                "INSERT OR IGNORE INTO runtime_consumed_swarm_continuations (continuation_id, admission_id) VALUES (?1, ?2)",
+                params![continuation_id, admission_id],
+            )
+            .map_err(sqlite_error)?;
+        if inserted == 0 {
+            return Err(ChioRuntimeError::Rejected {
+                code: "chio_swarm_continuation_replay",
+                detail: format!("swarm continuation {continuation_id} was already consumed"),
+            });
+        }
+        Ok(())
+    }
+
+    fn release_swarm_continuation(
+        &self,
+        continuation_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChioRuntimeError> {
+        let connection = self.lock_connection()?;
+        connection
+            .execute(
+                "DELETE FROM runtime_consumed_swarm_continuations WHERE continuation_id = ?1 AND admission_id = ?2",
                 params![continuation_id, admission_id],
             )
             .map_err(sqlite_error)?;

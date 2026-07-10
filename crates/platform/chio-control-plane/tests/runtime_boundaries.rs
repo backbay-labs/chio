@@ -119,9 +119,33 @@ fn runtime_entrypoints_remain_decomposed_and_reexported() {
     );
     assert!(
         repo_root()
-            .join("crates/kernel/chio-kernel/src/receipt_support.rs")
+            .join("crates/kernel/chio-kernel/src/receipt_support/mod.rs")
             .exists(),
-        "chio-kernel receipt support file must exist",
+        "chio-kernel receipt support facade file must exist",
+    );
+    assert!(
+        repo_root()
+            .join("crates/kernel/chio-kernel/src/receipt_support/receipt_metadata.rs")
+            .exists(),
+        "chio-kernel receipt metadata boundary file must exist",
+    );
+    assert!(
+        repo_root()
+            .join("crates/kernel/chio-kernel/src/receipt_support/receipt_content.rs")
+            .exists(),
+        "chio-kernel receipt content boundary file must exist",
+    );
+    assert!(
+        repo_root()
+            .join("crates/kernel/chio-kernel/src/receipt_support/receipt_scopes.rs")
+            .exists(),
+        "chio-kernel receipt scopes boundary file must exist",
+    );
+    assert!(
+        repo_root()
+            .join("crates/kernel/chio-kernel/src/receipt_support/receipt_building.rs")
+            .exists(),
+        "chio-kernel receipt building boundary file must exist",
     );
     assert!(
         repo_root()
@@ -156,6 +180,7 @@ fn runtime_boundary_map_is_present() {
     assert!(doc.contains("federation_policy.rs"));
     assert!(doc.contains("scim_lifecycle.rs"));
     assert!(doc.contains("runtime/protocol.rs"));
-    assert!(doc.contains("receipt_support.rs"));
+    assert!(doc.contains("receipt_support/mod.rs"));
+    assert!(doc.contains("receipt_support/receipt_metadata.rs"));
     assert!(doc.contains("request_matching.rs"));
 }

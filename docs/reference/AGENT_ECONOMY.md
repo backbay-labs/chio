@@ -1,8 +1,7 @@
 # Chio Agent Economy: Technical Design
 
-Status: Historical internal milestone design; implemented economic primitives are part of the current v1 pre-release profile.
+Scope: economic substrate design; implemented economic primitives are part of the current v1 pre-release profile.
 Authors: Engineering
-Date: 2026-03-21 (updated 2026-04-02)
 
 > Historical internal milestone note. Any `v2.x` labels below are pre-release
 > implementation milestones, not Chio-owned protocol, schema, SDK, or runtime
@@ -37,7 +36,7 @@ truth; they do not become a second ledger.
 
 ### 2.1 Invocation-Count Budgets
 
-`ToolGrant` in `crates/core/chio-core/src/capability.rs` carries an optional invocation cap:
+`ToolGrant` in `crates/core/chio-core` carries an optional invocation cap:
 
 ```rust
 pub struct ToolGrant {
@@ -122,7 +121,7 @@ Delta queries via `list_usages_after(limit, after_seq)` enable efficient replica
 
 ### 2.5 Delegation Attenuation
 
-`Attenuation::ReduceBudget` in `crates/core/chio-core/src/capability.rs` already supports narrowing invocation counts during delegation:
+`Attenuation::ReduceBudget` in `crates/core/chio-core` already supports narrowing invocation counts during delegation:
 
 ```rust
 pub enum Attenuation {
@@ -139,7 +138,7 @@ pub enum Attenuation {
 
 ### 2.6 Receipt Metadata
 
-`ChioReceipt` and `ChioReceiptBody` in `crates/core/chio-core/src/receipt.rs` carry:
+`ChioReceipt` and `ChioReceiptBody` in `crates/core/chio-core` carry:
 
 ```rust
 pub metadata: Option<serde_json::Value>,
@@ -173,7 +172,7 @@ rely on persisted local state rather than ad hoc inference.
 
 #### 3.1.1 New Types in `chio-core`
 
-Add to `crates/core/chio-core/src/capability.rs`:
+Add to `crates/core/chio-core`:
 
 ```rust
 /// A monetary amount with currency denomination.
@@ -217,7 +216,7 @@ fail-closed by v1 consumers until a future public evolution decision exists.
 
 #### 3.1.2 Attenuation for Cost Budgets
 
-Add a new `Attenuation` variant in `crates/core/chio-core/src/capability.rs`:
+Add a new `Attenuation` variant in `crates/core/chio-core`:
 
 ```rust
 pub enum Attenuation {
@@ -382,7 +381,7 @@ For reconciliation, the receipt log (section 3.5) records the delegation depth a
 
 #### 3.4.1 New Constraint Variants
 
-Add to `Constraint` in `crates/core/chio-core/src/capability.rs`:
+Add to `Constraint` in `crates/core/chio-core`:
 
 ```rust
 pub enum Constraint {
@@ -718,7 +717,7 @@ cost when the configured payment rail is not prepaid.
 
 | Adapter | Rail | Settlement | Notes |
 |---------|------|-----------|-------|
-| `AcpPaymentAdapter` | ACP / Shared Payment Token | Hold + capture | Seller-scoped commerce approvals with explicit `max_amount` bounds and receipt-linked shared payment token evidence. |
+| `AcpPaymentAdapter` | ACP-Commerce / Shared Payment Token | Hold + capture | Seller-scoped commerce approvals with explicit `max_amount` bounds and receipt-linked shared payment token evidence. |
 | `X402PaymentAdapter` | x402 HTTP payment protocol | Prepaid per-request | HTTP 402 negotiation. The adapter settles before retry, so denial can still happen before execution. |
 | `StablecoinPaymentAdapter` | USDC/USDT on EVM chains | Async (block confirmation) | On-chain transfer or hold model. Receipts may carry `pending` settlement state until confirmations land. |
 
@@ -745,7 +744,7 @@ When configured, the kernel follows this rule set:
    `Decision::Allow` and records the failed settlement state plus a recovery
    reference in `FinancialReceiptMetadata`. Reconciliation happens out-of-band.
 
-For operator visibility, Chio preserves x402 and ACP bridge details inside
+For operator visibility, Chio preserves x402 and ACP-Commerce bridge details inside
 `FinancialReceiptMetadata.cost_breakdown.payment`, including the prepaid
 authorization or hold id plus adapter metadata. Governed receipts also preserve
 seller-scoped commerce approval context under `governed_transaction.commerce`.
@@ -1012,7 +1011,7 @@ Spending analytics and anomaly detection.
 - The liability-market posture is now locally qualified end to end across
   curated provider admission, quote/bind, claim/dispute workflow evidence, and
   one bounded payout-and-settlement lane. Chio can now prove the marketplace
-  orchestration layer it claims without implying autonomous insurer pricing,
+  orchestration layer it claims without implying autonomous insurer rate setting,
   open-ended payment rails, cross-network clearing, or permissionless market
   trust.
 - Delegated pricing authority is now explicit instead of implied. Chio issues a
@@ -1200,7 +1199,7 @@ operator-managed sidecar data keyed by `receipt_id`.*
 
 **The economic primitives are implemented in the current pre-release v1 branch.**
 They are available in the current codebase. Earlier work also added governed
-transaction metadata, x402 and ACP bridge integrations, truthful settlement
+transaction metadata, x402 and ACP-Commerce bridge integrations, truthful settlement
 linkage, settlement backlog reporting, and explicit invocation-plus-money
 budget dimensions on operator reports. Broader observability, Stripe-style
 adapters, and cross-org settlement automation remain planned.
@@ -1216,7 +1215,7 @@ Operational guides for current v1 features:
 
 These deliverables are implemented in the current pre-release v1 branch:
 
-- `MonetaryAmount` type in `crates/core/chio-core/src/capability.rs`.
+- `MonetaryAmount` type in `crates/core/chio-core`.
 - `max_cost_per_invocation` and `max_total_cost` fields on `ToolGrant`; `is_subset_of` enforces cost caps through delegation chains.
 - `ReduceCostPerInvocation` and `ReduceTotalCost` attenuation variants.
 - `total_cost_charged` in `BudgetUsageRecord` and `capability_grant_budgets` table.
@@ -1233,10 +1232,10 @@ These deliverables are implemented in the current pre-release v1 branch:
 
 | File | What shipped |
 |------|-------------|
-| `crates/core/chio-core/src/capability.rs` | `MonetaryAmount`, `ToolGrant` monetary fields, attenuation variants, `is_subset_of` monetary checks |
+| `crates/core/chio-core` | `MonetaryAmount`, `ToolGrant` monetary fields, attenuation variants, `is_subset_of` monetary checks |
 | `crates/kernel/chio-kernel/src/budget_store.rs` | `BudgetUsageRecord.total_cost_charged`, `try_charge_cost`, schema migration, replication |
 | `crates/kernel/chio-kernel/src/lib.rs` | `ToolInvocationCost`, `invoke_with_cost`, kernel cost verification, receipt population |
-| `crates/core/chio-core/src/receipt.rs` | `FinancialReceiptMetadata` (serialized into `metadata` field) |
+| `crates/core/chio-core` | `FinancialReceiptMetadata` (serialized into `metadata` field) |
 | `crates/kernel/chio-kernel/src/receipt_store.rs` | Cost indexing columns, `RetentionConfig`, archival rotation |
 | `crates/guards/chio-guards/src/velocity.rs` | `VelocityGuard` token-bucket implementation |
 

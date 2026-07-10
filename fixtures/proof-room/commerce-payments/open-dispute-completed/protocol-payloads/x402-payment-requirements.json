@@ -1,0 +1,1 @@
+{"amount_minor":4200,"currency":"USD","merchant_subject":"merchant:stripe:coffee-shop","order_id":"order-commerce-001","protocol":"x402","purpose":"payment_requirements","schema":"chio.commerce.protocol-payload.v1"}

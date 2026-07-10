@@ -366,8 +366,8 @@ function evaluationFields(
  *
  *   1. `record.decision` as a string ("allow"/"deny"/...).
  *   2. `record.decision` as a tagged-enum object `{ verdict: "allow" }`.
- *   3. `receipt.decision` as a string. Legacy SDK fixtures sometimes
- *      inline a string here instead of the tagged-enum object.
+ *   3. `receipt.decision` as a string. Some SDK fixtures inline a string
+ *      here instead of the tagged-enum object.
  *   4. `receipt.decision` as a tagged-enum object `{ verdict: "..." }`.
  *      Used by some non-Rust receipt shims.
  *   5. `receipt.verdict` as a tagged-enum object `{ verdict: "..." }`.

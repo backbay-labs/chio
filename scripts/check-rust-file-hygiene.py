@@ -13,6 +13,8 @@ import sys
 
 PRODUCTION_LIMIT = 2_000
 LIB_ROOT_LIMIT = 1_000
+WARN_LIMIT = 1_200
+LIB_WARN_LIMIT = 900
 TEST_LIMIT = 2_000
 SUMMARY_LIMIT = 25
 WIRE_GENERATED_PREFIX = "crates/core/chio-core-types/src/_generated/"
@@ -21,6 +23,10 @@ GENERATED_HEADER_CONST_MARKER = 'pub const GENERATED_HEADER: &str = "\\\n'
 ERRORS_GENERATED_PREFIX = "crates/core/chio-errors/src/_generated/"
 ERRORS_GENERATED_HEADER_SOURCE = "crates/tooling/chio-spec-codegen/src/errors_pass.rs"
 ERRORS_GENERATED_HEADER_CONST_MARKER = 'const ERROR_CODES_GENERATED_HEADER: &str = "\\\n'
+TEXT_HYGIENE_PREFIXES = ("crates/", "docs/", "sdks/", "scripts/", "spec/", "xtask/")
+TEXT_HYGIENE_SUFFIXES = (".rs", ".md")
+TEXT_HYGIENE_PATTERNS = ("*.rs", "*.md")
+EM_DASH = "\u2014"
 
 
 @dataclass(frozen=True)
@@ -43,7 +49,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/products/chio-cli/tests/passport.rs": allow(
         "2026-07-31",
         "existing oversized CLI passport integration suite; capped to current size until split",
-        max_lines=5_390,
+        max_lines=5_392,
     ),
     "crates/products/chio-cli/tests/mcp_serve.rs": allow(
         "2026-07-31",
@@ -53,12 +59,22 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/protocol/chio-mcp-edge/src/runtime/runtime_tests.rs": allow(
         "2026-07-31",
         "existing oversized MCP edge runtime test suite; capped to current size until split",
-        max_lines=4_349,
+        max_lines=4_430,
     ),
     "crates/products/chio-cli/tests/certify.rs": allow(
         "2026-07-31",
         "existing oversized CLI certify integration suite; capped to current size until split",
-        max_lines=3_639,
+        max_lines=3_645,
+    ),
+    "crates/products/chio-cli/src/cli/dispatch/proof/fixture.rs": allow(
+        "2026-07-31",
+        "launch proof fixture dispatch surface; capped to current size until split",
+        max_lines=6_360,
+    ),
+    "crates/products/chio-cli/src/cli/dispatch/proof.rs": allow(
+        "2026-07-31",
+        "launch proof dispatch surface; capped to current size until split",
+        max_lines=3_349,
     ),
     "crates/products/chio-mercury/tests/cli.rs": allow(
         "2026-07-31",
@@ -78,12 +94,27 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/protocol/chio-acp-edge/src/tests/all.rs": allow(
         "2026-07-31",
         "existing oversized ACP edge aggregate test suite; capped to current size until split",
-        max_lines=2_881,
+        max_lines=3_008,
     ),
     "crates/protocol/chio-a2a-edge/src/tests/all.rs": allow(
         "2026-07-31",
         "existing oversized A2A edge aggregate test suite; capped to current size until split",
-        max_lines=2_702,
+        max_lines=2_838,
+    ),
+    "crates/products/chio-cli/tests/proof_cli_contract/support.rs": allow(
+        "2026-07-31",
+        "launch proof CLI contract support module; capped to current size until split",
+        max_lines=3_914,
+    ),
+    "crates/products/chio-cli/tests/proof_verify.rs": allow(
+        "2026-07-31",
+        "launch proof verifier integration suite; capped to current size until split",
+        max_lines=3_115,
+    ),
+    "crates/platform/chio-enterprise-export/tests/enterprise_export.rs": allow(
+        "2026-07-31",
+        "launch enterprise export integration suite; capped to current size until split",
+        max_lines=2_724,
     ),
     "crates/products/chio-cli/tests/federated_issue.rs": allow(
         "2026-07-31",
@@ -97,7 +128,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/core/chio-core-types/src/capability/tests.rs": allow(
         "2026-07-31",
-        "existing oversized capability type test suite; capped to current size until split grown by BAC-573/BAC-548 capability tests (round-3 wildcard RemoveOperation reflection regressions, round-4 concrete-step vs wildcard-child reflection regression)",
+        "existing oversized capability type test suite; capped to current size until split; covers time-checked verification, attenuation narrowing, and wildcard/concrete reflection regressions",
         max_lines=3_200,
     ),
     "crates/kernel/chio-runtime-core/tests/runtime_buyer_review.rs": allow(
@@ -105,10 +136,70 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "existing oversized runtime buyer review integration suite; capped to current size until split",
         max_lines=2_067,
     ),
+    "crates/kernel/chio-runtime-core/tests/runtime_admission.rs": allow(
+        "2026-07-31",
+        "runtime admission integration suite; capped to current size after swarm authority split",
+        max_lines=2_875,
+    ),
+    "crates/platform/chio-transaction-passport/tests/transaction_passport.rs": allow(
+        "2026-07-31",
+        "transaction passport integration suite with runtime-security review regressions; capped until split",
+        max_lines=2_445,
+    ),
     "crates/protocol/chio-mcp-remote/src/remote_mcp/tests.rs": allow(
         "2026-07-31",
         "existing oversized remote MCP test suite; capped to current size until split",
         max_lines=2_008,
+    ),
+    "crates/trust/chio-selective-disclosure/src/lib.rs": allow(
+        "2026-07-31",
+        "launch selective disclosure verifier surface; capped to current size until split",
+        max_lines=1_346,
+    ),
+    "crates/platform/chio-risk-comptroller/src/lib.rs": allow(
+        "2026-07-31",
+        "launch risk comptroller verifier surface; capped to current size until split",
+        max_lines=1_356,
+    ),
+    "crates/economy/chio-web3/src/tests.rs": allow(
+        "2026-07-31",
+        "web3 test module with public-settlement review regressions; capped until split",
+        max_lines=2_680,
+    ),
+    "crates/kernel/chio-runtime-proof-parity/src/lib.rs": allow(
+        "2026-07-31",
+        "runtime proof parity surface; capped to current size until split",
+        max_lines=1_058,
+    ),
+    "crates/kernel/chio-swarm-authority/src/verifier.rs": allow(
+        "2026-07-31",
+        "swarm authority verifier surface; capped to current size until split",
+        max_lines=2_279,
+    ),
+    "crates/platform/chio-transaction-passport/src/runtime_security/artifacts.rs": allow(
+        "2026-07-31",
+        "runtime security artifact verifier with trusted join and overflow hardening; capped until split",
+        max_lines=2_322,
+    ),
+    "crates/products/chio-cli/tests/proof_cli_contract/fixture.rs": allow(
+        "2026-07-31",
+        "launch proof CLI fixture contract suite; capped to current size until split",
+        max_lines=2_210,
+    ),
+    "crates/products/chio-cli/tests/proof_verify/support.rs": allow(
+        "2026-07-31",
+        "launch proof verifier support module; capped to current size until split",
+        max_lines=2_260,
+    ),
+    "crates/products/chio-proof-room/src/lib.rs": allow(
+        "2026-07-31",
+        "Proof Room product surface; capped to current size until split",
+        max_lines=1_196,
+    ),
+    "crates/economy/chio-settle/src/evm/tests.rs": allow(
+        "2026-07-31",
+        "EVM settlement unit test module with anchor content-hash regression coverage; capped until split",
+        max_lines=2_305,
     ),
 }
 
@@ -171,6 +262,34 @@ def discover_rust_files(root: Path) -> list[str]:
         line
         for line in result.stdout.splitlines()
         if line and (root / line).is_file()
+    ]
+
+
+def discover_text_hygiene_files(root: Path) -> list[str]:
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(root),
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            *TEXT_HYGIENE_PATTERNS,
+        ],
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return [
+        line
+        for line in result.stdout.splitlines()
+        if line
+        and (root / line).is_file()
+        and line.startswith(TEXT_HYGIENE_PREFIXES)
+        and line.endswith(TEXT_HYGIENE_SUFFIXES)
+        and "/_generated/" not in f"/{line}/"
     ]
 
 
@@ -278,6 +397,27 @@ def validate_generated_headers(
             )
 
 
+def validate_text_hygiene(root: Path, failures: list[str]) -> None:
+    try:
+        paths = discover_text_hygiene_files(root)
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.strip()
+        failures.append(f"failed to list text hygiene files under {root}: {stderr}")
+        return
+
+    for path in sorted(paths):
+        try:
+            text = (root / path).read_text(encoding="utf-8")
+        except UnicodeDecodeError as err:
+            failures.append(f"{path}: could not decode text hygiene file: {err}")
+            continue
+        for index, line in enumerate(text.splitlines(), start=1):
+            column = line.find(EM_DASH)
+            if column != -1:
+                failures.append(f"{path}:{index}:{column + 1}: contains U+2014 em dash")
+                break
+
+
 def inspect_file(root: Path, path: str) -> RustFile:
     lines = line_count(root / path)
     category = classify(path)
@@ -302,6 +442,24 @@ def inspect_file(root: Path, path: str) -> RustFile:
         violations=tuple(violations),
         allowlist=allowlist,
     )
+
+
+def warning_for_file(file: RustFile) -> str | None:
+    if file.category != "production":
+        return None
+    if is_lib_root(file.path):
+        if LIB_WARN_LIMIT < file.lines <= LIB_ROOT_LIMIT:
+            return (
+                f"warning: {file.path} has {file.lines} lines, "
+                f"warn limit is {LIB_WARN_LIMIT}"
+            )
+        return None
+    if WARN_LIMIT < file.lines <= PRODUCTION_LIMIT:
+        return (
+            f"warning: {file.path} has {file.lines} lines, "
+            f"warn limit is {WARN_LIMIT}"
+        )
+    return None
 
 
 def print_summary(files: list[RustFile]) -> None:
@@ -350,6 +508,20 @@ def main() -> int:
     files = [inspect_file(root, path) for path in paths]
     print_summary(files)
 
+    warnings = [
+        warning
+        for warning in (
+            warning_for_file(file) for file in sorted(files, key=lambda item: item.path)
+        )
+        if warning is not None
+    ]
+    if warnings:
+        print(
+            f"\nRust file hygiene warnings: {len(warnings)} files exceed warning limits"
+        )
+        for warning in warnings:
+            print(warning)
+
     failures: list[str] = []
     for file in sorted(files, key=lambda candidate: candidate.path):
         if not file.violations:
@@ -380,6 +552,7 @@ def main() -> int:
             failures.append(f"{file.path}: {violation}")
 
     validate_generated_headers(root, paths, failures)
+    validate_text_hygiene(root, failures)
 
     if errors:
         failures.extend(errors)

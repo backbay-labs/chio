@@ -1,0 +1,15 @@
+{
+  "amount_units": 1250,
+  "asset": "USDC",
+  "chio_payment_receipt_ref": "receipt-agent-web-x402-payment-allow",
+  "id": "x402-payment-agent-web-valid",
+  "network": "base-sepolia",
+  "object_kind": "x402_payment",
+  "order_id": "order-commerce-001",
+  "payment_proof_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "payment_requirements_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "resource_digest": "abababababababababababababababababababababababababababababababab",
+  "settlement_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "status": "settled",
+  "transaction_passport_ref": "passport-agent-web-valid"
+}

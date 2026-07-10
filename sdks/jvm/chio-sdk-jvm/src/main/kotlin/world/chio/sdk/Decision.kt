@@ -1,6 +1,6 @@
 /**
  * Tool-call verdict (allow / deny / cancelled / incomplete). Mirrors
- * chio_sdk.models.Decision (models.py:313-346).
+ * chio_sdk.models.Decision (models.py).
  */
 package world.chio.sdk
 

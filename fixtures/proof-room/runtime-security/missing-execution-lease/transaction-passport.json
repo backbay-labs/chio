@@ -1,0 +1,13 @@
+{
+  "schema": "chio.transaction-passport.v1",
+  "id": "runtime-passport-missing-lease",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "issuer": "did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+  "evidence_graph_sha256": "d8ac0fdcd8a27b26ae811a3166a0ffe62c6a0679561d651bd00644c38971f401",
+  "evidence_graph_path": "evidence-graph.json",
+  "claim_set_sha256": "27941b67907a3f7ca3238c9214866c4ac422f406269ebae6a508c60213e2eb3f",
+  "claim_set_path": "claim-set.json",
+  "verifier_policy_sha256": "e11a5ed0b53c7f77171213c4cb1673edcc3ebb38bd7dd55498ea38dc6309db97",
+  "verifier_policy_path": "verifier-policy.json",
+  "signature": "caca6b9713758cee6d58ce7a7757d9bd5f381ef7facddc560fa4ce9e8485931e3dece91d3e3e8fb50cab8a5ca2e36211276148d28d8ec0835a70480e4f226000"
+}

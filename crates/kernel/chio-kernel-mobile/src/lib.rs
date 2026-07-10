@@ -437,7 +437,7 @@ fn map_signing_error(error: ReceiptSigningError) -> ChioMobileError {
         ReceiptSigningError::KernelKeyMismatch => ChioMobileError::KernelKeyMismatch {
             message: "receipt body kernel_key does not match the public key derived from the signing seed".to_string(),
         },
-        // WYSIWYS mismatch (BAC-539). The public `sign_receipt` recomputes
+        // WYSIWYS mismatch. The public `sign_receipt` recomputes
         // `content_hash` over the caller-supplied canonical content preimage
         // inside the trust boundary and produces this variant on a
         // render-A / sign-B mismatch. Surfaced as a distinct, fail-closed error.
@@ -455,7 +455,7 @@ fn map_signing_error(error: ReceiptSigningError) -> ChioMobileError {
 /// Sign a receipt body with the Ed25519 seed `signing_seed_hex` (PUBLIC WYSIWYS
 /// signer; fail-closed).
 ///
-/// WYSIWYS (BAC-539): `canonical_content_hex` is the lowercase-hex encoding of
+/// WYSIWYS: `canonical_content_hex` is the lowercase-hex encoding of
 /// the exact byte preimage `body.content_hash` was derived from. The signer
 /// recomputes `sha256_hex(canonical_content)` *inside the trust boundary* via
 /// `chio_kernel_core::sign_receipt` and refuses to sign when it disagrees with
@@ -463,7 +463,7 @@ fn map_signing_error(error: ReceiptSigningError) -> ChioMobileError {
 /// boundary: a caller can no longer render content A while signing a body
 /// claiming hash(B). The public signer does NOT relay a trusted body; callers
 /// that only forward an upstream-minted body and cannot carry the preimage must
-/// use [`sign_receipt_relaying_trusted_body`] (the BAC-601 seam).
+/// use [`sign_receipt_relaying_trusted_body`] through the relay seam.
 ///
 /// The receipt body's `kernel_key` must equal the public key derived from the
 /// seed; otherwise the kernel-core signer fails fast with
@@ -492,7 +492,7 @@ pub fn sign_receipt(
     })
 }
 
-/// Relay-sign an already-minted, upstream-trusted receipt body (BAC-601 seam).
+/// Relay-sign an already-minted, upstream-trusted receipt body.
 ///
 /// This is NOT the default public signer. It trusts the caller-supplied
 /// `body.content_hash` and does NOT recompute it, routing through

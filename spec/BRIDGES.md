@@ -506,6 +506,10 @@ sequenceDiagram
     end
 ```
 
+Both a synchronous (`evaluate_tool_call_blocking`) and asynchronous
+(`evaluate_tool_call`) entrypoint are provided. Adapters use the entrypoint that
+matches their host protocol runtime.
+
 ### 4.4 Chat Completions API Support
 
 The adapter processes tool calls from Chat Completions API responses. The

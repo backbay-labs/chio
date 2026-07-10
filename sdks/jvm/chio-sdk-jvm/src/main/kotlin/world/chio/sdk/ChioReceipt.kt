@@ -1,6 +1,6 @@
 /**
  * Signed tool-call receipt. Mirrors chio_sdk.models.ChioReceipt
- * (models.py:419-442). Implements Serializable because it travels
+ * (models.py). Implements Serializable because it travels
  * inside EvaluationResult / FlinkProcessingOutcome which Flink
  * serialises across operator boundaries.
  */

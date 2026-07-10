@@ -20,6 +20,8 @@ from .identity import digest
 
 EXAMPLE_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = EXAMPLE_ROOT.parents[1]
+IOA_WEB3_TENANT_ID = "tenant-ioa-web3"
+PASSPORT_ISSUER_SEED_HEX = hashlib.sha256(b"meridian-passport-issuer").hexdigest()
 
 
 def _canonical(value: Any) -> bytes:
@@ -36,6 +38,7 @@ def _chio_bin() -> str:
 
 def _run_chio(args: list[str], *, cwd: Path = REPO_ROOT) -> Json:
     command = [_chio_bin(), "--format", "json", *args]
+    recorded_command = ["chio", "--format", "json", *args]
     completed = subprocess.run(
         command,
         cwd=cwd,
@@ -47,21 +50,21 @@ def _run_chio(args: list[str], *, cwd: Path = REPO_ROOT) -> Json:
     if completed.returncode != 0:
         raise RuntimeError(
             "chio command failed\n"
-            f"command: {' '.join(command)}\n"
+            f"command: {' '.join(recorded_command)}\n"
             f"stdout: {completed.stdout}\n"
             f"stderr: {completed.stderr}"
         )
     stdout = completed.stdout.strip()
     if not stdout:
-        return {"command": command, "stdout": ""}
+        return {"command": recorded_command, "stdout": ""}
     try:
         parsed = json.loads(stdout)
     except json.JSONDecodeError:
         parsed = {"stdout": stdout}
     if isinstance(parsed, dict):
-        parsed.setdefault("command", command)
+        parsed.setdefault("command", recorded_command)
         return parsed
-    return {"command": command, "output": parsed}
+    return {"command": recorded_command, "output": parsed}
 
 
 def _write_seed(path: Path, seed_hex: str) -> None:
@@ -78,6 +81,65 @@ def _sign_json(seed_hex: str, body: Json) -> tuple[str, str]:
     signature = key.sign(_canonical(body)).signature.hex()
     public_key = key.verify_key.encode(encoder=HexEncoder).decode("utf-8")
     return public_key, signature
+
+
+def _receipt_id_input(body: Json) -> Json:
+    required_fields = (
+        "timestamp",
+        "capability_id",
+        "tool_server",
+        "tool_name",
+        "action",
+        "receipt_kind",
+        "boundary_class",
+        "tool_origin",
+        "redaction_mode",
+        "content_hash",
+        "policy_hash",
+        "trust_level",
+        "kernel_key",
+    )
+    receipt_input = {field: body[field] for field in required_fields}
+    for field in (
+        "decision",
+        "observation_outcome",
+        "metadata",
+        "tenant_id",
+        "bbs_projection_version",
+    ):
+        if body.get(field) is not None:
+            receipt_input[field] = body[field]
+    for field in ("actor_chain", "evidence"):
+        if body.get(field):
+            receipt_input[field] = body[field]
+    return receipt_input
+
+
+def _prepare_chio_receipt_body(body: Json) -> Json:
+    prepared = json.loads(json.dumps(body, separators=(",", ":"), sort_keys=True))
+    nonce = str(prepared.get("id", "")).strip()
+    if nonce:
+        metadata = prepared.get("metadata")
+        if isinstance(metadata, dict):
+            bound_metadata = dict(metadata)
+        elif metadata is None:
+            bound_metadata = {}
+        else:
+            bound_metadata = {"original_metadata": metadata}
+        bound_metadata["chio_receipt_signing_nonce"] = nonce
+        prepared["metadata"] = bound_metadata
+    prepared["id"] = _sha256(_receipt_id_input(prepared))
+    return prepared
+
+
+def _sign_chio_receipt(seed_hex: str, body: Json) -> tuple[str, Json]:
+    key = _signing_key(seed_hex)
+    prepared = _prepare_chio_receipt_body(body)
+    signing_body = {"id": prepared["id"], "body": _receipt_id_input(prepared)}
+    signature = key.sign(_canonical(signing_body)).signature.hex()
+    public_key = key.verify_key.encode(encoder=HexEncoder).decode("utf-8")
+    receipt = {**prepared, "signature": signature}
+    return public_key, receipt
 
 
 def _ensure_receipt_schema(db_path: Path) -> None:
@@ -128,7 +190,7 @@ def _seed_history_receipts(
 ) -> Json:
     _ensure_receipt_schema(receipt_db)
     now = now_epoch()
-    issuer_seed = hashlib.sha256(b"chio-ioa-web3-history-kernel").hexdigest()
+    issuer_seed = PASSPORT_ISSUER_SEED_HEX
     issuer_key, _ = _sign_json(issuer_seed, {"seed": "history"})
     grants = scope(
         grant("provider-review", "inspect_service_order", ["invoke"]),
@@ -190,6 +252,10 @@ def _seed_history_receipts(
                     "parameter_hash": _sha256({"job_id": job_id, "provider": "proofworks-agent-auditors"}),
                 },
                 "decision": decision_body,
+                "receipt_kind": "mediated_decision",
+                "boundary_class": "prevent",
+                "tool_origin": "caller_executed",
+                "redaction_mode": "none",
                 "content_hash": _sha256({"job_id": job_id, "outcome": decision}),
                 "policy_hash": "ioa-web3-provider-history-policy",
                 "metadata": {
@@ -204,19 +270,20 @@ def _seed_history_receipts(
                         "provider_id": "proofworks-agent-auditors",
                     },
                 },
+                "trust_level": "mediated",
+                "tenant_id": IOA_WEB3_TENANT_ID,
                 "kernel_key": issuer_key,
             }
-            _, signature = _sign_json(issuer_seed, body)
-            receipt = {**body, "signature": signature}
+            _, receipt = _sign_chio_receipt(issuer_seed, body)
             conn.execute(
                 """
                 INSERT OR REPLACE INTO chio_tool_receipts (
                     receipt_id, timestamp, capability_id, subject_key, issuer_key, grant_index,
                     tool_server, tool_name, decision_kind, policy_hash, content_hash, raw_json, tenant_id
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL)
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
                 """,
                 (
-                    body["id"],
+                    receipt["id"],
                     timestamp,
                     provider_capability["id"],
                     provider_identity.public_key,
@@ -228,11 +295,12 @@ def _seed_history_receipts(
                     body["policy_hash"],
                     body["content_hash"],
                     json.dumps(receipt, separators=(",", ":"), sort_keys=True),
+                    IOA_WEB3_TENANT_ID,
                 ),
             )
             ledger["jobs"].append({
                 "job_id": job_id,
-                "receipt_id": body["id"],
+                "receipt_id": receipt["id"],
                 "decision": decision,
                 "timestamp": timestamp,
             })
@@ -289,13 +357,13 @@ def run_provider_passport_workflow(
     verifier_policy_path = state_dir / "provider-passport-verifier-policy.yaml"
     provenance_path = "identity/passports/proofworks-provider-passport-provenance.json"
 
+    _write_seed(passport_issuer_seed, PASSPORT_ISSUER_SEED_HEX)
     ledger = _seed_history_receipts(
         receipt_db=receipt_db,
         provider_identity=provider_identity,
         provider_capability=provider_capability,
         provider_bids=provider_bids,
     )
-    _write_seed(passport_issuer_seed, hashlib.sha256(b"meridian-passport-issuer").hexdigest())
     _write_seed(holder_seed, provider_identity.seed_hex)
     store.write_json("reputation/history-ledger.json", ledger)
 
@@ -425,8 +493,11 @@ def run_provider_reputation_workflow(
     state_dir = store.root / "state"
     receipt_db = state_dir / "provider-receipts.sqlite3"
     budget_db = state_dir / "provider-budgets.sqlite3"
+    passport_issuer_seed = state_dir / "chio-cli-seeds/passport-issuer.seed"
     passport_path = store.root / "identity/passports/proofworks-provider-passport.json"
     local = _run_chio([
+        "--authority-seed-file",
+        str(passport_issuer_seed),
         "--receipt-db",
         str(receipt_db),
         "--budget-db",
@@ -437,6 +508,8 @@ def run_provider_reputation_workflow(
         provider_identity.public_key,
     ])
     compare = _run_chio([
+        "--authority-seed-file",
+        str(passport_issuer_seed),
         "--receipt-db",
         str(receipt_db),
         "--budget-db",
@@ -520,6 +593,8 @@ def run_provider_federation_workflow(
         "Meridian Federation Verifier",
         "--capability",
         provider_capability["id"],
+        "--tenant",
+        IOA_WEB3_TENANT_ID,
         "--expires-at",
         str(now_epoch() + 86400),
         "--purpose",
@@ -534,6 +609,8 @@ def run_provider_federation_workflow(
         str(export_dir),
         "--federation-policy",
         str(policy_path),
+        "--tenant",
+        IOA_WEB3_TENANT_ID,
     ])
     import_args = ["evidence", "import", "--input", str(export_dir)]
     if federation_control_url:

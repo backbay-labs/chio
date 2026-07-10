@@ -6,6 +6,8 @@
 //! eval-receipt-regen) remain as top-level aliases; the dispatch in `main.rs`
 //! routes each leaf to its handler.
 
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand, ValueEnum};
 
 /// Workspace task runner. Run `cargo xtask <command> --help` for details.
@@ -156,7 +158,7 @@ pub enum CheckCommand {
     /// Run a fixture-and-schema gate by facet name.
     Fixtures {
         /// Facet name. Pheromone facets are in ci-gates/pheromone.toml; the
-        /// six `runtime-*` facets are in ci-gates/runtime.toml.
+        /// The `runtime-*` facets are in ci-gates/runtime.toml.
         facet: String,
         /// Schema/metadata validation only; skip cargo tests and orchestration.
         #[arg(long, conflicts_with = "negative_only")]
@@ -209,7 +211,23 @@ pub enum QualifyCommand {
     BoundedChio,
 }
 
-pending_group!(VerifyCommand);
+#[derive(Subcommand, Debug)]
+pub enum VerifyCommand {
+    /// Assemble and verify the public Proof Room launch acceptance package.
+    #[command(name = "launch-acceptance")]
+    LaunchAcceptance(LaunchAcceptanceArgs),
+}
+
+#[derive(clap::Args, Debug)]
+pub struct LaunchAcceptanceArgs {
+    /// Output directory for the assembled public bundle.
+    #[arg(long, default_value = "target/proof-room/public-bundle")]
+    pub out: PathBuf,
+    /// Validate and assemble metadata only; skip expensive verifier corpus runs.
+    #[arg(long)]
+    pub schema_only: bool,
+}
+
 pending_group!(FuzzCommand);
 pending_group!(MutantsCommand);
 pending_group!(ReleaseCommand);
@@ -386,6 +404,26 @@ mod tests {
                 command: QualifyCommand::BoundedChio
             }
         ));
+    }
+
+    #[test]
+    fn verify_launch_acceptance_parses() {
+        match parse(&[
+            "xtask",
+            "verify",
+            "launch-acceptance",
+            "--schema-only",
+            "--out",
+            "target/proof-room/public-bundle",
+        ]) {
+            Command::Verify {
+                command: VerifyCommand::LaunchAcceptance(args),
+            } => {
+                assert!(args.schema_only);
+                assert_eq!(args.out, PathBuf::from("target/proof-room/public-bundle"));
+            }
+            other => panic!("expected verify launch-acceptance, got {other:?}"),
+        }
     }
 
     #[test]

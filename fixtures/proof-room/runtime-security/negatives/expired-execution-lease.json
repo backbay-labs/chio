@@ -1,0 +1,12 @@
+{
+  "schema": "chio.runtime-security.negative-fixture.v1",
+  "id": "expired-execution-lease",
+  "claim_ref": "claim.runtime.execution_lease_valid",
+  "base_fixture": "fixtures/proof-room/runtime-security/valid-side-effecting-call/transaction-passport.json",
+  "mutation": {
+    "artifact": "execution-lease.json",
+    "field": "expires_at",
+    "value": "2026-06-09T23:59:59Z"
+  },
+  "expected_failure_code": "proof-room.negative.execution-lease-expired-before-issuance"
+}

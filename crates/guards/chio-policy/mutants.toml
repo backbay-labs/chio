@@ -13,7 +13,7 @@ minimum_test_timeout = 60
 
 examine_globs = [
     "crates/guards/chio-policy/src/evaluate.rs",
-    "crates/guards/chio-policy/src/compiler.rs",
+    "crates/guards/chio-policy/src/compiler/*.rs",
     "crates/guards/chio-policy/src/conditions.rs",
     "crates/guards/chio-policy/src/detection.rs",
     "crates/guards/chio-policy/src/merge.rs",

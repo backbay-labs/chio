@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-proof-room/v1/verifier-report.schema.json",
+  "title": "Chio Proof Room Verifier Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "verdict",
+    "bundle_id",
+    "fixture_id",
+    "source_verifier_report_ref",
+    "ui_verdict_source",
+    "rendered_claims"
+  ],
+  "properties": {
+    "schema": { "const": "chio.proof-room.verifier-report.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "verdict": { "type": "string", "enum": ["verified", "failed"] },
+    "bundle_id": { "type": "string", "minLength": 1 },
+    "fixture_id": { "type": "string", "minLength": 1 },
+    "source_verifier_report_ref": { "$ref": "#/$defs/artifactRef" },
+    "ui_verdict_source": { "const": "verifier_report_ref" },
+    "rendered_claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/renderedClaim" },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "bundleRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "\\\\" },
+          { "pattern": "(^|/)\\.\\.(/|$)" }
+        ]
+      }
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "schema"],
+      "properties": {
+        "path": { "$ref": "#/$defs/bundleRelativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "schema": { "type": "string", "minLength": 1 }
+      }
+    },
+    "renderedClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "source", "verdict"],
+      "properties": {
+        "claim_id": { "type": "string", "minLength": 1 },
+        "source": { "$ref": "#/$defs/bundleRelativePath" },
+        "verdict": { "type": "string", "enum": ["verified", "failed", "unsupported"] },
+        "checker": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

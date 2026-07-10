@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-proof-room/v1/fixture-catalog.schema.json",
+  "title": "Chio Proof Room Fixture Catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "fixtures"],
+  "properties": {
+    "schema": { "const": "chio.proof-room.fixture-catalog.v1" },
+    "fixtures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/catalogEntry" }
+    },
+    "available_fixtures": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/availableFixture" }
+    }
+  },
+  "$defs": {
+    "bundleRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": ":" },
+          { "pattern": "\\\\" },
+          { "pattern": "%2[fF]" },
+          { "pattern": "%5[cC]" },
+          { "pattern": "//" },
+          { "pattern": "\\s" },
+          { "pattern": "/$" },
+          { "pattern": "(^|/)\\.(/|$)" },
+          { "pattern": "(^|/)\\.\\.(/|$)" },
+          { "pattern": "(^|/)(%2[eE]|\\.){1,2}(/|$)" }
+        ]
+      }
+    },
+    "fixtureAssetPath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "\\\\" },
+          { "pattern": "//" },
+          { "pattern": "(^|/)\\.(/|$)" },
+          { "pattern": "(^|/)\\.\\.(/|$)" }
+        ]
+      }
+    },
+    "catalogEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_id",
+        "bundle_id",
+        "verdict",
+        "manifest_path",
+        "load_report_path",
+        "negative_cases"
+      ],
+      "properties": {
+        "fixture_id": { "type": "string", "minLength": 1 },
+        "bundle_id": { "type": "string", "minLength": 1 },
+        "verdict": { "type": "string", "enum": ["verified", "failed"] },
+        "manifest_path": { "$ref": "#/$defs/bundleRelativePath" },
+        "load_report_path": { "$ref": "#/$defs/bundleRelativePath" },
+        "negative_cases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/negativeCase" }
+        }
+      }
+    },
+    "negativeCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "expected_failure_code"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/fixtureAssetPath" },
+        "expected_failure_code": { "type": "string", "minLength": 1 },
+        "observed_failure_code": { "type": "string", "minLength": 1 }
+      }
+    },
+    "availableFixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "path", "description", "verifier_report"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "negative_cases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/negativeCase" }
+        },
+        "verifier_report": { "$ref": "#/$defs/availableVerifierReport" }
+      }
+    },
+    "availableVerifierReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "status", "verdict"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "verdict": {
+          "type": "string",
+          "enum": ["verified", "failed", "accepted", "rejected"]
+        },
+        "failure_code": { "type": "string", "minLength": 1 },
+        "error": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"schema":"chio.policy.bundle.v1","id":"policy-minimal-valid","version":"2026-06-10","rules":[{"id":"allow-demo-echo","effect":"allow","scope":"tool:demo.echo"}]}

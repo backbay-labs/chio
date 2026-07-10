@@ -4,6 +4,8 @@
 use std::collections::{BTreeSet, VecDeque};
 
 #[cfg(any(loom, chio_kernel_loom))]
+use loom::cell::UnsafeCell;
+#[cfg(any(loom, chio_kernel_loom))]
 use loom::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 #[cfg(any(loom, chio_kernel_loom))]
 use loom::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -532,6 +534,182 @@ fn loom_budget_atomic_decrement() {
             budget.remaining.load(Ordering::Acquire),
             0,
             "budget must not go below zero"
+        );
+    });
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[derive(Debug)]
+struct ModelDropGuard {
+    armed: bool,
+    dispatch_started: bool,
+    receipt_id: u8,
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+/// Models the kernel's receipt store (see
+/// chio-kernel/src/kernel/responses/receipt_persistence.rs::record_chio_receipt
+/// and dispatch.rs::record_child_receipts) as a non-atomic check-then-write:
+/// snapshot the next free slot, yield (so loom can schedule a competing
+/// append between the read and the write), then write the receipt into
+/// that slot and publish the new length. A single call is race-free only
+/// because the caller holds `receipt_store_write_lock` (a bare
+/// `Mutex<()>`, matching the kernel's `receipt_store_write_lock` field)
+/// for the whole call, exactly as the kernel serializes
+/// `append_chio_receipt_returning_seq` / `append_child_receipt_returning_seq`
+/// under that lock. If a future edit moved the append outside the lock,
+/// or split its critical section, two concurrent appends could snapshot
+/// the same slot and one receipt would silently overwrite (lose) the
+/// other.
+struct NonAtomicReceiptStore {
+    len: UnsafeCell<usize>,
+    slots: UnsafeCell<[u8; 2]>,
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+impl NonAtomicReceiptStore {
+    fn new() -> Self {
+        Self {
+            len: UnsafeCell::new(0),
+            slots: UnsafeCell::new([0; 2]),
+        }
+    }
+
+    /// Appends `receipt_id`. Callers must hold the paired
+    /// `receipt_store_write_lock` for the duration of this call; the
+    /// read-modify-write below is not atomic on its own.
+    fn append(&self, receipt_id: u8) {
+        // Step 1: snapshot the next free slot (the check).
+        let idx = self.len.with(|len| unsafe { *len });
+        // Step 2: yield so loom explores schedules where a competing
+        // append runs between the snapshot and the write-back below.
+        thread::yield_now();
+        // Step 3: write the receipt into the snapshotted slot and
+        // publish the new length (the write). Two racing appends that
+        // both snapshotted the same idx both land here; the later write
+        // wins and the earlier receipt is lost.
+        self.slots
+            .with_mut(|slots| unsafe { (*slots)[idx] = receipt_id });
+        self.len.with_mut(|len| unsafe { *len = idx + 1 });
+    }
+
+    fn snapshot(&self) -> Vec<u8> {
+        let len = self.len.with(|len| unsafe { *len });
+        let slots = self.slots.with(|slots| unsafe { *slots });
+        slots[..len].to_vec()
+    }
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+impl ModelDropGuard {
+    /// Models PostAdmissionDropGuard::drop (RFC-0002): disarmed guards do
+    /// nothing; pre-dispatch drops release reservations and write no
+    /// receipt; post-dispatch drops retain reservations and append exactly
+    /// one receipt while holding the store write lock (models the
+    /// kernel's receipt_store_write_lock std::sync::Mutex guarding the
+    /// non-atomic receipt store append).
+    fn run_drop(
+        &self,
+        receipt_store_write_lock: &Mutex<()>,
+        receipt_store: &NonAtomicReceiptStore,
+        released_reservations: &AtomicUsize,
+    ) {
+        if !self.armed {
+            return;
+        }
+        if !self.dispatch_started {
+            released_reservations.fetch_add(1, Ordering::AcqRel);
+            return;
+        }
+        let _write_lock = lock_mutex(receipt_store_write_lock);
+        receipt_store.append(self.receipt_id);
+    }
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[test]
+fn loom_post_admission_drop_guards_race_on_receipt_store_write_lock() {
+    loom::model(|| {
+        let receipt_store_write_lock: Arc<Mutex<()>> = Arc::new(Mutex::new(()));
+        let receipt_store = Arc::new(NonAtomicReceiptStore::new());
+        let released = Arc::new(AtomicUsize::new(0));
+
+        let lock_a = Arc::clone(&receipt_store_write_lock);
+        let store_a = Arc::clone(&receipt_store);
+        let released_a = Arc::clone(&released);
+        let guard_a = thread::spawn(move || {
+            ModelDropGuard {
+                armed: true,
+                dispatch_started: true,
+                receipt_id: 1,
+            }
+            .run_drop(&lock_a, &store_a, &released_a);
+        });
+
+        let lock_b = Arc::clone(&receipt_store_write_lock);
+        let store_b = Arc::clone(&receipt_store);
+        let released_b = Arc::clone(&released);
+        let guard_b = thread::spawn(move || {
+            ModelDropGuard {
+                armed: true,
+                dispatch_started: true,
+                receipt_id: 2,
+            }
+            .run_drop(&lock_b, &store_b, &released_b);
+        });
+
+        join_ok(guard_a);
+        join_ok(guard_b);
+
+        let receipts = receipt_store.snapshot();
+        let ids: BTreeSet<u8> = receipts.iter().copied().collect();
+        assert_eq!(receipts.len(), 2, "a concurrent drop lost a receipt");
+        assert_eq!(
+            ids,
+            BTreeSet::from([1, 2]),
+            "each dropped call must record its own receipt exactly once"
+        );
+        assert_eq!(
+            released.load(Ordering::Acquire),
+            0,
+            "post-dispatch drops must never release reservations"
+        );
+    });
+}
+
+#[cfg(any(loom, chio_kernel_loom))]
+#[test]
+fn loom_disarmed_drop_guard_is_noop() {
+    loom::model(|| {
+        let receipt_store_write_lock: Arc<Mutex<()>> = Arc::new(Mutex::new(()));
+        let receipt_store = Arc::new(NonAtomicReceiptStore::new());
+        let released = Arc::new(AtomicUsize::new(0));
+
+        let lock = Arc::clone(&receipt_store_write_lock);
+        let store = Arc::clone(&receipt_store);
+        let released_worker = Arc::clone(&released);
+        let worker = thread::spawn(move || {
+            // Happy path: the dispatch await returned, so the evaluation
+            // calls disarm() before dropping the guard.
+            let mut guard = ModelDropGuard {
+                armed: true,
+                dispatch_started: true,
+                receipt_id: 9,
+            };
+            guard.armed = false;
+            guard.run_drop(&lock, &store, &released_worker);
+        });
+
+        join_ok(worker);
+
+        assert!(
+            receipt_store.snapshot().is_empty(),
+            "a disarmed guard must not record a receipt"
+        );
+        assert_eq!(
+            released.load(Ordering::Acquire),
+            0,
+            "a disarmed guard must not release reservations"
         );
     });
 }

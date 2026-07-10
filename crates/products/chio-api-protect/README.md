@@ -67,7 +67,7 @@ must not be used as sole allow/deny gates for tool execution in production:
   `authorization: false`, `authorizationBasis: "advisory_only"`, and a
   receipt whose `trust_level` is `advisory`. This is not kernel-mediated
   authorization.
-- **`POST /v1/evaluate`** - reserved legacy path. It returns HTTP 410 and
+- **`POST /v1/evaluate`** - reserved compatibility path. It returns HTTP 410 and
   does not sign a receipt.
 - **`POST /v1/capabilities/attenuate`** - returns HTTP 403 with
   `error: "chio_attenuation_requires_subject_signer"` and

@@ -1,0 +1,60 @@
+{
+  "claim_mapping": [
+    {
+      "claim_ref": "claim.agent_web.external_subject_digest_bound",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "claim_ref": "claim.agent_web.projection_manifest_bound",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.unsupported_claims_limited",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.sidecar_not_native_authority",
+      "evidence_class": "chio-sidecar-proof"
+    }
+  ],
+  "copy_limitations": [
+    "Browser automation command evidence is digest-bound browser transcript evidence, not Chio capability authority."
+  ],
+  "digest_algorithm": "sha256",
+  "external_fields_not_used": [
+    "screenshot_as_dom_authority",
+    "browser_command_as_chio_authority"
+  ],
+  "external_fields_used": [
+    "protocol",
+    "protocol_version",
+    "browser_session_id_digest",
+    "user_context_digest",
+    "target_url_digest",
+    "command_name",
+    "command_parameters_digest",
+    "locator_digest",
+    "navigation_result_digest",
+    "screenshot_digest",
+    "storage_access",
+    "storage_scope_digest",
+    "network_egress_digest",
+    "authorization_context_digest",
+    "chio_command_receipt_ref",
+    "mediated_by_chio_receipt"
+  ],
+  "projection_id": "projection-browser-automation-valid",
+  "requires_external_signature": false,
+  "schema": "chio.agent-web.external-projection-manifest.v1",
+  "sidecar_fields": [
+    "transaction_passport_ref",
+    "receipt_refs",
+    "chio_claim_refs"
+  ],
+  "signature_algorithm": "none",
+  "source_protocol": "browser-automation",
+  "source_version": "webdriver-bidi-2026-06",
+  "unsupported_claims": [
+    "claim.external.browser_automation_is_chio_authority"
+  ]
+}

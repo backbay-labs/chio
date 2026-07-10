@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-enterprise/v1/data-governance-report.schema.json",
+  "title": "Chio Enterprise Data Governance Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "passport_id",
+    "risk_comptroller_report_ref",
+    "allowed_regions",
+    "observed_region",
+    "retention_class",
+    "legal_hold_status",
+    "redaction_profile_ref",
+    "disclosure_capsule_ref",
+    "leakage_ledger_ref",
+    "field_classifications"
+  ],
+  "properties": {
+    "schema": { "const": "chio.enterprise.data-governance-report.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "passport_id": { "type": "string", "minLength": 1 },
+    "risk_comptroller_report_ref": { "type": "string", "minLength": 1 },
+    "allowed_regions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "observed_region": { "type": "string", "minLength": 1 },
+    "retention_class": {
+      "type": "string",
+      "pattern": "^audit-[0-9]+d$"
+    },
+    "legal_hold_status": { "type": "string", "minLength": 1 },
+    "redaction_profile_ref": { "type": "string", "minLength": 1 },
+    "disclosure_capsule_ref": { "type": "string", "minLength": 1 },
+    "leakage_ledger_ref": { "type": "string", "minLength": 1 },
+    "field_classifications": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fieldClassification" },
+      "minItems": 1
+    }
+  },
+  "$defs": {
+    "fieldClassification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["field", "classification", "export_action"],
+      "properties": {
+        "field": { "type": "string", "minLength": 1 },
+        "classification": { "type": "string", "minLength": 1 },
+        "export_action": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

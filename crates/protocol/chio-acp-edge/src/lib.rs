@@ -82,7 +82,11 @@ pub use metrics::{
 // Each fragment merges into this crate-root module scope; item paths and
 // visibility resolve as if the fragments were inlined here.
 
-include!("sync_bridge.rs");
+// The fail-closed sync-bridge helper lives once in `chio-cross-protocol`; the
+// A2A and ACP edges share that single definition. Only used under the
+// compatibility-surface passthrough, so the import is gated to match.
+#[cfg(any(test, feature = "compatibility-surface"))]
+use chio_cross_protocol::sync_bridge_shared::block_on_tool_server_invoke;
 include!("error.rs");
 include!("config.rs");
 include!("types.rs");

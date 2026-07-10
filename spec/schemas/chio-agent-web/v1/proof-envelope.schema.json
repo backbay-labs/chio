@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-agent-web/v1/proof-envelope.schema.json",
+  "title": "Chio Agent Web Proof Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "envelope_id",
+    "transaction_passport_ref",
+    "source_protocol",
+    "source_protocol_version",
+    "external_subject",
+    "external_subject_path",
+    "external_subject_digest",
+    "external_subject_signature_ref",
+    "projection_manifest_ref",
+    "projection_manifest_sha256",
+    "chio_claim_refs",
+    "receipt_refs",
+    "disclosure_capsule_refs",
+    "settlement_refs",
+    "risk_refs",
+    "limitations",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.agent-web-proof-envelope.v1" },
+    "envelope_id": { "type": "string", "minLength": 1 },
+    "transaction_passport_ref": { "type": "string", "minLength": 1 },
+    "source_protocol": {
+      "enum": [
+        "standard-webhooks",
+        "cloudevents",
+        "graphql-http",
+        "mcp",
+        "a2a",
+        "acp-client",
+        "acp-commerce",
+        "ag-ui",
+        "browser-automation",
+        "rpa",
+        "gmail-api",
+        "google-calendar-api",
+        "slack",
+        "oauth2",
+        "openid-connect",
+        "scim",
+        "spiffe",
+        "kubernetes-admission",
+        "oci",
+        "vc",
+        "sd-jwt-vc",
+        "bbs",
+        "sigstore",
+        "in-toto",
+        "dsse",
+        "slsa-provenance",
+        "openapi",
+        "asyncapi",
+        "ap2",
+        "x402"
+      ]
+    },
+    "source_protocol_version": { "type": "string", "minLength": 1 },
+    "external_subject": { "type": "string", "minLength": 1 },
+    "external_subject_path": { "$ref": "#/$defs/bundleRelativePath" },
+    "external_subject_digest": { "$ref": "#/$defs/sha256" },
+    "external_subject_signature_ref": { "type": "string" },
+    "projection_manifest_ref": { "type": "string", "minLength": 1 },
+    "projection_manifest_sha256": { "$ref": "#/$defs/sha256" },
+    "chio_claim_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "receipt_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "disclosure_capsule_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "settlement_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "risk_refs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "signature": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "bundleRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "\\\\" },
+          { "pattern": "(^|/)\\.\\.(/|$)" }
+        ]
+      }
+    }
+  }
+}

@@ -1,75 +1,12 @@
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::crypto::sha256_hex;
 use chio_runtime_core::*;
-use chio_weights::card::{ModelCard, StringSet};
-use chrono::{TimeZone, Utc};
 use std::io;
 
-fn provider_binding(weights_binding_mode: Option<WeightsBindingMode>) -> RuntimeProviderBinding {
-    RuntimeProviderBinding {
-        provider_id: "provider-vendor-b".to_string(),
-        binding_id: Some("provider-binding-vendor-b".to_string()),
-        local_kernel_id: "kernel.vendor-b".to_string(),
-        server_id: "vendor-ledger".to_string(),
-        tool_name: "close_account".to_string(),
-        discovery_allowed: false,
-        model_card_id: Some("model-card-vendor-b".to_string()),
-        model_card_digest: Some("a".repeat(64)),
-        loaded_weights_hash: Some("b".repeat(64)),
-        weights_binding_mode,
-    }
-}
+#[path = "runtime_ops/support.rs"]
+mod runtime_ops_support;
 
-fn provider_bindings_document(binding: RuntimeProviderBinding) -> RuntimeProviderBindingsDocument {
-    RuntimeProviderBindingsDocument {
-        schema: CHIO_RUNTIME_PROVIDER_BINDINGS_SCHEMA.to_string(),
-        bindings: vec![binding],
-    }
-}
-
-fn loaded_weights_evidence(hash: &str) -> RuntimeProviderLoadedWeightsEvidence {
-    RuntimeProviderLoadedWeightsEvidence {
-        binding_id: "provider-binding-vendor-b".to_string(),
-        loaded_weights_hash: hash.to_string(),
-    }
-}
-
-fn model_card(weights_hash: &str, expires_at_unix_ms: i64) -> ModelCard {
-    let issued = Utc.with_ymd_and_hms(2026, 4, 30, 12, 0, 0).unwrap();
-    let expires = Utc.timestamp_millis_opt(expires_at_unix_ms).unwrap();
-    ModelCard::new(
-        weights_hash,
-        StringSet::new(["tool:close_account", "tool:delete_account"]),
-        StringSet::new(["tool:delete_account"]),
-        "public-internet",
-        "https://example.com/issuer",
-        issued,
-        expires,
-    )
-    .unwrap()
-}
-
-fn model_card_digest(card: &ModelCard) -> Result<String, Box<dyn std::error::Error>> {
-    Ok(sha256_hex(&canonical_json_bytes(card)?))
-}
-
-fn supervisor_profile() -> RuntimeSupervisorProfile {
-    RuntimeSupervisorProfile {
-        schema: CHIO_RUNTIME_SUPERVISOR_PROFILE_SCHEMA.to_string(),
-        profile_id: "runtime-supervisor-local".to_string(),
-        local_kernel_id: "kernel.vendor-b".to_string(),
-        issued_at_unix_ms: 1_800_000_000_000,
-        expires_at_unix_ms: 1_800_003_600_000,
-        max_concurrent_runs: 2,
-        run_lease_ttl_ms: 60_000,
-        stale_run_after_ms: 300_000,
-        evidence_required_roles: vec![
-            "workflow_run_report".to_string(),
-            "proof_regeneration_report".to_string(),
-        ],
-        fail_closed_on: vec!["evidence_hash_mismatch".to_string()],
-    }
-}
+use runtime_ops_support::supervisor_profile;
 
 #[test]
 fn runtime_ops_input_documents_accept_chio_native_schemas() -> Result<(), Box<dyn std::error::Error>>
@@ -309,6 +246,219 @@ fn runtime_proof_regeneration_contracts_bind_evidence() -> Result<(), Box<dyn st
     assert!(input_json.contains("chio.runtime.proof-regeneration-input.v1"));
     assert!(parity_json.contains("chio.runtime.proof-parity-report.v1"));
     Ok(())
+}
+
+#[test]
+fn runtime_proof_regeneration_artifacts_reject_run_id_mismatch(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let artifacts = runtime_proof_regeneration_artifacts("runtime-loopback-other")?;
+
+    match validate_runtime_proof_regeneration_artifacts(artifacts.as_runtime_artifacts()) {
+        Ok(()) => panic!("runtime regeneration artifacts with mismatched run IDs verified"),
+        Err(error) => assert_eq!(error.code(), "runtime_proof_regeneration_run_id_mismatch"),
+    }
+    Ok(())
+}
+
+#[test]
+fn runtime_proof_regeneration_artifacts_reject_source_records_spliced_from_workflow_steps(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut artifacts = runtime_proof_regeneration_artifacts("runtime-loopback-7-3")?;
+    let mut workflow_report: RuntimeWorkflowRunReport =
+        serde_json::from_slice(&artifacts.workflow_run_report)?;
+    workflow_report.step_evidence[0].tool_receipt_sha256 = "9".repeat(64);
+    artifacts.workflow_run_report = serde_json::to_vec(&workflow_report)?;
+
+    let mut manifest: RuntimeEvidenceManifest =
+        serde_json::from_slice(&artifacts.evidence_manifest)?;
+    manifest.workflow_run_report_sha256 = canonical_value_sha256(&workflow_report)?;
+    for entry in &mut manifest.entries {
+        if entry.role == "runtime_run_report" {
+            entry.sha256 = sha256_hex(&artifacts.workflow_run_report);
+            entry.byte_count =
+                u64::try_from(artifacts.workflow_run_report.len()).unwrap_or(u64::MAX);
+        }
+    }
+    artifacts.evidence_manifest = serde_json::to_vec(&manifest)?;
+
+    let mut proof_input: RuntimeProofRegenerationInput =
+        serde_json::from_slice(&artifacts.proof_regeneration_input)?;
+    proof_input.workflow_run_report_sha256 = manifest.workflow_run_report_sha256.clone();
+    proof_input.evidence_manifest_sha256 = canonical_value_sha256(&manifest)?;
+    artifacts.proof_regeneration_input = serde_json::to_vec(&proof_input)?;
+
+    match validate_runtime_proof_regeneration_artifacts(artifacts.as_runtime_artifacts()) {
+        Ok(()) => panic!("runtime regeneration artifacts with spliced source records verified"),
+        Err(error) => assert_eq!(
+            error.code(),
+            "runtime_proof_regeneration_source_record_mismatch"
+        ),
+    }
+    Ok(())
+}
+
+struct TestRuntimeProofRegenerationArtifacts {
+    proof_regeneration_report: Vec<u8>,
+    proof_regeneration_input: Vec<u8>,
+    evidence_manifest: Vec<u8>,
+    workflow_run_report: Vec<u8>,
+    proof_package: Vec<u8>,
+    verifier_report: Vec<u8>,
+    workflow_receipt: Vec<u8>,
+}
+
+impl TestRuntimeProofRegenerationArtifacts {
+    fn as_runtime_artifacts(&self) -> RuntimeProofRegenerationArtifacts<'_> {
+        RuntimeProofRegenerationArtifacts {
+            proof_regeneration_report: &self.proof_regeneration_report,
+            proof_regeneration_input: &self.proof_regeneration_input,
+            evidence_manifest: &self.evidence_manifest,
+            workflow_run_report: &self.workflow_run_report,
+            proof_package: &self.proof_package,
+            verifier_report: &self.verifier_report,
+            workflow_receipt: &self.workflow_receipt,
+        }
+    }
+}
+
+fn runtime_proof_regeneration_artifacts(
+    proof_input_run_id: &str,
+) -> Result<TestRuntimeProofRegenerationArtifacts, Box<dyn std::error::Error>> {
+    let proof_package = serde_json::json!({
+        "schema": "test.runtime-proof-package.v1",
+        "packageId": "runtime-proof-package-1"
+    });
+    let verifier_report = serde_json::json!({
+        "schema": "test.runtime-verifier-report.v1",
+        "verdict": "verified"
+    });
+    let workflow_receipt = serde_json::json!({
+        "schema": "test.runtime-workflow-receipt.v1",
+        "receiptId": "runtime-workflow-receipt-1"
+    });
+    let proof_package_bytes = serde_json::to_vec(&proof_package)?;
+    let verifier_report_bytes = serde_json::to_vec(&verifier_report)?;
+    let workflow_receipt_bytes = serde_json::to_vec(&workflow_receipt)?;
+    let source_record = RuntimeProofSourceRecord {
+        step_index: 0,
+        admission_report_sha256: "1".repeat(64),
+        tool_receipt_sha256: "2".repeat(64),
+        bilateral_dsse_sha256: "3".repeat(64),
+        workflow_step_sha256: "4".repeat(64),
+    };
+    let proof_report = RuntimeProofRegenerationReport {
+        schema: CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA.to_string(),
+        run_id: "runtime-loopback-7-3".to_string(),
+        accepted: true,
+        failure_code: None,
+        generated_at_unix_ms: 1_800_000_001_000,
+        proof_package_sha256: Some(canonical_value_sha256(&proof_package)?),
+        verifier_report_sha256: Some(canonical_value_sha256(&verifier_report)?),
+        workflow_receipt_sha256: Some(canonical_value_sha256(&workflow_receipt)?),
+        source_records: vec![source_record.clone()],
+        checks: vec!["runtime_source_records.bound".to_string()],
+    };
+    let proof_report_sha256 = canonical_value_sha256(&proof_report)?;
+    let workflow_report = RuntimeWorkflowRunReport {
+        schema: CHIO_RUNTIME_WORKFLOW_RUN_REPORT_SCHEMA.to_string(),
+        run_id: "runtime-loopback-7-3".to_string(),
+        accepted: true,
+        failure_code: None,
+        generated_at_unix_ms: 1_800_000_001_000,
+        admission_report_sha256: "1".repeat(64),
+        evidence_paths: vec!["proof-regeneration-report.json".to_string()],
+        step_evidence: vec![RuntimeStepEvidence {
+            schema: CHIO_RUNTIME_STEP_EVIDENCE_SCHEMA.to_string(),
+            step_index: 0,
+            admission_id: "admission-runtime-loopback".to_string(),
+            admission_report_sha256: "1".repeat(64),
+            tool_receipt_id: "receipt-runtime-loopback".to_string(),
+            tool_receipt_sha256: "2".repeat(64),
+            output_sha256: "5".repeat(64),
+            bilateral_dsse_sha256: "3".repeat(64),
+            workflow_step_sha256: "4".repeat(64),
+            parent_receipt_sha256: None,
+            consistency_anchor: "anchor-runtime-loopback".to_string(),
+            destructive: false,
+            lease_id: None,
+            governance_receipt_id: None,
+        }],
+        proof_regeneration_report_sha256: Some(proof_report_sha256.clone()),
+    };
+    let proof_report_bytes = serde_json::to_vec(&proof_report)?;
+    let workflow_report_bytes = serde_json::to_vec(&workflow_report)?;
+    let workflow_report_sha256 = canonical_value_sha256(&workflow_report)?;
+    let manifest = RuntimeEvidenceManifest {
+        schema: CHIO_RUNTIME_EVIDENCE_MANIFEST_SCHEMA.to_string(),
+        run_id: "runtime-loopback-7-3".to_string(),
+        generated_at_unix_ms: 1_800_000_001_000,
+        workflow_run_report_sha256: workflow_report_sha256.clone(),
+        proof_regeneration_report_sha256: proof_report_sha256,
+        entries: vec![
+            runtime_artifact_entry(
+                "proof_package",
+                "runtime-proof-package.json",
+                &proof_package_bytes,
+            ),
+            runtime_artifact_entry(
+                "verifier_report",
+                "runtime-verifier-report.json",
+                &verifier_report_bytes,
+            ),
+            runtime_artifact_entry(
+                "workflow_receipt",
+                "runtime-workflow-receipt.json",
+                &workflow_receipt_bytes,
+            ),
+            runtime_artifact_entry(
+                "proof_regeneration_report",
+                "proof-regeneration-report.json",
+                &proof_report_bytes,
+            ),
+            runtime_artifact_entry(
+                "runtime_run_report",
+                "runtime-workflow-run-report.json",
+                &workflow_report_bytes,
+            ),
+        ],
+    };
+    let manifest_sha256 = canonical_value_sha256(&manifest)?;
+    let manifest_bytes = serde_json::to_vec(&manifest)?;
+    let proof_input = RuntimeProofRegenerationInput {
+        schema: CHIO_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA.to_string(),
+        run_id: proof_input_run_id.to_string(),
+        evidence_manifest_sha256: manifest_sha256,
+        workflow_run_report_sha256: workflow_report_sha256,
+        admission_report_sha256: "1".repeat(64),
+        trust_bundle_sha256: "6".repeat(64),
+        verification_context_sha256: "7".repeat(64),
+        source_records: vec![source_record],
+    };
+
+    Ok(TestRuntimeProofRegenerationArtifacts {
+        proof_regeneration_report: proof_report_bytes,
+        proof_regeneration_input: serde_json::to_vec(&proof_input)?,
+        evidence_manifest: manifest_bytes,
+        workflow_run_report: workflow_report_bytes,
+        proof_package: proof_package_bytes,
+        verifier_report: verifier_report_bytes,
+        workflow_receipt: workflow_receipt_bytes,
+    })
+}
+
+fn runtime_artifact_entry(role: &str, path: &str, bytes: &[u8]) -> RuntimeEvidenceManifestEntry {
+    RuntimeEvidenceManifestEntry {
+        role: role.to_string(),
+        path: path.to_string(),
+        sha256: sha256_hex(bytes),
+        byte_count: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
+    }
+}
+
+fn canonical_value_sha256<T: serde::Serialize>(
+    value: &T,
+) -> Result<String, Box<dyn std::error::Error>> {
+    Ok(sha256_hex(&canonical_json_bytes(value)?))
 }
 
 #[test]
@@ -1442,432 +1592,6 @@ fn runtime_ops_evidence_health_rejects_manifest_run_mismatch(
     assert_eq!(
         report.failure_code.as_deref(),
         Some("runtime_evidence_manifest_run_mismatch")
-    );
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_health_rejects_discovery_attempts() -> Result<(), Box<dyn std::error::Error>>
-{
-    let bindings = RuntimeProviderBindingsDocument {
-        schema: CHIO_RUNTIME_PROVIDER_BINDINGS_SCHEMA.to_string(),
-        bindings: vec![RuntimeProviderBinding {
-            provider_id: "provider-vendor-b".to_string(),
-            binding_id: None,
-            local_kernel_id: "kernel.vendor-b".to_string(),
-            server_id: "vendor-ledger".to_string(),
-            tool_name: "close_account".to_string(),
-            discovery_allowed: true,
-            model_card_id: None,
-            model_card_digest: None,
-            loaded_weights_hash: None,
-            weights_binding_mode: None,
-        }],
-    };
-    let report = chio_runtime_core::generate_runtime_provider_health_report(
-        &supervisor_profile(),
-        &bindings,
-        1_800_000_000_000,
-    )?;
-    assert_eq!(report.schema, "chio.runtime.provider-health-report.v1");
-    assert!(!report.accepted);
-    assert_eq!(
-        report.failure_code.as_deref(),
-        Some("runtime_provider_discovery_not_allowed")
-    );
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_health_rejects_stale_supervisor_profile(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let bindings = RuntimeProviderBindingsDocument {
-        schema: CHIO_RUNTIME_PROVIDER_BINDINGS_SCHEMA.to_string(),
-        bindings: vec![RuntimeProviderBinding {
-            provider_id: "provider-vendor-b".to_string(),
-            binding_id: None,
-            local_kernel_id: "kernel.vendor-b".to_string(),
-            server_id: "vendor-ledger".to_string(),
-            tool_name: "close_account".to_string(),
-            discovery_allowed: false,
-            model_card_id: None,
-            model_card_digest: None,
-            loaded_weights_hash: None,
-            weights_binding_mode: None,
-        }],
-    };
-    let mut profile = supervisor_profile();
-    profile.expires_at_unix_ms = 1_800_000_001_000;
-
-    let report = chio_runtime_core::generate_runtime_provider_health_report(
-        &profile,
-        &bindings,
-        1_800_000_001_000,
-    )?;
-
-    assert_eq!(report.schema, "chio.runtime.provider-health-report.v1");
-    assert!(!report.accepted);
-    assert_eq!(
-        report.failure_code.as_deref(),
-        Some("runtime_provider_supervisor_profile_stale")
-    );
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_binding_rejects_missing_model_card_when_required(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut binding = provider_binding(Some(WeightsBindingMode::Required));
-    binding.model_card_id = None;
-    let document = provider_bindings_document(binding);
-
-    let error = validate_runtime_provider_bindings(&document).unwrap_err();
-
-    assert!(error
-        .to_string()
-        .contains("runtime_provider_model_card_missing"));
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_health_accepts_required_model_card_with_loaded_hash(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let card = model_card(
-        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        1_800_003_600_000,
-    );
-    let mut binding = provider_binding(Some(WeightsBindingMode::Required));
-    binding.model_card_digest = Some(model_card_digest(&card)?);
-    let bindings = provider_bindings_document(binding);
-    let cards = [("model-card-vendor-b".to_string(), card)]
-        .into_iter()
-        .collect();
-
-    let report =
-        chio_runtime_core::generate_runtime_provider_health_report_with_model_card_evidence(
-            &supervisor_profile(),
-            &bindings,
-            &cards,
-            &[loaded_weights_evidence(
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            )],
-            1_800_000_000_000,
-        )?;
-
-    assert!(report.accepted);
-    assert_eq!(report.failure_code, None);
-    assert_eq!(report.provider_checks[0].failure_code, None);
-    assert_eq!(report.healthy_provider_count, 1);
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_health_accepts_prefixed_model_card_tool_binding(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let card = model_card(
-        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        1_800_003_600_000,
-    );
-    let mut binding = provider_binding(Some(WeightsBindingMode::Required));
-    binding.tool_name = "tool:close_account".to_string();
-    binding.model_card_digest = Some(model_card_digest(&card)?);
-    let bindings = provider_bindings_document(binding);
-    let cards = [("model-card-vendor-b".to_string(), card)]
-        .into_iter()
-        .collect();
-
-    let report =
-        chio_runtime_core::generate_runtime_provider_health_report_with_model_card_evidence(
-            &supervisor_profile(),
-            &bindings,
-            &cards,
-            &[loaded_weights_evidence(
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            )],
-            1_800_000_000_000,
-        )?;
-
-    assert!(report.accepted);
-    assert_eq!(report.failure_code, None);
-    assert_eq!(report.provider_checks[0].failure_code, None);
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_health_rejects_banned_model_card_tool_binding(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let card = model_card(
-        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        1_800_003_600_000,
-    );
-    let mut binding = provider_binding(Some(WeightsBindingMode::Required));
-    binding.tool_name = "delete_account".to_string();
-    binding.model_card_digest = Some(model_card_digest(&card)?);
-    let bindings = provider_bindings_document(binding);
-    let cards = [("model-card-vendor-b".to_string(), card)]
-        .into_iter()
-        .collect();
-
-    let report =
-        chio_runtime_core::generate_runtime_provider_health_report_with_model_card_evidence(
-            &supervisor_profile(),
-            &bindings,
-            &cards,
-            &[loaded_weights_evidence(
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            )],
-            1_800_000_000_000,
-        )?;
-
-    assert!(!report.accepted);
-    assert_eq!(
-        report.failure_code.as_deref(),
-        Some("runtime_provider_model_card_tool_banned")
-    );
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_health_rejects_model_card_without_observed_loaded_hash(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let card = model_card(
-        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        1_800_003_600_000,
-    );
-    let mut binding = provider_binding(Some(WeightsBindingMode::Required));
-    binding.model_card_digest = Some(model_card_digest(&card)?);
-    let bindings = provider_bindings_document(binding);
-    let cards = [("model-card-vendor-b".to_string(), card)]
-        .into_iter()
-        .collect();
-
-    let report = chio_runtime_core::generate_runtime_provider_health_report_with_model_cards(
-        &supervisor_profile(),
-        &bindings,
-        &cards,
-        1_800_000_000_000,
-    )?;
-
-    assert!(!report.accepted);
-    assert_eq!(
-        report.failure_code.as_deref(),
-        Some("runtime_provider_loaded_weights_unavailable")
-    );
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_health_rejects_loaded_hash_mismatch(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let card = model_card(
-        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        1_800_003_600_000,
-    );
-    let mut binding = provider_binding(Some(WeightsBindingMode::Required));
-    binding.model_card_digest = Some(model_card_digest(&card)?);
-    let bindings = provider_bindings_document(binding);
-    let cards = [("model-card-vendor-b".to_string(), card)]
-        .into_iter()
-        .collect();
-
-    let report =
-        chio_runtime_core::generate_runtime_provider_health_report_with_model_card_evidence(
-            &supervisor_profile(),
-            &bindings,
-            &cards,
-            &[loaded_weights_evidence(
-                "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-            )],
-            1_800_000_000_000,
-        )?;
-
-    assert!(!report.accepted);
-    assert_eq!(
-        report.failure_code.as_deref(),
-        Some("runtime_provider_loaded_weights_hash_mismatch")
-    );
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_health_report_rejects_accepted_failed_provider_check(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut report = RuntimeProviderHealthReport {
-        schema: CHIO_RUNTIME_PROVIDER_HEALTH_REPORT_SCHEMA.to_string(),
-        accepted: true,
-        failure_code: None,
-        generated_at_unix_ms: 1_800_000_000_000,
-        provider_bindings_sha256: "a".repeat(64),
-        checked_provider_count: 1,
-        healthy_provider_count: 0,
-        degraded_provider_ids: vec!["provider-vendor-b".to_string()],
-        provider_checks: vec![RuntimeProviderHealthCheck {
-            provider_id: "provider-vendor-b".to_string(),
-            binding_id: "provider-binding-vendor-b".to_string(),
-            accepted: false,
-            failure_code: Some("runtime_provider_loaded_weights_unavailable".to_string()),
-            weights_binding_mode: WeightsBindingMode::Required,
-            model_card_id: Some("model-card-vendor-b".to_string()),
-            checks: vec!["runtime_provider_loaded_weights".to_string()],
-        }],
-        checks: vec!["runtime_ops.provider_bindings_health".to_string()],
-    };
-
-    let error = validate_runtime_provider_health_report(&report).unwrap_err();
-
-    assert!(error
-        .to_string()
-        .contains("runtime_provider_health_accepted_with_failed_check"));
-    report.accepted = false;
-    report.failure_code = Some("runtime_provider_loaded_weights_unavailable".to_string());
-    validate_runtime_provider_health_report(&report)?;
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_health_report_rejects_inconsistent_provider_counts(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let report = RuntimeProviderHealthReport {
-        schema: CHIO_RUNTIME_PROVIDER_HEALTH_REPORT_SCHEMA.to_string(),
-        accepted: false,
-        failure_code: Some("runtime_provider_loaded_weights_unavailable".to_string()),
-        generated_at_unix_ms: 1_800_000_000_000,
-        provider_bindings_sha256: "a".repeat(64),
-        checked_provider_count: 2,
-        healthy_provider_count: 0,
-        degraded_provider_ids: vec!["provider-vendor-b".to_string()],
-        provider_checks: vec![RuntimeProviderHealthCheck {
-            provider_id: "provider-vendor-b".to_string(),
-            binding_id: "provider-binding-vendor-b".to_string(),
-            accepted: false,
-            failure_code: Some("runtime_provider_loaded_weights_unavailable".to_string()),
-            weights_binding_mode: WeightsBindingMode::Required,
-            model_card_id: Some("model-card-vendor-b".to_string()),
-            checks: vec!["runtime_provider_loaded_weights".to_string()],
-        }],
-        checks: vec!["runtime_ops.provider_bindings_health".to_string()],
-    };
-
-    let error = validate_runtime_provider_health_report(&report).unwrap_err();
-
-    assert!(error
-        .to_string()
-        .contains("runtime_provider_health_check_count_mismatch"));
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_health_report_rejects_inconsistent_degraded_ids(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let report = RuntimeProviderHealthReport {
-        schema: CHIO_RUNTIME_PROVIDER_HEALTH_REPORT_SCHEMA.to_string(),
-        accepted: false,
-        failure_code: Some("runtime_provider_loaded_weights_unavailable".to_string()),
-        generated_at_unix_ms: 1_800_000_000_000,
-        provider_bindings_sha256: "a".repeat(64),
-        checked_provider_count: 1,
-        healthy_provider_count: 0,
-        degraded_provider_ids: vec!["provider-other".to_string()],
-        provider_checks: vec![RuntimeProviderHealthCheck {
-            provider_id: "provider-vendor-b".to_string(),
-            binding_id: "provider-binding-vendor-b".to_string(),
-            accepted: false,
-            failure_code: Some("runtime_provider_loaded_weights_unavailable".to_string()),
-            weights_binding_mode: WeightsBindingMode::Required,
-            model_card_id: Some("model-card-vendor-b".to_string()),
-            checks: vec!["runtime_provider_loaded_weights".to_string()],
-        }],
-        checks: vec!["runtime_ops.provider_bindings_health".to_string()],
-    };
-
-    let error = validate_runtime_provider_health_report(&report).unwrap_err();
-
-    assert!(error
-        .to_string()
-        .contains("runtime_provider_health_degraded_ids_mismatch"));
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_health_rejects_unavailable_required_model_card(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut binding = provider_binding(Some(WeightsBindingMode::Unavailable));
-    binding.model_card_id = None;
-    binding.model_card_digest = None;
-    binding.loaded_weights_hash = None;
-    let bindings = provider_bindings_document(binding);
-
-    let report = chio_runtime_core::generate_runtime_provider_health_report(
-        &supervisor_profile(),
-        &bindings,
-        1_800_000_000_000,
-    )?;
-
-    assert!(!report.accepted);
-    assert_eq!(
-        report.failure_code.as_deref(),
-        Some("runtime_provider_loaded_weights_unavailable")
-    );
-    assert_eq!(report.provider_checks[0].provider_id, "provider-vendor-b");
-    assert_eq!(
-        report.provider_checks[0].binding_id,
-        "provider-binding-vendor-b"
-    );
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_health_rejects_model_card_digest_mismatch(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let card = model_card(
-        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        1_800_003_600_000,
-    );
-    let bindings = provider_bindings_document(provider_binding(Some(WeightsBindingMode::Required)));
-    let cards = [("model-card-vendor-b".to_string(), card)]
-        .into_iter()
-        .collect();
-
-    let report = chio_runtime_core::generate_runtime_provider_health_report_with_model_cards(
-        &supervisor_profile(),
-        &bindings,
-        &cards,
-        1_800_000_000_000,
-    )?;
-
-    assert!(!report.accepted);
-    assert_eq!(
-        report.failure_code.as_deref(),
-        Some("runtime_provider_model_card_digest_mismatch")
-    );
-    Ok(())
-}
-
-#[test]
-fn runtime_ops_provider_health_rejects_stale_model_card() -> Result<(), Box<dyn std::error::Error>>
-{
-    let card = model_card(
-        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        1_799_999_999_000,
-    );
-    let mut binding = provider_binding(Some(WeightsBindingMode::Required));
-    binding.model_card_digest = Some(model_card_digest(&card)?);
-    let bindings = provider_bindings_document(binding);
-    let cards = [("model-card-vendor-b".to_string(), card)]
-        .into_iter()
-        .collect();
-
-    let report = chio_runtime_core::generate_runtime_provider_health_report_with_model_cards(
-        &supervisor_profile(),
-        &bindings,
-        &cards,
-        1_800_000_000_000,
-    )?;
-
-    assert!(!report.accepted);
-    assert_eq!(
-        report.failure_code.as_deref(),
-        Some("runtime_provider_model_card_stale")
     );
     Ok(())
 }

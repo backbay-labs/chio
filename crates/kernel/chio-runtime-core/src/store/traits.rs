@@ -1,3 +1,5 @@
+use chio_swarm_authority::SwarmAuthorityBundle;
+
 use crate::*;
 
 fn unsupported_treaty_continuation_store(
@@ -8,6 +10,18 @@ fn unsupported_treaty_continuation_store(
         code: "chio_treaty_continuation_store_unsupported",
         detail: format!(
             "runtime admission store does not support {operation} for treaty continuation {continuation_id}"
+        ),
+    }
+}
+
+fn unsupported_swarm_continuation_store(
+    operation: &str,
+    continuation_id: &str,
+) -> ChioRuntimeError {
+    ChioRuntimeError::Rejected {
+        code: "chio_swarm_continuation_store_unsupported",
+        detail: format!(
+            "runtime admission store does not support {operation} for swarm continuation {continuation_id}"
         ),
     }
 }
@@ -23,6 +37,13 @@ pub trait RuntimeAdmissionStore: Send + Sync {
         _evidence_kind: &str,
         _evidence_id: &str,
     ) -> Result<Option<TreatyRuntimeArtifactRecord>, ChioRuntimeError> {
+        Ok(None)
+    }
+
+    fn swarm_authority_bundle(
+        &self,
+        _task_graph_id: &str,
+    ) -> Result<Option<SwarmAuthorityBundle>, ChioRuntimeError> {
         Ok(None)
     }
 
@@ -55,6 +76,28 @@ pub trait RuntimeAdmissionStore: Send + Sync {
         _admission_id: &str,
     ) -> Result<(), ChioRuntimeError> {
         Err(unsupported_treaty_continuation_store(
+            "release",
+            continuation_id,
+        ))
+    }
+
+    fn consume_swarm_continuation(
+        &self,
+        continuation_id: &str,
+        _admission_id: &str,
+    ) -> Result<(), ChioRuntimeError> {
+        Err(unsupported_swarm_continuation_store(
+            "consume",
+            continuation_id,
+        ))
+    }
+
+    fn release_swarm_continuation(
+        &self,
+        continuation_id: &str,
+        _admission_id: &str,
+    ) -> Result<(), ChioRuntimeError> {
+        Err(unsupported_swarm_continuation_store(
             "release",
             continuation_id,
         ))
@@ -178,6 +221,13 @@ impl RuntimeAdmissionStore for LayeredRuntimeAdmissionStore<'_> {
             .treaty_runtime_artifact(evidence_kind, evidence_id)
     }
 
+    fn swarm_authority_bundle(
+        &self,
+        task_graph_id: &str,
+    ) -> Result<Option<SwarmAuthorityBundle>, ChioRuntimeError> {
+        self.admission_store.swarm_authority_bundle(task_graph_id)
+    }
+
     fn consume_destructive_lease(
         &self,
         lease_id: &str,
@@ -212,6 +262,24 @@ impl RuntimeAdmissionStore for LayeredRuntimeAdmissionStore<'_> {
     ) -> Result<(), ChioRuntimeError> {
         self.admission_store
             .release_treaty_continuation(continuation_id, admission_id)
+    }
+
+    fn consume_swarm_continuation(
+        &self,
+        continuation_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChioRuntimeError> {
+        self.admission_store
+            .consume_swarm_continuation(continuation_id, admission_id)
+    }
+
+    fn release_swarm_continuation(
+        &self,
+        continuation_id: &str,
+        admission_id: &str,
+    ) -> Result<(), ChioRuntimeError> {
+        self.admission_store
+            .release_swarm_continuation(continuation_id, admission_id)
     }
 
     fn runtime_trust_floor(

@@ -1,12 +1,11 @@
 # Chio: Vision and Strategic Narrative
 
 This document is strategic narrative, not the authoritative claim gate. The
-current authoritative technical claim is now the universal control-plane thesis
-on the qualified authoritative surfaces, and the repo now also qualifies a
+current authoritative technical claim is the universal control-plane thesis
+on the qualified authoritative surfaces, and the repo also qualifies a
 stronger local economic boundary: Chio is comptroller-capable software on the
 documented operator, partner, and bounded federated proof surfaces. The
 broader market-position story remains strategic rather than proved. See
-[docs/protocols/STRATEGIC-VISION.md](../protocols/STRATEGIC-VISION.md) and
 [docs/release/QUALIFICATION.md](../release/QUALIFICATION.md).
 
 Chio is pre-release. The current Chio-owned protocol, schema, SDK, and runtime
@@ -29,7 +28,7 @@ This is not an incremental gap. It is a structural absence.
 
 - **Hundreds of millions in unbudgeted agent spend** have leaked across the Fortune 500 as autonomous workloads scale without governance (Flexera's 2025 State of the Cloud report documents widespread cloud cost overruns, with agent workloads a growing contributor). Agents operate without spending caps, without delegation chains that track cost responsibility, and without budget enforcement at the protocol level.
 
-- **Six competing payment protocols** -- ACP, AP2, x402, MPP, TAP, Agent Pay -- are racing to wire money between agents. None of them solve the prerequisite problem: proving that the agent was authorized to spend, that the action it paid for actually occurred, and that the receipt is cryptographically bound to the authorization chain that permitted it.
+- **Six competing payment protocols** -- ACP-Commerce, AP2, x402, MPP, TAP, Agent Pay -- are racing to wire money between agents. None of them solve the prerequisite problem: proving that the agent was authorized to spend, that the action it paid for actually occurred, and that the receipt is cryptographically bound to the authorization chain that permitted it.
 
 Payment without authorization is just a pipe to a wallet. Authorization without proof is just a policy document nobody can verify after the fact. The agent economy needs both, and it needs them fused at the protocol layer.
 
@@ -50,7 +49,7 @@ an audit sidecar. Chio is what you need when agents do real things, when the
 action has consequences, when someone needs to know it was authorized, what it
 cost, and when a machine-verifiable proof must exist after the fact.
 
-**The core primitive is non-repudiation.** Every action that flows through Chio
+**The core primitive is non-repudiation.** Each mediated action that flows through Chio
 produces a signed, timestamped, capability-bound receipt. That receipt is not a
 log line. It is a cryptographic attestation: a specific capability token was
 exercised to invoke this tool, with these parameters, and the kernel rendered
@@ -317,7 +316,7 @@ older pre-rename quarterly sketch:
   compatibility program, not a cosmetic rebrand
 - **v2.6 Governed Transactions and Payment Rails:** turn the economic-security
   thesis into governed transaction intent, truthful settlement linkage, x402
-  and ACP/SPT bridges, and operator-visible reconciliation
+  and ACP-Commerce/SPT bridges, and operator-visible reconciliation
 - **v2.7 Portable Trust, Certification, and Federation Maturity:** finish
   passport lifecycle, certification discovery, enterprise identity propagation,
   and conservative cross-org trust distribution
@@ -327,7 +326,7 @@ older pre-rename quarterly sketch:
 
 The sequence matters. Chio first becomes one coherent product, then makes
 economic governance real, then makes trust portable, then makes that evidence
-strong enough for underwriting, standards, and launch claims.
+strong enough for underwriting, standards, and public claims.
 
 ---
 

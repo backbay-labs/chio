@@ -1,0 +1,6 @@
+{
+  "schema": "chio.proof-room.negative-case.v1",
+  "id": "lineage-evidence-below-floor",
+  "verifier_entrypoint": "transaction-passport.json",
+  "expected_failure_code": "proof-room.negative.lineage-node-evidence-class-below-floor"
+}

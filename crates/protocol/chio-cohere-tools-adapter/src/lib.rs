@@ -262,29 +262,8 @@ fn tool_calls(raw: ProviderRequest) -> Result<Vec<ToolCallBlock>, ProviderError>
     let value: Value = serde_json::from_slice(&raw.0).map_err(|error| {
         ProviderError::Malformed(format!("Cohere /v2/chat payload was not JSON: {error}"))
     })?;
-    let body = response_body(value)?;
+    let body = chio_provider_adapter_core::response_body(value, "Cohere /v2/chat")?;
     extract_tool_calls(&body)
-}
-
-fn response_body(value: Value) -> Result<Value, ProviderError> {
-    for field in ["body", "response", "payload"] {
-        if let Some(nested) = value.get(field) {
-            return nested_response_body(nested).ok_or_else(|| {
-                ProviderError::Malformed(format!(
-                    "Cohere /v2/chat envelope field `{field}` was not a JSON object or string body"
-                ))
-            });
-        }
-    }
-    Ok(value)
-}
-
-fn nested_response_body(value: &Value) -> Option<Value> {
-    match value {
-        Value::Object(_) => Some(value.clone()),
-        Value::String(body) => serde_json::from_str(body).ok(),
-        _ => None,
-    }
 }
 
 fn extract_tool_calls(body: &Value) -> Result<Vec<ToolCallBlock>, ProviderError> {
@@ -750,18 +729,6 @@ mod tests {
             message.content[0].text,
             "{\"token\":\"[redacted]\",\"z\":1}"
         );
-    }
-
-    #[test]
-    fn error_display_is_em_dash_free() {
-        let cases = vec![
-            CohereAdapterError::Transport(transport::TransportError::MissingApiKey),
-            CohereAdapterError::Provider(ProviderError::Malformed("bad".to_string())),
-        ];
-        for err in cases {
-            let s = err.to_string();
-            assert!(!s.contains('\u{2014}'));
-        }
     }
 
     #[tokio::test]

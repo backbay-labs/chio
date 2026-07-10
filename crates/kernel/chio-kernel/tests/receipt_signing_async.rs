@@ -74,7 +74,7 @@ fn make_config(keypair: Keypair) -> KernelConfig {
 /// same.
 /// Returns a signable body together with the exact canonical-content preimage
 /// its `content_hash` was derived from, so the signing-task WYSIWYS recompute
-/// (BAC-539) accepts it.
+/// accepts it.
 fn make_body(n: usize, kernel_key: &Keypair) -> (ChioReceiptBody, Vec<u8>) {
     let nonce = format!("t3-{n:04}");
     let action = ToolCallAction::from_parameters(json!({

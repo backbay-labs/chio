@@ -5,10 +5,10 @@
   "claimLevel": "bounded_protocol_aware_execution_fabric",
   "decision": "bounded_claim_qualified_use_universal_control_plane_gate_for_stronger_claim",
   "qualifiedClaim": {
-    "summary": "Chio ships a cryptographically signed, fail-closed governance kernel and a bounded protocol-aware cross-protocol execution fabric across HTTP APIs, MCP, A2A skills, and ACP capabilities. OpenAI tool execution remains deferred until separately implemented and qualified.",
+    "summary": "Chio ships a cryptographically signed, fail-closed governance kernel and a bounded protocol-aware cross-protocol execution fabric across HTTP APIs, MCP, A2A skills, and ACP-Client capabilities. OpenAI tool execution remains deferred until separately implemented and qualified.",
     "constraints": [
       "Only the supported authoritative paths are claim-eligible.",
-      "Lifecycle and bridge-fidelity limits remain explicit on published surfaces, including the deferred-task A2A/ACP authoritative lifecycle path.",
+      "Lifecycle and bridge-fidelity limits remain explicit on published surfaces, including the deferred-task A2A/ACP-Client authoritative lifecycle path.",
       "Compatibility helpers are non-authoritative and non-claim-eligible.",
       "Protocol selection is explicit and registry-backed for supported targets, but the claim does not imply a universal multi-hop fabric or proved market-control position."
     ]
@@ -98,7 +98,7 @@
     },
     {
       "id": "LIFE-02",
-      "summary": "ACP authoritative mediation now exposes preview plus blocking invoke and deferred-task stream/cancel/resume lifecycle semantics on the authoritative path.",
+      "summary": "ACP-Client authoritative mediation now exposes preview plus blocking invoke and deferred-task stream/cancel/resume lifecycle semantics on the authoritative path.",
       "witnesses": [
         "crates/protocol/chio-acp-edge/src/lib.rs"
       ]
@@ -131,7 +131,7 @@
       "summary": "Protocol, release, standards, and top-level vision docs make the same strongest honest claim.",
       "witnesses": [
         "docs/VISION.md",
-        "docs/protocols/STRATEGIC-VISION.md",
+        "docs/start-here/VISION.md",
         "docs/release/QUALIFICATION.md",
         "docs/release/RELEASE_AUDIT.md"
       ]
@@ -140,7 +140,7 @@
       "id": "VISION-03",
       "summary": "The repo records one authoritative claim-gate decision and names the exact remaining blockers when the stronger claim is not yet qualified.",
       "witnesses": [
-        "docs/protocols/STRATEGIC-VISION.md",
+        "docs/start-here/VISION.md",
         "docs/release/RELEASE_AUDIT.md",
         "docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json"
       ]
@@ -150,7 +150,7 @@
       "summary": "Economic/control-plane language is bounded to strategic thesis rather than implied as current shipped proof.",
       "witnesses": [
         "docs/VISION.md",
-        "docs/protocols/STRATEGIC-VISION.md"
+        "docs/start-here/VISION.md"
       ]
     }
   ],

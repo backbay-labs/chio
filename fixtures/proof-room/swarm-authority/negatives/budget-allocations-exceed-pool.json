@@ -1,0 +1,8 @@
+{
+  "schema": "chio.swarm-authority.negative-fixture.v1",
+  "id": "budget-allocations-exceed-pool",
+  "claim_ref": "claim.swarm.budget_pool_bound",
+  "base_fixture": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/budget-pool.json",
+  "case": "BudgetAllocationsExceedPool",
+  "expected_failure_code": "proof-room.negative.swarm-budget-allocations-exceed-pool-total"
+}

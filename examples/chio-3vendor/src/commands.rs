@@ -2,14 +2,14 @@ use std::fs;
 use std::path::PathBuf;
 
 use chio_attest_loopback::{
-    authority_issuance_request, authority_profile_document, authority_profile_json,
+    authority_issuance_request_for_package, authority_profile_document, authority_profile_json,
     authority_signing_keys_document, disclosure_policy, fresh_proof_package, issuance_request_json,
-    package_json, peer_pins_document_for_package, peer_pins_json, report_json,
-    revocation_publication_request, revocation_publication_request_json, signing_keys_json,
-    verification_context, verification_context_json, verifier_trust_bundle_document_for_package,
-    verifier_trust_bundle_json, verify_package, write_signed_negative_case_inputs,
-    ChioPackageError, ChioProofPackage, ChioVerificationContext, ChioVerifierTrustBundle,
-    ChioVerifierTrustBundleDocument, VerifierReport,
+    package_json, peer_pins_document_for_package, peer_pins_json, proof_package_from_json,
+    report_json, revocation_publication_request, revocation_publication_request_json,
+    signing_keys_json, verification_context, verification_context_json,
+    verifier_trust_bundle_document_for_package, verifier_trust_bundle_json, verify_package,
+    write_signed_negative_case_inputs, ChioPackageError, ChioProofPackage, ChioVerificationContext,
+    ChioVerifierTrustBundle, ChioVerifierTrustBundleDocument, VerifierReport,
 };
 use chio_core_types::merkle::MerkleTree;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
@@ -62,7 +62,9 @@ enum Command {
     WriteOutDir { dir: PathBuf },
     WriteSignedNegativeDir { dir: PathBuf },
     WriteAuthorityInputDir { dir: PathBuf },
+    WriteAuthorityInputForPackage { package: PathBuf, dir: PathBuf },
     WritePheromoneOutDir { dir: PathBuf },
+    WritePheromoneForPackage { package: PathBuf, dir: PathBuf },
 }
 
 impl Command {
@@ -89,9 +91,21 @@ impl Command {
             [_, flag, dir] if flag == "--authority-input-dir" => Ok(Self::WriteAuthorityInputDir {
                 dir: PathBuf::from(dir),
             }),
+            [_, flag, package, dir] if flag == "--authority-input-package" => {
+                Ok(Self::WriteAuthorityInputForPackage {
+                    package: PathBuf::from(package),
+                    dir: PathBuf::from(dir),
+                })
+            }
             [_, flag, dir] if flag == "--pheromone-out-dir" => Ok(Self::WritePheromoneOutDir {
                 dir: PathBuf::from(dir),
             }),
+            [_, flag, package, dir] if flag == "--pheromone-package" => {
+                Ok(Self::WritePheromoneForPackage {
+                    package: PathBuf::from(package),
+                    dir: PathBuf::from(dir),
+                })
+            }
             _ => Err(ChioPackageError::Json(usage(&argv0))),
         }
     }
@@ -138,8 +152,20 @@ fn execute_command(command: Command) -> Result<(), ChioPackageError> {
             let package = fresh_proof_package()?;
             write_authority_input_dir(&package, dir)?;
         }
+        Command::WriteAuthorityInputForPackage { package, dir } => {
+            let package_json = fs::read_to_string(package)
+                .map_err(|error| ChioPackageError::Json(error.to_string()))?;
+            let package = proof_package_from_json(&package_json)?;
+            write_authority_input_dir(&package, dir)?;
+        }
         Command::WritePheromoneOutDir { dir } => {
             let package = fresh_proof_package()?;
+            write_pheromone_fixtures(&package, &dir)?;
+        }
+        Command::WritePheromoneForPackage { package, dir } => {
+            let package_json = fs::read_to_string(package)
+                .map_err(|error| ChioPackageError::Json(error.to_string()))?;
+            let package = proof_package_from_json(&package_json)?;
             write_pheromone_fixtures(&package, &dir)?;
         }
     }
@@ -148,7 +174,7 @@ fn execute_command(command: Command) -> Result<(), ChioPackageError> {
 
 fn usage(argv0: &str) -> String {
     format!(
-        "usage: {argv0} [--report|--out-dir DIR|--signed-negative-dir DIR|--authority-input-dir DIR|--pheromone-out-dir DIR|--sign-transit-policy BODY OUT]"
+        "usage: {argv0} [--report|--out-dir DIR|--signed-negative-dir DIR|--authority-input-dir DIR|--authority-input-package PACKAGE DIR|--pheromone-out-dir DIR|--pheromone-package PACKAGE DIR|--sign-transit-policy BODY OUT]"
     )
 }
 
@@ -223,7 +249,7 @@ fn write_authority_input_dir(
     .map_err(|error| ChioPackageError::Json(error.to_string()))?;
     fs::write(
         dir.join("issuance-request.json"),
-        issuance_request_json(&authority_issuance_request()?)?,
+        issuance_request_json(&authority_issuance_request_for_package(package)?)?,
     )
     .map_err(|error| ChioPackageError::Json(error.to_string()))?;
     fs::write(

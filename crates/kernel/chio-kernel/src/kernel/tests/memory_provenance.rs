@@ -193,7 +193,7 @@ fn memory_read_flags_chain_tamper_as_unverified() {
 
 #[test]
 fn memory_provenance_hook_is_noop_when_store_absent() {
-    // Sanity check: memory-shaped tool calls keep working in backward-
+    // memory-shaped tool calls keep working in backward-
     // compatible mode (no provenance store installed) and produce no
     // memory_provenance metadata on either write or read receipts.
     let mut kernel = make_kernel(make_config());

@@ -11,6 +11,18 @@
       "schemaFile": "spec/schemas/chio-wire/v1/anchor/batch.schema.json"
     },
     {
+      "schema": "chio.anchor-inclusion-proof.v1",
+      "artifactKind": "anchor_inclusion_proof",
+      "introducedBy": "public-settlement-v1",
+      "schemaFile": "spec/schemas/chio-web3/v1/anchor-inclusion-proof.schema.json"
+    },
+    {
+      "schema": "chio.anchor-proof-bundle.v1",
+      "artifactKind": "anchor_proof_bundle",
+      "introducedBy": "public-settlement-v1",
+      "schemaFile": "spec/schemas/chio-web3/v1/anchor-proof-bundle.schema.json"
+    },
+    {
       "schema": "chio.attest.buyer-attestation-explanation.v1",
       "artifactKind": "chio_attest_buyer_attestation_explanation",
       "introducedBy": "chio-final-architecture/v1",
@@ -948,6 +960,60 @@
       "schemaFile": "spec/schemas/chio-runtime/v1/trusted-verifiers.schema.json"
     },
     {
+      "schema": "chio.runtime.execution-lease.v1",
+      "artifactKind": "runtime_execution_lease",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-runtime/v1/execution-lease.schema.json"
+    },
+    {
+      "schema": "chio.policy.activation-receipt.v1",
+      "artifactKind": "policy_activation_receipt",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-runtime/v1/policy-activation-receipt.schema.json"
+    },
+    {
+      "schema": "chio.runtime.tool-server-ack.v1",
+      "artifactKind": "runtime_tool_server_ack",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-runtime/v1/tool-server-ack.schema.json"
+    },
+    {
+      "schema": "chio.runtime.trusted-time-proof.v1",
+      "artifactKind": "runtime_trusted_time_proof",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-runtime/v1/trusted-time-proof.schema.json"
+    },
+    {
+      "schema": "chio.runtime.terminal-receipt.v1",
+      "artifactKind": "runtime_terminal_receipt",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-runtime/v1/terminal-receipt.schema.json"
+    },
+    {
+      "schema": "chio.runtime.revocation-freshness-proof.v1",
+      "artifactKind": "runtime_revocation_freshness_proof",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-runtime/v1/revocation-freshness-proof.schema.json"
+    },
+    {
+      "schema": "chio.runtime.sandbox-attestation.v1",
+      "artifactKind": "runtime_sandbox_attestation",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-runtime/v1/sandbox-attestation.schema.json"
+    },
+    {
+      "schema": "chio.runtime.attack-simulation-report.v1",
+      "artifactKind": "runtime_attack_simulation_report",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-runtime/v1/attack-simulation-report.schema.json"
+    },
+    {
+      "schema": "chio.runtime.chaos-run-report.v1",
+      "artifactKind": "runtime_chaos_run_report",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-runtime/v1/chaos-run-report.schema.json"
+    },
+    {
       "schema": "chio.runtime.verifier-trust-bundle.v1",
       "artifactKind": "chio_runtime_verifier_trust_bundle",
       "introducedBy": "chio-runtime-policy-schema-cutover/v1",
@@ -958,6 +1024,486 @@
       "artifactKind": "chio_runtime_workflow_run_report",
       "introducedBy": "chio-runtime-proof-schema-cutover/v1",
       "schemaFile": "spec/schemas/chio-runtime/v1/workflow-run-report.schema.json"
+    },
+    {
+      "schema": "chio.commerce.order-context.v1",
+      "artifactKind": "commerce_order_context",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/order-context.schema.json"
+    },
+    {
+      "schema": "chio.commerce.event-log.v1",
+      "artifactKind": "commerce_event_log",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/event-log.schema.json"
+    },
+    {
+      "schema": "chio.commerce.payment-lifecycle.v1",
+      "artifactKind": "commerce_payment_lifecycle",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/payment-lifecycle.schema.json"
+    },
+    {
+      "schema": "chio.commerce.mandate-allowance-ledger.v1",
+      "artifactKind": "commerce_mandate_allowance_ledger",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/mandate-allowance-ledger.schema.json"
+    },
+    {
+      "schema": "chio.commerce.protocol-payload.v1",
+      "artifactKind": "commerce_protocol_payload",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/protocol-payload.schema.json"
+    },
+    {
+      "schema": "chio.commerce.settlement-packet.v1",
+      "artifactKind": "commerce_settlement_packet",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/settlement-packet.schema.json"
+    },
+    {
+      "schema": "chio.commerce.order-passport.v1",
+      "artifactKind": "commerce_order_passport",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/order-passport.schema.json"
+    },
+    {
+      "schema": "chio.commerce.provider-passport.v1",
+      "artifactKind": "commerce_provider_passport",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/provider-passport.schema.json"
+    },
+    {
+      "schema": "chio.commerce.reputation-snapshot.v1",
+      "artifactKind": "commerce_reputation_snapshot",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/reputation-snapshot.schema.json"
+    },
+    {
+      "schema": "chio.commerce.federation-trust-bundle.v1",
+      "artifactKind": "commerce_federation_trust_bundle",
+      "introducedBy": "commerce-payments-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/federation-trust-bundle.schema.json"
+    },
+    {
+      "schema": "chio.risk.comptroller-report.v1",
+      "artifactKind": "risk_comptroller_report",
+      "introducedBy": "enterprise-export-v1",
+      "schemaFile": "spec/schemas/chio-risk/v1/comptroller-report.schema.json"
+    },
+    {
+      "schema": "chio.enterprise.data-governance-report.v1",
+      "artifactKind": "enterprise_data_governance_report",
+      "introducedBy": "enterprise-export-v1",
+      "schemaFile": "spec/schemas/chio-enterprise/v1/data-governance-report.schema.json"
+    },
+    {
+      "schema": "chio.enterprise.evidence-export-bundle.v1",
+      "artifactKind": "enterprise_evidence_export_bundle",
+      "introducedBy": "enterprise-export-v1",
+      "schemaFile": "spec/schemas/chio-enterprise/v1/evidence-export-bundle.schema.json"
+    },
+    {
+      "schema": "chio.enterprise.telemetry-projection.v1",
+      "artifactKind": "enterprise_telemetry_projection",
+      "introducedBy": "enterprise-export-v1",
+      "schemaFile": "spec/schemas/chio-enterprise/v1/telemetry-projection.schema.json"
+    },
+    {
+      "schema": "chio.enterprise.approval-case.v1",
+      "artifactKind": "enterprise_approval_case",
+      "introducedBy": "enterprise-export-v1",
+      "schemaFile": "spec/schemas/chio-enterprise/v1/approval-case.schema.json"
+    },
+    {
+      "schema": "chio.enterprise.control-evidence-map.v1",
+      "artifactKind": "enterprise_control_evidence_map",
+      "introducedBy": "enterprise-export-v1",
+      "schemaFile": "spec/schemas/chio-enterprise/v1/control-evidence-map.schema.json"
+    },
+    {
+      "schema": "chio.agent-web-proof-envelope.v1",
+      "artifactKind": "agent_web_proof_envelope",
+      "introducedBy": "agent-web-interop-v1",
+      "schemaFile": "spec/schemas/chio-agent-web/v1/proof-envelope.schema.json"
+    },
+    {
+      "schema": "chio.agent-web.external-projection-manifest.v1",
+      "artifactKind": "agent_web_external_projection_manifest",
+      "introducedBy": "agent-web-interop-v1",
+      "schemaFile": "spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json"
+    },
+    {
+      "schema": "chio.agent-web.interop-verifier-report.v1",
+      "artifactKind": "agent_web_interop_verifier_report",
+      "introducedBy": "agent-web-interop-v1",
+      "schemaFile": "spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json"
+    },
+    {
+      "schema": "chio.proof-room.bundle.v1",
+      "artifactKind": "proof_room_bundle",
+      "introducedBy": "proof-room-v1",
+      "schemaFile": "spec/schemas/chio-proof-room/v1/bundle.schema.json"
+    },
+    {
+      "schema": "chio.proof-room.verifier-report.v1",
+      "artifactKind": "proof_room_verifier_report",
+      "introducedBy": "proof-room-v1",
+      "schemaFile": "spec/schemas/chio-proof-room/v1/verifier-report.schema.json"
+    },
+    {
+      "schema": "chio.proof-room.fixture-catalog.v1",
+      "artifactKind": "proof_room_fixture_catalog",
+      "introducedBy": "proof-room-v1",
+      "schemaFile": "spec/schemas/chio-proof-room/v1/fixture-catalog.schema.json"
+    },
+    {
+      "schema": "chio.proof-room.fixture-root-catalog.v1",
+      "artifactKind": "proof_room_fixture_root_catalog",
+      "introducedBy": "proof-room-v1",
+      "schemaFile": "spec/schemas/chio-proof-room/v1/fixture-root-catalog.schema.json"
+    },
+    {
+      "schema": "chio.proof-room.receipt-evidence.v1",
+      "artifactKind": "proof_room_receipt_evidence",
+      "introducedBy": "proof-room-v1",
+      "schemaFile": "spec/schemas/chio-proof-room/v1/receipt-evidence.schema.json"
+    },
+    {
+      "schema": "chio.proof.docker-quickstart-evidence.v1",
+      "artifactKind": "proof_docker_quickstart_evidence",
+      "introducedBy": "proof-room-v1",
+      "schemaFile": "spec/schemas/chio-proof-room/v1/docker-quickstart-evidence.schema.json"
+    },
+    {
+      "schema": "chio.proof.release-truth.v1",
+      "artifactKind": "proof_release_truth",
+      "introducedBy": "proof-room-v1",
+      "schemaFile": "spec/schemas/chio-proof-room/v1/release-truth.schema.json"
+    },
+    {
+      "schema": "chio.proof.first-run.capability-proof.v1",
+      "artifactKind": "proof_first_run_capability_proof",
+      "introducedBy": "proof-room-v1",
+      "schemaFile": "spec/schemas/chio-proof-room/v1/first-run-capability-proof.schema.json"
+    },
+    {
+      "schema": "chio.proof.first-run.guard-report.v1",
+      "artifactKind": "proof_first_run_guard_report",
+      "introducedBy": "proof-room-v1",
+      "schemaFile": "spec/schemas/chio-proof-room/v1/first-run-guard-report.schema.json"
+    },
+    {
+      "schema": "chio.proof.first-run.trust-roots.v1",
+      "artifactKind": "proof_first_run_trust_roots",
+      "introducedBy": "proof-room-v1",
+      "schemaFile": "spec/schemas/chio-proof-room/v1/first-run-trust-roots.schema.json"
+    },
+    {
+      "schema": "chio.proof.first-run.command-log.v1",
+      "artifactKind": "proof_first_run_command_log",
+      "introducedBy": "proof-room-v1",
+      "schemaFile": "spec/schemas/chio-proof-room/v1/first-run-command-log.schema.json"
+    },
+    {
+      "schema": "chio.web3-settlement-dispatch.v1",
+      "artifactKind": "web3_settlement_dispatch",
+      "introducedBy": "public-settlement-v1",
+      "schemaFile": "spec/schemas/chio-web3/v1/settlement-dispatch.schema.json"
+    },
+    {
+      "schema": "chio.web3-settlement-execution-receipt.v1",
+      "artifactKind": "web3_settlement_execution_receipt",
+      "introducedBy": "public-settlement-v1",
+      "schemaFile": "spec/schemas/chio-web3/v1/settlement-execution-receipt.schema.json"
+    },
+    {
+      "schema": "chio.web3-settlement-dispatch.v2",
+      "artifactKind": "web3_settlement_dispatch",
+      "introducedBy": "public-settlement-v2",
+      "schemaFile": "spec/schemas/chio-web3/v2/settlement-dispatch.schema.json"
+    },
+    {
+      "schema": "chio.web3-settlement-execution-receipt.v2",
+      "artifactKind": "web3_settlement_execution_receipt",
+      "introducedBy": "public-settlement-v2",
+      "schemaFile": "spec/schemas/chio-web3/v2/settlement-execution-receipt.schema.json"
+    },
+    {
+      "schema": "chio.web3-settlement-proof-bundle.v1",
+      "artifactKind": "web3_settlement_proof_bundle",
+      "introducedBy": "public-settlement-v1",
+      "schemaFile": "spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json"
+    },
+    {
+      "schema": "chio.public-settlement-verifier-report.v1",
+      "artifactKind": "public_settlement_verifier_report",
+      "introducedBy": "public-settlement-v1",
+      "schemaFile": "spec/schemas/chio-web3/v1/public-settlement-verifier-report.schema.json"
+    },
+    {
+      "schema": "chio.oracle-conversion-evidence.v1",
+      "artifactKind": "oracle_conversion_evidence",
+      "introducedBy": "public-settlement-v1",
+      "schemaFile": "spec/schemas/chio-oracle/v1/conversion-evidence.schema.json"
+    },
+    {
+      "schema": "chio.swarm.task-graph.v1",
+      "artifactKind": "swarm_task_graph",
+      "introducedBy": "swarm-authority-v1",
+      "schemaFile": "spec/schemas/chio-swarm/v1/task-graph.schema.json"
+    },
+    {
+      "schema": "chio.swarm.continuation-token.v1",
+      "artifactKind": "swarm_continuation_token",
+      "introducedBy": "swarm-authority-v1",
+      "schemaFile": "spec/schemas/chio-swarm/v1/continuation-token.schema.json"
+    },
+    {
+      "schema": "chio.swarm.delegation-witness-chain.v1",
+      "artifactKind": "swarm_delegation_witness_chain",
+      "introducedBy": "swarm-authority-v1",
+      "schemaFile": "spec/schemas/chio-swarm/v1/delegation-witness-chain.schema.json"
+    },
+    {
+      "schema": "chio.swarm.join-receipt.v1",
+      "artifactKind": "swarm_join_receipt",
+      "introducedBy": "swarm-authority-v1",
+      "schemaFile": "spec/schemas/chio-swarm/v1/join-receipt.schema.json"
+    },
+    {
+      "schema": "chio.swarm.route-plan-receipt.v1",
+      "artifactKind": "swarm_route_plan_receipt",
+      "introducedBy": "swarm-authority-v1",
+      "schemaFile": "spec/schemas/chio-swarm/v1/route-plan-receipt.schema.json"
+    },
+    {
+      "schema": "chio.swarm.terminal-graph-receipt.v1",
+      "artifactKind": "swarm_terminal_graph_receipt",
+      "introducedBy": "swarm-authority-v1",
+      "schemaFile": "spec/schemas/chio-swarm/v1/terminal-graph-receipt.schema.json"
+    },
+    {
+      "schema": "chio.swarm.budget-pool.v1",
+      "artifactKind": "swarm_budget_pool",
+      "introducedBy": "swarm-authority-v1",
+      "schemaFile": "spec/schemas/chio-swarm/v1/budget-pool.schema.json"
+    },
+    {
+      "schema": "chio.swarm.revocation-epoch.v1",
+      "artifactKind": "swarm_revocation_epoch",
+      "introducedBy": "swarm-authority-v1",
+      "schemaFile": "spec/schemas/chio-swarm/v1/revocation-epoch.schema.json"
+    },
+    {
+      "schema": "chio.swarm.authority-verifier-report.v1",
+      "artifactKind": "swarm_authority_verifier_report",
+      "introducedBy": "swarm-authority-v1",
+      "schemaFile": "spec/schemas/chio-swarm/v1/authority-verifier-report.schema.json"
+    },
+    {
+      "schema": "chio.workflow.preflight-plan.v1",
+      "artifactKind": "workflow_preflight_plan",
+      "introducedBy": "workflow-preflight-v1",
+      "schemaFile": "spec/schemas/chio-workflow/v1/preflight-plan.schema.json"
+    },
+    {
+      "schema": "chio.workflow.preflight-report.v1",
+      "artifactKind": "workflow_preflight_report",
+      "introducedBy": "workflow-preflight-v1",
+      "schemaFile": "spec/schemas/chio-workflow/v1/preflight-report.schema.json"
+    },
+    {
+      "schema": "chio.crypto.verification-context.v1",
+      "artifactKind": "crypto_verification_context",
+      "introducedBy": "crypto-context-v1",
+      "schemaFile": "spec/schemas/chio-crypto/v1/verification-context.schema.json"
+    },
+    {
+      "schema": "chio.trust.key-state.v1",
+      "artifactKind": "trust_key_state",
+      "introducedBy": "crypto-context-v1",
+      "schemaFile": "spec/schemas/chio-trust/v1/key-state.schema.json"
+    },
+    {
+      "schema": "chio.trust.revocation-snapshot.v1",
+      "artifactKind": "trust_revocation_snapshot",
+      "introducedBy": "crypto-context-v1",
+      "schemaFile": "spec/schemas/chio-trust/v1/revocation-snapshot.schema.json"
+    },
+    {
+      "schema": "chio.disclosure.verifier-privacy-profile.v1",
+      "artifactKind": "disclosure_verifier_privacy_profile",
+      "introducedBy": "crypto-context-v1",
+      "schemaFile": "spec/schemas/chio-disclosure/v1/verifier-privacy-profile.schema.json"
+    },
+    {
+      "schema": "chio.disclosure.crypto-context-report.v1",
+      "artifactKind": "disclosure_crypto_context_report",
+      "introducedBy": "crypto-context-v1",
+      "schemaFile": "spec/schemas/chio-disclosure/v1/crypto-context-report.schema.json"
+    },
+    {
+      "schema": "chio.bbs-projection.manifest.v2",
+      "artifactKind": "bbs_projection_manifest",
+      "introducedBy": "crypto-context-v1",
+      "schemaFile": "spec/schemas/chio-disclosure/v1/bbs-projection-manifest.schema.json"
+    },
+    {
+      "schema": "chio.disclosure.capsule.v1",
+      "artifactKind": "disclosure_capsule",
+      "introducedBy": "disclosure-lineage-v1",
+      "schemaFile": "spec/schemas/chio-disclosure/v1/capsule.schema.json"
+    },
+    {
+      "schema": "chio.lineage.signed-subgraph.v1",
+      "artifactKind": "lineage_signed_subgraph",
+      "introducedBy": "disclosure-lineage-v1",
+      "schemaFile": "spec/schemas/chio-lineage/v1/signed-subgraph.schema.json"
+    },
+    {
+      "schema": "chio.disclosure.leakage-ledger.v1",
+      "artifactKind": "disclosure_leakage_ledger",
+      "introducedBy": "disclosure-lineage-v1",
+      "schemaFile": "spec/schemas/chio-disclosure/v1/leakage-ledger.schema.json"
+    },
+    {
+      "schema": "chio.disclosure.lineage-verifier-report.v1",
+      "artifactKind": "disclosure_lineage_verifier_report",
+      "introducedBy": "disclosure-lineage-v1",
+      "schemaFile": "spec/schemas/chio-disclosure/v1/lineage-verifier-report.schema.json"
+    },
+    {
+      "schema": "chio.transparency.inclusion-proof.v1",
+      "artifactKind": "transparency_inclusion_proof",
+      "introducedBy": "crypto-context-v1",
+      "schemaFile": "spec/schemas/chio-transparency/v1/inclusion-proof.schema.json"
+    },
+    {
+      "schema": "chio.transaction-passport.v1",
+      "artifactKind": "transaction_passport",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/transaction-passport.schema.json"
+    },
+    {
+      "schema": "chio.transaction.evidence-graph.v1",
+      "artifactKind": "transaction_evidence_graph",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/evidence-graph.schema.json"
+    },
+    {
+      "schema": "chio.transaction.claim-set.v1",
+      "artifactKind": "transaction_claim_set",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/claim-set.schema.json"
+    },
+    {
+      "schema": "chio.transaction.verifier-policy.v1",
+      "artifactKind": "transaction_verifier_policy",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/verifier-policy.schema.json"
+    },
+    {
+      "schema": "chio.transaction.verifier-report.v1",
+      "artifactKind": "transaction_verifier_report",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/verifier-report.schema.json"
+    },
+    {
+      "schema": "chio.transaction.runtime-security-report.v1",
+      "artifactKind": "transaction_runtime_security_report",
+      "introducedBy": "runtime-security-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/runtime-security-report.schema.json"
+    },
+    {
+      "schema": "chio.capability.proof.v1",
+      "artifactKind": "capability_proof",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/capability-proof.schema.json"
+    },
+    {
+      "schema": "chio.guard.decision.v1",
+      "artifactKind": "guard_decision",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/guard-decision.schema.json"
+    },
+    {
+      "schema": "chio.policy.bundle.v1",
+      "artifactKind": "policy_bundle",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/policy-bundle.schema.json"
+    },
+    {
+      "schema": "chio.trust.root.v1",
+      "artifactKind": "trust_root",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-trust/v1/trust-root.schema.json"
+    },
+    {
+      "schema": "chio.request.digest.v1",
+      "artifactKind": "request_digest",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/request-digest.schema.json"
+    },
+    {
+      "schema": "chio.response.digest.v1",
+      "artifactKind": "response_digest",
+      "introducedBy": "transaction-passport-v1",
+      "schemaFile": "spec/schemas/chio-transaction/v1/response-digest.schema.json"
+    },
+    {
+      "schema": "chio.commerce.provider-discovery-snapshot.v1",
+      "artifactKind": "commerce_provider_discovery_snapshot",
+      "introducedBy": "trust-market-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/provider-discovery-snapshot.schema.json"
+    },
+    {
+      "schema": "chio.commerce.provider-selection-report.v1",
+      "artifactKind": "commerce_provider_selection_report",
+      "introducedBy": "trust-market-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/provider-selection-report.schema.json"
+    },
+    {
+      "schema": "chio.trust.scorecard-snapshot.v1",
+      "artifactKind": "trust_scorecard_snapshot",
+      "introducedBy": "trust-market-v1",
+      "schemaFile": "spec/schemas/chio-trust/v1/scorecard-snapshot.schema.json"
+    },
+    {
+      "schema": "chio.trust.reputation-import-report.v1",
+      "artifactKind": "trust_reputation_import_report",
+      "introducedBy": "trust-market-v1",
+      "schemaFile": "spec/schemas/chio-trust/v1/reputation-import-report.schema.json"
+    },
+    {
+      "schema": "chio.commerce.sla-commitment.v1",
+      "artifactKind": "commerce_sla_commitment",
+      "introducedBy": "trust-market-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/sla-commitment.schema.json"
+    },
+    {
+      "schema": "chio.commerce.sla-performance-report.v1",
+      "artifactKind": "commerce_sla_performance_report",
+      "introducedBy": "trust-market-v1",
+      "schemaFile": "spec/schemas/chio-commerce/v1/sla-performance-report.schema.json"
+    },
+    {
+      "schema": "chio.risk.collateral-position-report.v1",
+      "artifactKind": "risk_collateral_position_report",
+      "introducedBy": "trust-market-v1",
+      "schemaFile": "spec/schemas/chio-risk/v1/collateral-position-report.schema.json"
+    },
+    {
+      "schema": "chio.risk.guarantee-decision.v1",
+      "artifactKind": "risk_guarantee_decision",
+      "introducedBy": "trust-market-v1",
+      "schemaFile": "spec/schemas/chio-risk/v1/guarantee-decision.schema.json"
+    },
+    {
+      "schema": "chio.risk.adjudication-jurisdiction-receipt.v1",
+      "artifactKind": "risk_adjudication_jurisdiction_receipt",
+      "introducedBy": "trust-market-v1",
+      "schemaFile": "spec/schemas/chio-risk/v1/adjudication-jurisdiction-receipt.schema.json"
     }
   ]
 }

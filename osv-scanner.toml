@@ -14,10 +14,6 @@
 # full workspace install.
 
 [[IgnoredVulns]]
-id = "GHSA-58qx-3vcg-4xpx"
-reason = "ws (transitive in the TS SDK example bun.lock); uninitialized memory disclosure; bump tracked for the dependency-refresh pass"
-
-[[IgnoredVulns]]
 id = "GHSA-q3j6-qgpj-74h6"
 reason = "fast-uri (transitive via fastify in TS SDK example/conformance); path traversal; bump tracked for the dependency-refresh pass"
 
@@ -32,7 +28,3 @@ reason = "qs (transitive via express in TS SDK example/conformance); prototype-p
 [[IgnoredVulns]]
 id = "GHSA-866g-f22w-33x8"
 reason = "@ai-sdk/provider-utils (dev-only peer test lock for ai-sdk wrapper); patched provider-utils line requires ai@6 while package peer range remains <6; track for peer-range upgrade"
-
-[[IgnoredVulns]]
-id = "GHSA-5xrq-8626-4rwp"
-reason = "vitest (dev-only TS SDK test locks); advisory targets exposed Vitest UI/API/browser mode, while repo tests use vitest run; Vitest 4.1.8 refresh broke package tests, track for a compatible runner upgrade"

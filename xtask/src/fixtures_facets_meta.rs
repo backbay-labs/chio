@@ -1,17 +1,14 @@
 // Committed-fixture metadata assertions for the alert routing/handoff/delivery/
 // assurance facets and the shared label-hygiene / canonical-hash helpers they
-// use, ported from the embedded python blocks of the
-// `scripts/check-chio-pheromone-relay-alert-*.sh` gates. Split out of
-// `fixtures_facets.rs` to keep each include file under the 2000-line hygiene cap;
-// included into `fixtures.rs` via `include!` so it shares that module's private
-// helpers (load_json, glob_documents, str_field, invalid, metadata_negative_*).
+// use. Included into `fixtures.rs` via `include!` so it shares that module's
+// private helpers (load_json, glob_documents, str_field, invalid,
+// metadata_negative_*).
 
 /// Committed-fixture invariants for the handoff facet beyond the negative
 /// corpus: the handoff profile must carry no inline secrets, dynamic endpoints,
 /// duplicate targets, or duplicate route coverage; the committed handoff report
 /// must be dry-run accepted, preserve critical firing visibility, and carry the
-/// primary downstream route. The consolidated handler had checked only the
-/// negative-case IDs.
+/// primary downstream route.
 fn metadata_relay_alert_handoff(fixture_dir: &Path) -> Result<(), XtaskError> {
     let profile = load_json(&fixture_dir.join("relay-alert-handoff-profile.json"))?;
     if str_field(&profile, "schema") != Some("chio.pheromone.relay-alert-handoff-profile.v1") {
@@ -239,8 +236,7 @@ fn metadata_relay_alert_assurance(fixture_dir: &Path) -> Result<(), XtaskError> 
 /// Committed-fixture invariants for the assurance-export facet beyond the
 /// negative corpus: the committed `export-bundle/manifest.json` must have the
 /// right schema, a canonical 64-hex source package hash, no forbidden safety
-/// claims, and only safe artifact paths free of secret markers. The consolidated
-/// handler had checked only the negative-case IDs.
+/// claims, and only safe artifact paths free of secret markers.
 fn metadata_relay_alert_assurance_export(fixture_dir: &Path) -> Result<(), XtaskError> {
     let manifest = load_json(&fixture_dir.join("export-bundle/manifest.json"))?;
     if str_field(&manifest, "schema")

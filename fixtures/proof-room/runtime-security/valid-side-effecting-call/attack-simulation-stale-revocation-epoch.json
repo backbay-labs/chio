@@ -1,0 +1,18 @@
+{
+  "actual_verifier_report_digest": "ba51d8de07fcb1664f9d200d7455e62cb80db7a987e5285eaa00d7c3ec9c2907",
+  "attack_class": "stale-revocation-epoch",
+  "chaos_knobs": [
+    "revocation_epoch"
+  ],
+  "expected_denial_claim": "claim.runtime.revocation_fresh",
+  "fixture_path": "runtime-security/stale-revocation-epoch",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "scenario_id": "attack-stale-revocation-epoch",
+  "schema": "chio.runtime.attack-simulation-report.v1",
+  "signature": "0d363079498bbfad8187f78229411dfd8bad1b7968cad9e7b9bee8aec2bbb4e3a0f4c73209ba28a85519bde2291e0e1c37e104b60c2891f44ef5039e5a2c0606",
+  "simulator_version_digest": "7b507c9dd41316c67a49d7eb5c33730b7e01843ea2c0d1d495cae1f8a08679d3",
+  "status": "passed"
+}

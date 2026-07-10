@@ -1,0 +1,9 @@
+{
+  "schema": "chio.trust-market.negative-fixture.v1",
+  "id": "unsupported-collateral-source",
+  "claim_ref": "claim.trust_market.collateral_guarantee_bound",
+  "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
+  "fixture_path": "../unsupported-collateral-source",
+  "mutated_artifact": "collateral-position-report.json",
+  "expected_failure_code": "proof-room.negative.collateral-source-type-unsupported"
+}

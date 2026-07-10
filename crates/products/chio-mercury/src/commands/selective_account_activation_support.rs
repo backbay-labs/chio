@@ -2,15 +2,6 @@ use super::*;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct MercurySelectiveAccountActivationDocRefs {
-    pub(super) selective_account_activation_file: String,
-    pub(super) operations_file: String,
-    pub(super) validation_package_file: String,
-    pub(super) decision_record_file: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub(super) struct MercurySelectiveAccountActivationScopeFreeze {
     pub(super) schema: String,
     pub(super) workflow_id: String,
@@ -153,19 +144,6 @@ pub(super) struct MercurySelectiveAccountActivationValidationReport {
     pub(super) same_workflow_boundary: String,
     pub(super) selective_account_activation: MercurySelectiveAccountActivationExportSummary,
     pub(super) decision_record_file: String,
-    pub(super) docs: MercurySelectiveAccountActivationDocRefs,
-}
-
-pub(super) fn selective_account_activation_doc_refs() -> MercurySelectiveAccountActivationDocRefs {
-    MercurySelectiveAccountActivationDocRefs {
-        selective_account_activation_file: "docs/mercury/SELECTIVE_ACCOUNT_ACTIVATION.md"
-            .to_string(),
-        operations_file: "docs/mercury/SELECTIVE_ACCOUNT_ACTIVATION_OPERATIONS.md".to_string(),
-        validation_package_file: "docs/mercury/SELECTIVE_ACCOUNT_ACTIVATION_VALIDATION_PACKAGE.md"
-            .to_string(),
-        decision_record_file: "docs/mercury/SELECTIVE_ACCOUNT_ACTIVATION_DECISION_RECORD.md"
-            .to_string(),
-    }
 }
 
 pub(super) fn build_selective_account_activation_profile(

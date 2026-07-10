@@ -11,7 +11,7 @@ Routing precedence (highest wins):
 3. ``ChioStreamingConfigError`` if neither is configured and the router
    is asked to route.
 
-The payload returned by :meth:`DLQRouter.build_envelope` is meant for
+The payload returned by :meth:`DLQRouter.build_record` is meant for
 immediate publication via the same transactional producer that commits
 the consumer offset, so denial and commit remain atomic.
 """

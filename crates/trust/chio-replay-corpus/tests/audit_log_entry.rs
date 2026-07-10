@@ -160,8 +160,10 @@ fn tee_bless_audit_signing_rejects_blank_operator_identity() {
     );
     let keypair = Keypair::from_seed(&[7u8; 32]);
 
-    let error =
-        TeeBlessAuditEntry::sign(body, &keypair).expect_err("blank operator id must not be signed");
+    let error = match TeeBlessAuditEntry::sign(body, &keypair) {
+        Ok(_) => panic!("blank operator id must not be signed"),
+        Err(error) => error,
+    };
 
     assert!(error.to_string().contains("operator.id"));
 }

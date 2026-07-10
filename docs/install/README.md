@@ -1,28 +1,26 @@
 # Install Chio
 
-Use one of these supported install paths:
+Chio is pre-release and is not yet published to a package registry, GitHub
+Release asset set, Homebrew formula, or container registry. Build the CLI from
+source for the current checkout:
 
-## GitHub Release Binaries
+```bash
+git clone https://github.com/backbay-labs/chio.git
+cd chio
+cargo build --release -p chio-cli
+./target/release/chio --help
+```
 
-Use the published binaries when you want the fastest local install.
+## Release Distribution Contract
 
-- Guide: [BINARY_DISTRIBUTION.md](./BINARY_DISTRIBUTION.md)
-- Verify with `chio --help`
+The binary, checksum, container, and Homebrew docs describe the release contract
+that must be satisfied before those install paths are advertised as available.
+They are not current publication evidence.
 
-## Homebrew
-
-Use Homebrew when you want a managed macOS install path.
-
-- Guide: [homebrew.md](./homebrew.md)
-- Verify with `chio --help`
-
-## Container And Docker Paths
-
-Use the sidecar image or the repo-local Docker example when you want a
-containerized smoke path.
-
-- Binary and image notes: [BINARY_DISTRIBUTION.md](./BINARY_DISTRIBUTION.md)
-- Demo stack: [../../examples/docker/README.md](../../examples/docker/README.md)
+- Planned binary and image shape: [BINARY_DISTRIBUTION.md](./BINARY_DISTRIBUTION.md)
+- Planned Homebrew formula flow: [homebrew.md](./homebrew.md)
+- Repo-local Docker demo stack: [../../examples/docker/README.md](../../examples/docker/README.md)
+- Proof Room quickstart smoke: [../start-here/PROOF_ROOM_QUICKSTART.md](../start-here/PROOF_ROOM_QUICKSTART.md)
 
 ## Next Step
 

@@ -54,11 +54,23 @@ jobs:
           rustup show active-toolchain
 
       - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler ripgrep zstd
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.12"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install web3 contract dependencies
+        run: pnpm --dir contracts install --frozen-lockfile
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
 
@@ -74,8 +86,11 @@ jobs:
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: |
           ./scripts/check-release-inputs.sh
+          ./scripts/check-web3-contract-parity.sh
           ./scripts/check-workspace-layering.sh
           python3 scripts/check-review-slices.py
+          python3 scripts/check-mutants-examine-globs.py
+          bash scripts/tests/check-mutants-examine-globs.test.sh
           python3 scripts/check-rust-public-surface.py
           bash scripts/tests/check-rust-public-surface.test.sh
           python3 scripts/check-architecture-docs.py
@@ -83,6 +98,12 @@ jobs:
           bash ./scripts/check-log-redaction.sh
           bash ./scripts/check-http-egress-contract.sh
           bash ./scripts/tests/check-http-egress-contract.test.sh
+          bash ./scripts/check-chio-proof-room-release-truth.sh
+          bash ./scripts/tests/check-chio-proof-room-release-truth.test.sh
+          bash ./scripts/check-chio-schema-registry.sh
+          bash ./scripts/tests/check-chio-schema-registry.test.sh
+          bash ./scripts/check-agent-web-proof-envelope-schema.sh
+          bash ./scripts/tests/check-agent-web-proof-envelope-schema.test.sh
 
       - name: Anchor batch async witness lint
         run: bash ./scripts/check-anchor-batch-async-witness.sh
@@ -133,6 +154,33 @@ jobs:
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: cargo build --workspace
 
+      - name: Build Proof Room dashboard
+        uses: ./.github/actions/setup-node
+        with:
+          node-version: "22"
+          cache-dependency-path: crates/products/chio-cli/dashboard/package-lock.json
+          working-directory: crates/products/chio-cli/dashboard
+
+      - name: Export Proof Room static UI
+        working-directory: crates/products/chio-cli/dashboard
+        run: npm run build
+
+      - name: Transaction Passport fixture gate
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+          CHIO_BIN: target/debug/chio
+        run: bash ./scripts/check-chio-transaction-passport.sh
+
+      - name: Proof Room launch acceptance package
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+          CHIO_BIN: target/debug/chio
+        run: |
+          cargo xtask verify launch-acceptance --out target/proof-room/public-bundle
+          bash ./scripts/tests/check-chio-proof-room-launch-acceptance.test.sh
+
       - name: Workspace tests
         env:
           CARGO_BUILD_JOBS: "1"
@@ -144,6 +192,17 @@ jobs:
           CARGO_BUILD_JOBS: "1"
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: cargo test -p chio-wasm-guards --lib
+
+      - name: Build Python guard WASM fixture
+        run: |
+          python3 -m pip install "componentize-py==$(cat .tooling/componentize-py.version)"
+          ./sdks/guard/chio-guard-py/scripts/build-guard.sh
+
+      - name: Wasm guards Python SDK round-trip tests
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: cargo test -p chio-wasm-guards --test py_guard_integration -- --nocapture
 
       - name: Tokio console smoke
         env:
@@ -173,7 +232,7 @@ jobs:
 
   cargo-vet:
     name: cargo-vet (locked supply-chain audit)
-    # owner: chio-maintainers
+    # owner: Chio maintainers
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -189,7 +248,7 @@ jobs:
 
   cargo-deny:
     name: cargo-deny (supply-chain bans/advisories/licenses)
-    # owner: chio-maintainers
+    # owner: Chio maintainers
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -225,7 +284,7 @@ jobs:
   # commit-message range.
   check-regression-tests:
     name: check-regression-tests
-    # owner: chio-maintainers
+    # owner: Chio maintainers
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5

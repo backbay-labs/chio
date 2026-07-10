@@ -2,18 +2,21 @@
 mod tests {
     use chio_test_support::prelude::*;
     use super::*;
-    use std::sync::{Mutex, MutexGuard};
+    use std::sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex, MutexGuard,
+    };
 
     use chio_core::capability::{scope::{ChioScope, Operation, ToolGrant}, token::{CapabilityTokenBody}};
     use chio_core::crypto::Keypair;
     use chio_kernel::{
-        dpop, ChioKernel, KernelConfig, KernelError, NestedFlowBridge, DEFAULT_CHECKPOINT_BATCH_SIZE,
+        dpop, ChioKernel, KernelConfig, KernelError, NestedFlowBridge, RuntimeAdmissionContext,
+        RuntimeAdmissionDecision, RuntimeAdmissionHook, DEFAULT_CHECKPOINT_BATCH_SIZE,
         DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
     };
     use chio_manifest::LatencyHint;
 
     static METRICS_TEST_LOCK: Mutex<()> = Mutex::new(());
-
     fn metrics_test_guard() -> MutexGuard<'static, ()> {
         match METRICS_TEST_LOCK.lock() {
             Ok(guard) => guard,
@@ -70,6 +73,57 @@ mod tests {
             _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
         ) -> Result<Value, KernelError> {
             Err(KernelError::ToolServerError("simulated failure".into()))
+        }
+    }
+
+    struct CountingToolServer {
+        calls: Arc<AtomicU64>,
+    }
+
+    #[async_trait::async_trait]
+    impl ToolServerConnection for CountingToolServer {
+        fn server_id(&self) -> &str {
+            "streaming-srv"
+        }
+
+        fn tool_names(&self) -> Vec<String> {
+            vec!["search_stream".to_string()]
+        }
+
+        async fn invoke(
+            &self,
+            _tool_name: &str,
+            _arguments: Value,
+            _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+        ) -> Result<Value, KernelError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(json!({"content": [{"text": "should-not-run"}]}))
+        }
+    }
+
+    struct DenyingAcpRuntimeAdmissionHook {
+        calls: Arc<AtomicU64>,
+    }
+
+    impl RuntimeAdmissionHook for DenyingAcpRuntimeAdmissionHook {
+        fn name(&self) -> &str {
+            "acp-denying-runtime-admission"
+        }
+
+        fn evaluate(
+            &self,
+            _context: &RuntimeAdmissionContext<'_>,
+        ) -> Result<RuntimeAdmissionDecision, KernelError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(RuntimeAdmissionDecision::deny(
+                "acp runtime admission denied",
+                Some(json!({
+                    "chio_runtime": {
+                        "accepted": false,
+                        "failure_code": "acp_runtime_admission_denied"
+                    }
+                })),
+            ))
         }
     }
 
@@ -971,7 +1025,7 @@ mod tests {
         let err = edge
             .compatibility()
             .invoke("nonexistent", json!({}), &server)
-            .unwrap_err();
+            .test_expect_err("unknown ACP tool must fail");
         assert!(matches!(err, AcpEdgeError::ToolNotFound(_)));
     }
 
@@ -1077,7 +1131,7 @@ mod tests {
 
         let error = edge
             .invoke("read_file", json!({"path": "/tmp"}), &kernel, &execution)
-            .unwrap_err();
+            .test_expect_err("blank ACP execution agent_id must fail");
 
         assert_eq!(
             error.to_string(),
@@ -1106,7 +1160,7 @@ mod tests {
 
         let error = edge
             .invoke("read_file", json!({"path": "/tmp"}), &kernel, &execution)
-            .unwrap_err();
+            .test_expect_err("control character ACP execution agent_id must fail");
 
         assert_eq!(
             error.to_string(),
@@ -1222,7 +1276,7 @@ mod tests {
 
         let error = edge
             .invoke("read_file", json!({"path": "/tmp"}), &kernel, &execution)
-            .unwrap_err();
+            .test_expect_err("ACP web3 evidence prerequisite failure must reject");
 
         assert!(error
             .to_string()
@@ -1276,7 +1330,8 @@ mod tests {
         };
         let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
 
-        let error = execute_orchestrated_acp_request(&kernel, request).unwrap_err();
+        let error = execute_orchestrated_acp_request(&kernel, request)
+            .test_expect_err("ACP capability reference mismatch must reject");
 
         assert!(error.to_string().contains("capability reference mismatch"));
         assert_eq!(
@@ -2251,6 +2306,78 @@ mod tests {
             Some(true)
         );
         assert!(resumed["result"]["result"]["data"]["content"].is_array());
+    }
+
+    #[test]
+    fn jsonrpc_resume_runtime_admission_denies_before_stream_tool_dispatch() {
+        let edge =
+            ChioAcpEdge::new(AcpEdgeConfig::default(), vec![streaming_manifest()]).test_unwrap();
+        let config = test_kernel_config();
+        let issuer = config.keypair.clone();
+        let mut kernel = ChioKernel::new(config);
+        let tool_calls = Arc::new(AtomicU64::new(0));
+        let admission_calls = Arc::new(AtomicU64::new(0));
+        kernel.register_tool_server(Box::new(CountingToolServer {
+            calls: Arc::clone(&tool_calls),
+        }));
+        kernel.set_runtime_admission_hook(Arc::new(DenyingAcpRuntimeAdmissionHook {
+            calls: Arc::clone(&admission_calls),
+        }));
+        let subject = Keypair::generate();
+        let execution = AcpKernelExecutionContext {
+            capability: capability_for_tool(&issuer, &subject, "streaming-srv", "search_stream"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+        };
+
+        let created = edge.handle_jsonrpc(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 70,
+                "method": "tool/stream",
+                "params": {
+                    "capabilityId": "search_stream",
+                    "arguments": {"query": "test"}
+                }
+            }),
+            &kernel,
+            &execution,
+        );
+        let task_id = created["result"]["task"]["id"]
+            .as_str()
+            .test_expect("tool/stream should create task")
+            .to_string();
+
+        let resumed = edge.handle_jsonrpc(
+            json!({
+                "jsonrpc": "2.0",
+                "id": 71,
+                "method": "tool/resume",
+                "params": { "taskId": task_id }
+            }),
+            &kernel,
+            &execution,
+        );
+
+        assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(tool_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(resumed["result"]["task"]["status"].as_str(), Some("failed"));
+        assert_eq!(
+            resumed["result"]["result"]["error"].as_str(),
+            Some("acp runtime admission denied")
+        );
+        assert_eq!(
+            resumed["result"]["result"]["metadata"]["chio"]["decision"].as_str(),
+            Some("deny")
+        );
+        assert_eq!(
+            resumed["result"]["result"]["metadata"]["chio"]["reason"].as_str(),
+            Some("acp runtime admission denied")
+        );
     }
 
     #[test]

@@ -34,8 +34,8 @@ public class ChioMiddlewareOptions
     public int TimeoutSeconds { get; set; } = 5;
 
     /// <summary>
-    /// Legacy option retained for source compatibility. Current v1 always
-    /// denies when the sidecar is unreachable.
+    /// Reserved no-op option. The middleware always denies when the sidecar is
+    /// unreachable.
     /// </summary>
     public string OnSidecarError { get; set; } = "deny";
 

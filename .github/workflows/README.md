@@ -1,6 +1,6 @@
 # GitHub Actions workflows
 
-## The PR build/lint/test gate lives in `ci.yml` (BAC-609)
+## The PR build/lint/test gate lives in `ci.yml`
 
 The required gate that catches workspace-wide compile breakage is the
 `check` job ("Build, lint, test") in [`ci.yml`](./ci.yml). It runs on
@@ -30,7 +30,7 @@ under that job's context rather than as its own check.
 
 ### Why the build step MUST stay `--workspace`, not per-crate (`-p`)
 
-BAC-539 was a class of break a per-crate scoped gate misses: a new enum
+A downstream-exhaustiveness break is a class of break a per-crate scoped gate misses: a new enum
 variant compiles fine in its own crate but breaks an exhaustive `match` in a
 *downstream* crate. A `-p <crate>` build only compiles that crate's tree, so
 cross-crate breakage slips through; `cargo build --workspace` compiles every
@@ -39,7 +39,7 @@ member's `src/`, so the downstream non-exhaustive `match` fails the build.
 Note this step does not pass `--all-features`, so it only compiles
 default-feature source. Modules behind non-default features are not compiled
 (for example provider-adapter-gated modules in
-`crates/protocol/chio-openai-adapter/src/lib.rs`), so a BAC-539-style break that
+`crates/protocol/chio-openai-adapter/src/lib.rs`), so a downstream-exhaustiveness break that
 lives behind an optional feature can still slip through this lane. Full
 coverage of feature-gated source would require a separate all-feature build
 lane.
@@ -48,7 +48,7 @@ Do not narrow the "Workspace build" step to `-p`/path-scoped invocations, and
 do not delete it in favor of relying on clippy alone (clippy here is scoped to
 `--lib --bins --examples` and likewise does not compile test/bench targets).
 Keeping the unscoped `cargo build --workspace` step is the invariant that
-closes the BAC-539 gap.
+closes the downstream-exhaustiveness gap.
 
 ### The test lane: workspace-wide except a separate wasm-guards lib lane
 
@@ -116,8 +116,8 @@ So MSRV test coverage is uneven:
 Do not describe the MSRV job as testing the full workspace; it builds the full
 workspace and tests it with the carveouts above.
 
-> Note (firmware/console): the arc workspace is Rust-only; the firmware and
-> console build pipelines referenced by BAC-609 live in their own repos and
+> Note (firmware/console): the Chio workspace is Rust-only; the firmware and
+> console build pipelines referenced by the PR build/lint/test gate live in their own repos and
 > are out of scope for this workflow.
 
 ## The `chio-pheromone-*` gate family is kept as separate files

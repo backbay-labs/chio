@@ -8,7 +8,7 @@
 #
 # Row format (pipe-separated):
 #   <ISO-8601 UTC timestamp> | package=<crate> | exit=<cargo-mutants exit> |
-#   cycle_end_tag=<tag> | actor=<GITHUB_ACTOR or $USER> | reason=<text>
+#   cycle_end_tag=<tag> | actor=<workflow actor> | reason=<text>
 #
 # The label-based override path (PR titled / labelled
 # `mutants-gate-override` that clears cycle_end_tag in releases.toml)
@@ -21,4 +21,4 @@
 # under docs/fuzzing/archive/ if it grows past a release cycle.
 #
 # --- begin entries ---
-2026-05-02T08:35:06Z | package=chio-kernel-core | exit=1 | cycle_end_tag=v0.0.0-m04-mutation-gate | actor=connor | reason=M04.P3 rollback dry-run; followup PR #465
+2026-05-02T08:35:06Z | package=chio-kernel-core | exit=1 | cycle_end_tag=v0.0.0-m04-mutation-gate | actor=chio-maintainers | reason=M04.P3 rollback dry-run; followup PR #465

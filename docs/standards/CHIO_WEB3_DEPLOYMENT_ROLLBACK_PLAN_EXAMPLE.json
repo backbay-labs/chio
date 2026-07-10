@@ -4,12 +4,18 @@
   "environment": "base-mainnet",
   "manifest_id": "chio.web3-deployment.base-mainnet.reviewed.v1",
   "approval_id": "chio.web3-deployment-approval.base-mainnet.v1",
+  "deployment_scope": "review-required",
+  "non_testnet_guard": {
+    "status": "external_assurance_required",
+    "requires_external_assurance": true,
+    "note": "Example only. Base mainnet promotion requires an approved external assurance artifact."
+  },
   "rollback_mode": "manual-replacement-deployment",
   "stop_on_error": true,
   "require_manual_retry_after_failure": true,
   "rollback_executed": false,
   "failure_stage": null,
   "notes": [
-    "Live rollback is replacement-oriented: stop broader promotion, retain the reviewed manifest and approval artifact, and cut a superseding reviewed manifest if remediation is required."
+    "Live rollback is replacement-oriented: stop broader promotion, retain the reviewed manifest and approval artifact, and cut a superseding reviewed manifest if replacement is required."
   ]
 }

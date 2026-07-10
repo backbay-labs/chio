@@ -5,7 +5,7 @@
 //! tiers (`tier_0` through `tier_3`). Tiers gate marketplace discovery
 //! visibility; cosign verify gates publication. A publisher whose tier is
 //! below a guard's `reputation_floor` does not see the guard in
-//! `arc guard market list` outputs but is not blocked from installing a
+//! `chio guard market list` outputs but is not blocked from installing a
 //! guard whose floor is `tier_0` (the default for manifests without an
 //! explicit floor).
 //!

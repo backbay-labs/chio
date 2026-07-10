@@ -1,6 +1,8 @@
+use chio_core_types::Keypair;
 use chio_runtime::{
-    ChioRuntimeAdmissionHook, ChioRuntimeError, InMemoryRuntimeAdmissionStore,
-    RuntimeAdmissionProfile, CHIO_RUNTIME_TRUST_FLOOR_STATE_SCHEMA,
+    ChioRuntimeAdmissionHook, ChioRuntimeAdmissionStore, ChioRuntimeError,
+    InMemoryRuntimeAdmissionStore, RuntimeAdmissionProfile, SwarmAuthorityBundle,
+    CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA, CHIO_RUNTIME_TRUST_FLOOR_STATE_SCHEMA,
 };
 
 #[test]
@@ -39,7 +41,7 @@ fn runtime_admission_hook_boundary_is_chio_owned() {
 }
 
 #[test]
-fn runtime_boundary_does_not_wildcard_reexport_historical_core() {
+fn runtime_boundary_does_not_wildcard_reexport_runtime_core() {
     let lib = include_str!("../src/lib.rs");
 
     assert!(!lib.contains("pub use chio_runtime_core::*"));
@@ -126,7 +128,7 @@ fn runtime_provider_bindings_from_json_revalidates_public_payloads(
 }
 
 #[test]
-fn runtime_cli_helper_reexports_are_not_historical_error_reexports() {
+fn runtime_cli_helper_reexports_are_not_runtime_core_reexports() {
     let lib = include_str!("../src/lib.rs");
     for helper in [
         "runtime_admission_profile_from_json",
@@ -189,6 +191,80 @@ fn runtime_admission_store_boundary_is_chio_owned() {
         !lib.contains("S: chio_runtime_core::RuntimeAdmissionStore"),
         "ChioRuntimeAdmissionHook must be bounded by the Chio-owned store trait"
     );
+}
+
+#[test]
+fn runtime_admission_store_boundary_exposes_swarm_authority(
+) -> Result<(), Box<dyn std::error::Error>> {
+    fn accepts_swarm_store(store: &dyn ChioRuntimeAdmissionStore) {
+        let _ = store.swarm_authority_bundle("swarm-graph-proof-valid");
+        let _ = store.consume_swarm_continuation("continuation-child-a", "admission-runtime");
+        let _ = store.release_swarm_continuation("continuation-child-a", "admission-runtime");
+    }
+
+    let bundle = SwarmAuthorityBundle {
+        task_graph: serde_json::from_str(include_str!(
+            "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/task-graph.json"
+        ))?,
+        continuation_tokens: vec![
+            serde_json::from_str(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/continuation-child-a.json"
+            ))?,
+            serde_json::from_str(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/continuation-child-b.json"
+            ))?,
+        ],
+        witness_chains: vec![
+            serde_json::from_str(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/witness-child-a.json"
+            ))?,
+            serde_json::from_str(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/witness-child-b.json"
+            ))?,
+        ],
+        join_receipts: vec![serde_json::from_str(include_str!(
+            "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/join-receipt.json"
+        ))?],
+        route_plan_receipts: vec![
+            serde_json::from_str(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/route-child-a.json"
+            ))?,
+            serde_json::from_str(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/route-child-b.json"
+            ))?,
+        ],
+        budget_pool: serde_json::from_str(include_str!(
+            "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/budget-pool.json"
+        ))?,
+        revocation_epoch: serde_json::from_str(include_str!(
+            "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/revocation-epoch.json"
+        ))?,
+        terminal_receipts: vec![serde_json::from_str(include_str!(
+            "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/terminal-graph-receipt.json"
+        ))?],
+        now_unix_ms: 1_800_000_000_000,
+    };
+    let store = InMemoryRuntimeAdmissionStore::new();
+    store.insert_swarm_authority_bundle(bundle.clone())?;
+    accepts_swarm_store(&store);
+    let loaded = store
+        .swarm_authority_bundle(&bundle.task_graph.graph_id)?
+        .ok_or_else(|| std::io::Error::other("swarm bundle not returned from facade store"))?;
+    assert_eq!(loaded.task_graph.graph_id, bundle.task_graph.graph_id);
+
+    let _hook = ChioRuntimeAdmissionHook::new(
+        RuntimeAdmissionProfile {
+            schema: CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA.to_string(),
+            profile_id: "profile-swarm-boundary".to_string(),
+            local_kernel_id: "kernel.vendor-b".to_string(),
+            verifier_id: "did:chio:buyer-verifier".to_string(),
+            issued_at_unix_ms: 1_800_000_000_000,
+            expires_at_unix_ms: 1_800_003_600_000,
+        },
+        store,
+    )
+    .with_swarm_witness_keys(vec![Keypair::from_seed(&[31u8; 32]).public_key()]);
+    Ok(())
 }
 
 #[test]

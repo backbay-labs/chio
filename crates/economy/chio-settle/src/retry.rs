@@ -77,7 +77,7 @@ impl RetryPolicy {
     pub fn backoff_for(&self, attempt: u32) -> Duration {
         let multiplier = u64::from(self.backoff_multiplier).max(1);
         // Saturating arithmetic: very large attempt counts must not
-        // panic; they simply land on the cap.
+        // panic; they land on the cap.
         let mut delay = self.initial_backoff_ms;
         for _ in 0..attempt {
             delay = delay.saturating_mul(multiplier);

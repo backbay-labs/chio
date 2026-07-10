@@ -1,0 +1,43 @@
+{
+  "schema": "chio.proof.docker-quickstart-evidence.v1",
+  "id": "proof-room-docker-quickstart-local",
+  "verdict": "verified",
+  "target": "chio-proof-room-quickstart",
+  "dockerfile": "deploy/docker/Dockerfile",
+  "image_ref": "chio-proof-room:local",
+  "server_binary": "/usr/local/bin/chio-proof-room",
+  "bundle_path": "/opt/chio/fixtures/proof-room/first-run/single-call-authority/proof-room-bundle",
+  "fixture_root": "/opt/chio/fixtures/proof-room",
+  "doctor_report_path": "/opt/chio/proof-doctor-report.json",
+  "evidence_source": "scripts/check-chio-proof-room-docker-quickstart.sh",
+  "endpoints": [
+    {
+      "path": "/manifest.json",
+      "expected": "chio.proof-room.bundle.v1"
+    },
+    {
+      "path": "/ui/proof-room-static/load-report.json",
+      "expected": "chio.proof-room.verifier-report.v1"
+    },
+    {
+      "path": "/proof-room-fixture-catalog.json",
+      "expected": "chio.proof-room.fixture-catalog.v1"
+    },
+    {
+      "path": "/proof-room-fixtures/minimal-passport-valid/verifier-report.json",
+      "expected": "chio.transaction.verifier-report.v1"
+    },
+    {
+      "path": "/proof-room-fixtures/minimal-passport-valid/transaction-passport.json",
+      "expected": "passport-minimal-valid"
+    },
+    {
+      "path": "/proof-room-fixtures/commerce-offline-psp/verifier-report.json",
+      "expected": "chio.commerce.order-passport.v1"
+    },
+    {
+      "path": "/?view=proof-room",
+      "expected": "Chio"
+    }
+  ]
+}

@@ -10,7 +10,7 @@ use std::{fmt, path::Path};
 
 mod stores;
 
-use stores::HistoricalRuntimeAdmissionStoreAdapter;
+use stores::RuntimeCoreAdmissionStoreAdapter;
 pub use stores::{
     ChioRuntimeAdmissionStore, ChioRuntimeTrustFloorStore, InMemoryRuntimeAdmissionStore,
     JsonRuntimeAdmissionStore, JsonRuntimeTrustFloorStateStore, LayeredRuntimeAdmissionStore,
@@ -76,6 +76,7 @@ pub type SignedRuntimePeerWeights = chio_runtime_core::SignedRuntimePeerWeights;
 pub type SignedRuntimePheromonePolicy = chio_runtime_core::SignedRuntimePheromonePolicy;
 pub type SignedRuntimePheromoneQueryReport = chio_runtime_core::SignedRuntimePheromoneQueryReport;
 pub type SignedRuntimeVerifierTrustBundle = chio_runtime_core::SignedRuntimeVerifierTrustBundle;
+pub type SwarmAuthorityBundle = chio_swarm_authority::SwarmAuthorityBundle;
 pub type TreatyRuntimeArtifactRecord = chio_runtime_core::TreatyRuntimeArtifactRecord;
 pub type WeightsBindingMode = chio_runtime_core::WeightsBindingMode;
 
@@ -132,6 +133,7 @@ pub struct ChioRuntimeAdmissionHook<S> {
     pheromone_query_report: Option<SignedRuntimePheromoneQueryReport>,
     runtime_pheromone_policy: Option<SignedRuntimePheromonePolicy>,
     runtime_peer_weights: Option<SignedRuntimePeerWeights>,
+    swarm_witness_keys: Vec<chio_core_types::PublicKey>,
     fixed_now_unix_ms: Option<u64>,
 }
 
@@ -146,6 +148,7 @@ impl<S> ChioRuntimeAdmissionHook<S> {
             pheromone_query_report: None,
             runtime_pheromone_policy: None,
             runtime_peer_weights: None,
+            swarm_witness_keys: Vec::new(),
             fixed_now_unix_ms: None,
         }
     }
@@ -182,20 +185,29 @@ impl<S> ChioRuntimeAdmissionHook<S> {
     }
 
     #[must_use]
+    pub fn with_swarm_witness_keys(
+        mut self,
+        witness_keys: Vec<chio_core_types::PublicKey>,
+    ) -> Self {
+        self.swarm_witness_keys = witness_keys;
+        self
+    }
+
+    #[must_use]
     pub fn with_fixed_now_unix_ms(mut self, now_unix_ms: u64) -> Self {
         self.fixed_now_unix_ms = Some(now_unix_ms);
         self
     }
 
-    fn historical_hook(
+    fn core_hook(
         &self,
-    ) -> chio_runtime_core::ChioRuntimeAdmissionHook<HistoricalRuntimeAdmissionStoreAdapter<'_>>
+    ) -> chio_runtime_core::ChioRuntimeAdmissionHook<RuntimeCoreAdmissionStoreAdapter<'_>>
     where
         S: ChioRuntimeAdmissionStore,
     {
         let mut hook = chio_runtime_core::ChioRuntimeAdmissionHook::new(
             self.profile.clone(),
-            HistoricalRuntimeAdmissionStoreAdapter { inner: &self.store },
+            RuntimeCoreAdmissionStoreAdapter { inner: &self.store },
         );
         if let Some(runtime_trust_input) = &self.runtime_trust_input {
             hook = hook.with_runtime_trust_input(
@@ -211,6 +223,7 @@ impl<S> ChioRuntimeAdmissionHook<S> {
         {
             hook = hook.with_runtime_pheromone_policy(policy.clone(), peer_weights.clone());
         }
+        hook = hook.with_swarm_witness_keys(self.swarm_witness_keys.clone());
         if let Some(now_unix_ms) = self.fixed_now_unix_ms {
             hook = hook.with_fixed_now_unix_ms(now_unix_ms);
         }
@@ -230,24 +243,24 @@ where
         &self,
         context: &chio_kernel::RuntimeAdmissionContext<'_>,
     ) -> Result<chio_kernel::RuntimeAdmissionDecision, chio_kernel::KernelError> {
-        chio_kernel::RuntimeAdmissionHook::evaluate(&self.historical_hook(), context)
+        chio_kernel::RuntimeAdmissionHook::evaluate(&self.core_hook(), context)
     }
 
     fn release_reserved(
         &self,
         metadata: &serde_json::Value,
     ) -> Result<(), chio_kernel::KernelError> {
-        chio_kernel::RuntimeAdmissionHook::release_reserved(&self.historical_hook(), metadata)
+        chio_kernel::RuntimeAdmissionHook::release_reserved(&self.core_hook(), metadata)
     }
 }
 
-pub(crate) type HistoricalRuntimeError = chio_runtime_core::ChioRuntimeError;
+pub(crate) type RuntimeCoreError = chio_runtime_core::ChioRuntimeError;
 
 /// Chio-owned runtime boundary error.
 #[derive(Debug)]
 pub struct ChioRuntimeError {
     code: &'static str,
-    source: HistoricalRuntimeError,
+    source: RuntimeCoreError,
 }
 
 impl ChioRuntimeError {
@@ -256,14 +269,14 @@ impl ChioRuntimeError {
         self.code
     }
 
-    fn from_historical(source: HistoricalRuntimeError) -> Self {
+    fn from_runtime_core(source: RuntimeCoreError) -> Self {
         Self {
             code: source.code(),
             source,
         }
     }
 
-    fn into_historical(self) -> HistoricalRuntimeError {
+    fn into_runtime_core(self) -> RuntimeCoreError {
         self.source
     }
 }
@@ -280,16 +293,14 @@ impl std::error::Error for ChioRuntimeError {
     }
 }
 
-pub(crate) fn wrap_runtime<T>(
-    result: Result<T, HistoricalRuntimeError>,
-) -> Result<T, ChioRuntimeError> {
-    result.map_err(ChioRuntimeError::from_historical)
+pub(crate) fn wrap_runtime<T>(result: Result<T, RuntimeCoreError>) -> Result<T, ChioRuntimeError> {
+    result.map_err(ChioRuntimeError::from_runtime_core)
 }
 
 pub(crate) fn unwrap_runtime<T>(
     result: Result<T, ChioRuntimeError>,
-) -> Result<T, HistoricalRuntimeError> {
-    result.map_err(ChioRuntimeError::into_historical)
+) -> Result<T, RuntimeCoreError> {
+    result.map_err(ChioRuntimeError::into_runtime_core)
 }
 
 pub struct ChioRuntimeAdmissionInput<'a> {
@@ -309,7 +320,7 @@ pub struct ChioRuntimeAdmissionInput<'a> {
 pub fn evaluate_runtime_admission(
     input: ChioRuntimeAdmissionInput<'_>,
 ) -> Result<RuntimeAdmissionReport, ChioRuntimeError> {
-    let store = HistoricalRuntimeAdmissionStoreAdapter { inner: input.store };
+    let store = RuntimeCoreAdmissionStoreAdapter { inner: input.store };
     wrap_runtime(chio_runtime_core::evaluate_runtime_admission(
         chio_runtime_core::RuntimeAdmissionInput {
             profile: input.profile,

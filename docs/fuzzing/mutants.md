@@ -105,7 +105,7 @@ remote-desktop / content-review / memory-governance / post-invocation
 guards.
 
 Excluded: `action.rs` (pure types), `text_utils.rs` (pure helpers),
-the advisory pipeline + `spider_sense.rs` (advisory by design), and
+the advisory pipeline + `embedding_anomaly.rs` (advisory by design), and
 the `external/` adapter tree (remote-process bridges that need
 integration testing, not mutation).
 

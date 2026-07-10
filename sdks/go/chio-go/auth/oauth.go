@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/backbay-labs/chio/sdks/go/chio-go/transport"
 )
 
 type TranscriptHook func(map[string]any)
@@ -49,7 +51,7 @@ func GetJSON(ctx context.Context, httpClient *http.Client, urlString string) (JS
 	}
 	return JSONResponse{
 		Status:  response.StatusCode,
-		Headers: lowerCaseHeaders(response.Header),
+		Headers: transport.FlattenHeaders(response.Header),
 		Body:    body,
 	}, nil
 }
@@ -171,7 +173,7 @@ func PerformAuthorizationCodeFlow(
 		emit(map[string]any{
 			"step":       "auth/authorize-page",
 			"httpStatus": authorizeResponse.StatusCode,
-			"headers":    lowerCaseHeaders(authorizeResponse.Header),
+			"headers":    transport.FlattenHeaders(authorizeResponse.Header),
 			"body":       authorizeBody,
 		})
 	}
@@ -213,7 +215,7 @@ func PerformAuthorizationCodeFlow(
 		emit(map[string]any{
 			"step":       "auth/authorize-approve",
 			"httpStatus": approvalResponse.StatusCode,
-			"headers":    lowerCaseHeaders(approvalResponse.Header),
+			"headers":    transport.FlattenHeaders(approvalResponse.Header),
 		})
 	}
 	if approvalResponse.StatusCode < 300 || approvalResponse.StatusCode >= 400 {
@@ -263,7 +265,7 @@ func PerformAuthorizationCodeFlow(
 		emit(map[string]any{
 			"step":       "auth/token",
 			"httpStatus": tokenResponse.StatusCode,
-			"headers":    lowerCaseHeaders(tokenResponse.Header),
+			"headers":    transport.FlattenHeaders(tokenResponse.Header),
 			"body":       tokenBody,
 		})
 	}
@@ -313,7 +315,7 @@ func ExchangeAccessToken(
 		emit(map[string]any{
 			"step":       "auth/token-exchange",
 			"httpStatus": response.StatusCode,
-			"headers":    lowerCaseHeaders(response.Header),
+			"headers":    transport.FlattenHeaders(response.Header),
 			"body":       body,
 		})
 	}
@@ -352,17 +354,6 @@ func ResolveOAuthAccessToken(
 		"protected_resource_metadata":   metadata.ProtectedResourceMetadata,
 		"authorization_server_metadata": metadata.AuthorizationServerMetadata,
 	}, nil
-}
-
-func lowerCaseHeaders(headers http.Header) map[string]string {
-	result := make(map[string]string, len(headers))
-	for key, values := range headers {
-		if len(values) == 0 {
-			continue
-		}
-		result[strings.ToLower(key)] = values[0]
-	}
-	return result
 }
 
 func decodeJSONObject(reader io.Reader) (map[string]any, error) {

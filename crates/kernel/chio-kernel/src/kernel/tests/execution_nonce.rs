@@ -307,6 +307,46 @@ fn strict_nonce_mode_dispatches_once_with_presented_nonce() {
 }
 
 #[test]
+fn strict_nonce_mode_nested_flow_operation_forwards_presented_nonce(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (mut kernel, agent_kp, scope, mut cfg) = kernel_with_nonce();
+    cfg.require_nonce = true;
+    kernel.set_execution_nonce_store(
+        cfg.clone(),
+        Box::new(InMemoryExecutionNonceStore::from_config(&cfg)),
+    );
+
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+    let request_id = "req-nonce-nested-operation";
+    let request = make_request(request_id, &cap, "read_file", "srv-a");
+    let nonce = mint_nonce_for_request(&kernel, &cap, &request, &cfg);
+    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(&session_id, request_id, &agent_kp.public_key().to_hex());
+    let operation = ToolCallOperation {
+        capability: cap,
+        server_id: request.server_id.clone(),
+        tool_name: request.tool_name.clone(),
+        arguments: request.arguments.clone(),
+        governed_intent: None,
+        execution_nonce: Some(serde_json::to_value(&nonce)?),
+        model_metadata: None,
+        extra_metadata: None,
+    };
+    let mut client = NoopNestedFlowClient;
+
+    let response =
+        kernel.evaluate_tool_call_operation_with_nested_flow_client(&context, &operation, &mut client)?;
+
+    assert_eq!(response.verdict, Verdict::Allow);
+    assert!(
+        response.output.is_some(),
+        "valid nonce on nested-flow operation must reach dispatch"
+    );
+    Ok(())
+}
+
+#[test]
 fn strict_nonce_mode_preflights_nonce_then_executes_once() {
     let mut kernel = make_kernel(make_config());
     let invocations = std::sync::Arc::new(AtomicU64::new(0));

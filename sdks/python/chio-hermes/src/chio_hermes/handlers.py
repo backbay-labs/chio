@@ -183,7 +183,7 @@ async def _maybe_submit_for_approval(
     cap_id = handle.capability_id
     if client is None or not cap_id:
         # No client / capability means we cannot hold the call; fall
-        # through to the legacy deny so the model still gets a typed
+        # through to the typed deny so the model still gets a typed
         # rejection.
         return
 
@@ -319,7 +319,7 @@ def _wrap_envelope(
             _LAST_RECEIPT_ID.reset(token)
             return _typed_error("chio_error", str(exc))
         except Exception as exc:  # noqa: BLE001 - last resort
-            # Receipt id precedence: explicit attribute (legacy) wins,
+            # Receipt id precedence: explicit exception attribute wins,
             # else the captured most-recent allow verdict.
             receipt_id = getattr(exc, "receipt_id", None)
             if receipt_id is None:

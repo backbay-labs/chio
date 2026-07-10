@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-swarm/v1/authority-verifier-report.schema.json",
+  "title": "Chio Swarm Authority Verifier Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "verdict",
+    "graphId",
+    "taskCount",
+    "continuationCount",
+    "joinCount",
+    "routeCount",
+    "hopReports",
+    "verifiedClaims"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.swarm.authority-verifier-report.v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verdict": {
+      "const": "verified"
+    },
+    "graphId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "taskCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "continuationCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "joinCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "routeCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "hopReports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "childTaskId",
+          "continuationTokenId",
+          "witnessHopCount",
+          "multiHopWitnessEnabled",
+          "routePlanReceiptId",
+          "budgetAllocationId",
+          "authorityVerified",
+          "attenuationVerified",
+          "lineageVerified",
+          "routeVerified",
+          "budgetVerified"
+        ],
+        "properties": {
+          "childTaskId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "parentTaskId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "joinReceiptId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "continuationTokenId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "witnessChainId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "witnessHopCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "multiHopWitnessEnabled": {
+            "type": "boolean"
+          },
+          "routePlanReceiptId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "budgetAllocationId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "authorityVerified": {
+            "const": true
+          },
+          "attenuationVerified": {
+            "const": true
+          },
+          "lineageVerified": {
+            "const": true
+          },
+          "routeVerified": {
+            "const": true
+          },
+          "budgetVerified": {
+            "const": true
+          }
+        }
+      }
+    },
+    "verifiedClaims": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

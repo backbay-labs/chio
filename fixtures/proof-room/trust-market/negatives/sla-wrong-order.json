@@ -1,0 +1,8 @@
+{
+  "schema": "chio.trust-market.negative-fixture.v1",
+  "id": "sla-wrong-order",
+  "claim_ref": "claim.trust_market.sla_commitment_bound",
+  "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
+  "case": "SlaWrongOrder",
+  "expected_failure_code": "proof-room.negative.sla-order-mismatch"
+}

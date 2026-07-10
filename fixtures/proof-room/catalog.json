@@ -1,0 +1,1007 @@
+{
+  "schema": "chio.proof-room.fixture-root-catalog.v1",
+  "fixtures": [
+    {
+      "id": "single-call-authority",
+      "kind": "proof-room",
+      "path": "fixtures/proof-room/first-run/single-call-authority",
+      "description": "Stage 0 first-run Proof Room bundle with allow and denial receipts"
+    },
+    {
+      "id": "minimal-passport-valid",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/minimal-passport/valid",
+      "description": "Minimal valid Transaction Passport verifier fixture"
+    },
+    {
+      "id": "minimal-passport-evidence-graph-digest-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/minimal-passport/evidence-graph-digest-mismatch",
+      "description": "Minimal Transaction Passport fixture rejected for an evidence graph digest mismatch"
+    },
+    {
+      "id": "minimal-passport-policy-digest-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/minimal-passport/invalid-policy-digest-mismatch",
+      "description": "Minimal Transaction Passport fixture rejected for a verifier policy digest mismatch"
+    },
+    {
+      "id": "minimal-passport-unknown-schema",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/minimal-passport/unknown-passport-schema",
+      "description": "Minimal Transaction Passport fixture rejected for an unsupported passport schema"
+    },
+    {
+      "id": "minimal-passport-stale-capability",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/minimal-passport/stale-capability",
+      "description": "Minimal Transaction Passport fixture rejected when capability proof expires before the evidence graph"
+    },
+    {
+      "id": "runtime-side-effecting-call",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime security fixture with execution lease and receipt totality evidence"
+    },
+    {
+      "id": "runtime-attack-simulation-confused-deputy-route-metadata",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for confused deputy route metadata"
+    },
+    {
+      "id": "runtime-attack-simulation-replayed-continuation-token",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for replayed continuation token"
+    },
+    {
+      "id": "runtime-attack-simulation-stale-revocation-epoch",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for stale revocation epoch"
+    },
+    {
+      "id": "runtime-attack-simulation-policy-hot-reload-widening",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for policy hot reload widening"
+    },
+    {
+      "id": "runtime-attack-simulation-advisory-evidence-laundering",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for advisory evidence laundering"
+    },
+    {
+      "id": "runtime-attack-simulation-external-payment-success-laundering",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for external payment success laundering"
+    },
+    {
+      "id": "runtime-attack-simulation-route-plan-registry-downgrade",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for route plan registry downgrade"
+    },
+    {
+      "id": "runtime-attack-simulation-tool-server-bypass-without-kernel-allow",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for tool server bypass without kernel allow"
+    },
+    {
+      "id": "runtime-attack-simulation-missing-denial-receipt",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for missing denial receipt"
+    },
+    {
+      "id": "runtime-attack-simulation-sandbox-profile-mismatch",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime attack simulation coverage for sandbox profile mismatch"
+    },
+    {
+      "id": "runtime-chaos-revocation-oracle-unavailable",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for unavailable revocation oracle"
+    },
+    {
+      "id": "runtime-chaos-receipt-log-unavailable",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for unavailable receipt log"
+    },
+    {
+      "id": "runtime-chaos-policy-reload-during-dispatch",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for policy reload during dispatch"
+    },
+    {
+      "id": "runtime-chaos-duplicate-nonce-race",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for duplicate nonce race"
+    },
+    {
+      "id": "runtime-chaos-tool-restart-lost-lease-cache",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for tool restart with lost lease cache"
+    },
+    {
+      "id": "runtime-chaos-registry-split-brain",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for registry split brain"
+    },
+    {
+      "id": "runtime-chaos-clock-skew-expiry-bypass",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for clock skew expiry bypass"
+    },
+    {
+      "id": "runtime-chaos-sandbox-profile-drift",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/valid-side-effecting-call",
+      "description": "Runtime chaos coverage for sandbox profile drift"
+    },
+    {
+      "id": "runtime-terminal-denial",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/terminal-denial",
+      "description": "Runtime security fixture with a denial terminal receipt satisfying receipt totality"
+    },
+    {
+      "id": "runtime-terminal-infrastructure-failure",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/terminal-infrastructure-failure",
+      "description": "Runtime security fixture with an incident-bound infrastructure failure receipt"
+    },
+    {
+      "id": "runtime-missing-execution-lease",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/missing-execution-lease",
+      "description": "Runtime security fixture rejected when execution lease evidence is missing"
+    },
+    {
+      "id": "runtime-expired-execution-lease",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/expired-execution-lease",
+      "description": "Runtime security fixture rejected when an execution lease expires before issuance"
+    },
+    {
+      "id": "runtime-advisory-used-as-authorization",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/advisory-used-as-authorization",
+      "description": "Runtime security fixture rejected when advisory evidence is treated as authorization"
+    },
+    {
+      "id": "runtime-ack-outside-lease",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/ack-outside-lease",
+      "description": "Runtime security fixture rejected when the tool server acknowledgement is outside the execution lease"
+    },
+    {
+      "id": "runtime-missing-terminal-receipt",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/missing-terminal-receipt",
+      "description": "Runtime security fixture rejected when required terminal receipt evidence is absent"
+    },
+    {
+      "id": "runtime-reused-nonce",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/reused-nonce",
+      "description": "Runtime security fixture rejected when tool acknowledgements reuse an execution lease nonce"
+    },
+    {
+      "id": "runtime-sandbox-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/sandbox-mismatch",
+      "description": "Runtime security fixture rejected when sandbox attestation does not match the leased tool manifest"
+    },
+    {
+      "id": "runtime-stale-revocation",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/runtime-security/stale-revocation",
+      "description": "Runtime security fixture rejected when revocation freshness is older than the lease policy allows"
+    },
+    {
+      "id": "commerce-offline-psp",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/offline-psp-valid",
+      "description": "Commerce payment fixture with order replay, mandate allowance, and payment lifecycle evidence"
+    },
+    {
+      "id": "commerce-transaction-passport",
+      "kind": "proof-room",
+      "path": "fixtures/proof-room/public-stages/commerce-transaction-passport",
+      "description": "Generated Proof Room bundle for commerce and public settlement evidence"
+    },
+    {
+      "id": "commerce-payment-wrong-merchant",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/payment-wrong-merchant",
+      "description": "Commerce payment fixture rejected when the payment merchant differs from the order merchant"
+    },
+    {
+      "id": "commerce-expired-mandate",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/expired-mandate",
+      "description": "Commerce payment fixture rejected when payment capture occurs after mandate expiry"
+    },
+    {
+      "id": "commerce-payment-before-budget",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/payment-before-budget",
+      "description": "Commerce payment fixture rejected when payment is captured before budget reservation"
+    },
+    {
+      "id": "commerce-quote-evidence-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/quote-evidence-mismatch",
+      "description": "Commerce payment fixture rejected when quote replay evidence does not match the order quote"
+    },
+    {
+      "id": "commerce-open-dispute-completed",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/open-dispute-completed",
+      "description": "Commerce payment fixture rejected when a completed order still has an open dispute"
+    },
+    {
+      "id": "commerce-fraud-declined",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/fraud-declined",
+      "description": "Commerce payment fixture rejected when fraud review declines the payment"
+    },
+    {
+      "id": "commerce-currency-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/currency-mismatch",
+      "description": "Commerce payment fixture rejected when payment currency differs from the order quote"
+    },
+    {
+      "id": "commerce-payment-amount-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/payment-amount-mismatch",
+      "description": "Commerce payment fixture rejected when payment amount differs from the order quote"
+    },
+    {
+      "id": "commerce-mandate-occurrence-limit",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/mandate-occurrence-limit",
+      "description": "Commerce payment fixture rejected when mandate usage exceeds the occurrence limit"
+    },
+    {
+      "id": "commerce-intent-evidence-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/intent-evidence-mismatch",
+      "description": "Commerce payment fixture rejected when the intent event does not bind intent evidence"
+    },
+    {
+      "id": "commerce-provider-admission-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/provider-admission-mismatch",
+      "description": "Commerce payment fixture rejected when the provider event does not bind provider admission evidence"
+    },
+    {
+      "id": "commerce-settlement-packet-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/settlement-packet-mismatch",
+      "description": "Commerce payment fixture rejected when the settlement event does not bind settlement packet evidence"
+    },
+    {
+      "id": "commerce-reconciliation-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/commerce-payments/reconciliation-mismatch",
+      "description": "Commerce payment fixture rejected when the reconciliation event does not bind reconciliation evidence"
+    },
+    {
+      "id": "workflow-preflight-valid",
+      "kind": "workflow-preflight",
+      "path": "fixtures/proof-room/workflow-preflight/valid-child-scope",
+      "description": "Workflow preflight fixture proving bounded child scope before live authority"
+    },
+    {
+      "id": "workflow-preflight-broader-child-scope",
+      "kind": "workflow-preflight",
+      "path": "fixtures/proof-room/workflow-preflight/broader-child-scope",
+      "description": "Workflow preflight fixture rejected when a child task exceeds parent scope"
+    },
+    {
+      "id": "workflow-preflight-planning-artifact-claims-authority",
+      "kind": "workflow-preflight",
+      "path": "fixtures/proof-room/workflow-preflight/planning-artifact-claims-authority",
+      "description": "Workflow preflight fixture rejected when a planning artifact claims live authority"
+    },
+    {
+      "id": "recursive-runtime-swarm",
+      "kind": "proof-room",
+      "path": "fixtures/proof-room/public-stages/recursive-runtime-swarm",
+      "description": "Generated Proof Room bundle for recursive swarm authority and runtime parity evidence"
+    },
+    {
+      "id": "recursive-runtime-swarm-stale-continuation",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/swarm-authority/stale-continuation",
+      "description": "Recursive swarm authority fixture rejected when a continuation token is stale"
+    },
+    {
+      "id": "recursive-runtime-swarm-budget-allocations-exceed-pool",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/swarm-authority/budget-allocations-exceed-pool",
+      "description": "Recursive swarm authority fixture rejected when task allocations exceed the budget pool total"
+    },
+    {
+      "id": "recursive-runtime-swarm-graph-cycle",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/swarm-authority/graph-cycle",
+      "description": "Recursive swarm authority fixture rejected when the task graph contains a cycle"
+    },
+    {
+      "id": "recursive-runtime-swarm-join-parent-set-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/swarm-authority/join-parent-set-mismatch",
+      "description": "Recursive swarm authority fixture rejected when a join receipt omits a required parent receipt"
+    },
+    {
+      "id": "recursive-runtime-swarm-replayed-continuation-nonce",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/swarm-authority/replayed-continuation-nonce",
+      "description": "Recursive swarm authority fixture rejected when two continuation tokens reuse a nonce"
+    },
+    {
+      "id": "recursive-runtime-swarm-revoked-task",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/swarm-authority/revoked-task",
+      "description": "Recursive swarm authority fixture rejected when the revocation epoch names an active task"
+    },
+    {
+      "id": "recursive-runtime-swarm-stale-route-plan",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/swarm-authority/stale-route-plan",
+      "description": "Recursive swarm authority fixture rejected when a route-plan receipt is stale"
+    },
+    {
+      "id": "recursive-runtime-swarm-max-depth-exceeded",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/swarm-authority/max-depth-exceeded",
+      "description": "Recursive swarm authority fixture rejected when a task exceeds the graph max depth"
+    },
+    {
+      "id": "recursive-runtime-swarm-route-plan-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/swarm-authority/route-plan-mismatch",
+      "description": "Recursive swarm authority fixture rejected when a route-plan receipt names a mismatched selected route"
+    },
+    {
+      "id": "recursive-runtime-swarm-egress-constraint-unsupported",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/swarm-authority/egress-constraint-unsupported",
+      "description": "Recursive swarm authority fixture rejected when a route-plan receipt names an unsupported egress constraint"
+    },
+    {
+      "id": "recursive-runtime-swarm-witness-child-scope-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/swarm-authority/witness-child-scope-mismatch",
+      "description": "Recursive swarm authority fixture rejected when the delegation witness child scope differs from the graph child scope"
+    },
+    {
+      "id": "disclosure-lineage-ledger",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/valid-lineage-ledger",
+      "description": "Disclosure lineage fixture with signed subgraph and leakage ledger evidence"
+    },
+    {
+      "id": "disclosure-lineage-missing-ledger-entry",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/missing-ledger-entry",
+      "description": "Disclosure lineage fixture rejected when the leakage ledger omits disclosed fields"
+    },
+    {
+      "id": "disclosure-lineage-unknown-lineage-root",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/unknown-lineage-root",
+      "description": "Disclosure lineage fixture rejected when the signed lineage subgraph names an unknown root receipt"
+    },
+    {
+      "id": "disclosure-lineage-excess-disclosed-field",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/excess-disclosed-field",
+      "description": "Disclosure lineage fixture rejected when the crypto context report discloses fields outside the capsule"
+    },
+    {
+      "id": "disclosure-lineage-forbidden-disclosed-field",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/forbidden-disclosed-field",
+      "description": "Disclosure lineage fixture rejected when a disclosed field is forbidden by the privacy profile"
+    },
+    {
+      "id": "disclosure-lineage-undeclared-hidden-predicate",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/undeclared-hidden-predicate",
+      "description": "Disclosure lineage fixture rejected when a hidden predicate is not declared by the projection manifest"
+    },
+    {
+      "id": "disclosure-lineage-projection-manifest-id-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/projection-manifest-id-mismatch",
+      "description": "Disclosure lineage fixture rejected when the crypto report references a different projection manifest"
+    },
+    {
+      "id": "disclosure-lineage-privacy-profile-not-bound-to-transaction",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/privacy-profile-not-bound-to-transaction",
+      "description": "Disclosure lineage fixture rejected when the privacy profile is not bound to the transaction passport"
+    },
+    {
+      "id": "disclosure-lineage-nonce-replay",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/nonce-replay",
+      "description": "Disclosure lineage fixture rejected when the crypto context reuses a nonce"
+    },
+    {
+      "id": "disclosure-lineage-unsupported-edge-kind",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/unsupported-edge-kind",
+      "description": "Disclosure lineage fixture rejected when the signed subgraph uses an unsupported edge kind"
+    },
+    {
+      "id": "disclosure-lineage-missing-parent",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/missing-parent",
+      "description": "Disclosure lineage fixture rejected when the signed subgraph edge references a missing parent"
+    },
+    {
+      "id": "disclosure-lineage-node-digest-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/lineage-node-digest-mismatch",
+      "description": "Disclosure lineage fixture rejected when a lineage node artifact digest does not match its receipt ref"
+    },
+    {
+      "id": "disclosure-lineage-depth-regression",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/lineage-depth-regression",
+      "description": "Disclosure lineage fixture rejected when a child lineage node is not deeper than its parent"
+    },
+    {
+      "id": "disclosure-lineage-frontier-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/lineage-frontier-mismatch",
+      "description": "Disclosure lineage fixture rejected when the signed frontier digest is stale"
+    },
+    {
+      "id": "disclosure-lineage-checkpoint-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/lineage-checkpoint-mismatch",
+      "description": "Disclosure lineage fixture rejected when checkpoint inclusion does not bind the frontier"
+    },
+    {
+      "id": "disclosure-lineage-evidence-below-floor",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/disclosure-lineage/lineage-evidence-below-floor",
+      "description": "Disclosure lineage fixture rejected when node evidence class is below the required floor"
+    },
+    {
+      "id": "crypto-context-valid-bbs",
+      "kind": "disclosure-crypto-context",
+      "path": "fixtures/proof-room/crypto-context/valid-bbs-context",
+      "description": "Disclosure crypto context fixture with BBS verifier context, active key state, fresh revocation snapshot, and transparency inclusion evidence"
+    },
+    {
+      "id": "crypto-context-forbidden-algorithm",
+      "kind": "negative-disclosure-crypto-context",
+      "path": "fixtures/proof-room/crypto-context/forbidden-algorithm",
+      "description": "Disclosure crypto context fixture rejected when the proof algorithm is not allowed by the verifier profile"
+    },
+    {
+      "id": "crypto-context-missing-holder-binding",
+      "kind": "negative-disclosure-crypto-context",
+      "path": "fixtures/proof-room/crypto-context/missing-holder-binding",
+      "description": "Disclosure crypto context fixture rejected when holder binding evidence is missing"
+    },
+    {
+      "id": "crypto-context-missing-revocation-snapshot",
+      "kind": "negative-disclosure-crypto-context",
+      "path": "fixtures/proof-room/crypto-context/missing-revocation-snapshot",
+      "description": "Disclosure crypto context fixture rejected when revocation snapshot evidence is missing"
+    },
+    {
+      "id": "crypto-context-preview-transparency",
+      "kind": "negative-disclosure-crypto-context",
+      "path": "fixtures/proof-room/crypto-context/preview-transparency",
+      "description": "Disclosure crypto context fixture rejected when transparency state is only a preview"
+    },
+    {
+      "id": "crypto-context-replayed-nonce",
+      "kind": "negative-disclosure-crypto-context",
+      "path": "fixtures/proof-room/crypto-context/replayed-nonce",
+      "description": "Disclosure crypto context fixture rejected when the presentation nonce has already been observed"
+    },
+    {
+      "id": "crypto-context-stale-key",
+      "kind": "negative-disclosure-crypto-context",
+      "path": "fixtures/proof-room/crypto-context/stale-key",
+      "description": "Disclosure crypto context fixture rejected when issuer key state is stale"
+    },
+    {
+      "id": "crypto-context-wrong-audience",
+      "kind": "negative-disclosure-crypto-context",
+      "path": "fixtures/proof-room/crypto-context/wrong-audience",
+      "description": "Disclosure crypto context fixture rejected when verifier audience differs from the presentation audience"
+    },
+    {
+      "id": "public-settlement-offline-finality",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/valid-offline-finality",
+      "description": "Public settlement fixture with offline finality and order-bound settlement evidence"
+    },
+    {
+      "id": "public-settlement-wrong-chain-id",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/wrong-chain-id",
+      "description": "Public settlement fixture rejected when the settlement proof bundle chain id differs from the receipt dispatch chain"
+    },
+    {
+      "id": "public-settlement-finality-below-threshold",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/finality-below-threshold",
+      "description": "Public settlement fixture rejected when observed confirmations are below the required finality threshold"
+    },
+    {
+      "id": "public-settlement-observed-execution-outside-window",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/observed-execution-outside-window",
+      "description": "Public settlement fixture rejected when execution is observed outside the dispatch window"
+    },
+    {
+      "id": "public-settlement-missing-commerce-order-binding",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/missing-commerce-order-binding",
+      "description": "Public settlement fixture rejected when the settlement bundle omits the bound commerce order"
+    },
+    {
+      "id": "public-settlement-order-evidence-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/order-evidence-mismatch",
+      "description": "Public settlement fixture rejected when order evidence references a different commerce order"
+    },
+    {
+      "id": "public-settlement-missing-oracle-evidence",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/missing-oracle-evidence",
+      "description": "Public settlement fixture rejected when an FX-sensitive settlement lacks oracle evidence"
+    },
+    {
+      "id": "public-settlement-refunded-posture-without-reversal",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/refunded-posture-without-reversal",
+      "description": "Public settlement fixture rejected when refunded posture is not backed by a reversal lifecycle state"
+    },
+    {
+      "id": "public-settlement-deployment-provenance-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/deployment-provenance-mismatch",
+      "description": "Public settlement fixture rejected when deployment provenance does not match the reviewed contract package"
+    },
+    {
+      "id": "public-settlement-advisory-witness",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/advisory-witness",
+      "description": "Public settlement fixture rejected when public witness evidence is advisory mode"
+    },
+    {
+      "id": "public-settlement-missing-independent-head",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/missing-independent-head",
+      "description": "Public settlement fixture rejected when no independent chain head is pinned"
+    },
+    {
+      "id": "public-settlement-independent-head-block-hash-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/public-settlement/independent-head-block-hash-mismatch",
+      "description": "Public settlement fixture rejected when independent chain head block hash disagrees with the settlement snapshot"
+    },
+    {
+      "id": "agent-web-interop",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/agent-web/valid-webhook-cloudevents",
+      "description": "Agent Web fixture binding external protocol subjects as subordinate evidence"
+    },
+    {
+      "id": "disclosure-and-agent-web-envelope",
+      "kind": "proof-room",
+      "path": "fixtures/proof-room/public-stages/disclosure-and-agent-web-envelope",
+      "description": "Generated Proof Room bundle for disclosure lineage and Agent Web envelope evidence"
+    },
+    {
+      "id": "agent-web-external-digest-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/external-digest-mismatch",
+      "description": "Agent Web fixture rejected when external subject content no longer matches the proof envelope digest"
+    },
+    {
+      "id": "agent-web-missing-required-signature",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/missing-required-signature",
+      "description": "Agent Web fixture rejected when a Standard Webhooks projection omits the required external signature reference"
+    },
+    {
+      "id": "agent-web-cloudevents-specversion-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/cloudevents-specversion-mismatch",
+      "description": "Agent Web fixture rejected when a CloudEvents projection claims an unsupported specversion"
+    },
+    {
+      "id": "agent-web-graphql-http-draft-version-missing",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/graphql-http-draft-version-missing",
+      "description": "Agent Web fixture rejected when GraphQL over HTTP evidence is presented without a draft version boundary"
+    },
+    {
+      "id": "agent-web-graphql-errors-projected-as-success",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/graphql-errors-projected-as-success",
+      "description": "Agent Web fixture rejected when GraphQL response errors are projected as successful evidence"
+    },
+    {
+      "id": "agent-web-mcp-authority-claim-not-limited",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/mcp-authority-claim-not-limited",
+      "description": "Agent Web fixture rejected when MCP evidence claims Chio authority without an unsupported-claim limitation"
+    },
+    {
+      "id": "agent-web-sidecar-claim-marked-native",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/sidecar-claim-marked-native",
+      "description": "Agent Web fixture rejected when a sidecar claim is presented as native external proof"
+    },
+    {
+      "id": "agent-web-unsupported-claim-not-limited",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/unsupported-claim-not-limited",
+      "description": "Agent Web fixture rejected when an external claim is copied without an explicit limitation"
+    },
+    {
+      "id": "agent-web-x402-detached-from-order",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/x402-detached-from-order",
+      "description": "Agent Web fixture rejected when x402 payment evidence is not bound to its order"
+    },
+    {
+      "id": "agent-web-ap2-detached-from-order",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/ap2-detached-from-order",
+      "description": "Agent Web fixture rejected when AP2 mandate evidence is not bound to its order"
+    },
+    {
+      "id": "agent-web-vc-unbound-receipt",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/vc-unbound-receipt",
+      "description": "Agent Web fixture rejected when VC credential evidence references a receipt not bound by the projection envelope"
+    },
+    {
+      "id": "agent-web-external-subject-schema-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/external-subject-schema-mismatch",
+      "description": "Agent Web fixture rejected when the evidence graph subject schema differs from its projection protocol"
+    },
+    {
+      "id": "agent-web-acp-client-unsupported-bridge-allowed",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/acp-client-unsupported-bridge-allowed",
+      "description": "Agent Web fixture rejected when an ACP-Client unsupported bridge projection is authorized"
+    },
+    {
+      "id": "agent-web-email-send-missing-message-digest",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/email-send-missing-message-digest",
+      "description": "Agent Web fixture rejected when Gmail send evidence omits the message digest"
+    },
+    {
+      "id": "agent-web-calendar-time-range-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/calendar-time-range-mismatch",
+      "description": "Agent Web fixture rejected when a Calendar update changes the approved time range"
+    },
+    {
+      "id": "agent-web-slack-failed-provider-response",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/slack-failed-provider-response",
+      "description": "Agent Web fixture rejected when a Slack connector action reports a failed provider response"
+    },
+    {
+      "id": "agent-web-kubernetes-admission-uid-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/kubernetes-admission-uid-mismatch",
+      "description": "Agent Web fixture rejected when Kubernetes admission evidence changes the approved response UID"
+    },
+    {
+      "id": "agent-web-oci-tag-only-ref",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/oci-tag-only-ref",
+      "description": "Agent Web fixture rejected when OCI evidence uses a tag-only artifact reference"
+    },
+    {
+      "id": "agent-web-slsa-unverified-provenance",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/slsa-unverified-provenance",
+      "description": "Agent Web fixture rejected when SLSA provenance has not been verified"
+    },
+    {
+      "id": "agent-web-a2a-authority-claim-not-limited",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/agent-web/a2a-authority-claim-not-limited",
+      "description": "Agent Web fixture rejected when an A2A authority claim is not listed as unsupported external authority"
+    },
+    {
+      "id": "enterprise-autonomous-commerce",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce",
+      "description": "Enterprise export fixture with governance, approval, telemetry, and risk evidence"
+    },
+    {
+      "id": "enterprise-risk-only-comptroller",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/risk-only-comptroller",
+      "description": "Enterprise risk comptroller fixture verified through risk-only claim requirements"
+    },
+    {
+      "id": "risk-standalone-comptroller",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/standalone-risk-comptroller",
+      "description": "Standalone risk comptroller fixture verified without enterprise or trust-market routing context"
+    },
+    {
+      "id": "enterprise-coverage-subject-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/coverage-subject-mismatch",
+      "description": "Enterprise export fixture rejected when the risk coverage subject differs from the passport subject"
+    },
+    {
+      "id": "enterprise-coverage-order-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/coverage-order-mismatch",
+      "description": "Enterprise export fixture rejected when risk coverage is bound to the wrong order"
+    },
+    {
+      "id": "enterprise-risk-reserve-state-missing",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/risk-reserve-state-missing",
+      "description": "Enterprise export fixture rejected when risk reserve state is missing"
+    },
+    {
+      "id": "enterprise-settlement-counterparty-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/settlement-counterparty-mismatch",
+      "description": "Enterprise export fixture rejected when a risk claim payout settles to the wrong beneficiary"
+    },
+    {
+      "id": "enterprise-control-map-missing-gate",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/control-map-missing-gate",
+      "description": "Enterprise export fixture rejected when a control map cites a gate that did not run"
+    },
+    {
+      "id": "enterprise-double-consumed-reserve",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/double-consumed-reserve",
+      "description": "Enterprise export fixture rejected when the risk ledger consumes the same reserve twice"
+    },
+    {
+      "id": "enterprise-duplicate-reserve-receipt-id",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/duplicate-reserve-receipt-id",
+      "description": "Enterprise export fixture rejected when reserve ledger rows reuse a receipt id"
+    },
+    {
+      "id": "enterprise-export-bundle-digest-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/export-bundle-digest-mismatch",
+      "description": "Enterprise export fixture rejected when the evidence export bundle digest does not match its artifacts"
+    },
+    {
+      "id": "enterprise-market-slash-facility-reserve",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/market-slash-facility-reserve",
+      "description": "Enterprise export fixture rejected when a market slash attempts to consume facility reserve without a sanction bridge"
+    },
+    {
+      "id": "enterprise-reverse-slash-without-prior-penalty",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/reverse-slash-without-prior-penalty",
+      "description": "Enterprise export fixture rejected when a reverse slash lacks a prior reserve slash"
+    },
+    {
+      "id": "enterprise-missing-approval-case",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/missing-approval-case",
+      "description": "Enterprise export fixture rejected when approval evidence is absent from the evidence graph"
+    },
+    {
+      "id": "enterprise-open-appeal-reserve-release",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/open-appeal-reserve-release",
+      "description": "Enterprise export fixture rejected when an open appeal blocks reserve release"
+    },
+    {
+      "id": "enterprise-open-appeal-claim-payout",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/open-appeal-claim-payout",
+      "description": "Enterprise export fixture rejected when an open appeal blocks claim payout"
+    },
+    {
+      "id": "enterprise-risk-payout-preobserved-instruction",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/risk-payout-preobserved-instruction",
+      "description": "Enterprise export fixture rejected when a claim payout uses a capital instruction that already observed execution"
+    },
+    {
+      "id": "enterprise-open-appeal-facility-closure",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/open-appeal-facility-closure",
+      "description": "Enterprise export fixture rejected when an open appeal blocks facility closure"
+    },
+    {
+      "id": "enterprise-pii-overdisclosure",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/pii-overdisclosure",
+      "description": "Enterprise export fixture rejected when PII is disclosed instead of redacted"
+    },
+    {
+      "id": "enterprise-telemetry-digest-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/telemetry-digest-mismatch",
+      "description": "Enterprise export fixture rejected when telemetry references an artifact digest that does not match"
+    },
+    {
+      "id": "enterprise-telemetry-passport-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/telemetry-passport-mismatch",
+      "description": "Enterprise export fixture rejected when telemetry is bound to a different passport"
+    },
+    {
+      "id": "enterprise-telemetry-siem-without-receipt",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/telemetry-siem-without-receipt",
+      "description": "Enterprise export fixture rejected when SIEM telemetry is not bound to a receipt"
+    },
+    {
+      "id": "enterprise-facility-lifecycle-final-state-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/facility-lifecycle-final-state-mismatch",
+      "description": "Enterprise export fixture rejected when risk facility lifecycle replay does not reach the claimed state"
+    },
+    {
+      "id": "enterprise-insurance-copy-exceeds-actuarial-support",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/insurance-copy-exceeds-actuarial-support",
+      "description": "Enterprise export fixture rejected when insurance copy exceeds actuarial evidence"
+    },
+    {
+      "id": "enterprise-risk-exposure-exceeds-capital",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/risk-exposure-exceeds-capital",
+      "description": "Enterprise export fixture rejected when risk exposure exceeds facility capital"
+    },
+    {
+      "id": "enterprise-risk-capital-adequacy-breach",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/risk-capital-adequacy-breach",
+      "description": "Enterprise export fixture rejected when exposure plus reserve exceeds facility capital"
+    },
+    {
+      "id": "enterprise-risk-portfolio-capital-overallocated",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/risk-portfolio-capital-overallocated",
+      "description": "Enterprise export fixture rejected when portfolio exposure and reserve obligations exceed shared capital"
+    },
+    {
+      "id": "enterprise-actuarial-backtest-breach",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/actuarial-backtest-breach",
+      "description": "Enterprise export fixture rejected when actuarial backtest exceeds the allowed loss ratio"
+    },
+    {
+      "id": "enterprise-mixed-currency-risk",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/mixed-currency-risk",
+      "description": "Enterprise export fixture rejected when risk coverage currency differs from reserve currency"
+    },
+    {
+      "id": "enterprise-claim-outside-coverage",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/claim-outside-coverage",
+      "description": "Enterprise export fixture rejected when a risk payout claim is not listed by coverage evidence"
+    },
+    {
+      "id": "enterprise-payout-amount-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/enterprise-export/payout-amount-mismatch",
+      "description": "Enterprise export fixture rejected when payout and settlement amounts differ"
+    },
+    {
+      "id": "trust-market-context",
+      "kind": "transaction-passport",
+      "path": "fixtures/proof-room/trust-market/valid-marketplace-context",
+      "description": "Trust market fixture with provider discovery, local scorecard, SLA, collateral, guarantee, and jurisdiction evidence"
+    },
+    {
+      "id": "trust-market-guarantee-wrong-beneficiary",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/trust-market/guarantee-wrong-beneficiary",
+      "description": "Trust market fixture rejected when a guarantee beneficiary differs from the SLA buyer"
+    },
+    {
+      "id": "trust-market-unsupported-guarantee-type",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/trust-market/unsupported-guarantee-type",
+      "description": "Trust market fixture rejected when the guarantee type is outside the supported SLA remedy boundary"
+    },
+    {
+      "id": "trust-market-unsupported-collateral-source",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/trust-market/unsupported-collateral-source",
+      "description": "Trust market fixture rejected when collateral backing is not a supported bond source"
+    },
+    {
+      "id": "trust-market-guarantee-without-backing",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/trust-market/guarantee-without-backing",
+      "description": "Trust market fixture rejected when a guarantee lacks backing collateral evidence"
+    },
+    {
+      "id": "trust-market-reputation-import-overweight",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/trust-market/reputation-import-overweight",
+      "description": "Trust market fixture rejected when portable reputation exceeds local policy weight"
+    },
+    {
+      "id": "trust-market-required-unsupported-market-claim",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/trust-market/required-unsupported-market-claim",
+      "description": "Trust market fixture rejected when a verifier policy requires an unsupported market claim"
+    },
+    {
+      "id": "trust-market-score-recompute-mismatch",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/trust-market/score-recompute-mismatch",
+      "description": "Trust market fixture rejected when the local scorecard does not recompute from component weights"
+    },
+    {
+      "id": "trust-market-selected-provider-absent",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/trust-market/selected-provider-absent",
+      "description": "Trust market fixture rejected when the selected provider is absent from the discovery snapshot"
+    },
+    {
+      "id": "trust-market-sla-wrong-order",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/trust-market/sla-wrong-order",
+      "description": "Trust market fixture rejected when the SLA commitment is bound to the wrong order"
+    },
+    {
+      "id": "trust-market-slash-authority-outside-jurisdiction",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/trust-market/slash-authority-outside-jurisdiction",
+      "description": "Trust market fixture rejected when collateral slash authority is not covered by adjudication jurisdiction"
+    },
+    {
+      "id": "trust-market-stale-discovery",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/trust-market/stale-discovery",
+      "description": "Trust market fixture rejected when provider discovery is stale for the selected evidence"
+    },
+    {
+      "id": "trust-market-stale-reputation",
+      "kind": "negative-transaction-passport",
+      "path": "fixtures/proof-room/trust-market/stale-reputation",
+      "description": "Trust market fixture rejected when local scorecard evidence is stale"
+    }
+  ]
+}

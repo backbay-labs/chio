@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-oracle/v1/conversion-evidence.schema.json",
+  "title": "Chio Oracle Conversion Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "base",
+    "quote",
+    "authority",
+    "rate_numerator",
+    "rate_denominator",
+    "source",
+    "feed_address",
+    "updated_at",
+    "max_age_seconds",
+    "cache_age_seconds",
+    "converted_cost_units",
+    "original_cost_units",
+    "original_currency",
+    "grant_currency"
+  ],
+  "properties": {
+    "schema": { "const": "chio.oracle-conversion-evidence.v1" },
+    "base": { "type": "string", "minLength": 1 },
+    "quote": { "type": "string", "minLength": 1 },
+    "authority": { "type": "string", "minLength": 1 },
+    "rate_numerator": { "type": "integer", "minimum": 1 },
+    "rate_denominator": { "type": "integer", "minimum": 1 },
+    "source": { "type": "string", "minLength": 1 },
+    "feed_address": { "type": "string", "minLength": 1 },
+    "updated_at": { "type": "integer", "minimum": 0 },
+    "max_age_seconds": { "type": "integer", "minimum": 1 },
+    "cache_age_seconds": { "type": "integer", "minimum": 0 },
+    "converted_cost_units": { "type": "integer", "minimum": 1 },
+    "original_cost_units": { "type": "integer", "minimum": 1 },
+    "original_currency": { "type": "string", "minLength": 1 },
+    "grant_currency": { "type": "string", "minLength": 1 },
+    "oracle_public_key": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:.+:[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:.+:[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
+    }
+  }
+}

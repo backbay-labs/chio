@@ -1,0 +1,16 @@
+{
+  "schema": "chio.proof.first-run.command-log.v1",
+  "id": "first-run-single-call-command-log",
+  "commands": [
+    {
+      "command": "chio proof verify fixtures/proof-room/minimal-passport/valid/transaction-passport.json",
+      "expected_exit_code": 0,
+      "evidence": "fixtures/proof-room/first-run/single-call-authority/verifier-report.json"
+    },
+    {
+      "command": "chio proof verify fixtures/proof-room/minimal-passport/invalid-policy-digest-mismatch/transaction-passport.json",
+      "expected_exit_code": 1,
+      "evidence": "verifier policy digest mismatch"
+    }
+  ]
+}

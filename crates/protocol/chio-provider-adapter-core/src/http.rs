@@ -782,12 +782,21 @@ mod tests {
     use wiremock::matchers::{body_string, header, header_exists, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    fn assert_error<T, E>(result: Result<T, E>, message: &str) -> E {
+        match result {
+            Ok(_) => panic!("{message}"),
+            Err(error) => error,
+        }
+    }
+
     #[test]
     fn auth_scheme_from_env_is_fail_closed_when_unset() {
         // SAFETY: single-threaded test mutation of a unique variable name.
         std::env::remove_var("CHIO_TEST_NONEXISTENT_KEY");
-        let error = AuthScheme::bearer_from_env("CHIO_TEST_NONEXISTENT_KEY")
-            .expect_err("an unset variable must not yield a token");
+        let error = assert_error(
+            AuthScheme::bearer_from_env("CHIO_TEST_NONEXISTENT_KEY"),
+            "an unset variable must not yield a token",
+        );
         assert!(matches!(error, HttpTransportError::MissingEnvVar { .. }));
     }
 
@@ -802,8 +811,10 @@ mod tests {
     #[test]
     fn auth_scheme_from_env_rejects_whitespace_only_value() {
         std::env::set_var("CHIO_TEST_BLANK_KEY", "   ");
-        let error = AuthScheme::bearer_from_env("CHIO_TEST_BLANK_KEY")
-            .expect_err("a whitespace-only variable must not yield a token");
+        let error = assert_error(
+            AuthScheme::bearer_from_env("CHIO_TEST_BLANK_KEY"),
+            "a whitespace-only variable must not yield a token",
+        );
         std::env::remove_var("CHIO_TEST_BLANK_KEY");
 
         assert!(matches!(error, HttpTransportError::MissingEnvVar { .. }));
@@ -840,8 +851,10 @@ mod tests {
         let config = HttpTransportConfig::new("https://api.example.test")
             .with_auth(AuthScheme::Bearer("   ".to_string()));
 
-        let error = default_headers_for_config(&config)
-            .expect_err("blank direct bearer auth must fail closed");
+        let error = assert_error(
+            default_headers_for_config(&config),
+            "blank direct bearer auth must fail closed",
+        );
 
         assert!(matches!(
             error,
@@ -856,8 +869,10 @@ mod tests {
             let config = HttpTransportConfig::new("https://api.example.test")
                 .with_auth(AuthScheme::Bearer(token.to_string()));
 
-            let error = default_headers_for_config(&config)
-                .expect_err("whitespace-bearing bearer auth must fail closed");
+            let error = assert_error(
+                default_headers_for_config(&config),
+                "whitespace-bearing bearer auth must fail closed",
+            );
 
             assert!(matches!(
                 error,
@@ -951,8 +966,10 @@ mod tests {
     #[test]
     fn query_param_from_env_rejects_invalid_name_before_returning_secret() {
         std::env::set_var("CHIO_TEST_QUERY_KEY", "secret-value");
-        let error = AuthScheme::query_param_from_env(" key", "CHIO_TEST_QUERY_KEY")
-            .expect_err("invalid query auth name must fail closed");
+        let error = assert_error(
+            AuthScheme::query_param_from_env(" key", "CHIO_TEST_QUERY_KEY"),
+            "invalid query auth name must fail closed",
+        );
         std::env::remove_var("CHIO_TEST_QUERY_KEY");
         let message = error.to_string();
 
@@ -1048,8 +1065,10 @@ mod tests {
     #[test]
     fn ndjson_parser_fails_closed_on_garbage() {
         let raw = b"{\"a\":1}\nnot json\n";
-        let error =
-            parse_ndjson_lines(raw, "Ollama").expect_err("a non-JSON line must fail closed");
+        let error = assert_error(
+            parse_ndjson_lines(raw, "Ollama"),
+            "a non-JSON line must fail closed",
+        );
         assert!(matches!(error, ProviderError::Malformed(_)));
     }
 
@@ -1072,10 +1091,10 @@ mod tests {
     #[tokio::test]
     async fn mock_transport_exhaustion_fails_closed() {
         let mock = MockHttpTransport::new("mock://provider");
-        let error = mock
-            .post_json("/v1/chat", b"{}")
-            .await
-            .expect_err("an empty script must fail closed");
+        let error = assert_error(
+            mock.post_json("/v1/chat", b"{}").await,
+            "an empty script must fail closed",
+        );
         assert!(matches!(error, HttpTransportError::MockExhausted { .. }));
     }
 
@@ -1210,10 +1229,10 @@ mod tests {
             .await;
 
         let transport = HttpTransport::new(HttpTransportConfig::new(server.uri())).test_unwrap();
-        let error = transport
-            .post_json("/v1/responses", b"{}")
-            .await
-            .expect_err("a 429 must fail closed");
+        let error = assert_error(
+            transport.post_json("/v1/responses", b"{}").await,
+            "a 429 must fail closed",
+        );
         match error {
             HttpTransportError::Status { code, .. } => assert_eq!(code, 429),
             other => panic!("expected Status error, got {other}"),
@@ -1235,37 +1254,13 @@ mod tests {
         let config =
             HttpTransportConfig::new("http://127.0.0.1:1").with_timeout(Duration::from_millis(250));
         let transport = HttpTransport::new(config).test_unwrap();
-        let error = transport
-            .post_json("/v1/chat", b"{}")
-            .await
-            .expect_err("an unreachable endpoint must fail closed");
+        let error = assert_error(
+            transport.post_json("/v1/chat", b"{}").await,
+            "an unreachable endpoint must fail closed",
+        );
         assert!(matches!(
             error,
             HttpTransportError::Connect { .. } | HttpTransportError::Request { .. }
         ));
-    }
-
-    #[test]
-    fn transport_error_display_is_em_dash_free() {
-        let cases = [
-            HttpTransportError::Build("boom".to_string()),
-            HttpTransportError::Status {
-                code: 500,
-                body: "oops".to_string(),
-            },
-            HttpTransportError::Timeout {
-                url: "http://x".to_string(),
-                timeout_ms: 1000,
-            },
-            HttpTransportError::MissingEnvVar {
-                var: "X".to_string(),
-            },
-            HttpTransportError::MockExhausted {
-                path: "/v1/chat".to_string(),
-            },
-        ];
-        for case in cases {
-            assert!(!case.to_string().contains('\u{2014}'), "em dash in {case}");
-        }
     }
 }

@@ -1,6 +1,5 @@
 # Chio-Wall Control Path
 
-**Date:** 2026-04-03  
 **Audience:** product, engineering, compliance, and barrier-control teams
 
 ---

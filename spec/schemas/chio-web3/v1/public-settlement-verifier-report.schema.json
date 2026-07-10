@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-web3/v1/public-settlement-verifier-report.schema.json",
+  "title": "Chio Public Settlement Verifier Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "verdict",
+    "bundle_id",
+    "transaction_passport_id",
+    "commerce_order_id",
+    "recomputed_settlement_state",
+    "chain_context",
+    "public_witness",
+    "finality_decision",
+    "dispute_context",
+    "dispute_posture",
+    "verified_claims"
+  ],
+  "properties": {
+    "schema": { "const": "chio.public-settlement-verifier-report.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "verdict": { "enum": ["verified", "failed"] },
+    "bundle_id": { "type": "string", "minLength": 1 },
+    "transaction_passport_id": { "type": "string", "minLength": 1 },
+    "commerce_order_id": { "type": "string", "minLength": 1 },
+    "recomputed_settlement_state": {
+      "enum": [
+        "pending_dispatch",
+        "escrow_locked",
+        "partially_settled",
+        "settled",
+        "reversed",
+        "charged_back",
+        "timed_out",
+        "failed",
+        "reorged"
+      ]
+    },
+    "chain_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chain_id",
+        "settlement_path",
+        "settlement_reference",
+        "observed_block_number",
+        "registry_root",
+        "escrow_id",
+        "bond_vault_contract",
+        "posted_bond_amount",
+        "minimum_bond_amount",
+        "block_hash",
+        "anchor_tx_hash",
+        "settlement_tx_hash",
+        "beneficiary_address",
+        "beneficiary_chio_identity"
+      ],
+      "properties": {
+        "chain_id": { "type": "string", "minLength": 1 },
+        "settlement_path": { "enum": ["dual_signature", "merkle_proof"] },
+        "settlement_reference": { "type": "string", "minLength": 1 },
+        "observed_block_number": { "type": "integer", "minimum": 0 },
+        "registry_root": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "escrow_id": { "type": "string", "minLength": 1 },
+        "bond_vault_contract": { "type": "string", "minLength": 1 },
+        "posted_bond_amount": { "$ref": "#/$defs/money" },
+        "minimum_bond_amount": { "$ref": "#/$defs/money" },
+        "block_hash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "anchor_tx_hash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "settlement_tx_hash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "beneficiary_address": {
+          "type": "string",
+          "minLength": 1
+        },
+        "beneficiary_chio_identity": {
+          "type": "string",
+          "pattern": "^did:chio:[0-9a-fA-F]{64}$"
+        }
+      }
+    },
+    "public_witness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["witness_id", "mode", "body_hash", "observed_at"],
+      "properties": {
+        "witness_id": { "type": "string", "minLength": 1 },
+        "mode": { "enum": ["live", "verified_cache"] },
+        "body_hash": {
+          "type": "string",
+          "pattern": "^(0x)?[0-9a-fA-F]{64}$"
+        },
+        "observed_at": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "finality_decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "required_confirmations",
+        "observed_confirmations"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "final",
+            "closed",
+            "partially_settled",
+            "refunded",
+            "slashed",
+            "reversed",
+            "charged_back",
+            "timed_out",
+            "failed",
+            "reorged",
+            "not_final"
+          ]
+        },
+        "required_confirmations": { "type": "integer", "minimum": 1 },
+        "observed_confirmations": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "dispute_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dispute_id",
+        "posture",
+        "observed_at",
+        "challenge_window_secs",
+        "window_closed_at",
+        "open_dispute_count"
+      ],
+      "properties": {
+        "dispute_id": { "type": "string", "minLength": 1 },
+        "posture": {
+          "enum": [
+            "undisputed",
+            "challenged",
+            "bonded",
+            "slashed",
+            "refunded",
+            "appealed",
+            "closed"
+          ]
+        },
+        "observed_at": { "type": "integer", "minimum": 0 },
+        "challenge_window_secs": { "type": "integer", "minimum": 1 },
+        "window_closed_at": { "type": "integer", "minimum": 0 },
+        "open_dispute_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "dispute_posture": {
+      "enum": [
+        "undisputed",
+        "challenged",
+        "bonded",
+        "slashed",
+        "refunded",
+        "appealed",
+        "closed"
+      ]
+    },
+    "trust_market_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "collateral_position_ref",
+        "guarantee_decision_ref",
+        "sla_remedy_ref",
+        "slash_authority_ref"
+      ],
+      "properties": {
+        "collateral_position_ref": { "type": "string", "minLength": 1 },
+        "guarantee_decision_ref": { "type": "string", "minLength": 1 },
+        "sla_remedy_ref": { "type": "string", "minLength": 1 },
+        "slash_authority_ref": { "type": "string", "minLength": 1 }
+      }
+    },
+    "verified_claims": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "money": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "type": "integer", "minimum": 1 },
+        "currency": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -6,6 +6,8 @@ use crate::CliError;
 use std::fs;
 use std::path::Path;
 
+use chio_errors::_generated::error_codes::TRANSACTION_BUYER_REVIEW_REJECTED;
+
 pub(crate) fn cmd_chio_attest_buyer_package(
     run_output: &Path,
     out: &Path,
@@ -139,13 +141,16 @@ pub(crate) fn cmd_chio_attest_buyer_verify(
     if report.accepted {
         Ok(())
     } else {
-        Err(CliError::cli_other_error(format!(
-            "Chio buyer verification rejected package: {}",
-            report
-                .failure_code
-                .as_deref()
-                .unwrap_or("unknown_buyer_review_rejection")
-        )))
+        Err(CliError::registry_error(
+            &TRANSACTION_BUYER_REVIEW_REJECTED,
+            format!(
+                "Chio buyer verification rejected package: {}",
+                report
+                    .failure_code
+                    .as_deref()
+                    .unwrap_or("unknown_buyer_review_rejection")
+            ),
+        ))
     }
 }
 

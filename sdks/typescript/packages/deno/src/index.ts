@@ -1,3 +1,5 @@
+import { receiptHexToBytes } from '@chio-protocol/wasm-core';
+
 type WasmExport = (...args: never[]) => unknown;
 
 export type DenoWasmInput =
@@ -101,17 +103,7 @@ export async function verifyReceiptHex(
   envelopeHex: string,
   trustedIssuers?: string | string[],
 ): Promise<unknown> {
-  const normalized = envelopeHex.startsWith('0x') ? envelopeHex.slice(2) : envelopeHex;
-  if (normalized.length % 2 !== 0) {
-    throw new Error('receipt hex must have an even number of characters');
-  }
-  if (!/^[0-9a-fA-F]*$/.test(normalized)) {
-    throw new Error('receipt hex must contain only hexadecimal characters');
-  }
-
-  const pairs = normalized.match(/.{2}/g) ?? [];
-  const envelope = Uint8Array.from(pairs.map(byte => Number.parseInt(byte, 16)));
-  return verify_receipt(envelope, trustedIssuers);
+  return verify_receipt(receiptHexToBytes(envelopeHex), trustedIssuers);
 }
 
 export default async function handler(request: Request): Promise<Response> {

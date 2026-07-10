@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::oci::GuardRegistryError;
 
-/// Default ISO 4217 currency for zero-priced (legacy) manifests.
+/// Default ISO 4217 currency for zero-priced manifests.
 pub const DEFAULT_GUARD_PRICE_CURRENCY: &str = "USD";
 
 /// JSON Pointer-style key under which the marketplace block lives in a
@@ -48,7 +48,7 @@ impl GuardPrice {
         }
     }
 
-    /// The free-tier sentinel for legacy manifests without a price.
+    /// The free-tier sentinel for manifests without marketplace pricing.
     #[must_use]
     pub fn zero(currency: impl Into<String>) -> Self {
         Self::new(0, currency)
@@ -97,7 +97,7 @@ impl GuardMarketplaceBlock {
         Ok(parsed)
     }
 
-    /// Whether the marketplace block is the legacy default
+    /// Whether the marketplace block is the zero-priced default
     /// (zero-priced, `tier_0`-floor). Used by callers who want to know
     /// if explicit marketplace metadata was attached.
     #[must_use]

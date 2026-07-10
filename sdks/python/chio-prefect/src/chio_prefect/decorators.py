@@ -75,18 +75,6 @@ def _current_task_run_id() -> str | None:
         return None
 
 
-def _current_task_name(fallback: str) -> str:
-    try:
-        from prefect.runtime import task_run
-
-        name = task_run.name
-        if name:
-            return str(name)
-    except Exception:
-        pass
-    return fallback
-
-
 class _ChioClientOwner:
     """Lazy :class:`ChioClient` owner; only closes clients it created itself."""
 
@@ -411,7 +399,6 @@ async def _invoke_task(
 
     flow_run_id = _current_flow_run_id()
     task_run_id = _current_task_run_id()
-    resolved_task_name = _current_task_name(tool_name_override)
 
     owner = _ChioClientOwner(client=resolved_client, sidecar_url=resolved_sidecar)
     try:
@@ -429,7 +416,6 @@ async def _invoke_task(
     finally:
         await owner.close()
 
-    _ = resolved_task_name  # reserved for future metadata on receipts
     if is_async:
         return await cast(Callable[..., Awaitable[Any]], fn)(*args, **kwargs)
     # Sync body offloaded so we never block the loop on a long-running task.
@@ -551,7 +537,7 @@ def _prefect_envelope(
     # Detect the positional-only-spillover collision: the fn signature
     # has a positional-only param whose name appears as a kwarg AND
     # there is a VAR_KEYWORD spillover param. In that case prefect's
-    # legacy wire shape moves the kwarg's redacted value to a synthetic
+    # wire shape moves the kwarg's redacted value to a synthetic
     # ``<name>__var_kw_spillover__`` key so neither bucket overwrites
     # the other.
     spillover_keys: set[str] = set()

@@ -1,5 +1,7 @@
 #![allow(clippy::expect_used, clippy::unwrap_used)]
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use chio_core_types::capability::governance::{
     CallChainContinuationToken, CallChainContinuationTokenBody, CHIO_CALL_CHAIN_CONTINUATION_SCHEMA,
 };
@@ -16,6 +18,234 @@ use chio_core_types::{
 };
 
 const UNSUPPORTED_SCHEMA: &str = "chio.unsupported_future_schema.v999";
+const BBS_PROJECTION_MANIFEST_V2_SCHEMA: &str = "chio.bbs-projection.manifest.v2";
+const PROOF_ROOM_FIXTURE_CATALOG_SCHEMA: &str = "chio.proof-room.fixture-catalog.v1";
+const PROOF_ROOM_FIXTURE_ROOT_CATALOG_SCHEMA: &str = "chio.proof-room.fixture-root-catalog.v1";
+
+#[test]
+fn known_signed_artifact_schemas_are_supported() {
+    for schema in chio_core_types::KNOWN_SIGNED_ARTIFACT_SCHEMAS {
+        assert!(
+            chio_core_types::is_supported_signed_artifact_schema(schema),
+            "schema should be supported: {schema}"
+        );
+    }
+}
+
+#[test]
+fn known_signed_artifact_schemas_match_public_registry_or_internal_exemption() {
+    let registry: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../spec/schemas/registry.json"
+    )))
+    .expect("schema registry parses");
+    let registered_schemas: BTreeSet<&str> = registry
+        .get("artifacts")
+        .and_then(serde_json::Value::as_array)
+        .expect("registry artifacts are present")
+        .iter()
+        .filter_map(|entry| entry.get("schema").and_then(serde_json::Value::as_str))
+        .collect();
+    let internal_only_schemas: BTreeSet<&str> = [
+        "chio.session_anchor.v1",
+        "chio.request_lineage_record.v1",
+        "chio.runtime-attestation.azure-maa.jwt.v1",
+        "chio.runtime-attestation.aws-nitro-attestation.v1",
+        "chio.runtime-attestation.google-confidential-vm.jwt.v1",
+        "chio.runtime-attestation.enterprise-verifier.json.v1",
+    ]
+    .into_iter()
+    .collect();
+    let missing_schemas: Vec<&str> = chio_core_types::KNOWN_SIGNED_ARTIFACT_SCHEMAS
+        .iter()
+        .copied()
+        .filter(|schema| {
+            !registered_schemas.contains(schema) && !internal_only_schemas.contains(schema)
+        })
+        .collect();
+
+    assert!(
+        missing_schemas.is_empty(),
+        "known signed-artifact schemas missing from registry.json or internal exemption list: {missing_schemas:?}"
+    );
+}
+
+#[test]
+fn built_in_signed_artifact_registry_matches_public_metadata() {
+    let registry: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../spec/schemas/registry.json"
+    )))
+    .expect("schema registry parses");
+    let registered_metadata: BTreeMap<&str, (&str, &str)> = registry
+        .get("artifacts")
+        .and_then(serde_json::Value::as_array)
+        .expect("registry artifacts are present")
+        .iter()
+        .map(|entry| {
+            let schema = entry
+                .get("schema")
+                .and_then(serde_json::Value::as_str)
+                .expect("registry artifact has schema");
+            let artifact_kind = entry
+                .get("artifactKind")
+                .and_then(serde_json::Value::as_str)
+                .expect("registry artifact has artifactKind");
+            let introduced_by = entry
+                .get("introducedBy")
+                .and_then(serde_json::Value::as_str)
+                .expect("registry artifact has introducedBy");
+            (schema, (artifact_kind, introduced_by))
+        })
+        .collect();
+    let internal_only_schemas: BTreeSet<&str> = [
+        "chio.session_anchor.v1",
+        "chio.request_lineage_record.v1",
+        "chio.runtime-attestation.azure-maa.jwt.v1",
+        "chio.runtime-attestation.aws-nitro-attestation.v1",
+        "chio.runtime-attestation.google-confidential-vm.jwt.v1",
+        "chio.runtime-attestation.enterprise-verifier.json.v1",
+    ]
+    .into_iter()
+    .collect();
+
+    for entry in chio_core_types::built_in_signed_artifact_registry() {
+        let Some((artifact_kind, introduced_by)) = registered_metadata.get(entry.schema.as_str())
+        else {
+            assert!(
+                internal_only_schemas.contains(entry.schema.as_str()),
+                "built-in signed-artifact registry row missing from registry.json or internal exemption list: {}",
+                entry.schema
+            );
+            continue;
+        };
+        assert_eq!(
+            entry.artifact_kind, *artifact_kind,
+            "built-in artifact kind must match registry.json for {}",
+            entry.schema
+        );
+        assert_eq!(
+            entry.introduced_by, *introduced_by,
+            "built-in introducedBy must match registry.json for {}",
+            entry.schema
+        );
+    }
+}
+
+#[test]
+fn public_settlement_dispatch_and_receipt_schemas_are_supported() {
+    let registry: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../spec/schemas/registry.json"
+    )))
+    .expect("schema registry parses");
+    let settlement_schemas: Vec<&str> = registry
+        .get("artifacts")
+        .and_then(serde_json::Value::as_array)
+        .expect("registry artifacts are present")
+        .iter()
+        .filter(|entry| {
+            matches!(
+                entry
+                    .get("artifactKind")
+                    .and_then(serde_json::Value::as_str),
+                Some("web3_settlement_dispatch" | "web3_settlement_execution_receipt")
+            )
+        })
+        .map(|entry| {
+            entry
+                .get("schema")
+                .and_then(serde_json::Value::as_str)
+                .expect("registry artifact has schema")
+        })
+        .collect();
+
+    assert_eq!(settlement_schemas.len(), 4);
+    for schema in settlement_schemas {
+        assert!(
+            chio_core_types::is_supported_signed_artifact_schema(schema),
+            "public settlement schema should be supported by the core signed-artifact gate: {schema}"
+        );
+    }
+}
+
+#[test]
+fn governed_action_evidence_schemas_are_registered() {
+    for (schema, artifact_kind) in [
+        ("chio.capability.proof.v1", "capability_proof"),
+        ("chio.guard.decision.v1", "guard_decision"),
+        ("chio.policy.bundle.v1", "policy_bundle"),
+        ("chio.trust.root.v1", "trust_root"),
+    ] {
+        assert!(
+            chio_core_types::is_supported_signed_artifact_schema(schema),
+            "governed-action evidence schema should be supported: {schema}"
+        );
+        assert!(
+            chio_core_types::built_in_signed_artifact_registry()
+                .iter()
+                .any(|entry| entry.schema == schema
+                    && entry.artifact_kind == artifact_kind
+                    && entry.introduced_by == "transaction-passport-v1"),
+            "governed-action evidence schema should have a built-in registry row: {schema}"
+        );
+    }
+}
+
+#[test]
+fn proof_room_fixture_catalog_schema_is_registered() {
+    assert!(chio_core_types::is_supported_signed_artifact_schema(
+        PROOF_ROOM_FIXTURE_CATALOG_SCHEMA
+    ));
+    assert!(chio_core_types::built_in_signed_artifact_registry()
+        .iter()
+        .any(|entry| entry.schema == PROOF_ROOM_FIXTURE_CATALOG_SCHEMA
+            && entry.artifact_kind == "proof_room_fixture_catalog"
+            && entry.introduced_by == "proof-room-v1"));
+    assert!(chio_core_types::is_supported_signed_artifact_schema(
+        PROOF_ROOM_FIXTURE_ROOT_CATALOG_SCHEMA
+    ));
+    assert!(chio_core_types::built_in_signed_artifact_registry()
+        .iter()
+        .any(
+            |entry| entry.schema == PROOF_ROOM_FIXTURE_ROOT_CATALOG_SCHEMA
+                && entry.artifact_kind == "proof_room_fixture_root_catalog"
+                && entry.introduced_by == "proof-room-v1"
+        ));
+}
+
+#[test]
+fn public_settlement_anchor_evidence_schemas_are_registered() {
+    for (schema, artifact_kind) in [
+        ("chio.anchor-inclusion-proof.v1", "anchor_inclusion_proof"),
+        ("chio.anchor-proof-bundle.v1", "anchor_proof_bundle"),
+    ] {
+        assert!(
+            chio_core_types::is_supported_signed_artifact_schema(schema),
+            "anchor evidence schema should be supported: {schema}"
+        );
+        assert!(
+            chio_core_types::built_in_signed_artifact_registry()
+                .iter()
+                .any(|entry| entry.schema == schema
+                    && entry.artifact_kind == artifact_kind
+                    && entry.introduced_by == "public-settlement-v1"),
+            "anchor evidence schema should have a built-in registry row: {schema}"
+        );
+    }
+}
+
+#[test]
+fn bbs_projection_manifest_v2_schema_is_registered() {
+    assert!(chio_core_types::is_supported_signed_artifact_schema(
+        BBS_PROJECTION_MANIFEST_V2_SCHEMA
+    ));
+    assert!(chio_core_types::built_in_signed_artifact_registry()
+        .iter()
+        .any(|entry| entry.schema == BBS_PROJECTION_MANIFEST_V2_SCHEMA
+            && entry.artifact_kind == "bbs_projection_manifest"
+            && entry.introduced_by == "crypto-context-v1"));
+}
 
 fn session_anchor_body(kernel: &Keypair) -> SessionAnchorBody {
     let auth = SessionAuthContext::streamable_http_static_bearer(

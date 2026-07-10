@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-commerce/v1/order-context.schema.json",
+  "title": "Chio Commerce Order Context",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "order_id",
+    "buyer_subject",
+    "agent_subject",
+    "merchant_subject",
+    "intent_ref",
+    "provider_admission_ref",
+    "federation_trust_bundle_ref",
+    "reputation_snapshot_ref",
+    "provider_passport_ref",
+    "quote_id",
+    "quote_amount_minor",
+    "quote_currency",
+    "quote_sha256",
+    "settlement_packet_ref",
+    "reconciliation_ref",
+    "event_log_sha256",
+    "event_log_path",
+    "payment_lifecycle_sha256",
+    "payment_lifecycle_path",
+    "mandate_ledger_sha256",
+    "mandate_ledger_path",
+    "federation_trust_bundle_path",
+    "federation_trust_bundle_sha256",
+    "reputation_snapshot_path",
+    "reputation_snapshot_sha256",
+    "provider_passport_path",
+    "provider_passport_sha256",
+    "settlement_packet_sha256",
+    "settlement_packet_path",
+    "current_state"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.commerce.order-context.v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issued_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "order_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "buyer_subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "merchant_subject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "intent_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider_admission_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "quote_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "quote_amount_minor": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "quote_currency": {
+      "$ref": "#/$defs/currency"
+    },
+    "quote_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "settlement_packet_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reconciliation_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_log_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "event_log_path": {
+      "$ref": "#/$defs/bundleRelativePath"
+    },
+    "payment_lifecycle_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "payment_lifecycle_path": {
+      "$ref": "#/$defs/bundleRelativePath"
+    },
+    "mandate_ledger_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "mandate_ledger_path": {
+      "$ref": "#/$defs/bundleRelativePath"
+    },
+    "settlement_packet_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "settlement_packet_path": {
+      "$ref": "#/$defs/bundleRelativePath"
+    },
+    "coverage_requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "coverage_id",
+        "risk_comptroller_report_ref",
+        "risk_comptroller_report_sha256",
+        "risk_comptroller_report_path"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "coverage_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "risk_comptroller_report_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "risk_comptroller_report_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "risk_comptroller_report_path": {
+          "$ref": "#/$defs/bundleRelativePath"
+        }
+      }
+    },
+    "trust_market_requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "provider_discovery_snapshot_ref",
+        "provider_selection_report_ref",
+        "trust_scorecard_ref",
+        "reputation_import_ref",
+        "sla_commitment_ref",
+        "collateral_position_ref",
+        "guarantee_decision_ref",
+        "adjudication_jurisdiction_ref"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "provider_discovery_snapshot_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider_selection_report_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trust_scorecard_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reputation_import_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sla_commitment_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "collateral_position_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "guarantee_decision_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "adjudication_jurisdiction_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "current_state": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider_passport_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reputation_snapshot_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "federation_trust_bundle_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider_passport_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "reputation_snapshot_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "federation_trust_bundle_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "provider_passport_path": {
+      "$ref": "#/$defs/bundleRelativePath"
+    },
+    "reputation_snapshot_path": {
+      "$ref": "#/$defs/bundleRelativePath"
+    },
+    "federation_trust_bundle_path": {
+      "$ref": "#/$defs/bundleRelativePath"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "bundleRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "^/"
+          },
+          {
+            "pattern": "^[A-Za-z]:"
+          },
+          {
+            "pattern": "\\\\"
+          },
+          {
+            "pattern": "(^|/)\\.\\.(/|$)"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "schema": "chio.trust-market.negative-fixture.v1",
+  "id": "slash-authority-outside-jurisdiction",
+  "claim_ref": "claim.trust_market.jurisdiction_bound",
+  "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
+  "case": "SlashAuthorityOutsideJurisdiction",
+  "expected_failure_code": "proof-room.negative.slash-authority-not-bound-to-jurisdiction"
+}

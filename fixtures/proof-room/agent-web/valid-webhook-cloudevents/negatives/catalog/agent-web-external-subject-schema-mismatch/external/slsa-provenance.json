@@ -1,0 +1,21 @@
+{
+  "object_kind": "slsa_provenance",
+  "id": "slsa-provenance-agent-web-valid",
+  "predicate_type": "https://slsa.dev/provenance/v1",
+  "build_type": "https://slsa.dev/container-based-build/v1",
+  "builder_id_digest": "b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+  "build_invocation_digest": "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1",
+  "resolved_dependencies_digest": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+  "materials_digest": "b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3b3",
+  "artifact_digest": "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4",
+  "provenance_digest": "b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5",
+  "verification_material_digest": "b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6",
+  "authorization_context_digest": "b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7b7",
+  "build_started_on": "2026-06-10T00:00:00Z",
+  "build_finished_on": "2026-06-10T00:02:00Z",
+  "verification_status": "verified",
+  "receipt_refs": [
+    "receipt-agent-web-slsa-provenance-allow"
+  ],
+  "mediated_by_chio_receipt": true
+}

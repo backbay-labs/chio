@@ -1,0 +1,23 @@
+{
+  "schema": "chio.agent-web.standards-signoff.v1",
+  "status": "approved",
+  "terms": [
+    "standard",
+    "compatible",
+    "native",
+    "universal"
+  ],
+  "checked_public_surfaces": [
+    "spec/PROTOCOL.md",
+    "docs/standards/CHIO_AUTONOMOUS_QUALIFICATION_MATRIX.json",
+    "docs/standards/CHIO_AGENT_WEB_PROTOCOL_TAXONOMY.md",
+    "docs/standards/CHIO_CROSS_PROTOCOL_QUALIFICATION_MATRIX.json",
+    "docs/standards/CHIO_UNIVERSAL_CONTROL_PLANE_QUALIFICATION_MATRIX.json",
+    "docs/standards/CHIO_PAYMENT_INTEROP_PROFILE.md",
+    "docs/standards/CHIO_PORTABLE_TRUST_PROFILE.md",
+    "docs/standards/CHIO_WEB3_PROFILE.md"
+  ],
+  "decision": "Agent Web launch copy is approved only as Chio proof-envelope projection into named external standards. It must not claim replacement authority, protocol-wide native authority, all-protocol coverage, or unnamed Agentic Commerce Protocol coverage.",
+  "reviewed_by": "launch-standards-review",
+  "reviewed_at": "2026-06-24"
+}

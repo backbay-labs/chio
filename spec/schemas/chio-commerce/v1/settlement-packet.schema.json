@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-commerce/v1/settlement-packet.schema.json",
+  "title": "Chio Commerce Settlement Packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "order_id",
+    "merchant_subject",
+    "psp",
+    "payment_intent_id",
+    "amount_minor",
+    "currency",
+    "quote_sha256",
+    "settlement_rail",
+    "settlement_account_ref",
+    "dispatch_receipt_ref",
+    "reconciliation_ref",
+    "status"
+  ],
+  "properties": {
+    "schema": { "const": "chio.commerce.settlement-packet.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "order_id": { "type": "string", "minLength": 1 },
+    "merchant_subject": { "type": "string", "minLength": 1 },
+    "psp": { "type": "string", "minLength": 1 },
+    "payment_intent_id": { "type": "string", "minLength": 1 },
+    "amount_minor": { "type": "integer", "minimum": 1 },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "quote_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "settlement_rail": { "type": "string", "minLength": 1 },
+    "settlement_account_ref": { "type": "string", "minLength": 1 },
+    "dispatch_receipt_ref": { "type": "string", "minLength": 1 },
+    "reconciliation_ref": { "type": "string", "minLength": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["dispatched", "reconciled", "settled"]
+    }
+  }
+}

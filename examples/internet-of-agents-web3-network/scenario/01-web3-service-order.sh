@@ -5,11 +5,14 @@ source "$(dirname "$0")/lib.sh"
 
 ARTIFACT_ROOT=""
 REQUIRE_BASE_SEPOLIA=0
+E2E_REPORT=""
+PROMOTION_REPORT=""
+OPS_AUDIT=""
 
 usage() {
   cat <<'EOF'
 Usage:
-  ./scenario/01-web3-service-order.sh [--artifact-dir PATH] [--require-base-sepolia-smoke]
+  ./scenario/01-web3-service-order.sh [--artifact-dir PATH] [--e2e-report PATH] [--promotion-report PATH] [--ops-audit PATH] [--require-base-sepolia-smoke]
 
 Starts the local web3 internet-of-agents topology, runs the service-order flow,
 and verifies the generated bundle.
@@ -25,6 +28,18 @@ while [[ "$#" -gt 0 ]]; do
     --require-base-sepolia-smoke)
       REQUIRE_BASE_SEPOLIA=1
       shift
+      ;;
+    --e2e-report)
+      E2E_REPORT="$2"
+      shift 2
+      ;;
+    --promotion-report)
+      PROMOTION_REPORT="$2"
+      shift 2
+      ;;
+    --ops-audit)
+      OPS_AUDIT="$2"
+      shift 2
       ;;
     --help|-h)
       usage
@@ -51,8 +66,9 @@ mkdir -p "${ARTIFACT_ROOT}"
 trap stop_live_topology EXIT
 
 start_live_topology "${ARTIFACT_ROOT}"
-run_live_scenario "${ARTIFACT_ROOT}" "${REQUIRE_BASE_SEPOLIA}"
+run_live_scenario "${ARTIFACT_ROOT}" "${REQUIRE_BASE_SEPOLIA}" "${E2E_REPORT}" "${PROMOTION_REPORT}" "${OPS_AUDIT}"
 assert_review_ok "${ARTIFACT_ROOT}"
+verify_transaction_passport "${ARTIFACT_ROOT}"
 
 printf 'scenario 01-web3-service-order passed\n'
 printf 'artifacts: %s\n' "${ARTIFACT_ROOT}"

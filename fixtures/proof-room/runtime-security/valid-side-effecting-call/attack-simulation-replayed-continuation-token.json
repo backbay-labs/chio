@@ -1,0 +1,18 @@
+{
+  "actual_verifier_report_digest": "38f640d43d105eaca4d1416cf9b10c9996f697f5f869aae0addde34639d45912",
+  "attack_class": "replayed-continuation-token",
+  "chaos_knobs": [
+    "continuation_replay"
+  ],
+  "expected_denial_claim": "claim.runtime.continuation_single_use",
+  "fixture_path": "runtime-security/replayed-continuation-token",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "scenario_id": "attack-replayed-continuation-token",
+  "schema": "chio.runtime.attack-simulation-report.v1",
+  "signature": "706236220d4b0f6b1aff3e44555263b7b189269887c66f409c071da84a83c26fa32b5906bad81004fa320bbfef077d109c9064746f92f4c3ae051b380685c00e",
+  "simulator_version_digest": "7b507c9dd41316c67a49d7eb5c33730b7e01843ea2c0d1d495cae1f8a08679d3",
+  "status": "passed"
+}

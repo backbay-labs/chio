@@ -184,15 +184,17 @@ pub use schema::{
     PHEROMONE_RELAY_TICK_REPORT_SCHEMA, PHEROMONE_RELAY_TREND_REPORT_SCHEMA,
 };
 pub use service::{
-    deliver_due_batches, lint_relay_supervisor_profile, relay_supervisor_profile_from_json,
-    PheromoneRelayConfig, PheromoneRelayService, RelayBatchReceiver, RelayDrillCheck,
-    RelayDrillReport, RelayReverseProxyProfile, RelaySupervisorProfileDocument,
+    deliver_due_batches, enforce_outbound_peer_batch_directory_scope,
+    enforce_peer_batch_directory_scope, lint_relay_supervisor_profile,
+    relay_supervisor_profile_from_json, ExtraMetricsHook, PheromoneRelayConfig,
+    PheromoneRelayService, RelayBatchReceiver, RelayDrillCheck, RelayDrillReport,
+    RelayReverseProxyProfile, RelaySupervisorProfileDocument,
 };
 pub(crate) use store::i64_from_u64;
 pub use store::{
-    CatchupRequest, CatchupResponse, InboxRecordResult, PheromoneRelayStore, RelayDeliveryReport,
-    RelayHealthCheck, RelayHealthReport, RelayNonceRecorder, RelayNonceSet, RelayOperatorReport,
-    RelayOutboxBatch, RelayTickReport, SqlitePheromoneRelayStore,
+    CatchupRequest, CatchupResponse, InboxRecordResult, InboxReserveResult, PheromoneRelayStore,
+    RelayDeliveryReport, RelayHealthCheck, RelayHealthReport, RelayNonceRecorder, RelayNonceSet,
+    RelayOperatorReport, RelayOutboxBatch, RelayTickReport, SqlitePheromoneRelayStore,
 };
 pub(crate) use validation::{
     canonical_sha256, is_sha256_hex, u64_from_i64, validate_endpoint,

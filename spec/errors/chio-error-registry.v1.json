@@ -1,6 +1,6 @@
 {
   "schema": "chio.error-registry.v1",
-  "updatedAt": "2026-04-13",
+  "updatedAt": "2026-06-19",
   "categories": [
     "protocol",
     "auth",
@@ -8,7 +8,8 @@
     "guard",
     "budget",
     "tool",
-    "internal"
+    "internal",
+    "transaction"
   ],
   "codes": [
     {
@@ -129,6 +130,160 @@
         "guidance": "Retry with bounded backoff and escalate if the condition persists."
       },
       "nativeWireName": "internal_error"
+    },
+    {
+      "code": 7100,
+      "name": "transaction_passport_schema_unsupported",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Regenerate the passport with a registered transaction passport schema."
+      },
+      "nativeWireName": "transaction_passport_schema_unsupported"
+    },
+    {
+      "code": 7101,
+      "name": "transaction_passport_hash_mismatch",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Rebuild the passport root with matching evidence graph, claim set, and policy digests."
+      },
+      "nativeWireName": "transaction_passport_hash_mismatch"
+    },
+    {
+      "code": 7102,
+      "name": "transaction_graph_not_closed",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Include every required evidence, claim-set, policy, and receipt node in the transaction graph."
+      },
+      "nativeWireName": "transaction_graph_not_closed"
+    },
+    {
+      "code": 7103,
+      "name": "transaction_graph_cycle",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Emit an acyclic evidence graph whose dependency edges can be topologically verified."
+      },
+      "nativeWireName": "transaction_graph_cycle"
+    },
+    {
+      "code": 7104,
+      "name": "transaction_required_claim_missing",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Add verified evidence for the required claim or remove the unsupported requirement."
+      },
+      "nativeWireName": "transaction_required_claim_missing"
+    },
+    {
+      "code": 7105,
+      "name": "transaction_artifact_hash_mismatch",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Regenerate the artifact set with matching transaction evidence digests."
+      },
+      "nativeWireName": "transaction_artifact_hash_mismatch"
+    },
+    {
+      "code": 7106,
+      "name": "transaction_identity_not_bound",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Bind identity evidence to the transaction passport subject and evidence graph."
+      },
+      "nativeWireName": "transaction_identity_not_bound"
+    },
+    {
+      "code": 7107,
+      "name": "transaction_authorization_not_bound",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Bind capability, policy, approval, or guard evidence to the governed transaction."
+      },
+      "nativeWireName": "transaction_authorization_not_bound"
+    },
+    {
+      "code": 7108,
+      "name": "transaction_receipt_uncheckpointed",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Provide checkpointed receipt or inclusion evidence for the transaction receipt."
+      },
+      "nativeWireName": "transaction_receipt_uncheckpointed"
+    },
+    {
+      "code": 7109,
+      "name": "transaction_runtime_proof_rejected",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Regenerate runtime security, parity, lease, nonce, revocation, sandbox, ack, and terminal receipt evidence."
+      },
+      "nativeWireName": "transaction_runtime_proof_rejected"
+    },
+    {
+      "code": 7110,
+      "name": "transaction_buyer_review_rejected",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Regenerate buyer review evidence that matches the transaction passport and verifier policy."
+      },
+      "nativeWireName": "transaction_buyer_review_rejected"
+    },
+    {
+      "code": 7111,
+      "name": "transaction_settlement_unverified",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Include settlement evidence bound to the transaction order, amount, currency, rail, and receipt lineage."
+      },
+      "nativeWireName": "transaction_settlement_unverified"
+    },
+    {
+      "code": 7112,
+      "name": "transaction_dispute_unbound",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Bind dispute, refund, remediation, and settlement reversal evidence to the transaction passport and receipts."
+      },
+      "nativeWireName": "transaction_dispute_unbound"
+    },
+    {
+      "code": 7113,
+      "name": "transaction_transparency_preview_not_allowed",
+      "category": "transaction",
+      "transient": false,
+      "retry": {
+        "strategy": "do_not_retry",
+        "guidance": "Provide verified transparency inclusion evidence or remove the transparency claim."
+      },
+      "nativeWireName": "transaction_transparency_preview_not_allowed"
     }
   ]
 }

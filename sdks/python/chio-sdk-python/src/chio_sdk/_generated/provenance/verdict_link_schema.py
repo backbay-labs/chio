@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 61971d0fd9521328df208fed380e2ce1e207c4d8c906b7576b864af1911371e5
+# Schema sha256: 1b3dddb0add43c48db052da001a21cc476080aac4160a91bb03f8857c8e8d51d
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -30,7 +30,7 @@ class Verdict(Enum):
 
 class EvidenceClass(Enum):
     """
-    Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.
+    Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.
     """
 
     asserted = "asserted"
@@ -52,7 +52,7 @@ class ChioProvenanceVerdictLink1(BaseModel):
     )
     requestId: constr(min_length=1) = Field(
         ...,
-        description="Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).",
+        description="Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.",
     )
     receiptId: constr(min_length=1) | None = Field(
         None,
@@ -76,7 +76,7 @@ class ChioProvenanceVerdictLink1(BaseModel):
     )
     evidenceClass: EvidenceClass | None = Field(
         None,
-        description="Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.",
+        description="Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.",
     )
 
     @model_validator(mode="after")
@@ -100,7 +100,7 @@ class ChioProvenanceVerdictLink2(BaseModel):
     )
     requestId: constr(min_length=1) = Field(
         ...,
-        description="Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).",
+        description="Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.",
     )
     receiptId: constr(min_length=1) | None = Field(
         None,
@@ -124,7 +124,7 @@ class ChioProvenanceVerdictLink2(BaseModel):
     )
     evidenceClass: EvidenceClass | None = Field(
         None,
-        description="Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.",
+        description="Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.",
     )
 
 
@@ -142,7 +142,7 @@ class ChioProvenanceVerdictLink3(BaseModel):
     )
     requestId: constr(min_length=1) = Field(
         ...,
-        description="Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).",
+        description="Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.",
     )
     receiptId: constr(min_length=1) | None = Field(
         None,
@@ -166,7 +166,7 @@ class ChioProvenanceVerdictLink3(BaseModel):
     )
     evidenceClass: EvidenceClass | None = Field(
         None,
-        description="Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.",
+        description="Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.",
     )
 
     @model_validator(mode="after")
@@ -190,7 +190,7 @@ class ChioProvenanceVerdictLink4(BaseModel):
     )
     requestId: constr(min_length=1) = Field(
         ...,
-        description="Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `crates/core/chio-core-types/src/session.rs` (`RequestLineageMode`, lines 717-768).",
+        description="Stable identifier of the Chio request the verdict applies to. Threads the verdict into the request lineage carried by `RequestLineageMode` in `crates/core/chio-core-types`.",
     )
     receiptId: constr(min_length=1) | None = Field(
         None,
@@ -214,7 +214,7 @@ class ChioProvenanceVerdictLink4(BaseModel):
     )
     evidenceClass: EvidenceClass | None = Field(
         None,
-        description="Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types/src/capability.rs` (lines 1303-1314). Omitted when the verdict was rendered without consulting the provenance graph.",
+        description="Optional provenance evidence class Chio resolved at the time the verdict was rendered. Mirrors `GovernedProvenanceEvidenceClass` in `crates/core/chio-core-types`. Omitted when the verdict was rendered without consulting the provenance graph.",
     )
 
     @model_validator(mode="after")

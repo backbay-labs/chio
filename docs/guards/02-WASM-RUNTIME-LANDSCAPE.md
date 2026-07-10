@@ -4,7 +4,6 @@ Research document covering WASM runtime options, ABI patterns, the Component
 Model, guest SDK toolchains, and security considerations for running
 user-supplied guard/policy functions inside the Chio kernel.
 
-Date: 2026-04-14
 
 ---
 

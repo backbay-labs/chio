@@ -17,7 +17,7 @@ chio replay <LOG> [OPTIONS]
 ```
 
 Surface (lifted from `crates/products/chio-cli/src/cli/types.rs::ReplayArgs` and
-the dispatch wiring in `crates/products/chio-cli/src/cli/dispatch.rs`):
+the dispatch wiring in `crates/products/chio-cli/src/cli/dispatch`):
 
 ```text
 ARGS:

@@ -2,8 +2,8 @@
 #
 # Brought up by `sdks/python/chio-streaming/Makefile`'s `test-integration`
 # target. Ports are deliberately offset from defaults so this stack can
-# coexist with the workspace-wide `backbay/infra/compose.yaml` (which
-# already publishes redis on 6379).
+# coexist with any host-side Redis that may already be running on the
+# default port 6379.
 #
 # Usage:
 #   docker compose -f deploy/compose/streaming-compose.yml up -d

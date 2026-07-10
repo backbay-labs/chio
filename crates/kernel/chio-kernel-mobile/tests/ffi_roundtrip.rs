@@ -318,7 +318,7 @@ fn evaluate_rejects_bad_trusted_hex() {
 
 #[test]
 fn sign_receipt_roundtrip_and_verifies() {
-    // WYSIWYS (BAC-539): the public signer recomputes content_hash over the
+    // WYSIWYS: the public signer recomputes content_hash over the
     // canonical content preimage. A matching content+hash pair signs and
     // verifies.
     let keypair = Keypair::generate();
@@ -337,7 +337,7 @@ fn sign_receipt_roundtrip_and_verifies() {
 
 #[test]
 fn sign_receipt_accepts_empty_preimage_stream_receipt() {
-    // BAC-539: a zero-chunk stream receipt has an empty-byte canonical preimage,
+    // WYSIWYS: a zero-chunk stream receipt has an empty-byte canonical preimage,
     // which encodes to the empty hex string. The public mobile signer must NOT
     // reject the empty preimage: `body.content_hash` is sha256 of those empty
     // bytes, so the WYSIWYS recompute gate passes and the receipt signs.
@@ -357,7 +357,7 @@ fn sign_receipt_accepts_empty_preimage_stream_receipt() {
 
 #[test]
 fn sign_receipt_refuses_render_a_sign_b() {
-    // WYSIWYS render-A/sign-B regression (BAC-539 / C1): the body claims
+    // WYSIWYS render-A/sign-B regression: the body claims
     // hash(B) while the canonical content handed to the public signer is A.
     // The recompute-and-refuse gate inside `chio_kernel_core::sign_receipt`
     // MUST reject this fail-closed. Without the fix (relaying the trusted body
@@ -447,7 +447,7 @@ fn sign_receipt_rejects_zero_seed() {
 
 #[test]
 fn sign_receipt_relaying_trusted_body_signs_without_preimage() {
-    // The explicitly named relay seam (BAC-601) is the only path that forwards
+    // The explicitly named relay seam is the only path that forwards
     // a trusted body without a content preimage; it trusts `content_hash`.
     let keypair = Keypair::generate();
     let body = make_receipt_body(&keypair);

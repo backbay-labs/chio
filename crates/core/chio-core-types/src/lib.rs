@@ -92,7 +92,8 @@ pub use session::{
 pub use signed_artifact::{
     built_in_signed_artifact_registry, is_supported_signed_artifact_schema,
     validate_signed_artifact_schema, SignedArtifactSchemaEntry, CHIO_ANCHOR_BATCH_V1_SCHEMA,
-    KNOWN_SIGNED_ARTIFACT_SCHEMAS,
+    CHIO_ANCHOR_INCLUSION_PROOF_V1_SCHEMA, CHIO_ANCHOR_PROOF_BUNDLE_V1_SCHEMA,
+    CHIO_TRANSACTION_CLAIM_SET_V1_SCHEMA, KNOWN_SIGNED_ARTIFACT_SCHEMAS,
 };
 
 /// Opaque agent identifier: hex-encoded Ed25519 public key or SPIFFE URI

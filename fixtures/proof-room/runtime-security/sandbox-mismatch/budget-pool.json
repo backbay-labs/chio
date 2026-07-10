@@ -1,0 +1,21 @@
+{
+  "allocations": [
+    {
+      "activeUnits": 1,
+      "allocationId": "budget-allocation-sandbox-mismatch",
+      "consumedUnits": 0,
+      "dimensionId": "usd_minor",
+      "maxUnits": 1,
+      "releasedUnits": 0,
+      "reservedUnits": 0,
+      "reversedUnits": 0,
+      "state": "active",
+      "taskId": "runtime-tool-call"
+    }
+  ],
+  "currency": "USD",
+  "graphId": "runtime-route-graph-valid",
+  "poolId": "budget-pool-sandbox-mismatch",
+  "schema": "chio.swarm.budget-pool.v1",
+  "totalUnits": 1
+}

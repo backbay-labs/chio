@@ -1,0 +1,15 @@
+{
+  "actual_verifier_report_digest": "8c9dbb4e5f987172962e8ebd5f34a61d283151d5f383798e357476140422dcb0",
+  "case_id": "revocation-oracle-unavailable",
+  "deterministic_seed_digest": "fe6426b994015ebcb92f72f610c07fc45403f463d09cc1ffa972c72e572c2e2d",
+  "expected_result": "deny or degrade read-only, never side-effect allow",
+  "failure_injected": "revocation freshness source unavailable before side effect",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runner_version_digest": "156ad368ad5d7aa289d44529cf0e87801871e1f7af3de81b367e6300877a3267",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "schema": "chio.runtime.chaos-run-report.v1",
+  "signature": "88c8e9b025a4cf743c8271c551998cc20e091cb8f1e03520ed26278355b421c0bca63dd62be1134b3979fb1612a916bed759dcb46bf31491d599585946439e03",
+  "status": "passed"
+}

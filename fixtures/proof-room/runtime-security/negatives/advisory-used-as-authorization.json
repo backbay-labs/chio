@@ -1,0 +1,8 @@
+{
+  "schema": "chio.runtime-security.negative-fixture.v1",
+  "id": "advisory-used-as-authorization",
+  "claim_ref": "claim.runtime.advisory_not_used_as_authorization",
+  "base_fixture": "fixtures/proof-room/runtime-security/valid-side-effecting-call/transaction-passport.json",
+  "case": "AdvisoryUsedAsAuthorization",
+  "expected_failure_code": "proof-room.negative.advisory-evidence-cannot-authorize-runtime-execution"
+}

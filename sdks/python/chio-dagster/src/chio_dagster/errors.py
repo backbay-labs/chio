@@ -8,7 +8,7 @@ from chio_sdk.errors import ChioError
 
 
 class ChioDagsterError(ChioError):
-    """An Chio-governed Dagster asset / op invocation was denied or failed.
+    """A Chio-governed Dagster asset / op invocation was denied or failed.
 
     Carries the sidecar verdict so callers (and Dagster event logs) can
     inspect the guard that denied, the reason, and any structured hint

@@ -1,0 +1,10 @@
+{
+  "execution_lease_ref": "lease-runtime-valid",
+  "incident_ref": "incident-tool-unreachable",
+  "kernel_key": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc",
+  "policy_digest": "687126355154079b3ab9c62e3eb18e5d285e435c9321720bae34a343877d0cd9",
+  "receipt_id": "receipt-runtime-failure",
+  "schema": "chio.runtime.terminal-receipt.v1",
+  "signature": "d8143210178944fa7000362a0b49d1b04f45499bf46ebf53cb71bca5ede92b7d7fa9ebfc5d43ee3aa415c445b79cd4b7991bd44aecf55a5ea12e41aa0b55f705",
+  "terminal_status": "failed_tool_unreachable"
+}

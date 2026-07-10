@@ -42,7 +42,26 @@ pub(crate) fn materialize_final_runtime_proof_parity_report(
         final_runtime_package,
         expected_buyer_closure,
     )?;
-    let parity_accepted = mismatches.is_empty() && parity_verifier_report.accepted;
+    let static_proof_package_sha256 =
+        chio_attest_buyer_core::proof_package::package_sha256(static_package).map_err(|error| {
+            RuntimeLoopbackError::message(format!("Chio static proof package hash: {error}"))
+        })?;
+    let runtime_proof_package_sha256 = chio_attest_buyer_core::proof_package::package_sha256(
+        final_runtime_package,
+    )
+    .map_err(|error| {
+        RuntimeLoopbackError::message(format!("Chio runtime parity proof package hash: {error}"))
+    })?;
+    let static_verifier_report_sha256 =
+        canonical_sha256_json(static_report, "Chio static verifier report canonical hash")?;
+    let runtime_verifier_report_sha256 = canonical_sha256_json(
+        &parity_verifier_report,
+        "Chio runtime parity verifier report hash",
+    )?;
+    let parity_accepted = mismatches.is_empty()
+        && parity_verifier_report.accepted
+        && static_proof_package_sha256 == runtime_proof_package_sha256
+        && static_verifier_report_sha256 == runtime_verifier_report_sha256;
 
     Ok(chio_runtime_core::RuntimeProofParityReport {
         schema: chio_runtime_core::CHIO_RUNTIME_PROOF_PARITY_REPORT_SCHEMA.to_string(),
@@ -54,28 +73,10 @@ pub(crate) fn materialize_final_runtime_proof_parity_report(
             Some("runtime_proof_semantic_parity_mismatch".to_string())
         },
         generated_at_unix_ms: now_unix_ms,
-        static_proof_package_sha256: chio_attest_buyer_core::proof_package::package_sha256(
-            static_package,
-        )
-        .map_err(|error| {
-            RuntimeLoopbackError::message(format!("Chio static proof package hash: {error}"))
-        })?,
-        runtime_proof_package_sha256: chio_attest_buyer_core::proof_package::package_sha256(
-            final_runtime_package,
-        )
-        .map_err(|error| {
-            RuntimeLoopbackError::message(format!(
-                "Chio runtime parity proof package hash: {error}"
-            ))
-        })?,
-        static_verifier_report_sha256: canonical_sha256_json(
-            static_report,
-            "Chio static verifier report canonical hash",
-        )?,
-        runtime_verifier_report_sha256: canonical_sha256_json(
-            &parity_verifier_report,
-            "Chio runtime parity verifier report hash",
-        )?,
+        static_proof_package_sha256,
+        runtime_proof_package_sha256,
+        static_verifier_report_sha256,
+        runtime_verifier_report_sha256,
         compared_fields,
         mismatches,
     })

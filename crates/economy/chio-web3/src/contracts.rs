@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Web3ContractError;
-use crate::validation::{ensure_non_empty, ensure_unique_strings};
+use crate::validation::{ensure_b256_hex, ensure_non_empty, ensure_unique_strings};
 
 pub const CHIO_WEB3_CONTRACT_PACKAGE_SCHEMA: &str = "chio.web3-contract-package.v1";
 
@@ -31,6 +31,8 @@ pub struct Web3ContractInterface {
     pub interface_name: String,
     pub abi_reference: String,
     pub implementation_reference: String,
+    pub creation_bytecode_hash: String,
+    pub deployed_runtime_codehash: String,
     pub immutable: bool,
 }
 
@@ -96,6 +98,14 @@ pub fn validate_web3_contract_package(
         ensure_non_empty(
             &contract.implementation_reference,
             "web3_contract_package.contracts.implementation_reference",
+        )?;
+        ensure_b256_hex(
+            &contract.creation_bytecode_hash,
+            "web3_contract_package.contracts.creation_bytecode_hash",
+        )?;
+        ensure_b256_hex(
+            &contract.deployed_runtime_codehash,
+            "web3_contract_package.contracts.deployed_runtime_codehash",
         )?;
         if !contract_ids.insert(contract.contract_id.as_str()) {
             return Err(Web3ContractError::DuplicateValue(

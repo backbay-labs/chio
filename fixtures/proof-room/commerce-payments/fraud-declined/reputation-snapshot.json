@@ -1,0 +1,1 @@
+{"id":"reputation-snapshot-commerce-001","issued_at":"2026-06-10T00:08:00Z","provider_subject":"merchant:stripe:coffee-shop","schema":"chio.commerce.reputation-snapshot.v1","score_bps":8600,"signature":"74f9b54ff071b3c010e450c52451e433b3d67b55e100388e785ff7e6d5414d316791c4da9da4fff81d9c7206bab4e6bc4b88e0f28c5f330db362147b6928a308","status":"accepted"}

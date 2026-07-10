@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-agent-web/v1/external-projection-manifest.schema.json",
+  "title": "Chio Agent Web External Projection Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "projection_id",
+    "source_protocol",
+    "source_version",
+    "external_fields_used",
+    "external_fields_not_used",
+    "sidecar_fields",
+    "digest_algorithm",
+    "signature_algorithm",
+    "requires_external_signature",
+    "claim_mapping",
+    "unsupported_claims",
+    "copy_limitations"
+  ],
+  "properties": {
+    "schema": { "const": "chio.agent-web.external-projection-manifest.v1" },
+    "projection_id": { "type": "string", "minLength": 1 },
+    "source_protocol": {
+      "enum": [
+        "standard-webhooks",
+        "cloudevents",
+        "graphql-http",
+        "mcp",
+        "a2a",
+        "acp-client",
+        "acp-commerce",
+        "ag-ui",
+        "browser-automation",
+        "rpa",
+        "gmail-api",
+        "google-calendar-api",
+        "slack",
+        "oauth2",
+        "openid-connect",
+        "scim",
+        "spiffe",
+        "kubernetes-admission",
+        "oci",
+        "vc",
+        "sd-jwt-vc",
+        "bbs",
+        "sigstore",
+        "in-toto",
+        "dsse",
+        "slsa-provenance",
+        "openapi",
+        "asyncapi",
+        "ap2",
+        "x402"
+      ]
+    },
+    "source_version": { "type": "string", "minLength": 1 },
+    "external_fields_used": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "external_fields_not_used": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "sidecar_fields": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "digest_algorithm": { "const": "sha256" },
+    "signature_algorithm": { "type": "string", "minLength": 1 },
+    "requires_external_signature": { "type": "boolean" },
+    "claim_mapping": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/claimMapping" },
+      "minItems": 1
+    },
+    "unsupported_claims": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "copy_limitations": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "claimMapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_ref", "evidence_class"],
+      "properties": {
+        "claim_ref": { "type": "string", "minLength": 1 },
+        "evidence_class": {
+          "enum": [
+            "native-external-proof",
+            "chio-sidecar-proof",
+            "digest-bound-reference",
+            "advisory-observation",
+            "unsupported"
+          ]
+        }
+      }
+    }
+  }
+}

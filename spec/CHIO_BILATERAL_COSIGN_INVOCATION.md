@@ -2,8 +2,7 @@
 
 **Status:** v1 (Chio-owned pre-release spec carrying an in-toto WG proposal) | **Date:** 2026-05-04
 **Intended audience:** in-toto Attestation WG; OpenSSF AI/ML Security
-WG; CoSAI Workstream 4. **Editors:** chio maintainers, per
-[CHIO_CONCEPT.md](../docs/research/CHIO_CONCEPT.md) section 5.
+WG; CoSAI Workstream 4. **Editors:** chio maintainers.
 
 This document specifies the shipped Chio-owned predicate type
 `chio.bilateral-cosign-invocation.v1` for **bilateral co-signed runtime
@@ -64,10 +63,9 @@ The composition unit is the workflow receipt
 ([../crates/platform/chio-workflow/src/lib.rs](../crates/platform/chio-workflow/src/lib.rs)),
 and capability scoping rides on agent passports
 ([../crates/trust/chio-credentials/src/lib.rs](../crates/trust/chio-credentials/src/lib.rs)).
-The cross-vendor agent action attestation use case
-([CHIO_CONCEPT.md](../docs/research/CHIO_CONCEPT.md) section 2)
-needs all three properties at once: bilateral intent, per-action
-capability scoping, and workflow-receipt composition.
+The cross-vendor agent action attestation use case needs all three properties
+at once: bilateral intent, per-action capability scoping, and workflow-receipt
+composition.
 
 ---
 
@@ -602,9 +600,5 @@ The chio maintainers intend the following next steps:
    `chio.bilateral-signature-slice.v1` helper remains compatibility-only and
    must not be treated as strict Chio predicate evidence.
 
-If the WG declines or the discussion stalls, this document remains the
-written record of the structural gap that motivates the
-chio-namespaced predicate, satisfying the v1.1 open decision in
-[CHIO_CONCEPT.md](../docs/research/CHIO_CONCEPT.md) section 9
-("either land bilateral co-signed invocation predicate semantics in
-their vocabulary or confirm the structural gap in writing").
+If the WG declines or the discussion stalls, this document remains the written
+record of the structural gap that motivates the chio-namespaced predicate.

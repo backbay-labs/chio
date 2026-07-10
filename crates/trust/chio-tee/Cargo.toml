@@ -11,7 +11,8 @@ publish = false
 [features]
 default = []
 # FIPS smoke builds route Chio signing surfaces through chio-core-types'
-# aws-lc-rs backed FIPS feature without changing default builds.
+# aws-lc-rs backed FIPS feature without changing default builds. The
+# `chio-tee fips smoke` CI job builds `--features fips`.
 fips = ["chio-core/fips"]
 
 [lib]
@@ -35,7 +36,7 @@ chrono = { workspace = true }
 toml = "0.8"
 # Pinned to 1.8.x; the derive feature provides the `Zeroize` + `ZeroizeOnDrop`
 # derives used by `RawPayloadBuffer` in `src/buffer.rs`.
-zeroize = { version = "1.8", features = ["derive"] }
+zeroize = { workspace = true, features = ["derive"] }
 
 [target.'cfg(unix)'.dependencies]
 # Signal handling for SIGUSR1 hot-toggle. Linux/BSD/macOS only; the toggle

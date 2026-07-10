@@ -53,6 +53,21 @@ ignore = [
     # last-checked = 2026-06-08; proc-macro-error2 is unmaintained (RUSTSEC-2026-0173). It is a compile-time
     # transitive through alloy-sol-macro and sigstore/oci-spec codegen. No runtime code is shipped from this crate.
     "RUSTSEC-2026-0173",
+    # last-checked = 2026-07-02; anyhow 1.0.102 unsound in Error::downcast_mut() after Error::context()
+    # (RUSTSEC-2026-0190, UB from a borrow-rule violation). Chio never calls downcast_mut (workspace grep: 0 hits),
+    # so the unsoundness is unreachable/latent. anyhow is a workspace-wide transitive dep and main is on 1.0.102 too;
+    # the real fix is anyhow >=1.0.103, deferred to a coordinated dep bump + cargo-vet re-audit (bumping it alone
+    # fails cargo-vet with an unvetted version). Clears with that batch.
+    "RUSTSEC-2026-0190",
+    # last-checked = 2026-07-03; quick-xml 0.39.4 unbounded-allocation memory-exhaustion DoS
+    # (RUSTSEC-2026-0194 entity expansion, RUSTSEC-2026-0195 NsReader namespace declarations).
+    # Pulled only transitively via iroh -> netwatch -> netdev -> plist for local network-interface
+    # discovery; the parsed XML is the host's own Apple property lists, not attacker-controlled
+    # input, so the DoS vector is unreachable. The fix needs quick-xml >=0.41.0, outside the ^0.39
+    # range pinned through the iroh chain; no semver-compatible bump exists and we do not edit iroh
+    # crate versions. Clears when the iroh/plist chain updates quick-xml upstream.
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
 ]
 
 # cargo-deny 0.16 enforces an explicit allow-list only: unlisted licenses are

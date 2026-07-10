@@ -1,0 +1,12 @@
+{
+  "schema": "chio.runtime-security.negative-fixture.v1",
+  "id": "sandbox-mismatch",
+  "claim_ref": "claim.runtime.sandbox_attestation_matched",
+  "base_fixture": "fixtures/proof-room/runtime-security/valid-side-effecting-call/transaction-passport.json",
+  "mutation": {
+    "artifact": "sandbox-attestation.json",
+    "field": "tool_manifest_digest",
+    "value": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "expected_failure_code": "proof-room.negative.sandbox-tool-binding-mismatch"
+}

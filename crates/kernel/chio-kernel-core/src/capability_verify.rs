@@ -128,9 +128,8 @@ pub fn verify_capability(
 /// sibling-sum budget split.
 ///
 /// This is the floor-aware entry point for kernels that load
-/// `policy.crypto_floor`. The default [`verify_capability`] wrapper preserves
-/// legacy callers by using [`CapabilityCryptoFloor::AllowClassical`] and a
-/// [`NoopBudgetRegistry`].
+/// `policy.crypto_floor`. The default [`verify_capability`] wrapper uses
+/// [`CapabilityCryptoFloor::AllowClassical`] and a [`NoopBudgetRegistry`].
 ///
 /// Sibling-sum enforcement: when the token carries a non-empty
 /// `delegation_chain`, the verifier asks `budgets` to admit the new child
@@ -210,11 +209,22 @@ pub(crate) fn admit_delegated_budget(
     // The parent must already be registered from verifier-owned lineage
     // or a parent snapshot. Unknown parents fail closed; the verifier must
     // not fabricate a missing parent share at MAX_BUDGET_SHARE_BPS.
+    //
+    // This runs on the shared VERIFY surface (portable/preflight verdicts and
+    // adapter one-shot evaluations produced by the pure `evaluate_*` entry
+    // points). None of those callers hold a `PostAdmissionDropGuard` or reach
+    // `release_admitted_capability_budget`, so this MUST NOT take a holder
+    // lease: a lease acquired here would never be released and would pin the
+    // child edge upward forever. `verify_child_admission` runs the same
+    // fail-closed oversubscription checks and still commits a fresh child's
+    // share for sibling-sum accounting, but records no releasable holder. The
+    // authoritative lease is taken separately by the hosted dispatch path
+    // (`ChioKernel::admit_capability_budget`), which owns the matching release.
     if let Some(parent_link) = token.delegation_chain.last() {
         let proposed_share = token
             .budget_share_bps
             .unwrap_or(crate::budget_split::MAX_BUDGET_SHARE_BPS);
-        budgets.try_admit_child(
+        budgets.verify_child_admission(
             parent_link.capability_id.as_str(),
             token.id.clone(),
             proposed_share,

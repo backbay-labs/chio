@@ -324,6 +324,8 @@ run_runtime_loopback_with_artifacts() {
   runtime_spine_out_dir="$tmpdir/loopback-out"
   run_chio runtime run-loopback \
     --scenario "$scenario" \
+    --static-package "$repo_root/examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json" \
+    --static-report "$repo_root/examples/chio-3vendor/fixtures/verifier-report.json" \
     --store-dir "$tmpdir/loopback-store" \
     --now-unix-ms "$LOOPBACK_NOW_UNIX_MS" \
     --out-dir "$runtime_spine_out_dir"

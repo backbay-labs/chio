@@ -11,7 +11,6 @@
  */
 
 import type { Request, Response, NextFunction, RequestHandler } from "express";
-import { PassThrough } from "node:stream";
 import {
   type ChioConfig,
   type ChioPassthrough,
@@ -23,6 +22,8 @@ import {
   resolveConfig,
   type ResolvedConfig,
   interceptNodeRequest,
+  preserveReadableBody,
+  shouldSkip,
 } from "@chio-protocol/node-http";
 
 /** Express-specific Chio config with route pattern extraction. */
@@ -153,17 +154,6 @@ export function chioErrorHandler(
 
 // -- Helpers --
 
-function shouldSkip(path: string, patterns: Array<string | RegExp>): boolean {
-  for (const pattern of patterns) {
-    if (typeof pattern === "string") {
-      if (path === pattern) return true;
-    } else {
-      if (pattern.test(path)) return true;
-    }
-  }
-  return false;
-}
-
 function extractRoutePattern(req: Request): string | null {
   // Express 4/5 populates req.route after matching.
   // In middleware that runs before route matching, this is not available.
@@ -188,63 +178,8 @@ async function ensureExpressBufferedBody(req: ChioRequest): Promise<Buffer> {
 
   const rawBody = Buffer.concat(chunks);
   req.rawBody = rawBody;
-  replayExpressRequestBody(req, rawBody);
+  preserveReadableBody(req, rawBody, { bindAsyncIterator: false });
   return rawBody;
-}
-
-function replayExpressRequestBody(req: ChioRequest, rawBody: Buffer): void {
-  const replay = new PassThrough();
-  replay.end(rawBody);
-
-  const replayable = req as unknown as Record<string | symbol, unknown>;
-  const methods = [
-    "on",
-    "once",
-    "addListener",
-    "prependListener",
-    "prependOnceListener",
-    "removeListener",
-    "off",
-    "pipe",
-    "unpipe",
-    "pause",
-    "resume",
-    "read",
-    "setEncoding",
-  ] as const;
-
-  for (const method of methods) {
-    const impl = replay[method];
-    if (typeof impl === "function") {
-      replayable[method] = impl.bind(replay) as unknown;
-    }
-  }
-
-  Object.defineProperty(replayable, "_readableState", {
-    configurable: true,
-    enumerable: false,
-    get: () => (replay as PassThrough & { _readableState: unknown })._readableState,
-  });
-
-  Object.defineProperty(replayable, "complete", {
-    configurable: true,
-    enumerable: false,
-    get: () => replay.readableEnded,
-  });
-
-  for (const property of [
-    "readable",
-    "readableEnded",
-    "readableEncoding",
-    "readableFlowing",
-    "readableLength",
-  ] as const) {
-    Object.defineProperty(replayable, property, {
-      configurable: true,
-      enumerable: false,
-      get: () => replay[property],
-    });
-  }
 }
 
 function hydrateExpressBody(req: ChioRequest, rawBody: Buffer): void {

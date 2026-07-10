@@ -1,0 +1,15 @@
+{
+  "actual_verifier_report_digest": "aa5cb1054f00c082b1ac8daec3795e4b797d4ee4653e8e294a312bf7574f12d2",
+  "case_id": "clock-skew-expiry-bypass",
+  "deterministic_seed_digest": "0146e94545def1ae60dddafed55b23434349e5494558089110f1097e0ef1075d",
+  "expected_result": "verifier rejects unless trusted time proof is bound",
+  "failure_injected": "tool server local clock is skewed around lease expiry",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runner_version_digest": "156ad368ad5d7aa289d44529cf0e87801871e1f7af3de81b367e6300877a3267",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "schema": "chio.runtime.chaos-run-report.v1",
+  "signature": "a476d1f25771c524c854c893d5638324e60c6f9075fb9f359e0faee1962828a6f2666634b4d48571e8be4937a7f17f6742fd5d6a126f2096881433e38181a409",
+  "status": "passed"
+}

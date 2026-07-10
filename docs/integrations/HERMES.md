@@ -408,7 +408,7 @@ reconciliation (post-tool-call vs pre-evaluation redaction).
 
 Tracked separately, not blocking v0.1.0:
 
-* Path C: ACP (`agent-client-protocol`) bridge between Chio and Hermes.
+* Path C: ACP-Client (`agent-client-protocol`) bridge between Chio and Hermes.
 * Streamable HTTP variant of the Chio MCP edge for Hermes
   (`chio mcp serve-http`).
 * Keychain-backed credential store for `CHIO_CAPABILITY_ID`.

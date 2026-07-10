@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-commerce/v1/payment-lifecycle.schema.json",
+  "title": "Chio Commerce Payment Lifecycle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "issuer",
+    "order_id",
+    "merchant_subject",
+    "psp",
+    "payment_intent_id",
+    "authorization_ref",
+    "capture_ref",
+    "charge_ref",
+    "balance_transaction_ref",
+    "amount_minor",
+    "currency",
+    "quote_sha256",
+    "payment_status",
+    "capture_mode",
+    "capture_before",
+    "captured_at",
+    "transfer_group",
+    "fraud_outcome",
+    "dispute_status",
+    "refund_status",
+    "chargeback_status",
+    "transfer_reversal_status",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.commerce.payment-lifecycle.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "issuer": { "type": "string", "pattern": "^did:chio:[0-9a-f]{64}$" },
+    "order_id": { "type": "string", "minLength": 1 },
+    "merchant_subject": { "type": "string", "minLength": 1 },
+    "psp": { "type": "string", "minLength": 1 },
+    "payment_intent_id": { "type": "string", "minLength": 1 },
+    "authorization_ref": { "type": "string", "pattern": "^auth_.+" },
+    "capture_ref": { "type": "string", "pattern": "^cap_.+" },
+    "charge_ref": { "type": "string", "pattern": "^ch_.+" },
+    "balance_transaction_ref": { "type": "string", "pattern": "^txn_.+" },
+    "amount_minor": { "type": "integer", "minimum": 1 },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "quote_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "payment_status": { "type": "string", "minLength": 1 },
+    "capture_mode": { "type": "string", "minLength": 1 },
+    "capture_before": { "type": "string", "minLength": 1 },
+    "captured_at": { "type": "string", "minLength": 1 },
+    "transfer_group": { "type": "string", "minLength": 1 },
+    "fraud_outcome": { "type": "string", "minLength": 1 },
+    "dispute_status": {
+      "type": "string",
+      "enum": ["none", "open", "resolved"]
+    },
+    "refund_status": {
+      "type": "string",
+      "enum": ["none", "pending", "succeeded", "failed"]
+    },
+    "chargeback_status": {
+      "type": "string",
+      "enum": ["none", "open", "won", "lost"]
+    },
+    "transfer_reversal_status": {
+      "type": "string",
+      "enum": ["none", "pending", "succeeded", "failed"]
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  }
+}

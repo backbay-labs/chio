@@ -1,10 +1,13 @@
 use super::{
-    build_peer_directory_bundle_trust, load_relay_peer_directory_from_paths,
-    load_chio_verified_workflow_resolver, load_chio_workflow_verifier_trust_bundle,
-    load_relay_signing_key, read_json_documents_from_dir, read_utf8_json_file, unix_now_ms,
-    write_json_string, write_pretty_json,
+    build_iroh_outbound_endpoint, build_iroh_router, build_peer_directory_bundle_trust,
+    iroh_transport_metrics_prometheus, load_chio_verified_workflow_resolver,
+    load_chio_workflow_verifier_trust_bundle, load_iroh_serve_inputs,
+    load_relay_peer_directory_from_paths, load_relay_signing_key, read_json_documents_from_dir,
+    read_utf8_json_file, unix_now_ms, write_json_string, write_pretty_json, IrohServeInputs,
 };
 use crate::CliError;
+use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::path::Path;
 
 #[derive(Clone)]
@@ -119,6 +122,7 @@ pub(crate) fn cmd_chio_pheromone_relay_lint(
     write_json_string(report, &format!("{json}\n"))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn cmd_chio_pheromone_relay_serve(
     listen: &str,
     store: &Path,
@@ -132,8 +136,30 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
     context: &Path,
     report_dir: &Path,
     operator_token_env: Option<&str>,
+    iroh_enable: bool,
+    iroh_transport_directory: Option<&Path>,
+    iroh_transport_directory_state: Option<&Path>,
+    iroh_transport_key: Option<&Path>,
+    iroh_bind_addr: &str,
+    iroh_relay_url: &[String],
+    iroh_lanes: &str,
 ) -> Result<(), CliError> {
     let now = unix_now_ms();
+    // DEPLOYABILITY (opt-in, DUAL): load + verify the iroh federation-transport
+    // inputs up front. Fail-closed: with --iroh-enable set, any bad input aborts
+    // serve before the endpoint binds; with it unset this returns None WITHOUT
+    // touching any file, so the serve path below is byte-for-byte unchanged.
+    let iroh_inputs = load_iroh_serve_inputs(
+        iroh_enable,
+        iroh_transport_directory,
+        iroh_transport_directory_state,
+        trusted_issuers,
+        iroh_transport_key,
+        iroh_bind_addr,
+        iroh_relay_url,
+        iroh_lanes,
+        now,
+    )?;
     std::fs::create_dir_all(report_dir).map_err(|error| {
         CliError::cli_other_error(format!(
             "failed to create Chio pheromone relay report directory {}: {error}",
@@ -187,8 +213,19 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         receiver_config,
         resolver,
     });
+    // Share the SAME receiver + store the HTTP relay uses (one receiver, one store,
+    // two transports) with the optional iroh mount, BEFORE the service takes
+    // ownership of them below. The peer directory is cloned here (also before the
+    // service takes ownership) so the iroh ingress handler enforces the SAME inbound
+    // directory-scope gate the HTTP relay applies. `None` when --iroh-enable is off.
     let relay_limits = relay_service_limits_for_profile(profile);
-    let service = chio_pheromone_relay::PheromoneRelayService::new(
+    let iroh_ingress_max_body_bytes = relay_limits.max_body_bytes;
+    let iroh_mount_plan = iroh_inputs.map(|inputs| {
+        let receiver: std::sync::Arc<dyn chio_pheromone_relay::RelayBatchReceiver> =
+            receiver.clone();
+        (inputs, receiver, relay_store.clone(), peer_directory.clone())
+    });
+    let mut service = chio_pheromone_relay::PheromoneRelayService::new(
         chio_pheromone_relay::PheromoneRelayConfig {
             local_kernel_id: peer_directory.local_kernel_id().to_string(),
             profile,
@@ -203,6 +240,18 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         receiver,
         relay_store,
     );
+    // DEPLOYABILITY (opt-in, DUAL): when the iroh transport is mounted, expose its
+    // process-global metric families on the SAME live relay /metrics endpoint for
+    // the whole process lifetime (not just a shutdown-time debug snapshot). The
+    // hook is a plain render function pointer; chio-pheromone-relay never depends
+    // on the iroh transport crate (that would be a dependency cycle) - it only
+    // calls the injected callback. With --iroh-enable off, iroh_mount_plan is None,
+    // so no hook is attached and the /metrics response is byte-for-byte unchanged.
+    if iroh_mount_plan.is_some() {
+        service = service.with_extra_metrics_hook(std::sync::Arc::new(
+            iroh_transport_metrics_prometheus as fn() -> String,
+        ));
+    }
     let address = listen.parse::<std::net::SocketAddr>().map_err(|error| {
         CliError::cli_other_error(format!("Chio pheromone relay listen address: {error}"))
     })?;
@@ -211,15 +260,56 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         .build()
         .map_err(|error| CliError::cli_other_error(format!("Chio relay runtime: {error}")))?;
     runtime.block_on(async move {
+        // Mount the iroh federation-transport lanes ALONGSIDE the axum serve (DUAL:
+        // the HTTP relay always keeps running). `None` when --iroh-enable is off, in
+        // which case this closure behaves exactly as before. Fail-closed: an iroh
+        // setup error aborts startup rather than silently serving HTTP-only.
+        let iroh_mount = match iroh_mount_plan {
+            Some((inputs, receiver, relay_store, peer_directory)) => {
+                let mount = build_iroh_router(
+                    inputs,
+                    receiver,
+                    relay_store,
+                    peer_directory,
+                    iroh_ingress_max_body_bytes,
+                )
+                .await?;
+                // DEPLOYABILITY: print the ACTUAL bound address(es) + the EndpointId
+                // (short + full) + the enabled lanes so the operator knows exactly
+                // what to configure on peers. With the default ephemeral
+                // --iroh-bind-addr this is the only place the reachable port surfaces.
+                tracing::info!(
+                    target: "chio.iroh.transport",
+                    endpoint_id = %mount.endpoint_id,
+                    endpoint_id_short = %mount.endpoint_id.fmt_short(),
+                    bound_sockets = ?mount.bound_sockets,
+                    lanes = ?mount.enabled_lanes,
+                    "iroh federation-transport mounted alongside the HTTP relay (DUAL, opt-in \
+                     --iroh-enable); configure peers with this EndpointId and one of the bound \
+                     socket addresses (for a durable deployment set a stable --iroh-bind-addr \
+                     plus discovery/--iroh-relay-url)"
+                );
+                Some(mount)
+            }
+            None => None,
+        };
         let listener = tokio::net::TcpListener::bind(address)
             .await
             .map_err(|error| {
                 CliError::cli_other_error(format!("Chio pheromone relay bind: {error}"))
             })?;
-        service
+        let serve_result = service
             .serve(listener)
             .await
-            .map_err(|error| CliError::cli_other_error(format!("Chio pheromone relay: {error}")))
+            .map_err(|error| CliError::cli_other_error(format!("Chio pheromone relay: {error}")));
+        if let Some(mount) = iroh_mount {
+            // The live iroh federation-transport metrics are scraped on the relay's
+            // own /metrics endpoint for the whole process lifetime (see the
+            // with_extra_metrics_hook wiring above), so teardown just stops the
+            // router; no post-mortem snapshot is needed.
+            let _ = mount.router.shutdown().await;
+        }
+        serve_result
     })
 }
 
@@ -308,6 +398,7 @@ pub(crate) fn cmd_chio_pheromone_relay_enqueue(
     write_json_string(report, &format!("{json}\n"))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn cmd_chio_pheromone_relay_tick(
     store: &Path,
     peer_directory: Option<&Path>,
@@ -319,6 +410,14 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
     signing_key: &Path,
     report: &Path,
     report_dir: Option<&Path>,
+    iroh_enable: bool,
+    iroh_transport_directory: Option<&Path>,
+    iroh_transport_directory_state: Option<&Path>,
+    iroh_transport_key: Option<&Path>,
+    iroh_bind_addr: &str,
+    iroh_relay_url: &[String],
+    iroh_peer_addr: &[String],
+    iroh_lanes: &str,
 ) -> Result<(), CliError> {
     let now_unix_ms = now_unix_ms.unwrap_or_else(unix_now_ms);
     let peer_directory = load_relay_peer_directory_from_paths(
@@ -334,20 +433,78 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
         chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(|error| {
             CliError::cli_other_error(format!("Chio pheromone relay store: {error}"))
         })?;
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|error| CliError::cli_other_error(format!("Chio relay runtime: {error}")))?;
-    let tick_report = runtime
-        .block_on(chio_pheromone_relay::deliver_due_batches(
+    // DUAL outbound transport (opt-in, default OFF): with --iroh-enable this tick drains
+    // due batches over the iroh federation transport INSTEAD of HTTP, mirroring how
+    // deliver_due_batches is scheduled (a one-shot operator/cron tick). Fail-closed:
+    // with the flag set, any bad iroh input aborts before draining; with it unset this
+    // returns None WITHOUT touching any file, so the HTTP path below is byte-for-byte
+    // unchanged. Running an iroh tick and an HTTP tick against the SAME store would
+    // both lease the same outbox rows, so a single invocation drains over exactly ONE
+    // transport (the operator picks per tick).
+    let iroh_inputs = load_iroh_serve_inputs(
+        iroh_enable,
+        iroh_transport_directory,
+        iroh_transport_directory_state,
+        trusted_issuers,
+        iroh_transport_key,
+        iroh_bind_addr,
+        iroh_relay_url,
+        iroh_lanes,
+        now_unix_ms,
+    )?;
+    let tick_report = if let Some(iroh_inputs) = iroh_inputs {
+        // Fail-closed signing/transport identity binding for the iroh drain. The drain
+        // leases + drains outbox rows keyed on `sender_kernel_id` (the relay SIGNING
+        // key's kernelId from load_relay_signing_key), but the outbound iroh endpoint
+        // authenticates as the peer/transport directory's LOCAL identity
+        // (`peer_directory.local_kernel_id()`, which build_iroh_outbound_endpoint pins to
+        // the verified transport directory's localKernelId). Recipients verify pheromone
+        // frames against the AUTHENTICATED transport sender, NOT the signing-key id, so if
+        // these differ the queued rows for the signing key are drained yet
+        // rejected/dead-lettered by recipients. Require the relay's signing identity and
+        // its transport/directory local identity to be the SAME kernel BEFORE leasing or
+        // draining any row.
+        if sender_kernel_id.as_str() != peer_directory.local_kernel_id() {
+            return Err(CliError::cli_other_error(format!(
+                "Chio relay iroh tick: the relay signing key's kernel id '{}' does not match the \
+                 peer/transport directory local kernel id '{}'; the outbound iroh endpoint \
+                 authenticates as the directory local identity, so queued rows for the signing key \
+                 would be rejected/dead-lettered by recipients (the relay's signing identity and \
+                 its transport/directory local identity must be the same kernel)",
+                sender_kernel_id,
+                peer_directory.local_kernel_id()
+            )));
+        }
+        // Direct-address book (relay-disabled / direct-address deployment): parse the
+        // repeated --iroh-peer-addr entries into kernel_id -> dialable socket(s).
+        // Parsed only on the iroh path so an HTTP-only tick is untouched; fail-closed
+        // on any malformed entry.
+        let peer_addr_book = parse_iroh_peer_addr_book(iroh_peer_addr)?;
+        drain_due_batches_over_iroh(
             &relay_store,
             peer_directory,
-            keypair,
+            iroh_inputs,
+            peer_addr_book,
             &sender_kernel_id,
             now_unix_ms,
             max_batches,
-        ))
-        .map_err(|error| CliError::cli_other_error(format!("Chio relay tick: {error}")))?;
+        )?
+    } else {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|error| CliError::cli_other_error(format!("Chio relay runtime: {error}")))?;
+        runtime
+            .block_on(chio_pheromone_relay::deliver_due_batches(
+                &relay_store,
+                peer_directory,
+                keypair,
+                &sender_kernel_id,
+                now_unix_ms,
+                max_batches,
+            ))
+            .map_err(|error| CliError::cli_other_error(format!("Chio relay tick: {error}")))?
+    };
     let json = serde_json::to_string_pretty(&tick_report)
         .map_err(|error| CliError::cli_other_error(format!("Chio relay report: {error}")))?;
     write_json_string(report, &format!("{json}\n"))?;
@@ -360,6 +517,150 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
         )?;
     }
     Ok(())
+}
+
+/// Parse the repeated `--iroh-peer-addr` entries (`KERNEL_ID=HOST:PORT`) into a
+/// `kernel_id -> dialable socket(s)` book for the direct-address deployment.
+///
+/// Fail-closed: any entry missing the `=` separator, with an empty kernel id, or whose
+/// value is not a parseable socket address aborts the tick. Repeating a `KERNEL_ID`
+/// appends another socket (a multi-homed recipient), de-duplicating identical sockets.
+fn parse_iroh_peer_addr_book(
+    entries: &[String],
+) -> Result<HashMap<String, Vec<SocketAddr>>, CliError> {
+    let mut book: HashMap<String, Vec<SocketAddr>> = HashMap::new();
+    for entry in entries {
+        let (kernel_id, addr) = entry.split_once('=').ok_or_else(|| {
+            CliError::cli_other_error(format!(
+                "Chio iroh peer address '{entry}': expected KERNEL_ID=HOST:PORT"
+            ))
+        })?;
+        let kernel_id = kernel_id.trim();
+        if kernel_id.is_empty() {
+            return Err(CliError::cli_other_error(format!(
+                "Chio iroh peer address '{entry}': empty kernel id"
+            )));
+        }
+        let socket = addr.trim().parse::<SocketAddr>().map_err(|error| {
+            CliError::cli_other_error(format!(
+                "Chio iroh peer address '{entry}': invalid socket address: {error}"
+            ))
+        })?;
+        let sockets = book.entry(kernel_id.to_string()).or_default();
+        if !sockets.contains(&socket) {
+            sockets.push(socket);
+        }
+    }
+    Ok(book)
+}
+
+/// Resolve a recipient `kernel_id` to a dialable [`iroh::EndpointAddr`] for the drain.
+///
+/// The EndpointId is resolved from the issuer-verified transport directory (fail-closed
+/// to `None` for a removed/unknown recipient), then any direct socket(s) from the
+/// out-of-band `--iroh-peer-addr` book are threaded onto it so a relay-disabled /
+/// direct-address deployment dials directly. The EndpointId binding always comes from
+/// the verified directory, and iroh authenticates it at the handshake, so a socket hint
+/// can never redirect delivery to an unauthorized peer. With no book entry the returned
+/// address is id-only (dialable where discovery / `--iroh-relay-url` is configured).
+fn resolve_dialable_transport_addr(
+    directory: &chio_federation_transport_iroh::identity::VerifiedDirectory,
+    peer_addr_book: &HashMap<String, Vec<SocketAddr>>,
+    kernel_id: &str,
+) -> Option<iroh::EndpointAddr> {
+    let endpoint_id = directory.resolve_transport_endpoint(kernel_id)?;
+    let mut addr = iroh::EndpointAddr::new(endpoint_id);
+    if let Some(sockets) = peer_addr_book.get(kernel_id) {
+        for socket in sockets {
+            addr = addr.with_ip_addr(*socket);
+        }
+    }
+    Some(addr)
+}
+
+/// Drain due outbox batches over the iroh federation transport for one tick, the iroh
+/// analogue of `deliver_due_batches`.
+///
+/// Binds an outbound-only gated endpoint, resolves each recipient's dialable address
+/// from the issuer-verified transport directory, applies the IDENTICAL outbound
+/// directory-scope gate the HTTP tick applies (`enforce_outbound_peer_batch_directory_scope`),
+/// and runs `drain_outbox_over_iroh`. Leasing, retry/backoff, and dead-lettering all
+/// reuse the shipped store, so an unresolvable/undialable recipient folds into the
+/// durable retry/dead-letter path fail-closed rather than being dropped. The
+/// `OutboxDrainReport` is mapped onto the shipped `RelayTickReport` so the report file
+/// shape is identical to the HTTP tick's.
+///
+/// `peer_addr_book` supplies out-of-band direct dialable socket(s) per recipient
+/// (`--iroh-peer-addr`) for the relay-disabled / direct-address deployment: the
+/// verified directory binds only `kernel_id -> transport EndpointId`, so its socket(s)
+/// are threaded onto the resolved EndpointId here. An empty book keeps the id-only
+/// resolution (dialable where discovery / `--iroh-relay-url` is configured).
+fn drain_due_batches_over_iroh(
+    relay_store: &chio_pheromone_relay::SqlitePheromoneRelayStore,
+    peer_directory: chio_pheromone_relay::PeerDirectory,
+    iroh_inputs: IrohServeInputs,
+    peer_addr_book: HashMap<String, Vec<SocketAddr>>,
+    sender_kernel_id: &str,
+    now_unix_ms: u64,
+    max_batches: usize,
+) -> Result<chio_pheromone_relay::RelayTickReport, CliError> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| CliError::cli_other_error(format!("Chio relay iroh runtime: {error}")))?;
+    runtime.block_on(async move {
+        let relay_local_kernel_id = peer_directory.local_kernel_id().to_string();
+        let (endpoint, directory) =
+            build_iroh_outbound_endpoint(iroh_inputs, &relay_local_kernel_id).await?;
+
+        // resolve_addr: recipient kernel_id -> dialable transport address, derived from
+        // the issuer-verified transport directory (the outbound side of the same
+        // binding the inbound gate authorizes). A removed/unknown recipient resolves to
+        // None and folds into the durable retry path fail-closed. When the direct-address
+        // book carries socket(s) for the recipient they are threaded onto the resolved
+        // EndpointId so a direct-address deployment dials directly; the EndpointId itself
+        // still comes from the verified directory (and iroh authenticates it at the
+        // handshake), so a socket hint can never redirect delivery to an unauthorized
+        // peer. No book entry keeps the id-only address (dialable under discovery/relay).
+        let resolve_directory = directory.clone();
+        let resolve_addr = move |kernel_id: &str| -> Option<iroh::EndpointAddr> {
+            resolve_dialable_transport_addr(&resolve_directory, &peer_addr_book, kernel_id)
+        };
+
+        // scope_check: the SAME outbound directory-scope gate the HTTP tick applies
+        // before post_batch, evaluated against the CURRENT peer directory (fail-closed).
+        let scope_check = move |recipient: &str,
+                                batch: &chio_federation::pheromone_gossip::PheromoneGossipBatch| {
+            chio_pheromone_relay::enforce_outbound_peer_batch_directory_scope(
+                &peer_directory,
+                recipient,
+                batch,
+            )
+        };
+
+        let drain = chio_federation_transport_iroh::lanes::pheromone::drain_outbox_over_iroh(
+            relay_store,
+            &endpoint,
+            resolve_addr,
+            scope_check,
+            sender_kernel_id,
+            now_unix_ms,
+            max_batches,
+        )
+        .await
+        .map_err(|error| CliError::cli_other_error(format!("Chio relay iroh drain: {error}")))?;
+        endpoint.close().await;
+
+        Ok(chio_pheromone_relay::RelayTickReport {
+            schema: chio_pheromone_relay::PHEROMONE_RELAY_TICK_REPORT_SCHEMA.to_string(),
+            accepted: drain.failures.is_empty(),
+            delivered: drain.delivered,
+            retried: drain.retried,
+            dead_lettered: drain.dead_lettered,
+            duplicate_idempotent: 0,
+            failures: drain.failures,
+        })
+    })
 }
 
 pub(crate) fn write_relay_outbound_event_report(
@@ -668,5 +969,331 @@ mod tests {
         let limits = relay_service_limits_for_profile(chio_pheromone_relay::RelayProfile::LocalDev);
 
         assert_eq!(limits.max_body_bytes, 1_048_576);
+    }
+
+    #[test]
+    fn parse_iroh_peer_addr_book_parses_and_groups_multi_homed_recipients() {
+        let entries = vec![
+            "did:chio:bob=203.0.113.7:4433".to_string(),
+            "did:chio:bob=203.0.113.8:4433".to_string(),
+            "did:chio:carol=[2001:db8::1]:5000".to_string(),
+            // A duplicate socket for the same kernel is de-duplicated.
+            "did:chio:bob=203.0.113.7:4433".to_string(),
+        ];
+        let book = parse_iroh_peer_addr_book(&entries).expect("valid entries parse");
+        assert_eq!(
+            book.get("did:chio:bob").unwrap(),
+            &vec![
+                "203.0.113.7:4433".parse::<SocketAddr>().unwrap(),
+                "203.0.113.8:4433".parse::<SocketAddr>().unwrap(),
+            ],
+        );
+        assert_eq!(
+            book.get("did:chio:carol").unwrap(),
+            &vec!["[2001:db8::1]:5000".parse::<SocketAddr>().unwrap()],
+        );
+    }
+
+    #[test]
+    fn parse_iroh_peer_addr_book_is_empty_for_no_entries() {
+        assert!(parse_iroh_peer_addr_book(&[]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_iroh_peer_addr_book_rejects_malformed_entries_fail_closed() {
+        // Missing '=' separator.
+        assert!(parse_iroh_peer_addr_book(&["did:chio:bob 203.0.113.7:4433".to_string()]).is_err());
+        // Empty kernel id.
+        assert!(parse_iroh_peer_addr_book(&["=203.0.113.7:4433".to_string()]).is_err());
+        // Unparseable socket address (no port).
+        assert!(parse_iroh_peer_addr_book(&["did:chio:bob=203.0.113.7".to_string()]).is_err());
+        // Empty socket address.
+        assert!(parse_iroh_peer_addr_book(&["did:chio:bob=".to_string()]).is_err());
+    }
+
+    mod iroh_tick {
+        use super::*;
+        use chio_core_types::canonical_json_bytes;
+        use chio_core_types::sha256_hex;
+        use chio_core_types::Keypair;
+        use chio_federation::pheromone_gossip::PheromoneGossipBatch;
+        use chio_federation::pheromone_gossip::PHEROMONE_GOSSIP_BATCH_SCHEMA;
+        use chio_federation_transport_iroh::identity::transport_endorsement_preimage;
+        use chio_federation_transport_iroh::identity::TransportDirectoryBundleBody;
+        use chio_federation_transport_iroh::identity::TransportDirectoryBundleDocument;
+        use chio_federation_transport_iroh::identity::TransportDirectoryDocument;
+        use chio_federation_transport_iroh::identity::TransportDirectoryEntry;
+        use chio_federation_transport_iroh::identity::TransportDirectoryBundleTrust;
+        use chio_federation_transport_iroh::identity::TrustedTransportDirectoryIssuer;
+        use chio_federation_transport_iroh::identity::TRANSPORT_DIRECTORY_BUNDLE_SCHEMA;
+        use chio_pheromone_relay::PeerDirectory;
+        use chio_pheromone_relay::PeerDirectoryDocument;
+        use chio_pheromone_relay::PeerDirectoryEntry;
+        use chio_pheromone_relay::RelayRole;
+        use chio_pheromone_relay::SqlitePheromoneRelayStore;
+        use chio_pheromone_relay::PHEROMONE_PEER_DIRECTORY_SCHEMA;
+        use iroh::EndpointId;
+        use iroh::SecretKey;
+
+        const NOW: u64 = 2_000_000;
+
+        fn endpoint_from_seed(seed: u8) -> EndpointId {
+            SecretKey::from_bytes(&[seed; 32]).public()
+        }
+
+        /// The transport seed the bundle endorses for its own `localKernelId`
+        /// (`did:chio:relay`). Its `EndpointId` MUST equal the public key of the seed the
+        /// test key file carries (`0x11` bytes, i.e. `"11".repeat(32)`), so
+        /// `load_iroh_serve_inputs`'s local-transport-key binding check passes and the
+        /// drain path is actually reached.
+        const LOCAL_TRANSPORT_SEED: u8 = 0x11;
+
+        /// A well-formed, non-removed transport-directory entry binding `kernel_id` to the
+        /// transport `EndpointId` derived from `transport_seed`, self-endorsed by a
+        /// per-kernel passport.
+        fn directory_entry(
+            kernel_id: &str,
+            passport_seed: u8,
+            transport_seed: u8,
+        ) -> TransportDirectoryEntry {
+            let passport = Keypair::from_seed(&[passport_seed; 32]);
+            let transport = endpoint_from_seed(transport_seed);
+            TransportDirectoryEntry {
+                kernel_id: kernel_id.to_string(),
+                passport_public_key: passport.public_key(),
+                transport_endpoint_id: transport,
+                passport_endorsement: passport
+                    .sign(&transport_endorsement_preimage(kernel_id, &transport)),
+                revocation_signers: Vec::new(),
+                removed: false,
+            }
+        }
+
+        /// A signed, verifiable transport-directory bundle whose directory carries BOTH
+        /// the bundle's own `localKernelId` (`did:chio:relay`) bound to
+        /// [`LOCAL_TRANSPORT_SEED`] (so `load_iroh_serve_inputs`'s local-transport-key
+        /// binding check passes against the `0x11` key file the tests write) AND a
+        /// SEPARATE `admitted_kernel` peer at `transport_seed` (the recipient the drain's
+        /// address resolver exercises). Returns the issuer keypair whose public key the
+        /// trusted-issuers file must pin.
+        fn signed_bundle_json(admitted_kernel: &str, transport_seed: u8) -> (String, Keypair) {
+            let issuer = Keypair::from_seed(&[240u8; 32]);
+            // The local relay's OWN transport binding: did:chio:relay -> seed 0x11. The
+            // local-transport-key binding check added to load_iroh_serve_inputs in a prior
+            // round resolves THIS entry and rejects a bundle missing it, so without this
+            // entry the drain path would never be reached.
+            let local_relay_entry = directory_entry("did:chio:relay", 8, LOCAL_TRANSPORT_SEED);
+            // A SEPARATE admitted peer (NOT the local relay): the drain's recipient
+            // resolver returns this endpoint for an admitted peer, or None for a recipient
+            // (e.g. did:chio:buyer) NOT admitted here, which is the fail-closed
+            // unresolvable case the tick test asserts folds into the durable retry path.
+            let admitted_entry = directory_entry(admitted_kernel, 7, transport_seed);
+            let directory = TransportDirectoryDocument {
+                schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+                local_kernel_id: "did:chio:relay".to_string(),
+                peers: vec![local_relay_entry, admitted_entry],
+                treaties: Vec::new(),
+            };
+            let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());
+            let body = TransportDirectoryBundleBody {
+                schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+                issuer: "did:chio:issuer".to_string(),
+                key_id: "issuer-key-1".to_string(),
+                directory_sha256,
+                version: 1,
+                previous_version_sha256: None,
+                issued_at_unix_ms: NOW - 1,
+                expires_at_unix_ms: NOW + 1,
+            };
+            let (signature, _) = issuer.sign_canonical(&body).unwrap();
+            let bundle = TransportDirectoryBundleDocument {
+                schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+                body,
+                directory,
+                signature,
+            };
+            (serde_json::to_string(&bundle).unwrap(), issuer)
+        }
+
+        /// A peer directory admitting `recipient` as a Receiver subscribed to
+        /// `treaty:test` (so the outbound scope gate passes for it).
+        fn peer_directory_receiving(recipient: &str) -> PeerDirectory {
+            let passport = Keypair::from_seed(&[9u8; 32]);
+            let document = PeerDirectoryDocument {
+                schema: PHEROMONE_PEER_DIRECTORY_SCHEMA.to_string(),
+                local_kernel_id: "did:chio:relay".to_string(),
+                issued_at_unix_ms: NOW - 1,
+                expires_at_unix_ms: NOW + 1,
+                peers: vec![PeerDirectoryEntry {
+                    kernel_id: recipient.to_string(),
+                    public_key: passport.public_key(),
+                    endpoint: "https://peer.example/relay".to_string(),
+                    treaty_subscriptions: vec!["treaty:test".to_string()],
+                    relay_role: RelayRole::Receiver,
+                    allowed_subject_class_namespaces: Vec::new(),
+                    accepted_ladder_refs: Vec::new(),
+                    max_batch_frames: 128,
+                    max_catchup_frames: 128,
+                    max_catchup_bytes: 1_048_576,
+                }],
+            };
+            PeerDirectory::from_document(document, NOW).expect("peer directory builds")
+        }
+
+        fn empty_batch(recipient: &str) -> PheromoneGossipBatch {
+            PheromoneGossipBatch {
+                schema: PHEROMONE_GOSSIP_BATCH_SCHEMA.to_string(),
+                recipient_kernel_id: recipient.to_string(),
+                treaty_id: "treaty:test".to_string(),
+                frames: Vec::new(),
+                flushed_at_unix_ms: NOW,
+            }
+        }
+
+        #[test]
+        fn iroh_tick_drains_the_outbox_and_folds_an_unresolvable_recipient_into_retry() {
+            // Proves the tick's iroh outbound wiring end-to-end: the endpoint binds, the
+            // outbound directory-scope gate PASSES for an admitted Receiver, the transport
+            // resolver returns None for a recipient NOT in the transport directory, and the
+            // drain folds that into the durable retry path fail-closed (never dropped) -
+            // all surfaced through the shipped RelayTickReport shape.
+            let dir = tempfile::tempdir().unwrap();
+            let bundle_path = dir.path().join("bundle.json");
+            let issuers_path = dir.path().join("issuers.json");
+            let key_path = dir.path().join("key.json");
+
+            // The transport directory admits ONLY did:chio:other, so the queued
+            // recipient did:chio:buyer does not resolve to a dialable endpoint.
+            let (bundle_json, issuer) = signed_bundle_json("did:chio:other", 24);
+            std::fs::write(&bundle_path, &bundle_json).unwrap();
+            let issuers = serde_json::json!({
+                "issuers": [{
+                    "issuer": "did:chio:issuer",
+                    "keyId": "issuer-key-1",
+                    "publicKey": issuer.public_key(),
+                }],
+            });
+            std::fs::write(&issuers_path, serde_json::to_string(&issuers).unwrap()).unwrap();
+            std::fs::write(
+                &key_path,
+                "{\"seedHex\":\"".to_string() + &"11".repeat(32) + "\"}",
+            )
+            .unwrap();
+
+            let inputs = load_iroh_serve_inputs(
+                true,
+                Some(&bundle_path),
+                None,
+                Some(&issuers_path),
+                Some(&key_path),
+                "127.0.0.1:0",
+                &[],
+                "pheromone",
+                NOW,
+            )
+            .expect("iroh inputs load")
+            .expect("iroh enabled produces inputs");
+
+            let store = SqlitePheromoneRelayStore::open_in_memory().unwrap();
+            let batch = empty_batch("did:chio:buyer");
+            store
+                .enqueue_batch(
+                    "did:chio:sender",
+                    "did:chio:buyer",
+                    "treaty:test",
+                    &batch,
+                    NOW,
+                )
+                .expect("batch enqueues");
+
+            let peer_directory = peer_directory_receiving("did:chio:buyer");
+            let report = drain_due_batches_over_iroh(
+                &store,
+                peer_directory,
+                inputs,
+                HashMap::new(),
+                "did:chio:sender",
+                NOW,
+                10,
+            )
+            .expect("iroh drain tick runs");
+
+            assert_eq!(report.delivered, 0, "nothing is delivered to an unlisted peer");
+            assert_eq!(report.retried, 1, "the batch folds into the durable retry path");
+            assert!(!report.accepted, "a retried tick is not fully accepted");
+            assert!(
+                report.failures.iter().any(|line| line.contains("unknown_peer")),
+                "the failure must be the fail-closed unknown_peer code, got {:?}",
+                report.failures
+            );
+        }
+
+        /// Verify a signed bundle admitting `admitted_kernel` and return the
+        /// load-time-verified directory the resolver reads.
+        fn verified_directory(
+            admitted_kernel: &str,
+            transport_seed: u8,
+        ) -> chio_federation_transport_iroh::identity::VerifiedDirectory {
+            let (bundle_json, issuer) = signed_bundle_json(admitted_kernel, transport_seed);
+            let bundle: TransportDirectoryBundleDocument =
+                serde_json::from_str(&bundle_json).unwrap();
+            let trust = TransportDirectoryBundleTrust {
+                issuers: vec![TrustedTransportDirectoryIssuer {
+                    issuer: "did:chio:issuer".to_string(),
+                    key_id: "issuer-key-1".to_string(),
+                    public_key: issuer.public_key(),
+                }],
+                version_floor: 0,
+                expected_previous_version_sha256: None,
+                now_unix_ms: NOW,
+            };
+            bundle.verify_bundle(&trust).expect("bundle verifies")
+        }
+
+        #[test]
+        fn direct_address_book_threads_the_socket_onto_the_resolved_endpoint() {
+            // FINDING 1 (codex round-7): in a relay-disabled / direct-address deployment
+            // the resolver must thread the --iroh-peer-addr socket onto the resolved
+            // EndpointId so the drain can dial a peer known only by EndpointId + socket,
+            // while an id-only resolution still works where discovery/relay is configured.
+            let directory = verified_directory("did:chio:buyer", 24);
+            let expected_endpoint = endpoint_from_seed(24);
+
+            // No book entry: id-only address (dialable under discovery/relay), no socket.
+            let empty_book: HashMap<String, Vec<SocketAddr>> = HashMap::new();
+            let id_only =
+                resolve_dialable_transport_addr(&directory, &empty_book, "did:chio:buyer")
+                    .expect("admitted recipient resolves");
+            assert_eq!(id_only.id, expected_endpoint, "the directory EndpointId is kept");
+            assert!(
+                id_only.ip_addrs().next().is_none(),
+                "with no book entry the address is id-only"
+            );
+
+            // Book entry: the direct socket(s) are threaded onto the SAME EndpointId.
+            let socket_a: SocketAddr = "203.0.113.7:4433".parse().unwrap();
+            let socket_b: SocketAddr = "203.0.113.8:4433".parse().unwrap();
+            let mut book: HashMap<String, Vec<SocketAddr>> = HashMap::new();
+            book.insert("did:chio:buyer".to_string(), vec![socket_a, socket_b]);
+            let direct = resolve_dialable_transport_addr(&directory, &book, "did:chio:buyer")
+                .expect("admitted recipient resolves");
+            assert_eq!(
+                direct.id, expected_endpoint,
+                "the EndpointId still comes from the verified directory, not the book"
+            );
+            let dialable: Vec<SocketAddr> = direct.ip_addrs().copied().collect();
+            assert!(dialable.contains(&socket_a) && dialable.contains(&socket_b));
+
+            // A recipient NOT in the transport directory resolves to None even with a
+            // book entry: the EndpointId binding is fail-closed against the directory, so
+            // a socket hint can never fabricate a dialable address for an unadmitted peer.
+            let mut ghost_book: HashMap<String, Vec<SocketAddr>> = HashMap::new();
+            ghost_book.insert("did:chio:ghost".to_string(), vec![socket_a]);
+            assert!(
+                resolve_dialable_transport_addr(&directory, &ghost_book, "did:chio:ghost")
+                    .is_none(),
+                "an unadmitted recipient never resolves, even with a direct-address entry"
+            );
+        }
     }
 }

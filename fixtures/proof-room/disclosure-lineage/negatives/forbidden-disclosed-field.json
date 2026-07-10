@@ -1,0 +1,7 @@
+{
+  "schema": "chio.proof-room.negative-case.v1",
+  "id": "forbidden-disclosed-field",
+  "claim_ref": "claim.disclosure.profile_context_policy_enforced",
+  "verifier_entrypoint": "transaction-passport.json",
+  "expected_failure_code": "proof-room.negative.disclosed-field-forbidden-by-privacy-profile"
+}

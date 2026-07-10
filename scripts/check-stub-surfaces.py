@@ -81,7 +81,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "reviewed replay validation fixture placeholder overwritten by signature tests",
         "2026-12-31",
     ),
-    "crates/products/chio-cli/src/cli/session.rs": allow(
+    "crates/products/chio-cli/src/cli/session/test_support.rs": allow(
         "reviewed CLI session fixture payload",
         "2026-12-31",
     ),
@@ -89,7 +89,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "reviewed doctor test fixture writes stub JSON under cfg(test)",
         "2026-12-31",
     ),
-    "crates/products/chio-cli/src/guard.rs": allow(
+    "crates/products/chio-cli/src/guard/new.rs": allow(
         "deny-by-default guard scaffold template, not a shipped allow path",
         "2026-12-31",
     ),
@@ -134,12 +134,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "2026-12-31",
     ),
     "crates/trust/chio-custody-hw/src/attestation/google_root.rs": allow(
-        "BAC-567/BAC-601: intentional placeholder-root security warnings; fail "
+        "intentional placeholder-root security warnings; fail "
         "loudly until the real Google Play Integrity key is provisioned",
         "2026-12-31",
     ),
     "crates/trust/chio-custody-hw/src/attestation/play_integrity.rs": allow(
-        "BAC-567/BAC-601: intentional placeholder-root security warnings; fail "
+        "intentional placeholder-root security warnings; fail "
         "loudly until the real Google Play Integrity key is provisioned",
         "2026-12-31",
     ),
@@ -279,16 +279,15 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
         r"Unsigned placeholder matching the schema regex",
         r"unsigned placeholder tenant_sig",
     ),
-    "crates/products/chio-cli/src/cli/session.rs": (
+    "crates/products/chio-cli/src/cli/session/test_support.rs": (
         r'"stub": true',
     ),
     "crates/products/chio-cli/src/doctor/cosign.rs": (
         r'\\"stub\\": true',
     ),
-    "crates/products/chio-cli/src/guard.rs": (
+    "crates/products/chio-cli/src/guard/new.rs": (
         r"Replace this stub with real policy logic before shipping",
         r'wasm_sha256: "TODO: run `chio guard build`',
-        r'manifest\.contains\("wasm_sha256: \\"TODO:',
     ),
     "crates/products/chio-cli/templates/init/README.md.tmpl": (
         r"hello_server\.rs.*tool server stub",
@@ -325,11 +324,11 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
         r"signature are placeholders",
     ),
     "crates/trust/chio-custody-hw/src/attestation/google_root.rs": (
-        r"SECURITY / PLACEHOLDER \(BAC-601\)",
+        r"SECURITY / PLACEHOLDER",
         r"placeholder",
     ),
     "crates/trust/chio-custody-hw/src/attestation/play_integrity.rs": (
-        r"SECURITY / PLACEHOLDER \(BAC-601\)",
+        r"SECURITY / PLACEHOLDER",
     ),
     "crates/protocol/chio-envoy-ext-authz/proto/envoy/config/core/v3/base.proto": (
         r"opaque placeholders",

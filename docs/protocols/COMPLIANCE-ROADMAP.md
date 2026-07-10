@@ -1,19 +1,14 @@
 # Compliance Roadmap
 
-**Date:** 2026-04-15
-**Status:** Active planning document
 **Scope:** Multi-framework compliance strategy, gap analysis, implementation plan
 
 ---
 
 ## 0. Purpose
 
-A standards and compliance review (documented in
-`REVIEW-FINDINGS-AND-NEXT-STEPS.md` section 5) found that Chio has strong
-EU AI Act and Colorado SB 24-205 coverage but critical gaps in FedRAMP
-(FIPS crypto), PCI DSS (no mapping), and NIST AI RMF / ISO 42001 (controls
-exist but mapping documentation does not). This document plans the path from
-current state to multi-framework compliance readiness.
+Chio has strong EU AI Act and Colorado SB 24-205 coverage but gaps in FedRAMP
+(FIPS crypto), PCI DSS, and NIST AI RMF / ISO 42001 mapping. This document
+plans the path from current state to multi-framework compliance readiness.
 
 This is a planning document, not a compliance mapping. Each framework section
 below will produce its own standalone mapping document (modeled on the existing
@@ -31,7 +26,7 @@ the prerequisite technical work is complete.
 | EU AI Act (Article 19, Annex IV, Annex VIII) | `docs/compliance/eu-ai-act-article-19.md` | Complete. Clause-by-clause mapping with test function references. |
 | Colorado SB 24-205 | `docs/compliance/colorado-sb-24-205.md` | Complete. Test-backed clause mapping. |
 | Session Compliance Certificate | `docs/protocols/SESSION-COMPLIANCE-CERTIFICATE.md` | Shipped. `chio.session_compliance_certificate.v1` schema implemented. |
-| Evidence Export | `crates/products/chio-cli/src/evidence_export.rs` | Shipped. `SignedExportEnvelope` provides portable, signed evidence bundles. |
+| Evidence Export | `crates/products/chio-cli` | Shipped. `SignedExportEnvelope` provides portable, signed evidence bundles. |
 | Trust Model | `docs/protocols/TRUST-MODEL-AND-KEY-MANAGEMENT.md` | Draft. Key hierarchy, rotation domains, hosted signing. |
 
 ### 1.2 What Is Strong
@@ -81,7 +76,7 @@ Chio exceeds this with:
 Chio uses Ed25519 exclusively for all cryptographic signing:
 
 ```rust
-// crates/core/chio-core-types/src/capability.rs, line 1
+// crates/core/chio-core-types/src/capability
 //! Capability tokens: Ed25519-signed, scoped, time-bounded authorizations.
 ```
 

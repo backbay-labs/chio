@@ -1,0 +1,8 @@
+{
+  "schema": "chio.trust.key-state.v1",
+  "key_ref": "6a121a2677591664f157535b7e64e2b0e7e6d1a98e23005908254fdedd029c29",
+  "status": "active",
+  "epoch": 7,
+  "valid_from": 1766000000,
+  "valid_until": 1766000900
+}

@@ -1,18 +1,33 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::error::ChioRuntimeError;
+use crate::hash::canonical_sha256;
 use crate::schema::{
-    CHIO_RUNTIME_PROOF_DRIFT_REPORT_SCHEMA, CHIO_RUNTIME_PROOF_PARITY_REPORT_SCHEMA,
-    CHIO_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA, CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA,
+    CHIO_RUNTIME_PROOF_DRIFT_REPORT_SCHEMA, CHIO_RUNTIME_PROOF_REGENERATION_INPUT_SCHEMA,
+    CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA,
 };
 use crate::types::{
-    RuntimeProofDrift, RuntimeProofDriftReport, RuntimeProofParityReport,
+    RuntimeEvidenceManifest, RuntimeProofDrift, RuntimeProofDriftReport, RuntimeProofParityReport,
     RuntimeProofRegenerationInput, RuntimeProofRegenerationReport, RuntimeProofSourceRecord,
+    RuntimeStepEvidence, RuntimeWorkflowRunReport,
 };
 use crate::validation::common::{
     ensure_sha256_hash, validate_acceptance_failure_code, validate_non_empty, validate_state_label,
 };
-use crate::validation::evidence::validate_relative_evidence_path;
+use crate::validation::evidence::{
+    validate_relative_evidence_path, validate_runtime_evidence_manifest,
+    validate_runtime_workflow_run_report,
+};
+
+pub struct RuntimeProofRegenerationArtifacts<'a> {
+    pub proof_regeneration_report: &'a [u8],
+    pub proof_regeneration_input: &'a [u8],
+    pub evidence_manifest: &'a [u8],
+    pub workflow_run_report: &'a [u8],
+    pub proof_package: &'a [u8],
+    pub verifier_report: &'a [u8],
+    pub workflow_receipt: &'a [u8],
+}
 
 pub fn validate_runtime_proof_drift_report(
     report: &RuntimeProofDriftReport,
@@ -197,69 +212,146 @@ pub fn validate_runtime_proof_regeneration_report(
     Ok(())
 }
 
+pub fn validate_runtime_proof_regeneration_artifacts(
+    artifacts: RuntimeProofRegenerationArtifacts<'_>,
+) -> Result<(), ChioRuntimeError> {
+    let proof_report: RuntimeProofRegenerationReport = parse_runtime_json(
+        artifacts.proof_regeneration_report,
+        "runtime proof regeneration report",
+    )?;
+    let proof_input: RuntimeProofRegenerationInput = parse_runtime_json(
+        artifacts.proof_regeneration_input,
+        "runtime proof regeneration input",
+    )?;
+    let manifest: RuntimeEvidenceManifest =
+        parse_runtime_json(artifacts.evidence_manifest, "runtime evidence manifest")?;
+    let workflow_report: RuntimeWorkflowRunReport =
+        parse_runtime_json(artifacts.workflow_run_report, "runtime workflow run report")?;
+
+    validate_runtime_proof_regeneration_report(&proof_report)?;
+    validate_runtime_proof_regeneration_input(&proof_input)?;
+    validate_runtime_evidence_manifest(&manifest)?;
+    validate_runtime_workflow_run_report(&workflow_report)?;
+
+    if !proof_report.accepted || !workflow_report.accepted {
+        return Err(ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_evidence_not_accepted",
+            detail: "runtime proof regeneration evidence must be accepted".to_string(),
+        });
+    }
+    validate_non_empty(
+        &proof_report.run_id,
+        "runtime_proof_regeneration_missing_run_id",
+    )?;
+    ensure_runtime_regeneration_run_id(
+        &proof_report.run_id,
+        &proof_input.run_id,
+        "proof regeneration input",
+    )?;
+    ensure_runtime_regeneration_run_id(
+        &proof_report.run_id,
+        &manifest.run_id,
+        "evidence manifest",
+    )?;
+    ensure_runtime_regeneration_run_id(
+        &proof_report.run_id,
+        &workflow_report.run_id,
+        "workflow run report",
+    )?;
+
+    let proof_report_sha256 = canonical_sha256(&proof_report)?;
+    let proof_input_manifest_sha256 = canonical_sha256(&manifest)?;
+    let workflow_report_sha256 = canonical_sha256(&workflow_report)?;
+    let proof_package_sha256 =
+        canonical_json_value_sha256(artifacts.proof_package, "runtime proof package")?;
+    let verifier_report_sha256 =
+        canonical_json_value_sha256(artifacts.verifier_report, "runtime verifier report")?;
+    let workflow_receipt_sha256 =
+        canonical_json_value_sha256(artifacts.workflow_receipt, "runtime workflow receipt")?;
+
+    if workflow_report.proof_regeneration_report_sha256.as_deref()
+        != Some(proof_report_sha256.as_str())
+        || manifest.proof_regeneration_report_sha256 != proof_report_sha256
+    {
+        return Err(ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_report_hash_mismatch",
+            detail: "runtime proof regeneration report hash mismatch".to_string(),
+        });
+    }
+    if manifest.workflow_run_report_sha256 != workflow_report_sha256
+        || proof_input.workflow_run_report_sha256 != workflow_report_sha256
+    {
+        return Err(ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_workflow_hash_mismatch",
+            detail: "runtime proof regeneration workflow report hash mismatch".to_string(),
+        });
+    }
+    if proof_input.evidence_manifest_sha256 != proof_input_manifest_sha256 {
+        return Err(ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_manifest_hash_mismatch",
+            detail: "runtime proof regeneration evidence manifest hash mismatch".to_string(),
+        });
+    }
+    if proof_input.source_records != proof_report.source_records {
+        return Err(ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_source_record_mismatch",
+            detail: "runtime proof regeneration source records mismatch".to_string(),
+        });
+    }
+    if !runtime_proof_source_records_match_steps(
+        &workflow_report.step_evidence,
+        &proof_report.source_records,
+    ) {
+        return Err(ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_source_record_mismatch",
+            detail: "runtime proof regeneration source records do not match workflow steps"
+                .to_string(),
+        });
+    }
+    if proof_report.proof_package_sha256.as_deref() != Some(proof_package_sha256.as_str()) {
+        return Err(ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_package_hash_mismatch",
+            detail: "runtime proof regeneration proof package hash mismatch".to_string(),
+        });
+    }
+    if proof_report.verifier_report_sha256.as_deref() != Some(verifier_report_sha256.as_str()) {
+        return Err(ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_verifier_hash_mismatch",
+            detail: "runtime proof regeneration verifier report hash mismatch".to_string(),
+        });
+    }
+    if proof_report.workflow_receipt_sha256.as_deref() != Some(workflow_receipt_sha256.as_str()) {
+        return Err(ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_workflow_receipt_hash_mismatch",
+            detail: "runtime proof regeneration workflow receipt hash mismatch".to_string(),
+        });
+    }
+
+    validate_manifest_entry(&manifest, "proof_package", artifacts.proof_package)?;
+    validate_manifest_entry(&manifest, "verifier_report", artifacts.verifier_report)?;
+    validate_manifest_entry(&manifest, "workflow_receipt", artifacts.workflow_receipt)?;
+    validate_manifest_entry(
+        &manifest,
+        "proof_regeneration_report",
+        artifacts.proof_regeneration_report,
+    )?;
+    validate_manifest_entry(
+        &manifest,
+        "runtime_run_report",
+        artifacts.workflow_run_report,
+    )?;
+    Ok(())
+}
+
 pub fn validate_runtime_proof_parity_report(
     report: &RuntimeProofParityReport,
 ) -> Result<(), ChioRuntimeError> {
-    if !is_runtime_proof_parity_report_schema(&report.schema) {
-        return Err(ChioRuntimeError::Rejected {
-            code: "unsupported_runtime_proof_parity_report_schema",
-            detail: format!(
-                "runtime proof parity report declared unsupported schema {}",
-                report.schema
-            ),
-        });
-    }
-    ensure_sha256_hash(
-        &report.static_proof_package_sha256,
-        "runtime_proof_parity_invalid_static_package_hash",
-    )?;
-    ensure_sha256_hash(
-        &report.runtime_proof_package_sha256,
-        "runtime_proof_parity_invalid_runtime_package_hash",
-    )?;
-    ensure_sha256_hash(
-        &report.static_verifier_report_sha256,
-        "runtime_proof_parity_invalid_static_report_hash",
-    )?;
-    ensure_sha256_hash(
-        &report.runtime_verifier_report_sha256,
-        "runtime_proof_parity_invalid_runtime_report_hash",
-    )?;
-    validate_acceptance_failure_code(
-        report.accepted,
-        report.failure_code.as_deref(),
-        "runtime_proof_parity_missing_failure_code",
-        "runtime_proof_parity_unexpected_failure_code",
-    )?;
-    if report.compared_fields.is_empty() {
-        return Err(ChioRuntimeError::Rejected {
-            code: "runtime_proof_parity_missing_compared_fields",
-            detail: "runtime proof parity report must name compared fields".to_string(),
-        });
-    }
-    if report.accepted && !report.mismatches.is_empty() {
-        return Err(ChioRuntimeError::Rejected {
-            code: "runtime_proof_parity_accepted_with_mismatches",
-            detail: "accepted runtime proof parity report cannot carry mismatches".to_string(),
-        });
-    }
-    for mismatch in &report.mismatches {
-        if mismatch.field.trim().is_empty() {
-            return Err(ChioRuntimeError::Rejected {
-                code: "runtime_proof_parity_empty_mismatch_field",
-                detail: "runtime proof parity mismatch field is empty".to_string(),
-            });
+    chio_runtime_proof_parity::validate_runtime_proof_parity_report(report).map_err(|error| {
+        ChioRuntimeError::Rejected {
+            code: error.code(),
+            detail: error.detail().to_string(),
         }
-        ensure_sha256_hash(
-            &mismatch.static_value_sha256,
-            "runtime_proof_parity_invalid_static_value_hash",
-        )?;
-        ensure_sha256_hash(
-            &mismatch.runtime_value_sha256,
-            "runtime_proof_parity_invalid_runtime_value_hash",
-        )?;
-    }
-    Ok(())
+    })
 }
 
 fn is_runtime_proof_regeneration_input_schema(schema: &str) -> bool {
@@ -270,8 +362,89 @@ fn is_runtime_proof_regeneration_report_schema(schema: &str) -> bool {
     matches!(schema, CHIO_RUNTIME_PROOF_REGENERATION_REPORT_SCHEMA)
 }
 
-fn is_runtime_proof_parity_report_schema(schema: &str) -> bool {
-    matches!(schema, CHIO_RUNTIME_PROOF_PARITY_REPORT_SCHEMA)
+fn runtime_proof_source_records_match_steps(
+    steps: &[RuntimeStepEvidence],
+    source_records: &[RuntimeProofSourceRecord],
+) -> bool {
+    if steps.len() != source_records.len() {
+        return false;
+    }
+
+    let mut records_by_step = BTreeMap::new();
+    for record in source_records {
+        if records_by_step.insert(record.step_index, record).is_some() {
+            return false;
+        }
+    }
+
+    steps.iter().all(|step| {
+        records_by_step.get(&step.step_index).is_some_and(|record| {
+            record.admission_report_sha256 == step.admission_report_sha256
+                && record.tool_receipt_sha256 == step.tool_receipt_sha256
+                && record.bilateral_dsse_sha256 == step.bilateral_dsse_sha256
+                && record.workflow_step_sha256 == step.workflow_step_sha256
+        })
+    })
+}
+
+fn parse_runtime_json<T: serde::de::DeserializeOwned>(
+    bytes: &[u8],
+    label: &str,
+) -> Result<T, ChioRuntimeError> {
+    serde_json::from_slice(bytes)
+        .map_err(|error| ChioRuntimeError::Json(format!("{label}: {error}")))
+}
+
+fn canonical_json_value_sha256(bytes: &[u8], label: &str) -> Result<String, ChioRuntimeError> {
+    let value: serde_json::Value = parse_runtime_json(bytes, label)?;
+    canonical_sha256(&value)
+}
+
+fn raw_sha256(bytes: &[u8]) -> String {
+    chio_core_types::crypto::sha256_hex(bytes)
+}
+
+fn validate_manifest_entry(
+    manifest: &RuntimeEvidenceManifest,
+    role: &str,
+    bytes: &[u8],
+) -> Result<(), ChioRuntimeError> {
+    let entry = manifest
+        .entries
+        .iter()
+        .find(|entry| entry.role == role)
+        .ok_or_else(|| ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_manifest_entry_missing",
+            detail: format!("runtime proof regeneration evidence manifest missing {role}"),
+        })?;
+    let byte_count = u64::try_from(bytes.len()).map_err(|error| ChioRuntimeError::Rejected {
+        code: "runtime_proof_regeneration_artifact_too_large",
+        detail: format!("runtime proof regeneration artifact byte count failed: {error}"),
+    })?;
+    if entry.sha256 != raw_sha256(bytes) || entry.byte_count != byte_count {
+        return Err(ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_manifest_artifact_mismatch",
+            detail: format!(
+                "runtime proof regeneration evidence manifest artifact mismatch for {role}"
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn ensure_runtime_regeneration_run_id(
+    expected: &str,
+    actual: &str,
+    label: &str,
+) -> Result<(), ChioRuntimeError> {
+    validate_non_empty(actual, "runtime_proof_regeneration_missing_run_id")?;
+    if actual != expected {
+        return Err(ChioRuntimeError::Rejected {
+            code: "runtime_proof_regeneration_run_id_mismatch",
+            detail: format!("runtime proof regeneration run ID mismatch for {label}"),
+        });
+    }
+    Ok(())
 }
 
 fn validate_runtime_proof_source_records(

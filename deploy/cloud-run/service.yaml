@@ -13,8 +13,8 @@
 # Cloud Run container dependency graph (annotation
 # run.googleapis.com/container-dependencies) enforces startup ordering: the
 # `app` container is not started until `chio-sidecar` reports healthy via its
-# startupProbe on :9090/chio/health. The sidecar must fail closed if
-# CHIO_KERNEL_CONFIG_PATH cannot be loaded; Cloud Run will restart the revision.
+# startupProbe on :9090/chio/health. The sidecar fails closed if it cannot
+# start serving that health endpoint; Cloud Run will restart the revision.
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
@@ -44,8 +44,6 @@ spec:
           env:
             - name: CHIO_SIDECAR_URL
               value: "http://localhost:9090"
-            - name: CHIO_SIDECAR_HEALTH_URL
-              value: "http://localhost:9090/chio/health"
           resources:
             limits:
               cpu: "1"
@@ -92,16 +90,6 @@ spec:
             - "--listen"
             - "0.0.0.0:9090"
           env:
-            - name: CHIO_LISTEN_ADDR
-              value: "0.0.0.0:9090"
-            - name: CHIO_HEALTH_PATH
-              value: "/chio/health"
-            - name: CHIO_KERNEL_CONFIG_PATH
-              value: "/etc/chio/kernel/kernel.yaml"
-            - name: CHIO_POLICY_SOURCE
-              value: "gs://PROJECT_ID-chio-config/policy.yaml"
-            - name: CHIO_RECEIPT_SINK
-              value: "bigquery://PROJECT_ID.chio.receipts"
             - name: CHIO_LOG_LEVEL
               value: "info"
             - name: CHIO_CAPABILITY_AUTHORITY_URL

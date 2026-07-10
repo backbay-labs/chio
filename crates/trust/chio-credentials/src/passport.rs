@@ -10,8 +10,8 @@ pub struct AgentPassport {
     pub issued_at: String,
     pub valid_until: String,
     /// Trust tier synthesized from the operator's compliance score and
-    /// behavioral-anomaly signal. Optional for wire back-compat: legacy
-    /// passports omit the field entirely.
+    /// behavioral-anomaly signal. Optional for wire back-compat: passports
+    /// without the field omit it entirely.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trust_tier: Option<TrustTier>,
 }

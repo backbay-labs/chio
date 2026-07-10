@@ -1,0 +1,12 @@
+{
+  "schema": "chio.runtime-security.negative-fixture.v1",
+  "id": "ack-outside-lease",
+  "claim_ref": "claim.runtime.tool_server_ack_bound",
+  "base_fixture": "fixtures/proof-room/runtime-security/valid-side-effecting-call/transaction-passport.json",
+  "mutation": {
+    "artifact": "tool-server-ack.json",
+    "field": "issued_at",
+    "value": "2026-06-10T00:06:00Z"
+  },
+  "expected_failure_code": "proof-room.negative.acknowledgement-outside-execution-lease"
+}

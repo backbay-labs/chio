@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-runtime/v1/sandbox-attestation.schema.json",
+  "title": "Chio Runtime Sandbox Attestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "attestation_id",
+    "tool_server_id",
+    "tool_instance_id",
+    "tool_manifest_digest",
+    "sandbox_profile_digest",
+    "egress_policy_digest",
+    "started_at",
+    "expires_at",
+    "attester",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.runtime.sandbox-attestation.v1" },
+    "attestation_id": { "type": "string", "minLength": 1 },
+    "tool_server_id": { "type": "string", "minLength": 1 },
+    "tool_instance_id": { "type": "string", "minLength": 1 },
+    "tool_manifest_digest": { "$ref": "#/$defs/sha256" },
+    "sandbox_profile_digest": { "$ref": "#/$defs/sha256" },
+    "egress_policy_digest": { "$ref": "#/$defs/sha256" },
+    "started_at": { "type": "string", "minLength": 1 },
+    "expires_at": { "type": "string", "minLength": 1 },
+    "attester": { "type": "string", "minLength": 1 },
+    "signature": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

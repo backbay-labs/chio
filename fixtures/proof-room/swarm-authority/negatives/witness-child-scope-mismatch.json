@@ -1,0 +1,8 @@
+{
+  "schema": "chio.swarm-authority.negative-fixture.v1",
+  "id": "witness-child-scope-mismatch",
+  "claim_ref": "claim.swarm.attenuation_witness_chain_bound",
+  "base_fixture": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/witness-child-a.json",
+  "case": "WitnessChildScopeMismatch",
+  "expected_failure_code": "proof-room.negative.swarm-witness-child-scope-mismatch"
+}

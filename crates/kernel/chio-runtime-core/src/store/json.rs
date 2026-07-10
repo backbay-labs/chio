@@ -1,5 +1,7 @@
 use super::traits::RuntimeAdmissionStore;
+use crate::validation::validate_non_empty;
 use crate::*;
+use chio_swarm_authority::SwarmAuthorityBundle;
 
 #[derive(Debug, Clone)]
 pub struct JsonRuntimeAdmissionStore {
@@ -12,9 +14,13 @@ pub struct JsonRuntimeAdmissionStore {
 struct JsonRuntimeAdmissionStoreState {
     schema: String,
     bundles: Vec<RuntimeAdmissionBundle>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    swarm_authority_bundles: Vec<SwarmAuthorityBundle>,
     consumed_lease_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     consumed_treaty_continuation_ids: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    consumed_swarm_continuation_ids: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     trust_floors: Vec<RuntimeTrustFloorEntry>,
 }
@@ -24,8 +30,10 @@ impl Default for JsonRuntimeAdmissionStoreState {
         Self {
             schema: CHIO_RUNTIME_ADMISSION_STORE_SCHEMA.to_string(),
             bundles: Vec::new(),
+            swarm_authority_bundles: Vec::new(),
             consumed_lease_ids: Vec::new(),
             consumed_treaty_continuation_ids: Vec::new(),
+            consumed_swarm_continuation_ids: Vec::new(),
             trust_floors: Vec::new(),
         }
     }
@@ -89,6 +97,36 @@ impl JsonRuntimeAdmissionStore {
         self.persist_state(&state)
     }
 
+    pub fn insert_swarm_authority_bundle(
+        &self,
+        bundle: SwarmAuthorityBundle,
+    ) -> Result<(), ChioRuntimeError> {
+        validate_non_empty(
+            &bundle.task_graph.graph_id,
+            "runtime_swarm_authority_empty_graph_id",
+        )?;
+        let bundle_sha256 = canonical_sha256(&bundle)?;
+        let mut state = self.lock_state()?;
+        if let Some(existing) = state
+            .swarm_authority_bundles
+            .iter()
+            .find(|existing| existing.task_graph.graph_id == bundle.task_graph.graph_id)
+        {
+            if canonical_sha256(existing)? == bundle_sha256 {
+                return Ok(());
+            }
+            return Err(ChioRuntimeError::Rejected {
+                code: "duplicate_swarm_authority_bundle_mismatch",
+                detail:
+                    "runtime swarm authority bundle graph id already exists with a different hash"
+                        .to_string(),
+            });
+        }
+        state.swarm_authority_bundles.push(bundle);
+        Self::validate_state(&state)?;
+        self.persist_state(&state)
+    }
+
     fn validate_locked_state(&self) -> Result<(), ChioRuntimeError> {
         let state = self.lock_state()?;
         Self::validate_state(&state)
@@ -99,6 +137,22 @@ impl JsonRuntimeAdmissionStore {
         for bundle in &state.bundles {
             if !admission_ids.insert(bundle.admission_id.as_str()) {
                 return Err(ChioRuntimeError::DuplicateAdmissionBundle);
+            }
+        }
+        let mut swarm_graph_ids = BTreeSet::new();
+        for bundle in &state.swarm_authority_bundles {
+            validate_non_empty(
+                &bundle.task_graph.graph_id,
+                "runtime_swarm_authority_empty_graph_id",
+            )?;
+            if !swarm_graph_ids.insert(bundle.task_graph.graph_id.as_str()) {
+                return Err(ChioRuntimeError::Rejected {
+                    code: "duplicate_swarm_authority_bundle",
+                    detail: format!(
+                        "runtime admission store repeats swarm authority bundle {}",
+                        bundle.task_graph.graph_id
+                    ),
+                });
             }
         }
         let mut lease_ids = BTreeSet::new();
@@ -117,6 +171,17 @@ impl JsonRuntimeAdmissionStore {
                     code: "duplicate_consumed_treaty_continuation",
                     detail: format!(
                         "runtime admission store repeats treaty continuation {continuation_id}"
+                    ),
+                });
+            }
+        }
+        let mut swarm_continuation_ids = BTreeSet::new();
+        for continuation_id in &state.consumed_swarm_continuation_ids {
+            if !swarm_continuation_ids.insert(continuation_id.as_str()) {
+                return Err(ChioRuntimeError::Rejected {
+                    code: "duplicate_consumed_swarm_continuation",
+                    detail: format!(
+                        "runtime admission store repeats swarm continuation {continuation_id}"
                     ),
                 });
             }
@@ -190,6 +255,18 @@ impl RuntimeAdmissionStore for JsonRuntimeAdmissionStore {
             .cloned())
     }
 
+    fn swarm_authority_bundle(
+        &self,
+        task_graph_id: &str,
+    ) -> Result<Option<SwarmAuthorityBundle>, ChioRuntimeError> {
+        let state = self.lock_state()?;
+        Ok(state
+            .swarm_authority_bundles
+            .iter()
+            .find(|bundle| bundle.task_graph.graph_id == task_graph_id)
+            .cloned())
+    }
+
     fn consume_destructive_lease(
         &self,
         lease_id: &str,
@@ -255,6 +332,42 @@ impl RuntimeAdmissionStore for JsonRuntimeAdmissionStore {
         let mut state = self.lock_state()?;
         state
             .consumed_treaty_continuation_ids
+            .retain(|consumed| consumed != continuation_id);
+        Self::validate_state(&state)?;
+        self.persist_state(&state)
+    }
+
+    fn consume_swarm_continuation(
+        &self,
+        continuation_id: &str,
+        _admission_id: &str,
+    ) -> Result<(), ChioRuntimeError> {
+        let mut state = self.lock_state()?;
+        if state
+            .consumed_swarm_continuation_ids
+            .iter()
+            .any(|consumed| consumed == continuation_id)
+        {
+            return Err(ChioRuntimeError::Rejected {
+                code: "chio_swarm_continuation_replay",
+                detail: format!("swarm continuation {continuation_id} was already consumed"),
+            });
+        }
+        state
+            .consumed_swarm_continuation_ids
+            .push(continuation_id.to_string());
+        Self::validate_state(&state)?;
+        self.persist_state(&state)
+    }
+
+    fn release_swarm_continuation(
+        &self,
+        continuation_id: &str,
+        _admission_id: &str,
+    ) -> Result<(), ChioRuntimeError> {
+        let mut state = self.lock_state()?;
+        state
+            .consumed_swarm_continuation_ids
             .retain(|consumed| consumed != continuation_id);
         Self::validate_state(&state)?;
         self.persist_state(&state)

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-workflow/v1/preflight-report.schema.json",
+  "title": "Chio Workflow Preflight Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "plan_id",
+    "verdict",
+    "evidence_class",
+    "verified_claims",
+    "rejected_checks",
+    "live_authority_claims"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.workflow.preflight-report.v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issued_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "plan_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verdict": {
+      "enum": ["accepted", "rejected"]
+    },
+    "evidence_class": {
+      "const": "planning"
+    },
+    "verified_claims": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "rejected_checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/check"
+      }
+    },
+    "live_authority_claims": {
+      "type": "array",
+      "maxItems": 0
+    }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

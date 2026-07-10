@@ -1,0 +1,6 @@
+{
+  "schema": "chio.proof-room.negative-case.v1",
+  "id": "lineage-node-digest-mismatch",
+  "verifier_entrypoint": "transaction-passport.json",
+  "expected_failure_code": "proof-room.negative.lineage-node-artifact-digest-mismatch"
+}

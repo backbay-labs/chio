@@ -1,0 +1,18 @@
+{
+  "actual_verifier_report_digest": "220a106e21fd086b5736dd98696d42a39d0fbf92f619bc445befda11fbb20c16",
+  "attack_class": "missing-denial-receipt",
+  "chaos_knobs": [
+    "guard_denial"
+  ],
+  "expected_denial_claim": "claim.runtime.denial_receipts_bound",
+  "fixture_path": "runtime-security/missing-denial-receipt",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "scenario_id": "attack-missing-denial-receipt",
+  "schema": "chio.runtime.attack-simulation-report.v1",
+  "signature": "1c33d1c622346e875692fdb47bc4e716bf02762447316a33bac868b4d047accdf6f555d4cd9c433bdd59c5476ea97af07bcc7faba7e9cadfae5a7a17c1653207",
+  "simulator_version_digest": "7b507c9dd41316c67a49d7eb5c33730b7e01843ea2c0d1d495cae1f8a08679d3",
+  "status": "passed"
+}

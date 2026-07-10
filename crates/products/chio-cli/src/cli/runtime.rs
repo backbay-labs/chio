@@ -373,14 +373,16 @@ pub(crate) fn cmd_check(
         RequestId::new("check-001"),
         session_agent_id,
     );
-    let operation = SessionOperation::ToolCall(ToolCallOperation {
+    let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
         capability: cap,
         server_id: server.to_string(),
         tool_name: tool.to_string(),
         arguments: params.clone(),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: None,
-    });
+                extra_metadata: None,
+    }));
 
     let response = match kernel.evaluate_session_operation(&context, &operation)? {
         SessionOperationResponse::ToolCall(response) => response,

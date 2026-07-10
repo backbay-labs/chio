@@ -1,0 +1,18 @@
+{
+  "actual_verifier_report_digest": "92a806a8b97132ff74ed35261a64cd6c90255f5435ede5c1f026cbc0c0a3dba6",
+  "attack_class": "advisory-evidence-laundering",
+  "chaos_knobs": [
+    "advisory_edge"
+  ],
+  "expected_denial_claim": "claim.runtime.advisory_not_used_as_authorization",
+  "fixture_path": "runtime-security/advisory-evidence-laundering",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "scenario_id": "attack-advisory-evidence-laundering",
+  "schema": "chio.runtime.attack-simulation-report.v1",
+  "signature": "dc28bed8e491f218793d42add762d2024eb7c3aa792d7a03b198e314e669d1761427c9b2f0d513d1b9f63090fd18c5ca9a16869a080d9f87597c51975d9abe06",
+  "simulator_version_digest": "7b507c9dd41316c67a49d7eb5c33730b7e01843ea2c0d1d495cae1f8a08679d3",
+  "status": "passed"
+}

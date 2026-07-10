@@ -2,17 +2,16 @@
 
 ## Purpose
 
-This profile freezes Chio's first official web3 settlement boundary,
-originally tracked under historical internal milestone `v2.30`. It defines the trust
-profile, contract package, chain configuration, anchoring proof bundle, oracle
-evidence envelope, settlement dispatch artifact, settlement execution receipt,
-and qualification matrix that the official web3 stack must honor.
+This profile freezes Chio's first official web3 settlement boundary. It defines
+the trust profile, contract package, chain configuration, anchoring proof
+bundle, oracle evidence envelope, settlement dispatch artifact, settlement
+execution receipt, and qualification matrix that the official web3 stack must
+honor.
 
-> Version posture: this is a pre-release standards profile. Internal `v2.x`
-> milestone labels are historical planning labels, not Chio-owned protocol,
-> schema, SDK, or runtime versions. Current protocol posture is v1-only.
+> Version posture: this is a pre-release standards profile for the v1 protocol
+> surface.
 
-Historical internal milestone `v2.34` added a packaged runtime realization:
+The packaged runtime realization includes:
 
 - Solidity sources under `contracts/src/`
 - compiled ABI and bytecode artifacts under `contracts/artifacts/`
@@ -25,7 +24,14 @@ The objective is specific: Chio can now reconcile one real external rail
 execution path without allowing web3 adapters to replace canonical Chio truth,
 hide custody assumptions, or widen trust through chain activity alone.
 
-Historical internal milestone `v2.38` added bounded runtime overlays for:
+External assurance status: the contract package is not approved for mainnet
+deployment, non-testnet custody, or non-testnet promotion. The local
+qualification report and prior contract security review are historical evidence
+only. External audit, testnet soak, artifact digest, runtime codehash,
+minimum-bar checklist, and security-owner sign-off are required before
+non-testnet use.
+
+Bounded runtime overlays include:
 
 - Functions-based Ed25519 fallback audits on EVM
 - automation jobs for anchoring and settlement watchdog flows
@@ -33,14 +39,14 @@ Historical internal milestone `v2.38` added bounded runtime overlays for:
 - one explicit payment-interop layer for x402, EIP-3009, Circle, and
   ERC-4337/paymaster compatibility
 
-Historical internal milestone `v2.39` added bounded operations overlays for:
+Bounded operations overlays include:
 
 - runtime reports across `chio-link`, `chio-anchor`, and `chio-settle`
 - explicit emergency modes for anchor publication and settlement dispatch
 - one deployment-promotion policy with gas and latency budgets
 - one reviewer-facing external qualification matrix and partner-proof package
 
-Historical internal milestone `v2.40` added runtime-hardening overlays for:
+Runtime-hardening overlays include:
 
 - concurrency-safe escrow and bond identity derived from contract truth rather
   than local mutable nonce state
@@ -49,7 +55,7 @@ Historical internal milestone `v2.40` added runtime-hardening overlays for:
 - explicit contract/runtime parity checks plus bond-reserve and oracle-
   authority reconciliation
 
-Historical internal milestone `v2.41` added hosted-qualification overlays for:
+Hosted-qualification overlays include:
 
 - hosted release qualification that stages the bounded web3 bundle under
   `target/release-qualification/web3-runtime/`
@@ -67,8 +73,8 @@ The official profile consists of these machine-readable artifacts:
 - `chio.web3-chain-configuration.v1`
 - `chio.anchor-inclusion-proof.v1`
 - `chio.oracle-conversion-evidence.v1`
-- `chio.web3-settlement-dispatch.v1`
-- `chio.web3-settlement-execution-receipt.v1`
+- `chio.web3-settlement-dispatch.v2`
+- `chio.web3-settlement-execution-receipt.v2`
 - `chio.web3-qualification-matrix.v1`
 - `chio.anchor-automation-job.v1`
 - `chio.settlement-automation-job.v1`
@@ -78,7 +84,7 @@ The official profile consists of these machine-readable artifacts:
 - `chio.settle-runtime-report.v1`
 
 The corresponding reference files live in `docs/standards/`; the core web3
-artifacts parse against `crates/core/chio-core/src/web3.rs`, while the runtime
+artifacts parse against `crates/core/chio-core`, while the runtime
 overlay artifacts parse against the bounded types in `chio-anchor` and
 `chio-settle`.
 
@@ -123,11 +129,13 @@ The official package freezes one contract family:
 - price resolver as an auxiliary on-chain reference contract only; runtime FX
   authority remains `chio-link`
 
-The official chain configuration currently records:
+The official chain configuration currently records historical target
+references:
 
 - Base (`eip155:8453`) as the primary execution and anchoring environment
 - Arbitrum (`eip155:42161`) as the bounded secondary environment
-- explicit addresses, operator identity, and gas assumptions for both chains
+- explicit addresses, operator identity, and gas assumptions for both chains.
+  These are not promotion approval and remain blocked by external assurance.
 
 This is a reviewable deployment model, not a permissionless contract
 marketplace.
@@ -193,5 +201,5 @@ The shipped boundary also keeps the following residual gaps explicit:
 - permissionless operator discovery, unattended mainnet rollout, and ambient
   MCP trust expansion remain outside the shipped public claim
 
-Those surfaces belong to later milestones and must add their own bounded
+Those surfaces belong to later reviewed package versions and must add their own bounded
 artifacts rather than silently expanding this profile.

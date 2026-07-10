@@ -1,0 +1,102 @@
+{
+  "schema": "chio.runtime-edge-conformance.v1",
+  "id": "r-t03-21-runtime-edge-matrix",
+  "findingIds": [
+    "R-T03-09",
+    "R-T03-14",
+    "R-T03-21"
+  ],
+  "edges": [
+    {
+      "surface": "mcp_tools_call_route_metadata",
+      "crateName": "chio-mcp-edge",
+      "sourcePath": "crates/protocol/chio-mcp-edge/src/runtime/runtime_tests.rs",
+      "testName": "tools_call_jsonrpc_passes_route_selection_metadata_to_runtime_admission",
+      "entrypoint": "tools/call",
+      "expected": {
+        "runtimeAdmissionBeforeDispatch": true,
+        "denyReceiptEmitted": true,
+        "downstreamDispatchCountZero": true,
+        "routeMetadataBound": true
+      }
+    },
+    {
+      "surface": "a2a_adapter_send_message",
+      "crateName": "chio-a2a-adapter",
+      "sourcePath": "crates/protocol/chio-a2a-adapter/src/tests/kernel_receipts.rs",
+      "testName": "kernel_e2e_a2a_runtime_admission_denies_before_send_message",
+      "entrypoint": "message/send",
+      "expected": {
+        "runtimeAdmissionBeforeDispatch": true,
+        "denyReceiptEmitted": true,
+        "downstreamDispatchCountZero": true,
+        "routeMetadataBound": false
+      }
+    },
+    {
+      "surface": "a2a_adapter_deferred_get_task",
+      "crateName": "chio-a2a-adapter",
+      "sourcePath": "crates/protocol/chio-a2a-adapter/src/tests/kernel_receipts.rs",
+      "testName": "kernel_e2e_a2a_deferred_get_task_runtime_admission_denies_before_remote_follow_up",
+      "entrypoint": "task/get",
+      "expected": {
+        "runtimeAdmissionBeforeDispatch": true,
+        "denyReceiptEmitted": true,
+        "downstreamDispatchCountZero": true,
+        "routeMetadataBound": false
+      }
+    },
+    {
+      "surface": "acp_edge_stream_resume",
+      "crateName": "chio-acp-edge",
+      "sourcePath": "crates/protocol/chio-acp-edge/src/tests/all.rs",
+      "testName": "jsonrpc_resume_runtime_admission_denies_before_stream_tool_dispatch",
+      "entrypoint": "tool/resume",
+      "expected": {
+        "runtimeAdmissionBeforeDispatch": true,
+        "denyReceiptEmitted": true,
+        "downstreamDispatchCountZero": true,
+        "routeMetadataBound": false
+      }
+    },
+    {
+      "surface": "a2a_edge_deferred_task_get",
+      "crateName": "chio-a2a-edge",
+      "sourcePath": "crates/protocol/chio-a2a-edge/src/tests/all.rs",
+      "testName": "jsonrpc_task_get_runtime_admission_denies_before_deferred_dispatch",
+      "entrypoint": "message/stream task/get",
+      "expected": {
+        "runtimeAdmissionBeforeDispatch": true,
+        "denyReceiptEmitted": true,
+        "downstreamDispatchCountZero": true,
+        "routeMetadataBound": false
+      }
+    },
+    {
+      "surface": "openai_function_call",
+      "crateName": "chio-openai-adapter",
+      "sourcePath": "crates/protocol/chio-openai-adapter/src/tests.rs",
+      "testName": "execute_tool_call_runtime_admission_denies_before_tool_server_dispatch",
+      "entrypoint": "function_call",
+      "expected": {
+        "runtimeAdmissionBeforeDispatch": true,
+        "denyReceiptEmitted": true,
+        "downstreamDispatchCountZero": true,
+        "routeMetadataBound": true
+      }
+    },
+    {
+      "surface": "openapi_bridge_invocation",
+      "crateName": "chio-openapi-mcp-bridge",
+      "sourcePath": "crates/protocol/chio-openapi-mcp-bridge/src/tests.rs",
+      "testName": "bridge_invocation_runtime_admission_denies_before_http_dispatch",
+      "entrypoint": "OpenAPI bridge invoke",
+      "expected": {
+        "runtimeAdmissionBeforeDispatch": true,
+        "denyReceiptEmitted": true,
+        "downstreamDispatchCountZero": true,
+        "routeMetadataBound": false
+      }
+    }
+  ]
+}

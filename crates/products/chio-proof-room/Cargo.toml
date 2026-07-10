@@ -1,0 +1,52 @@
+[package]
+name = "chio-proof-room"
+description = "Focused Proof Room quickstart server"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+default-run = "chio-proof-room"
+autobins = false
+readme = "README.md"
+publish = false
+
+[package.metadata.chio]
+public_entrypoint = true
+
+[[bin]]
+name = "chio-proof-room"
+path = "src/main.rs"
+
+[dependencies]
+axum = "0.8"
+chio-agent-web-interop = { workspace = true }
+chio-commerce-order = { workspace = true }
+chio-core-types = { workspace = true }
+chio-disclosure-lineage = { workspace = true }
+chio-egress-contract = { workspace = true, features = ["reqwest-egress"] }
+chio-enterprise-export = { workspace = true }
+chio-risk-comptroller = { workspace = true }
+chio-runtime-proof-parity = { workspace = true }
+chio-selective-disclosure = { workspace = true, features = ["bbs"] }
+chio-swarm-authority = { workspace = true }
+chio-transaction-passport = { workspace = true }
+chio-trust-market-context = { workspace = true }
+chio-web3 = { workspace = true }
+chio-workflow-preflight = { workspace = true }
+hex = { workspace = true }
+jsonschema = { workspace = true }
+reqwest = { workspace = true, features = ["blocking", "json", "rustls"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tower-http = { version = "0.6", features = ["fs"] }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true

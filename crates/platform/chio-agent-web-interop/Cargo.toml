@@ -1,0 +1,30 @@
+[package]
+name = "chio-agent-web-interop"
+description = "Agent Web interop verifier for Chio transaction proof bundles"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_agent_web_interop"
+test = false
+
+[dependencies]
+base64 = { workspace = true }
+chio-commerce-order = { workspace = true }
+chio-core-types = { workspace = true }
+chio-transaction-passport = { workspace = true }
+hmac = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+chio-test-support = { workspace = true }
+jsonschema = { workspace = true }
+
+[lints]
+workspace = true

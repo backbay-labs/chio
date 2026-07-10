@@ -1,0 +1,17 @@
+{
+  "object_kind": "scim_lifecycle_event",
+  "id": "scim-lifecycle-agent-web-valid",
+  "provider_id": "scim-provider-enterprise",
+  "resource_type": "User",
+  "resource_id_digest": "9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a9a",
+  "subject_digest": "9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b9b",
+  "group_digest": "9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c",
+  "operation": "delete",
+  "active_state": "inactive",
+  "resource_version_digest": "9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d9d",
+  "deprovisioning_receipt_ref": "receipt-agent-web-scim-lifecycle-allow",
+  "capability_revocation_refs": [
+    "revocation-agent-web-user-capability-001"
+  ],
+  "mediated_by_chio_receipt": true
+}

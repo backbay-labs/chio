@@ -169,12 +169,12 @@ fn validate_x402_field(label: &str, value: &str) -> Result<(), SettlementError> 
 /// Approval-bound settlement parameters the caller MUST supply.
 ///
 /// EIP-3009 authorizations are independently replay-able and are not, by
-/// themselves, tied to the approval that governs the spend. C3 (BAC-542)
+/// themselves, tied to the approval that governs the spend. This binding
 /// requires the prepared authorization to be bound to its governing
 /// approval so a captured signature cannot be redirected to a different
 /// payee, inflated to a different amount, or replayed on a different chain.
 ///
-/// This type is the seam to C2 (BAC-541): once a verified
+/// This type is the seam to the governed-approval layer: once a verified
 /// [`chio_core_types::capability::governance::GovernedApprovalToken`] is
 /// available at the settlement layer, the caller derives these bound
 /// values from that token's governed intent and passes them here. Until
@@ -447,7 +447,7 @@ impl Eip3009NonceStore for InMemoryEip3009NonceStore {
 }
 
 /// Prepare an EIP-3009 `transferWithAuthorization` digest, enforcing the
-/// C3 (BAC-542) money-safety invariants before any signature is broadcast:
+/// money-safety invariants before any signature is broadcast:
 ///
 /// 1. **Single-use nonce.** `nonce_store.record_if_fresh(from, nonce)` is
 ///    consulted first; a previously-seen `(from, nonce)` pair fails closed
@@ -465,7 +465,7 @@ impl Eip3009NonceStore for InMemoryEip3009NonceStore {
 ///    `verifying_contract` against the REQUIRED `binding.token_contract`) are
 ///    asserted against `binding`; any mismatch (or an absent token contract)
 ///    fails closed. The caller resolves `binding` from the verified governing
-///    approval (seam to C2/BAC-541).
+///    approval from governed approval validation.
 ///
 /// All checks fail closed. The nonce is recorded only after the time-window,
 /// expiry, and binding checks pass, so a rejected authorization does not burn

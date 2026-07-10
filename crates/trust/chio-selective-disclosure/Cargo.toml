@@ -21,6 +21,7 @@ default = []
 bbs = ["dep:affinidi-bbs"]
 
 [dependencies]
+chio-disclosure-lineage = { workspace = true }
 chio-core-types = { workspace = true }
 chio-workflow = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

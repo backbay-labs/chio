@@ -17,7 +17,7 @@ examine_globs = [
     "crates/economy/chio-anchor/src/bitcoin.rs",
     "crates/economy/chio-anchor/src/bundle.rs",
     "crates/economy/chio-anchor/src/discovery.rs",
-    "crates/economy/chio-anchor/src/evm.rs",
+    "crates/economy/chio-anchor/src/evm/*.rs",
     "crates/economy/chio-anchor/src/functions.rs",
     "crates/economy/chio-anchor/src/ops.rs",
     "crates/economy/chio-anchor/src/solana.rs",

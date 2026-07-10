@@ -106,8 +106,7 @@ val response =
 
 `CanonicalJsonTest`, `SyntheticDenyReceiptTest`, and `DlqRouterTest`
 each carry `@Tag("parity")` and assert byte-equality against
-hand-computed Python vectors. The shared invariants are enumerated in
-[`02-flink-operator-design.md`](../../../docs/research/flink-jvm/02-flink-operator-design.md).
+hand-computed Python vectors.
 
 ## Status
 

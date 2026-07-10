@@ -1,0 +1,8 @@
+{
+  "schema": "chio.public-settlement.negative-fixture.v1",
+  "id": "missing-oracle-evidence",
+  "claim_ref": "claim.public_settlement.oracle_conversion_bound",
+  "base_fixture": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json",
+  "case": "MissingOracleEvidence",
+  "expected_failure_code": "proof-room.negative.receipt-requires-oracle-evidence-for-fx-sensitive-settlement-paths"
+}

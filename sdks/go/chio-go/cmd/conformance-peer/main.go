@@ -862,12 +862,10 @@ func exchangeStatus(exchange map[string]any) int {
 }
 
 func responseHeaderMap(headers http.Header) map[string]any {
-	result := make(map[string]any, len(headers))
-	for key, values := range headers {
-		if len(values) == 0 {
-			continue
-		}
-		result[strings.ToLower(key)] = values[0]
+	flat := transport.FlattenHeaders(headers)
+	result := make(map[string]any, len(flat))
+	for key, value := range flat {
+		result[key] = value
 	}
 	return result
 }

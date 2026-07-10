@@ -33,7 +33,7 @@
       "result": "pass"
     }
   ],
-  "drill": "phase-175-operator-controls",
+  "drill": "operator-controls-drill",
   "generatedAt": 1764620000,
   "schema": "chio.web3-ops-incident-audit.v1"
 }

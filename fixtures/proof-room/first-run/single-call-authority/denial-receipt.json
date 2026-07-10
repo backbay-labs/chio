@@ -1,0 +1,10 @@
+{
+  "kernel_key": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc",
+  "policy_digest": "3f562106e60d01c801571ab725ce3d9c8f5cf35451ae9e5d08c1fff1bf005bfe",
+  "receipt_id": "first-run-single-call-denial",
+  "request_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "response_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "schema": "chio.proof-room.receipt-evidence.v1",
+  "terminal_status": "denied_guard_request",
+  "signature": "a7f827afbf08bc4b87f93fab56402a0059f92e97071c2fec5f1b35c54f0169dad1c45a6d6ff39dcf5117bdea37d3e46566ae6a39004ad05b453952960d376a0c"
+}

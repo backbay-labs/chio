@@ -1,0 +1,61 @@
+{
+  "claim_mapping": [
+    {
+      "claim_ref": "claim.agent_web.external_subject_digest_bound",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "claim_ref": "claim.agent_web.projection_manifest_bound",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.unsupported_claims_limited",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.sidecar_not_native_authority",
+      "evidence_class": "chio-sidecar-proof"
+    }
+  ],
+  "copy_limitations": [
+    "OpenAPI operation evidence is digest-bound HTTP contract evidence, not Chio capability authority."
+  ],
+  "digest_algorithm": "sha256",
+  "external_fields_not_used": [
+    "security_scheme_as_chio_authority"
+  ],
+  "external_fields_used": [
+    "spec_digest",
+    "openapi_document_id_digest",
+    "server_url_digest",
+    "operation_id",
+    "method",
+    "path_template",
+    "path_parameters_digest",
+    "request_digest",
+    "response_digest",
+    "status_code",
+    "x_chio_proof_envelope_profile",
+    "x_chio_receipt_binding_digest",
+    "x_chio_evidence_profile_digest",
+    "egress_contract_digest",
+    "redirect_followed",
+    "response_size_bytes",
+    "max_response_size_bytes",
+    "chio_operation_receipt_ref"
+  ],
+  "projection_id": "projection-openapi-valid",
+  "requires_external_signature": false,
+  "schema": "chio.agent-web.external-projection-manifest.v1",
+  "sidecar_fields": [
+    "transaction_passport_ref",
+    "receipt_refs",
+    "chio_claim_refs"
+  ],
+  "signature_algorithm": "none",
+  "source_protocol": "openapi",
+  "source_version": "3.1.0",
+  "unsupported_claims": [
+    "claim.external.openapi_operation_is_chio_authority"
+  ]
+}

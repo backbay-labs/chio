@@ -298,7 +298,7 @@ fn chio_deny_reason_invalid_returns_none() {
 }
 
 // -------------------------------------------------------------------
-// Security enforcement tests (WGSEC-01, WGSEC-02, WGSEC-03)
+// Security enforcement tests
 // -------------------------------------------------------------------
 
 #[test]

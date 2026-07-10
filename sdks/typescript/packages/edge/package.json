@@ -23,10 +23,15 @@
   "engines": {
     "node": ">=22"
   },
+  "dependencies": {
+    "@chio-protocol/wasm-core": "0.1.0"
+  },
   "scripts": {
     "build": "bun run build:wasm && tsc -p tsconfig.json",
     "build:wasm": "../../scripts/build-wasm.sh --package edge --target web",
+    "build:ts": "tsc -p tsconfig.json",
     "test:vercel-edge-sim": "bun run build && bun -e \"const edge = await import('./dist/index.js'); if (edge.config?.runtime !== 'edge') throw new Error('missing edge runtime config'); const wasm = await Bun.file(new URL('./dist/web/chio_kernel_browser_bg.wasm', import.meta.url)).arrayBuffer(); await edge.loadEdgeWasm(wasm); const response = await edge.default(new Request('https://edge.test/__chio_edge_smoke')); const body = await response.json(); if (!response.ok || body.package !== '@chio-protocol/edge' || body.runtime !== 'edge' || body.wasmTarget !== 'web' || body.verifyReceipt !== true) throw new Error('Vercel Edge smoke failed: ' + JSON.stringify(body)); console.log('vercel edge sim smoke: 1 passed');\"",
+    "test:vercel-edge-sim:dist": "bun run build:ts && bun -e \"const edge = await import('./dist/index.js'); if (edge.config?.runtime !== 'edge') throw new Error('missing edge runtime config'); const wasm = await Bun.file(new URL('./dist/web/chio_kernel_browser_bg.wasm', import.meta.url)).arrayBuffer(); await edge.loadEdgeWasm(wasm); const response = await edge.default(new Request('https://edge.test/__chio_edge_smoke')); const body = await response.json(); if (!response.ok || body.package !== '@chio-protocol/edge' || body.runtime !== 'edge' || body.wasmTarget !== 'web' || body.verifyReceipt !== true) throw new Error('Vercel Edge smoke failed: ' + JSON.stringify(body)); console.log('vercel edge sim smoke: 1 passed');\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

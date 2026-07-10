@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-disclosure/v1/capsule.schema.json",
+  "title": "Chio Disclosure Capsule",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "transaction_passport_ref",
+    "crypto_context_report_ref",
+    "projection_manifest_ref",
+    "privacy_profile_ref",
+    "lineage_subgraph_ref",
+    "leakage_ledger_ref",
+    "disclosed_fields",
+    "hidden_predicates"
+  ],
+  "properties": {
+    "schema": { "const": "chio.disclosure.capsule.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "transaction_passport_ref": { "type": "string", "minLength": 1 },
+    "crypto_context_report_ref": { "type": "string", "minLength": 1 },
+    "projection_manifest_ref": { "type": "string", "minLength": 1 },
+    "privacy_profile_ref": { "type": "string", "minLength": 1 },
+    "lineage_subgraph_ref": { "type": "string", "minLength": 1 },
+    "leakage_ledger_ref": { "type": "string", "minLength": 1 },
+    "disclosed_fields": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "hidden_predicates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/hiddenPredicate" },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "hiddenPredicate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "predicate_id",
+        "kind",
+        "field",
+        "operator",
+        "operand",
+        "unit",
+        "result",
+        "proof_ref",
+        "projection_slot"
+      ],
+      "properties": {
+        "predicate_id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "field": { "type": "string", "minLength": 1 },
+        "operator": { "type": "string", "minLength": 1 },
+        "operand": { "type": "string", "minLength": 1 },
+        "unit": { "type": "string", "minLength": 1 },
+        "result": { "type": "boolean" },
+        "proof_ref": { "type": "string", "minLength": 1 },
+        "projection_slot": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "anyOf": [
+    { "required": ["disclosed_fields"], "properties": { "disclosed_fields": { "minItems": 1 } } },
+    { "required": ["hidden_predicates"], "properties": { "hidden_predicates": { "minItems": 1 } } }
+  ]
+}

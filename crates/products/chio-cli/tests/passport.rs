@@ -1517,7 +1517,9 @@ fn passport_create_require_checkpoints_fails_for_uncheckpointed_receipts() {
         String::from_utf8_lossy(&create.stdout),
         String::from_utf8_lossy(&create.stderr)
     );
-    assert!(String::from_utf8_lossy(&create.stderr).contains("uncheckpointed"));
+    let stderr = String::from_utf8_lossy(&create.stderr);
+    assert!(stderr.contains("urn:chio:error:transaction:receipt-uncheckpointed"));
+    assert!(stderr.contains("uncheckpointed"));
 
     let _ = fs::remove_file(receipt_db_path);
     let _ = fs::remove_file(passport_path);

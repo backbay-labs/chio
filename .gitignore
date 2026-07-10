@@ -91,6 +91,9 @@ crates/tooling/chio-conformance/verdict_matrix/drivers/k8s/k8s
 # Claude Code session
 .claude/
 
+# graphify generated knowledge graph (regenerated via `graphify update .`; never commit)
+graphify-out/
+
 # Lean build artifacts
 formal/lean4/**/.lake/
 **/.lake/build/
@@ -138,3 +141,6 @@ sdks/typescript/packages/browser/dist/
 
 # Apalache local model-check output (regenerated on each `apalache-mc check`)
 _apalache-out/
+
+# Raw cargo-mutants output (dated JSON summaries stay tracked)
+audits/evidence/**/mutants.out/*.txt

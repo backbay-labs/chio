@@ -1,0 +1,8 @@
+{
+  "schema": "chio.agent-web.negative-fixture.v1",
+  "id": "a2a-authority-claim-not-limited",
+  "claim_ref": "claim.agent_web.unsupported_claims_limited",
+  "base_fixture": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/transaction-passport.json",
+  "case": "A2aAuthorityClaimNotLimited",
+  "expected_failure_code": "proof-room.negative.missing-agent-web-unsupported-authority-limitation"
+}

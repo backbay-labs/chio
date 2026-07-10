@@ -53,9 +53,9 @@ what was authorized and what occurred.
   also sign a receipt for.
 - **Native policy and guards.** Policy is written in HushSpec and compiled to
   native guards. No external policy engine is required.
-- **Wraps existing ecosystems instead of replacing them.** MCP, A2A, ACP,
-  OpenAPI, and AG-UI become governed Chio tool servers, while the kernel keeps
-  dispatch and receipt authority.
+- **Wraps existing ecosystems instead of replacing them.** MCP, A2A,
+  ACP-Client, ACP-Commerce, OpenAPI, and AG-UI become governed Chio tool
+  servers, while the kernel keeps dispatch and receipt authority.
 
 ## Quickstart
 
@@ -69,8 +69,8 @@ cargo build --release -p chio-cli   # produces ./target/release/chio
 ./target/release/chio --help
 ```
 
-For prebuilt release binaries and the Homebrew tap, see
-[docs/install/README.md](docs/install/README.md).
+For the current source install path and the planned binary/Homebrew release
+contract, see [docs/install/README.md](docs/install/README.md).
 
 Now evaluate a single tool call against a policy. The example policy
 [`examples/policies/hushspec-tool-allow.yaml`](examples/policies/hushspec-tool-allow.yaml)
@@ -122,7 +122,7 @@ Each line carries the decision verdict, the policy hash, the signing kernel key,
 and an Ed25519 signature over the receipt.
 
 > Status: 0.1.0, pre-release. APIs and wire surfaces may change before the first
-> tagged release.
+> stable release tag.
 
 ## Choose your path
 
@@ -166,9 +166,10 @@ detail live in [AGENTS.md](AGENTS.md) and
 
 ## Integrations and SDKs
 
-Chio governs tool calls across MCP, A2A, ACP, OpenAPI, AG-UI, and provider-native
-tool formats (OpenAI, Anthropic, Bedrock, Gemini, Cohere, Groq, Mistral, Ollama).
-The kernel owns dispatch and receipt authority for the surfaces it mediates.
+Chio governs tool calls across MCP, A2A, ACP-Client, ACP-Commerce, OpenAPI,
+AG-UI, and provider-native tool formats (OpenAI, Anthropic, Bedrock, Gemini,
+Cohere, Groq, Mistral, Ollama). The kernel owns dispatch and receipt authority
+for the surfaces it mediates.
 
 | Language | Package | README |
 | --- | --- | --- |

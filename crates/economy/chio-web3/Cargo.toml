@@ -12,6 +12,7 @@ publish = false
 name = "chio_web3"
 
 [dependencies]
+alloy-primitives = { version = "1.5.7", default-features = false, features = ["std"] }
 chio-core-types = { workspace = true }
 chio-credit = { workspace = true }
 serde = { workspace = true }

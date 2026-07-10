@@ -47,7 +47,7 @@
     }
   },
   "devDependencies": {
-    "@expo/config-plugins": "^7.8.4",
+    "@expo/config-plugins": "~56.0.10",
     "expo-modules-core": "^1.11.14",
     "typescript": "^5.4.0"
   },

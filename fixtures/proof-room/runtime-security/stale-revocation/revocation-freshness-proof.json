@@ -1,0 +1,15 @@
+{
+  "ancestor_capability_digest": "8888888888888888888888888888888888888888888888888888888888888888",
+  "epoch_id": "revocation-epoch-42",
+  "epoch_root": "3333333333333333333333333333333333333333333333333333333333333333",
+  "fetched_at": "2026-06-09T23:00:00Z",
+  "max_staleness_ms": 5000,
+  "oracle_id": "did:chio:4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff",
+  "proof_id": "revocation-runtime-valid",
+  "revoked_ancestor_result": false,
+  "revoked_leaf_result": false,
+  "schema": "chio.runtime.revocation-freshness-proof.v1",
+  "sequence": 42,
+  "signature": "c82d8eabdfc057900446d91deefd647d8c64a9611a19595e33a2a5be07902e1ac7a86e496684084c91226d9deccd251fd417c32ec7c4c54a32540c1af8319a08",
+  "subject_capability_digest": "7777777777777777777777777777777777777777777777777777777777777777"
+}

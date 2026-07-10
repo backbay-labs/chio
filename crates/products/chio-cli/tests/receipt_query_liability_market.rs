@@ -165,7 +165,7 @@ fn test_liability_market_quote_and_bind_workflow_surfaces_inner() {
                     "configuredBy": "operator@example.com",
                     "configuredAt": unix_now_secs(),
                     "sourceRef": "liability-market-runbook",
-                    "changeReason": "phase 90 workflow qualification"
+                    "changeReason": "workflow qualification"
                 }
             }
         }))
@@ -575,7 +575,7 @@ fn test_liability_market_pricing_authority_and_auto_bind_surfaces_inner() {
                     "configuredBy": "operator@example.com",
                     "configuredAt": unix_now_secs(),
                     "sourceRef": "liability-market-runbook",
-                    "changeReason": "phase 114 auto-bind qualification"
+                    "changeReason": "auto-bind qualification"
                 }
             }
         }))
@@ -1018,7 +1018,7 @@ fn test_liability_market_auto_bind_rejects_stale_provider_and_out_of_envelope_qu
                     "configuredBy": "operator@example.com",
                     "configuredAt": unix_now_secs(),
                     "sourceRef": "liability-market-runbook",
-                    "changeReason": "phase 114 auto-bind negative qualification"
+                    "changeReason": "auto-bind negative qualification"
                 }
             }
         }))

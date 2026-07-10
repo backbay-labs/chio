@@ -1,0 +1,8 @@
+{
+  "schema": "chio.agent-web.negative-fixture.v1",
+  "id": "x402-detached-from-order",
+  "claim_ref": "claim.agent_web.external_subject_digest_bound",
+  "base_fixture": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/transaction-passport.json",
+  "case": "X402DetachedOrder",
+  "expected_failure_code": "proof-room.negative.missing-x402-order-binding"
+}

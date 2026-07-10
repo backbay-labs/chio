@@ -15,8 +15,10 @@ use chio_errors::{ChioError, ErrorCodeSpec};
 use chio_kernel::transport::TransportError;
 use chio_kernel::{ChioKernel, KernelConfig, StructuredErrorReport};
 
+pub use chio_agent_web_interop as agent_web;
 pub mod attestation;
 pub mod certify;
+pub use chio_enterprise_export as enterprise_export;
 pub mod enterprise_federation;
 pub mod evidence_export;
 pub mod federation_policy;
@@ -24,8 +26,13 @@ pub mod issuance;
 pub mod passport_verifier;
 pub mod policy;
 pub mod reputation;
+pub use chio_risk_comptroller as risk_comptroller;
 pub mod scim_lifecycle;
+pub use chio_commerce_order as commerce_order;
+pub use chio_transaction_passport as transaction_passport;
+pub mod transaction_passport_risk;
 pub mod trust_control;
+pub use chio_trust_market_context as trust_market;
 
 #[derive(
     Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum, serde::Serialize, serde::Deserialize,

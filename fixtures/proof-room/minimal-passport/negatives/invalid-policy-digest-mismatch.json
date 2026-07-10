@@ -1,0 +1,8 @@
+{
+  "schema": "chio.transaction.negative-fixture.v1",
+  "id": "invalid-policy-digest-mismatch",
+  "claim_ref": "claim.transaction.policy_digest_bound",
+  "base_fixture": "fixtures/proof-room/minimal-passport/valid/transaction-passport.json",
+  "case": "PolicyDigestMismatch",
+  "expected_failure_code": "proof-room.negative.verifier-policy-digest-mismatch"
+}

@@ -4,7 +4,7 @@
 //! that a producer attempting to submit while the queue is full increments
 //! `chio_signing_queue_block_total` rather than dropping the request.
 //!
-//! BAC-539 round-7 (hole 2): a producer that hits a full queue no longer PARKS
+//! (case 2): a producer that hits a full queue no longer PARKS
 //! holding the preimage; it signs INLINE through the same WYSIWYS primitive and
 //! completes immediately. The block counter still increments (the queue bound was
 //! hit), but the request is neither dropped nor blocked: it is served off-queue,
@@ -58,7 +58,7 @@ fn make_keypair() -> Keypair {
 
 /// Returns a signable body together with the exact canonical-content preimage
 /// its `content_hash` was derived from, so the signing-task WYSIWYS recompute
-/// (BAC-539) accepts it.
+/// accepts it.
 fn make_body(n: usize, kernel_key: &Keypair) -> Result<(ChioReceiptBody, Vec<u8>), String> {
     let nonce = format!("block-counter-{n:04}");
     let action = ToolCallAction::from_parameters(json!({
@@ -173,7 +173,7 @@ async fn full_signing_queue_increments_block_counter_without_dropping() -> Resul
     let mut blocked = Box::pin(handle.sign(blocked_body, blocked_content));
     let waker = noop_waker();
     let mut context = Context::from_waker(&waker);
-    // BAC-539 round-7 (hole 2): a full queue routes the producer to the INLINE
+    // (case 2): a full queue routes the producer to the INLINE
     // fallback instead of parking. The future therefore resolves on the FIRST
     // poll (Ready) rather than returning Pending. The request is served off-queue,
     // so it neither blocks holding the preimage nor is dropped.

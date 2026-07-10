@@ -1,0 +1,6 @@
+{
+  "id": "request-lease-runtime-valid",
+  "method": "runtime.tool.call",
+  "schema": "chio.request.digest.v1",
+  "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+}

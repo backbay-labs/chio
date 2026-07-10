@@ -29,7 +29,6 @@ Use `-DCHIO_DROGON_REQUIRE_DEPS=ON` when missing dependencies should fail config
 int main() {
   chio::drogon::Options options;
   options.sidecar_url = "http://127.0.0.1:9090";
-  options.sidecar_failure_mode = chio::drogon::SidecarFailureMode::FailClosed;
   chio::drogon::configure(options);
 
   drogon::app().registerMiddleware(
@@ -42,9 +41,8 @@ int main() {
 
 ## Behavior
 
-- Default behavior is fail-closed.
+- Behavior is always fail-closed: any sidecar evaluation failure denies the request.
 - The sidecar URL is resolved from `Options::sidecar_url`, then `CHIO_SIDECAR_URL`, then `http://127.0.0.1:9090`.
-- `SidecarFailureMode::FailOpenWithoutReceipt` allows the request only when sidecar evaluation fails before a valid verdict is returned. No receipt id is stored in that path. `SidecarFailureMode::AllowWithoutReceipt` is an alias for the same explicit mode.
 - The body hash is computed over Drogon's raw request body bytes.
 - Only `Options::selected_headers` are copied into `ChioHttpRequest.headers`.
 - `Authorization`, `Cookie`, `X-Api-Key`, and `X-Chio-Capability` are never copied into `ChioHttpRequest.headers`, even if selected.

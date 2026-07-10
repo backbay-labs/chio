@@ -142,7 +142,7 @@ fn pick_lane_kind(pick: u8) -> AnchorLaneKind {
 /// emergency.
 ///
 /// Production entry: `chio_anchor::ops::AnchorEmergencyControls::allows`
-/// (`pub fn` at `crates/economy/chio-anchor/src/ops.rs:86`).
+/// (`pub fn` in `crates/economy/chio-anchor/src/ops.rs`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_anchor_emergency_controls_allows_truth_table() {
@@ -196,7 +196,7 @@ pub fn public_anchor_emergency_controls_allows_truth_table() {
 /// `Err(_)` would be a fail-open bug.
 ///
 /// Production entry: `chio_anchor::ops::ensure_anchor_operation_allowed`
-/// (`pub fn` at `crates/economy/chio-anchor/src/ops.rs:383`).
+/// (`pub fn` in `crates/economy/chio-anchor/src/ops.rs`).
 ///
 /// Bounds: the production function constructs an `AnchorError::InvalidInput`
 /// payload via `format!()` on the fail-closed arm. The `format!()`
@@ -259,7 +259,7 @@ pub fn public_ensure_anchor_operation_allowed_fail_closed() {
 ///   the lane MUST classify as `Healthy`.
 ///
 /// Production entry: `chio_anchor::ops::classify_anchor_lane`
-/// (`pub fn` at `crates/economy/chio-anchor/src/ops.rs:346`).
+/// (`pub fn` in `crates/economy/chio-anchor/src/ops.rs`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_classify_anchor_lane_invariants() {
@@ -347,7 +347,7 @@ pub fn public_classify_anchor_lane_invariants() {
 /// behind incident.
 ///
 /// Production entry: `chio_anchor::ops::AnchorIndexerCursor::from_sequences`
-/// (`pub fn` at `crates/economy/chio-anchor/src/ops.rs:167`).
+/// (`pub fn` in `crates/economy/chio-anchor/src/ops.rs`).
 #[kani::proof]
 #[kani::unwind(8)]
 pub fn public_anchor_indexer_cursor_lag_classification() {
@@ -503,7 +503,7 @@ fn model_evaluate_witness_policy(
 /// client.
 ///
 /// Production entry: `chio_anchor::witness::evaluate_witness_policy`
-/// (`pub fn` at `crates/economy/chio-anchor/src/witness.rs:312`). The full
+/// (`pub fn` in `crates/economy/chio-anchor/src/witness.rs`). The full
 /// `evaluate_witness_policy_with_verifier` async path is intractable
 /// here (it transits canonical JSON + SHA-256 + an async client).
 #[kani::proof]

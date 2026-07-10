@@ -2,15 +2,6 @@ use super::*;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct MercuryProgramFamilyDocRefs {
-    program_family_file: String,
-    operations_file: String,
-    validation_package_file: String,
-    decision_record_file: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct MercuryProgramFamilyBoundaryFreeze {
     schema: String,
     workflow_id: String,
@@ -164,16 +155,6 @@ struct MercuryProgramFamilyValidationReport {
     same_workflow_boundary: String,
     program_family: MercuryProgramFamilyExportSummary,
     decision_record_file: String,
-    docs: MercuryProgramFamilyDocRefs,
-}
-
-fn program_family_doc_refs() -> MercuryProgramFamilyDocRefs {
-    MercuryProgramFamilyDocRefs {
-        program_family_file: "docs/mercury/PROGRAM_FAMILY.md".to_string(),
-        operations_file: "docs/mercury/PROGRAM_FAMILY_OPERATIONS.md".to_string(),
-        validation_package_file: "docs/mercury/PROGRAM_FAMILY_VALIDATION_PACKAGE.md".to_string(),
-        decision_record_file: "docs/mercury/PROGRAM_FAMILY_DECISION_RECORD.md".to_string(),
-    }
 }
 
 fn build_program_family_profile(
@@ -640,7 +621,6 @@ pub fn cmd_mercury_program_family_validate(
 
     let program_family_dir = output.join("program-family");
     let summary = export_program_family(&program_family_dir)?;
-    let docs = program_family_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryProgramFamilyDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -670,7 +650,6 @@ pub fn cmd_mercury_program_family_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         program_family: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 

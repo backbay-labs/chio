@@ -1,5 +1,4 @@
 ---
-status: draft
 date: 2026-04-16
 framework: NIST AI Risk Management Framework 1.0 (January 2023)
 maintainer: Chio Protocol Team
@@ -14,7 +13,7 @@ maintainer: Chio Protocol Team
 | Framework | NIST AI Risk Management Framework (AI RMF 1.0) |
 | Published | January 2023 (NIST AI 100-1) |
 | Scope | Govern, Map, Measure, Manage functions and their subcategories |
-| Chio Profile | Current v1-only pre-release profile; draft originally tracked under internal phase 15 |
+| Chio Profile | Current v1-only pre-release profile |
 | Document Date | 2026-04-16 |
 
 ---
@@ -51,13 +50,13 @@ This mapping covers every Govern/Map/Measure/Manage subcategory in AI RMF 1.0. S
 | GV-1.5 | Ongoing monitoring and review mechanisms are in place | Receipt store (`crates/kernel/chio-kernel/src/receipt_store.rs`), checkpoint monitor, `chio trust serve` dashboard | strong | None at tool-governance layer | Organizational review cadence |
 | GV-1.6 | Mechanisms to inventory AI systems | `ToolManifest` per tool server (`crates/platform/chio-manifest`), `WorkloadIdentity` metadata | partial | No cross-deployment AI inventory | Maintain AI system inventory |
 | GV-1.7 | Decommissioning processes defined | Capability revocation via `crates/kernel/chio-kernel/src/revocation_runtime.rs` and `revocation_store.rs`; grant expiry | strong | None | Map decommissioning to organizational change control |
-| GV-2.1 | Roles and responsibilities for AI risk are documented | `CapabilityToken.issuer`, delegation chain (`crates/core/chio-core-types/src/capability.rs`) attribute authority | partial | Human roles live outside Chio | RACI for AI risk roles |
+| GV-2.1 | Roles and responsibilities for AI risk are documented | `CapabilityToken.issuer`, delegation chain (`crates/core/chio-core-types/src/capability`) attribute authority | partial | Human roles live outside Chio | RACI for AI risk roles |
 | GV-2.2 | Workforce equipped with AI knowledge | Out of scope | customer-responsibility | N/A | Training program |
 | GV-2.3 | Executive leadership accountable for AI risk | Out of scope | customer-responsibility | N/A | Executive charter |
 | GV-3.1 | Decision-making related to AI risks is inclusive | Out of scope | customer-responsibility | N/A | Stakeholder process |
 | GV-3.2 | Policies on workforce diversity are applied | Out of scope | customer-responsibility | N/A | HR policy |
 | GV-4.1 | Organizational risk culture supports AI risk management | Fail-closed evaluation throughout `crates/kernel/chio-kernel/src/kernel/`; deny receipts on error paths | partial | Culture is organizational | Culture program |
-| GV-4.2 | Risks and benefits of AI are communicated | Compliance certificates (`crates/products/chio-cli/src/cert.rs`), evidence export (`crates/products/chio-cli/src/evidence_export.rs`) | partial | Communication templates are per-org | Stakeholder communication plan |
+| GV-4.2 | Risks and benefits of AI are communicated | Compliance certificates (`crates/products/chio-cli/src/cert.rs`), evidence export (`crates/products/chio-cli`) | partial | Communication templates are per-org | Stakeholder communication plan |
 | GV-4.3 | Information sharing across stakeholders is practiced | Signed evidence bundles via `SignedExportEnvelope` support portable audit exchange | partial | No built-in sharing workflow | Procedures for sharing evidence |
 | GV-5.1 | Policies for addressing AI risk exist | `chio-policy` crate, guard configurations, `chio.yaml` | strong | None at enforcement layer | Policy authoring process |
 | GV-5.2 | Mechanisms for communicating risks | `chio-siem` receipt streaming (`crates/observability/chio-siem/src/exporter.rs`) | partial | Delivery to stakeholders is external | Receiving-end SIEM configuration |
@@ -101,9 +100,9 @@ This mapping covers every Govern/Map/Measure/Manage subcategory in AI RMF 1.0. S
 | MS-2.1 | Test sets and metrics used are documented | `cargo test --workspace` covers protocol behavior; guard integration tests in `crates/kernel/chio-kernel/tests/` | partial | Chio tests are protocol-level, not AI behavior | AI test-set management |
 | MS-2.2 | Evaluations conducted for representativeness | Out of scope | customer-responsibility | N/A | Representativeness studies |
 | MS-2.3 | Performance metrics are tracked | Receipt store records timing, outcome, cost | partial | Latency percentiles not reported out of the box | Observability stack |
-| MS-2.4 | Measurement results are documented | Evidence export (`crates/products/chio-cli/src/evidence_export.rs`) and compliance certificates | strong | None | Reporting cadence |
+| MS-2.4 | Measurement results are documented | Evidence export (`crates/products/chio-cli`) and compliance certificates | strong | None | Reporting cadence |
 | MS-2.5 | Robustness, reliability, resilience are evaluated | Fail-closed pipeline; checkpoint integrity (`crates/kernel/chio-kernel/src/checkpoint.rs`) | partial | Model-level robustness is out of scope | Model evaluations |
-| MS-2.6 | Safety risks are evaluated | Content safety guards: jailbreak/prompt-injection detectors in the application-layer guard suite (see `../archive/GUARD_SUITE_INTEGRATION.md`); `secret_leak`, `egress_allowlist`, `forbidden_path` in `crates/guards/chio-guards/src/` | strong | Model-inference safety out of scope | Model safety testing |
+| MS-2.6 | Safety risks are evaluated | Content safety guards: jailbreak/prompt-injection detectors in the application-layer guard suite; `secret_leak`, `egress_allowlist`, `forbidden_path` in `crates/guards/chio-guards/src/` | strong | Model-inference safety out of scope | Model safety testing |
 | MS-2.7 | Security and resilience are evaluated | Signed receipts, Merkle checkpoints, DPoP, capability revocation | strong | Penetration testing is not automated | Regular pen-testing |
 | MS-2.8 | Risks of privacy violations are examined | PII-oriented `QueryResultGuard` / `response_sanitization.rs`, column constraints in data guards | partial | Not all privacy patterns covered | Privacy impact assessment |
 | MS-2.9 | Risks of fairness violations are examined | Out of scope | customer-responsibility | N/A | Fairness evaluations |
@@ -154,15 +153,15 @@ Items flagged as gaps or customer-responsibility that warrant reviewer attention
 
 ## Cross-References
 
-- Capability tokens and delegation: `crates/core/chio-core-types/src/capability.rs`
-- Receipt signing and verification: `crates/core/chio-core-types/src/receipt.rs`, `crates/kernel/chio-kernel/src/receipt_support.rs`
+- Capability tokens and delegation: `crates/core/chio-core-types/src/capability`
+- Receipt signing and verification: `crates/core/chio-core-types`, `crates/kernel/chio-kernel/src/receipt_support`
 - Guard pipeline: `crates/kernel/chio-kernel/src/kernel/mod.rs`, `crates/guards/chio-guards/src/pipeline.rs`
 - Velocity and spend buckets: `crates/guards/chio-guards/src/velocity.rs`
 - Budget store and metering: `crates/kernel/chio-kernel/src/budget_store.rs`, `crates/economy/chio-metering/src/budget.rs`
 - DPoP proof-of-possession: `crates/kernel/chio-kernel/src/dpop.rs`
 - Revocation runtime: `crates/kernel/chio-kernel/src/revocation_runtime.rs`, `crates/kernel/chio-kernel/src/revocation_store.rs`
 - Checkpoints and inclusion proofs: `crates/kernel/chio-kernel/src/checkpoint.rs`
-- Evidence export: `crates/kernel/chio-kernel/src/evidence_export.rs`, `crates/products/chio-cli/src/evidence_export.rs`
+- Evidence export: `crates/kernel/chio-kernel/src/evidence_export.rs`, `crates/products/chio-cli`
 - Session compliance certificate: `crates/products/chio-cli/src/cert.rs`, `docs/protocols/SESSION-COMPLIANCE-CERTIFICATE.md`
 - SIEM export: `crates/observability/chio-siem/src/exporter.rs`
 - Agent passport: `docs/AGENT_PASSPORT_GUIDE.md`

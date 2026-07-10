@@ -375,10 +375,6 @@ std::string json_escape(std::string_view value) {
   return response;
 }
 
-bool fail_open_without_receipt(const Options& /*options*/) {
-  return false;
-}
-
 std::string sidecar_url(const Options& options) {
   if (!options.sidecar_url.empty()) {
     return options.sidecar_url;
@@ -462,10 +458,6 @@ void ChioMiddleware::invoke(const ::drogon::HttpRequestPtr& req,
   chio::http::Evaluator evaluator(sidecar_url(options_), options_.transport, options_.timeout_ms);
   auto evaluation = evaluator.evaluate(chio_request.value(), raw_capability);
   if (!evaluation) {
-    if (fail_open_without_receipt(options_)) {
-      next_cb(std::move(middleware_cb));
-      return;
-    }
     middleware_cb(chio_error_response(::drogon::k502BadGateway,
                                       "chio_sidecar_unreachable",
                                       "chio sidecar evaluation failed"));
@@ -474,10 +466,6 @@ void ChioMiddleware::invoke(const ::drogon::HttpRequestPtr& req,
 
   Json::Value root;
   if (!parse_json(evaluation.value(), &root)) {
-    if (fail_open_without_receipt(options_)) {
-      next_cb(std::move(middleware_cb));
-      return;
-    }
     middleware_cb(chio_error_response(::drogon::k502BadGateway,
                                       "chio_sidecar_unreachable",
                                       "chio sidecar returned malformed JSON"));
@@ -486,10 +474,6 @@ void ChioMiddleware::invoke(const ::drogon::HttpRequestPtr& req,
 
   const auto verdict = verdict_from_response(root);
   if (verdict.verdict.empty()) {
-    if (fail_open_without_receipt(options_)) {
-      next_cb(std::move(middleware_cb));
-      return;
-    }
     middleware_cb(chio_error_response(::drogon::k502BadGateway,
                                       "chio_sidecar_unreachable",
                                       "chio sidecar response missing verdict"));

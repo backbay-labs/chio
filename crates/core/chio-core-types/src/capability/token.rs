@@ -165,9 +165,8 @@ impl CapabilityToken {
         }
     }
 
-    fn permits_legacy_body_signature(&self) -> bool {
-        // Legacy body signatures predate the schema-aware caveat and
-        // attenuation envelope, so only plain v1 tokens can fall back.
+    fn permits_plain_body_signature(&self) -> bool {
+        // Plain v1 tokens sign over the body directly; caveat-bearing tokens sign the schema-aware envelope.
         self.schema == CHIO_CAPABILITY_SCHEMA
             && self.caveats.is_empty()
             && self.scope_attenuations.as_ref().is_none_or(Vec::is_empty)
@@ -479,7 +478,7 @@ impl CapabilityToken {
         {
             return Ok(true);
         }
-        if self.permits_legacy_body_signature() {
+        if self.permits_plain_body_signature() {
             let legacy_body = self.body();
             return self.issuer.verify_canonical(&legacy_body, &self.signature);
         }
@@ -568,7 +567,7 @@ impl CapabilityToken {
         {
             return Ok(true);
         }
-        if self.permits_legacy_body_signature() {
+        if self.permits_plain_body_signature() {
             let legacy_body = self.body();
             return self
                 .issuer

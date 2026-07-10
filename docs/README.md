@@ -9,35 +9,25 @@ everything in this tree is supporting material organized by audience.
 - [Progressive Tutorial](start-here/PROGRESSIVE_TUTORIAL.md) - walk through Chio from scratch
 - [Native Adoption Guide](start-here/NATIVE_ADOPTION_GUIDE.md) - how to adopt Chio in a production service
 - [Vision](start-here/VISION.md) - what Chio is for and why
+- [Proof Room Quickstart](start-here/PROOF_ROOM_QUICKSTART.md) - run the checked-in Proof Room fixture bundle locally or via Docker
 - [Historical v2 Migration Draft](start-here/MIGRATION_GUIDE_V2.md) - archived internal draft notes, not current protocol guidance
 
 ## Large document status
 
 Tracked Markdown documents over 1,000 lines are classified here so readers can
-separate live contracts from reference material, research notes, and historical
-roadmaps. No file was moved to `docs/archive/` in this pass; roadmap documents
-with active inbound links remain in place and are labelled historical instead.
+separate live contracts from reference material and historical roadmaps.
 
 | Document | Category | Currentness |
 | --- | --- | --- |
 | [Final Architecture](architecture/CHIO_FINAL_ARCHITECTURE.md) | Live contract | Current architecture target; verify line-number evidence before using it as implementation state. |
-| [Roadmap](operations/ROADMAP.md) | Roadmap | Historical execution roadmap; not current protocol posture. |
-| [Execution Plan](operations/EXECUTION_PLAN.md) | Roadmap | Historical sequencing note; superseded by current v1 release and protocol docs. |
-| [Future Moats and Research](protocols/FUTURE-MOATS-AND-RESEARCH.md) | Research | Exploratory strategy material. |
-| [Anchor Research](research/CHIO_ANCHOR_RESEARCH.md) | Research | Research packet, not normative implementation guidance. |
 | [Human in the Loop Protocol](protocols/HUMAN-IN-THE-LOOP-PROTOCOL.md) | Reference | Protocol design reference. |
-| [Flink JVM Implementation Plan](research/flink-jvm/04-implementation-plan.md) | Research | Integration research plan. |
 | [Data Layer Integration](protocols/DATA-LAYER-INTEGRATION.md) | Reference | Protocol integration reference. |
 | [Agent Economy](reference/AGENT_ECONOMY.md) | Reference | Economics reference surface. |
 | [Code Execution Guards](guards/13-CODE-EXECUTION-GUARDS.md) | Reference | Guard-family reference. |
 | [Structural Security Fixes](protocols/STRUCTURAL-SECURITY-FIXES.md) | Reference | Security design reference. |
 | [Agent Framework Integration](protocols/AGENT-FRAMEWORK-INTEGRATION.md) | Reference | Ecosystem integration reference. |
-| [Settle Research](research/CHIO_SETTLE_RESEARCH.md) | Research | Research packet, not normative implementation guidance. |
 | [Agent Reputation](reference/AGENT_REPUTATION.md) | Reference | Reputation reference surface. |
-| [DX and Adoption Roadmap](protocols/DX-AND-ADOPTION-ROADMAP.md) | Roadmap | Historical adoption roadmap. |
-| [Web3 Contract Architecture](research/CHIO_WEB3_CONTRACT_ARCHITECTURE.md) | Research | Web3 architecture research packet. |
 | [SaaS Communication Integration](protocols/SAAS-COMMUNICATION-INTEGRATION.md) | Reference | Protocol integration reference. |
-| [Settle Protocol Decisions](research/CHIO_SETTLE_PROTOCOL_DECISIONS.md) | Research | Decision research packet. |
 | [Envoy Ext Authz Integration](protocols/ENVOY-EXT-AUTHZ-INTEGRATION.md) | Reference | Protocol integration reference. |
 
 ## Install and distribution
@@ -110,13 +100,14 @@ The primary live release documents. Auditors and operators start here.
 
 - Canonical spec: [spec/PROTOCOL.md](../spec/PROTOCOL.md)
 - [Architecture notes](architecture/) - [Final Architecture](architecture/CHIO_FINAL_ARCHITECTURE.md), [Runtime Boundaries](architecture/CHIO_RUNTIME_BOUNDARIES.md), [Workspace Structure](architecture/WORKSPACE_STRUCTURE.md)
-- [Architecture Decision Records](adr/README.md) - numbered ADRs (ADR-0001 through ADR-0013)
-- [Protocol integration notes](protocols/) - framework, transport, and ecosystem integration designs (Temporal, LangGraph, Envoy, AWS Lambda, K8s, and more), plus the [Strategic Vision](protocols/STRATEGIC-VISION.md) and [Trust Model and Key Management](protocols/TRUST-MODEL-AND-KEY-MANAGEMENT.md)
+- [Architecture Decision Records](adr/README.md) - numbered ADRs (ADR-0001 through ADR-0014)
+- [Reliability program](architecture/reliability/README.md) - RFC and PLAN series for the fail-closed reliability, durability, and control-plane replication-soundness work (hot-path deadlines, post-admission unwind, dispatch-intent journal, storage hot path, observability wiring, and replication quorum)
+- [Protocol integration notes](protocols/) - framework, transport, and ecosystem integration designs (Temporal, LangGraph, Envoy, AWS Lambda, K8s, and more), plus the [Trust Model and Key Management](protocols/TRUST-MODEL-AND-KEY-MANAGEMENT.md)
 - [Standards profiles](standards/) - qualification profiles and JSON conformance matrices (anchor, federation, automation, extension, bounded operational profile, cross-protocol matrix)
 
 ## Guards
 
-- [Guards design set](guards/) - guard system landscape, WASM runtime plan, absorption plans per guard family, hot reload, and the [0.1 to 0.2 migration](guards/MIGRATION-0.1-to-0.2.md)
+- [Guards design set](guards/) - guard system landscape, WASM runtime plan, hot reload, and the [0.1 to 0.2 migration](guards/MIGRATION-0.1-to-0.2.md)
 
 ## Security
 
@@ -137,18 +128,13 @@ The primary live release documents. Auditors and operators start here.
 ## Products built on Chio
 
 - [Chio-Wall documentation suite](chio-wall/README.md) - companion product recording tool-boundary control evidence for information-domain separation
+- [Proof Room](start-here/PROOF_ROOM_QUICKSTART.md) - companion product that verifies a Chio proof bundle and serves its dashboard, with the displayed verdict bound to the bundle's verifier report
 
 ## Operations and planning
 
-- [Roadmap](operations/ROADMAP.md) - historical execution roadmap, not the current v1 protocol posture
-- [Strategic Roadmap](operations/STRATEGIC_ROADMAP.md) - historical strategic narrative
-- [Execution Plan](operations/EXECUTION_PLAN.md) - historical execution sequencing notes
 - [Changelog](operations/CHANGELOG.md) - internal pre-release notes, not public protocol version history
 - [Conformance Harness Plan](operations/CONFORMANCE_HARNESS_PLAN.md) - cross-language conformance plan for JS, Python, and spec fixtures
-- [Distributed Control Plan](operations/DISTRIBUTED_CONTROL_PLAN.md) - shipped shared-control rewrite of the trust-plane architecture
 - [HA Control Auth Plan](operations/HA_CONTROL_AUTH_PLAN.md) - HA replication and shared budget plan
-- [Bindings Core Plan](operations/BINDINGS_CORE_PLAN.md) - strategy for TypeScript, Python, and Go SDKs without a sprawling ABI
-- [SDK Parity Execution Roadmap](operations/SDK_PARITY_EXECUTION_ROADMAP.md) - short-horizon plan to make multi-language SDK parity real
 
 ## Guides
 
@@ -192,6 +178,14 @@ The primary live release documents. Auditors and operators start here.
 
 - [Trust boundary: browser signing](trust-boundary-browser-signing.md) - where signing happens for browser-originated requests
 
+## Formal verification
+
+- [Formal verification docs](formal/README.md) - index for the review and planning set
+- [Current state](formal/CURRENT_STATE.md) - the six evidence lanes (Lean 4, Aeneas, Creusot, Kani, TLA+/Apalache, diff-tests), governance layer, and CI cadence as surveyed 2026-07-09
+- [Gap analysis](formal/GAP_ANALYSIS.md) - the six load-bearing gaps (G1-G6) with evidence
+- [Hygiene pass](formal/HYGIENE_PASS.md) - fifteen mechanical fixes with exact edits
+- [Roadmap](formal/ROADMAP.md) - waves, dependencies, and claims impact for the 23 plan specs under [docs/formal/plan/](formal/plan/)
+
 ## Fuzzing
 
 - [Continuous Fuzzing Runbook](fuzzing/continuous.md) - layered fuzzing strategy (in-tree matrix, ClusterFuzzLite bridge, OSS-Fuzz primary), CI budget enforcement, target inventory
@@ -205,11 +199,3 @@ The primary live release documents. Auditors and operators start here.
 ## CI and billing
 
 - [CI billing runbook](runbooks/ci-billing.md) - CI cost accounting and budget controls
-
-## Research
-
-- [Research notes](research/README.md) - exploratory work, prior-art surveys, and protocol-strategy packets (written when the project was named ARC; Chio is the current name)
-
-## Archive
-
-- [Archived docs](archive/) - historical roadmaps and superseded plans

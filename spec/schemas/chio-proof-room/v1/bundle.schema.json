@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-proof-room/v1/bundle.schema.json",
+  "title": "Chio Proof Room Bundle Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "bundle_id",
+    "fixture_id",
+    "stage",
+    "created_at",
+    "source_commit",
+    "source_branch",
+    "source_command",
+    "chio_version",
+    "schema_versions",
+    "hash_algorithm",
+    "transaction_passport_ref",
+    "evidence_graph_ref",
+    "verifier_report_ref",
+    "proof_room_verifier_report_ref",
+    "artifacts",
+    "claims",
+    "receipt_coverage",
+    "negative_cases",
+    "advisory_artifacts",
+    "excluded_artifacts",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.proof-room.bundle.v1" },
+    "bundle_id": { "type": "string", "minLength": 1 },
+    "fixture_id": { "type": "string", "minLength": 1 },
+    "stage": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string", "minLength": 1 },
+    "source_commit": { "type": "string", "minLength": 1 },
+    "source_branch": { "type": "string", "minLength": 1 },
+    "source_command": { "type": "string", "minLength": 1 },
+    "chio_version": { "type": "string", "minLength": 1 },
+    "schema_versions": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "hash_algorithm": { "const": "sha256" },
+    "transaction_passport_ref": { "$ref": "#/$defs/artifactRef" },
+    "evidence_graph_ref": { "$ref": "#/$defs/artifactRef" },
+    "verifier_report_ref": { "$ref": "#/$defs/artifactRef" },
+    "proof_room_verifier_report_ref": { "$ref": "#/$defs/artifactRef" },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifact" },
+      "minItems": 1
+    },
+    "claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/claim" },
+      "minItems": 1
+    },
+    "receipt_coverage": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/receiptCoverage" },
+      "minItems": 1
+    },
+    "negative_cases": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/negativeCase" }
+    },
+    "advisory_artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/advisoryArtifact" }
+    },
+    "excluded_artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/excludedArtifact" }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "signature_ref"],
+      "properties": {
+        "kind": { "const": "detached-dsse" },
+        "signature_ref": { "$ref": "#/$defs/bundleRelativePath" }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "bundleRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": ":" },
+          { "pattern": "\\\\" },
+          { "pattern": "%2[fF]" },
+          { "pattern": "%5[cC]" },
+          { "pattern": "//" },
+          { "pattern": "\\s" },
+          { "pattern": "/$" },
+          { "pattern": "(^|/)\\.(/|$)" },
+          { "pattern": "(^|/)\\.\\.(/|$)" },
+          { "pattern": "(^|/)(%2[eE]|\\.){1,2}(/|$)" }
+        ]
+      }
+    },
+    "artifactRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "schema"],
+      "properties": {
+        "path": { "$ref": "#/$defs/bundleRelativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "schema": { "type": "string", "minLength": 1 }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "schema",
+        "media_type",
+        "artifact_class",
+        "sensitivity_class",
+        "producer",
+        "participates_in_primary_verdict",
+        "renderer_hint"
+      ],
+      "properties": {
+        "path": { "$ref": "#/$defs/bundleRelativePath" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "schema": { "type": "string", "minLength": 1 },
+        "media_type": { "type": "string", "minLength": 1 },
+        "artifact_class": { "type": "string", "minLength": 1 },
+        "sensitivity_class": { "type": "string", "minLength": 1 },
+        "producer": { "type": "string", "minLength": 1 },
+        "participates_in_primary_verdict": { "type": "boolean" },
+        "renderer_hint": { "type": "string", "minLength": 1 }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_id",
+        "required_artifacts",
+        "checker",
+        "result",
+        "proof_level",
+        "caveat",
+        "source_refs"
+      ],
+      "properties": {
+        "claim_id": { "type": "string", "minLength": 1 },
+        "required_artifacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bundleRelativePath" },
+          "minItems": 1
+        },
+        "checker": { "type": "string", "minLength": 1 },
+        "result": { "type": "string", "enum": ["verified", "failed", "unsupported"] },
+        "proof_level": { "type": "string", "minLength": 1 },
+        "caveat": { "type": "string" },
+        "source_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/bundleRelativePath" }
+        }
+      }
+    },
+    "receiptCoverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "status"],
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "covered" } },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["artifact_path", "terminal_status"],
+            "not": { "required": ["exclusion_reason"] }
+          }
+        },
+        {
+          "if": {
+            "properties": { "status": { "const": "excluded" } },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["exclusion_reason"],
+            "not": {
+              "anyOf": [
+                { "required": ["artifact_path"] },
+                { "required": ["terminal_status"] }
+              ]
+            }
+          }
+        }
+      ],
+      "properties": {
+        "category": {
+          "enum": [
+            "runtime_terminal_allow",
+            "runtime_terminal_denial",
+            "runtime_terminal_failure"
+          ]
+        },
+        "status": { "enum": ["covered", "excluded"] },
+        "artifact_path": { "$ref": "#/$defs/bundleRelativePath" },
+        "terminal_status": {
+          "enum": [
+            "allowed_executed",
+            "allowed_tool_rejected",
+            "denied_pre_dispatch",
+            "denied_guard_request",
+            "denied_guard_response",
+            "denied_revocation_stale",
+            "denied_policy_reload_conflict",
+            "denied_missing_execution_lease",
+            "denied_sandbox_attestation_mismatch",
+            "failed_receipt_log_unavailable",
+            "failed_tool_unreachable",
+            "failed_timeout_before_tool_entry",
+            "failed_timeout_after_tool_entry"
+          ]
+        },
+        "exclusion_reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "negativeCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path", "expected_failure_code", "observed_failure_code"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "path": { "$ref": "#/$defs/bundleRelativePath" },
+        "expected_failure_code": { "type": "string", "minLength": 1 },
+        "observed_failure_code": { "type": "string", "minLength": 1 },
+        "verifier_context": { "$ref": "#/$defs/negativeVerifierContext" }
+      }
+    },
+    "negativeVerifierContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "public_settlement_independent_chain_head": {
+          "enum": ["missing", "block_hash_mismatch"]
+        }
+      }
+    },
+    "advisoryArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "reason"],
+      "properties": {
+        "path": { "$ref": "#/$defs/bundleRelativePath" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "excludedArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "reason"],
+      "properties": {
+        "path": { "$ref": "#/$defs/bundleRelativePath" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

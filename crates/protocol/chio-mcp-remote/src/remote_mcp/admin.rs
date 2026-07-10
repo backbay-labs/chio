@@ -28,33 +28,6 @@ pub(super) fn install_admin_routes(router: Router<RemoteAppState>) -> Router<Rem
         )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn validate_admin_request_accepts_local_origin_and_matching_bearer_token() {
-        let mut headers = HeaderMap::new();
-        headers.insert(ORIGIN, HeaderValue::from_static("http://localhost"));
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_static("Bearer admin-token"),
-        );
-
-        assert!(validate_admin_request(&headers, Some("admin-token")).is_ok());
-    }
-
-    #[test]
-    fn validate_admin_request_rejects_disallowed_origin_before_bearer_auth() {
-        let mut headers = HeaderMap::new();
-        headers.insert(ORIGIN, HeaderValue::from_static("https://remote.example"));
-
-        let response = validate_admin_request(&headers, Some("admin-token"))
-            .expect_err("origin validation should run before bearer auth");
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
-    }
-}
-
 async fn handle_admin_authority(State(state): State<RemoteAppState>, request: Request) -> Response {
     if let Err(response) = validate_admin_request(request.headers(), state.admin_token.as_deref()) {
         return response;
@@ -921,4 +894,33 @@ fn load_session_revocation_status(
                 })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_admin_request_accepts_local_origin_and_matching_bearer_token() {
+        let mut headers = HeaderMap::new();
+        headers.insert(ORIGIN, HeaderValue::from_static("http://localhost"));
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Bearer admin-token"),
+        );
+
+        assert!(validate_admin_request(&headers, Some("admin-token")).is_ok());
+    }
+
+    #[test]
+    fn validate_admin_request_rejects_disallowed_origin_before_bearer_auth() {
+        let mut headers = HeaderMap::new();
+        headers.insert(ORIGIN, HeaderValue::from_static("https://remote.example"));
+
+        let response = match validate_admin_request(&headers, Some("admin-token")) {
+            Ok(()) => panic!("origin validation should run before bearer auth"),
+            Err(response) => response,
+        };
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
 }

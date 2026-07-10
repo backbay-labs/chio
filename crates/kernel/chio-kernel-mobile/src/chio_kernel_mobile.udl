@@ -52,7 +52,7 @@ namespace chio_kernel_mobile {
     // corresponds to `signing_seed_hex`; otherwise the signing pipeline
     // fails fast with ChioMobileError.KernelKeyMismatch.
     //
-    // `canonical_content_hex` (BAC-539) is the lowercase-hex encoding of
+    // `canonical_content_hex` is the lowercase-hex encoding of
     // the exact byte preimage `content_hash` was derived from. The signer
     // recomputes the hash inside the trust boundary and refuses to sign on
     // mismatch (ChioMobileError.SigningFailed), closing render-A / sign-B.
@@ -69,7 +69,7 @@ namespace chio_kernel_mobile {
     string sign_receipt(string body_json, string canonical_content_hex, string signing_seed_hex);
 
     // Relay-sign an already-minted, upstream-trusted receipt body
-    // (BAC-601 seam; NOT the default public signer).
+    // Trusted-body relay seam. NOT the default public signer.
     //
     // Trusts the caller-supplied `content_hash` and does NOT recompute it.
     // Use only to forward a body an upstream trusted producer already minted

@@ -1,0 +1,8 @@
+{
+  "schema": "chio.transaction.negative-fixture.v1",
+  "id": "evidence-graph-digest-mismatch",
+  "claim_ref": "claim.transaction.evidence_graph_digest_bound",
+  "base_fixture": "fixtures/proof-room/minimal-passport/valid/transaction-passport.json",
+  "case": "EvidenceGraphDigestMismatch",
+  "expected_failure_code": "proof-room.negative.evidence-graph-digest-mismatch"
+}

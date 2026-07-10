@@ -72,7 +72,7 @@
       "id": "MARKET4-01",
       "summary": "The authoritative docs separate comptroller-capable proof from the stronger market-position claim.",
       "witnesses": [
-        "docs/protocols/STRATEGIC-VISION.md",
+        "docs/start-here/VISION.md",
         "docs/release/QUALIFICATION.md",
         "docs/release/RELEASE_AUDIT.md",
         "docs/VISION.md"

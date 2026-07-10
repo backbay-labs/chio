@@ -1,0 +1,157 @@
+{
+  "schema": "chio.federation.verifier-trust-bundle.v1",
+  "trustedBbsIssuers": [
+    {
+      "issuerFingerprint": "70113a55c73186df1b5812a3c421f1ee8061acfda7fb4009f5a5432102ddaca3",
+      "publicKeyHex": "ac96b29b82fd2aafa60ec4a4cf720073e1e8fe232f24cb0125b3e89397176e66c170794a6cec5b6440b00fdf88d5851b0d08d0a729499b56940e76cc1ae33e838602a52a3667f24ca9c0aeb1baeaccd972cc46eeb2d1f3755c6ed950c998c7d5"
+    }
+  ],
+  "peers": [
+    {
+      "kernelId": "did:chio:buyer-kernel",
+      "publicKey": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+      "ladderManifestRef": {
+        "manifestId": "ladder:buyer:refund:v1",
+        "sha256": "8e445183ac1c5abc5f266fc4e7b7dc159aa64a48d1f47ec15158802c0b138ab5",
+        "issuedAtUnixMs": 1765999940000,
+        "expiresAtUnixMs": 1766000060000
+      }
+    },
+    {
+      "kernelId": "did:chio:vendor-a",
+      "publicKey": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+      "ladderManifestRef": {
+        "manifestId": "ladder:vendor-a:refund:v1",
+        "sha256": "a031be96a7633c7e1fbd80a533a133c66c108871fb7ecb7b600a3f92de75025c",
+        "issuedAtUnixMs": 1765999940000,
+        "expiresAtUnixMs": 1766000060000
+      }
+    },
+    {
+      "kernelId": "did:chio:vendor-b",
+      "publicKey": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a",
+      "ladderManifestRef": {
+        "manifestId": "ladder:vendor-b:refund:v1",
+        "sha256": "08d97e2130528341b1beb90296ecd5f95cda1052a3232945effa810006e29da4",
+        "issuedAtUnixMs": 1765999940000,
+        "expiresAtUnixMs": 1766000060000
+      }
+    },
+    {
+      "kernelId": "did:chio:vendor-c",
+      "publicKey": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc",
+      "ladderManifestRef": {
+        "manifestId": "ladder:vendor-c:refund:v1",
+        "sha256": "8ef4eaabdcbaeb55ab8b3c1cdfa52827e8c93d9870dc71dcabb09382dbaf9371",
+        "issuedAtUnixMs": 1765999940000,
+        "expiresAtUnixMs": 1766000060000
+      }
+    }
+  ],
+  "vendors": [
+    {
+      "vendorId": "vendor-a",
+      "publicKey": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da"
+    },
+    {
+      "vendorId": "vendor-b",
+      "publicKey": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a"
+    },
+    {
+      "vendorId": "vendor-c",
+      "publicKey": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc"
+    }
+  ],
+  "actionClasses": [
+    {
+      "actionClassId": "read_refund_case",
+      "toolName": "read_refund_case",
+      "kind": "routine"
+    },
+    {
+      "actionClassId": "verify_customer",
+      "toolName": "verify_customer",
+      "kind": "routine"
+    },
+    {
+      "actionClassId": "stage_refund",
+      "toolName": "stage_refund",
+      "kind": "receipt_backed"
+    },
+    {
+      "actionClassId": "workflow.grant_issue",
+      "toolName": "workflow.grant_issue",
+      "kind": "routine"
+    },
+    {
+      "actionClassId": "workflow.aggregate_publish",
+      "toolName": "workflow.aggregate_publish",
+      "kind": "routine"
+    }
+  ],
+  "workflowIntersections": [
+    {
+      "intersectionId": "workflow-intersection:buyer-refund:001",
+      "sha256": "eed26f6f877ffba1240d75d95f717fd1b71ca42210e336d5d0bf15a7677f821c"
+    }
+  ],
+  "runtimePolicyIssuerPublicKeys": [
+    "197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61"
+  ],
+  "leaseAuthorities": [
+    {
+      "issuer": "did:chio:buyer-kernel",
+      "keyId": "fdf72a088f18f7399e8c52bce448441501f759a595a86980e5d9a422a01e5d55",
+      "publicKey": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+      "validFromUnixMs": 1765999400000,
+      "validUntilUnixMs": 1766000600000,
+      "status": "active",
+      "allowedActionClasses": [
+        "delegated_action",
+        "narrow_destructive"
+      ]
+    }
+  ],
+  "governanceAuthorities": [
+    {
+      "authorizingKernel": "did:chio:buyer-governance",
+      "keyId": "ed23d853125a3acff2782dddf84e018ebc85942ebf328ff1287202a479964207",
+      "publicKey": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d",
+      "validFromUnixMs": 1765999400000,
+      "validUntilUnixMs": 1766000600000,
+      "status": "active",
+      "allowedCaseKinds": [
+        "destructive_authorization"
+      ]
+    }
+  ],
+  "disclosurePolicy": {
+    "projectionVersion": "chio.bbs-projection.workflow.v1",
+    "ciphersuite": "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_",
+    "messageCount": 14,
+    "requiredDisclosedIndices": [
+      4,
+      8,
+      9,
+      10
+    ],
+    "requiredDisclosedFields": [
+      "id",
+      "session_id",
+      "skill_id",
+      "skill_version"
+    ]
+  },
+  "revocation": {
+    "body": {
+      "schema": "chio.federation.revocation-checkpoint.v1",
+      "checkpointId": "revocation-checkpoint:chio-refund:001",
+      "issuedAtUnixMs": 1766000000000,
+      "expiresAtUnixMs": 1766000120000,
+      "epochHeight": 64,
+      "revokedKeyFingerprints": []
+    },
+    "signerKey": "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a",
+    "signature": "c948d8d468b4d2c8f4c985f4dc7bd4530326a2a53e7132650d13745a31b7a1afeb74741ac5a22e1920df470f1e6be00a402eb8ef7f83d309760843f9c18c830a"
+  }
+}

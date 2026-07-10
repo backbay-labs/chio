@@ -61,7 +61,6 @@ Options are passed via functional `chio.Option` values:
 | `ConfigFile(path)`         | Path to `chio.yaml` (routes and policies).                          |
 | `WithSidecarURL(url)`      | Override sidecar base URL.                                          |
 | `WithTimeout(seconds)`     | Sidecar HTTP timeout (default 5).                                   |
-| `WithOnSidecarError(mode)` | Legacy source-compatibility setting. Current v1 always denies sidecar errors. |
 | `WithIdentityExtractor(f)` | Custom caller extraction; defaults to Bearer/API key/Cookie lookup. |
 | `WithRouteResolver(f)`     | Map `(method, path)` to a route pattern (e.g. `/pets/{petId}`).     |
 
@@ -86,7 +85,6 @@ protected := chio.Protect(
     chio.ConfigFile("chio.yaml"),
     chio.WithSidecarURL("http://127.0.0.1:9090"),
     chio.WithRouteResolver(resolver),
-    chio.WithOnSidecarError("deny"),
 )
 ```
 

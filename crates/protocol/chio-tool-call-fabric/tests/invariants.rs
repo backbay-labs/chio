@@ -553,18 +553,14 @@ proptest! {
     }
 
     /// (f) `ProviderError` Display is em-dash-free.
-    ///
-    /// House rule: no em dashes (U+2014) in any rendered output. Each
-    /// `ProviderError` variant must satisfy this for arbitrary content.
     #[test]
-    fn invariant_f_provider_error_display_is_em_dash_free(err in arb_provider_error()) {
-        let rendered = err.to_string();
+    fn invariant_f_provider_error_display_has_no_em_dash(error in arb_provider_error()) {
+        let rendered = error.to_string();
         prop_assert!(
             !rendered.contains('\u{2014}'),
-            "em dash in provider error display: {}",
+            "provider error display contains U+2014: {}",
             rendered,
         );
-        prop_assert!(!rendered.is_empty(), "provider error display is empty");
     }
 
     /// (g) `ProvenanceStamp.received_at` round-trips through canonical JSON

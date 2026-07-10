@@ -9,13 +9,6 @@ const PROVIDER_NAME: &str = "ollama";
 const ADAPTER_UNAVAILABLE_REASON: &str =
     "Ollama adapter handle does not own the local loaded model bytes";
 
-pub fn loaded_weights_unavailable() -> LoadedWeightsUnavailable {
-    chio_provider_adapter_core::loaded_weights_unavailable(
-        PROVIDER_NAME,
-        ADAPTER_UNAVAILABLE_REASON,
-    )
-}
-
 impl_unavailable_loaded_weights!(OllamaAdapter, PROVIDER_NAME, ADAPTER_UNAVAILABLE_REASON);
 
 #[derive(Debug, Clone)]

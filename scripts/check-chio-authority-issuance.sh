@@ -14,7 +14,7 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 cargo test -p chio-federation-authority
 cargo run -p chio-three-vendor-example --bin generate-chio-three-vendor-fixtures -- \
-  --authority-input-dir "$tmpdir/input"
+  --authority-input-package "$PACKAGE_FIXTURE" "$tmpdir/input"
 
 validate_schema() {
   local schema="$1"

@@ -92,11 +92,12 @@ fn progress_token_accepts_integer_or_string() {
 #[test]
 fn session_operation_roundtrip_preserves_tool_call_payload() {
     let kp = Keypair::generate();
-    let op = SessionOperation::ToolCall(ToolCallOperation {
+    let op = SessionOperation::ToolCall(Box::new(ToolCallOperation {
         capability: make_token(&kp),
         server_id: "srv-a".to_string(),
         tool_name: "read_file".to_string(),
         arguments: serde_json::json!({"path": "/app/src/lib.rs"}),
+        governed_intent: None,
         execution_nonce: None,
         model_metadata: Some(ModelMetadata {
             model_id: "gpt-5".to_string(),
@@ -104,7 +105,12 @@ fn session_operation_roundtrip_preserves_tool_call_payload() {
             provider: Some("openai".to_string()),
             provenance_class: ProvenanceEvidenceClass::Observed,
         }),
-    });
+        extra_metadata: Some(serde_json::json!({
+            "route_selection": {
+                "selectedRouteId": "mcp:task-child-a"
+            }
+        })),
+    }));
 
     let encoded = serde_json::to_string(&op).unwrap();
     let decoded: SessionOperation = serde_json::from_str(&encoded).unwrap();
@@ -127,6 +133,15 @@ fn session_operation_roundtrip_preserves_tool_call_payload() {
                     .as_ref()
                     .map(|metadata| metadata.provenance_class),
                 Some(ProvenanceEvidenceClass::Observed)
+            );
+            assert_eq!(
+                payload
+                    .extra_metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("route_selection"))
+                    .and_then(|route| route.get("selectedRouteId"))
+                    .and_then(serde_json::Value::as_str),
+                Some("mcp:task-child-a")
             );
         }
         _ => panic!("expected tool call"),

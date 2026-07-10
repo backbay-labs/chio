@@ -501,23 +501,6 @@ class RedisStreamEntry:
     fields: Mapping[Any, Any]
 
 
-def __getattr__(name: str) -> Any:
-    # Deprecated shim for the old private name. PEP 562 module-level
-    # __getattr__ keeps `from chio_streaming.redis_streams import
-    # _HandlerEntry` working with a DeprecationWarning. Removed in 0.4.
-    if name == "_HandlerEntry":
-        import warnings
-
-        warnings.warn(
-            "chio_streaming.redis_streams._HandlerEntry is deprecated; "
-            "use RedisStreamEntry instead (removed in 0.4).",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return RedisStreamEntry
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 def _normalise_fields(fields: Mapping[Any, Any]) -> dict[str, Any]:
     """Coerce field keys and values to UTF-8 strings for the sidecar.
 

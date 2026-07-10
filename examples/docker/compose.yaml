@@ -36,5 +36,14 @@ services:
       chio-trust-demo:
         condition: service_healthy
 
+  chio-proof-room:
+    image: chio-proof-room:local
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      target: chio-proof-room-quickstart
+    ports:
+      - "${CHIO_PROOF_ROOM_PORT:-7391}:7391"
+
 volumes:
   chio_demo_state:

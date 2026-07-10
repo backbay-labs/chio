@@ -217,6 +217,9 @@ stop_live_topology() {
 run_live_scenario() {
   local bundle_dir="$1"
   local require_base_sepolia="$2"
+  local e2e_report="${3:-}"
+  local promotion_report="${4:-}"
+  local ops_audit="${5:-}"
   local args=(
     --repo-root "${ROOT}"
     --artifact-dir "${bundle_dir}"
@@ -235,6 +238,16 @@ run_live_scenario() {
 
   if [[ "${require_base_sepolia}" == "1" ]]; then
     args+=(--require-base-sepolia-smoke)
+  fi
+
+  if [[ -n "${e2e_report}" ]]; then
+    args+=(--e2e-report "${e2e_report}")
+  fi
+  if [[ -n "${promotion_report}" ]]; then
+    args+=(--promotion-report "${promotion_report}")
+  fi
+  if [[ -n "${ops_audit}" ]]; then
+    args+=(--ops-audit "${ops_audit}")
   fi
 
   uv run --project "${EXAMPLE_ROOT}" python "${EXAMPLE_ROOT}/orchestrate.py" "${args[@]}" \
@@ -263,4 +276,56 @@ from pathlib import Path
 result = json.loads((Path(sys.argv[1]) / "review-result.json").read_text(encoding="utf-8"))
 assert result["ok"], result["errors"]
 PY
+}
+
+verify_transaction_passport() {
+  local bundle_dir="$1"
+  local source_dir="${bundle_dir}/transaction-passport-source"
+  local passport_dir="${bundle_dir}/transaction-passport"
+  local minimal_fixture="${ROOT}/fixtures/proof-room/minimal-passport/valid"
+  local signer_seed="${CHIO_PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX:-0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b}"
+  local trusted_roots="${CHIO_TRANSACTION_TRUSTED_ROOT_KEYS:-ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c,68f4b6017d0f876a55c80a82b8388a54aad264d367269e2de8be079c935b5f96,66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a}"
+
+  rm -rf "${source_dir}" "${passport_dir}"
+  mkdir -p "${source_dir}/minimal"
+
+  for artifact in \
+    capability-proof.json \
+    guard-decision.json \
+    kernel-receipt.json \
+    policy.json \
+    request-digest.json \
+    response-digest.json \
+    trust-root.json
+  do
+    cp "${minimal_fixture}/${artifact}" "${source_dir}/minimal/${artifact}"
+  done
+
+  CHIO_PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX="${signer_seed}" \
+  "${CHIO_BIN}" proof assemble \
+    --artifact-dir "${source_dir}" \
+    --verifier-policy "${minimal_fixture}/verifier-policy.json" \
+    --passport-id "passport-ioa-web3-service-order" \
+    --issued-at "2026-06-10T00:00:00Z" \
+    --out "${passport_dir}" \
+    --json \
+    >"${bundle_dir}/transaction-passport-assemble-report.json"
+
+  CHIO_TRANSACTION_TRUSTED_ROOT_KEYS="${trusted_roots}" \
+  "${CHIO_BIN}" proof verify "${passport_dir}" \
+    --out "${passport_dir}/verifier-report.json"
+
+  python3 - "${passport_dir}/verifier-report.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+if report.get("verdict") != "verified":
+    raise SystemExit(f"transaction passport did not verify: {report.get('verdict')}")
+PY
+
+  CHIO_BIN="${CHIO_BIN}" \
+    "${ROOT}/scripts/check-chio-transaction-passport.sh" \
+    >"${passport_dir}/negative-fixture-gate.log"
 }

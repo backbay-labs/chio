@@ -1,10 +1,14 @@
 use chio_core_types::crypto::Keypair;
 use chio_runtime_core::{
-    ChioRuntimeError, InMemoryRuntimeAdmissionStore, RuntimeAdmissionBundle, RuntimeAdmissionStore,
-    RuntimeEvidenceManifestEntry, RuntimeOrchestrationProfile, RuntimeRequestBinding,
-    RuntimeTrustFloorEntry, SqliteRuntimeOrchestrationStore, TreatyScope,
-    CHIO_RUNTIME_ADMISSION_BUNDLE_SCHEMA, CHIO_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA,
-    CHIO_TREATY_SCOPE_SCHEMA,
+    ChioRuntimeError, InMemoryRuntimeAdmissionStore, JsonRuntimeAdmissionStore,
+    RuntimeAdmissionBundle, RuntimeAdmissionStore, RuntimeEvidenceManifestEntry,
+    RuntimeOrchestrationProfile, RuntimeRequestBinding, RuntimeTrustFloorEntry,
+    SqliteRuntimeOrchestrationStore, TreatyScope, CHIO_RUNTIME_ADMISSION_BUNDLE_SCHEMA,
+    CHIO_RUNTIME_ORCHESTRATION_PROFILE_SCHEMA, CHIO_TREATY_SCOPE_SCHEMA,
+};
+use chio_swarm_authority::{
+    SwarmAuthorityBundle, SwarmBudgetPool, SwarmContinuationToken, SwarmDelegationWitnessChain,
+    SwarmJoinReceipt, SwarmRevocationEpoch, SwarmRoutePlanReceipt, SwarmTaskGraph,
 };
 
 #[derive(Default)]
@@ -91,6 +95,56 @@ fn in_memory_runtime_admission_store_insert_bundle_is_idempotent(
             Ok(())
         }
     }
+}
+
+#[test]
+fn json_runtime_admission_store_persists_swarm_authority_bundle(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("runtime-admission.json");
+    let bundle = swarm_authority_bundle_fixture()?;
+
+    {
+        let store = JsonRuntimeAdmissionStore::open(&path)?;
+        store.insert_swarm_authority_bundle(bundle.clone())?;
+        store.insert_swarm_authority_bundle(bundle.clone())?;
+    }
+
+    let reopened = JsonRuntimeAdmissionStore::open(&path)?;
+    let loaded = reopened
+        .swarm_authority_bundle(&bundle.task_graph.graph_id)?
+        .ok_or_else(|| std::io::Error::other("swarm authority bundle missing after restart"))?;
+    assert_eq!(loaded, bundle);
+
+    let mut conflicting = bundle;
+    conflicting.now_unix_ms += 1;
+    match reopened.insert_swarm_authority_bundle(conflicting) {
+        Ok(()) => Err("conflicting swarm authority bundle insert unexpectedly succeeded".into()),
+        Err(error) => {
+            assert_eq!(error.code(), "duplicate_swarm_authority_bundle_mismatch");
+            Ok(())
+        }
+    }
+}
+
+#[test]
+fn sqlite_runtime_orchestration_store_records_swarm_authority_bundle_created_at(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("runtime-swarm-authority.sqlite3");
+    let bundle = swarm_authority_bundle_fixture()?;
+    let store = SqliteRuntimeOrchestrationStore::open(&path)?;
+
+    store.insert_swarm_authority_bundle(bundle.clone())?;
+
+    let connection = rusqlite::Connection::open(&path)?;
+    let created_at_unix_ms: i64 = connection.query_row(
+        "SELECT created_at_unix_ms FROM runtime_swarm_authority_bundles WHERE task_graph_id = ?1",
+        rusqlite::params![bundle.task_graph.graph_id],
+        |row| row.get(0),
+    )?;
+    assert!(created_at_unix_ms > 0);
+    Ok(())
 }
 
 #[test]
@@ -233,6 +287,49 @@ fn bundle() -> RuntimeAdmissionBundle {
         trust_bundle_sha256: "b".repeat(64),
         verification_context_sha256: "c".repeat(64),
     }
+}
+
+fn swarm_authority_bundle_fixture() -> Result<SwarmAuthorityBundle, serde_json::Error> {
+    Ok(SwarmAuthorityBundle {
+        task_graph: serde_json::from_str::<SwarmTaskGraph>(include_str!(
+            "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/task-graph.json"
+        ))?,
+        continuation_tokens: vec![
+            serde_json::from_str::<SwarmContinuationToken>(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/continuation-child-a.json"
+            ))?,
+            serde_json::from_str::<SwarmContinuationToken>(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/continuation-child-b.json"
+            ))?,
+        ],
+        witness_chains: vec![
+            serde_json::from_str::<SwarmDelegationWitnessChain>(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/witness-child-a.json"
+            ))?,
+            serde_json::from_str::<SwarmDelegationWitnessChain>(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/witness-child-b.json"
+            ))?,
+        ],
+        join_receipts: vec![serde_json::from_str::<SwarmJoinReceipt>(include_str!(
+            "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/join-receipt.json"
+        ))?],
+        route_plan_receipts: vec![
+            serde_json::from_str::<SwarmRoutePlanReceipt>(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/route-child-a.json"
+            ))?,
+            serde_json::from_str::<SwarmRoutePlanReceipt>(include_str!(
+                "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/route-child-b.json"
+            ))?,
+        ],
+        budget_pool: serde_json::from_str::<SwarmBudgetPool>(include_str!(
+            "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/budget-pool.json"
+        ))?,
+        revocation_epoch: serde_json::from_str::<SwarmRevocationEpoch>(include_str!(
+            "../../../../fixtures/proof-room/swarm-authority/valid-recursive-delegation/revocation-epoch.json"
+        ))?,
+        terminal_receipts: Vec::new(),
+        now_unix_ms: 1_800_000_001_000,
+    })
 }
 
 fn treaty_scope() -> TreatyScope {

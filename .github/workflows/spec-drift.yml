@@ -35,7 +35,9 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        uses: ./.github/actions/apt-install
+        with:
+          packages: ripgrep
 
       - name: Assert Chio-owned schemas stay v1-only before release
         run: bash scripts/check-chio-owned-v1-only.sh
@@ -46,7 +48,9 @@ jobs:
           rustup default stable
 
       - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
 
       - name: Install uv (python codegen toolchain runner)
         uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39
@@ -183,7 +187,9 @@ jobs:
           shared-key: spec-drift-vectors-byte-stable
 
       - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
 
       - name: Verify freeze-vectors are byte-stable
         run: cargo xtask freeze-vectors --check
@@ -230,7 +236,9 @@ jobs:
           shared-key: spec-drift-schema-coverage
 
       - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
 
       - name: Run vectors_schema_pair coverage test
         run: |
@@ -259,7 +267,9 @@ jobs:
           shared-key: spec-drift-cross-lang-bytes
 
       - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
 
       - name: Run canonical_json_diff proptest (RFC 8785 invariants)
         run: |

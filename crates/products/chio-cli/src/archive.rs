@@ -36,6 +36,43 @@ pub(crate) fn read_tar_gz_file(
     label: &str,
     limits: SafeArchiveLimits,
 ) -> Result<Vec<SafeArchiveEntry>, CliError> {
+    let compressed_len = compressed_archive_len(archive_path, label, limits)?;
+    let file = fs::File::open(archive_path).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to open {label} {}: {error}",
+            archive_path.display()
+        ))
+    })?;
+    let decoder = flate2::read::GzDecoder::new(file);
+    read_tar_archive_entries(archive_path, label, limits, compressed_len, decoder)
+}
+
+pub(crate) fn read_tar_zstd_file(
+    archive_path: &Path,
+    label: &str,
+    limits: SafeArchiveLimits,
+) -> Result<Vec<SafeArchiveEntry>, CliError> {
+    let compressed_len = compressed_archive_len(archive_path, label, limits)?;
+    let file = fs::File::open(archive_path).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to open {label} {}: {error}",
+            archive_path.display()
+        ))
+    })?;
+    let decoder = zstd::stream::read::Decoder::new(file).map_err(|error| {
+        CliError::cli_io_error(format!(
+            "failed to open {label} zstd stream {}: {error}",
+            archive_path.display()
+        ))
+    })?;
+    read_tar_archive_entries(archive_path, label, limits, compressed_len, decoder)
+}
+
+fn compressed_archive_len(
+    archive_path: &Path,
+    label: &str,
+    limits: SafeArchiveLimits,
+) -> Result<u64, CliError> {
     let compressed_len = fs::metadata(archive_path)
         .map_err(|error| {
             CliError::cli_io_error(format!(
@@ -50,15 +87,17 @@ pub(crate) fn read_tar_gz_file(
             archive_path.display()
         )));
     }
+    Ok(compressed_len)
+}
 
-    let file = fs::File::open(archive_path).map_err(|error| {
-        CliError::cli_io_error(format!(
-            "failed to open {label} {}: {error}",
-            archive_path.display()
-        ))
-    })?;
-    let decoder = flate2::read::GzDecoder::new(file);
-    let mut archive = tar::Archive::new(decoder);
+fn read_tar_archive_entries<R: Read>(
+    archive_path: &Path,
+    label: &str,
+    limits: SafeArchiveLimits,
+    compressed_len: u64,
+    reader: R,
+) -> Result<Vec<SafeArchiveEntry>, CliError> {
+    let mut archive = tar::Archive::new(reader);
     let mut entries_out = Vec::new();
     let mut seen = BTreeSet::new();
     let mut seen_casefold = BTreeSet::new();
@@ -92,8 +131,12 @@ pub(crate) fn read_tar_gz_file(
         let entry_path = entry_path.to_str().ok_or_else(|| {
             CliError::cli_other_error(format!("{label} member path is not UTF-8"))
         })?;
+        let entry_path = entry_path.strip_prefix("./").unwrap_or(entry_path);
         if entry.header().entry_type().is_dir() {
             let directory_path = entry_path.trim_end_matches('/');
+            if directory_path.is_empty() || directory_path == "." {
+                continue;
+            }
             let _ = safe_archive_member_path(directory_path, label)?;
             continue;
         }

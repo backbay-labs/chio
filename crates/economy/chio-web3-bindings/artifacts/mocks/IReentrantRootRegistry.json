@@ -1,0 +1,55 @@
+{
+  "contractName": "IReentrantRootRegistry",
+  "sourceName": "src/mocks/ReentrantBondToken.sol",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "operator",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "merkleRoot",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint64",
+          "name": "checkpointSeq",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "batchStartSeq",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "batchEndSeq",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "treeSize",
+          "type": "uint64"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "operatorKeyHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "publishRoot",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "",
+  "deployedBytecode": "",
+  "immutableReferences": {},
+  "creationBytecodeHash": "",
+  "deployedRuntimeCodehash": "",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.30+commit.73712a01\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"operator\",\"type\":\"address\"},{\"internalType\":\"bytes32\",\"name\":\"merkleRoot\",\"type\":\"bytes32\"},{\"internalType\":\"uint64\",\"name\":\"checkpointSeq\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"batchStartSeq\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"batchEndSeq\",\"type\":\"uint64\"},{\"internalType\":\"uint64\",\"name\":\"treeSize\",\"type\":\"uint64\"},{\"internalType\":\"bytes32\",\"name\":\"operatorKeyHash\",\"type\":\"bytes32\"}],\"name\":\"publishRoot\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"src/mocks/ReentrantBondToken.sol\":\"IReentrantRootRegistry\"},\"evmVersion\":\"paris\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[]},\"sources\":{\"src/lib/ChioMerkle.sol\":{\"keccak256\":\"0xbc7486a0eedec25684fff560fe1349164b83b859e882c3d891e53ffa5ce6a8db\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://b773aa0557b00455b28c6ba6e4b841fbf82645f3f1bbfbb51379aaa0703c8edf\",\"dweb:/ipfs/QmSCdZQ4SHFEh8tfCVHGv8pDXobx7zDQfcY7B9hzLrrA83\"]},\"src/mocks/ReentrantBondToken.sol\":{\"keccak256\":\"0xf9dd08ea17dc202316962e3459673ae7fb7a3b0874841b37cfd18702df1f95f6\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://7a40708ae549566dbce7e90974ea2923db1c1f50b48ccdee1e273c7f2d30e212\",\"dweb:/ipfs/QmX7bYCd2cXTGQ5rP3VpW24M4fFYxS4nQww3mjRZFbywXh\"]}},\"version\":1}"
+}

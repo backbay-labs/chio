@@ -1,0 +1,71 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core/chio-core-types",
+    "crates/economy/chio-appraisal",
+    "crates/economy/chio-credit",
+    "crates/economy/chio-underwriting",
+    "crates/economy/chio-web3",
+    "crates/kernel/chio-runtime-proof-parity",
+    "crates/kernel/chio-swarm-authority",
+    "crates/platform/chio-agent-web-interop",
+    "crates/platform/chio-commerce-order",
+    "crates/platform/chio-enterprise-export",
+    "crates/platform/chio-risk-comptroller",
+    "crates/platform/chio-transaction-passport",
+    "crates/platform/chio-trust-market-context",
+    "crates/platform/chio-workflow-preflight",
+    "crates/products/chio-proof-room",
+    "crates/trust/chio-disclosure-lineage",
+    "crates/tooling/chio-spec-codegen",
+    "crates/tooling/chio-test-support",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.93"
+license = "Apache-2.0"
+repository = "https://github.com/backbay-labs/chio"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+strip = "symbols"
+panic = "abort"
+
+[workspace.dependencies]
+chio-appraisal = { path = "crates/economy/chio-appraisal" }
+chio-agent-web-interop = { path = "crates/platform/chio-agent-web-interop" }
+chio-commerce-order = { path = "crates/platform/chio-commerce-order" }
+chio-core-types = { path = "crates/core/chio-core-types" }
+chio-credit = { path = "crates/economy/chio-credit" }
+chio-disclosure-lineage = { path = "crates/trust/chio-disclosure-lineage" }
+chio-enterprise-export = { path = "crates/platform/chio-enterprise-export" }
+chio-risk-comptroller = { path = "crates/platform/chio-risk-comptroller" }
+chio-runtime-proof-parity = { path = "crates/kernel/chio-runtime-proof-parity" }
+chio-spec-codegen = { path = "crates/tooling/chio-spec-codegen" }
+chio-swarm-authority = { path = "crates/kernel/chio-swarm-authority" }
+chio-transaction-passport = { path = "crates/platform/chio-transaction-passport" }
+chio-trust-market-context = { path = "crates/platform/chio-trust-market-context" }
+chio-workflow-preflight = { path = "crates/platform/chio-workflow-preflight" }
+chio-test-support = { path = "crates/tooling/chio-test-support" }
+chio-underwriting = { path = "crates/economy/chio-underwriting" }
+chio-web3 = { path = "crates/economy/chio-web3" }
+base64 = "0.22"
+chrono = "0.4"
+fips204 = { version = "0.4.6", default-features = false, features = ["ml-dsa-65"] }
+hex = "0.4"
+hmac = "0.12"
+jsonschema = { version = "0.46", default-features = false, features = ["resolve-file"] }
+proptest = "1.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10"
+thiserror = "1"
+tokio = { version = "1", features = ["full"] }
+axum = "0.8"

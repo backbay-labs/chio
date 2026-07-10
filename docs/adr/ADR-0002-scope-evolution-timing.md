@@ -2,7 +2,6 @@
 
 - Status: Proposed
 - Decision owner: protocol and policy lanes
-- Related plan item: `D2` in [../EXECUTION_PLAN.md](../operations/EXECUTION_PLAN.md)
 
 ## Context
 

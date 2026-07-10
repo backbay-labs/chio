@@ -1,9 +1,8 @@
 # Async Kernel Migration
 
-This migration makes `ChioKernel::evaluate_tool_call` the primary tool-call evaluation
-surface. The legacy synchronous shim is still available for one compatibility
-window behind the `legacy-sync` Cargo feature, but it is no longer enabled by
-default.
+This migration documents the kernel's tool-call evaluation entrypoints. Both a
+synchronous (`evaluate_tool_call_blocking`) and asynchronous
+(`evaluate_tool_call`) entrypoint are provided.
 
 ## Rust Callers
 
@@ -22,11 +21,10 @@ let response = kernel
     .await?;
 ```
 
-Only callers that cannot enter an async context should opt back into the
-compatibility path:
+Callers that cannot enter an async context can use the blocking entrypoint:
 
-```toml
-chio-kernel = { version = "...", features = ["legacy-sync"] }
+```rust
+let response = kernel.evaluate_tool_call_blocking(&request)?;
 ```
 
 ## In-Tree Consumer Matrix
@@ -37,15 +35,13 @@ chio-kernel = { version = "...", features = ["legacy-sync"] }
 | `chio-mcp-edge` | async bridge available | Use `execute_bridge_mcp_tool_call_async` from async runtimes. The sync bridge wrapper is retained only for synchronous protocol trait adapters. |
 | `chio-mcp-adapter` | no direct sync kernel call | Native adapter code implements tool-server traits and does not call `evaluate_tool_call_blocking`. |
 | `chio-a2a-edge` | no direct sync kernel call | Kernel-backed paths route through the cross-protocol orchestrator and do not call `evaluate_tool_call_blocking` directly. |
-| `chio-acp-edge` | no direct sync kernel call | ACP edge paths do not call the legacy tool-call shim. |
+| `chio-acp-edge` | no direct sync kernel call | ACP-Client edge paths do not call the blocking tool-call entrypoint. |
 | `chio-acp-proxy` | no direct sync kernel call | Proxy receipt signing uses kernel-backed receipt helpers, not the tool-call shim. |
 | Python SDKs under `sdks/python` | async | SDK clients expose `async def evaluate_tool_call(...)` and integrations await it. |
 
 ## Operator Checklist
 
-1. Remove implicit reliance on the default `legacy-sync` feature.
-2. Move request handling onto Tokio tasks and call `evaluate_tool_call`.
+1. Move request handling onto Tokio tasks and call `evaluate_tool_call` where an async context is available.
+2. Use `evaluate_tool_call_blocking` only for synchronous host APIs.
 3. For bridge code that needs route metadata in receipts, call
    `evaluate_tool_call_with_metadata`.
-4. If a synchronous compatibility path is unavoidable for one release, enable
-   `legacy-sync` explicitly and track removal before the next release.

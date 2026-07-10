@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-transaction/v1/verifier-policy.schema.json",
+  "title": "Chio Transaction Verifier Policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "issued_at", "required_claims", "omitted_claims"],
+  "properties": {
+    "schema": { "const": "chio.transaction.verifier-policy.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "required_claims": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "omitted_claims": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "unsupported_claims": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "max_reputation_import_weight": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "trusted_market_authority_keys": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+      "uniqueItems": true
+    },
+    "accepted_passport_issuers": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "required_evidence_roles": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "accepted_transparency_states": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["trust_anchored", "transparency_preview", "not_present"]
+      },
+      "uniqueItems": true
+    },
+    "required_commerce_states": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["authorized", "fulfilled", "settled", "disputed", "refunded"]
+      },
+      "uniqueItems": true
+    }
+  }
+}

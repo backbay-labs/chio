@@ -1,4 +1,4 @@
-//! Integration tests for the CUA + SpiderSense guards.
+//! Integration tests for the CUA + EmbeddingAnomaly guards.
 //!
 //! Exercises each guard through the real [`chio_kernel::Guard`] trait with
 //! a realistic [`GuardContext`].  The tests verify the acceptance
@@ -10,7 +10,7 @@
 //!   denies; missing postcondition probe denies in strict mode.
 //! * RemoteDesktopSideChannelGuard - disabled clipboard denies;
 //!   oversized transfer denies; unknown channel denies (fail-closed).
-//! * SpiderSenseGuard - embedding above upper bound denies; below
+//! * EmbeddingAnomalyGuard - embedding above upper bound denies; below
 //!   lower bound allows; threshold configurable.
 
 #![allow(clippy::expect_used, clippy::unwrap_used)]
@@ -21,10 +21,10 @@ use chio_core::capability::{
 };
 use chio_core::crypto::Keypair;
 use chio_guards::{
-    AmbiguousPolicy, ComputerUseConfig, ComputerUseGuard, EnforcementMode,
-    InputInjectionCapabilityConfig, InputInjectionCapabilityGuard, PatternDb,
-    RemoteDesktopSideChannelConfig, RemoteDesktopSideChannelGuard, SpiderSenseConfig,
-    SpiderSenseGuard,
+    AmbiguousPolicy, ComputerUseConfig, ComputerUseGuard, EmbeddingAnomalyConfig,
+    EmbeddingAnomalyGuard, EmbeddingAnomalyPatternDb, EnforcementMode,
+    InputInjectionCapabilityConfig, InputInjectionCapabilityGuard, RemoteDesktopSideChannelConfig,
+    RemoteDesktopSideChannelGuard,
 };
 use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
 
@@ -379,20 +379,20 @@ fn remote_desktop_denies_invalid_transfer_size_type() {
     assert!(matches!(v, Verdict::Deny), "expected Deny, got {v:?}");
 }
 
-// SpiderSenseGuard
+// EmbeddingAnomalyGuard
 
 fn bundled_pattern_json() -> String {
     std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/data/spider_sense_patterns.json"
+        "/data/embedding_anomaly_patterns.json"
     ))
     .expect("bundled pattern DB present")
 }
 
 #[test]
-fn spider_sense_bundled_pattern_db_loads() {
+fn embedding_anomaly_bundled_pattern_db_loads() {
     let guard =
-        SpiderSenseGuard::from_json(&bundled_pattern_json()).expect("bundled DB must parse");
+        EmbeddingAnomalyGuard::from_json(&bundled_pattern_json()).expect("bundled DB must parse");
     assert!(
         guard.pattern_count() >= 9,
         "expected 10-20 entries from the bundled DB"
@@ -401,8 +401,9 @@ fn spider_sense_bundled_pattern_db_loads() {
 }
 
 #[test]
-fn spider_sense_known_bad_embedding_denies() {
-    let guard = SpiderSenseGuard::from_json(&bundled_pattern_json()).expect("bundled DB parses");
+fn embedding_anomaly_known_bad_embedding_denies() {
+    let guard =
+        EmbeddingAnomalyGuard::from_json(&bundled_pattern_json()).expect("bundled DB parses");
     // First bundled pattern is prompt-injection system override.
     let exact_match = serde_json::json!({
         "embedding": [0.95, 0.05, 0.02, 0.03, 0.12, 0.01]
@@ -415,8 +416,9 @@ fn spider_sense_known_bad_embedding_denies() {
 }
 
 #[test]
-fn spider_sense_benign_embedding_allows() {
-    let guard = SpiderSenseGuard::from_json(&bundled_pattern_json()).expect("bundled DB parses");
+fn embedding_anomaly_benign_embedding_allows() {
+    let guard =
+        EmbeddingAnomalyGuard::from_json(&bundled_pattern_json()).expect("bundled DB parses");
     // Unit vector far from any pattern cluster.
     let benign = serde_json::json!({
         "embedding": [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0]
@@ -429,28 +431,43 @@ fn spider_sense_benign_embedding_allows() {
 }
 
 #[test]
-fn spider_sense_no_embedding_is_allow() {
-    let guard = SpiderSenseGuard::from_json(&bundled_pattern_json()).expect("bundled DB parses");
+fn embedding_anomaly_no_embedding_is_allow() {
+    let guard =
+        EmbeddingAnomalyGuard::from_json(&bundled_pattern_json()).expect("bundled DB parses");
     let v = eval(&guard, "inspect", serde_json::json!({"other": 1}));
     assert!(matches!(v, Verdict::Allow));
 }
 
 #[test]
-fn spider_sense_threshold_configurable() {
-    let db = PatternDb::from_json(
+fn embedding_anomaly_malformed_explicit_embedding_denies() {
+    let guard =
+        EmbeddingAnomalyGuard::from_json(&bundled_pattern_json()).expect("bundled DB parses");
+    for args in [
+        serde_json::json!({"embedding": [0.1, "bad", 0.3]}),
+        serde_json::json!({"vector": "bad"}),
+        serde_json::json!({"embeddings": [[0.1, 0.2], ["bad", 0.4]]}),
+    ] {
+        let v = eval(&guard, "inspect", args);
+        assert!(matches!(v, Verdict::Deny));
+    }
+}
+
+#[test]
+fn embedding_anomaly_threshold_configurable() {
+    let db = EmbeddingAnomalyPatternDb::from_json(
         r#"[
             {"id":"a","category":"x","stage":"s","label":"l","embedding":[1.0,0.0,0.0]}
         ]"#,
     )
     .expect("small DB");
     // High threshold: near-identical vector with low ambiguity band → Deny
-    let high = SpiderSenseConfig {
+    let high = EmbeddingAnomalyConfig {
         similarity_threshold: 0.8,
         ambiguity_band: 0.05,
         top_k: 5,
         ambiguous_policy: AmbiguousPolicy::Allow,
     };
-    let guard = SpiderSenseGuard::new(db.clone(), high).expect("high threshold");
+    let guard = EmbeddingAnomalyGuard::new(db.clone(), high).expect("high threshold");
     let v = eval(
         &guard,
         "inspect",
@@ -461,13 +478,13 @@ fn spider_sense_threshold_configurable() {
     // Very high threshold + narrow band: same 1.0 match still denies,
     // but weaker vectors (~0.707) land outside the upper bound and
     // default to Allow.
-    let looser = SpiderSenseConfig {
+    let looser = EmbeddingAnomalyConfig {
         similarity_threshold: 0.9,
         ambiguity_band: 0.05,
         top_k: 5,
         ambiguous_policy: AmbiguousPolicy::Allow,
     };
-    let guard = SpiderSenseGuard::new(db, looser).expect("looser");
+    let guard = EmbeddingAnomalyGuard::new(db, looser).expect("looser");
     let v = eval(
         &guard,
         "inspect",
@@ -477,8 +494,9 @@ fn spider_sense_threshold_configurable() {
 }
 
 #[test]
-fn spider_sense_dimension_mismatch_denies() {
-    let guard = SpiderSenseGuard::from_json(&bundled_pattern_json()).expect("bundled DB parses");
+fn embedding_anomaly_dimension_mismatch_denies() {
+    let guard =
+        EmbeddingAnomalyGuard::from_json(&bundled_pattern_json()).expect("bundled DB parses");
     let v = eval(
         &guard,
         "inspect",
@@ -491,15 +509,15 @@ fn spider_sense_dimension_mismatch_denies() {
 }
 
 #[test]
-fn spider_sense_malformed_pattern_db_fails_closed_at_init() {
+fn embedding_anomaly_malformed_pattern_db_fails_closed_at_init() {
     // Empty array is invalid.
-    assert!(SpiderSenseGuard::from_json("[]").is_err());
+    assert!(EmbeddingAnomalyGuard::from_json("[]").is_err());
     // Dim mismatch.
     let bad = r#"[
         {"id":"a","category":"x","stage":"s","label":"l","embedding":[1.0]},
         {"id":"b","category":"y","stage":"s","label":"l","embedding":[1.0,0.0]}
     ]"#;
-    assert!(SpiderSenseGuard::from_json(bad).is_err());
+    assert!(EmbeddingAnomalyGuard::from_json(bad).is_err());
     // Totally malformed JSON.
-    assert!(SpiderSenseGuard::from_json("{not json").is_err());
+    assert!(EmbeddingAnomalyGuard::from_json("{not json").is_err());
 }

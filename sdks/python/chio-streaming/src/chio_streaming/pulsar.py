@@ -36,9 +36,7 @@ from chio_streaming.receipt import ReceiptEnvelope, build_envelope
 
 logger = logging.getLogger(__name__)
 
-# Broker strategy vocab is "ack"/"nack". The old long forms
-# ("acknowledge"/"negative_acknowledge") are accepted in __post_init__
-# as deprecated aliases and normalised internally.
+# Broker strategy vocab is "ack"/"nack".
 HandlerErrorStrategy = Literal["nack", "ack"]
 SidecarErrorBehaviour = Literal["raise", "deny"]
 
@@ -104,9 +102,7 @@ class ChioPulsarConsumerConfig:
         Concurrency cap for in-flight evaluations.
     handler_error_strategy:
         ``"nack"`` (default) schedules Pulsar redelivery. ``"ack"``
-        treats the failure as terminal (message is lost). The old long
-        forms ``"negative_acknowledge"`` / ``"acknowledge"`` are
-        accepted as deprecated aliases.
+        treats the failure as terminal (message is lost).
     on_sidecar_error:
         ``"raise"`` (default) propagates ChioStreamingError. ``"deny"``
         synthesises a deny receipt and routes through the DLQ
@@ -130,23 +126,6 @@ class ChioPulsarConsumerConfig:
             raise ChioStreamingConfigError("ChioPulsarConsumerConfig.tool_server must be non-empty")
         if self.max_in_flight < 1:
             raise ChioStreamingConfigError("ChioPulsarConsumerConfig.max_in_flight must be >= 1")
-        # Deprecated long forms (removed in 0.4). Emit both a
-        # DeprecationWarning and a logger warning so the signal reaches
-        # operators whose warning filters default to "ignore".
-        if self.handler_error_strategy in ("negative_acknowledge", "acknowledge"):
-            import warnings
-
-            alias: HandlerErrorStrategy = (
-                "nack" if self.handler_error_strategy == "negative_acknowledge" else "ack"
-            )
-            message = (
-                f"ChioPulsarConsumerConfig.handler_error_strategy="
-                f"{self.handler_error_strategy!r} is deprecated; "
-                f"use {alias!r} (removed in 0.4)."
-            )
-            warnings.warn(message, DeprecationWarning, stacklevel=2)
-            logger.warning("chio-pulsar: %s", message)
-            self.handler_error_strategy = alias
         if self.handler_error_strategy not in ("nack", "ack"):
             raise ChioStreamingConfigError("handler_error_strategy must be 'nack' or 'ack'")
         if self.on_sidecar_error not in ("raise", "deny"):

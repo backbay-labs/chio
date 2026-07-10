@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-transaction/v1/transaction-passport.schema.json",
+  "title": "Chio Transaction Passport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "issuer",
+    "evidence_graph_sha256",
+    "evidence_graph_path",
+    "claim_set_sha256",
+    "claim_set_path",
+    "verifier_policy_sha256",
+    "verifier_policy_path",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.transaction-passport.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "not_before": { "type": "string", "minLength": 1 },
+    "expires_at": { "type": "string", "minLength": 1 },
+    "issuer": { "type": "string", "minLength": 1 },
+    "evidence_graph_sha256": { "$ref": "#/$defs/sha256" },
+    "evidence_graph_path": { "$ref": "#/$defs/bundleRelativePath" },
+    "claim_set_sha256": { "$ref": "#/$defs/sha256" },
+    "claim_set_path": { "$ref": "#/$defs/bundleRelativePath" },
+    "verifier_policy_sha256": { "$ref": "#/$defs/sha256" },
+    "verifier_policy_path": { "$ref": "#/$defs/bundleRelativePath" },
+    "omission_policy": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/omissionPolicyEntry" },
+      "uniqueItems": true
+    },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "omissionPolicyEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "status", "reason"],
+      "properties": {
+        "claim_id": { "type": "string", "minLength": 1 },
+        "status": {
+          "type": "string",
+          "enum": [
+            "omitted_no_join_path",
+            "omitted_privacy_policy",
+            "omitted_external_protocol_lacks_slot",
+            "omitted_not_applicable",
+            "omitted_unsupported_current_version"
+          ]
+        },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "bundleRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "\\\\" },
+          { "pattern": "(^|/)\\.\\.(/|$)" }
+        ]
+      }
+    }
+  }
+}

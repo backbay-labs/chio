@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-runtime/v1/revocation-freshness-proof.schema.json",
+  "title": "Chio Runtime Revocation Freshness Proof",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "proof_id",
+    "oracle_id",
+    "epoch_id",
+    "epoch_root",
+    "sequence",
+    "fetched_at",
+    "max_staleness_ms",
+    "subject_capability_digest",
+    "ancestor_capability_digest",
+    "revoked_leaf_result",
+    "revoked_ancestor_result",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.runtime.revocation-freshness-proof.v1" },
+    "proof_id": { "type": "string", "minLength": 1 },
+    "oracle_id": { "type": "string", "minLength": 1 },
+    "epoch_id": { "type": "string", "minLength": 1 },
+    "epoch_root": { "$ref": "#/$defs/sha256" },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "fetched_at": { "type": "string", "minLength": 1 },
+    "max_staleness_ms": { "type": "integer", "minimum": 1 },
+    "subject_capability_digest": { "$ref": "#/$defs/sha256" },
+    "ancestor_capability_digest": { "$ref": "#/$defs/sha256" },
+    "revoked_leaf_result": { "type": "boolean" },
+    "revoked_ancestor_result": { "type": "boolean" },
+    "signature": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

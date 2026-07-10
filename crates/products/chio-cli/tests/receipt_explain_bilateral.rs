@@ -83,7 +83,7 @@ fn receipt_explain_bilateral_renders_dual_dsse_and_inspection_trace() {
             "bilateral", // sentinel receipt_id; the bilateral path is keyed off --input-file shape
             "--input-file",
             fixture.to_str().unwrap(),
-            // The flag is `--inspect-bilateral`. The legacy spelling
+            // The flag is `--inspect-bilateral`. The alias
             // (`--explain-bilateral`) is retained as a clap alias on the
             // parent enum (see types.rs).
             "--inspect-bilateral",
@@ -111,18 +111,6 @@ fn receipt_explain_bilateral_renders_dual_dsse_and_inspection_trace() {
         Some("chio.cli.receipt-explain.bilateral.v1"),
         "renderer must declare its own report schema"
     );
-    let rendered = serde_json::to_string(&parsed).expect("report serializes");
-    for stale in [
-        ["CHIO", "_BILATERAL_COSIGN_INVOCATION"].concat(),
-        ["strict ", "CHIO"].concat(),
-        ["spec/", "CHIO"].concat(),
-    ] {
-        assert!(
-            !rendered.contains(&stale),
-            "active receipt explain JSON must not expose stale Chio wording `{stale}`: {rendered}"
-        );
-    }
-
     let dual = &parsed["dual_signed_receipt"];
     let disclaimer = dual["non_section6_disclaimer"]
         .as_str()
@@ -364,16 +352,6 @@ fn receipt_explain_bilateral_human_renderer_marks_section6_boundary() {
         stdout.contains("DSSE envelope"),
         "human renderer must label the section-6 section: {stdout}"
     );
-    for stale in [
-        ["CHIO", "_BILATERAL_COSIGN_INVOCATION"].concat(),
-        ["strict ", "CHIO"].concat(),
-        ["spec/", "CHIO"].concat(),
-    ] {
-        assert!(
-            !stdout.contains(&stale),
-            "active receipt explain human output must not expose stale Chio wording `{stale}`: {stdout}"
-        );
-    }
     // The human renderer labels the trace as "inspection trace" with an
     // explicit warning that signatures are NOT verified. Any "verifier
     // trace" wording would mis-state what the CLI actually does.

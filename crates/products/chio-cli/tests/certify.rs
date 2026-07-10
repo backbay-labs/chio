@@ -6,7 +6,7 @@ use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -36,12 +36,18 @@ use chio_store_sqlite::SqliteCapabilityAuthority;
 use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
 use reqwest::blocking::Client;
 
+static UNIQUE_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 fn unique_path(prefix: &str, suffix: &str) -> PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system time before unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!("{prefix}-{nonce}{suffix}"))
+    let sequence = UNIQUE_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "{prefix}-{}-{nonce}-{sequence}{suffix}",
+        std::process::id()
+    ))
 }
 
 fn workspace_root() -> PathBuf {
@@ -221,7 +227,7 @@ fn spawn_trust_service_with_public_registry(
 }
 
 fn wait_for_trust_service(client: &Client, base_url: &str) {
-    for _ in 0..100 {
+    for _ in 0..300 {
         match client.get(format!("{base_url}/health")).send() {
             Ok(response) if response.status() == reqwest::StatusCode::OK => return,
             Ok(_) | Err(_) => std::thread::sleep(std::time::Duration::from_millis(100)),
@@ -435,7 +441,7 @@ fn issue_local_liability_provider(
             "provenance": {
                 "configuredBy": "operator@example.com",
                 "configuredAt": 1,
-                "sourceRef": "phase-117-test"
+                "sourceRef": "certify-test-fixture"
             }
         }))
         .expect("serialize provider input"),

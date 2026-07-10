@@ -46,14 +46,13 @@ def create_app() -> FastAPI:
     sidecar_url = os.environ.get("CHIO_SIDECAR_URL", "http://127.0.0.1:9090")
 
     app = FastAPI(title="incident-network-provider-coordinator")
-    # fail_open=True: receipt attachment without blocking. The coordinator
+    # The ASGI middleware is fail-closed; the coordinator additionally
     # validates capabilities at the application level via trust-control.
     app.add_middleware(
         ChioASGIMiddleware,
         config=ChioASGIConfig(
             sidecar_url=sidecar_url,
             exclude_paths=frozenset({"/health"}),
-            fail_open=True,
         ),
     )
 

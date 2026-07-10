@@ -1,6 +1,6 @@
 {
   "dispatch": {
-    "schema": "chio.web3-settlement-dispatch.v1",
+    "schema": "chio.web3-settlement-dispatch.v2",
     "dispatch_id": "dispatch-web3-1",
     "issued_at": 1743292800,
     "trust_profile_id": "chio.official-web3-stack",
@@ -110,7 +110,9 @@
     "escrow_id": "escrow-web3-1",
     "escrow_contract": "0x1000000000000000000000000000000000000002",
     "bond_vault_contract": "0x1000000000000000000000000000000000000003",
+    "settlement_token_address": "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8",
     "beneficiary_address": "0x2222222222222222222222222222222222222222",
+    "operator_key_hash": "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975",
     "support_boundary": {
       "real_dispatch_supported": true,
       "anchor_proof_required": true,
@@ -140,7 +142,7 @@
     "feed_address": "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
     "grant_currency": "USD",
     "max_age_seconds": 3600,
-    "original_cost_units": 100000000000000,
+    "original_cost_units": 1000000000000000,
     "original_currency": "ETH",
     "quote": "USD",
     "rate_denominator": 100,
@@ -152,12 +154,14 @@
   "reconciled_anchor_proof": {
     "chain_anchor": {
       "anchored_checkpoint_seq": 1042,
-      "anchored_merkle_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
+      "anchored_merkle_root": "0xfba90da7db4859cf33cd97a64b2ce07f244c8fcafe51c19ddd67b03c8490c3eb",
       "block_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       "block_number": 12345678,
       "chain_id": "eip155:8453",
       "contract_address": "0x1000000000000000000000000000000000000001",
       "operator_address": "0x1111111111111111111111111111111111111111",
+      "operator_key_hash": "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975",
+      "operator_epoch": 1,
       "tx_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     },
     "checkpoint_statement": {
@@ -166,9 +170,9 @@
       "checkpoint_seq": 1042,
       "issued_at": 1743292800,
       "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-      "merkle_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
+      "merkle_root": "0xfba90da7db4859cf33cd97a64b2ce07f244c8fcafe51c19ddd67b03c8490c3eb",
       "schema": "chio.checkpoint_statement.v1",
-      "signature": "c743917754608cf80da923fb215811dcde4468af989cb553307de33f9a5e3359029b82f5c9f8967cea16f218bd75efed389536f9f9077c16bc52126cb1474800",
+      "signature": "6bd297a19c938e025720f676b07caf5b6ea6778d6521086a0afd003aa58b7db9ffb3bf361e3d50cdc13508320b009d4c5ae3aa4a7c6a2e554ade53d5e1a51206",
       "tree_size": 1
     },
     "key_binding_certificate": {
@@ -202,11 +206,11 @@
       },
       "boundary_class": "prevent",
       "capability_id": "cap-web3-1",
-      "content_hash": "1ff0dfe4513af263d73d4cc9dedae5aeb7ecc223cb42529f23c436601403afe5",
+      "content_hash": "5e74c65ed50fb26585825e1bca068b65bff562e9d781605efa46c1fb4fbffae1",
       "decision": {
         "verdict": "allow"
       },
-      "id": "041758766741b1c43902e603ce805304e3d7cc1d435b0f0c54cacda2c32131a4",
+      "id": "3ab6f57e6829f529c584173af9c6484afbffaf3be10dfce6fe5e7f3434ff9d11",
       "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
       "metadata": {
         "chio_receipt_signing_nonce": "rcpt-web3-1",
@@ -242,7 +246,7 @@
       "policy_hash": "dc6d6cc7acce9b97eb353f08426fefba0b54cc98f38d794dab4f6770252f50df",
       "receipt_kind": "mediated_decision",
       "redaction_mode": "none",
-      "signature": "c99f3bc3cadd4a0af01cb2f24cc8d4afa7b7c8c3adcd7c5cdce38f5d20d91d0f71893de0eba0c552182bced5db96039ee1d91e2a5d42518f3b48787cfcc17504",
+      "signature": "49bbe98f1cb8c45ae1d4be4526d2d0ca3b7ae229718580063ce5ede62012450bb1685832026fe08a53c6d3bb084aacb7f172c0ef469d50157cc864d2cc261804",
       "timestamp": 1743292800,
       "tool_name": "release_escrow",
       "tool_origin": "caller_executed",
@@ -251,7 +255,7 @@
     },
     "receipt_inclusion": {
       "checkpoint_seq": 1042,
-      "merkle_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
+      "merkle_root": "0xfba90da7db4859cf33cd97a64b2ce07f244c8fcafe51c19ddd67b03c8490c3eb",
       "proof": {
         "audit_path": [],
         "leaf_index": 0,
@@ -260,7 +264,7 @@
     },
     "schema": "chio.anchor-inclusion-proof.v1"
   },
-  "schema": "chio.web3-settlement-execution-receipt.v1",
+  "schema": "chio.web3-settlement-execution-receipt.v2",
   "settled_amount": {
     "currency": "USD",
     "units": 150

@@ -170,9 +170,9 @@ impl CodeExecutionGuard {
         }
     }
 
-    /// Build an empty guard that denies every code-execution call.  Used
+    /// Build an empty guard that denies every code-execution call. Used
     /// as a fallback when the default configuration somehow fails to
-    /// compile (defensive programming; should never trigger).
+    /// compile.
     fn empty_failclosed() -> Self {
         Self {
             enabled: true,
@@ -369,6 +369,8 @@ fn network_module_regex() -> &'static Regex {
             Err(err) => {
                 tracing::error!(error = %err, "code-execution: failed to compile network regex");
                 // Safe fallback: regex that never matches anything.
+                // expect: `\A\z` is a compile-time constant literal, so this
+                // construction cannot fail at runtime.
                 #[allow(clippy::expect_used)]
                 {
                     Regex::new(r"\A\z").expect("empty-string regex compiles")

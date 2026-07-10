@@ -1,7 +1,7 @@
 {
   "schema": "chio.anchor-inclusion-proof.v1",
   "receipt": {
-    "id": "041758766741b1c43902e603ce805304e3d7cc1d435b0f0c54cacda2c32131a4",
+    "id": "3ab6f57e6829f529c584173af9c6484afbffaf3be10dfce6fe5e7f3434ff9d11",
     "timestamp": 1743292800,
     "capability_id": "cap-web3-1",
     "tool_server": "chio-settle",
@@ -21,7 +21,7 @@
     "boundary_class": "prevent",
     "tool_origin": "caller_executed",
     "redaction_mode": "none",
-    "content_hash": "1ff0dfe4513af263d73d4cc9dedae5aeb7ecc223cb42529f23c436601403afe5",
+    "content_hash": "5e74c65ed50fb26585825e1bca068b65bff562e9d781605efa46c1fb4fbffae1",
     "policy_hash": "dc6d6cc7acce9b97eb353f08426fefba0b54cc98f38d794dab4f6770252f50df",
     "metadata": {
       "chio_receipt_signing_nonce": "rcpt-web3-1",
@@ -56,11 +56,11 @@
     },
     "trust_level": "mediated",
     "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-    "signature": "c99f3bc3cadd4a0af01cb2f24cc8d4afa7b7c8c3adcd7c5cdce38f5d20d91d0f71893de0eba0c552182bced5db96039ee1d91e2a5d42518f3b48787cfcc17504"
+    "signature": "49bbe98f1cb8c45ae1d4be4526d2d0ca3b7ae229718580063ce5ede62012450bb1685832026fe08a53c6d3bb084aacb7f172c0ef469d50157cc864d2cc261804"
   },
   "receipt_inclusion": {
     "checkpoint_seq": 1042,
-    "merkle_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
+    "merkle_root": "0xfba90da7db4859cf33cd97a64b2ce07f244c8fcafe51c19ddd67b03c8490c3eb",
     "proof": {
       "tree_size": 1,
       "leaf_index": 0,
@@ -73,10 +73,10 @@
     "batch_start_seq": 104101,
     "batch_end_seq": 104200,
     "tree_size": 1,
-    "merkle_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
+    "merkle_root": "0xfba90da7db4859cf33cd97a64b2ce07f244c8fcafe51c19ddd67b03c8490c3eb",
     "issued_at": 1743292800,
     "kernel_key": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
-    "signature": "c743917754608cf80da923fb215811dcde4468af989cb553307de33f9a5e3359029b82f5c9f8967cea16f218bd75efed389536f9f9077c16bc52126cb1474800"
+    "signature": "6bd297a19c938e025720f676b07caf5b6ea6778d6521086a0afd003aa58b7db9ffb3bf361e3d50cdc13508320b009d4c5ae3aa4a7c6a2e554ade53d5e1a51206"
   },
   "chain_anchor": {
     "chain_id": "eip155:8453",
@@ -85,7 +85,9 @@
     "tx_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "block_number": 12345678,
     "block_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    "anchored_merkle_root": "0x7957ab2da3ec75f08ced4377529cbd734388429ff60bbed4dae520308f017381",
+    "operator_key_hash": "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975",
+    "operator_epoch": 1,
+    "anchored_merkle_root": "0xfba90da7db4859cf33cd97a64b2ce07f244c8fcafe51c19ddd67b03c8490c3eb",
     "anchored_checkpoint_seq": 1042
   },
   "key_binding_certificate": {

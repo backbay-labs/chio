@@ -68,11 +68,13 @@ minimum_test_timeout = 60
 # chio-policy: `evaluate.rs` is the umbrella that `include!`s the
 # context/engine/matchers/outcomes/tests sub-files; mutating it is
 # equivalent to mutating the whole evaluator state machine. The other
-# entries (`compiler.rs` etc.) are real `mod`s.
+# compiler is split into a module tree, so the examine glob covers the
+# production child modules instead of the umbrella `compiler.rs` file.
 #
 # chio-guards: every entry below is a real `mod` (some `pub mod`, some
-# `mod`); the boundary-enforcing guards are the priority and advisory
-# guards / pure helpers / external bridges are deliberately omitted.
+# `mod`); split guard module trees use directory globs. The
+# boundary-enforcing guards are the priority and advisory guards / pure
+# helpers / external bridges are deliberately omitted.
 #
 # chio-credentials: only `lib.rs` and `trust_tier.rs` are real Rust files
 # the mutator can target. The other 13 trust-boundary files are pulled
@@ -95,7 +97,7 @@ examine_globs = [
 
     # chio-policy - evaluator + compiler + validators.
     "crates/guards/chio-policy/src/evaluate.rs",
-    "crates/guards/chio-policy/src/compiler.rs",
+    "crates/guards/chio-policy/src/compiler/*.rs",
     "crates/guards/chio-policy/src/conditions.rs",
     "crates/guards/chio-policy/src/detection.rs",
     "crates/guards/chio-policy/src/merge.rs",
@@ -119,11 +121,11 @@ examine_globs = [
     "crates/guards/chio-guards/src/jailbreak.rs",
     "crates/guards/chio-guards/src/jailbreak_detector.rs",
     "crates/guards/chio-guards/src/input_injection.rs",
-    "crates/guards/chio-guards/src/response_sanitization.rs",
+    "crates/guards/chio-guards/src/response_sanitization/*.rs",
     "crates/guards/chio-guards/src/data_flow.rs",
     "crates/guards/chio-guards/src/behavioral_sequence.rs",
     "crates/guards/chio-guards/src/text_utils.rs",
-    "crates/guards/chio-guards/src/spider_sense.rs",
+    "crates/guards/chio-guards/src/embedding_anomaly.rs",
     "crates/guards/chio-guards/src/behavioral_profile.rs",
     "crates/guards/chio-guards/src/agent_velocity.rs",
     "crates/guards/chio-guards/src/velocity.rs",
@@ -143,7 +145,7 @@ examine_globs = [
 
     # chio-attest-verify - Sigstore verification boundary.
     "crates/trust/chio-attest-verify/src/lib.rs",
-    "crates/trust/chio-attest-verify/src/sigstore.rs",
+    "crates/trust/chio-attest-verify/src/sigstore/*.rs",
 
     # chio-anchor - anchoring publication and discovery boundary.
     "crates/economy/chio-anchor/src/lib.rs",
@@ -151,7 +153,7 @@ examine_globs = [
     "crates/economy/chio-anchor/src/bitcoin.rs",
     "crates/economy/chio-anchor/src/bundle.rs",
     "crates/economy/chio-anchor/src/discovery.rs",
-    "crates/economy/chio-anchor/src/evm.rs",
+    "crates/economy/chio-anchor/src/evm/*.rs",
     "crates/economy/chio-anchor/src/functions.rs",
     "crates/economy/chio-anchor/src/ops.rs",
     "crates/economy/chio-anchor/src/solana.rs",
@@ -187,7 +189,7 @@ exclude_globs = [
     "crates/guards/chio-policy/src/rulesets/**", # rationale: excluded helper or verification surface.
     # chio-guards: pure types, advisory-by-design guards, and the external/
     # adapter tree (remote-process bridges, integration-tested rather than
-    # mutation-tested). text_utils.rs and spider_sense.rs are intentionally
+    # mutation-tested). text_utils.rs and embedding_anomaly.rs are intentionally
     # not excluded because they feed or emit deny decisions.
     # rationale: these remaining files are helper, advisory, or process-bridge
     # surfaces with better coverage from integration and adapter tests than

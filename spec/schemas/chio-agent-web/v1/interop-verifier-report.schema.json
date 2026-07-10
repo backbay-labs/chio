@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-agent-web/v1/interop-verifier-report.schema.json",
+  "title": "Chio Agent Web Interop Verifier Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "verdict",
+    "passport_id",
+    "verified_claims",
+    "projections",
+    "unsupported_claims",
+    "limitations"
+  ],
+  "properties": {
+    "schema": { "const": "chio.agent-web.interop-verifier-report.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "verdict": { "enum": ["verified", "failed"] },
+    "passport_id": { "type": "string", "minLength": 1 },
+    "verified_claims": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "projections": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/projection" },
+      "minItems": 1
+    },
+    "unsupported_claims": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_protocol",
+        "envelope_ref",
+        "projection_manifest_ref",
+        "external_subject_digest",
+        "evidence_classes",
+        "claim_evidence"
+      ],
+      "properties": {
+        "source_protocol": {
+          "enum": [
+            "standard-webhooks",
+            "cloudevents",
+            "graphql-http",
+            "mcp",
+            "a2a",
+            "openapi",
+            "acp-client",
+            "acp-commerce",
+            "ag-ui",
+            "browser-automation",
+            "rpa",
+            "gmail-api",
+            "google-calendar-api",
+            "slack",
+            "oauth2",
+            "openid-connect",
+            "scim",
+            "spiffe",
+            "kubernetes-admission",
+            "oci",
+            "vc",
+            "sd-jwt-vc",
+            "dsse",
+            "sigstore",
+            "in-toto",
+            "slsa-provenance",
+            "bbs",
+            "asyncapi",
+            "ap2",
+            "x402"
+          ]
+        },
+        "envelope_ref": { "type": "string", "minLength": 1 },
+        "projection_manifest_ref": { "type": "string", "minLength": 1 },
+        "external_subject_digest": { "$ref": "#/$defs/sha256" },
+        "evidence_classes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "native-external-proof",
+              "chio-sidecar-proof",
+              "digest-bound-reference",
+              "advisory-observation",
+              "unsupported"
+            ]
+          },
+          "minItems": 1
+        },
+        "claim_evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/claim_evidence" },
+          "minItems": 1
+        }
+      }
+    },
+    "claim_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_ref", "evidence_class"],
+      "properties": {
+        "claim_ref": { "type": "string", "minLength": 1 },
+        "evidence_class": {
+          "enum": [
+            "native-external-proof",
+            "chio-sidecar-proof",
+            "digest-bound-reference",
+            "advisory-observation",
+            "unsupported"
+          ]
+        }
+      }
+    }
+  }
+}

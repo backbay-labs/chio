@@ -1,0 +1,18 @@
+{
+  "actual_verifier_report_digest": "703d71f5e4c64122569421c452d4c42319693e029d916723dcd0132a2034ba79",
+  "attack_class": "tool-server-bypass-without-kernel-allow",
+  "chaos_knobs": [
+    "tool_bypass"
+  ],
+  "expected_denial_claim": "claim.runtime.kernel_allow_required",
+  "fixture_path": "runtime-security/tool-server-bypass-without-kernel-allow",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "runtime_receipt_refs": [
+    "receipt-runtime-valid"
+  ],
+  "scenario_id": "attack-tool-server-bypass-without-kernel-allow",
+  "schema": "chio.runtime.attack-simulation-report.v1",
+  "signature": "701e88801f920a14e1f07e32d5a1ccfdd6c1ed9530f27bef1ff581e0d521ddbb7fe781274430adbd60697cb661d3471d2e54136374a2f521e6c0b2eaf9eeed0d",
+  "simulator_version_digest": "7b507c9dd41316c67a49d7eb5c33730b7e01843ea2c0d1d495cae1f8a08679d3",
+  "status": "passed"
+}

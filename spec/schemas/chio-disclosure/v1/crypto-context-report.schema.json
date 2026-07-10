@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-disclosure/v1/crypto-context-report.schema.json",
+  "title": "Chio Disclosure Crypto Context Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "context_id",
+    "artifact_ref",
+    "projection_manifest_ref",
+    "verdict",
+    "evidence_class",
+    "cryptographic_proof_verified",
+    "verified_claims",
+    "rejected_checks",
+    "disclosed_fields"
+  ],
+  "properties": {
+    "schema": { "const": "chio.disclosure.crypto-context-report.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "context_id": { "type": "string", "minLength": 1 },
+    "artifact_ref": { "$ref": "#/$defs/sha256" },
+    "projection_manifest_ref": { "type": "string", "minLength": 1 },
+    "verdict": { "enum": ["verified", "rejected"] },
+    "evidence_class": { "const": "verifier_context" },
+    "cryptographic_proof_verified": { "type": "boolean" },
+    "verified_claims": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "rejected_checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/check" }
+    },
+    "disclosed_fields": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

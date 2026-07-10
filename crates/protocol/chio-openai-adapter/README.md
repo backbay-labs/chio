@@ -162,4 +162,4 @@ Both must succeed; CI enforces this build matrix.
 
 - Fabric trait surface:
   [`crates/protocol/chio-tool-call-fabric/src/lib.rs`](../chio-tool-call-fabric/src/lib.rs).
-- Spec: [`spec/PROTOCOL.md`](../../spec/PROTOCOL.md).
+- Spec: [`spec/PROTOCOL.md`](../../../spec/PROTOCOL.md).

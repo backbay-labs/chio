@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-swarm/v1/route-plan-receipt.schema.json",
+  "title": "Chio Swarm Route Plan Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "routePlanId",
+    "graphId",
+    "taskId",
+    "selectedRoute",
+    "candidateSetDigest",
+    "registrySnapshotHash",
+    "bridgeId",
+    "protocolTarget",
+    "egressContractId",
+    "egressConstraints",
+    "attenuationDecision",
+    "policyDigest",
+    "expiresAtUnixMs",
+    "issuer",
+    "signature"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.swarm.route-plan-receipt.v1"
+    },
+    "routePlanId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "graphId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "taskId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "selectedRoute": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidateSetDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "registrySnapshotHash": {
+      "$ref": "#/$defs/digest"
+    },
+    "bridgeId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "protocolTarget": {
+      "type": "string",
+      "minLength": 1
+    },
+    "egressContractId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "egressConstraints": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "deny-private-network"
+        ]
+      }
+    },
+    "attenuationDecision": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policyDigest": {
+      "$ref": "#/$defs/digest"
+    },
+    "expiresAtUnixMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "issuer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

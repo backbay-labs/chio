@@ -1,0 +1,1 @@
+{"base_manifest":"manifest.json","expected_failure_code":"proof-room.report.hash-mismatch","id":"report-hash-mismatch","mutation":{"path":["verifier_report_ref","sha256"],"value":"0000000000000000000000000000000000000000000000000000000000000000"},"schema":"chio.proof-room.negative-fixture.v1"}

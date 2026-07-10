@@ -325,6 +325,7 @@ impl ChioKernel {
     pub(crate) fn run_runtime_admission_hook(
         &self,
         request: &ToolCallRequest,
+        extra_metadata: Option<&serde_json::Value>,
         now: u64,
         now_unix_ms: u64,
         matched_grant_index: Option<usize>,
@@ -335,12 +336,9 @@ impl ChioKernel {
                 .as_ref()
                 .and_then(|intent| intent.context.as_ref())
                 .is_some_and(|context| {
-                    let retired_admission_key = ["chio", "dos", "Admission"].concat();
-                    let retired_treaty_key = ["chio", "dos", "Treaty"].concat();
                     context.get("chioAdmission").is_some()
                         || context.get("chioTreaty").is_some()
-                        || context.get(retired_admission_key.as_str()).is_some()
-                        || context.get(retired_treaty_key.as_str()).is_some()
+                        || context.get("chioSwarm").is_some()
                 });
             if has_runtime_context {
                 return RuntimeAdmissionDecision::deny(
@@ -368,6 +366,7 @@ impl ChioKernel {
         };
         let context = RuntimeAdmissionContext {
             request,
+            extra_metadata,
             now_unix_secs: now,
             now_unix_ms,
             matched_grant_index,
@@ -402,6 +401,72 @@ impl ChioKernel {
             return Ok(());
         };
         hook.release_reserved(metadata)
+    }
+
+    /// Record, in receipt metadata, that runtime-admission reservations
+    /// consumed at admission were deliberately NOT released because a tool
+    /// side effect may have executed. The reserved ids are copied so an
+    /// operator can locate and re-issue the burned lease/continuation from
+    /// the signed receipt alone. Fail-closed: metadata without a
+    /// `chio_runtime` block, or a `chio_runtime` block that carries no real
+    /// reservation (no present, non-empty `reserved_*` id), is returned
+    /// unchanged. Marking such metadata retained would claim a reservation was
+    /// burned when there was nothing to recover, which misleads operators.
+    pub(crate) fn mark_runtime_admission_reservations_retained_fail_closed(
+        &self,
+        metadata: Option<serde_json::Value>,
+    ) -> Option<serde_json::Value> {
+        let mut retained = serde_json::Map::new();
+        {
+            let Some(runtime) = metadata
+                .as_ref()
+                .and_then(|value| value.get("chio_runtime"))
+                .and_then(serde_json::Value::as_object)
+            else {
+                return metadata;
+            };
+            // Copy across only the ids that name a REAL reservation: a present,
+            // non-empty reserved lease/continuation id. A `chio_runtime` route
+            // block that merely carries the key with no (or an empty) value had
+            // nothing to burn.
+            for (source, target) in [
+                (
+                    "reserved_destructive_lease_id",
+                    "retained_destructive_lease_id",
+                ),
+                (
+                    "reserved_treaty_continuation_id",
+                    "retained_treaty_continuation_id",
+                ),
+                (
+                    "reserved_swarm_continuation_id",
+                    "retained_swarm_continuation_id",
+                ),
+            ] {
+                if let Some(id) = runtime
+                    .get(source)
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|id| !id.is_empty())
+                {
+                    retained.insert(target.to_string(), serde_json::json!(id));
+                }
+            }
+            // Only mark retained when at least one real reservation was actually
+            // retained. An observe-only admission or a metadata-only
+            // `chio_runtime` route block has no `reserved_*` id to recover, so
+            // it must not carry the fail-closed marker.
+            if retained.is_empty() {
+                return metadata;
+            }
+            retained.insert(
+                "reservations_retained_fail_closed".to_string(),
+                serde_json::Value::Bool(true),
+            );
+        }
+        merge_metadata_objects(
+            metadata,
+            Some(serde_json::json!({ "chio_runtime": retained })),
+        )
     }
 
     pub(crate) fn release_runtime_admission_reservations_for_pre_dispatch_denial(

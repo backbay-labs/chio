@@ -7,7 +7,7 @@
 //!    byte-identically. PQ key NOT provisioned. (Pre-migration baseline.)
 //! 2. **`allow_hybrid`.** Operator opts into hybrid; the kernel key
 //!    composes the same classical Ed25519 with an initial ML-DSA-65
-//!    seed. Newly issued bundles are hybrid; legacy classical bundles
+//!    seed. Newly issued bundles are hybrid; classical bundles
 //!    are still accepted under `allows_classical_only=true`.
 //! 3. **`pq_required`.** Operator rolls the ML-DSA-65 key to a fresh
 //!    seed (the rotation event between stages 2 and 3) and tightens the
@@ -245,7 +245,7 @@ fn stage1_allow_classical_accepts_v318_bundle_byte_identically() {
     assert!(verify_under_floor(&fixture, CryptoFloor::AllowClassical));
 
     // Byte-identity guard: re-encoding the body produces the exact
-    // bytes the legacy verifier signed over.
+    // bytes the classical verifier signed over.
     let body_bytes = canonical_json_bytes(&migration_body(fixture.kernel_key.clone())).unwrap();
     let fixture_body_bytes = canonical_json_bytes(&ChioReceiptBody {
         id: fixture.id.clone(),
@@ -277,8 +277,8 @@ fn stage1_allow_classical_accepts_v318_bundle_byte_identically() {
 #[test]
 fn stage2_allow_hybrid_accepts_both_classical_and_hybrid_bundles() {
     // Stage 2: operator flips the floor to `allow_hybrid` and rolls in
-    // the initial ML-DSA-65 seed. New bundles are hybrid; legacy
-    // classical bundles are still accepted (the migration window).
+    // the initial ML-DSA-65 seed. New bundles are hybrid; classical bundles
+    // are still accepted (the migration window).
     let hybrid = build_hybrid_backend(&stage2_pq_seed());
     let body = migration_body(hybrid.public_key());
     let hybrid_bundle = ChioReceipt::sign_with_backend(body, &hybrid).unwrap();

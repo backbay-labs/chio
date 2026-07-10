@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-transaction/v1/evidence-graph.schema.json",
+  "title": "Chio Transaction Evidence Graph",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "nodes",
+    "edges"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.transaction.evidence-graph.v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issued_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "bundleRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "^/"
+          },
+          {
+            "pattern": "^[A-Za-z]:"
+          },
+          {
+            "pattern": "\\\\"
+          },
+          {
+            "pattern": "(^|/)\\.\\.(/|$)"
+          }
+        ]
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "schema",
+        "path",
+        "sha256",
+        "role"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "$ref": "#/$defs/bundleRelativePath"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "root",
+            "receipt",
+            "capability",
+            "guard-decision",
+            "policy",
+            "request",
+            "response",
+            "trust-root",
+            "claim-set",
+            "verifier-policy",
+            "report",
+            "execution-lease",
+            "tool-server-ack",
+            "trusted-time-proof",
+            "revocation-freshness-proof",
+            "sandbox-attestation",
+            "advisory-observation",
+            "commerce-order-context",
+            "commerce-event-log",
+            "commerce-payment-lifecycle",
+            "commerce-mandate-allowance-ledger",
+            "commerce-protocol-payload",
+            "commerce-settlement-packet",
+            "commerce-federation-trust-bundle",
+            "commerce-reputation-snapshot",
+            "commerce-provider-passport",
+            "risk-comptroller-report",
+            "data-governance-report",
+            "evidence-export-bundle",
+            "telemetry-projection",
+            "approval-case",
+            "control-evidence-map",
+            "agent-web-proof-envelope",
+            "external-projection-manifest",
+            "external-subject",
+            "provider-discovery-snapshot",
+            "provider-selection-report",
+            "trust-scorecard-snapshot",
+            "reputation-import-report",
+            "sla-commitment",
+            "sla-performance-report",
+            "collateral-position-report",
+            "guarantee-decision",
+            "adjudication-jurisdiction-receipt",
+            "public-settlement-proof-bundle",
+            "swarm-task-graph",
+            "swarm-continuation-token",
+            "swarm-delegation-witness-chain",
+            "swarm-join-receipt",
+            "swarm-route-plan-receipt",
+            "swarm-terminal-graph-receipt",
+            "swarm-budget-pool",
+            "swarm-revocation-epoch",
+            "disclosure-capsule",
+            "disclosure-leakage-ledger",
+            "signed-lineage-subgraph",
+            "disclosure-crypto-context-report",
+            "disclosure-verifier-privacy-profile",
+            "crypto-verification-context",
+            "selective-disclosure-proof",
+            "bbs-projection-manifest",
+            "transparency-inclusion-proof"
+          ]
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to",
+        "predicate"
+      ],
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to": {
+          "type": "string",
+          "minLength": 1
+        },
+        "predicate": {
+          "type": "string",
+          "enum": [
+            "authorizes",
+            "attenuates",
+            "executes",
+            "derives",
+            "binds",
+            "settles",
+            "discloses",
+            "redacts",
+            "reconciles",
+            "projects-to",
+            "leases",
+            "acknowledges",
+            "freshens",
+            "attests",
+            "denies",
+            "simulates"
+          ]
+        },
+        "evidence_class": {
+          "type": "string",
+          "enum": [
+            "native-external-proof",
+            "chio-sidecar-proof",
+            "digest-bound-reference",
+            "advisory-observation",
+            "unsupported"
+          ]
+        }
+      }
+    }
+  }
+}

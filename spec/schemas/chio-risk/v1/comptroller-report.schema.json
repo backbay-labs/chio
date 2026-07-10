@@ -1,0 +1,476 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-risk/v1/comptroller-report.schema.json",
+  "title": "Chio Risk Comptroller Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "passport_id",
+    "order_id",
+    "subject",
+    "verdict",
+    "risk_state",
+    "facility",
+    "coverage",
+    "reconciliation",
+    "premium",
+    "actuarial_evidence",
+    "insurance_copy",
+    "capital_decomposition",
+    "verified_claims"
+  ],
+  "properties": {
+    "schema": { "const": "chio.risk.comptroller-report.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "passport_id": { "type": "string", "minLength": 1 },
+    "order_id": { "type": "string", "minLength": 1 },
+    "subject": { "type": "string", "minLength": 1 },
+    "verdict": { "enum": ["verified", "rejected"] },
+    "risk_state": { "type": "string", "minLength": 1 },
+    "signature": { "type": "string", "minLength": 1 },
+    "facility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "facility_id",
+        "policy_id",
+        "state",
+        "capital_currency",
+        "capital_units",
+        "reserve_currency",
+        "reserve_units",
+        "reserve_ref"
+      ],
+      "properties": {
+        "facility_id": { "type": "string", "minLength": 1 },
+        "policy_id": { "type": "string", "minLength": 1 },
+        "state": {
+          "enum": [
+            "evidence_cold",
+            "underwriting_ready",
+            "facility_granted",
+            "reserve_held",
+            "capital_allocatable",
+            "coverage_bound",
+            "claim_open",
+            "claim_decided",
+            "payout_matched",
+            "settlement_matched",
+            "reserve_controlled",
+            "closed"
+          ]
+        },
+        "capital_currency": { "type": "string", "minLength": 1 },
+        "capital_units": { "type": "integer", "minimum": 1 },
+        "reserve_currency": { "type": "string", "minLength": 1 },
+        "reserve_units": { "type": "integer", "minimum": 1 },
+        "reserve_ref": { "type": "string", "minLength": 1 }
+      }
+    },
+    "facility_lifecycle": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "transition_id",
+          "policy_id",
+          "from_state",
+          "to_state",
+          "authority_receipt_ref",
+          "evidence_ref"
+        ],
+        "properties": {
+          "transition_id": { "type": "string", "minLength": 1 },
+          "policy_id": { "type": "string", "minLength": 1 },
+          "from_state": {
+            "enum": [
+              "evidence_cold",
+              "underwriting_ready",
+              "facility_granted",
+              "reserve_held",
+              "capital_allocatable",
+              "coverage_bound",
+              "claim_open",
+              "claim_decided",
+              "payout_matched",
+              "settlement_matched",
+              "reserve_controlled",
+              "closed"
+            ]
+          },
+          "to_state": {
+            "enum": [
+              "evidence_cold",
+              "underwriting_ready",
+              "facility_granted",
+              "reserve_held",
+              "capital_allocatable",
+              "coverage_bound",
+              "claim_open",
+              "claim_decided",
+              "payout_matched",
+              "settlement_matched",
+              "reserve_controlled",
+              "closed"
+            ]
+          },
+          "authority_receipt_ref": { "type": "string", "minLength": 1 },
+          "evidence_ref": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coverage_id",
+        "order_id",
+        "subject",
+        "currency",
+        "exposure_units",
+        "reserve_ref",
+        "status"
+      ],
+      "properties": {
+        "coverage_id": { "type": "string", "minLength": 1 },
+        "order_id": { "type": "string", "minLength": 1 },
+        "subject": { "type": "string", "minLength": 1 },
+        "beneficiary_subject": { "type": "string", "minLength": 1 },
+        "covered_claim_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "currency": { "type": "string", "minLength": 1 },
+        "exposure_units": { "type": "integer", "minimum": 1 },
+        "reserve_ref": { "type": "string", "minLength": 1 },
+        "status": { "const": "bound" }
+      }
+    },
+    "reconciliation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "order_id",
+        "currency",
+        "exposure_units",
+        "reserve_units",
+        "consumed_reserve_units",
+        "payout_units",
+        "settlement_units",
+        "status"
+      ],
+      "properties": {
+        "order_id": { "type": "string", "minLength": 1 },
+        "currency": { "type": "string", "minLength": 1 },
+        "exposure_units": { "type": "integer", "minimum": 1 },
+        "reserve_units": { "type": "integer", "minimum": 1 },
+        "consumed_reserve_units": { "type": "integer", "minimum": 0 },
+        "payout_units": { "type": "integer", "minimum": 0 },
+        "settlement_units": { "type": "integer", "minimum": 0 },
+        "status": { "const": "balanced" }
+      }
+    },
+    "premium": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "premium_id",
+        "quote_ref",
+        "coverage_id",
+        "order_id",
+        "subject",
+        "currency",
+        "coverage_exposure_units",
+        "quoted_premium_units",
+        "bound_premium_units",
+        "collected_premium_units",
+        "status"
+      ],
+      "properties": {
+        "premium_id": { "type": "string", "minLength": 1 },
+        "quote_ref": { "type": "string", "minLength": 1 },
+        "coverage_id": { "type": "string", "minLength": 1 },
+        "order_id": { "type": "string", "minLength": 1 },
+        "subject": { "type": "string", "minLength": 1 },
+        "currency": { "type": "string", "minLength": 1 },
+        "coverage_exposure_units": { "type": "integer", "minimum": 1 },
+        "quoted_premium_units": { "type": "integer", "minimum": 1 },
+        "bound_premium_units": { "type": "integer", "minimum": 1 },
+        "collected_premium_units": { "type": "integer", "minimum": 0 },
+        "observed_payment_ref": { "type": "string", "minLength": 1 },
+        "settlement_ref": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["bound", "collected"] }
+      }
+    },
+    "actuarial_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model_ref",
+        "evidence_ref",
+        "currency",
+        "supported_exposure_units",
+        "confidence_level_bps",
+        "backtest"
+      ],
+      "properties": {
+        "model_ref": { "type": "string", "minLength": 1 },
+        "evidence_ref": { "type": "string", "minLength": 1 },
+        "currency": { "type": "string", "minLength": 1 },
+        "supported_exposure_units": { "type": "integer", "minimum": 1 },
+        "confidence_level_bps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "backtest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "backtest_id",
+            "window_start",
+            "window_end",
+            "sample_size",
+            "observed_loss_ratio_bps",
+            "maximum_loss_ratio_bps",
+            "status"
+          ],
+          "properties": {
+            "backtest_id": { "type": "string", "minLength": 1 },
+            "window_start": { "type": "string", "minLength": 1 },
+            "window_end": { "type": "string", "minLength": 1 },
+            "sample_size": { "type": "integer", "minimum": 1 },
+            "observed_loss_ratio_bps": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "maximum_loss_ratio_bps": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 10000
+            },
+            "status": { "const": "passed" }
+          }
+        }
+      }
+    },
+    "insurance_copy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "copy_id",
+        "actuarial_evidence_ref",
+        "currency",
+        "maximum_coverage_units",
+        "coverage_statement"
+      ],
+      "properties": {
+        "copy_id": { "type": "string", "minLength": 1 },
+        "actuarial_evidence_ref": { "type": "string", "minLength": 1 },
+        "currency": { "type": "string", "minLength": 1 },
+        "maximum_coverage_units": { "type": "integer", "minimum": 1 },
+        "coverage_statement": { "type": "string", "minLength": 1 }
+      }
+    },
+    "capital_decomposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decomposition_id",
+        "source_kind",
+        "source_ref",
+        "currency",
+        "committed_units",
+        "held_units",
+        "drawn_units",
+        "disbursed_units",
+        "impaired_units",
+        "available_units"
+      ],
+      "properties": {
+        "decomposition_id": { "type": "string", "minLength": 1 },
+        "source_kind": { "const": "facility_commitment" },
+        "source_ref": { "type": "string", "minLength": 1 },
+        "currency": { "type": "string", "minLength": 1 },
+        "committed_units": { "type": "integer", "minimum": 1 },
+        "held_units": { "type": "integer", "minimum": 0 },
+        "drawn_units": { "type": "integer", "minimum": 0 },
+        "disbursed_units": { "type": "integer", "minimum": 0 },
+        "impaired_units": { "type": "integer", "minimum": 0 },
+        "available_units": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "capital_instructions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "instruction_id",
+          "reserve_entry_id",
+          "order_id",
+          "claim_id",
+          "reserve_ref",
+          "currency",
+          "units",
+          "settlement_ref",
+          "intended_action",
+          "source_kind",
+          "intended_state",
+          "reconciled_state"
+        ],
+        "properties": {
+          "instruction_id": { "type": "string", "minLength": 1 },
+          "reserve_entry_id": { "type": "string", "minLength": 1 },
+          "order_id": { "type": "string", "minLength": 1 },
+          "claim_id": { "type": "string", "minLength": 1 },
+          "reserve_ref": { "type": "string", "minLength": 1 },
+          "currency": { "type": "string", "minLength": 1 },
+          "units": { "type": "integer", "minimum": 1 },
+          "settlement_ref": { "type": "string", "minLength": 1 },
+          "intended_action": { "const": "transfer_funds" },
+          "source_kind": { "const": "facility_commitment" },
+          "intended_state": { "const": "pending_execution" },
+          "reconciled_state": { "enum": ["not_observed", "matched"] },
+          "observed_execution_ref": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "reserve_ledger": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entry_id",
+          "receipt_ref",
+          "lane",
+          "reserve_ref",
+          "claim_id",
+          "currency",
+          "units",
+          "settlement_ref"
+        ],
+        "properties": {
+          "entry_id": { "type": "string", "minLength": 1 },
+          "receipt_ref": { "type": "string", "minLength": 1 },
+          "lane": {
+            "enum": [
+              "claim_payout",
+              "reserve_release",
+              "reserve_slash",
+              "market_slash",
+              "hold",
+              "reverse_slash",
+              "write_off"
+            ]
+          },
+          "reserve_ref": { "type": "string", "minLength": 1 },
+          "claim_id": { "type": "string", "minLength": 1 },
+          "currency": { "type": "string", "minLength": 1 },
+          "units": { "type": "integer", "minimum": 1 },
+          "settlement_ref": { "type": "string", "minLength": 1 },
+          "payer_subject": { "type": "string", "minLength": 1 },
+          "payee_subject": { "type": "string", "minLength": 1 },
+          "sanction_bridge": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "bridge_id",
+              "authority_receipt_ref",
+              "evidence_ref",
+              "jurisdiction_ref",
+              "sanction_subject",
+              "maximum_slash_units"
+            ],
+            "properties": {
+              "bridge_id": { "type": "string", "minLength": 1 },
+              "authority_receipt_ref": { "type": "string", "minLength": 1 },
+              "evidence_ref": { "type": "string", "minLength": 1 },
+              "jurisdiction_ref": { "type": "string", "minLength": 1 },
+              "sanction_subject": { "type": "string", "minLength": 1 },
+              "maximum_slash_units": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "sanction_reserve_ledger": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entry_id",
+          "bridge_id",
+          "lane",
+          "receipt_ref",
+          "reserve_ref",
+          "claim_id",
+          "currency",
+          "units",
+          "settlement_ref",
+          "authority_receipt_ref",
+          "evidence_ref",
+          "jurisdiction_ref"
+        ],
+        "properties": {
+          "entry_id": { "type": "string", "minLength": 1 },
+          "bridge_id": { "type": "string", "minLength": 1 },
+          "lane": { "const": "market_slash" },
+          "receipt_ref": { "type": "string", "minLength": 1 },
+          "reserve_ref": { "type": "string", "minLength": 1 },
+          "claim_id": { "type": "string", "minLength": 1 },
+          "currency": { "type": "string", "minLength": 1 },
+          "units": { "type": "integer", "minimum": 1 },
+          "settlement_ref": { "type": "string", "minLength": 1 },
+          "authority_receipt_ref": { "type": "string", "minLength": 1 },
+          "evidence_ref": { "type": "string", "minLength": 1 },
+          "jurisdiction_ref": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "appeals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["appeal_id", "claim_id", "status", "blocks"],
+        "properties": {
+          "appeal_id": { "type": "string", "minLength": 1 },
+          "claim_id": { "type": "string", "minLength": 1 },
+          "status": {
+            "enum": ["open", "resolved", "denied", "withdrawn"]
+          },
+          "blocks": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "enum": [
+                "claim_payout",
+                "reserve_release",
+                "reserve_slash",
+                "market_slash",
+                "facility_closure",
+                "write_off"
+              ]
+            },
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "verified_claims": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}

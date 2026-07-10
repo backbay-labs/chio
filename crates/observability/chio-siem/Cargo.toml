@@ -24,7 +24,7 @@ tracing = { workspace = true }
 rusqlite = { workspace = true }
 reqwest = { workspace = true, features = ["form", "json", "query", "rustls"] }
 url = { workspace = true }
-zeroize = "1"
+zeroize = { workspace = true }
 
 [dev-dependencies]
 chio-test-support = { workspace = true }

@@ -1,0 +1,6 @@
+{
+  "schema": "chio.proof-room.negative-case.v1",
+  "id": "missing-parent",
+  "verifier_entrypoint": "transaction-passport.json",
+  "expected_failure_code": "proof-room.negative.unknown-lineage-edge-source"
+}

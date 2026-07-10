@@ -1,5 +1,4 @@
 #![allow(
-    dead_code,
     unused_imports,
     clippy::expect_used,
     clippy::too_many_arguments,

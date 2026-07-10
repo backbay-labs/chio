@@ -1,0 +1,36 @@
+{
+  "schema": "chio.crypto.verification-context.v1",
+  "context_id": "crypto-context-replayed-nonce",
+  "artifact_ref": "567ce6b216b033edb85f4ff844a636b55f2b604897f6a557537efb1e5303e08a",
+  "proof_mechanism": "bbs",
+  "issuer": "did:chio:issuer-bbs",
+  "issuer_key_ref": "6a121a2677591664f157535b7e64e2b0e7e6d1a98e23005908254fdedd029c29",
+  "key_state": {
+    "schema": "chio.trust.key-state.v1",
+    "key_ref": "6a121a2677591664f157535b7e64e2b0e7e6d1a98e23005908254fdedd029c29",
+    "status": "active",
+    "epoch": 7,
+    "valid_from": 1766000000,
+    "valid_until": 1766000900
+  },
+  "algorithm": "bbs-bls12381-sha256",
+  "suite": "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_",
+  "hash_algorithm": "sha-256",
+  "canonicalization": "jcs",
+  "signature_ref": "selective-disclosure-proof",
+  "verification_time": 1766000100,
+  "revocation_snapshot": {
+    "schema": "chio.trust.revocation-snapshot.v1",
+    "snapshot_ref": "revocation-snapshot-buyer-auditor",
+    "status": "fresh",
+    "issued_at": 1766000050,
+    "expires_at": 1766000350
+  },
+  "audience": "https://auditor.example/chio",
+  "nonce_hex": "6e6f6e63652d63727970746f2d636f6e74657874",
+  "nonce_replay_status": "replayed",
+  "holder_binding_ref": "holder:buyer-agent",
+  "holder_binding_status": "bound",
+  "transparency_state": "anchored",
+  "presentation_created_at": 1766000080
+}

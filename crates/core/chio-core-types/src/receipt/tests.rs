@@ -611,10 +611,10 @@ fn receipt_round_trips_bbs_projection_metadata() {
 
 #[test]
 fn sign_prepared_with_bbs_using_handle_rejects_render_a_sign_b() {
-    // The BBS path historically bypassed the WYSIWYS recompute-and-refuse gate
-    // that the classical and backend handle signers enforce. A prepared body
-    // whose content_hash claims the hash of content B while the handle is bound
-    // to content A MUST be refused before any signature is produced.
+    // The older BBS prepared-signing entrypoint does not recompute content_hash.
+    // A prepared body whose content_hash claims the hash of content B while the
+    // handle is bound to content A MUST be refused before any signature is
+    // produced.
     let kp = Keypair::generate();
     let mut body = make_receipt_body(&kp);
     body.bbs_projection_version = Some(CHIO_RECEIPT_BBS_PROJECTION_VERSION_V1.to_string());

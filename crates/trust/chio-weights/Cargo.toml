@@ -1,6 +1,6 @@
 [package]
 name = "chio-weights"
-description = "Chio model-card surface (signed weights cards, cosign bundle helper, kernel binding refusal, arc bind --card)"
+description = "Chio model-card surface (signed weights cards, cosign bundle helper, kernel binding refusal, chio bind --card)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

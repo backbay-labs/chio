@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-web3/v1/anchor-proof-bundle.schema.json",
+  "title": "Chio Anchor Proof Bundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "primary_proof", "secondary_lanes"],
+  "properties": {
+    "schema": { "const": "chio.anchor-proof-bundle.v1" },
+    "primary_proof": { "$ref": "anchor-inclusion-proof.schema.json" },
+    "secondary_lanes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "enum": ["evm_primary", "bitcoin_ots", "solana_memo"] },
+      "uniqueItems": true
+    },
+    "solana_anchor": { "type": "object" },
+    "note": { "type": "string" }
+  }
+}

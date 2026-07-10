@@ -262,7 +262,7 @@ fn test_liability_claim_workflow_surfaces_inner() {
                     "configuredBy": "operator@example.com",
                     "configuredAt": unix_now_secs(),
                     "sourceRef": "liability-claims-runbook",
-                    "changeReason": "phase 91 workflow qualification"
+                    "changeReason": "workflow qualification"
                 }
             }
         }))
@@ -1115,7 +1115,7 @@ fn test_liability_claim_rejects_oversized_claims_and_invalid_disputes() {
                     "configuredBy": "operator@example.com",
                     "configuredAt": unix_now_secs(),
                     "sourceRef": "liability-claims-runbook",
-                    "changeReason": "phase 91 negative qualification"
+                    "changeReason": "negative qualification"
                 }
             }
         }))

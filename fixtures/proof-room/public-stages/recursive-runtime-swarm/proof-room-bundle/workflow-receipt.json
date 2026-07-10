@@ -1,0 +1,92 @@
+{
+  "id": "wf-chio-refund-001",
+  "schema": "chio.workflow-receipt.v1",
+  "started_at": 1766000000,
+  "completed_at": 1766000042,
+  "skill_id": "refund-underwriting",
+  "skill_version": "0.1.0",
+  "agent_id": "buyer-agent",
+  "session_id": "sess-chio-refund",
+  "capability_id": "cap-chio-workflow",
+  "outcome": {
+    "status": "completed"
+  },
+  "steps": [
+    {
+      "step_index": 0,
+      "server_id": "vendor-a.files",
+      "tool_name": "read_refund_case",
+      "allowed": true,
+      "tool_receipt_id": "745ab21eb4216726514348c3dd63aa91f0e811b59db68b48906f8d39e77e955c",
+      "outcome": "success",
+      "duration_ms": 12,
+      "cost": {
+        "units": 100,
+        "currency": "USD"
+      },
+      "output_hash": "6c7596557f061fb92c19195dd7184598e026bb5212185a1231f6bcefc6fee009",
+      "bilateral_dsse_sha256": "c270d95d9a1960cc8c260e2cbbab725ff1a3963b9533377eb74d6a231f1da943",
+      "consistency_anchor": "chio:consistency:wf-chio-refund-001:0"
+    },
+    {
+      "step_index": 1,
+      "server_id": "vendor-b.kyc",
+      "tool_name": "verify_customer",
+      "allowed": true,
+      "tool_receipt_id": "e4498510c878202677f232315c9771ad545f16b0a8fe2ddbbf0e397cc077ede7",
+      "outcome": "success",
+      "duration_ms": 18,
+      "cost": {
+        "units": 200,
+        "currency": "USD"
+      },
+      "output_hash": "20d1a73014db4806b985f39c23c7391e269b66a7bfcbf13f014636c13146dd0f",
+      "bilateral_dsse_sha256": "a6d123c02215f5bba0a789078a3c751e0a295b71eb6f093c14f8e8601ea25da9",
+      "parent_receipt_sha256": "c2886fe8cf55493ca9b2a35346346b3acd716f80ab308b4370ceb6f880088209",
+      "consistency_anchor": "chio:consistency:wf-chio-refund-001:1"
+    },
+    {
+      "step_index": 2,
+      "server_id": "vendor-c.payments",
+      "tool_name": "stage_refund",
+      "allowed": true,
+      "tool_receipt_id": "49dc6b1bb58c9a61f0b3e1c89b457d96988dd4d44ee1954fee7d938749d55b7b",
+      "outcome": "success",
+      "duration_ms": 12,
+      "cost": {
+        "units": 250,
+        "currency": "USD"
+      },
+      "output_hash": "c9abf68ae26e738826dabd29da7f6c623608221b253a70e6be1ec05bd9803987",
+      "bilateral_dsse_sha256": "3725f7af40f20181cc5032e22ca5e77b887260d97249bf48657d55f2b3d49f88",
+      "governance_receipt_id": "gov-refund-stage-authorization",
+      "parent_receipt_sha256": "48c28215dbdf1dec2cf809310120bcd96b6346bc0499a5b8d11c177955ec5b82",
+      "consistency_anchor": "chio:consistency:wf-chio-refund-001:2",
+      "destructive": true
+    }
+  ],
+  "total_cost": {
+    "units": 550,
+    "currency": "USD"
+  },
+  "duration_ms": 42000,
+  "kernel_key": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
+  "signature": "8c311718fc68ee460fefd8db4c0fcab6d4d53cc8a487373cddb768cf6edd9cfee032f493e856b9eb64cb6f5a46dea6a8a58773ae4a72d6c72f3cddf992e9460c",
+  "vendor_signatures": [
+    {
+      "vendorId": "vendor-a",
+      "publicKey": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+      "signature": "d9d1b9dcbf5c5085c74a24d2a64edf00d55b95a7bd8066b13bde3acc6f603f67ef19a11debe33a389397641940cea8ee6b7d04f8978cbce783a60ce0e5a2dc00"
+    },
+    {
+      "vendorId": "vendor-b",
+      "publicKey": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a",
+      "signature": "78f7daa404c723b8fb2c0283b9d315fa893b4ef3e12fd3568e29f9a3d9a256c2e8ad01b6ac6948c07a02b087a311a3f3f80deddf833a28fceb1d913713dae601"
+    },
+    {
+      "vendorId": "vendor-c",
+      "publicKey": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc",
+      "signature": "4adca89bb53a37532d1e7fabfa050bd6ebd983ef3dcd66aa696e2764498d312fe8360e5a2e99e672fe46c2083562a59bd472299211939603367132aa44957e06"
+    }
+  ]
+}

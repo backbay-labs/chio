@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-runtime/v1/tool-server-ack.schema.json",
+  "title": "Chio Runtime Tool Server Acknowledgement",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "ack_id",
+    "lease_id",
+    "tool_server_id",
+    "tool_instance_id",
+    "sandbox_attestation_ref",
+    "nonce",
+    "terminal_status",
+    "issued_at",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.runtime.tool-server-ack.v1" },
+    "ack_id": { "type": "string", "minLength": 1 },
+    "lease_id": { "type": "string", "minLength": 1 },
+    "tool_server_id": { "type": "string", "minLength": 1 },
+    "tool_instance_id": { "type": "string", "minLength": 1 },
+    "sandbox_attestation_ref": { "type": "string", "minLength": 1 },
+    "nonce": { "type": "string", "minLength": 1 },
+    "terminal_status": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "signature": { "type": "string", "minLength": 1 }
+  }
+}

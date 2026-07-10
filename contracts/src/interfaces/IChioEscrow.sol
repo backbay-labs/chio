@@ -37,6 +37,30 @@ interface IChioEscrow {
 
     event EscrowRefunded(bytes32 indexed escrowId, uint256 amount);
 
+    event TokenAllowedSet(address indexed token, bool allowed);
+
+    event PausedSet(address indexed admin, bool paused);
+
+    event AdminTransferStarted(address indexed currentAdmin, address indexed pendingAdmin);
+
+    event AdminTransferred(address indexed previousAdmin, address indexed newAdmin);
+
+    function admin() external view returns (address);
+
+    function pendingAdmin() external view returns (address);
+
+    function paused() external view returns (bool);
+
+    function transferAdmin(address newAdmin) external;
+
+    function acceptAdmin() external;
+
+    function setPaused(bool paused_) external;
+
+    function setTokenAllowed(address token, bool allowed) external;
+
+    function tokenAllowed(address token) external view returns (bool);
+
     function deriveEscrowId(EscrowTerms calldata terms) external view returns (bytes32 escrowId);
 
     function createEscrow(EscrowTerms calldata terms) external returns (bytes32 escrowId);
@@ -69,6 +93,7 @@ interface IChioEscrow {
         bytes32 escrowId,
         bytes32 receiptHash,
         uint256 settledAmount,
+        uint64 operatorEpoch,
         uint8 v,
         bytes32 r,
         bytes32 s

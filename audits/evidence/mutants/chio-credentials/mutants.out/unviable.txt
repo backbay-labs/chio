@@ -1,1 +1,0 @@
-crates/chio-credentials/src/trust_tier.rs:78:5: replace synthesize_trust_tier -> TrustTier with Default::default()

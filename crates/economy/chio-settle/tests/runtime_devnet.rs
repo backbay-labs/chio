@@ -35,9 +35,10 @@ use chio_kernel::evidence_export::{
 use chio_settle::{
     confirm_transaction, estimate_call_gas, finalize_escrow_dispatch, inspect_finality,
     prepare_dual_sign_release, prepare_erc20_approval, prepare_escrow_refund,
-    prepare_merkle_release, prepare_web3_escrow_dispatch, project_escrow_execution_receipt,
-    read_escrow_snapshot, static_validate_call, submit_call, DualSignReleaseInput,
-    EscrowDispatchRequest, EscrowExecutionAmount, LocalDevnetDeployment, SettlementFinalityStatus,
+    prepare_merkle_release, prepare_merkle_release_root_publication, prepare_web3_escrow_dispatch,
+    project_escrow_execution_receipt, read_escrow_snapshot, static_validate_call, submit_call,
+    DualSignReleaseInput, EscrowDispatchRequest, EscrowExecutionAmount, LocalDevnetDeployment,
+    SettlementAnchorContentBinding, SettlementFinalityStatus,
 };
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -246,7 +247,10 @@ fn sample_capital_instruction(
             schema: chio_core::credit::CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA.to_string(),
             instruction_id: instruction_id.to_string(),
             issued_at,
-            query: CapitalBookQuery::default(),
+            query: CapitalBookQuery {
+                agent_subject: Some("subject-1".to_string()),
+                ..CapitalBookQuery::default()
+            },
             subject_key: "subject-1".to_string(),
             source_id: "capital-source:facility:facility-1".to_string(),
             source_kind: CapitalBookSourceKind::FacilityCommitment,
@@ -317,6 +321,24 @@ fn sample_receipt(
     amount_units: u64,
     beneficiary_address: &str,
 ) -> ChioReceipt {
+    sample_receipt_with_content_hash(
+        keypair,
+        capability_id,
+        receipt_id,
+        amount_units,
+        beneficiary_address,
+        sha256_hex(format!("settlement:{receipt_id}").as_bytes()),
+    )
+}
+
+fn sample_receipt_with_content_hash(
+    keypair: &Keypair,
+    capability_id: &str,
+    receipt_id: &str,
+    amount_units: u64,
+    beneficiary_address: &str,
+    content_hash: String,
+) -> ChioReceipt {
     ChioReceipt::sign(
         ChioReceiptBody {
             id: receipt_id.to_string(),
@@ -337,7 +359,7 @@ fn sample_receipt(
             tool_origin: Default::default(),
             redaction_mode: Default::default(),
             actor_chain: Vec::new(),
-            content_hash: sha256_hex(format!("settlement:{receipt_id}").as_bytes()),
+            content_hash,
             policy_hash: sha256_hex(b"policy:web3"),
             evidence: Vec::new(),
             metadata: None,
@@ -394,8 +416,12 @@ async fn runtime_devnet_keeps_escrow_identity_stable_under_interleaving_and_repl
         &config.escrow_contract,
         4_500_000,
     )?;
-    let approval_tx = submit_call(&config, &approval.call).await?;
-    confirm_transaction(&config, &approval_tx).await?;
+    let approval_tx = submit_call(&config, &approval.call)
+        .await
+        .map_err(|error| std::io::Error::other(format!("submit initial approval: {error}")))?;
+    confirm_transaction(&config, &approval_tx)
+        .await
+        .map_err(|error| std::io::Error::other(format!("confirm initial approval: {error}")))?;
 
     let issued_at = latest_block_timestamp(&config.rpc_url).await?;
     let dispatch_a = prepare_web3_escrow_dispatch(
@@ -419,7 +445,7 @@ async fn runtime_devnet_keeps_escrow_identity_stable_under_interleaving_and_repl
             ),
             settlement_path: Web3SettlementPath::MerkleProof,
             oracle_evidence_required_for_fx: false,
-            note: Some("phase-169 drift coverage A".to_string()),
+            note: Some("drift-coverage-a".to_string()),
         },
         &binding,
     )
@@ -445,7 +471,7 @@ async fn runtime_devnet_keeps_escrow_identity_stable_under_interleaving_and_repl
             ),
             settlement_path: Web3SettlementPath::MerkleProof,
             oracle_evidence_required_for_fx: false,
-            note: Some("phase-169 drift coverage B".to_string()),
+            note: Some("drift-coverage-b".to_string()),
         },
         &binding,
     )
@@ -563,24 +589,45 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &binding,
     )
     .await?;
-    let create_tx = submit_call(&config, &prepared_dispatch.call).await?;
-    let create_receipt = confirm_transaction(&config, &create_tx).await?;
+    let create_tx = submit_call(&config, &prepared_dispatch.call)
+        .await
+        .map_err(|error| std::io::Error::other(format!("submit escrow create: {error}")))?;
+    let create_receipt = confirm_transaction(&config, &create_tx)
+        .await
+        .map_err(|error| std::io::Error::other(format!("confirm escrow create: {error}")))?;
     assert!(create_receipt.status);
     let prepared_dispatch = finalize_escrow_dispatch(&prepared_dispatch, &create_receipt)?;
 
-    let receipt = sample_receipt(
+    let execution_receipt_id = "exec-runtime-1";
+    let settlement_reference = "settlement-runtime-1";
+    let governed_receipt_id = prepared_dispatch
+        .dispatch
+        .capital_instruction
+        .body
+        .governed_receipt_id
+        .as_deref()
+        .ok_or("prepared dispatch missing governed receipt id")?;
+    let receipt_content_hash =
+        chio_core::web3::settlement::settlement_anchor_receipt_content_hash_parts(
+            execution_receipt_id,
+            settlement_reference,
+            &prepared_dispatch.dispatch.dispatch_id,
+            governed_receipt_id,
+        )?;
+    let receipt = sample_receipt_with_content_hash(
         &operator_keypair,
         "cap-runtime-1",
-        "rcpt-runtime-1",
+        governed_receipt_id,
         create_amount.units,
         &accounts.beneficiary,
+        receipt_content_hash,
     );
     let canonical_receipt_id = receipt.id.clone();
     let receipt_bytes = canonical_json_bytes(&receipt.body())?;
     let receipt_leaf = receipt_bytes.clone();
     let tree = MerkleTree::from_leaves(std::slice::from_ref(&receipt_leaf))?;
-    let checkpoint = build_checkpoint(11, 11, 11, &[receipt_bytes], &operator_keypair)?;
-    let inclusion = build_inclusion_proof(&tree, 0, checkpoint.body.checkpoint_seq, 11)?;
+    let checkpoint = build_checkpoint(1, 1, 1, &[receipt_bytes], &operator_keypair)?;
+    let inclusion = build_inclusion_proof(&tree, 0, checkpoint.body.checkpoint_seq, 1)?;
     let anchor_target = EvmAnchorTarget {
         chain_id: config.chain_id.clone(),
         rpc_url: config.rpc_url.clone(),
@@ -590,7 +637,9 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
     };
     let publication = prepare_root_publication(&anchor_target, &checkpoint, &binding)?;
     let egress_contract = evm_anchor_devnet_rpc_egress_contract(&config.rpc_url)?;
-    let publish_tx = publish_root(&publication, &egress_contract).await?;
+    let publish_tx = publish_root(&publication, &egress_contract)
+        .await
+        .map_err(|error| std::io::Error::other(format!("publish receipt root: {error}")))?;
     let confirmed_anchor = confirm_root_publication(
         &anchor_target,
         &checkpoint,
@@ -598,7 +647,8 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &publish_tx,
         &egress_contract,
     )
-    .await?;
+    .await
+    .map_err(|error| std::io::Error::other(format!("confirm receipt root: {error}")))?;
     let chain_anchor = build_chain_anchor_record(&anchor_target, &checkpoint, &confirmed_anchor);
     let evidence_bundle = EvidenceExportBundle {
         query: EvidenceExportQuery::default(),
@@ -628,21 +678,45 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &config,
         &prepared_dispatch.dispatch,
         &anchor_proof,
+        &SettlementAnchorContentBinding {
+            execution_receipt_id: execution_receipt_id.to_string(),
+            settlement_reference: settlement_reference.to_string(),
+        },
         EscrowExecutionAmount::Full,
     )?;
-    let merkle_release_tx = submit_call(&config, &merkle_release.call).await?;
-    let merkle_receipt = confirm_transaction(&config, &merkle_release_tx).await?;
+    let settlement_root_call = prepare_merkle_release_root_publication(
+        &config,
+        &prepared_dispatch.dispatch,
+        &merkle_release,
+        2,
+        2,
+    )?;
+    let settlement_root_tx = submit_call(&config, &settlement_root_call)
+        .await
+        .map_err(|error| std::io::Error::other(format!("publish settlement root: {error}")))?;
+    let settlement_root_receipt = confirm_transaction(&config, &settlement_root_tx)
+        .await
+        .map_err(|error| std::io::Error::other(format!("confirm settlement root: {error}")))?;
+    assert!(settlement_root_receipt.status);
+    let merkle_release_tx = submit_call(&config, &merkle_release.call)
+        .await
+        .map_err(|error| std::io::Error::other(format!("submit merkle release: {error}")))?;
+    let merkle_receipt = confirm_transaction(&config, &merkle_release_tx)
+        .await
+        .map_err(|error| std::io::Error::other(format!("confirm merkle release: {error}")))?;
     assert!(merkle_receipt.status);
     let projection = project_escrow_execution_receipt(
         &config,
         chio_settle::ExecutionProjectionInput {
             dispatch: &prepared_dispatch.dispatch,
             tx_hash: &merkle_release_tx,
-            execution_receipt_id: "exec-runtime-1".to_string(),
-            settlement_reference: "settlement-runtime-1".to_string(),
+            execution_receipt_id: execution_receipt_id.to_string(),
+            settlement_reference: settlement_reference.to_string(),
             observed_at: Some(merkle_receipt.observed_at),
             observed_amount: create_amount.clone(),
             anchor_proof: Some(&anchor_proof),
+            identity_registry_evidence: None,
+            identity_registry_evidence_binding: None,
             oracle_evidence: None,
             failure_reason: None,
             reversal_of: None,
@@ -665,8 +739,12 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &config.escrow_contract,
         750_000,
     )?;
-    let approval_refund_tx = submit_call(&config, &approval_refund.call).await?;
-    confirm_transaction(&config, &approval_refund_tx).await?;
+    let approval_refund_tx = submit_call(&config, &approval_refund.call)
+        .await
+        .map_err(|error| std::io::Error::other(format!("submit refund approval: {error}")))?;
+    confirm_transaction(&config, &approval_refund_tx)
+        .await
+        .map_err(|error| std::io::Error::other(format!("confirm refund approval: {error}")))?;
 
     let now = latest_block_timestamp(&config.rpc_url).await?;
     let refund_instruction = sample_capital_instruction(
@@ -696,14 +774,22 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &binding,
     )
     .await?;
-    let refund_create_tx = submit_call(&config, &refund_dispatch.call).await?;
-    let refund_create_receipt = confirm_transaction(&config, &refund_create_tx).await?;
+    let refund_create_tx = submit_call(&config, &refund_dispatch.call)
+        .await
+        .map_err(|error| std::io::Error::other(format!("submit refund escrow create: {error}")))?;
+    let refund_create_receipt = confirm_transaction(&config, &refund_create_tx)
+        .await
+        .map_err(|error| std::io::Error::other(format!("confirm refund escrow create: {error}")))?;
     let refund_dispatch = finalize_escrow_dispatch(&refund_dispatch, &refund_create_receipt)?;
     advance_time(&config.rpc_url, 10).await?;
     let refund_call =
         prepare_escrow_refund(&config, &refund_dispatch.dispatch, &accounts.outsider)?;
-    let refund_tx = submit_call(&config, &refund_call.call).await?;
-    let refund_receipt = confirm_transaction(&config, &refund_tx).await?;
+    let refund_tx = submit_call(&config, &refund_call.call)
+        .await
+        .map_err(|error| std::io::Error::other(format!("submit escrow refund: {error}")))?;
+    let refund_receipt = confirm_transaction(&config, &refund_tx)
+        .await
+        .map_err(|error| std::io::Error::other(format!("confirm escrow refund: {error}")))?;
     assert!(refund_receipt.status);
     let timeout_projection = project_escrow_execution_receipt(
         &config,
@@ -718,6 +804,8 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
                 currency: "USD".to_string(),
             },
             anchor_proof: None,
+            identity_registry_evidence: None,
+            identity_registry_evidence_binding: None,
             oracle_evidence: None,
             failure_reason: Some("escrow deadline elapsed before release".to_string()),
             reversal_of: None,
@@ -736,8 +824,12 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &config.escrow_contract,
         150_000_000,
     )?;
-    let approval_dual_tx = submit_call(&config, &approval_dual.call).await?;
-    confirm_transaction(&config, &approval_dual_tx).await?;
+    let approval_dual_tx = submit_call(&config, &approval_dual.call)
+        .await
+        .map_err(|error| std::io::Error::other(format!("submit dual approval: {error}")))?;
+    confirm_transaction(&config, &approval_dual_tx)
+        .await
+        .map_err(|error| std::io::Error::other(format!("confirm dual approval: {error}")))?;
     let high_value_instruction = sample_capital_instruction(
         &instruction_key,
         &config.chain_id,
@@ -765,8 +857,12 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
         &binding,
     )
     .await?;
-    let dual_create_tx = submit_call(&config, &dual_dispatch.call).await?;
-    let dual_create_receipt = confirm_transaction(&config, &dual_create_tx).await?;
+    let dual_create_tx = submit_call(&config, &dual_dispatch.call)
+        .await
+        .map_err(|error| std::io::Error::other(format!("submit dual escrow create: {error}")))?;
+    let dual_create_receipt = confirm_transaction(&config, &dual_create_tx)
+        .await
+        .map_err(|error| std::io::Error::other(format!("confirm dual escrow create: {error}")))?;
     let dual_dispatch = finalize_escrow_dispatch(&dual_dispatch, &dual_create_receipt)?;
     let dual_receipt = sample_receipt(
         &operator_keypair,
@@ -786,9 +882,32 @@ async fn runtime_devnet_executes_merkle_refund_and_dual_sign_paths(
                 currency: "USD".to_string(),
             },
         },
-    )?;
-    static_validate_call(&config, &dual_sign_release.call).await?;
-    let gas = estimate_call_gas(&config, &dual_sign_release.call).await?;
+    )
+    .await?;
+    assert_eq!(
+        dual_sign_release
+            .identity_registry_evidence
+            .identity_registry_contract,
+        config.identity_registry_contract
+    );
+    assert_eq!(
+        dual_sign_release
+            .identity_registry_evidence
+            .operator_address,
+        config.operator_address
+    );
+    assert_ne!(
+        dual_sign_release.identity_registry_evidence.block_hash,
+        "0x0000000000000000000000000000000000000000000000000000000000000000"
+    );
+    assert!(dual_sign_release.identity_registry_evidence.block_number > 0);
+    assert!(dual_sign_release.identity_registry_evidence.active);
+    static_validate_call(&config, &dual_sign_release.call)
+        .await
+        .map_err(|error| std::io::Error::other(format!("validate dual release: {error}")))?;
+    let gas = estimate_call_gas(&config, &dual_sign_release.call)
+        .await
+        .map_err(|error| std::io::Error::other(format!("estimate dual release: {error}")))?;
     assert!(gas > 0);
     let (_, dual_finality) = inspect_finality(
         &config,

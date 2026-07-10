@@ -7,7 +7,7 @@ use crate::types::{
     ReceiptLineageStatement,
 };
 
-pub(crate) fn historical_cross_kernel_continuation(
+pub(crate) fn runtime_core_cross_kernel_continuation(
     value: &CrossKernelContinuation,
 ) -> chio_runtime_core::CrossKernelContinuation {
     chio_runtime_core::CrossKernelContinuation {
@@ -26,7 +26,7 @@ pub(crate) fn historical_cross_kernel_continuation(
     }
 }
 
-pub(crate) fn historical_receipt_lineage_statement(
+pub(crate) fn runtime_core_receipt_lineage_statement(
     value: &ReceiptLineageStatement,
 ) -> chio_runtime_core::ReceiptLineageStatement {
     chio_runtime_core::ReceiptLineageStatement {
@@ -42,7 +42,7 @@ pub(crate) fn historical_receipt_lineage_statement(
     }
 }
 
-fn historical_cross_boundary_evidence_ref(
+fn runtime_core_cross_boundary_evidence_ref(
     value: &CrossBoundaryEvidenceRef,
 ) -> chio_runtime_core::CrossBoundaryEvidenceRef {
     chio_runtime_core::CrossBoundaryEvidenceRef {
@@ -52,7 +52,7 @@ fn historical_cross_boundary_evidence_ref(
     }
 }
 
-pub(crate) fn historical_cross_boundary_admission_report(
+pub(crate) fn runtime_core_cross_boundary_admission_report(
     value: &CrossBoundaryAdmissionReport,
 ) -> chio_runtime_core::CrossBoundaryAdmissionReport {
     chio_runtime_core::CrossBoundaryAdmissionReport {
@@ -69,7 +69,7 @@ pub(crate) fn historical_cross_boundary_admission_report(
         verified_evidence: value
             .verified_evidence
             .iter()
-            .map(historical_cross_boundary_evidence_ref)
+            .map(runtime_core_cross_boundary_evidence_ref)
             .collect(),
         treaty_scope_sha256: value.treaty_scope_sha256.clone(),
         ladder_intersection_sha256: value.ladder_intersection_sha256.clone(),
@@ -78,7 +78,7 @@ pub(crate) fn historical_cross_boundary_admission_report(
     }
 }
 
-pub(crate) fn historical_bilateral_invocation(
+pub(crate) fn runtime_core_bilateral_invocation(
     value: &BilateralInvocation,
 ) -> chio_runtime_core::BilateralInvocation {
     chio_runtime_core::BilateralInvocation {
@@ -99,7 +99,7 @@ pub(crate) fn historical_bilateral_invocation(
     }
 }
 
-pub(crate) fn historical_buyer_attestation_packet(
+pub(crate) fn runtime_core_buyer_attestation_packet(
     value: &BuyerAttestationPacket,
 ) -> chio_runtime_core::BuyerAttestationPacket {
     chio_runtime_core::BuyerAttestationPacket {
@@ -124,7 +124,7 @@ pub(crate) fn historical_buyer_attestation_packet(
     }
 }
 
-fn historical_review_artifact_ref(
+fn runtime_core_review_artifact_ref(
     value: &BuyerAttestationReviewArtifactRef,
 ) -> chio_runtime_core::BuyerAttestationReviewArtifactRef {
     chio_runtime_core::BuyerAttestationReviewArtifactRef {
@@ -135,7 +135,7 @@ fn historical_review_artifact_ref(
     }
 }
 
-pub(crate) fn historical_review_package(
+pub(crate) fn runtime_core_review_package(
     value: &BuyerAttestationReviewPackage,
 ) -> chio_runtime_core::BuyerAttestationReviewPackage {
     chio_runtime_core::BuyerAttestationReviewPackage {
@@ -147,12 +147,12 @@ pub(crate) fn historical_review_package(
         artifacts: value
             .artifacts
             .iter()
-            .map(historical_review_artifact_ref)
+            .map(runtime_core_review_artifact_ref)
             .collect(),
     }
 }
 
-fn historical_review_source(
+fn runtime_core_review_source(
     value: &BuyerAttestationReviewSource,
 ) -> chio_runtime_core::BuyerAttestationReviewSource {
     chio_runtime_core::BuyerAttestationReviewSource {
@@ -162,13 +162,13 @@ fn historical_review_source(
     }
 }
 
-pub(crate) fn historical_review_sources(
+pub(crate) fn runtime_core_review_sources(
     sources: &[BuyerAttestationReviewSource],
 ) -> Vec<chio_runtime_core::BuyerAttestationReviewSource> {
-    sources.iter().map(historical_review_source).collect()
+    sources.iter().map(runtime_core_review_source).collect()
 }
 
-pub(crate) fn historical_review_bundle(
+pub(crate) fn runtime_core_review_bundle(
     value: &ReceiptLineageBundle,
 ) -> chio_runtime_core::ReceiptLineageBundle {
     chio_runtime_core::ReceiptLineageBundle {
@@ -179,7 +179,7 @@ pub(crate) fn historical_review_bundle(
         statements: value
             .statements
             .iter()
-            .map(historical_receipt_lineage_statement)
+            .map(runtime_core_receipt_lineage_statement)
             .collect(),
     }
 }

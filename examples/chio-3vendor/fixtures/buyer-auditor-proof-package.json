@@ -66,8 +66,8 @@
   ],
   "toolReceipts": [
     {
-      "id": "14b79693334d566639bdb36299b1b1e7efa4e5695135811dbc281e0474eeabf1",
-      "timestamp": 1766000000,
+      "id": "193295a8afa591544c43648f0c6908e361964d060ed7b3d5e54939ab0a66ff86",
+      "timestamp": 1766000001,
       "capability_id": "lease-vendor-a-read",
       "tool_server": "vendor-a.files",
       "tool_name": "read_refund_case",
@@ -86,27 +86,125 @@
       "boundary_class": "prevent",
       "tool_origin": "caller_executed",
       "redaction_mode": "none",
-      "actor_chain": [
-        {
-          "actor_id": "agent:chio-loopback",
-          "actor_kind": "agent"
-        }
-      ],
-      "content_hash": "d4a0dc2e587e4acc3278024b42796fb9978466207933c82ceb0a626c3a1b314a",
-      "policy_hash": "e6a0766a54bd1dcd5dc624072cbd32195e5da0b5418589d66f731eb8b9688b09",
+      "content_hash": "6c7596557f061fb92c19195dd7184598e026bb5212185a1231f6bcefc6fee009",
+      "policy_hash": "3c6653cc802639826432398a16ac343a2152c86541121a84dc09e9132e757e9a",
       "metadata": {
-        "chio_receipt_signing_nonce": "rcpt-vendor-a",
+        "attribution": {
+          "delegation_depth": 0,
+          "grant_index": 0,
+          "issuer_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
+          "subject_key": "324e93a07a9c768fc4fd22d4c5a6ec665af5e695b2d5ac035fa845b72cbad78b"
+        },
+        "chio_receipt_signing_nonce": "rcpt-runtime-loopback-0",
+        "chio_runtime": {
+          "accepted": true,
+          "admission_id": "adm-loopback-1",
+          "destructive": false,
+          "failure_code": null,
+          "federation_treaty_dsse": {
+            "capability_lease_ref": {
+              "expires_at_unix_ms": 1900000000000,
+              "issuer": "did:chio:buyer-kernel",
+              "lease_id": "lease-vendor-a-read",
+              "scope_digest": {
+                "alg": "sha256",
+                "value": "76ed22f383cfea49ae15d32b27a77dd5c80b3d78b30c486e05493498bba12458"
+              }
+            },
+            "consistency_anchor": "chio:runtime-loopback:0",
+            "consistency_model": "totally_ordered",
+            "cross_org_visibility": "federated",
+            "governance_receipt_ref": null,
+            "policy_evaluation_summary": {
+              "joint_disposition": "allow",
+              "server_a_verdict": {
+                "policy_id": "buyer-policy:read_refund_case",
+                "policy_version": "chio-ladder-v1",
+                "rationale_code": "lease-bound",
+                "verdict": "allow"
+              },
+              "server_b_verdict": {
+                "policy_id": "did:chio:vendor-a-policy:read_refund_case",
+                "policy_version": "chio-ladder-v1",
+                "rationale_code": "manifest-bound",
+                "verdict": "allow"
+              }
+            },
+            "treaty_binding_ref": {
+              "action_class_id": "workflow.cross_kernel.read_refund_case",
+              "admission_report_sha256": "4647cea3d7d5e06d1ab789aa34a0566b2f96079f8a600e3284b127c30ab2140c",
+              "consistency_model": "totally_ordered",
+              "continuation_sha256": "1fa8fca70654c11a593a000228363574c89ecbab7a8c3d46236e7b3ce0b85157",
+              "governance_refs": [],
+              "ladder_intersection_sha256": "0003c674ba55f8cb5342ccb00ea45949d7cc0786e5f3d81db7bc271e1b9d0bf9",
+              "lease_refs": [
+                "lease-vendor-a-read"
+              ],
+              "lineage_bundle_sha256": "03f778b2853b7cf26ebbec3ce48a0a179e247f7c91ab65d9c9e2c6036e0cab59",
+              "local_receipt_sha256": "1c5454c339945494bb69caf4560b51449dbfe510d398e060e363b8d99092c5f0",
+              "outcome_sha256": "ab5a4ae4f353dfe3ca62a40af33079ebc409fb0eae115426ab09839c87f31a0e",
+              "remote_receipt_sha256": "a7427dbf183aae2b81ca1b6a1b21706327e8388036f9e1ff8f7e280db6c68796",
+              "request_sha256": "3f31b68cde492ccb216e04bb62d975141dbed7b3c4f96a73d21398eaa88fb5cc",
+              "signer_kernel_ids": [
+                "did:chio:buyer-kernel",
+                "did:chio:vendor-a"
+              ],
+              "treaty_id": "treaty:runtime-loopback:0",
+              "treaty_scope_sha256": "65994f6782e991711a07862d55922cb4b3c2516d3f754e4603d6bbdc31ae8f93"
+            }
+          },
+          "governance_receipt_id": null,
+          "lease_id": "lease-vendor-a-read",
+          "pheromone_advisory": {
+            "accepted": true,
+            "distinctOriginPairs": 1,
+            "evaluatedAtUnixMs": 1765999999000,
+            "observeOnly": true,
+            "reputationEpoch": 7,
+            "sourceReportSha256": "16db69ac7112c142958c04e387ba37ad058e216c7f229a9e914d13c731a378de",
+            "subjectClass": "workflow.destructive_step",
+            "subjectClassNamespace": "chio.runtime",
+            "totalStrength": 0.1
+          },
+          "pheromone_policy_decision": {
+            "decision": "allow",
+            "enforced": true,
+            "peerWeightsSha256": "99bcdb49109192492e673562b077fa9b652ccd0ab515e9ce04ec84842a6c8589",
+            "policyId": "policy-runtime-loopback-risk",
+            "policySha256": "527486cd3974ce87eff310574d7efd4682015c21915e00b32e8fade14079bcd8",
+            "queryReportSha256": "16db69ac7112c142958c04e387ba37ad058e216c7f229a9e914d13c731a378de",
+            "reasonCode": "runtime_pheromone_policy_allow",
+            "reputationEpoch": 7,
+            "schema": "chio.runtime.pheromone-policy-decision.v1"
+          },
+          "reserved_destructive_lease_id": null,
+          "reserved_treaty_continuation_id": "continuation:runtime-loopback:0",
+          "step_index": 0,
+          "trust_bundle_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "verification_context_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "workflow_grant_id": "cap-chio-workflow",
+          "workflow_id": "wf-chio-refund-001"
+        },
+        "governed_transaction": {
+          "intent_hash": "4b49ea5701f3c8c687c0cb54408257c01f76d239af6287b2082f4b2bb062f3e2",
+          "intent_id": "intent:chio-runtime-loopback:0",
+          "purpose": "Chio live runtime loopback proof regeneration",
+          "server_id": "vendor-a.files",
+          "tool_name": "read_refund_case"
+        },
+        "receipt_context": {
+          "request_id": "req-loopback-1"
+        },
         "vendor_id": "vendor-a",
         "workflow_id": "wf-chio-refund-001"
       },
       "trust_level": "mediated",
-      "tenant_id": "buyer-tenant",
       "kernel_key": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
-      "signature": "000b20f35c908ded360f1600f75249a910c987115436e7df5ce7c7c613b39711774ff63b4842ab3bec05b778d478ea6d0c1151e1d326974009c02ea8bb950703"
+      "signature": "d1df3885a48378fcb4956dfdc5383b1714c08daa20565809cf34b2a4eeb5d83ddc5f8085cef499d68c2a77637cb6b1d1ba9a66140182bac0f8881d7e28be1504"
     },
     {
-      "id": "d7f8482b209bff9b6f8bf50918075074ce01f8d1fff46e97f6500671a0a61737",
-      "timestamp": 1766000000,
+      "id": "1fb0ca4f46752a9d0a502cc6125eb8d70288882ea754b2aebbcce323a1f6a8c8",
+      "timestamp": 1766000001,
       "capability_id": "lease-vendor-b-kyc",
       "tool_server": "vendor-b.kyc",
       "tool_name": "verify_customer",
@@ -125,27 +223,125 @@
       "boundary_class": "prevent",
       "tool_origin": "caller_executed",
       "redaction_mode": "none",
-      "actor_chain": [
-        {
-          "actor_id": "agent:chio-loopback",
-          "actor_kind": "agent"
-        }
-      ],
-      "content_hash": "9b72477f137629bca082c3482686272608acbb578eed09d2e178e4d7184ec2ef",
-      "policy_hash": "3132e1272daabd60cda9524159c096b71c2beda112e82f0b8a3df9c93ba361a4",
+      "content_hash": "20d1a73014db4806b985f39c23c7391e269b66a7bfcbf13f014636c13146dd0f",
+      "policy_hash": "4cd59e1c1d3b9bfd795ddef98b97227c2662a59687e267b1869ebe4d1d1f7e9a",
       "metadata": {
-        "chio_receipt_signing_nonce": "rcpt-vendor-b",
+        "attribution": {
+          "delegation_depth": 0,
+          "grant_index": 0,
+          "issuer_key": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a",
+          "subject_key": "1a83b0e7274adf2f26301b3c8c4a3fa1c328b1182e92f113d3e863594e1124e0"
+        },
+        "chio_receipt_signing_nonce": "rcpt-runtime-loopback-1",
+        "chio_runtime": {
+          "accepted": true,
+          "admission_id": "adm-loopback-2",
+          "destructive": false,
+          "failure_code": null,
+          "federation_treaty_dsse": {
+            "capability_lease_ref": {
+              "expires_at_unix_ms": 1900000000000,
+              "issuer": "did:chio:buyer-kernel",
+              "lease_id": "lease-vendor-b-kyc",
+              "scope_digest": {
+                "alg": "sha256",
+                "value": "4c03cf03cf5fb4042c3ba861e30926af1aa545d35515ce37456b2a42e4171846"
+              }
+            },
+            "consistency_anchor": "chio:runtime-loopback:1",
+            "consistency_model": "totally_ordered",
+            "cross_org_visibility": "federated",
+            "governance_receipt_ref": null,
+            "policy_evaluation_summary": {
+              "joint_disposition": "allow",
+              "server_a_verdict": {
+                "policy_id": "buyer-policy:verify_customer",
+                "policy_version": "chio-ladder-v1",
+                "rationale_code": "lease-bound",
+                "verdict": "allow"
+              },
+              "server_b_verdict": {
+                "policy_id": "did:chio:vendor-b-policy:verify_customer",
+                "policy_version": "chio-ladder-v1",
+                "rationale_code": "manifest-bound",
+                "verdict": "allow"
+              }
+            },
+            "treaty_binding_ref": {
+              "action_class_id": "workflow.cross_kernel.verify_customer",
+              "admission_report_sha256": "a401c6246f53f4754e9bf86665438fe104799ef4d3c95589cf5001502d8cb871",
+              "consistency_model": "totally_ordered",
+              "continuation_sha256": "22a95fa4e800ec51b0b72bbdd3957b5f0878269ac62d1fbde10b384ba9b31e09",
+              "governance_refs": [],
+              "ladder_intersection_sha256": "5207581dfe87f4438a8d86d89a52e0eaaaad1275e449c1b5eab9827fa7506be1",
+              "lease_refs": [
+                "lease-vendor-b-kyc"
+              ],
+              "lineage_bundle_sha256": "1dd250271a7ce4512339938755779ab03762b6ba60b0ff59944783c51fc8b592",
+              "local_receipt_sha256": "dfa012e2289b05c88e3e7403bade271b87c1a4834990b3adcfd5bcb1a3a66701",
+              "outcome_sha256": "93c067a6f2080558986b1f0d1403621d73ad8d417fff65807924b3371d5e7079",
+              "remote_receipt_sha256": "29a33cc7d019df8dd837120cf40cccdfbc8da606c3e5744989ca3eddaf0986aa",
+              "request_sha256": "5e9312cae8fac5f26d60c004f5e371a48d649b1c5fb234803727f478d18a0ccd",
+              "signer_kernel_ids": [
+                "did:chio:buyer-kernel",
+                "did:chio:vendor-b"
+              ],
+              "treaty_id": "treaty:runtime-loopback:1",
+              "treaty_scope_sha256": "b14c9b5bf33468fbb859049e838beb9fe8de75b6975f2b648a940e22bed1260a"
+            }
+          },
+          "governance_receipt_id": null,
+          "lease_id": "lease-vendor-b-kyc",
+          "pheromone_advisory": {
+            "accepted": true,
+            "distinctOriginPairs": 1,
+            "evaluatedAtUnixMs": 1765999999000,
+            "observeOnly": true,
+            "reputationEpoch": 7,
+            "sourceReportSha256": "16db69ac7112c142958c04e387ba37ad058e216c7f229a9e914d13c731a378de",
+            "subjectClass": "workflow.destructive_step",
+            "subjectClassNamespace": "chio.runtime",
+            "totalStrength": 0.1
+          },
+          "pheromone_policy_decision": {
+            "decision": "allow",
+            "enforced": true,
+            "peerWeightsSha256": "f7ecdd87584145bd1cffcaf82f94e47cfed3353a2b88914a7a62e3f5057fd398",
+            "policyId": "policy-runtime-loopback-risk",
+            "policySha256": "bb68dc46cacb94b0a8f32c53f0a6f5bf39a5fe16e279983f6ceffc58c1376157",
+            "queryReportSha256": "16db69ac7112c142958c04e387ba37ad058e216c7f229a9e914d13c731a378de",
+            "reasonCode": "runtime_pheromone_policy_allow",
+            "reputationEpoch": 7,
+            "schema": "chio.runtime.pheromone-policy-decision.v1"
+          },
+          "reserved_destructive_lease_id": null,
+          "reserved_treaty_continuation_id": "continuation:runtime-loopback:1",
+          "step_index": 1,
+          "trust_bundle_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "verification_context_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "workflow_grant_id": "cap-chio-workflow",
+          "workflow_id": "wf-chio-refund-001"
+        },
+        "governed_transaction": {
+          "intent_hash": "a9642be2621c320c59b5bae99b57c065a69205dacd85d743cc1cf5264bd483a4",
+          "intent_id": "intent:chio-runtime-loopback:1",
+          "purpose": "Chio live runtime loopback proof regeneration",
+          "server_id": "vendor-b.kyc",
+          "tool_name": "verify_customer"
+        },
+        "receipt_context": {
+          "request_id": "req-loopback-2"
+        },
         "vendor_id": "vendor-b",
         "workflow_id": "wf-chio-refund-001"
       },
       "trust_level": "mediated",
-      "tenant_id": "buyer-tenant",
       "kernel_key": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a",
-      "signature": "e997bb527caa3a583e9dd575df826cc644c55fe80aae09ff2bf36689a2b13bfe0833d994df80736a5bd25b2e15009d59181f579fca830216502bdb5b08fe390f"
+      "signature": "2b68788ef2ae43075550ced2c2859f626fec15e064ede0cd5c407b6e85f9551fd63bf484f36ca1dcbd40c71f0f6049c83b361c9bd3cc9acd38a42a2547000804"
     },
     {
-      "id": "899df74e9f357ef7a4d2f945482f2da20db5d5ec975c6109587133fadcc03e7c",
-      "timestamp": 1766000000,
+      "id": "e0cdc0e414597a0d9c63448993211a92c131b428f70b13c72a955212a9b4c94f",
+      "timestamp": 1766000001,
       "capability_id": "lease-vendor-c-refund",
       "tool_server": "vendor-c.payments",
       "tool_name": "stage_refund",
@@ -164,23 +360,130 @@
       "boundary_class": "prevent",
       "tool_origin": "caller_executed",
       "redaction_mode": "none",
-      "actor_chain": [
-        {
-          "actor_id": "agent:chio-loopback",
-          "actor_kind": "agent"
-        }
-      ],
-      "content_hash": "3274eda6e928644236b9db29c1d207745880f5678845390f77644d9cf2e75978",
-      "policy_hash": "297d21efd700643e3059854a3921c759d967ade0d958507e5e053388939abe0b",
+      "content_hash": "c9abf68ae26e738826dabd29da7f6c623608221b253a70e6be1ec05bd9803987",
+      "policy_hash": "82cfea63d61559648ad6bdf65461698cd74cf82b691762bcd403ada4fb2ca3fd",
       "metadata": {
-        "chio_receipt_signing_nonce": "rcpt-vendor-c",
+        "attribution": {
+          "delegation_depth": 0,
+          "grant_index": 0,
+          "issuer_key": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc",
+          "subject_key": "f0997a86a448f183d00e23233c3bb2ea2886ffbc735d154b2d81be557f14d9b3"
+        },
+        "chio_receipt_signing_nonce": "rcpt-runtime-loopback-2",
+        "chio_runtime": {
+          "accepted": true,
+          "admission_id": "adm-loopback-3",
+          "destructive": true,
+          "failure_code": null,
+          "federation_treaty_dsse": {
+            "capability_lease_ref": {
+              "expires_at_unix_ms": 1900000000000,
+              "issuer": "did:chio:buyer-kernel",
+              "lease_id": "lease-vendor-c-refund",
+              "scope_digest": {
+                "alg": "sha256",
+                "value": "90710ca74ec02bc84d8fc4c7376daa795ac749a25c51c5517768306fef6bf7fc"
+              }
+            },
+            "consistency_anchor": "chio:runtime-loopback:2",
+            "consistency_model": "totally_ordered",
+            "cross_org_visibility": "federated",
+            "governance_receipt_ref": {
+              "digest": {
+                "alg": "sha256",
+                "value": "24b9986c394f9ad7250bffd01d32e1a74d0eb16b6d41e763798df3db4bc7a5d2"
+              },
+              "kernel_id": "did:chio:buyer-kernel",
+              "receipt_id": "gov:buyer:refund:vendor-c"
+            },
+            "policy_evaluation_summary": {
+              "joint_disposition": "allow",
+              "server_a_verdict": {
+                "policy_id": "buyer-policy:stage_refund",
+                "policy_version": "chio-ladder-v1",
+                "rationale_code": "lease-bound",
+                "verdict": "allow"
+              },
+              "server_b_verdict": {
+                "policy_id": "did:chio:vendor-c-policy:stage_refund",
+                "policy_version": "chio-ladder-v1",
+                "rationale_code": "manifest-bound",
+                "verdict": "allow"
+              }
+            },
+            "treaty_binding_ref": {
+              "action_class_id": "workflow.cross_kernel.stage_refund",
+              "admission_report_sha256": "20e03595e0ccc44d928bae220b0d9b8bac4a081f62d597e02e714cf66315283b",
+              "consistency_model": "totally_ordered",
+              "continuation_sha256": "8ef2f34810118426ecb6d682ce2d2b2450577ab6f230ef54296e524c366b93f4",
+              "governance_refs": [
+                "gov:buyer:refund:vendor-c"
+              ],
+              "ladder_intersection_sha256": "51253e92b7ddf857f191a858503b3dc89e213ef6d2998bed443afbf3f7949580",
+              "lease_refs": [
+                "lease-vendor-c-refund"
+              ],
+              "lineage_bundle_sha256": "9ca09cdf9da16d1b8fd0b9ce728b138cc9377b2b397f43263782a98d9a13714f",
+              "local_receipt_sha256": "8376074709617be42ecd0acd02e59f4c1566af67d2ae3feab1d632ef85d6118b",
+              "outcome_sha256": "c1becf509ebe8ab7f150169504e92564ccb61327777646bc50c49f9961d437a8",
+              "remote_receipt_sha256": "22dc3803502830699e706b01e27e6cd61e5dc7e359bccf65f807e882dffa13de",
+              "request_sha256": "47e6e096b5d5888a3f90d057de3bce595d8ea5dd8624ccde387bb739d5a6464b",
+              "signer_kernel_ids": [
+                "did:chio:buyer-kernel",
+                "did:chio:vendor-c"
+              ],
+              "treaty_id": "treaty:runtime-loopback:2",
+              "treaty_scope_sha256": "0ff230e9b56d30bd5ce6c60b91f28464e6ecebab6f425e930dda3f82d1f2b21c"
+            }
+          },
+          "governance_receipt_id": "gov:buyer:refund:vendor-c",
+          "lease_id": "lease-vendor-c-refund",
+          "pheromone_advisory": {
+            "accepted": true,
+            "distinctOriginPairs": 1,
+            "evaluatedAtUnixMs": 1765999999000,
+            "observeOnly": true,
+            "reputationEpoch": 7,
+            "sourceReportSha256": "16db69ac7112c142958c04e387ba37ad058e216c7f229a9e914d13c731a378de",
+            "subjectClass": "workflow.destructive_step",
+            "subjectClassNamespace": "chio.runtime",
+            "totalStrength": 0.1
+          },
+          "pheromone_policy_decision": {
+            "decision": "allow",
+            "enforced": true,
+            "peerWeightsSha256": "63cc83b122d7c68969783996d7fc910a38f2f3cb746fc4baf5f95bc68ccf1e8c",
+            "policyId": "policy-runtime-loopback-risk",
+            "policySha256": "48f56ffa4569e680b2ecf7cb18d66a1099c98eecaa05a0e8ef89351fafc33427",
+            "queryReportSha256": "16db69ac7112c142958c04e387ba37ad058e216c7f229a9e914d13c731a378de",
+            "reasonCode": "runtime_pheromone_policy_allow",
+            "reputationEpoch": 7,
+            "schema": "chio.runtime.pheromone-policy-decision.v1"
+          },
+          "reserved_destructive_lease_id": "lease-vendor-c-refund",
+          "reserved_treaty_continuation_id": "continuation:runtime-loopback:2",
+          "step_index": 2,
+          "trust_bundle_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "verification_context_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "workflow_grant_id": "cap-chio-workflow",
+          "workflow_id": "wf-chio-refund-001"
+        },
+        "governed_transaction": {
+          "intent_hash": "7c01d93306f705f06eee70485e6feba9dcdc56899d0a0bfe737b0b5e62d6d2ac",
+          "intent_id": "intent:chio-runtime-loopback:2",
+          "purpose": "Chio live runtime loopback proof regeneration",
+          "server_id": "vendor-c.payments",
+          "tool_name": "stage_refund"
+        },
+        "receipt_context": {
+          "request_id": "req-loopback-3"
+        },
         "vendor_id": "vendor-c",
         "workflow_id": "wf-chio-refund-001"
       },
       "trust_level": "mediated",
-      "tenant_id": "buyer-tenant",
       "kernel_key": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc",
-      "signature": "056db42ce66bd511d890005d28190504b28e36cc978f4be6dc800b3af136783afad5d048ca2d28235909cdf56180ab011f6e7984dff0c0b1cefa4573a78a7708"
+      "signature": "1108867dd25856979c2d5b41b2b74bcc444662b13ec0e3c0c2e650bf116bc8cee0371f8c3439d5a1897af16bc534b084da8cb8c6fc87c775bb5a744897b8c900"
     }
   ],
   "workflowReceipt": {
@@ -202,15 +505,15 @@
         "server_id": "vendor-a.files",
         "tool_name": "read_refund_case",
         "allowed": true,
-        "tool_receipt_id": "14b79693334d566639bdb36299b1b1e7efa4e5695135811dbc281e0474eeabf1",
+        "tool_receipt_id": "193295a8afa591544c43648f0c6908e361964d060ed7b3d5e54939ab0a66ff86",
         "outcome": "success",
         "duration_ms": 12,
         "cost": {
           "units": 100,
           "currency": "USD"
         },
-        "output_hash": "d4a0dc2e587e4acc3278024b42796fb9978466207933c82ceb0a626c3a1b314a",
-        "bilateral_dsse_sha256": "c2e3db14cda40df288fe59dc6106b9dfdd39778ed7078fc0eca652840c95504f",
+        "output_hash": "6c7596557f061fb92c19195dd7184598e026bb5212185a1231f6bcefc6fee009",
+        "bilateral_dsse_sha256": "9d9084e6383a02871c707b2387c099569a2d0177afce47745681f0e5c8e0c2a4",
         "consistency_anchor": "chio:consistency:wf-chio-refund-001:0"
       },
       {
@@ -218,16 +521,16 @@
         "server_id": "vendor-b.kyc",
         "tool_name": "verify_customer",
         "allowed": true,
-        "tool_receipt_id": "d7f8482b209bff9b6f8bf50918075074ce01f8d1fff46e97f6500671a0a61737",
+        "tool_receipt_id": "1fb0ca4f46752a9d0a502cc6125eb8d70288882ea754b2aebbcce323a1f6a8c8",
         "outcome": "success",
         "duration_ms": 18,
         "cost": {
           "units": 200,
           "currency": "USD"
         },
-        "output_hash": "9b72477f137629bca082c3482686272608acbb578eed09d2e178e4d7184ec2ef",
-        "bilateral_dsse_sha256": "db3538600aade2753ae7c3a623f95950a8c2055e1136368b5a5c0155254601aa",
-        "parent_receipt_sha256": "e98d7f071fec5171fd1e5bf13941c9d1c0eaefc2fe55719cedf17021b44c6002",
+        "output_hash": "20d1a73014db4806b985f39c23c7391e269b66a7bfcbf13f014636c13146dd0f",
+        "bilateral_dsse_sha256": "a8672b84a318f4d98d9881d57233f156d19a3caa58857185332df4e31e43aeba",
+        "parent_receipt_sha256": "75a5dc77a989f391d11a76283a0fe0b5a0828ec4b28428dc0607e6b0ec1b0131",
         "consistency_anchor": "chio:consistency:wf-chio-refund-001:1"
       },
       {
@@ -235,17 +538,17 @@
         "server_id": "vendor-c.payments",
         "tool_name": "stage_refund",
         "allowed": true,
-        "tool_receipt_id": "899df74e9f357ef7a4d2f945482f2da20db5d5ec975c6109587133fadcc03e7c",
+        "tool_receipt_id": "e0cdc0e414597a0d9c63448993211a92c131b428f70b13c72a955212a9b4c94f",
         "outcome": "success",
         "duration_ms": 12,
         "cost": {
           "units": 250,
           "currency": "USD"
         },
-        "output_hash": "3274eda6e928644236b9db29c1d207745880f5678845390f77644d9cf2e75978",
-        "bilateral_dsse_sha256": "f3bf330496c4fcb6535f5ae25546aec0dfdda8278d2cb9ac21826dbfda78e90d",
+        "output_hash": "c9abf68ae26e738826dabd29da7f6c623608221b253a70e6be1ec05bd9803987",
+        "bilateral_dsse_sha256": "bd7b46db896d1b1a6e0e13813c79de6ff5db2f63f45a714dd76c3ddadea80d0f",
         "governance_receipt_id": "gov-refund-stage-authorization",
-        "parent_receipt_sha256": "6dcc0ecd988c1de2b438342be2504d6a403f5cc5b68a8d1fec3ad7bfe85563ae",
+        "parent_receipt_sha256": "737cb8298a13b55d68427c1c248bb34f48febae89dcbed6976a520727363c504",
         "consistency_anchor": "chio:consistency:wf-chio-refund-001:2",
         "destructive": true
       }
@@ -256,65 +559,65 @@
     },
     "duration_ms": 42000,
     "kernel_key": "66be7e332c7a453332bd9d0a7f7db055f5c5ef1a06ada66d98b39fb6810c473a",
-    "signature": "dbbe96011efe35d9864a9c03e6d2e87c0854787a292fa3fe743448650f14b0cbf6e8e5b7b018ca64aef8bdf7d2268909bbce74f7c612690b37012d388cf8a404",
+    "signature": "3477a1fba0c774341187e40b06f9d1196ded23395fb86557b9098e59b875ae89637fd578a92b13f83af6c2bd0b4a17a0f3125b3a0d0880042edcaccb9f463e08",
     "vendor_signatures": [
       {
         "vendorId": "vendor-a",
         "publicKey": "d54207da194977dcf46adbfec2bc2e75b52d5a8a42184fedfdc00024f0e3e8da",
-        "signature": "25c638ed8643ee0d101b43f518fe3fc578a3b16a14ab1b79febe1ee4a62d39205070cf129f35bc7253f1055be43745c4a8a426bd1386aebc35ff48ad78f74504"
+        "signature": "691c42d2f8950efd0f329965e6b1c1c506825256988d19202feb2ea57892173ef7c9fd56d1707681d31d2bbf49ded7cd07a38802c715d7a7569a5a846963640c"
       },
       {
         "vendorId": "vendor-b",
         "publicKey": "511c34a1a2cb521df16bb246b8de8e7997ce235c7e76b22a3d7503a24819dd8a",
-        "signature": "2da3cd062b02393ae6fe1b5c4b13c9f2cb195a8045171d7d1cc549ff93cf2da505440249a937d4bae00f8e7de5c7466cc4a698a42ff6355f748616e3e88ed80f"
+        "signature": "3c18da0d849ca715f1158daae44839da6ee5891e6a34feb1865cca6b5299c1d11a7794b46c2784c3f90c740d077f9722f22be87a0e2823054e95ea2e06113e06"
       },
       {
         "vendorId": "vendor-c",
         "publicKey": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc",
-        "signature": "a2ed13433d1e918dfba70b73decd495069da9849da792e88fa56878cc5be52c4a3fa9eedd2d261efef5c552b8f9775f2b11bb726823955c9b3090a2e802fff0c"
+        "signature": "e50be3ece8e9985661954b492e6dec5b0d75762bc009537fe8b197721d2943aeb44a8abd2d5b9a9a98763c7211c31ef648a1e9f13ed7c6a3952ac45baad86901"
       }
     ]
   },
   "bilateralEnvelopes": [
     {
       "payloadType": "application/vnd.in-toto+json",
-      "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJwcmVkaWNhdGUiOnsiY2FwYWJpbGl0eV9sZWFzZV9yZWYiOnsiZXhwaXJlc19hdF91bml4X21zIjoxNzY2MDAwMDMwMDAwLCJpc3N1ZXIiOiJkaWQ6Y2hpbzpidXllci1rZXJuZWwiLCJsZWFzZV9pZCI6ImxlYXNlLXZlbmRvci1hLXJlYWQiLCJzY29wZV9kaWdlc3QiOnsiYWxnIjoic2hhMjU2IiwidmFsdWUiOiIzNWE1OTFkYTM5NDQ5Y2VjNWIwNTJlY2M0ZGQ4Y2NmZDEyNGI2ZGVkOTAzOTNhNWY2ZGI1ZGVjNTEwM2IxMzkyIn19LCJjb19zaWduIjoiYmlsYXRlcmFsX3JlcXVpcmVkIiwiY29uc2lzdGVuY3lfYW5jaG9yIjoiY2hpbzpjb25zaXN0ZW5jeTp3Zi1jaGlvLXJlZnVuZC0wMDE6MCIsImNvbnNpc3RlbmN5X21vZGVsIjoiY3JkdC1jb21tdXRhdGl2ZSIsImNyb3NzX29yZ192aXNpYmlsaXR5IjoiZmVkZXJhdGVkIiwiaW52b2NhdGlvbl9pZCI6IjE0Yjc5NjkzMzM0ZDU2NjYzOWJkYjM2Mjk5YjFiMWU3ZWZhNGU1Njk1MTM1ODExZGJjMjgxZTA0NzRlZWFiZjEiLCJwb2xpY3lfZXZhbHVhdGlvbl9zdW1tYXJ5Ijp7ImpvaW50X2Rpc3Bvc2l0aW9uIjoiYWxsb3ciLCJzZXJ2ZXJfYV92ZXJkaWN0Ijp7InBvbGljeV9pZCI6ImJ1eWVyLXBvbGljeTpyZWFkX3JlZnVuZF9jYXNlIiwicG9saWN5X3ZlcnNpb24iOiJjaGlvLWxhZGRlci12MSIsInJhdGlvbmFsZV9jb2RlIjoibGVhc2UtYm91bmQiLCJ2ZXJkaWN0IjoiYWxsb3cifSwic2VydmVyX2JfdmVyZGljdCI6eyJwb2xpY3lfaWQiOiJ2ZW5kb3ItYS1wb2xpY3k6cmVhZF9yZWZ1bmRfY2FzZSIsInBvbGljeV92ZXJzaW9uIjoiY2hpby1sYWRkZXItdjEiLCJyYXRpb25hbGVfY29kZSI6Im1hbmlmZXN0LWJvdW5kIiwidmVyZGljdCI6ImFsbG93In19LCJ0aW1lc3RhbXBfdW5peF9tcyI6MTc2NjAwMDAwMDAwMCwidG9vbF9hcmdzX2hhc2giOnsiYWxnIjoic2hhMjU2IiwidmFsdWUiOiIzZjMxYjY4Y2RlNDkyY2NiMjE2ZTA0YmI2MmQ5NzUxNDFkYmVkN2IzYzRmOTZhNzNkMjEzOThlYWE4OGZiNWNjIn0sInRvb2xfbmFtZSI6InJlYWRfcmVmdW5kX2Nhc2UiLCJ0b29sX3NlcnZlcl9hIjp7ImFsZyI6ImVkMjU1MTkiLCJrZXJuZWxfaWQiOiJkaWQ6Y2hpbzpidXllci1rZXJuZWwiLCJwYXNzcG9ydF9rZXlfZmluZ2VycHJpbnQiOiJmZGY3MmEwODhmMThmNzM5OWU4YzUyYmNlNDQ4NDQxNTAxZjc1OWE1OTVhODY5ODBlNWQ5YTQyMmEwMWU1ZDU1In0sInRvb2xfc2VydmVyX2IiOnsiYWxnIjoiZWQyNTUxOSIsImtlcm5lbF9pZCI6ImRpZDpjaGlvOnZlbmRvci1hIiwicGFzc3BvcnRfa2V5X2ZpbmdlcnByaW50IjoiZDdlMWUwODRiZTIxM2IwMWU1MDY4NTJhZjgxOThiOTk4MGI0M2UwMzc0OWM2N2Q4MmRjZDA5MDNmNDAwMWM3NyJ9fSwicHJlZGljYXRlVHlwZSI6ImNoaW8uYmlsYXRlcmFsLWNvc2lnbi1pbnZvY2F0aW9uLnYxIiwic3ViamVjdCI6W3siZGlnZXN0Ijp7InNoYTI1NiI6ImQ2MGZkZTMzYmVmMzZkMjEyYmU2N2Y4YjljNGE5MGE3YTUwOGJkOGMwZWQ3NjA1ZjY1ZWNjZWU3OTFkNDI0NDIifSwibmFtZSI6ImNoaW8tcmVjZWlwdDoxNGI3OTY5MzMzNGQ1NjY2MzliZGIzNjI5OWIxYjFlN2VmYTRlNTY5NTEzNTgxMWRiYzI4MWUwNDc0ZWVhYmYxIn1dfQ==",
+      "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJwcmVkaWNhdGUiOnsiY2FwYWJpbGl0eV9sZWFzZV9yZWYiOnsiZXhwaXJlc19hdF91bml4X21zIjoxNzY2MDAwMDMwMDAwLCJpc3N1ZXIiOiJkaWQ6Y2hpbzpidXllci1rZXJuZWwiLCJsZWFzZV9pZCI6ImxlYXNlLXZlbmRvci1hLXJlYWQiLCJzY29wZV9kaWdlc3QiOnsiYWxnIjoic2hhMjU2IiwidmFsdWUiOiIzNWE1OTFkYTM5NDQ5Y2VjNWIwNTJlY2M0ZGQ4Y2NmZDEyNGI2ZGVkOTAzOTNhNWY2ZGI1ZGVjNTEwM2IxMzkyIn19LCJjb19zaWduIjoiYmlsYXRlcmFsX3JlcXVpcmVkIiwiY29uc2lzdGVuY3lfYW5jaG9yIjoiY2hpbzpjb25zaXN0ZW5jeTp3Zi1jaGlvLXJlZnVuZC0wMDE6MCIsImNvbnNpc3RlbmN5X21vZGVsIjoiY3JkdC1jb21tdXRhdGl2ZSIsImNyb3NzX29yZ192aXNpYmlsaXR5IjoiZmVkZXJhdGVkIiwiaW52b2NhdGlvbl9pZCI6IjE5MzI5NWE4YWZhNTkxNTQ0YzQzNjQ4ZjBjNjkwOGUzNjE5NjRkMDYwZWQ3YjNkNWU1NDkzOWFiMGE2NmZmODYiLCJwb2xpY3lfZXZhbHVhdGlvbl9zdW1tYXJ5Ijp7ImpvaW50X2Rpc3Bvc2l0aW9uIjoiYWxsb3ciLCJzZXJ2ZXJfYV92ZXJkaWN0Ijp7InBvbGljeV9pZCI6ImJ1eWVyLXBvbGljeTpyZWFkX3JlZnVuZF9jYXNlIiwicG9saWN5X3ZlcnNpb24iOiJjaGlvLWxhZGRlci12MSIsInJhdGlvbmFsZV9jb2RlIjoibGVhc2UtYm91bmQiLCJ2ZXJkaWN0IjoiYWxsb3cifSwic2VydmVyX2JfdmVyZGljdCI6eyJwb2xpY3lfaWQiOiJ2ZW5kb3ItYS1wb2xpY3k6cmVhZF9yZWZ1bmRfY2FzZSIsInBvbGljeV92ZXJzaW9uIjoiY2hpby1sYWRkZXItdjEiLCJyYXRpb25hbGVfY29kZSI6Im1hbmlmZXN0LWJvdW5kIiwidmVyZGljdCI6ImFsbG93In19LCJ0aW1lc3RhbXBfdW5peF9tcyI6MTc2NjAwMDAwMDAwMCwidG9vbF9hcmdzX2hhc2giOnsiYWxnIjoic2hhMjU2IiwidmFsdWUiOiIzZjMxYjY4Y2RlNDkyY2NiMjE2ZTA0YmI2MmQ5NzUxNDFkYmVkN2IzYzRmOTZhNzNkMjEzOThlYWE4OGZiNWNjIn0sInRvb2xfbmFtZSI6InJlYWRfcmVmdW5kX2Nhc2UiLCJ0b29sX3NlcnZlcl9hIjp7ImFsZyI6ImVkMjU1MTkiLCJrZXJuZWxfaWQiOiJkaWQ6Y2hpbzpidXllci1rZXJuZWwiLCJwYXNzcG9ydF9rZXlfZmluZ2VycHJpbnQiOiJmZGY3MmEwODhmMThmNzM5OWU4YzUyYmNlNDQ4NDQxNTAxZjc1OWE1OTVhODY5ODBlNWQ5YTQyMmEwMWU1ZDU1In0sInRvb2xfc2VydmVyX2IiOnsiYWxnIjoiZWQyNTUxOSIsImtlcm5lbF9pZCI6ImRpZDpjaGlvOnZlbmRvci1hIiwicGFzc3BvcnRfa2V5X2ZpbmdlcnByaW50IjoiZDdlMWUwODRiZTIxM2IwMWU1MDY4NTJhZjgxOThiOTk4MGI0M2UwMzc0OWM2N2Q4MmRjZDA5MDNmNDAwMWM3NyJ9fSwicHJlZGljYXRlVHlwZSI6ImNoaW8uYmlsYXRlcmFsLWNvc2lnbi1pbnZvY2F0aW9uLnYxIiwic3ViamVjdCI6W3siZGlnZXN0Ijp7InNoYTI1NiI6IjE1OTA2NmExMGE4OTM1ZGI0MDg5MGUyNzdlZjI4ODNhNTQ5ZDFiMTdlODgyNTA3ZWFlMTE5ZWEyZjc0YTg0ZWUifSwibmFtZSI6ImNoaW8tcmVjZWlwdDoxOTMyOTVhOGFmYTU5MTU0NGM0MzY0OGYwYzY5MDhlMzYxOTY0ZDA2MGVkN2IzZDVlNTQ5MzlhYjBhNjZmZjg2In1dfQ==",
       "signatures": [
         {
           "keyid": "fdf72a088f18f7399e8c52bce448441501f759a595a86980e5d9a422a01e5d55",
-          "sig": "V/s1LgsXMMO8zGpvQGzB61AHFPKg+v5h0Tth9wAhieLuC/+ixLOhjB5Cz79yx4NR8xagc3qBfE49pp+L65/2Dg=="
+          "sig": "4GMTOzfeL1zCsh1LGslGpNd2XPwb9Hbkr+/lLRfN8rmHnWbyr5kYi6Jtnftxn4XHHJamnpORT4xY1KNOfDXpAA=="
         },
         {
           "keyid": "d7e1e084be213b01e506852af8198b9980b43e03749c67d82dcd0903f4001c77",
-          "sig": "xlCH9l7/EMUt4yZmsMkCbsVXHtMUNRbUBWPoXbyYPxFszLN67Csd/icyYSSfdQMlSktVJMPw4MKAUdhxdQxdAQ=="
+          "sig": "mC9E+yAXl4ZP5dfSwikI5k7kfbD2kElo3wUy0O1VRh82dK0lW8R5ikvyGFe2Wjzx4B6iJlTq/KmS23g1NHv3Cg=="
         }
       ]
     },
     {
       "payloadType": "application/vnd.in-toto+json",
-      "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJwcmVkaWNhdGUiOnsiY2FwYWJpbGl0eV9sZWFzZV9yZWYiOnsiZXhwaXJlc19hdF91bml4X21zIjoxNzY2MDAwMDMwMDAwLCJpc3N1ZXIiOiJkaWQ6Y2hpbzpidXllci1rZXJuZWwiLCJsZWFzZV9pZCI6ImxlYXNlLXZlbmRvci1iLWt5YyIsInNjb3BlX2RpZ2VzdCI6eyJhbGciOiJzaGEyNTYiLCJ2YWx1ZSI6IjBjNDkxZWE4Y2MxYTZkMzkxOTliODdjZjU0ODEzZTE0MWYzYmNiMzczOThlOTY4ZWZiNDhjN2ZjMjJiMjVlOTEifX0sImNvX3NpZ24iOiJiaWxhdGVyYWxfcmVxdWlyZWQiLCJjb25zaXN0ZW5jeV9hbmNob3IiOiJjaGlvOmNvbnNpc3RlbmN5OndmLWNoaW8tcmVmdW5kLTAwMToxIiwiY29uc2lzdGVuY3lfbW9kZWwiOiJjcmR0LWNvbW11dGF0aXZlIiwiY3Jvc3Nfb3JnX3Zpc2liaWxpdHkiOiJmZWRlcmF0ZWQiLCJpbnZvY2F0aW9uX2lkIjoiZDdmODQ4MmIyMDliZmY5YjZmOGJmNTA5MTgwNzUwNzRjZTAxZjhkMWZmZjQ2ZTk3ZjY1MDA2NzFhMGE2MTczNyIsInBvbGljeV9ldmFsdWF0aW9uX3N1bW1hcnkiOnsiam9pbnRfZGlzcG9zaXRpb24iOiJhbGxvdyIsInNlcnZlcl9hX3ZlcmRpY3QiOnsicG9saWN5X2lkIjoiYnV5ZXItcG9saWN5OnZlcmlmeV9jdXN0b21lciIsInBvbGljeV92ZXJzaW9uIjoiY2hpby1sYWRkZXItdjEiLCJyYXRpb25hbGVfY29kZSI6ImxlYXNlLWJvdW5kIiwidmVyZGljdCI6ImFsbG93In0sInNlcnZlcl9iX3ZlcmRpY3QiOnsicG9saWN5X2lkIjoidmVuZG9yLWItcG9saWN5OnZlcmlmeV9jdXN0b21lciIsInBvbGljeV92ZXJzaW9uIjoiY2hpby1sYWRkZXItdjEiLCJyYXRpb25hbGVfY29kZSI6Im1hbmlmZXN0LWJvdW5kIiwidmVyZGljdCI6ImFsbG93In19LCJ0aW1lc3RhbXBfdW5peF9tcyI6MTc2NjAwMDAwMDAwMCwidG9vbF9hcmdzX2hhc2giOnsiYWxnIjoic2hhMjU2IiwidmFsdWUiOiI1ZTkzMTJjYWU4ZmFjNWYyNmQ2MGMwMDRmNWUzNzFhNDhkNjQ5YjFjNWZiMjM0ODAzNzI3ZjQ3OGQxOGEwY2NkIn0sInRvb2xfbmFtZSI6InZlcmlmeV9jdXN0b21lciIsInRvb2xfc2VydmVyX2EiOnsiYWxnIjoiZWQyNTUxOSIsImtlcm5lbF9pZCI6ImRpZDpjaGlvOmJ1eWVyLWtlcm5lbCIsInBhc3Nwb3J0X2tleV9maW5nZXJwcmludCI6ImZkZjcyYTA4OGYxOGY3Mzk5ZThjNTJiY2U0NDg0NDE1MDFmNzU5YTU5NWE4Njk4MGU1ZDlhNDIyYTAxZTVkNTUifSwidG9vbF9zZXJ2ZXJfYiI6eyJhbGciOiJlZDI1NTE5Iiwia2VybmVsX2lkIjoiZGlkOmNoaW86dmVuZG9yLWIiLCJwYXNzcG9ydF9rZXlfZmluZ2VycHJpbnQiOiIxNjhjNTlhNTRhMGQ1YjZjNjI4Njc1OGYxNTc3ZGY2NzAzN2RjNTRiZWRmZDQwMDk2YTkxMDJjYzNkM2UzZWFhIn19LCJwcmVkaWNhdGVUeXBlIjoiY2hpby5iaWxhdGVyYWwtY29zaWduLWludm9jYXRpb24udjEiLCJzdWJqZWN0IjpbeyJkaWdlc3QiOnsic2hhMjU2IjoiNGI4NjAzMGIyMjEyNWRkODNhOWFjMmIxZDc1MTM4NjYwNjhmYmY1MDY3OTg0MTcyZjhlNzdmNzBhZjFjNjNhNCJ9LCJuYW1lIjoiY2hpby1yZWNlaXB0OmQ3Zjg0ODJiMjA5YmZmOWI2ZjhiZjUwOTE4MDc1MDc0Y2UwMWY4ZDFmZmY0NmU5N2Y2NTAwNjcxYTBhNjE3MzcifV19",
+      "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJwcmVkaWNhdGUiOnsiY2FwYWJpbGl0eV9sZWFzZV9yZWYiOnsiZXhwaXJlc19hdF91bml4X21zIjoxNzY2MDAwMDMwMDAwLCJpc3N1ZXIiOiJkaWQ6Y2hpbzpidXllci1rZXJuZWwiLCJsZWFzZV9pZCI6ImxlYXNlLXZlbmRvci1iLWt5YyIsInNjb3BlX2RpZ2VzdCI6eyJhbGciOiJzaGEyNTYiLCJ2YWx1ZSI6IjBjNDkxZWE4Y2MxYTZkMzkxOTliODdjZjU0ODEzZTE0MWYzYmNiMzczOThlOTY4ZWZiNDhjN2ZjMjJiMjVlOTEifX0sImNvX3NpZ24iOiJiaWxhdGVyYWxfcmVxdWlyZWQiLCJjb25zaXN0ZW5jeV9hbmNob3IiOiJjaGlvOmNvbnNpc3RlbmN5OndmLWNoaW8tcmVmdW5kLTAwMToxIiwiY29uc2lzdGVuY3lfbW9kZWwiOiJjcmR0LWNvbW11dGF0aXZlIiwiY3Jvc3Nfb3JnX3Zpc2liaWxpdHkiOiJmZWRlcmF0ZWQiLCJpbnZvY2F0aW9uX2lkIjoiMWZiMGNhNGY0Njc1MmE5ZDBhNTAyY2M2MTI1ZWI4ZDcwMjg4ODgyZWE3NTRiMmFlYmJjY2UzMjNhMWY2YThjOCIsInBvbGljeV9ldmFsdWF0aW9uX3N1bW1hcnkiOnsiam9pbnRfZGlzcG9zaXRpb24iOiJhbGxvdyIsInNlcnZlcl9hX3ZlcmRpY3QiOnsicG9saWN5X2lkIjoiYnV5ZXItcG9saWN5OnZlcmlmeV9jdXN0b21lciIsInBvbGljeV92ZXJzaW9uIjoiY2hpby1sYWRkZXItdjEiLCJyYXRpb25hbGVfY29kZSI6ImxlYXNlLWJvdW5kIiwidmVyZGljdCI6ImFsbG93In0sInNlcnZlcl9iX3ZlcmRpY3QiOnsicG9saWN5X2lkIjoidmVuZG9yLWItcG9saWN5OnZlcmlmeV9jdXN0b21lciIsInBvbGljeV92ZXJzaW9uIjoiY2hpby1sYWRkZXItdjEiLCJyYXRpb25hbGVfY29kZSI6Im1hbmlmZXN0LWJvdW5kIiwidmVyZGljdCI6ImFsbG93In19LCJ0aW1lc3RhbXBfdW5peF9tcyI6MTc2NjAwMDAwMDAwMCwidG9vbF9hcmdzX2hhc2giOnsiYWxnIjoic2hhMjU2IiwidmFsdWUiOiI1ZTkzMTJjYWU4ZmFjNWYyNmQ2MGMwMDRmNWUzNzFhNDhkNjQ5YjFjNWZiMjM0ODAzNzI3ZjQ3OGQxOGEwY2NkIn0sInRvb2xfbmFtZSI6InZlcmlmeV9jdXN0b21lciIsInRvb2xfc2VydmVyX2EiOnsiYWxnIjoiZWQyNTUxOSIsImtlcm5lbF9pZCI6ImRpZDpjaGlvOmJ1eWVyLWtlcm5lbCIsInBhc3Nwb3J0X2tleV9maW5nZXJwcmludCI6ImZkZjcyYTA4OGYxOGY3Mzk5ZThjNTJiY2U0NDg0NDE1MDFmNzU5YTU5NWE4Njk4MGU1ZDlhNDIyYTAxZTVkNTUifSwidG9vbF9zZXJ2ZXJfYiI6eyJhbGciOiJlZDI1NTE5Iiwia2VybmVsX2lkIjoiZGlkOmNoaW86dmVuZG9yLWIiLCJwYXNzcG9ydF9rZXlfZmluZ2VycHJpbnQiOiIxNjhjNTlhNTRhMGQ1YjZjNjI4Njc1OGYxNTc3ZGY2NzAzN2RjNTRiZWRmZDQwMDk2YTkxMDJjYzNkM2UzZWFhIn19LCJwcmVkaWNhdGVUeXBlIjoiY2hpby5iaWxhdGVyYWwtY29zaWduLWludm9jYXRpb24udjEiLCJzdWJqZWN0IjpbeyJkaWdlc3QiOnsic2hhMjU2IjoiNDQ0Y2E0N2FmZWM4N2VhNWYyMTMyOWE3YjIxZjMxNjU4ODVhNjRhNGY1YjgyZTljN2E1YmNiOGQwMGZhNDM1NCJ9LCJuYW1lIjoiY2hpby1yZWNlaXB0OjFmYjBjYTRmNDY3NTJhOWQwYTUwMmNjNjEyNWViOGQ3MDI4ODg4MmVhNzU0YjJhZWJiY2NlMzIzYTFmNmE4YzgifV19",
       "signatures": [
         {
           "keyid": "fdf72a088f18f7399e8c52bce448441501f759a595a86980e5d9a422a01e5d55",
-          "sig": "y6/dsIs5QYrtXox1xk+dDSESjeq8tTUZpE/0hmJIn5EISbcvbOpk5kgITERFipxKfW21KfHJlR5gwRh9mvX0Bg=="
+          "sig": "tODX5xy/Q9hpSljt8uC79+0gwDwZLU7Arnmvross67wKl4vA1AFEvuIwcGhqKPN+WjrggqYLKD4mrlGAZLanCg=="
         },
         {
           "keyid": "168c59a54a0d5b6c6286758f1577df67037dc54bedfd40096a9102cc3d3e3eaa",
-          "sig": "qhtVWE5V2jAA36eaN5pjVUwtiRJM84u/JE7OtuvLeutO0RYvxC466kuqrOFvv24VjlHnuOmoEy+TsytdMznPAQ=="
+          "sig": "JVsX3ML9hJROkSJVS8d4mYZ4fzSsC6O+suzmEgA1aQkEc6C1CW/YjNNJMVK/WAWR43u+HhkaST6B4Qv9IG14BA=="
         }
       ]
     },
     {
       "payloadType": "application/vnd.in-toto+json",
-      "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJwcmVkaWNhdGUiOnsiY2FwYWJpbGl0eV9sZWFzZV9yZWYiOnsiZXhwaXJlc19hdF91bml4X21zIjoxNzY2MDAwMDMwMDAwLCJpc3N1ZXIiOiJkaWQ6Y2hpbzpidXllci1rZXJuZWwiLCJsZWFzZV9pZCI6ImxlYXNlLXZlbmRvci1jLXJlZnVuZCIsInNjb3BlX2RpZ2VzdCI6eyJhbGciOiJzaGEyNTYiLCJ2YWx1ZSI6IjI2Mjc2OGZlMDMyZWExZTg1NGNhYzUxOGFhNDE2ZjFiZTM4NTkzMmM2MTIyOGQ2MDQ3NjFhYmZmYjlmODM1YWEifX0sImNvX3NpZ24iOiJiaWxhdGVyYWxfcmVxdWlyZWQiLCJjb25zaXN0ZW5jeV9hbmNob3IiOiJjaGlvOmNvbnNpc3RlbmN5OndmLWNoaW8tcmVmdW5kLTAwMToyIiwiY29uc2lzdGVuY3lfbW9kZWwiOiJjcmR0LWNvbW11dGF0aXZlIiwiY3Jvc3Nfb3JnX3Zpc2liaWxpdHkiOiJmZWRlcmF0ZWQiLCJnb3Zlcm5hbmNlX3JlY2VpcHRfcmVmIjp7ImRpZ2VzdCI6eyJhbGciOiJzaGEyNTYiLCJ2YWx1ZSI6ImQ3MzE0ZWYwOTU2OTZmZjBmZWEyYmUyODM3MmMwMGJlZmZkNDg4YzI1NTkwOTliYjlhNDZjOWIyZWIwZmM2YTAifSwia2VybmVsX2lkIjoiZGlkOmNoaW86YnV5ZXItZ292ZXJuYW5jZSIsInJlY2VpcHRfaWQiOiJnb3YtcmVmdW5kLXN0YWdlLWF1dGhvcml6YXRpb24ifSwiaW52b2NhdGlvbl9pZCI6Ijg5OWRmNzRlOWYzNTdlZjdhNGQyZjk0NTQ4MmYyZGEyMGRiNWQ1ZWM5NzVjNjEwOTU4NzEzM2ZhZGNjMDNlN2MiLCJwb2xpY3lfZXZhbHVhdGlvbl9zdW1tYXJ5Ijp7ImpvaW50X2Rpc3Bvc2l0aW9uIjoiYWxsb3ciLCJzZXJ2ZXJfYV92ZXJkaWN0Ijp7InBvbGljeV9pZCI6ImJ1eWVyLXBvbGljeTpzdGFnZV9yZWZ1bmQiLCJwb2xpY3lfdmVyc2lvbiI6ImNoaW8tbGFkZGVyLXYxIiwicmF0aW9uYWxlX2NvZGUiOiJsZWFzZS1ib3VuZCIsInZlcmRpY3QiOiJhbGxvdyJ9LCJzZXJ2ZXJfYl92ZXJkaWN0Ijp7InBvbGljeV9pZCI6InZlbmRvci1jLXBvbGljeTpzdGFnZV9yZWZ1bmQiLCJwb2xpY3lfdmVyc2lvbiI6ImNoaW8tbGFkZGVyLXYxIiwicmF0aW9uYWxlX2NvZGUiOiJtYW5pZmVzdC1ib3VuZCIsInZlcmRpY3QiOiJhbGxvdyJ9fSwidGltZXN0YW1wX3VuaXhfbXMiOjE3NjYwMDAwMDAwMDAsInRvb2xfYXJnc19oYXNoIjp7ImFsZyI6InNoYTI1NiIsInZhbHVlIjoiNDdlNmUwOTZiNWQ1ODg4YTNmOTBkMDU3ZGUzYmNlNTk1ZDhlYTVkZDg2MjRjY2RlMzg3YmI3MzlkNWE2NDY0YiJ9LCJ0b29sX25hbWUiOiJzdGFnZV9yZWZ1bmQiLCJ0b29sX3NlcnZlcl9hIjp7ImFsZyI6ImVkMjU1MTkiLCJrZXJuZWxfaWQiOiJkaWQ6Y2hpbzpidXllci1rZXJuZWwiLCJwYXNzcG9ydF9rZXlfZmluZ2VycHJpbnQiOiJmZGY3MmEwODhmMThmNzM5OWU4YzUyYmNlNDQ4NDQxNTAxZjc1OWE1OTVhODY5ODBlNWQ5YTQyMmEwMWU1ZDU1In0sInRvb2xfc2VydmVyX2IiOnsiYWxnIjoiZWQyNTUxOSIsImtlcm5lbF9pZCI6ImRpZDpjaGlvOnZlbmRvci1jIiwicGFzc3BvcnRfa2V5X2ZpbmdlcnByaW50IjoiZTM3YWJjZDc5ZWZkMDhkYjk0NTE4YTkwMzk1MmZmZTlmOGFmN2U4YjQ2ODRiNjM1OTE2MzFjZWY4ZTg4NzFjOCJ9fSwicHJlZGljYXRlVHlwZSI6ImNoaW8uYmlsYXRlcmFsLWNvc2lnbi1pbnZvY2F0aW9uLnYxIiwic3ViamVjdCI6W3siZGlnZXN0Ijp7InNoYTI1NiI6IjNmZGY5MjBlNWI1MGQ4MjVjY2Q1YjYyYjc3MWNhODI0NWI1OGJiYmY0ZWU2OWI5ZDA3OTM4ZGFjYzIyMzM4MzMifSwibmFtZSI6ImNoaW8tcmVjZWlwdDo4OTlkZjc0ZTlmMzU3ZWY3YTRkMmY5NDU0ODJmMmRhMjBkYjVkNWVjOTc1YzYxMDk1ODcxMzNmYWRjYzAzZTdjIn1dfQ==",
+      "payload": "eyJfdHlwZSI6Imh0dHBzOi8vaW4tdG90by5pby9TdGF0ZW1lbnQvdjEiLCJwcmVkaWNhdGUiOnsiY2FwYWJpbGl0eV9sZWFzZV9yZWYiOnsiZXhwaXJlc19hdF91bml4X21zIjoxNzY2MDAwMDMwMDAwLCJpc3N1ZXIiOiJkaWQ6Y2hpbzpidXllci1rZXJuZWwiLCJsZWFzZV9pZCI6ImxlYXNlLXZlbmRvci1jLXJlZnVuZCIsInNjb3BlX2RpZ2VzdCI6eyJhbGciOiJzaGEyNTYiLCJ2YWx1ZSI6IjI2Mjc2OGZlMDMyZWExZTg1NGNhYzUxOGFhNDE2ZjFiZTM4NTkzMmM2MTIyOGQ2MDQ3NjFhYmZmYjlmODM1YWEifX0sImNvX3NpZ24iOiJiaWxhdGVyYWxfcmVxdWlyZWQiLCJjb25zaXN0ZW5jeV9hbmNob3IiOiJjaGlvOmNvbnNpc3RlbmN5OndmLWNoaW8tcmVmdW5kLTAwMToyIiwiY29uc2lzdGVuY3lfbW9kZWwiOiJ0b3RhbGx5X29yZGVyZWQiLCJjcm9zc19vcmdfdmlzaWJpbGl0eSI6ImZlZGVyYXRlZCIsImdvdmVybmFuY2VfcmVjZWlwdF9yZWYiOnsiZGlnZXN0Ijp7ImFsZyI6InNoYTI1NiIsInZhbHVlIjoiZjQ1YzgyZTQyMTg0NjU1OTRkZmYzNzFmZGNkNjE4Y2EwZGM2ZGRmZGNmMTE5MDQyYjhlMjlhNDk2YTRmYjZkOSJ9LCJrZXJuZWxfaWQiOiJkaWQ6Y2hpbzpidXllci1nb3Zlcm5hbmNlIiwicmVjZWlwdF9pZCI6Imdvdi1yZWZ1bmQtc3RhZ2UtYXV0aG9yaXphdGlvbiJ9LCJpbnZvY2F0aW9uX2lkIjoiZTBjZGMwZTQxNDU5N2EwZDljNjM0NDg5OTMyMTFhOTJjMTMxYjQyOGY3MGIxM2M3MmE5NTUyMTJhOWI0Yzk0ZiIsInBvbGljeV9ldmFsdWF0aW9uX3N1bW1hcnkiOnsiam9pbnRfZGlzcG9zaXRpb24iOiJhbGxvdyIsInNlcnZlcl9hX3ZlcmRpY3QiOnsicG9saWN5X2lkIjoiYnV5ZXItcG9saWN5OnN0YWdlX3JlZnVuZCIsInBvbGljeV92ZXJzaW9uIjoiY2hpby1sYWRkZXItdjEiLCJyYXRpb25hbGVfY29kZSI6ImxlYXNlLWJvdW5kIiwidmVyZGljdCI6ImFsbG93In0sInNlcnZlcl9iX3ZlcmRpY3QiOnsicG9saWN5X2lkIjoiZGlkOmNoaW86dmVuZG9yLWMtcG9saWN5OnN0YWdlX3JlZnVuZCIsInBvbGljeV92ZXJzaW9uIjoiY2hpby1sYWRkZXItdjEiLCJyYXRpb25hbGVfY29kZSI6Im1hbmlmZXN0LWJvdW5kIiwidmVyZGljdCI6ImFsbG93In19LCJ0aW1lc3RhbXBfdW5peF9tcyI6MTc2NjAwMDAwMTAwMCwidG9vbF9hcmdzX2hhc2giOnsiYWxnIjoic2hhMjU2IiwidmFsdWUiOiI0N2U2ZTA5NmI1ZDU4ODhhM2Y5MGQwNTdkZTNiY2U1OTVkOGVhNWRkODYyNGNjZGUzODdiYjczOWQ1YTY0NjRiIn0sInRvb2xfbmFtZSI6InN0YWdlX3JlZnVuZCIsInRvb2xfc2VydmVyX2EiOnsiYWxnIjoiZWQyNTUxOSIsImtlcm5lbF9pZCI6ImRpZDpjaGlvOmJ1eWVyLWtlcm5lbCIsInBhc3Nwb3J0X2tleV9maW5nZXJwcmludCI6ImZkZjcyYTA4OGYxOGY3Mzk5ZThjNTJiY2U0NDg0NDE1MDFmNzU5YTU5NWE4Njk4MGU1ZDlhNDIyYTAxZTVkNTUifSwidG9vbF9zZXJ2ZXJfYiI6eyJhbGciOiJlZDI1NTE5Iiwia2VybmVsX2lkIjoiZGlkOmNoaW86dmVuZG9yLWMiLCJwYXNzcG9ydF9rZXlfZmluZ2VycHJpbnQiOiJlMzdhYmNkNzllZmQwOGRiOTQ1MThhOTAzOTUyZmZlOWY4YWY3ZThiNDY4NGI2MzU5MTYzMWNlZjhlODg3MWM4In0sInRyZWF0eV9iaW5kaW5nX3JlZiI6eyJhY3Rpb25fY2xhc3NfaWQiOiJ3b3JrZmxvdy5jcm9zc19rZXJuZWwuc3RhZ2VfcmVmdW5kIiwiYWRtaXNzaW9uX3JlcG9ydF9zaGEyNTYiOiJiNzgyOGU4N2U5NmUzNTUzYjBhMTBhNTJjNDdkMDJjNGM0Yzg2ODlkYWZiYTU1ZmU4MDQ1NDM3ZTk0ODFjOTk3IiwiY29uc2lzdGVuY3lfbW9kZWwiOiJ0b3RhbGx5X29yZGVyZWQiLCJjb250aW51YXRpb25fc2hhMjU2IjoiOGVmMmYzNDgxMDExODQyNmVjYjZkNjgyY2UyZDJiMjQ1MDU3N2FiNmYyMzBlZjU0Mjk2ZTUyNGMzNjZiOTNmNCIsImdvdmVybmFuY2VfcmVmcyI6WyJnb3YtcmVmdW5kLXN0YWdlLWF1dGhvcml6YXRpb24iXSwibGFkZGVyX2ludGVyc2VjdGlvbl9zaGEyNTYiOiI1MTI1M2U5MmI3ZGRmODU3ZjE5MWE4NTg1MDNiM2RjODllMjEzZWY2ZDI5OThiZWQ0NDNhZmJmM2Y3OTQ5NTgwIiwibGVhc2VfcmVmcyI6WyJsZWFzZS12ZW5kb3ItYy1yZWZ1bmQiXSwibGluZWFnZV9idW5kbGVfc2hhMjU2IjoiOWJkZTczMTZiNmU4ODJlNzFhNGM5ZmU3NTVjODNmMzVhZmQ0OTM4MjA3YjBkYjQ1ZmZkZTJjNmQ2MmNkMjc3NCIsImxvY2FsX3JlY2VpcHRfc2hhMjU2IjoiNzM3Y2I4Mjk4YTEzYjU1ZDY4NDI3YzFjMjQ4YmIzNGY0OGZlYmFlODlkY2JlZDY5NzZhNTIwNzI3MzYzYzUwNCIsIm91dGNvbWVfc2hhMjU2IjoiYzlhYmY2OGFlMjZlNzM4ODI2ZGFiZDI5ZGE3ZjZjNjIzNjA4MjIxYjI1M2E3MGU2YmUxZWMwNWJkOTgwMzk4NyIsInJlbW90ZV9yZWNlaXB0X3NoYTI1NiI6ImU4MjMzYmE2YTU4NGQzNTI0ZTI3YzYwMWVjNjRjYmE0YmI0MDJlOGNiZGRmMTU1YmYzZDNiMWUzY2UyZGNjYTIiLCJyZXF1ZXN0X3NoYTI1NiI6IjQ3ZTZlMDk2YjVkNTg4OGEzZjkwZDA1N2RlM2JjZTU5NWQ4ZWE1ZGQ4NjI0Y2NkZTM4N2JiNzM5ZDVhNjQ2NGIiLCJzaWduZXJfa2VybmVsX2lkcyI6WyJkaWQ6Y2hpbzpidXllci1rZXJuZWwiLCJkaWQ6Y2hpbzp2ZW5kb3ItYyJdLCJ0cmVhdHlfaWQiOiJ0cmVhdHk6cnVudGltZS1sb29wYmFjazoyIiwidHJlYXR5X3Njb3BlX3NoYTI1NiI6IjBmZjIzMGU5YjU2ZDMwYmQ1Y2U2YzYwYjkxZjI4NDY0ZTZlY2ViYWI2ZjQyNWU5MzBkZGEzZjgyZDFmMmIyMWMifX0sInByZWRpY2F0ZVR5cGUiOiJjaGlvLmJpbGF0ZXJhbC1jb3NpZ24taW52b2NhdGlvbi52MSIsInN1YmplY3QiOlt7ImRpZ2VzdCI6eyJzaGEyNTYiOiI5NTUxMjM5MjA4NWRmODBhNTg0MzNjZjgwNGIzZDQxZWY5ZjRiYTYzNGM0MDE2OTk1YTE4NWE1ZDhiOGNlYjNjIn0sIm5hbWUiOiJjaGlvLXJlY2VpcHQ6ZTBjZGMwZTQxNDU5N2EwZDljNjM0NDg5OTMyMTFhOTJjMTMxYjQyOGY3MGIxM2M3MmE5NTUyMTJhOWI0Yzk0ZiJ9XX0=",
       "signatures": [
         {
           "keyid": "fdf72a088f18f7399e8c52bce448441501f759a595a86980e5d9a422a01e5d55",
-          "sig": "eh6boRknj2OfJ888fvqV5QXhRj3tVtFC26MBLnx9sN33Ec9Gb5NLES04iBeq1CaFEsI3s/NrUPW+3yEM4JhuDw=="
+          "sig": "sTgnLkE5h9bRnYTGvBc2NeSSkVvj8DOZJUxO14s/TEEcGNX1znYjse61ANI2CfnI9afurYdFlFCOh+FBsL3cBw=="
         },
         {
           "keyid": "e37abcd79efd08db94518a903952ffe9f8af7e8b4684b63591631cef8e8871c8",
-          "sig": "TZfWyUJ13aPnkAo+6NVgPUaPmLCRCwVVD8j6VWcRdOtXu8BVTgZjQTLl6XHbY4iM+Em5kkzWdLsvGzODqXHNBA=="
+          "sig": "rqr1dLCcIRNH6x/8FO35Jp9vTw9JFnQYDhUNV0Cn65oJjWCCYrn1Eov04p4t0dXKA9gah0Fha+tE+WJNZw6pCA=="
         }
       ]
     }
@@ -422,12 +725,12 @@
         "caseKind": "destructive_authorization",
         "authorizedLeaseId": "lease-vendor-c-refund",
         "workflowId": "wf-chio-refund-001",
-        "stepSha256": "3fdf920e5b50d825ccd5b62b771ca8245b58bbbf4ee69b9d07938dacc2233833",
+        "stepSha256": "95512392085df80a58433cf804b3d41ef9f4ba634c4016995a185a5d8b8ceb3c",
         "issuedAtUnixMs": 1765999980000,
         "expiresAtUnixMs": 1766000020000
       },
       "signerKey": "0b513ad9b4924015ca0902ed079044d3ac5dbec2306f06948c10da8eb6e39f2d",
-      "signature": "b9f1bc1bf4ee76b02b5660dc7ebd51087a396aba715079d8f59bdb6bbc2d24b3e6a531f78b171ddb2a060088ff6b5816690540cce0d63b308e03892d10f4560a"
+      "signature": "7894db0918d18d6f13f1d552779d54afcf2e109446b2ddae6c31a9db7ca0bc2069e7ab04f9e8145cfa77efd3f60ca50b098f76e7031835bb6c779bca20069a00"
     }
   ],
   "workflowIntersection": {
@@ -501,12 +804,12 @@
         "publicKey": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc"
       }
     ],
-    "aggregateWorkflowReceiptSha256": "a7b3e90d66938af4868cfcf4d222e20d52d7745f1057f156dcdb5d54ae436ffe"
+    "aggregateWorkflowReceiptSha256": "7de264c873f4ab0c10201b3f78f22d248dc843f466d19508d4c6afb51add68a3"
   },
   "selectiveDisclosureProof": {
     "schema": "chio.attest.selective-disclosure-proof.v1",
     "projection_version": "chio.bbs-projection.workflow.v1",
-    "subject_sha256_hex": "a7b3e90d66938af4868cfcf4d222e20d52d7745f1057f156dcdb5d54ae436ffe",
+    "subject_sha256_hex": "7de264c873f4ab0c10201b3f78f22d248dc843f466d19508d4c6afb51add68a3",
     "ciphersuite": "BBS_BLS12381G1_XMD:SHA-256_SSWU_RO_",
     "issuer_fingerprint": "70113a55c73186df1b5812a3c421f1ee8061acfda7fb4009f5a5432102ddaca3",
     "issuer_public_key_hex": "ac96b29b82fd2aafa60ec4a4cf720073e1e8fe232f24cb0125b3e89397176e66c170794a6cec5b6440b00fdf88d5851b0d08d0a729499b56940e76cc1ae33e838602a52a3667f24ca9c0aeb1baeaccd972cc46eeb2d1f3755c6ed950c998c7d5",
@@ -544,6 +847,6 @@
       }
     ],
     "proof_nonce_hex": "34373538613933663264626331363235363130356365366434376134656664643339643437373733336463623261356538303037356133653161616464636365",
-    "proof_bytes_hex": "ae976a403b5a53b1a2250f5b08ca8282bb9a9722304d4db022a21ac04ef87784495b42085a03aea57993eabc4ce9b20ba53540a0e65c1caf0e2586e238cb2cc1e6be053e179c63b1943a71a90bcae0b40ad753c2153147ce5a2ade6a5e8e951ca54408aab5950793a657d31668fec1d9b589d02a652f57076ec8f86b43b29a817dc570b6fe97ec33f5abffd27c62527c64c2e8b729476f41eab0184cf95b0d4c91707015a2a67b476704e6a1ac0979653e5c2f6daa5cc09891926e89458fe7fb73b8bfafab0f3f91e4f000830d108c64324b65705b2260e1ad2155cdedbc9267bce4d5fa5f831dfa3909a0517c4b1a105ceaea15015f49824cad7f9c09feaa6ac0dcb883e76743d594b2b9c195e8dda504baf06704e6e25d8fcac15d992183b283d0cedbab32e27fd1a9cb0f677a506d71e0c279bd6c3f1b0d489e71c5f453e3a1db68992928cae4d3231d1448d22b215ba0e92be955d7d0a76459c259daf926890df0c9d073870d571ba6d2e1c220d318ef4d2d47f3dade442f460250b58fe5065d8d9542d9b26819d7350b823a1eda07e413668a9c114a99ecb2ea44988511f01a3cd49ee0aa84717bacfd792606d450f446690b3a6883ae5d7a010b48431dc20e60e5bce014d9d37524fa5d7dd0de73688988e7abd1025c692852457a58473be8b4d99e5c347165538b3a9aab127d0e6201e003ec77712cd27fe8353e56e02f1231cbd24298d58b47fafc9b3a70043abacf5aeebabeca26aafd349af2e33475f423fdd0fcaee5289c4a97f90120ac5f5bd383d1a3ba9d33535398d91399c4fc5cff5d5df61d921301b09be6ad0884"
+    "proof_bytes_hex": "84ca5602e3f0650cccea3cd81d1438a9d6148d7a2823bcc8af54a314914eb171e8a01810ead83e5aef69dd6ee4d2a8948e83fcb9b04ca4cb15a2332140e2309a88b18bb9753d4a5f657a18f71e2657dbd9b059f87b9434afad615aee1c826465b4d990917582f4f7e2d28b1a298a79ee70b0172614efd2641e6c9f3ef9bbecff4b9ffcf0109e1e6b3b4d5379275f533d05acf58bb8ba31d4d9ff24e68e8e3aeb900c57463a5f61a56565deb23cc7c058670a75442bb88568cf07515bd0d7e46d5e9cc9eed175fc7675dd625a9b766d7a161dba9fbfb6b2f0fcda9ad6969ba377caf11ba147a90e7b725a9f286e5e645047e74a6d9cb95aa592f667309aae813baf9296112a6527761566a38ce600b769637eae276b390514a648f46a7a36998fb09d6dd8b822d0a39e9c32b950ef1a812425525e8f01fa80043d5bb0cd1b80db774328c1b1a690549093cc2681398a413ae4b8e67a4a0e1c480a5ee1b023c024cc79b5dd480f20bdcc9c0da4496ff93e70c4c45ff6b0ead68b8877d1489cdb4c13f0d257deec0b2db667f9cd12463b541cbe4dbd7878024827a89d44e93025e974f225eca1c8dae8ebb8e58a66048f926387842bccfdc85ca9d386bdbf5c322118c84a0f6699c43442bd3e7b56a1d45b09167d2c68e84cc6c25d52eeb234fe914f0c15830c600a7e83245a377bc193955776868328358c7d86177c18cc17a67a361b86eef301cc7ad43fd99e5d720cf056dec3d9cc1f7f29ee6e95076bdd0ae3e471582af18254be8b9078533efeebc86ff3dc37e885f6c02bf516c393f35a5153c31f67d0e4024401a4c6364b270e8b"
   }
 }

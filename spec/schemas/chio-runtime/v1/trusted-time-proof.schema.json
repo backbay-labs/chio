@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-runtime/v1/trusted-time-proof.schema.json",
+  "title": "Chio Runtime Trusted Time Proof",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "proof_id",
+    "lease_id",
+    "ack_id",
+    "observed_at",
+    "max_clock_skew_ms",
+    "time_source_id",
+    "issuer",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.runtime.trusted-time-proof.v1" },
+    "proof_id": { "type": "string", "minLength": 1 },
+    "lease_id": { "type": "string", "minLength": 1 },
+    "ack_id": { "type": "string", "minLength": 1 },
+    "observed_at": { "type": "string", "minLength": 1 },
+    "max_clock_skew_ms": { "type": "integer", "minimum": 0, "maximum": 30000 },
+    "time_source_id": { "type": "string", "minLength": 1 },
+    "issuer": { "type": "string", "minLength": 1 },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
+  }
+}

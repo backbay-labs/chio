@@ -1,0 +1,9 @@
+{
+  "execution_lease_ref": "lease-runtime-valid",
+  "kernel_key": "31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc",
+  "policy_digest": "e11a5ed0b53c7f77171213c4cb1673edcc3ebb38bd7dd55498ea38dc6309db97",
+  "receipt_id": "receipt-runtime-missing-lease",
+  "schema": "chio.runtime.terminal-receipt.v1",
+  "signature": "8bb13f341081f70ffeceeb1592c50d48008ab80e84204a9ad9b33ff98de15257f532f595cd9c98008886ca2853377fe9433799bf31b917d79083f1760d8dbc0a",
+  "terminal_status": "allowed_executed"
+}

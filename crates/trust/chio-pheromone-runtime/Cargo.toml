@@ -16,7 +16,6 @@ chio-attest-buyer-core = { workspace = true }
 chio-core-types = { workspace = true }
 chio-federation = { workspace = true }
 chio-pheromone = { workspace = true }
-chio-store-sqlite = { workspace = true }
 jsonschema = { workspace = true }
 rusqlite = { workspace = true }
 serde = { workspace = true }

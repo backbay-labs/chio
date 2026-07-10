@@ -1,8 +1,8 @@
 # ci-gates/runtime.toml
 # Single source of truth for the chio-runtime fixture-and-schema gate cluster,
-# the consolidated replacement for the six `scripts/check-chio-runtime-*.sh`
-# gates. Consumed by `cargo xtask check fixtures <runtime-facet>`. Fail-closed:
-# this file MUST enumerate exactly the six runtime facets; an unknown facet on
+# the consolidated replacement for runtime fixture gates. Consumed by
+# `cargo xtask check fixtures <runtime-facet>`. Fail-closed:
+# this file MUST enumerate exactly the eight runtime facets; an unknown facet on
 # the CLI is an error, and the xtask test `runtime_manifest_enumerates_all`
 # rejects a short manifest.
 #
@@ -93,4 +93,44 @@ cargo_tests = [
   ["-p", "chio-runtime-core", "runtime_orchestration"],
   ["-p", "chio-runtime-core", "runtime_proof_drift"],
   ["-p", "chio-cli", "--bin", "chio", "chio_native_runtime_surface_parses"],
+]
+
+[[facet]]
+name = "runtime-attack-simulation"
+kind = "attack_simulation"
+fixture_dir = "fixtures/proof-room/runtime-security/valid-side-effecting-call"
+validate = [
+  { schema = "attack-simulation-report.schema.json", doc = "attack-simulation-confused-deputy-route-metadata.json" },
+  { schema = "attack-simulation-report.schema.json", doc = "attack-simulation-replayed-continuation-token.json" },
+  { schema = "attack-simulation-report.schema.json", doc = "attack-simulation-stale-revocation-epoch.json" },
+  { schema = "attack-simulation-report.schema.json", doc = "attack-simulation-policy-hot-reload-widening.json" },
+  { schema = "attack-simulation-report.schema.json", doc = "attack-simulation-advisory-evidence-laundering.json" },
+  { schema = "attack-simulation-report.schema.json", doc = "attack-simulation-external-payment-success-laundering.json" },
+  { schema = "attack-simulation-report.schema.json", doc = "attack-simulation-route-plan-registry-downgrade.json" },
+  { schema = "attack-simulation-report.schema.json", doc = "attack-simulation-tool-server-bypass-without-kernel-allow.json" },
+  { schema = "attack-simulation-report.schema.json", doc = "attack-simulation-missing-denial-receipt.json" },
+  { schema = "attack-simulation-report.schema.json", doc = "attack-simulation-sandbox-profile-mismatch.json" },
+]
+cargo_tests = [
+  ["-p", "chio-control-plane", "--test", "runtime_security_passport", "side_effecting_runtime_claim_rejects_failed_attack_simulation_report"],
+  ["-p", "chio-cli", "--test", "proof_cli_contract", "proof_fixture_list_reports_proof_fixtures"],
+]
+
+[[facet]]
+name = "runtime-chaos"
+kind = "chaos"
+fixture_dir = "fixtures/proof-room/runtime-security/valid-side-effecting-call"
+validate = [
+  { schema = "chaos-run-report.schema.json", doc = "chaos-run-revocation-oracle-unavailable.json" },
+  { schema = "chaos-run-report.schema.json", doc = "chaos-run-receipt-log-unavailable.json" },
+  { schema = "chaos-run-report.schema.json", doc = "chaos-run-policy-reload-during-dispatch.json" },
+  { schema = "chaos-run-report.schema.json", doc = "chaos-run-duplicate-nonce-race.json" },
+  { schema = "chaos-run-report.schema.json", doc = "chaos-run-tool-restart-lost-lease-cache.json" },
+  { schema = "chaos-run-report.schema.json", doc = "chaos-run-registry-split-brain.json" },
+  { schema = "chaos-run-report.schema.json", doc = "chaos-run-clock-skew-expiry-bypass.json" },
+  { schema = "chaos-run-report.schema.json", doc = "chaos-run-sandbox-profile-drift.json" },
+]
+cargo_tests = [
+  ["-p", "chio-control-plane", "--test", "runtime_security_passport", "side_effecting_runtime_claim_rejects_failed_chaos_run_report"],
+  ["-p", "chio-cli", "--test", "proof_cli_contract", "proof_fixture_list_reports_proof_fixtures"],
 ]

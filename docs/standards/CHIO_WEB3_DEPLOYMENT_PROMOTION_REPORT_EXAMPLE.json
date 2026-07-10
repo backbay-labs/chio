@@ -2,7 +2,13 @@
   "report_id": "chio.web3-deployment-promotion.base-mainnet.v1",
   "generated_at": "2026-04-02T18:15:00Z",
   "environment": "base-mainnet",
-  "status": "promoted",
+  "status": "external-assurance-required-example",
+  "deployment_scope": "review-required",
+  "non_testnet_guard": {
+    "status": "external_assurance_required",
+    "requires_external_assurance": true,
+    "note": "Example only. The real runner refuses non-testnet promotion unless --assurance-unlock points to an approved external assurance artifact."
+  },
   "manifest_id": "chio.web3-deployment.base-mainnet.reviewed.v1",
   "manifest_sha256": "a5d95f8f523b7d2f1c0af1fd8a0d6ab9b3df2ceab0cb0a84fbb27db5ad9cb8a1",
   "approval_id": "chio.web3-deployment-approval.base-mainnet.v1",
@@ -28,7 +34,7 @@
     {
       "id": "deployment.post_config",
       "outcome": "pass",
-      "note": "Operator binding, delegate registration, and oracle feed configuration were applied from the reviewed manifest and chain config."
+      "note": "Operator binding, delegate registration, token allowlisting, and oracle feed configuration were applied from the reviewed manifest and chain config."
     }
   ],
   "planned_contract_addresses": {

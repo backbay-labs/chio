@@ -1,0 +1,13 @@
+{
+  "bundle_digest": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+  "chio_workload_identity_mapping_ref": "mapping-agent-web-toolserver",
+  "chio_workload_receipt_ref": "receipt-agent-web-spiffe-workload-allow",
+  "expiry": "2026-06-10T01:00:00Z",
+  "id": "spiffe-workload-agent-web-valid",
+  "mediated_by_chio_receipt": true,
+  "object_kind": "spiffe_workload_identity",
+  "spiffe_id": "spiffe://enterprise.example/ns/prod/sa/agent-web",
+  "svid_type": "x509_svid",
+  "trust_domain": "enterprise.example",
+  "workload_attestation_ref": "attestation-agent-web-spiffe-workload"
+}

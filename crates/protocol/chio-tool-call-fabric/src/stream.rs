@@ -182,7 +182,7 @@ impl StreamPhase {
     ///
     /// Errors leave the caller's previous phase untouched (the function takes
     /// `&self` and returns a fresh `StreamPhase`), so an adapter that wants to
-    /// stay in its current state on an invalid event can simply discard the
+    /// stay in its current state on an invalid event can discard the
     /// error.
     ///
     /// Buffered blocks are capped at [`DEFAULT_MAX_BUFFERED_BLOCK_BYTES`].
@@ -375,32 +375,6 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, StreamError::AlreadyClosed { .. }));
     }
-
-    #[test]
-    fn stream_error_display_em_dash_free() {
-        let cases = vec![
-            StreamError::NoBlockInFlight {
-                phase: "Idle",
-                event: "AppendBytes",
-            },
-            StreamError::BlockAlreadyOpen {
-                previous: "blk_1".to_string(),
-            },
-            StreamError::AlreadyClosed {
-                event: "FinishBlock",
-            },
-            StreamError::BufferOverflow {
-                block_id: "blk_overflow".to_string(),
-                buffered: 8,
-                projected: 12,
-                limit: 10,
-            },
-        ];
-        for err in cases {
-            assert!(!err.to_string().contains('\u{2014}'), "em dash in {err}");
-        }
-    }
-
     #[test]
     fn buffering_append_overflow_is_rejected() {
         let phase = StreamPhase::Buffering(BufferedBlock::new("blk_cap", BlockKind::ToolCall));

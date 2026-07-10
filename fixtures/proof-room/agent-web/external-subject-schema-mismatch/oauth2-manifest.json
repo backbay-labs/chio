@@ -1,0 +1,59 @@
+{
+  "claim_mapping": [
+    {
+      "claim_ref": "claim.agent_web.external_subject_digest_bound",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "claim_ref": "claim.agent_web.projection_manifest_bound",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.unsupported_claims_limited",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.sidecar_not_native_authority",
+      "evidence_class": "chio-sidecar-proof"
+    }
+  ],
+  "copy_limitations": [
+    "OAuth2 authorization evidence is digest-bound bearer admission evidence, not Chio capability authority."
+  ],
+  "digest_algorithm": "sha256",
+  "external_fields_not_used": [
+    "oauth2_token_as_chio_authority"
+  ],
+  "external_fields_used": [
+    "issuer",
+    "resource",
+    "grant_type",
+    "subject_digest",
+    "audience_digest",
+    "client_id_digest",
+    "scope_set_digest",
+    "authorization_details_digest",
+    "sender_constraint",
+    "sender_constraint_digest",
+    "token_verification_report_digest",
+    "chio_caller_identity_digest",
+    "token_status",
+    "authorized_scope_subset",
+    "chio_authorization_receipt_ref",
+    "mediated_by_chio_receipt"
+  ],
+  "projection_id": "projection-oauth2-valid",
+  "requires_external_signature": false,
+  "schema": "chio.agent-web.external-projection-manifest.v1",
+  "sidecar_fields": [
+    "transaction_passport_ref",
+    "receipt_refs",
+    "chio_claim_refs"
+  ],
+  "signature_algorithm": "none",
+  "source_protocol": "oauth2",
+  "source_version": "rfc6749",
+  "unsupported_claims": [
+    "claim.external.oauth2_token_is_chio_authority"
+  ]
+}

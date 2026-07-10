@@ -21,9 +21,6 @@ class ChioASGIConfig:
         HTTP methods that bypass Chio evaluation (default OPTIONS).
     receipt_header:
         Response header name for the Chio receipt ID (default ``X-Chio-Receipt``).
-    fail_open:
-        Legacy option retained for source compatibility. Current v1 always
-        fails closed when the sidecar is unreachable.
     """
 
     sidecar_url: str = "http://127.0.0.1:9090"
@@ -31,4 +28,3 @@ class ChioASGIConfig:
     exclude_paths: frozenset[str] = frozenset()
     exclude_methods: frozenset[str] = frozenset({"OPTIONS"})
     receipt_header: str = "X-Chio-Receipt"
-    fail_open: bool = False

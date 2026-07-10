@@ -75,7 +75,7 @@ def test_each_tool_uses_chio_toolset_and_is_async(
     )
     assert tool.kwargs.get("is_async") is True, (
         f"{tool_name} must be is_async=True so Hermes awaits the handler "
-        "instead of running it through the legacy bridge"
+        "instead of running it through the synchronous bridge"
     )
 
 

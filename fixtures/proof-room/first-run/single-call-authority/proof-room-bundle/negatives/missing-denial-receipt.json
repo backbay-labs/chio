@@ -1,0 +1,12 @@
+{
+  "schema": "chio.proof-room.negative-fixture.v1",
+  "id": "missing-denial-receipt",
+  "base_manifest": "manifest.json",
+  "mutation": {
+    "claim_id": "claim.proof_room.allow_and_deny_visible",
+    "required_artifacts": [
+      "artifacts/receipts/allow-receipt.json"
+    ]
+  },
+  "expected_failure_code": "proof-room.first-run.denial-missing"
+}

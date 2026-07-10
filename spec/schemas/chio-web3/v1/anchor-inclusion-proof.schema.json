@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-web3/v1/anchor-inclusion-proof.schema.json",
+  "title": "Chio Anchor Inclusion Proof",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "receipt",
+    "receipt_inclusion",
+    "checkpoint_statement",
+    "key_binding_certificate"
+  ],
+  "properties": {
+    "schema": { "const": "chio.anchor-inclusion-proof.v1" },
+    "receipt": { "type": "object" },
+    "receipt_inclusion": { "type": "object" },
+    "checkpoint_statement": {
+      "type": "object",
+      "required": ["schema"],
+      "properties": {
+        "schema": { "const": "chio.checkpoint_statement.v1" }
+      }
+    },
+    "chain_anchor": { "type": "object" },
+    "bitcoin_anchor": { "type": "object" },
+    "super_root_inclusion": { "type": "object" },
+    "key_binding_certificate": { "type": "object" }
+  }
+}

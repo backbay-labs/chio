@@ -1,4 +1,28 @@
-use super::*;
+use std::path::Path;
+
+use crate::enterprise_federation::CertificationDiscoveryNetwork;
+use crate::CliError;
+
+use super::commands::certification_resolution_label;
+use super::helpers::{
+    load_signed_certification_check, require_certification_discovery_path, unix_now,
+};
+use super::schema::{
+    CERTIFICATION_CONSUMPTION_POLICY_PROFILE_V1, CERTIFICATION_PUBLIC_SEARCH_SCHEMA,
+    CERTIFICATION_PUBLIC_TRANSPARENCY_SCHEMA,
+};
+use super::types::{
+    CertificationConsumptionPeerDecision, CertificationConsumptionRequest,
+    CertificationConsumptionResponse, CertificationDiscoveryError,
+    CertificationDiscoveryPeerResult, CertificationDiscoveryResponse, CertificationDisputeState,
+    CertificationMarketplaceSearchQuery, CertificationMarketplaceTransparencyQuery,
+    CertificationNetworkPublishPeerResult, CertificationNetworkPublishRequest,
+    CertificationNetworkPublishResponse, CertificationPublicSearchResponse,
+    CertificationResolutionState, CertificationTransparencyResponse, CertificationVerdict,
+    SignedCertificationCheck,
+};
+use super::validators::validate_public_certification_metadata;
+use super::verify::{certification_artifact_id, verify_signed_certification_check};
 
 pub fn discover_certifications_across_network(
     network: &CertificationDiscoveryNetwork,

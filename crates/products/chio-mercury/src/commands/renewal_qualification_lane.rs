@@ -2,15 +2,6 @@ use super::*;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct MercuryRenewalQualificationDocRefs {
-    renewal_qualification_file: String,
-    operations_file: String,
-    validation_package_file: String,
-    decision_record_file: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct MercuryRenewalBoundaryFreeze {
     schema: String,
     workflow_id: String,
@@ -178,17 +169,6 @@ struct MercuryRenewalQualificationValidationReport {
     same_workflow_boundary: String,
     renewal_qualification: MercuryRenewalQualificationExportSummary,
     decision_record_file: String,
-    docs: MercuryRenewalQualificationDocRefs,
-}
-
-fn renewal_qualification_doc_refs() -> MercuryRenewalQualificationDocRefs {
-    MercuryRenewalQualificationDocRefs {
-        renewal_qualification_file: "docs/mercury/RENEWAL_QUALIFICATION.md".to_string(),
-        operations_file: "docs/mercury/RENEWAL_QUALIFICATION_OPERATIONS.md".to_string(),
-        validation_package_file: "docs/mercury/RENEWAL_QUALIFICATION_VALIDATION_PACKAGE.md"
-            .to_string(),
-        decision_record_file: "docs/mercury/RENEWAL_QUALIFICATION_DECISION_RECORD.md".to_string(),
-    }
 }
 
 fn build_renewal_qualification_profile(
@@ -757,7 +737,6 @@ pub fn cmd_mercury_renewal_qualification_validate(
 
     let renewal_qualification_dir = output.join("renewal-qualification");
     let summary = export_renewal_qualification(&renewal_qualification_dir)?;
-    let docs = renewal_qualification_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryRenewalQualificationDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -792,7 +771,6 @@ pub fn cmd_mercury_renewal_qualification_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         renewal_qualification: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 

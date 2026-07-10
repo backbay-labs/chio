@@ -1,0 +1,21 @@
+[package]
+name = "chio-disclosure-lineage"
+description = "Disclosure lineage verifier reports for Chio Transaction Passports"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_disclosure_lineage"
+test = false
+
+[dependencies]
+chio-core-types = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

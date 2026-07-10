@@ -154,6 +154,8 @@ async function main() {
     assert.equal(manifest.review_context.candidate_release_id, "chio.web3-contract-package.release.v0.1.0");
     assert.equal(manifest.review_context.deployment_policy_id, "chio.web3-deployment-promotion.v1");
     assert.equal(approval.status, "pending-review");
+    assert.equal(approval.deployment_scope, "review-required");
+    assert.ok(approval.non_testnet_guard);
     assert.deepEqual(approval.approvals, []);
     assert.equal(approval.reviewed_manifest_path, repoRelative(manifestPath));
     assert.equal(approval.reviewed_manifest_sha256, sha256File(manifestPath));
@@ -188,11 +190,12 @@ async function main() {
   writeJson(path.join(outputRoot, "qualification.json"), {
     report_id: "chio.web3-review-prep-qualification.v1",
     generated_at: new Date().toISOString(),
+    deployment_status: "review-required",
     checks: [
       {
         id: "review_prep.templates_prepare_cleanly",
         outcome: "pass",
-        note: "Every shipped public-chain template produced a reviewed manifest and pending-review approval scaffold with only deployment-internal contract-address placeholders remaining."
+        note: "Every shipped public-chain template produced a reviewed manifest and pending-review approval scaffold with only deployment-internal contract-address placeholders remaining. Non-testnet scaffolds require external assurance."
       }
     ],
     outputs: results

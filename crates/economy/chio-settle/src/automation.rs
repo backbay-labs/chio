@@ -75,11 +75,17 @@ pub fn build_settlement_watchdog_job(
     }
     let state_fingerprint = sha256(
         format!(
-            "{}:{}:{}:{}",
+            "dispatch_id={}\nchain_id={}\nescrow_id={}\nescrow_contract={}\nsettlement_token_address={}\nbeneficiary_address={}\noperator_key_hash={}\nsettlement_path={:?}\namount_units={}\namount_currency={}",
             dispatch.dispatch_id,
             dispatch.chain_id,
             dispatch.escrow_id,
-            dispatch.settlement_amount.units
+            dispatch.escrow_contract,
+            dispatch.settlement_token_address,
+            dispatch.beneficiary_address,
+            dispatch.operator_key_hash,
+            dispatch.settlement_path,
+            dispatch.settlement_amount.units,
+            dispatch.settlement_amount.currency
         )
         .as_bytes(),
     )
@@ -201,6 +207,20 @@ mod tests {
 
         assert_eq!(job.reference_id, dispatch.dispatch_id);
         assert!(job.operator_override_required);
+
+        let mut changed_key = dispatch.clone();
+        changed_key.operator_key_hash =
+            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        let changed_key_job =
+            build_settlement_watchdog_job(&changed_key, "*/5 * * * *", 600).test_unwrap();
+        assert_ne!(job.state_fingerprint, changed_key_job.state_fingerprint);
+
+        let mut changed_token = dispatch.clone();
+        changed_token.settlement_token_address =
+            "0x465F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string();
+        let changed_token_job =
+            build_settlement_watchdog_job(&changed_token, "*/5 * * * *", 600).test_unwrap();
+        assert_ne!(job.state_fingerprint, changed_token_job.state_fingerprint);
     }
 
     #[test]

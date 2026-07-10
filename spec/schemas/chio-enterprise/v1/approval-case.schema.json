@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-enterprise/v1/approval-case.schema.json",
+  "title": "Chio Enterprise Approval Case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "passport_id",
+    "risk_comptroller_report_ref",
+    "evidence_export_bundle_digest",
+    "signature",
+    "decision",
+    "decision_subject",
+    "approvers",
+    "required_quorum",
+    "expires_at"
+  ],
+  "properties": {
+    "schema": { "const": "chio.enterprise.approval-case.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "passport_id": { "type": "string", "minLength": 1 },
+    "risk_comptroller_report_ref": { "type": "string", "minLength": 1 },
+    "evidence_export_bundle_digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "signature": { "type": "string", "minLength": 1 },
+    "decision": { "type": "string", "minLength": 1 },
+    "decision_subject": { "type": "string", "minLength": 1 },
+    "approvers": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "required_quorum": { "type": "integer", "minimum": 1 },
+    "expires_at": { "type": "string", "minLength": 1 }
+  }
+}

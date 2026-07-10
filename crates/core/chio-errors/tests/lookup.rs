@@ -25,6 +25,7 @@ fn all_domain_slugs_round_trip() {
         "custody",
         "weights",
         "mobile",
+        "transaction",
     ];
 
     assert_eq!(Domain::ALL.len(), expected.len());
@@ -181,4 +182,45 @@ fn duplicate_string_codes_are_not_silently_first_matched() {
         "registry fixture must keep a duplicate legacy code"
     );
     assert_eq!(lookup_string_code("CHIO-CLI-JSON"), None);
+}
+
+#[test]
+fn transaction_artifact_hash_mismatch_is_registered() {
+    let spec = lookup_error_code("urn:chio:error:transaction:artifact-hash-mismatch")
+        .expect("transaction artifact hash mismatch code is registered");
+
+    assert_eq!(spec.domain.as_str(), "transaction");
+    assert_eq!(spec.severity, Severity::Error);
+    assert_eq!(spec.string_code, "CHIO-TRANSACTION-ARTIFACT-HASH-MISMATCH");
+    assert!(spec.consumed_by.contains(&"chio-cli"));
+}
+
+#[test]
+fn launch_transaction_failure_codes_are_registered() {
+    let expected = [
+        "urn:chio:error:transaction:passport-schema-unsupported",
+        "urn:chio:error:transaction:passport-hash-mismatch",
+        "urn:chio:error:transaction:graph-not-closed",
+        "urn:chio:error:transaction:graph-cycle",
+        "urn:chio:error:transaction:required-claim-missing",
+        "urn:chio:error:transaction:artifact-hash-mismatch",
+        "urn:chio:error:transaction:identity-not-bound",
+        "urn:chio:error:transaction:authorization-not-bound",
+        "urn:chio:error:transaction:receipt-uncheckpointed",
+        "urn:chio:error:transaction:runtime-proof-rejected",
+        "urn:chio:error:transaction:buyer-review-rejected",
+        "urn:chio:error:transaction:settlement-unverified",
+        "urn:chio:error:transaction:dispute-unbound",
+        "urn:chio:error:transaction:transparency-preview-not-allowed",
+    ];
+
+    for urn in expected {
+        let spec = lookup_error_code(urn)
+            .unwrap_or_else(|| panic!("transaction launch failure code is registered: {urn}"));
+        assert_eq!(spec.domain, Domain::Transaction);
+        assert_eq!(spec.severity, Severity::Error);
+        assert!(spec.consumed_by.contains(&"chio-transaction-passport"));
+        assert!(spec.consumed_by.contains(&"chio-cli"));
+        assert!(spec.consumed_by.contains(&"chio-proof-room"));
+    }
 }

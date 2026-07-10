@@ -1,0 +1,16 @@
+{
+  "schema": "chio.transparency.inclusion-proof.v1",
+  "proof_id": "transparency-proof-buyer-auditor",
+  "log_id": "log:proof-room-transparency",
+  "artifact_ref": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "root_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "leaf_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "tree_size": 8,
+  "leaf_index": 3,
+  "checkpoint": "checkpoint:proof-room-transparency:8",
+  "inclusion_path": [
+    "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  ],
+  "verified_at": 1766000100
+}

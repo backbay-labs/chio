@@ -5,7 +5,7 @@
 Chio candidate, not a public release-go record
 
 > **Evidence inventory only:** Tables in **Findings Closure** and related
-> sections record internal milestone disposition. They are not publication-ready
+> sections record internal release disposition. They are not publication-ready
 > claims for customers, auditors, or partners. Use [PARTNER_PROOF.md](PARTNER_PROOF.md)
 > for reviewer packaging and [GA_CHECKLIST.md](GA_CHECKLIST.md) for operator gates.
 
@@ -26,7 +26,7 @@ snapshot disagrees with `releases.toml` (for example, a retracted pre-release
 tag still marked `DONE`), treat `releases.toml` and the release docs in this
 directory as canonical for publication status.
 
-The M08 internal readiness draft PDF
+The internal readiness draft PDF
 (`releases/audit-reports/m08-internal-readiness-draft-2026-05-02.pdf`) is
 retained outside the public release bundle until an external vendor review is
 engaged. `releases.toml` records the internal `draft_path` and hash only; there
@@ -57,12 +57,18 @@ The web3-runtime ladder now also has focused audit and reviewer material in
 [CHIO_WEB3_READINESS_AUDIT.md](CHIO_WEB3_READINESS_AUDIT.md) and
 [CHIO_WEB3_PARTNER_PROOF.md](CHIO_WEB3_PARTNER_PROOF.md).
 
+Web3 contract external assurance: the prior web3 contract security review and
+local devnet qualification are historical evidence only. Non-testnet web3
+contract deployment, custody, and promotion are blocked until external audit,
+testnet soak, artifact digest, runtime codehash, minimum-bar checklist, and
+security-owner sign-off complete.
+
 ## Bounded Chio Ship Addendum
 
 This file now records one primary ship-facing decision boundary for the current
 repo state: bounded Chio. Stronger internal claim gates still exist as
-repo-local addenda, but they are milestone labels rather than Chio-owned
-protocol versions and are no longer the front-door release framing.
+repo-local addenda, but they are not Chio-owned protocol versions and are no
+longer the front-door release framing.
 
 **Local bounded-ship status:** bounded Chio evidence was collected locally on
 2026-04-19. The current retained decision is to continue pre-release
@@ -124,12 +130,11 @@ Formal boundary artifacts:
 candidate defined in
 [RELEASE_CANDIDATE.md](RELEASE_CANDIDATE.md).
 
-Qualified local evidence includes bounded web3 runtime work from historical
-internal milestones `v2.34` through `v2.41`, including concurrency-safe
+Qualified local evidence includes bounded web3 runtime work, including concurrency-safe
 settlement identity, mandatory checkpoint evidence gates, artifact-derived
 contract/runtime parity, hosted qualification, reviewed-manifest promotion,
 exercised operator controls, and the generated end-to-end settlement proof
-bundle. These labels are internal milestones, not public protocol versions.
+bundle. Internal labels are not public protocol versions.
 
 Meaning:
 
@@ -297,11 +302,11 @@ Internal evidence inventory (not external closure claims):
 | operator deployment and upgrade tribal knowledge | closed through the runbook and repeatable smoke checks |
 | opaque production diagnostics | closed for the supported surface through trust-control and hosted-edge health/admin contracts plus operator reporting |
 | protocol doc drift | closed by aligning `spec/PROTOCOL.md` and normative companions to the current v1-only pre-release contract |
-| launch/standards ambiguity | closed through standards profiles, GA checklist, and explicit risk register |
+| release/standards ambiguity | closed through standards profiles, GA checklist, and explicit risk register |
 | economic interop legibility for IAM/finance/partner reviewers | closed for the shipped local surface through the authorization-context report, metered-billing reconciliation report, and focused interop guide |
 | enterprise IAM review still depended on Chio-specific explanation rather than machine-readable profile artifacts and end-to-end receipt trace packs | closed for the shipped local surface through authorization-profile metadata, authorization-review-pack exports, fail-closed assurance and call-chain projection validation, and focused qualification coverage |
 | underwriting decisioning legibility and operator what-if inspection | closed for the shipped local surface through deterministic decision reports, signed lifecycle artifacts, appeal handling, and non-mutating simulation |
-| post-audit underwriting contract defects on fail-closed issue behavior, appeal invariants, evidence linkage, and currency truth | closed through the remediation sweep that tightened trust-control error propagation, rejected contradictory appeal resolution, withheld mixed-currency premium amounts, partitioned premium totals by currency, and added regression coverage |
+| post-audit underwriting contract defects on fail-closed issue behavior, appeal invariants, evidence linkage, and currency truth | closed through the fix sweep that tightened trust-control error propagation, rejected contradictory appeal resolution, withheld mixed-currency premium amounts, partitioned premium totals by currency, and added regression coverage |
 | portable credential interop remained a standards-alignment claim without one concrete external-client proof | closed for the shipped local surface through the raw-HTTP issuer/challenge qualification lane and focused credential interop guide |
 | portable credential lifecycle, type metadata, and verifier-facing status semantics remained only partially explicit | closed for the shipped local surface through projected SD-JWT VC metadata, portable issuer `JWKS`, TTL-backed lifecycle distribution and public resolution, explicit `stale` fail-closed semantics, and focused qualification coverage over `active`, `stale`, `superseded`, and `revoked` states |
 | verifier portability still lacked one supported OID4VP bridge and public verifier trust bootstrap | closed for the shipped local surface through signed `request_uri` requests, same-device and cross-device launch artifacts, Chio verifier metadata, trusted-key `JWKS` rotation semantics, and focused passport regressions |
@@ -320,23 +325,23 @@ Internal evidence inventory (not external closure claims):
 | Chio still stopped short of a bounded liability-market proof over provider policy, delegated pricing authority, quote/bind, and claims workflow state | closed for the shipped local surface through curated provider-registry artifacts, signed delegated pricing-authority and auto-bind artifacts, provider-neutral quote/bind state, immutable claim/dispute/adjudication artifacts, focused marketplace qualification coverage, and updated partner/release boundary docs |
 | the endgame market claim still lacked adversarial proof across hostile mirrors, divergent registry views, imported reputation, and forged remote activation authority | closed for the shipped local surface through adversarial multi-operator qualification that preserves visibility without trust, rejects invalid mirrored listing signatures, blocks divergent freshness from admission, keeps imported reputation locally weighted, and fails closed when governance or market-penalty artifacts rely on non-local activation authority |
 | the shipped identity surface still stopped short of broader DID/VC compatibility and public wallet-routing semantics | closed for the shipped local surface through one bounded public identity-profile, wallet-directory, routing-manifest, and qualification-matrix family that preserves `did:chio` provenance, verifier-bound routing, replay anchors, and fail-closed mismatch handling |
-| the public release, partner, protocol, and planning boundary still stopped short of the strongest honest maximal-endgame claim | closed for the shipped local surface through the final `v2.33` boundary rewrite across release candidate, qualification, partner proof, protocol, standards, and planning docs with residual non-goals kept explicit |
+| the public release, partner, protocol, and standards boundary still stopped short of the strongest honest maximal-endgame claim | closed for the shipped local surface through the final boundary rewrite across release candidate, qualification, partner proof, protocol, and standards docs with residual non-goals kept explicit |
 
-## Phase 43 Formal/Spec Closure Inventory
+## Formal/Spec Closure Inventory
 
-This section records the accepted closure boundary for the `v2.8` formal/spec
-slice. It is not the final GA decision artifact; it defines what launch claims
-phase 44 is allowed to rely on.
+This section records the accepted closure boundary for the formal/spec slice.
+It is not the final GA decision artifact; it defines what public claims the
+next release is allowed to rely on.
 
 | Gap | Launch disposition | Evidence |
 | --- | --- | --- |
-| executable spec drift versus current `ChioScope` subset behavior | closed in phase 43 | `formal/diff-tests`, `cargo test -p chio-formal-diff-tests` |
-| protocol lacked an explicit distinction between formal, empirical, and qualification evidence | closed in phase 43 | `spec/PROTOCOL.md`, this audit, `docs/release/QUALIFICATION.md` |
-| Lean root and comments implied stronger proof closure than the repo actually ships | closed in phase 43 | `formal/lean4/Chio/Chio.lean`, `formal/lean4/Chio/Chio/Spec/Properties.lean` |
+| executable spec drift versus current `ChioScope` subset behavior | closed | `formal/diff-tests`, `cargo test -p chio-formal-diff-tests` |
+| protocol lacked an explicit distinction between formal, empirical, and qualification evidence | closed | `spec/PROTOCOL.md`, this audit, `docs/release/QUALIFICATION.md` |
+| Lean root and comments implied stronger proof closure than the repo actually ships | closed | `formal/lean4/Chio/Chio.lean`, `formal/lean4/Chio/Chio/Spec/Properties.lean` |
 | standalone Lean proof completion for every current Chio surface | consciously deferred | `formal/lean4/Chio/Chio/Proofs/Monotonicity.lean` covers the bounded model only and is not a Rust refinement proof |
-| theorem-prover coverage for governed approvals, payment rails, federation maturity, and runtime assurance | consciously deferred | launch claims rely on runtime tests, integration tests, and qualification rather than Lean proofs |
+| theorem-prover coverage for governed approvals, payment rails, federation maturity, and runtime assurance | consciously deferred | public claims rely on runtime tests, integration tests, and qualification rather than Lean proofs |
 
-### Accepted Launch Evidence Boundary
+### Accepted Release Evidence Boundary
 
 For the current v1-only pre-release candidate, Chio has local evidence for:
 
@@ -358,7 +363,7 @@ The current v1-only pre-release decision is explicit rather than implied:
 | Gate class | Requirement | Status |
 | --- | --- | --- |
 | local qualification | `./scripts/ci-workspace.sh`, `./scripts/check-formal-proofs.sh`, `./scripts/check-portable-kernel.sh`, `./scripts/check-sdk-parity.sh`, `./scripts/check-web3-contract-parity.sh`, `./scripts/qualify-release.sh`, `./scripts/qualify-portable-browser.sh`, and `./scripts/qualify-mobile-kernel.sh` green, with the bounded web3 runtime lanes green locally | historical local evidence |
-| launch materials | release, partner, operational, and standards-facing docs updated to the current Chio surface | pre-release evidence |
+| release materials | release, partner, operational, and standards-facing docs updated to the current Chio surface | pre-release evidence |
 | hosted publication | hosted `CI` and `Release Qualification` observed green on the candidate commit, including the staged runtime, `e2e`, `ops`, and promotion bundles under `target/release-qualification/web3-runtime/` | pending external observation |
 
 The resulting decision is:
@@ -393,5 +398,5 @@ This audit was produced from the local development environment.
 
 It does not claim that GitHub Actions has already run on the updated
 workflows. The repository is ready for that hosted verification, and the
-explicit launch decision above keeps external release publication on hold until
+explicit release decision above keeps external release publication on hold until
 those workflow results are observed.

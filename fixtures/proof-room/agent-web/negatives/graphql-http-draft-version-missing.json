@@ -1,0 +1,8 @@
+{
+  "schema": "chio.agent-web.negative-fixture.v1",
+  "id": "graphql-http-draft-version-missing",
+  "claim_ref": "claim.agent_web.projection_manifest_bound",
+  "base_fixture": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/transaction-passport.json",
+  "case": "GraphqlHttpDraftVersionMissing",
+  "expected_failure_code": "proof-room.negative.graphql-over-http-version-must-be-draft-labeled"
+}

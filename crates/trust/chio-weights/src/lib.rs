@@ -21,7 +21,7 @@
 //!   [`chio_attest_verify::SigstoreVerifier::verify_bundle`].
 //! - `lineage` -- lineage-anchor proof helpers for published model cards.
 //!
-//! The kernel binding refusal and `arc bind --card` CLI consume this
+//! The kernel binding refusal and `chio bind --card` CLI consume this
 //! surface from `chio-kernel` and `chio-cli` respectively.
 //!
 //! # Forbidden constructs

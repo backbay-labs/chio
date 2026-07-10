@@ -1,0 +1,56 @@
+{
+  "schema": "chio.agent-web.external-projection-manifest.v1",
+  "projection_id": "projection-oci-ref-valid",
+  "source_protocol": "oci",
+  "source_version": "image-spec-v1",
+  "external_fields_used": [
+    "registry",
+    "repository",
+    "digest",
+    "media_type",
+    "descriptor_digest",
+    "descriptor_size",
+    "artifact_type",
+    "subject_digest",
+    "sigstore_bundle_digest",
+    "rekor_inclusion_status",
+    "cache_admission_report_digest",
+    "receipt_refs",
+    "mediated_by_chio_receipt"
+  ],
+  "external_fields_not_used": [
+    "oci_ref_as_chio_authority"
+  ],
+  "sidecar_fields": [
+    "transaction_passport_ref",
+    "receipt_refs",
+    "chio_claim_refs"
+  ],
+  "digest_algorithm": "sha256",
+  "signature_algorithm": "none",
+  "requires_external_signature": false,
+  "claim_mapping": [
+    {
+      "claim_ref": "claim.agent_web.external_subject_digest_bound",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "claim_ref": "claim.agent_web.projection_manifest_bound",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.unsupported_claims_limited",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.sidecar_not_native_authority",
+      "evidence_class": "chio-sidecar-proof"
+    }
+  ],
+  "unsupported_claims": [
+    "claim.external.oci_ref_is_chio_authority"
+  ],
+  "copy_limitations": [
+    "OCI artifact evidence is digest-bound supply-chain evidence, not Chio capability authority."
+  ]
+}

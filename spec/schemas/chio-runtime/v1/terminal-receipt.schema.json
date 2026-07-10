@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-runtime/v1/terminal-receipt.schema.json",
+  "title": "Chio Runtime Terminal Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "receipt_id",
+    "terminal_status",
+    "policy_digest",
+    "kernel_key",
+    "signature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.runtime.terminal-receipt.v1" },
+    "receipt_id": { "type": "string", "minLength": 1 },
+    "terminal_status": {
+      "type": "string",
+      "enum": [
+        "allowed_executed",
+        "allowed_tool_rejected",
+        "denied_pre_dispatch",
+        "denied_guard_request",
+        "denied_guard_response",
+        "denied_revocation_stale",
+        "denied_policy_reload_conflict",
+        "denied_missing_execution_lease",
+        "denied_sandbox_attestation_mismatch",
+        "failed_receipt_log_unavailable",
+        "failed_tool_unreachable",
+        "failed_timeout_before_tool_entry",
+        "failed_timeout_after_tool_entry"
+      ]
+    },
+    "policy_digest": { "$ref": "#/$defs/sha256" },
+    "execution_lease_ref": { "type": "string", "minLength": 1 },
+    "incident_ref": { "type": "string", "minLength": 1 },
+    "kernel_key": { "$ref": "#/$defs/public_key" },
+    "signature": { "$ref": "#/$defs/ed25519_signature" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "public_key": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "ed25519_signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
+  }
+}

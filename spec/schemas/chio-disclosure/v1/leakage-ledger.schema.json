@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-disclosure/v1/leakage-ledger.schema.json",
+  "title": "Chio Disclosure Leakage Ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "transaction_passport_ref",
+    "privacy_profile_ref",
+    "policy_profile_id",
+    "subject_artifact_sha256",
+    "generated_at",
+    "audience",
+    "total_leakage_score",
+    "max_allowed_leakage_score",
+    "tenant_leakage_notice_ref",
+    "accepted",
+    "entries"
+  ],
+  "properties": {
+    "schema": { "const": "chio.disclosure.leakage-ledger.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "transaction_passport_ref": { "type": "string", "minLength": 1 },
+    "privacy_profile_ref": { "type": "string", "minLength": 1 },
+    "policy_profile_id": { "type": "string", "minLength": 1 },
+    "subject_artifact_sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+    "generated_at": { "type": "string", "minLength": 1 },
+    "audience": { "type": "string", "minLength": 1 },
+    "total_leakage_score": { "type": "integer", "minimum": 0 },
+    "max_allowed_leakage_score": { "type": "integer", "minimum": 0 },
+    "tenant_leakage_notice_ref": { "type": "string", "minLength": 1 },
+    "accepted": { "type": "boolean" },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entry_id",
+          "source",
+          "field",
+          "leakage_kind",
+          "disclosure_kind",
+          "sensitivity_class",
+          "value_class",
+          "reason",
+          "policy_rule",
+          "derived_inferences",
+          "cross_tenant_risk",
+          "score",
+          "allowed_by_profile"
+        ],
+        "properties": {
+          "entry_id": { "type": "string", "minLength": 1 },
+          "source": { "type": "string", "minLength": 1 },
+          "field": { "type": "string", "minLength": 1 },
+          "leakage_kind": {
+            "enum": ["disclosed_field", "hidden_predicate", "derived_fact"]
+          },
+          "disclosure_kind": {
+            "enum": ["disclosed_field", "hidden_predicate", "derived_fact"]
+          },
+          "sensitivity_class": { "type": "string", "minLength": 1 },
+          "value_class": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 },
+          "policy_rule": { "type": "string", "minLength": 1 },
+          "derived_inferences": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true
+          },
+          "cross_tenant_risk": { "type": "boolean" },
+          "mitigation": { "type": "string", "minLength": 1 },
+          "score": { "type": "integer", "minimum": 0 },
+          "allowed_by_profile": { "type": "boolean" },
+          "residual_inference_note": { "type": "string", "minLength": 1 }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": { "leakage_kind": { "const": "hidden_predicate" } },
+              "required": ["leakage_kind"]
+            },
+            "then": { "required": ["residual_inference_note"] }
+          }
+        ]
+      }
+    }
+  }
+}

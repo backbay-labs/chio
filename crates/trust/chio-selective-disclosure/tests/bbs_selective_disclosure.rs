@@ -11,9 +11,14 @@ use chio_selective_disclosure::{
     derive_selective_disclosure_proof, derive_selective_disclosure_proof_from_receipt,
     generate_bbs_keypair, project_receipt_body, project_step_record, project_workflow_receipt_body,
     receipt_signed_projection, sign_chio_receipt_with_bbs, sign_projection,
-    verify_selective_disclosure_proof, verify_signed_projection, DisclosureSet,
-    InMemoryIssuerRegistry, SelectiveDisclosureError, PROJECTION_VERSION_RECEIPT_V1,
-    PROJECTION_VERSION_STEP_V1, PROJECTION_VERSION_WORKFLOW_V1,
+    verify_bbs_projection_manifest, verify_selective_disclosure_proof,
+    verify_selective_disclosure_with_context, verify_signed_projection, BbsKeyPair,
+    BbsProjectionHiddenPredicate, CryptoVerificationContext, DisclosureContextVerdict,
+    DisclosureKeyState, DisclosureRevocationSnapshot, DisclosureSet,
+    DisclosureVerifierPrivacyProfile, HolderBindingStatus, InMemoryIssuerRegistry, KeyStateStatus,
+    NonceReplayStatus, RevocationSnapshotStatus, SelectiveDisclosureError,
+    SelectiveDisclosureProof, TransparencyState, BBS_CIPHERSUITE_SHA256,
+    PROJECTION_VERSION_RECEIPT_V1, PROJECTION_VERSION_STEP_V1, PROJECTION_VERSION_WORKFLOW_V1,
     SELECTIVE_DISCLOSURE_PROOF_SCHEMA_V1,
 };
 use chio_workflow::receipt::{
@@ -140,6 +145,106 @@ fn registry_for_key(keypair: &chio_selective_disclosure::BbsKeyPair) -> InMemory
     registry
 }
 
+fn contextual_bbs_fixture() -> (SelectiveDisclosureProof, InMemoryIssuerRegistry, BbsKeyPair) {
+    let ed25519 = Keypair::generate();
+    let receipt = receipt_fixture(&ed25519);
+    let projection = project_receipt_body(&receipt).expect("receipt projection succeeds");
+    let keypair = generate_bbs_keypair(b"chio-bbs-context-key-material-0001", b"chio").unwrap();
+    let signed = sign_projection(&projection, &keypair).expect("signing succeeds");
+    let proof = derive_selective_disclosure_proof(
+        &signed,
+        &projection,
+        &keypair,
+        &DisclosureSet(vec![1, 5, 11]),
+        b"auditor-session-nonce",
+    )
+    .expect("proof generation succeeds");
+    let registry = registry_for_key(&keypair);
+    (proof, registry, keypair)
+}
+
+fn context_profile(keypair: &BbsKeyPair) -> DisclosureVerifierPrivacyProfile {
+    DisclosureVerifierPrivacyProfile {
+        schema: "chio.disclosure.verifier-privacy-profile.v1".to_string(),
+        profile_id: "profile-buyer-auditor-context".to_string(),
+        allowed_proof_mechanisms: vec!["bbs".to_string()],
+        required_holder_binding: Some("holder:buyer-agent".to_string()),
+        transaction_passport_ref: "passport-bbs-context-valid".to_string(),
+        leakage_budget: chio_selective_disclosure::DisclosureProfileLeakageBudget {
+            max_disclosed_fields: 3,
+            max_hidden_predicates: 1,
+        },
+        sensitivity_classes: vec![chio_selective_disclosure::DisclosureSensitivityClass {
+            class_id: "operational".to_string(),
+            fields: vec![
+                "capability_id".to_string(),
+                "tool_name".to_string(),
+                "decision".to_string(),
+            ],
+        }],
+        allowed_issuer_keys: vec![keypair.issuer_fingerprint.clone()],
+        required_key_epoch_min: 7,
+        forbidden_key_epochs: vec![9],
+        required_status_freshness_seconds: 300,
+        required_audience: "https://auditor.example/chio".to_string(),
+        nonce_policy: "no_replay".to_string(),
+        allowed_algorithms: vec!["bbs-bls12381-sha256".to_string()],
+        forbidden_algorithms: vec!["rsa-pkcs1v15-sha1".to_string()],
+        required_transparency_state: TransparencyState::Anchored,
+        max_presentation_age_seconds: 600,
+        allowed_disclosed_fields: vec![
+            "capability_id".to_string(),
+            "tool_name".to_string(),
+            "decision".to_string(),
+        ],
+        forbidden_disclosed_fields: vec!["customer_email".to_string()],
+        allowed_hidden_predicates: vec!["amount_lte_100".to_string()],
+        forbidden_hidden_predicates: vec!["raw_amount".to_string()],
+    }
+}
+
+fn crypto_context(
+    proof: &SelectiveDisclosureProof,
+    _keypair: &BbsKeyPair,
+) -> CryptoVerificationContext {
+    CryptoVerificationContext {
+        schema: "chio.crypto.verification-context.v1".to_string(),
+        context_id: "crypto-context-buyer-auditor".to_string(),
+        artifact_ref: proof.subject_sha256_hex.clone(),
+        proof_mechanism: "bbs".to_string(),
+        issuer: "did:chio:issuer-bbs".to_string(),
+        issuer_key_ref: proof.issuer_fingerprint.clone(),
+        key_state: DisclosureKeyState {
+            schema: "chio.trust.key-state.v1".to_string(),
+            key_ref: proof.issuer_fingerprint.clone(),
+            status: KeyStateStatus::Active,
+            epoch: 7,
+            valid_from: 1_766_000_000,
+            valid_until: 1_766_000_900,
+        },
+        algorithm: "bbs-bls12381-sha256".to_string(),
+        suite: BBS_CIPHERSUITE_SHA256.to_string(),
+        hash_algorithm: "sha-256".to_string(),
+        canonicalization: "jcs".to_string(),
+        signature_ref: "bbs-proof".to_string(),
+        verification_time: 1_766_000_100,
+        revocation_snapshot: Some(DisclosureRevocationSnapshot {
+            schema: "chio.trust.revocation-snapshot.v1".to_string(),
+            snapshot_ref: "revocation-snapshot-buyer-auditor".to_string(),
+            status: RevocationSnapshotStatus::Fresh,
+            issued_at: 1_766_000_050,
+            expires_at: 1_766_000_350,
+        }),
+        audience: "https://auditor.example/chio".to_string(),
+        nonce_hex: proof.proof_nonce_hex.clone(),
+        nonce_replay_status: NonceReplayStatus::Fresh,
+        holder_binding_ref: Some("holder:buyer-agent".to_string()),
+        holder_binding_status: HolderBindingStatus::Bound,
+        transparency_state: TransparencyState::Anchored,
+        presentation_created_at: 1_766_000_080,
+    }
+}
+
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../..")
@@ -147,14 +252,16 @@ fn repo_root() -> PathBuf {
         .expect("repo root")
 }
 
-fn attest_schema_path(relative_path: &str) -> PathBuf {
-    repo_root()
-        .join("spec/schemas/chio-attest/v1")
-        .join(relative_path)
+fn schema_path(relative_path: &str) -> PathBuf {
+    repo_root().join("spec/schemas").join(relative_path)
 }
 
 fn assert_attest_schema_accepts(relative_path: &str, instance: &Value) {
-    let schema_path = attest_schema_path(relative_path);
+    assert_schema_accepts(&format!("chio-attest/v1/{relative_path}"), instance);
+}
+
+fn assert_schema_accepts(relative_path: &str, instance: &Value) {
+    let schema_path = schema_path(relative_path);
     let contents = fs::read_to_string(&schema_path).expect("schema file exists");
     let schema: Value = serde_json::from_str(&contents).expect("schema parses as json");
     let base_uri = schema_path
@@ -378,6 +485,94 @@ fn step_record_proof_validates_against_attest_schema() {
 }
 
 #[test]
+fn projection_manifest_uses_v2_slot_class_and_sensitivity() {
+    let ed25519 = Keypair::generate();
+    let receipt = receipt_fixture(&ed25519);
+    let projection = project_receipt_body(&receipt).expect("receipt projection succeeds");
+    let manifest = chio_selective_disclosure::bbs_projection_manifest_from_projection(&projection);
+    let manifest_json = serde_json::to_value(&manifest).expect("serialize projection manifest");
+
+    assert_eq!(
+        manifest_json["schema"], "chio.bbs-projection.manifest.v2",
+        "launch BBS projection manifests must be v2"
+    );
+    for slot in manifest_json["message_slots"]
+        .as_array()
+        .expect("message slots")
+    {
+        assert!(
+            slot["message_class"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty()),
+            "each slot carries a typed message class"
+        );
+        assert!(
+            slot["sensitivity_class"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty()),
+            "each slot carries a sensitivity class"
+        );
+    }
+}
+
+#[test]
+fn projection_manifest_accepts_declared_hidden_predicates() {
+    let ed25519 = Keypair::generate();
+    let workflow = workflow_fixture(&ed25519);
+    let projection =
+        project_workflow_receipt_body(&workflow).expect("workflow projection succeeds");
+    let keypair = generate_bbs_keypair(b"chio-bbs-signing-key-material-predicate", b"chio")
+        .expect("BBS keypair succeeds");
+    let signed = sign_projection(&projection, &keypair).expect("projection signing succeeds");
+    let mut manifest =
+        chio_selective_disclosure::bbs_projection_manifest_from_projection(&projection);
+    let disclosed_slots = manifest
+        .message_slots
+        .iter()
+        .filter(|slot| {
+            slot.disclosure == chio_selective_disclosure::BbsProjectionDisclosure::Disclosed
+        })
+        .map(|slot| slot.slot)
+        .collect();
+    let proof = derive_selective_disclosure_proof(
+        &signed,
+        &projection,
+        &keypair,
+        &DisclosureSet(disclosed_slots),
+        b"hidden-predicate-manifest-nonce",
+    )
+    .expect("selective disclosure proof succeeds");
+    manifest
+        .hidden_predicates
+        .push(BbsProjectionHiddenPredicate {
+            predicate_id: "amount_lte_100".to_string(),
+            field: "amount".to_string(),
+            operator: "<=".to_string(),
+            value_sha256: Some(sha256_hex(b"100")),
+        });
+
+    verify_bbs_projection_manifest(&proof, &manifest)
+        .expect("declared hidden predicate metadata is accepted");
+
+    manifest
+        .hidden_predicates
+        .push(BbsProjectionHiddenPredicate {
+            predicate_id: "amount_lte_100".to_string(),
+            field: "amount".to_string(),
+            operator: "<=".to_string(),
+            value_sha256: Some(sha256_hex(b"100")),
+        });
+    let error = verify_bbs_projection_manifest(&proof, &manifest)
+        .expect_err("duplicate hidden predicates are rejected");
+
+    assert!(matches!(
+        error,
+        SelectiveDisclosureError::ProjectionManifestInvalid(message)
+            if message.contains("duplicate hidden predicate amount_lte_100")
+    ));
+}
+
+#[test]
 fn proof_rejects_stub_schema_and_tampering() {
     let ed25519 = Keypair::generate();
     let workflow = workflow_fixture(&ed25519);
@@ -493,4 +688,180 @@ fn proof_rejects_uppercase_disclosed_message_hex() {
         verify_selective_disclosure_proof(&proof, &registry_for_key(&keypair)),
         Err(SelectiveDisclosureError::MalformedHexField { field, .. }) if field == "id"
     ));
+}
+
+fn assert_context_rejection(
+    mut context: CryptoVerificationContext,
+    profile: DisclosureVerifierPrivacyProfile,
+    expected_code: &str,
+) {
+    let (proof, registry, _keypair) = contextual_bbs_fixture();
+    context.artifact_ref = proof.subject_sha256_hex.clone();
+    context.nonce_hex = proof.proof_nonce_hex.clone();
+    assert!(
+        verify_selective_disclosure_proof(&proof, &registry).is_ok(),
+        "BBS proof must verify before context policy rejection is evaluated"
+    );
+
+    let report =
+        verify_selective_disclosure_with_context(&proof, &registry, &context, &profile).unwrap();
+    assert_eq!(report.verdict, DisclosureContextVerdict::Rejected);
+    assert!(report
+        .rejected_checks
+        .iter()
+        .any(|check| check.code == expected_code));
+}
+
+#[test]
+fn contextual_disclosure_accepts_valid_crypto_context() {
+    let (proof, registry, keypair) = contextual_bbs_fixture();
+    let profile = context_profile(&keypair);
+    let context = crypto_context(&proof, &keypair);
+
+    let report =
+        verify_selective_disclosure_with_context(&proof, &registry, &context, &profile).unwrap();
+
+    assert_eq!(report.schema, "chio.disclosure.crypto-context-report.v1");
+    assert_eq!(report.verdict, DisclosureContextVerdict::Verified);
+    assert!(report.cryptographic_proof_verified);
+    assert_eq!(report.evidence_class, "verifier_context");
+    assert!(report
+        .verified_claims
+        .iter()
+        .any(|claim| { claim == "claim.disclosure.crypto_context_bound" }));
+    assert_eq!(
+        report.disclosed_fields,
+        vec!["capability_id", "id", "tool_name"]
+    );
+}
+
+#[test]
+fn crypto_context_artifacts_validate_against_registered_schemas() {
+    let (proof, registry, keypair) = contextual_bbs_fixture();
+    let profile = context_profile(&keypair);
+    let context = crypto_context(&proof, &keypair);
+
+    let report =
+        verify_selective_disclosure_with_context(&proof, &registry, &context, &profile).unwrap();
+
+    assert_schema_accepts(
+        "chio-crypto/v1/verification-context.schema.json",
+        &serde_json::to_value(&context).expect("context serializes"),
+    );
+    assert_schema_accepts(
+        "chio-trust/v1/key-state.schema.json",
+        &serde_json::to_value(&context.key_state).expect("key state serializes"),
+    );
+    assert_schema_accepts(
+        "chio-trust/v1/revocation-snapshot.schema.json",
+        &serde_json::to_value(
+            context
+                .revocation_snapshot
+                .as_ref()
+                .expect("fixture has revocation snapshot"),
+        )
+        .expect("revocation snapshot serializes"),
+    );
+    assert_schema_accepts(
+        "chio-disclosure/v1/verifier-privacy-profile.schema.json",
+        &serde_json::to_value(&profile).expect("profile serializes"),
+    );
+    assert_schema_accepts(
+        "chio-disclosure/v1/crypto-context-report.schema.json",
+        &serde_json::to_value(&report).expect("report serializes"),
+    );
+}
+
+#[test]
+fn contextual_disclosure_rejects_wrong_audience_after_bbs_verifies() {
+    let (proof, _registry, keypair) = contextual_bbs_fixture();
+    let mut context = crypto_context(&proof, &keypair);
+    context.audience = "https://attacker.example/chio".to_string();
+
+    assert_context_rejection(
+        context,
+        context_profile(&keypair),
+        "disclosure_context_audience_mismatch",
+    );
+}
+
+#[test]
+fn contextual_disclosure_rejects_replayed_nonce_after_bbs_verifies() {
+    let (proof, _registry, keypair) = contextual_bbs_fixture();
+    let mut context = crypto_context(&proof, &keypair);
+    context.nonce_replay_status = NonceReplayStatus::Replayed;
+
+    assert_context_rejection(
+        context,
+        context_profile(&keypair),
+        "disclosure_context_nonce_replayed",
+    );
+}
+
+#[test]
+fn contextual_disclosure_rejects_stale_key_state_after_bbs_verifies() {
+    let (proof, _registry, keypair) = contextual_bbs_fixture();
+    let mut context = crypto_context(&proof, &keypair);
+    context.key_state.status = KeyStateStatus::Stale;
+
+    assert_context_rejection(
+        context,
+        context_profile(&keypair),
+        "disclosure_context_key_not_active",
+    );
+}
+
+#[test]
+fn contextual_disclosure_rejects_forbidden_algorithm_after_bbs_verifies() {
+    let (proof, _registry, keypair) = contextual_bbs_fixture();
+    let mut profile = context_profile(&keypair);
+    profile
+        .forbidden_algorithms
+        .push("bbs-bls12381-sha256".to_string());
+
+    assert_context_rejection(
+        crypto_context(&proof, &keypair),
+        profile,
+        "disclosure_context_algorithm_forbidden",
+    );
+}
+
+#[test]
+fn contextual_disclosure_rejects_missing_revocation_snapshot_after_bbs_verifies() {
+    let (proof, _registry, keypair) = contextual_bbs_fixture();
+    let mut context = crypto_context(&proof, &keypair);
+    context.revocation_snapshot = None;
+
+    assert_context_rejection(
+        context,
+        context_profile(&keypair),
+        "disclosure_context_revocation_snapshot_missing",
+    );
+}
+
+#[test]
+fn contextual_disclosure_rejects_missing_holder_binding_after_bbs_verifies() {
+    let (proof, _registry, keypair) = contextual_bbs_fixture();
+    let mut context = crypto_context(&proof, &keypair);
+    context.holder_binding_ref = None;
+    context.holder_binding_status = HolderBindingStatus::Missing;
+
+    assert_context_rejection(
+        context,
+        context_profile(&keypair),
+        "disclosure_context_holder_binding_missing",
+    );
+}
+
+#[test]
+fn contextual_disclosure_rejects_preview_transparency_when_anchored_required() {
+    let (proof, _registry, keypair) = contextual_bbs_fixture();
+    let mut context = crypto_context(&proof, &keypair);
+    context.transparency_state = TransparencyState::Preview;
+
+    assert_context_rejection(
+        context,
+        context_profile(&keypair),
+        "disclosure_context_transparency_state_insufficient",
+    );
 }

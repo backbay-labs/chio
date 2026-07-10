@@ -12,6 +12,12 @@ pub(crate) use receipt::*;
 #[path = "types/passport.rs"]
 mod passport_types;
 pub(crate) use passport_types::*;
+#[path = "types/proof.rs"]
+mod proof;
+pub(crate) use proof::*;
+#[path = "types/workflow.rs"]
+mod workflow;
+pub(crate) use workflow::*;
 #[path = "types/replay.rs"]
 mod replay;
 pub(crate) use replay::*;
@@ -251,17 +257,6 @@ mod cli_env_tests {
 
         restore_env("CHIO_GUARD_REGISTRY_PASSWORD", prior);
     }
-
-    #[test]
-    fn explain_help_text_uses_chio_named_dsse_conformance_wording() {
-        let source = include_str!("types/receipt.rs");
-        let stale_uppercase_phrase = ["strict ", "CHIO"].concat();
-
-        assert!(
-            !source.contains(&stale_uppercase_phrase),
-            "active explain help text must not describe DSSE conformance with stale uppercase legacy wording"
-        );
-    }
 }
 
 #[derive(Subcommand)]
@@ -356,6 +351,24 @@ pub(crate) enum Commands {
     Passport {
         #[command(subcommand)]
         command: PassportCommands,
+    },
+
+    /// Verify proof bundles and Transaction Passport artifacts.
+    Proof {
+        #[command(subcommand)]
+        command: ProofCommands,
+    },
+
+    /// Verify commerce proof bundles and payment evidence.
+    Commerce {
+        #[command(subcommand)]
+        command: CommerceCommands,
+    },
+
+    /// Validate read-only workflow planning evidence before dispatch.
+    Workflow {
+        #[command(subcommand)]
+        command: WorkflowCommands,
     },
 
     /// Inspect local reputation scorecards from persisted receipts and lineage state.

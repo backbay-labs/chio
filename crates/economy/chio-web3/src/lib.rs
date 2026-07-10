@@ -18,9 +18,19 @@ pub mod error;
 pub mod identity;
 pub mod qualification;
 pub mod settlement;
+pub mod settlement_proof;
 pub mod trust_profile;
 pub(crate) mod validation;
 
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod review_thread_tests;
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod settlement_identity_evidence_tests;
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod settlement_proof_event_tests;
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests;

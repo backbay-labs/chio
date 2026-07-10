@@ -1,0 +1,7 @@
+{
+  "id": "missing-receipt-graph-node",
+  "expected_failure_code": "proof-room.evidence-graph.receipt-node-missing",
+  "mutation": {
+    "artifact_path": "artifacts/receipts/denial-receipt.json"
+  }
+}

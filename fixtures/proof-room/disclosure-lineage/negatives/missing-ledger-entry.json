@@ -1,0 +1,8 @@
+{
+  "schema": "chio.disclosure-lineage.negative-fixture.v1",
+  "id": "missing-ledger-entry",
+  "claim_ref": "claim.disclosure.leakage_ledger_complete",
+  "base_fixture": "fixtures/proof-room/disclosure-lineage/valid-lineage-ledger/signed-lineage-subgraph.json",
+  "case": "MissingLedgerEntry",
+  "expected_failure_code": "proof-room.negative.disclosed-field-absent-from-leakage-ledger"
+}

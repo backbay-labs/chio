@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-swarm/v1/revocation-epoch.schema.json",
+  "title": "Chio Swarm Revocation Epoch",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "epochId",
+    "rootHash",
+    "issuedAtUnixMs",
+    "validUntilUnixMs",
+    "revokedSubjects",
+    "revokedTaskIds",
+    "issuer",
+    "signature"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.swarm.revocation-epoch.v1"
+    },
+    "epochId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rootHash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "issuedAtUnixMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "validUntilUnixMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "revokedSubjects": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "revokedTaskIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "issuer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  }
+}

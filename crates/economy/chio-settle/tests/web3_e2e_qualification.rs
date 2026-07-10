@@ -48,9 +48,10 @@ use chio_link::{ChioLinkOracle, ExchangeRate, OracleBackend, OracleFuture, Price
 use chio_settle::{
     confirm_transaction, estimate_call_gas, finalize_bond_lock, finalize_escrow_dispatch,
     inspect_finality_for_receipt, observe_bond, prepare_bond_expiry, prepare_bond_impair,
-    prepare_bond_lock, prepare_dual_sign_release, prepare_erc20_approval, prepare_escrow_refund,
-    prepare_web3_escrow_dispatch, project_escrow_execution_receipt, submit_call, BondLockRequest,
-    DualSignReleaseInput, EscrowDispatchRequest, ExecutionProjectionInput, LocalDevnetDeployment,
+    prepare_bond_lock, prepare_bond_proof_root_publication, prepare_dual_sign_release,
+    prepare_erc20_approval, prepare_escrow_refund, prepare_web3_escrow_dispatch,
+    project_escrow_execution_receipt, submit_call, BondLockRequest, DualSignReleaseInput,
+    EscrowDispatchRequest, ExecutionProjectionInput, LocalDevnetDeployment, PreparedBondProofRoot,
     SettlementFinalityStatus, SettlementRecoveryAction,
 };
 use reqwest::Client;
@@ -98,6 +99,15 @@ fn unique_runtime_devnet_deployment_path(name: &str) -> PathBuf {
             std::process::id()
         ))
         .join(name)
+}
+
+fn e2e_step<T, E: std::fmt::Display>(
+    label: &'static str,
+    result: Result<T, E>,
+) -> Result<T, Box<dyn std::error::Error>> {
+    result.map_err(|error| {
+        std::io::Error::new(std::io::ErrorKind::Other, format!("{label}: {error}")).into()
+    })
 }
 
 struct StaticBackend {
@@ -349,7 +359,10 @@ fn sample_capital_instruction(
             schema: chio_core::credit::CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA.to_string(),
             instruction_id: instruction_id.to_string(),
             issued_at,
-            query: CapitalBookQuery::default(),
+            query: CapitalBookQuery {
+                agent_subject: Some("subject-1".to_string()),
+                ..CapitalBookQuery::default()
+            },
             subject_key: "subject-1".to_string(),
             source_id: "capital-source:facility:facility-1".to_string(),
             source_kind: CapitalBookSourceKind::FacilityCommitment,
@@ -627,8 +640,8 @@ async fn publish_anchor_proof(
     let receipt_bytes = canonical_json_bytes(&receipt.body())?;
     let receipt_leaf = receipt_bytes.clone();
     let tree = MerkleTree::from_leaves(std::slice::from_ref(&receipt_leaf))?;
-    let checkpoint = build_checkpoint(21, 21, 21, &[receipt_bytes], operator_keypair)?;
-    let inclusion = build_inclusion_proof(&tree, 0, checkpoint.body.checkpoint_seq, 21)?;
+    let checkpoint = build_checkpoint(1, 1, 1, &[receipt_bytes], operator_keypair)?;
+    let inclusion = build_inclusion_proof(&tree, 0, checkpoint.body.checkpoint_seq, 1)?;
     let anchor_target = EvmAnchorTarget {
         chain_id: config.chain_id.clone(),
         rpc_url: config.rpc_url.clone(),
@@ -638,15 +651,21 @@ async fn publish_anchor_proof(
     };
     let publication = prepare_root_publication(&anchor_target, &checkpoint, binding)?;
     let egress_contract = evm_anchor_devnet_rpc_egress_contract(&config.rpc_url)?;
-    let publish_tx = publish_root(&publication, &egress_contract).await?;
-    let confirmed_anchor = confirm_root_publication(
-        &anchor_target,
-        &checkpoint,
-        binding,
-        &publish_tx,
-        &egress_contract,
-    )
-    .await?;
+    let publish_tx = e2e_step(
+        "publish anchor root",
+        publish_root(&publication, &egress_contract).await,
+    )?;
+    let confirmed_anchor = e2e_step(
+        "confirm anchor root",
+        confirm_root_publication(
+            &anchor_target,
+            &checkpoint,
+            binding,
+            &publish_tx,
+            &egress_contract,
+        )
+        .await,
+    )?;
     let chain_anchor = build_chain_anchor_record(&anchor_target, &checkpoint, &confirmed_anchor);
     let evidence_bundle = EvidenceExportBundle {
         query: EvidenceExportQuery::default(),
@@ -730,7 +749,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         &accounts.beneficiary,
     )
     .await?;
-    let oracle_evidence = build_fx_oracle_evidence(45_000, 15_000).await?;
+    let oracle_evidence = build_fx_oracle_evidence(46_153_846_153_846_153, 15_000).await?;
 
     let dual_amount = MonetaryAmount {
         units: 15_000,
@@ -742,8 +761,14 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         &config.escrow_contract,
         150_000_000,
     )?;
-    let dual_approval_tx = submit_call(&config, &dual_approval.call).await?;
-    confirm_transaction(&config, &dual_approval_tx).await?;
+    let dual_approval_tx = e2e_step(
+        "submit dual approval",
+        submit_call(&config, &dual_approval.call).await,
+    )?;
+    e2e_step(
+        "confirm dual approval",
+        confirm_transaction(&config, &dual_approval_tx).await,
+    )?;
     let dual_dispatch = prepare_web3_escrow_dispatch(
         &config,
         &EscrowDispatchRequest {
@@ -770,8 +795,14 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         &binding,
     )
     .await?;
-    let dual_create_tx = submit_call(&config, &dual_dispatch.call).await?;
-    let dual_create_receipt = confirm_transaction(&config, &dual_create_tx).await?;
+    let dual_create_tx = e2e_step(
+        "submit dual escrow create",
+        submit_call(&config, &dual_dispatch.call).await,
+    )?;
+    let dual_create_receipt = e2e_step(
+        "confirm dual escrow create",
+        confirm_transaction(&config, &dual_create_tx).await,
+    )?;
     let dual_dispatch = finalize_escrow_dispatch(&dual_dispatch, &dual_create_receipt)?;
     let dual_receipt = sample_receipt(
         &operator_keypair,
@@ -788,10 +819,33 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
             operator_private_key_hex: OPERATOR_PRIVATE_KEY.to_string(),
             observed_amount: dual_amount.clone(),
         },
-    )?;
+    )
+    .await?;
+    assert_eq!(
+        dual_release
+            .identity_registry_evidence
+            .identity_registry_contract,
+        config.identity_registry_contract
+    );
+    assert_eq!(
+        dual_release.identity_registry_evidence.operator_address,
+        config.operator_address
+    );
+    assert_ne!(
+        dual_release.identity_registry_evidence.block_hash,
+        "0x0000000000000000000000000000000000000000000000000000000000000000"
+    );
+    assert!(dual_release.identity_registry_evidence.block_number > 0);
+    assert!(dual_release.identity_registry_evidence.active);
     let gas_estimate = estimate_call_gas(&config, &dual_release.call).await?;
-    let dual_release_tx = submit_call(&config, &dual_release.call).await?;
-    let dual_release_receipt = confirm_transaction(&config, &dual_release_tx).await?;
+    let dual_release_tx = e2e_step(
+        "submit dual escrow release",
+        submit_call(&config, &dual_release.call).await,
+    )?;
+    let dual_release_receipt = e2e_step(
+        "confirm dual escrow release",
+        confirm_transaction(&config, &dual_release_tx).await,
+    )?;
     let dual_projection = project_escrow_execution_receipt(
         &config,
         ExecutionProjectionInput {
@@ -802,6 +856,15 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
             observed_at: Some(dual_release_receipt.observed_at.saturating_add(3_601)),
             observed_amount: dual_amount.clone(),
             anchor_proof: None,
+            identity_registry_evidence: Some(
+                dual_release.identity_registry_evidence.clone().into(),
+            ),
+            identity_registry_evidence_binding: Some(
+                dual_release
+                    .identity_registry_evidence_binding
+                    .clone()
+                    .into(),
+            ),
             oracle_evidence: Some(&oracle_evidence),
             failure_reason: None,
             reversal_of: None,
@@ -820,6 +883,15 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
     assert_eq!(
         dual_projection
             .receipt
+            .identity_registry_evidence
+            .as_ref()
+            .test_expect("dual-sign registry evidence")
+            .operator_key_hash,
+        dual_release.identity_registry_evidence.operator_key_hash
+    );
+    assert_eq!(
+        dual_projection
+            .receipt
             .oracle_evidence
             .as_ref()
             .test_expect("oracle evidence")
@@ -834,6 +906,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         "escrowId": dual_projection.receipt.dispatch.escrow_id,
         "txHash": dual_release_tx,
         "gasEstimate": gas_estimate,
+        "identityRegistryEvidence": dual_release.identity_registry_evidence,
         "finalityStatus": dual_projection.finality.status,
         "lifecycleState": dual_projection.receipt.lifecycle_state,
         "oracleAuthority": dual_projection.receipt.oracle_evidence.as_ref().map(|e| e.authority.clone()),
@@ -850,8 +923,14 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         &config.escrow_contract,
         750_000,
     )?;
-    let refund_approval_tx = submit_call(&config, &refund_approval.call).await?;
-    confirm_transaction(&config, &refund_approval_tx).await?;
+    let refund_approval_tx = e2e_step(
+        "submit refund approval",
+        submit_call(&config, &refund_approval.call).await,
+    )?;
+    e2e_step(
+        "confirm refund approval",
+        confirm_transaction(&config, &refund_approval_tx).await,
+    )?;
     let refund_now = latest_block_timestamp(&config.rpc_url).await?;
     let refund_dispatch = prepare_web3_escrow_dispatch(
         &config,
@@ -879,14 +958,26 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         &binding,
     )
     .await?;
-    let refund_create_tx = submit_call(&config, &refund_dispatch.call).await?;
-    let refund_create_receipt = confirm_transaction(&config, &refund_create_tx).await?;
+    let refund_create_tx = e2e_step(
+        "submit refund escrow create",
+        submit_call(&config, &refund_dispatch.call).await,
+    )?;
+    let refund_create_receipt = e2e_step(
+        "confirm refund escrow create",
+        confirm_transaction(&config, &refund_create_tx).await,
+    )?;
     let refund_dispatch = finalize_escrow_dispatch(&refund_dispatch, &refund_create_receipt)?;
     advance_time(&config.rpc_url, 10).await?;
     let refund_call =
         prepare_escrow_refund(&config, &refund_dispatch.dispatch, &accounts.outsider)?;
-    let refund_tx = submit_call(&config, &refund_call.call).await?;
-    let refund_receipt = confirm_transaction(&config, &refund_tx).await?;
+    let refund_tx = e2e_step(
+        "submit refund",
+        submit_call(&config, &refund_call.call).await,
+    )?;
+    let refund_receipt = e2e_step(
+        "confirm refund",
+        confirm_transaction(&config, &refund_tx).await,
+    )?;
     let refund_projection = project_escrow_execution_receipt(
         &config,
         ExecutionProjectionInput {
@@ -900,6 +991,8 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
                 currency: "USD".to_string(),
             },
             anchor_proof: None,
+            identity_registry_evidence: None,
+            identity_registry_evidence_binding: None,
             oracle_evidence: None,
             failure_reason: Some("escrow deadline elapsed before release".to_string()),
             reversal_of: None,
@@ -937,8 +1030,14 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         &config.escrow_contract,
         900_000,
     )?;
-    let reorg_approval_tx = submit_call(&config, &reorg_approval.call).await?;
-    confirm_transaction(&config, &reorg_approval_tx).await?;
+    let reorg_approval_tx = e2e_step(
+        "submit reorg approval",
+        submit_call(&config, &reorg_approval.call).await,
+    )?;
+    e2e_step(
+        "confirm reorg approval",
+        confirm_transaction(&config, &reorg_approval_tx).await,
+    )?;
     let snapshot_id = snapshot_chain(&config.rpc_url).await?;
     let reorg_now = latest_block_timestamp(&config.rpc_url).await?;
     let reorg_dispatch = prepare_web3_escrow_dispatch(
@@ -967,8 +1066,14 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         &binding,
     )
     .await?;
-    let reorg_tx = submit_call(&config, &reorg_dispatch.call).await?;
-    let reorg_receipt = confirm_transaction(&config, &reorg_tx).await?;
+    let reorg_tx = e2e_step(
+        "submit reorg escrow create",
+        submit_call(&config, &reorg_dispatch.call).await,
+    )?;
+    let reorg_receipt = e2e_step(
+        "confirm reorg escrow create",
+        confirm_transaction(&config, &reorg_tx).await,
+    )?;
     revert_chain(&config.rpc_url, &snapshot_id).await?;
     mine_to_block(&config.rpc_url, reorg_receipt.block_number).await?;
     let canonical_block = rpc_call(
@@ -1009,6 +1114,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
             principal_address: accounts.principal.clone(),
             bond: impair_bond,
         },
+        &binding,
     )
     .await?;
     let impair_approval = prepare_erc20_approval(
@@ -1017,16 +1123,28 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         &config.bond_vault_contract,
         impair_lock.collateral_minor_units,
     )?;
-    let impair_approval_tx = submit_call(&config, &impair_approval.call).await?;
-    confirm_transaction(&config, &impair_approval_tx).await?;
-    let impair_lock_tx = submit_call(&config, &impair_lock.call).await?;
-    let impair_lock_receipt = confirm_transaction(&config, &impair_lock_tx).await?;
+    let impair_approval_tx = e2e_step(
+        "submit impair approval",
+        submit_call(&config, &impair_approval.call).await,
+    )?;
+    e2e_step(
+        "confirm impair approval",
+        confirm_transaction(&config, &impair_approval_tx).await,
+    )?;
+    let impair_lock_tx = e2e_step(
+        "submit impair bond lock",
+        submit_call(&config, &impair_lock.call).await,
+    )?;
+    let impair_lock_receipt = e2e_step(
+        "confirm impair bond lock",
+        confirm_transaction(&config, &impair_lock_tx).await,
+    )?;
     let impair_lock = finalize_bond_lock(&impair_lock, &impair_lock_receipt)?;
     let impair_active = observe_bond(&config, &impair_lock.vault_id).await?;
     let impair_call = prepare_bond_impair(
         &config,
-        &impair_lock.vault_id,
         &config.operator_address,
+        &impair_active.snapshot,
         &MonetaryAmount {
             units: 250,
             currency: "USD".to_string(),
@@ -1038,8 +1156,36 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         }],
         &anchor_proof,
     )?;
-    let impair_tx = submit_call(&config, &impair_call.call).await?;
-    confirm_transaction(&config, &impair_tx).await?;
+    let impair_root_call = prepare_bond_proof_root_publication(
+        &config,
+        &impair_active.snapshot,
+        PreparedBondProofRoot::Impair(&impair_call),
+        2,
+        2,
+    )?;
+    let impair_root_tx = e2e_step(
+        "submit impair proof root",
+        submit_call(&config, &impair_root_call).await,
+    )?;
+    let impair_root_receipt = e2e_step(
+        "confirm impair proof root",
+        confirm_transaction(&config, &impair_root_tx).await,
+    )?;
+    if !impair_root_receipt.status {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "impair proof root publication reverted",
+        )
+        .into());
+    }
+    let impair_tx = e2e_step(
+        "submit bond impair",
+        submit_call(&config, &impair_call.call).await,
+    )?;
+    e2e_step(
+        "confirm bond impair",
+        confirm_transaction(&config, &impair_tx).await,
+    )?;
     let impair_observation = observe_bond(&config, &impair_lock.vault_id).await?;
     assert_eq!(
         impair_active.status,
@@ -1084,6 +1230,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
             principal_address: accounts.principal.clone(),
             bond: expiry_bond,
         },
+        &binding,
     )
     .await?;
     let expiry_approval = prepare_erc20_approval(
@@ -1092,15 +1239,33 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         &config.bond_vault_contract,
         expiry_lock.collateral_minor_units,
     )?;
-    let expiry_approval_tx = submit_call(&config, &expiry_approval.call).await?;
-    confirm_transaction(&config, &expiry_approval_tx).await?;
-    let expiry_lock_tx = submit_call(&config, &expiry_lock.call).await?;
-    let expiry_lock_receipt = confirm_transaction(&config, &expiry_lock_tx).await?;
+    let expiry_approval_tx = e2e_step(
+        "submit expiry approval",
+        submit_call(&config, &expiry_approval.call).await,
+    )?;
+    e2e_step(
+        "confirm expiry approval",
+        confirm_transaction(&config, &expiry_approval_tx).await,
+    )?;
+    let expiry_lock_tx = e2e_step(
+        "submit expiry bond lock",
+        submit_call(&config, &expiry_lock.call).await,
+    )?;
+    let expiry_lock_receipt = e2e_step(
+        "confirm expiry bond lock",
+        confirm_transaction(&config, &expiry_lock_tx).await,
+    )?;
     let expiry_lock = finalize_bond_lock(&expiry_lock, &expiry_lock_receipt)?;
     advance_time(&config.rpc_url, 10).await?;
     let expiry_call = prepare_bond_expiry(&config, &expiry_lock.vault_id, &accounts.outsider)?;
-    let expiry_tx = submit_call(&config, &expiry_call.call).await?;
-    confirm_transaction(&config, &expiry_tx).await?;
+    let expiry_tx = e2e_step(
+        "submit bond expiry",
+        submit_call(&config, &expiry_call.call).await,
+    )?;
+    e2e_step(
+        "confirm bond expiry",
+        confirm_transaction(&config, &expiry_tx).await,
+    )?;
     let expiry_observation = observe_bond(&config, &expiry_lock.vault_id).await?;
     assert_eq!(
         expiry_observation.status,

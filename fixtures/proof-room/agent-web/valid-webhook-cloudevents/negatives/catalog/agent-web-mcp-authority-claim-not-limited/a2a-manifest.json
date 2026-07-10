@@ -1,0 +1,64 @@
+{
+  "schema": "chio.agent-web.external-projection-manifest.v1",
+  "projection_id": "projection-a2a-valid",
+  "source_protocol": "a2a",
+  "source_version": "0.3.0",
+  "external_fields_used": [
+    "protocol_version",
+    "task_id",
+    "message_id",
+    "agent_card_digest",
+    "agent_card_schema_digest",
+    "agent_card_url_digest",
+    "skill_id_digest",
+    "interface_url_digest",
+    "context_id_digest",
+    "task_input_digest",
+    "task_state",
+    "task_state_digest",
+    "message_parts_digest",
+    "message_send_digest",
+    "result_digest",
+    "metadata_chio_skill_selector_digest",
+    "task_artifacts_digest",
+    "streaming_lifecycle_digest",
+    "cancel_lifecycle_digest",
+    "push_notification_config_digest",
+    "authorization_context_digest"
+  ],
+  "external_fields_not_used": [
+    "task_state_as_authority"
+  ],
+  "sidecar_fields": [
+    "transaction_passport_ref",
+    "receipt_refs",
+    "chio_claim_refs"
+  ],
+  "digest_algorithm": "sha256",
+  "signature_algorithm": "none",
+  "requires_external_signature": false,
+  "claim_mapping": [
+    {
+      "claim_ref": "claim.agent_web.external_subject_digest_bound",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "claim_ref": "claim.agent_web.projection_manifest_bound",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.unsupported_claims_limited",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.sidecar_not_native_authority",
+      "evidence_class": "chio-sidecar-proof"
+    }
+  ],
+  "unsupported_claims": [
+    "claim.external.a2a_task_is_chio_authority"
+  ],
+  "copy_limitations": [
+    "A2A task lifecycle evidence is digest-bound external task state, not Chio capability authority."
+  ]
+}

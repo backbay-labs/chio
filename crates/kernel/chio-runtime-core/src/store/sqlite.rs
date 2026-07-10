@@ -12,6 +12,7 @@ mod health_summaries;
 mod leases_scheduler;
 mod runs_steps;
 mod schema_migrations;
+mod swarm_authority_bundles;
 mod treaty_artifacts;
 mod trust_floors;
 

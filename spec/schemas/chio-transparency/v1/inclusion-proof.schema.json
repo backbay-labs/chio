@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-transparency/v1/inclusion-proof.schema.json",
+  "title": "Chio Transparency Inclusion Proof",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "proof_id",
+    "log_id",
+    "artifact_ref",
+    "root_hash",
+    "leaf_hash",
+    "tree_size",
+    "leaf_index",
+    "checkpoint",
+    "inclusion_path",
+    "verified_at"
+  ],
+  "properties": {
+    "schema": { "const": "chio.transparency.inclusion-proof.v1" },
+    "proof_id": { "type": "string", "minLength": 1 },
+    "log_id": { "type": "string", "minLength": 1 },
+    "artifact_ref": { "$ref": "#/$defs/sha256" },
+    "root_hash": { "$ref": "#/$defs/sha256" },
+    "leaf_hash": { "$ref": "#/$defs/sha256" },
+    "tree_size": { "type": "integer", "minimum": 1 },
+    "leaf_index": { "type": "integer", "minimum": 0 },
+    "checkpoint": { "type": "string", "minLength": 1 },
+    "inclusion_path": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sha256" }
+    },
+    "verified_at": { "type": "integer", "minimum": 1 }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

@@ -2,7 +2,7 @@
 //!
 //! Emits a marketplace credit limit decision keyed off
 //! `UnderwritingDecisionOutcome` (Approve / ReduceCeiling / StepUp / Deny),
-//! surfaced by the CLI in `arc guard market info`. Deterministic and
+//! surfaced by the CLI in `chio guard market info`. Deterministic and
 //! storage-agnostic.
 //!
 //! Soft-dep: the revocation oracle revokes guard publisher

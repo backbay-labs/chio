@@ -1,7 +1,6 @@
 # ADR: Canonical Type Evolution for ToolAction and Constraint
 
-> **Status**: Active -- April 2026
-> **Addresses**: Cross-doc type drift identified in review critique.
+> **Addresses**: Cross-doc type drift.
 > Multiple docs independently redefine `ToolAction` and `Constraint` enums
 > in incompatible shapes. This ADR establishes the canonical definitions
 > and the process for evolving them.
@@ -13,8 +12,6 @@ The documentation corpus contains 5+ incompatible definitions of new
 
 | Doc | ToolAction proposal | Shape |
 |-----|---------------------|-------|
-| `08-DESKTOP-CUA-GUARD-ABSORPTION.md:123` | `BrowserAction(String, BrowserActionType)` | Tuple |
-| `UNIVERSAL-KERNEL-COVERAGE-MAP.md:205` | `BrowserAction { url, action_type, ... }` | Struct |
 | `13-CODE-EXECUTION-GUARDS.md` | `CodeExecution { language, code_hash, ... }` | Struct |
 | `SAAS-COMMUNICATION-INTEGRATION.md:84` | `ExternalApiCall { service, action, visibility }` | Struct |
 | `DATA-LAYER-INTEGRATION.md:111` | `DatabaseQuery { engine, query, ... }` | Struct |
@@ -33,7 +30,7 @@ If teams execute from different docs, they will produce incompatible code.
 ### 1. Source of Truth
 
 The source of truth for `ToolAction` is `crates/guards/chio-guards/src/action.rs`.
-The source of truth for `Constraint` is `crates/core/chio-core-types/src/capability.rs`.
+The source of truth for `Constraint` is `crates/core/chio-core-types/src/capability`.
 
 All doc proposals are **design sketches**. They inform the final
 implementation but are not the contract. When implementing, the developer
@@ -235,11 +232,6 @@ that does not match the implemented loader in `chio-config/src/schema.rs`
 (flat Vec sections, `kernel.signing_key`, no `start` command). The
 UNIFIED-CONFIGURATION doc is aspirational, not current. The code in
 `chio-config` is the source of truth for what works today.
-
-**CLI contract drift**: `DX-AND-ADOPTION-ROADMAP.md` references
-`chio-policy.toml` and bare policy names. The actual CLI in
-`chio-cli/src/cli/types.rs` expects a policy YAML path. DX docs should
-be updated to match the current CLI before publishing quickstart guides.
 
 **HITL approval replay (resolved)**: The kernel now has a single-use
 consumption store (`approval_replay_store` on `ChioKernel`) using the

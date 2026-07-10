@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://chio-protocol.dev/schemas/registries/theorem-inventory/v1",
   "title": "Chio theorem inventory (v1)",
-  "description": "Schema for spec/registries/theorem-inventory.v1.json. Constrains the allowed status values to the canonical registry set (proposed, proven, assumed). Two transitional values (proven_partial, advisory_only) are grandfathered for legacy entries only and must be re-classified before release qualification. Any historical non-canonical status, such as the deprecated impl-backed label, is rejected by the spec/registries gate.",
+  "description": "Schema for spec/registries/theorem-inventory.v1.json. Constrains the allowed status values to the canonical registry set (proposed, proven, assumed). Two transitional values (proven_partial, advisory_only) are grandfathered for compatibility entries only and must be re-classified before release qualification. Any historical non-canonical status, such as the deprecated impl-backed label, is rejected by the spec/registries gate.",
   "type": "object",
   "required": ["version", "theorems"],
   "properties": {

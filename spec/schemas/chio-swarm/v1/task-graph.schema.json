@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-swarm/v1/task-graph.schema.json",
+  "title": "Chio Swarm Task Graph",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "graphId",
+    "rootTransactionRef",
+    "plannerSubject",
+    "issuer",
+    "signature",
+    "createdAtUnixMs",
+    "expiresAtUnixMs",
+    "maxDepth",
+    "maxFanout",
+    "nodes",
+    "edges",
+    "joins",
+    "budgetPoolRef",
+    "revocationEpochRef",
+    "routePlanRefs"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.swarm.task-graph.v1"
+    },
+    "graphId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rootTransactionRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "plannerSubject": {
+      "type": "string",
+      "minLength": 1
+    },
+    "issuer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdAtUnixMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "expiresAtUnixMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "maxDepth": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "maxFanout": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "multiHopWitnessChains": {
+      "type": "boolean"
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/edge"
+      }
+    },
+    "joins": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/join"
+      }
+    },
+    "budgetPoolRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revocationEpochRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "routePlanRefs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "taskId",
+        "scopeHash",
+        "depth"
+      ],
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentTaskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "routePlanRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "continuationTokenRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "budgetAllocationRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scopeHash": {
+          "$ref": "#/$defs/digest"
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fromTaskId",
+        "toTaskId",
+        "edgeType"
+      ],
+      "properties": {
+        "fromTaskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "toTaskId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "edgeType": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "join": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "joinId",
+        "parentTaskIds",
+        "nextTaskId"
+      ],
+      "properties": {
+        "joinId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentTaskIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "nextTaskId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

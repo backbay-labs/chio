@@ -1,0 +1,1 @@
+{"id":"federation-trust-bundle-commerce-001","issued_at":"2026-06-10T00:00:00Z","provider_subject":"did:chio:merchant-store","schema":"chio.commerce.federation-trust-bundle.v1","signature":"sig-federation-trust-bundle-commerce-001","status":"trusted","trust_domain":"federation:chio-demo","trust_root_ref":"trust-root-commerce-001"}

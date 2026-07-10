@@ -29,14 +29,4 @@ impl IdeTarget {
             IdeTarget::Zed => "zed.context_servers/2025-02",
         }
     }
-
-    #[allow(dead_code)]
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            IdeTarget::Cursor => "cursor",
-            IdeTarget::ClaudeDesktop => "claude-desktop",
-            IdeTarget::Continue => "continue",
-            IdeTarget::Zed => "zed",
-        }
-    }
 }

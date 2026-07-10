@@ -1,6 +1,5 @@
 # Chio Economic Layer: Technical Overview
 
-**Date:** 2026-04-15
 **Status:** Active technical documentation
 **Scope:** The 7 economic crates, their composition, the money flow, insurance, settlement, and marketplace
 
@@ -754,7 +753,7 @@ when:
    provide tamper-evident proof of payment.
 
 For small, high-frequency settlements between trusted parties, off-chain
-settlement through the kernel's `PaymentAdapter` trait (x402, ACP, or direct
+settlement through the kernel's `PaymentAdapter` trait (x402, ACP-Commerce, or direct
 API) is more appropriate.
 
 ---

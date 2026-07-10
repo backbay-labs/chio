@@ -1035,6 +1035,7 @@ fn governed_call_chain_receipt_observes_session_parent_request_lineage() {
                 federated_origin_kernel_id: None,
             },
             &mut client,
+            None,
         )
         .unwrap();
 

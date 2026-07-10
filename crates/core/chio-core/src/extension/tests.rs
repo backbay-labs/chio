@@ -708,7 +708,8 @@ fn evidence_runtime_guardrail_helper_preserves_fail_closed_requirements() {
     runtime.requires_local_policy_activation = true;
     assert!(validate_evidence_runtime_guardrails(&runtime).is_ok());
 
-    let cases: [(&str, fn(&mut ExtensionRuntimeEnvelope)); 4] = [
+    type RuntimeGuardrailMutation = fn(&mut ExtensionRuntimeEnvelope);
+    let cases: [(&str, RuntimeGuardrailMutation); 4] = [
         ("subject binding", |runtime| {
             runtime.requires_subject_binding = false;
         }),

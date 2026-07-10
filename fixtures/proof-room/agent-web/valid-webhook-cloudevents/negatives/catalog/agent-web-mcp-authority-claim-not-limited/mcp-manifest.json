@@ -1,0 +1,53 @@
+{
+  "schema": "chio.agent-web.external-projection-manifest.v1",
+  "projection_id": "projection-mcp-valid",
+  "source_protocol": "mcp",
+  "source_version": "2025-11-25",
+  "external_fields_used": [
+    "arguments_digest",
+    "authorization_context_digest",
+    "authorization_server_metadata_digest",
+    "dpop_proof_digest",
+    "proof_envelope_resource_read_digest",
+    "protected_resource_metadata_digest",
+    "protocol_version",
+    "result_digest",
+    "server_identity_digest",
+    "session_id_digest",
+    "tool_name",
+    "transport"
+  ],
+  "external_fields_not_used": [
+    "tool_annotations_as_authority"
+  ],
+  "sidecar_fields": [
+    "transaction_passport_ref",
+    "receipt_refs",
+    "chio_claim_refs"
+  ],
+  "digest_algorithm": "sha256",
+  "signature_algorithm": "none",
+  "requires_external_signature": false,
+  "claim_mapping": [
+    {
+      "claim_ref": "claim.agent_web.external_subject_digest_bound",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "claim_ref": "claim.agent_web.projection_manifest_bound",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.unsupported_claims_limited",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.sidecar_not_native_authority",
+      "evidence_class": "chio-sidecar-proof"
+    }
+  ],
+  "unsupported_claims": [],
+  "copy_limitations": [
+    "MCP tool-call evidence is digest-bound external protocol evidence, not Chio capability authority."
+  ]
+}

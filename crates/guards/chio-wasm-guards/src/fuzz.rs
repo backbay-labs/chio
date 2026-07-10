@@ -25,7 +25,7 @@
 //! 2. [`crate::component::ComponentBackend::load_module`] - the
 //!    Component Model preinstantiate-validate path.
 //! 3. [`crate::runtime::wasmtime_backend::WasmtimeBackend::load_module`] -
-//!    the core-module preinstantiate-validate path with the WGSEC-02
+//!    the core-module preinstantiate-validate path with the
 //!    import-namespace check.
 //!
 //! # Process-wide engine cache
@@ -98,7 +98,7 @@ pub fn fuzz_wasm_preinstantiate_validate(data: &[u8]) {
     let _ = component_backend.load_module(data, FUZZ_FUEL_LIMIT);
 
     // Surface 3: core module preinstantiate-validate via
-    // `wasmtime::Module::new` plus the WGSEC-02 import-namespace check.
+    // `wasmtime::Module::new` plus the import-namespace check.
     let mut wasmtime_backend = WasmtimeBackend::with_engine(Arc::clone(engine));
     let _ = wasmtime_backend.load_module(data, FUZZ_FUEL_LIMIT);
 }
@@ -177,7 +177,7 @@ const ESCAPE_FUZZ_FUEL_LIMIT: u64 = 50_000;
 ///    Model preinstantiate-validate; the malformed-component-encoding class
 ///    lands here.
 /// 3. [`crate::runtime::wasmtime_backend::WasmtimeBackend::load_module`] -
-///    core-module preinstantiate-validate plus the WGSEC-02
+///    core-module preinstantiate-validate plus the
 ///    import-namespace check; the undeclared-imports class lands here.
 /// 4. **(Escape-specific)** When step 3 succeeds, drive the loaded module
 ///    through one `evaluate` call against a constant minimal

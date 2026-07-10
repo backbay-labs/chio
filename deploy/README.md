@@ -39,13 +39,16 @@ Each manifest wires the following as secret references (never inline):
 - `CHIO_SIGNING_KEY` -- Ed25519 signing key for receipts
 - `CHIO_CAPABILITY_AUTHORITY_URL` -- URL of the capability authority
 
-Additional non-secret configuration:
+Non-secret configuration is passed as CLI flags to the sidecar subcommand
+(`chio api protect`), not via environment variables:
 
-- `CHIO_KERNEL_CONFIG_PATH` (default `/etc/chio/kernel.yaml`) -- kernel config file inside the image
-- `CHIO_POLICY_SOURCE` -- policy bundle location (bundled, `gs://`, `s3://`, `https://`)
-- `CHIO_RECEIPT_SINK` -- receipt destination (BigQuery, DynamoDB, Cosmos DB, stdout, ...)
-- `CHIO_LISTEN_ADDR` (default `0.0.0.0:9090`)
-- `CHIO_HEALTH_PATH` (default `/chio/health`)
+- `--listen` -- bind address (default `127.0.0.1:9090`; the manifests bind `0.0.0.0:9090`); the health route is fixed at `/chio/health`
+- `--upstream` -- the protected upstream base URL
+- `--spec` -- the OpenAPI spec used to derive tool scopes
+- `--receipt-store` -- receipt destination
+
+Kernel and policy configuration is loaded from a mounted `chio.yaml`, which may
+reference secrets via `${VAR}` interpolation (see the manifests for the exact flags).
 
 ## Startup ordering
 
@@ -65,7 +68,7 @@ the sidecar is healthy:
 
 ## Fail-closed behaviour
 
-If the sidecar cannot load `CHIO_KERNEL_CONFIG_PATH` or the policy bundle, it
+If the sidecar cannot load its mounted `chio.yaml` or the policy bundle, it
 exits non-zero. The platform then marks the container unhealthy (ECS, Azure)
 or fails the revision (Cloud Run), which prevents the app container from
 starting. The restart policies are configured to `always` so transient

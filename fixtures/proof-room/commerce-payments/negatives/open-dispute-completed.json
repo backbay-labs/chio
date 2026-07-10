@@ -1,0 +1,8 @@
+{
+  "schema": "chio.commerce.negative-fixture.v1",
+  "id": "open-dispute-completed",
+  "claim_ref": "claim.commerce.payment_lifecycle_bound",
+  "base_fixture": "fixtures/proof-room/commerce-payments/offline-psp-valid/transaction-passport.json",
+  "case": "OpenDisputeCompleted",
+  "expected_failure_code": "proof-room.negative.unresolved-payment-recovery-state"
+}

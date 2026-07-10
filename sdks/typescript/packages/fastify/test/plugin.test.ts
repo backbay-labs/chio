@@ -155,7 +155,7 @@ describe("chio fastify plugin", () => {
     await fastify.close();
   });
 
-  it("fails closed when legacy onSidecarError is allow", async () => {
+  it("fails closed when reserved onSidecarError is allow", async () => {
     const fastify = Fastify();
     await fastify.register(chio, {
       sidecarUrl: "http://127.0.0.1:1", // Unreachable

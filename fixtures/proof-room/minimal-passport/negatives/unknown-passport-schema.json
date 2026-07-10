@@ -1,0 +1,8 @@
+{
+  "schema": "chio.transaction.negative-fixture.v1",
+  "id": "unknown-passport-schema",
+  "claim_ref": "claim.transaction.passport_root_verified",
+  "base_fixture": "fixtures/proof-room/minimal-passport/valid/transaction-passport.json",
+  "case": "UnknownPassportSchema",
+  "expected_failure_code": "proof-room.negative.unsupported-transaction-passport-schema"
+}

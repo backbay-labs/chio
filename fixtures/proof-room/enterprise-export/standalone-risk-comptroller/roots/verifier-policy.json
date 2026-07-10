@@ -1,0 +1,9 @@
+{
+  "schema": "chio.transaction.verifier-policy.v1",
+  "id": "enterprise-risk-only-policy",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "required_claims": [
+    "claim.risk.comptroller_report_bound"
+  ],
+  "omitted_claims": []
+}

@@ -73,7 +73,7 @@ fn fixture_pq_seed() -> [u8; 32] {
 
 /// Canonical content preimage the test bodies bind their `content_hash` to.
 /// `sign_receipt_body_with_backend` recomputes `sha256_hex` over these bytes and
-/// refuses to sign on mismatch (WYSIWYS, BAC-539), so the body built by
+/// refuses to sign on mismatch (WYSIWYS), so the body built by
 /// [`build_body`] carries exactly `sha256_hex(FIXTURE_CANONICAL_CONTENT)`.
 const FIXTURE_CANONICAL_CONTENT: &[u8] = br#"{"k":"v"}"#;
 
@@ -178,7 +178,7 @@ fn pq_required_with_seed_constructs_hybrid_backend() {
 #[test]
 fn classical_receipt_byte_identical_under_allow_classical() {
     // Byte-identity contract: receipts signed under `allow_classical`
-    // serialize byte-for-byte the same as the legacy classical path.
+    // serialize byte-for-byte the same as the classical path.
     let kp = Keypair::generate();
     let backend =
         kernel_signing_backend(KernelCryptoFloor::AllowClassical, kp.clone(), None).unwrap();

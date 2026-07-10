@@ -24,7 +24,6 @@ chio-manifest = { workspace = true }
 chrono = { version = "0.4", features = ["clock"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
-thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }

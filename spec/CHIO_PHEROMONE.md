@@ -1,20 +1,16 @@
 # Chio Pheromone Substrate
 
 **Status:** v1 (Chio-owned pre-release; wire-frozen against `chio.pheromone-deposit.v1` and the sibling pheromone schemas)
-**Date:** 2026-05-04
-**Supersedes:** none
 
 **Revision history (pre-v1 drafting passes):**
 - First drafting pass (2026-05-04): initial wire freeze; sqrt(N) cap framed as a Sybil-cost reducer; newcomer-discount cybersec default `N = 28`; observation-cost commitments required only for `cost_committed_only` subject classes.
-- Second drafting pass (2026-05-04): three corrections from `docs/research/CHIO_SCARCITY_ECONOMICS.md`. (1) `sqrt(N)` cap reframed honestly as a cost-shifter, not a cost-reducer (section 5.4). (2) Newcomer-discount default lowered to `N = 8` epochs across sectors (section 6); the prior `N = 28` is retained as a high-assurance opt-in. (3) Observation-cost commitments are now REQUIRED by default for any subject class that the participant's ladder manifest declares `destructive: true` (section 7); the previous `cost_committed_only` flag survives as a way to opt non-destructive classes into the same requirement. Wire format unchanged across these passes; the changes affect default substrate behaviour and operator guidance, not the canonical bytes.
+- Second drafting pass (2026-05-04): three corrections. (1) `sqrt(N)` cap reframed honestly as a cost-shifter, not a cost-reducer (section 5.4). (2) Newcomer-discount default lowered to `N = 8` epochs across sectors (section 6); the prior `N = 28` is retained as a high-assurance opt-in. (3) Observation-cost commitments are now REQUIRED by default for any subject class that the participant's ladder manifest declares `destructive: true` (section 7); the previous `cost_committed_only` flag survives as a way to opt non-destructive classes into the same requirement. Wire format unchanged across these passes; the changes affect default substrate behaviour and operator guidance, not the canonical bytes.
 
 This specification freezes the wire format for the chio-pheromone
-substrate called out as the gating spec in
-`docs/research/CHIO_CONCEPT.md` section 4.1. Cross-trust pheromone
-surfaces in `chio-federation`, `chio-market`, `chio-governance`, and
-`chio-workflow` ship against the v1 wire format defined here;
-post-v1 revisions remain backward-compatible per the additive rule
-in `PROTOCOL.md` section 2.
+substrate. Cross-trust pheromone surfaces in `chio-federation`,
+`chio-market`, `chio-governance`, and `chio-workflow` ship against the v1 wire
+format defined here; post-v1 revisions remain backward-compatible per the
+additive rule in `PROTOCOL.md` section 2.
 
 The crate boundary is a new `chio-pheromone` workspace member depending
 only on `chio-core-types` and `chio-credentials` (reputation is not a
@@ -276,9 +272,8 @@ does not require it.
 ### 4.2 `concentration_weighted` interface
 
 The reputation-weighted form takes a peer-weight closure injected by the
-chio runtime. The substrate stays unaware of reputation; this preserves
-the "no cycle into chio-reputation" property called out in
-`docs/research/CHIO_CONCEPT.md` section 4.1.
+chio runtime. The substrate stays unaware of reputation; this preserves the
+"no cycle into chio-reputation" property.
 
 ```rust
 fn query_concentration_weighted(
@@ -354,9 +349,7 @@ turn over together.
 
 **Honest framing of what the cap does** (corrected in a pre-v1
 drafting pass from earlier framing). The cap is a **cost-shifter, not
-a cost-reducer**. The
-quantitative analysis in `docs/research/CHIO_SCARCITY_ECONOMICS.md`
-shows that for a fixed dollar budget the `sqrt(N)` term cancels out of
+a cost-reducer**. For a fixed dollar budget, the `sqrt(N)` term cancels out of
 the closed-form attacker-budget expression: an adversary capped on
 passport keys per kernel is forced to provision more cover operator-orgs
 to spread the same passport mass, and the operator-org admission cost
@@ -379,8 +372,7 @@ The substrate-layer defenses that DO move the dollar-cost breakeven are
 the newcomer discount horizon `N` (section 6), the observation-cost
 commitment requirement (section 7), and the underlying passport-issuance
 cost `C` set by the participant's identity policy (hardware attestation
-versus software keys). See `CHIO_SCARCITY_ECONOMICS.md` for the
-numerical envelope per attacker class.
+versus software keys).
 
 ---
 
@@ -395,8 +387,7 @@ ladder manifest.
 
 **Default**: `N = 8` epochs across all sectors (revised in a pre-v1
 drafting pass from the earlier cybersec default of `N = 28`). The
-`CHIO_SCARCITY_ECONOMICS` analysis shows `N = 8` is the breakeven
-point at which (a) the newcomer-discount linearly amortises the
+`N = 8` is the breakeven point at which (a) the newcomer-discount linearly amortises the
 passport-issuance cost in the attacker-budget formula and (b) honest
 agents reach full weight within operationally reasonable onboarding
 (about a week at one epoch per day) without giving low-cost Sybil
@@ -407,7 +398,7 @@ latency for adversary-budget headroom)
 and MAY be lowered for fast-churn sectors with strong out-of-band
 identity verification, but participants SHOULD NOT lower `N` below `4`
 without an explicit out-of-band roster issuer (see
-`docs/research/CHIO_TRUST_ANCHOR_COSTS.md` Tier 1 sectors).
+Tier 1 high-assurance sectors).
 
 The discount mitigates whitewashing: a freshly minted passport from a
 sanctioned org carries no weight until it accumulates anchored history.
@@ -436,10 +427,9 @@ drafting pass):
 
 1. **Always**, for any subject class that the participant's ladder
    manifest (`spec/CHIO_LADDER.md`) declares `destructive: true`.
-   This is the v1 default; the rationale follows the
-   `CHIO_SCARCITY_ECONOMICS` analysis showing observation-cost
-   commitments add a multiplicative term `m_oc` to the attacker-budget
-   formula that no passport-key-cap manipulation can offset, and
+   This is the v1 default; observation-cost commitments add a multiplicative
+   term `m_oc` to the attacker-budget formula that no passport-key-cap
+   manipulation can offset, and
    destructive subject classes are exactly the ones whose poisoning
    produces irreversible harm. Substrates MUST reject deposits in
    destructive classes that arrive without a `cost_commitment` field
@@ -464,9 +454,8 @@ discount deposits whose commitments fail later verification (this
 preserves substrate simplicity and keeps the verification surface in
 the runtime where reputation lives).
 
-This field implements the "verifiable observation-cost commitment"
-requirement in `docs/research/CHIO_CONCEPT.md` section 4.1, which
-prevents a peer from co-signing without originating evidence.
+This field implements the verifiable observation-cost commitment requirement,
+which prevents a peer from co-signing without originating evidence.
 
 ---
 

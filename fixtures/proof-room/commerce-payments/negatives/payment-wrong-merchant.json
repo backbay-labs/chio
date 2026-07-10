@@ -1,0 +1,8 @@
+{
+  "schema": "chio.commerce.negative-fixture.v1",
+  "id": "payment-wrong-merchant",
+  "claim_ref": "claim.commerce.payment_lifecycle_bound",
+  "base_fixture": "fixtures/proof-room/commerce-payments/offline-psp-valid/transaction-passport.json",
+  "case": "PaymentWrongMerchant",
+  "expected_failure_code": "proof-room.negative.payment-merchant-mismatch"
+}

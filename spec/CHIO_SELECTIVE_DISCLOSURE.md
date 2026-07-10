@@ -1,27 +1,20 @@
 # Chio Selective Disclosure Over Chio Receipts
 
 **Status:** v1 wire format with a real-BBS implementation slice.
-**Date:** 2026-05-04
-**Supersedes:** none
 
 This specification describes the v1 wire format and verification
 contract for **selective-disclosure proofs over chio receipts and
 workflow receipts**. The repository now includes
 `chio-selective-disclosure` with an opt-in `bbs` feature that signs
 receipt, workflow, and step projections and verifies reveal-set BBS
-proof packages. Legacy federation placeholder proof packages are not a
+proof packages. Compatibility federation placeholder proof packages are not a
 conformance surface and any schema ending in `.stub` is rejected by the
 v1 proof schema and verifier. Hidden range predicates, VC Data
 Integrity interop, and zkVM proofs are still deferred.
 
-The v1 contract closes Hard Problem #4 from
-[CHIO_CONCEPT.md](../docs/research/CHIO_CONCEPT.md) v1.1 section 7
-("Privacy and selective disclosure"), turning the BBS+ direction set in
-that document into a normative wire format, and it stands as the
-v1 normative version of the Pattern C dual-commitment route sketched
-in [CHIO_ZK_RECEIPT_PROOFS_MEMO.md](../docs/research/CHIO_ZK_RECEIPT_PROOFS_MEMO.md)
-section 1.3 (signed canonical-JSON receipts remain authoritative; a
-secondary commitment is added for proving efficiency).
+The v1 contract defines privacy and selective-disclosure support over signed
+canonical-JSON receipts. Signed receipts remain authoritative; a secondary
+commitment is added for efficient proof generation.
 
 The keywords MUST, MUST NOT, REQUIRED, SHALL, SHOULD, SHOULD NOT, MAY
 are to be interpreted as described in RFC 2119. Canonical JSON
@@ -32,8 +25,8 @@ insignificant whitespace, exact-form numbers.
 
 ## 1. Motivation
 
-The three CHIO_CONCEPT v1.1 use cases are structurally identical:
-a cybersec peer proves a detection meets a confidence threshold
+The three motivating use cases are structurally identical: a cybersec peer
+proves a detection meets a confidence threshold
 without revealing the indicator; a finance counterparty proves a
 settlement falls within an amount cap without disclosing amount or
 counterparty; a compliance verifier proves KYC tier sits at or above
@@ -41,8 +34,8 @@ a floor without revealing tier or evidence. All reduce to one
 primitive: **a verifier wants a predicate over a signed chio receipt
 body without learning the body.**
 
-The 3-vendor cross-vendor fixture (CHIO_CONCEPT v1.1 section 9)
-exercises the same primitive at the workflow layer: a buyer auditor
+The 3-vendor cross-vendor fixture exercises the same primitive at the workflow
+layer: a buyer auditor
 verifies "the refund step transferred no more than $250 to a customer
 at KYC tier 2 or higher" without learning customer, exact amount, or
 upstream prompts. The implemented v1 slice proves reveal-set BBS
@@ -58,7 +51,7 @@ BBS step projection remains limited to stable step summary fields.
 ### 2.1 Implemented slice
 
 - BBS secondary commitments over a single
-  [`ChioReceipt`](../crates/core/chio-core-types/src/receipt.rs) body.
+  [`ChioReceipt`](../crates/core/chio-core-types/src/receipt/body.rs) body.
 - BBS secondary commitments over a
   [`WorkflowReceipt`](../crates/platform/chio-workflow/src/receipt.rs) body and
   its inner `StepRecord` list.
@@ -535,7 +528,7 @@ v1 does not specify a proof-carrying-receipt mode.
 The implemented slice lives in
 [`chio-selective-disclosure`](../crates/trust/chio-selective-disclosure/src/lib.rs).
 It is outside the default build and enabled with the crate's `bbs`
-feature. Federation no longer ships a parallel selective-disclosure
+feature. Federation does not ship a parallel selective-disclosure
 proof path; BBS projection, signing, proof derivation, and verification
 are owned by `chio-selective-disclosure`.
 

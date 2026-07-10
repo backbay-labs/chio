@@ -108,7 +108,7 @@ against a real adapter so shape additions land once, in
   positional-only spillover collisions remains the prefect-local
   wire shape; chio-prefect 0.1.2's `_legacy_envelope` shim keeps it
   emitting for v0.2 compat. v0.4 will deprecate the synthetic key
-  with a one-release migration window.
+  with migration guidance.
 
 ### Migration from 0.1.x
 See `ADAPTER-MIGRATION.md`. Most adapters that already pin

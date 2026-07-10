@@ -1,8 +1,7 @@
 // Assurance artifact create-and-verify CLI orchestration for the
-// export / archive / archive-package facets, ported from
+// export / archive / archive-package facets, mirroring
 // `scripts/check-chio-pheromone-relay-alert-assurance-{export,archive,archive-package}.sh`.
-// Split out of `fixtures_facets.rs` to keep each include file under the
-// 2000-line hygiene cap; included into `fixtures.rs` via `include!` so it shares
+// Included into `fixtures.rs` via `include!` so it shares
 // that module's private helpers.
 //
 // Each flow drives the real `chio pheromone relay alert assurance ...` CLI to

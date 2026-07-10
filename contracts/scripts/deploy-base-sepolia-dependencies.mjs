@@ -107,6 +107,13 @@ function requireValue(label, value) {
   return value;
 }
 
+function requireBytes32(label, value) {
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error(`${label} must be a bytes32 hex string`);
+  }
+  return value;
+}
+
 function readArtifact(name) {
   return readJson(path.join(contractsDir, "artifacts", name));
 }
@@ -176,6 +183,13 @@ async function main() {
     args["role-address"] ?? process.env.CHIO_BASE_SEPOLIA_ROLE_ADDRESS ?? process.env.CHIO_BASE_SEPOLIA_WALLET;
   const operatorEdKeyLabel =
     args["operator-ed-key-label"] ?? process.env.CHIO_BASE_SEPOLIA_OPERATOR_ED_KEY_LABEL ?? "chio-base-sepolia-operator-ed25519-key";
+  const operatorKeyHash = requireBytes32(
+    "--operator-key-hash or CHIO_BASE_SEPOLIA_OPERATOR_KEY_HASH",
+    requireValue(
+      "--operator-key-hash or CHIO_BASE_SEPOLIA_OPERATOR_KEY_HASH",
+      args["operator-key-hash"] ?? process.env.CHIO_BASE_SEPOLIA_OPERATOR_KEY_HASH
+    )
+  );
   const delegateExpirySeconds = Number(
     args["delegate-expiry-seconds"] ?? process.env.CHIO_BASE_SEPOLIA_DELEGATE_EXPIRY_SECONDS ?? 3600
   );
@@ -266,6 +280,7 @@ async function main() {
     const reviewInputs = {
       role_address: ethers.getAddress(roleAddress),
       operator_ed_key_label: operatorEdKeyLabel,
+      operator_key_hash: operatorKeyHash,
       delegate_expiry_seconds: delegateExpirySeconds,
       create2_factory_mode: "predeployed",
       create2_factory_address: create2Factory.address,

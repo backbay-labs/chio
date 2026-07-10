@@ -1,5 +1,4 @@
 ---
-status: draft
 date: 2026-04-16
 framework: OWASP Top 10 for Large Language Model Applications 2025
 maintainer: Chio Protocol Team
@@ -14,7 +13,7 @@ maintainer: Chio Protocol Team
 | Framework | OWASP Top 10 for Large Language Model Applications |
 | Edition | 2025 |
 | Scope | LLM01 through LLM10 |
-| Chio Profile | Current v1-only pre-release profile; draft originally tracked under internal phase 15 |
+| Chio Profile | Current v1-only pre-release profile |
 | Document Date | 2026-04-16 |
 
 ---
@@ -43,12 +42,12 @@ The table below maps each 2025 risk to Chio controls with a coverage level and e
 
 | Risk | Title | Chio Controls | Coverage | Gaps | Customer Responsibility |
 |------|-------|--------------|----------|------|-------------------------|
-| **LLM01** | Prompt Injection | Content safety guards: jailbreak and prompt-injection detectors shipped as application-layer guards (see `../archive/GUARD_SUITE_INTEGRATION.md`); `response_sanitization.rs` for output guarding; every triggered detection is recorded in `ChioReceipt.guard_evidence` via the pipeline in `crates/kernel/chio-kernel/src/kernel/mod.rs` | partial | Chio guards inspect tool-call arguments and results, not the full model context. Injection that alters the agent's reasoning without changing tool-call parameters is not observable at the tool boundary. | Model-layer prompt hardening; system-prompt design |
+| **LLM01** | Prompt Injection | Content safety guards: jailbreak and prompt-injection detectors shipped as application-layer guards; `response_sanitization.rs` for output guarding; every triggered detection is recorded in `ChioReceipt.guard_evidence` via the pipeline in `crates/kernel/chio-kernel/src/kernel/mod.rs` | partial | Chio guards inspect tool-call arguments and results, not the full model context. Injection that alters the agent's reasoning without changing tool-call parameters is not observable at the tool boundary. | Model-layer prompt hardening; system-prompt design |
 | **LLM02** | Sensitive Information Disclosure | Pre- and post-invocation guards: `secret_leak.rs`, `response_sanitization.rs`, data-flow guard `data_flow.rs`, column-level constraints on `SqlQueryGuard` and similar. `QueryResultGuard` can block or redact results. Capability scoping limits which tool servers an agent can touch. Every block is recorded in the signed receipt. | strong | Only covers governed tool interactions. Conversation memory, embedding stores, and prompt logs outside a tool boundary are not intercepted. | Memory store governance |
 | **LLM03** | Supply Chain | `ToolManifest` with Ed25519-signed `ToolDefinition`; manifest verification before tool registration (`crates/platform/chio-manifest/src/lib.rs`); `patch_integrity.rs` guard for patch content; workload identity attestation (`crates/core/chio-core-types/src/runtime_attestation.rs`); WASM guard module signing tracked in roadmap | partial | Manifest signatures cover the tool definition, not the server binary. Agent-framework and model-weight supply chains are not audited by Chio. | SBOM for tool servers; model-weight attestation |
 | **LLM04** | Data and Model Poisoning | Out of scope at the protocol layer. Closest proxy: data-layer guards (SQL/warehouse/vector) restrict what data a deployed agent can write back into a tool-accessible store. | out-of-scope | Chio does not observe training or fine-tuning. | Training-data curation and provenance |
 | **LLM05** | Improper Output Handling | `response_sanitization.rs`, `QueryResultGuard` post-invocation guard, structured output schemas enforced by `request_matching.rs`. Post-invocation verdict `Block` stops unsafe output from reaching the agent or downstream tool. | strong | Chio inspects outputs from governed tool servers. Direct LLM text output (no tool call) is outside the boundary. | Output escaping in downstream consumers |
-| **LLM06** | Excessive Agency | This is Chio's core value proposition. Capability tokens (`crates/core/chio-core-types/src/capability.rs`) constrain what tools an agent may call; `ToolGrant.constraints` limit arguments; delegation chains attenuate monotonically; `VelocityGuard` (`crates/guards/chio-guards/src/velocity.rs`) caps rate; `max_cost_per_invocation` and `max_total_cost` in `crates/kernel/chio-kernel/src/budget_store.rs` cap spend; `GovernedAutonomyTier` and `GovernedApprovalToken` (`crates/kernel/chio-kernel/src/kernel/mod.rs`) enforce step-up review for sensitive tiers. | strong | Plan-level evaluation (validating multi-step plans before execution) is not yet shipped; evaluation is per-invocation. | Policy authoring to express desired bounds |
+| **LLM06** | Excessive Agency | This is Chio's core value proposition. Capability tokens (`crates/core/chio-core-types/src/capability`) constrain what tools an agent may call; `ToolGrant.constraints` limit arguments; delegation chains attenuate monotonically; `VelocityGuard` (`crates/guards/chio-guards/src/velocity.rs`) caps rate; `max_cost_per_invocation` and `max_total_cost` in `crates/kernel/chio-kernel/src/budget_store.rs` cap spend; `GovernedAutonomyTier` and `GovernedApprovalToken` (`crates/kernel/chio-kernel/src/kernel/mod.rs`) enforce step-up review for sensitive tiers. | strong | Plan-level evaluation (validating multi-step plans before execution) is not yet shipped; evaluation is per-invocation. | Policy authoring to express desired bounds |
 | **LLM07** | System Prompt Leakage | Where system prompts flow through tool calls (e.g., LLM gateway wrapped as a tool), `response_sanitization.rs` and `secret_leak.rs` can match on known prompt content. Capability scoping prevents agents from calling introspection tools that would reveal prompts. | partial | System prompt is not typically visible to Chio because it lives inside the model-invocation layer. | Prompt hygiene; use of dedicated prompt stores |
 | **LLM08** | Vector and Embedding Weaknesses | Vector-DB data-layer guard (see `crates/guards/chio-guards/src/` data guards) restricts which embeddings an agent may read or write; `egress_allowlist.rs` limits retrieval endpoints; column constraints can deny sensitive fields before vectorization tools see them. Receipts log every retrieval. | partial | Chio does not validate embedding provenance or detect poisoned retrieval corpora. | Embedding-corpus curation |
 | **LLM09** | Misinformation | Chio records what was returned (post-invocation guard evidence) and who it went to (DPoP attribution), producing audit evidence that supports correction workflows. | partial | Chio does not evaluate factuality. Hallucination detection is a model-layer concern. | Factuality evaluation |
@@ -72,7 +71,7 @@ Chio provides strong coverage for four of the ten risks, partial coverage for fi
 
 Items that warrant explicit tracking:
 
-1. **LLM01 Prompt Injection.** Tool-argument detection catches the externally observable symptoms of prompt injection, but Chio does not see the full prompt. Customers should pair Chio guards with a model-layer prompt-safety product. The content-safety guards referenced here are part of the application-layer guard suite (`../archive/GUARD_SUITE_INTEGRATION.md`), not the core protocol crate set.
+1. **LLM01 Prompt Injection.** Tool-argument detection catches the externally observable symptoms of prompt injection, but Chio does not see the full prompt. Customers should pair Chio guards with a model-layer prompt-safety product. The content-safety guards referenced here are application-layer guards, not the core protocol crate set.
 2. **LLM03 Supply Chain.** Manifest signing covers the published `ToolDefinition`. Tool-server binary integrity and agent-framework supply chain must be addressed by the deployer (SBOM attestation, signed container images, WASM guard module signing tracked in the roadmap).
 3. **LLM06 Excessive Agency: plan-level evaluation.** Only per-invocation evaluation is currently shipped. A plan-level evaluator is future work tracked in `docs/protocols/ARCHITECTURAL-EXTENSIONS.md`.
 4. **LLM07 System Prompt Leakage.** Chio does not manage system prompts unless they traverse a tool call.
@@ -92,8 +91,8 @@ Customer-responsibility items that implementers must not assume Chio provides:
 
 ## Cross-References
 
-- Capability tokens, grants, delegation, attenuation: `crates/core/chio-core-types/src/capability.rs`
-- Receipt structure, signing, guard evidence: `crates/core/chio-core-types/src/receipt.rs`, `crates/kernel/chio-kernel/src/receipt_support.rs`
+- Capability tokens, grants, delegation, attenuation: `crates/core/chio-core-types/src/capability`
+- Receipt structure, signing, guard evidence: `crates/core/chio-core-types`, `crates/kernel/chio-kernel/src/receipt_support`
 - Guard pipeline integration: `crates/kernel/chio-kernel/src/kernel/mod.rs`, `crates/guards/chio-guards/src/pipeline.rs`
 - Velocity and spend buckets: `crates/guards/chio-guards/src/velocity.rs`, `crates/guards/chio-guards/src/agent_velocity.rs`
 - Egress and path guards: `crates/guards/chio-guards/src/egress_allowlist.rs`, `crates/guards/chio-guards/src/path_allowlist.rs`, `crates/guards/chio-guards/src/forbidden_path.rs`, `crates/guards/chio-guards/src/path_normalization.rs`, `crates/guards/chio-guards/src/internal_network.rs`
@@ -108,5 +107,4 @@ Customer-responsibility items that implementers must not assume Chio provides:
 - Runtime attestation: `crates/core/chio-core-types/src/runtime_attestation.rs`
 - Governed autonomy and approval tokens: `crates/kernel/chio-kernel/src/kernel/mod.rs`
 - Policy artifacts and compiler: `crates/guards/chio-policy/`
-- Application-layer guard suite: `../archive/GUARD_SUITE_INTEGRATION.md`
 - Architectural extensions (plan-level evaluation, model constraints): `docs/protocols/ARCHITECTURAL-EXTENSIONS.md`

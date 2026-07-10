@@ -1,12 +1,10 @@
 //! Pheromone fixture-and-schema gate (`cargo xtask check fixtures <facet>`).
 //!
-//! This is the consolidated replacement for the 15
-//! `scripts/check-chio-pheromone-*.sh` gates. The genuinely tabular per-facet
-//! data (schema-id/file maps, fixture dirs, schema-validate document lists,
-//! `cargo test` invocations, recursion edges, node-dashboard / sre-metrics
-//! flags) lives in `ci-gates/pheromone.toml`. The imperative per-facet steps
-//! that the manifest cannot express (CLI orchestration, fixture regeneration,
-//! retired-marker guards, npm dashboard checks) live in typed handlers keyed by
+//! Tabular per-facet data (schema-id/file maps, fixture dirs, schema-validate
+//! document lists, `cargo test` invocations, recursion edges, node-dashboard /
+//! sre-metrics flags) lives in `ci-gates/pheromone.toml`. Imperative
+//! per-facet steps that the manifest cannot express (CLI orchestration, fixture
+//! regeneration, npm dashboard checks) live in typed handlers keyed by
 //! [`Facet::kind`].
 //!
 //! Fail-closed contract:
@@ -29,16 +27,19 @@ pub(crate) const MANIFEST_PATH: &str = "ci-gates/pheromone.toml";
 /// Relative path (from the workspace root) of the chio-runtime gate manifest.
 pub(crate) const RUNTIME_MANIFEST_PATH: &str = "ci-gates/runtime.toml";
 
-/// The six chio-runtime facets, consolidated from `scripts/check-chio-runtime-*.sh`.
+/// The eight chio-runtime facets and launch Proof Room runtime assurance
+/// requirements.
 /// Compile-time fail-closed enumeration: the runtime manifest must list exactly
 /// these names, and the CLI rejects anything else.
-pub(crate) const RUNTIME_KNOWN_FACETS: [&str; 6] = [
+pub(crate) const RUNTIME_KNOWN_FACETS: [&str; 8] = [
     "runtime-spine-fixtures",
     "runtime-spine",
     "runtime-proof-parity",
     "runtime-policy",
     "runtime-ops-hardening",
     "runtime-orchestration",
+    "runtime-attack-simulation",
+    "runtime-chaos",
 ];
 
 /// The 15 pheromone facets. Compile-time fail-closed enumeration: the manifest
@@ -242,7 +243,7 @@ fn display(path: &Path) -> String {
 // -- Entry point ----------------------------------------------------------
 
 /// Run a fixture-and-schema gate by facet name. Pheromone facets resolve
-/// against `ci-gates/pheromone.toml`; the six chio-runtime facets resolve
+/// against `ci-gates/pheromone.toml`; the chio-runtime facets resolve
 /// against `ci-gates/runtime.toml`. Fail-closed: a facet in neither manifest is
 /// an error, and each manifest must enumerate exactly its known facets before
 /// any gate runs.
@@ -281,7 +282,7 @@ fn assert_runtime_manifest_enumeration(manifest: &RuntimeManifest) -> Result<(),
     expected.sort_unstable();
     if names != expected {
         return Err(XtaskError::Manifest(format!(
-            "runtime manifest must enumerate exactly the 6 known runtime facets, found {names:?}"
+            "runtime manifest must enumerate exactly the 8 known runtime facets, found {names:?}"
         )));
     }
     Ok(())
@@ -297,8 +298,7 @@ fn run_with(
         .facet_by_name(facet_name)
         .ok_or_else(|| XtaskError::Usage(format!("unknown pheromone facet: {facet_name}")))?;
 
-    // Pre-schema imperative guards (retired-marker / runbook / fixture-name
-    // scans) run first, exactly as the scripts do.
+    // Pre-schema imperative guards run before schema validation.
     pre_schema_guard(root, facet)?;
 
     // The cargo-test placement differs per facet. `relay` and the two
@@ -488,8 +488,7 @@ fn assert_schema_shape(file: &str, schema: &Value, check: SchemaCheck) -> Result
 }
 
 /// Build a `schema-id -> schemaFile` map from the schema registry. Also rejects
-/// any artifact pointing at the retired `spec/schemas/chio/` schema root, which
-/// several scripts guarded against.
+/// any artifact pointing at `spec/schemas/chio/`.
 fn load_registry(
     root: &Path,
     manifest: &Manifest,
@@ -513,7 +512,7 @@ fn load_registry(
             .unwrap_or_default();
         if schema_file.starts_with("spec/schemas/chio/") {
             return Err(XtaskError::Validation(format!(
-                "registry still points at retired schema root {schema_file}"
+                "registry points at inactive schema root {schema_file}"
             )));
         }
         if let (Some(schema), Some(file)) = (
@@ -528,9 +527,9 @@ fn load_registry(
 
 // -- Per-facet metadata assertions ----------------------------------------
 
-/// Per-facet metadata assertions ported from each script's embedded python
-/// block. These confirm fixture invariants beyond pure schema validation
-/// (negative-corpus required codes, bounded metric labels, binding fields).
+/// Per-facet metadata assertions for fixture invariants beyond pure schema
+/// validation (negative-corpus required codes, bounded metric labels, binding
+/// fields).
 fn run_metadata_block(root: &Path, facet: &Facet) -> Result<(), XtaskError> {
     let fixture_dir = root.join(&facet.fixture_dir);
     match facet.kind.as_str() {
@@ -671,8 +670,7 @@ const EXTERNAL_RETENTION_EXPECTED_CODES: [(&str, &str); 16] = [
 
 /// Assert the external-retention negative corpus carries exactly the expected
 /// `(caseId, expectedCode)` mapping: no missing cases, no unexpected cases, and
-/// every `expectedCode` matching. Restores the per-case expectedCode check the
-/// script ran (the consolidated handler previously only checked caseId presence).
+/// every `expectedCode` matching.
 fn metadata_external_retention_expected_codes(fixture_dir: &Path) -> Result<(), XtaskError> {
     let path = fixture_dir.join("relay-alert-assurance-external-retention-negative-cases.json");
     let value = load_json(&path)?;
@@ -1431,8 +1429,33 @@ mod tests {
         expected.sort_unstable();
         assert_eq!(
             names, expected,
-            "runtime manifest must list exactly the six runtime facets"
+            "runtime manifest must list exactly the eight runtime facets"
         );
+    }
+
+    #[test]
+    fn runtime_attack_and_chaos_facets_are_first_class() {
+        let manifest = load_runtime();
+        let workflow_path = runtime_manifest_path()
+            .parent()
+            .and_then(Path::parent)
+            .unwrap_or_else(|| panic!("runtime manifest path has no workspace parent"))
+            .join(".github/workflows/chio-runtime.yml");
+        let workflow = fs::read_to_string(&workflow_path)
+            .unwrap_or_else(|err| panic!("read chio-runtime workflow: {err}"));
+        for name in ["runtime-attack-simulation", "runtime-chaos"] {
+            assert!(
+                manifest.facet_by_name(name).is_some(),
+                "runtime manifest missing {name}"
+            );
+            let matrix_value = name
+                .strip_prefix("runtime-")
+                .unwrap_or_else(|| panic!("runtime facet {name} missing prefix"));
+            assert!(
+                workflow.contains(&format!("- {matrix_value}")),
+                "runtime workflow missing matrix entry {matrix_value}"
+            );
+        }
     }
 
     #[test]
@@ -1473,6 +1496,8 @@ mod tests {
             "policy",
             "ops_hardening",
             "orchestration",
+            "attack_simulation",
+            "chaos",
         ];
         for facet in &manifest.facet {
             assert!(

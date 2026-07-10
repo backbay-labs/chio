@@ -1,3 +1,8 @@
+use super::yaml_safety::{
+    block_scalar_parent_indent_start, has_libyml_scalar_join_overflow_risk,
+    has_non_mapping_document_start, has_unclosed_double_quoted_value_scalar, strip_inline_comment,
+    MAX_PLAIN_SCALAR_VALUE_WHITESPACE_RUN, MAX_QUOTED_SCALAR_WHITESPACE_RUN,
+};
 use super::*;
 
 #[test]

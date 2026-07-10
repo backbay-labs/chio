@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-disclosure/v1/lineage-verifier-report.schema.json",
+  "title": "Chio Disclosure Lineage Verifier Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "verdict",
+    "capsule_id",
+    "transaction_passport_ref",
+    "lineage_subgraph_ref",
+    "leakage_ledger_ref",
+    "crypto_verified",
+    "privacy_profile_verified",
+    "disclosed_field_count",
+    "hidden_predicate_count",
+    "verified_claims"
+  ],
+  "properties": {
+    "schema": { "const": "chio.disclosure.lineage-verifier-report.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "verdict": { "const": "verified" },
+    "capsule_id": { "type": "string", "minLength": 1 },
+    "transaction_passport_ref": { "type": "string", "minLength": 1 },
+    "lineage_subgraph_ref": { "type": "string", "minLength": 1 },
+    "leakage_ledger_ref": { "type": "string", "minLength": 1 },
+    "crypto_verified": { "type": "boolean" },
+    "privacy_profile_verified": { "type": "boolean" },
+    "disclosed_field_count": { "type": "integer", "minimum": 0 },
+    "hidden_predicate_count": { "type": "integer", "minimum": 0 },
+    "verified_claims": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}

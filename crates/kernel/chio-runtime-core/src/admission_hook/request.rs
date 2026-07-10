@@ -33,11 +33,7 @@ pub(super) fn admission_ref_from_request(
     let Some(context) = intent.context.as_ref() else {
         return Err("missing_chio_admission_context");
     };
-    let retired_admission_key = retired_context_key("Admission");
-    let Some(admission) = context
-        .get("chioAdmission")
-        .or_else(|| context.get(retired_admission_key.as_str()))
-    else {
+    let Some(admission) = context.get("chioAdmission") else {
         return Err("missing_chio_admission_context");
     };
     let Some(object) = admission.as_object() else {
@@ -66,15 +62,8 @@ pub(super) fn request_has_chio_runtime_context(request: &ToolCallRequest) -> boo
         .and_then(|intent| intent.context.as_ref())
         .and_then(serde_json::Value::as_object)
         .is_some_and(|context| {
-            let retired_admission_key = retired_context_key("Admission");
-            let retired_treaty_key = retired_context_key("Treaty");
             context.contains_key("chioAdmission")
                 || context.contains_key("chioTreaty")
-                || context.contains_key(retired_admission_key.as_str())
-                || context.contains_key(retired_treaty_key.as_str())
+                || context.contains_key("chioSwarm")
         })
-}
-
-pub(super) fn retired_context_key(suffix: &str) -> String {
-    ["chio", "dos", suffix].concat()
 }

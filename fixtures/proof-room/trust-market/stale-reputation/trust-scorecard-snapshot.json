@@ -1,0 +1,53 @@
+{
+  "schema": "chio.trust.scorecard-snapshot.v1",
+  "id": "scorecard-trust-market-valid",
+  "issued_at": "2026-06-10T00:00:00Z",
+  "subject": "did:chio:provider-alpha",
+  "scope": "local-policy",
+  "verifier_policy_ref": "policy-trust-market-valid",
+  "component_scores": [
+    {
+      "component": "native_reputation",
+      "score": 92,
+      "weight": 40,
+      "evidence_ref": "reputation-native-alpha",
+      "stale": true
+    },
+    {
+      "component": "portable_reputation",
+      "score": 88,
+      "weight": 30,
+      "evidence_ref": "reputation-import-trust-market-valid",
+      "stale": false
+    },
+    {
+      "component": "sla_history",
+      "score": 96,
+      "weight": 30,
+      "evidence_ref": "sla-performance-history-alpha",
+      "stale": false
+    }
+  ],
+  "issuer_trust_roots": [
+    "did:chio:federation-root"
+  ],
+  "reputation_snapshot_refs": [
+    "reputation-native-alpha"
+  ],
+  "portable_reputation_import_refs": [
+    "reputation-import-trust-market-valid"
+  ],
+  "sla_performance_refs": [
+    "sla-performance-history-alpha"
+  ],
+  "negative_event_refs": [],
+  "freshness_window": {
+    "valid_from": "2026-06-09T00:00:00Z",
+    "valid_until": "2026-06-11T00:00:00Z"
+  },
+  "score_floor": 0,
+  "score_ceiling": 100,
+  "computed_score": 92,
+  "downgrade_reasons": [],
+  "signature": "sig-ed25519:cf1b37e85dc00aee94f10108b37f151e2a37b3ae2a0cae77521f83488db9c4d7:5c4328d43621a93eb2f77255d7d3fa69e519d229f0eb12dc977f0adbdb248ad81ef9a405de216452616bccf6f80bd0a58a7e496f3442dc0d92cc9590b52b4b04"
+}

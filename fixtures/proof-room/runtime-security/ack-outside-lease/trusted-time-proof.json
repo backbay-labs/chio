@@ -1,0 +1,11 @@
+{
+  "ack_id": "ack-runtime-valid",
+  "issuer": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "lease_id": "lease-runtime-valid",
+  "max_clock_skew_ms": 0,
+  "observed_at": "2026-06-10T00:06:00Z",
+  "proof_id": "trusted-time-ack-runtime-valid",
+  "schema": "chio.runtime.trusted-time-proof.v1",
+  "signature": "fb0c24b530e7df05ed953494c3853d9e25abe6bf934db09129b44c5dd551eb0e641f714bc414025a76544935913fe01ac0f2d95b735eb793d4bfa85276818e0f",
+  "time_source_id": "runtime-clock-valid"
+}

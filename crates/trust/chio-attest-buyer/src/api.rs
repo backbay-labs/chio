@@ -4,14 +4,12 @@ use chio_attest_buyer_core::report::{report_json, verify_package_report};
 use chio_attest_buyer_core::trust_bundle::verifier_trust_bundle_from_json;
 
 use crate::conversions::{
-    historical_bilateral_invocation, historical_buyer_attestation_packet,
-    historical_cross_boundary_admission_report, historical_cross_kernel_continuation,
-    historical_receipt_lineage_statement, historical_review_bundle, historical_review_package,
-    historical_review_sources, local_review_report, local_verification_report,
+    local_review_report, local_verification_report, runtime_core_bilateral_invocation,
+    runtime_core_buyer_attestation_packet, runtime_core_cross_boundary_admission_report,
+    runtime_core_cross_kernel_continuation, runtime_core_receipt_lineage_statement,
+    runtime_core_review_bundle, runtime_core_review_package, runtime_core_review_sources,
 };
-use crate::error::{
-    chio_attest_buyer_code, json_error, BuyerAttestationError, HistoricalBuyerError,
-};
+use crate::error::{chio_attest_buyer_code, json_error, BuyerAttestationError, RuntimeBuyerError};
 use crate::types::{
     BilateralInvocation, BuyerAttestationPacket, BuyerAttestationReviewCheck,
     BuyerAttestationReviewPackage, BuyerAttestationReviewReport, BuyerAttestationReviewSource,
@@ -44,7 +42,7 @@ pub fn buyer_attestation_review_package_from_json(
 pub fn buyer_attestation_verification_report_json(
     report: &BuyerAttestationVerificationReport,
 ) -> Result<String, BuyerAttestationError> {
-    let historical = chio_runtime_core::BuyerAttestationVerificationReport {
+    let runtime_core = chio_runtime_core::BuyerAttestationVerificationReport {
         schema: report.schema.clone(),
         packet_id: report.packet_id.clone(),
         verification_state: report.verification_state.clone(),
@@ -56,14 +54,14 @@ pub fn buyer_attestation_verification_report_json(
             .map(|check| chio_attest_buyer_code(check))
             .collect(),
     };
-    chio_runtime_core::buyer_attestation_verification_report_json(&historical)
-        .map_err(BuyerAttestationError::from_historical)
+    chio_runtime_core::buyer_attestation_verification_report_json(&runtime_core)
+        .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn buyer_attestation_review_report_json(
     report: &BuyerAttestationReviewReport,
 ) -> Result<String, BuyerAttestationError> {
-    let historical = chio_runtime_core::BuyerAttestationReviewReport {
+    let runtime_core = chio_runtime_core::BuyerAttestationReviewReport {
         schema: report.schema.clone(),
         package_id: report.package_id.clone(),
         packet_id: report.packet_id.clone(),
@@ -83,33 +81,35 @@ pub fn buyer_attestation_review_report_json(
             })
             .collect(),
     };
-    chio_runtime_core::buyer_attestation_review_report_json(&historical)
-        .map_err(BuyerAttestationError::from_historical)
+    chio_runtime_core::buyer_attestation_review_report_json(&runtime_core)
+        .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn buyer_attestation_packet_sha256(
     packet: &BuyerAttestationPacket,
 ) -> Result<String, BuyerAttestationError> {
-    chio_runtime_core::buyer_attestation_packet_sha256(&historical_buyer_attestation_packet(packet))
-        .map_err(BuyerAttestationError::from_historical)
+    chio_runtime_core::buyer_attestation_packet_sha256(&runtime_core_buyer_attestation_packet(
+        packet,
+    ))
+    .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn receipt_lineage_statement_sha256(
     statement: &ReceiptLineageStatement,
 ) -> Result<String, BuyerAttestationError> {
-    chio_runtime_core::receipt_lineage_statement_sha256(&historical_receipt_lineage_statement(
+    chio_runtime_core::receipt_lineage_statement_sha256(&runtime_core_receipt_lineage_statement(
         statement,
     ))
-    .map_err(BuyerAttestationError::from_historical)
+    .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn bilateral_invocation_binding_sha256(
     invocation: &BilateralInvocation,
 ) -> Result<String, BuyerAttestationError> {
-    chio_runtime_core::bilateral_invocation_binding_sha256(&historical_bilateral_invocation(
+    chio_runtime_core::bilateral_invocation_binding_sha256(&runtime_core_bilateral_invocation(
         invocation,
     ))
-    .map_err(BuyerAttestationError::from_historical)
+    .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn verify_buyer_attestation_packet(
@@ -120,14 +120,14 @@ pub fn verify_buyer_attestation_packet(
     bilateral: &BilateralInvocation,
 ) -> Result<BuyerAttestationVerificationReport, BuyerAttestationError> {
     chio_runtime_core::verify_buyer_attestation_packet(
-        &historical_buyer_attestation_packet(packet),
-        &historical_receipt_lineage_statement(lineage),
-        &historical_cross_kernel_continuation(continuation),
-        &historical_cross_boundary_admission_report(admission),
-        &historical_bilateral_invocation(bilateral),
+        &runtime_core_buyer_attestation_packet(packet),
+        &runtime_core_receipt_lineage_statement(lineage),
+        &runtime_core_cross_kernel_continuation(continuation),
+        &runtime_core_cross_boundary_admission_report(admission),
+        &runtime_core_bilateral_invocation(bilateral),
     )
     .map(local_verification_report)
-    .map_err(BuyerAttestationError::from_historical)
+    .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn verify_buyer_attestation_review_package(
@@ -135,11 +135,11 @@ pub fn verify_buyer_attestation_review_package(
     sources: &[BuyerAttestationReviewSource],
 ) -> Result<BuyerAttestationReviewReport, BuyerAttestationError> {
     chio_runtime_core::verify_buyer_attestation_review_package(
-        &historical_review_package(package),
-        &historical_review_sources(sources),
+        &runtime_core_review_package(package),
+        &runtime_core_review_sources(sources),
     )
     .map(local_review_report)
-    .map_err(BuyerAttestationError::from_historical)
+    .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn verify_buyer_attestation_review_package_with_trust(
@@ -147,24 +147,24 @@ pub fn verify_buyer_attestation_review_package_with_trust(
     sources: &[BuyerAttestationReviewSource],
     trust_context: &BuyerAttestationReviewTrustContext<'_>,
 ) -> Result<BuyerAttestationReviewReport, BuyerAttestationError> {
-    let historical_trust = chio_runtime_core::BuyerAttestationReviewTrustContext {
+    let runtime_core_trust = chio_runtime_core::BuyerAttestationReviewTrustContext {
         verifier_trust_bundle: trust_context.verifier_trust_bundle,
         verification_context: trust_context.verification_context,
     };
     chio_runtime_core::verify_buyer_attestation_review_package_with_trust(
-        &historical_review_package(package),
-        &historical_review_sources(sources),
-        &historical_trust,
+        &runtime_core_review_package(package),
+        &runtime_core_review_sources(sources),
+        &runtime_core_trust,
     )
     .map(local_review_report)
-    .map_err(BuyerAttestationError::from_historical)
+    .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn verify_receipt_lineage_bundle(
     bundle: &ReceiptLineageBundle,
 ) -> Result<bool, BuyerAttestationError> {
-    chio_runtime_core::verify_receipt_lineage_bundle(&historical_review_bundle(bundle))
-        .map_err(BuyerAttestationError::from_historical)
+    chio_runtime_core::verify_receipt_lineage_bundle(&runtime_core_review_bundle(bundle))
+        .map_err(BuyerAttestationError::from_runtime)
 }
 
 pub fn verify_buyer_attestation_review_package_with_proof_replay_json(
@@ -188,7 +188,7 @@ pub fn verify_buyer_attestation_review_package_with_proof_replay_json(
     let mut report =
         verify_buyer_attestation_review_package_with_trust(package, sources, &trust_context)?;
     if report.accepted {
-        replay_historical_verifier(
+        replay_core_verifier(
             &mut report,
             sources,
             verifier_trust_bundle_json,
@@ -223,14 +223,14 @@ fn parse_json_value(label: &str, json: &str) -> Result<serde_json::Value, BuyerA
     serde_json::from_str(json).map_err(|error| json_error(label, error))
 }
 
-fn replay_historical_verifier(
+fn replay_core_verifier(
     report: &mut BuyerAttestationReviewReport,
     sources: &[BuyerAttestationReviewSource],
     verifier_trust_bundle_json: &str,
     verification_context_json: &str,
 ) -> Result<(), BuyerAttestationError> {
     let proof_package_bytes = review_source_bytes(sources, "proof_package").ok_or_else(|| {
-        BuyerAttestationError::from_historical(HistoricalBuyerError::Rejected {
+        BuyerAttestationError::from_runtime(RuntimeBuyerError::Rejected {
             code: "chio_attest_buyer_review_missing_proof_package",
             detail: "buyer review package is missing proof_package artifact".to_string(),
         })

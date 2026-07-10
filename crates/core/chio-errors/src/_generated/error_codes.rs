@@ -24,7 +24,189 @@ pub struct ErrorCodeSpec {
 
 pub const REGISTRY_SCHEMA: &str = "chio.error-urn-registry.v1";
 pub const REGISTRY_VERSION: &str = "0.1.0";
-pub const REGISTRY_UPDATED_AT: &str = "2026-04-29";
+pub const REGISTRY_UPDATED_AT: &str = "2026-06-19";
+
+pub const TRANSACTION_PASSPORT_SCHEMA_UNSUPPORTED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:passport-schema-unsupported",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Transaction passport schema is unsupported by the verifier.",
+    help: "Reject the proof bundle and regenerate the passport with a registered transaction passport schema.",
+    string_code: "CHIO-TRANSACTION-PASSPORT-SCHEMA-UNSUPPORTED",
+    jsonrpc_code: Some(7100),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
+
+pub const TRANSACTION_PASSPORT_HASH_MISMATCH: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:passport-hash-mismatch",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Transaction passport root digest does not match its bound evidence.",
+    help: "Reject the proof bundle, rebuild the passport root, and retry with matching evidence graph, claim set, and policy digests.",
+    string_code: "CHIO-TRANSACTION-PASSPORT-HASH-MISMATCH",
+    jsonrpc_code: Some(7101),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
+
+pub const TRANSACTION_GRAPH_NOT_CLOSED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:graph-not-closed",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Transaction evidence graph does not close over the required artifact references.",
+    help: "Reject the proof bundle and include every required evidence, claim-set, policy, and receipt node in the graph.",
+    string_code: "CHIO-TRANSACTION-GRAPH-NOT-CLOSED",
+    jsonrpc_code: Some(7102),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
+
+pub const TRANSACTION_GRAPH_CYCLE: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:graph-cycle",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Transaction evidence graph contains a cycle.",
+    help: "Reject the proof bundle and emit an acyclic evidence graph whose dependency edges can be topologically verified.",
+    string_code: "CHIO-TRANSACTION-GRAPH-CYCLE",
+    jsonrpc_code: Some(7103),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
+
+pub const TRANSACTION_REQUIRED_CLAIM_MISSING: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:required-claim-missing",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Transaction verifier policy requires a claim that is not verified.",
+    help: "Reject the proof bundle and add verified evidence for the required claim or remove the unsupported requirement.",
+    string_code: "CHIO-TRANSACTION-REQUIRED-CLAIM-MISSING",
+    jsonrpc_code: Some(7104),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
+
+pub const TRANSACTION_ARTIFACT_HASH_MISMATCH: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:artifact-hash-mismatch",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Transaction proof artifact digest does not match the passport or evidence graph.",
+    help: "Reject the proof bundle, regenerate the artifact set, and retry with matching transaction evidence digests.",
+    string_code: "CHIO-TRANSACTION-ARTIFACT-HASH-MISMATCH",
+    jsonrpc_code: Some(7105),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
+
+pub const TRANSACTION_IDENTITY_NOT_BOUND: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:identity-not-bound",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Transaction evidence does not bind the required identity or subject.",
+    help: "Reject the proof bundle and include identity evidence bound to the transaction passport subject and evidence graph.",
+    string_code: "CHIO-TRANSACTION-IDENTITY-NOT-BOUND",
+    jsonrpc_code: Some(7106),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
+
+pub const TRANSACTION_AUTHORIZATION_NOT_BOUND: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:authorization-not-bound",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Transaction evidence does not bind required authorization evidence.",
+    help: "Reject the proof bundle and include capability, policy, approval, or guard evidence bound to the governed transaction.",
+    string_code: "CHIO-TRANSACTION-AUTHORIZATION-NOT-BOUND",
+    jsonrpc_code: Some(7107),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
+
+pub const TRANSACTION_RECEIPT_UNCHECKPOINTED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:receipt-uncheckpointed",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Transaction receipt evidence is not checkpointed or included in the required receipt lineage.",
+    help: "Reject the proof bundle and provide checkpointed receipt or inclusion evidence for the transaction receipt.",
+    string_code: "CHIO-TRANSACTION-RECEIPT-UNCHECKPOINTED",
+    jsonrpc_code: Some(7108),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
+
+pub const TRANSACTION_RUNTIME_PROOF_REJECTED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:runtime-proof-rejected",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Runtime proof evidence required by the transaction verifier was rejected.",
+    help: "Reject the proof bundle and regenerate runtime security, parity, lease, nonce, revocation, sandbox, ack, and terminal receipt evidence.",
+    string_code: "CHIO-TRANSACTION-RUNTIME-PROOF-REJECTED",
+    jsonrpc_code: Some(7109),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
+
+pub const TRANSACTION_BUYER_REVIEW_REJECTED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:buyer-review-rejected",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Buyer review evidence required by the transaction verifier was rejected.",
+    help: "Reject the proof bundle and regenerate buyer review evidence that matches the transaction passport and verifier policy.",
+    string_code: "CHIO-TRANSACTION-BUYER-REVIEW-REJECTED",
+    jsonrpc_code: Some(7110),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
+
+pub const TRANSACTION_SETTLEMENT_UNVERIFIED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:settlement-unverified",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Settlement evidence required by the transaction verifier is absent or unverified.",
+    help: "Reject the proof bundle and include settlement evidence bound to the transaction order, amount, currency, rail, and receipt lineage.",
+    string_code: "CHIO-TRANSACTION-SETTLEMENT-UNVERIFIED",
+    jsonrpc_code: Some(7111),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
+
+pub const TRANSACTION_DISPUTE_UNBOUND: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:dispute-unbound",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Dispute, refund, or remediation evidence is not bound to the transaction.",
+    help: "Reject the proof bundle and bind dispute, refund, remediation, and settlement reversal evidence to the transaction passport and receipts.",
+    string_code: "CHIO-TRANSACTION-DISPUTE-UNBOUND",
+    jsonrpc_code: Some(7112),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
+
+pub const TRANSACTION_TRANSPARENCY_PREVIEW_NOT_ALLOWED: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:transaction:transparency-preview-not-allowed",
+    domain: Domain::Transaction,
+    severity: Severity::Error,
+    summary: "Transaction transparency evidence is only preview or advisory when verified transparency is required.",
+    help: "Reject the proof bundle and provide verified transparency inclusion evidence or remove the transparency claim.",
+    string_code: "CHIO-TRANSACTION-TRANSPARENCY-PREVIEW-NOT-ALLOWED",
+    jsonrpc_code: Some(7113),
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-transaction-passport", "chio-cli", "chio-proof-room"],
+};
 
 pub const CAPABILITY_SCOPE_EXCEEDED: ErrorCodeSpec = ErrorCodeSpec {
     urn: "urn:chio:error:capability:scope-exceeded",
@@ -1204,6 +1386,20 @@ pub const WEIGHTS_INTERNAL_ENCODING: ErrorCodeSpec = ErrorCodeSpec {
 };
 
 pub static ERROR_CODES: &[ErrorCodeSpec] = &[
+    TRANSACTION_PASSPORT_SCHEMA_UNSUPPORTED,
+    TRANSACTION_PASSPORT_HASH_MISMATCH,
+    TRANSACTION_GRAPH_NOT_CLOSED,
+    TRANSACTION_GRAPH_CYCLE,
+    TRANSACTION_REQUIRED_CLAIM_MISSING,
+    TRANSACTION_ARTIFACT_HASH_MISMATCH,
+    TRANSACTION_IDENTITY_NOT_BOUND,
+    TRANSACTION_AUTHORIZATION_NOT_BOUND,
+    TRANSACTION_RECEIPT_UNCHECKPOINTED,
+    TRANSACTION_RUNTIME_PROOF_REJECTED,
+    TRANSACTION_BUYER_REVIEW_REJECTED,
+    TRANSACTION_SETTLEMENT_UNVERIFIED,
+    TRANSACTION_DISPUTE_UNBOUND,
+    TRANSACTION_TRANSPARENCY_PREVIEW_NOT_ALLOWED,
     CAPABILITY_SCOPE_EXCEEDED,
     CAPABILITY_EXPIRED,
     CAPABILITY_REVOKED,

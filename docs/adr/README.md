@@ -1,8 +1,7 @@
 # Architecture Decision Records
 
-These ADRs capture the blocking design decisions called out in
-[../operations/EXECUTION_PLAN.md](../operations/EXECUTION_PLAN.md) and the
-current v1 protocol strategy review.
+These ADRs capture blocking design decisions for the current v1 protocol
+baseline.
 
 Status legend:
 
@@ -26,3 +25,5 @@ Current ADR set:
 11. [ADR-0011 Boundary Taxonomy And Product Wording](ADR-0011-boundary-taxonomy-product-wording.md)
 12. [ADR-0012 Current V1 Manifest Event-Action Planning](ADR-0012-current-v1-manifest-event-actions.md)
 13. [ADR-0013 Async Receipt Durability](ADR-0013-async-receipt-durability.md)
+14. [ADR-0014 Iroh As Federation Transport (Deferred To Year-2)](ADR-0014-iroh-federation-transport.md)
+15. [ADR-0015 Predeclared Non-Discretionary Escrow Circuit Breakers](ADR-0015-predeclared-escrow-circuit-breakers.md)

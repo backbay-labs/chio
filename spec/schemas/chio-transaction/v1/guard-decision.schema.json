@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-transaction/v1/guard-decision.schema.json",
+  "title": "Chio Guard Decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "signature"],
+  "properties": {
+    "schema": { "const": "chio.guard.decision.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "guard_id": { "type": "string", "minLength": 1 },
+    "guard_key": { "type": "string", "minLength": 1 },
+    "capability_id": { "type": "string", "minLength": 1 },
+    "decision": { "type": "string", "minLength": 1 },
+    "policy_sha256": { "$ref": "#/$defs/sha256" },
+    "policy_digest": { "$ref": "#/$defs/sha256" },
+    "request_sha256": { "$ref": "#/$defs/sha256" },
+    "request_digest": { "$ref": "#/$defs/sha256" },
+    "response_sha256": { "$ref": "#/$defs/sha256" },
+    "response_digest": { "$ref": "#/$defs/sha256" },
+    "allow_receipt_ref": { "type": "string", "minLength": 1 },
+    "signature": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

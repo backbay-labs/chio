@@ -100,9 +100,8 @@ are machine-readably enumerated in `formal/assumptions.toml`.
   from the manifest, theorem inventory, assumptions, claim gate inputs, tool
   versions, artifact hashes, source theorem locations, and optional live gate
   results.
-- `docs/start-here/VISION.md` and `docs/protocols/STRATEGIC-VISION.md` should
-  stay aligned to this registry and must not reintroduce broad formal-
-  verification language without the assumption and implementation-linkage
-  boundary.
+- `docs/start-here/VISION.md` should stay aligned to this registry and must not
+  reintroduce broad formal-verification language without the assumption and
+  implementation-linkage boundary.
 - `docs/COMPETITIVE_LANDSCAPE.md` should remain on the executable-evidence
   framing and avoid first-principles claims about external systems.

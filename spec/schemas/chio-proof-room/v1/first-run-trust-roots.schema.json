@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-proof-room/v1/first-run-trust-roots.schema.json",
+  "title": "Chio Proof Room First Run Trust Roots",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "trust_domain", "roots", "signature"],
+  "properties": {
+    "schema": { "const": "chio.proof.first-run.trust-roots.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "trust_domain": { "type": "string", "minLength": 1 },
+    "roots": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/trustRoot" },
+      "minItems": 1
+    },
+    "signature": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "trustRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "key_id", "key_digest"],
+      "properties": {
+        "subject": { "type": "string", "minLength": 1 },
+        "key_id": { "$ref": "#/$defs/sha256" },
+        "key_digest": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

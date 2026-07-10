@@ -15,6 +15,7 @@ name = "chio_runtime"
 chio-runtime-core = { workspace = true }
 chio-core-types = { workspace = true }
 chio-kernel = { workspace = true }
+chio-swarm-authority = { workspace = true }
 chio-weights = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

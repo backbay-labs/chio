@@ -1,0 +1,23 @@
+{
+  "authority": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca",
+  "id": "runtime-trust-root-valid",
+  "roots": [
+    {
+      "subject": "did:chio:4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff"
+    },
+    {
+      "subject": "did:chio:5b8649c0cfcdbe78a5ff962edfa48914dfd45af22afe358de1f4dd7e4567d5ca"
+    },
+    {
+      "subject": "did:chio:9475c6cf0eda34057528d8694781ecc92ad639d7e2bd27761ed3ef74924beb07"
+    },
+    {
+      "subject": "did:chio:a87b8a99bd88a69686c994a80b629d8154871aa295540834c01d79f4f916502f"
+    },
+    {
+      "subject": "did:chio:31debe55d37c722768b137131caa6087080b2e0b60b94bd785d14575cfa498bc"
+    }
+  ],
+  "schema": "chio.trust.root.v1",
+  "signature": "eb607602ec92b604857f2e8507ca3ae6206aaba308c91f83538a1c609040858d7ebe78421b6396859b0f93c5505aa1811889a205fabd479efe0741154feef00d"
+}

@@ -8,7 +8,7 @@ from chio_sdk.errors import ChioError
 
 
 class ChioPrefectError(ChioError):
-    """An Chio-governed Prefect task invocation was denied or failed.
+    """A Chio-governed Prefect task invocation was denied or failed.
 
     Carries the sidecar verdict so callers (and Prefect task run history)
     can inspect the guard that denied, the reason, and any structured hint

@@ -1,0 +1,23 @@
+{
+  "object_kind": "email_connector_action",
+  "id": "email-message-agent-web-valid",
+  "provider_protocol": "gmail-api",
+  "mailbox_account_digest": "8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a",
+  "message_id": "msg-agent-web-gmail-001",
+  "rfc5322_message_digest": "8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f8f",
+  "thread_id": "thread-agent-web-gmail-001",
+  "recipient_digest_list": [
+    "8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b"
+  ],
+  "subject_digest": "8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c8c",
+  "attachment_digest_list": [
+    "8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d8d"
+  ],
+  "method": "send",
+  "oauth_scope_set_digest": "8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e",
+  "provider_response_digest": "8f8e8f8e8f8e8f8e8f8e8f8e8f8e8f8e8f8e8f8e8f8e8f8e8f8e8f8e8f8e8f8e",
+  "receipt_refs": [
+    "receipt-agent-web-email-message-allow"
+  ],
+  "mediated_by_chio_receipt": true
+}

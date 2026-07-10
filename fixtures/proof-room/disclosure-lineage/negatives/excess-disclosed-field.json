@@ -1,0 +1,8 @@
+{
+  "schema": "chio.disclosure-lineage.negative-fixture.v1",
+  "id": "excess-disclosed-field",
+  "claim_ref": "claim.disclosure.crypto_context_bound",
+  "base_fixture": "fixtures/proof-room/disclosure-lineage/valid-lineage-ledger/crypto-context-report.json",
+  "case": "ExcessDisclosedField",
+  "expected_failure_code": "proof-room.negative.crypto-context-report-excess-disclosed-field"
+}

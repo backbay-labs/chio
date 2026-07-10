@@ -17,17 +17,10 @@ namespace chio::drogon {
 
 using RoutePatternResolver = std::function<std::string(const ::drogon::HttpRequest&)>;
 
-enum class SidecarFailureMode {
-  FailClosed,
-  FailOpenWithoutReceipt,
-  AllowWithoutReceipt = FailOpenWithoutReceipt,
-};
-
 struct Options {
   std::string sidecar_url;
   chio::HttpTransportPtr transport;
   std::uint32_t timeout_ms = 5000;
-  SidecarFailureMode sidecar_failure_mode = SidecarFailureMode::FailClosed;
   std::vector<std::string> selected_headers = {
       "accept",
       "content-type",

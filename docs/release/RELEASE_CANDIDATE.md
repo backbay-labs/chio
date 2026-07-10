@@ -11,7 +11,7 @@ not define public protocol versions, compatibility levels, or release history.
 The public Chio-owned surface remains v1-only and unreleased.
 
 The current pre-release v1 branch contains locally qualified
-implementation and evidence for the **launch SKU subset** named in the
+implementation and evidence for the **release SKU subset** named in the
 sections below (not every internal milestone surface).
 
 It is intentionally limited to behavior backed by the current codebase,
@@ -34,7 +34,7 @@ Use the release documents this way:
 
 ## Launch Decision Contract
 
-Promotion from "qualified candidate" to an externally published Chio launch
+Promotion from "qualified candidate" to an externally published Chio release
 requires three gate classes:
 
 - local evidence gates: `./scripts/ci-workspace.sh`,
@@ -124,7 +124,7 @@ kernel/browser/mobile qualification lanes.
   wrapped, and hosted runtime surfaces
 - allow, deny, cancelled, and incomplete outcomes always produce signed
   receipts
-- governed transaction approvals, x402, ACP/shared-payment-token commerce, and
+- governed transaction approvals, x402, ACP-Commerce/shared-payment-token commerce, and
   settlement reconciliation preserve truthful execution-versus-payment
   semantics instead of collapsing them into one status bit
 - governed receipts can be projected into external authorization-details and
@@ -334,7 +334,7 @@ kernel/browser/mobile qualification lanes.
 - Chio now projects runtime-assurance schema and verifier family into the
   standards-facing authorization context and forces manual facility review
   when bounded runtime evidence spans multiple verifier families
-- launch claims are bounded by executable diff-tests, runtime/integration
+- public claims are bounded by executable diff-tests, runtime/integration
   verification, and release qualification; standalone Lean proof files are not
   part of the shipped release gate while they remain outside the root import
   surface or contain `sorry`
@@ -405,12 +405,12 @@ kernel/browser/mobile qualification lanes.
 
 | Limit or default | Value | Source |
 | --- | --- | --- |
-| default max capability TTL | `3600s` | `crates/products/chio-cli/src/policy.rs` |
-| default delegation depth | `5` | `crates/products/chio-cli/src/policy.rs` |
+| default max capability TTL | `3600s` | `crates/products/chio-cli` |
+| default delegation depth | `5` | `crates/products/chio-cli` |
 | default streamed tool duration limit | `300s` | `crates/kernel/chio-kernel/src/lib.rs` |
 | default streamed tool total-byte limit | `256 MiB` | `crates/kernel/chio-kernel/src/lib.rs` |
-| default MCP page size | `50` | `crates/protocol/chio-mcp-adapter/src/edge.rs` |
-| background-task progression per edge tick | `8 tasks` | `crates/protocol/chio-mcp-adapter/src/edge.rs`, `crates/protocol/chio-mcp-adapter/src/transport.rs` |
+| default MCP page size | `50` | `crates/protocol/chio-mcp-edge/src/runtime.rs` |
+| background-task progression per edge tick | `8 tasks` | `crates/protocol/chio-mcp-edge/src/runtime.rs`, `crates/protocol/chio-mcp-adapter/src/transport.rs` |
 | remote session idle expiry | `15 min` | `crates/protocol/chio-mcp-remote/src/remote_mcp/` |
 | remote session drain grace | `5 s` | `crates/protocol/chio-mcp-remote/src/remote_mcp/` |
 | remote session tombstone retention | `30 min` | `crates/protocol/chio-mcp-remote/src/remote_mcp/` |
@@ -444,9 +444,9 @@ The current Chio candidate does not claim:
 - arbitrary plugin execution that mutates signed Chio truth, bypasses local
   policy activation, or widens trust outside Chio's named extension points
 - permissionless or arbitrary external capital dispatch, implicit regulated-
-  actor status, or autonomous insurer pricing beyond Chio's documented official
-  web3 rail plus bounded autonomous-pricing, capital-pool, execution, and
-  rollback surface
+  actor status, or unsupported autonomous insurer-rate setting beyond Chio's
+  documented official web3 rail plus bounded autonomous-pricing, capital-pool,
+  execution, and rollback surface
 - external recovery clearing or insurer-network messaging beyond Chio's
   documented liability-market orchestration boundary, including its bounded
   payout-instruction, payout-receipt, settlement-instruction, and

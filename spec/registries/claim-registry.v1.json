@@ -35,7 +35,9 @@
       "schema_artifact": "spec/schemas/chio-wire/v1/capability/capabilities.schema.json",
       "summary": "Peers exchange a current capability feature bitset at handshake time. The verifier rejects malformed feature names before any negotiated feature is used, so a peer cannot smuggle unknown Chio-owned wire semantics through the handshake.",
       "introduced_in": "capability-negotiation-feature-bitset",
-      "depends_on_theorems": ["theorem.handshake.negotiation_safety"],
+      "depends_on_theorems": [
+        "theorem.handshake.negotiation_safety"
+      ],
       "proof_manifest_ref": "manifest.handshake.capability_negotiation"
     },
     {
@@ -44,7 +46,9 @@
       "schema_artifact": "spec/schemas/chio-wire/v1/capability/token.schema.json",
       "summary": "A CapabilityToken's budget_share_bps is enforced not just per-token (<= 10000 bps) but as a sibling-sum across delegated children of a common parent. The verifier consults a BudgetRegistry at the verify step and rejects any child whose admission would push the running sum past the parent's own share.",
       "introduced_in": "capability-budget-sibling-sum",
-      "depends_on_theorems": ["theorem.budget.sibling_sum_soundness"],
+      "depends_on_theorems": [
+        "theorem.budget.sibling_sum_soundness"
+      ],
       "proof_manifest_ref": "manifest.capability.budget_split"
     },
     {
@@ -53,7 +57,9 @@
       "schema_artifact": "spec/schemas/chio-wire/v1/capability/token.schema.json",
       "summary": "A CapabilityToken carries an on-the-wire attenuation_proof witness; verifiers check the witness hashes and subset relation fail closed AND require attenuation_proof.parent_scope_hash to be bound to the trust-root scope hash (direct issue) or the last delegation link's signed scope_hash (delegated chain).",
       "introduced_in": "capability-attenuation-chain-binding",
-      "depends_on_theorems": ["theorem.attenuation.witness_soundness"],
+      "depends_on_theorems": [
+        "theorem.attenuation.witness_soundness"
+      ],
       "proof_manifest_ref": "manifest.capability.attenuation_proof"
     },
     {
@@ -62,7 +68,9 @@
       "schema_artifact": "crates/protocol/chio-egress-contract/src/lib.rs",
       "summary": "Every kernel/guard/adapter outbound HTTP path declares a typed HttpEgressContract and runs through chio_egress_contract::send_with_contract (or the URL-only enforce_url helper for non-reqwest substrates) before bytes leave the substrate. The contract validates target URL on the initial request, every redirect target, and the response body size; loopback, link-local, IPv6 ULA, unbounded redirects, and oversize responses fail closed. A workspace lint at scripts/check-http-egress-contract.sh catches regressions; new callers must thread the contract through their config.",
       "introduced_in": "http-egress-contract",
-      "depends_on_theorems": ["theorem.egress.contract_enforcement"],
+      "depends_on_theorems": [
+        "theorem.egress.contract_enforcement"
+      ],
       "proof_manifest_ref": "manifest.http.egress_contract"
     },
     {
@@ -80,8 +88,514 @@
       "summary": "A receipt is content-addressed by id := H(canonical_jcs(ChioReceiptIdInput)) where the input set strictly excludes id, algorithm, and signature. The kernel mints `ChioReceipt` on the production hot path and replay keys on id.",
       "introduced_in": "receipt-content-addressed-id",
       "promoted_in": "receipt-runtime-minting",
-      "depends_on_theorems": ["theorem.receipt.id_input_set_pinned"],
+      "depends_on_theorems": [
+        "theorem.receipt.id_input_set_pinned"
+      ],
       "proof_manifest_ref": "manifest.receipt.content_addressed_id"
+    },
+    {
+      "id": "claim.transaction.passport_root_verified",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-transaction/v1/transaction-passport.schema.json",
+      "summary": "The Transaction Passport verifier rejects unknown schema IDs and accepts only a registry-backed chio.transaction-passport.v1 root.",
+      "introduced_in": "transaction-passport-v1",
+      "proof_manifest_ref": "manifest.transaction.passport_root_verified"
+    },
+    {
+      "id": "claim.transaction.evidence_graph_digest_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-transaction/v1/evidence-graph.schema.json",
+      "summary": "The Transaction Passport verifier loads the bundle-relative evidence graph and rejects the passport if the bytes do not match evidence_graph_sha256.",
+      "introduced_in": "transaction-passport-v1",
+      "proof_manifest_ref": "manifest.transaction.evidence_graph_digest_bound"
+    },
+    {
+      "id": "claim.transaction.evidence_graph_structure_verified",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-transaction/v1/evidence-graph.schema.json",
+      "summary": "The Transaction Passport verifier rejects malformed evidence graphs, dangling graph edges, duplicate node ids, and cyclic graph structure before family-specific verification.",
+      "introduced_in": "transaction-passport-v1",
+      "proof_manifest_ref": "manifest.transaction.evidence_graph_structure_verified"
+    },
+    {
+      "id": "claim.transaction.claim_set_digest_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-transaction/v1/claim-set.schema.json",
+      "summary": "The Transaction Passport verifier binds claim_set_sha256 and claim_set_path to a loaded claim-set artifact and rejects missing or unbound claim inventories.",
+      "introduced_in": "transaction-passport-v1",
+      "proof_manifest_ref": "manifest.transaction.claim_set_digest_bound"
+    },
+    {
+      "id": "claim.transaction.policy_digest_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-transaction/v1/verifier-policy.schema.json",
+      "summary": "The Transaction Passport verifier loads the bundle-relative verifier policy and rejects the passport if the bytes do not match verifier_policy_sha256.",
+      "introduced_in": "transaction-passport-v1",
+      "proof_manifest_ref": "manifest.transaction.policy_digest_bound"
+    },
+    {
+      "id": "claim.transaction.omission_policy_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-transaction/v1/transaction-passport.schema.json",
+      "summary": "The Transaction Passport verifier requires every policy-declared omitted claim to be signed into the passport omission policy with a supported omission status.",
+      "introduced_in": "transaction-passport-v1",
+      "proof_manifest_ref": "manifest.transaction.omission_policy_bound"
+    },
+    {
+      "id": "claim.proof_room.verifier_report_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-proof-room/v1/verifier-report.schema.json",
+      "summary": "Proof Room verifier reports are hash-bound to the same CLI verifier report and remain consumers of verifier output, not proof sources.",
+      "introduced_in": "proof-room-v1",
+      "proof_manifest_ref": "manifest.proof_room.verifier_report_bound"
+    },
+    {
+      "id": "claim.proof_room.allow_and_deny_visible",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-proof-room/v1/bundle.schema.json",
+      "summary": "The first-run Proof Room bundle includes both terminal allow and denial receipts as visible evidence for the single-call authority fixture.",
+      "introduced_in": "proof-room-v1",
+      "proof_manifest_ref": "manifest.proof_room.allow_and_deny_visible"
+    },
+    {
+      "id": "claim.proof_room.receipt_coverage_matrix_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-proof-room/v1/bundle.schema.json",
+      "summary": "The first-run Proof Room bundle declares covered terminal receipt categories and explicit receipt-category exclusions, and the verifier checks covered categories against real receipt artifacts.",
+      "introduced_in": "proof-room-v1",
+      "proof_manifest_ref": "manifest.proof_room.receipt_coverage_matrix_bound"
+    },
+    {
+      "id": "claim.proof_room.authority_evidence_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-proof-room/v1/bundle.schema.json",
+      "summary": "The first-run Proof Room bundle binds the visible authority evidence for the governed call: capability proof, guard report, trust roots, and signed allow and denial receipts.",
+      "introduced_in": "proof-room-v1",
+      "proof_manifest_ref": "manifest.proof_room.authority_evidence_bound"
+    },
+    {
+      "id": "claim.runtime.execution_lease_valid",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-runtime/v1/execution-lease.schema.json",
+      "summary": "Side-effecting runtime execution requires a digest-bound execution lease that matches the verifier policy digest and expires after issuance.",
+      "introduced_in": "runtime-security-v1",
+      "proof_manifest_ref": "manifest.runtime.execution_lease_valid"
+    },
+    {
+      "id": "claim.runtime.nonce_fresh",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-runtime/v1/execution-lease.schema.json",
+      "summary": "The runtime verifier requires the tool-server acknowledgement nonce to match the execution lease nonce.",
+      "introduced_in": "runtime-security-v1",
+      "proof_manifest_ref": "manifest.runtime.nonce_fresh"
+    },
+    {
+      "id": "claim.runtime.revocation_fresh_at_dispatch",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-runtime/v1/revocation-freshness-proof.schema.json",
+      "summary": "The runtime verifier requires a non-revoked freshness proof that is referenced by the execution lease, fetched no later than lease issuance, and within the proof staleness budget.",
+      "introduced_in": "runtime-security-v1",
+      "proof_manifest_ref": "manifest.runtime.revocation_fresh_at_dispatch"
+    },
+    {
+      "id": "claim.runtime.sandbox_attestation_matched",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-runtime/v1/sandbox-attestation.schema.json",
+      "summary": "The sandbox attestation must bind the leased tool server, tool instance, and tool manifest digest, and its validity window must cover the execution lease.",
+      "introduced_in": "runtime-security-v1",
+      "proof_manifest_ref": "manifest.runtime.sandbox_attestation_matched"
+    },
+    {
+      "id": "claim.runtime.tool_server_ack_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-runtime/v1/tool-server-ack.schema.json",
+      "summary": "The tool-server acknowledgement must bind the execution lease, sandbox attestation, nonce, terminal execution status, and an acknowledgement timestamp inside the lease window.",
+      "introduced_in": "runtime-security-v1",
+      "proof_manifest_ref": "manifest.runtime.tool_server_ack_bound"
+    },
+    {
+      "id": "claim.runtime.receipt_totality_complete",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-runtime/v1/terminal-receipt.schema.json",
+      "summary": "The runtime verifier requires a terminal receipt for governed attempts, including allow, denial, and infrastructure-failure statuses, and checks policy digest binding.",
+      "introduced_in": "runtime-security-v1",
+      "proof_manifest_ref": "manifest.runtime.receipt_totality_complete"
+    },
+    {
+      "id": "claim.runtime.advisory_not_used_as_authorization",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-transaction/v1/evidence-graph.schema.json",
+      "summary": "The runtime verifier rejects advisory observation evidence when it is used as an authorization or execution edge.",
+      "introduced_in": "runtime-security-v1",
+      "proof_manifest_ref": "manifest.runtime.advisory_not_used_as_authorization"
+    },
+    {
+      "id": "claim.commerce.order_replay_consistent",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/event-log.schema.json",
+      "summary": "The commerce verifier replays the append-only event log across the normative commerce states, rejects duplicate events or invalid recovery transitions, requires the replayed terminal state to match the order context, and binds the canonical quote digest used by downstream payment evidence.",
+      "introduced_in": "commerce-payments-v1",
+      "proof_manifest_ref": "manifest.commerce.order_replay_consistent"
+    },
+    {
+      "id": "claim.commerce.payment_lifecycle_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/payment-lifecycle.schema.json",
+      "summary": "The commerce verifier requires PSP-shaped payment lifecycle evidence to bind the same order id, merchant, amount, currency, capture window, fraud outcome, unresolved recovery posture, and canonical quote digest as the order context.",
+      "introduced_in": "commerce-payments-v1",
+      "proof_manifest_ref": "manifest.commerce.payment_lifecycle_bound"
+    },
+    {
+      "id": "claim.commerce.mandate_allowance_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/mandate-allowance-ledger.schema.json",
+      "summary": "The commerce verifier requires mandate allowance evidence to bind the same order id, merchant, amount, currency, canonical quote digest, validity window, occurrence limits, normalized AP2 mandate hashes, an ACP-Commerce delegated token hash, and x402 payment requirements.",
+      "introduced_in": "commerce-payments-v1",
+      "proof_manifest_ref": "manifest.commerce.mandate_allowance_bound"
+    },
+    {
+      "id": "claim.commerce.admission_gates_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/order-context.schema.json",
+      "summary": "The commerce verifier requires intent, provider admission, provider passport, reputation snapshot, and federation trust bundle evidence to bind the expected order-context refs, paths, digests, subjects, and statuses before later commerce gates can verify.",
+      "introduced_in": "commerce-payments-v1",
+      "proof_manifest_ref": "manifest.commerce.admission_gates_bound"
+    },
+    {
+      "id": "claim.commerce.settlement_lifecycle_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/order-context.schema.json",
+      "summary": "The commerce verifier requires settlement dispatch and reconciliation events to bind the expected settlement packet and reconciliation evidence refs, and requires the settlement packet to carry the order context canonical quote digest.",
+      "introduced_in": "commerce-payments-v1",
+      "proof_manifest_ref": "manifest.commerce.settlement_lifecycle_bound"
+    },
+    {
+      "id": "claim.commerce.order_passport_summary_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/order-passport.schema.json",
+      "summary": "The commerce verifier emits an order passport summary only after recomputing the order-context digest, binding all verified commerce artifact digests, and listing the public-summary disclosure policy with redacted private payment and subject fields.",
+      "introduced_in": "commerce-payments-v1",
+      "proof_manifest_ref": "manifest.commerce.order_passport_summary_bound"
+    },
+    {
+      "id": "claim.commerce.coverage_decision_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/order-context.schema.json",
+      "summary": "The commerce verifier emits the coverage decision claim only when the order context requires coverage, the risk comptroller report digest matches the context, the report signature verifies against trusted risk comptroller keys, and the report binds the same order id, coverage id, currency, and verified risk claim.",
+      "introduced_in": "commerce-payments-v1",
+      "proof_manifest_ref": "manifest.commerce.coverage_decision_bound"
+    },
+    {
+      "id": "claim.commerce.trust_market_context_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/order-context.schema.json",
+      "summary": "The commerce verifier emits the trust-market context claim only when marketplace refs are required, every provider and settlement ref matches the verified trust-market context, the selected provider matches the order merchant, and refs cannot self-disable the verifier with required=false.",
+      "introduced_in": "commerce-payments-v1",
+      "proof_manifest_ref": "manifest.commerce.trust_market_context_bound"
+    },
+    {
+      "id": "claim.workflow.preflight_child_scope_bounded",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-workflow/v1/preflight-report.schema.json",
+      "summary": "The workflow preflight verifier rejects a child task whose requested actions, resources, routes, approvals, schemas, budget, or currency exceed the parent planning scope before continuation tokens or tool calls exist.",
+      "introduced_in": "workflow-preflight-v1",
+      "proof_manifest_ref": "manifest.workflow.preflight_child_scope_bounded"
+    },
+    {
+      "id": "claim.workflow.preflight_planning_only",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-workflow/v1/preflight-report.schema.json",
+      "summary": "A successful workflow preflight report is labeled as planning evidence and carries no live authority claims, so rehearsal and simulation artifacts cannot satisfy execution authority.",
+      "introduced_in": "workflow-preflight-v1",
+      "proof_manifest_ref": "manifest.workflow.preflight_planning_only"
+    },
+    {
+      "id": "claim.disclosure.crypto_context_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-disclosure/v1/crypto-context-report.schema.json",
+      "summary": "The disclosure verifier first verifies the BBS selective disclosure proof, then rejects unless the verification context binds the proof subject, issuer key state, revocation snapshot, nonce, audience, holder binding, algorithm policy, and transparency state.",
+      "introduced_in": "crypto-context-v1",
+      "proof_manifest_ref": "manifest.disclosure.crypto_context_bound"
+    },
+    {
+      "id": "claim.disclosure.profile_context_policy_enforced",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-disclosure/v1/verifier-privacy-profile.schema.json",
+      "summary": "A verified disclosure context report includes verifier-owned privacy profile enforcement for allowed proof mechanisms, issuer keys, key epochs, status freshness, no-replay nonce policy, allowed algorithms, holder binding, and minimum transparency state.",
+      "introduced_in": "crypto-context-v1",
+      "proof_manifest_ref": "manifest.disclosure.profile_context_policy_enforced"
+    },
+    {
+      "id": "claim.disclosure.lineage_subgraph_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-lineage/v1/signed-subgraph.schema.json",
+      "summary": "The disclosure lineage verifier requires a signed redacted lineage subgraph to bind the same transaction passport as the disclosure capsule, include declared roots, validate edge endpoints, and account for every redacted node with an allowed reason.",
+      "introduced_in": "disclosure-lineage-v1",
+      "proof_manifest_ref": "manifest.disclosure.lineage_subgraph_bound"
+    },
+    {
+      "id": "claim.disclosure.leakage_ledger_complete",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-disclosure/v1/leakage-ledger.schema.json",
+      "summary": "The disclosure lineage verifier requires the leakage ledger to bind the same transaction passport and privacy profile as the capsule, reject profile-disallowed entries, and cover every disclosed field and hidden predicate.",
+      "introduced_in": "disclosure-lineage-v1",
+      "proof_manifest_ref": "manifest.disclosure.leakage_ledger_complete"
+    },
+    {
+      "id": "claim.risk.comptroller_report_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-risk/v1/comptroller-report.schema.json",
+      "summary": "The enterprise verifier requires a verified risk comptroller report that binds the same transaction passport and reconciled commerce order context before Enterprise evidence can satisfy public proof claims.",
+      "introduced_in": "enterprise-export-v1",
+      "proof_manifest_ref": "manifest.risk.comptroller_report_bound"
+    },
+    {
+      "id": "claim.enterprise.data_governance_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-enterprise/v1/data-governance-report.schema.json",
+      "summary": "The enterprise verifier requires data governance evidence to bind the same passport and risk report, restrict the observed region to allowed regions, reject legal-hold conflicts, and redact PII fields before export.",
+      "introduced_in": "enterprise-export-v1",
+      "proof_manifest_ref": "manifest.enterprise.data_governance_bound"
+    },
+    {
+      "id": "claim.enterprise.evidence_export_digest_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-enterprise/v1/evidence-export-bundle.schema.json",
+      "summary": "The enterprise verifier recomputes the evidence export bundle digest over the declared artifact references and checks the exported risk and data governance artifacts bind to the same passport-rooted evidence.",
+      "introduced_in": "enterprise-export-v1",
+      "proof_manifest_ref": "manifest.enterprise.evidence_export_digest_bound"
+    },
+    {
+      "id": "claim.enterprise.telemetry_projection_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-enterprise/v1/telemetry-projection.schema.json",
+      "summary": "The enterprise verifier requires telemetry projection events for an allow decision, a denied guard event, and a risk verifier event, each digest-bound to artifacts in the same passport bundle.",
+      "introduced_in": "enterprise-export-v1",
+      "proof_manifest_ref": "manifest.enterprise.telemetry_projection_bound"
+    },
+    {
+      "id": "claim.enterprise.export_approval_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-enterprise/v1/approval-case.schema.json",
+      "summary": "The enterprise verifier requires an approved evidence-export approval case with satisfied quorum, non-expired validity, and matching passport and risk report references.",
+      "introduced_in": "enterprise-export-v1",
+      "proof_manifest_ref": "manifest.enterprise.export_approval_bound"
+    },
+    {
+      "id": "claim.enterprise.control_map_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-enterprise/v1/control-evidence-map.schema.json",
+      "summary": "The enterprise verifier checks the control evidence map cites supported Enterprise claims and evidence graph gates that actually ran in the same passport proof bundle.",
+      "introduced_in": "enterprise-export-v1",
+      "proof_manifest_ref": "manifest.enterprise.control_map_bound"
+    },
+    {
+      "id": "claim.agent_web.external_subject_digest_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-agent-web/v1/proof-envelope.schema.json",
+      "summary": "The Agent Web verifier recomputes each external subject digest and rejects any Standard Webhooks or CloudEvents envelope whose detached subject bytes do not match the envelope digest.",
+      "introduced_in": "agent-web-interop-v1",
+      "proof_manifest_ref": "manifest.agent_web.external_subject_digest_bound"
+    },
+    {
+      "id": "claim.agent_web.projection_manifest_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json",
+      "summary": "The Agent Web verifier requires each proof envelope to bind a projection manifest for the same source protocol and version before claim mappings can be trusted.",
+      "introduced_in": "agent-web-interop-v1",
+      "proof_manifest_ref": "manifest.agent_web.projection_manifest_bound"
+    },
+    {
+      "id": "claim.agent_web.unsupported_claims_limited",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json",
+      "summary": "The Agent Web verifier rejects external or future claims unless the projection manifest explicitly lists them as unsupported and includes copy limitations.",
+      "introduced_in": "agent-web-interop-v1",
+      "proof_manifest_ref": "manifest.agent_web.unsupported_claims_limited"
+    },
+    {
+      "id": "claim.agent_web.sidecar_not_native_authority",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json",
+      "summary": "The Agent Web verifier rejects Chio sidecar proof claims that are presented as native external protocol authority, preserving the boundary that external objects are evidence subjects.",
+      "introduced_in": "agent-web-interop-v1",
+      "proof_manifest_ref": "manifest.agent_web.sidecar_not_native_authority"
+    },
+    {
+      "id": "claim.trust_market.provider_discovery_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/provider-discovery-snapshot.schema.json",
+      "summary": "The Trust-Market verifier requires a fresh provider discovery snapshot with the selected provider present in the candidate set.",
+      "introduced_in": "trust-market-v1",
+      "proof_manifest_ref": "manifest.trust_market.provider_discovery_bound"
+    },
+    {
+      "id": "claim.trust_market.provider_selection_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/provider-selection-report.schema.json",
+      "summary": "The Trust-Market verifier requires provider selection to bind the discovery snapshot, selected provider, scorecard, and SLA commitment for the same passport order.",
+      "introduced_in": "trust-market-v1",
+      "proof_manifest_ref": "manifest.trust_market.provider_selection_bound"
+    },
+    {
+      "id": "claim.trust_market.local_scorecard_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-trust/v1/scorecard-snapshot.schema.json",
+      "summary": "The Trust-Market verifier recomputes a local-policy scorecard from component scores and rejects global score scope or stale components.",
+      "introduced_in": "trust-market-v1",
+      "proof_manifest_ref": "manifest.trust_market.local_scorecard_bound"
+    },
+    {
+      "id": "claim.trust_market.reputation_import_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-trust/v1/reputation-import-report.schema.json",
+      "summary": "The Trust-Market verifier requires imported reputation to be subject-bound, issuer-trusted, locally weighted, and usable only as scoring input.",
+      "introduced_in": "trust-market-v1",
+      "proof_manifest_ref": "manifest.trust_market.reputation_import_bound"
+    },
+    {
+      "id": "claim.trust_market.sla_commitment_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-commerce/v1/sla-commitment.schema.json",
+      "summary": "The Trust-Market verifier requires SLA commitment and performance evidence to bind the same order, provider, measurement policy, and effective window.",
+      "introduced_in": "trust-market-v1",
+      "proof_manifest_ref": "manifest.trust_market.sla_commitment_bound"
+    },
+    {
+      "id": "claim.trust_market.collateral_guarantee_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-risk/v1/guarantee-decision.schema.json",
+      "summary": "The Trust-Market verifier requires a backed guarantee decision whose remedy is covered by same-currency collateral locked through the SLA and claim windows.",
+      "introduced_in": "trust-market-v1",
+      "proof_manifest_ref": "manifest.trust_market.collateral_guarantee_bound"
+    },
+    {
+      "id": "claim.trust_market.jurisdiction_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-risk/v1/adjudication-jurisdiction-receipt.schema.json",
+      "summary": "The Trust-Market verifier requires adjudication jurisdiction to bind remedy limits and slash authority before collateral can support guarantee claims.",
+      "introduced_in": "trust-market-v1",
+      "proof_manifest_ref": "manifest.trust_market.jurisdiction_bound"
+    },
+    {
+      "id": "claim.trust_market.unsupported_market_claims_limited",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-transaction/v1/verifier-policy.schema.json",
+      "summary": "The Trust-Market verifier reports unsupported market claims and rejects permissionless marketplace, global score, liquidity pool, underwriter market, guarantee product, or slashing court claims when required.",
+      "introduced_in": "trust-market-v1",
+      "proof_manifest_ref": "manifest.trust_market.unsupported_market_claims_limited"
+    },
+    {
+      "id": "claim.public_settlement.order_binding_verified",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json",
+      "summary": "The public settlement verifier requires the proof bundle to bind the transaction passport, commerce order, chain, settlement reference, settlement tx hash, beneficiary, escrow, and settlement amount before settlement evidence can support commerce proof claims.",
+      "introduced_in": "public-settlement-v1",
+      "proof_manifest_ref": "manifest.public_settlement.order_binding_verified"
+    },
+    {
+      "id": "claim.public_settlement.chain_context_verified",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json",
+      "summary": "The public settlement verifier requires the proof bundle chain id to match the settlement receipt dispatch chain id and rejects mismatched chain context.",
+      "introduced_in": "public-settlement-v1",
+      "proof_manifest_ref": "manifest.public_settlement.chain_context_verified"
+    },
+    {
+      "id": "claim.public_settlement.finality_verified",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-web3/v1/public-settlement-verifier-report.schema.json",
+      "summary": "The public settlement verifier emits a finality decision only when observed confirmations meet or exceed the required threshold.",
+      "introduced_in": "public-settlement-v1",
+      "proof_manifest_ref": "manifest.public_settlement.finality_verified"
+    },
+    {
+      "id": "claim.public_settlement.oracle_conversion_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-oracle/v1/conversion-evidence.schema.json",
+      "summary": "The public settlement verifier reports oracle conversion evidence only after the existing web3 settlement receipt validator accepts the oracle evidence.",
+      "introduced_in": "public-settlement-v1",
+      "proof_manifest_ref": "manifest.public_settlement.oracle_conversion_bound"
+    },
+    {
+      "id": "claim.public_settlement.dispute_posture_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json",
+      "summary": "The public settlement verifier requires an explicit dispute posture for public settlement context instead of treating settlement as complete by transcript alone.",
+      "introduced_in": "public-settlement-v1",
+      "proof_manifest_ref": "manifest.public_settlement.dispute_posture_bound"
+    },
+    {
+      "id": "claim.public_settlement.trust_market_refs_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json",
+      "summary": "When public settlement evidence carries trust-market context, the verifier requires collateral position, guarantee decision, SLA remedy, and slash authority refs to be present together and non-empty before reporting the trust-market settlement context claim.",
+      "introduced_in": "public-settlement-v1",
+      "proof_manifest_ref": "manifest.public_settlement.trust_market_refs_bound"
+    },
+    {
+      "id": "claim.swarm.task_graph_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-swarm/v1/task-graph.schema.json",
+      "summary": "The swarm authority verifier rejects duplicate tasks, missing parent edges, invalid graph limits, and cyclic task graphs before recursive delegation can support public claims.",
+      "introduced_in": "swarm-authority-v1",
+      "proof_manifest_ref": "manifest.swarm.task_graph_bound"
+    },
+    {
+      "id": "claim.swarm.continuation_fresh",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-swarm/v1/continuation-token.schema.json",
+      "summary": "The swarm authority verifier requires each continuation token to bind the graph digest, child task, parent context, route plan, budget allocation, revocation epoch, nonce, and freshness window.",
+      "introduced_in": "swarm-authority-v1",
+      "proof_manifest_ref": "manifest.swarm.continuation_fresh"
+    },
+    {
+      "id": "claim.swarm.attenuation_witness_chain_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-swarm/v1/delegation-witness-chain.schema.json",
+      "summary": "The swarm authority verifier requires every delegated edge to carry a witness chain whose scope hashes match the parent and child tasks and whose attenuation proof validates.",
+      "introduced_in": "swarm-authority-v1",
+      "proof_manifest_ref": "manifest.swarm.attenuation_witness_chain_bound"
+    },
+    {
+      "id": "claim.swarm.route_plan_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-swarm/v1/route-plan-receipt.schema.json",
+      "summary": "The swarm authority verifier requires route-plan receipts for graph route refs and checks that each continuation token uses the route for the same child task.",
+      "introduced_in": "swarm-authority-v1",
+      "proof_manifest_ref": "manifest.swarm.route_plan_bound"
+    },
+    {
+      "id": "claim.swarm.join_receipt_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-swarm/v1/join-receipt.schema.json",
+      "summary": "The swarm authority verifier requires join receipts to match graph joins and rejects missing, duplicate, unexpected, or mismatched parent receipt sets.",
+      "introduced_in": "swarm-authority-v1",
+      "proof_manifest_ref": "manifest.swarm.join_receipt_bound"
+    },
+    {
+      "id": "claim.swarm.terminal_graph_receipt_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-swarm/v1/terminal-graph-receipt.schema.json",
+      "summary": "The swarm authority verifier requires a signed terminal graph receipt that binds completed tasks, join receipts, route-plan receipts, revocation epoch, and budget rollups.",
+      "introduced_in": "swarm-authority-v1",
+      "proof_manifest_ref": "manifest.swarm.terminal_graph_receipt_bound"
+    },
+    {
+      "id": "claim.swarm.budget_pool_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-swarm/v1/budget-pool.schema.json",
+      "summary": "The swarm authority verifier requires continuation token budget allocation refs to exist in the graph budget pool and rejects over-allocation beyond the pool total.",
+      "introduced_in": "swarm-authority-v1",
+      "proof_manifest_ref": "manifest.swarm.budget_pool_bound"
+    },
+    {
+      "id": "claim.swarm.revocation_epoch_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-swarm/v1/revocation-epoch.schema.json",
+      "summary": "The swarm authority verifier requires the graph and all continuation tokens to bind a fresh revocation epoch and rejects revoked task ids.",
+      "introduced_in": "swarm-authority-v1",
+      "proof_manifest_ref": "manifest.swarm.revocation_epoch_bound"
     }
   ],
   "proposed_claims": [
@@ -91,17 +605,23 @@
       "schema_artifact": "spec/schemas/chio-wire/v1/receipt/lineage_statement.schema.json",
       "summary": "Multi-parent receipt lineage carries a signed dag_ordinal + HLC triple; verifier predicate child.dag_ordinal > max(parent.dag_ordinal) rejects cycles across independent kernel clock domains.",
       "introduced_by": "receipt-lineage-dag-proposal",
-      "depends_on_theorems": ["theorem.receipt.dag_acyclicity"],
+      "depends_on_theorems": [
+        "theorem.receipt.dag_acyclicity"
+      ],
       "proof_manifest_ref": "manifest.receipt.dag_acyclicity"
     },
     {
       "id": "claim.signature.hybrid_pq",
       "status": "proposed",
       "schema_artifact_proposed": "spec/schemas/chio-wire/v1/capability/token.schema.json",
-      "related_schema_artifacts": ["spec/schemas/signature.v1.json"],
+      "related_schema_artifacts": [
+        "spec/schemas/signature.v1.json"
+      ],
       "summary": "Capability tokens, federation handshake envelopes, and receipts accept a hybrid:<classical>:<pq>:<alg_set> signature wire format with the algorithm enum value 'hybrid'.",
       "introduced_by": "hybrid-pq-signature-proposal",
-      "depends_on_theorems": ["theorem.signature.hybrid_soundness"],
+      "depends_on_theorems": [
+        "theorem.signature.hybrid_soundness"
+      ],
       "proof_manifest_ref": "manifest.signature.hybrid_pq"
     },
     {
@@ -110,7 +630,9 @@
       "schema_artifact_proposed": "crates/trust/chio-federation/src/trust_establishment.rs",
       "summary": "Federation handshakes bind a Bronze, Silver, or Gold conformance tier into the signed challenge, and quorum policy rejects peers below min_tier before admission.",
       "introduced_by": "federation-conformance-tier-proposal",
-      "depends_on_theorems": ["theorem.federation.conformance_tier_gate"],
+      "depends_on_theorems": [
+        "theorem.federation.conformance_tier_gate"
+      ],
       "proof_manifest_ref": "manifest.federation.conformance_tier"
     }
   ]

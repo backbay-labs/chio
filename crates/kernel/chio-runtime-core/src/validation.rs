@@ -23,7 +23,8 @@ pub use orchestration::{
 };
 pub use proof::{
     validate_runtime_proof_drift_report, validate_runtime_proof_parity_report,
-    validate_runtime_proof_regeneration_input, validate_runtime_proof_regeneration_report,
+    validate_runtime_proof_regeneration_artifacts, validate_runtime_proof_regeneration_input,
+    validate_runtime_proof_regeneration_report, RuntimeProofRegenerationArtifacts,
 };
 
 pub(crate) use common::{

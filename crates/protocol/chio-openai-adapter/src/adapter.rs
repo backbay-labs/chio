@@ -435,7 +435,7 @@ fn parse_payload(raw: ProviderRequest) -> Result<ParsedPayload, ProviderError> {
 fn response_body(value: Value) -> Result<Value, ProviderError> {
     for field in ["body", "response", "payload"] {
         if let Some(nested) = value.get(field) {
-            return nested_response_body(nested).ok_or_else(|| {
+            return chio_provider_adapter_core::nested_response_body(nested).ok_or_else(|| {
                 ProviderError::Malformed(format!(
                     "responses.create envelope field `{field}` was not a JSON object or string body"
                 ))
@@ -448,14 +448,6 @@ fn response_body(value: Value) -> Result<Value, ProviderError> {
     }
 
     Ok(value)
-}
-
-fn nested_response_body(value: &Value) -> Option<Value> {
-    match value {
-        Value::Object(_) => Some(value.clone()),
-        Value::String(body) => serde_json::from_str(body).ok(),
-        _ => None,
-    }
 }
 
 fn is_responses_output_item(value: &Value) -> bool {

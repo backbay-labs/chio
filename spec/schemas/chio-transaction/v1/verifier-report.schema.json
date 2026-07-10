@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-transaction/v1/verifier-report.schema.json",
+  "title": "Chio Transaction Verifier Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "verdict",
+    "accepted",
+    "state",
+    "passport_id",
+    "passport_path",
+    "evidence_graph_sha256",
+    "evidence_graph_path",
+    "claim_set_sha256",
+    "claim_set_path",
+    "verifier_policy_sha256",
+    "verifier_policy_path",
+    "transparencyState",
+    "claimResults"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": { "accepted": { "const": false } },
+        "required": ["accepted"]
+      },
+      "then": { "required": ["failureCode"] }
+    },
+    {
+      "if": {
+        "properties": { "verdict": { "const": "failed" } },
+        "required": ["verdict"]
+      },
+      "then": { "required": ["failureCode"] }
+    },
+    {
+      "if": {
+        "properties": { "accepted": { "const": true } },
+        "required": ["accepted"]
+      },
+      "then": { "not": { "required": ["failureCode"] } }
+    }
+  ],
+  "properties": {
+    "schema": { "const": "chio.transaction.verifier-report.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "verdict": { "type": "string", "enum": ["verified", "failed"] },
+    "accepted": { "type": "boolean" },
+    "state": { "type": "string", "enum": ["verified", "failed"] },
+    "failureCode": { "type": "string", "minLength": 1 },
+    "passport_id": { "type": "string", "minLength": 1 },
+    "passport_path": { "$ref": "#/$defs/bundleRelativePath" },
+    "evidence_graph_sha256": { "$ref": "#/$defs/sha256" },
+    "evidence_graph_path": { "$ref": "#/$defs/bundleRelativePath" },
+    "claim_set_sha256": { "$ref": "#/$defs/sha256" },
+    "claim_set_path": { "$ref": "#/$defs/bundleRelativePath" },
+    "verifier_policy_sha256": { "$ref": "#/$defs/sha256" },
+    "verifier_policy_path": { "$ref": "#/$defs/bundleRelativePath" },
+    "transparencyState": {
+      "type": "string",
+      "enum": ["trust_anchored", "transparency_preview", "not_present", "unknown"]
+    },
+    "verified_claims": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "claimResults": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/claimResult" },
+      "uniqueItems": true
+    },
+    "family_reports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["schema", "verdict"],
+        "properties": {
+          "schema": { "type": "string", "minLength": 1 },
+          "verdict": { "type": "string", "minLength": 1 },
+          "verified_claims": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "uniqueItems": true
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "checker_provenance": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/checkerProvenance" },
+      "uniqueItems": true
+    },
+    "runtime_proof_parity_report": { "type": "object" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "claimResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "status", "verifier_module"],
+      "properties": {
+        "claim_id": { "type": "string", "minLength": 1 },
+        "status": {
+          "type": "string",
+          "enum": ["verified", "failed", "omitted", "unsupported"]
+        },
+        "required_evidence": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "failure_reason": { "type": "string", "minLength": 1 },
+        "verifier_module": { "type": "string", "minLength": 1 }
+      }
+    },
+    "checkerProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claim_id", "checker"],
+      "properties": {
+        "claim_id": { "type": "string", "minLength": 1 },
+        "checker": { "type": "string", "minLength": 1 }
+      }
+    },
+    "bundleRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "anyOf": [
+          { "pattern": "^/" },
+          { "pattern": "^[A-Za-z]:" },
+          { "pattern": "\\\\" },
+          { "pattern": "(^|/)\\.\\.(/|$)" }
+        ]
+      }
+    }
+  }
+}

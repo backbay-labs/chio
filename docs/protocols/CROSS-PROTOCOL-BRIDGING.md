@@ -1,12 +1,10 @@
 # Cross-Protocol Bridging
 
-**Status:** Draft architecture with shipped edge baseline
-**Date:** 2026-04-13
 
 > **Status**: Chio now ships a shared `chio-cross-protocol` substrate with a real
 > `CrossProtocolOrchestrator`, `CapabilityBridge`, capability-envelope, and
 > bridge-lineage model. The current implementation is the authoritative
-> edge-to-native execution substrate used by the A2A/ACP lanes.
+> edge-to-native execution substrate used by the A2A/ACP-Client lanes.
 >
 > **Remaining future work**: The fuller bridge-registry and multi-hop
 > protocol-to-protocol fabric sketched in this document is still future
@@ -18,14 +16,14 @@
 
 ## 1. Vision
 
-Agent ecosystems are fragmenting across MCP, A2A, and ACP. Each defines its
+Agent ecosystems are fragmenting across MCP, A2A, and ACP-Client. Each defines its
 own tool/skill/capability model, invocation envelope, and trust assumptions.
 Tool authors implement three adapters, operators run three control planes,
 and audit trails scatter across incompatible formats.
 
-Chio aims to reduce this fragmentation by serving as the universal protocol
+Chio aims to reduce this fragmentation by serving as a governed cross-protocol
 bridge. A tool published once through Chio can be made consumable via MCP, A2A,
-and ACP surfaces when the semantic projection is faithful enough to preserve
+and ACP-Client surfaces when the semantic projection is faithful enough to preserve
 Chio's security and execution guarantees. Every bridged invocation passes
 through the same kernel in the shipped edge-helper paths. The generic
 orchestrator sketched here is the next architectural step, not a current
@@ -40,7 +38,7 @@ runtime claim.
                     Chio Kernel (TCB)
                   /    |    |    \
            +-----+ +------+ +------+ +------+
-           | MCP | | A2A  | | ACP  | |Native|
+           | MCP | | A2A  | | ACP-Client  | |Native|
            |Edge | |Adapt.| |Adapt.| |Client|
            +-----+ +------+ +------+ +------+
 ```
@@ -55,7 +53,7 @@ on their own.
 
 Reasons:
 
-- agent execution can move to A2A task exchange, ACP editor sessions, or native
+- agent execution can move to A2A task exchange, ACP-Client editor sessions, or native
   function/API surfaces
 - session meaning is distributed across workflow history, delegation lineage,
   approvals, and tool sequences rather than a single isolated tool call
@@ -72,7 +70,7 @@ govern the runtime behavior that actually matters."
 
 ### 2.1 Concept Alignment
 
-| Chio               | MCP                  | A2A                | ACP                  |
+| Chio               | MCP                  | A2A                | ACP-Client                  |
 |--------------------|----------------------|--------------------|----------------------|
 | Tool               | Tool                 | Skill              | Capability/Function  |
 | ToolManifest       | tools/list response  | AgentCard.skills   | capabilities object  |
@@ -119,9 +117,9 @@ fn mcp_tool_to_a2a_skill(tool: &ToolDefinition, server_id: &str) -> A2aSkill {
 parse `DataPart` as MCP arguments, forward as `tools/call`, wrap result as
 A2A `Task` with `DataPart` artifact.
 
-### 2.3 MCP <-> ACP
+### 2.3 MCP <-> ACP-Client
 
-**Discovery (MCP -> ACP):** Each MCP tool becomes an ACP capability.
+**Discovery (MCP -> ACP-Client):** Each MCP tool becomes an ACP-Client capability.
 
 ```rust
 fn mcp_tool_to_acp_capability(tool: &ToolDefinition) -> AcpCapability {
@@ -133,20 +131,20 @@ fn mcp_tool_to_acp_capability(tool: &ToolDefinition) -> AcpCapability {
 }
 ```
 
-**Invocation (ACP -> MCP):** ACP `tool_calls` translates directly to MCP
+**Invocation (ACP-Client -> MCP):** ACP-Client `tool_calls` translates directly to MCP
 `tools/call`. Both use JSON Schema for parameters.
 
-### 2.4 A2A <-> ACP
+### 2.4 A2A <-> ACP-Client
 
-**Discovery (A2A -> ACP):** Each A2A skill becomes an ACP capability.
+**Discovery (A2A -> ACP-Client):** Each A2A skill becomes an ACP-Client capability.
 Skill `inputModes`/`outputModes` are recorded in adapter metadata.
 
-**Invocation (ACP -> A2A):** ACP `tool_calls` repackaged as A2A
+**Invocation (ACP-Client -> A2A):** ACP-Client `tool_calls` repackaged as A2A
 `SendMessage` with `DataPart` arguments and `chio.targetSkillId` metadata.
 
 ### 2.5 Type Mapping
 
-| MCP Type         | A2A Type            | ACP Type             |
+| MCP Type         | A2A Type            | ACP-Client Type             |
 |------------------|---------------------|----------------------|
 | TextContent      | TextPart            | text content block   |
 | ImageContent     | FilePart (inline)   | image content block  |
@@ -156,16 +154,16 @@ Skill `inputModes`/`outputModes` are recorded in adapter metadata.
 
 ### 2.6 Semantic Conformance Matrix
 
-Not every tool maps cleanly across MCP calls, A2A tasks, and ACP sessions. Chio
+Not every tool maps cleanly across MCP calls, A2A tasks, and ACP-Client sessions. Chio
 should only auto-publish a tool on a target protocol when the projection is
 either lossless or explicitly caveated.
 
-| Concern | MCP | A2A | ACP | Bridge rule |
+| Concern | MCP | A2A | ACP-Client | Bridge rule |
 |---------|-----|-----|-----|-------------|
 | Invocation shape | Direct request/response | Task-oriented, may be long-lived | Session-scoped prompt/capability flow | Reject publication when the target protocol cannot represent lifecycle semantics honestly |
 | Streaming | Progress tokens / chunked tool output | Task status + artifact streaming | Session updates / notifications | Mark as adapted when streaming must be down-leveled |
 | Cancellation | Client/task cancellation | Task cancellation | Session cancellation | Expose only if cancellation semantics can be mapped or clearly caveated |
-| Permission prompts | Usually external to protocol | Usually external to protocol | First-class permission requests | ACP surfaces may require adapted mode when tool side effects need interactive approval |
+| Permission prompts | Usually external to protocol | Usually external to protocol | First-class permission requests | ACP-Client surfaces may require adapted mode when tool side effects need interactive approval |
 | Side-effect visibility | Tool metadata only | Skill metadata + task status | Capability metadata + session events | Preserve side-effect labeling on every bridged surface |
 | Partial output | Natural | Natural | Depends on session/update contract | Reject auto-bridge if partial output would be silently dropped |
 
@@ -201,10 +199,10 @@ Current truthful publication rules are intentionally conservative:
 - A2A marks tools as `Adapted` when side-effect, streaming, or partial-output
   semantics are preserved only through final task payloads rather than native
   incremental lifecycle events.
-- ACP marks browser capabilities and generic mutating tools as `Unsupported`
-  because the current ACP edge cannot project those authority semantics
+- ACP-Client marks browser capabilities and generic mutating tools as `Unsupported`
+  because the current ACP-Client edge cannot project those authority semantics
   truthfully.
-- ACP marks generic read-only tools, permission-preview-dependent tools, and
+- ACP-Client marks generic read-only tools, permission-preview-dependent tools, and
   collected streaming outputs as `Adapted` with explicit caveats in outward
   discovery metadata.
 
@@ -330,7 +328,7 @@ pub enum DiscoveryProtocol { Native, Mcp, A2a, Acp }
   |                                                 |
   |  "web-search" -> [MCP(srv-a), A2A(agent-b)]    |
   |  "code-exec"  -> [Native(sandbox-1)]            |
-  |  "translate"   -> [A2A(agent-c), ACP(svc-d)]    |
+  |  "translate"   -> [A2A(agent-c), ACP-Client(svc-d)]    |
   +------------------------------------------------+
 ```
 
@@ -363,7 +361,7 @@ surfaces whose fidelity is `Lossless` or `Adapted`:
      |
      +-> MCP: tools/list entry     (published if fidelity != Unsupported)
      +-> A2A: AgentCard skill      (published if fidelity != Unsupported)
-     +-> ACP: capability entry     (published if fidelity != Unsupported)
+     +-> ACP-Client: capability entry     (published if fidelity != Unsupported)
 ```
 
 ---
@@ -447,10 +445,10 @@ The broader architecture shown here is still future work in one main way:
    claim that every protocol family or partner ecosystem in the long-range
    research is already integrated or qualified
 
-### 6.2 Flow: A2A -> MCP -> ACP
+### 6.2 Flow: A2A -> MCP -> ACP-Client
 
 ```
-  A2A Agent         Orchestrator          MCP Server    ACP Agent
+  A2A Agent         Orchestrator          MCP Server    ACP-Client Agent
      |                  |                     |             |
      |-- SendMessage -->|                     |             |
      |                  |-- validate cap ---->|             |
@@ -467,7 +465,7 @@ The broader architecture shown here is still future work in one main way:
 
 This example illustrates why protocol breadth matters. An organization could
 enforce MCP at the inner hop and still miss material runtime context unless the
-outer A2A and ACP hops are tied into the same kernel and receipt graph.
+outer A2A and ACP-Client hops are tied into the same kernel and receipt graph.
 
 ### 6.3 Unified Receipt
 
@@ -491,7 +489,7 @@ pub struct CrossProtocolReceipt {
 3. **Rollback receipts.** Best-effort cancellation receipts for completed
    hops if the tool supports idempotent undo.
 4. **Caller notification.** Error in the originating protocol's native
-   format (MCP error, A2A failed task, ACP error content block).
+   format (MCP error, A2A failed task, ACP-Client error content block).
 
 ---
 
@@ -559,7 +557,7 @@ is a future extension through the evidence-sharing mechanism.
 | 1 | Foundation: MCP + A2A adapters (shipped) | -- |
 | 2 | `UnifiedToolRegistry`, `DiscoveredTool`, `ToolQuery` API | Phase 1 |
 | 3 | Protocol-semantic conformance matrix + `BridgeFidelity` gating | Phase 2 |
-| 4 | `chio-acp-adapter` crate, ACP discovery + invocation | Phase 1 |
+| 4 | `chio-acp-adapter` crate, ACP-Client discovery + invocation | Phase 1 |
 | 5 | `CapabilityBridge` trait, `CrossProtocolCapabilityEnvelope`, attenuation | Phase 2, 3 |
 | 6 | `CrossProtocolTraceContext`, receipt correlation, session fingerprint | Phase 5 |
 | 7 | `CrossProtocolOrchestrator`, multi-hop chaining, unified receipts | Phase 5, 6 |

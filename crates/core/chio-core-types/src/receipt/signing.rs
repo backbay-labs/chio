@@ -258,7 +258,7 @@ impl From<ContentHashMismatch> for Error {
 /// canonical output rather than anything the caller chose). Threading the
 /// handle out of `chio-kernel-core::evaluate` and through every adapter's
 /// receipt-construction path is a larger change tracked as a follow-up
-/// (BAC-539 seam). The hash-recompute + refuse-on-mismatch guarantee in this
+/// (follow-up seam). The hash-recompute + refuse-on-mismatch guarantee in this
 /// type already closes the render-A / sign-B regression regardless of that
 /// follow-up, because the signer never trusts the caller's `content_hash`.
 ///

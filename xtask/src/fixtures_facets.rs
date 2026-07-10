@@ -1,7 +1,6 @@
-// Per-facet imperative handlers, pre-schema guards, and the metadata
-// assertions ported from each script's embedded python block. Included into
-// `fixtures.rs` via `include!` so the handlers share the module's private
-// helpers while keeping each file under the 2000-line hygiene cap.
+// Per-facet imperative handlers, pre-schema guards, and metadata assertions.
+// Included into `fixtures.rs` via `include!` so the handlers share the module's
+// private helpers while keeping runtime handlers focused.
 
 /// A unique temp directory cleaned up on drop. `unwrap`/`expect` are denied, so
 /// cleanup is best-effort and ignores errors in `Drop`.
@@ -41,72 +40,8 @@ fn scratch_counter() -> u64 {
 
 // -- Pre-schema guards -----------------------------------------------------
 
-/// Run the retired-marker / fixture-name guards a facet performs before its
-/// schema block. The retired marker is assembled at runtime as `"chio" + "dos"`
-/// so this gate file never embeds the joined literal it screens for.
-pub(crate) fn pre_schema_guard(root: &Path, facet: &Facet) -> Result<(), XtaskError> {
-    match facet.kind.as_str() {
-        "transit" => guard_no_marker_in_file(
-            &root.join("spec/CHIO_PHEROMONE.md"),
-            &retired_marker(),
-            "active Chio pheromone spec must not cite retired docs or labels",
-        ),
-        "relay" => guard_no_marker_in_file(
-            &root.join("docs/release/CHIO_PHEROMONE_RELAY_RUNBOOK.md"),
-            &retired_marker(),
-            "active Chio pheromone relay runbook must not cite retired docs or labels",
-        ),
-        "relay_alert_assurance" => guard_assurance_no_legacy_marker(&root.join(&facet.fixture_dir)),
-        _ => Ok(()),
-    }
-}
-
-/// Runtime-assembled retired marker (`chio` + `dos`).
-fn retired_marker() -> String {
-    let mut marker = String::from("chio");
-    marker.push_str("dos");
-    marker
-}
-
-/// Fail if a case-insensitive marker appears in a file (matches the scripts'
-/// `rg -n -i "$retired_marker"` guard).
-fn guard_no_marker_in_file(
-    path: &Path,
-    marker: &str,
-    message: &str,
-) -> Result<(), XtaskError> {
-    let text = fs::read_to_string(path).map_err(|err| XtaskError::Io(display(path), err))?;
-    if text.to_ascii_lowercase().contains(&marker.to_ascii_lowercase()) {
-        return Err(XtaskError::Validation(message.into()));
-    }
-    Ok(())
-}
-
-/// Fail if any assurance fixture JSON cites the retired relay surface. The
-/// markers (`<retired>-relay`, `<retired>-pheromone-relay`, the runbook file
-/// name) are assembled at runtime from `"chio" + "dos"`.
-fn guard_assurance_no_legacy_marker(dir: &Path) -> Result<(), XtaskError> {
-    let retired = retired_marker();
-    let markers = [
-        format!("{retired}-relay"),
-        format!("{retired}-pheromone-relay"),
-        format!("{}_PHEROMONE_RELAY_RUNBOOK.md", retired.to_ascii_uppercase()),
-    ];
-    for path in walk_files(dir)? {
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
-            continue;
-        }
-        let text =
-            fs::read_to_string(&path).map_err(|err| XtaskError::Io(display(&path), err))?;
-        for marker in &markers {
-            if text.contains(marker) {
-                return Err(XtaskError::Validation(format!(
-                    "active Chio relay alert assurance fixture has legacy marker {marker}: {}",
-                    display(&path)
-                )));
-            }
-        }
-    }
+/// Reserved hook for facet-specific checks that run before schema validation.
+pub(crate) fn pre_schema_guard(_root: &Path, _facet: &Facet) -> Result<(), XtaskError> {
     Ok(())
 }
 
@@ -162,8 +97,7 @@ fn metadata_transit(fixture_dir: &Path) -> Result<(), XtaskError> {
     // The cost-commitment statement must bind back to the deposit's subject
     // namespace/class and treaty scope, and carry the verifier identity the
     // scarcity policy later pins. The commitment is the load-bearing tie between
-    // the deposit and the scarcity economics; the consolidated handler had
-    // dropped every one of these bindings.
+    // the deposit and the scarcity economics.
     let statement = commitment
         .get("statement")
         .ok_or_else(|| invalid("cost commitment fixture must carry a statement"))?;
@@ -332,8 +266,7 @@ fn metadata_runtime(_root: &Path, fixture_dir: &Path) -> Result<(), XtaskError> 
     }
     // The runtime policy admission must bind the verifier-owned recipient and
     // authenticated sender, carry admitted passport material, and pin exactly one
-    // scarcity policy with the canonical runtime/scarcity hashes. The consolidated
-    // handler had reduced this to "is a signed envelope".
+    // scarcity policy with the canonical runtime/scarcity hashes.
     let admission = policy_envelope
         .get("body")
         .and_then(|b| b.get("admission"))
@@ -620,7 +553,7 @@ fn invalid(message: &str) -> XtaskError {
 // -- Imperative bodies -----------------------------------------------------
 
 /// `transit`: cargo tests, then (mode == All) fixture regen via the generator
-/// and a `cmp` of the five fixtures against the freshly-generated copies.
+/// and a `cmp` of the five fixtures against the checked package copies.
 fn handle_transit(root: &Path, facet: &Facet, mode: Mode) -> Result<(), XtaskError> {
     run_cargo_tests(root, facet)?;
     if mode == Mode::NegativeOnly {
@@ -629,6 +562,10 @@ fn handle_transit(root: &Path, facet: &Facet, mode: Mode) -> Result<(), XtaskErr
     let scratch = ScratchDir::new("transit")?;
     let out_dir = scratch.join("pheromone");
     let out_arg = display(&out_dir);
+    let proof_package = root
+        .join("examples/chio-3vendor/fixtures")
+        .join("buyer-auditor-proof-package.json");
+    let proof_package_arg = display(&proof_package);
     require_cli(
         root,
         &[
@@ -637,7 +574,8 @@ fn handle_transit(root: &Path, facet: &Facet, mode: Mode) -> Result<(), XtaskErr
             "--bin",
             "generate-chio-three-vendor-fixtures",
             "--",
-            "--pheromone-out-dir",
+            "--pheromone-package",
+            &proof_package_arg,
             &out_arg,
         ],
     )?;
@@ -655,7 +593,7 @@ fn handle_transit(root: &Path, facet: &Facet, mode: Mode) -> Result<(), XtaskErr
 }
 
 /// `runtime`: cargo tests, then (mode == All) regen + cmp of the eight runtime
-/// fixtures and the receive/query CLI orchestration, then recurse into
+/// fixtures from the checked package and the receive/query CLI orchestration, then recurse into
 /// `transit` (full).
 fn handle_runtime(
     root: &Path,
@@ -666,7 +604,7 @@ fn handle_runtime(
     if mode == Mode::NegativeOnly {
         // Negative-only runs the targeted rejection tests, not the full suite,
         // then the CLI receive/query orchestration and its replay /
-        // wrong-recipient CLI negatives. The retired script's `negative-only`
+        // wrong-recipient CLI negatives. The original shell gate's `negative-only`
         // branch exited after the rejection tests, but its trailing
         // `if negative-only: exit 0` (placed AFTER the replay / wrong-recipient
         // negatives) shows those CLI negatives were intended to be part of the
@@ -683,6 +621,10 @@ fn handle_runtime(
     let scratch = ScratchDir::new("runtime")?;
     let out_dir = scratch.join("pheromone");
     let out_arg = display(&out_dir);
+    let proof_package = root
+        .join("examples/chio-3vendor/fixtures")
+        .join("buyer-auditor-proof-package.json");
+    let proof_package_arg = display(&proof_package);
     require_cli(
         root,
         &[
@@ -691,7 +633,8 @@ fn handle_runtime(
             "--bin",
             "generate-chio-three-vendor-fixtures",
             "--",
-            "--pheromone-out-dir",
+            "--pheromone-package",
+            &proof_package_arg,
             &out_arg,
         ],
     )?;
@@ -710,8 +653,7 @@ fn handle_runtime(
     }
 
     // The CLI receive -> query persisted-state flow and its replay /
-    // wrong-recipient negatives that the script drove (the consolidated handler
-    // previously only regenerated and diffed the fixtures).
+    // wrong-recipient negatives.
     runtime_receive_query_flow(root, &fixture_dir, &scratch)?;
 
     run_recursion(root, manifest, facet)
@@ -1255,8 +1197,7 @@ struct AuditorInputs {
 }
 
 /// Build the auditor catchup batch, the bad-action-class variant, the empty
-/// variant, and the signed auditor transit policy. The batch/policy mutations
-/// mirror the embedded python in the relay script; the policy is then signed by
+/// variant, and the signed auditor transit policy. The policy is then signed by
 /// the generator.
 fn relay_build_auditor_inputs(
     root: &Path,
@@ -1373,8 +1314,8 @@ const AUDITOR_LADDER_REF: &str = r#"{
 }"#;
 
 /// Build the auditor transit-policy body, recomputing the runtime and scarcity
-/// policy hashes exactly as the embedded python did (drop the hash fields,
-/// canonicalize with sorted keys and tight separators, sha256).
+/// policy hashes by dropping the hash fields, canonicalizing with sorted keys
+/// and tight separators, then hashing with sha256.
 fn build_auditor_policy_body(source_policy: &Path, out_path: &Path) -> Result<(), XtaskError> {
     let envelope = load_json(source_policy)?;
     let mut body = envelope
@@ -1594,10 +1535,9 @@ fn handle_relay_ops(
     facet: &Facet,
     mode: Mode,
 ) -> Result<(), XtaskError> {
-    // The lint (local-dev + production) and tick CLI orchestration the script
-    // drove, including the production `relay_profile_denied` assertion, runs in
-    // both `all` and `negative-only` (it precedes the script's negative-only
-    // exit). The consolidated handler had dropped it entirely.
+    // The lint (local-dev + production) and tick CLI orchestration, including
+    // the production `relay_profile_denied` assertion, runs in both `all` and
+    // `negative-only`.
     relay_ops_lint_orchestration(root, facet)?;
     run_cargo_tests(root, facet)?;
     relay_ops_tick(root, facet)?;

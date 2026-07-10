@@ -1,0 +1,21 @@
+[package]
+name = "chio-runtime-proof-parity"
+description = "Runtime proof parity report schema and validation"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_runtime_proof_parity"
+
+[dependencies]
+chio-core-types = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

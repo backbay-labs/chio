@@ -34,6 +34,20 @@ fn map_session_persist_error(error: SessionPersistError<KernelError>) -> KernelE
     }
 }
 
+fn parse_tool_call_operation_execution_nonce(
+    operation: &ToolCallOperation,
+) -> Result<Option<crate::execution_nonce::SignedExecutionNonce>, KernelError> {
+    match operation.execution_nonce.as_ref() {
+        Some(value) => Some(serde_json::from_value(value.clone()).map_err(|error| {
+            KernelError::InvalidConstraint(format!(
+                "session tool call execution_nonce is malformed: {error}"
+            ))
+        }))
+        .transpose(),
+        None => Ok(None),
+    }
+}
+
 impl ChioKernel {
     pub fn open_session(
         &self,
@@ -598,6 +612,7 @@ impl ChioKernel {
         client: &mut C,
     ) -> Result<ToolCallResponse, KernelError> {
         self.validate_web3_evidence_prerequisites()?;
+        let execution_nonce = parse_tool_call_operation_execution_nonce(operation)?;
         self.begin_session_request(context, OperationKind::ToolCall, true)?;
 
         let request = ToolCallRequest {
@@ -608,14 +623,19 @@ impl ChioKernel {
             agent_id: context.agent_id.clone(),
             arguments: operation.arguments.clone(),
             dpop_proof: None,
-            execution_nonce: None,
-            governed_intent: None,
+            execution_nonce,
+            governed_intent: operation.governed_intent.clone(),
             approval_token: None,
             model_metadata: operation.model_metadata.clone(),
             federated_origin_kernel_id: None,
         };
 
-        let result = self.evaluate_tool_call_with_nested_flow_client(context, &request, client);
+        let result = self.evaluate_tool_call_with_nested_flow_client(
+            context,
+            &request,
+            client,
+            operation.extra_metadata.clone(),
+        );
         let terminal_state = match &result {
             Ok(response) => response.terminal_state.clone(),
             Err(KernelError::RequestCancelled { request_id, reason })
@@ -652,6 +672,7 @@ impl ChioKernel {
         client: &mut C,
     ) -> Result<ToolCallResponse, KernelError> {
         self.validate_web3_evidence_prerequisites()?;
+        let execution_nonce = parse_tool_call_operation_execution_nonce(operation)?;
         self.begin_session_request(context, OperationKind::ToolCall, true)?;
 
         let request = ToolCallRequest {
@@ -662,15 +683,20 @@ impl ChioKernel {
             agent_id: context.agent_id.clone(),
             arguments: operation.arguments.clone(),
             dpop_proof: None,
-            execution_nonce: None,
-            governed_intent: None,
+            execution_nonce,
+            governed_intent: operation.governed_intent.clone(),
             approval_token: None,
             model_metadata: operation.model_metadata.clone(),
             federated_origin_kernel_id: None,
         };
 
         let result = self
-            .evaluate_tool_call_with_nested_flow_client_async(context, &request, client)
+            .evaluate_tool_call_with_nested_flow_client_async(
+                context,
+                &request,
+                client,
+                operation.extra_metadata.clone(),
+            )
             .await;
         let terminal_state = match &result {
             Ok(response) => response.terminal_state.clone(),
@@ -726,6 +752,12 @@ impl ChioKernel {
                 | SessionOperation::GetPrompt(_)
                 | SessionOperation::Complete(_)
         );
+        let parsed_tool_call_execution_nonce = match operation {
+            SessionOperation::ToolCall(tool_call) => {
+                parse_tool_call_operation_execution_nonce(tool_call)?
+            }
+            _ => None,
+        };
 
         if should_track_inflight {
             self.begin_session_request(context, operation_kind, true)?;
@@ -739,16 +771,6 @@ impl ChioKernel {
 
         let evaluation = match operation {
             SessionOperation::ToolCall(tool_call) => {
-                let execution_nonce = match tool_call.execution_nonce.as_ref() {
-                    Some(value) => {
-                        Some(serde_json::from_value(value.clone()).map_err(|error| {
-                            KernelError::InvalidConstraint(format!(
-                                "session tool call execution_nonce is malformed: {error}"
-                            ))
-                        })?)
-                    }
-                    None => None,
-                };
                 let request = ToolCallRequest {
                     request_id: context.request_id.to_string(),
                     capability: tool_call.capability.clone(),
@@ -757,8 +779,8 @@ impl ChioKernel {
                     agent_id: context.agent_id.clone(),
                     arguments: tool_call.arguments.clone(),
                     dpop_proof: None,
-                    execution_nonce,
-                    governed_intent: None,
+                    execution_nonce: parsed_tool_call_execution_nonce,
+                    governed_intent: tool_call.governed_intent.clone(),
                     approval_token: None,
                     model_metadata: tool_call.model_metadata.clone(),
                     federated_origin_kernel_id: None,
@@ -772,7 +794,7 @@ impl ChioKernel {
                 self.evaluate_tool_call_sync_with_session_context(
                     &request,
                     Some(session_roots.as_slice()),
-                    None,
+                    tool_call.extra_metadata.clone(),
                     Some(&context.session_id),
                 )
                 .map(SessionOperationResponse::ToolCall)

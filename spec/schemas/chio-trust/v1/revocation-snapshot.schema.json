@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-trust/v1/revocation-snapshot.schema.json",
+  "title": "Chio Trust Revocation Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "snapshot_ref", "status", "issued_at", "expires_at"],
+  "properties": {
+    "schema": { "const": "chio.trust.revocation-snapshot.v1" },
+    "snapshot_ref": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["fresh", "stale", "revoked"] },
+    "issued_at": { "type": "integer", "minimum": 1 },
+    "expires_at": { "type": "integer", "minimum": 1 }
+  }
+}

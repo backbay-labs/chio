@@ -1,0 +1,14 @@
+{
+  "capability_id": "cap-first-run-single-call",
+  "expires_at": "2026-06-10T00:05:00Z",
+  "id": "capability-proof-single-call-authority",
+  "issuer": "did:chio:ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+  "nonce": "nonce-first-run-single-call",
+  "not_before": "2026-06-10T00:00:00Z",
+  "policy_digest": "3f562106e60d01c801571ab725ce3d9c8f5cf35451ae9e5d08c1fff1bf005bfe",
+  "schema": "chio.proof.first-run.capability-proof.v1",
+  "scope": "tool:demo.echo:invoke",
+  "signature": "79775f92c780fde9bdc58aeea6bb6bcda5dcb08ecc2b81a42fd5b4fa0e057878562e4acae2ea785be560f3f51e43af73d2ae6280ca74903bf0bd89bfa25ac004",
+  "subject": "did:chio:agent-first-run",
+  "trust_root_ref": "trust-roots-single-call-authority"
+}

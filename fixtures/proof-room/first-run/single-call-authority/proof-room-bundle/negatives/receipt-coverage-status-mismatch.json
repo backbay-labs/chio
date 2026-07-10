@@ -1,0 +1,10 @@
+{
+  "schema": "chio.proof-room.negative-fixture.v1",
+  "id": "receipt-coverage-status-mismatch",
+  "base_manifest": "manifest.json",
+  "mutation": {
+    "category": "runtime_terminal_allow",
+    "terminal_status": "denied_guard_request"
+  },
+  "expected_failure_code": "proof-room.receipt-coverage.status-mismatch"
+}

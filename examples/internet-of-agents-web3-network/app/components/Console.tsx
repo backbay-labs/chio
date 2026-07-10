@@ -294,12 +294,12 @@ function ConsoleInner({ bundle, effectiveVerdict, bundleDigest, firstMismatchPat
             addPulse("d1", "denial", "forged-passport", 1000);
             addPulse("d2", "denial", "over-budget", 1000);
             setTimeout(() => setDenialFlash([]), 2200);
-            setSelectedPath("adversarial/forged-passport.json");
+            setSelectedPath("adversarial/forged_passport-denial.json");
           }}
           onSimulateWobble={() => {
             setDegraded(["proofworks.provider", "proofworks.subcontract-desk"]);
             setTimeout(() => setDegraded([]), 3000);
-            setSelectedPath("identity/runtime-degradation/proofworks-wobble-lorem.json");
+            setSelectedPath("identity/runtime-degradation/provider-quarantine.json");
           }}
           onJumpManifest={() => setSelectedPath("bundle-manifest.json")}
         />

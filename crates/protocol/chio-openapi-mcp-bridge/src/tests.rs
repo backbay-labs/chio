@@ -1,11 +1,93 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use super::*;
+use chio_core::capability::{
+    scope::{ChioScope, Operation, ToolGrant},
+    token::CapabilityToken,
+};
+use chio_kernel::{
+    ChioKernel, KernelConfig, RuntimeAdmissionContext, RuntimeAdmissionDecision,
+    RuntimeAdmissionHook, ToolCallRequest, Verdict, DEFAULT_CHECKPOINT_BATCH_SIZE,
+    DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
+};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 fn valid_test_public_key() -> String {
     chio_core::Keypair::from_seed(&[17u8; 32])
         .public_key()
         .to_hex()
+}
+
+fn test_kernel_config() -> KernelConfig {
+    let keypair = chio_core::Keypair::generate();
+    KernelConfig {
+        ca_public_keys: vec![keypair.public_key()],
+        keypair,
+        max_delegation_depth: 8,
+        policy_hash: "test-policy".to_string(),
+        allow_sampling: false,
+        allow_sampling_tool_use: false,
+        allow_elicitation: false,
+        max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
+        max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
+        require_web3_evidence: false,
+        allow_ephemeral_receipt_log: true,
+        checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
+        retention_config: None,
+    }
+}
+
+fn capability_for_tool(
+    kernel: &ChioKernel,
+    subject: &chio_core::Keypair,
+    server_id: &str,
+    tool_name: &str,
+) -> CapabilityToken {
+    match kernel.issue_capability(
+        &subject.public_key(),
+        ChioScope {
+            grants: vec![ToolGrant {
+                server_id: server_id.to_string(),
+                tool_name: tool_name.to_string(),
+                operations: vec![Operation::Invoke],
+                constraints: Vec::new(),
+                max_invocations: None,
+                max_cost_per_invocation: None,
+                max_total_cost: None,
+                dpop_required: None,
+            }],
+            resource_grants: Vec::new(),
+            prompt_grants: Vec::new(),
+        },
+        3600,
+    ) {
+        Ok(capability) => capability,
+        Err(error) => panic!("test capability should issue: {error}"),
+    }
+}
+
+struct DenyingOpenApiRuntimeAdmissionHook;
+
+impl RuntimeAdmissionHook for DenyingOpenApiRuntimeAdmissionHook {
+    fn name(&self) -> &str {
+        "openapi-denying-runtime-admission"
+    }
+
+    fn evaluate(
+        &self,
+        _context: &RuntimeAdmissionContext<'_>,
+    ) -> Result<RuntimeAdmissionDecision, KernelError> {
+        Ok(RuntimeAdmissionDecision::deny(
+            "openapi runtime admission denied",
+            Some(json!({
+                "chio_runtime": {
+                    "accepted": false,
+                    "failure_code": "openapi_runtime_admission_denied"
+                }
+            })),
+        ))
+    }
 }
 
 const PETSTORE_SPEC: &str = r#"{
@@ -445,6 +527,59 @@ async fn owned_bridge_tool_server_with_dispatcher() {
         .await
         .unwrap();
     assert_eq!(result["structuredContent"]["httpStatus"], 200);
+}
+
+#[tokio::test]
+async fn bridge_invocation_runtime_admission_denies_before_http_dispatch() {
+    let mut bridge =
+        OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config_with_egress()).unwrap();
+    let dispatches = Arc::new(AtomicUsize::new(0));
+    let observed_dispatches = Arc::clone(&dispatches);
+    bridge.set_dispatcher(Box::new(move |_method, _url, _args| {
+        observed_dispatches.fetch_add(1, Ordering::SeqCst);
+        Ok(BridgedResponse {
+            status: 200,
+            body: json!({"ok": true}),
+            observed_body_bytes: Some(64),
+            is_error: false,
+        })
+    }));
+    let owned = OwnedBridgeToolServer::from_bridge(bridge);
+    let mut kernel = ChioKernel::new(test_kernel_config());
+    kernel.set_runtime_admission_hook(Arc::new(DenyingOpenApiRuntimeAdmissionHook));
+    let subject = chio_core::Keypair::generate();
+    let capability = capability_for_tool(&kernel, &subject, "petstore-bridge", "listPets");
+    kernel.register_tool_server(Box::new(owned));
+
+    let response = kernel
+        .evaluate_tool_call(&ToolCallRequest {
+            request_id: "req-openapi-runtime-denied".to_string(),
+            capability,
+            tool_name: "listPets".to_string(),
+            server_id: "petstore-bridge".to_string(),
+            agent_id: subject.public_key().to_hex(),
+            arguments: json!({"limit": 5}),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(
+        response
+            .receipt
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.pointer("/chio_runtime/failure_code"))
+            .and_then(Value::as_str),
+        Some("openapi_runtime_admission_denied")
+    );
+    assert_eq!(dispatches.load(Ordering::SeqCst), 0);
 }
 
 #[test]

@@ -13,7 +13,7 @@
 //! used.
 //!
 //! While the pinned root is still the committed synthetic fixture key
-//! (BAC-601), the production verification path fails CLOSED: it rejects every
+//! , the production verification path fails CLOSED: it rejects every
 //! token rather than trusting the fixture signer. See `production_pinned_jwks`
 //! and [`super::google_root::assert_play_integrity_root_is_production_ready`].
 //!
@@ -185,7 +185,7 @@ fn select_jwks(input: &PlayIntegrityVerificationInput<'_>) -> Result<String, Att
 
 #[cfg(not(any(test, feature = "dev-fixtures")))]
 fn select_jwks(_input: &PlayIntegrityVerificationInput<'_>) -> Result<String, AttestationError> {
-    // SECURITY / PLACEHOLDER (BAC-601): the production path pins this JWKS, and
+    // SECURITY / PLACEHOLDER: the production path pins this JWKS, and
     // `production_pinned_jwks` fails CLOSED while the committed synthetic fixture
     // key is still pinned. The earlier `debug_assert!` only fired in debug builds
     // and was stripped from release, so a release binary would have accepted
@@ -200,7 +200,7 @@ fn select_jwks(_input: &PlayIntegrityVerificationInput<'_>) -> Result<String, At
 ///
 /// Fails CLOSED (returns [`AttestationError::PlayIntegrityInvalidToken`]) while
 /// the pinned root is still the committed SYNTHETIC FIXTURE key, so a release
-/// build cannot silently trust the fixture signer (BAC-601). Once the real
+/// build cannot silently trust the fixture signer . Once the real
 /// Google root is provisioned, this returns the pinned JWKS.
 ///
 /// This helper is compiled both in production builds (where `select_jwks` calls
@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn production_path_fails_closed_while_fixture_root_is_pinned() {
-        // SECURITY / PLACEHOLDER (BAC-601): the production trust anchor must
+        // SECURITY / PLACEHOLDER: the production trust anchor must
         // REJECT (not silently trust the fixture signer) while the committed
         // synthetic fixture key is still pinned. The earlier guard was a
         // `debug_assert!` stripped from release builds, so this proves the
@@ -282,8 +282,8 @@ mod tests {
         match error {
             AttestationError::PlayIntegrityInvalidToken(reason) => {
                 assert!(
-                    reason.contains("BAC-601"),
-                    "rejection must reference BAC-601: {reason}"
+                    reason.contains("SYNTHETIC FIXTURE"),
+                    "rejection must name the synthetic fixture root: {reason}"
                 );
             }
             other => panic!("expected PlayIntegrityInvalidToken, got {other:?}"),

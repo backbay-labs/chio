@@ -2,15 +2,6 @@ use super::*;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct MercuryThirdProgramDocRefs {
-    third_program_file: String,
-    operations_file: String,
-    validation_package_file: String,
-    decision_record_file: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct MercuryThirdProgramBoundaryFreeze {
     schema: String,
     workflow_id: String,
@@ -164,16 +155,6 @@ struct MercuryThirdProgramValidationReport {
     same_workflow_boundary: String,
     third_program: MercuryThirdProgramExportSummary,
     decision_record_file: String,
-    docs: MercuryThirdProgramDocRefs,
-}
-
-fn third_program_doc_refs() -> MercuryThirdProgramDocRefs {
-    MercuryThirdProgramDocRefs {
-        third_program_file: "docs/mercury/THIRD_PROGRAM.md".to_string(),
-        operations_file: "docs/mercury/THIRD_PROGRAM_OPERATIONS.md".to_string(),
-        validation_package_file: "docs/mercury/THIRD_PROGRAM_VALIDATION_PACKAGE.md".to_string(),
-        decision_record_file: "docs/mercury/THIRD_PROGRAM_DECISION_RECORD.md".to_string(),
-    }
 }
 
 fn build_third_program_profile(workflow_id: &str) -> Result<MercuryThirdProgramProfile, CliError> {
@@ -643,7 +624,6 @@ pub fn cmd_mercury_third_program_validate(
 
     let third_program_dir = output.join("third-program");
     let summary = export_third_program(&third_program_dir)?;
-    let docs = third_program_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercuryThirdProgramDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -673,7 +653,6 @@ pub fn cmd_mercury_third_program_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         third_program: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 

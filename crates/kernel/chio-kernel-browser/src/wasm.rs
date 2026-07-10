@@ -19,7 +19,6 @@ use crate::pure::{
 };
 use crate::wire::{
     BindingError, EvaluateRequestJson, SignReceiptRequestJson, VerifyCapabilityRequestJson,
-    VerifyReceiptResultJson,
 };
 use crate::{BrowserClock, WebCryptoRng};
 
@@ -67,11 +66,11 @@ pub fn evaluate(request_json: &str) -> Result<JsValue, JsValue> {
 /// the browser to mint a fresh seed per receipt should call
 /// [`mint_signing_seed_hex`] first and pass the result in here.
 ///
-/// WYSIWYS (BAC-539): the JSON body MUST include the `canonical_content`
+/// WYSIWYS: the JSON body MUST include the `canonical_content`
 /// preimage so the signer recomputes `content_hash` inside the trust boundary
 /// and refuses on mismatch. A body without `canonical_content` is refused; it
 /// does NOT silently relay a trusted body. Callers that only forward an
-/// upstream-minted body (the BAC-601 relay seam) must call
+/// upstream-minted body through the relay seam must call
 /// [`sign_receipt_relaying_trusted_body`].
 #[wasm_bindgen]
 pub fn sign_receipt(body_json: &str, signing_seed_hex: &str) -> Result<JsValue, JsValue> {
@@ -81,7 +80,7 @@ pub fn sign_receipt(body_json: &str, signing_seed_hex: &str) -> Result<JsValue, 
     encode_result(&receipt)
 }
 
-/// Relay-sign an already-minted, upstream-trusted receipt body (BAC-601 seam).
+/// Relay-sign an already-minted, upstream-trusted receipt body.
 ///
 /// This is NOT the default public signer. It trusts the caller-supplied
 /// `content_hash` and does not recompute it, so it must only be used to forward

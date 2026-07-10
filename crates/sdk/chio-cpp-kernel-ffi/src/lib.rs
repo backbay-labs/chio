@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 
 /// C ABI version of this kernel FFI surface.
 ///
-/// Bumped 1 -> 2 in BAC-539: `chio_kernel_sign_receipt_json` gained a third
+/// Bumped from 1 to 2 when `chio_kernel_sign_receipt_json` gained a third
 /// pointer argument (`canonical_content_hex`, the WYSIWYS preimage). The symbol
 /// name is unchanged, so an old 2-arg client linked against v1 would call the
 /// 3-arg symbol with a missing third pointer (undefined behavior). Clients that
@@ -458,7 +458,7 @@ fn map_signing_error(error: ReceiptSigningError) -> KernelFfiError {
             "receipt body kernel_key does not match the public key derived from the signing seed"
                 .to_string(),
         ),
-        // WYSIWYS mismatch (BAC-539). The public signer recomputes `content_hash`
+        // WYSIWYS mismatch. The public signer recomputes `content_hash`
         // over the caller-supplied canonical content preimage inside the trust
         // boundary and produces this variant on a render-A / sign-B mismatch.
         // Surfaced as a distinct, fail-closed signing failure.
@@ -475,11 +475,11 @@ fn map_signing_error(error: ReceiptSigningError) -> KernelFfiError {
 /// caller-supplied canonical content preimage inside the trust boundary and
 /// refuse on mismatch.
 ///
-/// `canonical_content_hex` (BAC-539) is the lowercase-hex encoding of the exact
+/// `canonical_content_hex` is the lowercase-hex encoding of the exact
 /// byte preimage `body.content_hash` was derived from. This signer does NOT
 /// relay a trusted body; callers that only forward an upstream-minted body and
 /// cannot carry the preimage must use [`sign_receipt_relaying_trusted_body_json_str`]
-/// (the BAC-601 seam).
+/// through the trusted-body relay seam.
 fn sign_receipt_json_str(
     body_json: &str,
     canonical_content_hex: &str,
@@ -501,8 +501,9 @@ fn sign_receipt_json_str(
     serialize(&receipt)
 }
 
-/// Relay-sign an already-minted, upstream-trusted receipt body (BAC-601 seam;
-/// NOT the default public signer).
+/// Relay-sign an already-minted, upstream-trusted receipt body.
+///
+/// This is NOT the default public signer.
 ///
 /// Trusts the caller-supplied `body.content_hash` and does NOT recompute it,
 /// routing through `chio_kernel_core::sign_receipt_relaying_trusted_body`. Use
@@ -741,9 +742,9 @@ pub extern "C" fn chio_kernel_evaluate_json(request_json: *const c_char) -> Chio
 
 /// PUBLIC WYSIWYS signer (fail-closed). `canonical_content_hex` is the
 /// lowercase-hex preimage `content_hash` was derived from; the signer recomputes
-/// the hash inside the trust boundary and refuses on mismatch (BAC-539). This
+/// the hash inside the trust boundary and refuses on mismatch. This
 /// does NOT relay a trusted body; use
-/// `chio_kernel_sign_receipt_relaying_trusted_body_json` for the BAC-601 seam.
+/// `chio_kernel_sign_receipt_relaying_trusted_body_json` for the relay seam.
 #[no_mangle]
 pub extern "C" fn chio_kernel_sign_receipt_json(
     body_json: *const c_char,
@@ -765,8 +766,8 @@ pub extern "C" fn chio_kernel_sign_receipt_json(
     run_ffi(|| sign_receipt_json_str(&body_json, &canonical_content_hex, &signing_seed_hex))
 }
 
-/// Relay-sign an already-minted, upstream-trusted receipt body (BAC-601 seam;
-/// NOT the default public signer). Trusts the caller-supplied `content_hash` and
+/// Relay-sign an already-minted, upstream-trusted receipt body. This is NOT the
+/// default public signer. Trusts the caller-supplied `content_hash` and
 /// does NOT recompute it. Content-bearing callers MUST use
 /// `chio_kernel_sign_receipt_json` instead so the WYSIWYS recompute gate runs.
 #[no_mangle]

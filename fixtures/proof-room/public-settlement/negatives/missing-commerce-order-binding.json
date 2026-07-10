@@ -1,0 +1,8 @@
+{
+  "schema": "chio.public-settlement.negative-fixture.v1",
+  "id": "missing-commerce-order-binding",
+  "claim_ref": "claim.public_settlement.order_binding_verified",
+  "base_fixture": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json",
+  "case": "MissingCommerceOrderBinding",
+  "expected_failure_code": "proof-room.negative.missing-field"
+}

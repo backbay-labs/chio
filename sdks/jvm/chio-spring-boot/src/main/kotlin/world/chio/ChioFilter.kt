@@ -46,7 +46,7 @@ const val CHIO_PASSTHROUGH_ATTRIBUTE = "chioPassthrough"
  *
  * @param sidecarUrl Base URL of the Chio sidecar kernel.
  * @param timeoutSeconds HTTP timeout for sidecar calls.
- * @param onSidecarError Legacy option retained for source compatibility. Current v1 always denies.
+ * @param onSidecarError Reserved no-op option. The filter always denies sidecar errors.
  * @param identityExtractor Custom identity extraction function.
  * @param routeResolver Custom route pattern resolver.
  */
@@ -136,16 +136,6 @@ class ChioFilter(
         val result: EvaluateResponse
         try {
             result = client.evaluate(chioRequest, capabilityToken)
-        } catch (e: ChioSidecarException) {
-            writeJsonError(
-                httpResponse,
-                502,
-                ChioErrorResponse(
-                    error = ChioErrorCodes.SIDECAR_UNREACHABLE,
-                    message = "Chio sidecar error: ${e.message}",
-                ),
-            )
-            return
         } catch (e: Exception) {
             writeJsonError(
                 httpResponse,

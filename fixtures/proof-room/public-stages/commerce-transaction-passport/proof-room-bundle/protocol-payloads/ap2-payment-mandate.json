@@ -1,0 +1,1 @@
+{"amount_minor":4200,"currency":"USD","merchant_subject":"merchant:stripe:coffee-shop","order_id":"order-public-settlement-valid","protocol":"ap2","purpose":"payment_mandate","schema":"chio.commerce.protocol-payload.v1"}

@@ -402,7 +402,7 @@ class ChioClient:
         """Ask the sidecar to verify a receipt's authority.
 
         Returns True only when the structured verification report authorizes
-        the presented receipt. Legacy ``{"valid": true}`` responses are not
+        the presented receipt. Bare ``{"valid": true}`` responses are not
         authoritative.
         """
         data = await self._post(

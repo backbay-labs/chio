@@ -1,0 +1,27 @@
+{
+  "schema": "chio.runtime.proof-parity-report.v1",
+  "runId": "runtime-loopback-1",
+  "accepted": true,
+  "generatedAtUnixMs": 1800000001000,
+  "staticProofPackageSha256": "6b7876e0f26f5f926f9e782e6a8b5caeb493eb22e89efb527fd3c26a0b69c8b8",
+  "runtimeProofPackageSha256": "6b7876e0f26f5f926f9e782e6a8b5caeb493eb22e89efb527fd3c26a0b69c8b8",
+  "staticVerifierReportSha256": "d127241fa94f7e64e790b236bff47dec3d5c5532a74044b80a275f43f567efa4",
+  "runtimeVerifierReportSha256": "d127241fa94f7e64e790b236bff47dec3d5c5532a74044b80a275f43f567efa4",
+  "comparedFields": [
+    "proof_claims",
+    "workflow_id",
+    "workflow_step_count",
+    "workflow_step_semantics",
+    "workflow_intersection_id",
+    "workflow_step_class_bindings",
+    "workflow_required_vendor_signers",
+    "tool_receipt_targets",
+    "tool_receipt_semantics",
+    "bilateral_dsse_predicate_semantics",
+    "lease_scope_semantics",
+    "governance_authorization_presence",
+    "destructive_step_flags",
+    "buyer_closure_treaty_binding_delta"
+  ],
+  "mismatches": []
+}

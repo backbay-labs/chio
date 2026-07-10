@@ -230,32 +230,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn provider_error_display_is_em_dash_free() {
-        // House rule: no em dashes (U+2014) in any rendered Display output.
-        let cases = vec![
-            ProviderError::RateLimited {
-                retry_after_ms: 200,
-            },
-            ProviderError::ContentPolicy("blocked".to_string()),
-            ProviderError::BadToolArgs("missing field".to_string()),
-            ProviderError::Upstream5xx {
-                status: 502,
-                body: "bad gateway".to_string(),
-            },
-            ProviderError::TransportTimeout { ms: 30_000 },
-            ProviderError::VerdictBudgetExceeded {
-                observed_ms: 300,
-                budget_ms: 250,
-            },
-            ProviderError::Malformed("nope".to_string()),
-        ];
-        for err in cases {
-            let s = err.to_string();
-            assert!(!s.contains('\u{2014}'), "em dash in {s}");
-        }
-    }
-
     #[async_trait]
     trait _AdapterIsObjectSafe: ProviderAdapter {}
 

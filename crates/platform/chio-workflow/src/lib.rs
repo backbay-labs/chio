@@ -35,9 +35,17 @@ pub mod grant;
 pub mod manifest;
 pub mod receipt;
 
+pub mod preflight {
+    pub use chio_workflow_preflight::*;
+}
+
 pub use authority::{WorkflowAuthority, WorkflowError, WorkflowExecution};
 pub use grant::SkillGrant;
 pub use manifest::{IoContract, SkillManifest, SkillStep};
+pub use preflight::{
+    evaluate_workflow_preflight, WorkflowPreflightError, WorkflowPreflightPlan,
+    WorkflowPreflightReport, WorkflowPreflightVerdict,
+};
 pub use receipt::{
     StepRecord, VendorSignatureRequirement, WorkflowReceipt, WorkflowReceiptBody,
     WorkflowReceiptError, WorkflowVendorSignature,

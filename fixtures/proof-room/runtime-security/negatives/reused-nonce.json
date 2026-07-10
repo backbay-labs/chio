@@ -1,0 +1,10 @@
+{
+  "schema": "chio.runtime-security.negative-fixture.v1",
+  "id": "reused-nonce",
+  "claim_ref": "claim.runtime.nonce_fresh",
+  "base_fixture": "fixtures/proof-room/runtime-security/valid-side-effecting-call/transaction-passport.json",
+  "mutation": {
+    "kind": "append_tool_server_ack_replay"
+  },
+  "expected_failure_code": "proof-room.negative.reused-nonce"
+}

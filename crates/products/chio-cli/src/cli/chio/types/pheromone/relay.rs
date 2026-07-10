@@ -87,6 +87,49 @@ pub(crate) enum ChioPheromoneRelayCommands {
         /// Environment variable containing the operator token for observability endpoints.
         #[arg(long, value_name = "ENV")]
         operator_token_env: Option<String>,
+
+        /// Mount the iroh federation-transport mesh alongside the HTTP relay (DUAL).
+        /// OFF by default: with it off the serve path is byte-for-byte unchanged.
+        #[arg(long, default_value_t = false)]
+        iroh_enable: bool,
+
+        /// Issuer-signed iroh transport-directory bundle JSON. Required with
+        /// --iroh-enable; verified fail-closed against --trusted-issuers.
+        #[arg(long, value_name = "PATH")]
+        iroh_transport_directory: Option<PathBuf>,
+
+        /// Optional rotation-state pin ({ "versionFloor": N,
+        /// "expectedPreviousVersionSha256": ".." }) for the transport-directory
+        /// bundle. Without it only a GENESIS bundle loads (floor 0, no
+        /// predecessor); a rotated successor bundle needs this to pin the rollback
+        /// floor and the predecessor hash it must chain onto.
+        #[arg(long, value_name = "PATH")]
+        iroh_transport_directory_state: Option<PathBuf>,
+
+        /// Dedicated rotatable ed25519 transport key file ({ "seedHex": ".." }),
+        /// SEPARATE from the passport/relay signing key. Required with --iroh-enable.
+        #[arg(long, value_name = "PATH")]
+        iroh_transport_key: Option<PathBuf>,
+
+        /// Socket address the iroh endpoint binds. Default 0.0.0.0:0 (ephemeral
+        /// port) is convenient for a quick DUAL trial, but a random port cannot be
+        /// found by peers under the default RelayMode::Disabled. For a DURABLE
+        /// deployment set a STABLE address here and pair it with a discovery
+        /// mechanism / --iroh-relay-url so peers can reach a fixed EndpointId at a
+        /// fixed address. The actual bound address(es) + EndpointId are logged at
+        /// startup (tracing target "chio.iroh.transport").
+        #[arg(long, value_name = "ADDR", default_value = "0.0.0.0:0")]
+        iroh_bind_addr: String,
+
+        /// Self-hosted relay URL(s). Repeatable. Omitted -> RelayMode::Disabled
+        /// (direct addressing; never the n0 free relays).
+        #[arg(long, value_name = "URL")]
+        iroh_relay_url: Vec<String>,
+
+        /// Comma-separated iroh lanes to mount. Default: pheromone (the only lane
+        /// that shares the relay receiver + store on this hook).
+        #[arg(long, value_name = "LANES", default_value = "pheromone")]
+        iroh_lanes: String,
     },
 
     /// Queue accepted local relay work for subscribed peers.
@@ -181,6 +224,59 @@ pub(crate) enum ChioPheromoneRelayCommands {
         /// Directory for bounded outbound delivery event reports.
         #[arg(long, value_name = "DIR")]
         report_dir: Option<PathBuf>,
+
+        /// Drain due batches over the iroh federation transport INSTEAD of HTTP for
+        /// this tick (DUAL). OFF by default: with it off the tick delivers over HTTP
+        /// exactly as before. A single tick drains over exactly one transport (an iroh
+        /// tick and an HTTP tick would both lease the same outbox rows).
+        #[arg(long, default_value_t = false)]
+        iroh_enable: bool,
+
+        /// Issuer-signed iroh transport-directory bundle JSON. Required with
+        /// --iroh-enable; verified fail-closed against --trusted-issuers. Supplies the
+        /// recipient kernel_id -> transport EndpointId resolution the drain dials.
+        #[arg(long, value_name = "PATH")]
+        iroh_transport_directory: Option<PathBuf>,
+
+        /// Optional rotation-state pin ({ "versionFloor": N,
+        /// "expectedPreviousVersionSha256": ".." }) for the transport-directory
+        /// bundle. Without it only a GENESIS bundle loads (floor 0, no predecessor); a
+        /// rotated successor bundle needs this to pin the rollback floor and the
+        /// predecessor hash it must chain onto.
+        #[arg(long, value_name = "PATH")]
+        iroh_transport_directory_state: Option<PathBuf>,
+
+        /// Dedicated rotatable ed25519 transport key file ({ "seedHex": ".." }),
+        /// SEPARATE from the passport/relay signing key. Required with --iroh-enable.
+        #[arg(long, value_name = "PATH")]
+        iroh_transport_key: Option<PathBuf>,
+
+        /// Socket address the outbound iroh endpoint binds. Default 0.0.0.0:0
+        /// (ephemeral port); the drain only dials, so an ephemeral local port is fine.
+        #[arg(long, value_name = "ADDR", default_value = "0.0.0.0:0")]
+        iroh_bind_addr: String,
+
+        /// Self-hosted relay URL(s). Repeatable. Omitted -> RelayMode::Disabled
+        /// (direct addressing; never the n0 free relays).
+        #[arg(long, value_name = "URL")]
+        iroh_relay_url: Vec<String>,
+
+        /// Direct dialable socket address(es) for a recipient in the relay-disabled /
+        /// direct-address deployment, as `KERNEL_ID=HOST:PORT`. Repeatable; repeat the
+        /// same KERNEL_ID to add multiple sockets. The verified transport directory
+        /// binds `kernel_id -> transport EndpointId` but carries NO socket address, so
+        /// without discovery / --iroh-relay-url the drain cannot reach a peer known only
+        /// by EndpointId + socket. Each entry threads its socket(s) onto the resolved
+        /// EndpointId so the drain dials directly. The EndpointId binding still comes
+        /// from the verified directory and iroh authenticates it at the handshake, so a
+        /// wrong/hostile socket cannot redirect delivery to an unauthorized peer.
+        #[arg(long, value_name = "KERNEL_ID=HOST:PORT")]
+        iroh_peer_addr: Vec<String>,
+
+        /// Comma-separated iroh lanes to drain. Default: pheromone (the only outbound
+        /// lane on this hook).
+        #[arg(long, value_name = "LANES", default_value = "pheromone")]
+        iroh_lanes: String,
     },
 
     /// Request bounded catch-up metadata from local relay state.

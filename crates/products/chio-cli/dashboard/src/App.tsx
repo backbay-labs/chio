@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getToken } from './api'
 import type { Filters } from './types'
 import { FilterSidebar } from './components/FilterSidebar'
+import { ProofRoomView } from './components/ProofRoomView'
 import { ReceiptTable } from './components/ReceiptTable'
 
 const INITIAL_FILTERS: Filters = {
@@ -16,6 +17,9 @@ const INITIAL_FILTERS: Filters = {
 export default function App() {
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS)
   const [token, setToken] = useState<string | null>(null)
+  const isProofRoom =
+    window.location.pathname === '/proof-room'
+    || new URLSearchParams(window.location.search).get('view') === 'proof-room'
 
   useEffect(() => {
     setToken(getToken())
@@ -26,9 +30,11 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <h1>Chio Receipt Dashboard</h1>
+        <h1>{isProofRoom ? 'Chio Proof Room' : 'Chio Receipt Dashboard'}</h1>
       </header>
-      {token === null ? (
+      {isProofRoom ? (
+        <ProofRoomView />
+      ) : token === null ? (
         <div className="main-content">
           <div className="state-loading">Checking dashboard access...</div>
         </div>

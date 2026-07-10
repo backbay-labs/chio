@@ -165,6 +165,104 @@ async fn relay_observability_endpoint_requires_operator_token_when_configured() 
     server.abort();
 }
 
+/// DEPLOYABILITY: proves the optional extra-metrics hook is ADDITIVE. With the
+/// hook set, the injected `chio_federation_transport_*` family appears on the SAME
+/// live `/metrics` endpoint alongside the relay's own families; with no hook the
+/// body carries only the relay's own families. This is the seam the serving binary
+/// (chio-cli) uses to expose the iroh federation-transport metrics without this
+/// crate depending on the iroh transport crate (which would be a dependency cycle).
+#[tokio::test]
+async fn relay_metrics_endpoint_appends_extra_metrics_hook_only_when_set() {
+    fn metrics_service_config() -> PheromoneRelayConfig {
+        PheromoneRelayConfig {
+            local_kernel_id: "did:chio:buyer-kernel".to_string(),
+            profile: RelayProfile::Production,
+            now_unix_ms: NOW,
+            freshness_window_ms: 60_000,
+            max_body_bytes: 256_000,
+            use_system_clock: false,
+            // No operator token: keep the /metrics GET unauthenticated for the test.
+            operator_token: None,
+            report_dir: None,
+        }
+    }
+
+    fn injected_family() -> String {
+        "chio_federation_transport_admission_total{outcome=\"accept\"} 1\n".to_string()
+    }
+
+    async fn scrape_metrics(address: std::net::SocketAddr) -> String {
+        reqwest::Client::new()
+            .get(format!(
+                "http://{address}{}",
+                chio_pheromone_relay::PHEROMONE_RELAY_METRICS_PATH
+            ))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap()
+    }
+
+    let sender = key(1);
+
+    // Baseline: no hook. The /metrics body is the relay's own families only.
+    let baseline_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let baseline_address = baseline_listener.local_addr().unwrap();
+    let baseline_directory = PeerDirectory::from_document(
+        directory(&sender, format!("http://{baseline_address}")),
+        NOW,
+    )
+    .unwrap();
+    let baseline_store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+    let baseline_service = PheromoneRelayService::new(
+        metrics_service_config(),
+        baseline_directory,
+        Arc::new(AcceptingReceiver),
+        Arc::clone(&baseline_store),
+    );
+    let baseline_server = tokio::spawn(baseline_service.serve(baseline_listener));
+    let baseline_body = scrape_metrics(baseline_address).await;
+    assert!(
+        baseline_body.contains("chio_pheromone_relay_queue_depth"),
+        "the relay must always render its own metric families: {baseline_body}"
+    );
+    assert!(
+        !baseline_body.contains("chio_federation_transport_"),
+        "without the hook, /metrics must not carry any injected families: {baseline_body}"
+    );
+    baseline_server.abort();
+
+    // With the hook: the injected family is appended on the SAME /metrics surface,
+    // and the relay's own families are still present (additive, not replaced).
+    let hooked_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let hooked_address = hooked_listener.local_addr().unwrap();
+    let hooked_directory =
+        PeerDirectory::from_document(directory(&sender, format!("http://{hooked_address}")), NOW)
+            .unwrap();
+    let hooked_store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+    let hook: chio_pheromone_relay::ExtraMetricsHook = Arc::new(injected_family);
+    let hooked_service = PheromoneRelayService::new(
+        metrics_service_config(),
+        hooked_directory,
+        Arc::new(AcceptingReceiver),
+        Arc::clone(&hooked_store),
+    )
+    .with_extra_metrics_hook(hook);
+    let hooked_server = tokio::spawn(hooked_service.serve(hooked_listener));
+    let hooked_body = scrape_metrics(hooked_address).await;
+    assert!(
+        hooked_body.contains("chio_pheromone_relay_queue_depth"),
+        "with the hook, the relay's own families must still be present: {hooked_body}"
+    );
+    assert!(
+        hooked_body.contains("chio_federation_transport_admission_total"),
+        "with the hook, /metrics must carry the injected family: {hooked_body}"
+    );
+    hooked_server.abort();
+}
+
 #[tokio::test]
 async fn relay_rejects_authenticated_batch_above_peer_frame_limit() {
     let sender = key(1);

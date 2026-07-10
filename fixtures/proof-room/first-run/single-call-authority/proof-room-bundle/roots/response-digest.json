@@ -1,0 +1,6 @@
+{
+  "schema": "chio.response.digest.v1",
+  "id": "response-digest-single-call-authority",
+  "method": "demo.echo",
+  "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+}

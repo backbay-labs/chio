@@ -1,0 +1,8 @@
+{
+  "schema": "chio.disclosure-lineage.negative-fixture.v1",
+  "id": "unknown-lineage-root",
+  "claim_ref": "claim.disclosure.lineage_subgraph_bound",
+  "base_fixture": "fixtures/proof-room/disclosure-lineage/valid-lineage-ledger/signed-lineage-subgraph.json",
+  "case": "UnknownLineageRoot",
+  "expected_failure_code": "proof-room.negative.unknown-lineage-root-receipt"
+}

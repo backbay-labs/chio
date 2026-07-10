@@ -21,8 +21,7 @@
         { "containerPort": 8080, "hostPort": 8080, "protocol": "tcp" }
       ],
       "environment": [
-        { "name": "CHIO_SIDECAR_URL", "value": "http://localhost:9090" },
-        { "name": "CHIO_SIDECAR_HEALTH_URL", "value": "http://localhost:9090/chio/health" }
+        { "name": "CHIO_SIDECAR_URL", "value": "http://localhost:9090" }
       ],
       "dependsOn": [
         { "containerName": "chio-sidecar", "condition": "HEALTHY" }
@@ -62,11 +61,6 @@
         "0.0.0.0:9090"
       ],
       "environment": [
-        { "name": "CHIO_LISTEN_ADDR", "value": "0.0.0.0:9090" },
-        { "name": "CHIO_HEALTH_PATH", "value": "/chio/health" },
-        { "name": "CHIO_KERNEL_CONFIG_PATH", "value": "/etc/chio/kernel.yaml" },
-        { "name": "CHIO_POLICY_SOURCE", "value": "s3://ACCOUNT_ID-chio-config/policy.yaml" },
-        { "name": "CHIO_RECEIPT_SINK", "value": "dynamodb://chio-receipts" },
         { "name": "CHIO_LOG_LEVEL", "value": "info" }
       ],
       "secrets": [

@@ -5,26 +5,24 @@ This migration flips `delegation` to default-on in
 `RevocationView` snapshot on every delegated dispatch and denies the
 capability if any link in its delegation chain (or the leaf capability
 itself) appears in the revoked set. This is the trust-boundary's
-fail-closed step that has shipped behind the `delegation` feature
-gate in an earlier phase.
+fail-closed step controlled by the `delegation` feature gate.
 
 ## What changed
 
-- `crates/kernel/chio-kernel/Cargo.toml`'s `default` feature set now contains
-  both `legacy-sync` and `delegation`. A standard
-  `chio-kernel = { version = "..." }` dependency picks both up
-  transparently, with no Cargo.toml edits required by consumers.
+- `crates/kernel/chio-kernel/Cargo.toml`'s `default` feature set contains
+  `delegation`. A standard `chio-kernel = { version = "..." }` dependency
+  picks it up transparently, with no Cargo.toml edits required by consumers.
 - `chio-kernel`'s `delegation` feature still cascades to
   `chio-core-types/delegation`, which in turn enables
   `chio_core_types::delegate(...)`,
   `chio_core_types::DelegationReceipt`, and
   `chio_core_types::ScopeAttenuation`. With the kernel default flipped,
   these symbols are reachable from any default kernel build.
-- The legacy single-step `RevocationStore` lookup still runs on every
+- The single-step `RevocationStore` lookup still runs on every
   dispatch. The new oracle consultation is additive and runs *only*
   when a `RevocationView` has been installed via
   `ChioKernel::set_revocation_view`. Kernels that never install a view
-  see no behavioural change beyond a single conditional branch on each
+  see no behavioral change beyond a single conditional branch on each
   delegated dispatch.
 
 ## What this changes for consumers
@@ -33,7 +31,7 @@ gate in an earlier phase.
 
 No action required. The kernel boots with `delegation` on, but the
 kernel-side oracle consultation is dormant until a `RevocationView` is
-installed. Default deployments (no view installed) keep the legacy
+installed. Default deployments (no view installed) keep the
 `RevocationStore`-only revocation surface and behave identically.
 
 ### Recursive-delegation deployments
@@ -59,21 +57,17 @@ Deployments that wire up federation gossip should:
    enforces scope subset, expiry monotonicity, and budget monotonicity
    at mint time.
 
-### Consumers that need to opt out (legacy-sync only)
+### Consumers that need the single-step revocation path
 
-Downstream crates that need the pre-migration single-step path can disable
-the new default:
+Downstream crates that need the single-step path can disable the new default:
 
 ```toml
-chio-kernel = { version = "...", default-features = false, features = ["legacy-sync"] }
+chio-kernel = { version = "...", default-features = false }
 ```
 
-This is consistent with the precedent set by the async-kernel
-migration's `legacy-sync` flag (see `docs/migrations/async-kernel-migration.md`):
-default-on the new surface, leave one explicit opt-out path for
-consumers still on the legacy contract. Mixed `default-features = false`
-without `legacy-sync` is unsupported - the kernel needs at least one
-of the two to compile its dispatch path.
+The kernel still provides both a synchronous (`evaluate_tool_call_blocking`) and
+asynchronous (`evaluate_tool_call`) dispatch entrypoint; this setting only
+changes whether delegated revocation-chain evaluation is enabled by default.
 
 ### chio-core-types stays opt-in
 
@@ -96,14 +90,14 @@ kernel. Framework adapters continue to opt in explicitly.
   schema-versioned by `chio-federation::REVOCATION_ROOT_GOSSIP_SCHEMA`.
 - **Receipt format:** No new receipt fields. Allow / deny verdicts that
   pass through the new consultation step are byte-identical to those
-  produced by the pre-flip legacy path, with one exception: a
+  produced by the single-step path, with one exception: a
   capability whose chain is revoked in the installed view now denies
   with `KernelError::DelegationChainRevoked(<id>)` (or
   `KernelError::CapabilityRevoked(<id>)` for the leaf). Both variants
   predate this flip; the change is *which* path produces them.
 - **Roll-back:** Pin the previous version or set
-  `default-features = false, features = ["legacy-sync"]` on every
-  `chio-kernel` dependency. No data migration is required.
+  `default-features = false` on every `chio-kernel` dependency. No data
+  migration is required.
 
 ## Verification checklist
 

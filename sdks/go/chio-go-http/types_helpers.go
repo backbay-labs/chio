@@ -180,14 +180,6 @@ type EvaluateResponse struct {
 	Evidence []GuardEvidence `json:"evidence"`
 }
 
-// ChioPassthrough is retained for legacy source compatibility. Current v1
-// middleware always fails closed and does not attach this marker.
-type ChioPassthrough struct {
-	Mode    string `json:"mode"`
-	Error   string `json:"error"`
-	Message string `json:"message"`
-}
-
 // Error codes for Chio HTTP responses.
 const (
 	ErrAccessDenied       = "chio_access_denied"
@@ -195,7 +187,6 @@ const (
 	ErrSidecarUnavailable = "chio_sidecar_unavailable"
 	ErrEvaluationFailed   = "chio_evaluation_failed"
 	ErrInvalidReceipt     = "chio_invalid_receipt"
-	ErrTimeout            = "chio_timeout"
 )
 
 // ErrorResponse is the structured error body returned by Chio middleware.

@@ -1,0 +1,19 @@
+{
+  "object_kind": "sd_jwt_vc_presentation",
+  "id": "sd-jwt-vc-presentation-agent-web-valid",
+  "media_type": "application/dc+sd-jwt",
+  "credential_digest": "1717171717171717171717171717171717171717171717171717171717171717",
+  "disclosed_claims_digest": "2828282828282828282828282828282828282828282828282828282828282828",
+  "holder_binding_digest": "3939393939393939393939393939393939393939393939393939393939393939",
+  "issuer_key_digest": "4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a",
+  "verifier_policy_digest": "5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+  "presentation_nonce_digest": "6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c",
+  "audience_digest": "7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d",
+  "authorization_context_digest": "8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e8e",
+  "credential_status": "valid",
+  "key_binding_alg": "ES256",
+  "receipt_refs": [
+    "receipt-agent-web-sd-jwt-vc-presentation-allow"
+  ],
+  "mediated_by_chio_receipt": true
+}

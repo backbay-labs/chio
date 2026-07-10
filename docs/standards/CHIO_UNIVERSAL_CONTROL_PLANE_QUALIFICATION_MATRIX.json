@@ -5,7 +5,7 @@
   "claimLevel": "technical_control_plane_thesis",
   "decision": "technical_claim_qualified_market_thesis_not_yet_qualified",
   "qualifiedClaim": {
-    "summary": "Chio ships a cryptographically signed, fail-closed, intent-aware governance control plane with shared executor registry resolution, signed route-selection evidence, multi-hop receipt lineage, and a shared lifecycle contract across the qualified authoritative HTTP, MCP, A2A, and ACP surfaces. OpenAI remains deferred until caller-executed function-tool mediation is separately implemented and qualified.",
+    "summary": "Chio ships a cryptographically signed, fail-closed, intent-aware governance control plane with shared executor registry resolution, signed route-selection evidence, multi-hop receipt lineage, and a shared lifecycle contract across the qualified authoritative HTTP, MCP, A2A, and ACP-Client surfaces. OpenAI remains deferred until caller-executed function-tool mediation is separately implemented and qualified.",
     "constraints": [
       "Only the supported authoritative protocol surfaces are claim-eligible.",
       "Compatibility helpers remain non-authoritative and non-claim-eligible.",
@@ -62,7 +62,7 @@
     },
     {
       "id": "CTRL3-03",
-      "summary": "Signed route-selection evidence is surfaced consistently on qualified HTTP/API, MCP, A2A, and ACP authoritative paths. OpenAI remains deferred until separately qualified.",
+      "summary": "Signed route-selection evidence is surfaced consistently on qualified HTTP/API, MCP, A2A, and ACP-Client authoritative paths. OpenAI remains deferred until separately qualified.",
       "witnesses": [
         "crates/protocol/chio-cross-protocol/src/lib.rs",
         "crates/platform/chio-http-core/src/authority.rs",
@@ -118,7 +118,7 @@
       "id": "VISION3-01",
       "summary": "The stronger original technical control-plane claim upgrades only after FABRIC3, CTRL3, LIFE3, and ECO3 evidence is complete.",
       "witnesses": [
-        "docs/protocols/STRATEGIC-VISION.md",
+        "docs/start-here/VISION.md",
         "docs/release/QUALIFICATION.md",
         "docs/release/RELEASE_AUDIT.md"
       ]
@@ -128,7 +128,7 @@
       "summary": "The docs separate technical control-plane qualification from any still-unproved comptroller-of-the-agent-economy market-position thesis.",
       "witnesses": [
         "docs/VISION.md",
-        "docs/protocols/STRATEGIC-VISION.md",
+        "docs/start-here/VISION.md",
         "docs/release/QUALIFICATION.md",
         "docs/release/RELEASE_AUDIT.md"
       ]

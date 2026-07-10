@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-web3/v2/settlement-execution-receipt.schema.json",
+  "title": "Chio Web3 Settlement Execution Receipt",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "execution_receipt_id",
+    "issued_at",
+    "dispatch",
+    "observed_execution",
+    "lifecycle_state",
+    "settlement_reference",
+    "settled_amount"
+  ],
+  "properties": {
+    "schema": { "const": "chio.web3-settlement-execution-receipt.v2" },
+    "execution_receipt_id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "integer", "minimum": 0 },
+    "dispatch": { "$ref": "settlement-dispatch.schema.json" },
+    "observed_execution": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["observedAt", "externalReferenceId", "amount"],
+      "properties": {
+        "observedAt": { "type": "integer", "minimum": 0 },
+        "externalReferenceId": { "type": "string", "minLength": 1 },
+        "amount": { "$ref": "#/$defs/money" }
+      }
+    },
+    "lifecycle_state": {
+      "enum": [
+        "pending_dispatch",
+        "escrow_locked",
+        "partially_settled",
+        "settled",
+        "reversed",
+        "charged_back",
+        "timed_out",
+        "failed",
+        "reorged"
+      ]
+    },
+    "settlement_reference": { "type": "string", "minLength": 1 },
+    "reconciled_anchor_proof": { "type": "object" },
+    "identity_registry_evidence": { "$ref": "#/$defs/identityRegistryEvidence" },
+    "identity_registry_evidence_binding": {
+      "$ref": "#/$defs/identityRegistryEvidenceBinding"
+    },
+    "oracle_evidence": { "$ref": "../../chio-oracle/v1/conversion-evidence.schema.json" },
+    "settled_amount": { "$ref": "#/$defs/money" },
+    "reversal_of": { "type": "string" },
+    "failure_reason": { "type": "string" },
+    "note": { "type": "string" }
+  },
+  "$defs": {
+    "evmAddress": {
+      "type": "string",
+      "pattern": "^0x[0-9a-fA-F]{40}$"
+    },
+    "identityRegistryEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chain_id",
+        "identity_registry_contract",
+        "operator_address",
+        "block_number",
+        "block_hash",
+        "observed_at",
+        "operator_key_hash",
+        "settlement_key",
+        "registered_at",
+        "operator_epoch",
+        "active"
+      ],
+      "properties": {
+        "chain_id": { "type": "string", "minLength": 1 },
+        "identity_registry_contract": { "$ref": "#/$defs/evmAddress" },
+        "operator_address": { "$ref": "#/$defs/evmAddress" },
+        "block_number": { "type": "integer", "minimum": 1 },
+        "block_hash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "observed_at": { "type": "integer", "minimum": 1 },
+        "operator_key_hash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "settlement_key": { "$ref": "#/$defs/evmAddress" },
+        "registered_at": { "type": "integer", "minimum": 1 },
+        "operator_epoch": { "type": "integer", "minimum": 1 },
+        "active": { "type": "boolean" }
+      }
+    },
+    "identityRegistryEvidenceBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity_registry_contract",
+        "operator_address",
+        "settlement_key"
+      ],
+      "properties": {
+        "identity_registry_contract": { "$ref": "#/$defs/evmAddress" },
+        "operator_address": { "$ref": "#/$defs/evmAddress" },
+        "settlement_key": { "$ref": "#/$defs/evmAddress" }
+      }
+    },
+    "money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "type": "integer", "minimum": 1 },
+        "currency": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -19,7 +19,7 @@ The current control-plane claim covers the authoritative paths across:
 - HTTP/API enforcement via `chio-api-protect` and `chio-tower`
 - MCP runtime execution
 - A2A authoritative send/stream/get/cancel mediation
-- ACP authoritative invoke/stream/resume/cancel mediation
+- ACP-Client authoritative invoke/stream/resume/cancel mediation
 
 Compatibility-only helpers and deferred OpenAI adapter surfaces are out of
 scope for this claim.
@@ -29,7 +29,7 @@ scope for this claim.
 The qualified topology has three material trust layers:
 
 1. Source protocol surface
-   - HTTP, MCP, A2A, or ACP originates a governed request
+   - HTTP, MCP, A2A, or ACP-Client originates a governed request
 2. Chio control plane
    - route planning
    - capability / policy enforcement

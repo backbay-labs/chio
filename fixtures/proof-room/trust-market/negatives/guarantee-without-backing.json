@@ -1,0 +1,8 @@
+{
+  "schema": "chio.trust-market.negative-fixture.v1",
+  "id": "guarantee-without-backing",
+  "claim_ref": "claim.trust_market.collateral_guarantee_bound",
+  "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
+  "case": "GuaranteeWithoutBacking",
+  "expected_failure_code": "proof-room.negative.guarantee-backing-missing"
+}

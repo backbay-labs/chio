@@ -1,0 +1,9 @@
+{
+  "schema": "chio.proof-room.product-overlay-negative.v1",
+  "id": "product-plugin-cached-verdict",
+  "surface": "plugin-viewer",
+  "description": "A plugin-cached verdict is not proof unless it is backed by the current CLI verifier report.",
+  "expected_failure_code": "plugin.verdict.cache-stale",
+  "observed_failure_code": "plugin.verdict.cache-stale",
+  "checker": "cargo xtask verify launch-acceptance"
+}

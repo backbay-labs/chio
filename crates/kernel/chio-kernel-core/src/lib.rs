@@ -26,7 +26,7 @@
 //!   move-only signing handle (the strongest API; cannot be replayed).
 //! - [`sign_receipt_relaying_trusted_body`] -- body-only relay that trusts the
 //!   caller `content_hash`; for transport adapters that cannot hold the content
-//!   preimage (mobile/browser/cpp-ffi). Explicit, auditable trust seam (BAC-601).
+//!   preimage (mobile/browser/cpp-ffi). Explicit, auditable trust seam.
 //! - [`Clock`] / [`Rng`] -- abstract trait boundaries for time/entropy so
 //!   adapters on wasm/mobile can inject platform clocks and CSPRNGs.
 //!

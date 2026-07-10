@@ -1,7 +1,5 @@
 # Trust Model and Key Management
 
-**Status:** Draft
-**Date:** 2026-04-13
 **Scope:** Trust roots, key hierarchy, rotation domains, hosted signing, verifier onboarding
 
 > **Purpose**: Several protocol docs use a simplified "single kernel keypair"
@@ -268,7 +266,7 @@ Verifier behavior:
 - degraded states may still be operationally useful, but they are not eligible
   for the same compliance assertions
 
-This distinction is especially important for ACP proxy integration and for
+This distinction is especially important for ACP-Client proxy integration and for
 certificate generation.
 
 ---

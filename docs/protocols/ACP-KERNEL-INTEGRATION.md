@@ -1,4 +1,4 @@
-# ACP Proxy Kernel Integration
+# ACP-Client Proxy Kernel Integration
 
 Technical design specification for integrating `chio-acp-proxy` with the Chio kernel's
 receipt signing and capability validation infrastructure.
@@ -14,7 +14,7 @@ receipt signing and capability validation infrastructure.
 
 ## 1. Problem Statement
 
-The ACP proxy produces **unsigned** `AcpToolCallAuditEntry` objects for tool-call events
+The ACP-Client proxy produces **unsigned** `AcpToolCallAuditEntry` objects for tool-call events
 observed in `session/update` notifications. These lack three properties that the MCP and
 A2A adapters provide through kernel-mediated `ChioReceipt` objects:
 
@@ -27,7 +27,7 @@ A2A adapters provide through kernel-mediated `ChioReceipt` objects:
 
 3. **Cross-protocol audit continuity.** Unsigned entries cannot be appended to the
    kernel's `ReceiptStore` or included in Merkle checkpoint batches, breaking the
-   commitment chain for organizations running ACP agents alongside MCP tool servers.
+   commitment chain for organizations running ACP-Client agents alongside MCP tool servers.
 
 This is the single largest security gap in the Chio protocol stack.
 
@@ -37,7 +37,7 @@ This is the single largest security gap in the Chio protocol stack.
 
 | Goal | Constraint |
 |------|-----------|
-| Signed `ChioReceipt` for ACP tool-call events | Must not force proxy to implement `ToolServerConnection` |
+| Signed `ChioReceipt` for ACP-Client tool-call events | Must not force proxy to implement `ToolServerConnection` |
 | Capability-token validation for resource access | Preserve proxy's boundary architecture |
 | Merkle receipt chain integration | Proxy must not hold private key material |
 | Standalone proxy support (no kernel) | Preserve optional unsigned standalone mode, but label it as outside full attestation claims |
@@ -53,15 +53,15 @@ server.
 This design distinguishes **policy enforcement** from **attestation
 completeness**. A request can be correctly guarded yet still fail to produce a
 signed receipt. That must be surfaced explicitly; it cannot be silently treated
-as equivalent to a fully attested ACP event.
+as equivalent to a fully attested ACP-Client event.
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AcpAttestationMode {
-    /// Default for Chio-governed deployments. Unsigned ACP observations are
+    /// Default for Chio-governed deployments. Unsigned ACP-Client observations are
     /// treated as non-compliant evidence gaps.
     Required,
-    /// Standalone compatibility mode only. Unsigned ACP observations may still be written,
+    /// Standalone compatibility mode only. Unsigned ACP-Client observations may still be written,
     /// but the session is not eligible for full cross-protocol attestation
     /// claims or compliance certificates.
     UnsignedCompatibility,
@@ -76,7 +76,7 @@ pub enum AcpAttestationStatus {
 }
 ```
 
-Any ACP session containing a status other than `FullyAttested` is outside Chio's
+Any ACP-Client session containing a status other than `FullyAttested` is outside Chio's
 full cross-protocol attestation claim and must be excluded from compliance
 certificate issuance unless a later repair flow closes the evidence gap.
 
@@ -105,7 +105,7 @@ pub struct MessageInterceptor {
 ### 3.2 Message Flow
 
 ```
-Editor/IDE               ACP Proxy                         ACP Agent
+Editor/IDE               ACP-Client Proxy                         ACP-Client Agent
     |                       |                                  |
     |-- JSON-RPC request -->|                                  |
     |                       |-- [CapabilityChecker::check] --> |
@@ -149,14 +149,14 @@ pub enum AcpScopeContext {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FileOperation { Read, Write }
 
-/// Parameters for signing an ACP tool-call event into a Chio receipt.
+/// Parameters for signing an ACP-Client tool-call event into a Chio receipt.
 #[derive(Debug, Clone)]
 pub struct AcpReceiptRequest {
-    /// Unique tool call ID from the ACP protocol.
+    /// Unique tool call ID from the ACP-Client protocol.
     pub tool_call_id: String,
     /// Tool name (e.g. "fs/read_text_file", "terminal/create").
     pub tool_name: String,
-    /// Session ID from the ACP session/update notification.
+    /// Session ID from the ACP-Client session/update notification.
     pub session_id: String,
     /// SHA-256 hex digest of the canonical JSON of the tool-call event.
     pub content_hash: String,
@@ -176,12 +176,12 @@ pub enum ReceiptSignError {
     Internal(String),
 }
 
-/// Signs ACP audit events into Chio receipts.
+/// Signs ACP-Client audit events into Chio receipts.
 ///
 /// Implementations hold or delegate to the kernel's signing key.
 /// The proxy never touches key material directly.
 pub trait ReceiptSigner: Send + Sync {
-    /// Promote an ACP tool-call event into a signed `ChioReceipt`.
+    /// Promote an ACP-Client tool-call event into a signed `ChioReceipt`.
     ///
     /// Responsible for: generating receipt ID (UUIDv7), populating
     /// `capability_id` and `policy_hash`, building `ChioReceiptBody`,
@@ -235,7 +235,7 @@ pub enum CapabilityCheckError {
     Internal(String),
 }
 
-/// Validates ACP resource access against Chio capability tokens.
+/// Validates ACP-Client resource access against Chio capability tokens.
 ///
 /// Implementations consult the kernel's capability authority, revocation
 /// store, and budget store. The proxy calls this before forwarding
@@ -318,10 +318,10 @@ may hold the key in-process or call out to the kernel over an authenticated chan
 
 **Receipt integrity.** Signed receipts carry the same properties as MCP/A2A
 receipts: Ed25519 signature over canonical JSON, embedded `kernel_key`,
-`content_hash` from the ACP event, `policy_hash`, and inclusion in the Merkle
+`content_hash` from the ACP-Client event, `policy_hash`, and inclusion in the Merkle
 checkpoint chain when a `ReceiptStore` is configured.
 
-**Compliance boundary honesty.** Chio may still enforce policy even when ACP
+**Compliance boundary honesty.** Chio may still enforce policy even when ACP-Client
 attestation is degraded, but such sessions must not be described as fully
 attested. This preserves the integrity of cross-protocol claims.
 

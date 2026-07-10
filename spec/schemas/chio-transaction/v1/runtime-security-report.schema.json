@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-transaction/v1/runtime-security-report.schema.json",
+  "title": "Chio Transaction Runtime Security Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "issued_at",
+    "verdict",
+    "passport_id",
+    "verified_claims"
+  ],
+  "properties": {
+    "schema": { "const": "chio.transaction.runtime-security-report.v1" },
+    "id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "string", "minLength": 1 },
+    "verdict": { "type": "string", "enum": ["verified", "failed"] },
+    "passport_id": { "type": "string", "minLength": 1 },
+    "verified_claims": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}

@@ -1,9 +1,7 @@
 # External Guards -- Operator and Policy Reference
 
-> **Status**: Current April 2026
 > **Depends on**: `docs/guards/01-CURRENT-GUARD-SYSTEM.md` (guard trait
-> and pipeline), `docs/guards/12-SELECTIVE-ABSORPTION-PLAN.md` (async
-> adapter origin), `docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`
+> and pipeline), `docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md`
 > (claim boundary)
 
 External guards call out to third-party services (cloud content-safety
@@ -154,7 +152,7 @@ returns `GuardDenied` with a diagnostic name rather than panicking.
 ## 6. Policy Wiring
 
 External guards are instantiated through the policy-compiler path in
-`crates/products/chio-cli/src/policy.rs`. Authoring lives on the
+`crates/products/chio-cli`. Authoring lives on the
 HushSpec-canonical pipeline (see `E13: Policy and Adoption
 Unification`). The shape is the same for every provider:
 
@@ -215,8 +213,7 @@ The evidence block preserves at minimum:
   fresh call).
 
 It does **not** embed provider API response bodies verbatim. Operators
-who need raw provider telemetry should route that through SIEM export
-(see `docs/guards/11-SIEM-OBSERVABILITY-COMPLETION.md`), not through
+who need raw provider telemetry should route that through SIEM export, not through
 the receipt log.
 
 ---
@@ -279,9 +276,7 @@ claim requires its own qualification lane, not a documentation change.
   three-state breaker.
 - `crates/guards/chio-guards/src/external/cache.rs`,
   `token_bucket.rs`, `retry.rs` -- supporting primitives.
-- `crates/products/chio-cli/src/policy.rs` -- policy-compiler wiring and
+- `crates/products/chio-cli` -- policy-compiler wiring and
   `build_pipeline_from_external_guard_policy` test.
-- `docs/guards/12-SELECTIVE-ABSORPTION-PLAN.md` -- historical
-  porting context for the async adapter.
 - `docs/standards/CHIO_BOUNDED_OPERATIONAL_PROFILE.md` -- canonical
   claim boundary.

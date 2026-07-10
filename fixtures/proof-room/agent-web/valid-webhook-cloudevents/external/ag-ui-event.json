@@ -1,0 +1,38 @@
+{
+  "object_kind": "ag_ui_event",
+  "id": "ag-ui-event-agent-web-valid",
+  "protocol_version": "events-v1",
+  "event_id": "evt-agent-web-checkout-001",
+  "agent_id_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+  "session_id_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+  "capability_id": "ui.checkout.submit",
+  "event_type": "state_update",
+  "target_component_type": "checkout-panel",
+  "target_component_id_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+  "classification": "mutate",
+  "transport": "websocket",
+  "allowed": true,
+  "payload_digest": "4444444444444444444444444444444444444444444444444444444444444444",
+  "receipt_digest": "5555555555555555555555555555555555555555555555555555555555555555",
+  "authorization_context_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+  "event_sequence": [
+    {
+      "phase": "start",
+      "event_id": "evt-agent-web-checkout-001:start",
+      "payload_digest": "6767676767676767676767676767676767676767676767676767676767676767",
+      "receipt_digest": "6868686868686868686868686868686868686868686868686868686868686868"
+    },
+    {
+      "phase": "content",
+      "event_id": "evt-agent-web-checkout-001:content",
+      "payload_digest": "6969696969696969696969696969696969696969696969696969696969696969",
+      "receipt_digest": "6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a"
+    },
+    {
+      "phase": "end",
+      "event_id": "evt-agent-web-checkout-001:end",
+      "payload_digest": "6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b6b",
+      "receipt_digest": "6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c"
+    }
+  ]
+}

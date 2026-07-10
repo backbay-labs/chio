@@ -1,0 +1,13 @@
+{
+  "allow_receipt_ref": "first-run-single-call-allow",
+  "capability_id": "cap-first-run-single-call",
+  "decision": "allow-and-deny-covered",
+  "denial_receipt_ref": "first-run-single-call-denial",
+  "guard_id": "guard-first-run-request",
+  "id": "guard-report-single-call-authority",
+  "policy_digest": "3f562106e60d01c801571ab725ce3d9c8f5cf35451ae9e5d08c1fff1bf005bfe",
+  "request_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "response_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "schema": "chio.proof.first-run.guard-report.v1",
+  "signature": "be257ae7e9e366571b32a314bb9549e7e3daa6aed08372aa3a12daa9a23364db191f66f01351dd34f775055561a46886ebb2cf63a7429f51f1986aacd19a7c05"
+}

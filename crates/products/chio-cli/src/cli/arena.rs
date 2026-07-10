@@ -11,12 +11,10 @@ use super::*;
 const MAX_ARENA_EVOLVE_GENERATIONS: u32 = 200;
 const MAX_ARENA_EVOLVE_WALL_SECONDS: u64 = 30 * 60;
 
-#[allow(dead_code)]
 fn arena_default_output_root() -> std::path::PathBuf {
     std::path::PathBuf::from("target").join("arena")
 }
 
-#[allow(dead_code)]
 fn arena_resolve_output_root(override_path: Option<&std::path::Path>) -> std::path::PathBuf {
     match override_path {
         Some(path) => path.to_path_buf(),
@@ -24,7 +22,6 @@ fn arena_resolve_output_root(override_path: Option<&std::path::Path>) -> std::pa
     }
 }
 
-#[allow(dead_code)]
 pub(crate) fn cmd_arena_run(
     scenario_path: &std::path::Path,
     output_root: Option<&std::path::Path>,
@@ -75,7 +72,6 @@ pub(crate) fn cmd_arena_run(
     Ok(())
 }
 
-#[allow(dead_code)]
 pub(crate) fn cmd_arena_replay(
     scenario_id: &str,
     output_root: Option<&std::path::Path>,
@@ -122,7 +118,6 @@ pub(crate) fn cmd_arena_replay(
     Ok(())
 }
 
-#[allow(dead_code)]
 pub(crate) fn cmd_arena_evolve(
     seed_path: &std::path::Path,
     generations: u32,
@@ -186,12 +181,10 @@ pub(crate) fn cmd_arena_evolve(
     Ok(())
 }
 
-#[allow(dead_code)]
 fn arena_cli_error<E: std::fmt::Display>(stage: &str, err: E) -> CliError {
     CliError::cli_other_error(format!("arena {stage}: {err}"))
 }
 
-#[allow(dead_code)]
 fn arena_validate_scenario_id(value: &str) -> Result<(), CliError> {
     if !value.is_empty()
         && value != "."

@@ -1,0 +1,8 @@
+{
+  "schema": "chio.enterprise-export.negative-fixture.v1",
+  "id": "pii-overdisclosure",
+  "claim_ref": "claim.enterprise.data_governance_bound",
+  "base_fixture": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/transaction-passport.json",
+  "case": "OverdisclosedPii",
+  "expected_failure_code": "proof-room.negative.pii-field-was-not-redacted"
+}

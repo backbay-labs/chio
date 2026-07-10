@@ -16,9 +16,11 @@ async-trait = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-kernel = { workspace = true }
 chio-manifest = { workspace = true }
+futures = "0.3"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 
 [lints]
 workspace = true

@@ -7,8 +7,11 @@
 //! [`BlockingToolEvaluator`] remains for compatibility surfaces that
 //! intentionally enter the synchronous bridge.
 //!
-//! The synchronous bridge path is not cancellation-safe for futures dropped
-//! after budget admission or tool dispatch; that gap is a known open item.
+//! Futures dropped after budget admission are handled by the post-admission
+//! drop guard (RFC-0002): a cancellation receipt is recorded whenever
+//! dispatch was in flight and runtime-admission reservations get an explicit
+//! fail-closed disposition. Hard process death mid-dispatch remains the
+//! charter of the dispatch-intent journal (RFC-0003).
 
 use crate::kernel::ChioKernel;
 use crate::{
@@ -96,7 +99,7 @@ pub trait ToolEvaluator: Send + Sync {
     /// `build_and_sign_receipt` path, and equally fail-closed: both delegate to
     /// `chio_kernel_core::sign_receipt_with_handle`, which recomputes
     /// `content_hash` over `canonical_content` and refuses to sign on mismatch
-    /// (WYSIWYS, BAC-539).
+    /// (WYSIWYS).
     async fn sign_receipt(
         &self,
         kernel: &ChioKernel,

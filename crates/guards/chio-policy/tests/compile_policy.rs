@@ -140,7 +140,7 @@ fn compile_policy_emits_all_twelve_guard_types() {
         "path-allowlist",
         "prompt-injection",
         "jailbreak",
-        "spider-sense",
+        "embedding-anomaly",
         "agent-velocity",
     ]
     .into_iter()

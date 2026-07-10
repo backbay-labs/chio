@@ -41,7 +41,7 @@ impl WasmGuardRuntime {
             reason: e.to_string(),
         })?;
 
-        // WGSEC-03: Pre-check module size before passing to the factory
+        // Pre-check module size before passing to the factory
         if wasm_bytes.len() > config.max_module_size {
             return Err(WasmGuardError::ModuleTooLarge {
                 size: wasm_bytes.len(),

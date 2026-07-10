@@ -1,0 +1,27 @@
+[package]
+name = "chio-enterprise-export"
+description = "Enterprise export verifier for Chio transaction proof bundles"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_enterprise_export"
+test = false
+
+[dependencies]
+chio-core-types = { workspace = true }
+chio-risk-comptroller = { workspace = true }
+chio-transaction-passport = { workspace = true }
+chrono = { version = "0.4", features = ["clock"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+chio-test-support = { workspace = true }
+
+[lints]
+workspace = true

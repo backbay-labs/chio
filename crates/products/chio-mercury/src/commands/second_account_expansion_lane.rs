@@ -2,15 +2,6 @@ use super::*;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct MercurySecondAccountExpansionDocRefs {
-    second_account_expansion_file: String,
-    operations_file: String,
-    validation_package_file: String,
-    decision_record_file: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct MercuryPortfolioBoundaryFreeze {
     schema: String,
     workflow_id: String,
@@ -192,18 +183,6 @@ struct MercurySecondAccountExpansionValidationReport {
     same_workflow_boundary: String,
     second_account_expansion: MercurySecondAccountExpansionExportSummary,
     decision_record_file: String,
-    docs: MercurySecondAccountExpansionDocRefs,
-}
-
-fn second_account_expansion_doc_refs() -> MercurySecondAccountExpansionDocRefs {
-    MercurySecondAccountExpansionDocRefs {
-        second_account_expansion_file: "docs/mercury/SECOND_ACCOUNT_EXPANSION.md".to_string(),
-        operations_file: "docs/mercury/SECOND_ACCOUNT_EXPANSION_OPERATIONS.md".to_string(),
-        validation_package_file: "docs/mercury/SECOND_ACCOUNT_EXPANSION_VALIDATION_PACKAGE.md"
-            .to_string(),
-        decision_record_file: "docs/mercury/SECOND_ACCOUNT_EXPANSION_DECISION_RECORD.md"
-            .to_string(),
-    }
 }
 
 fn build_second_account_expansion_profile(
@@ -860,7 +839,6 @@ pub fn cmd_mercury_second_account_expansion_validate(
 
     let second_account_expansion_dir = output.join("second-account-expansion");
     let summary = export_second_account_expansion(&second_account_expansion_dir)?;
-    let docs = second_account_expansion_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercurySecondAccountExpansionDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -895,7 +873,6 @@ pub fn cmd_mercury_second_account_expansion_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         second_account_expansion: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 

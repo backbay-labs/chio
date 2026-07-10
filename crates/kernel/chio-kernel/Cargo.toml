@@ -52,15 +52,11 @@ chrono = { workspace = true, features = ["serde"] }
 chio-kernel-core = { workspace = true }
 chio-credit = { workspace = true }
 chio-federation = { workspace = true }
-chio-governance = { workspace = true }
 chio-link = { path = "../../economy/chio-link", default-features = false }
 chio-log-redact = { workspace = true }
 chio-metrics-spec = { workspace = true }
 chio-tool-call-fabric = { workspace = true }
 lru = "0.16.3"
-chio-listing = { workspace = true }
-chio-market = { workspace = true }
-chio-open-market = { workspace = true }
 chio-settle = { workspace = true }
 arc-swap = { workspace = true }
 async-trait = { workspace = true }

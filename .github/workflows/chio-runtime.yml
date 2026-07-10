@@ -28,6 +28,8 @@ on:
       - "crates/kernel/chio-runtime/**"
       - "crates/tooling/chio-spec-validate/**"
       - "examples/chio-3vendor/**"
+      - "fixtures/proof-room/catalog.json"
+      - "fixtures/proof-room/runtime-security/**"
       - "spec/schemas/chio-attest/**"
       - "spec/schemas/chio-federation/**"
       - "spec/schemas/chio-runtime/**"
@@ -52,6 +54,8 @@ on:
       - "crates/kernel/chio-runtime/**"
       - "crates/tooling/chio-spec-validate/**"
       - "examples/chio-3vendor/**"
+      - "fixtures/proof-room/catalog.json"
+      - "fixtures/proof-room/runtime-security/**"
       - "spec/schemas/chio-attest/**"
       - "spec/schemas/chio-federation/**"
       - "spec/schemas/chio-runtime/**"
@@ -85,6 +89,8 @@ jobs:
         capability:
           - ops-hardening
           - orchestration
+          - attack-simulation
+          - chaos
           - policy
           - proof-parity
           - spine

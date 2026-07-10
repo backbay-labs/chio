@@ -413,7 +413,7 @@ fn ops_negative_flow(
     assert_report_str(&status_bad, "failureCode", "runtime_ops_status_degraded")?;
 
     // Retention planning rejects a missing evidence root (fail-closed: success
-    // is the error). The retired script grep'd the specific stderr marker, so a
+    // is the error). The original shell gate grep'd the specific stderr marker, so a
     // non-zero exit alone is not enough: pin the expected failure message.
     let missing_report = scratch.join("retention-missing-report.json");
     let missing_root = scratch.join("evidence-missing");
@@ -973,6 +973,8 @@ fn dispatch_runtime_handler(
         "policy" => handle_policy(root, manifest, facet, mode),
         "ops_hardening" => handle_ops_hardening(root, manifest, facet, mode),
         "orchestration" => handle_orchestration(root, manifest, facet, mode),
+        "attack_simulation" => handle_attack_simulation(root, manifest, facet, mode),
+        "chaos" => handle_chaos(root, manifest, facet, mode),
         other => Err(XtaskError::Manifest(format!(
             "unknown runtime facet kind {other}"
         ))),

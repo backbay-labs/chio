@@ -106,7 +106,7 @@ impl RateLimiter {
     /// subject over a trailing `window_seconds` interval.
     ///
     /// A `max_per_window` of zero (deny everything) or a non-positive
-    /// window is accepted and simply denies all traffic; that is the
+    /// window is accepted and denies all traffic; that is the
     /// fail-closed direction, so it is never a misconfiguration that
     /// widens the admitted rate.
     #[must_use]

@@ -1,0 +1,63 @@
+{
+  "schema": "chio.agent-web.external-projection-manifest.v1",
+  "projection_id": "projection-acp-client-valid",
+  "source_protocol": "acp-client",
+  "source_version": "v1",
+  "external_fields_used": [
+    "protocol_version",
+    "capability_id",
+    "category",
+    "requires_permission",
+    "permission_decision",
+    "bridge_fidelity",
+    "jsonrpc_method",
+    "jsonrpc_id_digest",
+    "params_digest",
+    "permission_request_digest",
+    "file_path_scope_digest",
+    "terminal_command_scope_digest",
+    "chio_receipt_id",
+    "evidence_path_kind",
+    "receipt_signature_digest",
+    "source_envelope_digest",
+    "arguments_digest",
+    "client_session_digest",
+    "agent_id_digest",
+    "authorization_context_digest"
+  ],
+  "external_fields_not_used": [
+    "host_permission_prompt_as_chio_authority"
+  ],
+  "sidecar_fields": [
+    "transaction_passport_ref",
+    "receipt_refs",
+    "chio_claim_refs"
+  ],
+  "digest_algorithm": "sha256",
+  "signature_algorithm": "none",
+  "requires_external_signature": false,
+  "claim_mapping": [
+    {
+      "claim_ref": "claim.agent_web.external_subject_digest_bound",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "claim_ref": "claim.agent_web.projection_manifest_bound",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.unsupported_claims_limited",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.sidecar_not_native_authority",
+      "evidence_class": "chio-sidecar-proof"
+    }
+  ],
+  "unsupported_claims": [
+    "claim.external.acp_client_permission_is_chio_authority"
+  ],
+  "copy_limitations": [
+    "ACP-Client permission evidence is digest-bound client protocol evidence, not Chio capability authority."
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schema": "chio.trust-market.negative-fixture.v1",
+  "id": "stale-discovery",
+  "claim_ref": "claim.trust_market.provider_discovery_bound",
+  "base_fixture": "fixtures/proof-room/trust-market/valid-marketplace-context/transaction-passport.json",
+  "case": "StaleDiscovery",
+  "expected_failure_code": "proof-room.negative.discovery-snapshot-is-stale"
+}

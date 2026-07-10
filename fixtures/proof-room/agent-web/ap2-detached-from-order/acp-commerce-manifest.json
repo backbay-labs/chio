@@ -1,0 +1,55 @@
+{
+  "claim_mapping": [
+    {
+      "claim_ref": "claim.agent_web.external_subject_digest_bound",
+      "evidence_class": "digest-bound-reference"
+    },
+    {
+      "claim_ref": "claim.agent_web.projection_manifest_bound",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.unsupported_claims_limited",
+      "evidence_class": "chio-sidecar-proof"
+    },
+    {
+      "claim_ref": "claim.agent_web.sidecar_not_native_authority",
+      "evidence_class": "chio-sidecar-proof"
+    }
+  ],
+  "copy_limitations": [
+    "ACP-Commerce checkout evidence is digest-bound payment protocol evidence, not Chio capability authority."
+  ],
+  "digest_algorithm": "sha256",
+  "external_fields_not_used": [
+    "delegated_payment_token_as_chio_authority"
+  ],
+  "external_fields_used": [
+    "transaction_passport_ref",
+    "order_id",
+    "delegated_payment_token_digest",
+    "checkout_context_digest",
+    "order_context_digest",
+    "payment_instruction_digest",
+    "merchant_identity_digest",
+    "buyer_identity_digest",
+    "amount_units",
+    "currency",
+    "status",
+    "chio_checkout_receipt_ref"
+  ],
+  "projection_id": "projection-acp-commerce-valid",
+  "requires_external_signature": false,
+  "schema": "chio.agent-web.external-projection-manifest.v1",
+  "sidecar_fields": [
+    "transaction_passport_ref",
+    "receipt_refs",
+    "chio_claim_refs"
+  ],
+  "signature_algorithm": "none",
+  "source_protocol": "acp-commerce",
+  "source_version": "2026-06",
+  "unsupported_claims": [
+    "claim.external.acp_commerce_payment_is_chio_authority"
+  ]
+}

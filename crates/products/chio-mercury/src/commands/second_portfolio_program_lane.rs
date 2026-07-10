@@ -2,15 +2,6 @@ use super::*;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct MercurySecondPortfolioProgramDocRefs {
-    second_portfolio_program_file: String,
-    operations_file: String,
-    validation_package_file: String,
-    decision_record_file: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 struct MercurySecondPortfolioProgramBoundaryFreeze {
     schema: String,
     workflow_id: String,
@@ -220,18 +211,6 @@ struct MercurySecondPortfolioProgramValidationReport {
     same_workflow_boundary: String,
     second_portfolio_program: MercurySecondPortfolioProgramExportSummary,
     decision_record_file: String,
-    docs: MercurySecondPortfolioProgramDocRefs,
-}
-
-fn second_portfolio_program_doc_refs() -> MercurySecondPortfolioProgramDocRefs {
-    MercurySecondPortfolioProgramDocRefs {
-        second_portfolio_program_file: "docs/mercury/SECOND_PORTFOLIO_PROGRAM.md".to_string(),
-        operations_file: "docs/mercury/SECOND_PORTFOLIO_PROGRAM_OPERATIONS.md".to_string(),
-        validation_package_file: "docs/mercury/SECOND_PORTFOLIO_PROGRAM_VALIDATION_PACKAGE.md"
-            .to_string(),
-        decision_record_file: "docs/mercury/SECOND_PORTFOLIO_PROGRAM_DECISION_RECORD.md"
-            .to_string(),
-    }
 }
 
 fn build_second_portfolio_program_profile(
@@ -1106,7 +1085,6 @@ pub fn cmd_mercury_second_portfolio_program_validate(
 
     let second_portfolio_program_dir = output.join("second-portfolio-program");
     let summary = export_second_portfolio_program(&second_portfolio_program_dir)?;
-    let docs = second_portfolio_program_doc_refs();
     let validation_report_file = output.join("validation-report.json");
     let decision_record = MercurySecondPortfolioProgramDecisionRecord {
         workflow_id: summary.workflow_id.clone(),
@@ -1142,7 +1120,6 @@ pub fn cmd_mercury_second_portfolio_program_validate(
         same_workflow_boundary: MERCURY_WORKFLOW_BOUNDARY.to_string(),
         second_portfolio_program: summary,
         decision_record_file: decision_record_file.display().to_string(),
-        docs,
     };
     write_json_file(&validation_report_file, &report)?;
 

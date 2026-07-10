@@ -11,7 +11,7 @@ satisfaction at the crate level requires EITHER a full run OR a
 pre-registered statistically defensible sampling scheme. See the
 "Config correction note" section below.
 
-The prior config excluded `text_utils.rs` and `spider_sense.rs` as
+The prior config excluded `text_utils.rs` and `embedding_anomaly.rs` as
 "advisory/helper". Both files are decision-capable and have been
 re-included in the chio-guards examine_globs by the config correction
 commit. **The 119-mutant subset measured here is INVALID for those
@@ -48,7 +48,7 @@ The historical replay command intentionally uses
 That file preserves the exact 8-file surface measured in this evidence
 directory. The corrected local rerun config is
 `audits/mutation/per-crate-configs/chio-guards.toml`; it adds
-`text_utils.rs` and `spider_sense.rs` and therefore does not reproduce
+`text_utils.rs` and `embedding_anomaly.rs` and therefore does not reproduce
 the 2026-05-08 subset. The hosted nightly uses the workspace
 `.cargo/mutants.toml` surface, not the per-crate replay file.
 
@@ -71,7 +71,7 @@ The override is necessary for two reasons:
    used a hand-picked subset of 8 files (119 mutants); this is
    **PARTIAL-SUBSET** (9.2% surface) and does NOT retire the crate
    target. The post-cleanup config now includes `text_utils.rs` and
-   `spider_sense.rs`, raising the post-cleanup surface to 10 files;
+   `embedding_anomaly.rs`, raising the post-cleanup surface to 10 files;
    the 119-mutant subset captured here did not mutate those two
    files. Subset breakdown (8-file, pre-cleanup):
 
@@ -183,7 +183,7 @@ Target satisfaction at the crate level requires either:
 
 - a full mutation run of the corrected workspace surface
   (`.cargo/mutants.toml`, including `text_utils.rs` and
-  `spider_sense.rs`). The hosted-nightly lane can produce this
+  `embedding_anomaly.rs`). The hosted-nightly lane can produce this
   measurement only if it completes; it is a per-crate matrix without
   intra-crate sharding, so timeout or budget exhaustion is still
   PARTIAL, OR
@@ -196,9 +196,9 @@ The pass-through caveat in the per-crate budget framework is a
 methodology hedge for categorizing surviving mutants; it does NOT
 cover claiming target met on a partial run.
 
-### Config correction note (text_utils + spider_sense)
+### Config correction note (text_utils + embedding_anomaly)
 
-The prior config excluded `text_utils.rs` and `spider_sense.rs` as
+The prior config excluded `text_utils.rs` and `embedding_anomaly.rs` as
 "advisory/helper". Both files are decision-capable per
 `audits/evidence/mutation exclusion audit/exclude-audit.md`:
 
@@ -207,7 +207,7 @@ The prior config excluded `text_utils.rs` and `spider_sense.rs` as
   stripping zero-width characters or folding homoglyphs can let
   obfuscated payloads evade the trust-boundary guards.
 
-- `spider_sense.rs::SpiderSenseGuard` returns `Verdict::Deny` for
+- `embedding_anomaly.rs::EmbeddingAnomalyGuard` returns `Verdict::Deny` for
   dimension mismatch (line 290), non-finite embeddings (line 293),
   high similarity scores, and ambiguous-deny policy (line 299).
   The file's module-level doc-comment lists three explicit

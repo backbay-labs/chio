@@ -14,6 +14,55 @@ pub(crate) fn ensure_non_empty(value: &str, field: &'static str) -> Result<(), W
     }
     Ok(())
 }
+
+pub(crate) fn ensure_b256_hex(value: &str, field: &'static str) -> Result<(), Web3ContractError> {
+    let hex = value.strip_prefix("0x").ok_or_else(|| {
+        Web3ContractError::InvalidBinding(format!(
+            "{field} must be a 0x-prefixed 32-byte hex value"
+        ))
+    })?;
+    if hex.len() != 64 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(Web3ContractError::InvalidBinding(format!(
+            "{field} must be a 0x-prefixed 32-byte hex value"
+        )));
+    }
+    Ok(())
+}
+
+pub(crate) fn evm_addresses_match(left: &str, right: &str) -> Result<bool, Web3ContractError> {
+    let left_hex = evm_address_hex(left).ok_or_else(invalid_evm_address)?;
+    let right_hex = evm_address_hex(right).ok_or_else(invalid_evm_address)?;
+    Ok(left_hex.eq_ignore_ascii_case(right_hex))
+}
+
+pub(crate) fn ensure_evm_address(
+    value: &str,
+    field: &'static str,
+) -> Result<(), Web3ContractError> {
+    evm_address_hex(value)
+        .ok_or_else(|| {
+            Web3ContractError::invalid_settlement(format!(
+                "{field} must be a 0x-prefixed 20-byte hex EVM address"
+            ))
+        })
+        .map(|_| ())
+}
+
+fn evm_address_hex(value: &str) -> Option<&str> {
+    let hex = value.strip_prefix("0x")?;
+    if hex.len() == 40 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        Some(hex)
+    } else {
+        None
+    }
+}
+
+fn invalid_evm_address() -> Web3ContractError {
+    Web3ContractError::invalid_settlement(
+        "EVM address fields must be 0x-prefixed 20-byte hex values",
+    )
+}
+
 pub(crate) fn ensure_unique_strings(
     values: &[String],
     field: &'static str,

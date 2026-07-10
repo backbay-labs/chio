@@ -1,9 +1,7 @@
 # Code Execution and Browser Automation Guards -- Technical Design
 
-> **Status**: Proposed April 2026
 > **Depends on**: `docs/guards/01-CURRENT-GUARD-SYSTEM.md` (guard trait and
-> pipeline), `docs/guards/08-DESKTOP-CUA-GUARD-ABSORPTION.md` (CUA action
-> taxonomy), `crates/guards/chio-guards/src/action.rs` (ToolAction enum)
+> pipeline), `crates/guards/chio-guards/src/action.rs` (ToolAction enum)
 
 When an agent invokes a code execution sandbox (E2B, Modal, Code Interpreter)
 or controls a headless browser (Playwright, Puppeteer, Anthropic Computer
@@ -1187,7 +1185,7 @@ fn evaluate(req: &GuardRequest) -> GuardVerdict {
 | `crates/guards/chio-guards/src/lib.rs` | Add `pub mod code_execution`, `pub mod browser_automation`, `pub mod sandbox_invocation`. Re-export guard types. |
 | `crates/guards/chio-guards/src/code_execution.rs` | New file. `CodeExecutionGuard`. |
 | `crates/guards/chio-guards/src/browser_automation.rs` | New file. `BrowserAutomationGuard`. |
-| `crates/guards/chio-guards/src/sandbox_invocation.rs` | New file. `SandboxInvocationGuard`. |
+| `crates/guards/chio-guards` | New file. `SandboxInvocationGuard`. |
 | `crates/guards/chio-guards/src/pipeline.rs` | Register new guards at correct priority (group 3). |
 | `crates/guards/chio-wasm-guards/src/abi.rs` | Add code execution and browser fields to `GuardRequest`. |
 | `crates/guards/chio-wasm-guards/src/runtime.rs` | Populate new fields in `build_request`. |

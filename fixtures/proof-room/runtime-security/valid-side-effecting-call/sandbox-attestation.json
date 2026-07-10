@@ -1,0 +1,13 @@
+{
+  "schema": "chio.runtime.sandbox-attestation.v1",
+  "attestation_id": "sandbox-runtime-valid",
+  "tool_server_id": "did:chio:a87b8a99bd88a69686c994a80b629d8154871aa295540834c01d79f4f916502f",
+  "tool_instance_id": "tool-instance-001",
+  "tool_manifest_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+  "sandbox_profile_digest": "4444444444444444444444444444444444444444444444444444444444444444",
+  "egress_policy_digest": "5555555555555555555555555555555555555555555555555555555555555555",
+  "started_at": "2026-06-10T00:00:00Z",
+  "expires_at": "2026-06-10T00:05:00Z",
+  "attester": "did:chio:9475c6cf0eda34057528d8694781ecc92ad639d7e2bd27761ed3ef74924beb07",
+  "signature": "39215aca7a9cc783e77efee95ea6906fc26149daa4bf93e5ea5c2b7f495db6d099d24e52c93dfd507062e2aebb8525a08d76cb4bfb7e309520a6a6836e6fc10a"
+}

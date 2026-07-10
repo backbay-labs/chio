@@ -296,7 +296,9 @@ pub fn assess_functions_verification(
                 "requested verification mode remains outside the bounded Functions surface"
                     .to_string()
             }
-            FunctionsFallbackStatus::Verified => unreachable!(),
+            FunctionsFallbackStatus::Verified => {
+                unreachable!("accepted == false implies status != Verified")
+            }
         })
     };
 

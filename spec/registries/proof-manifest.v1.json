@@ -15,7 +15,7 @@
         },
         {
           "kind": "rust_test",
-          "ref": "crates/core/chio-core-types/src/capability.rs::capability_token_signature_verification"
+          "ref": "crates/core/chio-core-types/src/capability/tests.rs::capability_token_signature_verification"
         },
         {
           "kind": "conformance_test",
@@ -56,10 +56,22 @@
       "claim_ref": "claim.capability.budget_split",
       "introduced_by": "capability-budget-sibling-sum",
       "evidence": [
-        {"kind": "lean_theorem", "ref": "theorem.budget.sibling_sum_soundness"},
-        {"kind": "rust_test", "ref": "crates/kernel/chio-kernel-core/src/budget_split.rs::second_oversubscribed_sibling_is_rejected"},
-        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs::parent_at_5000_bps_cannot_mint_two_children_at_4000_bps_each"},
-        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs::parent_5000_child_4000_two_grandchildren_3000_each_second_rejected"}
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.budget.sibling_sum_soundness"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-kernel-core/src/budget_split.rs::second_oversubscribed_sibling_is_rejected"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs::parent_at_5000_bps_cannot_mint_two_children_at_4000_bps_each"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/tooling/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs::parent_5000_child_4000_two_grandchildren_3000_each_second_rejected"
+        }
       ]
     },
     {
@@ -67,11 +79,26 @@
       "claim_ref": "claim.capability.attenuation_proof",
       "introduced_by": "capability-attenuation-chain-binding",
       "evidence": [
-        {"kind": "lean_theorem", "ref": "theorem.attenuation.witness_soundness"},
-        {"kind": "lean_theorem", "ref": "theorem.attenuation.witness_completeness"},
-        {"kind": "rust_test", "ref": "crates/core/chio-core-types/src/capability.rs::attenuation_witness_roundtrip_and_forgery_rejection"},
-        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/protocol_primitives_t1.rs::forged_attenuation_proof_rejected"},
-        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs::attenuated_token_with_inflated_parent_scope_hash_is_rejected"}
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.attenuation.witness_soundness"
+        },
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.attenuation.witness_completeness"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/core/chio-core-types/src/capability/tests.rs::attenuation_witness_roundtrip_and_forgery_rejection"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/tooling/chio-conformance/tests/protocol_primitives_t1.rs::forged_attenuation_proof_rejected"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/tooling/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs::attenuated_token_with_inflated_parent_scope_hash_is_rejected"
+        }
       ]
     },
     {
@@ -80,9 +107,18 @@
       "introduced_by": "capability-negotiation-feature-intersection",
       "promoted_by": "runtime-enforcement",
       "evidence": [
-        {"kind": "lean_theorem", "ref": "theorem.handshake.negotiation_safety"},
-        {"kind": "rust_test", "ref": "crates/core/chio-core-types/src/capability.rs::capability_negotiation_intersection_rejects_malformed_feature"},
-        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/protocol_primitives_t1.rs::capability_unknown_schema_rejected"}
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.handshake.negotiation_safety"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/core/chio-core-types/src/capability/tests.rs::capability_negotiation_intersection_rejects_malformed_feature"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/tooling/chio-conformance/tests/protocol_primitives_t1.rs::capability_unknown_schema_rejected"
+        }
       ]
     },
     {
@@ -91,10 +127,22 @@
       "introduced_by": "receipt-content-addressed-id",
       "promoted_by": "receipt-runtime-minting",
       "evidence": [
-        {"kind": "lean_theorem", "ref": "theorem.receipt.id_input_set_pinned"},
-        {"kind": "lean_theorem", "ref": "theorem.receipt.id_collision_resistance"},
-        {"kind": "rust_test", "ref": "crates/core/chio-core-types/src/receipt.rs::receipt_id_is_authoritative_and_content_addressed"},
-        {"kind": "rust_test", "ref": "crates/core/chio-core-types/src/receipt.rs::receipt_sign_and_verify"}
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.receipt.id_input_set_pinned"
+        },
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.receipt.id_collision_resistance"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/core/chio-core-types/src/receipt/tests.rs::receipt_id_is_authoritative_and_content_addressed"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/core/chio-core-types/src/receipt/tests.rs::receipt_sign_and_verify"
+        }
       ]
     },
     {
@@ -102,24 +150,2692 @@
       "claim_ref": "claim.anchor.batch_continuity",
       "introduced_by": "anchor-public-witness-lane",
       "evidence": [
-        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/batch.rs::anchor_batch_roundtrip_and_negative_roots"},
-        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/batch.rs::verifies_legacy_signature_that_omitted_pending_witness_state"},
-        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/witness.rs::witness_policy_rejects_pending_when_required"},
-        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/witness.rs::sync_require_public_witness_rejects_self_asserted_witnessed"},
-        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/witness/rekor.rs::rekor_body_b64_round_trips_real_batch_hash"},
-        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/witness/ots.rs::ots_verify_inclusion_rejects_bitcoin_marker_without_trusted_evidence"},
-        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/anchor_batch_forged_root_rejected.rs"},
-        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/anchor_batch_misordered_proof_rejected.rs"},
-        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/anchor_batch_witness_impersonation_rejected.rs"},
-        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/anchor_batch_stale_witness_fallback.rs"}
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-anchor/src/batch.rs::anchor_batch_roundtrip_and_negative_roots"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-anchor/src/witness.rs::witness_policy_rejects_pending_when_required"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-anchor/src/witness.rs::sync_require_public_witness_rejects_self_asserted_witnessed"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-anchor/src/witness/rekor.rs::rekor_body_b64_round_trips_real_batch_hash"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-anchor/src/witness/ots.rs::ots_verify_inclusion_rejects_bitcoin_marker_without_trusted_evidence"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/tooling/chio-conformance/tests/anchor_batch_forged_root_rejected.rs"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/tooling/chio-conformance/tests/anchor_batch_misordered_proof_rejected.rs"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/tooling/chio-conformance/tests/anchor_batch_witness_impersonation_rejected.rs"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/tooling/chio-conformance/tests/anchor_batch_stale_witness_fallback.rs"
+        }
       ],
       "evidence_proposed": [
-        {"kind": "lean_theorem", "ref": "theorem.anchor.merkle_inclusion"},
-        {"kind": "lean_theorem", "ref": "theorem.anchor.public_witness_anti_equivocation"},
-        {"kind": "rekor_merkle_inclusion_verifier", "ref": "crates/economy/chio-anchor/src/witness/rekor.rs"},
-        {"kind": "ots_trusted_bitcoin_header_verifier", "ref": "crates/economy/chio-anchor/src/witness/ots.rs"},
-        {"kind": "rust_test", "ref": "crates/economy/chio-anchor/src/witness/ots.rs::ots_inclusion_proof_round_trips_through_parser"},
-        {"kind": "doc", "ref": "docs/security/public-witness-semantics.md"}
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.anchor.merkle_inclusion"
+        },
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.anchor.public_witness_anti_equivocation"
+        },
+        {
+          "kind": "rekor_merkle_inclusion_verifier",
+          "ref": "crates/economy/chio-anchor/src/witness/rekor.rs"
+        },
+        {
+          "kind": "ots_trusted_bitcoin_header_verifier",
+          "ref": "crates/economy/chio-anchor/src/witness/ots.rs"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-anchor/src/witness/ots.rs::ots_inclusion_proof_round_trips_through_parser"
+        },
+        {
+          "kind": "doc",
+          "ref": "docs/security/public-witness-semantics.md"
+        }
+      ]
+    },
+    {
+      "id": "manifest.transaction.passport_root_verified",
+      "claim_ref": "claim.transaction.passport_root_verified",
+      "introduced_by": "transaction-passport-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/core/chio-core-types/tests/signed_artifact_schema.rs::known_signed_artifact_schemas_are_supported"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/transaction_passport.rs::transaction_passport_accepts_minimal_schema_shape"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/transaction_passport.rs::transaction_passport_rejects_unknown_schema_id"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/minimal-passport/valid/transaction-passport.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/minimal-passport/unknown-passport-schema/transaction-passport.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.transaction.evidence_graph_digest_bound",
+      "claim_ref": "claim.transaction.evidence_graph_digest_bound",
+      "introduced_by": "transaction-passport-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_minimal_passport_fixture"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/minimal-passport/valid/evidence-graph.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/minimal-passport/evidence-graph-digest-mismatch/transaction-passport.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.transaction.evidence_graph_structure_verified",
+      "claim_ref": "claim.transaction.evidence_graph_structure_verified",
+      "introduced_by": "transaction-passport-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_rejects_commerce_cyclic_evidence_graph_before_family_verifier"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/offline-psp-valid/evidence-graph.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.transaction.claim_set_digest_bound",
+      "claim_ref": "claim.transaction.claim_set_digest_bound",
+      "introduced_by": "transaction-passport-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/transaction_passport.rs::standalone_minimal_passport_accepts_governed_action_evidence"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/transaction_passport.rs::transaction_passport_rejects_root_without_claim_set_binding"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/transaction_passport.rs::runtime_security_rejects_missing_claim_set_artifact"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/minimal-passport/valid/claim-set.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.transaction.policy_digest_bound",
+      "claim_ref": "claim.transaction.policy_digest_bound",
+      "introduced_by": "transaction-passport-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_minimal_passport_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_rejects_policy_digest_mismatch_fixture"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/minimal-passport/valid/verifier-policy.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/minimal-passport/invalid-policy-digest-mismatch/verifier-policy.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.transaction.omission_policy_bound",
+      "claim_ref": "claim.transaction.omission_policy_bound",
+      "introduced_by": "transaction-passport-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/transaction_passport.rs::standalone_minimal_passport_rejects_unsigned_omission_policy"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/transaction_passport.rs::standalone_minimal_passport_accepts_signed_omission_policy"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-transaction-passport/tests/transaction_passport.rs::standalone_minimal_passport_rejects_tampered_signed_omission_policy"
+        }
+      ]
+    },
+    {
+      "id": "manifest.proof_room.verifier_report_bound",
+      "claim_ref": "claim.proof_room.verifier_report_bound",
+      "introduced_by": "proof-room-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_doctor.rs::proof_doctor_accepts_single_call_authority_first_run_evidence"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_doctor.rs::proof_doctor_rejects_proof_room_bundle_report_hash_mismatch"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_doctor.rs::proof_doctor_rejects_unregistered_proof_room_claim"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/ui/proof-room-static/load-report.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/negatives/report-hash-mismatch.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-proof-room/v1/verifier-report.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.proof_room.allow_and_deny_visible",
+      "claim_ref": "claim.proof_room.allow_and_deny_visible",
+      "introduced_by": "proof-room-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_doctor.rs::proof_doctor_accepts_single_call_authority_first_run_evidence"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_doctor.rs::proof_room_bundle_claims_are_registered_in_proof_registries"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/artifacts/receipts/allow-receipt.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/artifacts/receipts/denial-receipt.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/negatives/missing-denial-receipt.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-proof-room/v1/bundle.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.proof_room.receipt_coverage_matrix_bound",
+      "claim_ref": "claim.proof_room.receipt_coverage_matrix_bound",
+      "introduced_by": "proof-room-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_doctor.rs::proof_doctor_accepts_single_call_authority_first_run_evidence"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_doctor.rs::proof_doctor_rejects_proof_room_receipt_coverage_status_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/artifacts/receipts/allow-receipt.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/artifacts/receipts/denial-receipt.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/negatives/receipt-coverage-status-mismatch.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-proof-room/v1/bundle.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.proof_room.authority_evidence_bound",
+      "claim_ref": "claim.proof_room.authority_evidence_bound",
+      "introduced_by": "proof-room-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_doctor.rs::proof_doctor_accepts_single_call_authority_first_run_evidence"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_cli_contract/serve.rs::proof_serve_dry_run_rejects_missing_authority_evidence"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/artifacts/authority/capability-proof.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/artifacts/authority/guard-report.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/artifacts/authority/trust-roots.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/first-run/single-call-authority/proof-room-bundle/negatives/missing-authority-evidence.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-proof-room/v1/bundle.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.runtime.execution_lease_valid",
+      "claim_ref": "claim.runtime.execution_lease_valid",
+      "introduced_by": "runtime-security-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_verifies_with_online_enforcement_evidence"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_requires_execution_lease"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_rejects_expired_execution_lease"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_rejects_policy_digest_mismatch"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_runtime_passport_fixture"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/runtime-security/valid-side-effecting-call/execution-lease.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/runtime-security/missing-execution-lease/transaction-passport.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/runtime-security/negatives/expired-execution-lease.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.runtime.nonce_fresh",
+      "claim_ref": "claim.runtime.nonce_fresh",
+      "introduced_by": "runtime-security-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_verifies_with_online_enforcement_evidence"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_rejects_reused_nonce"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/runtime-security/valid-side-effecting-call/tool-server-ack.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/runtime-security/negatives/reused-nonce.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.runtime.revocation_fresh_at_dispatch",
+      "claim_ref": "claim.runtime.revocation_fresh_at_dispatch",
+      "introduced_by": "runtime-security-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_verifies_with_online_enforcement_evidence"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_rejects_stale_revocation"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_rejects_future_revocation_freshness"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/runtime-security/valid-side-effecting-call/revocation-freshness-proof.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/runtime-security/negatives/stale-revocation.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.runtime.sandbox_attestation_matched",
+      "claim_ref": "claim.runtime.sandbox_attestation_matched",
+      "introduced_by": "runtime-security-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_verifies_with_online_enforcement_evidence"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_rejects_sandbox_mismatch"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_rejects_sandbox_not_valid_for_lease"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/runtime-security/valid-side-effecting-call/sandbox-attestation.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/runtime-security/negatives/sandbox-mismatch.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.runtime.tool_server_ack_bound",
+      "claim_ref": "claim.runtime.tool_server_ack_bound",
+      "introduced_by": "runtime-security-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_verifies_with_online_enforcement_evidence"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_rejects_ack_outside_execution_lease"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/runtime-security/valid-side-effecting-call/tool-server-ack.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/runtime-security/negatives/ack-outside-lease.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.runtime.receipt_totality_complete",
+      "claim_ref": "claim.runtime.receipt_totality_complete",
+      "introduced_by": "runtime-security-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::side_effecting_runtime_claim_verifies_with_online_enforcement_evidence"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::receipt_totality_accepts_denial_terminal_receipt"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::receipt_totality_accepts_infrastructure_failure_receipt"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::receipt_totality_rejects_missing_denial_receipt"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/runtime-security/valid-side-effecting-call/allow-receipt.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/runtime-security/negatives/missing-terminal-receipt.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.runtime.advisory_not_used_as_authorization",
+      "claim_ref": "claim.runtime.advisory_not_used_as_authorization",
+      "introduced_by": "runtime-security-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/runtime_security_passport.rs::advisory_observation_cannot_authorize_runtime_execution"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/runtime-security/valid-side-effecting-call/evidence-graph.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/runtime-security/advisory-used-as-authorization/evidence-graph.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.commerce.order_replay_consistent",
+      "claim_ref": "claim.commerce.order_replay_consistent",
+      "introduced_by": "commerce-payments-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_accepts_offline_psp_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_commerce_payment_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_payment_before_budget_reservation"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_quote_evidence_mismatch"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_accepts_full_normative_success_path"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_accepts_disputed_refunded_recovery_path"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_refund_without_dispute_transition"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_rejects_commerce_refund_without_dispute_transition"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/offline-psp-valid/event-log.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/payment-before-budget/event-log.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/quote-evidence-mismatch/event-log.json"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_payment_quote_digest_mismatch"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_rejects_commerce_payment_quote_digest_mismatch"
+        }
+      ]
+    },
+    {
+      "id": "manifest.commerce.payment_lifecycle_bound",
+      "claim_ref": "claim.commerce.payment_lifecycle_bound",
+      "introduced_by": "commerce-payments-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_accepts_offline_psp_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_commerce_payment_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_payment_wrong_merchant"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_rejects_commerce_payment_wrong_merchant_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_completed_order_with_open_dispute"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/offline-psp-valid/payment-lifecycle.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/payment-wrong-merchant/payment-lifecycle.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/open-dispute-completed/payment-lifecycle.json"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_payment_quote_digest_mismatch"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_rejects_commerce_payment_quote_digest_mismatch"
+        }
+      ]
+    },
+    {
+      "id": "manifest.commerce.mandate_allowance_bound",
+      "claim_ref": "claim.commerce.mandate_allowance_bound",
+      "introduced_by": "commerce-payments-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_accepts_offline_psp_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_commerce_payment_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_expired_mandate"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_mandate_missing_x402_projection"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_mandate_protocol_digest_mismatch"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_rejects_commerce_mandate_missing_x402_projection"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/offline-psp-valid/mandate-allowance-ledger.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/expired-mandate/mandate-allowance-ledger.json"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_payment_quote_digest_mismatch"
+        }
+      ]
+    },
+    {
+      "id": "manifest.commerce.admission_gates_bound",
+      "claim_ref": "claim.commerce.admission_gates_bound",
+      "introduced_by": "commerce-payments-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_accepts_offline_psp_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_wrong_intent_evidence_ref"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_wrong_provider_admission_ref"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_provider_passport_subject_mismatch"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_rejects_commerce_provider_passport_subject_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/offline-psp-valid/order-context.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/offline-psp-valid/provider-passport.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/offline-psp-valid/reputation-snapshot.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/offline-psp-valid/federation-trust-bundle.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/intent-evidence-mismatch/event-log.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/provider-admission-mismatch/event-log.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.commerce.settlement_lifecycle_bound",
+      "claim_ref": "claim.commerce.settlement_lifecycle_bound",
+      "introduced_by": "commerce-payments-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_accepts_offline_psp_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_wrong_settlement_packet_ref"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_wrong_reconciliation_ref"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/offline-psp-valid/order-context.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/settlement-packet-mismatch/event-log.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/reconciliation-mismatch/event-log.json"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_payment_quote_digest_mismatch"
+        }
+      ]
+    },
+    {
+      "id": "manifest.commerce.order_passport_summary_bound",
+      "claim_ref": "claim.commerce.order_passport_summary_bound",
+      "introduced_by": "commerce-payments-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_passport_binds_verified_digests_and_redaction_policy"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_commerce_payment_fixture"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/offline-psp-valid/order-context.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "spec/schemas/chio-commerce/v1/order-passport.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.commerce.coverage_decision_bound",
+      "claim_ref": "claim.commerce.coverage_decision_bound",
+      "introduced_by": "commerce-payments-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_accepts_coverage_required_with_bound_risk_report"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_coverage_required_without_risk_report"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_marketplace_risk_ref_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/open-appeal-claim-payout/risk-comptroller-report.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.commerce.trust_market_context_bound",
+      "claim_ref": "claim.commerce.trust_market_context_bound",
+      "introduced_by": "commerce-payments-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_accepts_marketplace_refs_with_verified_trust_market_context"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_marketplace_refs_without_verified_trust_market_context"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_trust_market_refs_with_required_false"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-commerce-order/tests/commerce_order.rs::commerce_order_replay_rejects_marketplace_selected_provider_subject_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/commerce-payments/offline-psp-valid/order-context.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.workflow.preflight_child_scope_bounded",
+      "claim_ref": "claim.workflow.preflight_child_scope_bounded",
+      "introduced_by": "workflow-preflight-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-workflow-preflight/tests/preflight.rs::workflow_preflight_accepts_planning_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-workflow-preflight/tests/preflight.rs::workflow_preflight_rejects_broader_child_scope"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/workflow_preflight.rs::workflow_preflight_cli_rejects_broader_child_scope"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/workflow-preflight/valid-child-scope/preflight-plan.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/workflow-preflight/broader-child-scope/preflight-plan.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.workflow.preflight_planning_only",
+      "claim_ref": "claim.workflow.preflight_planning_only",
+      "introduced_by": "workflow-preflight-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-workflow-preflight/tests/preflight.rs::workflow_preflight_accepts_planning_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/workflow_preflight.rs::workflow_preflight_cli_accepts_planning_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-workflow-preflight/tests/preflight.rs::workflow_preflight_rejects_planning_artifact_claiming_authority"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/workflow_preflight.rs::workflow_preflight_cli_rejects_planning_artifact_claiming_authority"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/workflow-preflight/valid-child-scope/preflight-plan.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/workflow-preflight/planning-artifact-claims-authority/preflight-plan.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-workflow/v1/preflight-report.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.disclosure.crypto_context_bound",
+      "claim_ref": "claim.disclosure.crypto_context_bound",
+      "introduced_by": "crypto-context-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/core/chio-core-types/tests/signed_artifact_schema.rs::known_signed_artifact_schemas_are_supported"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/bbs_selective_disclosure.rs::contextual_disclosure_accepts_valid_crypto_context"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/bbs_selective_disclosure.rs::crypto_context_artifacts_validate_against_registered_schemas"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/bbs_selective_disclosure.rs::contextual_disclosure_rejects_stale_key_state_after_bbs_verifies"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/bbs_selective_disclosure.rs::contextual_disclosure_rejects_missing_revocation_snapshot_after_bbs_verifies"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/bbs_selective_disclosure.rs::contextual_disclosure_rejects_replayed_nonce_after_bbs_verifies"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/bbs_selective_disclosure.rs::contextual_disclosure_rejects_wrong_audience_after_bbs_verifies"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/bbs_selective_disclosure.rs::contextual_disclosure_rejects_missing_holder_binding_after_bbs_verifies"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/bbs_selective_disclosure.rs::contextual_disclosure_rejects_preview_transparency_when_anchored_required"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/crypto-context/valid-bbs-context/verification-context.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/crypto-context/valid-bbs-context/key-state.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/crypto-context/valid-bbs-context/revocation-snapshot.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/crypto-context/valid-bbs-context/crypto-context-report.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/crypto-context/valid-bbs-context/transparency-inclusion-proof.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/crypto-context/wrong-audience/verification-context.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/crypto-context/replayed-nonce/verification-context.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/crypto-context/stale-key/verification-context.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/crypto-context/missing-revocation-snapshot/verification-context.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/crypto-context/missing-holder-binding/verification-context.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/crypto-context/preview-transparency/verification-context.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.disclosure.profile_context_policy_enforced",
+      "claim_ref": "claim.disclosure.profile_context_policy_enforced",
+      "introduced_by": "crypto-context-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/bbs_selective_disclosure.rs::contextual_disclosure_accepts_valid_crypto_context"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/bbs_selective_disclosure.rs::contextual_disclosure_rejects_forbidden_algorithm_after_bbs_verifies"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/bbs_selective_disclosure.rs::crypto_context_artifacts_validate_against_registered_schemas"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/crypto-context/valid-bbs-context/verifier-privacy-profile.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/crypto-context/forbidden-algorithm/verification-context.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-disclosure/v1/verifier-privacy-profile.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.disclosure.lineage_subgraph_bound",
+      "claim_ref": "claim.disclosure.lineage_subgraph_bound",
+      "introduced_by": "disclosure-lineage-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/core/chio-core-types/tests/signed_artifact_schema.rs::known_signed_artifact_schemas_are_supported"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/disclosure_lineage.rs::disclosure_lineage_verifies_valid_bundle"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/disclosure_lineage.rs::disclosure_lineage_rejects_unknown_lineage_root"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/disclosure-lineage/valid-lineage-ledger/signed-lineage-subgraph.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/disclosure-lineage/negatives/unknown-lineage-root.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-disclosure/v1/capsule.schema.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-lineage/v1/signed-subgraph.schema.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-disclosure/v1/lineage-verifier-report.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.disclosure.leakage_ledger_complete",
+      "claim_ref": "claim.disclosure.leakage_ledger_complete",
+      "introduced_by": "disclosure-lineage-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/disclosure_lineage.rs::disclosure_lineage_verifies_valid_bundle"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-selective-disclosure/tests/disclosure_lineage.rs::disclosure_lineage_rejects_disclosed_field_absent_from_ledger"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/disclosure-lineage/valid-lineage-ledger/leakage-ledger.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/disclosure-lineage/missing-ledger-entry/leakage-ledger.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-disclosure/v1/leakage-ledger.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.risk.comptroller_report_bound",
+      "claim_ref": "claim.risk.comptroller_report_bound",
+      "introduced_by": "enterprise-export-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_accepts_valid_autonomous_commerce_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_missing_risk_reserve_state"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_risk_coverage_subject_mismatch"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_risk_double_consumed_reserve"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_market_slash_consuming_facility_reserve"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_open_appeal_reserve_release"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_open_appeal_claim_payout"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_reverse_slash_without_prior_penalty"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_risk_capital_adequacy_breach"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_risk_claim_outside_coverage"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-risk-comptroller/tests/risk_comptroller.rs::report_rejects_preobserved_claim_payout_capital_instruction"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/risk-comptroller-report.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/coverage-subject-mismatch/risk-comptroller-report.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/coverage-order-mismatch/risk-comptroller-report.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/risk-reserve-state-missing/risk-comptroller-report.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/negatives/double-consumed-reserve.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/negatives/market-slash-facility-reserve.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/negatives/open-appeal-reserve-release.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/open-appeal-claim-payout/risk-comptroller-report.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/payout-amount-mismatch/risk-comptroller-report.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/negatives/risk-payout-preobserved-instruction.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/negatives/reverse-slash-without-prior-penalty.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/risk-capital-adequacy-breach/risk-comptroller-report.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/claim-outside-coverage/risk-comptroller-report.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-risk/v1/comptroller-report.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.enterprise.data_governance_bound",
+      "claim_ref": "claim.enterprise.data_governance_bound",
+      "introduced_by": "enterprise-export-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_accepts_valid_autonomous_commerce_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_pii_overdisclosure"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/data-governance-report.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/negatives/pii-overdisclosure.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-enterprise/v1/data-governance-report.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.enterprise.evidence_export_digest_bound",
+      "claim_ref": "claim.enterprise.evidence_export_digest_bound",
+      "introduced_by": "enterprise-export-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_accepts_valid_autonomous_commerce_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_export_bundle_digest_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/evidence-export-bundle.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/negatives/export-bundle-digest-mismatch.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-enterprise/v1/evidence-export-bundle.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.enterprise.telemetry_projection_bound",
+      "claim_ref": "claim.enterprise.telemetry_projection_bound",
+      "introduced_by": "enterprise-export-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_accepts_valid_autonomous_commerce_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_telemetry_digest_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/telemetry-projection.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/negatives/telemetry-digest-mismatch.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-enterprise/v1/telemetry-projection.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.enterprise.export_approval_bound",
+      "claim_ref": "claim.enterprise.export_approval_bound",
+      "introduced_by": "enterprise-export-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_accepts_valid_autonomous_commerce_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_missing_approval_case"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/approval-case.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/negatives/missing-approval-case.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-enterprise/v1/approval-case.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.enterprise.control_map_bound",
+      "claim_ref": "claim.enterprise.control_map_bound",
+      "introduced_by": "enterprise-export-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_accepts_valid_autonomous_commerce_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/enterprise_export.rs::enterprise_export_rejects_control_map_missing_gate"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/valid-autonomous-commerce/control-evidence-map.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/enterprise-export/negatives/control-map-missing-gate.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-enterprise/v1/control-evidence-map.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.agent_web.external_subject_digest_bound",
+      "claim_ref": "claim.agent_web.external_subject_digest_bound",
+      "introduced_by": "agent-web-interop-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_accepts_webhook_and_cloudevents_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_external_digest_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/standard-webhooks-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/cloudevents-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/graphql-http-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/mcp-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/a2a-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/ag-ui-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/browser-automation-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/rpa-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/oauth2-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/openid-connect-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/scim-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/spiffe-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/sd-jwt-vc-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/bbs-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/sigstore-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/in-toto-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/dsse-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/slsa-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/acp-commerce-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/acp-client-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/openapi-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/asyncapi-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/ap2-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/x402-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/slack-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/kubernetes-admission-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/oci-ref-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/email-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/calendar-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/vc-envelope.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/external-digest-mismatch.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/acp-client-unsupported-bridge-allowed.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/email-send-missing-message-digest.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/calendar-time-range-mismatch.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/slack-failed-provider-response.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/kubernetes-admission-uid-mismatch.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/oci-tag-only-ref.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/slsa-unverified-provenance.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-agent-web/v1/proof-envelope.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.agent_web.projection_manifest_bound",
+      "claim_ref": "claim.agent_web.projection_manifest_bound",
+      "introduced_by": "agent-web-interop-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_accepts_webhook_and_cloudevents_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_cloudevents_specversion_mismatch"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_graphql_http_draft_version_missing"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_graphql_errors_projected_as_success"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/standard-webhooks-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/cloudevents-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/graphql-http-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/mcp-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/a2a-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/ag-ui-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/browser-automation-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/rpa-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/oauth2-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/openid-connect-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/scim-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/spiffe-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/sd-jwt-vc-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/bbs-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/sigstore-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/in-toto-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/dsse-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/slsa-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/acp-commerce-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/acp-client-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/openapi-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/asyncapi-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/ap2-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/x402-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/slack-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/kubernetes-admission-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/oci-ref-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/email-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/calendar-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/vc-manifest.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/cloudevents-specversion-mismatch.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/graphql-http-draft-version-missing.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/graphql-errors-projected-as-success.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.agent_web.unsupported_claims_limited",
+      "claim_ref": "claim.agent_web.unsupported_claims_limited",
+      "introduced_by": "agent-web-interop-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_accepts_webhook_and_cloudevents_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_unsupported_claim_without_limitation"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_mcp_authority_claim_without_limitation"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_a2a_authority_claim_without_limitation"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/standard-webhooks-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/graphql-http-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/mcp-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/a2a-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/cloudevents-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/ag-ui-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/browser-automation-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/rpa-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/oauth2-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/openid-connect-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/scim-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/spiffe-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/sd-jwt-vc-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/bbs-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/sigstore-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/in-toto-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/dsse-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/slsa-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/acp-commerce-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/acp-client-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/openapi-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/asyncapi-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/ap2-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/x402-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/slack-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/kubernetes-admission-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/oci-ref-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/email-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/calendar-manifest.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/vc-manifest.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/unsupported-claim-not-limited.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/mcp-authority-claim-not-limited.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/a2a-authority-claim-not-limited.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.agent_web.sidecar_not_native_authority",
+      "claim_ref": "claim.agent_web.sidecar_not_native_authority",
+      "introduced_by": "agent-web-interop-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_accepts_webhook_and_cloudevents_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_sidecar_claim_marked_native"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_missing_required_signature"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs::agent_web_interop_rejects_missing_webhook_timestamp"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/standard-webhooks-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/graphql-http-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/mcp-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/cloudevents-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/a2a-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/ag-ui-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/browser-automation-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/rpa-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/oauth2-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/openid-connect-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/scim-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/spiffe-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/sd-jwt-vc-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/bbs-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/sigstore-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/in-toto-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/dsse-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/slsa-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/acp-commerce-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/acp-client-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/openapi-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/asyncapi-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/ap2-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/x402-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/slack-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/kubernetes-admission-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/oci-ref-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/email-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/calendar-envelope.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/agent-web/valid-webhook-cloudevents/vc-envelope.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/agent-web/negatives/sidecar-claim-marked-native.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.trust_market.provider_discovery_bound",
+      "claim_ref": "claim.trust_market.provider_discovery_bound",
+      "introduced_by": "trust-market-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_context_accepts_marketplace_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_rejects_selected_provider_absent_from_discovery"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_rejects_stale_discovery_snapshot"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_trust_market_context_fixture"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/trust-market/valid-marketplace-context/provider-discovery-snapshot.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/trust-market/negatives/stale-discovery.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-commerce/v1/provider-discovery-snapshot.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.trust_market.provider_selection_bound",
+      "claim_ref": "claim.trust_market.provider_selection_bound",
+      "introduced_by": "trust-market-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_context_accepts_marketplace_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_rejects_selected_provider_absent_from_discovery"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_rejects_unbound_risk_report_ref"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_trust_market_context_fixture"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/trust-market/valid-marketplace-context/provider-selection-report.json"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/trust-market/valid-marketplace-context/risk-comptroller-report.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/trust-market/negatives/selected-provider-absent.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-commerce/v1/provider-selection-report.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.trust_market.local_scorecard_bound",
+      "claim_ref": "claim.trust_market.local_scorecard_bound",
+      "introduced_by": "trust-market-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_context_accepts_marketplace_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_rejects_global_scorecard_scope"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_rejects_score_recompute_mismatch"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_trust_market_context_fixture"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/trust-market/valid-marketplace-context/trust-scorecard-snapshot.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/trust-market/negatives/score-recompute-mismatch.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/trust-market/negatives/stale-reputation.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-trust/v1/scorecard-snapshot.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.trust_market.reputation_import_bound",
+      "claim_ref": "claim.trust_market.reputation_import_bound",
+      "introduced_by": "trust-market-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_context_accepts_marketplace_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_trust_market_context_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_rejects_reputation_import_overweight"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/trust-market/valid-marketplace-context/reputation-import-report.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/trust-market/negatives/reputation-import-overweight.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-trust/v1/reputation-import-report.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.trust_market.sla_commitment_bound",
+      "claim_ref": "claim.trust_market.sla_commitment_bound",
+      "introduced_by": "trust-market-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_context_accepts_marketplace_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_rejects_sla_wrong_order"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_trust_market_context_fixture"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/trust-market/valid-marketplace-context/sla-commitment.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/trust-market/negatives/sla-wrong-order.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-commerce/v1/sla-commitment.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.trust_market.collateral_guarantee_bound",
+      "claim_ref": "claim.trust_market.collateral_guarantee_bound",
+      "introduced_by": "trust-market-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_context_accepts_marketplace_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_rejects_guarantee_without_backing"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_rejects_slash_authority_outside_jurisdiction"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_trust_market_context_fixture"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/trust-market/valid-marketplace-context/guarantee-decision.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/trust-market/negatives/guarantee-without-backing.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/trust-market/negatives/unsupported-collateral-source.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-risk/v1/guarantee-decision.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.trust_market.jurisdiction_bound",
+      "claim_ref": "claim.trust_market.jurisdiction_bound",
+      "introduced_by": "trust-market-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_context_accepts_marketplace_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_rejects_slash_authority_outside_jurisdiction"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_trust_market_context_fixture"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/trust-market/valid-marketplace-context/adjudication-jurisdiction-receipt.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/trust-market/negatives/slash-authority-outside-jurisdiction.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-risk/v1/adjudication-jurisdiction-receipt.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.trust_market.unsupported_market_claims_limited",
+      "claim_ref": "claim.trust_market.unsupported_market_claims_limited",
+      "introduced_by": "trust-market-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_context_accepts_marketplace_fixture"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/platform/chio-control-plane/tests/trust_market_context.rs::trust_market_rejects_required_unsupported_market_claim"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_accepts_trust_market_context_fixture"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/trust-market/valid-marketplace-context/verifier-policy.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/trust-market/negatives/required-unsupported-market-claim.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-transaction/v1/verifier-policy.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.public_settlement.order_binding_verified",
+      "claim_ref": "claim.public_settlement.order_binding_verified",
+      "introduced_by": "public-settlement-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_emits_verifier_report"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_rejects_missing_commerce_order_binding"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_rejects_mismatched_commerce_order_evidence_ref"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_rejects_order_binding_settlement_tx_mismatch"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_rejects_public_settlement_order_binding_settlement_tx_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/public-settlement/negatives/missing-commerce-order-binding.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/public-settlement/negatives/order-evidence-mismatch.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.public_settlement.chain_context_verified",
+      "claim_ref": "claim.public_settlement.chain_context_verified",
+      "introduced_by": "public-settlement-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_emits_verifier_report"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_rejects_wrong_chain_id"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/public-settlement/negatives/wrong-chain-id.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.public_settlement.finality_verified",
+      "claim_ref": "claim.public_settlement.finality_verified",
+      "introduced_by": "public-settlement-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_emits_verifier_report"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_rejects_finality_below_threshold"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_rejects_observed_execution_outside_dispatch_window"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/public-settlement/negatives/finality-below-threshold.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/public-settlement/negatives/missing-independent-head.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/public-settlement/negatives/independent-head-block-hash-mismatch.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/public-settlement/observed-execution-outside-window/settlement-proof-bundle.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-web3/v1/public-settlement-verifier-report.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.public_settlement.oracle_conversion_bound",
+      "claim_ref": "claim.public_settlement.oracle_conversion_bound",
+      "introduced_by": "public-settlement-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_emits_verifier_report"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_rejects_missing_oracle_evidence"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/public-settlement/negatives/missing-oracle-evidence.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-oracle/v1/conversion-evidence.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.public_settlement.dispute_posture_bound",
+      "claim_ref": "claim.public_settlement.dispute_posture_bound",
+      "introduced_by": "public-settlement-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_emits_verifier_report"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_rejects_refunded_posture_without_reversal"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/public-settlement/negatives/refunded-posture-without-reversal.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.public_settlement.trust_market_refs_bound",
+      "claim_ref": "claim.public_settlement.trust_market_refs_bound",
+      "introduced_by": "public-settlement-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_binds_trust_market_refs_when_present"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/economy/chio-web3/src/tests.rs::public_settlement_proof_rejects_partial_trust_market_refs"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/products/chio-cli/tests/proof_verify.rs::proof_verify_rejects_public_settlement_partial_trust_market_refs"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/public-settlement/valid-offline-finality/settlement-proof-bundle.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-web3/v1/public-settlement-verifier-report.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.swarm.task_graph_bound",
+      "claim_ref": "claim.swarm.task_graph_bound",
+      "introduced_by": "swarm-authority-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_verifies_valid_bundle"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_rejects_graph_cycle"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/task-graph.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/negatives/graph-cycle.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-swarm/v1/task-graph.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.swarm.continuation_fresh",
+      "claim_ref": "claim.swarm.continuation_fresh",
+      "introduced_by": "swarm-authority-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_verifies_valid_bundle"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_rejects_stale_continuation"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_rejects_replayed_continuation_nonce"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/continuation-child-a.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/negatives/stale-continuation.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/negatives/replayed-continuation-nonce.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-swarm/v1/continuation-token.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.swarm.attenuation_witness_chain_bound",
+      "claim_ref": "claim.swarm.attenuation_witness_chain_bound",
+      "introduced_by": "swarm-authority-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_verifies_valid_bundle"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_rejects_witness_child_scope_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/witness-child-a.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/negatives/witness-child-scope-mismatch.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-swarm/v1/delegation-witness-chain.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.swarm.route_plan_bound",
+      "claim_ref": "claim.swarm.route_plan_bound",
+      "introduced_by": "swarm-authority-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_verifies_valid_bundle"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_rejects_stale_route_plan"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_rejects_route_plan_selected_route_bridge_mismatch"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_rejects_route_plan_protocol_target_bridge_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/route-child-a.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/negatives/stale-route-plan.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/negatives/route-plan-mismatch.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-swarm/v1/route-plan-receipt.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.swarm.join_receipt_bound",
+      "claim_ref": "claim.swarm.join_receipt_bound",
+      "introduced_by": "swarm-authority-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_verifies_valid_bundle"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_rejects_join_parent_set_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/join-receipt.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/negatives/join-parent-set-mismatch.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-swarm/v1/join-receipt.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.swarm.terminal_graph_receipt_bound",
+      "claim_ref": "claim.swarm.terminal_graph_receipt_bound",
+      "introduced_by": "swarm-authority-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_verifies_valid_bundle"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_rejects_terminal_budget_rollup_mismatch"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/terminal-graph-receipt.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-swarm/v1/terminal-graph-receipt.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.swarm.budget_pool_bound",
+      "claim_ref": "claim.swarm.budget_pool_bound",
+      "introduced_by": "swarm-authority-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_verifies_valid_bundle"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_rejects_budget_allocations_exceeding_pool"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/budget-pool.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/negatives/budget-allocations-exceed-pool.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-swarm/v1/budget-pool.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.swarm.revocation_epoch_bound",
+      "claim_ref": "claim.swarm.revocation_epoch_bound",
+      "introduced_by": "swarm-authority-v1",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_verifies_valid_bundle"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/kernel/chio-swarm-authority/tests/swarm_authority_stage0.rs::swarm_authority_stage0_rejects_revoked_task"
+        },
+        {
+          "kind": "positive_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/valid-recursive-delegation/revocation-epoch.json"
+        },
+        {
+          "kind": "negative_fixture",
+          "ref": "fixtures/proof-room/swarm-authority/negatives/revoked-task.json"
+        },
+        {
+          "kind": "schema",
+          "ref": "spec/schemas/chio-swarm/v1/revocation-epoch.schema.json"
+        }
+      ]
+    },
+    {
+      "id": "manifest.http.egress_contract",
+      "claim_ref": "claim.http.egress_contract",
+      "introduced_by": "http-egress-contract",
+      "evidence": [
+        {
+          "kind": "rust_test",
+          "ref": "crates/tooling/chio-conformance/tests/ssrf_loopback_rejected.rs::webhook_dispatch_rejects_loopback_target"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/tooling/chio-conformance/tests/ssrf_link_local_rejected.rs::splunk_hec_construction_rejects_link_local_target"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/tooling/chio-conformance/tests/ssrf_ipv6_ula_rejected.rs::pyth_contract_rejects_ipv6_ula_target_through_read"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/tooling/chio-conformance/tests/ssrf_redirect_overflow_rejected.rs::redirect_chain_above_ceiling_is_rejected"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/tooling/chio-conformance/tests/ssrf_oversize_response_rejected.rs::contract_rejects_oversize_response"
+        },
+        {
+          "kind": "workspace_lint",
+          "ref": "scripts/check-http-egress-contract.sh"
+        },
+        {
+          "kind": "workspace_lint_test",
+          "ref": "scripts/tests/check-http-egress-contract.test.sh"
+        }
       ]
     }
   ],
@@ -129,11 +2845,20 @@
       "claim_ref": "claim.receipt.dag_acyclicity",
       "introduced_by": "receipt-lineage-dag-proposal",
       "evidence": [
-        {"kind": "lean_theorem", "ref": "theorem.receipt.dag_acyclicity"},
-        {"kind": "rust_test", "ref": "crates/core/chio-core-types/src/receipt.rs::receipt_lineage_statement_sign_and_verify"}
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.receipt.dag_acyclicity"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/core/chio-core-types/src/receipt.rs::receipt_lineage_statement_sign_and_verify"
+        }
       ],
       "evidence_proposed": [
-        {"kind": "tla_module", "ref": "formal/tla/ReceiptDagAcyclicity.tla"}
+        {
+          "kind": "tla_module",
+          "ref": "formal/tla/ReceiptDagAcyclicity.tla"
+        }
       ]
     },
     {
@@ -141,10 +2866,22 @@
       "claim_ref": "claim.signature.hybrid_pq",
       "introduced_by": "hybrid-pq-signature-proposal",
       "evidence_proposed": [
-        {"kind": "lean_theorem", "ref": "theorem.signature.hybrid_soundness"},
-        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/capability_token_hybrid_round_trip.rs"},
-        {"kind": "schema_test", "ref": "crates/core/chio-core-types/tests/wire_protocol_schema.rs::capability_token_schema_accepts_live_hybrid_wire_values"},
-        {"kind": "conformance_test", "ref": "crates/tooling/chio-conformance/tests/cross_surface_hybrid_pq_interop.rs"}
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.signature.hybrid_soundness"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/tooling/chio-conformance/tests/capability_token_hybrid_round_trip.rs"
+        },
+        {
+          "kind": "schema_test",
+          "ref": "crates/core/chio-core-types/tests/wire_protocol_schema.rs::capability_token_schema_accepts_live_hybrid_wire_values"
+        },
+        {
+          "kind": "conformance_test",
+          "ref": "crates/tooling/chio-conformance/tests/cross_surface_hybrid_pq_interop.rs"
+        }
       ]
     },
     {
@@ -152,26 +2889,30 @@
       "claim_ref": "claim.federation.conformance_tier",
       "introduced_by": "federation-conformance-tier-proposal",
       "evidence_proposed": [
-        {"kind": "lean_theorem", "ref": "theorem.federation.conformance_tier_gate"},
-        {"kind": "rust_test", "ref": "crates/trust/chio-federation/tests/trust_establishment.rs::quorum_policy_rejects_peer_below_min_tier"},
-        {"kind": "rust_test", "ref": "crates/trust/chio-federation/tests/trust_establishment.rs::conformance_tier_is_signed_and_pinned_at_handshake"},
-        {"kind": "conformance_fixture", "ref": "crates/tooling/chio-conformance/tests/cross_surface/t2_1_mcp_wrapped_no_bypass.json"},
-        {"kind": "conformance_fixture", "ref": "crates/tooling/chio-conformance/tests/cross_surface/t2_1_hosted_native_http_no_bypass.json"},
-        {"kind": "conformance_fixture", "ref": "crates/tooling/chio-conformance/tests/cross_surface/t2_1_a2a_http_edge_no_bypass.json"}
-      ]
-    },
-    {
-      "id": "manifest.http.egress_contract",
-      "claim_ref": "claim.http.egress_contract",
-      "introduced_by": "http-egress-contract",
-      "evidence": [
-        {"kind": "rust_test", "ref": "crates/tooling/chio-conformance/tests/ssrf_loopback_rejected.rs::webhook_dispatch_rejects_loopback_target"},
-        {"kind": "rust_test", "ref": "crates/tooling/chio-conformance/tests/ssrf_link_local_rejected.rs::splunk_hec_construction_rejects_link_local_target"},
-        {"kind": "rust_test", "ref": "crates/tooling/chio-conformance/tests/ssrf_ipv6_ula_rejected.rs::pyth_contract_rejects_ipv6_ula_target"},
-        {"kind": "rust_test", "ref": "crates/tooling/chio-conformance/tests/ssrf_redirect_overflow_rejected.rs::redirect_chain_above_ceiling_is_rejected"},
-        {"kind": "rust_test", "ref": "crates/tooling/chio-conformance/tests/ssrf_oversize_response_rejected.rs::contract_rejects_oversize_response"},
-        {"kind": "workspace_lint", "ref": "scripts/check-http-egress-contract.sh"},
-        {"kind": "workspace_lint_test", "ref": "scripts/tests/check-http-egress-contract.test.sh"}
+        {
+          "kind": "lean_theorem",
+          "ref": "theorem.federation.conformance_tier_gate"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-federation/tests/trust_establishment.rs::quorum_policy_rejects_peer_below_min_tier"
+        },
+        {
+          "kind": "rust_test",
+          "ref": "crates/trust/chio-federation/tests/trust_establishment.rs::conformance_tier_is_signed_and_pinned_at_handshake"
+        },
+        {
+          "kind": "conformance_fixture",
+          "ref": "crates/tooling/chio-conformance/tests/cross_surface/t2_1_mcp_wrapped_no_bypass.json"
+        },
+        {
+          "kind": "conformance_fixture",
+          "ref": "crates/tooling/chio-conformance/tests/cross_surface/t2_1_hosted_native_http_no_bypass.json"
+        },
+        {
+          "kind": "conformance_fixture",
+          "ref": "crates/tooling/chio-conformance/tests/cross_surface/t2_1_a2a_http_edge_no_bypass.json"
+        }
       ]
     }
   ]

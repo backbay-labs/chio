@@ -1,0 +1,14 @@
+{
+  "id": "leakage-ledger-enterprise-valid",
+  "artifact_kind": "enterprise_leakage_ledger",
+  "passport_id": "passport-enterprise-valid",
+  "disclosed_fields": [
+    "capability_id",
+    "id",
+    "tool_name"
+  ],
+  "redacted_fields": [
+    "customer_email",
+    "card_last4"
+  ]
+}

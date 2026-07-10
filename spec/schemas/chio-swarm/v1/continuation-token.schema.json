@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-swarm/v1/continuation-token.schema.json",
+  "title": "Chio Swarm Continuation Token",
+  "type": "object",
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "required": ["parentTaskId"]
+      },
+      "then": {
+        "required": ["witnessChainRef", "witnessChainSha256"]
+      }
+    }
+  ],
+  "required": [
+    "schema",
+    "tokenId",
+    "graphId",
+    "childTaskId",
+    "parentReceiptIds",
+    "graphSha256",
+    "routePlanReceiptId",
+    "budgetAllocationId",
+    "revocationEpochRef",
+    "revocationEpochRootHash",
+    "sessionAnchorRef",
+    "nonce",
+    "mode",
+    "issuedAtUnixMs",
+    "expiresAtUnixMs",
+    "issuer",
+    "signature"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.swarm.continuation-token.v1"
+    },
+    "tokenId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "graphId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "childTaskId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parentTaskId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "joinReceiptId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parentReceiptIds": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "graphSha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "routePlanReceiptId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "budgetAllocationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "witnessChainRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "witnessChainSha256": {
+      "$ref": "#/$defs/digest"
+    },
+    "revocationEpochRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revocationEpochRootHash": {
+      "$ref": "#/$defs/digest"
+    },
+    "sessionAnchorRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "nonce": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mode": {
+      "enum": [
+        "single_use",
+        "resumable"
+      ]
+    },
+    "issuedAtUnixMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "expiresAtUnixMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "issuer": {
+      "type": "string",
+      "minLength": 1
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

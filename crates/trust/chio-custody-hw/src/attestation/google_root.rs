@@ -8,7 +8,7 @@
 //! its own Play Integrity tokens or swap in a different verification key.
 //!
 //! ============================================================================
-//! SECURITY / PLACEHOLDER (BAC-601): the pinned key material below is NOT a
+//! SECURITY / PLACEHOLDER: the pinned key material below is NOT a
 //! real Google key. It is the SYNTHETIC FIXTURE key whose private half is
 //! committed in this file. See the block on the pinned constants and the
 //! [`assert_play_integrity_root_is_production_ready`] startup guard before
@@ -24,7 +24,7 @@ use jsonwebtoken::DecodingKey;
 use jsonwebtoken::EncodingKey;
 
 // =============================================================================
-// SECURITY / PLACEHOLDER (BAC-601) - READ BEFORE ANY PRODUCTION DEPLOYMENT
+// SECURITY / PLACEHOLDER - READ BEFORE ANY PRODUCTION DEPLOYMENT
 // =============================================================================
 //
 // The `PLAY_INTEGRITY_PINNED_X_B64` / `PLAY_INTEGRITY_PINNED_Y_B64` coordinates
@@ -37,7 +37,7 @@ use jsonwebtoken::EncodingKey;
 // private half lives in version control - i.e. anyone with repo access could mint
 // Play Integrity tokens the verifier accepts.
 //
-// BEFORE ANY PRODUCTION DEPLOYMENT (tracked by BAC-601):
+// BEFORE ANY PRODUCTION DEPLOYMENT:
 //   1. REPLACE the pinned coordinates + kid below with Google's real Play
 //      Integrity public verification keys (rotate `GOOGLE_PLAY_INTEGRITY_ROOT_KID`
 //      off the `*-fixture-root` placeholder value).
@@ -52,7 +52,7 @@ use jsonwebtoken::EncodingKey;
 // deliberately NOT used here: the default-feature (prod) build legitimately needs
 // to compile today (CI builds `chio-custody-hw` with default features), and the
 // crate is consumed by other workspace members that must keep compiling while the
-// real key is being provisioned under BAC-601. Hard-failing the build would break
+// real key is being provisioned. Hard-failing the build would break
 // that. Instead we fail *loudly at startup* via the guard below, which is gated so
 // it is hard to ship the fixture key into prod silently while leaving the build
 // (and the test/dev-fixtures path) working.
@@ -63,7 +63,7 @@ use jsonwebtoken::EncodingKey;
 /// tests can mint tokens that the pinned verifier accepts. Never compiled
 /// into a production binary.
 ///
-/// SECURITY / PLACEHOLDER (BAC-601): this committed key is the private half of
+/// SECURITY / PLACEHOLDER: this committed key is the private half of
 /// the pinned public coordinates below. It MUST be removed/rotated before the
 /// real Google root is pinned - a real pinned root and a committed private key
 /// must never coexist.
@@ -76,7 +76,7 @@ kHmPRiazukxPLb6ilpRAewjW8nihRANCAATDskChT+Altkm9X7MI69T3IUmrQU0L
 
 /// Pinned Play Integrity verification key (P-256) affine coordinates.
 ///
-/// SECURITY / PLACEHOLDER (BAC-601): these coordinates are the SYNTHETIC FIXTURE
+/// SECURITY / PLACEHOLDER: these coordinates are the SYNTHETIC FIXTURE
 /// public key, NOT Google's real Play Integrity verification key. They MUST be
 /// replaced with Google's real public verification keys before any production
 /// deployment. While they remain in place,
@@ -88,7 +88,7 @@ const PLAY_INTEGRITY_PINNED_Y_B64: &str = "wQg1EytcsEmGrM70Gb53oluoDbVhCZ3Uq3hHM
 
 /// kid of the pinned Play Integrity root.
 ///
-/// SECURITY / PLACEHOLDER (BAC-601): the current value
+/// SECURITY / PLACEHOLDER: the current value
 /// ([`PLAY_INTEGRITY_PLACEHOLDER_ROOT_KID`]) marks the synthetic fixture key.
 /// Replacing the pinned root with Google's real verification keys MUST also
 /// rotate this kid off the `*-fixture-root` placeholder; the production startup
@@ -99,7 +99,7 @@ pub const GOOGLE_PLAY_INTEGRITY_ISSUER: &str = "https://playintegrity.googleapis
 /// Sentinel kid value that marks the pinned root as the committed SYNTHETIC
 /// FIXTURE key rather than a real Google verification key.
 ///
-/// SECURITY / PLACEHOLDER (BAC-601): while
+/// SECURITY / PLACEHOLDER: while
 /// [`GOOGLE_PLAY_INTEGRITY_ROOT_KID`] equals this value, the pinned key is the
 /// fixture key whose private half is committed in this file, and
 /// [`assert_play_integrity_root_is_production_ready`] fails. Provisioning the
@@ -109,7 +109,7 @@ pub const PLAY_INTEGRITY_PLACEHOLDER_ROOT_KID: &str = "chio-play-integrity-fixtu
 /// Sentinel public-key coordinates that mark the pinned root as the committed
 /// SYNTHETIC FIXTURE key.
 ///
-/// SECURITY / PLACEHOLDER (BAC-601): these are byte-identical to the fixture
+/// SECURITY / PLACEHOLDER: these are byte-identical to the fixture
 /// public coordinates whose private half is committed in this file. The
 /// readiness guard compares the live pinned coordinates against these sentinels
 /// so a kid-only edit (rotating `GOOGLE_PLAY_INTEGRITY_ROOT_KID` off the
@@ -123,7 +123,7 @@ const PLAY_INTEGRITY_FIXTURE_Y_B64: &str = "wQg1EytcsEmGrM70Gb53oluoDbVhCZ3Uq3hH
 /// Whether the pinned Play Integrity root is still the committed SYNTHETIC
 /// FIXTURE placeholder (i.e. NOT a real Google verification key).
 ///
-/// SECURITY / PLACEHOLDER (BAC-601): this is `true` until the pinned root is
+/// SECURITY / PLACEHOLDER: this is `true` until the pinned root is
 /// replaced with Google's real keys (which also rotates the kid off
 /// [`PLAY_INTEGRITY_PLACEHOLDER_ROOT_KID`]). Production startup paths use
 /// [`assert_play_integrity_root_is_production_ready`], which keys off this flag.
@@ -131,8 +131,8 @@ const PLAY_INTEGRITY_FIXTURE_Y_B64: &str = "wQg1EytcsEmGrM70Gb53oluoDbVhCZ3Uq3hH
 /// The check is tied to BOTH the kid AND the pinned key coordinate bytes: it
 /// returns `true` if the kid still equals the sentinel OR the pinned
 /// coordinates still equal the committed fixture coordinates. This way, swapping
-/// the kid off the sentinel without also installing real key bytes (the BAC-601
-/// provisioning footgun) still reports the root as a placeholder and keeps the
+/// the kid off the sentinel without also installing real key bytes (the
+/// placeholder-root provisioning footgun) still reports the root as a placeholder and keeps the
 /// guard failing.
 #[must_use]
 pub const fn play_integrity_root_is_placeholder() -> bool {
@@ -170,7 +170,7 @@ const fn const_str_eq(a: &str, b: &str) -> bool {
 /// no-op (`Ok`) once the real Google verification key has been pinned and the
 /// kid rotated off [`PLAY_INTEGRITY_PLACEHOLDER_ROOT_KID`].
 ///
-/// SECURITY / PLACEHOLDER (BAC-601): production binaries that perform Play
+/// SECURITY / PLACEHOLDER: production binaries that perform Play
 /// Integrity verification MUST call this during startup (and abort if it
 /// returns `Err`) so the fixture key cannot silently ship to prod. It is also
 /// asserted at first verification via [`debug_assert!`] in `play_integrity`.
@@ -181,7 +181,7 @@ const fn const_str_eq(a: &str, b: &str) -> bool {
 /// would refuse to compile the default-feature (prod) build, but that build
 /// legitimately needs to compile today: CI builds `chio-custody-hw` with
 /// default features, and other workspace crates depend on it while the real key
-/// is being provisioned under BAC-601. So the placeholder is enforced at
+/// is being provisioned. So the placeholder is enforced at
 /// startup instead - loud and hard to miss, without breaking the build or the
 /// test/`dev-fixtures` signing path.
 ///
@@ -195,7 +195,7 @@ pub fn assert_play_integrity_root_is_production_ready() -> Result<(), String> {
              (kid `{PLAY_INTEGRITY_PLACEHOLDER_ROOT_KID}`) whose private key is committed in \
              version control. This MUST NOT run in production. Replace the pinned key with \
              Google's real Play Integrity verification keys and remove the committed fixture \
-             private key before deploying. See BAC-601."
+             private key before deploying."
         ));
     }
     Ok(())
@@ -224,7 +224,7 @@ pub fn play_integrity_encoding_key() -> Result<EncodingKey, String> {
 
 /// The pinned Play Integrity JWKS used by the production verification path.
 ///
-/// SECURITY / PLACEHOLDER (BAC-601): the key returned here is the SYNTHETIC
+/// SECURITY / PLACEHOLDER: the key returned here is the SYNTHETIC
 /// FIXTURE key, NOT Google's real Play Integrity verification key. Its private
 /// half is committed in this file. The production verification path pins
 /// exactly this JWKS, so until the pinned coordinates/kid are replaced with
@@ -278,7 +278,7 @@ mod tests {
 
     #[test]
     fn placeholder_root_is_flagged_and_guard_fails() {
-        // SECURITY / PLACEHOLDER (BAC-601): while the synthetic fixture root is
+        // SECURITY / PLACEHOLDER: while the synthetic fixture root is
         // pinned, the placeholder flag is set and the production-readiness guard
         // fails loudly. When the real Google root is provisioned (kid rotated off
         // the `*-fixture-root` sentinel) both of these flip; this test then needs
@@ -291,8 +291,8 @@ mod tests {
             panic!("placeholder root must fail the production-readiness guard");
         };
         assert!(
-            err.contains("BAC-601"),
-            "guard must reference BAC-601: {err}"
+            err.contains("SYNTHETIC FIXTURE"),
+            "guard must name the synthetic fixture root: {err}"
         );
         assert!(
             err.contains(PLAY_INTEGRITY_PLACEHOLDER_ROOT_KID),
@@ -302,7 +302,7 @@ mod tests {
 
     #[test]
     fn readiness_guard_is_tied_to_pinned_key_bytes() {
-        // SECURITY / PLACEHOLDER (BAC-601): the pinned coordinates are still the
+        // SECURITY / PLACEHOLDER: the pinned coordinates are still the
         // committed fixture public key, so the readiness guard must treat the
         // root as a placeholder regardless of the kid. This proves the guard is
         // tied to the key bytes, not just the kid string, so a kid-only edit
