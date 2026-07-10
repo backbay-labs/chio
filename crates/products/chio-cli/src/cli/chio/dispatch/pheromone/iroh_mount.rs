@@ -44,6 +44,7 @@
 
 use std::net::SocketAddr;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -63,6 +64,7 @@ use chio_pheromone_relay::SqlitePheromoneRelayStore;
 use iroh::endpoint::presets;
 use iroh::endpoint::IdleTimeout;
 use iroh::endpoint::QuicTransportConfig;
+use iroh::endpoint::VarInt;
 use iroh::protocol::Router;
 use iroh::Endpoint;
 use iroh::EndpointId;
@@ -173,6 +175,16 @@ pub(crate) struct IrohMount {
     pub(crate) bound_sockets: Vec<SocketAddr>,
     /// The lane labels actually mounted (for the startup log line).
     pub(crate) enabled_lanes: Vec<&'static str>,
+    /// The admission gate installed on the endpoint (shares one Arc<ArcSwap> with
+    /// the installed hook), so the directory reloader can publish re-verified
+    /// directories that every lane observes immediately.
+    pub(crate) gate: DirectoryGate,
+    /// This node's `localKernelId` (the identity the bound endpoint authenticates AS).
+    /// Threaded into the reloader's `DirectoryReloadConfig` so the live binding recheck
+    /// mirrors the startup check EXACTLY (`resolve_transport_endpoint(local_kernel_id)
+    /// == endpoint_id`) rather than merely confirming the endpoint resolves to some
+    /// kernel.
+    pub(crate) transport_local_kernel_id: String,
 }
 
 /// Render the iroh federation-transport Prometheus metric families.
@@ -450,6 +462,640 @@ pub(crate) fn load_iroh_serve_inputs(
     }))
 }
 
+// -- Live directory reload ---------------------------------------------------
+
+/// A directory-reload failure. Never crosses the trust boundary as an admit: the
+/// reloader keeps last-good on a transient error and fails closed on expiry.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum DirectoryReloadError {
+    #[error("directory reload read error: {0}")]
+    Read(String),
+    #[error("directory reload verify error: {0}")]
+    Verify(String),
+    #[error("directory reload rollback: on-disk version {found} is not above current {current}")]
+    Rollback { found: u64, current: u64 },
+}
+
+/// The outcome of one reload evaluation.
+#[derive(Debug)]
+pub(crate) enum ReloadOutcome {
+    /// A strictly-newer, in-window bundle re-verified; swap it in.
+    Updated(VerifiedDirectory),
+    /// The on-disk bundle is unchanged and still in-window; no swap.
+    Unchanged,
+    /// The running bundle expired with no valid successor; swap to deny-all.
+    ExpiredWhileRunning,
+    /// A strictly-newer, in-window successor re-verified but no longer binds THIS
+    /// node's local transport endpoint (it tombstoned or rotated this node). The
+    /// already-bound endpoint would keep serving with the old key, so the swap must
+    /// NOT proceed as an admit; fail closed to deny-all (local-binding recheck,
+    /// mirroring the startup binding check). Carries the (validly-signed,
+    /// in-window, monotone) revoking directory so the reloader ADVANCES its last-good
+    /// chain onto it: the revoker is now the federation's canonical directory, so a
+    /// later successor that rebinds this node chains onto THIS revoker (not the
+    /// pre-revoke version) and must be able to self-heal admission.
+    LocalBindingRevoked(VerifiedDirectory),
+    /// The directory is below a trusted `minVersion` operators raised above it, so it can
+    /// never be admitted (a restart would reject it via `transport_bundle_trust`); fail
+    /// closed to deny-all. `Some(successor)` is a strictly-newer, validly-signed, in-window
+    /// successor that is itself below the raised floor: it cannot admit, but the reloader
+    /// ADVANCES its last-good chain onto it (like [`ReloadOutcome::LocalBindingRevoked`]) so
+    /// a later at-or-above-floor bundle - which chains onto THIS successor - self-heals
+    /// rather than being stranded against a dropped chain. `None` is the running directory
+    /// itself below the floor (the unchanged fast path, or a below-floor running directory
+    /// whose on-disk successor did not verify): deny-all, chain KEPT.
+    BelowMinVersionFloor(Option<VerifiedDirectory>),
+    /// The on-disk bundle is UNCHANGED and still in-window, but it no longer verifies
+    /// against the CURRENT trusted-issuer set: operators rotated or removed the issuer
+    /// that signed it (or rotated its key) since the last verification. A restart would
+    /// reject it via `transport_bundle_trust` (unknown issuer / invalid signature); the
+    /// unchanged fast path must fail closed to deny-all identically rather than keep
+    /// admitting under a signer the federation no longer trusts until expiry.
+    TrustRootsChanged,
+    /// The on-disk bundle carries the running version but a DIFFERENT canonical body: the
+    /// file was replaced without a version bump (a tampered or out-of-band rotated body).
+    /// It cannot be a monotone successor at the same version, and treating it as Unchanged
+    /// would keep the loaded directory admitting peers the replacement dropped. Fail closed
+    /// to deny-all; a proper versioned successor chained onto last-good self-heals.
+    CurrentBodyReplaced,
+    /// The trusted-issuers file parsed but pins NO issuer (operators removed every issuer).
+    /// Trusting no signer must admit nothing, and startup rejects the same empty
+    /// configuration; the reload must fail closed to deny-all rather than fold it into the
+    /// transient keep-last-good read-error path (which would keep the previous signer active
+    /// until expiry). Chain is KEPT so a successor under a restored issuer self-heals.
+    TrustRootsEmpty,
+}
+
+/// Inputs for the bounded poll reloader. The reloader deliberately advances its
+/// version floor + previous-hash chain from the LIVE directory (current_version /
+/// current_body_sha256), not from a rotation-state file, so a downgrade can never
+/// be re-accepted; hence no state-file path is carried here.
+pub(crate) struct DirectoryReloadConfig {
+    pub interval: Duration,
+    pub bundle_path: PathBuf,
+    pub trusted_issuers_path: PathBuf,
+    /// This node's LOCAL transport binding: the `EndpointId` the running endpoint is
+    /// actually bound to (the public half of the configured `--iroh-transport-key`).
+    /// Rechecked against every re-verified successor BEFORE the swap:
+    /// the startup path rejects a directory that does not endorse this binding, and a
+    /// live successor that tombstones or rotates this node must not be swapped in while
+    /// the endpoint keeps serving with the old key. The recheck fails closed to deny-all.
+    pub local_transport_endpoint: EndpointId,
+    /// This node's `localKernelId` (the identity the running endpoint authenticates AS,
+    /// carried by the body-hash-pinned directory document and matched at startup). The
+    /// binding recheck mirrors the startup check EXACTLY: it requires the successor to
+    /// bind THIS kernel id to THIS endpoint (`resolve_transport_endpoint(local_kernel_id)
+    /// == local_transport_endpoint`). Checking only that the endpoint resolves to SOME
+    /// kernel is insufficient: a successor that reassigns this endpoint to a DIFFERENT
+    /// kernel id would still `authorize` it, yet the relay would keep serving under the
+    /// old secret for an identity the directory no longer binds to this node.
+    pub local_kernel_id: String,
+}
+
+/// Read + parse the on-disk transport directory bundle (no verification).
+fn read_bundle_document(path: &Path) -> Result<TransportDirectoryBundleDocument, String> {
+    let json = read_utf8_json_file(path, "Chio iroh transport directory bundle")
+        .map_err(|error| error.to_string())?;
+    serde_json::from_str(&json).map_err(|error| error.to_string())
+}
+
+/// The canonical sha256 of a parsed bundle document. This matches the value the gate
+/// reports as `current_body_sha256` and that a successor pins as `previousVersionSha256`
+/// (`VerifiedDirectory::body_sha256` hashes the same whole document), so the reloader can
+/// tell a byte-unchanged bundle from a same-version replacement without re-verifying.
+fn bundle_body_sha256(bundle: &TransportDirectoryBundleDocument) -> Result<String, String> {
+    let bytes =
+        chio_core_types::canonical_json_bytes(bundle).map_err(|error| error.to_string())?;
+    Ok(chio_core_types::sha256_hex(&bytes))
+}
+
+/// A trusted-issuers reload failure. `Empty` is a DISTINCT fail-closed condition (the
+/// file parsed but pins no issuer, so no signer is trusted) kept apart from a transient
+/// `Read`/parse error that keeps last-good.
+enum TrustedIssuersReloadError {
+    /// The file could not be read or parsed (transient); keep last-good.
+    Read(String),
+    /// The file parsed but pins NO issuer. Trusting no signer must admit nothing, so this
+    /// fails closed to deny-all rather than keeping the previous signer active until expiry.
+    Empty,
+}
+
+/// Read + parse the trusted-issuers file into the verifier's issuer list PLUS the
+/// trusted `minVersion` (absent -> 0). The reload path honors this floor identically
+/// to the startup loader: operators that raise `minVersion` on a running relay
+/// must have it enforced on the NEXT reload, not only at restart. An empty issuer set is
+/// surfaced as [`TrustedIssuersReloadError::Empty`] so callers fail closed rather than
+/// folding it into the transient keep-last-good read-error path.
+fn read_trusted_issuers(
+    path: &Path,
+) -> Result<(Vec<TrustedTransportDirectoryIssuer>, u64), TrustedIssuersReloadError> {
+    let json = read_utf8_json_file(path, "Chio iroh transport trusted issuers")
+        .map_err(|error| TrustedIssuersReloadError::Read(error.to_string()))?;
+    let document: super::relay::RelayTrustedIssuersDocument = serde_json::from_str(&json)
+        .map_err(|error| TrustedIssuersReloadError::Read(error.to_string()))?;
+    let trusted_min_version = document.min_version.unwrap_or(0);
+    let issuers: Vec<TrustedTransportDirectoryIssuer> = document
+        .issuers
+        .into_iter()
+        .map(|issuer| TrustedTransportDirectoryIssuer {
+            issuer: issuer.issuer,
+            key_id: issuer.key_id,
+            public_key: issuer.public_key,
+        })
+        .collect();
+    if issuers.is_empty() {
+        return Err(TrustedIssuersReloadError::Empty);
+    }
+    Ok((issuers, trusted_min_version))
+}
+
+/// Re-verify the directory bundle, fail-closed. EXPIRY IS CHECKED BEFORE THE
+/// UNCHANGED FAST PATH: an unchanged-but-expired bundle must not be treated as
+/// valid; with no strictly-newer in-window successor it fails closed as
+/// `ExpiredWhileRunning`.
+pub(crate) fn reload_verified_directory(
+    config: &DirectoryReloadConfig,
+    now: u64,
+    current_version: u64,
+    current_expires_at_unix_ms: u64,
+    current_body_sha256: &str,
+) -> Result<ReloadOutcome, DirectoryReloadError> {
+    let expired = current_expires_at_unix_ms <= now;
+
+    // Read the on-disk bundle. If it cannot be read and the running bundle is
+    // expired, we cannot keep serving it -> fail closed; else keep last-good.
+    let bundle = match read_bundle_document(&config.bundle_path) {
+        Ok(bundle) => bundle,
+        Err(error) => {
+            if expired {
+                return Ok(ReloadOutcome::ExpiredWhileRunning);
+            }
+            return Err(DirectoryReloadError::Read(error));
+        }
+    };
+
+    // Fast path ONLY when still in-window: a genuinely unchanged, still-valid
+    // bundle needs no re-verify. Guarded by `!expired` so an expired bundle can
+    // never be short-circuited as Unchanged.
+    if !expired && bundle.body.version == current_version {
+        // The unchanged fast path is only sound when the on-disk body is BYTE-identical to
+        // the loaded one. A same-version file whose canonical body differs (a tampered or
+        // out-of-band rotated body, possibly re-signed by rotated trust roots) is a
+        // substitution, not the running directory: it cannot be a monotone successor at the
+        // same version, and reporting it Unchanged would keep the loaded directory admitting
+        // peers the replacement dropped. Fail closed to deny-all instead; a proper versioned
+        // successor chained onto last-good self-heals. Compare hashes BEFORE the fast path.
+        match bundle_body_sha256(&bundle) {
+            Ok(on_disk) if on_disk != current_body_sha256 => {
+                return Ok(ReloadOutcome::CurrentBodyReplaced);
+            }
+            Ok(_) => {}
+            Err(error) => return Err(DirectoryReloadError::Verify(error)),
+        }
+        // The unchanged fast path must be exactly as strict as a restart: an operator can
+        // change the trusted-issuer set (raise `minVersion`, or rotate/remove the signing
+        // issuer) while the on-disk bundle is byte-unchanged. Re-read the current trust so
+        // the fast path enforces it rather than serving a stale-but-now-untrusted directory
+        // until expiry. A transient read error must NOT tear down a still-in-window
+        // directory, so keep last-good (`Err(Read)`) exactly as the strictly-newer path.
+        let (issuers, trusted_min_version) =
+            match read_trusted_issuers(&config.trusted_issuers_path) {
+                Ok(parsed) => parsed,
+                Err(TrustedIssuersReloadError::Empty) => {
+                    return Ok(ReloadOutcome::TrustRootsEmpty)
+                }
+                Err(TrustedIssuersReloadError::Read(error)) => {
+                    return Err(DirectoryReloadError::Read(error))
+                }
+            };
+        // minVersion is INCLUSIVE: a directory at `current_version` is admissible only
+        // when `current_version >= trusted_min_version`. Below that floor, fail closed. The
+        // running directory is unchanged (no successor to advance the chain onto), so keep
+        // last-good (`None`) and let a successor at or above the floor self-heal.
+        if current_version < trusted_min_version {
+            return Ok(ReloadOutcome::BelowMinVersionFloor(None));
+        }
+        // RE-VERIFY THE UNCHANGED BUNDLE AGAINST THE CURRENT TRUST ROOTS (fail-closed).
+        // The gate authorized this bundle against the issuer set that was trusted when it
+        // was last verified; that set can shrink underneath a running relay (an operator
+        // rotates or removes the issuer that signed it). A bundle signed by an issuer the
+        // federation no longer trusts must stop admitting immediately, exactly as a restart
+        // would reject it via `transport_bundle_trust`. Chain onto the bundle's own recorded
+        // predecessor (its identity is unchanged, so this re-check is a pure signature/issuer
+        // re-validation, not a rollback re-evaluation) and floor just below the running
+        // version so the current version is still admissible. Any verification failure
+        // (unknown issuer, invalid signature) fails closed to deny-all.
+        let trust = TransportDirectoryBundleTrust {
+            issuers,
+            version_floor: current_version.saturating_sub(1),
+            expected_previous_version_sha256: bundle.body.previous_version_sha256.clone(),
+            now_unix_ms: now,
+        };
+        return match bundle.verify_bundle(&trust) {
+            Ok(_verified) => Ok(ReloadOutcome::Unchanged),
+            Err(_error) => Ok(ReloadOutcome::TrustRootsChanged),
+        };
+    }
+
+    if bundle.body.version > current_version {
+        // Strictly newer: verify against a floor of the current version, chaining
+        // onto the current body hash, with a FRESH now. verify_bundle's validity
+        // window rejects an already-expired successor, so an expired bundle cannot
+        // be swapped in.
+        let (issuers, trusted_min_version) =
+            match read_trusted_issuers(&config.trusted_issuers_path) {
+                Ok(parsed) => parsed,
+                Err(TrustedIssuersReloadError::Empty) => {
+                    return Ok(ReloadOutcome::TrustRootsEmpty)
+                }
+                Err(TrustedIssuersReloadError::Read(error)) => {
+                    if expired {
+                        return Ok(ReloadOutcome::ExpiredWhileRunning);
+                    }
+                    return Err(DirectoryReloadError::Read(error));
+                }
+            };
+        // minVersion is INCLUSIVE: a successor is admissible only when its version is at or
+        // above the trusted floor. A successor newer than the running version but STILL
+        // BELOW that floor (operators raised minVersion past this staged version) can never
+        // be admitted. It is still VERIFIED against the preserved chain so a valid one
+        // ADVANCES last-good onto it (deny-all, like `LocalBindingRevoked`): a below-floor
+        // successor is the immediate predecessor a later at-or-above-floor bundle chains
+        // onto, so dropping it here would strand that recovery bundle (predecessor mismatch)
+        // in deny-all until restart. A below-floor successor implies the running directory
+        // is below the floor too, so a successor that does NOT verify still fails closed to
+        // deny-all rather than keeping the below-floor directory admitting.
+        if bundle.body.version < trusted_min_version {
+            let trust = TransportDirectoryBundleTrust {
+                issuers,
+                version_floor: current_version,
+                expected_previous_version_sha256: Some(current_body_sha256.to_string()),
+                now_unix_ms: now,
+            };
+            return Ok(match bundle.verify_bundle(&trust) {
+                Ok(verified) => ReloadOutcome::BelowMinVersionFloor(Some(verified)),
+                Err(_error) => ReloadOutcome::BelowMinVersionFloor(None),
+            });
+        }
+        let trust = TransportDirectoryBundleTrust {
+            issuers,
+            version_floor: current_version,
+            expected_previous_version_sha256: Some(current_body_sha256.to_string()),
+            now_unix_ms: now,
+        };
+        return match bundle.verify_bundle(&trust) {
+            Ok(verified) => {
+                // RECHECK THE LOCAL IDENTITY BINDING BEFORE SWAPPING (fail-closed).
+                // The successor verified as a valid, in-window, monotone directory, but that
+                // does NOT prove it still binds THIS node's local identity the way the startup
+                // path (`load_iroh_serve_inputs` + `build_iroh_router`) requires. Mirror BOTH
+                // startup checks EXACTLY, or a successor a restart would reject could be swapped
+                // in live:
+                //   - `resolve_transport_endpoint(local_kernel_id) == local_transport_endpoint`
+                //     denies a successor that TOMBSTONES this node (resolve None), ROTATES its
+                //     endpoint to a different `EndpointId` (resolve returns the new endpoint), or
+                //     REASSIGNS the bound endpoint to a DIFFERENT kernel id (resolving THIS kernel
+                //     yields a different or no endpoint); and
+                //   - `directory.localKernelId == local_kernel_id` denies a successor that keeps
+                //     this node's endpoint binding but REASSIGNS the directory's declared local
+                //     identity: `build_iroh_router` requires the bundle's own `localKernelId` to
+                //     equal the relay's configured local kernel id, so a restart would reject
+                //     such a bundle even though the endpoint binding survives.
+                // In every case the already-bound endpoint would keep serving iroh ingress under
+                // the OLD `SecretKey` for a local identity the successor no longer binds to this
+                // node. Fail closed to deny-all rather than admit under a revoked local identity.
+                let binds_local_endpoint = verified
+                    .resolve_transport_endpoint(&config.local_kernel_id)
+                    == Some(config.local_transport_endpoint);
+                let declares_local_kernel =
+                    bundle.directory.local_kernel_id == config.local_kernel_id;
+                if binds_local_endpoint && declares_local_kernel {
+                    Ok(ReloadOutcome::Updated(verified))
+                } else {
+                    Ok(ReloadOutcome::LocalBindingRevoked(verified))
+                }
+            }
+            Err(error) => {
+                // A successor at or above the floor that fails verification (partially
+                // written or bad) must NOT mask a running directory that is ITSELF below the
+                // raised floor: a restart would reject the running directory via
+                // `transport_bundle_trust`, so fail closed to deny-all rather than keep the
+                // below-floor directory admitting until expiry. Order this ahead of the
+                // transient paths so a bad successor cannot leave a below-floor directory
+                // live. last-good is KEPT so a valid successor chained onto it self-heals.
+                if current_version < trusted_min_version {
+                    Ok(ReloadOutcome::BelowMinVersionFloor(None))
+                } else if expired {
+                    Ok(ReloadOutcome::ExpiredWhileRunning)
+                } else {
+                    Err(DirectoryReloadError::Verify(error.to_string()))
+                }
+            }
+        };
+    }
+
+    // version <= current and not the in-window-unchanged case: either a rollback
+    // attempt or an expired bundle with no newer successor. Fail closed if
+    // expired; else reject the rollback and keep last-good.
+    if expired {
+        Ok(ReloadOutcome::ExpiredWhileRunning)
+    } else {
+        Err(DirectoryReloadError::Rollback {
+            found: bundle.body.version,
+            current: current_version,
+        })
+    }
+}
+
+/// The reloader's LAST-GOOD directory identity, tracked SEPARATELY from the admission
+/// gate. A fail-closed deny-all swap (expiry / binding revoked) must NOT erase the
+/// version + hash chain the next successor verifies against: if the reloader re-read
+/// these from the gate, an expiry swap would leave the gate at the deny-all sentinel
+/// (version 0, empty hash), and a later successor chained onto the last good bundle
+/// would then fail verification (predecessor version/hash mismatch), stranding the
+/// relay in deny-all until a restart. Holding last-good here lets the reloader SELF-HEAL
+/// back to admission when a valid in-window successor appears.
+struct ReloadState {
+    version: u64,
+    body_sha256: String,
+    expires_at_unix_ms: u64,
+}
+
+impl ReloadState {
+    /// Seed from the load-time-verified gate.
+    fn from_gate(gate: &DirectoryGate) -> Self {
+        Self {
+            version: gate.current_version(),
+            body_sha256: gate.current_body_sha256(),
+            expires_at_unix_ms: gate.current_expires_at_unix_ms(),
+        }
+    }
+}
+
+/// One reload evaluation: re-verify against the preserved last-good chain and either
+/// swap in a successor (advancing last-good), alarm + deny-all on expiry / binding
+/// revocation (WITHOUT touching last-good, so a later successor can self-heal), or keep
+/// last-good on a transient error. Extracted from the poll loop so the last-good
+/// preservation + self-heal is unit-testable without the async timer.
+fn directory_reload_step(
+    gate: &DirectoryGate,
+    config: &DirectoryReloadConfig,
+    now: u64,
+    state: &mut ReloadState,
+    alive: &std::sync::atomic::AtomicBool,
+) {
+    use std::sync::atomic::Ordering;
+    match reload_verified_directory(
+        config,
+        now,
+        state.version,
+        state.expires_at_unix_ms,
+        &state.body_sha256,
+    ) {
+        Ok(ReloadOutcome::Updated(next)) => {
+            // Advance the last-good chain to the newly-verified successor BEFORE the swap,
+            // so a subsequent reload (and any recovery from a later lapse) chains onto it.
+            // This is also the self-heal path back from a deny-all lapse: a valid in-window
+            // successor verified against the preserved last-good chain restores admission
+            // without a restart.
+            state.version = next.version();
+            state.body_sha256 = next.body_sha256().to_string();
+            state.expires_at_unix_ms = next.expires_at_unix_ms();
+            gate.swap(Arc::new(next));
+            chio_federation_transport_iroh::metrics::record_directory_reload(
+                chio_federation_transport_iroh::metrics::RELOAD_UPDATED,
+            );
+        }
+        Ok(ReloadOutcome::Unchanged) => {
+            chio_federation_transport_iroh::metrics::record_directory_reload(
+                chio_federation_transport_iroh::metrics::RELOAD_UNCHANGED,
+            );
+        }
+        Ok(ReloadOutcome::ExpiredWhileRunning) => {
+            // Fail closed to deny-all but KEEP last-good (state untouched): a later valid
+            // in-window successor chained onto it re-verifies and self-heals admission.
+            gate.swap(Arc::new(
+                chio_federation_transport_iroh::identity::VerifiedDirectory::empty_deny_all(),
+            ));
+            alive.store(false, Ordering::SeqCst);
+            chio_federation_transport_iroh::metrics::record_directory_reload(
+                chio_federation_transport_iroh::metrics::RELOAD_EXPIRED_FAILCLOSED,
+            );
+            tracing::error!(
+                target: chio_federation_transport_iroh::observability::TARGET_ADMISSION,
+                "transport directory expired with no valid successor; admitting nothing until a \
+                 valid in-window successor is published"
+            );
+        }
+        Ok(ReloadOutcome::LocalBindingRevoked(revoking)) => {
+            // The successor verified but no longer binds this node's local identity the way
+            // startup requires: it tombstoned this node, rotated or reassigned its bound
+            // transport endpoint, or reassigned the directory's declared `localKernelId` away
+            // from this node. The endpoint is still bound with the old key, so admitting peers
+            // from the successor would serve ingress under a revoked identity. Fail closed to
+            // deny-all and raise the same alarm as expiry.
+            //
+            // ADVANCE the last-good chain onto the revoking directory FIRST. The revoker is
+            // a validly-signed, in-window, monotone directory: it is now the federation's
+            // canonical successor, so a later directory that rebinds this node chains onto
+            // THIS revoker's hash/version, not the pre-revoke version. Leaving the chain
+            // pinned to the pre-revoke version would reject that correctly-chained rebinding
+            // successor (predecessor mismatch) and strand the relay in deny-all until a
+            // restart. The gate stays deny-all (we do NOT swap the revoker in, since it does
+            // not bind this node); only the chain reference advances, so the documented
+            // self-heal path works after a rebind.
+            state.version = revoking.version();
+            state.body_sha256 = revoking.body_sha256().to_string();
+            state.expires_at_unix_ms = revoking.expires_at_unix_ms();
+            gate.swap(Arc::new(
+                chio_federation_transport_iroh::identity::VerifiedDirectory::empty_deny_all(),
+            ));
+            alive.store(false, Ordering::SeqCst);
+            chio_federation_transport_iroh::metrics::record_directory_reload(
+                chio_federation_transport_iroh::metrics::RELOAD_BINDING_REVOKED,
+            );
+            tracing::error!(
+                target: chio_federation_transport_iroh::observability::TARGET_ADMISSION,
+                "transport directory successor no longer binds this node's local identity \
+                 (tombstoned, endpoint rotated or reassigned, or declared local kernel id \
+                 changed); admitting nothing until a successor rebinds this node"
+            );
+        }
+        Ok(ReloadOutcome::BelowMinVersionFloor(maybe_successor)) => {
+            // The directory is below a trusted minVersion operators raised above it. A
+            // restart would reject it, so fail closed to deny-all rather than keep admitting
+            // until expiry.
+            //
+            // If a strictly-newer, validly-signed successor is present, it is itself below
+            // the raised floor: it cannot admit, but ADVANCE the last-good chain onto it (as
+            // `LocalBindingRevoked` does) so a later at-or-above-floor bundle chained onto
+            // THIS successor self-heals instead of being stranded against a dropped chain.
+            // Absent a successor (the unchanged running directory, or a below-floor running
+            // directory whose successor did not verify), last-good is KEPT.
+            if let Some(successor) = maybe_successor {
+                state.version = successor.version();
+                state.body_sha256 = successor.body_sha256().to_string();
+                state.expires_at_unix_ms = successor.expires_at_unix_ms();
+            }
+            gate.swap(Arc::new(
+                chio_federation_transport_iroh::identity::VerifiedDirectory::empty_deny_all(),
+            ));
+            alive.store(false, Ordering::SeqCst);
+            chio_federation_transport_iroh::metrics::record_directory_reload(
+                chio_federation_transport_iroh::metrics::RELOAD_BELOW_MIN_VERSION,
+            );
+            tracing::error!(
+                target: chio_federation_transport_iroh::observability::TARGET_ADMISSION,
+                "transport directory version is below the trusted minVersion floor operators \
+                 raised; admitting nothing until a successor at or above the floor is published"
+            );
+        }
+        Ok(ReloadOutcome::TrustRootsChanged) => {
+            // The running directory is unchanged and in-window but its signing issuer is no
+            // longer trusted (operators rotated or removed it). A restart would reject it, so
+            // fail closed to deny-all rather than keep admitting under an untrusted signer.
+            // last-good is KEPT (state untouched): a later successor signed by a currently
+            // trusted issuer, chained onto the running directory, self-heals admission without
+            // a restart.
+            gate.swap(Arc::new(
+                chio_federation_transport_iroh::identity::VerifiedDirectory::empty_deny_all(),
+            ));
+            alive.store(false, Ordering::SeqCst);
+            chio_federation_transport_iroh::metrics::record_directory_reload(
+                chio_federation_transport_iroh::metrics::RELOAD_TRUST_ROOTS_CHANGED,
+            );
+            tracing::error!(
+                target: chio_federation_transport_iroh::observability::TARGET_ADMISSION,
+                "transport directory signing issuer is no longer trusted; admitting nothing \
+                 until a successor signed by a currently trusted issuer is published"
+            );
+        }
+        Ok(ReloadOutcome::CurrentBodyReplaced) => {
+            // The on-disk bundle carries the running version but a different body: the file
+            // was replaced without a version bump, so it cannot be trusted as a monotone
+            // successor. Fail closed to deny-all rather than keep the loaded directory
+            // admitting. last-good is KEPT (state untouched): a properly versioned successor
+            // chained onto the running directory self-heals admission without a restart.
+            gate.swap(Arc::new(
+                chio_federation_transport_iroh::identity::VerifiedDirectory::empty_deny_all(),
+            ));
+            alive.store(false, Ordering::SeqCst);
+            chio_federation_transport_iroh::metrics::record_directory_reload(
+                chio_federation_transport_iroh::metrics::RELOAD_CURRENT_BODY_REPLACED,
+            );
+            tracing::error!(
+                target: chio_federation_transport_iroh::observability::TARGET_ADMISSION,
+                "transport directory file was replaced at the running version with a different \
+                 body; admitting nothing until a properly versioned successor is published"
+            );
+        }
+        Ok(ReloadOutcome::TrustRootsEmpty) => {
+            // The trusted-issuers file now pins no issuer: operators removed every issuer.
+            // Trusting no signer must admit nothing, and startup rejects the same empty
+            // configuration, so fail closed to deny-all rather than keep the previous signer
+            // active until expiry. last-good is KEPT (state untouched): a successor under a
+            // restored trusted issuer, chained onto the running directory, self-heals.
+            gate.swap(Arc::new(
+                chio_federation_transport_iroh::identity::VerifiedDirectory::empty_deny_all(),
+            ));
+            alive.store(false, Ordering::SeqCst);
+            chio_federation_transport_iroh::metrics::record_directory_reload(
+                chio_federation_transport_iroh::metrics::RELOAD_TRUST_ROOTS_EMPTY,
+            );
+            tracing::error!(
+                target: chio_federation_transport_iroh::observability::TARGET_ADMISSION,
+                "transport directory trusted-issuer set is empty; admitting nothing until a \
+                 trusted issuer is restored and a successor it signs is published"
+            );
+        }
+        Err(error) => {
+            chio_federation_transport_iroh::metrics::record_directory_reload(
+                chio_federation_transport_iroh::metrics::RELOAD_ERROR,
+            );
+            tracing::warn!(
+                target: chio_federation_transport_iroh::observability::TARGET_ADMISSION,
+                error = %error,
+                "transport directory reload failed; keeping last-good"
+            );
+        }
+    }
+}
+
+/// The reloader's next wake delay, driven by the LIVE admission gate's directory rather
+/// than the reloader's last-good chain (which can point past a deny-all gate at an
+/// already-advanced successor). `live_directory_expires_at_unix_ms` is
+/// `DirectoryGate::current_expires_at_unix_ms`: `0` is the deny-all sentinel (admits
+/// nothing), and any positive value is a live directory's validity-window end.
+///
+/// - Deny-all gate: poll on the fixed `interval` for a valid successor. No live directory
+///   is admitting, so there is no expiry to enforce and never a zero-delay busy-loop.
+/// - Live directory still in-window: wake at whichever comes first, the next fixed poll or
+///   the expiry deadline, so a bundle that expires between two fixed polls fails closed AT
+///   the deadline (`DirectoryGate::decide` is not itself time-aware).
+/// - Live directory whose deadline elapsed mid-cycle (the step ran while it was in-window,
+///   so the gate is still admitting it): recheck IMMEDIATELY so the next step fails it
+///   closed at the deadline rather than after another full interval.
+fn next_reload_delay(
+    interval: Duration,
+    now: u64,
+    live_directory_expires_at_unix_ms: u64,
+) -> Duration {
+    if live_directory_expires_at_unix_ms == 0 {
+        interval
+    } else if live_directory_expires_at_unix_ms > now {
+        std::cmp::min(
+            interval,
+            Duration::from_millis(live_directory_expires_at_unix_ms - now),
+        )
+    } else {
+        Duration::ZERO
+    }
+}
+
+/// Bounded poll loop: re-verify the directory and either swap in a successor, alarm +
+/// deny-all on expiry, or keep last-good. Wakes at most every `interval`, but also
+/// exactly at the running directory's expiry deadline (see [`next_reload_delay`]) so an
+/// expired directory fails closed promptly instead of admitting until the next fixed
+/// poll. A dedicated task feeds shared state (the admission gate and the alive flag)
+/// and is joined on shutdown.
+pub(crate) async fn run_directory_reloader(
+    gate: DirectoryGate,
+    config: DirectoryReloadConfig,
+    now_fn: Arc<dyn Fn() -> u64 + Send + Sync>,
+    alive: Arc<std::sync::atomic::AtomicBool>,
+) {
+    let mut state = ReloadState::from_gate(&gate);
+    loop {
+        let now = now_fn();
+        directory_reload_step(&gate, &config, now, &mut state, &alive);
+        // Schedule off the LIVE gate's expiry (re-read after the step and with a fresh
+        // clock): if the directory was still admitting at the step but its deadline elapsed
+        // before this delay is computed, the gate expiry is now in the past and the reloader
+        // rechecks immediately to fail it closed, rather than admitting for another interval.
+        let delay = next_reload_delay(
+            config.interval,
+            now_fn(),
+            gate.current_expires_at_unix_ms(),
+        );
+        tokio::time::sleep(delay).await;
+    }
+}
+
+/// Per-tick router-liveness step, testable without a live router: flip the
+/// `chio_iroh_router_alive` gauge and, on the transition to dead, log an alarm so a
+/// panicked accept task that silently kills the router (while HTTP keeps serving)
+/// becomes loud. Returns the liveness it was given.
+pub(crate) fn note_router_liveness(alive: bool) -> bool {
+    chio_federation_transport_iroh::metrics::set_router_alive(alive);
+    if !alive {
+        tracing::error!(
+            target: chio_federation_transport_iroh::observability::TARGET_ADMISSION,
+            "iroh router is down; federation ingress frozen while HTTP keeps serving"
+        );
+    }
+    alive
+}
+
 /// Build and spawn the iroh router, sharing the relay's receiver + store.
 ///
 /// One `Endpoint` with the [`DirectoryGate`] installed via `.hooks(gate)` (so
@@ -481,8 +1127,16 @@ pub(crate) async fn build_iroh_router(
         config,
     } = inputs;
 
-    // Only the pheromone lane is wireable here; parse_iroh_lanes already rejected
-    // anything else, so this is a defense-in-depth re-check.
+    // FAIL-CLOSED WIRING GUARD: only the pheromone lane is wireable on this serve
+    // hook. Enabling lane c (fan-out) here is a fail-closed error and MUST stay so
+    // until BOTH are satisfied: (1) the gossip Lagged handling has an anti-entropy
+    // path or an explicit accepted-loss decision, and (2) any lane-c
+    // mount passes the issuer-signed VerifiedDirectory (never a StaticTreatyMembership
+    // and never the raw topic id) as the TreatyMembership oracle and derives origin
+    // keys from the same trusted admission set. The per-treaty membership gate is
+    // enforced at JOIN (subscribe_treaty_with_timeout) and RECEIVE
+    // (verify_fanout_frame); this guard keeps it that way. parse_iroh_lanes already
+    // rejected anything else, so this is a defense-in-depth re-check.
     if config.lanes.iter().any(|lane| !matches!(lane, IrohLane::Pheromone)) {
         return Err(CliError::cli_other_error(
             "Chio iroh transport: only the pheromone lane is wireable on the relay serve hook"
@@ -514,8 +1168,21 @@ pub(crate) async fn build_iroh_router(
     let idle_timeout: IdleTimeout = config.max_idle_timeout.try_into().map_err(|error| {
         CliError::cli_other_error(format!("Chio iroh transport idle timeout: {error}"))
     })?;
+    // Each direct lane uses exactly one bidi stream per connection; bound the
+    // per-connection window to the batch cap with headroom.
+    let bidi_streams = VarInt::from(
+        chio_federation_transport_iroh::lanes::limits::RECOMMENDED_MAX_BIDI_STREAMS,
+    );
+    let receive_window = VarInt::from_u64(
+        chio_federation_transport_iroh::lanes::limits::recommended_receive_window_bytes(
+            max_batch_bytes,
+        ),
+    )
+    .unwrap_or(VarInt::MAX);
     let transport_config = QuicTransportConfig::builder()
         .max_idle_timeout(Some(idle_timeout))
+        .max_concurrent_bidi_streams(bidi_streams)
+        .receive_window(receive_window)
         .build();
 
     let endpoint = Endpoint::builder(presets::Minimal)
@@ -559,7 +1226,9 @@ pub(crate) async fn build_iroh_router(
     // max_body_bytes: 256 KiB production / 1 MiB local-dev) on the iroh ingress, so
     // the new transport is no laxer than the HTTP `DefaultBodyLimit` (fail-closed;
     // clamped to the transport hard cap inside the handler).
-    let handler = PheromoneBatchHandler::new(gate, receiver, store, now_fn, scope_check)
+    // Clone the gate for the handler (it also feeds the installed .hooks(gate)):
+    // the mount keeps a clone so the reloader can swap the shared directory.
+    let handler = PheromoneBatchHandler::new(gate.clone(), receiver, store, now_fn, scope_check)
         .with_max_batch_bytes(max_batch_bytes);
     let router = mount_pheromone_lane(endpoint, handler);
 
@@ -569,6 +1238,8 @@ pub(crate) async fn build_iroh_router(
         endpoint_id,
         bound_sockets,
         enabled_lanes,
+        gate,
+        transport_local_kernel_id,
     })
 }
 
@@ -644,8 +1315,22 @@ pub(crate) async fn build_iroh_outbound_endpoint(
     let idle_timeout: IdleTimeout = config.max_idle_timeout.try_into().map_err(|error| {
         CliError::cli_other_error(format!("Chio iroh transport idle timeout: {error}"))
     })?;
+    // Drain endpoint: one bidi stream, batch-cap-bounded window. `max_batch_bytes`
+    // is not in scope on this outbound-only path, so derive the window from the
+    // transport hard cap.
+    let bidi_streams = VarInt::from(
+        chio_federation_transport_iroh::lanes::limits::RECOMMENDED_MAX_BIDI_STREAMS,
+    );
+    let receive_window = VarInt::from_u64(
+        chio_federation_transport_iroh::lanes::limits::recommended_receive_window_bytes(
+            chio_federation_transport_iroh::lanes::pheromone::MAX_PHEROMONE_BATCH_BYTES,
+        ),
+    )
+    .unwrap_or(VarInt::MAX);
     let transport_config = QuicTransportConfig::builder()
         .max_idle_timeout(Some(idle_timeout))
+        .max_concurrent_bidi_streams(bidi_streams)
+        .receive_window(receive_window)
         .build();
     // An outbound-only TICK endpoint must NOT reuse the stable serving
     // `--iroh-bind-addr`. When a durable relay-serve process is already listening on
@@ -1029,6 +1714,1103 @@ mod tests {
             version,
             previous_version_sha256,
         )
+    }
+
+    /// Build a signed successor whose directory DECLARES `local_kernel_id` as its owner
+    /// while STILL binding the local relay's own transport endpoint. Used to prove the
+    /// reloader rejects a successor that reassigns this node's declared local identity even
+    /// though the endpoint binding survives (the startup path would reject the same bundle).
+    fn signed_bundle_with_local_kernel_id(
+        local_kernel_id: &str,
+        version: u64,
+        previous_version_sha256: Option<String>,
+    ) -> String {
+        let issuer = Keypair::from_seed(&[240u8; 32]);
+        let directory = TransportDirectoryDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            local_kernel_id: local_kernel_id.to_string(),
+            peers: vec![
+                local_relay_entry(LOCAL_TRANSPORT_SEED),
+                directory_entry("did:chio:bob", 7, 24),
+            ],
+            treaties: Vec::new(),
+        };
+        let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());
+        let body = TransportDirectoryBundleBody {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            issuer: "did:chio:issuer".to_string(),
+            key_id: "issuer-key-1".to_string(),
+            directory_sha256,
+            version,
+            previous_version_sha256,
+            issued_at_unix_ms: NOW - 1,
+            expires_at_unix_ms: NOW + 1,
+        };
+        let (signature, _) = issuer.sign_canonical(&body).unwrap();
+        let bundle = TransportDirectoryBundleDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            body,
+            directory,
+            signature,
+        };
+        serde_json::to_string(&bundle).unwrap()
+    }
+
+    /// Overwrite the trusted-issuers file at `path` to pin a SINGLE issuer identity/key
+    /// that is NOT the one the test bundles are signed with (issuer seed 240,
+    /// `did:chio:issuer#issuer-key-1`), modeling operators rotating the signing issuer out
+    /// of the trust set on a running relay.
+    fn write_rotated_trusted_issuers(path: &std::path::Path) {
+        let other_issuer = Keypair::from_seed(&[241u8; 32]);
+        let issuers = serde_json::json!({
+            "issuers": [{
+                "issuer": "did:chio:issuer-2",
+                "keyId": "issuer-key-2",
+                "publicKey": other_issuer.public_key(),
+            }],
+        });
+        std::fs::write(path, serde_json::to_string(&issuers).unwrap()).unwrap();
+    }
+
+    /// Write a signed, verifiable transport-directory bundle (peer did:chio:bob at
+    /// transport seed 24, optionally tombstoned) plus its trusted-issuers file to
+    /// `dir`. Returns (bundle_path, issuers_path, expires_at, body_sha256). The body
+    /// hash is the full-document canonical sha256 the gate reports, so a successor
+    /// can chain onto it. Bundles carry expires_at = NOW + 1.
+    fn write_test_bundle(
+        dir: &std::path::Path,
+        version: u64,
+        removed: bool,
+        previous_version_sha256: Option<String>,
+    ) -> (PathBuf, PathBuf, u64, String) {
+        let issuer = Keypair::from_seed(&[240u8; 32]);
+        let mut peer = directory_entry("did:chio:bob", 7, 24);
+        peer.removed = removed;
+        let directory = TransportDirectoryDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+            peers: vec![local_relay_entry(LOCAL_TRANSPORT_SEED), peer],
+            treaties: Vec::new(),
+        };
+        let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());
+        let expires_at = NOW + 1;
+        let body = TransportDirectoryBundleBody {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            issuer: "did:chio:issuer".to_string(),
+            key_id: "issuer-key-1".to_string(),
+            directory_sha256,
+            version,
+            previous_version_sha256,
+            issued_at_unix_ms: NOW - 1,
+            expires_at_unix_ms: expires_at,
+        };
+        let (signature, _) = issuer.sign_canonical(&body).unwrap();
+        let bundle = TransportDirectoryBundleDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            body,
+            directory,
+            signature,
+        };
+        let body_hash = sha256_hex(&canonical_json_bytes(&bundle).unwrap());
+        let bundle_path = dir.join(format!("bundle-{version}.json"));
+        std::fs::write(&bundle_path, serde_json::to_string(&bundle).unwrap()).unwrap();
+        let issuers_path = dir.join("issuers.json");
+        let issuers = serde_json::json!({
+            "issuers": [{
+                "issuer": "did:chio:issuer",
+                "keyId": "issuer-key-1",
+                "publicKey": issuer.public_key(),
+            }],
+        });
+        std::fs::write(&issuers_path, serde_json::to_string(&issuers).unwrap()).unwrap();
+        (bundle_path, issuers_path, expires_at, body_hash)
+    }
+
+    #[test]
+    fn reload_expiry_is_checked_before_the_unchanged_fast_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let (bundle_path, issuers_path, expires_at, body_hash) =
+            write_test_bundle(dir.path(), 1, false, None);
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path,
+            trusted_issuers_path: issuers_path,
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+
+        // In-window, same version on disk => Unchanged (the fast path fires).
+        let now_in_window = expires_at - 1;
+        assert!(matches!(
+            reload_verified_directory(&config, now_in_window, 1, expires_at, &body_hash)
+                .expect("reload runs"),
+            ReloadOutcome::Unchanged
+        ));
+
+        // Same (unchanged) version on disk but now PAST expiry must NOT short-circuit
+        // to Unchanged; with no strictly-newer in-window successor it fails closed as
+        // ExpiredWhileRunning.
+        let now_expired = expires_at + 1;
+        assert!(matches!(
+            reload_verified_directory(&config, now_expired, 1, expires_at, &body_hash)
+                .expect("reload runs"),
+            ReloadOutcome::ExpiredWhileRunning
+        ));
+    }
+
+    #[test]
+    fn reload_rejects_unchanged_bundle_when_signing_issuer_leaves_trust_roots() {
+        let dir = tempfile::tempdir().unwrap();
+        let (bundle_path, issuers_path, expires_at, body_hash) =
+            write_test_bundle(dir.path(), 1, false, None);
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path,
+            trusted_issuers_path: issuers_path.clone(),
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+        let now_in_window = expires_at - 1;
+
+        // Baseline: while the signing issuer is still trusted, the unchanged in-window
+        // bundle takes the fast path.
+        assert!(matches!(
+            reload_verified_directory(&config, now_in_window, 1, expires_at, &body_hash)
+                .expect("reload runs"),
+            ReloadOutcome::Unchanged
+        ));
+
+        // Rotate the trust set so the bundle's signing issuer is no longer pinned. The
+        // on-disk bundle is byte-unchanged, but a restart would now reject it (unknown
+        // issuer); the unchanged fast path must fail closed identically rather than keep
+        // admitting under a signer the federation no longer trusts.
+        write_rotated_trusted_issuers(&issuers_path);
+        let outcome = reload_verified_directory(&config, now_in_window, 1, expires_at, &body_hash)
+            .expect("reload runs");
+        assert!(
+            matches!(outcome, ReloadOutcome::TrustRootsChanged),
+            "an unchanged bundle whose signing issuer left the trust roots must fail closed, \
+             got {outcome:?}"
+        );
+    }
+
+    #[test]
+    fn reload_fails_closed_when_trusted_issuers_becomes_empty() {
+        // Removing every trusted issuer on a running relay must trust no signer and admit
+        // nothing, in lockstep with startup rejecting the same empty configuration. It must
+        // NOT fold into the transient keep-last-good read-error path, which would keep the
+        // previous signer active until expiry.
+        let dir = tempfile::tempdir().unwrap();
+        let (bundle_path, issuers_path, expires_at, body_hash) =
+            write_test_bundle(dir.path(), 1, false, None);
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path,
+            trusted_issuers_path: issuers_path.clone(),
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+        let now_in_window = expires_at - 1;
+
+        // Baseline: with the issuer still pinned, the unchanged in-window bundle is Unchanged.
+        assert!(matches!(
+            reload_verified_directory(&config, now_in_window, 1, expires_at, &body_hash)
+                .expect("reload runs"),
+            ReloadOutcome::Unchanged
+        ));
+
+        // Empty the trusted-issuer set while the on-disk bundle stays byte-unchanged.
+        std::fs::write(&issuers_path, r#"{"issuers":[]}"#).unwrap();
+        let outcome =
+            reload_verified_directory(&config, now_in_window, 1, expires_at, &body_hash)
+                .expect("reload runs");
+        assert!(
+            matches!(outcome, ReloadOutcome::TrustRootsEmpty),
+            "an empty trusted-issuer set must fail closed, got {outcome:?}"
+        );
+
+        // Step-level: the gate flips to deny-all, the alarm is raised, and last-good is
+        // preserved so a successor under a restored issuer can self-heal.
+        let gate = DirectoryGate::new(verified_directory("did:chio:bob", 24));
+        assert_eq!(gate.current_version(), 1);
+        let alive = AtomicBool::new(true);
+        let mut state = ReloadState {
+            version: 1,
+            body_sha256: body_hash.clone(),
+            expires_at_unix_ms: expires_at,
+        };
+        directory_reload_step(&gate, &config, now_in_window, &mut state, &alive);
+        assert_eq!(
+            gate.current_version(),
+            0,
+            "an empty issuer set fails closed to deny-all"
+        );
+        assert!(
+            !alive.load(Ordering::SeqCst),
+            "an empty issuer set raises the fail-closed alarm"
+        );
+        assert_eq!(
+            state.version, 1,
+            "last-good is preserved so a restored issuer can self-heal"
+        );
+    }
+
+    #[test]
+    fn reload_denies_same_version_bundle_whose_body_was_replaced() {
+        // A same-version bundle whose canonical body differs from the loaded one (the file
+        // was replaced without a version bump) must fail closed, not take the unchanged fast
+        // path. Reporting it Unchanged would keep the loaded directory admitting peers the
+        // replacement dropped. Here v1 is overwritten in place by a different v1 that
+        // tombstones the peer, still signed by the trusted issuer so it verifies but hashes
+        // differently.
+        let dir = tempfile::tempdir().unwrap();
+        let (_original_path, _original_issuers, expires_at, loaded_hash) =
+            write_test_bundle(dir.path(), 1, false, None);
+        // Overwrite bundle-1.json in place with a different v1 (peer tombstoned).
+        let (bundle_path, issuers_path, _expires, replaced_hash) =
+            write_test_bundle(dir.path(), 1, true, None);
+        assert_ne!(
+            loaded_hash, replaced_hash,
+            "the replacement body must differ so the hash gate can catch it"
+        );
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path,
+            trusted_issuers_path: issuers_path,
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+        let now_in_window = expires_at - 1;
+
+        // Outcome-level: the loaded directory is the ORIGINAL v1 (loaded_hash); the on-disk
+        // file is now a different v1, so the fast path fails closed rather than Unchanged.
+        let outcome =
+            reload_verified_directory(&config, now_in_window, 1, expires_at, &loaded_hash)
+                .expect("reload runs");
+        assert!(
+            matches!(outcome, ReloadOutcome::CurrentBodyReplaced),
+            "a same-version bundle whose body was replaced must fail closed, got {outcome:?}"
+        );
+
+        // Step-level: the gate flips to deny-all, the alarm is raised, and last-good is
+        // preserved so a properly versioned successor can self-heal.
+        let gate = DirectoryGate::new(verified_directory("did:chio:bob", 24));
+        assert_eq!(gate.current_version(), 1);
+        let alive = AtomicBool::new(true);
+        let mut state = ReloadState {
+            version: 1,
+            body_sha256: loaded_hash.clone(),
+            expires_at_unix_ms: expires_at,
+        };
+        directory_reload_step(&gate, &config, now_in_window, &mut state, &alive);
+        assert_eq!(
+            gate.current_version(),
+            0,
+            "a replaced same-version body fails closed to deny-all"
+        );
+        assert!(
+            !alive.load(Ordering::SeqCst),
+            "a replaced same-version body raises the fail-closed alarm"
+        );
+        assert_eq!(
+            state.version, 1,
+            "last-good is preserved so a properly versioned successor can self-heal"
+        );
+    }
+
+    #[test]
+    fn reload_rejects_successor_that_reassigns_local_kernel_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let (bundle_path, issuers_path, expires_at, genesis_hash) =
+            write_test_bundle(dir.path(), 1, false, None);
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path: bundle_path.clone(),
+            trusted_issuers_path: issuers_path,
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+
+        // A strictly-newer, validly-signed, in-window successor that STILL binds this node's
+        // transport endpoint but DECLARES a different local kernel as the directory owner.
+        // The startup path (`build_iroh_router`) rejects such a bundle because its declared
+        // local kernel id no longer matches the relay's, so the live reloader must fail closed
+        // to deny-all rather than swap it in under a changed identity binding.
+        let successor =
+            signed_bundle_with_local_kernel_id("did:chio:usurper", 2, Some(genesis_hash.clone()));
+        std::fs::write(&bundle_path, successor).unwrap();
+
+        let now_in_window = expires_at - 1;
+        let outcome = reload_verified_directory(&config, now_in_window, 1, expires_at, &genesis_hash)
+            .expect("reload runs");
+        assert!(
+            matches!(outcome, ReloadOutcome::LocalBindingRevoked(_)),
+            "a successor reassigning this node's declared local kernel id must fail closed, \
+             got {outcome:?}"
+        );
+    }
+
+    #[test]
+    fn directory_reload_swaps_in_successor_and_evicts_tombstoned_peer() {
+        let dir = tempfile::tempdir().unwrap();
+        // Genesis version 1 (peer live); its full-document hash is the chain pin.
+        let (_v1_path, _v1_issuers, _v1_expires, v1_hash) =
+            write_test_bundle(dir.path(), 1, false, None);
+        // Version 2 on disk tombstones the peer, chaining onto v1's hash.
+        let (bundle_path, issuers_path, expires_at, _v2_hash) =
+            write_test_bundle(dir.path(), 2, true, Some(v1_hash.clone()));
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path,
+            trusted_issuers_path: issuers_path,
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+
+        let now_in_window = expires_at - 1;
+        let outcome = reload_verified_directory(&config, now_in_window, 1, expires_at, &v1_hash)
+            .expect("reload runs");
+        let verified = match outcome {
+            ReloadOutcome::Updated(verified) => verified,
+            _ => panic!("expected Updated for a strictly-newer in-window successor"),
+        };
+        // Apply it through the gate and assert the tombstoned peer no longer admits.
+        let gate = DirectoryGate::new(std::sync::Arc::new(verified));
+        assert_eq!(gate.current_version(), 2);
+        assert_eq!(gate.resolve(&endpoint_from_seed(24)), None);
+    }
+
+    /// Write a signed successor bundle (version `version`, chaining onto
+    /// `previous_version_sha256`) that binds the LOCAL node at `local_transport_seed`
+    /// (pass a seed != [`LOCAL_TRANSPORT_SEED`] to ROTATE this node's binding, so the
+    /// successor no longer endorses the currently-bound endpoint). The peer entry is
+    /// left live. Returns (bundle_path, issuers_path, expires_at).
+    fn write_local_rotated_bundle(
+        dir: &std::path::Path,
+        version: u64,
+        local_transport_seed: u8,
+        previous_version_sha256: Option<String>,
+    ) -> (PathBuf, PathBuf, u64) {
+        let issuer = Keypair::from_seed(&[240u8; 32]);
+        let directory = TransportDirectoryDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+            peers: vec![
+                local_relay_entry(local_transport_seed),
+                directory_entry("did:chio:bob", 7, 24),
+            ],
+            treaties: Vec::new(),
+        };
+        let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());
+        let expires_at = NOW + 1;
+        let body = TransportDirectoryBundleBody {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            issuer: "did:chio:issuer".to_string(),
+            key_id: "issuer-key-1".to_string(),
+            directory_sha256,
+            version,
+            previous_version_sha256,
+            issued_at_unix_ms: NOW - 1,
+            expires_at_unix_ms: expires_at,
+        };
+        let (signature, _) = issuer.sign_canonical(&body).unwrap();
+        let bundle = TransportDirectoryBundleDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            body,
+            directory,
+            signature,
+        };
+        let bundle_path = dir.join(format!("bundle-{version}.json"));
+        std::fs::write(&bundle_path, serde_json::to_string(&bundle).unwrap()).unwrap();
+        let issuers_path = dir.join("issuers.json");
+        let issuers = serde_json::json!({
+            "issuers": [{
+                "issuer": "did:chio:issuer",
+                "keyId": "issuer-key-1",
+                "publicKey": issuer.public_key(),
+            }],
+        });
+        std::fs::write(&issuers_path, serde_json::to_string(&issuers).unwrap()).unwrap();
+        (bundle_path, issuers_path, expires_at)
+    }
+
+    #[test]
+    fn directory_reload_fails_closed_when_successor_rotates_local_binding() {
+        // Local-binding recheck (SECURITY). A strictly-newer, in-window, validly-signed
+        // successor that ROTATES this node's local transport endpoint (or tombstones it)
+        // no longer endorses the endpoint this node is bound to. Swapping it in would
+        // leave the already-bound endpoint serving iroh ingress under the old key for
+        // peers admitted in the new directory. The reloader must fail closed to
+        // LocalBindingRevoked (deny-all), never Updated.
+        //
+        // The successor rotates the LOCAL entry from LOCAL_TRANSPORT_SEED (0x11) to a
+        // DIFFERENT seed (0x22); the reloader's config pins the currently-bound endpoint
+        // (endpoint_from_seed(LOCAL_TRANSPORT_SEED)). Without the recheck the successor
+        // verifies and returns Updated, admitting under a revoked local identity; the
+        // recheck instead denies the bound endpoint and returns LocalBindingRevoked.
+        let dir = tempfile::tempdir().unwrap();
+        let (_v1_path, _v1_issuers, _v1_expires, v1_hash) =
+            write_test_bundle(dir.path(), 1, false, None);
+        // Version 2 rotates the LOCAL node's transport endpoint to seed 0x22, chaining
+        // onto v1's hash. The peer stays live, so only the local binding changed.
+        let (bundle_path, issuers_path, expires_at) =
+            write_local_rotated_bundle(dir.path(), 2, 0x22, Some(v1_hash.clone()));
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path,
+            trusted_issuers_path: issuers_path,
+            // The endpoint this node is actually bound to (the OLD seed 0x11), which the
+            // rotated successor no longer endorses.
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+
+        let now_in_window = expires_at - 1;
+        let outcome = reload_verified_directory(&config, now_in_window, 1, expires_at, &v1_hash)
+            .expect("reload runs");
+        assert!(
+            matches!(outcome, ReloadOutcome::LocalBindingRevoked(_)),
+            "a successor that no longer binds this node's local endpoint fails closed, never Updated"
+        );
+    }
+
+    /// Write a signed successor whose directory ROTATES the local node to
+    /// `local_transport_seed` AND REASSIGNS a peer (`did:chio:bob`) to
+    /// `peer_transport_seed`. Passing `peer_transport_seed == LOCAL_TRANSPORT_SEED` hands
+    /// this node's currently-bound endpoint to a DIFFERENT kernel id, the exact case a
+    /// bare `authorize(endpoint).is_some()` recheck would wrongly admit. Returns
+    /// (bundle_path, issuers_path, expires_at).
+    fn write_local_reassigned_bundle(
+        dir: &std::path::Path,
+        version: u64,
+        local_transport_seed: u8,
+        peer_transport_seed: u8,
+        previous_version_sha256: Option<String>,
+    ) -> (PathBuf, PathBuf, u64) {
+        let (bundle_json, issuer) = build_signed_bundle_json(
+            vec![
+                directory_entry(LOCAL_KERNEL_ID, 8, local_transport_seed),
+                directory_entry("did:chio:bob", 7, peer_transport_seed),
+            ],
+            version,
+            previous_version_sha256,
+        );
+        let bundle_path = dir.join(format!("bundle-{version}.json"));
+        std::fs::write(&bundle_path, &bundle_json).unwrap();
+        let issuers_path = dir.join("issuers.json");
+        let issuers = serde_json::json!({
+            "issuers": [{
+                "issuer": "did:chio:issuer",
+                "keyId": "issuer-key-1",
+                "publicKey": issuer.public_key(),
+            }],
+        });
+        std::fs::write(&issuers_path, serde_json::to_string(&issuers).unwrap()).unwrap();
+        (bundle_path, issuers_path, NOW + 1)
+    }
+
+    #[test]
+    fn directory_reload_fails_closed_when_successor_reassigns_bound_endpoint() {
+        // Local-binding recheck (SECURITY, deeper than the rotation case). A
+        // strictly-newer, in-window, validly-signed successor that REASSIGNS this node's
+        // bound transport endpoint to a DIFFERENT kernel id still `authorize`s the endpoint
+        // (it resolves to the OTHER kernel), so a recheck that only asks "does the endpoint
+        // resolve to some kernel?" would wrongly swap it in - leaving the relay serving iroh
+        // ingress under the OLD secret for an identity the successor now assigns elsewhere.
+        // The recheck must mirror STARTUP: require the successor to bind THIS kernel id to
+        // THIS endpoint.
+        //
+        // v2 rotates the LOCAL node to seed 0x22 AND reassigns the peer to
+        // LOCAL_TRANSPORT_SEED (0x11 = this node's bound endpoint). An
+        // `authorize(endpoint).is_none()` recheck would see authorize(0x11) == Some(bob)
+        // (not None) and swap it in, admitting under a reassigned local endpoint. The
+        // `resolve_transport_endpoint(local_kernel_id) == endpoint` recheck instead
+        // resolves LOCAL_KERNEL_ID to 0x22 != 0x11 and returns LocalBindingRevoked.
+        let dir = tempfile::tempdir().unwrap();
+        let (_v1_path, _v1_issuers, _v1_expires, v1_hash) =
+            write_test_bundle(dir.path(), 1, false, None);
+        let (bundle_path, issuers_path, expires_at) = write_local_reassigned_bundle(
+            dir.path(),
+            2,
+            0x22,
+            LOCAL_TRANSPORT_SEED,
+            Some(v1_hash.clone()),
+        );
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path,
+            trusted_issuers_path: issuers_path,
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+        let now_in_window = expires_at - 1;
+        let outcome = reload_verified_directory(&config, now_in_window, 1, expires_at, &v1_hash)
+            .expect("reload runs");
+        assert!(
+            matches!(outcome, ReloadOutcome::LocalBindingRevoked(_)),
+            "a successor that reassigns this node's bound endpoint to another kernel fails closed"
+        );
+    }
+
+    /// Write a trusted-issuers file at `dir/issuers.json` pinning `min_version`
+    /// (camelCase on the wire) with the standard issuer key. Returns its path.
+    fn write_issuers_with_min_version(dir: &std::path::Path, min_version: u64) -> PathBuf {
+        let issuer = Keypair::from_seed(&[240u8; 32]);
+        let issuers_path = dir.join("issuers.json");
+        let issuers = serde_json::json!({
+            "issuers": [{
+                "issuer": "did:chio:issuer",
+                "keyId": "issuer-key-1",
+                "publicKey": issuer.public_key(),
+            }],
+            "minVersion": min_version,
+        });
+        std::fs::write(&issuers_path, serde_json::to_string(&issuers).unwrap()).unwrap();
+        issuers_path
+    }
+
+    #[test]
+    fn directory_reload_denies_newer_successor_below_raised_min_version() {
+        // A staged successor that is NEWER than the running directory but STILL BELOW a
+        // minVersion operators raised above it must fail closed to deny-all, exactly as
+        // the unchanged path and a restart would. It must NOT surface as a transient verify
+        // error that keeps the stale, now below-floor directory admitting until expiry. The
+        // successor is still verified and CAPTURED so the last-good chain advances onto it,
+        // letting a later at-or-above-floor bundle (which chains onto this successor)
+        // self-heal.
+        let dir = tempfile::tempdir().unwrap();
+        let (_v1_path, _v1_issuers, _v1_expires, v1_hash) =
+            write_test_bundle(dir.path(), 1, false, None);
+        let (bundle_path, _v2_issuers, expires_at, v2_hash) =
+            write_test_bundle(dir.path(), 2, false, Some(v1_hash.clone()));
+        // Pin minVersion = 10 AFTER the bundles are written; the on-disk successor (v2) is
+        // newer than the running v1 but still below the floor.
+        let issuers_path = write_issuers_with_min_version(dir.path(), 10);
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path,
+            trusted_issuers_path: issuers_path,
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+        let now_in_window = expires_at - 1;
+
+        // Outcome-level: the newer-but-still-below-floor successor fails closed and is
+        // captured for chain advancement rather than returning a transient verify error.
+        let outcome = reload_verified_directory(&config, now_in_window, 1, expires_at, &v1_hash)
+            .expect("reload runs");
+        assert!(
+            matches!(outcome, ReloadOutcome::BelowMinVersionFloor(Some(_))),
+            "a newer successor below the raised minVersion must fail closed, got {outcome:?}"
+        );
+
+        // Step-level: the gate flips to deny-all, the alarm is raised, and the chain advances
+        // onto the below-floor successor so a later at-or-above-floor bundle can self-heal.
+        let gate = DirectoryGate::new(verified_directory("did:chio:bob", 24));
+        assert_eq!(gate.current_version(), 1);
+        let alive = AtomicBool::new(true);
+        let mut state = ReloadState {
+            version: 1,
+            body_sha256: v1_hash.clone(),
+            expires_at_unix_ms: expires_at,
+        };
+        directory_reload_step(&gate, &config, now_in_window, &mut state, &alive);
+        assert_eq!(
+            gate.current_version(),
+            0,
+            "a newer-but-below-floor successor fails closed to deny-all"
+        );
+        assert!(
+            !alive.load(Ordering::SeqCst),
+            "a below-min-version successor raises the fail-closed alarm"
+        );
+        assert_eq!(
+            state.version, 2,
+            "the chain advances onto the below-floor successor so a later bundle can chain on"
+        );
+        assert_eq!(
+            state.body_sha256, v2_hash,
+            "the chain pin advances to the below-floor successor's hash"
+        );
+    }
+
+    #[test]
+    fn directory_reload_denies_unchanged_directory_below_raised_min_version() {
+        // Raising minVersion above the running version must fail the running directory
+        // closed on the next reload even when the on-disk bundle is unchanged (same
+        // version): the unchanged fast path must not short-circuit to Unchanged before
+        // honoring the minVersion floor a restart would enforce via transport_bundle_trust.
+        // A version-1 directory whose issuers now pin minVersion 5 is below the floor, so
+        // the reload fails closed to BelowMinVersionFloor and the gate flips to deny-all.
+        let dir = tempfile::tempdir().unwrap();
+        let (bundle_path, _issuers, expires_at, body_hash) =
+            write_test_bundle(dir.path(), 1, false, None);
+        // Raise minVersion to 5 while the running (and on-disk) version stays 1.
+        let issuers_path = write_issuers_with_min_version(dir.path(), 5);
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path,
+            trusted_issuers_path: issuers_path,
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+        let now_in_window = expires_at - 1;
+
+        // Outcome-level: the unchanged (v1 == on-disk) directory below the raised floor
+        // fails closed rather than short-circuiting to Unchanged.
+        let outcome = reload_verified_directory(&config, now_in_window, 1, expires_at, &body_hash)
+            .expect("reload runs");
+        assert!(
+            matches!(outcome, ReloadOutcome::BelowMinVersionFloor(None)),
+            "an unchanged directory below a raised minVersion must fail closed, not Unchanged"
+        );
+
+        // Step-level: the gate flips to deny-all, the alarm is raised, and last-good is
+        // preserved so a successor at or above the floor can self-heal.
+        let gate = DirectoryGate::new(verified_directory("did:chio:bob", 24));
+        assert_eq!(gate.current_version(), 1);
+        let alive = AtomicBool::new(true);
+        let mut state = ReloadState {
+            version: 1,
+            body_sha256: body_hash.clone(),
+            expires_at_unix_ms: expires_at,
+        };
+        directory_reload_step(&gate, &config, now_in_window, &mut state, &alive);
+        assert_eq!(
+            gate.current_version(),
+            0,
+            "a below-min-version directory fails closed to deny-all"
+        );
+        assert!(
+            !alive.load(Ordering::SeqCst),
+            "a below-min-version directory raises the fail-closed alarm"
+        );
+        assert_eq!(
+            state.version, 1,
+            "last-good is preserved so a successor at/above the floor can self-heal"
+        );
+    }
+
+    #[test]
+    fn directory_reload_self_heals_across_below_floor_successors() {
+        // When operators raise minVersion above an intermediate successor, that successor is
+        // denied admission but its hash must still advance the chain, so a later
+        // at-or-above-floor bundle - which chains onto it - self-heals instead of being
+        // stranded in deny-all against a dropped chain. minVersion is 3 here: v2 is below the
+        // floor (deny-all, chain advances to v2), then v3 at the floor chains onto v2 and
+        // restores admission without a restart.
+        let dir = tempfile::tempdir().unwrap();
+        let bundle_path = dir.path().join("bundle.json");
+        let issuers_path = write_issuers_with_min_version(dir.path(), 3);
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path: bundle_path.clone(),
+            trusted_issuers_path: issuers_path,
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+
+        // v1 binds this node; the reloader's last-good starts here.
+        let v1_hash = write_local_binding_bundle_at(&bundle_path, 1, LOCAL_TRANSPORT_SEED, None);
+        let gate = DirectoryGate::new(verified_directory("did:chio:bob", 24));
+        assert_eq!(gate.current_version(), 1);
+        let alive = AtomicBool::new(true);
+        let mut state = ReloadState {
+            version: 1,
+            body_sha256: v1_hash.clone(),
+            expires_at_unix_ms: NOW + 1,
+        };
+
+        // v2 is a valid successor (chains onto v1) but below the raised floor: deny-all, and
+        // the chain advances onto v2 so v3 can chain onto it.
+        let v2_hash =
+            write_local_binding_bundle_at(&bundle_path, 2, LOCAL_TRANSPORT_SEED, Some(v1_hash));
+        directory_reload_step(&gate, &config, NOW, &mut state, &alive);
+        assert_eq!(
+            gate.current_version(),
+            0,
+            "a below-floor successor fails closed to deny-all"
+        );
+        assert!(
+            !alive.load(Ordering::SeqCst),
+            "a below-floor successor raises the fail-closed alarm"
+        );
+        assert_eq!(
+            state.version, 2,
+            "the chain advances onto the below-floor successor"
+        );
+        assert_eq!(
+            state.body_sha256, v2_hash,
+            "the chain pin advances to the below-floor successor's hash"
+        );
+
+        // v3 at the floor chains onto v2; self-heal must restore admission without a restart.
+        let _v3_hash =
+            write_local_binding_bundle_at(&bundle_path, 3, LOCAL_TRANSPORT_SEED, Some(v2_hash));
+        alive.store(true, Ordering::SeqCst);
+        directory_reload_step(&gate, &config, NOW, &mut state, &alive);
+        assert_eq!(
+            gate.current_version(),
+            3,
+            "an at-floor successor chained onto the below-floor one self-heals admission"
+        );
+        assert_eq!(
+            state.version, 3,
+            "last-good advances to the recovered successor"
+        );
+    }
+
+    #[test]
+    fn directory_reload_fails_closed_when_below_floor_running_directory_has_an_invalid_successor() {
+        // Operators raised minVersion above the running directory, so a restart would reject
+        // it. An on-disk successor at or above the floor that FAILS verification (partially
+        // written or bad) must not mask that: the reloader must fail closed to deny-all
+        // rather than keep the below-floor directory admitting until expiry.
+        let dir = tempfile::tempdir().unwrap();
+        // v1 is the running directory; its hash is the chain pin.
+        let (_v1_path, _v1_issuers, expires_at, v1_hash) =
+            write_test_bundle(dir.path(), 1, false, None);
+        // An on-disk v3 at or above the raised floor but that does NOT chain onto v1 (a
+        // bad/partial successor), so it fails verification.
+        let (bundle_path, _v3_issuers, _v3_expires, _v3_hash) =
+            write_test_bundle(dir.path(), 3, false, Some("00".repeat(32)));
+        // Raise minVersion to 3: the running v1 is below the floor, the on-disk v3 is at it.
+        let issuers_path = write_issuers_with_min_version(dir.path(), 3);
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path,
+            trusted_issuers_path: issuers_path,
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+        let now_in_window = expires_at - 1;
+
+        // Outcome-level: the invalid at-floor successor does not mask the below-floor running
+        // directory; the reload fails closed rather than returning a transient verify error.
+        let outcome = reload_verified_directory(&config, now_in_window, 1, expires_at, &v1_hash)
+            .expect("reload runs");
+        assert!(
+            matches!(outcome, ReloadOutcome::BelowMinVersionFloor(None)),
+            "a below-floor running directory with an invalid successor must fail closed, got \
+             {outcome:?}"
+        );
+
+        // Step-level: the gate flips to deny-all and the alarm is raised.
+        let gate = DirectoryGate::new(verified_directory("did:chio:bob", 24));
+        assert_eq!(gate.current_version(), 1);
+        let alive = AtomicBool::new(true);
+        let mut state = ReloadState {
+            version: 1,
+            body_sha256: v1_hash.clone(),
+            expires_at_unix_ms: expires_at,
+        };
+        directory_reload_step(&gate, &config, now_in_window, &mut state, &alive);
+        assert_eq!(
+            gate.current_version(),
+            0,
+            "a below-floor directory with a bad successor fails closed to deny-all"
+        );
+        assert!(
+            !alive.load(Ordering::SeqCst),
+            "the fail-closed alarm is raised"
+        );
+    }
+
+    /// Like [`write_test_bundle`] but with an explicit validity window, so a test can
+    /// publish a still-in-window successor AFTER the running bundle has lapsed. Writes to
+    /// `path` and returns the full-document body hash (the successor's chain pin).
+    fn write_test_bundle_windowed(
+        path: &std::path::Path,
+        version: u64,
+        issued_at_unix_ms: u64,
+        expires_at_unix_ms: u64,
+        previous_version_sha256: Option<String>,
+    ) -> String {
+        let issuer = Keypair::from_seed(&[240u8; 32]);
+        let directory = TransportDirectoryDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+            peers: vec![
+                local_relay_entry(LOCAL_TRANSPORT_SEED),
+                directory_entry("did:chio:bob", 7, 24),
+            ],
+            treaties: Vec::new(),
+        };
+        let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());
+        let body = TransportDirectoryBundleBody {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            issuer: "did:chio:issuer".to_string(),
+            key_id: "issuer-key-1".to_string(),
+            directory_sha256,
+            version,
+            previous_version_sha256,
+            issued_at_unix_ms,
+            expires_at_unix_ms,
+        };
+        let (signature, _) = issuer.sign_canonical(&body).unwrap();
+        let bundle = TransportDirectoryBundleDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            body,
+            directory,
+            signature,
+        };
+        let body_hash = sha256_hex(&canonical_json_bytes(&bundle).unwrap());
+        std::fs::write(path, serde_json::to_string(&bundle).unwrap()).unwrap();
+        body_hash
+    }
+
+    #[test]
+    fn directory_reloader_self_heals_after_expiry_lapse() {
+        // After an expiry lapses the gate to deny-all, a valid in-window successor must
+        // be able to swap back in WITHOUT a restart. The reloader keeps the
+        // last-good version + hash chain SEPARATELY from the admission gate, so the deny-all
+        // sentinel (version 0, empty predecessor hash) never becomes the chain the successor
+        // must verify against.
+        let dir = tempfile::tempdir().unwrap();
+        let bundle_path = dir.path().join("bundle.json");
+        let issuers_path = write_issuers_with_min_version(dir.path(), 0);
+        // v1: in-window early, expires at NOW + 1.
+        let v1_hash = write_test_bundle_windowed(&bundle_path, 1, NOW - 1, NOW + 1, None);
+
+        let gate = DirectoryGate::new(std::sync::Arc::new(
+            chio_federation_transport_iroh::identity::VerifiedDirectory::empty_deny_all(),
+        ));
+        let alive = AtomicBool::new(true);
+        // The reloader's preserved last-good, pinned to the running v1.
+        let mut state = ReloadState {
+            version: 1,
+            body_sha256: v1_hash.clone(),
+            expires_at_unix_ms: NOW + 1,
+        };
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path: bundle_path.clone(),
+            trusted_issuers_path: issuers_path,
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+
+        // Tick 1: now is PAST v1's expiry with no successor on disk -> fail closed to
+        // deny-all, but last-good (v1) is PRESERVED.
+        let now_expired = NOW + 2;
+        directory_reload_step(&gate, &config, now_expired, &mut state, &alive);
+        assert_eq!(gate.current_version(), 0, "expiry lapses the gate to deny-all");
+        assert!(
+            !alive.load(Ordering::SeqCst),
+            "expiry raises the fail-closed alarm"
+        );
+        assert_eq!(
+            state.version, 1,
+            "last-good is preserved across the deny-all lapse"
+        );
+
+        // Publish a valid in-window v2 successor (chained onto v1, issued after v1 lapsed).
+        let _v2_hash =
+            write_test_bundle_windowed(&bundle_path, 2, NOW + 1, NOW + 100, Some(v1_hash.clone()));
+
+        // Counterfactual: had the reloader re-derived last-good FROM THE GATE, the
+        // deny-all sentinel (version 0, empty hash) would be the predecessor and the same
+        // successor would NOT swap in.
+        let denied = reload_verified_directory(&config, now_expired, 0, 0, "")
+            .expect("reload runs against the deny-all sentinel");
+        assert!(
+            !matches!(denied, ReloadOutcome::Updated(_)),
+            "a successor chained onto last-good cannot recover from the deny-all sentinel"
+        );
+
+        // Tick 2: the same successor verified against the PRESERVED last-good chain
+        // self-heals admission back to v2.
+        directory_reload_step(&gate, &config, now_expired, &mut state, &alive);
+        assert_eq!(
+            gate.current_version(),
+            2,
+            "a valid successor self-heals admission after an expiry lapse"
+        );
+        assert_eq!(
+            state.version, 2,
+            "last-good advances to the recovered successor"
+        );
+    }
+
+    /// Write a signed successor to a FIXED `path` (so successive versions overwrite one
+    /// bundle the reloader re-reads), binding the LOCAL node at `local_transport_seed`
+    /// (pass [`LOCAL_TRANSPORT_SEED`] to REBIND this node, any other seed to ROTATE it
+    /// away), peer `did:chio:bob` live, chaining onto `previous_version_sha256`. Returns
+    /// the full-document body hash (the successor's chain pin).
+    fn write_local_binding_bundle_at(
+        path: &std::path::Path,
+        version: u64,
+        local_transport_seed: u8,
+        previous_version_sha256: Option<String>,
+    ) -> String {
+        let (bundle_json, _issuer) = build_signed_bundle_json(
+            vec![
+                local_relay_entry(local_transport_seed),
+                directory_entry("did:chio:bob", 7, 24),
+            ],
+            version,
+            previous_version_sha256,
+        );
+        std::fs::write(path, &bundle_json).unwrap();
+        let bundle: TransportDirectoryBundleDocument = serde_json::from_str(&bundle_json).unwrap();
+        sha256_hex(&canonical_json_bytes(&bundle).unwrap())
+    }
+
+    #[test]
+    fn directory_reload_advances_chain_after_local_binding_revoked() {
+        // When a valid v2 successor rotates or tombstones this node (LocalBindingRevoked
+        // -> deny-all), the reload chain must advance to v2 so a later v3 that rebinds this
+        // node - chaining onto v2, the canonical successor - can self-heal admission,
+        // rather than staying pinned to v1 and rejecting the correctly-chained v3 forever.
+        // Here v2 revokes the local binding (the chain must advance to v2), then v3 chained
+        // onto v2 rebinds this node and restores admission through the gate.
+        let dir = tempfile::tempdir().unwrap();
+        let bundle_path = dir.path().join("bundle.json");
+        let issuers_path = write_issuers_with_min_version(dir.path(), 0);
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path: bundle_path.clone(),
+            trusted_issuers_path: issuers_path,
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+
+        // v1 binds this node (0x11); the reloader's last-good starts here.
+        let v1_hash = write_local_binding_bundle_at(&bundle_path, 1, LOCAL_TRANSPORT_SEED, None);
+        let gate = DirectoryGate::new(verified_directory("did:chio:bob", 24));
+        assert_eq!(gate.current_version(), 1);
+        let alive = AtomicBool::new(true);
+        let mut state = ReloadState {
+            version: 1,
+            body_sha256: v1_hash.clone(),
+            expires_at_unix_ms: NOW + 1,
+        };
+
+        // v2 ROTATES this node away (LOCAL -> 0x22), chaining onto v1 -> LocalBindingRevoked.
+        let v2_hash = write_local_binding_bundle_at(&bundle_path, 2, 0x22, Some(v1_hash.clone()));
+        directory_reload_step(&gate, &config, NOW, &mut state, &alive);
+        assert_eq!(
+            gate.current_version(),
+            0,
+            "a revoked local binding fails closed to deny-all"
+        );
+        assert!(
+            !alive.load(Ordering::SeqCst),
+            "a revoked local binding raises the fail-closed alarm"
+        );
+        assert_eq!(
+            state.version, 2,
+            "the chain advances to the revoking successor so a rebind can self-heal"
+        );
+        assert_eq!(
+            state.body_sha256, v2_hash,
+            "the chain pin advances to the revoking successor's hash"
+        );
+
+        // v3 REBINDS this node (LOCAL -> 0x11), chaining onto v2. Self-heal must restore
+        // admission without a restart.
+        let _v3_hash =
+            write_local_binding_bundle_at(&bundle_path, 3, LOCAL_TRANSPORT_SEED, Some(v2_hash));
+        alive.store(true, Ordering::SeqCst);
+        directory_reload_step(&gate, &config, NOW, &mut state, &alive);
+        assert_eq!(
+            gate.current_version(),
+            3,
+            "a rebinding successor chained onto the revoker self-heals admission"
+        );
+        assert_eq!(
+            state.version, 3,
+            "last-good advances to the recovered successor"
+        );
+    }
+
+    #[test]
+    fn reloader_wakes_at_expiry_before_the_fixed_interval() {
+        // The reloader must re-check expiry at the deadline, not wait the full fixed
+        // interval. With a 60s interval, a bundle that expires just after a poll would
+        // otherwise keep admitting for almost a minute (the gate's decide() is not itself
+        // time-aware). next_reload_delay caps the wake at the expiry deadline: in-window
+        // with expiry sooner than the interval it wakes at expiry, not 60s.
+        let interval = Duration::from_secs(60);
+        assert_eq!(
+            next_reload_delay(interval, 1_000, 1_005),
+            Duration::from_millis(5),
+            "wake at the expiry deadline when it precedes the next fixed poll"
+        );
+        // Expiry farther off than the interval -> the fixed interval caps the wake.
+        assert_eq!(
+            next_reload_delay(interval, 1_000, 1_000 + 120_000),
+            interval,
+            "the fixed interval caps the wake when expiry is far off"
+        );
+        // Deny-all sentinel (gate expiry 0, admitting nothing) -> the fixed interval
+        // governs the poll for a successor; never a zero-delay busy-loop.
+        assert_eq!(
+            next_reload_delay(interval, 2_000, 0),
+            interval,
+            "a deny-all gate polls on the fixed interval, not a busy-loop"
+        );
+    }
+
+    #[test]
+    fn reloader_rechecks_immediately_when_a_live_directory_expires_mid_cycle() {
+        // A LIVE directory (positive expiry) whose deadline elapsed between the reload step
+        // and this delay computation is still admitting through the gate, so it must be
+        // rechecked IMMEDIATELY to flip it closed at the deadline, not admit for another
+        // full interval. This is the distinction between "still-admitting-but-just-expired"
+        // and the "already-deny-all" sentinel, which polls on the interval.
+        let interval = Duration::from_secs(60);
+        assert_eq!(
+            next_reload_delay(interval, 2_000, 1_000),
+            Duration::ZERO,
+            "a live directory whose expiry already passed rechecks immediately"
+        );
+        // Expiry exactly at `now` is already past (decide uses `expires_at <= now`), so a
+        // live directory at that boundary also rechecks immediately.
+        assert_eq!(
+            next_reload_delay(interval, 1_000, 1_000),
+            Duration::ZERO,
+            "a live directory whose expiry equals now rechecks immediately"
+        );
+    }
+
+    #[test]
+    fn watchdog_flips_gauge_and_alarms_on_death() {
+        // A liveness probe reporting dead flips the router-alive gauge to 0 (the
+        // testable per-tick step the spawned watchdog loops over).
+        chio_federation_transport_iroh::metrics::set_router_alive(true);
+        let dead = true;
+        note_router_liveness(!dead); // alive = false
+        assert_eq!(chio_federation_transport_iroh::metrics::router_alive(), 0);
+        // A live probe restores the gauge.
+        note_router_liveness(true);
+        assert_eq!(chio_federation_transport_iroh::metrics::router_alive(), 1);
+    }
+
+    #[test]
+    fn directory_reload_rejects_rollback_and_keeps_last_good() {
+        let dir = tempfile::tempdir().unwrap();
+        // On-disk bundle is version 1; the running directory is already at version 3.
+        let (bundle_path, issuers_path, expires_at, _hash) =
+            write_test_bundle(dir.path(), 1, false, None);
+        let config = DirectoryReloadConfig {
+            interval: Duration::from_secs(60),
+            bundle_path,
+            trusted_issuers_path: issuers_path,
+            local_transport_endpoint: endpoint_from_seed(LOCAL_TRANSPORT_SEED),
+            local_kernel_id: LOCAL_KERNEL_ID.to_string(),
+        };
+        let now_in_window = expires_at - 1;
+        let error =
+            reload_verified_directory(&config, now_in_window, 3, expires_at, "current-hash")
+                .expect_err("an in-window rollback is rejected");
+        assert!(matches!(
+            error,
+            DirectoryReloadError::Rollback {
+                found: 1,
+                current: 3
+            }
+        ));
     }
 
     #[test]

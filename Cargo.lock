@@ -3428,6 +3428,8 @@ dependencies = [
 name = "chio-federation-transport-iroh"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
+ "async-trait",
  "blake3",
  "bytes",
  "chio-core-types",
@@ -3435,11 +3437,14 @@ dependencies = [
  "chio-metrics-spec",
  "chio-pheromone",
  "chio-pheromone-relay",
+ "chio-pheromone-runtime",
  "chio-revocation-oracle",
  "iroh",
  "iroh-blobs",
  "iroh-gossip",
+ "loom",
  "n0-future",
+ "proptest",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

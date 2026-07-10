@@ -407,6 +407,7 @@ pub struct VerifiedDirectory {
     treaty_parties: HashMap<String, HashSet<String>>,
     version: u64,
     body_sha256: String,
+    expires_at_unix_ms: u64,
 }
 
 impl VerifiedDirectory {
@@ -502,6 +503,30 @@ impl VerifiedDirectory {
         &self.body_sha256
     }
 
+    /// The bundle validity-window end this directory was verified against (the
+    /// same field the load-time validity check reads). The reloader compares this
+    /// against `now` BEFORE any unchanged fast path.
+    #[must_use]
+    pub fn expires_at_unix_ms(&self) -> u64 {
+        self.expires_at_unix_ms
+    }
+
+    /// A deny-all directory: admits nothing, is party to no treaty. Used as the
+    /// fail-closed terminal state when the running bundle expires with no valid
+    /// successor. version 0, expiry 0, empty indices.
+    #[must_use]
+    pub fn empty_deny_all() -> Self {
+        Self {
+            by_endpoint: HashMap::new(),
+            by_kernel_passport: HashMap::new(),
+            signers: VerifiedSignerDirectory::from_verified_map(HashMap::new()),
+            treaty_parties: HashMap::new(),
+            version: 0,
+            body_sha256: String::new(),
+            expires_at_unix_ms: 0,
+        }
+    }
+
     /// Number of admitted (and removed) bindings held.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -544,10 +569,10 @@ impl TransportDirectoryBundleDocument {
         &self,
         trust: &TransportDirectoryBundleTrust,
     ) -> Result<VerifiedDirectory, IdentityError> {
-        // OBSERVE-ONLY wrapper: the fail-closed verification logic is unchanged in
-        // `verify_bundle_inner`; here we count + log a rejection ALONGSIDE it and
-        // return the SAME `Result` (a tampered/rolled-back directory bundle was
-        // previously indistinguishable from a healthy load in the telemetry).
+        // Observe-only wrapper: `verify_bundle_inner` holds the fail-closed
+        // verification logic; here we count and log a rejection alongside it and
+        // return the same `Result`, so a tampered or rolled-back directory bundle
+        // is distinguishable from a healthy load in the telemetry.
         let result = self.verify_bundle_inner(trust);
         if let Err(error) = &result {
             crate::metrics::record_verify_failure(crate::metrics::SEAM_IDENTITY, error.code());
@@ -805,6 +830,7 @@ impl TransportDirectoryBundleDocument {
             treaty_parties,
             version: self.body.version,
             body_sha256,
+            expires_at_unix_ms: self.body.expires_at_unix_ms,
         })
     }
 }
@@ -991,10 +1017,10 @@ mod tests {
 
     #[test]
     fn out_of_window_bundle_bumps_identity_verify_failure_and_is_still_rejected() {
-        // OBSERVE-ONLY proof: a bundle presented outside its validity window is
-        // still rejected fail-closed AND the failure is now counted + logged (a
-        // tampered / out-of-window directory bundle was previously indistinguishable
-        // from a healthy load in the telemetry). The returned Err is unchanged.
+        // Observe-only proof: a bundle presented outside its validity window is
+        // still rejected fail-closed and the failure is counted and logged, so a
+        // tampered or out-of-window directory bundle is distinguishable from a
+        // healthy load in the telemetry. The returned Err is unchanged.
         let alice = EntrySpec::admitted("did:chio:alice", 1, 10);
         let (mut bundle, trust) = signed_bundle(&[alice]);
         // Push the window start past `now` so the validity check fails closed.

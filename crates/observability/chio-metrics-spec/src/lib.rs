@@ -128,8 +128,11 @@ pub const CHIO_FEDERATION_TRANSPORT_ADMISSION_TOTAL: &str =
     "chio_federation_transport_admission_total";
 pub const CHIO_FEDERATION_TRANSPORT_CATCHUP_EPOCH_GAP_TOTAL: &str =
     "chio_federation_transport_catchup_epoch_gap_total";
+pub const CHIO_FEDERATION_TRANSPORT_DIRECTORY_RELOAD_TOTAL: &str =
+    "chio_federation_transport_directory_reload_total";
 pub const CHIO_FEDERATION_TRANSPORT_LANE_TOTAL: &str = "chio_federation_transport_lane_total";
 pub const CHIO_FEDERATION_TRANSPORT_OUTBOX_TOTAL: &str = "chio_federation_transport_outbox_total";
+pub const CHIO_FEDERATION_TRANSPORT_ROUTER_ALIVE: &str = "chio_federation_transport_router_alive";
 pub const CHIO_FEDERATION_TRANSPORT_VERIFY_FAILURES_TOTAL: &str =
     "chio_federation_transport_verify_failures_total";
 pub const CHIO_GUARD_DENY_TOTAL: &str = "chio_guard_deny_total";
@@ -285,6 +288,12 @@ pub const REGISTRY: &[MetricDescriptor] = &[
         labels = ["source"]
     ),
     describe!(
+        name = CHIO_FEDERATION_TRANSPORT_DIRECTORY_RELOAD_TOTAL,
+        help = "Total iroh federation-transport directory reload outcomes.",
+        kind = Counter,
+        labels = ["outcome"]
+    ),
+    describe!(
         name = CHIO_FEDERATION_TRANSPORT_LANE_TOTAL,
         help = "Total iroh federation-transport per-lane accept outcomes.",
         kind = Counter,
@@ -295,6 +304,12 @@ pub const REGISTRY: &[MetricDescriptor] = &[
         help = "Total iroh federation-transport pheromone outbox drain outcomes.",
         kind = Counter,
         labels = ["outcome"]
+    ),
+    describe!(
+        name = CHIO_FEDERATION_TRANSPORT_ROUTER_ALIVE,
+        help = "Iroh federation-transport router liveness (1 alive, 0 the router died).",
+        kind = Gauge,
+        labels = []
     ),
     describe!(
         name = CHIO_FEDERATION_TRANSPORT_VERIFY_FAILURES_TOTAL,

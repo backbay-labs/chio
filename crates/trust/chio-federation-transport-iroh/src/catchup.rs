@@ -1575,12 +1575,11 @@ mod tests {
 
     #[tokio::test]
     async fn publish_and_build_manifest_publishes_every_advertised_root() {
-        // Finding 2 (fixed): a manifest built for a history whose roots were NOT
-        // previously written to the store must still be fetchable. The publishing
-        // builder writes each advertised root into the SAME FsStore the BlobsProtocol
-        // serves from, so every advertised hash is confirmed-stored, not merely a
-        // deterministic address the store never held (which BlobsProtocol could not
-        // serve, failing catch-up even though inline catch-up would have worked).
+        // A manifest built for a history whose roots are not yet in the store must
+        // still be fetchable. The publishing builder writes each advertised root into
+        // the SAME FsStore the BlobsProtocol serves from, so every advertised hash is
+        // confirmed-stored rather than a deterministic address the store never held -
+        // an address BlobsProtocol cannot serve, which would fail catch-up.
         let (store, dir) = temp_fs_store("catchup-publish-manifest").await;
         let publisher = RevocationRootPublisher::new(store.clone());
 

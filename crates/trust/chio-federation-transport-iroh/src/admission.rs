@@ -18,6 +18,7 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use iroh::endpoint::AfterHandshakeOutcome;
 use iroh::endpoint::Connection;
 use iroh::endpoint::EndpointHooks;
@@ -35,24 +36,59 @@ pub const NOT_ADMITTED_REASON: &[u8] = b"not admitted";
 /// Accept-time gate over an issuer-signed, load-time-verified directory.
 ///
 /// Built ONLY from an `Arc<VerifiedDirectory>`, so it can never resolve against
-/// an unverified bundle. Cloning is cheap (shares the `Arc`); the same gate
-/// instance is installed on the endpoint via `.hooks(gate)` and shared by lanes.
+/// an unverified bundle. The directory lives behind an [`ArcSwap`] so
+/// `authorize`/`decide`/`resolve` read the CURRENT directory lock-free while a
+/// single-writer [`swap`](Self::swap) publishes a freshly re-verified directory
+/// (eviction, rotation, and expiry take effect without a restart).
+/// Cloning is cheap (shares one `Arc<ArcSwap<..>>`), so every gate clone observes
+/// the reloader's swaps immediately.
 #[derive(Debug, Clone)]
 pub struct DirectoryGate {
-    directory: Arc<VerifiedDirectory>,
+    directory: Arc<ArcSwap<VerifiedDirectory>>,
 }
 
 impl DirectoryGate {
     /// Build the gate from a load-time-verified directory.
     #[must_use]
     pub fn new(directory: Arc<VerifiedDirectory>) -> Self {
-        Self { directory }
+        Self {
+            directory: Arc::new(ArcSwap::from(directory)),
+        }
     }
 
-    /// The verified directory this gate resolves against.
+    /// Atomically publish a freshly re-verified directory. Only the reloader
+    /// calls this, and only with a `VerifiedDirectory` that passed `verify_bundle`
+    /// (or `empty_deny_all`), so the gate can never resolve against an unverified
+    /// or rolled-back bundle.
+    pub fn swap(&self, next: Arc<VerifiedDirectory>) {
+        self.directory.store(next);
+    }
+
+    /// The current verified directory (a cheap Arc clone via `load_full`).
     #[must_use]
-    pub fn directory(&self) -> &Arc<VerifiedDirectory> {
-        &self.directory
+    pub fn directory(&self) -> Arc<VerifiedDirectory> {
+        self.directory.load_full()
+    }
+
+    /// The current directory's monotone version (for the reloader's rollback
+    /// floor and unchanged fast path).
+    #[must_use]
+    pub fn current_version(&self) -> u64 {
+        self.directory.load().version()
+    }
+
+    /// The current directory's expiry (for the reloader's expiry-before-unchanged
+    /// check).
+    #[must_use]
+    pub fn current_expires_at_unix_ms(&self) -> u64 {
+        self.directory.load().expires_at_unix_ms()
+    }
+
+    /// The current directory's body hash (for the reloader's rollback chaining
+    /// and unchanged compare).
+    #[must_use]
+    pub fn current_body_sha256(&self) -> String {
+        self.directory.load().body_sha256().to_string()
     }
 
     /// Lane-handler-facing resolution: the admitted `kernel_id` bound to an
@@ -62,7 +98,7 @@ impl DirectoryGate {
     /// admitted on.
     #[must_use]
     pub fn resolve(&self, endpoint: &EndpointId) -> Option<String> {
-        self.directory.authorize(endpoint).map(str::to_owned)
+        self.directory.load().authorize(endpoint).map(str::to_owned)
     }
 
     /// Pure admission decision for an authenticated `EndpointId`. Extracted from
@@ -73,7 +109,7 @@ impl DirectoryGate {
     /// `kernel_id` is rejected with [`NOT_ADMITTED_ERROR_CODE`].
     #[must_use]
     pub fn decide(&self, endpoint: &EndpointId) -> AfterHandshakeOutcome {
-        match self.directory.authorize(endpoint) {
+        match self.directory.load().authorize(endpoint) {
             Some(_kernel_id) => {
                 // OBSERVE-ONLY: count the admit alongside the unchanged decision.
                 crate::metrics::record_admission(crate::metrics::ADMISSION_ACCEPT);
@@ -305,5 +341,32 @@ mod tests {
             crate::metrics::admission_total(crate::metrics::ADMISSION_ACCEPT) > before_accept,
             "an admit must be counted (observe-only)"
         );
+    }
+
+    #[test]
+    fn swap_flips_admission_without_reconstructing_the_gate() {
+        // Gate at version N admits alice at E_old. Swapping in a directory that
+        // tombstones alice flips decide(E_old) to a 403 through the SAME gate
+        // clone, with no reconstruction.
+        let gate = DirectoryGate::new(verified_directory("did:chio:alice", 1, 10, false));
+        let clone = gate.clone();
+        let e_old = endpoint_from_seed(10);
+        assert!(matches!(gate.decide(&e_old), AfterHandshakeOutcome::Accept));
+
+        // Publish a successor that tombstones alice (removed = true).
+        gate.swap(verified_directory("did:chio:alice", 1, 10, true));
+        // Both the original handle and the clone observe the swap immediately.
+        assert!(reject_code(&gate.decide(&e_old)).is_some());
+        assert!(reject_code(&clone.decide(&e_old)).is_some());
+        assert_eq!(clone.resolve(&e_old), None);
+    }
+
+    #[test]
+    fn empty_deny_all_admits_nothing() {
+        let gate = DirectoryGate::new(std::sync::Arc::new(
+            crate::identity::VerifiedDirectory::empty_deny_all(),
+        ));
+        assert!(reject_code(&gate.decide(&endpoint_from_seed(10))).is_some());
+        assert_eq!(gate.resolve(&endpoint_from_seed(10)), None);
     }
 }

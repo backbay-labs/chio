@@ -380,10 +380,31 @@ async fn read_frame(recv: &mut RecvStream) -> Result<Vec<u8>, WireError> {
     if len > MAX_WIRE_BYTES {
         return Err(WireError::FrameTooLarge(len));
     }
-    let mut buf = vec![0u8; len];
-    recv.read_exact(&mut buf)
-        .await
-        .map_err(|error| WireError::Io(error.to_string()))?;
+    // Incremental read: grow as bytes arrive, never pre-commit the declared len.
+    // `recv` is an iroh (noq) RecvStream, whose inherent `read` yields
+    // `Option<usize>` (None == stream finished / EOF).
+    const READ_CHUNK: usize = 64 * 1024;
+    let mut buf: Vec<u8> = Vec::with_capacity(len.min(READ_CHUNK));
+    let mut remaining = len;
+    let mut chunk = [0u8; READ_CHUNK];
+    while remaining > 0 {
+        let want = remaining.min(READ_CHUNK);
+        match recv
+            .read(&mut chunk[..want])
+            .await
+            .map_err(|error| WireError::Io(error.to_string()))?
+        {
+            Some(0) | None => {
+                return Err(WireError::Io(
+                    "unexpected eof reading frame body".to_string(),
+                ));
+            }
+            Some(n) => {
+                buf.extend_from_slice(&chunk[..n]);
+                remaining -= n;
+            }
+        }
+    }
     Ok(buf)
 }
 
@@ -684,31 +705,38 @@ impl BilateralCoSignHandler {
                 request.org_a_kernel_id.clone(),
             ));
         }
-        // Transport-origin binding: the authenticated EndpointId must resolve to
-        // the claimed Org B kernel id. `resolve` returns None for unbound/removed
-        // peers (trust + rotation window at the directory layer); the gate should
-        // already have rejected those at handshake, so None here is defense in
-        // depth. A resolved-but-mismatched id means the caller claimed to be a
-        // different peer than it authenticated as: fail closed.
-        let resolved = self
-            .gate
-            .resolve(remote)
+        // ONE directory snapshot for the WHOLE verification. Load the current verified
+        // directory ONCE and use it for BOTH the transport-origin
+        // authorization AND the passport-key lookup. Consulting the gate twice (a
+        // `resolve` for the endpoint, then a separate `directory()` for the key) could
+        // straddle a live directory reload: the endpoint might authorize against the OLD
+        // directory while the key is read from the NEW one. In the endpoint-rotation case
+        // where the new directory keeps the same passport key for that kernel but no longer
+        // binds its `EndpointId`, the co-signature would verify even though the CURRENT
+        // directory no longer authorizes the remote endpoint. Holding one owned snapshot Arc
+        // (ArcSwap `load_full`) also keeps the backing directory alive for the borrowed key.
+        let directory = self.gate.directory();
+        // Transport-origin binding: the authenticated EndpointId must resolve to the claimed
+        // Org B kernel id IN THIS SNAPSHOT. `authorize` returns None for unbound/removed
+        // peers (trust + rotation window at the directory layer); the gate should already
+        // have rejected those at handshake, so None here is defense in depth. A
+        // resolved-but-mismatched id means the caller claimed to be a different peer than it
+        // authenticated as: fail closed.
+        let resolved = directory
+            .authorize(remote)
             .ok_or_else(|| BilateralCoSigningError::UnknownPeer(request.org_b_kernel_id.clone()))?;
-        if resolved != request.org_b_kernel_id {
+        if resolved != request.org_b_kernel_id.as_str() {
             return Err(BilateralCoSigningError::UnknownPeer(
                 request.org_b_kernel_id.clone(),
             ));
         }
-        // Org B's passport key (any algorithm), bound to the SAME issuer-signed
-        // directory snapshot the gate admitted on. Sourcing the DSSE-verification
-        // key from the verified directory (not only a separately-fed pinned map
-        // that can lag it) means a rotated-away / revoked passport - one the
-        // CURRENT directory no longer binds - can never be used to obtain Org A's
-        // co-signature. Fail-closed: an unknown or removed peer has no
-        // directory-bound passport key.
-        let directory_key = self
-            .gate
-            .directory()
+        // Org B's passport key (any algorithm), read from the SAME issuer-signed snapshot
+        // the endpoint was just authorized against. Sourcing the DSSE-verification key from
+        // the verified directory (not only a separately-fed pinned map that can lag it) means
+        // a rotated-away / revoked passport - one the current directory no longer binds - can
+        // never be used to obtain Org A's co-signature. Fail-closed: an unknown or removed
+        // peer has no directory-bound passport key.
+        let directory_key = directory
             .resolve_passport_key(&request.org_b_kernel_id)
             .ok_or_else(|| BilateralCoSigningError::UnknownPeer(request.org_b_kernel_id.clone()))?;
         // The pinned map is Org A's co-signing allowlist (which admitted peers it
@@ -793,7 +821,7 @@ impl ProtocolHandler for BilateralCoSignHandler {
         use tracing::Instrument;
         // Concurrency cap: acquire one in-flight permit (held for the whole
         // handler) or shed under saturation with a distinct busy code.
-        let _permit = match self.limiter.admit().await {
+        let _permit = match self.limiter.admit_peer(&connection.remote_id()).await {
             Ok(permit) => permit,
             Err(error) => {
                 crate::metrics::record_lane_frame(
@@ -1287,8 +1315,46 @@ mod tests {
     }
 
     #[test]
+    fn cosign_unit_rejects_endpoint_absent_from_the_current_directory_snapshot() {
+        // Single-snapshot verification. Endpoint authorization AND the passport-key
+        // lookup are read from ONE `directory()` snapshot, so a directory
+        // reload can never authorize the endpoint against one directory while reading the key
+        // from another. This locks in that authorization is sourced from the CURRENT
+        // directory snapshot: if that snapshot no longer binds the remote endpoint (rotated
+        // away / removed), cosign fails closed even for an otherwise-valid, correctly-signed
+        // request whose key is still pinned - the key is looked up from the SAME snapshot that
+        // failed to authorize the endpoint, so a rotated-away peer can never co-sign.
+        let org_a = Peer::new(ORIGIN_KERNEL, 10, 1);
+        let org_b = Peer::new(TOOL_HOST_KERNEL, 11, 2);
+        // The CURRENT directory admits only org_a; org_b's endpoint is NOT bound here.
+        let gate = DirectoryGate::new(verified_directory(&[&org_a]));
+        let handler = BilateralCoSignHandler::new(
+            gate,
+            ORIGIN_KERNEL,
+            org_a.passport.clone(),
+            // org_b's key is still pinned, so the rejection is due ONLY to the current
+            // snapshot not authorizing the endpoint, not a pinned-map miss.
+            pinned_org_b(&org_b),
+        );
+        let pae_bytes = b"pae from a rotated-away peer".to_vec();
+        let request = DsseCoSigningRequest::new(
+            ORIGIN_KERNEL.to_string(),
+            org_b.kernel_id.clone(),
+            pae_bytes.clone(),
+            org_b.passport.sign(&pae_bytes),
+        );
+        assert_eq!(
+            handler.cosign(&org_b.transport_id, &request),
+            Err(BilateralCoSigningError::UnknownPeer(
+                org_b.kernel_id.clone()
+            )),
+            "a peer the current directory snapshot does not authorize cannot co-sign"
+        );
+    }
+
+    #[test]
     fn lagging_pinned_passport_key_is_rejected_without_signing() {
-        // Finding 2: the DSSE-verification key must be bound to the SAME verified
+        // The DSSE-verification key must be bound to the same verified
         // directory the gate admitted on. If an out-of-band pinned map LAGS the
         // signed directory (pins a different passport key than the directory's
         // current binding for Org B), Org A must refuse to co-sign - otherwise an

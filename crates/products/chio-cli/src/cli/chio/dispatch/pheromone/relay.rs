@@ -2,8 +2,9 @@ use super::{
     build_iroh_outbound_endpoint, build_iroh_router, build_peer_directory_bundle_trust,
     iroh_transport_metrics_prometheus, load_chio_verified_workflow_resolver,
     load_chio_workflow_verifier_trust_bundle, load_iroh_serve_inputs,
-    load_relay_peer_directory_from_paths, load_relay_signing_key, read_json_documents_from_dir,
-    read_utf8_json_file, unix_now_ms, write_json_string, write_pretty_json, IrohServeInputs,
+    load_relay_peer_directory_from_paths, load_relay_signing_key, note_router_liveness,
+    read_json_documents_from_dir, read_utf8_json_file, run_directory_reloader, unix_now_ms,
+    write_json_string, write_pretty_json, DirectoryReloadConfig, IrohServeInputs,
 };
 use crate::CliError;
 use std::collections::HashMap;
@@ -38,6 +39,27 @@ impl chio_pheromone_relay::RelayBatchReceiver for CliRelayBatchReceiver {
             chio_pheromone_runtime::PheromoneReceiver::new(store, self.resolver.clone(), config);
         receiver
             .receive_batch(&batch, &self.transit_policy)
+            .map_err(|error| chio_pheromone_relay::PheromoneRelayError::Json(error.to_string()))
+    }
+
+    async fn recorded_report_for_batch(
+        &self,
+        batch_sha256: &str,
+        authenticated_sender_kernel_id: &str,
+    ) -> Result<
+        Option<chio_pheromone_runtime::PheromoneReceiveReport>,
+        chio_pheromone_relay::PheromoneRelayError,
+    > {
+        // Consult the same runtime store receive_batch opens: surface a
+        // durably-committed verdict for this (batch, sender) pair without re-running
+        // receive_batch. The sender scope is applied at the query
+        // level so a cross-sender verdict for the same bytes is never returned. Store
+        // errors map to the Json variant, the same internal-error shape receive_batch
+        // uses for a store-open failure above.
+        let store = chio_pheromone_runtime::store::SqlitePheromoneRuntimeStore::open(&self.store)
+            .map_err(|error| chio_pheromone_relay::PheromoneRelayError::Json(error.to_string()))?;
+        store
+            .lookup_receive_report_by_batch(batch_sha256, authenticated_sender_kernel_id)
             .map_err(|error| chio_pheromone_relay::PheromoneRelayError::Json(error.to_string()))
     }
 }
@@ -298,10 +320,70 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
             .map_err(|error| {
                 CliError::cli_other_error(format!("Chio pheromone relay bind: {error}"))
             })?;
+
+        // Spawn the directory reloader and the router-liveness watchdog alongside the
+        // serve when the iroh transport is mounted. Both are dedicated tasks feeding
+        // shared state, aborted before the router teardown below.
+        let iroh_background = iroh_mount.as_ref().map(|mount| {
+            let alive = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+            chio_federation_transport_iroh::metrics::set_router_alive(true);
+
+            // Re-verify the directory bundle every interval, fail closed on expiry.
+            let reloader = match (iroh_transport_directory, trusted_issuers) {
+                (Some(bundle_path), Some(issuers_path)) => {
+                    let reload_config = DirectoryReloadConfig {
+                        interval: std::time::Duration::from_secs(60),
+                        bundle_path: bundle_path.to_path_buf(),
+                        trusted_issuers_path: issuers_path.to_path_buf(),
+                        // This node's actual bound transport endpoint. The reloader
+                        // rechecks every re-verified successor against it and fails
+                        // closed to deny-all if the successor tombstones or rotates
+                        // this binding.
+                        local_transport_endpoint: mount.endpoint_id,
+                        // This node's localKernelId, so the recheck requires the
+                        // successor to bind THIS kernel to THIS endpoint (mirroring the
+                        // startup check), not merely that the endpoint resolves to some
+                        // kernel.
+                        local_kernel_id: mount.transport_local_kernel_id.clone(),
+                    };
+                    Some(tokio::spawn(run_directory_reloader(
+                        mount.gate.clone(),
+                        reload_config,
+                        std::sync::Arc::new(unix_now_ms),
+                        std::sync::Arc::clone(&alive),
+                    )))
+                }
+                _ => None,
+            };
+
+            // A panicked accept task kills the whole Router while HTTP keeps
+            // serving; poll liveness and make the freeze loud.
+            let router = mount.router.clone();
+            let watchdog_alive = std::sync::Arc::clone(&alive);
+            let watchdog = tokio::spawn(async move {
+                let mut ticker = tokio::time::interval(std::time::Duration::from_secs(5));
+                loop {
+                    ticker.tick().await;
+                    if router.is_shutdown() || router.endpoint().is_closed() {
+                        note_router_liveness(false);
+                        watchdog_alive.store(false, std::sync::atomic::Ordering::SeqCst);
+                        break;
+                    }
+                }
+            });
+            (reloader, watchdog)
+        });
+
         let serve_result = service
             .serve(listener)
             .await
             .map_err(|error| CliError::cli_other_error(format!("Chio pheromone relay: {error}")));
+        if let Some((reloader, watchdog)) = iroh_background {
+            if let Some(reloader) = reloader {
+                reloader.abort();
+            }
+            watchdog.abort();
+        }
         if let Some(mount) = iroh_mount {
             // The live iroh federation-transport metrics are scraped on the relay's
             // own /metrics endpoint for the whole process lifetime (see the
@@ -1252,8 +1334,8 @@ mod tests {
 
         #[test]
         fn direct_address_book_threads_the_socket_onto_the_resolved_endpoint() {
-            // FINDING 1 (codex round-7): in a relay-disabled / direct-address deployment
-            // the resolver must thread the --iroh-peer-addr socket onto the resolved
+            // In a relay-disabled / direct-address deployment the resolver must thread
+            // the --iroh-peer-addr socket onto the resolved
             // EndpointId so the drain can dial a peer known only by EndpointId + socket,
             // while an id-only resolution still works where discovery/relay is configured.
             let directory = verified_directory("did:chio:buyer", 24);

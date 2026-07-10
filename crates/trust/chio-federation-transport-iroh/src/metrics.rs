@@ -37,7 +37,8 @@ use std::sync::Mutex;
 pub use chio_metrics_spec::{
     CHIO_FEDERATION_TRANSPORT_ACCEPT_DURATION_SECONDS, CHIO_FEDERATION_TRANSPORT_ACCEPT_OPEN,
     CHIO_FEDERATION_TRANSPORT_ADMISSION_TOTAL, CHIO_FEDERATION_TRANSPORT_CATCHUP_EPOCH_GAP_TOTAL,
-    CHIO_FEDERATION_TRANSPORT_LANE_TOTAL, CHIO_FEDERATION_TRANSPORT_OUTBOX_TOTAL,
+    CHIO_FEDERATION_TRANSPORT_DIRECTORY_RELOAD_TOTAL, CHIO_FEDERATION_TRANSPORT_LANE_TOTAL,
+    CHIO_FEDERATION_TRANSPORT_OUTBOX_TOTAL, CHIO_FEDERATION_TRANSPORT_ROUTER_ALIVE,
     CHIO_FEDERATION_TRANSPORT_VERIFY_FAILURES_TOTAL,
     FEDERATION_TRANSPORT_ACCEPT_DURATION_BUCKETS_SECONDS,
 };
@@ -66,6 +67,10 @@ pub const LANE_OUTCOME_REJECT: &str = "reject";
 pub const LANE_OUTCOME_BUSY: &str = "busy";
 /// Lane outcome: a peer-dependent accept step exceeded its bound (slowloris).
 pub const LANE_OUTCOME_TIMEOUT: &str = "timeout";
+/// Lane outcome: a fan-out gossip receiver fell behind and iroh-gossip dropped
+/// messages (Event::Lagged). Metered so the "gate looks green but measures
+/// nothing" failure is visible; iroh-gossip 0.101 reports no drop count.
+pub const LANE_OUTCOME_LAGGED: &str = "lagged";
 
 /// Outbox outcome: a batch was accepted by its recipient.
 pub const OUTBOX_DELIVERED: &str = "delivered";
@@ -94,7 +99,7 @@ pub const SEAM_BILATERAL: &str = "bilateral";
 
 const NUM_LANES: usize = 4;
 const NUM_ADMISSION: usize = 2;
-const NUM_LANE_OUTCOME: usize = 4;
+const NUM_LANE_OUTCOME: usize = 5;
 const NUM_OUTBOX: usize = 3;
 const NUM_CATCHUP_SOURCE: usize = 2;
 
@@ -120,11 +125,6 @@ static LANE_TOTAL: [[AtomicU64; NUM_LANE_OUTCOME]; NUM_LANES] = [
         AtomicU64::new(0),
         AtomicU64::new(0),
         AtomicU64::new(0),
-    ],
-    [
-        AtomicU64::new(0),
-        AtomicU64::new(0),
-        AtomicU64::new(0),
         AtomicU64::new(0),
     ],
     [
@@ -132,8 +132,17 @@ static LANE_TOTAL: [[AtomicU64; NUM_LANE_OUTCOME]; NUM_LANES] = [
         AtomicU64::new(0),
         AtomicU64::new(0),
         AtomicU64::new(0),
+        AtomicU64::new(0),
     ],
     [
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+        AtomicU64::new(0),
+    ],
+    [
+        AtomicU64::new(0),
         AtomicU64::new(0),
         AtomicU64::new(0),
         AtomicU64::new(0),
@@ -234,7 +243,9 @@ fn lane_outcome_index(outcome: &str) -> usize {
         "accept" => 0,
         "reject" => 1,
         "busy" => 2,
-        _ => 3,
+        "timeout" => 3,
+        "lagged" => 4,
+        _ => 1, // unknown outcomes count as reject (fail-closed accounting)
     }
 }
 
@@ -275,6 +286,7 @@ pub fn accept_outcome_for_code(code: &str) -> &'static str {
     match code {
         "accept_timeout" => LANE_OUTCOME_TIMEOUT,
         "accept_busy" => LANE_OUTCOME_BUSY,
+        "accept_peer_busy" => LANE_OUTCOME_BUSY,
         _ => LANE_OUTCOME_REJECT,
     }
 }
@@ -396,6 +408,104 @@ pub fn verify_failures_total(seam: &'static str, reason: &'static str) -> u64 {
     }
 }
 
+// -- Directory reload outcomes -----------------------------------------------
+
+/// Reload outcome: a strictly-newer, in-window bundle re-verified and swapped in.
+pub const RELOAD_UPDATED: &str = "updated";
+/// Reload outcome: the on-disk bundle is unchanged and still in-window (no swap).
+pub const RELOAD_UNCHANGED: &str = "unchanged";
+/// Reload outcome: the running bundle expired with no valid successor; the gate
+/// was swapped to deny-all (fail-closed) and an alarm raised. Operators alert on
+/// this being non-zero.
+pub const RELOAD_EXPIRED_FAILCLOSED: &str = "expired_failclosed";
+/// Reload outcome: a strictly-newer, in-window successor re-verified but no longer
+/// binds THIS node's local transport endpoint (it tombstoned or rotated this node);
+/// the gate was swapped to deny-all (fail-closed) and an alarm raised. Operators
+/// alert on this being non-zero (local-binding recheck).
+pub const RELOAD_BINDING_REVOKED: &str = "binding_revoked";
+/// Reload outcome: the running directory is UNCHANGED but its version is below a
+/// trusted `minVersion` that operators raised above it; the unchanged fast path
+/// honored the raised floor and swapped the gate to deny-all (fail-closed) with an
+/// alarm, exactly as a restart would reject it. Operators alert on this being
+/// non-zero.
+pub const RELOAD_BELOW_MIN_VERSION: &str = "below_min_version";
+/// Reload outcome: the running directory is UNCHANGED and in-window, but its
+/// signing issuer is no longer in the current trusted-issuer set (operators rotated
+/// or removed it); the unchanged fast path re-verified against the current roots,
+/// found the bundle untrusted, and swapped the gate to deny-all (fail-closed) with
+/// an alarm, exactly as a restart would reject it. Operators alert on this being
+/// non-zero.
+pub const RELOAD_TRUST_ROOTS_CHANGED: &str = "trust_roots_changed";
+/// Reload outcome: the on-disk bundle carries the running version but a DIFFERENT
+/// canonical body (the file was replaced without a version bump); it cannot be a
+/// monotone successor, so the reloader failed closed to deny-all with an alarm rather
+/// than keep the loaded directory admitting peers the replacement dropped. Operators
+/// alert on this being non-zero.
+pub const RELOAD_CURRENT_BODY_REPLACED: &str = "current_body_replaced";
+/// Reload outcome: the trusted-issuers file parsed but pins NO issuer (operators removed
+/// every issuer). Trusting no signer must admit nothing, so the reloader failed closed to
+/// deny-all with an alarm rather than fold it into the keep-last-good read-error path, in
+/// lockstep with startup rejecting the same empty configuration. Operators alert on this
+/// being non-zero.
+pub const RELOAD_TRUST_ROOTS_EMPTY: &str = "trust_roots_empty";
+/// Reload outcome: a transient read/verify/rollback error; last-good is kept.
+pub const RELOAD_ERROR: &str = "error";
+const NUM_RELOAD_OUTCOME: usize = 9;
+
+static DIRECTORY_RELOAD: [AtomicU64; NUM_RELOAD_OUTCOME] = [
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+];
+
+fn reload_outcome_index(outcome: &str) -> usize {
+    match outcome {
+        "updated" => 0,
+        "unchanged" => 1,
+        "expired_failclosed" => 2,
+        "binding_revoked" => 3,
+        "below_min_version" => 4,
+        "trust_roots_changed" => 5,
+        "current_body_replaced" => 6,
+        "trust_roots_empty" => 7,
+        _ => 8, // error
+    }
+}
+
+/// Record one directory-reload outcome (observe-only).
+pub fn record_directory_reload(outcome: &str) {
+    DIRECTORY_RELOAD[reload_outcome_index(outcome)].fetch_add(1, Ordering::Relaxed);
+}
+
+/// The count of a directory-reload outcome (for tests / export).
+#[must_use]
+pub fn directory_reload_total(outcome: &str) -> u64 {
+    DIRECTORY_RELOAD[reload_outcome_index(outcome)].load(Ordering::Relaxed)
+}
+
+// -- Router-liveness gauge ---------------------------------------------------
+
+static ROUTER_ALIVE: AtomicU64 = AtomicU64::new(1);
+
+/// Set the router-liveness gauge: 1 = the iroh Router run loop
+/// and endpoint are live, 0 = the router died (a panicked accept task killed it)
+/// while HTTP may keep serving. Operators alert on 0.
+pub fn set_router_alive(alive: bool) {
+    ROUTER_ALIVE.store(u64::from(alive), Ordering::Relaxed);
+}
+
+/// The current router-liveness gauge value (1 alive / 0 dead).
+#[must_use]
+pub fn router_alive() -> u64 {
+    ROUTER_ALIVE.load(Ordering::Relaxed)
+}
+
 // -- Prometheus rendering ----------------------------------------------------
 
 const LANES: [&str; NUM_LANES] = ["pheromone", "revocation", "bilateral", "fanout"];
@@ -505,6 +615,7 @@ pub fn render_iroh_transport_metrics_prometheus() -> String {
             LANE_OUTCOME_REJECT,
             LANE_OUTCOME_BUSY,
             LANE_OUTCOME_TIMEOUT,
+            LANE_OUTCOME_LAGGED,
         ] {
             push_labeled(
                 &mut output,
@@ -557,6 +668,48 @@ pub fn render_iroh_transport_metrics_prometheus() -> String {
     for lane in LANES {
         render_accept_duration_histogram(&mut output, lane);
     }
+
+    // directory_reload_total. Recorded by run_directory_reloader; emit the full outcome
+    // set here so the fail-closed expired_failclosed / binding_revoked cases operators
+    // must alert on are visible to Prometheus on the serve path.
+    push_meta(
+        &mut output,
+        CHIO_FEDERATION_TRANSPORT_DIRECTORY_RELOAD_TOTAL,
+        "Total iroh federation-transport directory reload outcomes.",
+        "counter",
+    );
+    for outcome in [
+        RELOAD_UPDATED,
+        RELOAD_UNCHANGED,
+        RELOAD_EXPIRED_FAILCLOSED,
+        RELOAD_BINDING_REVOKED,
+        RELOAD_BELOW_MIN_VERSION,
+        RELOAD_TRUST_ROOTS_CHANGED,
+        RELOAD_CURRENT_BODY_REPLACED,
+        RELOAD_TRUST_ROOTS_EMPTY,
+        RELOAD_ERROR,
+    ] {
+        push_labeled(
+            &mut output,
+            CHIO_FEDERATION_TRANSPORT_DIRECTORY_RELOAD_TOTAL,
+            &[("outcome", outcome)],
+            directory_reload_total(outcome),
+        );
+    }
+
+    // router_alive (gauge). Emit the single unlabeled gauge series so the router-down
+    // case (a panicked accept task killing the Router while HTTP keeps serving) operators
+    // alert on is visible to Prometheus.
+    push_meta(
+        &mut output,
+        CHIO_FEDERATION_TRANSPORT_ROUTER_ALIVE,
+        "Iroh federation-transport router liveness (1 alive, 0 the router died).",
+        "gauge",
+    );
+    output.push_str(CHIO_FEDERATION_TRANSPORT_ROUTER_ALIVE);
+    output.push(' ');
+    output.push_str(&router_alive().to_string());
+    output.push('\n');
 
     output
 }
@@ -616,6 +769,14 @@ fn push_accept_duration_bucket(output: &mut String, lane: &str, le: &str, count:
 mod tests {
     use super::*;
 
+    /// Serializes every test that ASSERTS on the process-global `ROUTER_ALIVE` gauge, so
+    /// the exact-value assertions cannot be perturbed by another test that mutates the same
+    /// gauge under the default parallel test harness. Any NEW test that reads or writes
+    /// `router_alive`/`set_router_alive` and asserts on it MUST acquire this guard. Poison
+    /// is recovered (a panicking guard-holder already fails its own test) so the serialized
+    /// siblings stay deterministic rather than cascade-failing.
+    static ROUTER_ALIVE_GAUGE_SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn registry_constants_match_spec() {
         assert_eq!(
@@ -640,11 +801,16 @@ mod tests {
         record_catchup_epoch_gap(CATCHUP_SOURCE_CATCHUP);
         record_verify_failure(SEAM_REVOCATION, "bad-signature");
         observe_accept_duration_nanos(LANE_REVOCATION, 5_000_000);
+        // Exercise the AcceptOpenGuard enter/drop on LANE_FANOUT: no fan-out accept
+        // handler is wired (lane c is disabled), so no concurrent test mutates this
+        // gauge, keeping the exact enter=1 / post-drop=0 assertions robust. (The
+        // three direct lanes' gauges are held by parallel over-QUIC handler tests, so
+        // an exact absolute on those would be racy on a process-global gauge.)
         {
-            let _open = AcceptOpenGuard::enter(LANE_PHEROMONE);
-            assert!(accept_open(LANE_PHEROMONE) >= 1);
+            let _open = AcceptOpenGuard::enter(LANE_FANOUT);
+            assert_eq!(accept_open(LANE_FANOUT), 1);
         }
-        assert_eq!(accept_open(LANE_PHEROMONE), 0);
+        assert_eq!(accept_open(LANE_FANOUT), 0);
 
         assert!(admission_total(ADMISSION_REJECT) >= 1);
         assert!(lane_total(LANE_REVOCATION, LANE_OUTCOME_REJECT) >= 1);
@@ -670,5 +836,72 @@ mod tests {
         assert!(body.contains("seam=\"revocation\",reason=\"bad-signature\""));
         assert!(body.contains("chio_federation_transport_accept_duration_seconds_bucket"));
         assert!(body.contains("le=\"+Inf\""));
+    }
+
+    #[test]
+    fn directory_reload_fail_closed_outcome_is_counted() {
+        // Observe-only monotone lower bound: an expired-with-no-successor reload
+        // increments its counter so operators can alert on it.
+        let before = directory_reload_total(RELOAD_EXPIRED_FAILCLOSED);
+        record_directory_reload(RELOAD_EXPIRED_FAILCLOSED);
+        assert!(
+            directory_reload_total(RELOAD_EXPIRED_FAILCLOSED) > before,
+            "an expired-while-running reload must be counted"
+        );
+    }
+
+    #[test]
+    fn router_alive_gauge_reflects_liveness() {
+        // Serialize against the sibling render test that also mutates ROUTER_ALIVE, so these
+        // exact-value assertions are not flipped between the set and the read under the
+        // parallel harness.
+        let _serial = ROUTER_ALIVE_GAUGE_SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        set_router_alive(true);
+        assert_eq!(router_alive(), 1);
+        set_router_alive(false);
+        assert_eq!(router_alive(), 0);
+    }
+
+    #[test]
+    fn render_emits_the_reload_and_liveness_series() {
+        // Instruments must not lie: the directory-reload counter and the router-liveness
+        // gauge are RECORDED, so the render must also EMIT both or the expired_failclosed
+        // / binding_revoked / router-down cases operators alert on stay invisible to
+        // Prometheus on the serve path. Without the render wiring the reload/liveness
+        // names are absent from the body.
+        // Hold the same serial guard as router_alive_gauge_reflects_liveness: this test
+        // MUTATES ROUTER_ALIVE, which would otherwise race that test's exact assertions.
+        let _serial = ROUTER_ALIVE_GAUGE_SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        record_directory_reload(RELOAD_BINDING_REVOKED);
+        record_directory_reload(RELOAD_EXPIRED_FAILCLOSED);
+        set_router_alive(true);
+
+        let body = render_iroh_transport_metrics_prometheus();
+        for name in [
+            CHIO_FEDERATION_TRANSPORT_DIRECTORY_RELOAD_TOTAL,
+            CHIO_FEDERATION_TRANSPORT_ROUTER_ALIVE,
+        ] {
+            assert!(body.contains(name), "render must contain {name}");
+        }
+        // The full reload outcome set is emitted, including the fail-closed series
+        // operators alert on.
+        assert!(body.contains(
+            "chio_federation_transport_directory_reload_total{outcome=\"binding_revoked\"}"
+        ));
+        assert!(body.contains(
+            "chio_federation_transport_directory_reload_total{outcome=\"expired_failclosed\"}"
+        ));
+        // The router-liveness gauge is emitted with its own TYPE line and an unlabeled
+        // value series (value is process-global, so assert the line shape, not the value).
+        assert!(body.contains("# TYPE chio_federation_transport_router_alive gauge"));
+        assert!(
+            body.lines()
+                .any(|line| line.starts_with("chio_federation_transport_router_alive ")),
+            "render must emit the router-alive gauge value line"
+        );
     }
 }
