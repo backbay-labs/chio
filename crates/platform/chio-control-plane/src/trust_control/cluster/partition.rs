@@ -157,6 +157,29 @@ pub(crate) fn update_peer_sync_error(state: &TrustServiceState, peer_url: &str, 
     });
 }
 
+/// Flag a peer for a full snapshot resync WITHOUT demoting it to Unhealthy.
+///
+/// Used when a delta stream cannot make forward progress via INCREMENTAL pull (an
+/// oversized/unpageable page whose record count exceeds `BUDGET_DELTA_MAX_RECORDS`,
+/// e.g. a rollback storm that packs more abandoned seqs into the covered range than
+/// a single page can carry). This is NOT peer misbehavior, so unlike
+/// `update_peer_failure` it keeps the peer Healthy; the snapshot backstop
+/// (`peer_should_force_snapshot`) resyncs it next round, resetting the cursor to the
+/// snapshot head and skipping the unpageable window WITHOUT a delta cursor jump. A
+/// force_snapshot peer is excluded from witnesses until the snapshot + delta
+/// re-sync clears the flag, so this cannot over-count.
+pub(crate) fn request_peer_snapshot_recovery(
+    state: &TrustServiceState,
+    peer_url: &str,
+    error: String,
+) {
+    update_peer_state(state, peer_url, |peer| {
+        peer.health = PeerHealth::Healthy;
+        peer.last_error = Some(error);
+        peer.force_snapshot = true;
+    });
+}
+
 pub(crate) fn peer_revocation_cursor(
     state: &TrustServiceState,
     peer_url: &str,
@@ -199,6 +222,78 @@ pub(crate) fn update_peer_budget_cursor(
     cursor: BudgetCursor,
 ) {
     update_peer_state(state, peer_url, |peer| peer.budget_cursor = Some(cursor));
+}
+
+/// Record a peer's advertised per-origin contiguous ack heads by REPLACING the
+/// stored set with the current advertisement.
+///
+/// This must NOT max-merge: if a peer restored an older budget DB or otherwise
+/// lost a previously-imported prefix, it re-advertises a LOWER head (or drops an
+/// origin entirely). A monotonic max would retain the stale higher head forever
+/// and keep counting that data-losing peer as a witness for writes it no longer
+/// durably holds, i.e. a double-spend risk. Replacing lets a regressed or absent
+/// origin drop so `budget_write_quorum_commit_view` stops counting it. Within a
+/// single advertisement, duplicate origins collapse
+/// to their max (defensive; `budget_ack_heads` already groups by origin).
+pub(crate) fn update_peer_budget_acks(
+    state: &TrustServiceState,
+    peer_url: &str,
+    acks: &[BudgetOriginAck],
+) {
+    let mut heads = std::collections::BTreeMap::<String, u64>::new();
+    for ack in acks {
+        let entry = heads.entry(ack.origin_id.clone()).or_insert(0);
+        *entry = (*entry).max(ack.event_seq);
+    }
+    update_peer_state(state, peer_url, move |peer| {
+        peer.budget_import_acks = heads;
+    });
+}
+
+/// Immediately clamp a peer's RECORDED budget ack heads DOWN to what it now
+/// advertises, applied at the TOP of the sync round BEFORE any witness-visible
+/// pulling.
+///
+/// The full replace (`update_peer_budget_acks`) is deferred to
+/// `finalize_peer_sync_round` so an INCREASE is not counted until the peer's pull
+/// round validates. But a DECREASE or CLEAR must take effect
+/// AT ONCE: a peer that lost/restored its budget DB and now advertises a lower (or
+/// absent) head no longer durably holds those writes, so leaving the stale-high
+/// value in place for the whole round would let a budget write that checks the
+/// quorum view mid-round commit against a peer that has already disavowed the write
+/// (an over-count / double-spend).
+///
+/// Per origin the recorded head becomes `min(recorded, advertised)`; an origin the
+/// peer no longer advertises drops to 0 and is removed (it can never witness). An
+/// INCREASE is NOT applied here (`advertised > recorded` leaves the recorded value
+/// unchanged), preserving the delay-increases-until-validated invariant. Fail-safe
+/// direction: this can only SHRINK the witness set, never grow it.
+pub(crate) fn clamp_down_peer_budget_acks(
+    state: &TrustServiceState,
+    peer_url: &str,
+    acks: &[BudgetOriginAck],
+) {
+    let mut advertised = std::collections::BTreeMap::<String, u64>::new();
+    for ack in acks {
+        let entry = advertised.entry(ack.origin_id.clone()).or_insert(0);
+        *entry = (*entry).max(ack.event_seq);
+    }
+    update_peer_state(state, peer_url, move |peer| {
+        peer.budget_import_acks
+            .retain(|origin, recorded| match advertised.get(origin) {
+                // Still advertised: never let the recorded head exceed the
+                // freshly-advertised head. A regression is applied now; an increase
+                // (advertised >= recorded) leaves the recorded value untouched and
+                // waits for finalize_peer_sync_round to validate it.
+                Some(&advertised_seq) => {
+                    *recorded = (*recorded).min(advertised_seq);
+                    *recorded > 0
+                }
+                // No longer advertised at all: the peer disavowed this origin's
+                // whole prefix, so drop it and stop witnessing immediately.
+                None => false,
+            });
+    });
 }
 
 pub(crate) fn update_peer_tool_seq(state: &TrustServiceState, peer_url: &str, seq: u64) {

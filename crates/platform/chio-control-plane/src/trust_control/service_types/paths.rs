@@ -205,4 +205,8 @@ pub(crate) const MAX_LIST_LIMIT: usize = 200;
 pub(crate) const BUDGET_DELTA_MAX_RECORDS: usize = MAX_LIST_LIMIT * 2;
 pub(crate) const AUTHORITY_CACHE_TTL: Duration = Duration::from_secs(2);
 pub(crate) const CONTROL_HTTP_TIMEOUT: Duration = Duration::from_secs(15);
+/// Hard cap on a single peer-response body the cluster client will buffer and
+/// decode. Matches the HTTP relay body-size posture; an oversized or
+/// streaming-forever body is a typed error, not an unbounded allocation.
+pub(crate) const MAX_PEER_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
 pub(crate) const CLUSTER_SNAPSHOT_RECORD_THRESHOLD: u64 = 8;
