@@ -126,13 +126,11 @@ class TestDefaultPolicyRedacts:
         eval_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         recorded = eval_calls[0]
         assert recorded.parameters == {
-            "_args": [
-                "/tmp/x",
-                {
-                    "omitted": True,
-                    "byte_count": len(b"PROD_SECRET=abc123"),
-                },
-            ]
+            "path": "/tmp/x",
+            "content": {
+                "omitted": True,
+                "byte_count": len(b"PROD_SECRET=abc123"),
+            },
         }
 
     async def test_async_callable_signature_drives_async_redaction(self) -> None:
@@ -162,13 +160,11 @@ class TestDefaultPolicyRedacts:
         eval_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         recorded = eval_calls[0]
         assert recorded.parameters == {
-            "_args": [
-                "/tmp/x",
-                {
-                    "omitted": True,
-                    "byte_count": len(b"PROD_SECRET=abc123"),
-                },
-            ]
+            "path": "/tmp/x",
+            "content": {
+                "omitted": True,
+                "byte_count": len(b"PROD_SECRET=abc123"),
+            },
         }
         assert captured_args == [
             {"path": "/tmp/x", "content": "PROD_SECRET=abc123"}
