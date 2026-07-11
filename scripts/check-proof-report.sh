@@ -61,6 +61,7 @@ AENEAS_ARTIFACTS = {
     "target/formal/aeneas-production/lean/Funs.lean",
     "target/formal/aeneas-production/lean/Types.lean",
     "target/formal/aeneas-production/equivalence-artifacts.json",
+    "target/formal/aeneas-production/negative-tests.json",
 }
 TOOL_COMMANDS = {
     "lean": "lean --version",
@@ -364,6 +365,40 @@ if mode == "strict":
 generated_hashes = check_hash_map(
     artifact_hashes.get("generated"), generated_paths, "generated hashes", repo
 )
+
+if mode == "strict":
+    negative_registry_path = repo / "formal/aeneas/negative-tests.toml"
+    negative_report_path = repo / "target/formal/aeneas-production/negative-tests.json"
+    negative_registry_bytes = negative_registry_path.read_bytes()
+    negative_registry = tomllib.loads(negative_registry_bytes.decode("utf-8"))
+    negative_report = json.loads(negative_report_path.read_text(encoding="utf-8"))
+    if negative_registry.get("schema") != "chio.aeneas-negative-tests.v1":
+        fail("Aeneas negative-test registry schema is invalid")
+    if negative_report.get("schema") != "chio.aeneas-negative-tests-report.v1":
+        fail("Aeneas negative-test report schema is invalid")
+    if negative_report.get("registry") != "formal/aeneas/negative-tests.toml":
+        fail("Aeneas negative-test report registry path is invalid")
+    if negative_report.get("registrySha256") != hashlib.sha256(negative_registry_bytes).hexdigest():
+        fail("Aeneas negative-test report is not bound to its registry")
+    expected_negative_results = [
+        {
+            "name": mutation["name"],
+            "status": "killed",
+            "expectedGate": mutation["expected_gate"],
+            "expectedEvidence": mutation["expected_evidence"],
+        }
+        for mutation in negative_registry.get("mutation", [])
+    ]
+    actual_negative_results = negative_report.get("results")
+    if not isinstance(actual_negative_results, list) or len(actual_negative_results) != len(expected_negative_results):
+        fail("Aeneas negative-test report inventory is incomplete")
+    for actual, expected in zip(actual_negative_results, expected_negative_results, strict=True):
+        if not isinstance(actual, dict):
+            fail("Aeneas negative-test report contains a malformed result")
+        if any(actual.get(key) != value for key, value in expected.items()):
+            fail("Aeneas negative-test report result does not match its registry")
+        if not re.fullmatch(r"[0-9a-f]{64}", actual.get("logSha256", "")):
+            fail("Aeneas negative-test report contains an invalid log hash")
 
 proof_coverage = require_object(report.get("proofCoverage"), "proofCoverage")
 if proof_coverage.get("path") != "target/formal/coverage.json":

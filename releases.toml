@@ -194,7 +194,7 @@ scored_artifact_prefix = "proof-mutants-report-"
 scored_artifact_schema = "chio.proof-mutants-report.v1"
 scored_sample_size = 15
 scored_inventory_size = 150
-scored_inventory_sha256 = "ec53bf8dae4152897687f560be3c6b41fd408a0a5603bafc46311d9ac1615103"
+scored_inventory_sha256 = "aa7bddb103eb1baf2c5fda36f656e69f613a0cb25ca77cbba0b5c03b7719079c"
 scored_files = [
   "crates/kernel/chio-kernel-core/src/formal_core.rs",
   "crates/kernel/chio-kernel-core/src/formal_aeneas.rs",

@@ -93,9 +93,13 @@ are machine-readably enumerated in `formal/assumptions.toml`.
 - `formal/assumptions.toml` is the external-system assumption registry.
 - `scripts/check-aeneas-production.sh` extracts the production-linked pure
   core from `crates/kernel/chio-kernel-core/src/formal_aeneas.rs`, and
-  `scripts/check-aeneas-equivalence.sh` builds the tracked Lean equivalence
-  module before the Aeneas lane can pass; the older pilot remains as
-  compatibility evidence for `formal/aeneas/pilot.toml`.
+  `scripts/check-aeneas-equivalence.sh` requires byte-identical committed
+  generated output and builds generated-to-model Lean equivalence theorems
+  before the Aeneas lane can pass. Extraction uses architecture-specific
+  archive and binary hashes from `formal/aeneas/production.toml`, while
+  `formal/aeneas/negative-tests.toml` registers drift, proof, and tool-binding
+  mutations. The older pilot remains as compatibility evidence for
+  `formal/aeneas/pilot.toml`.
 - `scripts/check-kani-public-core.sh` requires bounded Kani harnesses over
   the public kernel-core functions named in the proof manifest.
 - `scripts/check-adapter-no-bypass.sh` is the static adapter gate for MCP,

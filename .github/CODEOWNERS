@@ -82,6 +82,9 @@ docs/release/RISK_REGISTER.md                @backbay-labs/chio-maintainers
 docs/start-here/VISION.md                    @backbay-labs/chio-maintainers
 spec/PROTOCOL.md                             @backbay-labs/chio-maintainers
 scripts/check-*.sh                           @backbay-labs/chio-maintainers
+scripts/install-aeneas-toolchain.py          @backbay-labs/chio-maintainers
+scripts/snapshot-aeneas-generated.sh         @backbay-labs/chio-maintainers
+scripts/vendor-aeneas-lean.sh                @backbay-labs/chio-maintainers
 scripts/check-fuzz-budget.sh                 @backbay-labs/chio-maintainers
 scripts/check-regression-tests.sh            @backbay-labs/chio-maintainers
 scripts/tests/check-regression-tests.test.sh @backbay-labs/chio-maintainers

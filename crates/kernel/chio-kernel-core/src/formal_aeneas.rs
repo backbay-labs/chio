@@ -11,7 +11,8 @@ pub struct BudgetCommitResult {
 }
 
 #[cfg_attr(chio_creusot_contracts, derive(DeepModel))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(any(test, kani), derive(Debug))]
 pub struct ReservationLedger {
     /// Exposure not yet assigned a terminal amount bucket.
     pub reserved: u64,
@@ -79,6 +80,8 @@ fn ledger_is_terminal(state: ReservationLedger) -> bool {
         ==> result.0 == state
     )
 )]
+// Explicit matches keep checked-add semantics transparent to Aeneas.
+#[allow(clippy::manual_map)]
 pub fn ledger_apply(state: ReservationLedger, op: u8, amount: u64) -> (ReservationLedger, bool) {
     let Some(total) = state.reserved.checked_add(state.committed) else {
         return (state, false);
@@ -110,30 +113,30 @@ pub fn ledger_apply(state: ReservationLedger, op: u8, amount: u64) -> (Reservati
 
     let outstanding = state.reserved - amount;
     let updated = match op {
-        1 => state
-            .committed
-            .checked_add(amount)
-            .map(|committed| ReservationLedger {
+        1 => match state.committed.checked_add(amount) {
+            Some(committed) => Some(ReservationLedger {
                 reserved: outstanding,
                 committed,
                 ..state
             }),
-        2 => state
-            .released
-            .checked_add(amount)
-            .map(|released| ReservationLedger {
+            None => None,
+        },
+        2 => match state.released.checked_add(amount) {
+            Some(released) => Some(ReservationLedger {
                 reserved: outstanding,
                 released,
                 ..state
             }),
-        3 => state
-            .retained
-            .checked_add(amount)
-            .map(|retained| ReservationLedger {
+            None => None,
+        },
+        3 => match state.retained.checked_add(amount) {
+            Some(retained) => Some(ReservationLedger {
                 reserved: outstanding,
                 retained,
                 ..state
             }),
+            None => None,
+        },
         _ => None,
     };
 

@@ -185,8 +185,10 @@ The runner records the actual cargo-mutants, Kani, rustc, and Python versions.
 Its default per-run cap is 1,800 seconds because the measured 35-harness clean
 baseline exceeds the original 600-second estimate on the local arm64 host.
 On the integrated tree, cargo-mutants 25.3.1 discovers 150 focused Rust
-mutants. Each aligned ten-epoch rotation cycle covers that inventory while
-including both model files in every sample.
+mutants with inventory digest
+`aa7bddb103eb1baf2c5fda36f656e69f613a0cb25ca77cbba0b5c03b7719079c`.
+Each aligned ten-epoch rotation cycle covers that inventory while including
+both model files in every sample.
 
 ## Lean sensitivity pilot
 
@@ -284,14 +286,15 @@ full-cycle observations.
 - Kani 0.67.0 completed the clean mutation-oracle baseline with 35 of 35
   harnesses successful and no failures.
 
-Rust discovery was repeated after integration because FV-A1 changed the
-mutated model surface; the current integrated inventory is recorded above.
+Rust discovery was repeated after FV-A1 and the authenticated generated-code
+equivalence work changed the mutated model surface; the current integrated
+inventory is recorded above.
 
-When [FV-E5](FV-E5-lane-ratchets.md) integrates this work, add scheduled
-`spec-mutants` and `proof-mutants` gates with `activation_target = 90`. The
-generic lane parser must validate that field. Historical success may count
-only when the job itself met the target, because the scored runners return
-non-zero below target. The Lean pilot remains outside the ratchet.
+[FV-E5](FV-E5-lane-ratchets.md) registers the scheduled `spec-mutants` and
+`proof-mutants` gates with `activation_target = 90`, and the generic lane
+parser validates that field. Historical success may count only when the job
+itself met the target, because the scored runners return non-zero below
+target. The Lean pilot remains outside the ratchet.
 
 ## Local commands
 

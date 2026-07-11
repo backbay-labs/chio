@@ -70,6 +70,7 @@ AENEAS_ARTIFACTS = [
     "target/formal/aeneas-production/lean/Funs.lean",
     "target/formal/aeneas-production/lean/Types.lean",
     "target/formal/aeneas-production/equivalence-artifacts.json",
+    "target/formal/aeneas-production/negative-tests.json",
 ]
 
 

@@ -1904,7 +1904,7 @@ fn add_refinement_artifacts(
                 });
             }
         } else if lane == "aeneas" {
-            let extracted = required_toml_string_array(&value, "extracted_symbols", &path)?;
+            let extracted = aeneas_extracted_symbols(&value, &path)?;
             let source = value.get("source").and_then(TomlValue::as_str);
             let source = source.ok_or_else(|| format!("Aeneas manifest has no source: {path}"))?;
             let normalized = normalized_repo_path(source)?;
@@ -1930,6 +1930,76 @@ fn add_refinement_artifacts(
         }
     }
     Ok(())
+}
+
+fn aeneas_extracted_symbols(value: &TomlValue, path: &str) -> Result<Vec<String>, String> {
+    if path != "formal/aeneas/production.toml" {
+        return required_toml_string_array(value, "extracted_symbols", path);
+    }
+
+    let targets = value
+        .get("targets")
+        .and_then(TomlValue::as_array)
+        .ok_or_else(|| format!("Aeneas production manifest has no targets: {path}"))?;
+    if targets.is_empty() {
+        return Err(format!(
+            "Aeneas production manifest has empty targets: {path}"
+        ));
+    }
+
+    let mut names = BTreeSet::new();
+    let mut symbols = BTreeSet::new();
+    let mut extracted = Vec::new();
+    for target in targets {
+        let name = target
+            .get("name")
+            .and_then(TomlValue::as_str)
+            .ok_or_else(|| format!("Aeneas production target has no name: {path}"))?;
+        if !names.insert(name.to_string()) {
+            return Err(format!(
+                "Aeneas production manifest has duplicate target {name}: {path}"
+            ));
+        }
+        if target.get("status").and_then(TomlValue::as_str) != Some("generated_equivalence") {
+            return Err(format!(
+                "Aeneas production target is not equivalence-checked: {path}::{name}"
+            ));
+        }
+
+        let functions = required_toml_string_array(target, "functions", path)?;
+        let theorem_rows = required_toml_string_array(target, "equivalence_theorems", path)?;
+        let mut theorem_symbols = BTreeSet::new();
+        for row in theorem_rows {
+            let Some((symbol, theorem)) = row.split_once('|') else {
+                return Err(format!(
+                    "Aeneas production target has malformed theorem row: {path}::{name}::{row}"
+                ));
+            };
+            if symbol.is_empty()
+                || theorem.is_empty()
+                || !theorem_symbols.insert(symbol.to_string())
+            {
+                return Err(format!(
+                    "Aeneas production target has invalid theorem row: {path}::{name}::{row}"
+                ));
+            }
+        }
+        let function_symbols = functions.iter().cloned().collect::<BTreeSet<_>>();
+        if function_symbols != theorem_symbols {
+            return Err(format!(
+                "Aeneas production target theorem inventory mismatch: {path}::{name}"
+            ));
+        }
+        for function in functions {
+            if !symbols.insert(function.clone()) {
+                return Err(format!(
+                    "Aeneas production manifest has duplicate function {function}: {path}"
+                ));
+            }
+            extracted.push(function);
+        }
+    }
+    Ok(extracted)
 }
 
 fn contract_twin_review_links(
@@ -2039,7 +2109,7 @@ fn expected_refinement_schema(
         }
         ("aeneas", "pilot", "formal/aeneas/pilot.toml") => Ok("chio.aeneas-pilot.v1"),
         ("aeneas", "production", "formal/aeneas/production.toml") => {
-            Ok("chio.aeneas-production.v1")
+            Ok("chio.aeneas-production.v2")
         }
         _ => Err(format!(
             "unsupported refinement registry declaration: {lane}|{posture}|{path}"
@@ -7112,5 +7182,72 @@ mod tests {
         if let Err(error) = fs::remove_dir_all(&root) {
             panic!("cannot remove mutation fixture: {error}");
         }
+    }
+
+    #[test]
+    fn aeneas_production_targets_require_generated_equivalence() {
+        assert_eq!(
+            expected_refinement_schema("aeneas", "production", "formal/aeneas/production.toml"),
+            Ok("chio.aeneas-production.v2")
+        );
+
+        let fixture = r#"
+[[targets]]
+name = "decision_core"
+status = "generated_equivalence"
+functions = ["nonce_admits"]
+equivalence_theorems = ["nonce_admits|Chio.Proofs.generated_nonce_admits_eq_mirror"]
+
+[[targets]]
+name = "reservation_ledger"
+status = "generated_equivalence"
+functions = ["ledger_is_terminal", "ledger_apply"]
+equivalence_theorems = [
+  "ledger_is_terminal|Chio.Proofs.generated_ledger_is_terminal_eq_model",
+  "ledger_apply|Chio.Proofs.generated_ledger_apply_eq_model",
+]
+"#;
+        let value = match parse_toml("fixture", fixture) {
+            Ok(value) => value,
+            Err(error) => panic!("Aeneas production fixture parse failed: {error}"),
+        };
+        assert_eq!(
+            aeneas_extracted_symbols(&value, "formal/aeneas/production.toml"),
+            Ok(vec![
+                "nonce_admits".to_string(),
+                "ledger_is_terminal".to_string(),
+                "ledger_apply".to_string(),
+            ])
+        );
+
+        let downgraded = fixture.replacen(
+            "status = \"generated_equivalence\"",
+            "status = \"extraction_only\"",
+            1,
+        );
+        let value = match parse_toml("fixture", &downgraded) {
+            Ok(value) => value,
+            Err(error) => panic!("downgraded Aeneas fixture parse failed: {error}"),
+        };
+        let error = match aeneas_extracted_symbols(&value, "formal/aeneas/production.toml") {
+            Ok(_) => panic!("downgraded Aeneas target unexpectedly passed"),
+            Err(error) => error,
+        };
+        assert!(error.contains("not equivalence-checked"));
+
+        let missing_theorem = fixture.replacen(
+            "ledger_apply|Chio.Proofs.generated_ledger_apply_eq_model",
+            "unregistered_function|Chio.Proofs.generated_ledger_apply_eq_model",
+            1,
+        );
+        let value = match parse_toml("fixture", &missing_theorem) {
+            Ok(value) => value,
+            Err(error) => panic!("mismatched Aeneas fixture parse failed: {error}"),
+        };
+        let error = match aeneas_extracted_symbols(&value, "formal/aeneas/production.toml") {
+            Ok(_) => panic!("mismatched Aeneas theorem inventory unexpectedly passed"),
+            Err(error) => error,
+        };
+        assert!(error.contains("theorem inventory mismatch"));
     }
 }

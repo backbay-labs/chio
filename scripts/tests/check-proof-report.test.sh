@@ -13,6 +13,7 @@ managed_paths=(
   target/formal/aeneas-production/lean/Funs.lean
   target/formal/aeneas-production/lean/Types.lean
   target/formal/aeneas-production/equivalence-artifacts.json
+  target/formal/aeneas-production/negative-tests.json
 )
 
 for path in "${managed_paths[@]}"; do
@@ -157,8 +158,11 @@ if MOCK_GIT_DIRTY=' M formal/proof-manifest.toml' \
   echo "strict proof-report generator accepted a dirty worktree" >&2
   exit 1
 fi
-grep -Fq 'strict proof reports require a clean git worktree before gates run' \
-  "${tmp_dir}/dirty-generator.out"
+if ! grep -Fq 'strict proof reports require a clean git worktree before gates run' \
+  "${tmp_dir}/dirty-generator.out"; then
+  cat "${tmp_dir}/dirty-generator.out" >&2
+  exit 1
+fi
 if [[ -s "${MOCK_CARGO_LOG}" ]]; then
   echo "strict proof-report generator ran coverage on a dirty worktree" >&2
   exit 1
@@ -271,6 +275,37 @@ printf '%s\n' llbc >target/formal/aeneas-production/llbc/formal_aeneas.llbc
 printf '%s\n' funs >target/formal/aeneas-production/lean/Funs.lean
 printf '%s\n' types >target/formal/aeneas-production/lean/Types.lean
 printf '%s\n' '{}' >target/formal/aeneas-production/equivalence-artifacts.json
+python3 - <<'PY'
+import hashlib
+import json
+import tomllib
+from pathlib import Path
+
+registry_path = Path("formal/aeneas/negative-tests.toml")
+registry_bytes = registry_path.read_bytes()
+registry = tomllib.loads(registry_bytes.decode("utf-8"))
+results = [
+    {
+        "name": mutation["name"],
+        "status": "killed",
+        "expectedGate": mutation["expected_gate"],
+        "expectedEvidence": mutation["expected_evidence"],
+        "logSha256": "0" * 64,
+    }
+    for mutation in registry["mutation"]
+]
+Path("target/formal/aeneas-production/negative-tests.json").write_text(
+    json.dumps(
+        {
+            "schema": "chio.aeneas-negative-tests-report.v1",
+            "registry": str(registry_path),
+            "registrySha256": hashlib.sha256(registry_bytes).hexdigest(),
+            "results": results,
+        }
+    ),
+    encoding="utf-8",
+)
+PY
 
 strict_fixture="${tmp_dir}/strict-structural-fixture.json"
 python3 - "${report}" "${strict_fixture}" <<'PY'
@@ -290,6 +325,7 @@ for path in (
     "target/formal/aeneas-production/lean/Funs.lean",
     "target/formal/aeneas-production/lean/Types.lean",
     "target/formal/aeneas-production/equivalence-artifacts.json",
+    "target/formal/aeneas-production/negative-tests.json",
 ):
     report["artifactHashes"]["generated"][path] = hashlib.sha256(
         Path(path).read_bytes()

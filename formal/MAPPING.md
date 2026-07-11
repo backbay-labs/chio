@@ -79,6 +79,10 @@ Lean cross-references (informational; the script does not enforce these):
   `proof.delegation_chain_integrity`) and to
   `Chio.Spec.capability_monotonicity` in
   `formal/lean4/Chio/Chio/Spec/Properties.lean`.
+- `formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean`
+  connects every committed Aeneas production function to ordinary-value
+  semantics or directly to the bounded reservation-ledger model. Concrete
+  runtime store linkage remains outside the ledger equivalence theorem.
 - `Chio.Proofs.ReservationLedger.ledger_conservation` and
   `Chio.Proofs.ReservationLedger.ledger_terminal_unique` in
   `formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean` prove the pure

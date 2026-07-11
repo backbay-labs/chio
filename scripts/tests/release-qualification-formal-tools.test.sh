@@ -14,11 +14,11 @@ lines = workflow.read_text(encoding="utf-8").splitlines()
 
 required_markers = {
     "CHIO_AENEAS_RELEASE_TAG": "Aeneas release pin",
-    "CHIO_AENEAS_LINUX_X86_64_SHA256": "Aeneas archive checksum",
     "CHIO_CREUSOT_REV": "Creusot revision pin",
     "CHIO_KANI_VERSION": "Kani version pin",
     "Install Aeneas and Charon": "Aeneas and Charon install step",
-    "sha256sum -c -": "checksum verification",
+    "./scripts/install-aeneas-toolchain.py": "authenticated Aeneas installer",
+    "target/formal/aeneas-toolchain/${architecture}/bin": "authenticated Aeneas tool path",
     "Install Rust verification tools": "Kani and Creusot install step",
     "cargo install kani-verifier": "Kani installer",
     "cargo kani setup": "Kani setup",

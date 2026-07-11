@@ -12,6 +12,7 @@ import Chio.Proofs.Revocation
 import Chio.Proofs.Evaluation
 import Chio.Proofs.Protocol
 import Chio.Proofs.AeneasEquivalence
+import Chio.Proofs.AeneasGeneratedEquivalence
 import Chio.Proofs.FormalClosure
 import Chio.Proofs.AttenuationWitness
 import Chio.Proofs.HandshakeNegotiation

@@ -28,7 +28,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 | `chio-kernel-core::*` | - | - | - | - | - | - | 1 | 2 |
 | `chio-kernel-core::capability_verify.rs` | - | - | 2 | 1 | - | - | - | - |
 | `chio-kernel-core::evaluate.rs` | - | - | 1 | 1 | - | - | - | - |
-| `chio-kernel-core::formal_aeneas.rs` | - | 15 | - | 1 | - | - | - | 1 |
+| `chio-kernel-core::formal_aeneas.rs` | - | 17 | - | 1 | - | - | - | 1 |
 | `chio-kernel-core::formal_core.rs` | - | - | 1 | 5 | - | - | - | 1 |
 | `chio-kernel-core::kani_public_harnesses.rs` | - | - | - | 1 | - | - | - | - |
 | `chio-kernel-core::normalized.rs` | - | - | 5 | 3 | - | - | - | - |
@@ -223,6 +223,8 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `formal/aeneas/production.toml::dpop_freshness_valid`
 - `formal/aeneas/production.toml::exact_or_wildcard_covers_by_flags`
 - `formal/aeneas/production.toml::guard_step_allows`
+- `formal/aeneas/production.toml::ledger_apply`
+- `formal/aeneas/production.toml::ledger_is_terminal`
 - `formal/aeneas/production.toml::monetary_cap_is_subset_by_parts`
 - `formal/aeneas/production.toml::nonce_admits`
 - `formal/aeneas/production.toml::optional_u32_cap_is_subset`
@@ -238,7 +240,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 
 **mutants**
 
-- `formal/mutation/registry.toml::proof-formal-aeneas` (activation_target_percent=90, inventory_sha256=ec53bf8dae4152897687f560be3c6b41fd408a0a5603bafc46311d9ac1615103, measurement=pending, mutation_lane=proof-mutants, report=target/formal/proof-mutants/outcomes.json)
+- `formal/mutation/registry.toml::proof-formal-aeneas` (activation_target_percent=90, inventory_sha256=aa7bddb103eb1baf2c5fda36f656e69f613a0cb25ca77cbba0b5c03b7719079c, measurement=pending, mutation_lane=proof-mutants, report=target/formal/proof-mutants/outcomes.json)
 
 ### `chio-kernel-core::formal_core.rs`
 
@@ -256,7 +258,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 
 **mutants**
 
-- `formal/mutation/registry.toml::proof-formal-core` (activation_target_percent=90, inventory_sha256=ec53bf8dae4152897687f560be3c6b41fd408a0a5603bafc46311d9ac1615103, measurement=pending, mutation_lane=proof-mutants, report=target/formal/proof-mutants/outcomes.json)
+- `formal/mutation/registry.toml::proof-formal-core` (activation_target_percent=90, inventory_sha256=aa7bddb103eb1baf2c5fda36f656e69f613a0cb25ca77cbba0b5c03b7719079c, measurement=pending, mutation_lane=proof-mutants, report=target/formal/proof-mutants/outcomes.json)
 
 ### `chio-kernel-core::kani_public_harnesses.rs`
 
@@ -526,6 +528,30 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `formal/theorem-inventory.json::proof.evalToolCall_revoked_token_never_allows` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Evaluation.lean has property links but no machine-readable Rust surface link Properties: P2, P3.
 - `formal/theorem-inventory.json::proof.evalToolCall_total` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Evaluation.lean has property links but no machine-readable Rust surface link Properties: P3.
 - `formal/theorem-inventory.json::proof.freestanding_accept_set_theorem` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Treaty/BilateralAccept.lean has property links but no machine-readable Rust surface link Properties: P7.
+- `formal/theorem-inventory.json::proof.generated_budget_commit_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P3.
+- `formal/theorem-inventory.json::proof.generated_budget_commit_eq_model` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P3.
+- `formal/theorem-inventory.json::proof.generated_budget_precheck_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P3.
+- `formal/theorem-inventory.json::proof.generated_classify_time_window_code_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P3.
+- `formal/theorem-inventory.json::proof.generated_dpop_admits_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P8.
+- `formal/theorem-inventory.json::proof.generated_dpop_admits_eq_model` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P8.
+- `formal/theorem-inventory.json::proof.generated_dpop_freshness_valid_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P8.
+- `formal/theorem-inventory.json::proof.generated_exact_or_wildcard_covers_by_flags_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P1.
+- `formal/theorem-inventory.json::proof.generated_guard_step_allows_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P3.
+- `formal/theorem-inventory.json::proof.generated_guard_step_allows_eq_model` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P3.
+- `formal/theorem-inventory.json::proof.generated_ledger_apply_eq_model` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P1.
+- `formal/theorem-inventory.json::proof.generated_ledger_is_terminal_eq_model` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P1.
+- `formal/theorem-inventory.json::proof.generated_monetary_cap_is_subset_by_parts_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P1.
+- `formal/theorem-inventory.json::proof.generated_nonce_admits_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P8.
+- `formal/theorem-inventory.json::proof.generated_optional_u32_cap_is_subset_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P1.
+- `formal/theorem-inventory.json::proof.generated_optional_u32_cap_is_subset_preserves_parent_cap` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P1.
+- `formal/theorem-inventory.json::proof.generated_prefix_wildcard_or_exact_covers_by_flags_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P1.
+- `formal/theorem-inventory.json::proof.generated_receipt_fields_coupled_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P4.
+- `formal/theorem-inventory.json::proof.generated_receipt_fields_coupled_eq_model` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P4.
+- `formal/theorem-inventory.json::proof.generated_required_true_is_preserved_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P1.
+- `formal/theorem-inventory.json::proof.generated_revocation_snapshot_denies_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P2.
+- `formal/theorem-inventory.json::proof.generated_revocation_snapshot_denies_eq_model` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P2.
+- `formal/theorem-inventory.json::proof.generated_time_window_valid_eq_mirror` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P3.
+- `formal/theorem-inventory.json::proof.generated_time_window_valid_eq_model` (`lean`) (claim_class=aeneas_equivalence, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean has property links but no machine-readable Rust surface link Properties: P3.
 - `formal/theorem-inventory.json::proof.governedApproval_required_without_token_fails` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P3.
 - `formal/theorem-inventory.json::proof.governedApproval_valid_token_passes` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P3.
 - `formal/theorem-inventory.json::proof.guardPipeline_allow_requires_core_authorized` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P3.
@@ -662,7 +688,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `87ad91f985eaedcf61ecf2677ee449ffc5d9123d59f88541e068bc87b44d33bf`
+- Input digest: `6f4281b797e4188f34353638d824bac81d14d6b01cc1b2f7e3ecb2df4168670a`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -748,7 +774,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/kernel/chio-kernel-core/src/capability_verify.rs`: `4a1b436fa32e2e2b071c044d678c85159d7f0d68888d983762624c76dd1ea3ad`
 - `crates/kernel/chio-kernel-core/src/clock.rs`: `8668efdb38109f01f012862acf41cfab4d0aee0b700d0348ebef906ab9046b58`
 - `crates/kernel/chio-kernel-core/src/evaluate.rs`: `cec57a9f26f859df919c91aac0449c0fb4ea032aa2e2db702185a5ea18047904`
-- `crates/kernel/chio-kernel-core/src/formal_aeneas.rs`: `2a3b76c517e7c7ede10d75585a6cd7bf5b328fe93677cb57c99ada7d96c249f7`
+- `crates/kernel/chio-kernel-core/src/formal_aeneas.rs`: `2954fa2e1c8493cd61836eac9b55a3e0fe78ddb66a2fdf8d920fd2914177436d`
 - `crates/kernel/chio-kernel-core/src/formal_core.rs`: `cc4c2588faeab06c9cce8dfcbcfca140ccd8ff72f8dddb3f7652de6eabb5b9f2`
 - `crates/kernel/chio-kernel-core/src/fuzz.rs`: `184d1082d3ef20267a766e554bc0b4456159521d94f6ed82a7aeda453b019072`
 - `crates/kernel/chio-kernel-core/src/guard.rs`: `1e52780bc9778eb14d2604d150fec8b9f04ea8e8f187903b1eebbbc5e66d84fe`
@@ -777,9 +803,9 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/trust/chio-revocation-oracle/src/api.rs`: `b1bfcf2fa979f132693ef895f40512b53a5797b8ca2dbe609c3524eac58d0375`
 - `crates/trust/chio-revocation-oracle/src/freshness.rs`: `d699d5c59f1c5a660d9c06f294bb2ac1ee2c0fcd00cd9eebbe043df74ba733b8`
 - `docs/fuzzing/trust-boundary-mutants-baseline.toml`: `7331fb69499474ca22b14b6fb5a6f9a966eae2e2a26d3433d9030a4c985efee9`
-- `formal/MAPPING.md`: `82bb42dec0d367752b52d4e621d679b746a67b48a166d0da42f3863231d95d4e`
+- `formal/MAPPING.md`: `019d1e0f87d2aca032d1e47d35a7eb7505cee4f5f3cda3af1a1308992bff17df`
 - `formal/aeneas/pilot.toml`: `86627b363717b47ced94caeb826185d400cf70fe357a55fe34d02ea70670956c`
-- `formal/aeneas/production.toml`: `567b5b5ab3975c95886d323c09293a069c8dc0c31ac1071104c84ffd0960ecc5`
+- `formal/aeneas/production.toml`: `67febe0e9628233daa8484490a15568b53613b227dc27752f390e189210b5db9`
 - `formal/aeneas/verified_core.rs`: `44ef85fbe6c537e8c65a483a67c167f502ca1a108a25293414b27ab2a85046b8`
 - `formal/apalache/Common.tla`: `4a82138d298b02577c8d17759939a97e173c0b483a52ce497636e1647de20ae4`
 - `formal/apalache/KernelTransitionCancelSafe.tla`: `52d63b38565a214637dba7f2982a267a485b2671da89c26fffbf7ac55a5c234e`
@@ -824,13 +850,13 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/diff-tests/tests/regression_formal_receipt_before_allow_c01406cfbbeb.rs`: `50ee14b6a785532e22e6cd9c4f8b41078556a4c75e18e7dfeea46597a1399deb`
 - `formal/diff-tests/tests/scope_diff.rs`: `c21aaa2cb891fd1fc19482ec6f8dc9c81930b5890af74f86c6fb5dd3104489ab`
 - `formal/lean4/Chio/Chio/Capability/Delegation.lean`: `a6a44ca25cb3fec5385b6a2d6703d933236453d8d5b9b336061a42f675d2cfa6`
-- `formal/mutation/registry.toml`: `39270fc57d177034e79a9cc66396b3d67aa02a68dbc1b3918b5fd48042f9d143`
-- `formal/proof-manifest.toml`: `9912d580f198a2f9be01e68d7b5cb008ceb163e18c8088c586bdf06bc0e571d8`
+- `formal/mutation/registry.toml`: `34bc73a890564c6a4ee65b2cc3a4022637fdc76f7417cab3bd386021dd242d50`
+- `formal/proof-manifest.toml`: `5561d1fdc72ace5eb1bc6a601e6e2188b05832c711654e3735c42ad24639654d`
 - `formal/rust-verification/creusot-contracts.toml`: `83000c98743013d3d6d468976a163edaf16d0d621070410d741f146bf61a28a5`
 - `formal/rust-verification/formal-mutants.toml`: `5f15de2f3833b11db3d783d05ab6efcd2c49840ede010fe7ec54fc2846c48fc6`
 - `formal/rust-verification/kani-harnesses.toml`: `f82442bef24ae67283c3f171cff15e8aa6cc4d808c7893b9e349b6bf315b50ce`
 - `formal/rust-verification/kani-public-harnesses.toml`: `d2229327fbbb110bc936f783171b586ba0b56e7d020bc601fa8cc38e53cd0558`
-- `formal/theorem-inventory.json`: `db0476c8190f1671a1d35ff5ba65e99bd0d4ef165dd0521aa85e029caccda435`
+- `formal/theorem-inventory.json`: `0cccc6c6f8b70ce310a25c66622e55552ec73192f8f2310ba656b6074995bcce`
 - `formal/tla/DelegationDepthBound.tla`: `69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9`
 - `formal/tla/MCDelegationDepthBound.cfg`: `147ac36dc8b9a6804e64ff78cae40f09ec8cdf225347de4e0adb059f2074f099`
 - `formal/tla/MCRevocationPropagation.cfg`: `c71faf1f2d8f5646890b5a7cc2e4264f4aae9518d953fc3393b78a7335a74355`
@@ -838,7 +864,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `fuzz/owners.toml`: `1358b162b1fc1a8b389aae7880e5a98035a63053b743fdaaba1a49bee3ae14c6`
 - `fuzz/target-map.toml`: `8d86f3799c637fa3740384c8d874416149a02400e95eb4107562462539c977f1`
 - `git-worktree://rust-files`: `f16ae2fa7b95e6260e8c3323f865208b3304a7521324685adfe85ab922386f97`
-- `releases.toml`: `dcb5cbb3ca71ff849ce7678ba4eb0054388bf9c63fa6360210d3a7f77cdfe9e6`
+- `releases.toml`: `af11cda1d32f044243ba767389a2a59698572c420434c4ee7bf36a81308c1293`
 - `rust-toolchain.toml`: `8bc51ecab82415fddd8489604f2424e137d71856e7f65cbdcfaa48850d794b46`
 - `scripts/check-apalache-negative.sh`: `aa063a4a77eb45dd84b9a9da883e59e9a83c6b66968abc3a56d2662e43bab3d5`
 - `scripts/check-kani-core.sh`: `ce945a98b7f01903a4f27f9600fde70cebe5b48fc505e4b84fac9da95b674b3d`
@@ -848,4 +874,4 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `scripts/proof-mutants.sh`: `b6a8709ff3d15e8e58521ed60efda0e344733a81b1902dc314928cdedec479a7`
 - `scripts/spec-mutants.py`: `7da21cca4bac3c1ac5f6946251509b3dfcaf7e043ed2b99ee86b491fcb1d9891`
 - `tools/install-apalache.sh`: `3f50745f56521685d30d18669bddb64a4bff060b40c121b30cdbf61fe26f4cc5`
-- `xtask/src/proof_coverage.rs`: `db134fcf3b9c7dbfefd7fb8d4c53df7b25e98dff790555d88b53137d38a6a775`
+- `xtask/src/proof_coverage.rs`: `f45be0bc14273fcec561c147546e34a7988c2cb6300ea744350f704291ac6315`
