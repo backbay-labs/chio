@@ -49,17 +49,43 @@ if not raw or any(character in raw for character in "\r\n\t"):
 requested = Path(raw)
 if not requested.is_absolute():
     requested = repo / requested
-candidate = requested.resolve()
+lexical = requested.absolute()
+lexical_target = (repo / "target").absolute()
+requested_below_target = lexical_target in lexical.parents
+error = (
+    "check-apalache-negative: output directory must be below target or the system "
+    "temporary directory outside the repository"
+)
+if requested_below_target:
+    current = repo.absolute()
+    try:
+        relative = lexical.relative_to(current)
+    except ValueError:
+        raise SystemExit(error)
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink():
+            raise SystemExit(error)
+elif lexical.is_symlink():
+    raise SystemExit(error)
+
+candidate = lexical.resolve()
 target_root = (repo / "target").resolve()
 temporary_root = Path(tempfile.gettempdir()).resolve()
-below_target = target_root in candidate.parents
+below_target = (
+    requested_below_target
+    and repo in candidate.parents
+    and target_root in candidate.parents
+)
 outside_repo = candidate != repo and repo not in candidate.parents and candidate not in repo.parents
-below_temporary = temporary_root in candidate.parents and outside_repo
+below_temporary = (
+    not requested_below_target
+    and temporary_root in candidate.parents
+    and outside_repo
+)
 
 if not (below_target or below_temporary):
-    raise SystemExit(
-        "check-apalache-negative: output directory must be below target or the system temporary directory outside the repository"
-    )
+    raise SystemExit(error)
 
 print(candidate)
 PY
@@ -71,6 +97,7 @@ trap 'rm -f "${entries_file}"' EXIT
 python3 - "${registry}" "formal/MAPPING.md" "${repo_root}" >"${entries_file}" <<'PY'
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 import tomllib
@@ -88,8 +115,36 @@ RUST_TEST_ANCHOR = re.compile(
     r"^(?P<path>[^:]+\.rs)::(?P<anchor>[A-Za-z_][A-Za-z0-9_]*)$"
 )
 
-if not registry_path.is_file():
-    raise SystemExit(f"negative registry is missing: {registry_path}")
+def regular_repo_file(path: Path, label: str) -> Path:
+    lexical = path if path.is_absolute() else repo / path
+    try:
+        relative = lexical.relative_to(repo)
+    except ValueError as error:
+        raise SystemExit(f"{label} escapes the repository: {path}") from error
+    if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+        raise SystemExit(f"{label} contains an invalid path component: {path}")
+    current = repo
+    for part in relative.parts:
+        current /= part
+        if current.is_symlink():
+            raise SystemExit(f"{label} contains a symlink component: {path}")
+    try:
+        mode = current.stat(follow_symlinks=False).st_mode
+    except FileNotFoundError as error:
+        raise SystemExit(f"{label} is missing: {path}") from error
+    if not stat.S_ISREG(mode):
+        raise SystemExit(f"{label} is not a regular file: {path}")
+    try:
+        current.resolve(strict=True).relative_to(repo)
+    except ValueError as error:
+        raise SystemExit(f"{label} escapes the repository: {path}") from error
+    return current
+
+
+registry_path = regular_repo_file(registry_path, "negative registry")
+mapping_path = regular_repo_file(mapping_path, "formal mapping")
+for sibling in sorted((repo / "formal/apalache").glob("*.tla")):
+    regular_repo_file(sibling, "Apalache sibling module")
 
 with registry_path.open("rb") as handle:
     registry = tomllib.load(handle)
@@ -172,9 +227,7 @@ for index, entry in enumerate(entries, start=1):
         relative = Path(entry[field])
         if relative.is_absolute():
             raise SystemExit(f"negative entry {index} has invalid {field}: {entry[field]}")
-        candidate = (repo / relative).resolve()
-        if repo not in candidate.parents or not candidate.is_file():
-            raise SystemExit(f"negative entry {index} has invalid {field}: {entry[field]}")
+        regular_repo_file(repo / relative, f"negative entry {index} {field}")
     config_text = (repo / entry["cfg"]).read_text(encoding="utf-8")
     config_without_comments = re.sub(r"(?m)\\\*.*$", "", config_text)
     invariant_directives = re.findall(
@@ -210,9 +263,7 @@ for index, entry in enumerate(entries, start=1):
         relative = Path(runtime_path)
         if relative.is_absolute():
             raise SystemExit(f"negative entry {index} has an invalid runtime_test anchor")
-        source = (repo / relative).resolve()
-        if repo not in source.parents or not source.is_file():
-            raise SystemExit(f"negative entry {index} runtime test file is missing")
+        source = regular_repo_file(repo / relative, f"negative entry {index} runtime test")
         source_text = source.read_text(encoding="utf-8")
         test_declaration = re.compile(
             rf"(?m)^[ \t]*#\[(?:[A-Za-z_][A-Za-z0-9_]*::)*test"
@@ -279,6 +330,7 @@ while IFS=$'\t' read -r spec cfg falsifies length timeout_secs; do
     --out-dir="${out_dir}" \
     --run-dir="${run_dir}" \
     check \
+    --no-deadlock \
     --output-traces \
     --length="${length}" \
     --config="${input_dir}/$(basename "${cfg}")" \
@@ -299,41 +351,8 @@ while IFS=$'\t' read -r spec cfg falsifies length timeout_secs; do
   fi
 
   set +e
-  outcome="$(python3 - "${log_file}" "${falsifies}" <<'PY'
-from pathlib import Path
-import re
-import sys
-
-log = Path(sys.argv[1]).read_text(encoding="utf-8")
-expected_invariant = sys.argv[2]
-suffix = r"(?:\s+I@[0-9:.]+)?\s*$"
-outcomes = [
-    match.group(1)
-    for line in log.splitlines()
-    if (match := re.fullmatch(
-        rf"\s*The outcome is:\s+(Error|NoError){suffix}", line
-    ))
-]
-invariants = [
-    match.group(1)
-    for line in log.splitlines()
-    if (match := re.fullmatch(
-        rf"\s*>\s*Set an invariant to\s+([A-Za-z_][A-Za-z0-9_]*){suffix}",
-        line,
-    ))
-]
-
-if outcomes not in (["Error"], ["NoError"]):
-    raise SystemExit(
-        f"expected exactly one Error or NoError outcome, found {outcomes}"
-    )
-if invariants != [expected_invariant]:
-    raise SystemExit(
-        f"expected exactly invariant {expected_invariant}, found {invariants}"
-    )
-print(outcomes[0])
-PY
-)"
+  outcome="$(python3 scripts/lib/apalache_evidence.py \
+    outcome "${log_file}" "${falsifies}")"
   log_validation_exit=$?
   set -e
   if [[ "${log_validation_exit}" -ne 0 ]]; then
@@ -359,27 +378,7 @@ PY
   fi
 
   set +e
-  trace="$(python3 - "${run_dir}" <<'PY'
-from pathlib import Path
-import re
-import sys
-
-run_root = Path(sys.argv[1]).resolve()
-traces = sorted(
-    path
-    for path in run_root.rglob("violation*.itf.json")
-    if re.fullmatch(r"violation[0-9]+\.itf\.json", path.name)
-    and path.is_file()
-    and not path.is_symlink()
-    and path.stat().st_size > 0
-)
-if len(traces) != 1:
-    raise SystemExit(
-        f"expected exactly one numbered non-empty ITF violation trace, found {len(traces)}"
-    )
-print(traces[0])
-PY
-)"
+  trace="$(python3 scripts/lib/apalache_evidence.py trace "${run_dir}")"
   trace_discovery_exit=$?
   set -e
   if [[ "${trace_discovery_exit}" -ne 0 ]]; then
@@ -388,49 +387,7 @@ PY
     continue
   fi
 
-  if ! python3 - "${trace}" <<'PY'
-import json
-from pathlib import Path
-import sys
-
-try:
-    trace = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-except (OSError, UnicodeError, json.JSONDecodeError):
-    raise SystemExit(1)
-
-if not isinstance(trace, dict):
-    raise SystemExit(1)
-metadata = trace.get("#meta")
-if not isinstance(metadata, dict) or metadata.get("format") != "ITF":
-    raise SystemExit(1)
-params = trace.get("params")
-variables = trace.get("vars")
-if not isinstance(params, list) or not isinstance(variables, list) or not variables:
-    raise SystemExit(1)
-names = params + variables
-if (
-    not all(isinstance(name, str) and name for name in names)
-    or len(set(names)) != len(names)
-):
-    raise SystemExit(1)
-var_types = metadata.get("varTypes")
-if (
-    not isinstance(var_types, dict)
-    or set(var_types) != set(variables)
-    or not all(isinstance(value, str) and value for value in var_types.values())
-):
-    raise SystemExit(1)
-states = trace.get("states")
-if not isinstance(states, list) or not states:
-    raise SystemExit(1)
-expected_keys = set(names) | {"#meta"}
-for index, state in enumerate(states):
-    if not isinstance(state, dict) or set(state) != expected_keys:
-        raise SystemExit(1)
-    state_metadata = state.get("#meta")
-    if not isinstance(state_metadata, dict) or state_metadata.get("index") != index:
-        raise SystemExit(1)
-PY
+  if ! python3 scripts/lib/apalache_evidence.py validate-trace "${trace}"
   then
     echo "NEGATIVE-TEST TOOL ERROR: ${spec} produced an invalid ITF violation trace" >&2
     failures=$((failures + 1))

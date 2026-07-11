@@ -21,9 +21,15 @@ on:
       - "crates/kernel/chio-kernel/src/kernel/responses/finalization.rs"
       - "crates/kernel/chio-kernel/src/kernel/validation.rs"
       - "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs"
+      - "crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs"
       - "scripts/check-apalache-formal-slice.py"
       - "scripts/check-apalache-negative.sh"
+      - "scripts/lib/apalache_evidence.py"
+      - "scripts/file-mutation-survivors.py"
+      - "scripts/spec-mutants.py"
       - "scripts/tests/check-apalache-negative.test.sh"
+      - "scripts/tests/file-mutation-survivors.test.sh"
+      - "scripts/tests/spec-mutants.test.sh"
       - "tools/install-apalache.sh"
       - ".github/workflows/apalache-safety.yml"
       - ".github/workflows/apalache-temporal.yml"
@@ -33,7 +39,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('pr-{0}-apalache-safety', github.ref) || format('main-{0}-apalache-safety', github.sha) }}
+  group: ${{ github.event_name == 'pull_request' && format('pr-{0}-apalache-safety', github.ref) || format('main-{0}-apalache-safety', github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -84,8 +90,8 @@ jobs:
           formal/apalache/MCRevocationCutCompleteness.cfg|formal/apalache/RevocationCutCompleteness.tla|6|1800
           formal/apalache/MCReceiptBeforeAllow.cfg|formal/apalache/ReceiptBeforeAllow.tla|6|1800
           formal/apalache/MCKernelTransitionCancelSafe.cfg|formal/apalache/KernelTransitionCancelSafe.tla|6|1800
-          formal/apalache/MCPostAdmissionDropGuard.cfg|formal/apalache/PostAdmissionDropGuard.tla|8|1800
-          formal/tla/MCRevocationPropagation.cfg|formal/tla/RevocationPropagation.tla|6|1800
+          formal/apalache/MCPostAdmissionDropGuard.cfg|formal/apalache/PostAdmissionDropGuard.tla|8|10800
+          formal/tla/MCRevocationPropagation.cfg|formal/tla/RevocationPropagation.tla|6|10800
           formal/tla/MCDelegationDepthBound.cfg|formal/tla/DelegationDepthBound.tla|6|1800
           EOF
 
@@ -124,6 +130,8 @@ jobs:
         run: |
           set -euo pipefail
           ./scripts/tests/check-apalache-negative.test.sh
+          ./scripts/tests/file-mutation-survivors.test.sh
+          ./scripts/tests/spec-mutants.test.sh
 
       - name: Reproduce registered counterexamples
         shell: bash
@@ -149,3 +157,110 @@ jobs:
           LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
           LANE_GATE_RATE_LIMIT_MODE: warn
         run: bash scripts/lane-gate.sh apalache-negative
+
+  spec-mutants:
+    name: spec-mutants
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    env:
+      CHIO_MUTATION_SAMPLE_EPOCH: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Install Java runtime
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Apalache
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/install-apalache.sh
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Validate mutation controls
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/tests/spec-mutants.test.sh
+          first="${RUNNER_TEMP}/spec-mutants-one.json"
+          second="${RUNNER_TEMP}/spec-mutants-two.json"
+          ./scripts/spec-mutants.py --list > "${first}"
+          ./scripts/spec-mutants.py --list > "${second}"
+          cmp "${first}" "${second}"
+
+      - name: Score deterministic specification sample
+        id: mutation_run
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/spec-mutants.py --sample-from-head --sample-size 16
+
+      - name: File surviving mutation issues
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          report="target/formal/spec-mutants-report.json"
+          if [[ -f "${report}" ]]; then
+            ./scripts/file-mutation-survivors.py "${report}"
+          fi
+
+      - name: Upload specification mutation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: spec-mutants-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/formal/spec-mutants-report.json
+            target/formal/spec-mutants
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload specification mutation scored report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: spec-mutants-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: target/formal/spec-mutants-report.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Preserve mutation verdict
+        if: always()
+        shell: bash
+        env:
+          MUTATION_OUTCOME: ${{ steps.mutation_run.outcome }}
+        run: |
+          set -euo pipefail
+          if [[ "${MUTATION_OUTCOME}" != "success" ]]; then
+            echo "spec-mutants did not meet its activation target" >&2
+            exit 1
+          fi
+
+      - name: Record specification mutation lane posture
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: |
+          set -euo pipefail
+          bash scripts/lane-gate.sh spec-mutants
+          exit "${LANE_EXIT}"

@@ -39,7 +39,7 @@ does not establish a modeled property in Rust.
 
 ## TLA+ named invariants (RevocationPropagation.tla)
 
-Source file: `formal/tla/RevocationPropagation.tla`. The four safety names
+Source file: `formal/tla/RevocationPropagation.tla`. The five safety names
 below are model-checked by `formal/tla/MCRevocationPropagation.cfg` via the
 aggregate SafetyInv. The aggregate itself is intentionally NOT a row in this
 table; the script greps for the leaf-named invariants. The safety rows run in
@@ -55,6 +55,7 @@ checked by `.github/workflows/apalache-temporal.yml` via `--temporal=`
 | `AttenuationPreserving`     | `formal/tla/RevocationPropagation.tla` (~L326) | `crates/core/chio-core-types/src/capability/attenuation.rs::validate_delegation_chain`, `crates/core/chio-core-types/src/capability/scope.rs::ChioScope::is_subset_of`, `crates/kernel/chio-kernel-core/src/normalized.rs::NormalizedScope::is_subset_of`, `crates/kernel/chio-kernel/src/kernel/validation.rs::ChioKernel::validate_delegation_admission` | n/a (structural; bounded by `DEPTH_MAX`) | `depth` stays within `0..DEPTH_MAX`; any cap in the `attenuated` state has been delegated at least once. |
 | `RevocationEventuallySeen`  | `formal/tla/RevocationPropagation.tla` (~L407) | `crates/trust/chio-federation/src/revocation_gossip.rs::RevocationGossipPushQueue::enqueue_signed_root`, `RevocationGossipPushQueue::flush_batches_at`, `RevocationCatchupResponse::validate_response`, `respond_to_catchup` | Model-only `WF_vars(PropagateAny)`; `formal/assumptions.toml` ASSUME-NETWORK-TRANSPORT remains audited and does not guarantee delivery | Under the model fairness condition, every authority eventually catches up to an observed non-zero revocation epoch. |
 | `RevocationFreshness`       | `formal/tla/RevocationPropagation.tla` (~L344) | `crates/trust/chio-revocation-oracle/src/freshness.rs::FreshnessConfig`, `verify_fresh_epoch_root`, `crates/kernel/chio-kernel-core/src/revocation_view.rs::RevocationSnapshot`, `RevocationView::install_if_newer`, `RevocationView::is_revoked` | `formal/assumptions.toml` ASSUME-OS-CLOCK | Every recorded local revocation epoch is strictly less than the global clock; observed-epoch freshness fails closed. |
+| `RevocationStateCoupled`    | `formal/tla/RevocationPropagation.tla` (~L348) | `crates/kernel/chio-kernel-core/src/revocation_view.rs::RevocationSnapshot`, `RevocationSnapshot::is_revoked`, `RevocationView::install_if_newer`, `crates/kernel/chio-kernel/src/kernel/validation.rs::ChioKernel::check_revocation`, `crates/kernel/chio-kernel/src/kernel/delegation.rs::consult_revocation_view_at` | `formal/assumptions.toml` ASSUME-NETWORK-TRANSPORT; the runtime snapshot has one global epoch and a revoked-subject set rather than a per-subject lifecycle state | In the bounded model, a capability has a non-zero locally observed revocation epoch exactly when its local lifecycle state is revoked. |
 
 Lean cross-references (informational; the script does not enforce these):
 
@@ -98,7 +99,9 @@ separate `.github/workflows/apalache-temporal.yml` workflow.
 | --- | --- | --- | --- | --- |
 | `MonotoneLogApalache` | `formal/apalache/MonotoneLogApalache.tla` | `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs::ChioKernel::record_chio_receipt`, `crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs::SqliteReceiptStore::append_chio_receipt_returning_seq`, `crates/platform/chio-store-sqlite/src/receipt_store.rs::append_chio_receipt_tx` | `formal/assumptions.toml` ASSUME-SQLITE-ATOMICITY and ASSUME-OS-CLOCK; the storage anchors do not enforce strict timestamps | Per-authority receipt timestamps are strictly increasing under the bounded model-clock abstraction. |
 | `RevocationCutCompleteness` | `formal/apalache/RevocationCutCompleteness.tla` | `crates/kernel/chio-kernel/src/kernel/validation.rs::ChioKernel::check_revocation`, `crates/kernel/chio-kernel/src/kernel/delegation.rs::consult_revocation_view`, `crates/kernel/chio-kernel/src/kernel/delegation.rs::consult_revocation_view_at`, `chio_kernel_core::formal_core::revocation_lookup_denies`, `crates/kernel/chio-kernel-core/src/revocation_view.rs::RevocationSnapshot::is_revoked`, `RevocationView::is_revoked` | `formal/proof-manifest.toml` covered_rust_symbols `formal_core::revocation_lookup_denies` and `formal_core::revocation_snapshot_denies`; Lean theorem `revocation_is_cut` | A revoked capability removes dispatch eligibility for every transitive descendant in each authority view. Both lazy production lookup paths require the shared projected denial predicate. |
+| `DirectParentInClosure` | `formal/apalache/RevocationCutCompleteness.tla` | `crates/kernel/chio-kernel/src/kernel/validation.rs::ChioKernel::validate_delegation_admission`, `crates/core/chio-core-types/src/capability/attenuation.rs::validate_delegation_chain`, `crates/platform/chio-store-sqlite/src/capability_lineage.rs::SqliteReceiptStore::get_delegation_chain` | n/a (bounded structural closure); production validates a linear parent chain rather than materializing a descendant set | Every non-root parent edge is represented in the parent's descendant closure, so the modeled transitive revocation cut cannot pass over a missing direct edge. |
 | `ReceiptBeforeAllow` | `formal/apalache/ReceiptBeforeAllow.tla` | `crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs::ChioKernel::build_allow_response_with_metadata`, `ChioKernel::build_execution_nonce_preflight_allow_response_with_metadata`, `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs::ChioKernel::record_chio_receipt_with_federation`, `ChioKernel::record_chio_receipt`, `chio_formal_diff_tests::counterexample::replay_receipt_before_allow` | Modeled ordering evidence; concrete cross-row crash recovery remains excluded | Returning an allow response is modeled as publication after the corresponding receipt-persistence call, and the committed trace replays that ordering against the kernel. |
+| `AllowReceiptsBudgetChecked` | `formal/apalache/ReceiptBeforeAllow.tla` | `crates/kernel/chio-kernel/src/kernel/validation.rs::ChioKernel::check_and_increment_budget`, `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs::ChioKernel::evaluate_tool_call_async_with_session_context`, `crates/kernel/chio-kernel/src/kernel/evaluation/nested_flow_evaluation.rs::ChioKernel::evaluate_tool_call_with_nested_flow_client_async`, `crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs::ChioKernel::build_allow_response_with_metadata`, `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs::ChioKernel::record_chio_receipt_with_federation` | `formal/assumptions.toml` ASSUME-SQLITE-ATOMICITY; the model abstracts a successful budget admission as monotone set membership and does not establish cross-store atomicity | Every persisted allow receipt is for a capability whose budget check completed before receipt construction on the modeled evaluation path. |
 | `KernelTransitionCancelSafe` | `formal/apalache/KernelTransitionCancelSafe.tla` | `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs::PostAdmissionDropGuard`, `PostAdmissionDropGuard::mark_dispatch_started`, `PostAdmissionDropGuard::handle_pre_dispatch_drop`, `PostAdmissionDropGuard::drop`, `crates/kernel/chio-kernel/src/kernel/validation.rs::ChioKernel::reverse_pre_execution_budget_mutation` | Snapshot equality is by construction; the runtime reversal transition is not modeled; post-dispatch and fault cleanup paths are outside this model | The bounded clean pre-dispatch abstraction assumes unchanged budget and receipt snapshots; it does not prove that the Rust reversal restores them. |
 | `ReservationConservation` | `formal/apalache/PostAdmissionDropGuard.tla` | `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`, `crates/kernel/chio-kernel/src/budget_store.rs` | n/a (bounded structural model) | Counted reservation partition and shared active-child capacity at every bounded lifecycle state. The four-artifact join also names `verify_reservation_ledger_conservation`, `formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean`, and `kernel/ledger_audit.rs` plus `tests/property_reservation_ledger.rs`. Scalar admission is linked; production ledger linkage is not established. |
 | `TerminalReceiptExactlyOne` | `formal/apalache/PostAdmissionDropGuard.tla` | `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`, `crates/kernel/chio-kernel/src/kernel/responses/finalization.rs` | `formal/assumptions.toml` ASSUME-SQLITE-ATOMICITY | Receipt-bearing terminals append exactly one parent receipt, while a clean pre-dispatch unwind remains receipt-free. |
@@ -115,6 +118,23 @@ registered invariant and Error outcome, and emits a structurally valid ITF
 trace. Registry entries
 naming a property absent from this table are rejected before model checking
 starts.
+
+### Mutation sensitivity linkage
+
+`formal/mutation/registry.toml` maps the specification and proof mutation
+lanes back to the Rust surfaces represented by each model. The generated
+coverage map classifies those entries in the existing `mutants` column and
+labels them with the mutation lane, report path, activation target, and latest
+full-cycle result. A pending or low activation ratio is sensitivity evidence,
+not proof that the corresponding Rust surface is correct.
+
+The TLA+ mutator applies the 30 exact curated probes and two mandatory
+historical seeds registered in
+`formal/apalache/spec-mutants-allowlist.toml`. Its activation evidence is a
+clean full campaign with zero unviable results and at least 90 percent killed
+globally and for each source; timeouts count as not killed. The Rust mutator
+changes only `formal_core.rs` and `formal_aeneas.rs`; Kani harness assertions
+and assumptions are outside its discovery set.
 
 ## Kani public harnesses (kani_public_harnesses.rs)
 

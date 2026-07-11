@@ -127,6 +127,72 @@ credential-side policy intersection) plus the real-`mod` `trust_tier.rs`.
 Excluded: `fuzz.rs` (libFuzzer entry points covered by the
 trust-boundary fuzz lane).
 
+## Formal model co-coverage
+
+Two scheduled mutation lanes measure whether the verification properties can
+detect changes to their models:
+
+- `spec-mutants` mutates only exact allowlisted TLA+ action-body sites and uses
+  Apalache 0.50.1 as the oracle. Eligible actions must be reachable from
+  `Next`. It never edits `Init`, `Next`, configured invariant definitions or
+  their transitive definition closure, or temporal-property definition bodies.
+  Every unmodified positive model must pass the same bounded invariant oracle
+  before mutants are scored. The nightly sample contains at least 16 mutants
+  selected deterministically from
+  a rotating window over a commit-seeded permutation. The recorded epoch makes
+  each window reproducible and covers the inventory across consecutive runs on
+  an unchanged revision.
+- `proof-mutants` uses cargo-mutants 25.3.1 to enumerate the two pure Rust
+  model files, in the explicit shards `0/3`, `1/3`, and `2/3`. Every discovery
+  command repeats repository-relative `-f` filters for `formal_core.rs` and
+  `formal_aeneas.rs`, and the merged inventory must equal an unsharded control.
+  A scratch worktree applies each selected mutation and runs the clean Kani
+  core lane as the oracle. Harnesses that directly exercise the mutable model
+  modules run first; a passing priority set is always followed by the complete
+  core lane, while a proof failure stops immediately.
+
+cargo-mutants 25.3.1 accepts only `cargo` and `nextest` for `--test-tool`; it
+cannot invoke a Kani shell command through that option. The proof lane records
+the scratch-worktree fallback as its execution mode and preserves the exact
+cargo-mutants diffs, shard commands, source hashes, Kani logs, and verdicts.
+It runs a clean Kani baseline before applying any mutation. A failing baseline
+aborts the measurement.
+
+Both lanes require a clean scheduled worktree and emit the timeout-aware ratio
+`killed / (killed + survived + timeout)`. Unviable mutations are excluded from
+that denominator, while timeouts reduce the score. The specification lane
+rejects any unviable curated probe. The proof lane additionally requires at
+least 80 percent viable mutants globally and for each model file, preventing
+compile failures from inflating activation. Reports and generated coverage
+attribution are registered in `formal/mutation/registry.toml`.
+Surviving mutants receive idempotent GitHub issues keyed by their stable
+mutation identifier.
+
+The same scheduled workflow carries a non-ratcheted Lean sensitivity pilot.
+`scripts/lean-mutants.py` changes comparisons, Boolean literals, and Boolean
+connectives only inside definitions listed in
+`formal/lean4/lean-mutants-allowlist.toml`; declarations classified as
+theorems, lemmas, or axioms are never mutation candidates. A failed `lake
+build` kills the mutant only when the log contains a Lean source diagnostic;
+unknown tool failures abort the run. A successful build records a survivor
+and files the same disposition issue used by the two scored lanes.
+
+```bash
+python3 scripts/spec-mutants.py --list
+python3 scripts/spec-mutants.py --sample-from-head --sample-size 16
+
+cargo mutants \
+  --config formal/rust-verification/formal-mutants.toml \
+  --package chio-kernel-core \
+  --list
+./scripts/proof-mutants.sh --sample-size 15 --activation-target 90
+./scripts/lean-mutants.py --sample-size 5
+```
+
+The formal files remain excluded from the unit-test mutation configuration.
+Their exclusion means the cargo test oracle is inappropriate, not that the
+files are unmeasured.
+
 ## Local-developer workflow
 
 ```bash

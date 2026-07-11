@@ -345,6 +345,10 @@ RevocationFreshness ==
     \A a \in ProcSet, c \in CapSet :
         rev_epoch[a][c] # 0 => rev_epoch[a][c] < clock
 
+RevocationStateCoupled ==
+    \A a \in ProcSet, c \in CapSet :
+        (rev_epoch[a][c] # 0) = (state[a][c] = "revoked")
+
 (***************************************************************************)
 (* SafetyInv: aggregate invariant referenced by                            *)
 (* MCRevocationPropagation.cfg's INVARIANT line. Conjunction of the three *)
@@ -357,6 +361,7 @@ SafetyInv ==
     /\ MonotoneLog
     /\ AttenuationPreserving
     /\ RevocationFreshness
+    /\ RevocationStateCoupled
 
 (***************************************************************************)
 (*                          Liveness property                              *)

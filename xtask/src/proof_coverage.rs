@@ -10,7 +10,7 @@ use toml::Value as TomlValue;
 use crate::{workspace_root, XtaskError};
 
 const COVERAGE_SCHEMA: &str = "chio.proof-coverage.v1";
-const GENERATOR_VERSION: u32 = 2;
+const GENERATOR_VERSION: u32 = 3;
 const MARKDOWN_PATH: &str = "docs/formal/COVERAGE.md";
 const JSON_PATH: &str = "target/formal/coverage.json";
 const COMMIT_TOKEN: &str = "@GIT_COMMIT@";
@@ -197,6 +197,146 @@ struct MutationConfig {
     examine_globs: Vec<String>,
     #[serde(default)]
     exclude_globs: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FormalMutationRegistry {
+    schema: String,
+    target: Vec<FormalMutationTarget>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FormalMutationTarget {
+    name: String,
+    lane: String,
+    source: String,
+    report: String,
+    activation_target_percent: f64,
+    inventory_sha256: String,
+    rust_paths: Vec<String>,
+    #[serde(default)]
+    latest_full_cycle: Option<FormalMutationObservation>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FormalMutationObservation {
+    commit: String,
+    measured_at: String,
+    evidence: String,
+    report_sha256: String,
+    enumerated: usize,
+    killed: usize,
+    survived: usize,
+    unviable: usize,
+    timeout: usize,
+    activation_ratio_percent: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct SpecMutationInputRegistry {
+    schema: String,
+    negative_registry: String,
+    #[serde(default)]
+    spec: Vec<SpecMutationInputSpec>,
+    #[serde(default)]
+    seed: Vec<SpecMutationInputSeed>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct SpecMutationInputSpec {
+    name: String,
+    path: String,
+    cfg: String,
+    invariant: String,
+    length: usize,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct SpecMutationInputSeed {
+    name: String,
+    negative_spec: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct NegativeMutationInputRegistry {
+    schema: String,
+    #[serde(default)]
+    negative: Vec<NegativeMutationInput>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct NegativeMutationInput {
+    spec: String,
+    cfg: String,
+    falsifies: String,
+    length: usize,
+    timeout_secs: usize,
+    runtime_test: String,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct MutationVerdictCounts {
+    killed: usize,
+    survived: usize,
+    unviable: usize,
+    timeout: usize,
+}
+
+impl MutationVerdictCounts {
+    fn sampled(self) -> Result<usize, String> {
+        self.killed
+            .checked_add(self.survived)
+            .and_then(|value| value.checked_add(self.unviable))
+            .and_then(|value| value.checked_add(self.timeout))
+            .ok_or_else(|| "formal mutation verdict count overflow".to_string())
+    }
+
+    fn score_denominator(self) -> Result<usize, String> {
+        self.killed
+            .checked_add(self.survived)
+            .and_then(|value| value.checked_add(self.timeout))
+            .ok_or_else(|| "formal mutation score denominator overflow".to_string())
+    }
+
+    fn activation_ratio_percent(self) -> Result<f64, String> {
+        let denominator = self.score_denominator()?;
+        Ok(if denominator == 0 {
+            0.0
+        } else {
+            100.0 * self.killed as f64 / denominator as f64
+        })
+    }
+
+    fn completion_ratio_percent(self) -> Result<f64, String> {
+        let sampled = self.sampled()?;
+        let completed = self
+            .killed
+            .checked_add(self.survived)
+            .and_then(|value| value.checked_add(self.unviable))
+            .ok_or_else(|| "formal mutation completion count overflow".to_string())?;
+        Ok(if sampled == 0 {
+            0.0
+        } else {
+            100.0 * completed as f64 / sampled as f64
+        })
+    }
+
+    fn increment(&mut self, verdict: &str) -> Result<(), String> {
+        let count = match verdict {
+            "killed" => &mut self.killed,
+            "survived" => &mut self.survived,
+            "unviable" => &mut self.unviable,
+            "timeout" => &mut self.timeout,
+            _ => return Err(format!("invalid formal mutation verdict: {verdict}")),
+        };
+        *count = count
+            .checked_add(1)
+            .ok_or_else(|| "formal mutation verdict count overflow".to_string())?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -440,6 +580,16 @@ fn build_coverage(root: &Path) -> Result<CoverageBuild, String> {
         &mut input_hashes,
     )?;
     validate_mutation_baseline(&mutants_baseline_raw)?;
+    let formal_mutations_raw =
+        read_input(root, "formal/mutation/registry.toml", &mut input_hashes)?;
+    let formal_mutations: FormalMutationRegistry =
+        parse_toml("formal/mutation/registry.toml", &formal_mutations_raw)?;
+    if formal_mutations.schema != "chio.formal-mutation-coverage.v1" {
+        return Err(format!(
+            "unsupported formal mutation registry schema: {}",
+            formal_mutations.schema
+        ));
+    }
     let workspace_rust_files = workspace_rust_files(root)?;
     input_hashes.insert(
         "git-worktree://rust-files".to_string(),
@@ -566,6 +716,15 @@ fn build_coverage(root: &Path) -> Result<CoverageBuild, String> {
         &mut artifacts,
         &mut unattributed,
         &mutant_config_paths,
+    )?;
+    add_formal_mutation_artifacts(
+        root,
+        &workspace,
+        &formal_mutations.target,
+        &mut input_hashes,
+        &mut rows,
+        &mut artifacts,
+        &mut unattributed,
     )?;
     add_inventory_artifacts(&inventory, &mut unattributed);
     add_diff_artifacts(root, &mut input_hashes, &mut unattributed)?;
@@ -2214,6 +2373,1834 @@ fn mutation_evidence_references_config(
     Ok(false)
 }
 
+fn regular_mutation_input_bytes(root: &Path, relative: &str) -> Result<(String, Vec<u8>), String> {
+    let path = normalized_repo_path(relative)?;
+    if path.is_empty() {
+        return Err("formal mutation input path is empty".to_string());
+    }
+    let absolute = root.join(&path);
+    let mut component_path = root.to_path_buf();
+    for component in Path::new(&path).components() {
+        component_path.push(component.as_os_str());
+        let component_metadata = fs::symlink_metadata(&component_path).map_err(|error| {
+            format!("formal mutation input is not a repository file ({path}): {error}")
+        })?;
+        if component_metadata.file_type().is_symlink() {
+            return Err(format!("formal mutation input traverses a symlink: {path}"));
+        }
+    }
+    let metadata = fs::symlink_metadata(&absolute).map_err(|error| {
+        format!("formal mutation input is not a repository file ({path}): {error}")
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(format!(
+            "formal mutation input is not a non-symlink regular repository file: {path}"
+        ));
+    }
+    let canonical_root = fs::canonicalize(root)
+        .map_err(|error| format!("cannot resolve repository root: {error}"))?;
+    let canonical_path = fs::canonicalize(&absolute)
+        .map_err(|error| format!("cannot resolve formal mutation input {path}: {error}"))?;
+    if canonical_path.strip_prefix(&canonical_root).is_err() {
+        return Err(format!(
+            "formal mutation input escapes the repository: {path}"
+        ));
+    }
+    let bytes = fs::read(&absolute)
+        .map_err(|error| format!("cannot read formal mutation input {path}: {error}"))?;
+    Ok((path, bytes))
+}
+
+fn regular_mutation_input_text(root: &Path, relative: &str) -> Result<(String, String), String> {
+    let (path, bytes) = regular_mutation_input_bytes(root, relative)?;
+    let raw = String::from_utf8(bytes)
+        .map_err(|error| format!("formal mutation input is not UTF-8 ({path}): {error}"))?;
+    Ok((path, raw))
+}
+
+fn mutation_input_at_commit(root: &Path, commit: &str, relative: &str) -> Result<Vec<u8>, String> {
+    let tree_entry = Command::new("git")
+        .args(["ls-tree", "-z", "--full-tree", commit, "--", relative])
+        .current_dir(root)
+        .output()
+        .map_err(|error| {
+            format!("cannot inspect formal mutation evidence commit {commit}: {error}")
+        })?;
+    if !tree_entry.status.success() {
+        return Err(format!(
+            "cannot inspect formal mutation evidence commit {commit}: {}",
+            String::from_utf8_lossy(&tree_entry.stderr).trim()
+        ));
+    }
+    let entries = tree_entry
+        .stdout
+        .split(|byte| *byte == 0)
+        .filter(|entry| !entry.is_empty())
+        .collect::<Vec<_>>();
+    if entries.len() != 1 {
+        return Err(format!(
+            "formal mutation evidence commit {commit} does not contain exactly one input entry for {relative}"
+        ));
+    }
+    let entry = String::from_utf8(entries[0].to_vec()).map_err(|error| {
+        format!("formal mutation evidence tree entry is not UTF-8 ({relative}): {error}")
+    })?;
+    let (metadata, path) = entry
+        .split_once('\t')
+        .ok_or_else(|| format!("formal mutation evidence tree entry is malformed: {relative}"))?;
+    let fields = metadata.split_whitespace().collect::<Vec<_>>();
+    if fields.len() != 3
+        || !matches!(fields[0], "100644" | "100755")
+        || fields[1] != "blob"
+        || fields[2].len() != 40
+        || path != relative
+    {
+        return Err(format!(
+            "formal mutation evidence commit {commit} input is not a regular file: {relative}"
+        ));
+    }
+    let blob = Command::new("git")
+        .args(["cat-file", "blob", fields[2]])
+        .current_dir(root)
+        .output()
+        .map_err(|error| {
+            format!("cannot read formal mutation evidence blob for {relative}: {error}")
+        })?;
+    if !blob.status.success() {
+        return Err(format!(
+            "cannot read formal mutation evidence blob for {relative}: {}",
+            String::from_utf8_lossy(&blob.stderr).trim()
+        ));
+    }
+    Ok(blob.stdout)
+}
+
+fn validate_mutation_evidence_commit(root: &Path, commit: &str) -> Result<(), String> {
+    let object_type = Command::new("git")
+        .args(["cat-file", "-t", commit])
+        .current_dir(root)
+        .output()
+        .map_err(|error| {
+            format!("cannot inspect formal mutation evidence object {commit}: {error}")
+        })?;
+    if !object_type.status.success() || object_type.stdout != b"commit\n" {
+        return Err(format!(
+            "formal mutation evidence object is not a commit: {commit}"
+        ));
+    }
+    let ancestor = Command::new("git")
+        .args(["merge-base", "--is-ancestor", commit, "HEAD"])
+        .current_dir(root)
+        .output()
+        .map_err(|error| {
+            format!("cannot verify formal mutation evidence ancestry for {commit}: {error}")
+        })?;
+    if !ancestor.status.success() {
+        return Err(format!(
+            "formal mutation evidence commit is not an ancestor of HEAD: {commit}"
+        ));
+    }
+    Ok(())
+}
+
+fn insert_formal_mutation_input(
+    root: &Path,
+    relative: &str,
+    expected: &mut BTreeMap<String, String>,
+    coverage_inputs: &mut BTreeMap<String, String>,
+) -> Result<(), String> {
+    let (path, bytes) = regular_mutation_input_bytes(root, relative)?;
+    let digest = sha256_hex(&bytes);
+    expected.insert(path.clone(), digest.clone());
+    coverage_inputs.insert(path, digest);
+    Ok(())
+}
+
+fn regular_files_in_directory(
+    root: &Path,
+    relative: &str,
+    extension: &str,
+    recursive: bool,
+) -> Result<BTreeSet<String>, String> {
+    fn visit(
+        root: &Path,
+        directory: &Path,
+        extension: &str,
+        recursive: bool,
+        paths: &mut BTreeSet<String>,
+    ) -> Result<(), String> {
+        let metadata = fs::symlink_metadata(directory).map_err(|error| {
+            format!(
+                "cannot inspect formal mutation input directory {}: {error}",
+                directory.display()
+            )
+        })?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+            return Err(format!(
+                "formal mutation input directory is not a non-symlink directory: {}",
+                directory.display()
+            ));
+        }
+        let mut entries = fs::read_dir(directory)
+            .map_err(|error| {
+                format!(
+                    "cannot read formal mutation input directory {}: {error}",
+                    directory.display()
+                )
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| {
+                format!(
+                    "cannot read formal mutation input directory entry in {}: {error}",
+                    directory.display()
+                )
+            })?;
+        entries.sort_by_key(fs::DirEntry::path);
+        for entry in entries {
+            let absolute = entry.path();
+            let entry_metadata = fs::symlink_metadata(&absolute).map_err(|error| {
+                format!(
+                    "cannot inspect formal mutation dependency {}: {error}",
+                    absolute.display()
+                )
+            })?;
+            if entry_metadata.file_type().is_symlink() {
+                let matches_extension =
+                    absolute.extension().and_then(|value| value.to_str()) == Some(extension);
+                if matches_extension || recursive {
+                    return Err(format!(
+                        "formal mutation dependency is a symlink: {}",
+                        absolute.display()
+                    ));
+                }
+                continue;
+            }
+            if entry_metadata.is_dir() {
+                if recursive {
+                    visit(root, &absolute, extension, true, paths)?;
+                }
+                continue;
+            }
+            if !entry_metadata.is_file()
+                || absolute.extension().and_then(|value| value.to_str()) != Some(extension)
+            {
+                continue;
+            }
+            let relative_path = absolute.strip_prefix(root).map_err(|_| {
+                format!(
+                    "formal mutation dependency escaped the repository: {}",
+                    absolute.display()
+                )
+            })?;
+            let relative_path = relative_path.to_str().ok_or_else(|| {
+                format!(
+                    "formal mutation dependency path is not UTF-8: {}",
+                    absolute.display()
+                )
+            })?;
+            paths.insert(normalized_repo_path(relative_path)?);
+        }
+        Ok(())
+    }
+
+    let directory = normalized_repo_path(relative)?;
+    let mut paths = BTreeSet::new();
+    visit(
+        root,
+        &root.join(directory),
+        extension,
+        recursive,
+        &mut paths,
+    )?;
+    Ok(paths)
+}
+
+fn spec_mutation_input_registry(root: &Path) -> Result<SpecMutationInputRegistry, String> {
+    const ALLOWLIST: &str = "formal/apalache/spec-mutants-allowlist.toml";
+    let (_, allowlist_raw) = regular_mutation_input_text(root, ALLOWLIST)?;
+    let allowlist: SpecMutationInputRegistry = parse_toml(ALLOWLIST, &allowlist_raw)?;
+    if allowlist.schema != "chio.spec-mutants-allowlist.v2" || allowlist.spec.is_empty() {
+        return Err(
+            "spec mutation allowlist has an unsupported schema or no specifications".to_string(),
+        );
+    }
+    Ok(allowlist)
+}
+
+fn spec_mutation_allowlist_specs(
+    root: &Path,
+) -> Result<BTreeMap<String, SpecMutationInputSpec>, String> {
+    let allowlist = spec_mutation_input_registry(root)?;
+    let mut specs = BTreeMap::new();
+    let mut paths = BTreeSet::new();
+    let mut cfgs = BTreeSet::new();
+    for spec in allowlist.spec {
+        let path = normalized_repo_path(&spec.path)?;
+        let cfg = normalized_repo_path(&spec.cfg)?;
+        if spec.name.is_empty()
+            || !spec.name.chars().all(|character| {
+                character.is_ascii_alphanumeric() || character == '_' || character == '-'
+            })
+            || path != spec.path
+            || cfg != spec.cfg
+            || !paths.insert(path)
+            || !cfgs.insert(cfg)
+            || spec.invariant.is_empty()
+            || !spec
+                .invariant
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+            || spec.length == 0
+            || specs.insert(spec.name.clone(), spec).is_some()
+        {
+            return Err("spec mutation allowlist has an invalid or repeated source".to_string());
+        }
+    }
+    Ok(specs)
+}
+
+fn spec_mutation_source_map(root: &Path) -> Result<BTreeMap<String, String>, String> {
+    let specs = spec_mutation_allowlist_specs(root)?;
+    let sources = specs
+        .into_iter()
+        .map(|(name, spec)| (spec.path, name))
+        .collect();
+    Ok(sources)
+}
+
+fn spec_mutation_negative_registry(
+    root: &Path,
+) -> Result<(String, Vec<NegativeMutationInput>), String> {
+    const NEGATIVE_SCHEMA: &str = "chio.apalache-negative.v1";
+
+    let allowlist = spec_mutation_input_registry(root)?;
+    let negative_registry = normalized_repo_path(&allowlist.negative_registry)?;
+    if negative_registry != allowlist.negative_registry {
+        return Err("spec mutation negative registry path is not normalized".to_string());
+    }
+    let (_, negative_raw) = regular_mutation_input_text(root, &negative_registry)?;
+    let negative: NegativeMutationInputRegistry = parse_toml(&negative_registry, &negative_raw)?;
+    if negative.schema != NEGATIVE_SCHEMA || negative.negative.is_empty() {
+        return Err(
+            "spec mutation negative registry has an unsupported schema or no entries".to_string(),
+        );
+    }
+    let mut specs = BTreeSet::new();
+    let mut cfgs = BTreeSet::new();
+    for entry in &negative.negative {
+        if normalized_repo_path(&entry.spec)? != entry.spec
+            || normalized_repo_path(&entry.cfg)? != entry.cfg
+            || !specs.insert(entry.spec.clone())
+            || !cfgs.insert(entry.cfg.clone())
+            || entry.falsifies.is_empty()
+            || !entry
+                .falsifies
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '_')
+            || entry.length == 0
+            || entry.timeout_secs == 0
+        {
+            return Err(
+                "spec mutation negative registry has an invalid or repeated entry".to_string(),
+            );
+        }
+    }
+    Ok((negative_registry, negative.negative))
+}
+
+fn spec_mutation_seed_registry(root: &Path) -> Result<BTreeMap<String, String>, String> {
+    let allowlist = spec_mutation_input_registry(root)?;
+    let (_, negative_entries) = spec_mutation_negative_registry(root)?;
+    let negative_specs = negative_entries
+        .into_iter()
+        .map(|entry| entry.spec)
+        .collect::<BTreeSet<_>>();
+    let mut seeds = BTreeMap::new();
+    let mut negative_seed_specs = BTreeSet::new();
+    for seed in allowlist.seed {
+        let negative_spec = normalized_repo_path(&seed.negative_spec)?;
+        if seed.name.is_empty()
+            || !seed.name.chars().all(|character| {
+                character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+            })
+            || negative_spec != seed.negative_spec
+            || !negative_specs.contains(&negative_spec)
+            || seeds.insert(seed.name, negative_spec.clone()).is_some()
+            || !negative_seed_specs.insert(negative_spec)
+        {
+            return Err(
+                "spec mutation allowlist has an invalid or repeated historical seed".to_string(),
+            );
+        }
+    }
+    Ok(seeds)
+}
+
+fn spec_mutation_expected_input_paths(root: &Path) -> Result<BTreeSet<String>, String> {
+    const ALLOWLIST: &str = "formal/apalache/spec-mutants-allowlist.toml";
+
+    let allowlist = spec_mutation_input_registry(root)?;
+    let (negative_registry, negative_entries) = spec_mutation_negative_registry(root)?;
+    let mut paths = BTreeSet::from([
+        ALLOWLIST.to_string(),
+        negative_registry.clone(),
+        "formal/MAPPING.md".to_string(),
+        "scripts/check-apalache-negative.sh".to_string(),
+        "scripts/lib/apalache_evidence.py".to_string(),
+        "scripts/spec-mutants.py".to_string(),
+        "tools/install-apalache.sh".to_string(),
+    ]);
+    for spec in &allowlist.spec {
+        let source = normalized_repo_path(&spec.path)?;
+        paths.insert(source.clone());
+        paths.insert(normalized_repo_path(&spec.cfg)?);
+        let parent = Path::new(&source)
+            .parent()
+            .and_then(Path::to_str)
+            .ok_or_else(|| format!("spec mutation source has no repository parent: {source}"))?;
+        paths.extend(regular_files_in_directory(root, parent, "tla", false)?);
+    }
+    let mut negative_parents = BTreeSet::new();
+    for entry in negative_entries {
+        let source = normalized_repo_path(&entry.spec)?;
+        paths.insert(source.clone());
+        paths.insert(normalized_repo_path(&entry.cfg)?);
+        let parent = Path::new(&source)
+            .parent()
+            .and_then(Path::to_str)
+            .ok_or_else(|| {
+                format!("negative mutation source has no repository parent: {source}")
+            })?;
+        negative_parents.insert(parent.to_string());
+        if !entry.runtime_test.starts_with("n/a") {
+            let runtime_path = entry
+                .runtime_test
+                .split("::")
+                .next()
+                .filter(|path| !path.is_empty())
+                .ok_or_else(|| "negative mutation runtime test has no file path".to_string())?;
+            paths.insert(normalized_repo_path(runtime_path)?);
+        }
+    }
+    for parent in negative_parents {
+        paths.extend(regular_files_in_directory(root, &parent, "tla", false)?);
+    }
+    Ok(paths)
+}
+
+fn proof_mutation_expected_input_paths(root: &Path) -> Result<BTreeSet<String>, String> {
+    let mut paths = BTreeSet::from([
+        "Cargo.toml".to_string(),
+        "Cargo.lock".to_string(),
+        ".cargo/config.toml".to_string(),
+        "crates/kernel/chio-kernel-core/Cargo.toml".to_string(),
+        "crates/core/chio-core-types/Cargo.toml".to_string(),
+        "rust-toolchain.toml".to_string(),
+        "formal/rust-verification/formal-mutants.toml".to_string(),
+        "scripts/proof-mutants.py".to_string(),
+        "scripts/proof-mutants.sh".to_string(),
+        "scripts/kani-mutant-killer.sh".to_string(),
+        "scripts/check-kani-core.sh".to_string(),
+    ]);
+    paths.extend(regular_files_in_directory(
+        root,
+        "crates/kernel/chio-kernel-core/src",
+        "rs",
+        true,
+    )?);
+    paths.extend(regular_files_in_directory(
+        root,
+        "crates/core/chio-core-types/src",
+        "rs",
+        true,
+    )?);
+    Ok(paths)
+}
+
+fn formal_mutation_expected_inputs(
+    root: &Path,
+    lane: &str,
+    coverage_inputs: &mut BTreeMap<String, String>,
+) -> Result<BTreeMap<String, String>, String> {
+    let paths = match lane {
+        "spec-mutants" => spec_mutation_expected_input_paths(root)?,
+        "proof-mutants" => proof_mutation_expected_input_paths(root)?,
+        _ => return Err(format!("unsupported formal mutation input lane: {lane}")),
+    };
+    let mut expected = BTreeMap::new();
+    for path in paths {
+        insert_formal_mutation_input(root, &path, &mut expected, coverage_inputs)?;
+    }
+    Ok(expected)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn add_formal_mutation_artifacts(
+    root: &Path,
+    workspace: &WorkspaceCatalog,
+    targets: &[FormalMutationTarget],
+    inputs: &mut BTreeMap<String, String>,
+    rows: &mut BTreeMap<String, CoverageRow>,
+    artifacts: &mut BTreeMap<String, ArtifactRecord>,
+    unattributed: &mut Vec<UnattributedArtifact>,
+) -> Result<(), String> {
+    if targets.is_empty() {
+        return Err("formal mutation registry has no targets".to_string());
+    }
+    let mut names = BTreeSet::new();
+    let mut lane_inventory_digests = BTreeMap::<String, String>::new();
+    for target in targets {
+        if target.name.is_empty()
+            || !target.name.chars().all(|character| {
+                character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+            })
+            || !names.insert(target.name.clone())
+        {
+            return Err(format!(
+                "formal mutation target has an invalid or repeated name: {}",
+                target.name
+            ));
+        }
+        if !matches!(target.lane.as_str(), "spec-mutants" | "proof-mutants") {
+            return Err(format!(
+                "formal mutation target {} has unsupported lane {}",
+                target.name, target.lane
+            ));
+        }
+        if !target.activation_target_percent.is_finite()
+            || !(0.0..=100.0).contains(&target.activation_target_percent)
+        {
+            return Err(format!(
+                "formal mutation target {} has an invalid activation target",
+                target.name
+            ));
+        }
+        if target.inventory_sha256.len() != 64
+            || !target
+                .inventory_sha256
+                .chars()
+                .all(|character| character.is_ascii_digit() || ('a'..='f').contains(&character))
+        {
+            return Err(format!(
+                "formal mutation target {} has an invalid inventory digest",
+                target.name
+            ));
+        }
+        if let Some(existing) = lane_inventory_digests.get(&target.lane) {
+            if existing != &target.inventory_sha256 {
+                return Err(format!(
+                    "formal mutation lane {} has inconsistent inventory digests",
+                    target.lane
+                ));
+            }
+        } else {
+            lane_inventory_digests.insert(target.lane.clone(), target.inventory_sha256.clone());
+        }
+        let source = normalized_repo_path(&target.source)?;
+        if source != target.source {
+            return Err(format!(
+                "formal mutation target {} source is not a normalized repository path",
+                target.name
+            ));
+        }
+        let current_mutation_inputs = formal_mutation_expected_inputs(root, &target.lane, inputs)?;
+        if !current_mutation_inputs.contains_key(&source) {
+            return Err(format!(
+                "formal mutation target {} source is outside the complete {} input set",
+                target.name, target.lane
+            ));
+        }
+        let (_, source_raw) = regular_mutation_input_text(root, &source)?;
+        if target.lane == "spec-mutants" {
+            if Path::new(&source)
+                .extension()
+                .and_then(|value| value.to_str())
+                != Some("tla")
+                || !source_raw.contains(" MODULE ")
+            {
+                return Err(format!(
+                    "spec mutation target {} does not name a TLA+ module",
+                    target.name
+                ));
+            }
+        } else if !matches!(
+            source.as_str(),
+            "crates/kernel/chio-kernel-core/src/formal_core.rs"
+                | "crates/kernel/chio-kernel-core/src/formal_aeneas.rs"
+        ) {
+            return Err(format!(
+                "proof mutation target {} escapes the pure model files",
+                target.name
+            ));
+        }
+        let report = normalized_repo_path(&target.report)?;
+        if !report.starts_with("target/formal/") {
+            return Err(format!(
+                "formal mutation target {} report is outside target/formal",
+                target.name
+            ));
+        }
+        if target.rust_paths.is_empty() {
+            return Err(format!(
+                "formal mutation target {} has no Rust paths",
+                target.name
+            ));
+        }
+        let mut surfaces = Vec::new();
+        let mut seen_paths = BTreeSet::new();
+        for rust_path in &target.rust_paths {
+            let path = normalized_repo_path(rust_path)?;
+            if Path::new(&path)
+                .extension()
+                .and_then(|value| value.to_str())
+                != Some("rs")
+                || !seen_paths.insert(path.clone())
+            {
+                return Err(format!(
+                    "formal mutation target {} has an invalid or repeated Rust path: {}",
+                    target.name, rust_path
+                ));
+            }
+            let _ = read_input(root, &path, inputs)?;
+            surfaces.push(surface_from_repo_path(&path, workspace, true)?);
+        }
+        let id = format!("formal/mutation/registry.toml::{}", target.name);
+        add_or_unattribute(
+            rows,
+            artifacts,
+            unattributed,
+            id.clone(),
+            "mutants",
+            surfaces,
+            "formal mutation target has no conservative primary Rust surface",
+            Vec::new(),
+        )?;
+        let mut qualifiers = BTreeMap::from([
+            ("mutation_lane".to_string(), target.lane.clone()),
+            (
+                "activation_target_percent".to_string(),
+                format_percent(target.activation_target_percent),
+            ),
+            (
+                "inventory_sha256".to_string(),
+                target.inventory_sha256.clone(),
+            ),
+            ("report".to_string(), report),
+        ]);
+        if let Some(observation) = &target.latest_full_cycle {
+            validate_formal_mutation_observation(
+                root,
+                inputs,
+                target,
+                observation,
+                &current_mutation_inputs,
+            )?;
+            qualifiers.insert("measurement".to_string(), "full-cycle".to_string());
+            qualifiers.insert(
+                "activation_ratio_percent".to_string(),
+                format_percent(observation.activation_ratio_percent),
+            );
+            qualifiers.insert("measured_at".to_string(), observation.measured_at.clone());
+            qualifiers.insert("evidence".to_string(), observation.evidence.clone());
+            qualifiers.insert("commit".to_string(), observation.commit.clone());
+            if target.lane == "spec-mutants" {
+                let source = spec_mutation_source_map(root)?
+                    .get(&target.source)
+                    .cloned()
+                    .ok_or_else(|| {
+                        format!(
+                            "formal mutation target {} source is absent from the specification allowlist",
+                            target.name
+                        )
+                    })?;
+                qualifiers.insert("source_aggregate".to_string(), source);
+            } else {
+                qualifiers.insert("source_aggregate".to_string(), target.source.clone());
+            }
+        } else {
+            qualifiers.insert("measurement".to_string(), "pending".to_string());
+        }
+        if let Some(artifact) = artifacts.get_mut(&id) {
+            artifact.qualifiers = qualifiers;
+        } else if let Some(artifact) = unattributed.iter_mut().find(|artifact| artifact.id == id) {
+            artifact.qualifiers = qualifiers;
+        } else {
+            return Err(format!(
+                "formal mutation target disappeared after attribution: {}",
+                target.name
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn format_percent(value: f64) -> String {
+    let rendered = format!("{value:.3}");
+    rendered
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_string()
+}
+
+fn valid_utc_timestamp(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 20
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes[10] != b'T'
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+        || bytes[19] != b'Z'
+        || bytes.iter().enumerate().any(|(index, byte)| {
+            !matches!(index, 4 | 7 | 10 | 13 | 16 | 19) && !byte.is_ascii_digit()
+        })
+    {
+        return false;
+    }
+    let number =
+        |range: std::ops::Range<usize>| value.get(range).and_then(|part| part.parse::<u32>().ok());
+    matches!(number(0..4), Some(1..=9999))
+        && matches!(number(5..7), Some(1..=12))
+        && matches!(number(8..10), Some(1..=31))
+        && matches!(number(11..13), Some(0..=23))
+        && matches!(number(14..16), Some(0..=59))
+        && matches!(number(17..19), Some(0..=60))
+}
+
+fn validate_formal_mutation_observation(
+    root: &Path,
+    inputs: &mut BTreeMap<String, String>,
+    target: &FormalMutationTarget,
+    observation: &FormalMutationObservation,
+    current_inputs: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    if observation.commit.len() != 40
+        || !observation
+            .commit
+            .chars()
+            .all(|character| character.is_ascii_digit() || ('a'..='f').contains(&character))
+    {
+        return Err(format!(
+            "formal mutation target {} has an invalid observation commit",
+            target.name
+        ));
+    }
+    if !valid_utc_timestamp(&observation.measured_at) {
+        return Err(format!(
+            "formal mutation target {} has an invalid observation timestamp",
+            target.name
+        ));
+    }
+    let evidence = normalized_repo_path(&observation.evidence)?;
+    if !evidence.starts_with("formal/mutation/evidence/")
+        || Path::new(&evidence)
+            .extension()
+            .and_then(|value| value.to_str())
+            != Some("json")
+    {
+        return Err(format!(
+            "formal mutation target {} evidence must be a JSON file below formal/mutation/evidence",
+            target.name
+        ));
+    }
+    if observation.report_sha256.len() != 64
+        || !observation
+            .report_sha256
+            .chars()
+            .all(|character| character.is_ascii_digit() || ('a'..='f').contains(&character))
+    {
+        return Err(format!(
+            "formal mutation target {} has an invalid report hash",
+            target.name
+        ));
+    }
+    let (_, raw_report) = regular_mutation_input_text(root, &evidence)?;
+    inputs.insert(evidence.clone(), sha256_hex(raw_report.as_bytes()));
+    if sha256_hex(raw_report.as_bytes()) != observation.report_sha256 {
+        return Err(format!(
+            "formal mutation target {} report hash does not match its evidence",
+            target.name
+        ));
+    }
+    let report: serde_json::Value = serde_json::from_str(&raw_report).map_err(|error| {
+        format!(
+            "formal mutation target {} has invalid report JSON: {error}",
+            target.name
+        )
+    })?;
+    validate_formal_mutation_report(root, target, observation, &report, current_inputs)?;
+    Ok(())
+}
+
+fn validate_mutation_score(
+    value: &serde_json::Value,
+    counts: MutationVerdictCounts,
+    activation_target_percent: f64,
+    viability_target_percent: Option<f64>,
+    label: &str,
+) -> Result<bool, String> {
+    let aggregate = value
+        .as_object()
+        .ok_or_else(|| format!("formal mutation report {label} is not an object"))?;
+    let expected_usize = [
+        ("sampled", counts.sampled()?),
+        ("killed", counts.killed),
+        ("survived", counts.survived),
+        ("unviable", counts.unviable),
+        ("timeout", counts.timeout),
+        ("score_denominator", counts.score_denominator()?),
+    ];
+    for (field, expected) in expected_usize {
+        if aggregate.get(field).and_then(serde_json::Value::as_u64) != u64::try_from(expected).ok()
+        {
+            return Err(format!(
+                "formal mutation report {label} has an inconsistent {field}"
+            ));
+        }
+    }
+    let activation = counts.activation_ratio_percent()?;
+    let completion = counts.completion_ratio_percent()?;
+    for (field, expected) in [
+        ("activation_ratio_percent", activation),
+        ("completion_ratio_percent", completion),
+        ("activation_target_percent", activation_target_percent),
+    ] {
+        if aggregate
+            .get(field)
+            .and_then(serde_json::Value::as_f64)
+            .is_none_or(|actual| (actual - expected).abs() > 0.000_5)
+        {
+            return Err(format!(
+                "formal mutation report {label} has an inconsistent {field}"
+            ));
+        }
+    }
+    if aggregate
+        .get("timeout_policy")
+        .and_then(serde_json::Value::as_str)
+        != Some("timeouts count as not killed")
+    {
+        return Err(format!(
+            "formal mutation report {label} has an inconsistent timeout policy"
+        ));
+    }
+    let activation_met = activation + 0.000_5 >= activation_target_percent;
+    if let Some(viability_target) = viability_target_percent {
+        let sampled = counts.sampled()?;
+        let viability = if sampled == 0 {
+            0.0
+        } else {
+            100.0 * counts.score_denominator()? as f64 / sampled as f64
+        };
+        for (field, expected) in [
+            ("viability_ratio_percent", viability),
+            ("viability_target_percent", viability_target),
+        ] {
+            if aggregate
+                .get(field)
+                .and_then(serde_json::Value::as_f64)
+                .is_none_or(|actual| (actual - expected).abs() > 0.000_5)
+            {
+                return Err(format!(
+                    "formal mutation report {label} has an inconsistent {field}"
+                ));
+            }
+        }
+        let viability_met = viability + 0.000_5 >= viability_target;
+        if aggregate
+            .get("activation_threshold_met")
+            .and_then(serde_json::Value::as_bool)
+            != Some(activation_met)
+            || aggregate
+                .get("viability_met")
+                .and_then(serde_json::Value::as_bool)
+                != Some(viability_met)
+        {
+            return Err(format!(
+                "formal mutation report {label} has inconsistent proof thresholds"
+            ));
+        }
+        return Ok(activation_met && viability_met);
+    }
+    Ok(activation_met)
+}
+
+fn is_lowercase_sha256(value: Option<&str>) -> bool {
+    value.is_some_and(|hash| {
+        hash.len() == 64
+            && hash
+                .chars()
+                .all(|character| character.is_ascii_digit() || ('a'..='f').contains(&character))
+    })
+}
+
+fn is_registered_negative_trace_path(path: &str, spec: &str) -> bool {
+    if path.contains(['\\', '\r', '\n', '\t']) {
+        return false;
+    }
+    let parts = path.split('/').collect::<Vec<_>>();
+    if parts.len() < 6
+        || parts
+            .iter()
+            .any(|part| part.is_empty() || matches!(*part, "." | ".."))
+        || parts.first() != Some(&"target")
+        || parts.get(1) != Some(&"formal")
+    {
+        return false;
+    }
+    let Some(spec_stem) = Path::new(spec).file_stem().and_then(|value| value.to_str()) else {
+        return false;
+    };
+    let tail = &parts[parts.len() - 4..];
+    let Some(number) = tail[3]
+        .strip_prefix("violation")
+        .and_then(|value| value.strip_suffix(".itf.json"))
+    else {
+        return false;
+    };
+    tail[0] == "registered-negative"
+        && tail[1] == spec_stem
+        && tail[2] == "run"
+        && !number.is_empty()
+        && number.chars().all(|character| character.is_ascii_digit())
+}
+
+fn validate_spec_mutation_positive_baselines(
+    root: &Path,
+    target: &FormalMutationTarget,
+    report: &serde_json::Value,
+) -> Result<(), String> {
+    let expected_specs = spec_mutation_allowlist_specs(root)?;
+    let baselines = report
+        .get("positive_baselines")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            format!(
+                "formal mutation target {} report has no positive baseline evidence",
+                target.name
+            )
+        })?;
+    let expected_keys = BTreeSet::from([
+        "spec",
+        "path",
+        "cfg",
+        "invariant",
+        "length",
+        "verdict",
+        "apalache_exit",
+        "wall_secs",
+        "log_sha256",
+    ]);
+    let mut seen = BTreeSet::new();
+    for baseline in baselines {
+        let object = baseline.as_object().ok_or_else(|| {
+            format!(
+                "formal mutation target {} positive baseline evidence is not an object",
+                target.name
+            )
+        })?;
+        if object.keys().map(String::as_str).collect::<BTreeSet<_>>() != expected_keys {
+            return Err(format!(
+                "formal mutation target {} positive baseline evidence has invalid fields",
+                target.name
+            ));
+        }
+        let name = object
+            .get("spec")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} positive baseline evidence has no specification",
+                    target.name
+                )
+            })?;
+        let expected = expected_specs.get(name).ok_or_else(|| {
+            format!(
+                "formal mutation target {} positive baseline evidence is absent from the allowlist",
+                target.name
+            )
+        })?;
+        let wall_secs = object.get("wall_secs").and_then(serde_json::Value::as_f64);
+        if !seen.insert(name)
+            || object.get("path").and_then(serde_json::Value::as_str)
+                != Some(expected.path.as_str())
+            || object.get("cfg").and_then(serde_json::Value::as_str) != Some(expected.cfg.as_str())
+            || object.get("invariant").and_then(serde_json::Value::as_str)
+                != Some(expected.invariant.as_str())
+            || object.get("length").and_then(serde_json::Value::as_u64)
+                != u64::try_from(expected.length).ok()
+            || object.get("verdict").and_then(serde_json::Value::as_str) != Some("survived")
+            || object
+                .get("apalache_exit")
+                .and_then(serde_json::Value::as_i64)
+                != Some(0)
+            || wall_secs.is_none_or(|value| !value.is_finite() || value < 0.0)
+            || !is_lowercase_sha256(object.get("log_sha256").and_then(serde_json::Value::as_str))
+        {
+            return Err(format!(
+                "formal mutation target {} has invalid positive baseline evidence for {name}",
+                target.name
+            ));
+        }
+    }
+    if seen
+        != expected_specs
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>()
+    {
+        return Err(format!(
+            "formal mutation target {} positive baseline evidence does not cover the exact allowlist",
+            target.name
+        ));
+    }
+    Ok(())
+}
+
+fn validate_spec_mutation_preflight(
+    root: &Path,
+    target: &FormalMutationTarget,
+    report: &serde_json::Value,
+    inventory: &[serde_json::Value],
+    mutants: &[serde_json::Value],
+) -> Result<(), String> {
+    validate_spec_mutation_positive_baselines(root, target, report)?;
+    let mut inventory_seeds = BTreeMap::<String, String>::new();
+    let mut inventory_seed_ids = BTreeSet::new();
+    let mut inventory_by_id = BTreeMap::new();
+    for entry in inventory {
+        let object = entry.as_object().ok_or_else(|| {
+            format!(
+                "formal mutation target {} specification inventory entry is not an object",
+                target.name
+            )
+        })?;
+        let identifier = object
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} specification inventory entry has no id",
+                    target.name
+                )
+            })?;
+        inventory_by_id.insert(identifier, object);
+        if let Some(seed) = object.get("registered_seed") {
+            let name = seed.as_str().ok_or_else(|| {
+                format!(
+                    "formal mutation target {} inventory has an invalid registered seed",
+                    target.name
+                )
+            })?;
+            if name.is_empty()
+                || !name.chars().all(|character| {
+                    character.is_ascii_lowercase() || character.is_ascii_digit() || character == '-'
+                })
+                || inventory_seeds
+                    .insert(name.to_string(), identifier.to_string())
+                    .is_some()
+                || !inventory_seed_ids.insert(identifier.to_string())
+            {
+                return Err(format!(
+                    "formal mutation target {} inventory has an invalid or repeated registered seed",
+                    target.name
+                ));
+            }
+        }
+    }
+    let expected_seed_specs = spec_mutation_seed_registry(root)?;
+    if inventory_seeds.keys().collect::<BTreeSet<_>>()
+        != expected_seed_specs.keys().collect::<BTreeSet<_>>()
+    {
+        return Err(format!(
+            "formal mutation target {} inventory does not cover the exact historical seed registry",
+            target.name
+        ));
+    }
+
+    let registered_seeds = report
+        .get("registered_seeds")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            format!(
+                "formal mutation target {} report has no registered seed evidence",
+                target.name
+            )
+        })?;
+    let mut declared_seeds = BTreeMap::new();
+    let mut declared_seed_ids = BTreeSet::new();
+    for entry in registered_seeds {
+        let object = entry.as_object().ok_or_else(|| {
+            format!(
+                "formal mutation target {} registered seed evidence is not an object",
+                target.name
+            )
+        })?;
+        let name = object
+            .get("name")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} registered seed evidence has no name",
+                    target.name
+                )
+            })?;
+        let identifier = object
+            .get("mutant_id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} registered seed evidence has no mutant id",
+                    target.name
+                )
+            })?;
+        let negative_spec = object
+            .get("negative_spec")
+            .and_then(serde_json::Value::as_str);
+        if object.len() != 4
+            || negative_spec != expected_seed_specs.get(name).map(String::as_str)
+            || object.get("status").and_then(serde_json::Value::as_str) != Some("subsumed")
+            || declared_seeds
+                .insert(name.to_string(), identifier.to_string())
+                .is_some()
+            || !declared_seed_ids.insert(identifier.to_string())
+        {
+            return Err(format!(
+                "formal mutation target {} has repeated registered seed evidence",
+                target.name
+            ));
+        }
+    }
+    if declared_seeds != inventory_seeds {
+        return Err(format!(
+            "formal mutation target {} registered seed evidence does not match its inventory",
+            target.name
+        ));
+    }
+
+    let mut results_by_id = BTreeMap::new();
+    for mutant in mutants {
+        let object = mutant.as_object().ok_or_else(|| {
+            format!(
+                "formal mutation target {} specification result is not an object",
+                target.name
+            )
+        })?;
+        let identifier = object
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} specification result has no id",
+                    target.name
+                )
+            })?;
+        let expected = inventory_by_id.get(identifier).ok_or_else(|| {
+            format!(
+                "formal mutation target {} specification result is absent from its inventory",
+                target.name
+            )
+        })?;
+        if object.get("registered_seed") != expected.get("registered_seed")
+            || results_by_id.insert(identifier, object).is_some()
+        {
+            return Err(format!(
+                "formal mutation target {} specification result has invalid seed attribution",
+                target.name
+            ));
+        }
+    }
+    for (name, identifier) in &inventory_seeds {
+        if results_by_id
+            .get(identifier.as_str())
+            .and_then(|result| result.get("verdict"))
+            .and_then(serde_json::Value::as_str)
+            != Some("killed")
+        {
+            return Err(format!(
+                "formal mutation target {} registered seed {name} was not killed",
+                target.name
+            ));
+        }
+    }
+
+    let (_, expected_negative) = spec_mutation_negative_registry(root)?;
+    let expected_by_spec = expected_negative
+        .iter()
+        .map(|entry| (entry.spec.as_str(), entry))
+        .collect::<BTreeMap<_, _>>();
+    let registered_negative = report
+        .get("registered_negative")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            format!(
+                "formal mutation target {} report has no registered negative preflight evidence",
+                target.name
+            )
+        })?;
+    let mut seen_specs = BTreeSet::new();
+    let mut seen_traces = BTreeSet::new();
+    for entry in registered_negative {
+        let object = entry.as_object().ok_or_else(|| {
+            format!(
+                "formal mutation target {} registered negative evidence is not an object",
+                target.name
+            )
+        })?;
+        let spec = object
+            .get("spec")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} registered negative evidence has no specification",
+                    target.name
+                )
+            })?;
+        let expected = expected_by_spec.get(spec).ok_or_else(|| {
+            format!(
+                "formal mutation target {} registered negative evidence is absent from the registry",
+                target.name
+            )
+        })?;
+        let trace = object
+            .get("trace")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        if !seen_specs.insert(spec)
+            || !seen_traces.insert(trace)
+            || object.get("cfg").and_then(serde_json::Value::as_str) != Some(expected.cfg.as_str())
+            || object.get("invariant").and_then(serde_json::Value::as_str)
+                != Some(expected.falsifies.as_str())
+            || object.get("length").and_then(serde_json::Value::as_u64)
+                != u64::try_from(expected.length).ok()
+            || object
+                .get("timeout_secs")
+                .and_then(serde_json::Value::as_u64)
+                != u64::try_from(expected.timeout_secs).ok()
+            || object.get("verdict").and_then(serde_json::Value::as_str) != Some("killed")
+            || !is_lowercase_sha256(object.get("log_sha256").and_then(serde_json::Value::as_str))
+            || !is_lowercase_sha256(
+                object
+                    .get("trace_sha256")
+                    .and_then(serde_json::Value::as_str),
+            )
+            || !is_registered_negative_trace_path(trace, spec)
+        {
+            return Err(format!(
+                "formal mutation target {} has invalid registered negative evidence for {spec}",
+                target.name
+            ));
+        }
+    }
+    if seen_specs != expected_by_spec.keys().copied().collect::<BTreeSet<_>>() {
+        return Err(format!(
+            "formal mutation target {} registered negative evidence does not cover the exact registry",
+            target.name
+        ));
+    }
+    Ok(())
+}
+
+fn validate_formal_mutation_report(
+    root: &Path,
+    target: &FormalMutationTarget,
+    observation: &FormalMutationObservation,
+    report: &serde_json::Value,
+    current_inputs: &BTreeMap<String, String>,
+) -> Result<(), String> {
+    let expected_schema = match target.lane.as_str() {
+        "spec-mutants" => "chio.spec-mutants-report.v1",
+        "proof-mutants" => "chio.proof-mutants-report.v1",
+        _ => {
+            return Err(format!(
+                "formal mutation target {} has unsupported report lane",
+                target.name
+            ));
+        }
+    };
+    if report.get("schema").and_then(serde_json::Value::as_str) != Some(expected_schema)
+        || report.get("commit").and_then(serde_json::Value::as_str)
+            != Some(observation.commit.as_str())
+        || report
+            .get("measured_at")
+            .and_then(serde_json::Value::as_str)
+            != Some(observation.measured_at.as_str())
+        || report
+            .get("full_cycle")
+            .and_then(serde_json::Value::as_bool)
+            != Some(true)
+        || report
+            .get("worktree")
+            .and_then(serde_json::Value::as_object)
+            .is_none_or(|worktree| {
+                worktree.len() != 1
+                    || worktree.get("clean").and_then(serde_json::Value::as_bool) != Some(true)
+            })
+    {
+        return Err(format!(
+            "formal mutation target {} evidence is not a matching clean full-cycle report",
+            target.name
+        ));
+    }
+    let tools = report
+        .get("tools")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| {
+            format!(
+                "formal mutation target {} report has no tool versions",
+                target.name
+            )
+        })?;
+    let expected_tools = if target.lane == "spec-mutants" {
+        vec![("apalache", "0.50.1")]
+    } else {
+        vec![
+            ("cargo_mutants", "25.3.1"),
+            ("kani", "0.67.0"),
+            ("rustc", "1.93.0"),
+        ]
+    };
+    if expected_tools.iter().any(|(tool, version)| {
+        tools.get(*tool).and_then(serde_json::Value::as_str) != Some(*version)
+    }) {
+        return Err(format!(
+            "formal mutation target {} report tool versions do not match the pinned lane",
+            target.name
+        ));
+    }
+    let report_inputs = report
+        .get("inputs")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            format!(
+                "formal mutation target {} report has no inputs",
+                target.name
+            )
+        })?;
+    let mut reported_inputs = BTreeMap::new();
+    for input in report_inputs {
+        let path = input
+            .get("path")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} report has an input without a path",
+                    target.name
+                )
+            })?;
+        let hash = input
+            .get("sha256")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} report has an input without a hash",
+                    target.name
+                )
+            })?;
+        if normalized_repo_path(path)? != path
+            || hash.len() != 64
+            || !hash
+                .chars()
+                .all(|character| character.is_ascii_digit() || ('a'..='f').contains(&character))
+            || reported_inputs.insert(path, hash).is_some()
+        {
+            return Err(format!(
+                "formal mutation target {} report has an invalid or repeated input",
+                target.name
+            ));
+        }
+        let (_, bytes) = regular_mutation_input_bytes(root, path)?;
+        if sha256_hex(&bytes) != hash {
+            return Err(format!(
+                "formal mutation target {} report input does not match current repository file {}",
+                target.name, path
+            ));
+        }
+    }
+    let expected_paths = current_inputs.keys().cloned().collect::<BTreeSet<_>>();
+    let reported_paths = reported_inputs
+        .keys()
+        .map(|path| (*path).to_string())
+        .collect::<BTreeSet<_>>();
+    if reported_paths != expected_paths {
+        let missing = expected_paths
+            .difference(&reported_paths)
+            .cloned()
+            .collect::<Vec<_>>();
+        let unexpected = reported_paths
+            .difference(&expected_paths)
+            .cloned()
+            .collect::<Vec<_>>();
+        return Err(format!(
+            "formal mutation target {} report input set does not match the complete {} lane: missing={missing:?} unexpected={unexpected:?}",
+            target.name, target.lane
+        ));
+    }
+    for (path, hash) in current_inputs {
+        if reported_inputs.get(path.as_str()).copied() != Some(hash.as_str()) {
+            return Err(format!(
+                "formal mutation target {} report does not match current input {}",
+                target.name, path
+            ));
+        }
+    }
+    validate_mutation_evidence_commit(root, &observation.commit)?;
+    for (path, hash) in &reported_inputs {
+        let committed = mutation_input_at_commit(root, &observation.commit, path)?;
+        let committed_hash = sha256_hex(&committed);
+        if committed_hash.as_str() != *hash {
+            return Err(format!(
+                "formal mutation target {} report input does not match its evidence commit {}: {}",
+                target.name, observation.commit, path
+            ));
+        }
+    }
+    let mutants = report
+        .get("mutants")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            format!(
+                "formal mutation target {} report has no mutants",
+                target.name
+            )
+        })?;
+    if report.get("enumerated").and_then(serde_json::Value::as_u64)
+        != u64::try_from(mutants.len()).ok()
+    {
+        return Err(format!(
+            "formal mutation target {} report enumerated count does not match its inventory",
+            target.name
+        ));
+    }
+    let inventory = report
+        .get("inventory")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| {
+            format!(
+                "formal mutation target {} report has no full inventory",
+                target.name
+            )
+        })?;
+    if inventory.len() != mutants.len() {
+        return Err(format!(
+            "formal mutation target {} report inventory size does not match its results",
+            target.name
+        ));
+    }
+    let encoded_inventory = serde_json::to_vec(inventory).map_err(|error| {
+        format!(
+            "formal mutation target {} inventory cannot be encoded: {error}",
+            target.name
+        )
+    })?;
+    let computed_inventory_sha256 = sha256_hex(&encoded_inventory);
+    if report
+        .get("inventory_sha256")
+        .and_then(serde_json::Value::as_str)
+        != Some(computed_inventory_sha256.as_str())
+        || computed_inventory_sha256 != target.inventory_sha256
+    {
+        return Err(format!(
+            "formal mutation target {} report inventory digest does not match its registry",
+            target.name
+        ));
+    }
+    let mut inventory_by_id =
+        BTreeMap::<String, &serde_json::Map<String, serde_json::Value>>::new();
+    for entry in inventory {
+        let object = entry.as_object().ok_or_else(|| {
+            format!(
+                "formal mutation target {} inventory entry is not an object",
+                target.name
+            )
+        })?;
+        let identifier = object
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} inventory entry has no id",
+                    target.name
+                )
+            })?;
+        if identifier.len() != 20
+            || !identifier
+                .chars()
+                .all(|character| character.is_ascii_digit() || ('a'..='f').contains(&character))
+            || inventory_by_id
+                .insert(identifier.to_string(), object)
+                .is_some()
+        {
+            return Err(format!(
+                "formal mutation target {} report has an invalid or repeated inventory id",
+                target.name
+            ));
+        }
+    }
+    for mutant in mutants {
+        let object = mutant.as_object().ok_or_else(|| {
+            format!(
+                "formal mutation target {} mutant result is not an object",
+                target.name
+            )
+        })?;
+        let identifier = object
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} report has a mutant without an id",
+                    target.name
+                )
+            })?;
+        let expected = inventory_by_id.get(identifier).ok_or_else(|| {
+            format!(
+                "formal mutation target {} result is absent from the reviewed inventory",
+                target.name
+            )
+        })?;
+        if expected
+            .iter()
+            .any(|(key, value)| object.get(key) != Some(value))
+        {
+            return Err(format!(
+                "formal mutation target {} result differs from the reviewed inventory",
+                target.name
+            ));
+        }
+    }
+    let expected_spec_sources = if target.lane == "spec-mutants" {
+        Some(spec_mutation_source_map(root)?)
+    } else {
+        None
+    };
+    let mut report_counts = MutationVerdictCounts::default();
+    let mut source_counts = BTreeMap::<String, MutationVerdictCounts>::new();
+    let mut mutant_ids = BTreeSet::new();
+    let mut target_source_seen = false;
+    for mutant in mutants {
+        let identifier = mutant
+            .get("id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} report has a mutant without an id",
+                    target.name
+                )
+            })?;
+        if identifier.len() != 20
+            || !identifier
+                .chars()
+                .all(|character| character.is_ascii_digit() || ('a'..='f').contains(&character))
+            || !mutant_ids.insert(identifier)
+        {
+            return Err(format!(
+                "formal mutation target {} report has an invalid or repeated mutant id",
+                target.name
+            ));
+        }
+        let verdict = mutant
+            .get("verdict")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} report has a mutant without a verdict",
+                    target.name
+                )
+            })?;
+        report_counts.increment(verdict).map_err(|error| {
+            format!(
+                "formal mutation target {} report has invalid verdict {verdict}: {error}",
+                target.name
+            )
+        })?;
+        let source_path_field = if target.lane == "spec-mutants" {
+            "path"
+        } else {
+            "file"
+        };
+        let source_path = mutant
+            .get(source_path_field)
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} report has a mutant without a source path",
+                    target.name
+                )
+            })?;
+        if normalized_repo_path(source_path)? != source_path {
+            return Err(format!(
+                "formal mutation target {} report has a mutant with an invalid source path",
+                target.name
+            ));
+        }
+        target_source_seen |= source_path == target.source;
+        if let Some(expected_sources) = &expected_spec_sources {
+            let source = mutant
+                .get("spec")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| {
+                    format!(
+                        "formal mutation target {} report has a mutant without a specification source",
+                        target.name
+                    )
+                })?;
+            if expected_sources.get(source_path).map(String::as_str) != Some(source) {
+                return Err(format!(
+                    "formal mutation target {} report has an invalid specification source mapping",
+                    target.name
+                ));
+            }
+            source_counts
+                .entry(source.to_string())
+                .or_default()
+                .increment(verdict)?;
+        } else {
+            source_counts
+                .entry(source_path.to_string())
+                .or_default()
+                .increment(verdict)?;
+        }
+    }
+    if target.lane == "spec-mutants" {
+        validate_spec_mutation_preflight(root, target, report, inventory, mutants)?;
+    }
+    if !target_source_seen {
+        return Err(format!(
+            "formal mutation target {} report inventory does not cover its source",
+            target.name
+        ));
+    }
+    let aggregate = report.get("aggregate").ok_or_else(|| {
+        format!(
+            "formal mutation target {} report has no aggregate",
+            target.name
+        )
+    })?;
+    let observation_counts = MutationVerdictCounts {
+        killed: observation.killed,
+        survived: observation.survived,
+        unviable: observation.unviable,
+        timeout: observation.timeout,
+    };
+    if observation_counts.sampled()? != observation.enumerated || observation.enumerated == 0 {
+        return Err(format!(
+            "formal mutation target {} observation counts do not match",
+            target.name
+        ));
+    }
+    if target.lane == "spec-mutants" {
+        if report_counts.unviable != 0 || observation.unviable != 0 {
+            return Err(format!(
+                "formal mutation target {} specification report has unviable mutants",
+                target.name
+            ));
+        }
+        let expected_sources = expected_spec_sources
+            .as_ref()
+            .ok_or_else(|| "spec mutation source registry disappeared".to_string())?;
+        let expected_source_names = expected_sources.values().cloned().collect::<BTreeSet<_>>();
+        let mutant_source_names = source_counts.keys().cloned().collect::<BTreeSet<_>>();
+        if mutant_source_names != expected_source_names {
+            return Err(format!(
+                "formal mutation target {} report source set is incomplete: expected={expected_source_names:?} actual={mutant_source_names:?}",
+                target.name
+            ));
+        }
+        let source_aggregates = report
+            .get("source_aggregates")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} report has no source aggregates",
+                    target.name
+                )
+            })?;
+        let aggregate_source_names = source_aggregates.keys().cloned().collect::<BTreeSet<_>>();
+        if aggregate_source_names != mutant_source_names {
+            return Err(format!(
+                "formal mutation target {} source aggregate set does not match its mutant sources: aggregates={aggregate_source_names:?} mutants={mutant_source_names:?}",
+                target.name
+            ));
+        }
+        let mut every_source_met = true;
+        for (source, counts) in &source_counts {
+            let source_aggregate = source_aggregates.get(source).ok_or_else(|| {
+                format!(
+                    "formal mutation target {} report lost source aggregate {source}",
+                    target.name
+                )
+            })?;
+            let computed_met = validate_mutation_score(
+                source_aggregate,
+                *counts,
+                target.activation_target_percent,
+                None,
+                &format!("source aggregate {source}"),
+            )?;
+            let recorded_met = source_aggregate
+                .get("activation_met")
+                .and_then(serde_json::Value::as_bool);
+            if recorded_met != Some(computed_met) {
+                return Err(format!(
+                    "formal mutation target {} source aggregate {source} has an inconsistent activation result",
+                    target.name
+                ));
+            }
+            if !computed_met {
+                every_source_met = false;
+            }
+        }
+        let global_met = validate_mutation_score(
+            aggregate,
+            report_counts,
+            target.activation_target_percent,
+            None,
+            "global aggregate",
+        )?;
+        let global = aggregate
+            .get("global_activation_met")
+            .and_then(serde_json::Value::as_bool);
+        let sources = aggregate
+            .get("source_activation_met")
+            .and_then(serde_json::Value::as_bool);
+        let combined = aggregate
+            .get("activation_met")
+            .and_then(serde_json::Value::as_bool);
+        if global != Some(global_met)
+            || sources != Some(every_source_met)
+            || combined != Some(global_met && every_source_met)
+        {
+            return Err(format!(
+                "formal mutation target {} report has inconsistent global or source activation results",
+                target.name
+            ));
+        }
+        if !global_met || !every_source_met || combined != Some(true) {
+            return Err(format!(
+                "formal mutation target {} report does not meet every source activation target",
+                target.name
+            ));
+        }
+        let target_source = expected_sources.get(&target.source).ok_or_else(|| {
+            format!(
+                "formal mutation target {} source is absent from the specification allowlist",
+                target.name
+            )
+        })?;
+        let target_counts = source_counts.get(target_source).ok_or_else(|| {
+            format!(
+                "formal mutation target {} report has no counts for its source",
+                target.name
+            )
+        })?;
+        if observation_counts != *target_counts
+            || observation.enumerated != target_counts.sampled()?
+            || (observation.activation_ratio_percent - target_counts.activation_ratio_percent()?)
+                .abs()
+                > 0.000_5
+        {
+            return Err(format!(
+                "formal mutation target {} observation does not match its source aggregate",
+                target.name
+            ));
+        }
+    } else {
+        let actual_sources = source_counts.keys().cloned().collect::<BTreeSet<_>>();
+        let source_aggregates = report
+            .get("source_aggregates")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| {
+                format!(
+                    "formal mutation target {} proof report has no source aggregates",
+                    target.name
+                )
+            })?;
+        if source_aggregates.keys().cloned().collect::<BTreeSet<_>>() != actual_sources {
+            return Err(format!(
+                "formal mutation target {} proof source aggregates are incomplete",
+                target.name
+            ));
+        }
+        let mut every_source_met = true;
+        for (source, counts) in &source_counts {
+            let source_aggregate = &source_aggregates[source];
+            let computed_met = validate_mutation_score(
+                source_aggregate,
+                *counts,
+                target.activation_target_percent,
+                Some(80.0),
+                &format!("proof source aggregate {source}"),
+            )?;
+            if source_aggregate
+                .get("activation_met")
+                .and_then(serde_json::Value::as_bool)
+                != Some(computed_met)
+            {
+                return Err(format!(
+                    "formal mutation target {} proof source aggregate has an inconsistent activation result: {source}",
+                    target.name
+                ));
+            }
+            every_source_met &= computed_met;
+        }
+        let global_met = validate_mutation_score(
+            aggregate,
+            report_counts,
+            target.activation_target_percent,
+            Some(80.0),
+            "proof global aggregate",
+        )?;
+        if aggregate
+            .get("global_activation_met")
+            .and_then(serde_json::Value::as_bool)
+            != Some(global_met)
+            || aggregate
+                .get("source_activation_met")
+                .and_then(serde_json::Value::as_bool)
+                != Some(every_source_met)
+            || aggregate
+                .get("activation_met")
+                .and_then(serde_json::Value::as_bool)
+                != Some(global_met && every_source_met)
+            || !global_met
+            || !every_source_met
+        {
+            return Err(format!(
+                "formal mutation target {} proof report does not meet every source threshold",
+                target.name
+            ));
+        }
+        let target_counts = source_counts.get(&target.source).ok_or_else(|| {
+            format!(
+                "formal mutation target {} proof report has no counts for its source",
+                target.name
+            )
+        })?;
+        if observation_counts != *target_counts
+            || observation.enumerated != target_counts.sampled()?
+            || (observation.activation_ratio_percent - target_counts.activation_ratio_percent()?)
+                .abs()
+                > 0.000_5
+        {
+            return Err(format!(
+                "formal mutation target {} observation does not match its proof source aggregate",
+                target.name
+            ));
+        }
+    }
+    let expected = observation_counts.activation_ratio_percent()?;
+    if !observation.activation_ratio_percent.is_finite()
+        || (observation.activation_ratio_percent - expected).abs() > 0.000_5
+    {
+        return Err(format!(
+            "formal mutation target {} observation activation ratio does not match timeout-aware counts",
+            target.name
+        ));
+    }
+    Ok(())
+}
+
 fn mutation_evidence_is_complete(
     evidence: &serde_json::Value,
     package: &str,
@@ -2904,7 +4891,7 @@ mod tests {
         let parsed = parse_mapping(include_str!("../../formal/MAPPING.md"));
 
         assert!(parsed.warnings.is_empty(), "{:?}", parsed.warnings);
-        assert_eq!(parsed.rows.len(), 43);
+        assert_eq!(parsed.rows.len(), 46);
     }
 
     #[test]
@@ -3721,5 +5708,1409 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.contains("do not match covered_symbols"));
+    }
+
+    fn mutation_fixture_root(label: &str) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NEXT_FIXTURE: AtomicU64 = AtomicU64::new(0);
+        std::env::temp_dir().join(format!(
+            "chio-proof-coverage-{label}-{}-{}",
+            std::process::id(),
+            NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
+    fn write_mutation_fixture(root: &Path, relative: &str, contents: &str) {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                panic!("cannot create mutation fixture directory: {error}");
+            }
+        }
+        if let Err(error) = fs::write(path, contents) {
+            panic!("cannot write mutation fixture {relative}: {error}");
+        }
+    }
+
+    fn commit_mutation_fixture(root: &Path) -> String {
+        for arguments in [
+            vec!["init", "--quiet"],
+            vec!["add", "."],
+            vec![
+                "-c",
+                "user.name=Chio Test",
+                "-c",
+                "user.email=chio-test@example.invalid",
+                "commit",
+                "--quiet",
+                "-m",
+                "test: fixture",
+            ],
+        ] {
+            let output = match Command::new("git")
+                .args(&arguments)
+                .current_dir(root)
+                .output()
+            {
+                Ok(output) => output,
+                Err(error) => panic!("cannot run Git for mutation fixture: {error}"),
+            };
+            if !output.status.success() {
+                panic!(
+                    "cannot prepare mutation fixture commit with {arguments:?}: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                );
+            }
+        }
+        match git_commit(root) {
+            Ok(commit) => commit,
+            Err(error) => panic!("cannot resolve mutation fixture commit: {error}"),
+        }
+    }
+
+    fn mutation_fixture_git(root: &Path, arguments: &[&str]) -> String {
+        let output = match Command::new("git")
+            .args(arguments)
+            .current_dir(root)
+            .output()
+        {
+            Ok(output) => output,
+            Err(error) => panic!("cannot run Git for mutation fixture: {error}"),
+        };
+        if !output.status.success() {
+            panic!(
+                "mutation fixture Git command failed with {arguments:?}: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+        }
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
+    fn mutation_inventory(lane: &str, source: &str, count: usize) -> Vec<serde_json::Value> {
+        let source_key = if lane == "spec-mutants" {
+            "path"
+        } else {
+            "file"
+        };
+        let source_name = Path::new(source)
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("Fixture");
+        (0..count)
+            .map(|index| {
+                let id = format!("{:020x}", index + 1);
+                let mut mutant = serde_json::json!({"id": id});
+                mutant[source_key] = serde_json::json!(source);
+                if lane == "spec-mutants" {
+                    mutant["spec"] = serde_json::json!(source_name);
+                    if index == 0 {
+                        mutant["registered_seed"] = serde_json::json!("fixture-seed");
+                    }
+                }
+                mutant
+            })
+            .collect()
+    }
+
+    fn mutation_target(lane: &str, source: &str) -> FormalMutationTarget {
+        let inventory = mutation_inventory(lane, source, 10);
+        let encoded = match serde_json::to_vec(&inventory) {
+            Ok(value) => value,
+            Err(error) => panic!("cannot encode mutation fixture inventory: {error}"),
+        };
+        FormalMutationTarget {
+            name: "fixture-model".to_string(),
+            lane: lane.to_string(),
+            source: source.to_string(),
+            report: format!("target/formal/{lane}/outcomes.json"),
+            activation_target_percent: 90.0,
+            inventory_sha256: sha256_hex(&encoded),
+            rust_paths: vec![source.to_string()],
+            latest_full_cycle: None,
+        }
+    }
+
+    fn mutation_observation(commit: &str) -> FormalMutationObservation {
+        FormalMutationObservation {
+            commit: commit.to_string(),
+            measured_at: "2026-07-10T12:00:00Z".to_string(),
+            evidence: "formal/mutation/evidence/fixture-model.json".to_string(),
+            report_sha256: "2".repeat(64),
+            enumerated: 10,
+            killed: 9,
+            survived: 0,
+            unviable: 0,
+            timeout: 1,
+            activation_ratio_percent: 90.0,
+        }
+    }
+
+    fn spec_score_fixture(
+        counts: MutationVerdictCounts,
+        activation_target_percent: f64,
+    ) -> serde_json::Value {
+        let sampled = match counts.sampled() {
+            Ok(value) => value,
+            Err(error) => panic!("cannot count specification score fixture: {error}"),
+        };
+        let denominator = match counts.score_denominator() {
+            Ok(value) => value,
+            Err(error) => panic!("cannot score specification fixture: {error}"),
+        };
+        let activation = match counts.activation_ratio_percent() {
+            Ok(value) => value,
+            Err(error) => panic!("cannot score specification fixture: {error}"),
+        };
+        let completion = match counts.completion_ratio_percent() {
+            Ok(value) => value,
+            Err(error) => panic!("cannot score specification fixture: {error}"),
+        };
+        serde_json::json!({
+            "sampled": sampled,
+            "killed": counts.killed,
+            "survived": counts.survived,
+            "unviable": counts.unviable,
+            "timeout": counts.timeout,
+            "score_denominator": denominator,
+            "timeout_policy": "timeouts count as not killed",
+            "activation_ratio_percent": activation,
+            "completion_ratio_percent": completion,
+            "activation_target_percent": activation_target_percent,
+            "activation_met": activation + 0.000_5 >= activation_target_percent,
+        })
+    }
+
+    fn proof_score_fixture(
+        counts: MutationVerdictCounts,
+        activation_target_percent: f64,
+    ) -> serde_json::Value {
+        let mut score = spec_score_fixture(counts, activation_target_percent);
+        let sampled = match counts.sampled() {
+            Ok(value) => value,
+            Err(error) => panic!("cannot count proof score fixture: {error}"),
+        };
+        let denominator = match counts.score_denominator() {
+            Ok(value) => value,
+            Err(error) => panic!("cannot score proof fixture: {error}"),
+        };
+        let viability = if sampled == 0 {
+            0.0
+        } else {
+            100.0 * denominator as f64 / sampled as f64
+        };
+        let activation_met = score["activation_met"].as_bool() == Some(true);
+        let viability_met = viability + 0.000_5 >= 80.0;
+        score["activation_threshold_met"] = serde_json::json!(activation_met);
+        score["viability_ratio_percent"] = serde_json::json!(viability);
+        score["viability_target_percent"] = serde_json::json!(80.0);
+        score["viability_met"] = serde_json::json!(viability_met);
+        score["activation_met"] = serde_json::json!(activation_met && viability_met);
+        score
+    }
+
+    fn registered_negative_fixture(root: &Path) -> serde_json::Value {
+        let (_, negative_entries) = match spec_mutation_negative_registry(root) {
+            Ok(value) => value,
+            Err(error) => panic!("cannot read specification preflight fixture: {error}"),
+        };
+        serde_json::Value::Array(
+            negative_entries
+                .into_iter()
+                .map(|entry| {
+                    let stem = Path::new(&entry.spec)
+                        .file_stem()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("Broken");
+                    serde_json::json!({
+                        "spec": entry.spec,
+                        "cfg": entry.cfg,
+                        "invariant": entry.falsifies,
+                        "length": entry.length,
+                        "timeout_secs": entry.timeout_secs,
+                        "verdict": "killed",
+                        "log_sha256": "0".repeat(64),
+                        "trace": format!(
+                            "target/formal/spec-mutants/registered-negative/{stem}/run/violation1.itf.json"
+                        ),
+                        "trace_sha256": "1".repeat(64),
+                    })
+                })
+                .collect(),
+        )
+    }
+
+    fn positive_baselines_fixture(root: &Path) -> serde_json::Value {
+        let specs = match spec_mutation_allowlist_specs(root) {
+            Ok(value) => value,
+            Err(error) => panic!("cannot read specification baseline fixture: {error}"),
+        };
+        serde_json::Value::Array(
+            specs
+                .into_values()
+                .map(|spec| {
+                    serde_json::json!({
+                        "spec": spec.name,
+                        "path": spec.path,
+                        "cfg": spec.cfg,
+                        "invariant": spec.invariant,
+                        "length": spec.length,
+                        "verdict": "survived",
+                        "apalache_exit": 0,
+                        "wall_secs": 1.25,
+                        "log_sha256": "2".repeat(64),
+                    })
+                })
+                .collect(),
+        )
+    }
+
+    fn mutation_report(
+        root: &Path,
+        target: &FormalMutationTarget,
+        observation: &FormalMutationObservation,
+        inputs: &BTreeMap<String, String>,
+    ) -> serde_json::Value {
+        let verdicts = [
+            ("killed", observation.killed),
+            ("survived", observation.survived),
+            ("unviable", observation.unviable),
+            ("timeout", observation.timeout),
+        ]
+        .into_iter()
+        .flat_map(|(verdict, count)| std::iter::repeat_n(verdict, count))
+        .collect::<Vec<_>>();
+        let source_name = Path::new(&target.source)
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("Fixture");
+        let inventory = mutation_inventory(&target.lane, &target.source, observation.enumerated);
+        let mutants = inventory
+            .iter()
+            .cloned()
+            .zip(verdicts)
+            .map(|(mut mutant, verdict)| {
+                mutant["verdict"] = serde_json::json!(verdict);
+                mutant
+            })
+            .collect::<Vec<_>>();
+        let inventory_bytes = match serde_json::to_vec(&inventory) {
+            Ok(value) => value,
+            Err(error) => panic!("cannot encode report inventory fixture: {error}"),
+        };
+        let mut report = serde_json::json!({
+            "schema": if target.lane == "spec-mutants" {
+                "chio.spec-mutants-report.v1"
+            } else {
+                "chio.proof-mutants-report.v1"
+            },
+            "commit": observation.commit,
+            "measured_at": observation.measured_at,
+            "full_cycle": true,
+            "worktree": {"clean": true},
+            "enumerated": observation.enumerated,
+            "inventory": inventory,
+            "inventory_sha256": sha256_hex(&inventory_bytes),
+            "tools": if target.lane == "spec-mutants" {
+                serde_json::json!({"apalache": "0.50.1"})
+            } else {
+                serde_json::json!({
+                    "cargo_mutants": "25.3.1",
+                    "kani": "0.67.0",
+                    "rustc": "1.93.0",
+                })
+            },
+            "inputs": inputs.iter().map(|(path, sha256)| {
+                serde_json::json!({"path": path, "sha256": sha256})
+            }).collect::<Vec<_>>(),
+            "mutants": mutants,
+            "aggregate": {
+                "sampled": observation.enumerated,
+                "killed": observation.killed,
+                "survived": observation.survived,
+                "unviable": observation.unviable,
+                "timeout": observation.timeout,
+                "activation_ratio_percent": observation.activation_ratio_percent,
+            },
+        });
+        let counts = MutationVerdictCounts {
+            killed: observation.killed,
+            survived: observation.survived,
+            unviable: observation.unviable,
+            timeout: observation.timeout,
+        };
+        if target.lane == "spec-mutants" {
+            let activation_met =
+                observation.activation_ratio_percent + 0.000_5 >= target.activation_target_percent;
+            let score = spec_score_fixture(counts, target.activation_target_percent);
+            let mut source_aggregates = serde_json::Map::new();
+            source_aggregates.insert(source_name.to_string(), score.clone());
+            report["source_aggregates"] = serde_json::Value::Object(source_aggregates);
+            report["aggregate"] = score;
+            report["aggregate"]["global_activation_met"] = serde_json::json!(activation_met);
+            report["aggregate"]["source_activation_met"] = serde_json::json!(activation_met);
+            report["registered_seeds"] = serde_json::json!([{
+                "name": "fixture-seed",
+                "mutant_id": "00000000000000000001",
+                "negative_spec": "formal/apalache/_negative_tests/FixtureBroken.tla",
+                "status": "subsumed",
+            }]);
+            report["registered_negative"] = registered_negative_fixture(root);
+            report["positive_baselines"] = positive_baselines_fixture(root);
+        } else {
+            let score = proof_score_fixture(counts, target.activation_target_percent);
+            let activation_met = score["activation_met"].as_bool() == Some(true);
+            report["source_aggregates"] = serde_json::json!({target.source.clone(): score.clone()});
+            report["aggregate"] = score;
+            report["aggregate"]["global_activation_met"] = serde_json::json!(activation_met);
+            report["aggregate"]["source_activation_met"] = serde_json::json!(activation_met);
+        }
+        report
+    }
+
+    fn single_input_fixture(
+        label: &str,
+    ) -> (
+        std::path::PathBuf,
+        FormalMutationTarget,
+        FormalMutationObservation,
+        BTreeMap<String, String>,
+        serde_json::Value,
+    ) {
+        let root = mutation_fixture_root(label);
+        let source = "crates/kernel/chio-kernel-core/src/formal_core.rs";
+        write_mutation_fixture(&root, source, "pub fn model() -> bool { true }\n");
+        let (_, bytes) = match regular_mutation_input_bytes(&root, source) {
+            Ok(value) => value,
+            Err(error) => panic!("cannot hash mutation fixture: {error}"),
+        };
+        let inputs = BTreeMap::from([(source.to_string(), sha256_hex(&bytes))]);
+        let target = mutation_target("proof-mutants", source);
+        let commit = commit_mutation_fixture(&root);
+        let observation = mutation_observation(&commit);
+        let report = mutation_report(&root, &target, &observation, &inputs);
+        (root, target, observation, inputs, report)
+    }
+
+    fn specification_preflight_fixture(
+        label: &str,
+    ) -> (
+        std::path::PathBuf,
+        FormalMutationTarget,
+        FormalMutationObservation,
+        BTreeMap<String, String>,
+        serde_json::Value,
+    ) {
+        let root = mutation_fixture_root(label);
+        for (path, contents) in [
+            (
+                "formal/apalache/spec-mutants-allowlist.toml",
+                "schema = \"chio.spec-mutants-allowlist.v2\"\nnegative_registry = \"formal/apalache/_negative_tests/REGISTRY.toml\"\n\n[[spec]]\nname = \"Fixture\"\npath = \"formal/apalache/Fixture.tla\"\ncfg = \"formal/apalache/MCFixture.cfg\"\ninvariant = \"SafetyInv\"\nlength = 4\n\n[[seed]]\nname = \"fixture-seed\"\nnegative_spec = \"formal/apalache/_negative_tests/FixtureBroken.tla\"\n",
+            ),
+            (
+                "formal/apalache/_negative_tests/REGISTRY.toml",
+                "schema = \"chio.apalache-negative.v1\"\n\n[[negative]]\nspec = \"formal/apalache/_negative_tests/FixtureBroken.tla\"\ncfg = \"formal/apalache/_negative_tests/MCFixtureBroken.cfg\"\nfalsifies = \"SafetyInv\"\nlength = 4\ntimeout_secs = 30\nruntime_test = \"n/a (fixture)\"\n",
+            ),
+            (
+                "formal/apalache/Fixture.tla",
+                "---- MODULE Fixture ----\n====\n",
+            ),
+            ("formal/apalache/MCFixture.cfg", "INVARIANT SafetyInv\n"),
+            (
+                "formal/apalache/_negative_tests/FixtureBroken.tla",
+                "---- MODULE FixtureBroken ----\n====\n",
+            ),
+            (
+                "formal/apalache/_negative_tests/MCFixtureBroken.cfg",
+                "INVARIANT SafetyInv\n",
+            ),
+            ("formal/MAPPING.md", "# Mapping\n"),
+            ("scripts/check-apalache-negative.sh", "exit 0\n"),
+            ("scripts/lib/apalache_evidence.py", "SCHEMA = 1\n"),
+            ("scripts/spec-mutants.py", "SCHEMA = 1\n"),
+            ("tools/install-apalache.sh", "exit 0\n"),
+        ] {
+            write_mutation_fixture(&root, path, contents);
+        }
+        let commit = commit_mutation_fixture(&root);
+        let mut coverage_inputs = BTreeMap::new();
+        let inputs =
+            match formal_mutation_expected_inputs(&root, "spec-mutants", &mut coverage_inputs) {
+                Ok(inputs) => inputs,
+                Err(error) => panic!("cannot build specification preflight inputs: {error}"),
+            };
+        let target = mutation_target("spec-mutants", "formal/apalache/Fixture.tla");
+        let observation = mutation_observation(&commit);
+        let report = mutation_report(&root, &target, &observation, &inputs);
+        (root, target, observation, inputs, report)
+    }
+
+    #[test]
+    fn formal_mutation_observation_counts_timeouts_in_activation() {
+        let (root, target, valid, current_inputs, report) = single_input_fixture("timeout-aware");
+        if let Err(error) =
+            validate_formal_mutation_report(&root, &target, &valid, &report, &current_inputs)
+        {
+            panic!("valid timeout-aware observation failed: {error}");
+        }
+
+        let evidence_path = root.join(&valid.evidence);
+        if let Some(parent) = evidence_path.parent() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                panic!("cannot create formal mutation evidence fixture: {error}");
+            }
+        }
+        let encoded = match serde_json::to_vec(&report) {
+            Ok(encoded) => encoded,
+            Err(error) => panic!("cannot encode formal mutation evidence fixture: {error}"),
+        };
+        if let Err(error) = fs::write(&evidence_path, &encoded) {
+            panic!("cannot write formal mutation evidence fixture: {error}");
+        }
+        let bound = FormalMutationObservation {
+            report_sha256: sha256_hex(&encoded),
+            ..valid.clone()
+        };
+        let mut evidence_inputs = BTreeMap::new();
+        if let Err(error) = validate_formal_mutation_observation(
+            &root,
+            &mut evidence_inputs,
+            &target,
+            &bound,
+            &current_inputs,
+        ) {
+            panic!("report-backed formal mutation observation failed: {error}");
+        }
+        assert!(evidence_inputs.contains_key(&valid.evidence));
+
+        let invalid = FormalMutationObservation {
+            activation_ratio_percent: 100.0,
+            ..valid
+        };
+        let mut invalid_report = report;
+        invalid_report["aggregate"]["activation_ratio_percent"] = serde_json::json!(100.0);
+        let error = match validate_formal_mutation_report(
+            &root,
+            &target,
+            &invalid,
+            &invalid_report,
+            &current_inputs,
+        ) {
+            Ok(()) => panic!("timeout-excluding ratio unexpectedly passed"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("proof global aggregate has an inconsistent activation_ratio_percent"),
+            "unexpected error: {error}"
+        );
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[test]
+    fn formal_mutation_report_rejects_noncanonical_worktree_evidence() {
+        let (root, target, observation, inputs, mut report) =
+            single_input_fixture("worktree-evidence");
+        report["worktree"]["status_sha256"] = serde_json::json!("0".repeat(64));
+        let error =
+            match validate_formal_mutation_report(&root, &target, &observation, &report, &inputs) {
+                Ok(()) => panic!("noncanonical worktree evidence unexpectedly passed"),
+                Err(error) => error,
+            };
+        assert!(error.contains("matching clean full-cycle report"));
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[test]
+    fn spec_mutation_report_binds_registered_seeds_to_killed_inventory_results() {
+        let (root, target, observation, inputs, report) =
+            specification_preflight_fixture("registered-seeds");
+        let mut omitted = report.clone();
+        omitted["registered_seeds"] = serde_json::json!([]);
+        let error = match validate_formal_mutation_report(
+            &root,
+            &target,
+            &observation,
+            &omitted,
+            &inputs,
+        ) {
+            Ok(()) => panic!("omitted registered seed unexpectedly passed"),
+            Err(error) => error,
+        };
+        assert!(error.contains("registered seed evidence does not match its inventory"));
+
+        for (label, invalid) in [
+            {
+                let mut value = report.clone();
+                value["registered_seeds"][0]["negative_spec"] =
+                    serde_json::json!("formal/apalache/_negative_tests/OtherBroken.tla");
+                ("negative specification", value)
+            },
+            {
+                let mut value = report.clone();
+                value["registered_seeds"][0]["status"] = serde_json::json!("pending");
+                ("status", value)
+            },
+        ] {
+            let error = match validate_formal_mutation_report(
+                &root,
+                &target,
+                &observation,
+                &invalid,
+                &inputs,
+            ) {
+                Ok(()) => panic!("invalid registered seed {label} unexpectedly passed"),
+                Err(error) => error,
+            };
+            assert!(
+                error.contains("registered seed"),
+                "unexpected error: {error}"
+            );
+        }
+
+        let mut survivor = report;
+        survivor["mutants"][0]["verdict"] = serde_json::json!("survived");
+        let error =
+            match validate_formal_mutation_report(&root, &target, &observation, &survivor, &inputs)
+            {
+                Ok(()) => panic!("surviving registered seed unexpectedly passed"),
+                Err(error) => error,
+            };
+        assert!(error.contains("registered seed fixture-seed was not killed"));
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[test]
+    fn spec_mutation_report_binds_exact_registered_negative_preflight() {
+        let (root, target, observation, inputs, report) =
+            specification_preflight_fixture("registered-negative");
+        for (label, invalid) in [
+            {
+                let mut value = report.clone();
+                value["registered_negative"] = serde_json::json!([]);
+                ("omitted", value)
+            },
+            {
+                let mut value = report.clone();
+                value["registered_negative"][0]["invariant"] = serde_json::json!("OtherInvariant");
+                ("mismatched", value)
+            },
+            {
+                let mut value = report.clone();
+                value["registered_negative"][0]["log_sha256"] = serde_json::json!("A".repeat(64));
+                ("hash", value)
+            },
+            {
+                let mut value = report.clone();
+                value["registered_negative"][0]["trace"] =
+                    serde_json::json!(
+                        "target/formal/../escaped/registered-negative/FixtureBroken/run/violation1.itf.json"
+                    );
+                ("trace", value)
+            },
+        ] {
+            let error = match validate_formal_mutation_report(
+                &root,
+                &target,
+                &observation,
+                &invalid,
+                &inputs,
+            ) {
+                Ok(()) => {
+                    panic!("invalid registered negative evidence unexpectedly passed: {label}")
+                }
+                Err(error) => error,
+            };
+            assert!(
+                error.contains("registered negative"),
+                "unexpected {label} error: {error}"
+            );
+        }
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[test]
+    fn spec_mutation_report_binds_exact_positive_baselines() {
+        let (root, target, observation, inputs, report) =
+            specification_preflight_fixture("positive-baselines");
+        for (label, invalid) in [
+            {
+                let mut value = report.clone();
+                let Some(object) = value.as_object_mut() else {
+                    panic!("positive baseline report fixture is not an object");
+                };
+                object.remove("positive_baselines");
+                ("missing", value)
+            },
+            {
+                let mut value = report.clone();
+                let mut extra = value["positive_baselines"][0].clone();
+                extra["spec"] = serde_json::json!("Extra");
+                let Some(baselines) = value["positive_baselines"].as_array_mut() else {
+                    panic!("positive baseline fixture is not an array");
+                };
+                baselines.push(extra);
+                ("extra", value)
+            },
+            {
+                let mut value = report.clone();
+                let duplicate = value["positive_baselines"][0].clone();
+                let Some(baselines) = value["positive_baselines"].as_array_mut() else {
+                    panic!("positive baseline fixture is not an array");
+                };
+                baselines.push(duplicate);
+                ("duplicate", value)
+            },
+            {
+                let mut value = report.clone();
+                value["positive_baselines"][0]["invariant"] = serde_json::json!("OtherInvariant");
+                ("metadata", value)
+            },
+            {
+                let mut value = report.clone();
+                value["positive_baselines"][0]["apalache_exit"] = serde_json::json!(12);
+                ("nonzero exit", value)
+            },
+            {
+                let mut value = report.clone();
+                value["positive_baselines"][0]["verdict"] = serde_json::json!("killed");
+                ("killed", value)
+            },
+            {
+                let mut value = report.clone();
+                value["positive_baselines"][0]["log_sha256"] = serde_json::json!("A".repeat(64));
+                ("hash", value)
+            },
+            {
+                let mut value = report.clone();
+                value["positive_baselines"][0]["wall_secs"] = serde_json::json!(-0.1);
+                ("wall time", value)
+            },
+        ] {
+            let error = match validate_formal_mutation_report(
+                &root,
+                &target,
+                &observation,
+                &invalid,
+                &inputs,
+            ) {
+                Ok(()) => panic!("invalid positive baseline unexpectedly passed: {label}"),
+                Err(error) => error,
+            };
+            assert!(
+                error.contains("positive baseline"),
+                "unexpected {label} error: {error}"
+            );
+        }
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[test]
+    fn formal_mutation_report_requires_the_exact_current_input_set() {
+        let (root, target, observation, current_inputs, report) =
+            single_input_fixture("exact-inputs");
+        let mut missing = report.clone();
+        missing["inputs"] = serde_json::json!([]);
+        let error = match validate_formal_mutation_report(
+            &root,
+            &target,
+            &observation,
+            &missing,
+            &current_inputs,
+        ) {
+            Ok(()) => panic!("report with a missing input unexpectedly passed"),
+            Err(error) => error,
+        };
+        assert!(error.contains("input set does not match the complete proof-mutants lane"));
+        assert!(error.contains("formal_core.rs"));
+
+        write_mutation_fixture(&root, "extra.txt", "extra\n");
+        let (_, bytes) = match regular_mutation_input_bytes(&root, "extra.txt") {
+            Ok(value) => value,
+            Err(error) => panic!("cannot hash extra mutation input: {error}"),
+        };
+        let mut unexpected = report;
+        let Some(inputs) = unexpected["inputs"].as_array_mut() else {
+            panic!("fixture report inputs are not an array");
+        };
+        inputs.push(serde_json::json!({
+            "path": "extra.txt",
+            "sha256": sha256_hex(&bytes),
+        }));
+        let error = match validate_formal_mutation_report(
+            &root,
+            &target,
+            &observation,
+            &unexpected,
+            &current_inputs,
+        ) {
+            Ok(()) => panic!("report with an unexpected input unexpectedly passed"),
+            Err(error) => error,
+        };
+        assert!(error.contains("unexpected=[\"extra.txt\"]"));
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[test]
+    fn formal_mutation_report_binds_inputs_to_its_evidence_commit() {
+        let (root, target, mut observation, current_inputs, mut report) =
+            single_input_fixture("commit-inputs");
+        let source = "crates/kernel/chio-kernel-core/src/formal_core.rs";
+        write_mutation_fixture(&root, source, "pub fn model() -> bool { false }\n");
+        let different_commit = commit_mutation_fixture(&root);
+        write_mutation_fixture(&root, source, "pub fn model() -> bool { true }\n");
+        observation.commit.clone_from(&different_commit);
+        report["commit"] = serde_json::json!(different_commit);
+        let error = match validate_formal_mutation_report(
+            &root,
+            &target,
+            &observation,
+            &report,
+            &current_inputs,
+        ) {
+            Ok(()) => panic!("report bound to different committed inputs unexpectedly passed"),
+            Err(error) => error,
+        };
+        assert!(error.contains("does not match its evidence commit"));
+        assert!(error.contains(source));
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[test]
+    fn formal_mutation_report_requires_an_ancestor_commit_object() {
+        let (root, target, observation, current_inputs, report) =
+            single_input_fixture("commit-object");
+        let tree = mutation_fixture_git(&root, &["rev-parse", "HEAD^{tree}"]);
+        let unrelated = mutation_fixture_git(
+            &root,
+            &[
+                "-c",
+                "user.name=Chio Test",
+                "-c",
+                "user.email=chio-test@example.invalid",
+                "commit-tree",
+                &tree,
+                "-m",
+                "test: unrelated fixture",
+            ],
+        );
+        for (object, expected) in [
+            (tree, "evidence object is not a commit"),
+            (unrelated, "evidence commit is not an ancestor of HEAD"),
+        ] {
+            let mut forged_observation = observation.clone();
+            forged_observation.commit.clone_from(&object);
+            let mut forged_report = report.clone();
+            forged_report["commit"] = serde_json::json!(object);
+            let error = match validate_formal_mutation_report(
+                &root,
+                &target,
+                &forged_observation,
+                &forged_report,
+                &current_inputs,
+            ) {
+                Ok(()) => panic!("non-ancestor evidence object unexpectedly passed"),
+                Err(error) => error,
+            };
+            assert!(error.contains(expected), "unexpected error: {error}");
+        }
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn formal_mutation_report_rejects_symlink_inputs() {
+        use std::os::unix::fs::symlink;
+
+        let (root, target, observation, current_inputs, mut report) =
+            single_input_fixture("symlink-input");
+        write_mutation_fixture(&root, "real.txt", "bound\n");
+        if let Err(error) = symlink("real.txt", root.join("linked.txt")) {
+            panic!("cannot create mutation input symlink: {error}");
+        }
+        let Some(inputs) = report["inputs"].as_array_mut() else {
+            panic!("fixture report inputs are not an array");
+        };
+        inputs.push(serde_json::json!({
+            "path": "linked.txt",
+            "sha256": sha256_hex(b"bound\n"),
+        }));
+        let error = match validate_formal_mutation_report(
+            &root,
+            &target,
+            &observation,
+            &report,
+            &current_inputs,
+        ) {
+            Ok(()) => panic!("report with a symlink input unexpectedly passed"),
+            Err(error) => error,
+        };
+        assert!(error.contains("traverses a symlink"));
+        assert!(error.contains("linked.txt"));
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn formal_mutation_observation_rejects_symlink_evidence() {
+        use std::os::unix::fs::symlink;
+
+        let (root, target, observation, current_inputs, report) =
+            single_input_fixture("symlink-evidence");
+        let encoded = match serde_json::to_vec(&report) {
+            Ok(encoded) => encoded,
+            Err(error) => panic!("cannot encode symlink evidence fixture: {error}"),
+        };
+        let retained = root.join("retained-report.json");
+        if let Err(error) = fs::write(&retained, &encoded) {
+            panic!("cannot write retained report fixture: {error}");
+        }
+        let evidence = root.join(&observation.evidence);
+        if let Some(parent) = evidence.parent() {
+            if let Err(error) = fs::create_dir_all(parent) {
+                panic!("cannot create evidence directory: {error}");
+            }
+        }
+        if let Err(error) = symlink(&retained, &evidence) {
+            panic!("cannot create retained report symlink: {error}");
+        }
+        let bound = FormalMutationObservation {
+            report_sha256: sha256_hex(&encoded),
+            ..observation
+        };
+        let error = match validate_formal_mutation_observation(
+            &root,
+            &mut BTreeMap::new(),
+            &target,
+            &bound,
+            &current_inputs,
+        ) {
+            Ok(()) => panic!("symlinked retained mutation evidence unexpectedly passed"),
+            Err(error) => error,
+        };
+        assert!(error.contains("traverses a symlink"));
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[test]
+    fn formal_mutation_report_rejects_non_regular_inputs() {
+        let (root, target, observation, current_inputs, mut report) =
+            single_input_fixture("non-regular-input");
+        if let Err(error) = fs::create_dir_all(root.join("input-directory")) {
+            panic!("cannot create non-regular mutation input: {error}");
+        }
+        let Some(inputs) = report["inputs"].as_array_mut() else {
+            panic!("fixture report inputs are not an array");
+        };
+        inputs.push(serde_json::json!({
+            "path": "input-directory",
+            "sha256": "a".repeat(64),
+        }));
+        let error = match validate_formal_mutation_report(
+            &root,
+            &target,
+            &observation,
+            &report,
+            &current_inputs,
+        ) {
+            Ok(()) => panic!("report with a non-regular input unexpectedly passed"),
+            Err(error) => error,
+        };
+        assert!(error.contains("non-symlink regular repository file"));
+        assert!(error.contains("input-directory"));
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[test]
+    fn spec_mutation_report_rejects_stale_cfg_import_and_negative_registry() {
+        let root = mutation_fixture_root("spec-dependencies");
+        let fixtures = [
+            (
+                "formal/apalache/spec-mutants-allowlist.toml",
+                "schema = \"chio.spec-mutants-allowlist.v2\"\nnegative_registry = \"formal/apalache/_negative_tests/REGISTRY.toml\"\n\n[[spec]]\nname = \"Fixture\"\npath = \"formal/apalache/Fixture.tla\"\ncfg = \"formal/apalache/MCFixture.cfg\"\ninvariant = \"SafetyInv\"\nlength = 4\n\n[[seed]]\nname = \"fixture-seed\"\nnegative_spec = \"formal/apalache/_negative_tests/FixtureBroken.tla\"\n",
+            ),
+            (
+                "formal/apalache/_negative_tests/REGISTRY.toml",
+                "schema = \"chio.apalache-negative.v1\"\n\n[[negative]]\nspec = \"formal/apalache/_negative_tests/FixtureBroken.tla\"\ncfg = \"formal/apalache/_negative_tests/MCFixtureBroken.cfg\"\nfalsifies = \"SafetyInv\"\nlength = 4\ntimeout_secs = 30\nruntime_test = \"crates/kernel/chio-kernel/src/tests.rs::fixture\"\n",
+            ),
+            ("formal/apalache/Fixture.tla", "---- MODULE Fixture ----\nEXTENDS Common\n====\n"),
+            ("formal/apalache/Common.tla", "---- MODULE Common ----\n====\n"),
+            ("formal/apalache/MCFixture.cfg", "INVARIANT SafetyInv\n"),
+            (
+                "formal/apalache/_negative_tests/FixtureBroken.tla",
+                "---- MODULE FixtureBroken ----\nEXTENDS Common\n====\n",
+            ),
+            (
+                "formal/apalache/_negative_tests/Common.tla",
+                "---- MODULE Common ----\n====\n",
+            ),
+            (
+                "formal/apalache/_negative_tests/MCFixtureBroken.cfg",
+                "INVARIANT SafetyInv\n",
+            ),
+            ("crates/kernel/chio-kernel/src/tests.rs", "fn fixture() {}\n"),
+            ("formal/MAPPING.md", "# Mapping\n"),
+            ("scripts/check-apalache-negative.sh", "exit 0\n"),
+            ("scripts/lib/apalache_evidence.py", "SCHEMA = 1\n"),
+            ("scripts/spec-mutants.py", "SCHEMA = 1\n"),
+            ("tools/install-apalache.sh", "exit 0\n"),
+        ];
+        for (path, contents) in fixtures {
+            write_mutation_fixture(&root, path, contents);
+        }
+        let commit = commit_mutation_fixture(&root);
+        let mut coverage_inputs = BTreeMap::new();
+        let expected =
+            match formal_mutation_expected_inputs(&root, "spec-mutants", &mut coverage_inputs) {
+                Ok(expected) => expected,
+                Err(error) => panic!("cannot build specification mutation inputs: {error}"),
+            };
+        for path in [
+            "formal/apalache/MCFixture.cfg",
+            "formal/apalache/Common.tla",
+            "formal/apalache/_negative_tests/Common.tla",
+            "formal/apalache/_negative_tests/REGISTRY.toml",
+        ] {
+            assert!(expected.contains_key(path), "missing expected input {path}");
+        }
+        let target = mutation_target("spec-mutants", "formal/apalache/Fixture.tla");
+        let observation = mutation_observation(&commit);
+        let report = mutation_report(&root, &target, &observation, &expected);
+        if let Err(error) =
+            validate_formal_mutation_report(&root, &target, &observation, &report, &expected)
+        {
+            panic!("valid specification mutation dependencies failed: {error}");
+        }
+        for (path, original) in [
+            ("formal/apalache/MCFixture.cfg", "INVARIANT SafetyInv\n"),
+            (
+                "formal/apalache/Common.tla",
+                "---- MODULE Common ----\n====\n",
+            ),
+            (
+                "formal/apalache/_negative_tests/REGISTRY.toml",
+                "schema = \"chio.apalache-negative.v1\"\n\n[[negative]]\nspec = \"formal/apalache/_negative_tests/FixtureBroken.tla\"\ncfg = \"formal/apalache/_negative_tests/MCFixtureBroken.cfg\"\nfalsifies = \"SafetyInv\"\nlength = 4\ntimeout_secs = 30\nruntime_test = \"crates/kernel/chio-kernel/src/tests.rs::fixture\"\n",
+            ),
+        ] {
+            write_mutation_fixture(&root, path, "stale\n");
+            let error = match validate_formal_mutation_report(
+                &root,
+                &target,
+                &observation,
+                &report,
+                &expected,
+            ) {
+                Ok(()) => panic!("stale specification dependency unexpectedly passed: {path}"),
+                Err(error) => error,
+            };
+            assert!(error.contains(path), "unexpected error: {error}");
+            write_mutation_fixture(&root, path, original);
+        }
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[test]
+    fn spec_mutation_report_rejects_weak_source_despite_strong_global_activation() {
+        let root = mutation_fixture_root("weak-spec-source");
+        let fixtures = [
+            (
+                "formal/apalache/spec-mutants-allowlist.toml",
+                "schema = \"chio.spec-mutants-allowlist.v2\"\nnegative_registry = \"formal/apalache/_negative_tests/REGISTRY.toml\"\n\n[[spec]]\nname = \"Strong\"\npath = \"formal/apalache/Strong.tla\"\ncfg = \"formal/apalache/MCStrong.cfg\"\ninvariant = \"SafetyInv\"\nlength = 4\n\n[[spec]]\nname = \"Weak\"\npath = \"formal/apalache/Weak.tla\"\ncfg = \"formal/apalache/MCWeak.cfg\"\ninvariant = \"SafetyInv\"\nlength = 4\n",
+            ),
+            (
+                "formal/apalache/_negative_tests/REGISTRY.toml",
+                "schema = \"chio.apalache-negative.v1\"\n\n[[negative]]\nspec = \"formal/apalache/_negative_tests/Broken.tla\"\ncfg = \"formal/apalache/_negative_tests/MCBroken.cfg\"\nfalsifies = \"SafetyInv\"\nlength = 4\ntimeout_secs = 30\nruntime_test = \"n/a (fixture)\"\n",
+            ),
+            ("formal/apalache/Strong.tla", "---- MODULE Strong ----\n====\n"),
+            ("formal/apalache/Weak.tla", "---- MODULE Weak ----\n====\n"),
+            ("formal/apalache/MCStrong.cfg", "INVARIANT SafetyInv\n"),
+            ("formal/apalache/MCWeak.cfg", "INVARIANT SafetyInv\n"),
+            (
+                "formal/apalache/_negative_tests/Broken.tla",
+                "---- MODULE Broken ----\n====\n",
+            ),
+            (
+                "formal/apalache/_negative_tests/MCBroken.cfg",
+                "INVARIANT SafetyInv\n",
+            ),
+            ("formal/MAPPING.md", "# Mapping\n"),
+            ("scripts/check-apalache-negative.sh", "exit 0\n"),
+            ("scripts/lib/apalache_evidence.py", "SCHEMA = 1\n"),
+            ("scripts/spec-mutants.py", "SCHEMA = 1\n"),
+            ("tools/install-apalache.sh", "exit 0\n"),
+        ];
+        for (path, contents) in fixtures {
+            write_mutation_fixture(&root, path, contents);
+        }
+        let commit = commit_mutation_fixture(&root);
+        let mut coverage_inputs = BTreeMap::new();
+        let inputs =
+            match formal_mutation_expected_inputs(&root, "spec-mutants", &mut coverage_inputs) {
+                Ok(inputs) => inputs,
+                Err(error) => panic!("cannot build weak-source mutation inputs: {error}"),
+            };
+        let strong_counts = MutationVerdictCounts {
+            killed: 18,
+            ..MutationVerdictCounts::default()
+        };
+        let weak_counts = MutationVerdictCounts {
+            killed: 1,
+            survived: 1,
+            ..MutationVerdictCounts::default()
+        };
+        let global_counts = MutationVerdictCounts {
+            killed: 19,
+            survived: 1,
+            ..MutationVerdictCounts::default()
+        };
+        let mut target = mutation_target("spec-mutants", "formal/apalache/Weak.tla");
+        let observation = FormalMutationObservation {
+            enumerated: 2,
+            killed: 1,
+            survived: 1,
+            timeout: 0,
+            activation_ratio_percent: 50.0,
+            ..mutation_observation(&commit)
+        };
+        let mut mutants = Vec::new();
+        for (source, path, counts) in [
+            ("Strong", "formal/apalache/Strong.tla", strong_counts),
+            ("Weak", "formal/apalache/Weak.tla", weak_counts),
+        ] {
+            let verdicts = [("killed", counts.killed), ("survived", counts.survived)]
+                .into_iter()
+                .flat_map(|(verdict, count)| std::iter::repeat_n(verdict, count));
+            for verdict in verdicts {
+                mutants.push(serde_json::json!({
+                    "id": format!("{:020x}", mutants.len() + 1),
+                    "spec": source,
+                    "path": path,
+                    "verdict": verdict,
+                }));
+            }
+        }
+        let inventory = mutants
+            .iter()
+            .cloned()
+            .map(|mut mutant| {
+                let Some(object) = mutant.as_object_mut() else {
+                    panic!("weak-source inventory fixture is not an object");
+                };
+                object.remove("verdict");
+                mutant
+            })
+            .collect::<Vec<_>>();
+        let inventory_bytes = match serde_json::to_vec(&inventory) {
+            Ok(value) => value,
+            Err(error) => panic!("cannot encode weak-source inventory: {error}"),
+        };
+        target.inventory_sha256 = sha256_hex(&inventory_bytes);
+        let strong_score = spec_score_fixture(strong_counts, target.activation_target_percent);
+        let weak_score = spec_score_fixture(weak_counts, target.activation_target_percent);
+        let mut global_score = spec_score_fixture(global_counts, target.activation_target_percent);
+        assert_eq!(
+            global_score["activation_ratio_percent"],
+            serde_json::json!(95.0)
+        );
+        global_score["global_activation_met"] = serde_json::json!(true);
+        global_score["source_activation_met"] = serde_json::json!(false);
+        global_score["activation_met"] = serde_json::json!(false);
+        let report = serde_json::json!({
+            "schema": "chio.spec-mutants-report.v1",
+            "commit": observation.commit,
+            "measured_at": observation.measured_at,
+            "full_cycle": true,
+            "worktree": {"clean": true},
+            "enumerated": mutants.len(),
+            "inventory": inventory,
+            "inventory_sha256": target.inventory_sha256.clone(),
+            "tools": {"apalache": "0.50.1"},
+            "inputs": inputs.iter().map(|(path, sha256)| {
+                serde_json::json!({"path": path, "sha256": sha256})
+            }).collect::<Vec<_>>(),
+            "mutants": mutants,
+            "registered_seeds": [],
+            "registered_negative": registered_negative_fixture(&root),
+            "positive_baselines": positive_baselines_fixture(&root),
+            "source_aggregates": {
+                "Strong": strong_score,
+                "Weak": weak_score,
+            },
+            "aggregate": global_score,
+        });
+        let error =
+            match validate_formal_mutation_report(&root, &target, &observation, &report, &inputs) {
+                Ok(()) => panic!("globally strong report with a weak source unexpectedly passed"),
+                Err(error) => error,
+            };
+        assert!(
+            error.contains("does not meet every source activation target"),
+            "unexpected error: {error}"
+        );
+
+        let mut passing_report = report;
+        let Some(mutants) = passing_report["mutants"].as_array_mut() else {
+            panic!("weak-source fixture mutants are not an array");
+        };
+        let Some(weak_survivor) = mutants.iter_mut().find(|mutant| {
+            mutant.get("spec").and_then(serde_json::Value::as_str) == Some("Weak")
+                && mutant.get("verdict").and_then(serde_json::Value::as_str) == Some("survived")
+        }) else {
+            panic!("weak-source fixture has no survivor");
+        };
+        weak_survivor["verdict"] = serde_json::json!("killed");
+        let passing_weak_counts = MutationVerdictCounts {
+            killed: 2,
+            ..MutationVerdictCounts::default()
+        };
+        let passing_global_counts = MutationVerdictCounts {
+            killed: 20,
+            ..MutationVerdictCounts::default()
+        };
+        passing_report["source_aggregates"]["Weak"] =
+            spec_score_fixture(passing_weak_counts, target.activation_target_percent);
+        passing_report["aggregate"] =
+            spec_score_fixture(passing_global_counts, target.activation_target_percent);
+        passing_report["aggregate"]["global_activation_met"] = serde_json::json!(true);
+        passing_report["aggregate"]["source_activation_met"] = serde_json::json!(true);
+        let source_observation = FormalMutationObservation {
+            enumerated: 2,
+            killed: 2,
+            survived: 0,
+            timeout: 0,
+            activation_ratio_percent: 100.0,
+            ..observation.clone()
+        };
+        if let Err(error) = validate_formal_mutation_report(
+            &root,
+            &target,
+            &source_observation,
+            &passing_report,
+            &inputs,
+        ) {
+            panic!("source-scoped specification observation failed: {error}");
+        }
+        let global_observation = FormalMutationObservation {
+            enumerated: 20,
+            killed: 20,
+            survived: 0,
+            timeout: 0,
+            activation_ratio_percent: 100.0,
+            ..observation
+        };
+        let error = match validate_formal_mutation_report(
+            &root,
+            &target,
+            &global_observation,
+            &passing_report,
+            &inputs,
+        ) {
+            Ok(()) => panic!("global counts unexpectedly passed as a source observation"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("observation does not match its source aggregate"),
+            "unexpected error: {error}"
+        );
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[test]
+    fn proof_mutation_report_rejects_stale_compiled_dependencies() {
+        let root = mutation_fixture_root("proof-dependencies");
+        let fixtures = [
+            ("Cargo.toml", "[workspace]\nresolver = \"2\"\n"),
+            ("Cargo.lock", "version = 4\n"),
+            (".cargo/config.toml", "[alias]\nxtask = \"run\"\n"),
+            (
+                "crates/kernel/chio-kernel-core/Cargo.toml",
+                "[package]\nname = \"chio-kernel-core\"\n",
+            ),
+            (
+                "crates/core/chio-core-types/Cargo.toml",
+                "[package]\nname = \"chio-core-types\"\n",
+            ),
+            ("rust-toolchain.toml", "[toolchain]\nchannel = \"1.88\"\n"),
+            (
+                "formal/rust-verification/formal-mutants.toml",
+                "test_tool = \"cargo\"\n",
+            ),
+            ("scripts/proof-mutants.py", "SCHEMA = 1\n"),
+            ("scripts/proof-mutants.sh", "exit 0\n"),
+            ("scripts/kani-mutant-killer.sh", "exit 0\n"),
+            ("scripts/check-kani-core.sh", "exit 0\n"),
+            (
+                "crates/kernel/chio-kernel-core/src/lib.rs",
+                "mod oracle;\nmod formal_core;\nmod formal_aeneas;\n",
+            ),
+            (
+                "crates/kernel/chio-kernel-core/src/oracle.rs",
+                "pub fn oracle() -> bool { true }\n",
+            ),
+            (
+                "crates/kernel/chio-kernel-core/src/formal_core.rs",
+                "pub fn model() -> bool { true }\n",
+            ),
+            (
+                "crates/kernel/chio-kernel-core/src/formal_aeneas.rs",
+                "pub fn model() -> bool { true }\n",
+            ),
+            ("crates/core/chio-core-types/src/lib.rs", "mod imported;\n"),
+            (
+                "crates/core/chio-core-types/src/imported.rs",
+                "pub const BOUND: bool = true;\n",
+            ),
+        ];
+        for (path, contents) in fixtures {
+            write_mutation_fixture(&root, path, contents);
+        }
+        let commit = commit_mutation_fixture(&root);
+        let mut coverage_inputs = BTreeMap::new();
+        let expected =
+            match formal_mutation_expected_inputs(&root, "proof-mutants", &mut coverage_inputs) {
+                Ok(expected) => expected,
+                Err(error) => panic!("cannot build proof mutation inputs: {error}"),
+            };
+        for path in [
+            "Cargo.toml",
+            "Cargo.lock",
+            ".cargo/config.toml",
+            "crates/kernel/chio-kernel-core/Cargo.toml",
+            "crates/core/chio-core-types/Cargo.toml",
+            "scripts/proof-mutants.sh",
+            "crates/kernel/chio-kernel-core/src/oracle.rs",
+            "crates/core/chio-core-types/src/imported.rs",
+        ] {
+            assert!(expected.contains_key(path), "missing expected input {path}");
+        }
+        let target = mutation_target(
+            "proof-mutants",
+            "crates/kernel/chio-kernel-core/src/formal_core.rs",
+        );
+        let observation = mutation_observation(&commit);
+        let report = mutation_report(&root, &target, &observation, &expected);
+        if let Err(error) =
+            validate_formal_mutation_report(&root, &target, &observation, &report, &expected)
+        {
+            panic!("valid proof mutation dependencies failed: {error}");
+        }
+        for (path, original) in [
+            (
+                "crates/kernel/chio-kernel-core/src/oracle.rs",
+                "pub fn oracle() -> bool { true }\n",
+            ),
+            (
+                "crates/core/chio-core-types/src/imported.rs",
+                "pub const BOUND: bool = true;\n",
+            ),
+            ("scripts/proof-mutants.sh", "exit 0\n"),
+            ("Cargo.lock", "version = 4\n"),
+            (".cargo/config.toml", "[alias]\nxtask = \"run\"\n"),
+        ] {
+            write_mutation_fixture(&root, path, "stale\n");
+            let error = match validate_formal_mutation_report(
+                &root,
+                &target,
+                &observation,
+                &report,
+                &expected,
+            ) {
+                Ok(()) => panic!("stale proof dependency unexpectedly passed: {path}"),
+                Err(error) => error,
+            };
+            assert!(error.contains(path), "unexpected error: {error}");
+            write_mutation_fixture(&root, path, original);
+        }
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
+    }
+
+    #[test]
+    fn formal_mutation_report_preserves_per_target_source_attribution() {
+        let root = mutation_fixture_root("source-attribution");
+        let first = "crates/kernel/chio-kernel-core/src/formal_core.rs";
+        let second = "crates/kernel/chio-kernel-core/src/formal_aeneas.rs";
+        write_mutation_fixture(&root, first, "pub fn first() {}\n");
+        write_mutation_fixture(&root, second, "pub fn second() {}\n");
+        let commit = commit_mutation_fixture(&root);
+        let mut inputs = BTreeMap::new();
+        for source in [first, second] {
+            let (_, bytes) = match regular_mutation_input_bytes(&root, source) {
+                Ok(value) => value,
+                Err(error) => panic!("cannot hash source fixture: {error}"),
+            };
+            inputs.insert(source.to_string(), sha256_hex(&bytes));
+        }
+        let first_target = mutation_target("proof-mutants", first);
+        let mut second_target = mutation_target("proof-mutants", second);
+        second_target
+            .inventory_sha256
+            .clone_from(&first_target.inventory_sha256);
+        let observation = mutation_observation(&commit);
+        let mut report = mutation_report(&root, &first_target, &observation, &inputs);
+        if let Err(error) =
+            validate_formal_mutation_report(&root, &first_target, &observation, &report, &inputs)
+        {
+            panic!("first target attribution failed: {error}");
+        }
+        report["source_aggregates"][first]["activation_met"] = serde_json::json!(false);
+        let error = match validate_formal_mutation_report(
+            &root,
+            &first_target,
+            &observation,
+            &report,
+            &inputs,
+        ) {
+            Ok(()) => panic!("contradictory proof source activation unexpectedly passed"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("proof source aggregate has an inconsistent activation result"),
+            "unexpected error: {error}"
+        );
+        report["source_aggregates"][first]["activation_met"] = serde_json::json!(true);
+        let error = match validate_formal_mutation_report(
+            &root,
+            &second_target,
+            &observation,
+            &report,
+            &inputs,
+        ) {
+            Ok(()) => panic!("report lacking the second target source unexpectedly passed"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("inventory does not cover its source"),
+            "unexpected error: {error}"
+        );
+        if let Err(error) = fs::remove_dir_all(&root) {
+            panic!("cannot remove mutation fixture: {error}");
+        }
     }
 }

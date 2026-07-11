@@ -141,8 +141,13 @@ RevocationCutCompleteness ==
             \A r \in revoked :
                 DescendsFrom(c, r) => can_allow[a][c] = FALSE
 
+DirectParentInClosure ==
+    \A child \in CapSet :
+        parent[child] # 0 => child \in descendants[parent[child]]
+
 SafetyInv ==
     /\ DomainsOK
     /\ RevocationCutCompleteness
+    /\ DirectParentInClosure
 
 =============================================================================

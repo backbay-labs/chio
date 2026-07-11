@@ -1,0 +1,27 @@
+schema = "chio.lean-mutants-allowlist.v1"
+sample_size = 5
+timeout_secs = 300
+
+[[definition]]
+name = "CapabilityToken.isValidAt"
+path = "formal/lean4/Chio/Chio/Core/Capability.lean"
+
+[[definition]]
+name = "ToolGrant.isSubsetOf"
+path = "formal/lean4/Chio/Chio/Core/Scope.lean"
+
+[[definition]]
+name = "verifyReceipt"
+path = "formal/lean4/Chio/Chio/Core/Receipt.lean"
+
+[[definition]]
+name = "checkTimeBounds"
+path = "formal/lean4/Chio/Chio/Core/Revocation.lean"
+
+[[definition]]
+name = "budgetPrecheck"
+path = "formal/lean4/Chio/Chio/Core/Protocol.lean"
+
+[[definition]]
+name = "revocationSnapshotDenies"
+path = "formal/lean4/Chio/Chio/Core/Protocol.lean"

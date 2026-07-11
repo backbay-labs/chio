@@ -3,6 +3,7 @@
 #
 # Cross-reference gate for formal/MAPPING.md. Asserts that every named
 # TLA+ safety/liveness invariant in formal/tla/RevocationPropagation.tla,
+# every required leaf invariant in its model's aggregate SafetyInv,
 # every drop-guard invariant in formal/apalache/PostAdmissionDropGuard.tla,
 # and every #[kani::proof] harness in
 # crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs has a
@@ -21,10 +22,20 @@ mapping="formal/MAPPING.md"
 tla="formal/tla/RevocationPropagation.tla"
 drop_guard_tla="formal/apalache/PostAdmissionDropGuard.tla"
 kani="crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs"
+required_model_files=(
+  "formal/tla/RevocationPropagation.tla"
+  "formal/apalache/ReceiptBeforeAllow.tla"
+  "formal/apalache/RevocationCutCompleteness.tla"
+)
+required_model_invariants=(
+  "RevocationStateCoupled"
+  "AllowReceiptsBudgetChecked"
+  "DirectParentInClosure"
+)
 
 # --- Sanity: source files must exist ----------------------------------------
 missing_inputs=0
-for f in "${mapping}" "${tla}" "${drop_guard_tla}" "${kani}"; do
+for f in "${mapping}" "${tla}" "${drop_guard_tla}" "${kani}" "${required_model_files[@]}"; do
   if [[ ! -f "${f}" ]]; then
     echo "check-mapping: required input is missing: ${f}" >&2
     missing_inputs=1
@@ -33,6 +44,36 @@ done
 if [[ "${missing_inputs}" -ne 0 ]]; then
   exit 1
 fi
+
+# --- Required model leaf invariants -----------------------------------------
+# These leaves are part of the release evidence contract. Unlike the legacy
+# whitelists below, they are mandatory: deleting a definition or dropping it
+# from SafetyInv must fail even if the mapping row remains.
+safety_inv_contains() {
+  local source_file="$1"
+  local invariant_name="$2"
+
+  awk '
+    /^SafetyInv[[:space:]]*==/ { in_safety_inv = 1; next }
+    in_safety_inv && /^[[:alpha:]_][[:alnum:]_]*[[:space:]]*==/ { exit }
+    in_safety_inv && /^=+[[:space:]]*$/ { exit }
+    in_safety_inv { print }
+  ' "${source_file}" \
+    | grep -qE "^[[:space:]]*/\\\\[[:space:]]+${invariant_name}[[:space:]]*$"
+}
+
+missing_model_definitions=()
+missing_safety_conjuncts=()
+for index in "${!required_model_invariants[@]}"; do
+  name="${required_model_invariants[${index}]}"
+  source_file="${required_model_files[${index}]}"
+  if ! grep -qE "^${name}[[:space:]]*==" "${source_file}"; then
+    missing_model_definitions+=("${name} (${source_file})")
+  fi
+  if ! safety_inv_contains "${source_file}" "${name}"; then
+    missing_safety_conjuncts+=("${name} (${source_file})")
+  fi
+done
 
 # --- TLA+ named invariants ---------------------------------------------------
 # The named-invariants whitelist below is the canonical set of safety /
@@ -157,6 +198,13 @@ for name in "${defined_drop_guard_invariants[@]}"; do
   fi
 done
 
+unmapped_required_model=()
+for name in "${required_model_invariants[@]}"; do
+  if ! grep -qF "\`${name}\`" <<< "${table_rows}"; then
+    unmapped_required_model+=("${name}")
+  fi
+done
+
 unmapped_kani=()
 # bash 3.2 / `set -u` rejects expansion of empty arrays via `${arr[@]}`.
 # Guard the loop so an empty harness list does not crash the script.
@@ -174,6 +222,10 @@ fi
 
 # --- Reporting ---------------------------------------------------------------
 echo "check-mapping: scanning ${mapping}"
+echo "  Required model leaf invariants enforced (${#required_model_invariants[@]}):"
+for index in "${!required_model_invariants[@]}"; do
+  echo "    - ${required_model_invariants[${index}]} (${required_model_files[${index}]})"
+done
 echo "  TLA+ invariants enforced (${#defined_tla_invariants[@]} of ${#named_tla_invariants[@]} whitelisted defined in ${tla}):"
 for name in "${defined_tla_invariants[@]}"; do
   echo "    - ${name}"
@@ -190,6 +242,35 @@ for name in "${kani_harnesses[@]}"; do
 done
 
 failures=0
+
+if [[ "${#missing_model_definitions[@]}" -gt 0 ]]; then
+  failures=$((failures + ${#missing_model_definitions[@]}))
+  echo "" >&2
+  echo "check-mapping: FAIL - ${#missing_model_definitions[@]} required model invariant definition(s) missing:" >&2
+  for entry in "${missing_model_definitions[@]}"; do
+    echo "  - ${entry}" >&2
+  done
+fi
+
+if [[ "${#missing_safety_conjuncts[@]}" -gt 0 ]]; then
+  failures=$((failures + ${#missing_safety_conjuncts[@]}))
+  echo "" >&2
+  echo "check-mapping: FAIL - ${#missing_safety_conjuncts[@]} required invariant(s) missing from SafetyInv:" >&2
+  for entry in "${missing_safety_conjuncts[@]}"; do
+    echo "  - ${entry}" >&2
+  done
+fi
+
+if [[ "${#unmapped_required_model[@]}" -gt 0 ]]; then
+  failures=$((failures + ${#unmapped_required_model[@]}))
+  echo "" >&2
+  echo "check-mapping: FAIL - ${#unmapped_required_model[@]} required model invariant(s) not cited in ${mapping}:" >&2
+  for name in "${unmapped_required_model[@]}"; do
+    echo "  - ${name}" >&2
+  done
+  echo "" >&2
+  echo "  Add a table row containing the exact backtick-wrapped invariant name." >&2
+fi
 
 if [[ "${#unmapped_tla[@]}" -gt 0 ]]; then
   failures=$((failures + ${#unmapped_tla[@]}))

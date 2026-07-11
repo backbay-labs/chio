@@ -8,6 +8,6 @@ if ! cargo kani --version >/dev/null 2>&1; then
   exit 1
 fi
 
-cargo kani -p chio-kernel-core --lib --default-unwind 8 --no-unwinding-checks
+cargo kani -p chio-kernel-core --lib --default-unwind 8 --no-unwinding-checks --fail-fast
 
 echo "Kani core harnesses passed"

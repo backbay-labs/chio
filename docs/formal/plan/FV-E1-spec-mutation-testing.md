@@ -1,163 +1,344 @@
-# FV-E1: Mutation testing for the specs and proof lanes
+# FV-E1: Mutation testing for specifications and proof models
 
-Status: Proposed (2026-07-09)
+Status: In progress (2026-07-11; exact-probe implementation and integrated full-cycle measurements pending)
 Theme: E - Verify the verification, and make lanes bite
 Effort: M
-Depends on: none to start (seeded by the 2 existing negative tests); substantially stronger after [FV-B2](FV-B2-regression-negative-tests.md)
-Feeds: [FV-E5](FV-E5-lane-ratchets.md) (the spec-mutants lane gets a ratchet entry), [FV-C5](FV-C5-proof-coverage-map.md) (kill rates join the coverage map), [FV-B1](FV-B1-drop-guard-model.md) (the new drop-guard spec joins the mutation set)
-Related docs: [../GAP_ANALYSIS.md](../GAP_ANALYSIS.md) (G5), [FV-B2](FV-B2-regression-negative-tests.md), [FV-A3](FV-A3-creusot-dedup.md), `formal/apalache/_negative_tests/README.md`, `docs/fuzzing/mutants.md`
+Depends on: [FV-B2](FV-B2-regression-negative-tests.md)
+Feeds: [FV-E5](FV-E5-lane-ratchets.md), [FV-C5](FV-C5-proof-coverage-map.md)
+Related docs: [../GAP_ANALYSIS.md](../GAP_ANALYSIS.md),
+`formal/apalache/_negative_tests/README.md`, `docs/fuzzing/mutants.md`
 
-## Summary
+## Result boundary
 
-The mutation-testing estate scores production code against the unit suite, but deliberately excludes the formal files: `crates/kernel/chio-kernel-core/mutants.toml` (lines 29-32) skips `formal_aeneas.rs`, `formal_core.rs`, and both Kani harness files with the rationale "covered by the proof lane", and nothing ever measures whether the proof lane would actually kill mutants there (gap G5). This document proposes co-coverage for proofs, directly analogous to the in-repo cross-oracle precedent `scripts/mutants-fuzz-cocoverage.sh` (which replays the fuzz corpus against surviving cargo-mutants mutants nightly): mutate the spec and proof-owned artifacts, run the proof lane as the killer, and report a kill rate. Three sub-lanes: TLA action mutation checked by Apalache, cargo-mutants over the excluded formal Rust files with the Kani lane as the test oracle, and (stretch) a Lean model-sensitivity pilot. A surviving mutant is a vacuous proof lead: a guard, comparison, or definition that no invariant, harness, or theorem actually constrains.
+The implementation measures whether formal properties react when their
+modeled system changes. It does not mutate the property being checked and it
+does not turn a high kill ratio into a correctness claim. A survivor is a
+sensitivity lead that needs one of three dispositions: strengthen the
+property or oracle, remove dead model code, or document semantic equivalence.
 
-## Motivation and evidence
+Three scheduled jobs are implemented:
 
-- The exclusion is explicit and unmeasured. `crates/kernel/chio-kernel-core/mutants.toml:29-32` excludes the four formal files with "covered by the proof lane"; the workspace config `.cargo/mutants.toml:180-183` repeats the exclusion. The claim that the proof lane covers them has never been tested by mutation ([../GAP_ANALYSIS.md](../GAP_ANALYSIS.md), G5).
-- The repo already knows this failure mode. `formal/apalache/_negative_tests/README.md` exists precisely because "a real bug must produce a real counterexample": two hand-written broken spec variants (`ReceiptBeforeAllowBroken.tla`, `RevocationCutCompletenessBroken.tla`) demonstrate non-tautology for 2 of the 6 model-checked specs. They are manual, local-only, and cover a fixed pair of mutations. FV-E1 lane 1 is the mechanical generalization of that discipline.
-- The precedent for "second oracle kills survivors" is in-tree and running nightly: `scripts/mutants-fuzz-cocoverage.sh` re-shells `cargo mutants` per survivor with `--file <path> --line <n>` and a custom `--test-tool` wrapper that runs the fuzz corpus against the mutated tree (lines 268-277), for 4 crates with a default of 200000 replay runs (`.github/workflows/mutants-fuzz-cocoverage.yml`). Lane 2 below reuses the exact same cargo-mutants machinery with Kani as the oracle.
-- The broader mutation estate is weak enough that proof-lane vacuity would hide indefinitely: the trust-boundary baseline of 2026-04-29 measured a 30.7% kill rate (excluding unviable) against an 80% activation target (`docs/fuzzing/trust-boundary-mutants-baseline.toml`), and the gate is advisory (`releases.toml` has `observed_consecutive_nightly_successes = 0` and an empty `cycle_end_tag`, so `scripts/mutants-gate.sh` exits 0).
+1. `spec-mutants` changes allowlisted TLA+ actions and runs Apalache 0.50.1.
+2. `proof-mutants` discovers Rust model mutations with cargo-mutants 25.3.1,
+   applies them in a scratch worktree, and runs the clean Kani core lane.
+3. `lean-mutants` is a non-ratcheted pilot over allowlisted computable Lean
+   definitions. A failed `lake build` kills the mutant.
 
-## Current state
+The two scored lanes use the same activation formula:
 
-- Specs: 6 production model-checked specs run in `.github/workflows/apalache-safety.yml` (matrix at lines 66-73, `--length=6`): `MonotoneLogApalache`, `RevocationCutCompleteness`, `ReceiptBeforeAllow`, `KernelTransitionCancelSafe` under `formal/apalache/`, plus `RevocationPropagation` and `DelegationDepthBound` under `formal/tla/`. `formal/apalache/README.md` states a 30-minute per-invariant timeout in CI (line 18).
-- Negative tests: 2 broken variants under `formal/apalache/_negative_tests/`, run by hand. [FV-B2](FV-B2-regression-negative-tests.md) proposes the fail-unless-violation wrapper that makes an expected-counterexample run CI-safe; lane 1 reuses that wrapper shape.
-- Proof-owned Rust files in chio-kernel-core: `formal_core.rs` (15+ pure `pub fn` helpers), `formal_aeneas.rs` (15 fns), `kani_harnesses.rs` (12 `#[kani::proof]` harnesses), `kani_public_harnesses.rs` (22 harnesses). `scripts/check-kani-core.sh` runs all 34 harnesses via `cargo kani -p chio-kernel-core --lib --default-unwind 8 --no-unwinding-checks` (line 11).
-- cargo-mutants is pinned to the 25.x line (`.github/workflows/mutants.yml:118-123`). Config surface verified this session: `additional_cargo_test_args` exists in `.cargo/mutants.toml:43`; `--config <file>` is how the mutants-pr job loads a focused per-crate config (`mutants.yml:184`); `--test-tool <cmd>` is used in production by `scripts/mutants-fuzz-cocoverage.sh:268-277`, whose header (lines 37-39) records that `--test-tool` is documented in cargo-mutants 25.x as the substitution point for non-`cargo test` workflows. A custom test command is therefore natively available in the pinned tool; no wrapper hack is required.
-- Lean: 22 `.lean` modules under `formal/lean4/Chio` (no mathlib dependency), built by `scripts/check-formal-proofs.sh` (lake build + sorry scan + manifest cross-ref).
+```text
+killed / (killed + survived + timeout)
+```
 
-## Design
+Rust compilation failures may be classified as `unviable` and are excluded
+from that lane's ratio. The TLA+ lane admits only exact, curated, type-valid
+probes. A parser or type failure there is a fail-closed execution error, not an
+excluded verdict. Timeouts remain in the denominator and therefore reduce the
+activation ratio.
 
-### Rule zero: never mutate the checked property
+## Rule zero
 
-All three lanes mutate the system under verification (actions, model definitions, mirrored helpers), never the property being checked. Mutating an invariant definition, a `#[kani::proof]` assertion, or a theorem statement is meaningless: the run would then check a different property, telling us nothing about the sensitivity of the real one. Concretely: in TLA, only action definitions reachable from `Next` are mutable; `Init` and every operator named in the cfg's `INVARIANT`/`TEMPORAL` lines (and their transitive definitions) are off-limits for the pilot. In Rust, the mutable set is the model/helper functions; `assert!`/`kani::assume` lines inside harness bodies are excluded by operator choice (see lane 2). The mutator enforces this with an explicit per-spec allowlist, fail-closed: an action name not on the allowlist is never touched.
+Only the system under verification is mutable.
 
-### Lane 1: TLA action mutation (Apalache as killer)
+- TLA+ mutation is limited to actions explicitly listed in
+  `formal/apalache/spec-mutants-allowlist.toml`. The loader proves that each
+  action is reachable from `Next`, rejects `Init` and `Next`, and rejects any
+  action in the configured invariant's transitive definition closure.
+- Rust mutation is limited to `formal_core.rs` and `formal_aeneas.rs` through
+  both the focused config and repository-relative `-f` arguments. Kani
+  harness files and all harness assertions and assumptions are outside the
+  discovery set. Every emitted span must also fall inside the declared Rust
+  function body, excluding the Creusot contract attributes above functions.
+- Lean mutation is limited to declarations classified as `def` and named in
+  `formal/lean4/lean-mutants-allowlist.toml`. The parser never admits a
+  theorem, lemma, axiom, or non-allowlisted definition.
 
-New script `scripts/spec-mutants.py` (python3, stdlib only, same conventions as `scripts/check-apalache-formal-slice.py`).
+Every allowlist and parser has a synthetic fail-closed self-test.
 
-- Mutant generation is line-based and operator-driven, applied only inside allowlisted action definitions:
-  1. delete one conjunct from an action guard (a line beginning `/\ ` that is not a primed assignment),
-  2. flip one comparison operator (`<` <-> `<=`, `>` <-> `>=`, `=` <-> `/=`),
-  3. swap `TRUE`/`FALSE` where either literal appears in an action definition.
-- Per-spec allowlist lives in a small TOML block at the top of the script or in `formal/apalache/spec-mutants-allowlist.toml` (preferred; reviewable next to the specs), listing `spec -> [action names]`. Seeding: the two hand-written negative tests tell us which mutation classes must be killable for `ReceiptBeforeAllow` and `RevocationCutCompleteness`; the generated set must subsume them (acceptance criterion below).
-- Worked example of the three operators against a schematic action (illustrative shape, not a quote from a spec):
+## TLA+ action mutation
 
-  ```tla
-  \* original
-  Revoke(a, c) ==
-    /\ rev_epoch[a][c] = 0            \* site for operator 2: flip = to /=
-    /\ c \in granted[a]               \* site for operator 1: delete this conjunct
-    /\ rev_epoch' = [rev_epoch EXCEPT ![a][c] = epoch + 1]
-    /\ UNCHANGED <<granted>>
+### Inventory
 
-  \* mutant (operator 1, guard-conjunct deletion): Revoke fires even for
-  \* capabilities never granted; a sound completeness invariant must notice.
-  ```
+`scripts/spec-mutants.py --list` deterministically enumerates 30 exact curated
+probes and two mandatory registered historical seeds over the seven positive
+safety models currently run by `apalache-safety.yml`, including
+`PostAdmissionDropGuard`. The allowlist schema is
+`chio.spec-mutants-allowlist.v2`. Every probe names one source, reachable
+action, exact match, exact replacement, classification, and rationale. The two
+admitted classifications are:
 
-  Operator 3 (TRUE/FALSE swap) applies wherever an action definition uses a boolean literal, e.g. a `cancel_pending' = FALSE` reset becoming `TRUE`.
-- Execution: for each sampled mutant, write the mutated module to a temp dir together with the untouched cfg and `Common.tla`, then run `apalache-mc check --length=4 --config=<cfg> <mutated.tla>` with a hard per-mutant wall cap (default 300 s). Expected outcome is a violation (non-zero exit with a counterexample). Verdicts:
-  - `killed`: Apalache reports an invariant violation or deadlock attributable to the mutation,
-  - `unviable`: the type checker or parser rejects the mutant (excluded from the denominator, mirroring cargo-mutants' Unviable),
-  - `survived`: the check passes clean; the invariant does not depend on the mutated guard. This is the vacuity signal.
-  - `timeout`: counted separately, not in the kill denominator, logged for bound tuning.
-- Deterministic sampling, no wall-clock randomness: the full mutant set is enumerated exhaustively and ordered; the nightly sample of K mutants is chosen by `random.Random(int(git_head_sha[:16], 16))`. The same commit always yields the same sample, so a red night is reproducible locally with `scripts/spec-mutants.py --sample-from-head`.
-- Report: `target/formal/spec-mutants-report.json`, schema `chio.spec-mutants-report.v1`, uploaded as a workflow artifact. Shape:
+- `guard-weakening`, which deletes or weakens an exact action guard;
+- `post-state-corruption`, which changes an exact primed-state expression.
 
-  ```json
-  {
-    "schema": "chio.spec-mutants-report.v1",
-    "sample_seed": "dbb4639e1c0ffee0",
-    "mutants": [
-      {"spec": "ReceiptBeforeAllow", "action": "Allow", "operator": "delete_conjunct",
-       "line": 41, "verdict": "killed", "apalache_exit": 12, "wall_secs": 74}
-    ],
-    "aggregate": {"sampled": 16, "killed": 14, "survived": 1, "unviable": 1,
-                   "timeout": 0, "kill_rate_excluding_unviable": 93.3}
-  }
-  ```
-- Budget math (estimates, to be re-measured in phase 1): 6 specs, roughly 20-30 allowlisted actions total, about 3 mutation sites per action, so an estimated 60-100 mutants in the full set. At `--length=4` a per-check run is expected well under the 300 s cap for these small state spaces (the production checks run at `--length=6` inside a 180-minute job for all 6 specs). A nightly sample of K=16 mutants at a worst-case 5 minutes each is 80 minutes plus a 2-minute Apalache install, which fits inside the existing 180-minute nightly envelope as a separate job scheduled off the 07:23 UTC apalache-safety cron. The full set cycles in 4-6 nights.
+The runner rejects missing, duplicate, ambiguous, or out-of-action matches.
+It does not synthesize broad lexical mutations or edit model scaffolding,
+typing predicates, invariants, `Init`, or `Next`. The production model-check
+bound is 6 for six sources and 8 for `PostAdmissionDropGuard`.
 
-### Lane 2: proof-lane mutation of the excluded formal files (Kani as killer)
+The 32-entry inventory is sorted by source, action, position, operator, and
+replacement. Each identifier is a stable SHA-256 projection of that identity.
+A scheduled sample of 16 is deterministic and stratified: both historical
+seeds and at least one probe from each of the seven sources are mandatory, and
+the remaining positions rotate through a commit-seeded, epoch-indexed
+permutation. `--sample-epoch` reproduces a scheduled selection locally.
 
-Primary path (native custom test command):
+### Registered negative preflight
 
-- New config `formal/rust-verification/formal-mutants.toml` with `examine_globs` listing exactly `crates/kernel/chio-kernel-core/src/formal_core.rs` and `crates/kernel/chio-kernel-core/src/formal_aeneas.rs` (workspace-rooted, per the discovery rules documented in `.cargo/mutants.toml:3-9`), and no exclusion of them. Loading it via `--config` follows the exact mechanism `mutants.yml:184` already uses.
-- New wrapper `scripts/kani-mutant-killer.sh`: runs the `scripts/check-kani-core.sh` invocation (`cargo kani -p chio-kernel-core --lib --default-unwind 8 --no-unwinding-checks`, all 32 harnesses). Invocation:
+Every scored run first invokes `scripts/check-apalache-negative.sh`. That is
+the same fail-closed runner used by the `apalache-negative` job, including its
+exact invariant and outcome parser and strict ITF validation. The shared
+implementation is `scripts/lib/apalache_evidence.py`.
 
-  ```bash
-  cargo mutants \
-    --config formal/rust-verification/formal-mutants.toml \
-    --package chio-kernel-core \
-    --test-tool scripts/kani-mutant-killer.sh \
-    --no-shuffle --jobs 1 \
-    --output target/formal/proof-mutants --json
-  ```
+The inventory records two historical variants as mandatory seeds:
 
-- cargo-mutants runs its baseline first (the wrapper against the unmutated tree). Keep the baseline: a red Kani lane on the clean tree must abort the run rather than mis-score every mutant as caught. Fail-closed.
-- The harness files themselves (`kani_harnesses.rs`, `kani_public_harnesses.rs`) join `examine_globs` in a second phase, with assertion-line mutations filtered out per rule zero (mutating a harness body's setup code is meaningful; mutating its `assert!` is not). Phase 1 covers only the two model files, where every mutation is meaningful.
-- Fallback path, explicitly marked as fallback: if the pinned 25.x build rejects the `--config` + `--test-tool` combination for this scope (settled by the phase-1 smoke below), enumerate with `cargo mutants --list --diff --config formal/rust-verification/formal-mutants.toml --package chio-kernel-core`, apply each printed diff in a scratch worktree, run `scripts/check-kani-core.sh`, and record the kill in the same report schema. Slower to implement and loses cargo-mutants' outcomes.json, so it is not the plan of record.
-- Budget math (estimates): 30 functions across the two files, several mutants per function, so an estimated 100-200 mutants. One full-lib Kani run per mutant at an estimated 3-6 minutes (the 23 public harnesses alone take a few minutes locally) puts the full set at 5-20 hours: too big for one night. Nightly runs a sha-seeded sample of K=15 (same sampling function as lane 1), roughly 60-90 minutes, cycling the full set in about 10 nights.
-- Why cargo test cannot be the only killer here: the Kani harness files are `#[cfg(kani)]`-gated and never compile under `cargo test`. The pure helpers now execute in production admission paths, but only the proof lane symbolically exhausts their integer and boolean state spaces.
-- Creusot stretch: same trick over `formal/rust-verification/creusot-core/src/lib.rs` (8 contract functions) with `scripts/check-creusot-core.sh` as the `--test-tool`. Gated behind the nightly formal-qualification job because the Creusot toolchain install (git clone + opam + `./INSTALL`, `nightly.yml:277-286`) dominates cost; weekly cadence is enough for 8 functions.
+- deletion of `HasAllowReceipt(a, c)` from `PublishAllow`;
+- replacement of `DescendsFrom(c, root)` by `c = root` in `Revoke`.
 
-Success metric for lane 2: proof-lane kill rate on the formal files >= 90% (excluding unviable). Every survivor is triaged as a vacuous-proof lead: either a helper nobody proves anything about (candidate for deletion or for a new harness) or a harness whose assumptions are too strong.
+The seed validator requires the production expression, the corresponding
+replacement in the broken action, and a matching entry in the negative
+registry. Both seeds run in every sample and full campaign. Every registered
+negative must pass before generated mutants run.
 
-### Lane 3 (stretch): Lean model sensitivity
+Every scored run also checks all seven unmodified positive models before any
+generated mutant. Each clean model uses the same isolated inputs, bound,
+configuration, invariant parser, and `--no-deadlock` posture as its mutants.
+The clean baseline has a separate 10,800-second budget matching the safety lane;
+generated mutants retain their 300-second limit. A timeout, violation,
+malformed result, or tool failure aborts the campaign. The report records exact
+one-per-model positive baseline evidence so scheduled lane scoring and
+full-cycle promotion cannot treat a pre-existing model failure as mutation
+sensitivity.
 
-Scope honestly: Lean mutation tooling does not exist off the shelf, and building a term-level mutator is out of scope. The pilot is a small python mutator over a whitelist of `def` sites in `formal/lean4/Chio/Chio/Core/*.lean` (computable model definitions only, never `theorem`/`lemma`/`axiom` per rule zero): flip a comparison in a def body, swap `&&`/`||`, swap `true`/`false`. Kill condition: `lake build` fails somewhere (a theorem depending on the def no longer elaborates). A mutant that still builds means no theorem constrains that definition, which is a model-sensitivity gap worth a manual look. Runs inside the nightly formal-qualification job where elan/lake are already installed and cached; sample K=5 per night. Deliverable is a pilot report appended to `target/formal/spec-mutants-report.json` under a `lean` key, not a ratchet.
+`PostAdmissionDropGuard` at length 8 and `RevocationPropagation` at length 6
+also use that 10,800-second safety-lane budget. Their complete invariant sets
+remain unchanged; the larger envelope accommodates the longest bounded solver
+branches without turning host contention into a false gate failure.
 
-## Implementation plan
+### Verdicts and report
 
-1. Phase 1 - TLA lane pilot (files to add: `scripts/spec-mutants.py`, `formal/apalache/spec-mutants-allowlist.toml`, `scripts/tests/spec-mutants.test.sh`).
-   - Implement enumeration + sampling + verdicts + report writer.
-   - Allowlist the 4 `formal/apalache/` specs first; require that the generated set subsumes the two `_negative_tests` mutations (assert in the self-test by generating and matching).
-   - Measure real per-mutant wall time at `--length=4`; tune K.
-2. Phase 2 - wire the TLA lane into nightly (files to modify: `.github/workflows/apalache-safety.yml` gains a `spec-mutants` job on the schedule trigger only, advisory, uploading the report artifact; alternatively a new `.github/workflows/spec-mutants.yml` if the job list gets crowded; recommendation: same file, since it shares the Apalache install steps).
-3. Phase 3 - Kani co-coverage lane (files to add: `formal/rust-verification/formal-mutants.toml`, `scripts/kani-mutant-killer.sh`, `scripts/proof-mutants.sh` orchestrator that does the sampling and report merge; files to modify: `.github/workflows/nightly.yml` gains a `proof-mutants` job, advisory, reusing the kani install steps from `kani-public-nightly`).
-   - First CI step is the settle-the-path smoke: `cargo mutants --config formal/rust-verification/formal-mutants.toml --package chio-kernel-core --list` must enumerate more than zero mutants in `formal_core.rs`; if config precedence over `.cargo/mutants.toml` misbehaves, fall back per the fallback path and record which path is live in the report.
-4. Phase 4 - extend lane 2 to the two harness files with assertion-line filtering; add the 2 `formal/tla/` specs to lane 1's allowlist.
-5. Phase 5 (stretch) - Creusot killer wrapper (`scripts/creusot-mutant-killer.sh`) weekly; Lean pilot (`scripts/lean-mutants.py`) with a whitelist of Core defs.
-6. Phase 6 - hand the lane to [FV-E5](FV-E5-lane-ratchets.md): add `[gates.spec-mutants]` to `releases.toml` with `activation_target = 90` once two full cycles of measurements exist.
+For generated mutants, exit 0 with the exact `NoError` outcome is `survived`.
+The exact `ExecutionsTooShort` outcome is also `survived` only when one bounded
+no-error summary and no numbered violation trace corroborate it. Exit 12 with
+the exact `Error` outcome and one valid ITF trace is `killed`.
+Generated runs use `--no-deadlock`, so disabling an action cannot masquerade
+as an invariant kill. The registered negative preflight also disables deadlock
+checking and requires an exact configured-invariant violation.
+Wall timeout is `timeout` and counts as not killed. Because the allowlist
+contains exact type-valid edits, a parser or type failure is an invalid curated
+probe and aborts the run. Any `unviable` verdict, other exit, missing outcome,
+wrong invariant, malformed trace, duplicate trace, or tool-version drift also
+aborts the run.
 
-## CI and gating changes
+Scheduled execution requires a clean worktree. The explicit `--allow-dirty`
+escape is for local implementation testing and records both status and tracked
+diff hashes, so such a report cannot be promoted as clean full-cycle evidence.
 
-- New nightly jobs, both advisory at introduction: `spec-mutants` (Apalache killer, schedule-only, in `apalache-safety.yml`) and `proof-mutants` (Kani killer, in `nightly.yml`). Neither touches the PR tier; per-PR mutation of specs would be both slow and noisy.
-- Artifacts: `target/formal/spec-mutants-report.json` and the cargo-mutants `outcomes.json` uploaded with 30-day retention, mirroring `mutants-nightly`.
-- Budget: these lanes do not share the fuzz/mutants 1800 min/30d envelope by default because `scripts/check-fuzz-budget.sh:29` enumerates workflows explicitly; decide in phase 2 whether to add them to that list (recommended: yes for `proof-mutants`, since it is cargo-mutants compute; no for `spec-mutants`, which is JVM/Apalache time). Set `GH_FUZZ_BUDGET_CAP_MODE` explicitly per the [FV-E4](FV-E4-fuzz-plumbing-repair.md) policy if added.
-- Promotion to a gated posture goes through [FV-E5](FV-E5-lane-ratchets.md) (streak-based ratchet), never by editing this lane directly.
+The atomic report is `target/formal/spec-mutants-report.json`, schema
+`chio.spec-mutants-report.v1`. It records the commit, sample seed, source and
+configuration hashes, exact commands, tool versions, model bounds, wall
+times, log and trace hashes, registered negative results, per-mutant verdicts,
+positive baseline results, and timeout-aware global and per-source aggregates.
+Activation requires at
+least 90 percent globally and separately for every sampled source. A sample
+can provide an early sensitivity signal, but only a clean full 32-probe
+campaign is eligible as activation evidence.
 
-## Acceptance criteria
+## Rust proof-model mutation
 
-- [ ] `scripts/spec-mutants.py --list` enumerates the full mutant set deterministically; two runs at the same commit produce byte-identical output.
-- [ ] The generated TLA mutant set subsumes both `_negative_tests` mutations, and both are reported `killed` in a full local run.
-- [ ] Rule zero is enforced by construction: no mutant ever modifies a line inside an invariant/temporal definition or a non-allowlisted operator (self-test asserts this on a synthetic spec).
-- [ ] Nightly `spec-mutants` job produces `target/formal/spec-mutants-report.json` with a kill matrix for a sha-seeded sample of at least K=16 mutants, within its budget.
-- [ ] `cargo mutants --config formal/rust-verification/formal-mutants.toml --package chio-kernel-core --list` enumerates mutants in `formal_core.rs` and `formal_aeneas.rs` (settles the primary-vs-fallback path).
-- [ ] Nightly `proof-mutants` job scores a sample with the Kani lane as `--test-tool`, keeps the baseline run, and uploads outcomes.
-- [ ] Full-cycle kill rate on the two formal model files measured and recorded; survivors filed as issues; target >= 90% excluding unviable.
-- [ ] The `.cargo/mutants.toml` and per-crate rationale comments are updated to say "covered by the proof lane, measured by the proof-mutants co-coverage lane" once the first full cycle completes.
-- [ ] (Stretch) Lean pilot report exists for one sampled night; each surviving Lean mutant has a written disposition.
+### Tool limitation and execution decision
 
-## Risks and mitigations
+cargo-mutants 25.3.1 accepts only `cargo` or `nextest` as `--test-tool`.
+It cannot execute an arbitrary Kani wrapper through that option. The original
+native substitution design is therefore unsupported by the pinned tool.
 
-- Apalache flakiness or slow mutants blow the nightly budget. Mitigation: hard 300 s per-mutant cap, timeout verdict class, K tunable by one constant, and `--length=4` (shorter than the production 6) since mutants that only violate at depth 5+ still count as survivors for this measurement and will be caught as the bound is raised in later cycles.
-- The `--config`/`--test-tool` combination behaves differently than the cocoverage precedent when scoping to excluded-by-workspace-config files. Mitigation: the phase-3 `--list` smoke settles it before any budget is spent; the worktree fallback is specified and produces the same report schema.
-- Kani-as-killer is expensive per mutant. Mitigation: sha-seeded sampling with a documented full-cycle length; if 10 nights proves too slow, restrict the killer to the harness subset that references the mutated function (a static grep of `formal_core::<fn>` in the two harness files), trading soundness of "killed" for speed only with the mapping recorded in the report.
-- Survivors get ignored. Mitigation: the report is an FV-E5 ratchet input; survivors above the activation target block posture promotion, and each survivor requires a filed issue before the count is rebaselined.
-- Mutating specs in a temp dir can drift from how CI invokes Apalache. Mitigation: the runner copies the cfg untouched and reuses the exact `apalache-mc check` argument shape from `apalache-safety.yml:61-73`.
+The implemented execution mode is explicit in every report:
 
-## Open questions
+1. Run cargo-mutants 25.3.1 discovery with
+   `formal/rust-verification/formal-mutants.toml`.
+2. Repeat both repository-relative `-f` filters in shards `0/3`, `1/3`, and
+   `2/3` with `--no-shuffle --list --json --diff`.
+3. Require the merged shard identities and diff hashes to equal an unsharded
+   control inventory, require both model files, and select a rotating window
+   of 15 from a commit-seeded permutation and the recorded epoch.
+4. Require a clean tracked worktree and create a detached temporary worktree
+   at the exact report commit.
+5. Run `scripts/kani-mutant-killer.sh` once before mutation. A failing or
+   timed-out baseline aborts the measurement.
+6. Reproduce each cargo-mutants span replacement, run the Kani core lane,
+   record the result, restore the source, and require a clean scratch tree
+   before continuing. The oracle checks the directly affected harnesses first
+   and stops on a failure; when they pass, it runs the unchanged complete core
+   lane. This is fail-fast ordering, not a reduced harness set.
 
-- Should `unviable` TLA mutants (type-checker rejects) count as weak kills? cargo-mutants excludes them from the denominator; the pilot mirrors that, but a type-level rejection is still evidence the spec is sensitive to the site. Revisit after the first cycle's numbers.
-- Per-harness killer mapping (grep-based) vs full-lib Kani run: is the speedup worth the mapping-maintenance cost? Defer until measured.
-- Does lane 1 extend to the `_negative_tests` `Common.tla` fork or share the production `Common.tla`? Pilot shares production; revisit if constant pinning (its `ASSUME`) blocks a useful mutation class.
-- Where does the Lean pilot's whitelist live: in-script or `formal/lean4/lean-mutants-allowlist.toml`? Decide at phase 5.
+The runner distinguishes Kani proof failures (`killed`), compilation failures
+(`unviable`), successful proofs (`survived`), and wall timeouts. Unknown
+non-zero output is an infrastructure error, not a kill.
 
-## Manifest and registry updates
+The report is `target/formal/proof-mutants/outcomes.json`, schema
+`chio.proof-mutants-report.v1`. `mutants.json` preserves every cargo-mutants
+diff and `commands.json` preserves all three shard commands, the unsharded
+control, and Kani commands. The report states
+`native_test_tool_supported = false` so downstream readers cannot mistake the
+fallback for native cargo-mutants scoring.
 
-- `releases.toml`: add `[gates.spec-mutants]` and `[gates.proof-mutants]` entries (posture `advisory`, `activation_target = 90` for proof-mutants) when [FV-E5](FV-E5-lane-ratchets.md) lands the generic gate.
-- `docs/fuzzing/mutants.md`: new section "Proof-lane co-coverage" describing both lanes and linking here; update the exclusion-rationale paragraph.
-- `.cargo/mutants.toml` and `crates/kernel/chio-kernel-core/mutants.toml`: rationale comments updated to cite the measuring lane (exclusions themselves stay; the unit suite is still the wrong killer for these files).
-- `formal/apalache/_negative_tests/README.md`: add a pointer that the mechanical generalization lives in `scripts/spec-mutants.py` and that new negative tests should also be added to the allowlist subsumption check.
-- No changes to `formal/proof-manifest.toml` gate_commands: these lanes measure the gates, they are not gates themselves until FV-E5 promotes them.
+The runner records the actual cargo-mutants, Kani, rustc, and Python versions.
+Its default per-run cap is 1,800 seconds because the measured 35-harness clean
+baseline exceeds the original 600-second estimate on the local arm64 host.
+On the integrated tree, cargo-mutants 25.3.1 discovers 150 focused Rust
+mutants. Each aligned ten-epoch rotation cycle covers that inventory while
+including both model files in every sample.
+
+## Lean sensitivity pilot
+
+`scripts/lean-mutants.py` enumerates comparison, Boolean literal, and Boolean
+connective mutations in six allowlisted definitions under `Chio/Core`. A
+rotating sample of five runs after a clean `lake build` baseline in a detached
+scratch worktree. A nonzero build counts as a kill only when its log contains a
+Lean source diagnostic; an unclassified tool or infrastructure failure aborts
+the run. A successful build is a survivor, and a wall timeout is reported
+separately. This pilot is not an activation ratchet.
+
+On an unchanged commit, four consecutive epochs cover the current 18-mutant
+pilot inventory.
+
+The report is `target/formal/lean-mutants/report.json`, schema
+`chio.lean-mutants-report.v1`. It records both the exact Lake version and the
+project's pinned Lean toolchain. Every Lean survivor uses the same issue
+disposition workflow as TLA+ and Rust survivors.
+
+## CI and issue disposition
+
+- `.github/workflows/apalache-safety.yml` contains the scheduled
+  `spec-mutants` job and runs the mutator self-test on relevant pull requests.
+- `.github/workflows/proof-mutants.yml` contains pull-request control tests,
+  a scheduled `proof-mutants` job, and the scheduled Lean pilot.
+- `proof-mutants.yml` is included in the shared 30-day fuzz and mutation
+  budget. Its scheduled budget policy is warning-only so measurement remains
+  available when the cap is exceeded.
+- Reports and run directories upload with 30-day retention and
+  `if-no-files-found: error`.
+- `scripts/file-mutation-survivors.py` creates idempotent GitHub issues using
+  the stable `mutation-id` in the issue body. Duplicate or ambiguous issue
+  evidence fails closed.
+
+The scheduled scored jobs preserve their runner exit after uploading
+artifacts. A below-target score is therefore visible as a failed scheduled
+measurement even while the release posture remains advisory.
+
+## Coverage and ratchet integration
+
+`formal/mutation/registry.toml` maps all seven specification targets and both
+Rust model files to conservative Rust surfaces. `cargo xtask gen
+proof-coverage` reads this registry into the existing `mutants` column and
+records the lane, report, activation target, and measurement status. Cross
+package targets remain unattributed with related surfaces instead of being
+assigned an arbitrary primary owner.
+
+A target receives `measurement=full-cycle` only when its registry entry has a
+`latest_full_cycle` table backed by the exact report under
+`formal/mutation/evidence/`. The generator verifies the report SHA-256,
+schema, clean-worktree marker, commit, completion time, full-cycle flag,
+the canonical full-inventory digest, normalized pinned tool versions, the
+complete lane input set and hashes from both the current checkout and the
+report's ancestor commit, per-mutant verdicts, aggregate counts, per-target
+source attribution, and timeout-aware activation ratio. For
+the specification lane, it also requires all 32 registered probes, zero
+unviable results, and activation of at least 90 percent both globally and for
+each of the seven source aggregates.
+
+Every report input must resolve to a non-symlink regular repository file. The
+retained report under `formal/mutation/evidence/` must meet the same file rule.
+The specification lane input set includes all positive and negative model
+sources, CFGs, sibling TLA+ imports, registered runtime tests, registries, and
+runner controls. The proof lane input set includes both local Cargo manifests,
+workspace `Cargo.toml`, `Cargo.lock`, `.cargo/config.toml`, every Rust source
+below the kernel-core and core-types `src` trees, the scheduled
+`scripts/proof-mutants.sh`
+entrypoint, and the mutation, Kani, and toolchain controls.
+Missing, extra, stale, symlink, and non-regular inputs reject promotion. A
+tree object, unrelated commit, or unavailable evidence commit also rejects
+promotion. Until the report meets this contract, coverage renders
+`measurement=pending`.
+
+Every `latest_full_cycle` count and ratio is source-scoped: each registry
+target records the aggregate for its own specification or Rust model path.
+Promotion recomputes every source aggregate from mutant verdicts and requires
+the exact source set, configured target, and a passing result for every source.
+Specification mutants must have zero unviable results. Proof mutants must meet
+the 80 percent viability floor both globally and for each model file. Both
+lanes use the existing registry schema.
+
+## Prepared-tree evidence
+
+The exact-probe TLA+ campaign requires an integrated clean full-cycle report;
+no prepared-tree activation result is claimed. The following Rust
+measurements used B1/B2 HEAD
+`0b6384c12ebacaa7feb6c056748cb061a409c850` plus the prepared E1 worktree. They
+validate Rust-lane discovery and baseline execution but are not checked-in
+full-cycle observations.
+
+- cargo-mutants 25.3.1 discovered 104 focused Rust mutants: 34 in
+  `formal_core.rs` and 70 in `formal_aeneas.rs`. Three deterministic shards
+  contained 35, 35, and 34 mutants and merged to the byte-identical
+  unsharded inventory.
+- Kani 0.67.0 completed the clean mutation-oracle baseline with 35 of 35
+  harnesses successful and no failures.
+
+Rust discovery was repeated after integration because FV-A1 changed the
+mutated model surface; the current integrated inventory is recorded above.
+
+When [FV-E5](FV-E5-lane-ratchets.md) integrates this work, add scheduled
+`spec-mutants` and `proof-mutants` gates with `activation_target = 90`. The
+generic lane parser must validate that field. Historical success may count
+only when the job itself met the target, because the scored runners return
+non-zero below target. The Lean pilot remains outside the ratchet.
+
+## Local commands
+
+```bash
+python3 scripts/spec-mutants.py --list
+python3 scripts/spec-mutants.py --sample-from-head --sample-size 16
+python3 scripts/spec-mutants.py --full
+
+cargo mutants \
+  --config formal/rust-verification/formal-mutants.toml \
+  --package chio-kernel-core \
+  --list
+./scripts/proof-mutants.sh --sample-size 15 --activation-target 90
+./scripts/proof-mutants.sh --full --activation-target 90
+
+python3 scripts/lean-mutants.py --list
+python3 scripts/lean-mutants.py --sample-size 5
+```
+
+## Acceptance status
+
+- [x] `scripts/spec-mutants.py --list` is deterministic and byte-identical at
+  the same source revision.
+- [ ] The clean full 32-probe Apalache campaign records both historical seeds
+  as killed, zero unviable results, and at least 90 percent activation globally
+  and for every source.
+- [x] Rule zero is enforced by allowlist, reachability, property-closure, and
+  synthetic tests.
+- [ ] The scheduled real `spec-mutants` job has produced a stratified
+  16-probe report within budget, and a clean full 32-probe campaign has
+  produced activation evidence.
+- [x] The pinned real cargo-mutants discovery command re-enumerates both Rust
+  model files on the integrated tree: 150 mutants across both files, with
+  sharded and unsharded inventories identical.
+- [ ] The scheduled real `proof-mutants` job has completed a Kani-scored
+  sample. The clean prepared-tree Kani baseline passed 35 of 35 harnesses;
+  isolated mutant scoring and the scheduled report remain pending.
+- [ ] A real full-cycle Rust kill ratio is recorded and every survivor has an
+  issue. The automatic issue workflow is implemented; the expensive run is
+  pending.
+- [ ] The unit-test mutation exclusion rationales name the measured
+  co-coverage lane. This edit is intentionally deferred until the first full
+  real cycle exists.
+- [ ] One real Lean pilot sample is recorded and every survivor has a
+  disposition issue. Enumeration, workflow, report, and issue automation are
+  complete; the real build sample is pending.
+
+The status becomes Completed only after the real runs above populate the
+registry observations and the exclusion rationales can truthfully say the
+formal models are measured.

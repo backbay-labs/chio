@@ -3,9 +3,11 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-tmp_dir="$(mktemp -d)"
+tmp_dir="$(env -u TMPDIR -u TMP -u TEMP mktemp -d)"
 scratch_rel="target/check-apalache-negative-selftest-$$"
 scratch_dir="${repo_root}/${scratch_rel}"
+allowed_symlink="${repo_root}/target/check-apalache-negative-symlink-$$"
+sibling_symlink="${repo_root}/formal/apalache/SelfTestSibling$$.tla"
 negative_rel="formal/apalache/_negative_tests"
 fixture_spec_rel="${negative_rel}/SelfTestBroken.tla"
 fixture_cfg_rel="${negative_rel}/MCSelfTestBroken.cfg"
@@ -16,6 +18,7 @@ invalid_cfg_rel="${negative_rel}/MCescape-name.cfg"
 
 cleanup() {
   rm -rf "${tmp_dir}" "${scratch_dir}"
+  rm -f "${allowed_symlink}" "${sibling_symlink}"
   rm -f \
     "${repo_root}/${fixture_spec_rel}" \
     "${repo_root}/${fixture_cfg_rel}" \
@@ -65,7 +68,9 @@ write_invariant() {
 }
 
 write_error() {
+  printf '%s\n' "State 1: state invariant 0 violated."
   printf '%s\n' "The outcome is: Error"
+  printf '%s\n' "Checker has found an error"
 }
 
 write_valid_trace() {
@@ -87,6 +92,13 @@ case "${FAKE_APALACHE_MODE:-pass}" in
       exit 0
     fi
     write_error
+    write_valid_trace
+    exit 12
+    ;;
+  deadlock-error)
+    write_invariant "${invariant}"
+    printf '%s\n' "The outcome is: Error"
+    printf '%s\n' "Checker has found an error"
     write_valid_trace
     exit 12
     ;;
@@ -133,11 +145,46 @@ case "${FAKE_APALACHE_MODE:-pass}" in
     printf '%s\n' '{"states":[]}' >"${run_dir}/violation1.itf.json"
     exit 12
     ;;
+  duplicate-key)
+    write_invariant "${invariant}"
+    write_error
+    mkdir -p "${run_dir}"
+    printf '%s\n' '{"#meta":{"format":"BAD"},"#meta":{"format":"ITF","varTypes":{"witness":"Bool"}},"params":[],"vars":["witness"],"states":[{"#meta":{"index":0},"witness":false}]}' >"${run_dir}/violation1.itf.json"
+    exit 12
+    ;;
+  nonfinite-number)
+    write_invariant "${invariant}"
+    write_error
+    mkdir -p "${run_dir}"
+    printf '%s\n' '{"#meta":{"format":"ITF","varTypes":{"witness":"Bool"},"poison":NaN},"params":[],"vars":["witness"],"states":[{"#meta":{"index":0},"witness":false}]}' >"${run_dir}/violation1.itf.json"
+    exit 12
+    ;;
   state-key-mismatch)
     write_invariant "${invariant}"
     write_error
     mkdir -p "${run_dir}"
     printf '%s\n' '{"#meta":{"format":"ITF","varTypes":{"witness":"Bool"}},"params":[],"vars":["witness"],"states":[{"#meta":{"index":0}}]}' >"${run_dir}/violation1.itf.json"
+    exit 12
+    ;;
+  state-type-mismatch)
+    write_invariant "${invariant}"
+    write_error
+    mkdir -p "${run_dir}"
+    printf '%s\n' '{"#meta":{"format":"ITF","varTypes":{"witness":"Bool"}},"params":[],"vars":["witness"],"states":[{"#meta":{"index":0},"witness":"false"}]}' >"${run_dir}/violation1.itf.json"
+    exit 12
+    ;;
+  malformed-type)
+    write_invariant "${invariant}"
+    write_error
+    mkdir -p "${run_dir}"
+    printf '%s\n' '{"#meta":{"format":"ITF","varTypes":{"witness":"Set("}},"params":[],"vars":["witness"],"states":[{"#meta":{"index":0},"witness":{"#set":[]}}]}' >"${run_dir}/violation1.itf.json"
+    exit 12
+    ;;
+  parameter-drift)
+    write_invariant "${invariant}"
+    write_error
+    mkdir -p "${run_dir}"
+    printf '%s\n' '{"#meta":{"format":"ITF","varTypes":{"witness":"Bool"}},"params":["bound"],"vars":["witness"],"states":[{"#meta":{"index":0},"bound":{"#bigint":"1"},"witness":false},{"#meta":{"index":1},"bound":{"#bigint":"2"},"witness":false}]}' >"${run_dir}/violation1.itf.json"
     exit 12
     ;;
   timeout)
@@ -162,6 +209,7 @@ run_gate() {
     APALACHE_BIN="${fake_apalache}" \
     CHIO_APALACHE_NEGATIVE_REGISTRY="${registry}" \
     CHIO_APALACHE_NEGATIVE_OUTPUT_DIR="${artifacts}" \
+    env -u TMPDIR -u TMP -u TEMP \
     "${repo_root}/scripts/check-apalache-negative.sh" >"${output}" 2>&1
   local result=$?
   set -e
@@ -208,6 +256,8 @@ grep -Fq "check-apalache-negative: 10 counterexamples reproduced" "${pass_log}"
 
 expect_gate_failure receipt-noerror \
   "reported NoError for ReceiptBeforeAllow" "restored-invariant"
+expect_gate_failure deadlock-error \
+  "invalid invariant or outcome evidence" "deadlock-error"
 expect_gate_failure wrong-exit \
   "expected 0 or violation exit 12" "unexpected-exit"
 expect_gate_failure missing-outcome \
@@ -222,8 +272,18 @@ expect_gate_failure duplicate-trace \
   "did not produce exactly one ITF violation trace" "duplicate-trace"
 expect_gate_failure invalid-trace \
   "produced an invalid ITF violation trace" "invalid-trace"
+expect_gate_failure duplicate-key \
+  "produced an invalid ITF violation trace" "duplicate-key"
+expect_gate_failure nonfinite-number \
+  "produced an invalid ITF violation trace" "nonfinite-number"
 expect_gate_failure state-key-mismatch \
   "produced an invalid ITF violation trace" "state-key-mismatch"
+expect_gate_failure state-type-mismatch \
+  "produced an invalid ITF violation trace" "state-type-mismatch"
+expect_gate_failure malformed-type \
+  "produced an invalid ITF violation trace" "malformed-type"
+expect_gate_failure parameter-drift \
+  "produced an invalid ITF violation trace" "parameter-drift"
 expect_gate_failure timeout "NEGATIVE-TEST TIMEOUT" "timeout"
 
 wrong_version_log="${tmp_dir}/wrong-version.log"
@@ -234,7 +294,7 @@ if run_gate pass "${wrong_version_log}" "${tmp_dir}/wrong-version-output" \
 fi
 grep -Fq "Apalache 0.50.1 is required" "${wrong_version_log}"
 
-temporary_root="$(python3 - <<'PY'
+temporary_root="$(env -u TMPDIR -u TMP -u TEMP python3 - <<'PY'
 import tempfile
 print(tempfile.gettempdir())
 PY
@@ -257,6 +317,77 @@ if run_gate pass "${symlink_log}" "${tmp_dir}/symlink-escape"; then
 fi
 grep -Fq "output directory must be below target or the system temporary directory outside the repository" "${symlink_log}"
 test -f "${repo_root}/scripts/check-apalache-negative.sh"
+
+mkdir -p "${tmp_dir}/allowed-symlink-target"
+printf '%s\n' preserve >"${tmp_dir}/allowed-symlink-target/sentinel"
+ln -s "${tmp_dir}/allowed-symlink-target" "${allowed_symlink}"
+allowed_symlink_log="${tmp_dir}/allowed-symlink.log"
+if run_gate pass "${allowed_symlink_log}" "${allowed_symlink}"; then
+  echo "expected an output symlink below target to fail" >&2
+  exit 1
+fi
+grep -Fq "output directory must be below target or the system temporary directory outside the repository" "${allowed_symlink_log}"
+grep -Fq preserve "${tmp_dir}/allowed-symlink-target/sentinel"
+rm -f "${allowed_symlink}"
+
+mv "${repo_root}/${fixture_spec_rel}" "${scratch_dir}/SelfTestBroken.tla"
+ln -s "${repo_root}/${negative_rel}/ReceiptBeforeAllowBroken.tla" \
+  "${repo_root}/${fixture_spec_rel}"
+symlink_registry="${scratch_dir}/symlink-source.toml"
+write_registry "${symlink_registry}" "${fixture_cfg_rel}" \
+  "n/a (self-test has no production fix)" \
+  "n/a (self-test has no runtime regression)"
+symlink_source_log="${tmp_dir}/symlink-source.log"
+if run_gate pass "${symlink_source_log}" "${tmp_dir}/symlink-source-output" \
+  "${symlink_registry}"; then
+  echo "expected a symlinked negative source to fail" >&2
+  exit 1
+fi
+grep -Fq "contains a symlink component" "${symlink_source_log}"
+rm -f "${repo_root}/${fixture_spec_rel}"
+mv "${scratch_dir}/SelfTestBroken.tla" "${repo_root}/${fixture_spec_rel}"
+
+ln -s "${repo_root}/formal/apalache/ReceiptBeforeAllow.tla" \
+  "${sibling_symlink}"
+sibling_symlink_log="${tmp_dir}/sibling-symlink.log"
+if run_gate pass "${sibling_symlink_log}" \
+  "${tmp_dir}/sibling-symlink-output"; then
+  echo "expected a symlinked sibling module to fail" >&2
+  exit 1
+fi
+grep -Fq "Apalache sibling module contains a symlink component" \
+  "${sibling_symlink_log}"
+rm -f "${sibling_symlink}"
+
+traversing_registry="${scratch_dir}/traversing-registry.toml"
+write_registry "${traversing_registry}" "${fixture_cfg_rel}" \
+  "n/a (self-test has no production fix)" \
+  "n/a (self-test has no runtime regression)"
+traversing_registry_arg="${repo_root}/target/../${scratch_rel}/traversing-registry.toml"
+traversing_registry_log="${tmp_dir}/traversing-registry.log"
+if run_gate pass "${traversing_registry_log}" \
+  "${tmp_dir}/traversing-registry-output" "${traversing_registry_arg}"; then
+  echo "expected a traversing registry path to fail" >&2
+  exit 1
+fi
+grep -Fq "negative registry contains an invalid path component" \
+  "${traversing_registry_log}"
+
+external_runtime="${tmp_dir}/external-runtime.rs"
+printf '%s\n' '#[test]' 'fn external_anchor() {}' >"${external_runtime}"
+external_runtime_rel="$(realpath --relative-to="${repo_root}" "${external_runtime}")"
+runtime_traversal_registry="${scratch_dir}/runtime-traversal.toml"
+write_registry "${runtime_traversal_registry}" "${fixture_cfg_rel}" \
+  "n/a (self-test has no production fix)" \
+  "${external_runtime_rel}::external_anchor"
+runtime_traversal_log="${tmp_dir}/runtime-traversal.log"
+if run_gate pass "${runtime_traversal_log}" \
+  "${tmp_dir}/runtime-traversal-output" "${runtime_traversal_registry}"; then
+  echo "expected a traversing runtime path to fail" >&2
+  exit 1
+fi
+grep -Fq "runtime test contains an invalid path component" \
+  "${runtime_traversal_log}"
 
 multi_registry="${scratch_dir}/multi-invariant.toml"
 write_registry "${multi_registry}" "${multi_cfg_rel}" \

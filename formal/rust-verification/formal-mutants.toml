@@ -1,0 +1,14 @@
+# Focused mutation discovery for the pure Rust verification models.
+#
+# The unit-test mutation estate excludes these files because Kani, rather
+# than cargo test, is their execution oracle. The proof mutation runner uses
+# this config for discovery and repeats the same two repository-relative
+# file globs on every sharded cargo-mutants invocation.
+
+timeout_multiplier = 3.0
+minimum_test_timeout = 60
+
+examine_globs = [
+  "crates/kernel/chio-kernel-core/src/formal_core.rs",
+  "crates/kernel/chio-kernel-core/src/formal_aeneas.rs",
+]

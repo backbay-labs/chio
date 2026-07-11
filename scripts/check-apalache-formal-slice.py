@@ -333,9 +333,9 @@ def check_safety_workflow_paths() -> None:
             f"apalache-safety paths must include {path}",
         )
     require(
-        "formal/tla/MCRevocationPropagation.cfg|formal/tla/RevocationPropagation.tla"
+        "formal/tla/MCRevocationPropagation.cfg|formal/tla/RevocationPropagation.tla|6|10800"
         in text,
-        "apalache-safety must keep RevocationPropagation safety coverage",
+        "apalache-safety must keep RevocationPropagation length and timeout coverage",
     )
     require(
         "formal/tla/MCDelegationDepthBound.cfg|formal/tla/DelegationDepthBound.tla"
@@ -343,7 +343,7 @@ def check_safety_workflow_paths() -> None:
         "apalache-safety must keep DelegationDepthBound safety coverage",
     )
     require(
-        "formal/apalache/MCPostAdmissionDropGuard.cfg|formal/apalache/PostAdmissionDropGuard.tla|8|1800"
+        "formal/apalache/MCPostAdmissionDropGuard.cfg|formal/apalache/PostAdmissionDropGuard.tla|8|10800"
         in text,
         "apalache-safety must run the drop-guard model at length 8",
     )

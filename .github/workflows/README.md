@@ -72,19 +72,33 @@ Strict proof artifacts are named with both `github.run_id` and
 `github.run_attempt`. Streak evaluation reads the latest job attempt and rejects
 a strict artifact left by any earlier attempt of the same run.
 
+Scored lanes also upload a dedicated report-only artifact using the configured
+prefix followed by `github.run_id` and `github.run_attempt`. The lane gate
+requires one unexpired artifact and one JSON report with the configured schema,
+checks the artifact digest, complete artifact listing, workflow commit and run
+identity, rotation epoch, expected sample and inventory sizes, and exact
+canonical inventory digest, normalized tool versions, registered sources,
+files, and seeds. It recomputes global and source-scoped mutation counts and
+activation ratios. Specification reports must include exact passing positive
+baseline evidence for every registered model. Proof reports must also meet the
+configured global and per-file viability floor. A missing, duplicate, stale,
+weaker, replayed, or
+internally inconsistent report cannot contribute to the promotion streak.
+
 Strict report generation requires a clean worktree and executes the manifest
 gate set. The report checker validates schema, hashes, source bindings, commit
 identity, and the recorded evidence boundary. It does not replay proof commands;
 the protected generator process attests those gate statuses.
 
-The registry covers five scheduled formal lanes, all four formal PR checks
-listed above, and both locked-corpus smoke checks. The fifth scheduled formal
-lane is `apalache-negative`; its terminal posture step lands with B2 integration.
+The registry covers seven scheduled formal lanes, all four formal PR checks
+listed above, and both locked-corpus smoke checks. The scored specification and
+proof mutation lanes remain advisory until their configured evidence streaks
+qualify them for promotion.
 
 - "fuzz-corpus-smoke-pr (locked replay)"
 - "fuzz corpus smoke"
 
-All eleven entries are advisory, and no hosted qualifying streak is claimed by
+All thirteen entries are advisory, and no hosted qualifying streak is claimed by
 the registry. Required promotion follows the runbook in
 `docs/formal/ROADMAP.md` and adds structured `promotion_evidence` to the same
 protected registry edit. Pull-request checks remain frozen until they use a

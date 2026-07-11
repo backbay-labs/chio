@@ -15,6 +15,30 @@
 #   evidence_after_run_id
 #                         : exclusive reset boundary for promotion evidence.
 #   max_age_hours        : freshness bound used by release fleet checks.
+#   activation_target    : optional scored-lane percentage required in the
+#                          bound report before a success can count.
+#   scored_artifact_prefix
+#                         : required with activation_target; followed by the
+#                          exact run ID and latest run attempt.
+#   scored_artifact_schema
+#                         : exact report schema selected from the scored
+#                          artifact. Exactly one matching JSON report is
+#                          required.
+#   scored_sample_size    : exact number of mutants required in each scored
+#                          scheduled report.
+#   scored_inventory_size : exact enumerated inventory ratchet for the lane.
+#   scored_inventory_sha256
+#                         : canonical full-inventory identity ratchet.
+#   scored_sources        : exact source-name and repository-path bindings
+#                          required for specification mutation reports.
+#   scored_seeds          : exact historical regression seeds required in
+#                          every specification mutation report.
+#   scored_files          : exact source files required in proof mutation
+#                          reports.
+#   scored_viability_target
+#                         : minimum proof mutants that must compile and run.
+#   scored_tools          : exact normalized tool versions accepted by the
+#                          scored report verifier.
 #   strict_mode_required : optional; successful evidence also needs the named
 #                         strict proof-report artifact.
 #   strict_artifact_prefix
@@ -127,6 +151,60 @@ posture = "advisory"
 required_streak = 7
 evidence_after_run_id = 29086573702
 max_age_hours = 48
+
+[gates.spec-mutants]
+workflow = "apalache-safety.yml"
+job = "spec-mutants"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 48
+activation_target = 90
+scored_artifact_prefix = "spec-mutants-report-"
+scored_artifact_schema = "chio.spec-mutants-report.v1"
+scored_sample_size = 16
+scored_inventory_size = 32
+scored_inventory_sha256 = "3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de"
+scored_tools = ["apalache=0.50.1"]
+scored_sources = [
+  "KernelTransitionCancelSafe=formal/apalache/KernelTransitionCancelSafe.tla",
+  "MonotoneLogApalache=formal/apalache/MonotoneLogApalache.tla",
+  "PostAdmissionDropGuard=formal/apalache/PostAdmissionDropGuard.tla",
+  "ReceiptBeforeAllow=formal/apalache/ReceiptBeforeAllow.tla",
+  "RevocationCutCompleteness=formal/apalache/RevocationCutCompleteness.tla",
+  "DelegationDepthBound=formal/tla/DelegationDepthBound.tla",
+  "RevocationPropagation=formal/tla/RevocationPropagation.tla",
+]
+scored_seeds = [
+  "receipt-before-allow-guard",
+  "revocation-transitive-cut",
+]
+
+[gates.proof-mutants]
+workflow = "proof-mutants.yml"
+job = "proof-mutants"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 48
+activation_target = 90
+scored_artifact_prefix = "proof-mutants-report-"
+scored_artifact_schema = "chio.proof-mutants-report.v1"
+scored_sample_size = 15
+scored_inventory_size = 150
+scored_inventory_sha256 = "ec53bf8dae4152897687f560be3c6b41fd408a0a5603bafc46311d9ac1615103"
+scored_files = [
+  "crates/kernel/chio-kernel-core/src/formal_core.rs",
+  "crates/kernel/chio-kernel-core/src/formal_aeneas.rs",
+]
+scored_viability_target = 80
+scored_tools = [
+  "cargo_mutants=25.3.1",
+  "kani=0.67.0",
+  "rustc=1.93.0",
+]
 
 [gates.apalache-temporal]
 workflow = "apalache-temporal.yml"

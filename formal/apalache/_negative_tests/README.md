@@ -21,6 +21,16 @@ runtime regression test, length bound, and timeout. The config must select the
 same named invariant as `falsifies`, and Apalache must report it violated
 within the registered bound.
 
+The mechanical action-mutation lane lives in `scripts/spec-mutants.py`. Its
+schema-v2 allowlist in `formal/apalache/spec-mutants-allowlist.toml` registers
+exact type-valid guard-weakening and post-state-corruption probes. When a
+hand-written broken variant represents a mutation the campaign must retain,
+add a `[[seed]]` entry as well as the negative registry entry. The mutator then
+fails closed unless the production action contains the configured expression,
+the broken action contains the replacement, and the inventory includes the
+seed. Every deterministic sample and full campaign includes all registered
+seeds.
+
 ## Running locally
 
 ```bash

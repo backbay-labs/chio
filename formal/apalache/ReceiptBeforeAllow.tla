@@ -129,8 +129,15 @@ ReceiptBeforeAllow ==
         \A c \in CapSet :
             c \in allowed[a] => HasAllowReceipt(a, c)
 
+AllowReceiptsBudgetChecked ==
+    \A a \in Authorities :
+        \A i \in 1..Len(receipt_log[a]) :
+            receipt_log[a][i].verdict = "allow" =>
+                receipt_log[a][i].cap \in budget_checked[a]
+
 SafetyInv ==
     /\ DomainsOK
     /\ ReceiptBeforeAllow
+    /\ AllowReceiptsBudgetChecked
 
 =============================================================================

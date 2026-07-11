@@ -111,7 +111,7 @@ active-child capacity guard was added.
 | Cleanup failures | Dynamic `SUBSET admitted_resources[i]` | The 12 static valid profiles, filtered to subsets of the admitted resources | Negative calibration showed that Apalache 0.50.1 did not expose three pre-dispatch mutations through the dynamic powerset. The static domain represents the same reachable subsets and made all three counterexamples solver-visible. |
 | Receipt representation | Bounded receipt sequence | Exact per-invocation child and parent counters plus a child-before-parent witness | The sequence encoding expanded every bounded index at each transition and was stopped at State 5 after 5 minutes 31 seconds. Counters preserve cardinality, attribution, and the checked ordering witness. |
 | Search length | 8 | 8 | Two interleaved Admit, StartDispatch, StreamChunk, and Drop paths require eight transitions. The bound was not reduced during optimization. |
-| Timeout | 1800 seconds | 1800 seconds | Timeout remains fail-closed in the hosted workflow. |
+| Timeout | 1800 seconds | 10800 seconds | The unchanged production bounds remain fail-closed while allowing for host contention during the longest bounded checks. |
 
 An intermediate static failure domain included four hold-plus-slot masks that
 the admission relation forbids. That search was stopped after 903.01 seconds
