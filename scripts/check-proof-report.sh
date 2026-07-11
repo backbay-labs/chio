@@ -63,6 +63,105 @@ AENEAS_ARTIFACTS = {
     "target/formal/aeneas-production/equivalence-artifacts.json",
     "target/formal/aeneas-production/negative-tests.json",
 }
+TRACE_TRACKED_ARTIFACTS = {
+    "Cargo.toml",
+    "Cargo.lock",
+    "formal/MAPPING.md",
+    "docs/formal/plan/FV-C1-receipt-trace-validation.md",
+    "formal/tla/RevocationPropagation.tla",
+    "formal/tla/trace/TraceCheckRevocationPropagation.tla",
+    "formal/tla/trace/TraceEvaluateRevocationPropagation.tla",
+    "formal/tla/trace/README.md",
+    "formal/tla/trace/fixtures/revocation-good.ndjson",
+    "formal/tla/trace/fixtures/allow-after-revoke.ndjson",
+    "formal/tla/trace/fixtures/trusted-observer-key.txt",
+    "formal/tla/trace/fixtures/native-conformance-observer-key.txt",
+    "formal/tla/trace/negative-registry.toml",
+    "crates/kernel/chio-kernel/src/runtime_trace.rs",
+    "crates/kernel/chio-kernel/src/lib.rs",
+    "crates/kernel/chio-kernel/src/kernel/kernel_struct.rs",
+    "crates/kernel/chio-kernel/src/kernel/construction.rs",
+    "crates/kernel/chio-kernel/src/kernel/validation.rs",
+    "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs",
+    "crates/kernel/chio-kernel/src/kernel/evaluation/nested_flow_evaluation.rs",
+    "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs",
+    "crates/tooling/chio-trace-validate/Cargo.toml",
+    "crates/tooling/chio-trace-validate/src/apalache.rs",
+    "crates/tooling/chio-trace-validate/src/capture.rs",
+    "crates/tooling/chio-trace-validate/src/decode.rs",
+    "crates/tooling/chio-trace-validate/src/itf.rs",
+    "crates/tooling/chio-trace-validate/src/intern.rs",
+    "crates/tooling/chio-trace-validate/src/lib.rs",
+    "crates/tooling/chio-trace-validate/src/main.rs",
+    "crates/tooling/chio-trace-validate/src/map/mod.rs",
+    "crates/tooling/chio-trace-validate/src/map/revocation.rs",
+    "crates/tooling/chio-trace-validate/src/observation.rs",
+    "crates/tooling/chio-trace-validate/src/report.rs",
+    "crates/tooling/chio-trace-validate/tests/apalache_protocol.rs",
+    "crates/tooling/chio-trace-validate/tests/artifact_paths.rs",
+    "crates/tooling/chio-trace-validate/tests/checked_fixtures.rs",
+    "crates/tooling/chio-trace-validate/tests/observation_decode.rs",
+    "crates/tooling/chio-trace-validate/tests/projection.rs",
+    "crates/tooling/chio-trace-validate/tests/reachability.rs",
+    "crates/tooling/chio-trace-validate/tests/support/mod.rs",
+    "crates/tooling/chio-conformance/Cargo.toml",
+    "crates/tooling/chio-conformance/src/lib.rs",
+    "crates/tooling/chio-conformance/src/native_suite.rs",
+    "crates/tooling/chio-conformance/src/bin/chio_native_conformance_runner.rs",
+    "crates/tooling/chio-conformance/tests/runtime_trace_corpus.rs",
+    "crates/products/chio-cli/src/cli/trust/trace_verify.rs",
+    "crates/products/chio-cli/Cargo.toml",
+    "crates/products/chio-cli/src/cli/dispatch/trust.rs",
+    "crates/products/chio-cli/src/cli/trust_commands.rs",
+    "crates/products/chio-cli/src/cli/types.rs",
+    "crates/products/chio-cli/src/cli/types/trust.rs",
+    "crates/products/chio-cli/src/main.rs",
+    "scripts/check-receipt-trace.sh",
+    "scripts/check-receipt-trace-bindings.py",
+    "scripts/check-receipt-trace-negative-registry.py",
+    "scripts/tests/check-receipt-trace-bindings.test.sh",
+}
+TRACE_GENERATED_ARTIFACTS = {
+    "target/formal/trace-validation.json",
+    "target/formal/receipt-trace/bindings.json",
+    "target/formal/receipt-trace/conformance.ndjson",
+    "target/formal/receipt-trace/conformance.itf.json",
+    "target/formal/receipt-trace/conformance-witness.itf.json",
+    "target/formal/receipt-trace/conformance-observer-key.txt",
+    "target/formal/receipt-trace/native-results.json",
+    "target/formal/receipt-trace/native-report.md",
+    "target/formal/receipt-trace/fixture-http.log",
+    "target/formal/receipt-trace/fixture-good.itf.json",
+    "target/formal/receipt-trace/fixture-good-witness.itf.json",
+    "target/formal/receipt-trace/fixture-good-report.json",
+    "target/formal/receipt-trace/fixture-bad.itf.json",
+    "target/formal/receipt-trace/fixture-bad-witness.itf.json",
+    "target/formal/receipt-trace/fixture-bad-report.json",
+    "target/formal/receipt-trace/fixture-bad.log",
+}
+for _slug in ("", "-monotone", "-attenuation", "-freshness"):
+    _base = f"target/formal/receipt-trace/runtime-negative{_slug}"
+    TRACE_GENERATED_ARTIFACTS.update(
+        {
+            f"{_base}.ndjson",
+            f"{_base}.itf.json",
+            f"{_base}-witness.itf.json",
+            f"{_base}-report.json",
+            f"{_base}.log",
+        }
+    )
+TRACE_INVARIANTS = [
+    "NoAllowAfterRevoke",
+    "MonotoneLog",
+    "AttenuationPreserving",
+    "RevocationFreshness",
+]
+TRACE_WITNESSES = [
+    "allowReceipt",
+    "orderedReceiptPair",
+    "attenuatedAdmission",
+    "nonzeroRevocationEpoch",
+]
 TOOL_COMMANDS = {
     "lean": "lean --version",
     "lake": "lake --version",
@@ -72,6 +171,7 @@ TOOL_COMMANDS = {
     "creusot": "cargo creusot version",
     "aeneas": "aeneas -version",
     "charon": "charon version",
+    "apalache": f"{shlex.quote(os.environ.get('APALACHE_BIN', 'apalache-mc'))} version",
 }
 
 
@@ -183,6 +283,7 @@ required_top = {
     "git",
     "ci",
     "claimGate",
+    "traceValidation",
 }
 missing = sorted(required_top - set(report))
 if missing:
@@ -350,6 +451,7 @@ tracked_paths = {
     "scripts/check-proof-report.sh",
     str(manifest.get("claim_registry")),
 }
+tracked_paths.update(TRACE_TRACKED_ARTIFACTS)
 tracked_paths.update(manifest.get("claim_gate_inputs", []))
 tracked_paths.update(manifest.get("root_modules", []))
 tracked_paths.update(manifest.get("covered_rust_modules", []))
@@ -362,6 +464,7 @@ check_hash_map(artifact_hashes.get("tracked"), tracked_paths, "tracked hashes", 
 generated_paths = {"target/formal/coverage.json"}
 if mode == "strict":
     generated_paths.update(AENEAS_ARTIFACTS)
+    generated_paths.update(TRACE_GENERATED_ARTIFACTS)
 generated_hashes = check_hash_map(
     artifact_hashes.get("generated"), generated_paths, "generated hashes", repo
 )
@@ -418,6 +521,121 @@ head = subprocess.run(
 ).stdout.strip()
 if coverage.get("commit") != head:
     fail("coverage artifact commit does not match HEAD")
+
+trace_validation = require_object(report.get("traceValidation"), "traceValidation")
+if mode == "metadata_only":
+    if trace_validation != {"result": "not_run"}:
+        fail("metadata-only traceValidation must be exactly not_run")
+else:
+    trace_report_path = repo / "target/formal/trace-validation.json"
+    trace_bindings_path = repo / "target/formal/receipt-trace/bindings.json"
+    trace_report = require_object(
+        json.loads(trace_report_path.read_text(encoding="utf-8")), "trace report"
+    )
+    trace_bindings = require_object(
+        json.loads(trace_bindings_path.read_text(encoding="utf-8")), "trace bindings"
+    )
+    if trace_report.get("schema") != "chio.trace-validation.v2" or trace_report.get("status") != "passed":
+        fail("strict trace report is not a passing v2 report")
+    if trace_report.get("invariants") != TRACE_INVARIANTS:
+        fail("strict trace report invariant set is not exact")
+    action_coverage = require_object(trace_report.get("actionCoverage"), "trace actionCoverage")
+    witnesses = require_object(trace_report.get("invariantWitnesses"), "trace invariantWitnesses")
+    if action_coverage.get("revoke", 0) < 1 or action_coverage.get("postRevocationEvaluate", 0) < 1:
+        fail("strict trace report is action-vacuous")
+    if any(
+        not isinstance(witnesses.get(name), int) or witnesses[name] < 1
+        for name in TRACE_WITNESSES
+    ):
+        fail("strict trace report is invariant-vacuous")
+    if trace_bindings.get("schema") != "chio.trace-artifact-bindings.v1" or trace_bindings.get("status") != "passed":
+        fail("strict trace binding record is invalid")
+    binding_hashes = require_object(trace_bindings.get("artifactHashes"), "trace binding hashes")
+    if binding_hashes.get("report") != sha256_file(trace_report_path):
+        fail("strict trace binding record does not bind the report")
+    binding_paths = require_object(trace_bindings.get("artifactPaths"), "trace binding paths")
+    if set(binding_paths) != set(binding_hashes):
+        fail("strict trace binding path and hash labels differ")
+    expected_bound_paths = TRACE_GENERATED_ARTIFACTS - {
+        "target/formal/receipt-trace/bindings.json"
+    }
+    expected_bound_paths.update(
+        {
+            "formal/tla/RevocationPropagation.tla",
+            "formal/tla/trace/TraceCheckRevocationPropagation.tla",
+            "formal/tla/trace/TraceEvaluateRevocationPropagation.tla",
+            "formal/tla/trace/fixtures/native-conformance-observer-key.txt",
+            "formal/tla/trace/negative-registry.toml",
+        }
+    )
+    for executable_label in ("checkerBinary", "timeoutBinary"):
+        executable_path = binding_paths.get(executable_label)
+        if not isinstance(executable_path, str) or not Path(executable_path).is_absolute():
+            fail(f"strict trace binding {executable_label} path is not absolute")
+    actual_bound_paths = {
+        value
+        for name, value in binding_paths.items()
+        if name not in {"checkerBinary", "timeoutBinary"} and isinstance(value, str)
+    }
+    if actual_bound_paths != expected_bound_paths or len(actual_bound_paths) != len(binding_paths) - 2:
+        fail("strict trace binding does not cover the exact trace artifact set")
+    for name, raw_path in binding_paths.items():
+        if not isinstance(raw_path, str):
+            fail(f"strict trace binding path is invalid: {name}")
+        artifact_path = Path(raw_path)
+        if not artifact_path.is_absolute():
+            artifact_path = repo / artifact_path
+        if artifact_path.is_symlink() or not artifact_path.is_file():
+            fail(f"strict trace bound artifact is missing or symlinked: {name}")
+        digest = binding_hashes.get(name)
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            fail(f"strict trace binding hash is invalid: {name}")
+        if sha256_file(artifact_path) != digest:
+            fail(f"strict trace binding hash does not match disk: {name}")
+    expected_trace_validation = {
+        "result": "passed",
+        "schema": trace_report["schema"],
+        "spec": trace_report.get("spec"),
+        "traceId": trace_report.get("traceId"),
+        "traceLength": trace_report.get("traceLength"),
+        "itfStateCount": trace_report.get("itfStateCount"),
+        "invariants": trace_report["invariants"],
+        "actionCoverage": action_coverage,
+        "invariantWitnesses": witnesses,
+        "checker": trace_report.get("checker"),
+        "checkerBinarySha256": trace_report.get("checkerBinarySha256"),
+        "timeoutBinarySha256": trace_report.get("timeoutBinarySha256"),
+        "reportPath": "target/formal/trace-validation.json",
+        "bindingsPath": "target/formal/receipt-trace/bindings.json",
+        "negativeRegistryPath": "formal/tla/trace/negative-registry.toml",
+    }
+    if trace_validation != expected_trace_validation:
+        fail("traceValidation does not match its bound trace artifacts")
+    negative_reports = {
+        "NoAllowAfterRevoke": "target/formal/receipt-trace/runtime-negative-report.json",
+        "MonotoneLog": "target/formal/receipt-trace/runtime-negative-monotone-report.json",
+        "AttenuationPreserving": "target/formal/receipt-trace/runtime-negative-attenuation-report.json",
+        "RevocationFreshness": "target/formal/receipt-trace/runtime-negative-freshness-report.json",
+    }
+    for invariant, relative_path in negative_reports.items():
+        negative = require_object(
+            json.loads((repo / relative_path).read_text(encoding="utf-8")),
+            f"negative trace report {invariant}",
+        )
+        divergence = require_object(
+            negative.get("divergence"), f"negative trace divergence {invariant}"
+        )
+        evaluation = require_object(
+            divergence.get("apalacheEvaluation"),
+            f"negative trace Apalache evaluation {invariant}",
+        )
+        if (
+            negative.get("schema") != "chio.trace-validation.v2"
+            or negative.get("status") != "failed"
+            or divergence.get("failedConjunct") != invariant
+            or evaluation.get(invariant) is not False
+        ):
+            fail(f"registered runtime negative does not falsify {invariant}")
 
 tools = require_object(report.get("toolVersions"), "toolVersions")
 if set(tools) != set(TOOL_COMMANDS):

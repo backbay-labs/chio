@@ -51,6 +51,7 @@ mod request_matching;
 pub mod revocation_runtime;
 pub mod revocation_store;
 pub mod runtime;
+mod runtime_trace;
 pub mod session;
 pub mod transport;
 pub mod weights_binding;
@@ -425,6 +426,7 @@ pub use runtime::{
     ToolCallResponse, ToolCallStream, ToolInvocationCost, ToolServerConnection, ToolServerEvent,
     ToolServerOutput, ToolServerStreamResult, Verdict,
 };
+pub use runtime_trace::{RuntimeTraceEvent, RuntimeTraceObserver};
 pub use session::{
     InflightRegistry, InflightRequest, LateSessionEvent, PeerCapabilities, Session, SessionError,
     SessionOperationResponse, SessionPersistError, SessionState, SubscriptionRegistry,

@@ -74,6 +74,14 @@ fn native_conformance_suite_runs_against_fixture() {
         peer_label: "chio-self".to_string(),
         stdio_command: Some(fixture_bin),
         http_base_url: Some(format!("http://{listen}")),
+        trace_output: Some(output_dir.join("trace.ndjson")),
+        trace_negative_output: Some(output_dir.join("trace-negative.ndjson")),
+        trace_monotone_negative_output: Some(output_dir.join("trace-monotone-negative.ndjson")),
+        trace_attenuation_negative_output: Some(
+            output_dir.join("trace-attenuation-negative.ndjson"),
+        ),
+        trace_freshness_negative_output: Some(output_dir.join("trace-freshness-negative.ndjson")),
+        trace_observer_key_output: Some(output_dir.join("trace-key.txt")),
     };
 
     let summary = run_native_conformance_suite(&options).expect("run native suite");
@@ -86,6 +94,24 @@ fn native_conformance_suite_runs_against_fixture() {
     assert!(results
         .iter()
         .all(|result| result.status == NativeStatus::Pass));
+
+    let trace_path = summary.trace_output.expect("trace output");
+    let trace_key_path = summary
+        .trace_observer_key_output
+        .expect("trace observer key output");
+    let trace = fs::read(trace_path).expect("read trace");
+    let trusted_key = chio_core::crypto::PublicKey::from_hex(
+        fs::read_to_string(trace_key_path)
+            .expect("read trace key")
+            .trim(),
+    )
+    .expect("parse trace key");
+    let observations = chio_trace_validate::decode_observations(&trace, &[trusted_key])
+        .expect("decode native trace");
+    let projection =
+        chio_trace_validate::project_revocation_trace(&observations).expect("project native trace");
+    assert_eq!(projection.action_coverage().revoke, 1);
+    assert_eq!(projection.action_coverage().post_revocation_evaluate, 1);
 
     let report = fs::read_to_string(summary.report_output).expect("read report");
     assert!(report.contains("Chio Native Conformance Report"));

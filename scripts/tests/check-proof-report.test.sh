@@ -4,6 +4,34 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 tmp_dir="$(mktemp -d)"
+trace_generated_paths=(
+  target/formal/trace-validation.json
+  target/formal/receipt-trace/bindings.json
+  target/formal/receipt-trace/conformance.ndjson
+  target/formal/receipt-trace/conformance.itf.json
+  target/formal/receipt-trace/conformance-witness.itf.json
+  target/formal/receipt-trace/conformance-observer-key.txt
+  target/formal/receipt-trace/native-results.json
+  target/formal/receipt-trace/native-report.md
+  target/formal/receipt-trace/fixture-http.log
+  target/formal/receipt-trace/fixture-good.itf.json
+  target/formal/receipt-trace/fixture-good-witness.itf.json
+  target/formal/receipt-trace/fixture-good-report.json
+  target/formal/receipt-trace/fixture-bad.itf.json
+  target/formal/receipt-trace/fixture-bad-witness.itf.json
+  target/formal/receipt-trace/fixture-bad-report.json
+  target/formal/receipt-trace/fixture-bad.log
+)
+for slug in "" -monotone -attenuation -freshness; do
+  base="target/formal/receipt-trace/runtime-negative${slug}"
+  trace_generated_paths+=(
+    "${base}.ndjson"
+    "${base}.itf.json"
+    "${base}-witness.itf.json"
+    "${base}-report.json"
+    "${base}.log"
+  )
+done
 managed_paths=(
   formal/proof-manifest.toml
   docs/reference/CLAIM_REGISTRY.md
@@ -14,6 +42,7 @@ managed_paths=(
   target/formal/aeneas-production/lean/Types.lean
   target/formal/aeneas-production/equivalence-artifacts.json
   target/formal/aeneas-production/negative-tests.json
+  "${trace_generated_paths[@]}"
 )
 
 for path in "${managed_paths[@]}"; do
@@ -128,7 +157,7 @@ fi
 exec "${REAL_GIT}" "$@"
 SH
 chmod +x "${tmp_dir}/bin/git"
-for tool in lean lake aeneas charon; do
+for tool in lean lake aeneas charon apalache-mc; do
   cat >"${tmp_dir}/bin/${tool}" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -307,6 +336,138 @@ Path("target/formal/aeneas-production/negative-tests.json").write_text(
 )
 PY
 
+python3 - "${tmp_dir}" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+tmp_dir = Path(sys.argv[1]).resolve()
+trace_generated = [
+    "target/formal/trace-validation.json",
+    "target/formal/receipt-trace/bindings.json",
+    "target/formal/receipt-trace/conformance.ndjson",
+    "target/formal/receipt-trace/conformance.itf.json",
+    "target/formal/receipt-trace/conformance-witness.itf.json",
+    "target/formal/receipt-trace/conformance-observer-key.txt",
+    "target/formal/receipt-trace/native-results.json",
+    "target/formal/receipt-trace/native-report.md",
+    "target/formal/receipt-trace/fixture-http.log",
+    "target/formal/receipt-trace/fixture-good.itf.json",
+    "target/formal/receipt-trace/fixture-good-witness.itf.json",
+    "target/formal/receipt-trace/fixture-good-report.json",
+    "target/formal/receipt-trace/fixture-bad.itf.json",
+    "target/formal/receipt-trace/fixture-bad-witness.itf.json",
+    "target/formal/receipt-trace/fixture-bad-report.json",
+    "target/formal/receipt-trace/fixture-bad.log",
+]
+for slug in ("", "-monotone", "-attenuation", "-freshness"):
+    base = f"target/formal/receipt-trace/runtime-negative{slug}"
+    trace_generated.extend(
+        [
+            f"{base}.ndjson",
+            f"{base}.itf.json",
+            f"{base}-witness.itf.json",
+            f"{base}-report.json",
+            f"{base}.log",
+        ]
+    )
+
+for raw_path in trace_generated:
+    path = Path(raw_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.name != "bindings.json":
+        path.write_text("proof-report trace fixture\n", encoding="utf-8")
+
+invariants = [
+    "NoAllowAfterRevoke",
+    "MonotoneLog",
+    "AttenuationPreserving",
+    "RevocationFreshness",
+]
+checker_binary = (tmp_dir / "bin" / "apalache-mc").resolve()
+timeout_binary = (tmp_dir / "bin" / "lean").resolve()
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+trace_report = {
+    "schema": "chio.trace-validation.v2",
+    "status": "passed",
+    "spec": "formal/tla/RevocationPropagation.tla",
+    "traceId": "proof-report-fixture",
+    "traceLength": 3,
+    "itfStateCount": 5,
+    "invariants": invariants,
+    "actionCoverage": {
+        "revoke": 1,
+        "evaluate": 2,
+        "postRevocationEvaluate": 1,
+    },
+    "invariantWitnesses": {
+        "allowReceipt": 1,
+        "orderedReceiptPair": 1,
+        "attenuatedAdmission": 1,
+        "nonzeroRevocationEpoch": 1,
+    },
+    "checker": "Apalache 0.50.1 fixture",
+    "checkerBinarySha256": sha256(checker_binary),
+    "timeoutBinarySha256": sha256(timeout_binary),
+}
+trace_report_path = Path("target/formal/trace-validation.json")
+trace_report_path.write_text(json.dumps(trace_report) + "\n", encoding="utf-8")
+
+negative_reports = {
+    "NoAllowAfterRevoke": "target/formal/receipt-trace/runtime-negative-report.json",
+    "MonotoneLog": "target/formal/receipt-trace/runtime-negative-monotone-report.json",
+    "AttenuationPreserving": "target/formal/receipt-trace/runtime-negative-attenuation-report.json",
+    "RevocationFreshness": "target/formal/receipt-trace/runtime-negative-freshness-report.json",
+}
+for invariant, raw_path in negative_reports.items():
+    report = {
+        "schema": "chio.trace-validation.v2",
+        "status": "failed",
+        "divergence": {
+            "failedConjunct": invariant,
+            "apalacheEvaluation": {name: name != invariant for name in invariants},
+        },
+    }
+    Path(raw_path).write_text(json.dumps(report) + "\n", encoding="utf-8")
+
+bound_paths = [
+    path
+    for path in trace_generated
+    if path != "target/formal/receipt-trace/bindings.json"
+]
+bound_paths.extend(
+    [
+        "formal/tla/RevocationPropagation.tla",
+        "formal/tla/trace/TraceCheckRevocationPropagation.tla",
+        "formal/tla/trace/TraceEvaluateRevocationPropagation.tla",
+        "formal/tla/trace/fixtures/native-conformance-observer-key.txt",
+        "formal/tla/trace/negative-registry.toml",
+    ]
+)
+artifact_paths = {"report": "target/formal/trace-validation.json"}
+for index, raw_path in enumerate(bound_paths):
+    if raw_path != "target/formal/trace-validation.json":
+        artifact_paths[f"artifact{index:02d}"] = raw_path
+artifact_paths["checkerBinary"] = str(checker_binary)
+artifact_paths["timeoutBinary"] = str(timeout_binary)
+artifact_hashes = {
+    name: sha256(Path(raw_path)) for name, raw_path in artifact_paths.items()
+}
+bindings = {
+    "schema": "chio.trace-artifact-bindings.v1",
+    "status": "passed",
+    "artifactPaths": artifact_paths,
+    "artifactHashes": artifact_hashes,
+}
+Path("target/formal/receipt-trace/bindings.json").write_text(
+    json.dumps(bindings) + "\n", encoding="utf-8"
+)
+PY
+
 strict_fixture="${tmp_dir}/strict-structural-fixture.json"
 python3 - "${report}" "${strict_fixture}" <<'PY'
 import hashlib
@@ -320,16 +481,62 @@ report["mode"] = "strict"
 for result in report["gateResults"]:
     result["status"] = "passed"
     result["exitCode"] = 0
-for path in (
+generated_paths = [
     "target/formal/aeneas-production/llbc/formal_aeneas.llbc",
     "target/formal/aeneas-production/lean/Funs.lean",
     "target/formal/aeneas-production/lean/Types.lean",
     "target/formal/aeneas-production/equivalence-artifacts.json",
     "target/formal/aeneas-production/negative-tests.json",
-):
+    "target/formal/trace-validation.json",
+    "target/formal/receipt-trace/bindings.json",
+    "target/formal/receipt-trace/conformance.ndjson",
+    "target/formal/receipt-trace/conformance.itf.json",
+    "target/formal/receipt-trace/conformance-witness.itf.json",
+    "target/formal/receipt-trace/conformance-observer-key.txt",
+    "target/formal/receipt-trace/native-results.json",
+    "target/formal/receipt-trace/native-report.md",
+    "target/formal/receipt-trace/fixture-http.log",
+    "target/formal/receipt-trace/fixture-good.itf.json",
+    "target/formal/receipt-trace/fixture-good-witness.itf.json",
+    "target/formal/receipt-trace/fixture-good-report.json",
+    "target/formal/receipt-trace/fixture-bad.itf.json",
+    "target/formal/receipt-trace/fixture-bad-witness.itf.json",
+    "target/formal/receipt-trace/fixture-bad-report.json",
+    "target/formal/receipt-trace/fixture-bad.log",
+]
+for slug in ("", "-monotone", "-attenuation", "-freshness"):
+    base = f"target/formal/receipt-trace/runtime-negative{slug}"
+    generated_paths.extend(
+        [
+            f"{base}.ndjson",
+            f"{base}.itf.json",
+            f"{base}-witness.itf.json",
+            f"{base}-report.json",
+            f"{base}.log",
+        ]
+    )
+for path in generated_paths:
     report["artifactHashes"]["generated"][path] = hashlib.sha256(
         Path(path).read_bytes()
     ).hexdigest()
+trace_report = json.loads(Path("target/formal/trace-validation.json").read_text())
+report["traceValidation"] = {
+    "result": "passed",
+    "schema": trace_report["schema"],
+    "spec": trace_report.get("spec"),
+    "traceId": trace_report.get("traceId"),
+    "traceLength": trace_report.get("traceLength"),
+    "itfStateCount": trace_report.get("itfStateCount"),
+    "invariants": trace_report["invariants"],
+    "actionCoverage": trace_report["actionCoverage"],
+    "invariantWitnesses": trace_report["invariantWitnesses"],
+    "checker": trace_report.get("checker"),
+    "checkerBinarySha256": trace_report.get("checkerBinarySha256"),
+    "timeoutBinarySha256": trace_report.get("timeoutBinarySha256"),
+    "reportPath": "target/formal/trace-validation.json",
+    "bindingsPath": "target/formal/receipt-trace/bindings.json",
+    "negativeRegistryPath": "formal/tla/trace/negative-registry.toml",
+}
 destination.write_text(json.dumps(report), encoding="utf-8")
 PY
 CHIO_PROOF_REPORT_PATH="${strict_fixture}" \

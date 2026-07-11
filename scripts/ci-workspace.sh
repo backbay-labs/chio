@@ -15,6 +15,7 @@ python3 scripts/check-architecture-docs.py
 ./scripts/check-aeneas-equivalence.sh
 ./scripts/check-rust-verification-gates.sh
 bash scripts/tests/check-creusot-contract-sync.test.sh
+bash scripts/tests/check-receipt-trace-bindings.test.sh
 ./scripts/check-adapter-no-bypass.sh
 ./scripts/check-portable-kernel.sh
 ./scripts/generate-proof-report.sh

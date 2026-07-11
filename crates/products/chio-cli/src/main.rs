@@ -106,6 +106,7 @@ pub(crate) use types_cli::{
     TrustEvidenceShareCommands, TrustExposureLedgerCommands, TrustFederationPolicyCommands,
     TrustLiabilityMarketCommands, TrustLiabilityProviderCommands, TrustProviderCommands,
     TrustProviderRiskPackageCommands, TrustRuntimeAttestationAppraisalCommands,
+    TrustTraceSpec,
     TrustUnderwritingAppealCommands, TrustUnderwritingDecisionCommands,
     TrustUnderwritingInputCommands, WorkflowCommands,
 };
@@ -178,7 +179,7 @@ pub(crate) use trust_commands_cli::{
     cmd_trust_liability_provider_list, cmd_trust_liability_provider_resolve,
     cmd_trust_liability_quote_request_issue, cmd_trust_liability_quote_response_issue,
     cmd_trust_provider_risk_package_export, cmd_trust_runtime_attestation_appraisal_export,
-    cmd_trust_runtime_attestation_appraisal_import,
+    cmd_trust_runtime_attestation_appraisal_import, cmd_trust_trace_verify,
     cmd_trust_runtime_attestation_appraisal_result_export, cmd_trust_underwriting_appeal_create,
     cmd_trust_underwriting_appeal_resolve, cmd_trust_underwriting_decision_evaluate,
     cmd_trust_underwriting_decision_issue, cmd_trust_underwriting_decision_list,

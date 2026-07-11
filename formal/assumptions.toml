@@ -13,6 +13,7 @@ required_assumption_ids = [
   "ASSUME-EXTERNAL-REGISTRIES",
   "ASSUME-SUBPROCESS-ISOLATION",
   "ASSUME-CHAIN-FINALITY",
+  "ASSUME-TRACE-OBSERVER",
 ]
 
 assumptions = [
@@ -26,6 +27,7 @@ assumptions = [
   "ASSUME-EXTERNAL-REGISTRIES|audited_service|Hosted package, certification, DID, and registry services are assumed to return state they have durably accepted or else fail closed.|P9,P10",
   "ASSUME-SUBPROCESS-ISOLATION|audited_platform|Tool-server subprocess isolation and OS process boundaries are assumed for effects outside the pure kernel decision core.|P3,P6",
   "ASSUME-CHAIN-FINALITY|audited_external|External chain and oracle finality are assumed only after the configured confirmation/finality policy accepts the evidence.|P4,P7",
+  "ASSUME-TRACE-OBSERVER|audited_observability|An installed synchronous runtime trace observer is assumed to receive exactly once and in callback order every successful revocation commit, completed tool-call revocation admission, and receipt append before finalization. The recorder runs without calibration mutations and callback fields are not rewritten before recording. Detectable omissions, duplicates, inconsistent kernel depth limits, and ambiguous admission-to-receipt joins fail closed; this assumption does not assert that any observed kernel decision is safe.|P2,P4,P10",
 ]
 
 # Retiring an assumption requires named model evidence and a concrete

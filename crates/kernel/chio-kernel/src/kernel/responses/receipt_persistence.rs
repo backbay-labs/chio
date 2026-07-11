@@ -206,6 +206,9 @@ impl ChioKernel {
                 }
             }
             self.append_chio_receipt_to_local_log(receipt.clone());
+            self.observe_runtime_trace(RuntimeTraceEvent::ReceiptAppended {
+                receipt: Box::new(receipt.clone()),
+            });
         }
         let _settlement_status = self.run_settlement_observer(receipt);
         Ok(())

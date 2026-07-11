@@ -2882,6 +2882,7 @@ dependencies = [
  "chio-tee-frame",
  "chio-test-support",
  "chio-tool-call-fabric",
+ "chio-trace-validate",
  "chio-underwriting",
  "chio-wasm-guards",
  "chio-web3",
@@ -3005,6 +3006,7 @@ dependencies = [
  "chio-store-sqlite",
  "chio-swarm-authority",
  "chio-tee-frame",
+ "chio-trace-validate",
  "chio-wasm-guards",
  "chio-weights",
  "chio-workflow",
@@ -4501,6 +4503,20 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "chio-trace-validate"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-kernel",
+ "clap 4.6.0",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

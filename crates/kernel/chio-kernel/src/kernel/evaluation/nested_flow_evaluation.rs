@@ -109,7 +109,7 @@ impl ChioKernel {
             return self.build_deny_response(request, &msg, now, None);
         }
 
-        if let Err(e) = self.check_revocation(cap) {
+        if let Err(e) = self.check_tool_call_revocation_admission(request) {
             let msg = e.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
             return self.build_deny_response(request, &msg, now, None);

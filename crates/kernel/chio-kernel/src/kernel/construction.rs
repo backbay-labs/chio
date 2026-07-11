@@ -192,6 +192,7 @@ impl ChioKernel {
             payment_adapter: None,
             price_oracle: None,
             runtime_admission_hook: None,
+            runtime_trace_observer: None,
             attestation_trust_policy: None,
             capability_crypto_floor: KernelCryptoFloor::AllowClassical,
             checkpoint_batch_size,
@@ -1182,6 +1183,16 @@ impl ChioKernel {
     /// Remove the product-specific runtime admission hook.
     pub fn clear_runtime_admission_hook(&mut self) {
         self.runtime_admission_hook = None;
+    }
+
+    /// Install an observer for implementation-trace evidence.
+    pub fn set_runtime_trace_observer(&mut self, observer: Arc<dyn RuntimeTraceObserver>) {
+        self.runtime_trace_observer = Some(observer);
+    }
+
+    /// Remove the implementation-trace observer.
+    pub fn clear_runtime_trace_observer(&mut self) {
+        self.runtime_trace_observer = None;
     }
 
     /// Register a tool server connection.

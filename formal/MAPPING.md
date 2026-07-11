@@ -92,6 +92,25 @@ Lean cross-references (informational; the script does not enforce these):
   `kernel/ledger_audit.rs` plus `tests/property_reservation_ledger.rs`.
   Scalar admission is linked; production ledger linkage is not established.
 
+## Trace validation
+
+The trace lane consumes callbacks emitted synchronously by the real kernel at
+successful revocation commit, completed revocation admission, and receipt
+append boundaries. `RuntimeTraceRecorder` joins admission and append events by
+the signed request ID, accounts for every callback exactly once, derives the
+trace ID from canonical captured events plus caller context, and signs only a
+complete stream with a caller-pinned observer key. The authority key inside an
+envelope must match every projected receipt's kernel key. The generated full
+state ITF is the sole state source for both deterministic Apalache `check`
+evaluation and bounded prefix reachability. `ASSUME-TRACE-OBSERVER` remains the explicit
+boundary for callbacks omitted, reordered, or rewritten before the recorder
+can observe them and for mutation-free recorder deployment.
+
+| Property | Source | Rust path constrained | Assumption discharge | One-line description |
+| --- | --- | --- | --- | --- |
+| `TraceNotAccepted` | `formal/tla/trace/TraceCheckRevocationPropagation.tla` | `crates/kernel/chio-kernel/src/runtime_trace.rs`, `crates/kernel/chio-kernel/src/kernel/validation.rs`, `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs`, `crates/kernel/chio-kernel/src/kernel/evaluation/nested_flow_evaluation.rs`, `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs`, `crates/tooling/chio-trace-validate/src/capture.rs`, `crates/tooling/chio-trace-validate/src/decode.rs`, `crates/tooling/chio-trace-validate/src/itf.rs`, `crates/tooling/chio-trace-validate/src/map/revocation.rs`, `crates/tooling/chio-conformance/src/native_suite.rs`, `crates/tooling/chio-conformance/tests/runtime_trace_corpus.rs` | `formal/assumptions.toml` ASSUME-TRACE-OBSERVER, ASSUME-ED25519, and ASSUME-SHA256 remain audited boundaries | A complete callback-accounted, canonical, signed runtime trace has every observed prefix bounded-reachable through the production transition relation. |
+| `TraceEvaluationIncomplete` | `formal/tla/trace/TraceEvaluateRevocationPropagation.tla` | `crates/tooling/chio-trace-validate/src/apalache.rs`, `crates/tooling/chio-trace-validate/src/itf.rs`, `crates/tooling/chio-trace-validate/src/report.rs`, `formal/tla/trace/negative-registry.toml`, `scripts/check-receipt-trace-negative-registry.py` | `formal/assumptions.toml` ASSUME-TRACE-OBSERVER for callback completeness; no kernel-safety result is assumed | Pinned Apalache `check` deterministically replays the full-state ITF, evaluates all four invariants and witness classes, and rejects one registered real-runtime calibration per invariant. |
+
 ## Apalache named invariants (kernel-state subset)
 
 Source directory: `formal/apalache/`. These rows are the focused kernel-state

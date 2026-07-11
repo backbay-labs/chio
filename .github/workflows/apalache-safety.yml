@@ -8,20 +8,31 @@ on:
     paths:
       - "formal/apalache/**"
       - "formal/tla/**"
+      - "crates/tooling/chio-trace-validate/**"
+      - "scripts/check-receipt-trace.sh"
+      - "scripts/check-receipt-trace-bindings.py"
+      - "scripts/check-receipt-trace-negative-registry.py"
+      - "scripts/tests/check-receipt-trace-bindings.test.sh"
       - "formal/MAPPING.md"
       - "formal/proof-manifest.toml"
       - "crates/kernel/chio-kernel-core/src/evaluate.rs"
       - "crates/kernel/chio-kernel-core/src/revocation_view.rs"
       - "crates/kernel/chio-kernel/src/budget_store.rs"
+      - "crates/kernel/chio-kernel/src/runtime_trace.rs"
+      - "crates/kernel/chio-kernel/src/kernel/construction.rs"
       - "crates/kernel/chio-kernel/src/receipt_store.rs"
       - "crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs"
       - "crates/kernel/chio-kernel/src/kernel/dispatch.rs"
       - "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs"
       - "crates/kernel/chio-kernel/src/kernel/evaluation/nested_flow_evaluation.rs"
       - "crates/kernel/chio-kernel/src/kernel/responses/finalization.rs"
+      - "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs"
       - "crates/kernel/chio-kernel/src/kernel/validation.rs"
       - "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs"
       - "crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs"
+      - "crates/tooling/chio-conformance/src/native_suite.rs"
+      - "crates/tooling/chio-conformance/src/bin/chio_native_conformance_runner.rs"
+      - "crates/tooling/chio-conformance/tests/runtime_trace_corpus.rs"
       - "scripts/check-apalache-formal-slice.py"
       - "scripts/check-apalache-negative.sh"
       - "scripts/lib/apalache_evidence.py"
@@ -75,6 +86,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/check-apalache-formal-slice.py
+
+      - name: Receipt trace binding contract checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/tests/check-receipt-trace-bindings.test.sh
 
       - name: Apalache safety checks
         shell: bash

@@ -1,0 +1,36 @@
+schema = "chio.runtime-trace-negative.v1"
+
+[[case]]
+id = "revocation-visibility-bypass"
+source = "kernel-runtime"
+fault = "revocation store reports a committed revoke but hides it at admission"
+expected_rejection = "NoAllowAfterRevoke"
+gate = "./scripts/check-receipt-trace.sh"
+
+[[case]]
+id = "duplicate-receipt-time"
+source = "kernel-runtime-observer-mutation"
+fault = "the observer maps the second real receipt append to the first receipt time"
+expected_rejection = "MonotoneLog"
+gate = "./scripts/check-receipt-trace.sh"
+
+[[case]]
+id = "delegation-depth-above-limit"
+source = "kernel-runtime-observer-mutation"
+fault = "the observer maps a real admitted delegation above the signed kernel depth limit"
+expected_rejection = "AttenuationPreserving"
+gate = "./scripts/check-receipt-trace.sh"
+
+[[case]]
+id = "future-revocation-epoch"
+source = "kernel-runtime-observer-mutation"
+fault = "the observer maps a real committed revocation to an epoch beyond the model clock"
+expected_rejection = "RevocationFreshness"
+gate = "./scripts/check-receipt-trace.sh"
+
+[[case]]
+id = "dropped-admission-callback"
+source = "kernel-runtime"
+fault = "the observer drops a real admission callback before the receipt append"
+expected_rejection = "runtime callback completeness"
+gate = "cargo test -p chio-conformance --lib runtime_trace_refuses_a_dropped_admission_callback"

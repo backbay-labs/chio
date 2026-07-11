@@ -148,6 +148,7 @@ pub struct ChioKernel {
     pub(super) payment_adapter: Option<Box<dyn PaymentAdapter>>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
     pub(super) runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,
+    pub(super) runtime_trace_observer: Option<Arc<dyn RuntimeTraceObserver>>,
     pub(super) attestation_trust_policy: Option<AttestationTrustPolicy>,
     pub(super) capability_crypto_floor: KernelCryptoFloor,
     /// How many receipts per Merkle checkpoint batch. Default: 100.

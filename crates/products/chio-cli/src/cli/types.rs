@@ -257,6 +257,36 @@ mod cli_env_tests {
 
         restore_env("CHIO_GUARD_REGISTRY_PASSWORD", prior);
     }
+
+    #[test]
+    fn trust_trace_verify_requires_an_explicit_trusted_key() {
+        let missing_key = parse_cli(["chio", "trust", "trace-verify", "--log", "receipts.ndjson"]);
+        assert!(missing_key.is_err());
+
+        let parsed = parse_cli([
+            "chio",
+            "trust",
+            "trace-verify",
+            "--log",
+            "receipts.ndjson",
+            "--trusted-key",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ])
+        .unwrap_or_else(|error| panic!("CLI parse failed: {error}"));
+
+        match parsed.command {
+            Commands::Trust {
+                command:
+                    TrustCommands::TraceVerify {
+                        log, trusted_keys, ..
+                    },
+            } => {
+                assert_eq!(log, PathBuf::from("receipts.ndjson"));
+                assert_eq!(trusted_keys.len(), 1);
+            }
+            _ => panic!("expected trust trace-verify command"),
+        }
+    }
 }
 
 #[derive(Subcommand)]

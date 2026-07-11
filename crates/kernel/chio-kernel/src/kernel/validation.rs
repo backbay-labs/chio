@@ -49,8 +49,15 @@ impl ChioKernel {
     /// revocation store).
     pub fn revoke_capability(&self, capability_id: &CapabilityId) -> Result<(), KernelError> {
         info!(capability_id = %capability_id, "revoking capability");
-        let _ = self.with_revocation_store(|store| Ok(store.revoke(capability_id)?))?;
-        Ok(())
+        self.with_revocation_store(|store| {
+            let newly_revoked = store.revoke(capability_id)?;
+            self.observe_runtime_trace(RuntimeTraceEvent::RevocationCommitted {
+                capability_id: capability_id.clone(),
+                newly_revoked,
+                delegation_depth_limit: self.config.max_delegation_depth,
+            });
+            Ok(())
+        })
     }
 
     /// Read-only access to the receipt log.
@@ -504,6 +511,28 @@ impl ChioKernel {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn check_tool_call_revocation_admission(
+        &self,
+        request: &ToolCallRequest,
+    ) -> Result<(), KernelError> {
+        let result = self.check_revocation(&request.capability);
+        self.observe_runtime_trace(RuntimeTraceEvent::RevocationAdmission {
+            request_id: request.request_id.clone(),
+            capability_id: request.capability.id.clone(),
+            delegation_depth: u32::try_from(request.capability.delegation_chain.len())
+                .unwrap_or(u32::MAX),
+            delegation_depth_limit: self.config.max_delegation_depth,
+            admitted: result.is_ok(),
+        });
+        result
+    }
+
+    pub(crate) fn observe_runtime_trace(&self, event: RuntimeTraceEvent) {
+        if let Some(observer) = &self.runtime_trace_observer {
+            observer.observe(event);
+        }
     }
 
     pub(crate) fn validate_delegation_admission(

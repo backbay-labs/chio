@@ -49,6 +49,7 @@ gate_commands = [
   "./scripts/check-adapter-no-bypass.sh",
   "cargo test -p chio-formal-diff-tests",
   "./scripts/check-portable-kernel.sh",
+  "./scripts/check-receipt-trace.sh",
   "./scripts/check-proof-report.sh",
 ]
 
@@ -184,6 +185,7 @@ excluded_surfaces = [
   "Reservation-ledger refinement from the pure ledger_apply model to concrete BudgetStore mutations; runtime debug replay and stateful tests are evidence, not a proof of refinement",
   "Symlink resolution and OS filesystem root enforcement beyond Chio's normalized path-prefix fail-closed checks",
   "Cross-row receipt and budget crash recovery, ordering, and conservation until implementation trace validation and crash-reopen gates establish refinement",
+  "Runtime trace callbacks omitted, reordered, or rewritten before delivery to the installed synchronous observer and calibration-free recorder deployment, as recorded by ASSUME-TRACE-OBSERVER",
 ]
 
 notes = [
@@ -194,6 +196,7 @@ notes = [
   "Creusot and Kani are required strict-CI lanes for production implementation linkage; public Kani harnesses target verify_capability, NormalizedScope::is_subset_of, resolve_matching_grants, evaluate, sign_receipt, and the shared budget and revocation admission projections.",
   "Aeneas production extraction pairs every decision-core and reservation-ledger function with a generated Lean equivalence theorem. The ledger theorem reaches the bounded transition model; concrete runtime store linkage remains outside that theorem.",
   "The post-admission drop lifecycle is model-checked at two invocations and one buffered child per invocation. Its evidence requires both a positive NoError result and every paired negative mutation producing a registered ITF counterexample.",
+  "RevocationPropagation is checked nightly against callback-complete, canonical, signed traces captured at real kernel revocation commit, revocation admission, and receipt append boundaries. The full-state ITF is the sole state input, Apalache evaluates four non-vacuous invariant witnesses, every invariant has a registered real-runtime negative calibration, and ASSUME-TRACE-OBSERVER remains the explicit callback-completeness boundary.",
   "Release-facing formal claims must name this manifest, the theorem inventory, and the audited assumptions.",
   "ReceiptBeforeAllow proves the abstract persist-before-publish ordering and its production replay exercises the native happy path. It does not discharge concrete cross-row crash recovery, which remains excluded until implementation trace validation and crash-reopen conservation gates establish refinement.",
   "Manual Rust-to-model hashes are enforced by cargo xtask check formal-mirrors; transliteration and abstraction-anchor records require review, but matching hashes do not prove semantic equivalence or modeled properties.",

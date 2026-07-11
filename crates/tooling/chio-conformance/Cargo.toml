@@ -67,12 +67,16 @@ public_entrypoint = true
 [dependencies]
 chio-core = { package = "chio-core-types", version = "0.1.0", path = "../../core/chio-core-types" }
 chio-kernel = { workspace = true }
+chio-trace-validate = { workspace = true }
+chio-store-sqlite = { workspace = true }
+async-trait = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 toml = "0.8"
 reqwest = { workspace = true, features = ["blocking", "form", "query", "rustls"] }
 tiny_http = "0.12"
+tempfile = { workspace = true }
 chio-selective-disclosure = { path = "../../trust/chio-selective-disclosure", default-features = false, optional = true }
 chio-workflow = { workspace = true, optional = true }
 
@@ -171,9 +175,7 @@ async-trait = "0.1"
 p256 = { version = "0.13", default-features = false, features = ["ecdsa", "pem"] }
 rand = { workspace = true }
 proptest = { workspace = true }
-chio-store-sqlite = { workspace = true }
 rusqlite = { workspace = true }
-tempfile = { workspace = true }
 # Registry-consumed smoke test pulls in the six edges plus
 # chio-wasm-guards so it can drive each emission boundary directly.
 chio-mcp-edge = { workspace = true }
