@@ -47,6 +47,7 @@ chio-federation = { workspace = true }
 chio-federation-transport-iroh = { workspace = true }
 iroh = { version = "1.0", default-features = false, features = ["tls-ring"] }
 chio-hosted-mcp = { workspace = true }
+chio-http-serve = { workspace = true }
 chio-kernel = { workspace = true }
 chio-guards = { workspace = true }
 chio-guard-registry = { workspace = true, features = ["marketplace"] }

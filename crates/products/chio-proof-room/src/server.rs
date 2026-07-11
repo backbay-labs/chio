@@ -14,6 +14,10 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use chio_http_serve::{
+    apply_server_hygiene, run_until_drained, MaxConnListener, ServeError, ServeHygieneConfig,
+    ShutdownController,
+};
 use tower_http::services::{ServeDir, ServeFile};
 
 use super::{
@@ -57,9 +61,33 @@ pub async fn serve_proof_room(config: ProofRoomServeConfig) -> Result<(), ProofR
         })?;
     let router =
         proof_room_router_with_fixture_root(config.bundle, config.ui_dir, config.fixture_root)?;
-    axum::serve(listener, router)
-        .await
-        .map_err(ProofRoomError::Serve)
+
+    // Proof-room keeps a 32 MiB upload limit on one route, so the global body
+    // cap stays off; everything else takes the conservative defaults.
+    let hygiene = ServeHygieneConfig::default();
+    let router = apply_server_hygiene(router, &hygiene);
+    let controller = ShutdownController::install();
+    let listener = MaxConnListener::new(listener, hygiene.max_connections.unwrap_or(usize::MAX));
+    let server = axum::serve(listener, router).with_graceful_shutdown(controller.signalled());
+
+    // The proof-room server serves static bundle assets read-only, so there is
+    // no receipt store to flush after the drain.
+    run_until_drained(
+        server,
+        controller.subscribe(),
+        hygiene.drain_timeout,
+        async { Ok::<(), String>(()) },
+    )
+    .await
+    .map(|_outcome| ())
+    .map_err(proof_room_serve_error)
+}
+
+fn proof_room_serve_error(error: ServeError) -> ProofRoomError {
+    match error {
+        ServeError::Io(source) => ProofRoomError::Serve(source),
+        ServeError::Flush(message) => ProofRoomError::Serve(std::io::Error::other(message)),
+    }
 }
 
 fn verify_proof_room_ui_dir(ui_dir: &Path) -> Result<(), ProofRoomError> {

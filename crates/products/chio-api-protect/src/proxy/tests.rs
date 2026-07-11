@@ -140,6 +140,37 @@ impl MockUpstreamServer {
         })
     }
 
+    /// Accept one connection and read the request, then hold the socket open
+    /// without responding so a client with a request timeout must give up on its
+    /// own. Stands in for an upstream that received the request but stalls.
+    fn spawn_unresponsive() -> Option<Self> {
+        let listener = Self::bind_mock_upstream_listener()?;
+        let address = listener.local_addr().test_unwrap();
+        let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let request_log = Arc::clone(&requests);
+        let handle = thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let request = read_http_request(&mut stream);
+                request_log.lock().test_unwrap().push(request);
+                // Never write a response. Block reading until the client gives up
+                // and closes the connection, modeling an upstream that stalls
+                // indefinitely rather than sleeping a fixed interval: the caller's
+                // request timeout must be what ends the hop.
+                let mut sink = [0_u8; 256];
+                while let Ok(read) = stream.read(&mut sink) {
+                    if read == 0 {
+                        break;
+                    }
+                }
+            }
+        });
+        Some(Self {
+            base_url: format!("http://{}", address),
+            requests,
+            handle,
+        })
+    }
+
     fn base_url(&self) -> String {
         self.base_url.clone()
     }
@@ -215,6 +246,50 @@ fn test_state_with_receipt_db(
     })
 }
 
+/// Build proxy state whose upstream client aborts a hop after `timeout`, so a
+/// stalled upstream surfaces inside the handler instead of hanging.
+fn test_state_with_client_timeout(
+    routes: Vec<RouteEntry>,
+    upstream: String,
+    timeout: std::time::Duration,
+) -> Arc<ProxyState> {
+    let keypair = Keypair::generate();
+    let approval_store: Arc<dyn ApprovalStore> = Arc::new(InMemoryApprovalStore::new());
+    let signer_public_key = keypair.public_key();
+    let trusted_capability_issuers = vec![signer_public_key.clone()];
+    let trusted_receipt_signers = vec![signer_public_key];
+    let evaluator = RequestEvaluator::new_with_approval_store(
+        routes,
+        keypair.clone(),
+        "test-policy".to_string(),
+        Arc::clone(&approval_store),
+    );
+    let egress_contract = default_upstream_egress_contract(&upstream).test_unwrap();
+    let http_client = client_builder_with_contract(&egress_contract)
+        .timeout(timeout)
+        .build()
+        .test_unwrap();
+    Arc::new(ProxyState {
+        evaluator,
+        signer_keypair: keypair,
+        upstream,
+        http_client,
+        egress_contract,
+        approval_admin: ApprovalAdmin::new(approval_store),
+        receipt_log: Mutex::new(ReceiptLog {
+            receipts: Vec::new(),
+        }),
+        tool_receipt_log: Mutex::new(ToolReceiptLog {
+            receipts: Vec::new(),
+        }),
+        receipt_store: None,
+        revoked_capability_ids: Mutex::new(HashSet::new()),
+        trusted_capability_issuers,
+        trusted_receipt_signers,
+        sidecar_control_token: None,
+    })
+}
+
 fn pending_approval_request(approval_id: &str) -> (ApprovalRequest, Keypair, Keypair) {
     let request_subject = Keypair::generate();
     let approver = Keypair::generate();
@@ -269,7 +344,12 @@ fn temp_receipt_db_path() -> String {
 }
 
 fn with_peer_addr(mut request: Request<Body>, peer: SocketAddr) -> Request<Body> {
-    request.extensions_mut().insert(ConnectInfo(peer));
+    // The capped serve listener exposes the peer address as `CappedPeerAddr`, so
+    // the sidecar-control checks read `ConnectInfo<CappedPeerAddr>`; mirror that
+    // extension type here rather than the bare `SocketAddr`.
+    request
+        .extensions_mut()
+        .insert(ConnectInfo(CappedPeerAddr(peer)));
     request
 }
 
@@ -1151,6 +1231,54 @@ async fn proxy_handler_surfaces_upstream_failures_after_allowing_request() {
         http_status_scope(log.receipts[0].metadata.as_ref()),
         Some(CHIO_HTTP_STATUS_SCOPE_FINAL)
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn proxy_handler_records_receipt_when_upstream_times_out() {
+    // An allowed request whose upstream accepts the connection but never responds
+    // must still finalize a receipt. The per-hop client timeout fires inside the
+    // handler, so the stall is recorded as a bad-gateway receipt rather than
+    // leaving the handler parked for an outer timeout to drop mid-flight.
+    let Some(server) = MockUpstreamServer::spawn_unresponsive() else {
+        return;
+    };
+    let state = test_state_with_client_timeout(
+        vec![RouteEntry {
+            pattern: "/pets".to_string(),
+            method: HttpMethod::Get,
+            operation_id: Some("listPets".to_string()),
+            policy: PolicyDecision::SessionAllow,
+        }],
+        server.base_url(),
+        std::time::Duration::from_millis(150),
+    );
+    let request = Request::builder()
+        .method("GET")
+        .uri("/pets")
+        .body(Body::empty())
+        .test_unwrap();
+
+    // The handler must return on its own once the upstream call times out; the
+    // outer guard only trips (failing the test) if it never does.
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        proxy_handler(State(Arc::clone(&state)), request),
+    )
+    .await
+    .test_unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let receipt_id = response
+        .headers()
+        .get("x-chio-receipt-id")
+        .and_then(|value| value.to_str().ok())
+        .test_unwrap()
+        .to_string();
+
+    let log = state.receipt_log.lock().await;
+    assert_eq!(log.receipts.len(), 1);
+    assert_eq!(log.receipts[0].id, receipt_id);
+    assert_eq!(log.receipts[0].response_status, 502);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -234,10 +234,24 @@ pub(crate) async fn handle_internal_lineage_delta(
     .into_response()
 }
 
-pub(crate) async fn run_cluster_sync_loop(state: TrustServiceState) {
+pub(crate) async fn run_cluster_sync_loop(
+    state: TrustServiceState,
+    mut shutdown: tokio::sync::watch::Receiver<bool>,
+) {
     loop {
+        if *shutdown.borrow_and_update() {
+            return;
+        }
         let sync_state = state.clone();
-        match tokio::task::spawn_blocking(move || sync_cluster_once(&sync_state)).await {
+        // Hand the blocking round its own view of the shutdown watch so it can
+        // stop between peers: a round visits peers serially with each peer call
+        // bounded by CONTROL_HTTP_TIMEOUT, so a stop signal that lands mid-round
+        // must not force the loop to wait out every remaining peer before it can
+        // exit and let the process finish within the platform stop window.
+        let round_shutdown = shutdown.clone();
+        match tokio::task::spawn_blocking(move || sync_cluster_once(&sync_state, &round_shutdown))
+            .await
+        {
             Ok(Ok(())) => {}
             Ok(Err(error)) => {
                 warn!(error = %error, "trust-control cluster sync failed");
@@ -251,15 +265,22 @@ pub(crate) async fn run_cluster_sync_loop(state: TrustServiceState) {
         }
         // The loop is the sole sync driver: race the inter-round sleep against a
         // writer kick so a waiting budget write is served promptly without
-        // spawning its own sync storm.
+        // spawning its own sync storm, and against the shutdown signal so the
+        // loop stops promptly during a drain rather than after a full interval.
         match state.cluster_progress.as_ref() {
             Some(progress) => {
                 tokio::select! {
                     _ = tokio::time::sleep(state.config.cluster_sync_interval) => {}
                     _ = progress.awaited_kick() => {}
+                    _ = shutdown.changed() => {}
                 }
             }
-            None => tokio::time::sleep(state.config.cluster_sync_interval).await,
+            None => {
+                tokio::select! {
+                    _ = tokio::time::sleep(state.config.cluster_sync_interval) => {}
+                    _ = shutdown.changed() => {}
+                }
+            }
         }
     }
 }
@@ -273,7 +294,10 @@ pub(crate) fn notify_cluster_progress(state: &TrustServiceState) {
     }
 }
 
-pub(crate) fn sync_cluster_once(state: &TrustServiceState) -> Result<(), CliError> {
+pub(crate) fn sync_cluster_once(
+    state: &TrustServiceState,
+    shutdown: &tokio::sync::watch::Receiver<bool>,
+) -> Result<(), CliError> {
     let Some(cluster) = state.cluster.as_ref() else {
         return Ok(());
     };
@@ -286,10 +310,30 @@ pub(crate) fn sync_cluster_once(state: &TrustServiceState) -> Result<(), CliErro
             .cloned()
             .collect::<Vec<_>>(),
     };
-    for peer_url in peers {
-        let _ = sync_peer(state, &peer_url);
-    }
+    visit_peers_until_shutdown(&peers, shutdown, |peer_url| {
+        let _ = sync_peer(state, peer_url);
+    });
     Ok(())
+}
+
+/// Visit `peers` in order, stopping before the next peer once `shutdown` is
+/// observed. The in-progress visit still completes (a blocking peer call cannot
+/// be interrupted mid-flight), but no further peers are started, so a stop signal
+/// that lands mid-round bounds the remaining work to a single peer's HTTP timeout
+/// instead of the whole peer list.
+fn visit_peers_until_shutdown<F>(
+    peers: &[String],
+    shutdown: &tokio::sync::watch::Receiver<bool>,
+    mut visit: F,
+) where
+    F: FnMut(&str),
+{
+    for peer_url in peers {
+        if *shutdown.borrow() {
+            break;
+        }
+        visit(peer_url);
+    }
 }
 
 fn sync_peer(state: &TrustServiceState, peer_url: &str) -> Result<(), CliError> {
@@ -1540,6 +1584,33 @@ mod capability_revocation_lag_tests {
 mod deltas_tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn peer_round_stops_visiting_when_shutdown_fires_midround() {
+        // A stop signal that lands while a sync round is partway through its peers
+        // must halt the round at the current peer rather than dialing every
+        // remaining peer (each up to CONTROL_HTTP_TIMEOUT) before the loop can
+        // observe shutdown and exit.
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        let peers = vec![
+            "a".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+            "d".to_string(),
+        ];
+        let mut visited = Vec::new();
+        visit_peers_until_shutdown(&peers, &rx, |peer_url| {
+            visited.push(peer_url.to_string());
+            if visited.len() == 2 {
+                let _ = tx.send(true);
+            }
+        });
+        assert_eq!(
+            visited,
+            vec!["a".to_string(), "b".to_string()],
+            "the round must stop at the peer where shutdown fired, not finish the peer list"
+        );
+    }
 
     #[test]
     fn budget_pull_is_prioritized_first() {

@@ -6,6 +6,25 @@ use super::super::cluster::{
     handle_internal_tool_receipts_delta,
 };
 use super::super::*;
+use axum::extract::DefaultBodyLimit;
+
+/// Body-size ceiling for evidence import, overriding the service-wide 1 MiB cap
+/// on this one route. An exported evidence bundle legitimately embeds many
+/// receipts plus its manifest and transparency data, so a whole-bundle import
+/// routinely exceeds the general request cap; it still needs a bound so the
+/// buffered `Json` decode cannot grow without limit.
+const EVIDENCE_IMPORT_MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
+
+/// Body-size ceiling for a stream-receipt append, overriding the service-wide
+/// 1 MiB cap on the two receipt-append routes. A stream receipt embeds one
+/// 64-hex-char chunk digest per retained chunk, and a kernel retains up to its
+/// configured chunk cap (over a million chunks by default), so a full receipt
+/// (a sidecar sync or a cross-node replication of a receipt that was valid under
+/// the receipt format) runs to tens of MiB and dwarfs the general request cap.
+/// The bound covers the default chunk ceiling (around 67 MiB of digests) with
+/// room for the surrounding receipt envelope, while still bounding the buffered
+/// `Json` decode so an oversized body cannot grow without limit.
+const RECEIPT_APPEND_MAX_BODY_BYTES: usize = 128 * 1024 * 1024;
 
 pub(crate) fn build_router(state: TrustServiceState) -> Router {
     // Seed the fixed alert-pack label sets at zero before this serve process can
@@ -250,11 +269,15 @@ pub(crate) fn build_router(state: TrustServiceState) -> Router {
         )
         .route(
             TOOL_RECEIPTS_PATH,
-            get(handle_list_tool_receipts).post(handle_append_tool_receipt),
+            get(handle_list_tool_receipts)
+                .post(handle_append_tool_receipt)
+                .layer(DefaultBodyLimit::max(RECEIPT_APPEND_MAX_BODY_BYTES)),
         )
         .route(
             CHILD_RECEIPTS_PATH,
-            get(handle_list_child_receipts).post(handle_append_child_receipt),
+            get(handle_list_child_receipts)
+                .post(handle_append_child_receipt)
+                .layer(DefaultBodyLimit::max(RECEIPT_APPEND_MAX_BODY_BYTES)),
         )
         .route(BUDGETS_PATH, get(handle_list_budgets))
         .route(BUDGET_INCREMENT_PATH, post(handle_try_increment_budget))
@@ -303,7 +326,11 @@ pub(crate) fn build_router(state: TrustServiceState) -> Router {
         .route(RECEIPT_QUERY_PATH, get(handle_query_receipts))
         .route(RECEIPT_ANALYTICS_PATH, get(handle_receipt_analytics))
         .route(EVIDENCE_EXPORT_PATH, post(handle_evidence_export))
-        .route(EVIDENCE_IMPORT_PATH, post(handle_evidence_import))
+        .route(
+            EVIDENCE_IMPORT_PATH,
+            post(handle_evidence_import)
+                .layer(DefaultBodyLimit::max(EVIDENCE_IMPORT_MAX_BODY_BYTES)),
+        )
         .route(
             FEDERATION_EVIDENCE_SHARES_PATH,
             get(handle_shared_evidence_report),
@@ -694,6 +721,63 @@ mod tests {
         assert!(
             body.contains("chio_capability_revocation_lag_seconds"),
             "the capability-revocation-lag family must be present after building the serve router: {body}"
+        );
+    }
+
+    /// A stream receipt embeds one digest per retained chunk, so a valid receipt
+    /// append routinely exceeds the service-wide 1 MiB request cap. The two
+    /// receipt-append routes carry their own larger body limit so replicating or
+    /// importing such a receipt reaches the handler instead of being rejected with
+    /// 413, while a route without the override stays capped: the relaxation is
+    /// route-specific, not a global loosening.
+    #[tokio::test]
+    async fn receipt_append_routes_accept_bodies_above_the_service_body_cap() {
+        use axum::body::Body;
+        use axum::http::Request;
+        use chio_http_serve::{apply_server_hygiene, ServeHygieneConfig};
+        use tower::ServiceExt;
+
+        // Mirror the service-wide 1 MiB body cap the trust-control serve site
+        // applies around the router.
+        let hygiene = ServeHygieneConfig {
+            max_body_bytes: Some(1024 * 1024),
+            request_timeout: None,
+            ..ServeHygieneConfig::default()
+        };
+        let build = || apply_server_hygiene(super::build_router(metrics_state("secret")), &hygiene);
+
+        // Over the 1 MiB service cap but well under the receipt cap. The bytes are
+        // not a valid receipt, so the handler's own decode still rejects them, but
+        // NOT with 413: the point is the larger route limit lets the request reach
+        // the handler at all.
+        let oversized = vec![b'x'; 2 * 1024 * 1024];
+
+        for path in [TOOL_RECEIPTS_PATH, CHILD_RECEIPTS_PATH] {
+            let request = Request::builder()
+                .method("POST")
+                .uri(path)
+                .header("content-type", "application/json")
+                .body(Body::from(oversized.clone()))
+                .test_unwrap();
+            let response = build().oneshot(request).await.test_unwrap();
+            assert_ne!(
+                response.status(),
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "{path} must accept a receipt body above the 1 MiB service cap"
+            );
+        }
+
+        let request = Request::builder()
+            .method("POST")
+            .uri(ISSUE_CAPABILITY_PATH)
+            .header("content-type", "application/json")
+            .body(Body::from(oversized))
+            .test_unwrap();
+        let response = build().oneshot(request).await.test_unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "a route without the receipt-append override must still cap at 1 MiB"
         );
     }
 }

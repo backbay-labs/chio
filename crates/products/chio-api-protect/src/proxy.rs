@@ -12,6 +12,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get, post};
 use axum::Json;
 use axum::Router;
+use chio_http_serve::{CappedPeerAddr, MaxConnListener};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -79,7 +80,7 @@ pub(crate) use self::scope_subset::*;
 pub(crate) use self::sidecar::*;
 pub(crate) use self::state::*;
 
-pub use self::config::ProtectConfig;
+pub use self::config::{ProtectConfig, DEFAULT_UPSTREAM_REQUEST_TIMEOUT};
 pub use self::state::ProtectProxy;
 
 #[cfg(test)]

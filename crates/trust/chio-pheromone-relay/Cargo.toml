@@ -16,6 +16,7 @@ async-trait = { workspace = true }
 axum = "0.8"
 chio-core-types = { workspace = true }
 chio-federation = { workspace = true }
+chio-http-serve = { workspace = true }
 chio-pheromone = { workspace = true }
 chio-pheromone-runtime = { workspace = true }
 reqwest = { workspace = true, features = ["json", "rustls"] }

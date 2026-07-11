@@ -25,6 +25,10 @@ use axum::Json;
 use axum::Router;
 use chio_core_types::Keypair;
 use chio_federation::pheromone_gossip::PheromoneGossipBatch;
+use chio_http_serve::{
+    apply_server_hygiene, run_until_drained, MaxConnListener, ServeHygieneConfig,
+    ShutdownController,
+};
 use chio_pheromone_runtime::PheromoneReceiveReport;
 use serde::Deserialize;
 use serde::Serialize;
@@ -285,9 +289,29 @@ impl PheromoneRelayService {
             .route(PHEROMONE_RELAY_METRICS_PATH, get(handle_metrics))
             .layer(DefaultBodyLimit::max(max_body_bytes))
             .with_state(Arc::new(self));
-        axum::serve(listener, router)
-            .await
-            .map_err(|error| PheromoneRelayError::Http(error.to_string()))
+
+        // The route-local body limit above is preserved; layer on the request
+        // timeout, concurrency limit, connection cap, and graceful-shutdown
+        // drain that this site lacked.
+        let hygiene = ServeHygieneConfig::default();
+        let router = apply_server_hygiene(router, &hygiene);
+        let controller = ShutdownController::install();
+        let listener =
+            MaxConnListener::new(listener, hygiene.max_connections.unwrap_or(usize::MAX));
+        let server = axum::serve(listener, router).with_graceful_shutdown(controller.signalled());
+
+        // The relay store commits synchronously inside its handlers, so
+        // completing in-flight requests during the drain is the whole fix;
+        // nothing is queued to flush.
+        run_until_drained(
+            server,
+            controller.subscribe(),
+            hygiene.drain_timeout,
+            async { Ok::<(), String>(()) },
+        )
+        .await
+        .map(|_outcome| ())
+        .map_err(|error| PheromoneRelayError::Http(error.to_string()))
     }
 
     fn request_now_unix_ms(&self) -> u64 {

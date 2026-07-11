@@ -1149,7 +1149,7 @@ pub(crate) fn require_sidecar_control_request(
         if sidecar_control_bearer_token_matches(request, expected_bearer_token) {
             return Ok(());
         }
-        if let Some(peer) = request.extensions().get::<ConnectInfo<SocketAddr>>() {
+        if let Some(peer) = request.extensions().get::<ConnectInfo<CappedPeerAddr>>() {
             warn!(
                 peer = %peer.0,
                 "rejecting sidecar control request without valid bearer token"
@@ -1160,13 +1160,13 @@ pub(crate) fn require_sidecar_control_request(
         return Err(sidecar_control_forbidden_response(true));
     }
 
-    if let Some(peer) = request.extensions().get::<ConnectInfo<SocketAddr>>() {
+    if let Some(peer) = request.extensions().get::<ConnectInfo<CappedPeerAddr>>() {
         if peer.0.ip().is_loopback() {
             return Ok(());
         }
     }
 
-    if let Some(peer) = request.extensions().get::<ConnectInfo<SocketAddr>>() {
+    if let Some(peer) = request.extensions().get::<ConnectInfo<CappedPeerAddr>>() {
         warn!(
             peer = %peer.0,
             "rejecting non-loopback sidecar control request without configured bearer token"

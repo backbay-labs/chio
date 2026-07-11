@@ -1,0 +1,46 @@
+[Unit]
+Description=Chio trust-control service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=chio-trust
+Group=chio-trust
+RuntimeDirectory=chio-trust-control
+StateDirectory=chio-trust-control
+ConfigurationDirectory=chio
+UMask=0077
+# Provide CHIO_TRUST_SERVICE_TOKEN (read by `chio trust serve` from the
+# environment so the secret is not visible via ps/proc) in this file, mode 0600.
+EnvironmentFile=/etc/chio/chio-trust-control.env
+ExecStart=/usr/local/bin/chio trust serve \
+  --listen 127.0.0.1:8940 \
+  --receipt-db /var/lib/chio-trust-control/receipts.sqlite3 \
+  --revocation-db /var/lib/chio-trust-control/revocations.sqlite3 \
+  --authority-db /var/lib/chio-trust-control/authority.sqlite3 \
+  --budget-db /var/lib/chio-trust-control/budgets.sqlite3 \
+  --enterprise-providers-file /etc/chio/enterprise-providers.json \
+  --verifier-policies-file /etc/chio/verifier-policies.json \
+  --verifier-challenge-db /var/lib/chio-trust-control/verifier-challenges.sqlite3 \
+  --certification-registry-file /etc/chio/certifications.json
+Restart=on-failure
+RestartSec=5s
+# Deliver SIGTERM first (systemd's default, made explicit) so the graceful drain
+# runs, and hold the kill escalation until after the bounded drain plus the
+# receipt-flush margin can finish. The drain deadline is 25s; the platform grace
+# period must be at least TimeoutStopSec.
+KillSignal=SIGTERM
+TimeoutStopSec=35s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/chio-trust-control
+# Memory and OOM directives (MemoryMax, MemoryHigh, OOMScoreAdjust, LimitNOFILE,
+# LimitAS) are the per-process RSS ceiling owned by the bounded-memory work; set
+# them here from that single source of truth so this unit and the MCP-edge unit
+# share one OOM posture.
+
+[Install]
+WantedBy=multi-user.target

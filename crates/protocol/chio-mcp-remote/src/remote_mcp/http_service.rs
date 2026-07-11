@@ -63,7 +63,9 @@ impl McpRateLimiter {
 }
 
 async fn rate_limit_mcp_request(
-    axum::extract::ConnectInfo(remote_addr): axum::extract::ConnectInfo<SocketAddr>,
+    axum::extract::ConnectInfo(chio_http_serve::CappedPeerAddr(remote_addr)): axum::extract::ConnectInfo<
+        chio_http_serve::CappedPeerAddr,
+    >,
     State(limiter): State<McpRateLimiter>,
     request: Request,
     next: axum::middleware::Next,
@@ -199,9 +201,11 @@ async fn serve_http_async(config: RemoteServeHttpConfig) -> Result<(), CliError>
         local_auth_server: local_auth_server.map(Arc::new),
     };
 
+    let controller = chio_http_serve::ShutdownController::install();
     let reaper_state = state.clone();
+    let reaper_shutdown = controller.subscribe();
     tokio::spawn(async move {
-        session_reaper_loop(reaper_state).await;
+        session_reaper_loop(reaper_state, reaper_shutdown).await;
     });
 
     let mcp_routes = Router::new()
@@ -246,12 +250,47 @@ async fn serve_http_async(config: RemoteServeHttpConfig) -> Result<(), CliError>
     );
     eprintln!("remote MCP edge listening on http://{local_addr}{MCP_ENDPOINT_PATH}");
 
-    axum::serve(
+    // The generic per-request timeout is left off here. The edge's GET and POST
+    // routes return Server-Sent Event streams that stay open indefinitely while a
+    // session waits for notifications, so a blanket request timeout would close a
+    // healthy idle stream with 408 and force resumable clients into reconnect
+    // churn. Request bodies are already bounded by `read_limited_mcp_post_body`,
+    // per-IP request rate is capped by the rate limiter, and the drain deadline
+    // bounds any stream still open at shutdown.
+    let hygiene = chio_http_serve::ServeHygieneConfig {
+        request_timeout: None,
+        ..chio_http_serve::ServeHygieneConfig::default()
+    };
+    let router = chio_http_serve::apply_server_hygiene(router, &hygiene);
+    // Cap simultaneously accepted connections at the accept loop so a slow or idle
+    // connection flood cannot exhaust file descriptors before any request reaches
+    // the concurrency limit. The peer address stays available to the per-IP rate
+    // limiter via `CappedPeerAddr`.
+    let listener = chio_http_serve::MaxConnListener::new(
         listener,
-        router.into_make_service_with_connect_info::<SocketAddr>(),
+        hygiene.max_connections.unwrap_or(usize::MAX),
+    );
+    let server = axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<chio_http_serve::CappedPeerAddr>(),
     )
-        .await
-        .map_err(|error| CliError::cli_other_error(format!("remote MCP edge server failed: {error}")))
+    .with_graceful_shutdown(controller.signalled());
+
+    // Draining the in-flight requests is the primary durability guarantee here:
+    // the receipt commit actor acknowledges an append only after the batch
+    // reaches WAL, so every acknowledged receipt is already durable once the
+    // request that wrote it finishes. Each session kernel runs behind its own
+    // worker thread reachable only through its message channel, so there is no
+    // in-process handle to flush after the drain.
+    chio_http_serve::run_until_drained(
+        server,
+        controller.subscribe(),
+        hygiene.drain_timeout,
+        async { Ok::<(), String>(()) },
+    )
+    .await
+    .map(|_outcome| ())
+    .map_err(|error| CliError::cli_other_error(format!("remote MCP edge server failed: {error}")))
 }
 
 async fn handle_post(State(state): State<RemoteAppState>, request: Request) -> Response {

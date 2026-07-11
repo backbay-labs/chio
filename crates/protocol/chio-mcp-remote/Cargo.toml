@@ -20,6 +20,7 @@ async-trait = { workspace = true }
 chio-control-plane = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-egress-contract = { workspace = true, features = ["reqwest-egress"] }
+chio-http-serve = { workspace = true }
 chio-kernel = { workspace = true }
 chio-mcp-adapter = { workspace = true }
 chio-metrics-spec = { workspace = true }

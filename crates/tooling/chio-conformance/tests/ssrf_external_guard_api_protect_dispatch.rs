@@ -9,7 +9,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
-use chio_api_protect::{ProtectConfig, ProtectProxy};
+use chio_api_protect::{ProtectConfig, ProtectProxy, DEFAULT_UPSTREAM_REQUEST_TIMEOUT};
 use chio_external_guards::external::bedrock::{BedrockGuardrailConfig, BedrockGuardrailGuard};
 use chio_external_guards::external::{ExternalGuard, GuardCallContext};
 use tiny_http::{Header, Response, Server};
@@ -196,6 +196,7 @@ async fn api_protect_upstream_proxy_rejects_redirect_to_link_local() {
         sidecar_control_token: None,
         signer_seed_hex: None,
         trusted_capability_issuers: Vec::new(),
+        upstream_request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
     };
     let proxy_task = tokio::spawn(async move { ProtectProxy::new(config).run().await });
     let client = reqwest::Client::builder()
@@ -246,6 +247,7 @@ async fn api_protect_upstream_proxy_rejects_redirect_to_loopback_authority() {
         sidecar_control_token: None,
         signer_seed_hex: None,
         trusted_capability_issuers: Vec::new(),
+        upstream_request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
     };
     let proxy_task = tokio::spawn(async move { ProtectProxy::new(config).run().await });
     let client = reqwest::Client::builder()
@@ -300,6 +302,7 @@ async fn api_protect_upstream_proxy_rejects_oversized_response() {
         sidecar_control_token: None,
         signer_seed_hex: None,
         trusted_capability_issuers: Vec::new(),
+        upstream_request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
     };
     let proxy_task = tokio::spawn(async move { ProtectProxy::new(config).run().await });
     let client = reqwest::Client::builder()

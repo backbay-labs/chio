@@ -84,9 +84,27 @@ pub(super) fn serve_proof_bundle(
             verifier_parity: "verified",
         };
         write_serve_report(&report, json_output)?;
-        axum::serve(listener, router)
-            .await
-            .map_err(|error| CliError::cli_io_error(format!("proof serve: {error}")))
+
+        let hygiene = chio_http_serve::ServeHygieneConfig::default();
+        let router = chio_http_serve::apply_server_hygiene(router, &hygiene);
+        let controller = chio_http_serve::ShutdownController::install();
+        let listener = chio_http_serve::MaxConnListener::new(
+            listener,
+            hygiene.max_connections.unwrap_or(usize::MAX),
+        );
+        let server =
+            axum::serve(listener, router).with_graceful_shutdown(controller.signalled());
+
+        // Read-only static serving: nothing to flush after the drain.
+        chio_http_serve::run_until_drained(
+            server,
+            controller.subscribe(),
+            hygiene.drain_timeout,
+            async { Ok::<(), String>(()) },
+        )
+        .await
+        .map(|_outcome| ())
+        .map_err(|error| CliError::cli_io_error(format!("proof serve: {error}")))
     })
 }
 

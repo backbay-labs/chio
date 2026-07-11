@@ -127,6 +127,7 @@ members = [
     # HTTP & session
     "crates/protocol/chio-hosted-mcp",
     "crates/platform/chio-http-core",
+    "crates/protocol/chio-http-serve",
     "crates/platform/chio-http-session",
     #
     # Products
@@ -401,6 +402,7 @@ chio-guard-sdk-macros = { path = "crates/sdk/chio-guard-sdk-macros" }
 chio-guards = { path = "crates/guards/chio-guards" }
 chio-hosted-mcp = { path = "crates/protocol/chio-hosted-mcp" }
 chio-http-core = { path = "crates/platform/chio-http-core" }
+chio-http-serve = { path = "crates/protocol/chio-http-serve" }
 chio-http-session = { path = "crates/platform/chio-http-session" }
 chio-kernel = { path = "crates/kernel/chio-kernel" }
 chio-kernel-browser = { path = "crates/kernel/chio-kernel-browser" }

@@ -1,4 +1,11 @@
 use super::*;
+use std::time::Duration;
+
+/// Default wall-clock ceiling on a single upstream proxy hop, including reading
+/// the full response body. Kept below the serve site's drain window so an
+/// in-flight hop is resolved and receipted before a shutdown force-closes the
+/// connection.
+pub const DEFAULT_UPSTREAM_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Configuration for the protect proxy.
 pub struct ProtectConfig {
@@ -18,6 +25,12 @@ pub struct ProtectConfig {
     pub signer_seed_hex: Option<String>,
     /// Explicit capability issuers trusted by the HTTP authority.
     pub trusted_capability_issuers: Vec<PublicKey>,
+    /// Wall-clock ceiling on a single upstream proxy hop, including reading the
+    /// full response body. Raise it for upstreams with legitimately slow calls or
+    /// large bounded responses; the serve site widens its drain window to match so
+    /// an in-flight hop is still receipted before shutdown force-closes it.
+    /// Defaults to [`DEFAULT_UPSTREAM_REQUEST_TIMEOUT`].
+    pub upstream_request_timeout: Duration,
 }
 
 impl std::fmt::Debug for ProtectConfig {
@@ -43,6 +56,7 @@ impl std::fmt::Debug for ProtectConfig {
                 "trusted_capability_issuers",
                 &self.trusted_capability_issuers,
             )
+            .field("upstream_request_timeout", &self.upstream_request_timeout)
             .finish()
     }
 }

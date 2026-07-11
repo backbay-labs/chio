@@ -1,4 +1,6 @@
 use super::*;
+use chio_api_protect::DEFAULT_UPSTREAM_REQUEST_TIMEOUT;
+use std::time::Duration;
 
 pub(crate) fn cmd_run(
     policy_path: &Path,
@@ -150,6 +152,7 @@ pub(crate) fn cmd_api_protect(
     listen_addr: &str,
     receipt_store: Option<&Path>,
     authority_seed_path: Option<&Path>,
+    upstream_timeout_secs: Option<u64>,
 ) -> Result<(), CliError> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -178,6 +181,9 @@ pub(crate) fn cmd_api_protect(
             sidecar_control_token,
             signer_seed_hex,
             trusted_capability_issuers,
+            upstream_request_timeout: upstream_timeout_secs
+                .map(Duration::from_secs)
+                .unwrap_or(DEFAULT_UPSTREAM_REQUEST_TIMEOUT),
         };
         ProtectProxy::new(config).run().await.map_err(|error| {
             CliError::transport_error(format!("failed to start chio api protect: {error}"))
@@ -240,6 +246,9 @@ pub(crate) fn cmd_start(
             sidecar_control_token,
             signer_seed_hex,
             trusted_capability_issuers,
+            // The chio-start shape never proxies upstream, so the hop ceiling is
+            // moot; keep the default so the serve site's drain window is unchanged.
+            upstream_request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
         };
 
         ProtectProxy::new(config)

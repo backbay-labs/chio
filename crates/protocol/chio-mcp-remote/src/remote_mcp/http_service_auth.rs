@@ -75,11 +75,22 @@ async fn resolve_session_entry(
     state.sessions.lookup(session_id).await
 }
 
-async fn session_reaper_loop(state: RemoteAppState) {
+async fn session_reaper_loop(
+    state: RemoteAppState,
+    mut shutdown: tokio::sync::watch::Receiver<bool>,
+) {
     let interval =
         std::time::Duration::from_millis(state.factory.lifecycle_policy.reaper_interval_millis);
     loop {
-        tokio::time::sleep(interval).await;
+        if *shutdown.borrow_and_update() {
+            return;
+        }
+        // Race the reaper interval against the shutdown signal so the loop stops
+        // promptly during a drain rather than after a full interval.
+        tokio::select! {
+            _ = tokio::time::sleep(interval) => {}
+            _ = shutdown.changed() => return,
+        }
         state.sessions.cleanup_due_sessions().await;
     }
 }

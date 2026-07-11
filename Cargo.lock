@@ -2637,6 +2637,7 @@ dependencies = [
  "axum 0.8.8",
  "chio-core-types",
  "chio-http-core",
+ "chio-http-serve",
  "chio-kernel",
  "chio-metrics-spec",
  "chio-openapi",
@@ -2868,6 +2869,7 @@ dependencies = [
  "chio-guard-registry",
  "chio-guards",
  "chio-hosted-mcp",
+ "chio-http-serve",
  "chio-kernel",
  "chio-lineage",
  "chio-listing",
@@ -3063,6 +3065,7 @@ dependencies = [
  "chio-errors",
  "chio-external-guards",
  "chio-guards",
+ "chio-http-serve",
  "chio-kernel",
  "chio-link",
  "chio-mcp-adapter",
@@ -3094,6 +3097,7 @@ dependencies = [
  "subtle",
  "thiserror 1.0.69",
  "tokio",
+ "tower 0.5.3",
  "tower-http",
  "tracing",
  "ureq 2.12.1",
@@ -3616,6 +3620,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-http-serve"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.8",
+ "thiserror 1.0.69",
+ "tokio",
+ "tower 0.5.3",
+ "tower-http",
+ "tracing",
+]
+
+[[package]]
 name = "chio-http-session"
 version = "0.1.0"
 dependencies = [
@@ -3866,6 +3882,7 @@ dependencies = [
  "chio-control-plane",
  "chio-core-types",
  "chio-egress-contract",
+ "chio-http-serve",
  "chio-kernel",
  "chio-mcp-adapter",
  "chio-metrics-spec",
@@ -4052,6 +4069,7 @@ dependencies = [
  "axum 0.8.8",
  "chio-core-types",
  "chio-federation",
+ "chio-http-serve",
  "chio-pheromone",
  "chio-pheromone-runtime",
  "reqwest 0.13.2",
@@ -4114,6 +4132,7 @@ dependencies = [
  "chio-disclosure-lineage",
  "chio-egress-contract",
  "chio-enterprise-export",
+ "chio-http-serve",
  "chio-risk-comptroller",
  "chio-runtime-proof-parity",
  "chio-selective-disclosure",

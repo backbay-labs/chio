@@ -30,6 +30,7 @@ chio-errors = { workspace = true }
 chio-enterprise-export = { workspace = true }
 chio-did = { workspace = true }
 chio-external-guards = { workspace = true }
+chio-http-serve = { workspace = true }
 chio-kernel = { workspace = true }
 chio-metrics-spec = { workspace = true }
 chio-guards = { workspace = true }
@@ -73,6 +74,7 @@ chio-test-support = { workspace = true }
 chio-settle = { workspace = true }
 proptest = { workspace = true }
 rcgen = "0.13"
+tower = { workspace = true }
 
 [lints]
 workspace = true

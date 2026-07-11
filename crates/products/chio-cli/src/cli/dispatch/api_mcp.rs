@@ -14,12 +14,14 @@ pub(crate) fn dispatch_api(
                 spec,
                 listen,
                 receipt_store,
+                upstream_timeout_secs,
             } => cmd_api_protect(
                 &upstream,
                 spec.as_deref(),
                 &listen,
                 receipt_store.as_deref().or(receipt_db.as_deref()),
                 authority_seed_file.as_deref(),
+                upstream_timeout_secs,
             ),
     }
 }

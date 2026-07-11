@@ -130,6 +130,24 @@ impl ChioKernel {
         f(store.as_ref()).map(Some)
     }
 
+    /// Flush any queued receipt writes to durable storage, bounded by `timeout`.
+    ///
+    /// A shutdown drain calls this to prove the commit-actor queue is empty
+    /// before the process exits. `Ok(None)` means no receipt store is
+    /// configured; a configured store's flush error is surfaced rather than
+    /// swallowed, so a drain can exit non-zero when a receipt might not be
+    /// durable.
+    pub fn flush_receipt_writes_with_timeout(
+        &self,
+        timeout: std::time::Duration,
+    ) -> Result<Option<crate::ReceiptFlushReport>, KernelError> {
+        self.with_receipt_store(|store| {
+            store
+                .flush_receipt_writes_with_timeout(timeout)
+                .map_err(KernelError::from)
+        })
+    }
+
     pub fn new(config: KernelConfig) -> Self {
         info!("initializing Chio kernel");
         let authority_keypair = config.keypair.clone();
