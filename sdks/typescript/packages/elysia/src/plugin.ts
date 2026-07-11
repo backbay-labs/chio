@@ -159,12 +159,12 @@ export function chio(config: ChioElysiaConfig = {}) {
       try {
         const result = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
 
-        if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(result.receipt)) {
+        if (!isAllowed(result.verdict) || result.receipt == null || !isAuthorizedHttpReceipt(result.receipt)) {
           set.status = verdictStatus(result.verdict);
           return {
             error: CHIO_ERROR_CODES.ACCESS_DENIED,
             message: verdictReason(result.verdict),
-            receipt_id: result.receipt.id,
+            receipt_id: result.receipt?.id,
             suggestion: "provide a valid capability token in the X-Chio-Capability header or chio_capability query parameter",
           };
         }
