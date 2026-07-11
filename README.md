@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <em>Proof-carrying autonomous commerce &nbsp;&middot;&nbsp; Decentralized agentic authority and security &nbsp;&middot;&nbsp; A substrate for agentic economic sovereignty</em>
+  <img src="docs/assets/subhead.svg" alt="Proof-carrying autonomous commerce &middot; Decentralized agentic authority and security &middot; A substrate for agentic economic sovereignty" width="880" />
 </p>
 
 <p align="center">
@@ -174,37 +174,13 @@ and is the only trusted component. A **trust plane** (identity, credentials, fed
 governance) and an **economy plane** (metering, budgets, settlement) draw on the receipts the
 kernel signs, and every decision is committed to the **Receipt Log**.
 
-```mermaid
-flowchart LR
-  A["Agent<br/>LLM process, untrusted"]
+<p align="center">
+  <img src="docs/assets/architecture.svg" alt="Chio system map: an untrusted agent and untrusted tool servers around a single trusted Runtime Kernel that verifies, guards, dispatches, and signs; capability authority and policy feed in, and receipts flow to the trust and economy planes" width="960" />
+</p>
 
-  subgraph kernel ["Runtime Kernel  -  the only trusted component (TCB)"]
-    direction LR
-    V["Capability verifier<br/>attenuation · revocation · budget hold"]
-    G["Guard pipeline<br/>native · data · WASM · external"]
-    D["Dispatcher"]
-    S["Receipt signer<br/>canonical JSON · Ed25519"]
-  end
-
-  TS["Tool Servers<br/>sandboxed, untrusted"]
-  CA["Capability<br/>Authority"]
-  POL["HushSpec<br/>policy"]
-  RL[("Receipt Log<br/>content-addressed · Merkle checkpoints")]
-  TP["Trust plane<br/>did:chio · passports · federation"]
-  EP["Economy plane<br/>metering · budgets · settlement"]
-
-  CA -. "issues / revokes" .-> V
-  POL -. "compiles to guards" .-> G
-  A -- "capability token" --> V
-  V -- "verified" --> G
-  G -- "input guards pass" --> D
-  D -- "governed call" --> TS
-  TS -- "result" --> G
-  G -- "output guards pass" --> S
-  S --> RL
-  S -. "evidence" .-> TP
-  S -. "metered receipt" .-> EP
-```
+Only the Runtime Kernel is trusted (the TCB). The agent and tool servers are untrusted and
+isolated, so a compromised agent or tool server cannot forge authorization or a receipt, and
+any registry or artifact mismatch fails closed.
 
 ### Life of a tool call
 
@@ -224,16 +200,6 @@ flowchart LR
 | **8 &middot; Commit** | The receipt is written to the content-addressed log and folded into a Merkle checkpoint, where its evidence is available to the trust and economy planes. |
 
 Every outcome (`allow`, `deny`, `cancelled`, `incomplete`) produces a signed receipt.
-
-### The trust boundary
-
-Chio has exactly one trusted component: the Runtime Kernel. The other four canonical
-components sit outside it. The **Agent** is an untrusted LLM process with no ambient
-authority. **Tool Servers** are sandboxed and isolated from each other and from the agent.
-The **Capability Authority** issues, scopes, delegates, and revokes time-bounded tokens. The
-**Receipt Log** is the append-only, Merkle-committed record of every decision. Because only
-the kernel is trusted, a compromised agent or tool server cannot forge authorization or a
-receipt, and any registry or artifact mismatch fails closed.
 
 ### The codebase
 
