@@ -173,6 +173,14 @@ lane = "pr"
 
 [[harness]]
 crate = "chio-kernel-core"
+harness = "verify_reservation_ledger_conservation"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+notes = "Bounded reservation transitions preserve partition totals, make finalized states absorbing, and fail closed at u64 boundaries."
+
+[[harness]]
+crate = "chio-kernel-core"
 harness = "verify_delegate_no_widen"
 default_unwind = 8
 timeout_secs = 1800

@@ -19,7 +19,7 @@ workflow has four verification jobs:
 
 1. `lean-build (lake + sorry scan + manifest cross-ref)` runs
    `scripts/check-formal-proofs.sh` with cached elan and Lake state.
-2. `kani-public-pr (lanes.pr sweep)` runs the 22 public kernel-core harnesses
+2. `kani-public-pr (lanes.pr sweep)` runs the 23 public kernel-core harnesses
    declared in `formal/rust-verification/kani-public-harnesses.toml`.
 3. `kani-manifest-pr (non-core lanes.pr sweep)` runs the 12 PR harnesses for
    chio-attest-verify, chio-anchor, and chio-weights from
@@ -111,7 +111,7 @@ measured evidence before changing coverage.
 
 ## Acceptance Criteria
 
-- [x] The public-core runner lists exactly the 22 registered PR harnesses
+- [x] The public-core runner lists exactly the 23 registered PR harnesses
   without invoking Kani.
 - [x] The non-core manifest runner lists exactly 12 registered PR harnesses
   when chio-kernel-core is excluded.

@@ -762,6 +762,30 @@
       "notes": "Sibling-sum budget enforcement: when the BudgetRegistry admits a child, the running sum after admission is bounded by the parent's share. This rejects cross-hop amplification where two siblings jointly oversubscribe their parent's budget. The root-imported, sorry-free theorem is exercised by the nightly Lean gate; the Rust shell is exercised by crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs and the cross-hop case by crates/tooling/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs. The protocol-side check is implemented in chio_kernel_core::budget_split::BudgetSplit::try_admit_child."
     },
     {
+      "id": "theorem.budget.reservation_conservation",
+      "leanName": "Chio.Proofs.ReservationLedger.ledger_conservation",
+      "file": "formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "proof_path": "formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean",
+      "mapsTo": ["P1"],
+      "notes": "Pure reservation folds preserve reserved = outstanding + committed + released + retained, with admitted child reserves bounded by sibling_sum_soundness. Apalache interleavings, the Kani and Creusot transition witnesses, the debug journal replay, and the stateful real-store test provide independent evidence for the defect family a6d26dbc4, c201afbd0, 84e98b9d0, and 58abf33d2. Scalar admission is linked; production ledger linkage is not established."
+    },
+    {
+      "id": "theorem.budget.reservation_terminal_unique",
+      "leanName": "Chio.Proofs.ReservationLedger.ledger_terminal_unique",
+      "file": "formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "proof_path": "formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean",
+      "mapsTo": ["P1"],
+      "notes": "A finalized pure ledger is absorbing: it cannot reserve again or receive a second positive terminal disposition. Committed and released amount buckets may both be non-zero after partial realization, while the trace still has one terminal hold classification. The theorem is model-level; concrete hold terminality is checked by the debug journal replay and stateful real-store test, not by a production refinement proof."
+    },
+    {
       "id": "proof.treaty_admission_iff_predicate_intersection",
       "leanName": "Chio.Treaty.treaty_admission_iff_predicate_intersection",
       "file": "formal/lean4/Chio/Chio/Treaty/Intersection.lean",

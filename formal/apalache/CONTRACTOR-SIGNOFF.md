@@ -94,18 +94,19 @@ timeout 1800 apalache-mc check \
 
 | Spec | Invariants | Bound | Result | Wall clock |
 | --- | --- | --- | --- | --- |
-| `PostAdmissionDropGuard.tla` | `ReservationConservation`, `TerminalReceiptExactlyOne`, `ChildReceiptsFlushed`, `RetainedIffAborted` | length 8 | `NoError`, exit 0 | 1214.491 seconds |
+| `PostAdmissionDropGuard.tla` | `ReservationConservation`, `TerminalReceiptExactlyOne`, `ChildReceiptsFlushed`, `RetainedIffAborted` | length 8 | `NoError`, exit 0 | 1346.132 seconds |
 
 Apalache reported `Checker reports no error up to computation length 8` and
-an internal total of 1214.491 seconds on the integrated tree.
+an internal total of 1346.132 seconds on the integrated tree after the shared
+active-child capacity guard was added.
 
 ### Bounds and Abstractions
 
 | Dimension | Attempted | Final | Rationale |
 | --- | --- | --- | --- |
-| Invocations | `1..2`, with every local choice duplicated symmetrically | `1..2`, with local choices on invocation 1 and a fixed dispatch-to-drop role on invocation 2 | Two identities preserve arbitrary ordering of independently keyed lifecycles. The model has no shared accumulator, and removing the duplicate local role changes no transition shape. |
+| Invocations | `1..2`, with every local choice duplicated symmetrically | `1..2`, with local choices on invocation 1 and a fixed dispatch-to-drop role on invocation 2 | Two identities preserve arbitrary ordering of independently keyed lifecycles. Monetary ledgers remain per invocation; `ActiveChildShares` is the one cross-invocation aggregate and enforces shared child capacity. Removing the duplicate local role changes no transition shape. |
 | Admission profiles | All 12 valid profiles on both identities | All 12 valid profiles on invocation 1; `{slot, lease, child}` on invocation 2 | Hold and slot are mutually exclusive in production. The fixed second profile exercises every non-monetary resource during interleavings. |
-| Buffered children | `ChildMax = 1` | `ChildMax = 1` | One child distinguishes flush, discard, and child-before-parent ordering. Additional children repeat the same loop shape. |
+| Buffered children | `ChildMax = 1` | `ChildMax = 1` | One child distinguishes flush, discard, and child-before-parent ordering. The same bound caps active admitted child shares across both invocations; the oversubscription mutation calibrates that guard. |
 | Ledger resources | hold, slot, lease, child | hold, slot, lease, child | These are the four resources touched by pre-dispatch and post-dispatch unwind paths. |
 | Cleanup failures | Dynamic `SUBSET admitted_resources[i]` | The 12 static valid profiles, filtered to subsets of the admitted resources | Negative calibration showed that Apalache 0.50.1 did not expose three pre-dispatch mutations through the dynamic powerset. The static domain represents the same reachable subsets and made all three counterexamples solver-visible. |
 | Receipt representation | Bounded receipt sequence | Exact per-invocation child and parent counters plus a child-before-parent witness | The sequence encoding expanded every bounded index at each transition and was stopped at State 5 after 5 minutes 31 seconds. Counters preserve cardinality, attribution, and the checked ordering witness. |
@@ -120,10 +121,11 @@ an invariant.
 
 ### Negative Calibration
 
-The registered falsifiability suite ran at length 4 with Apalache 0.50.1.
-Every row exited 12, reported `The outcome is: Error`, and produced a parseable
-non-empty ITF trace. The integrated nine-entry gate run completed in 84.83
-seconds.
+The registered ten-entry falsifiability suite ran at length 4 with Apalache
+0.50.1. Every row exited 12, reported `The outcome is: Error`, and produced a
+parseable non-empty ITF trace. The earlier nine-entry baseline completed in
+84.83 seconds; the landing rerun added and caught the child-oversubscription
+mutation.
 
 | Broken model | Falsified invariant | Result |
 | --- | --- | --- |
@@ -131,6 +133,7 @@ seconds.
 | `RevocationCutCompletenessBroken.tla` | `RevocationCutCompleteness` | violation trace reproduced |
 | `DropGuardDiscardChildBufferBroken.tla` | `ChildReceiptsFlushed` | violation trace reproduced |
 | `DropGuardSkipChildBudgetReleaseBroken.tla` | `ReservationConservation` | violation trace reproduced |
+| `DropGuardChildOversubscriptionBroken.tla` | `ReservationConservation` | violation trace reproduced |
 | `DropGuardSkipInvocationReversalBroken.tla` | `ReservationConservation` | violation trace reproduced |
 | `DropGuardNoFaultReceiptBroken.tla` | `TerminalReceiptExactlyOne` | violation trace reproduced |
 | `DropGuardReleaseOnIncompleteStreamBroken.tla` | `RetainedIffAborted` | violation trace reproduced |

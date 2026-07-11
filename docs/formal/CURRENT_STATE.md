@@ -18,13 +18,13 @@ model-checked:
 
 ```
                        crates/kernel/chio-kernel-core/src/formal_aeneas.rs
-                       (15 pure, extraction-safe functions; production code)
+                       (16 public extraction-safe functions; production code)
                                           |
           +----------------+--------------+---------------+------------------+
           |                |              |               |                  |
    formal_core.rs    Charon->Aeneas   Creusot         Kani harnesses    Lean models
    (typed facade;    extraction to    contracts       (12 model +       (hand mirrors
-   called by real    Lean under       (7 duplicated   22 public-API     with "Mirrors:"
+   called by real    Lean under       (9 contracts)   23 public-API     with "Mirrors:"
    verify/subset     target/formal/   bodies in       in kernel-core)   headers)
    paths)            aeneas-production formal/rust-
                      + equivalence     verification/
@@ -39,7 +39,7 @@ what may be claimed publicly.
 
 - Toolchain: `leanprover/lean4:v4.28.0-rc1` (a release candidate pin), lake,
   zero external packages (`lake-manifest.json` has `packages: []`; no mathlib).
-- 21 root-imported modules (all imported by `Chio.lean`; "root-imported" is a
+- 22 root-imported modules (all imported by `Chio.lean`; "root-imported" is a
   release-evidence precondition), roughly 80 catalogued theorems, exactly one
   axiom, zero `sorry` (enforced by `scripts/check-formal-proofs.sh`: lake
   build plus a sorry scan plus manifest cross-ref sanity).
@@ -64,6 +64,9 @@ what may be claimed publicly.
   is trusted-issuer membership, receipt signatures are symbolic
   (`signature := body`), and `Treaty/PredicateLang.lean` names its own missing
   bridge-soundness theorem.
+- `Proofs/ReservationLedger.lean` proves pure reservation-fold conservation,
+  terminal absorption, and the sibling-share bound. It is model-level evidence;
+  concrete store linkage remains runtime-tested.
 
 ## Lane 2: Aeneas (`formal/aeneas/`)
 
@@ -75,7 +78,8 @@ Two lanes, one diagnostic fixture and one production lane:
   the production module.
 - Production (`production.toml`, status `production_extraction`): the source
   is the real in-crate `crates/kernel/chio-kernel-core/src/formal_aeneas.rs`
-  (15 symbols). `scripts/check-aeneas-production.sh` drives Charon to LLBC to
+  (15 required extraction symbols plus the separately witnessed reservation
+  transition). `scripts/check-aeneas-production.sh` drives Charon to LLBC to
   Aeneas to Lean under `target/formal/aeneas-production/lean/`.
   `scripts/check-aeneas-equivalence.sh` asserts every expected `def <symbol>`
   exists in the generated `Funs.lean` (plus `BudgetCommitResult` in
@@ -100,17 +104,17 @@ before crossing the boundary. `formal_core.rs` (341 lines) is the typed,
 
 - A standalone mini-crate (its own `[workspace]`), `creusot-std` pinned by git
   rev, proved through Why3find with alt-ergo/z3/cvc5/cvc4.
-- 7 contract functions carrying `#[requires]`/`#[ensures]` specs. The bodies
-  are hand-duplicated copies of `formal_aeneas.rs` bodies (a known drift
-  surface; the registry `creusot-contracts.toml` currently lists only 6 of
-  the 7, see [HYGIENE_PASS.md](HYGIENE_PASS.md)).
+- 9 contract functions carrying `#[requires]`/`#[ensures]` specs. Their bodies
+  delegate to an unconditional include of the production `formal_aeneas.rs`;
+  the body-sync gate pins the include shape, wrapper bodies, and all 9
+  `contract_twin` rows.
 - Gate scripts: `check-creusot-smoke.sh`, `check-creusot-core.sh`, bundled
   into `check-rust-verification-gates.sh`.
 
 ## Lane 4: Kani
 
 - Registry-driven. `.kani/harnesses.toml` (schema `chio.kani.multi-crate.v1`)
-  covers four crates: chio-kernel-core (22 public harnesses), chio-anchor (5,
+  covers four crates: chio-kernel-core (23 public harnesses), chio-anchor (5,
   behind a `kani = ["web3"]` feature), chio-attest-verify (4), chio-weights
   (4). kernel-core additionally has 12 internal model-level harnesses in
   `kani_harnesses.rs`. Kani is version-pinned (`CHIO_KANI_VERSION=0.67.0`).
@@ -133,6 +137,11 @@ before crossing the boundary. `formal_core.rs` (341 lines) is the typed,
     projections called by both InMemory and SQLite budget backends, including
     optional caps and total-cost overflow. Store mutation and reservation
     conservation are outside this harness.
+  - `verify_reservation_ledger_conservation`: proves six-step pure reservation
+    sequences preserve the amount partition, invalid operations are exact
+    no-ops, arithmetic boundaries fail closed, and finalized ledgers are
+    absorbing. Production store transitions are bound by debug replay and a
+    stateful real-store test rather than a refinement proof.
   - `verify_revocation_admission_projection`: verifies the exact shared lazy
     token/ancestor projection called by both production revocation paths.
     Store IO and view freshness are outside this harness.
@@ -142,7 +151,7 @@ before crossing the boundary. `formal_core.rs` (341 lines) is the typed,
   - Where a harness is model-only (for example the anchor witness-policy
     harness), the module docs state the honesty boundary and name the runtime
     tests covering the gap.
-- Cadence: `formal-pr-smoke.yml` runs the 22 public kernel-core `lanes.pr`
+- Cadence: `formal-pr-smoke.yml` runs the 23 public kernel-core `lanes.pr`
   harnesses and the 12 non-core manifest PR harnesses on scoped pull-request
   changes. `kani-public-nightly` in `nightly.yml` runs the union of core PR and
   nightly-only lanes plus every non-core PR and nightly manifest entry.
@@ -170,7 +179,9 @@ before crossing the boundary. `formal_core.rs` (341 lines) is the typed,
   `KernelTransitionCancelSafe` (clean pre-dispatch snapshot equality; header
   candidly states that the invariant holds by construction, does not model the
   Rust reversal transition, and excludes post-dispatch, fault, and
-  commit-vs-cancel paths).
+  commit-vs-cancel paths), and `PostAdmissionDropGuard`, whose
+  `ReservationConservation` invariant checks a counted partition and shared
+  child capacity at every bounded state.
 - Negative-test discipline: `formal/apalache/_negative_tests/` holds
   deliberately-broken spec variants that must produce counterexamples, run
   locally only, with a written rationale for staying out of CI (a green CI
@@ -237,7 +248,7 @@ differential-test joins, theorem status, and model-only Kani scope remain
 explicit there.
 
 - `formal/proof-manifest.toml` (schema `chio.proof-manifest.v1`) is the hub:
-  `root_modules` (21 Lean files), `gate_commands` (12 commands), 7
+  `root_modules` (22 Lean files), `gate_commands` (12 commands), 7
   `covered_rust_modules`, 32 `covered_rust_symbols`, 14 `shell_entrypoints`,
   the P1-P10 `property_matrix` with per-property evidence-lane tags,
   `rust_refinement_lanes`, `allowed_axioms` (exactly one),
@@ -247,7 +258,7 @@ explicit there.
   are transliterations; TLA+ entries are explicitly labeled abstraction
   anchors. `cargo xtask check formal-mirrors` enforces those hashes in required
   PR CI.
-- `formal/theorem-inventory.json` (83 theorem entries plus a separate
+- `formal/theorem-inventory.json` (85 theorem entries plus a separate
   assumptions block): per-theorem id, Lean name,
   file, kind, `rootImported` flag, claim class, `mapsTo` property ids.
 - `formal/MAPPING.md`: the cross-reference table from TLA invariants, Kani
@@ -280,8 +291,8 @@ explicit there.
 | Cadence | Formal content |
 | --- | --- |
 | Every PR (required) | diff-tests via workspace tests; `cargo xtask check crate-paths` (manifest path integrity); `cargo xtask check formal-mirrors` (Rust-to-model review tripwire); proptest invariant-naming gate; regression-test deletion gate; threat-model coverage gate; registry status ban (`implementation_backed`) |
-| PR, path-scoped | Apalache safety (6 spec/cfg pairs); Lean build plus sorry and manifest checks; 22 core and 12 non-core Kani PR harnesses; Rust verification metadata with no Creusot proofs; ClusterFuzzLite change-scoped fuzzing; cargo-mutants for touched trust-boundary crates |
-| Nightly | Kani (all lanes), Lean/Aeneas/Creusot proof report (`formal-qualification`), Apalache temporal (liveness; known-unreliable), proptest 4096-case tier, mutants full sweeps (advisory), mutants-fuzz co-coverage, dudect, fuzz rotation and native sweep |
+| PR, path-scoped | Apalache safety (6 spec/cfg pairs); Lean build plus sorry and manifest checks; 23 core and 12 non-core Kani PR harnesses; Rust verification metadata with no Creusot proofs; ClusterFuzzLite change-scoped fuzzing; cargo-mutants for touched trust-boundary crates |
+| Nightly | Kani (all lanes), Lean/Aeneas/Creusot proof report (`formal-qualification`), Apalache temporal (liveness; known-unreliable), proptest 4096-case tier plus a 10000-case reservation-ledger sequence target, mutants full sweeps (advisory), mutants-fuzz co-coverage, dudect, fuzz rotation and native sweep |
 | Push to main / release | `release-qualification.yml` runs the full gate battery: `check-formal-proofs.sh`, both Aeneas checks, equivalence, Creusot and Kani strict lanes, adapter no-bypass, portable kernel, proof report |
 
 ## Strengths worth preserving

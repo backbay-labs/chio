@@ -309,12 +309,20 @@ if include_match is None:
         "creusot-body-sync: contract crate must include the production source in aeneas_body"
     )
 expected_module_tokens = tokens(
-    mask_non_code("use creusot_std::prelude::*; include!(\"production.rs\");")
+    mask_non_code(
+        """
+        use creusot_std::{
+            prelude::*,
+            std::{clone::Clone, cmp::PartialEq, default::Default},
+        };
+        include!("production.rs");
+        """
+    )
 )
 if tokens(masked_module) != expected_module_tokens:
     raise SystemExit(
-        "creusot-body-sync: aeneas_body must contain only the prelude import "
-        "and unconditional production include"
+        "creusot-body-sync: aeneas_body must contain only the allowlisted "
+        "Creusot imports and unconditional production include"
     )
 if len(re.findall(r"\binclude\s*!", masked_contract)) != 1:
     raise SystemExit("creusot-body-sync: contract crate must contain exactly one real include")

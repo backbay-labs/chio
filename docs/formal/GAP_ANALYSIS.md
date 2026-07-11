@@ -15,7 +15,7 @@ Closure:
 
 - `.github/workflows/formal-pr-smoke.yml` now classifies affected paths and
   runs Lean compilation, sorry scanning, proof-registry cross-references, all
-  22 public kernel-core PR Kani harnesses, the 12 non-core PR Kani harnesses,
+  23 public kernel-core PR Kani harnesses, the 12 non-core PR Kani harnesses,
   and explicitly metadata-only Rust verification checks.
 - `.github/workflows/mutants.yml` now triggers on changes to six
   trust-boundary crates and skips untouched matrix packages before tool setup.
@@ -73,7 +73,7 @@ Addressed by:
 and [plan/FV-A3-creusot-dedup.md](plan/FV-A3-creusot-dedup.md) hardening the
 other two hops.
 
-## G3: The drop/cancel unwind surface is under-modeled, and it is where the bugs were
+## G3: The drop/cancel unwind surface is under-modeled, and it is where the bugs were (materially mitigated 2026-07-10)
 
 Evidence:
 
@@ -96,6 +96,14 @@ Evidence:
 Consequence: the single most bug-productive region of the TCB has the weakest
 formal coverage. The models passed while production was wrong, which is the
 worst failure mode a formal estate can have (false confidence).
+
+Current mitigation: `PostAdmissionDropGuard.tla` now models the lifecycle and
+its fixed defect classes have required counterexample variants. The shared
+reservation law adds a counted Apalache partition, a pure Kani/Creusot/Lean
+transition, a debug replay of concrete single-node journal events, and a
+stateful real-store proptest. This does not close concurrent execution or crash
+recovery coverage; the registered Loom and deterministic-scheduler work remains
+the outstanding part of G3.
 
 Addressed by: [plan/FV-B1-drop-guard-model.md](plan/FV-B1-drop-guard-model.md),
 [plan/FV-B2-regression-negative-tests.md](plan/FV-B2-regression-negative-tests.md),

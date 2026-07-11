@@ -55,6 +55,8 @@ jobs:
           set -euo pipefail
           cargo test -p chio-core-types --test property_capability_algebra -- --nocapture
           cargo test -p chio-kernel-core --test property_evaluate -- --nocapture
+          cargo test -p chio-kernel --test property_budget_store -- --nocapture
+          PROPTEST_CASES=10000 cargo test -p chio-kernel --test property_reservation_ledger -- --nocapture
           cargo test -p chio-credentials --test property_passport -- --nocapture
           cargo test -p chio-policy --test property_evaluate -- --nocapture
 

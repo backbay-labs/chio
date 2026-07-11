@@ -32,11 +32,27 @@
 (* Invocation 1 explores every local admission and cleanup outcome.         *)
 (* Invocation 2 uses a fixed maximal non-monetary profile and the            *)
 (* dispatch-to-drop path. It covers arbitrary ordering of two independently *)
-(* keyed lifecycles. The model has no shared ledger or receipt accumulator,  *)
-(* so duplicating local choices adds states without a new transition shape. *)
+(* keyed lifecycles plus their shared child-share capacity. Receipt counters *)
+(* remain per invocation.                                                    *)
 (***************************************************************************)
 
-EXTENDS Naturals
+EXTENDS Naturals, FiniteSets
+
+(***************************************************************************)
+(* Reservation law (normative text in chio-kernel/src/budget_store.rs):    *)
+(* 1. Partition: reserved amount equals committed plus released plus        *)
+(*    retained plus outstanding at every reachable state, and outstanding  *)
+(*    is nonnegative.                                                       *)
+(* 2. Terminal uniqueness: a terminal admission has no outstanding amount  *)
+(*    and exactly one terminal classification.                             *)
+(* 3. Child splits: admitted sibling shares never exceed the parent share, *)
+(*    and every child independently obeys clauses 1 and 2.                 *)
+(*                                                                         *)
+(* Equivalent checks are maintained in                                     *)
+(* chio-kernel-core/src/formal_aeneas.rs,                                   *)
+(* chio-kernel/src/kernel/ledger_audit.rs, and                              *)
+(* chio-kernel/tests/property_reservation_ledger.rs.                        *)
+(***************************************************************************)
 
 CONSTANTS
     \* @type: Set(Int);
@@ -47,6 +63,7 @@ CONSTANTS
     Mutation
 
 Resources == {"hold", "slot", "lease", "child"}
+BudgetMax == 4
 AdmissionProfiles == {
     {},
     {"lease"},
@@ -87,7 +104,8 @@ Mutations == {
     "omit-fault-receipt",
     "release-incomplete-lease",
     "skip-deny-retention",
-    "release-post-dispatch-lease"
+    "release-post-dispatch-lease",
+    "skip-child-capacity-guard"
 }
 
 ASSUME
@@ -150,6 +168,41 @@ IsTerminal(i) == phase[i] \in {
     "terminal_unwound",
     "terminal_fault"
 }
+
+StatusAmount(i, status) ==
+    Cardinality({resource \in admitted_resources[i] : ledger[i][resource] = status})
+
+ReservedAmount(i) == Cardinality(admitted_resources[i])
+
+CountedLedger(i) == [
+    outstanding |-> StatusAmount(i, "reserved"),
+    committed |-> StatusAmount(i, "committed"),
+    released |-> StatusAmount(i, "released"),
+    retained |-> StatusAmount(i, "retained")
+]
+
+CountedLedgerDomains ==
+    \A i \in Invocations :
+        /\ ReservedAmount(i) \in 0..BudgetMax
+        /\ CountedLedger(i).outstanding \in 0..BudgetMax
+        /\ CountedLedger(i).committed \in 0..BudgetMax
+        /\ CountedLedger(i).released \in 0..BudgetMax
+        /\ CountedLedger(i).retained \in 0..BudgetMax
+
+PartitionAtEveryState ==
+    \A i \in Invocations :
+        ReservedAmount(i) =
+            CountedLedger(i).committed
+            + CountedLedger(i).released
+            + CountedLedger(i).retained
+            + CountedLedger(i).outstanding
+
+ActiveChildShares ==
+    Cardinality({i \in Invocations :
+        /\ "child" \in admitted_resources[i]
+        /\ ledger[i]["child"] \notin {"none", "released"}})
+
+ChildSplitsBounded == ActiveChildShares <= ChildMax
 
 ResolveAll(current, disposition) ==
     [resource \in Resources |->
@@ -234,6 +287,10 @@ Init ==
 Admit(i) ==
     /\ phase[i] = "idle"
     /\ \E resources \in AdmissionProfilesFor(i) :
+        /\ IF "child" \in resources
+           THEN \/ ActiveChildShares < ChildMax
+                \/ Mutation = "skip-child-capacity-guard"
+           ELSE TRUE
         /\ phase' = [phase EXCEPT ![i] = "admitted"]
         /\ ledger' = [ledger EXCEPT ![i] =
             [resource \in Resources |->
@@ -366,10 +423,11 @@ Spec ==
     /\ [][Next]_vars
 
 ReservationConservation ==
-    \A i \in Invocations :
-        IsTerminal(i) =>
-            \A resource \in admitted_resources[i] :
-                ledger[i][resource] \in {"committed", "released", "retained"}
+    /\ CountedLedgerDomains
+    /\ PartitionAtEveryState
+    /\ ChildSplitsBounded
+    /\ \A i \in Invocations :
+        IsTerminal(i) => CountedLedger(i).outstanding = 0
 
 TerminalReceiptExactlyOne ==
     \A i \in Invocations :

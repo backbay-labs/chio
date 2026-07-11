@@ -2,12 +2,15 @@ use creusot_std::prelude::*;
 
 #[allow(dead_code)]
 mod aeneas_body {
-    use creusot_std::prelude::*;
+    use creusot_std::{
+        prelude::*,
+        std::{clone::Clone, cmp::PartialEq, default::Default},
+    };
 
     include!("../../../../crates/kernel/chio-kernel-core/src/formal_aeneas.rs");
 }
 
-pub use aeneas_body::BudgetCommitResult;
+pub use aeneas_body::{BudgetCommitResult, ReservationLedger};
 
 #[ensures(result == (issued_at@ <= now@ && now@ < expires_at@))]
 pub fn time_window_valid_contract(now: u64, issued_at: u64, expires_at: u64) -> bool {
@@ -54,6 +57,26 @@ pub fn budget_commit_contract(
         invocation_cost,
         unit_cost,
     )
+}
+
+#[ensures(!result.1 ==> result.0 == state)]
+#[ensures(result.1 && op@ == 0 ==>
+    result.0.reserved@ + result.0.committed@ + result.0.released@ + result.0.retained@
+        == state.reserved@ + state.committed@ + state.released@ + state.retained@ + amount@
+)]
+#[ensures(result.1 && op@ != 0 ==>
+    result.0.reserved@ + result.0.committed@ + result.0.released@ + result.0.retained@
+        == state.reserved@ + state.committed@ + state.released@ + state.retained@
+)]
+#[ensures(state.reserved@ == 0
+    && (state.committed@ != 0 || state.released@ != 0 || state.retained@ != 0)
+    ==> result.0 == state)]
+pub fn ledger_apply_conservation_contract(
+    state: ReservationLedger,
+    op: u8,
+    amount: u64,
+) -> (ReservationLedger, bool) {
+    aeneas_body::ledger_apply(state, op, amount)
 }
 
 #[ensures(result == (!parent_has_cap || (child_has_cap && child_value@ <= parent_value@)))]

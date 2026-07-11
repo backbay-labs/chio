@@ -1877,7 +1877,7 @@ fn chio_runtime_live_parent_and_vendor_calls_expose_package_valid_receipts(
     Ok(())
 }
 
-// --- RFC-0002 drop-guard unwind tests ---
+// --- Drop-guard unwind tests ---
 
 fn make_fabricated_drop_charge() -> BudgetChargeResult {
     BudgetChargeResult {
@@ -1902,8 +1902,8 @@ fn make_fabricated_drop_charge() -> BudgetChargeResult {
 /// Authorize a real, open budget hold that exactly matches the fabricated drop
 /// charge (see `make_fabricated_drop_charge`). The drop-guard tests build a
 /// fabricated `BudgetChargeResult`; without a matching open hold in the store,
-/// the monetary reversal fails and (after RFC-0002 Finding C) records a fault
-/// receipt. Authorizing the hold first models the real admission so the
+/// the monetary reversal fails and records a fault receipt. Authorizing the
+/// hold first models the real admission so the
 /// pre-dispatch monetary unwind is a genuine, clean, receipt-free reversal.
 fn authorize_fabricated_drop_hold(
     kernel: &ChioKernel,
@@ -2061,8 +2061,8 @@ fn drop_pre_dispatch_monetary_unwinds_without_receipt(
         }
     });
     // Model the real admission behind the fabricated charge so the monetary
-    // reversal is a genuine, clean unwind (RFC-0002 Finding C would otherwise
-    // record a fault receipt for the un-reversible fabricated hold).
+    // reversal is a genuine, clean unwind. An un-reversible fabricated hold
+    // would record a fault receipt.
     authorize_fabricated_drop_hold(&kernel, &cap.id)?;
     let mutation = PreExecutionBudgetMutation::Charge(make_fabricated_drop_charge());
     let authorization = PaymentAuthorization {
@@ -2105,8 +2105,8 @@ fn drop_pre_dispatch_monetary_unwinds_without_receipt(
 
 #[test]
 fn drop_pre_dispatch_reverses_invocation_budget() -> Result<(), Box<dyn std::error::Error>> {
-    // RFC-0002 Finding A: a non-monetary grant with `max_invocations`
-    // increments an invocation counter at admission. A future dropped BEFORE
+    // A non-monetary grant with `max_invocations` increments an invocation
+    // counter at admission. A future dropped BEFORE
     // dispatch must reverse that increment so a never-dispatched call does not
     // permanently consume the slot.
     let kernel = make_kernel(make_config());
@@ -2162,8 +2162,8 @@ fn drop_pre_dispatch_reverses_invocation_budget() -> Result<(), Box<dyn std::err
 
 #[test]
 fn drop_pre_dispatch_releases_admitted_child_budget() -> Result<(), Box<dyn std::error::Error>> {
-    // RFC-0002 Finding B: a delegated capability admitted its share of the
-    // parent budget at admission. A future dropped BEFORE dispatch must
+    // A delegated capability admitted its share of the parent budget at
+    // admission. A future dropped BEFORE dispatch must
     // release that share or the child's claim is permanently recorded.
     let SiblingSumMonetaryFixture {
         kernel,
@@ -2297,8 +2297,8 @@ fn drop_pre_dispatch_overlapping_readmit_keeps_sibling_denied(
 
 #[test]
 fn drop_pre_dispatch_records_receipt_on_cleanup_fault() -> Result<(), Box<dyn std::error::Error>> {
-    // RFC-0002 Finding C: when a pre-dispatch cleanup step FAILS, the drop must
-    // record a signed receipt documenting the fault so a stuck
+    // When a pre-dispatch cleanup step fails, the drop must record a signed
+    // receipt documenting the fault so a stuck
     // hold/reservation lands on the append-only log rather than being silently
     // burned.
     let mut kernel = make_kernel(make_config());
@@ -2586,8 +2586,8 @@ fn nested_flow_drop_post_dispatch_records_cancellation_receipt(
 // A registered tool server whose dispatch first performs a nested CHILD
 // operation through the bridge (which buffers a signed child receipt into the
 // parent evaluation's `child_receipts` sink) and then either parks forever or
-// returns normally. Exercises RFC-0002 receipt-completeness for buffered child
-// receipts across a post-dispatch parent drop, and the no-double-record
+// returns normally. Exercises receipt completeness for buffered child receipts
+// across a post-dispatch parent drop, and the no-double-record
 // property on the normal exit.
 struct NestedChildOpServer {
     id: String,
@@ -3267,14 +3267,13 @@ fn generic_error_pre_side_effect_releases_without_marker(
 
 #[test]
 fn dispatch_not_registered_releases_full_budget_state() -> Result<(), Box<dyn std::error::Error>> {
-    // RFC-0002: when a registered server's dispatch fails with ToolNotRegistered
-    // (no tool side effect), the async generic-error arm must reverse ALL
+    // When a registered server's dispatch fails with ToolNotRegistered before
+    // a tool side effect, the async generic-error arm must reverse all
     // pre-dispatch budget state, not just runtime-admission reservations. A
     // max_invocations grant consumes an invocation slot at admission via
     // check_and_increment_budget; unwind_aborted_monetary_invocation is a no-op
-    // for a non-monetary Invocation mutation, so before this fix the slot leaked
-    // and a valid retry under the same grant was wrongly denied for budget
-    // exhaustion even though nothing ever dispatched.
+    // for a non-monetary Invocation mutation. The slot must remain reusable
+    // because nothing dispatched.
     let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(ToolNotRegisteredDispatchServer::new(
         "srv-chio-runtime",
@@ -3380,15 +3379,14 @@ fn dispatch_not_registered_releases_full_budget_state_nested_flow(
 
 #[test]
 fn url_elicitation_required_releases_full_budget_state() -> Result<(), Box<dyn std::error::Error>> {
-    // RFC-0002 codex follow-up: UrlElicitationsRequired is classified by
+    // UrlElicitationsRequired is classified by
     // dispatch_error_precedes_tool_side_effect() as a no-side-effect dispatch
     // error, exactly like ToolNotRegistered. The tool never runs; the client
     // completes the URL elicitations and re-sends a FRESH tool call that
     // re-admits from scratch, so ALL pre-dispatch budget state must be reversed.
     // A max_invocations grant consumes an invocation slot at admission;
     // unwind_aborted_monetary_invocation is a no-op for a non-monetary
-    // Invocation mutation, so before this fix the slot leaked and the authorize
-    // -> retry could never re-admit under the same grant. The async arm returns
+    // Invocation mutation. The async arm returns
     // Err(UrlElicitationsRequired) (so the elicitations payload propagates to
     // the edge), not a Deny response, so the slot reusability is asserted
     // directly against the budget store.

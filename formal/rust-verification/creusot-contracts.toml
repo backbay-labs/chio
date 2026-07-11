@@ -20,6 +20,7 @@ covered_symbols = [
   "formal/rust-verification/creusot-core::time_window_valid_contract",
   "formal/rust-verification/creusot-core::budget_precheck_contract",
   "formal/rust-verification/creusot-core::budget_commit_contract",
+  "formal/rust-verification/creusot-core::ledger_apply_conservation_contract",
   "formal/rust-verification/creusot-core::optional_u32_cap_subset_contract",
   "formal/rust-verification/creusot-core::required_true_preserved_contract",
   "formal/rust-verification/creusot-core::dpop_admits_contract",
@@ -34,6 +35,7 @@ contract_goals = [
   "normalized projections preserve every covered proof-facing field",
   "receipt signing refuses kernel-key mismatch before invoking the signing backend",
   "proof-facing Creusot wrappers verify single-sourced bodies included from formal_aeneas.rs",
+  "reservation ledger transitions preserve amount totals, reject invalid updates unchanged, and make finalized states absorbing",
 ]
 
 [[contract_twin]]
@@ -47,6 +49,10 @@ production = "budget_precheck"
 [[contract_twin]]
 contract = "budget_commit_contract"
 production = "budget_commit"
+
+[[contract_twin]]
+contract = "ledger_apply_conservation_contract"
+production = "ledger_apply"
 
 [[contract_twin]]
 contract = "optional_u32_cap_subset_contract"

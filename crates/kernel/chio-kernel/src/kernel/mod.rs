@@ -11,6 +11,8 @@ mod error;
 mod kernel_drop_guard;
 mod kernel_scopes;
 mod kernel_struct;
+#[cfg(debug_assertions)]
+mod ledger_audit;
 
 pub use error::{KernelError, StructuredErrorReport};
 pub use kernel_struct::{
@@ -524,6 +526,15 @@ pub(crate) enum PreExecutionBudgetMutation {
 }
 
 impl PreExecutionBudgetMutation {
+    #[cfg(debug_assertions)]
+    fn grant_index(&self) -> Option<usize> {
+        match self {
+            Self::Invocation { grant_index } => Some(*grant_index),
+            Self::Charge(charge) => Some(charge.grant_index),
+            Self::None => None,
+        }
+    }
+
     fn charge_result(&self) -> Option<&BudgetChargeResult> {
         match self {
             Self::Charge(charge) => Some(charge),

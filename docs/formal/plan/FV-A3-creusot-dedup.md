@@ -146,7 +146,7 @@ creusot-body-sync: BODY DRIFT
 
 ## Acceptance criteria
 
-- [x] `creusot-contracts.toml` lists all seven (post phase 3: eight, with the budget split and retirement accounted) contract functions; the completeness check fails CI when the crate and toml disagree in either direction.
+- [x] `creusot-contracts.toml` lists every contract function (eight after phase 3, nine after FV-B3 added the reservation-ledger contract); the completeness check fails CI when the crate and toml disagree in either direction.
 - [x] `check-creusot-body-sync.sh` fails on a one-token edit to any contract body that is not mirrored in `formal_aeneas.rs` (demonstrated in the PR with a red run).
 - [x] After phase 3, no logic body exists in `creusot-core/src/lib.rs` outside the included module; every `*_contract` is a single delegation call.
 - [x] `time_window_valid_contract`'s ensures is proven against the real `classify_time_window_code`-based body.

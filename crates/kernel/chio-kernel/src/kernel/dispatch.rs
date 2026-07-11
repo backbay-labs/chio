@@ -157,7 +157,10 @@ impl ChioKernel {
             }
         }
 
-        Ok(Some(self.reverse_budget_charge(&cap.id, charge)?))
+        let reversed = self.reverse_budget_charge(&cap.id, charge)?;
+        #[cfg(debug_assertions)]
+        self.debug_assert_reservation_conservation(&cap.id, charge.grant_index);
+        Ok(Some(reversed))
     }
 
     pub(crate) fn record_observed_capability_snapshot(
@@ -491,10 +494,13 @@ impl ChioKernel {
                 serde_json::Value::Bool(true),
             );
         }
-        merge_metadata_objects(
+        let marked = merge_metadata_objects(
             metadata,
             Some(serde_json::json!({ "chio_runtime": retained })),
-        )
+        );
+        #[cfg(debug_assertions)]
+        self.debug_assert_runtime_reservations_retained(marked.as_ref());
+        marked
     }
 
     pub(crate) fn release_runtime_admission_reservations_for_pre_dispatch_denial(

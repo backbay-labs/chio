@@ -602,7 +602,7 @@ impl NonAtomicReceiptStore {
 
 #[cfg(any(loom, chio_kernel_loom))]
 impl ModelDropGuard {
-    /// Models PostAdmissionDropGuard::drop (RFC-0002): disarmed guards do
+    /// Models PostAdmissionDropGuard::drop: disarmed guards do
     /// nothing; pre-dispatch drops release reservations and write no
     /// receipt; post-dispatch drops retain reservations and append exactly
     /// one receipt while holding the store write lock (models the

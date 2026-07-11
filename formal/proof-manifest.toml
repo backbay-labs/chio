@@ -28,6 +28,7 @@ root_modules = [
   "formal/lean4/Chio/Chio/Proofs/AttenuationWitness.lean",
   "formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean",
   "formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean",
+  "formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean",
   "formal/lean4/Chio/Chio/Capability/Delegation.lean",
   "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
   "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
@@ -173,6 +174,7 @@ excluded_surfaces = [
   "async scheduling, network delivery, subprocess effects, and tool-server behavior after the verified decision core allows a call",
   "cluster consensus, external settlement rails, and third-party registry availability beyond fail-closed Chio handling",
   "Aeneas extraction from async, IO, SQLite, crypto, and string-heavy production modules outside crates/kernel/chio-kernel-core/src/formal_aeneas.rs",
+  "Reservation-ledger refinement from the pure ledger_apply model to concrete BudgetStore mutations; runtime debug replay and stateful tests are evidence, not a proof of refinement",
   "Symlink resolution and OS filesystem root enforcement beyond Chio's normalized path-prefix fail-closed checks",
   "Cross-row receipt and budget crash recovery, ordering, and conservation until implementation trace validation and crash-reopen gates establish refinement",
 ]
@@ -180,6 +182,7 @@ excluded_surfaces = [
 notes = [
   "The implementation-linked protocol core is the pure security decision surface plus bounded models for adjacent state transitions. Concrete platform effects are tracked as audited assumptions.",
   "The budget-admission and revocation-projection public Kani harnesses verify shared scalar projection functions called by both production backends or callers; they do not verify storage IO, mutation journals, snapshot freshness, or reservation-ledger transitions. The separate budget checked-add harness remains model-level.",
+  "Reservation conservation has four independent enforcement surfaces: bounded Apalache interleavings, the pure ledger_apply transition with Kani, Creusot, and Lean witnesses, a debug-only concrete monetary-journal replay plus runtime-metadata check, and a stateful InMemoryBudgetStore property test. The store test does not drive kernel lifecycle or receipts; the in-kernel drop_guard_disposition_table separately exercises the production hook and guard. Scalar admission is linked; production ledger linkage is not established.",
   "Lean assets are release evidence only when root-imported, sorry-free, and mapped to property_matrix entries.",
   "Creusot and Kani are required strict-CI lanes for production implementation linkage; public Kani harnesses target verify_capability, NormalizedScope::is_subset_of, resolve_matching_grants, evaluate, sign_receipt, and the shared budget and revocation admission projections.",
   "Aeneas production extraction covers the pure numeric/boolean core and is paired with tracked Lean equivalence theorems.",
@@ -681,12 +684,12 @@ rust_symbols = [
   "PostAdmissionDropGuard::handle_pre_dispatch_drop",
   "PostAdmissionDropGuard::drop",
 ]
-normalized_sha256 = "b34889d86c0c5ce0049c1b4cb8a9aaed38d5b5ae8e8251ea1fb1adfb4eaf7707"
+normalized_sha256 = "f2a9d345c55262bd6b074ffac8e84cb3c28a1e4e33f2f2f6a28f0c4b6debe789"
 symbol_sha256 = [
   { symbol = "PostAdmissionDropGuard", sha256 = "ec215cf4f4de761dc529408e5e0a5537ea0a195ad316f01f276b11dc1152a8d3" },
   { symbol = "PostAdmissionDropGuard::mark_dispatch_started", sha256 = "ddf846b1fd9df7b56e38061cef9c9513b037d75bd9635a2a7004ac2c00940b93" },
-  { symbol = "PostAdmissionDropGuard::handle_pre_dispatch_drop", sha256 = "44c6a2176715ddc6b65a434feca2c1bba44582e2f78afc3582416e80f203b7f0" },
-  { symbol = "PostAdmissionDropGuard::drop", sha256 = "e3e2ab3c03e64f4d3ce12a7510b1178490c4827dc3d16f4af4f96ff8e9ef823f" },
+  { symbol = "PostAdmissionDropGuard::handle_pre_dispatch_drop", sha256 = "b3feea8d65d2cf838fb165ce84a805d471ae7188a660ef53f1c297558acab9b8" },
+  { symbol = "PostAdmissionDropGuard::drop", sha256 = "3181ea3c69cf89de28e1ce3efd0ecfe2d9fdcb96c499c9d2f65d05808ca87d84" },
 ]
 
 [[mirror]]
@@ -695,9 +698,9 @@ model_kind = "tla"
 relationship = "abstraction_anchor"
 rust_source = "crates/kernel/chio-kernel/src/kernel/validation.rs"
 rust_symbols = ["ChioKernel::reverse_pre_execution_budget_mutation"]
-normalized_sha256 = "57e7c5f92c8048742d9c28ee4d036fc8c02818c93a2309babeb4d5fba3de55c9"
+normalized_sha256 = "00e432a9b40656b45e565f70b099dc344e1246d88a862297cd36313578fd0b23"
 symbol_sha256 = [
-  { symbol = "ChioKernel::reverse_pre_execution_budget_mutation", sha256 = "43b55db37dec0028e25c552dcadf47e177b9dff79eaebea10b5352a8df810697" },
+  { symbol = "ChioKernel::reverse_pre_execution_budget_mutation", sha256 = "5334806bd6002bec7668ee2c85127f04987b476c49986dde58ceeaa172d84b03" },
 ]
 
 [[mirror]]
@@ -711,12 +714,12 @@ rust_symbols = [
   "PostAdmissionDropGuard::handle_pre_dispatch_drop",
   "PostAdmissionDropGuard::drop",
 ]
-normalized_sha256 = "b34889d86c0c5ce0049c1b4cb8a9aaed38d5b5ae8e8251ea1fb1adfb4eaf7707"
+normalized_sha256 = "f2a9d345c55262bd6b074ffac8e84cb3c28a1e4e33f2f2f6a28f0c4b6debe789"
 symbol_sha256 = [
   { symbol = "PostAdmissionDropGuard", sha256 = "ec215cf4f4de761dc529408e5e0a5537ea0a195ad316f01f276b11dc1152a8d3" },
   { symbol = "PostAdmissionDropGuard::mark_dispatch_started", sha256 = "ddf846b1fd9df7b56e38061cef9c9513b037d75bd9635a2a7004ac2c00940b93" },
-  { symbol = "PostAdmissionDropGuard::handle_pre_dispatch_drop", sha256 = "44c6a2176715ddc6b65a434feca2c1bba44582e2f78afc3582416e80f203b7f0" },
-  { symbol = "PostAdmissionDropGuard::drop", sha256 = "e3e2ab3c03e64f4d3ce12a7510b1178490c4827dc3d16f4af4f96ff8e9ef823f" },
+  { symbol = "PostAdmissionDropGuard::handle_pre_dispatch_drop", sha256 = "b3feea8d65d2cf838fb165ce84a805d471ae7188a660ef53f1c297558acab9b8" },
+  { symbol = "PostAdmissionDropGuard::drop", sha256 = "3181ea3c69cf89de28e1ce3efd0ecfe2d9fdcb96c499c9d2f65d05808ca87d84" },
 ]
 
 [[mirror]]
@@ -729,11 +732,11 @@ rust_symbols = [
   "ChioKernel::release_runtime_admission_reservations",
   "ChioKernel::mark_runtime_admission_reservations_retained_fail_closed",
 ]
-normalized_sha256 = "06700c942e19ecfb64dd051f27ac09cab472b82b1ea8abe49e151f35b27fb308"
+normalized_sha256 = "db1f74ce10d3a748ea51c7097d9ac6f75553bdd423109e650b27e004127bd2de"
 symbol_sha256 = [
-  { symbol = "ChioKernel::unwind_aborted_monetary_invocation", sha256 = "39a87ecba8cfb8e82de083c5cb31940f06667f2b2f82709dc15cfee4deca5bdc" },
+  { symbol = "ChioKernel::unwind_aborted_monetary_invocation", sha256 = "55d3c40c42b16818bca4a157e4b23d3228695400b4482324d72f6422a5150d87" },
   { symbol = "ChioKernel::release_runtime_admission_reservations", sha256 = "97211eaf9d4fee74b100a15e7a48b03cfebdc51510407afc7397e578ec2a5a70" },
-  { symbol = "ChioKernel::mark_runtime_admission_reservations_retained_fail_closed", sha256 = "e9097e16d978d4faf00ab5d131a60be98f0ac5079e80201385e33c51d1db0ff1" },
+  { symbol = "ChioKernel::mark_runtime_admission_reservations_retained_fail_closed", sha256 = "7150084cef4fb4f410d9265956c57d4b587d6cecad5d5d9d8e9a3683cb589063" },
 ]
 
 [[mirror]]

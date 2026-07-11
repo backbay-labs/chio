@@ -461,7 +461,7 @@ impl ChioKernel {
         }
 
         let tool_started_at = Instant::now();
-        // RFC-0002: the tool-server lookup is hoisted above the drop-guard
+        // The tool-server lookup is hoisted above the drop-guard
         // construction so its failure can never early-return through `?`
         // while the guard is armed. ToolNotRegistered precedes any tool
         // side effect (dispatch_error_precedes_tool_side_effect), so this

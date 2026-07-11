@@ -1,4 +1,4 @@
-// RFC-0002 disposition-table property test. For every combination of
+// Post-admission disposition-table property test. For every combination of
 // {monetary, non-monetary} x {pre-dispatch, post-dispatch} x {lease
 // present, absent}, a directly constructed PostAdmissionDropGuard must
 // obey the fail-closed disposition table:
@@ -10,7 +10,10 @@
 
 use proptest::prelude::*;
 
+const DROP_GUARD_HOLD_ID: &str = "hold-drop-guard-tests";
+
 struct CountingReleaseRuntimeAdmissionHook {
+    admissions: std::sync::Arc<AtomicU64>,
     releases: std::sync::Arc<AtomicU64>,
 }
 
@@ -23,13 +26,143 @@ impl RuntimeAdmissionHook for CountingReleaseRuntimeAdmissionHook {
         &self,
         _context: &RuntimeAdmissionContext<'_>,
     ) -> Result<RuntimeAdmissionDecision, KernelError> {
-        Ok(RuntimeAdmissionDecision::allow(None))
+        self.admissions.fetch_add(1, Ordering::SeqCst);
+        Ok(RuntimeAdmissionDecision::allow(Some(serde_json::json!({
+            "chio_runtime": {
+                "admission_id": "adm-drop-proptest",
+                "accepted": true,
+                "reserved_destructive_lease_id": "lease-drop-proptest",
+                "failure_code": null
+            }
+        }))))
     }
 
-    fn release_reserved(&self, _metadata: &serde_json::Value) -> Result<(), KernelError> {
+    fn release_reserved(&self, metadata: &serde_json::Value) -> Result<(), KernelError> {
+        assert_eq!(
+            metadata["chio_runtime"]["reserved_destructive_lease_id"],
+            "lease-drop-proptest"
+        );
         self.releases.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
+}
+
+fn assert_drop_guard_budget_conservation(
+    kernel: &ChioKernel,
+    capability_id: &str,
+    expect_monetary_terminal: bool,
+) -> Result<(), TestCaseError> {
+    let (events, usage) = kernel
+        .with_budget_store(|store| {
+            Ok((
+                store.list_mutation_events(usize::MAX, Some(capability_id), Some(0))?,
+                store.get_usage(capability_id, 0)?,
+            ))
+        })
+        .map_err(|error| TestCaseError::fail(error.to_string()))?;
+    let mut admitted = 0u128;
+    let mut outstanding = 0u128;
+    let mut committed = 0u128;
+    let mut released = 0u128;
+    let mut invocations = 0u64;
+    let mut drop_hold_authorizations = 0u64;
+    let mut drop_hold_reversals = 0u64;
+    let mut drop_hold_other_terminal_mutations = 0u64;
+
+    for event in events {
+        if event.hold_id.as_deref() == Some(DROP_GUARD_HOLD_ID) {
+            match event.kind {
+                crate::budget_store::BudgetMutationKind::AuthorizeExposure
+                    if event.allowed == Some(true) =>
+                {
+                    drop_hold_authorizations += 1;
+                }
+                crate::budget_store::BudgetMutationKind::ReverseExposure => {
+                    prop_assert_eq!(event.exposure_units, 5);
+                    drop_hold_reversals += 1;
+                }
+                crate::budget_store::BudgetMutationKind::ReleaseExposure
+                | crate::budget_store::BudgetMutationKind::ReconcileSpend => {
+                    drop_hold_other_terminal_mutations += 1;
+                }
+                crate::budget_store::BudgetMutationKind::IncrementInvocation
+                | crate::budget_store::BudgetMutationKind::AuthorizeExposure => {}
+            }
+        }
+        match event.kind {
+            crate::budget_store::BudgetMutationKind::IncrementInvocation => {
+                if event.allowed == Some(true) {
+                    invocations += 1;
+                }
+            }
+            crate::budget_store::BudgetMutationKind::AuthorizeExposure => {
+                if event.allowed == Some(true) {
+                    let exposure = u128::from(event.exposure_units);
+                    admitted += exposure;
+                    outstanding += exposure;
+                    invocations += 1;
+                }
+            }
+            crate::budget_store::BudgetMutationKind::ReverseExposure => {
+                let exposure = u128::from(event.exposure_units);
+                prop_assert!(outstanding >= exposure);
+                prop_assert!(invocations > 0);
+                outstanding -= exposure;
+                released += exposure;
+                invocations -= 1;
+            }
+            crate::budget_store::BudgetMutationKind::ReleaseExposure => {
+                let exposure = u128::from(event.exposure_units);
+                prop_assert!(outstanding >= exposure);
+                outstanding -= exposure;
+                released += exposure;
+            }
+            crate::budget_store::BudgetMutationKind::ReconcileSpend => {
+                let exposure = u128::from(event.exposure_units);
+                let realized = u128::from(event.realized_spend_units);
+                prop_assert!(realized <= exposure);
+                prop_assert!(outstanding >= exposure);
+                outstanding -= exposure;
+                committed += realized;
+                released += exposure - realized;
+            }
+        }
+        prop_assert_eq!(admitted, outstanding + committed + released);
+        prop_assert_eq!(
+            u128::from(event.total_cost_exposed_after),
+            outstanding
+        );
+        prop_assert_eq!(
+            u128::from(event.total_cost_realized_spend_after),
+            committed
+        );
+        prop_assert_eq!(u64::from(event.invocation_count_after), invocations);
+    }
+
+    match usage {
+        Some(usage) => {
+            prop_assert_eq!(u64::from(usage.invocation_count), invocations);
+            prop_assert_eq!(u128::from(usage.total_cost_exposed), outstanding);
+            prop_assert_eq!(
+                u128::from(usage.total_cost_realized_spend),
+                committed
+            );
+        }
+        None => prop_assert_eq!((invocations, outstanding, committed), (0, 0, 0)),
+    }
+    if expect_monetary_terminal {
+        prop_assert_eq!(drop_hold_authorizations, 1);
+        prop_assert_eq!(drop_hold_reversals, 1);
+        prop_assert_eq!(drop_hold_other_terminal_mutations, 0);
+        prop_assert_eq!(outstanding, 0, "dropped monetary hold remained open");
+        prop_assert_eq!(committed, 0, "dropped monetary hold was charged");
+        prop_assert_eq!(released, admitted);
+    } else {
+        prop_assert_eq!(drop_hold_authorizations, 0);
+        prop_assert_eq!(drop_hold_reversals, 0);
+        prop_assert_eq!(drop_hold_other_terminal_mutations, 0);
+    }
+    Ok(())
 }
 
 // Exhaustively enumerated rather than randomly sampled: with only 8 cells
@@ -53,12 +186,16 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
 
     for (monetary, dispatch_started, lease_present) in combinations {
         let mut kernel = make_kernel(make_config());
+        let admissions = std::sync::Arc::new(AtomicU64::new(0));
         let releases = std::sync::Arc::new(AtomicU64::new(0));
-        kernel.set_runtime_admission_hook(std::sync::Arc::new(
-            CountingReleaseRuntimeAdmissionHook {
-                releases: std::sync::Arc::clone(&releases),
-            },
-        ));
+        if lease_present {
+            kernel.set_runtime_admission_hook(std::sync::Arc::new(
+                CountingReleaseRuntimeAdmissionHook {
+                    admissions: std::sync::Arc::clone(&admissions),
+                    releases: std::sync::Arc::clone(&releases),
+                },
+            ));
+        }
 
         let agent_kp = make_keypair();
         let cap = make_capability(
@@ -77,20 +214,17 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
             "srv-chio-runtime",
             serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
         );
-        let extra_metadata = lease_present.then(|| {
-            serde_json::json!({
-                "chio_runtime": {
-                    "admission_id": "adm-drop-proptest",
-                    "accepted": true,
-                    "reserved_destructive_lease_id": "lease-drop-proptest",
-                    "failure_code": null
-                }
-            })
-        });
+        let admission = kernel.run_runtime_admission_hook(&request, None, 0, 0, Some(0));
+        prop_assert!(admission.allowed);
+        prop_assert_eq!(
+            admissions.load(Ordering::SeqCst),
+            u64::from(lease_present)
+        );
+        let extra_metadata = admission.metadata;
         if monetary {
             // A monetary drop reverses a real hold; authorize one so the
-            // pre-dispatch unwind is clean (a failed reversal would, after
-            // RFC-0002 Finding C, record a fault receipt).
+            // pre-dispatch unwind is clean. A failed reversal records a fault
+            // receipt because cleanup did not complete.
             authorize_fabricated_drop_hold(&kernel, &cap.id)
                 .map_err(|error| TestCaseError::fail(error.to_string()))?;
         }
@@ -145,6 +279,14 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
                     Some(true),
                     "retained reservations must be marked on the receipt"
                 );
+                prop_assert_eq!(
+                    receipt
+                        .and_then(|receipt| receipt.metadata.as_ref())
+                        .and_then(|metadata| metadata.get("chio_runtime"))
+                        .and_then(|runtime| runtime.get("retained_destructive_lease_id"))
+                        .and_then(serde_json::Value::as_str),
+                    Some("lease-drop-proptest")
+                );
             } else {
                 prop_assert_eq!(
                     marker,
@@ -165,6 +307,7 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
                 "pre-dispatch drop must release exactly when admission metadata exists"
             );
         }
+        assert_drop_guard_budget_conservation(&kernel, &cap.id, monetary)?;
     }
 
     Ok(())

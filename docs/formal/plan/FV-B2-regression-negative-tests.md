@@ -19,7 +19,7 @@ A model that has never produced a counterexample is unmeasured, not trustworthy 
   Each production-derived entry includes the full fix SHA and a current Rust
   regression-test anchor.
 - Both recommended variants landed. The suite has two pre-existing checks and
-  seven drop-guard mutations, for nine entries total.
+  eight drop-guard mutations, for ten entries total.
 - A caught violation requires exit 12, the Apalache 0.50.1 Error outcome, and
   a parseable ITF trace with at least one state. `NoError`, timeout, parse
   failure, JVM failure, and every other exit are separate fail-closed outcomes.
@@ -56,6 +56,7 @@ Each variant mutates exactly one transition of `formal/apalache/PostAdmissionDro
 | --- | --- | --- | --- |
 | `DropGuardDiscardChildBufferBroken.tla` | `DropPostDispatch` skips the child-buffer flush (appends only the parent cancel record; `child_buf` zeroed without logging) | `ChildReceiptsFlushed` | `38cc91471` |
 | `DropGuardSkipChildBudgetReleaseBroken.tla` | `DropPreDispatch` leaves `ledger[i]["child"]` at `reserved` | `ReservationConservation` | `a6d26dbc4` Finding B |
+| `DropGuardChildOversubscriptionBroken.tla` | `Admit` permits a second child reservation after the shared `ChildMax` capacity is exhausted | `ReservationConservation` | bounded model non-vacuity witness |
 | `DropGuardNoFaultReceiptBroken.tla` | `DropPreDispatch` with a failed unwind step appends no `fault` record | `TerminalReceiptExactlyOne` | `a6d26dbc4` Finding C |
 | `DropGuardReleaseOnIncompleteStreamBroken.tla` | `IncompleteStream` sets `ledger[i]["lease"]` to `released` instead of `retained` | `RetainedIffAborted` | `84e98b9d0` |
 | `DropGuardNoRetainOnPostInvocationDenyBroken.tla` | `DenyPostInvocation` leaves the lease `reserved` (no retained marking) | `RetainedIffAborted` | `58abf33d2` |
@@ -87,7 +88,7 @@ timeout_secs = 300
 notes = "PublishAllow drops the HasAllowReceipt precondition."
 ```
 
-Fields: `spec`, `cfg`, `falsifies` (the exact invariant name, which MUST have a `formal/MAPPING.md` row), `production_commit` (full sha of the fix the variant re-derives, or `n/a` for pure non-tautology checks), `runtime_test` (the Rust regression anchor, or `n/a` for the two structural checks), `classification`, `length`, `timeout_secs`, and `notes`. The seven drop-guard rows carry their full commit SHAs and runtime anchors.
+Fields: `spec`, `cfg`, `falsifies` (the exact invariant name, which MUST have a `formal/MAPPING.md` row), `production_commit` (full sha of the fix the variant re-derives, or `n/a` for pure non-tautology checks), `runtime_test` (the Rust regression anchor, or `n/a` for the structural checks), `classification`, `length`, `timeout_secs`, and `notes`. Seven production-derived drop-guard rows carry full commit SHAs and runtime anchors; the eighth is the child-capacity non-vacuity witness with its conformance-test anchor.
 
 ### Wrapper: `scripts/check-apalache-negative.sh`
 
@@ -111,17 +112,17 @@ without the matching outcome and trace evidence.
 ### Budget
 
 Negative runs are shallow: every mutation is reachable in at most four steps.
-Per-spec `timeout_secs = 300` across nine entries gives a 45-minute worst case,
+Per-spec `timeout_secs = 300` across ten entries gives a 50-minute worst case,
 inside the separate job's 60-minute timeout. Local calibration completes well
 below that ceiling.
 
 ## Implementation plan
 
 1. Phase 1 - wrapper against the existing suite (no FV-B1 dependency). Add `scripts/check-apalache-negative.sh` and `formal/apalache/_negative_tests/REGISTRY.toml` with the two existing entries. Add a `apalache-negative` job (or a step after the safety matrix) to `.github/workflows/apalache-safety.yml`. Rewrite the "Why these are not in CI" section of `formal/apalache/_negative_tests/README.md` to describe the wrapper posture ("CI-green means every Broken spec still yields its counterexample") and keep the local commands.
-2. Phase 2 - drop-guard variants (after FV-B1 phase 2). Add all seven `DropGuard*Broken.tla` + cfg files and their registry rows with full production commit SHAs and Rust test anchors. Reproduce each counterexample locally once and record the run in the FV-B1 verification record; from then on CI owns it.
+2. Phase 2 - drop-guard variants (after FV-B1 phase 2). Add all eight `DropGuard*Broken.tla` + cfg files and their registry rows with full production commit SHAs where applicable and Rust test anchors. Reproduce each counterexample locally once and record the run in the FV-B1 verification record; from then on CI owns it.
 3. Phase 3 - closure hook. Mark FV-B1's Phase 3 acceptance box checked only when this suite is green in a hosted run; cross-link the run URL from the FV-B1 verification record.
 
-Files added: `scripts/check-apalache-negative.sh`, `formal/apalache/_negative_tests/REGISTRY.toml`, seven `DropGuard*Broken.tla` modules, and seven matching configs. Files modified: `.github/workflows/apalache-safety.yml`, `formal/apalache/_negative_tests/README.md`, and `formal/MAPPING.md`.
+Files added: `scripts/check-apalache-negative.sh`, `formal/apalache/_negative_tests/REGISTRY.toml`, eight `DropGuard*Broken.tla` modules, and eight matching configs. Files modified: `.github/workflows/apalache-safety.yml`, `formal/apalache/_negative_tests/README.md`, and `formal/MAPPING.md`.
 
 ## CI and gating changes
 
@@ -132,9 +133,9 @@ Files added: `scripts/check-apalache-negative.sh`, `formal/apalache/_negative_te
 ## Acceptance criteria
 
 - [x] `scripts/check-apalache-negative.sh` exists, iterates `REGISTRY.toml`, and distinguishes violations, `NoError`, timeouts, and other tool failures.
-- [x] `REGISTRY.toml` covers both pre-existing Broken specs and all seven drop-guard variants, each with a mapped invariant and exact production commit SHA where applicable.
-- [x] All seven drop-guard Broken variants produce counterexamples at `--length=4` under pinned apalache-mc 0.50.1 locally.
-- [ ] All nine registered entries pass in the hosted job on the landing PR.
+- [x] `REGISTRY.toml` covers both pre-existing Broken specs and all eight drop-guard variants, each with a mapped invariant and exact production commit SHA where applicable.
+- [x] All eight drop-guard Broken variants produce counterexamples at `--length=4` under pinned apalache-mc 0.50.1 locally.
+- [ ] All ten registered entries pass in the hosted job on the landing PR.
 - [x] The `apalache-negative` job is wired into the same path-scoped and nightly triggers as the safety matrix.
 - [ ] The `apalache-negative` job is green on the landing PR.
 - [x] `_negative_tests/README.md` documents the wrapper inversion and registry.

@@ -10,6 +10,139 @@ pub struct BudgetCommitResult {
     pub remaining_units: u64,
 }
 
+#[cfg_attr(chio_creusot_contracts, derive(DeepModel))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ReservationLedger {
+    /// Exposure not yet assigned a terminal amount bucket.
+    pub reserved: u64,
+    /// Realized spend.
+    pub committed: u64,
+    /// Reversed exposure plus unused reconciliation remainder.
+    pub released: u64,
+    /// Deliberately non-unwound exposure.
+    pub retained: u64,
+}
+
+#[cfg_attr(
+    chio_creusot_contracts,
+    ensures(result == (
+        state.reserved@ == 0
+            && (state.committed@ != 0 || state.released@ != 0 || state.retained@ != 0)
+    ))
+)]
+fn ledger_is_terminal(state: ReservationLedger) -> bool {
+    state.reserved == 0 && (state.committed != 0 || state.released != 0 || state.retained != 0)
+}
+
+/// Apply one reservation transition.
+///
+/// Reservation law (normative text in `chio-kernel/src/budget_store.rs`):
+/// 1. Partition: reserved amount equals committed plus released plus retained
+///    plus outstanding at every reachable state, and outstanding is nonnegative.
+/// 2. Terminal uniqueness: a terminal admission has no outstanding amount and
+///    exactly one terminal classification.
+/// 3. Child splits: admitted sibling shares never exceed the parent share, and
+///    every child independently obeys clauses 1 and 2.
+///
+/// Equivalent checks are maintained in
+/// `formal/apalache/PostAdmissionDropGuard.tla`,
+/// `chio-kernel/src/kernel/ledger_audit.rs`, and
+/// `chio-kernel/tests/property_reservation_ledger.rs`.
+///
+/// Operations are 0 = reserve, 1 = commit, 2 = release, and 3 = retain.
+/// Unknown operations, over-disposition, reserve-after-terminal, and arithmetic
+/// overflow return the exact input state with `false`. Commit and release
+/// amounts may both be nonzero after a reconcile that realizes less than its
+/// exposure; the absorbing terminal state supplies the single disposition.
+#[cfg_attr(
+    chio_creusot_contracts,
+    ensures(!result.1 ==> result.0 == state)
+)]
+#[cfg_attr(
+    chio_creusot_contracts,
+    ensures(result.1 && op@ == 0 ==>
+        result.0.reserved@ + result.0.committed@ + result.0.released@ + result.0.retained@
+            == state.reserved@ + state.committed@ + state.released@ + state.retained@ + amount@
+    )
+)]
+#[cfg_attr(
+    chio_creusot_contracts,
+    ensures(result.1 && op@ != 0 ==>
+        result.0.reserved@ + result.0.committed@ + result.0.released@ + result.0.retained@
+            == state.reserved@ + state.committed@ + state.released@ + state.retained@
+    )
+)]
+#[cfg_attr(
+    chio_creusot_contracts,
+    ensures(state.reserved@ == 0
+        && (state.committed@ != 0 || state.released@ != 0 || state.retained@ != 0)
+        ==> result.0 == state
+    )
+)]
+pub fn ledger_apply(state: ReservationLedger, op: u8, amount: u64) -> (ReservationLedger, bool) {
+    let Some(total) = state.reserved.checked_add(state.committed) else {
+        return (state, false);
+    };
+    let Some(total) = total.checked_add(state.released) else {
+        return (state, false);
+    };
+    let Some(total) = total.checked_add(state.retained) else {
+        return (state, false);
+    };
+
+    if op > 3 || (op == 0 && ledger_is_terminal(state)) {
+        return (state, false);
+    }
+
+    if op == 0 {
+        if total.checked_add(amount).is_none() {
+            return (state, false);
+        }
+        return match state.reserved.checked_add(amount) {
+            Some(reserved) => (ReservationLedger { reserved, ..state }, true),
+            None => (state, false),
+        };
+    }
+
+    if amount > state.reserved {
+        return (state, false);
+    }
+
+    let outstanding = state.reserved - amount;
+    let updated = match op {
+        1 => state
+            .committed
+            .checked_add(amount)
+            .map(|committed| ReservationLedger {
+                reserved: outstanding,
+                committed,
+                ..state
+            }),
+        2 => state
+            .released
+            .checked_add(amount)
+            .map(|released| ReservationLedger {
+                reserved: outstanding,
+                released,
+                ..state
+            }),
+        3 => state
+            .retained
+            .checked_add(amount)
+            .map(|retained| ReservationLedger {
+                reserved: outstanding,
+                retained,
+                ..state
+            }),
+        _ => None,
+    };
+
+    match updated {
+        Some(next) => (next, true),
+        None => (state, false),
+    }
+}
+
 #[cfg_attr(
     chio_creusot_contracts,
     ensures(now@ < issued_at@ ==> result == 1u8)
@@ -209,4 +342,63 @@ pub fn receipt_fields_coupled(
         && verdict_matches
         && policy_hash_matches
         && evidence_class_matches
+}
+
+#[cfg(test)]
+mod reservation_ledger_tests {
+    use super::*;
+
+    #[test]
+    fn partial_realization_can_release_remainder_under_one_terminal_state() {
+        let (reserved, valid) = ledger_apply(ReservationLedger::default(), 0, 8);
+        assert!(valid);
+        let (released, valid) = ledger_apply(reserved, 2, 3);
+        assert!(valid);
+        let (terminal, valid) = ledger_apply(released, 1, 5);
+        assert!(valid);
+        assert_eq!(
+            terminal,
+            ReservationLedger {
+                reserved: 0,
+                committed: 5,
+                released: 3,
+                retained: 0,
+            }
+        );
+        assert_eq!(ledger_apply(terminal, 0, 1), (terminal, false));
+    }
+
+    #[test]
+    fn overflow_and_over_disposition_are_exact_no_ops() {
+        let boundary = ReservationLedger {
+            reserved: u64::MAX,
+            ..ReservationLedger::default()
+        };
+        assert_eq!(ledger_apply(boundary, 0, 1), (boundary, false));
+
+        let reserved = ReservationLedger {
+            reserved: 4,
+            ..ReservationLedger::default()
+        };
+        assert_eq!(ledger_apply(reserved, 3, 5), (reserved, false));
+    }
+
+    #[test]
+    fn aggregate_overflow_with_individually_valid_buckets_is_an_exact_no_op() {
+        let (full, valid) = ledger_apply(ReservationLedger::default(), 0, u64::MAX);
+        assert!(valid);
+        let (mixed, valid) = ledger_apply(full, 1, u64::MAX - 1);
+        assert!(valid);
+        assert_eq!(mixed.reserved, 1);
+        assert_eq!(mixed.committed, u64::MAX - 1);
+        assert_eq!(ledger_apply(mixed, 0, 1), (mixed, false));
+
+        let invalid_input = ReservationLedger {
+            reserved: 1,
+            committed: u64::MAX,
+            released: 0,
+            retained: 0,
+        };
+        assert_eq!(ledger_apply(invalid_input, 2, 1), (invalid_input, false));
+    }
 }

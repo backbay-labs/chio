@@ -84,6 +84,7 @@ dhat = { workspace = true }
 loom = { workspace = true }
 # proptest = "1.10" (via workspace.dependencies). Used by:
 # - tests/property_budget_store.rs
+# - tests/property_reservation_ledger.rs
 # - tests/replay_proptest.rs (replay-invariance suite)
 proptest = { workspace = true }
 

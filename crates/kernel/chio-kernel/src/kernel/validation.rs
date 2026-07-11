@@ -359,6 +359,10 @@ impl ChioKernel {
                 Ok(guard) => guard,
                 Err(poisoned) => poisoned.into_inner(),
             };
+            #[cfg(debug_assertions)]
+            let holders_before = budgets
+                .split(parent_link.capability_id.as_str())
+                .and_then(|split| split.child_holders(cap.id.as_str()));
             budgets
                 .release_child(
                     parent_link.capability_id.as_str(),
@@ -366,6 +370,22 @@ impl ChioKernel {
                     proposed_share,
                 )
                 .map_err(|err| err.to_string())?;
+            #[cfg(debug_assertions)]
+            if let Some(split) = budgets.split(parent_link.capability_id.as_str()) {
+                let expected_holders = holders_before.and_then(|holders| {
+                    let remaining = holders.saturating_sub(1);
+                    (remaining != 0).then_some(remaining)
+                });
+                debug_assert_eq!(
+                    split.child_holders(cap.id.as_str()),
+                    expected_holders,
+                    "child budget release did not consume exactly one holder lease"
+                );
+                debug_assert!(
+                    split.current_total_child_bps() <= u32::from(split.parent_share_bps),
+                    "released child budget left the sibling sum above its parent share"
+                );
+            }
         }
 
         Ok(())
@@ -881,7 +901,7 @@ impl ChioKernel {
         charge: &BudgetChargeResult,
     ) -> Result<BudgetReverseHoldDecision, KernelError> {
         let authority = charge.authorize_metadata.authority.clone();
-        self.with_budget_store(|store| {
+        let reversed = self.with_budget_store(|store| {
             Ok(store.reverse_budget_hold(BudgetReverseHoldRequest {
                 capability_id: capability_id.to_string(),
                 grant_index: charge.grant_index,
@@ -890,7 +910,14 @@ impl ChioKernel {
                 event_id: Some(charge.reverse_event_id()),
                 authority,
             })?)
-        })
+        })?;
+        #[cfg(debug_assertions)]
+        self.debug_assert_terminal_reservation_conservation(
+            capability_id,
+            charge.grant_index,
+            &charge.budget_hold_id,
+        );
+        Ok(reversed)
     }
 
     pub(crate) fn reverse_pre_execution_budget_mutation(
@@ -898,7 +925,7 @@ impl ChioKernel {
         cap: &CapabilityToken,
         budget_mutation: &PreExecutionBudgetMutation,
     ) -> Result<Option<BudgetReverseHoldDecision>, KernelError> {
-        match budget_mutation {
+        let reversed = match budget_mutation {
             PreExecutionBudgetMutation::Charge(charge) => {
                 self.reverse_budget_charge(&cap.id, charge).map(Some)
             }
@@ -909,7 +936,12 @@ impl ChioKernel {
                 Ok(None)
             }
             PreExecutionBudgetMutation::None => Ok(None),
+        }?;
+        #[cfg(debug_assertions)]
+        if let Some(grant_index) = budget_mutation.grant_index() {
+            self.debug_assert_reservation_conservation(&cap.id, grant_index);
         }
+        Ok(reversed)
     }
 
     fn reconcile_budget_charge(
@@ -919,7 +951,7 @@ impl ChioKernel {
         realized_cost_units: u64,
     ) -> Result<BudgetReconcileHoldDecision, KernelError> {
         let authority = charge.authorize_metadata.authority.clone();
-        self.with_budget_store(|store| {
+        let reconciled = self.with_budget_store(|store| {
             Ok(store.reconcile_budget_hold(BudgetReconcileHoldRequest {
                 capability_id: capability_id.to_string(),
                 grant_index: charge.grant_index,
@@ -929,7 +961,14 @@ impl ChioKernel {
                 event_id: Some(charge.reconcile_event_id()),
                 authority,
             })?)
-        })
+        })?;
+        #[cfg(debug_assertions)]
+        self.debug_assert_terminal_reservation_conservation(
+            capability_id,
+            charge.grant_index,
+            &charge.budget_hold_id,
+        );
+        Ok(reconciled)
     }
 
     #[allow(clippy::too_many_arguments)]

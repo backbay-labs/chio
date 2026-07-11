@@ -257,6 +257,36 @@ pub type BudgetReverseHoldDecision = BudgetHoldMutationDecision;
 pub type BudgetReconcileHoldDecision = BudgetHoldMutationDecision;
 pub type BudgetCaptureHoldDecision = BudgetHoldMutationDecision;
 
+/// ## Reservation conservation law
+///
+/// This law is scoped to [`BudgetGuaranteeLevel::SingleNodeAtomic`].
+///
+/// 1. Partition: reserved amount equals committed plus released plus retained
+///    plus outstanding at every reachable state, and outstanding is nonnegative.
+/// 2. Terminal uniqueness: a terminal admission has no outstanding amount and
+///    exactly one terminal classification.
+/// 3. Child splits: admitted sibling shares never exceed the parent share, and
+///    every child independently obeys clauses 1 and 2.
+///
+/// The store journal and kernel transitions use this mapping:
+///
+/// | Law term | Store journal event | Kernel transition point |
+/// | --- | --- | --- |
+/// | reserve | [`BudgetMutationKind::AuthorizeExposure`] (plus [`BudgetMutationKind::IncrementInvocation`] for a slot) | [`BudgetStore::authorize_budget_hold`] / [`BudgetStore::try_charge_cost`] |
+/// | commit | [`BudgetMutationKind::ReconcileSpend`] | normal finalization with reported cost |
+/// | release | [`BudgetMutationKind::ReverseExposure`] or [`BudgetMutationKind::ReleaseExposure`] | aborted unwind, pre-execution reversal, or admitted-budget release |
+/// | retain | no journal event; signed receipt metadata | post-dispatch abort finalization |
+///
+/// The journal replay in `kernel/ledger_audit.rs` and the stateful test in
+/// `tests/property_reservation_ledger.rs` bind the monetary reserve, commit,
+/// release, and outstanding terms to real store mutations. The journal has no
+/// retain event, so those checks do not establish retained monetary holds.
+/// Runtime lease retention is checked separately against receipt metadata by
+/// the debug audit and `kernel/tests/drop_guard_proptest.rs`. The pure
+/// transition in `chio-kernel-core/src/formal_aeneas.rs` and
+/// `formal/apalache/PostAdmissionDropGuard.tla` check the full abstract
+/// partition independently. The pure transition is not called by the
+/// production store.
 pub trait BudgetStore: Send + Sync {
     fn try_increment(
         &self,

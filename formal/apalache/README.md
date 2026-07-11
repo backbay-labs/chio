@@ -26,13 +26,15 @@ solver, and 30 minute per-invariant timeout in CI.
 - positive bound `--length=8`
 
 The second invocation covers arbitrary ordering of two independently keyed
-lifecycles. The model has per-invocation ledgers and receipt counters, not a
-shared accumulator, so shared-store races remain outside this result. One
-buffered child is enough to distinguish flush, discard, and parent-ordering
-behavior. Receipt cardinality is represented by exact per-invocation counters
-and ordering by a child-before-parent witness because the attempted sequence
-encoding expanded every bounded index at every transition under Apalache
-0.50.1. Each safety row in CI carries its own length and timeout fields.
+lifecycles. The model has per-invocation monetary ledgers and receipt counters;
+its only cross-invocation aggregate is `ActiveChildShares`, which enforces the
+shared `ChildMax` capacity. Shared monetary-store races remain outside this
+result. One buffered child is enough to distinguish flush, discard, and
+parent-ordering behavior. Receipt cardinality is represented by exact
+per-invocation counters and ordering by a child-before-parent witness because
+the attempted sequence encoding expanded every bounded index at every
+transition under Apalache 0.50.1. Each safety row in CI carries its own length
+and timeout fields.
 
 ## Invariants
 
@@ -42,7 +44,7 @@ encoding expanded every bounded index at every transition under Apalache
 | `RevocationCutCompleteness` | `RevocationCutCompleteness.tla` | `MCRevocationCutCompleteness.cfg` | Lifts Lean `revocation_is_cut` into a bounded state-machine invariant over transitive delegation cuts. |
 | `ReceiptBeforeAllow` | `ReceiptBeforeAllow.tla` | `MCReceiptBeforeAllow.cfg` | A capability may appear in an authority's allowed set only after an allow receipt for that authority and capability exists in the log. Receipt persistence and allow publication are separate actions. This is modeled ordering evidence, not a discharge of concrete cross-row crash recovery. |
 | `KernelTransitionCancelSafe` | `KernelTransitionCancelSafe.tla` | `MCKernelTransitionCancelSafe.cfg` | Models an interrupted kernel transition and proves rollback leaves budget and receipt state unchanged. |
-| `ReservationConservation` | `PostAdmissionDropGuard.tla` | `MCPostAdmissionDropGuard.cfg` | Every admitted resource reaches a committed, released, or retained disposition at a terminal state. |
+| `ReservationConservation` | `PostAdmissionDropGuard.tla` | `MCPostAdmissionDropGuard.cfg` | Every admitted resource preserves the counted partition, reaches a terminal disposition, and shares the global `ChildMax` capacity without active-child oversubscription. |
 | `TerminalReceiptExactlyOne` | `PostAdmissionDropGuard.tla` | `MCPostAdmissionDropGuard.cfg` | Receipt-bearing terminals append one parent record; clean pre-dispatch unwind appends none. |
 | `ChildReceiptsFlushed` | `PostAdmissionDropGuard.tla` | `MCPostAdmissionDropGuard.cfg` | Buffered child records are flushed before the parent terminal record. |
 | `RetainedIffAborted` | `PostAdmissionDropGuard.tla` | `MCPostAdmissionDropGuard.cfg` | Admission leases are retained exactly on ambiguous aborts or a failed lease unwind. |

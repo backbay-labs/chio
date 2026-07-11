@@ -45,6 +45,17 @@ timeout_secs = 300
 notes = "Pre-dispatch drop leaves the admitted child budget reserved."
 
 [[negative]]
+spec = "formal/apalache/_negative_tests/DropGuardChildOversubscriptionBroken.tla"
+cfg = "formal/apalache/_negative_tests/MCDropGuardChildOversubscriptionBroken.cfg"
+falsifies = "ReservationConservation"
+production_commit = "n/a (bounded model non-vacuity witness)"
+runtime_test = "crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs::parent_at_5000_bps_cannot_mint_two_children_at_4000_bps_each"
+classification = "spec-mutation"
+length = 4
+timeout_secs = 300
+notes = "A second active child share is admitted after the shared parent capacity is exhausted."
+
+[[negative]]
 spec = "formal/apalache/_negative_tests/DropGuardSkipInvocationReversalBroken.tla"
 cfg = "formal/apalache/_negative_tests/MCDropGuardSkipInvocationReversalBroken.cfg"
 falsifies = "ReservationConservation"

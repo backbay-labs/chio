@@ -17,6 +17,7 @@ use serde_json::Value;
 use crate::capability_verify::CapabilityError;
 use crate::clock::FixedClock;
 use crate::evaluate::EvaluateInput;
+use crate::formal_aeneas::{ledger_apply, ReservationLedger};
 use crate::formal_core::{
     budget_charge_admits, budget_increment_admits, guard_pipeline_allows,
     monetary_cap_is_subset_by_parts, optional_u32_cap_is_subset, receipt_fields_coupled,
@@ -1124,6 +1125,124 @@ pub fn verify_budget_checked_add_no_overflow() {
         assert_eq!(retry_post, overflow_post);
         assert_eq!(retry_result.is_err(), overflow_result.is_err());
     }
+}
+
+fn reservation_ledger_total(state: ReservationLedger) -> u64 {
+    state
+        .reserved
+        .checked_add(state.committed)
+        .and_then(|total| total.checked_add(state.released))
+        .and_then(|total| total.checked_add(state.retained))
+        .unwrap_or_else(|| unreachable!("reachable reservation ledger total fits in u64"))
+}
+
+#[kani::proof]
+pub fn verify_reservation_ledger_conservation() {
+    let mut state = ReservationLedger::default();
+    let mut admitted_total = 0u64;
+    let mut terminal_disposition = 0u8;
+
+    for _ in 0..6 {
+        let op = kani::any::<u8>();
+        let amount = u64::from(kani::any::<u8>());
+        kani::assume(op <= 3);
+        kani::assume(amount <= 8);
+
+        let before = state;
+        let before_total = reservation_ledger_total(before);
+        let (next, valid) = ledger_apply(before, op, amount);
+        if !valid {
+            assert_eq!(next, before);
+        } else if op == 0 {
+            admitted_total = admitted_total
+                .checked_add(amount)
+                .unwrap_or_else(|| unreachable!("six eight-unit reservations fit in u64"));
+            assert_eq!(reservation_ledger_total(next), before_total + amount);
+        } else {
+            assert_eq!(reservation_ledger_total(next), before_total);
+        }
+
+        state = next;
+        assert_eq!(reservation_ledger_total(state), admitted_total);
+        if valid && op != 0 && amount != 0 && state.reserved == 0 {
+            assert_eq!(terminal_disposition, 0);
+            terminal_disposition = op;
+        }
+        if terminal_disposition != 0 {
+            assert_eq!(state.reserved, 0);
+        }
+        if admitted_total != 0 && state.reserved == 0 {
+            assert_ne!(terminal_disposition, 0);
+        }
+    }
+
+    let tail = u64::from(kani::any::<u8>());
+    let overflow_amount = tail + 1;
+
+    let reserve_boundary = ReservationLedger {
+        reserved: u64::MAX - tail,
+        committed: 0,
+        released: 0,
+        retained: 0,
+    };
+    assert_eq!(
+        ledger_apply(reserve_boundary, 0, overflow_amount),
+        (reserve_boundary, false)
+    );
+
+    let mixed_bucket_boundary = ReservationLedger {
+        reserved: 1,
+        committed: u64::MAX - 1,
+        released: 0,
+        retained: 0,
+    };
+    assert_eq!(
+        ledger_apply(mixed_bucket_boundary, 0, 1),
+        (mixed_bucket_boundary, false)
+    );
+
+    for op in 1..=3 {
+        let destination = u64::MAX - overflow_amount;
+        let terminal_boundary = ReservationLedger {
+            reserved: overflow_amount,
+            committed: if op == 1 { destination } else { 0 },
+            released: if op == 2 { destination } else { 0 },
+            retained: if op == 3 { destination } else { 0 },
+        };
+        let (terminal, valid) = ledger_apply(terminal_boundary, op, overflow_amount);
+        assert!(valid);
+        assert_eq!(terminal.reserved, 0);
+        assert_eq!(reservation_ledger_total(terminal), u64::MAX);
+    }
+
+    let invalid_aggregate = ReservationLedger {
+        reserved: 1,
+        committed: u64::MAX,
+        released: 0,
+        retained: 0,
+    };
+    assert_eq!(
+        ledger_apply(invalid_aggregate, 2, 1),
+        (invalid_aggregate, false)
+    );
+
+    let over_disposition = ReservationLedger {
+        reserved: tail,
+        ..ReservationLedger::default()
+    };
+    assert_eq!(
+        ledger_apply(over_disposition, 1, overflow_amount),
+        (over_disposition, false)
+    );
+
+    let terminal = ReservationLedger {
+        reserved: 0,
+        committed: 1,
+        released: 0,
+        retained: 0,
+    };
+    assert_eq!(ledger_apply(terminal, 0, 1), (terminal, false));
+    assert_eq!(ledger_apply(terminal, 2, 1), (terminal, false));
 }
 
 #[kani::proof]

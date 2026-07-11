@@ -204,7 +204,7 @@ EOF
 
 pass_log="${tmp_dir}/pass.log"
 run_gate pass "${pass_log}"
-grep -Fq "check-apalache-negative: 9 counterexamples reproduced" "${pass_log}"
+grep -Fq "check-apalache-negative: 10 counterexamples reproduced" "${pass_log}"
 
 expect_gate_failure receipt-noerror \
   "reported NoError for ReceiptBeforeAllow" "restored-invariant"

@@ -145,14 +145,14 @@ table_rows="$(grep -E '^[[:space:]]*\|' "${mapping}" \
 
 unmapped_tla=()
 for name in "${defined_tla_invariants[@]}"; do
-  if ! printf '%s\n' "${table_rows}" | grep -qF "\`${name}\`"; then
+  if ! grep -qF "\`${name}\`" <<< "${table_rows}"; then
     unmapped_tla+=("${name}")
   fi
 done
 
 unmapped_drop_guard=()
 for name in "${defined_drop_guard_invariants[@]}"; do
-  if ! printf '%s\n' "${table_rows}" | grep -qF "\`${name}\`"; then
+  if ! grep -qF "\`${name}\`" <<< "${table_rows}"; then
     unmapped_drop_guard+=("${name}")
   fi
 done
@@ -166,7 +166,7 @@ if [[ "${#kani_harnesses[@]}" -gt 0 ]]; then
     if [[ -z "${name}" ]]; then
       continue
     fi
-    if ! printf '%s\n' "${table_rows}" | grep -qF "\`${name}\`"; then
+    if ! grep -qF "\`${name}\`" <<< "${table_rows}"; then
       unmapped_kani+=("${name}")
     fi
   done

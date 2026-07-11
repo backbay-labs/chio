@@ -110,6 +110,8 @@ def check_post_admission_drop_guard() -> None:
     next_body = body(text, "Next")
     admit = body(text, "Admit")
     admission_profiles = body(text, "AdmissionProfiles")
+    active_child_shares = body(text, "ActiveChildShares")
+    child_splits_bounded = body(text, "ChildSplitsBounded")
     pre_drop = body(text, "DropPreDispatch")
     post_drop = body(text, "DropPostDispatch")
     resolve_post_drop = body(text, "ResolvePostDispatch")
@@ -151,6 +153,19 @@ def check_post_admission_drop_guard() -> None:
         and 'phase[i] = "admitted"' in pre_drop
         and 'phase[i] \\in {"dispatch_started", "streaming"}' in post_drop,
         "drop actions must cover every armed non-terminal phase",
+    )
+    require(
+        'ledger[i]["child"] \\notin {"none", "released"}' in active_child_shares
+        and "Cardinality" in active_child_shares
+        and "ActiveChildShares <= ChildMax" in child_splits_bounded
+        and "BudgetMax" not in child_splits_bounded,
+        "child-share conservation must count active shared capacity against ChildMax",
+    )
+    require(
+        'IF "child" \\in resources' in admit
+        and "ActiveChildShares < ChildMax" in admit
+        and 'Mutation = "skip-child-capacity-guard"' in admit,
+        "child admission must enforce shared capacity with one calibrated mutation",
     )
     for local_action in ("CompleteOk", "DenyPostInvocation", "IncompleteStream"):
         require(
@@ -226,6 +241,7 @@ def check_negative_registry() -> None:
         "RevocationCutCompletenessBroken",
         "DropGuardDiscardChildBufferBroken",
         "DropGuardSkipChildBudgetReleaseBroken",
+        "DropGuardChildOversubscriptionBroken",
         "DropGuardSkipInvocationReversalBroken",
         "DropGuardNoFaultReceiptBroken",
         "DropGuardReleaseOnIncompleteStreamBroken",
@@ -233,7 +249,7 @@ def check_negative_registry() -> None:
         "DropGuardReleaseOnPostDispatchAbortBroken",
     }
     actual = {Path(entry["spec"]).stem for entry in entries}
-    require(actual == expected, "negative registry must contain the exact nine calibrated models")
+    require(actual == expected, "negative registry must contain the exact ten calibrated models")
 
     mapping = read("formal/MAPPING.md")
     for entry in entries:
@@ -245,6 +261,7 @@ def check_negative_registry() -> None:
     mutation_by_stem = {
         "DropGuardDiscardChildBufferBroken": "discard-child-buffer",
         "DropGuardSkipChildBudgetReleaseBroken": "skip-child-release",
+        "DropGuardChildOversubscriptionBroken": "skip-child-capacity-guard",
         "DropGuardSkipInvocationReversalBroken": "skip-slot-release",
         "DropGuardNoFaultReceiptBroken": "omit-fault-receipt",
         "DropGuardReleaseOnIncompleteStreamBroken": "release-incomplete-lease",
