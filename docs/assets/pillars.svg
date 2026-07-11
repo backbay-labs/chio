@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 400" width="1200" height="400" role="img" aria-label="Chio's three pillars: Proofs, Governance, and Economic Protocol, on a signed-receipt spine">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#130d0a"/>
+      <stop offset="1" stop-color="#1b140d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#8f7ff2" stop-opacity="0.34"/>
+      <stop offset="0.6" stop-color="#8f7ff2" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="400" fill="url(#bg)"/>
+
+  <!-- corner ticks (echo the hero crosshairs) -->
+  <g stroke="#b08d5b" stroke-opacity="0.35" stroke-width="1">
+    <path d="M38 44 H50 M44 38 V50"/>
+    <path d="M1150 44 H1162 M1156 38 V50"/>
+    <path d="M38 356 H50 M44 350 V362"/>
+    <path d="M1150 356 H1162 M1156 350 V362"/>
+  </g>
+
+  <!-- kicker -->
+  <text x="600" y="55" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" letter-spacing="4" fill="#d8cfc0" fill-opacity="0.55">PROOF-CARRYING AUTONOMY</text>
+
+  <!-- between-column hairlines -->
+  <g stroke="#b08d5b" stroke-opacity="0.12" stroke-width="1">
+    <path d="M420 108 V330"/>
+    <path d="M780 108 V330"/>
+  </g>
+
+  <!-- ============ Pillar 01 : Proofs (cx=240) ============ -->
+  <circle cx="240" cy="132" r="48" fill="url(#glow)"/>
+  <circle cx="240" cy="132" r="33" fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.1"/>
+  <g transform="translate(240,132)" fill="none" stroke="#c3b6ff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M0 -14 L12 -9 L12 1 C12 9 6 14 0 16 C-6 14 -12 9 -12 1 L-12 -9 Z"/>
+    <path d="M-5 0 L-1 5 L6 -5" stroke="#f2eadc" stroke-width="2.2"/>
+  </g>
+  <text x="240" y="190" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" letter-spacing="3" fill="#b08d5b">01</text>
+  <text x="240" y="214" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="23" fill="#efe7db">Proofs</text>
+  <text x="240" y="234" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#b3a99b">Capabilities in. Receipts out.</text>
+  <path d="M214 248 H266" stroke="#b08d5b" stroke-opacity="0.4" stroke-width="1"/>
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#d3cabb">
+    <rect x="122" y="264" width="5" height="5" fill="#8f7ff2"/><text x="134" y="272">Attenuated capabilities</text>
+    <rect x="122" y="288" width="5" height="5" fill="#8f7ff2"/><text x="134" y="296">Forgery-resistant receipts</text>
+    <rect x="122" y="312" width="5" height="5" fill="#8f7ff2"/><text x="134" y="320">Lean-4 modeled core</text>
+  </g>
+
+  <!-- ============ Pillar 02 : Governance (cx=600) ============ -->
+  <circle cx="600" cy="132" r="48" fill="url(#glow)"/>
+  <circle cx="600" cy="132" r="33" fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.1"/>
+  <g transform="translate(600,132)" fill="none" stroke="#c3b6ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-12 -6 H12"/>
+    <path d="M0 -6 V10"/>
+    <path d="M-7 10 H7"/>
+    <circle cx="0" cy="-9" r="2"/>
+    <path d="M-12 -6 V-1"/><circle cx="-12" cy="1.5" r="3.2"/>
+    <path d="M12 -6 V-1"/><circle cx="12" cy="1.5" r="3.2"/>
+  </g>
+  <text x="600" y="190" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" letter-spacing="3" fill="#b08d5b">02</text>
+  <text x="600" y="214" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="23" fill="#efe7db">Governance</text>
+  <text x="600" y="234" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#b3a99b">Identity, policy, delegated authority.</text>
+  <path d="M574 248 H626" stroke="#b08d5b" stroke-opacity="0.4" stroke-width="1"/>
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#d3cabb">
+    <rect x="482" y="264" width="5" height="5" fill="#8f7ff2"/><text x="494" y="272">HushSpec compiles to guards</text>
+    <rect x="482" y="288" width="5" height="5" fill="#8f7ff2"/><text x="494" y="296">Self-certifying did:chio</text>
+    <rect x="482" y="312" width="5" height="5" fill="#8f7ff2"/><text x="494" y="320">Federated, fail-closed trust</text>
+  </g>
+
+  <!-- ============ Pillar 03 : Economic Protocol (cx=960) ============ -->
+  <circle cx="960" cy="132" r="48" fill="url(#glow)"/>
+  <circle cx="960" cy="132" r="33" fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.1"/>
+  <g transform="translate(960,132)" fill="none" stroke="#c3b6ff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="0" cy="0" r="11"/>
+    <path d="M0 -5 L5 0 L0 5 L-5 0 Z" stroke="#f2eadc" stroke-width="1.5"/>
+  </g>
+  <text x="960" y="190" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" letter-spacing="3" fill="#b08d5b">03</text>
+  <text x="960" y="214" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="23" fill="#efe7db">Economic Protocol</text>
+  <text x="960" y="234" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#b3a99b">Metered, budgeted, settled.</text>
+  <path d="M934 248 H986" stroke="#b08d5b" stroke-opacity="0.4" stroke-width="1"/>
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#d3cabb">
+    <rect x="842" y="264" width="5" height="5" fill="#8f7ff2"/><text x="854" y="272">Metering &amp; budgets (live)</text>
+    <rect x="842" y="288" width="5" height="5" fill="#8f7ff2"/><text x="854" y="296">Proof-carrying commerce</text>
+    <rect x="842" y="312" width="5" height="5" fill="#8f7ff2"/><text x="854" y="320">Markets &amp; settlement (staged)</text>
+  </g>
+
+  <!-- spine -->
+  <path d="M170 356 H1030" stroke="#b08d5b" stroke-opacity="0.3" stroke-width="1"/>
+  <rect x="594" y="350" width="12" height="12" transform="rotate(45 600 356)" fill="#1b140d" stroke="#b08d5b" stroke-opacity="0.7"/>
+  <text x="600" y="384" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="14" fill="#d8cfc0" fill-opacity="0.75">Every decision leaves one signed receipt.</text>
+</svg>

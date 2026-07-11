@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Life of a tool call: present, verify, budget, guard in, dispatch, guard out, meter and sign, commit">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#130d0a"/>
+      <stop offset="1" stop-color="#1b140d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#8f7ff2" stop-opacity="0.32"/>
+      <stop offset="0.6" stop-color="#8f7ff2" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="300" fill="url(#bg)"/>
+
+  <g stroke="#b08d5b" stroke-opacity="0.35" stroke-width="1">
+    <path d="M30 34 H42 M36 28 V40"/>
+    <path d="M1158 34 H1170 M1164 28 V40"/>
+    <path d="M30 266 H42 M36 260 V272"/>
+    <path d="M1158 266 H1170 M1164 260 V272"/>
+  </g>
+
+  <text x="600" y="46" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" letter-spacing="4" fill="#d8cfc0" fill-opacity="0.55">LIFE OF A TOOL CALL</text>
+
+  <!-- flow track -->
+  <path d="M90 150 H1110" stroke="#b08d5b" stroke-opacity="0.28" stroke-width="1"/>
+  <g fill="none" stroke="#8f7ff2" stroke-opacity="0.45" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M172 145 L179 150 L172 155"/>
+    <path d="M314 145 L321 150 L314 155"/>
+    <path d="M455 145 L462 150 L455 155"/>
+    <path d="M597 145 L604 150 L597 155"/>
+    <path d="M738 145 L745 150 L738 155"/>
+    <path d="M880 145 L887 150 L880 155"/>
+    <path d="M1021 145 L1028 150 L1021 155"/>
+  </g>
+
+  <!-- glows -->
+  <g>
+    <circle cx="105" cy="150" r="30" fill="url(#glow)"/>
+    <circle cx="246" cy="150" r="30" fill="url(#glow)"/>
+    <circle cx="388" cy="150" r="30" fill="url(#glow)"/>
+    <circle cx="529" cy="150" r="30" fill="url(#glow)"/>
+    <circle cx="671" cy="150" r="30" fill="url(#glow)"/>
+    <circle cx="812" cy="150" r="30" fill="url(#glow)"/>
+    <circle cx="954" cy="150" r="30" fill="url(#glow)"/>
+    <circle cx="1095" cy="150" r="30" fill="url(#glow)"/>
+  </g>
+
+  <!-- step numbers -->
+  <g text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" letter-spacing="2" fill="#b08d5b">
+    <text x="105" y="118">01</text><text x="246" y="118">02</text><text x="388" y="118">03</text><text x="529" y="118">04</text>
+    <text x="671" y="118">05</text><text x="812" y="118">06</text><text x="954" y="118">07</text><text x="1095" y="118">08</text>
+  </g>
+
+  <!-- node rings -->
+  <g fill="#16101c" fill-opacity="0.92" stroke="#8f7ff2" stroke-opacity="0.6" stroke-width="1.1">
+    <circle cx="105" cy="150" r="19"/><circle cx="246" cy="150" r="19"/><circle cx="388" cy="150" r="19"/><circle cx="529" cy="150" r="19"/>
+    <circle cx="671" cy="150" r="19"/><circle cx="812" cy="150" r="19"/><circle cx="954" cy="150" r="19"/><circle cx="1095" cy="150" r="19"/>
+  </g>
+
+  <!-- icons -->
+  <g fill="none" stroke="#c3b6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(105,150)"><rect x="-8" y="-6" width="16" height="12" rx="2"/><path d="M-4 -1 H4"/></g>
+    <g transform="translate(246,150)"><path d="M-6 0 L-2 5 L7 -6"/></g>
+    <g transform="translate(388,150)"><circle cx="0" cy="0" r="7"/><path d="M0 -4 L4 0 L0 4 L-4 0 Z" stroke-width="1.2"/></g>
+    <g transform="translate(529,150)"><path d="M0 -8 L7 -5 L7 1 C7 6 4 9 0 10 C-4 9 -7 6 -7 1 L-7 -5 Z"/></g>
+    <g transform="translate(671,150)"><path d="M-7 0 H6"/><path d="M2 -4 L7 0 L2 4"/></g>
+    <g transform="translate(812,150)"><path d="M-7 -6 H7 L2 1 V7 L-2 5 V1 Z"/></g>
+    <g transform="translate(954,150)"><circle cx="0" cy="0" r="6.5"/><path d="M-3 0 L-1 2.5 L3.5 -3" stroke="#f2eadc"/></g>
+    <g transform="translate(1095,150)"><ellipse cx="0" cy="-5" rx="6" ry="2.2"/><path d="M-6 -5 V5"/><path d="M6 -5 V5"/><path d="M-6 5 C-6 7.2 6 7.2 6 5"/></g>
+  </g>
+
+  <!-- labels -->
+  <g text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" fill="#d3cabb">
+    <text x="105" y="194">Present</text><text x="246" y="194">Verify</text><text x="388" y="194">Budget</text><text x="529" y="194">Guard in</text>
+    <text x="671" y="194">Dispatch</text><text x="812" y="194">Guard out</text><text x="954" y="194">Meter + sign</text><text x="1095" y="194">Commit</text>
+  </g>
+
+  <!-- spine + outcome -->
+  <path d="M170 236 H1030" stroke="#b08d5b" stroke-opacity="0.3" stroke-width="1"/>
+  <rect x="594" y="230" width="12" height="12" transform="rotate(45 600 236)" fill="#1b140d" stroke="#b08d5b" stroke-opacity="0.7"/>
+  <text x="600" y="266" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="14" fill="#d8cfc0" fill-opacity="0.75">Every outcome (allow, deny, cancelled, incomplete) becomes a signed receipt.</text>
+</svg>
