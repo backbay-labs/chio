@@ -59,8 +59,9 @@ Wave 4   FV-C3   FV-D3   FV-D5     +--> FV-C4 (shared refinement algebra)
 Wave 5   FV-B4 part 2 (DST, needs B1/B3 invariants)   FV-D1   FV-D4   FV-C4
 ```
 
-FV-E5 (ratchets) starts in Wave 2 and then runs continuously: each lane that
-goes green for a sustained streak gets promoted per its runbook.
+FV-E5 (ratchets) starts in Wave 2 and then runs continuously. Its eleven
+registered lanes remain advisory until a qualifying post-reset streak and the
+runbook requirements justify promotion. No hosted streak is claimed here.
 
 ## Wave rationale
 
@@ -94,8 +95,8 @@ five fixed bugs, and states the reservation conservation law in four
 independent lanes. [FV-A1](plan/FV-A1-absorb-verified-helpers.md) begins the
 rolling absorption of proven helpers into production call paths (budget first,
 so it composes with FV-B3).
-[FV-E5](plan/FV-E5-lane-ratchets.md) starts recording strictness and green
-streaks so later promotion to required checks is evidence-based.
+[FV-E5](plan/FV-E5-lane-ratchets.md) records strictness and bounded job history
+so later promotion to required checks can be evidence-based.
 
 ### Wave 3: deepen the chains
 
@@ -162,3 +163,39 @@ Work that changes what `docs/reference/CLAIM_REGISTRY.md` may approve:
 4. Honest posture: advisory lanes are labeled advisory; promotion to
    required goes through the FV-E5 ratchet with recorded streaks, and
    metadata-only runs can never masquerade as strict.
+
+## Lane posture promotion runbook
+
+1. Run `scripts/lane-gate.sh <lane> --report`. Promotion requires at least the
+   configured consecutive-success streak, evidence newer than
+   `evidence_after_run_id`, and a latest run inside `max_age_hours`. Dispatch
+   runs are excluded. A strict-mode lane also requires an unexpired strict
+   proof-report artifact for every counted run. Pull-request evidence must
+   target the configured base branch and carry the exact per-attempt real-work
+   marker artifact.
+2. Change only `releases.toml`: set the lane's `posture` to `required` and add
+   `promotion_evidence = { run_ids = [...], report_sha256 = "..." }`. The run
+   IDs must be the exact configured streak after the reset. Paste the exact
+   report output, including attempts, dates, job name, and freshness, in the
+   pull request so reviewers can verify its SHA-256. The existing CODEOWNERS
+   rule applies to that file; promotion does not require an enforcement-test
+   edit.
+3. Pull-request lanes are frozen. Before promotion, make the workflow run on
+   every pull request, add a stable aggregator, and upload the configured
+   execution marker only after the real proof job succeeds. Successful no-op
+   runs must report the aggregator but must not upload the marker. Remove the
+   freeze in the same reviewed change.
+4. After the posture change merges, an administrator adds the exact job display
+   name from `releases.toml` to the GitHub ruleset. Repository configuration is
+   a separate manual step; changing the TOML file cannot update a ruleset.
+5. Scheduled-only lanes use required posture only in the release-fleet sense.
+   `scripts/lane-gate.sh --fleet` blocks release qualification when their latest
+   qualifying job is missing, stale, non-strict when strict evidence is
+   required, or unsuccessful. They are not pull-request checks.
+6. Demotion changes `posture` back to `advisory`, removes
+   `promotion_evidence` and the ruleset context where applicable, and links the
+   incident record. A frozen lane cannot be promoted until the same reviewed
+   change removes `frozen` and resolves its stated reason.
+7. Set a new `evidence_after_run_id` whenever job semantics, proof mode, or
+   evidence collection changes materially. Evidence before the reset never
+   supports a later promotion.

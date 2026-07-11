@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -85,6 +86,14 @@ jobs:
         working-directory: fuzz
         run: cargo test --locked
 
+      - name: Record fuzz corpus lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh fuzz-corpus-smoke-nightly
+
   # The nightly RevocationEventuallySeen liveness check runs in the dedicated
   # fail-closed apalache-temporal.yml workflow at length=24. Keeping it in a
   # separate scheduled workflow avoids duplicating the safety sweep here while
@@ -157,6 +166,14 @@ jobs:
             bash scripts/run-kani-manifest.sh --lane "${lane}" \
               --exclude-crate chio-kernel-core --allow-empty
           done
+
+      - name: Record nightly Kani lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh kani-public-nightly
 
   # Formal proof report plus portable (browser/mobile) and polyglot SDK
   # qualification. The toolchain install (Lean 4, Aeneas / Charon, Creusot,
@@ -296,26 +313,35 @@ jobs:
           fi
 
       - name: Workspace proof report
+        id: proof_report
         env:
           CARGO_BUILD_JOBS: "1"
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: |
-          if [[ "${CHIO_RUST_VERIFICATION_METADATA_ONLY:-0}" == "1" ]]; then
-            echo "Skipping proof report generation because Rust verification is in metadata-only mode"
-          else
-            ./scripts/generate-proof-report.sh
-            ./scripts/check-proof-report.sh
+          set -euo pipefail
+          ./scripts/generate-proof-report.sh
+          ./scripts/check-proof-report.sh
+          mode="$(python3 -c 'import json; from pathlib import Path; print(json.loads(Path("target/formal/proof-report.json").read_text(encoding="utf-8"))["mode"])')"
+          if [[ "${mode}" != "strict" && "${mode}" != "metadata_only" ]]; then
+            echo "Unknown proof-report mode: ${mode}" >&2
+            exit 1
           fi
+          echo "mode=${mode}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "### Formal proof report"
+            echo
+            echo "Mode: \`${mode}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
 
-      - name: Upload formal proof artifacts
+      - name: Upload formal proof evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: formal-proof-report
+          name: formal-proof-report-${{ steps.proof_report.outputs.mode }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             target/formal/proof-report.json
             target/formal/coverage.json
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 21
 
       - name: Portable browser qualification
@@ -332,6 +358,15 @@ jobs:
         env:
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }}"
         run: ./scripts/check-sdk-parity.sh
+
+      - name: Record formal qualification posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_STRICT_MODE: ${{ steps.proof_report.outputs.mode }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh formal-qualification
 
   # Workspace coverage. Advisory (continue-on-error) and slow.
   coverage:

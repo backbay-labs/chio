@@ -34,7 +34,10 @@ rules:
   subprocess isolation, hosted registries, external chains, clustering, or
   settlement from first principles
 - do not say Creusot/Kani production refinement is complete unless the strict
-  Rust verification lane has actually passed in CI
+  Rust verification lane has actually passed in CI; release qualification
+  enforces this with protected strict report generation immediately followed
+  by `scripts/check-proof-report.sh --require-strict`, which validates report
+  structure and source binding without replaying the proof commands
 - do say Chio's security-critical protocol semantics are formally verified and
   implementation-linked, subject to `formal/proof-manifest.toml`,
   `formal/assumptions.toml`, and `formal/theorem-inventory.json`

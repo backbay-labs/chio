@@ -36,6 +36,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: formal-pr-smoke-${{ github.ref }}
@@ -131,6 +132,14 @@ jobs:
         working-directory: fuzz
         run: cargo test --locked
 
+      - name: Record fuzz corpus lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh fuzz-corpus-smoke-pr
+
   lean-build:
     name: lean-build (lake + sorry scan + manifest cross-ref)
     needs: scope
@@ -195,6 +204,14 @@ jobs:
       - name: Build proofs and validate proof registries
         run: bash scripts/check-formal-proofs.sh
 
+      - name: Record Lean lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh lean-build
+
   kani-public-pr:
     name: kani-public-pr (lanes.pr sweep)
     needs: scope
@@ -246,6 +263,14 @@ jobs:
         env:
           CARGO_BUILD_JOBS: "1"
         run: bash scripts/check-kani-public-core.sh --lane pr
+
+      - name: Record public Kani lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh kani-public-pr
 
   kani-manifest-pr:
     name: kani-manifest-pr (non-core lanes.pr sweep)
@@ -299,6 +324,14 @@ jobs:
           CARGO_BUILD_JOBS: "1"
         run: bash scripts/run-kani-manifest.sh --lane pr --exclude-crate chio-kernel-core
 
+      - name: Record manifest Kani lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh kani-manifest-pr
+
   rust-verification-metadata:
     name: rust-verification-metadata (schema only, no proofs)
     needs: scope
@@ -319,3 +352,11 @@ jobs:
           set -euo pipefail
           echo "Metadata-only mode validates registry shape; no proofs run."
           bash scripts/check-rust-verification-gates.sh
+
+      - name: Record Rust metadata lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh rust-verification-metadata

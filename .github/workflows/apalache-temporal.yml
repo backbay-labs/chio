@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ${{ format('{0}-{1}-apalache-temporal', github.event_name, github.sha) }}
@@ -59,3 +60,11 @@ jobs:
             --temporal=RevocationEventuallySeen \
             --config=formal/tla/MCRevocationPropagationTemporal.cfg \
             formal/tla/RevocationPropagation.tla
+
+      - name: Record temporal lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh apalache-temporal

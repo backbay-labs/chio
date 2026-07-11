@@ -23,9 +23,12 @@ Closure:
   Creusot and release proof evidence. The PR metadata job cannot substitute for
   those strict checks.
 
-The new checks are initially advisory. Required-check promotion and run-always
-no-op behavior remain governed by
-[plan/FV-E5-lane-ratchets.md](plan/FV-E5-lane-ratchets.md). Mirror drift
+The new checks are initially advisory. Their exact job names, reset boundaries,
+freshness limits, and postures are registered in `releases.toml` and evaluated
+against job-level GitHub Actions history by `scripts/lane-gate.sh`. The
+five path-scoped pull-request entries are frozen until a run-always aggregator
+exists and real proof execution emits a per-attempt marker. PR history is bound
+to the configured base branch. Mirror drift
 detection remains tracked by
 [plan/FV-A4-mirror-drift-hashes.md](plan/FV-A4-mirror-drift-hashes.md).
 
@@ -165,15 +168,22 @@ Evidence:
   `formal_core.rs`, and both Kani harness files with the rationale "covered
   by the proof lane". No lane ever mutates those files and checks whether the
   proof lane notices.
-- The negative-test discipline exists (two broken Apalache specs) but is
-  manual, local-only, and covers 2 of 6 models.
+- The negative-test discipline is registered as the advisory scheduled
+  `apalache-negative` lane. Its B2 workflow integration and post-reset hosted
+  evidence remain pending.
 - The trust-boundary mutation baseline (2026-04-29) measured a 30.7% kill
   rate against an 80% activation target; the ratchet in `releases.toml` shows
   0 observed consecutive green nights; `mutants-nightly` is
   continue-on-error.
-- `CHIO_RUST_VERIFICATION_METADATA_ONLY=1` downgrades the strict
-  Creusot/Kani gates to schema-only checks in three places, and the proof
-  report does not record which mode produced it.
+- `CHIO_RUST_VERIFICATION_METADATA_ONLY=1` produces a proof report whose global
+  mode is `metadata_only`. The C5 coverage drift preflight must pass while every
+  proof command is `not_run`. Nightly publishes that mode in the summary and
+  artifact name. Release qualification requires `strict`, so metadata-only
+  evidence cannot satisfy the formal claim rule.
+- Strict report generation requires a clean worktree and records the evidence
+  boundary: the protected generator attests gate execution, while the checker
+  validates structure, source binding, hashes, and commit identity without
+  replaying proof commands.
 
 Consequence: a vacuous harness, a tautological invariant, or a weakened
 contract would pass every lane indefinitely. The estate cannot currently

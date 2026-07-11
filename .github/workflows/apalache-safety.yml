@@ -30,6 +30,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ${{ github.event_name == 'pull_request' && format('pr-{0}-apalache-safety', github.ref) || format('main-{0}-apalache-safety', github.sha) }}
@@ -88,6 +89,14 @@ jobs:
           formal/tla/MCDelegationDepthBound.cfg|formal/tla/DelegationDepthBound.tla|6|1800
           EOF
 
+      - name: Record safety lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh apalache-safety
+
   apalache-negative:
     name: apalache-negative
     runs-on: ubuntu-24.04
@@ -132,3 +141,11 @@ jobs:
           path: target/apalache-negative
           if-no-files-found: error
           retention-days: 14
+
+      - name: Record negative lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh apalache-negative

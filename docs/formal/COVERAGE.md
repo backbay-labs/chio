@@ -617,11 +617,25 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - Symlink resolution and OS filesystem root enforcement beyond Chio's normalized path-prefix fail-closed checks
 - Cross-row receipt and budget crash recovery, ordering, and conservation until implementation trace validation and crash-reopen gates establish refinement
 
+## Lane Postures
+
+- `apalache-negative`: advisory
+- `apalache-safety`: advisory
+- `apalache-temporal`: advisory
+- `formal-qualification`: advisory
+- `fuzz-corpus-smoke-nightly`: advisory
+- `fuzz-corpus-smoke-pr`: advisory
+- `kani-manifest-pr`: advisory
+- `kani-public-nightly`: advisory
+- `kani-public-pr`: advisory
+- `lean-build`: advisory
+- `rust-verification-metadata`: advisory
+
 ## Generation
 
 - Generator version: `2`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `fed86c48c0a5535587396225ee8dc0b3de73392731194094739de1a08082aa5b`
+- Input digest: `c2eefedd4fd94ad76c18f64954ffc5b6e41aad7f8c6a809330a4b80818b2e740`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -662,7 +676,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/diff-tests/tests/regression_formal_receipt_before_allow_c01406cfbbeb.rs`: `50ee14b6a785532e22e6cd9c4f8b41078556a4c75e18e7dfeea46597a1399deb`
 - `formal/diff-tests/tests/scope_diff.rs`: `c21aaa2cb891fd1fc19482ec6f8dc9c81930b5890af74f86c6fb5dd3104489ab`
 - `formal/lean4/Chio/Chio/Capability/Delegation.lean`: `a6a44ca25cb3fec5385b6a2d6703d933236453d8d5b9b336061a42f675d2cfa6`
-- `formal/proof-manifest.toml`: `a86605340f11fb5978798c88c79c0c7f094d7cb7d71be02c4a3cfd0e6817f014`
+- `formal/proof-manifest.toml`: `9912d580f198a2f9be01e68d7b5cb008ceb163e18c8088c586bdf06bc0e571d8`
 - `formal/rust-verification/creusot-contracts.toml`: `83000c98743013d3d6d468976a163edaf16d0d621070410d741f146bf61a28a5`
 - `formal/rust-verification/kani-harnesses.toml`: `f82442bef24ae67283c3f171cff15e8aa6cc4d808c7893b9e349b6bf315b50ce`
 - `formal/rust-verification/kani-public-harnesses.toml`: `d2229327fbbb110bc936f783171b586ba0b56e7d020bc601fa8cc38e53cd0558`
@@ -671,5 +685,5 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `fuzz/owners.toml`: `1358b162b1fc1a8b389aae7880e5a98035a63053b743fdaaba1a49bee3ae14c6`
 - `fuzz/target-map.toml`: `8d86f3799c637fa3740384c8d874416149a02400e95eb4107562462539c977f1`
 - `git-worktree://rust-files`: `f16ae2fa7b95e6260e8c3323f865208b3304a7521324685adfe85ab922386f97`
-- `releases.toml`: `089a0113e50ac2fba9beb09a5b16157cbdb1ea437c5a0042c1eb03be1a8af897`
+- `releases.toml`: `4aa1d8327cb5bc36877fef1de4b9bd7b75a19dc9c66970794daddb1f72c1bdf8`
 - `xtask/src/proof_coverage.rs`: `15057173e23915b4e108a59a2c3e93f70ac7ea46fed5646a102a3bb2033dde33`

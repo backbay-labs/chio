@@ -1,9 +1,39 @@
-# releases.toml - Mutation-testing release-cycle gate state.
+# releases.toml - Release qualification and evidence-gate state.
 #
-# Read by scripts/mutants-gate.sh from .github/workflows/mutants.yml
-# (jobs mutants-pr and mutants-nightly).
+# Pass/fail lane posture is read by scripts/lane-gate.sh. Mutation scoring is
+# governed separately by scripts/mutants-gate.sh because its evidence requires
+# a reviewed catch-ratio judgment.
 #
-# Schema:
+# Pass/fail lane schema:
+#   [gates.<lane>]
+#   workflow             : workflow filename registered by GitHub Actions.
+#   job                  : exact job display name returned by the jobs API.
+#   event                : schedule or pull_request; dispatch runs never count.
+#   posture              : advisory or required.
+#   required_streak      : consecutive matching-event job successes needed for
+#                          promotion.
+#   evidence_after_run_id
+#                         : exclusive reset boundary for promotion evidence.
+#   max_age_hours        : freshness bound used by release fleet checks.
+#   strict_mode_required : optional; successful evidence also needs the named
+#                         strict proof-report artifact.
+#   strict_artifact_prefix
+#                         : required prefix followed by the exact run ID and
+#                          latest run attempt.
+#   base_branch           : required pull-request base branch. Runs targeting
+#                          another base do not count.
+#   execution_artifact_prefix
+#                         : required for pull-request lanes. The proof job
+#                          uploads this prefix plus run ID and attempt only
+#                          after real verification work completes.
+#   frozen               : optional; rejects required posture while true.
+#   frozen_reason        : required explanation when frozen is true.
+#   promotion_evidence   : required inline table for required posture; absent
+#                          for advisory posture. run_ids must contain exactly
+#                          required_streak unique post-reset run IDs, and
+#                          report_sha256 binds the reviewed --report output.
+#
+# Mutation scoring schema:
 #   [mutants]
 #   initial_merge_tag
 #                    : tag that shipped the initial mutation-testing changes.
@@ -59,6 +89,129 @@
 #      mode for one cycle.
 #
 # Editing this file is gated by CODEOWNERS.
+
+[gates.kani-public-nightly]
+workflow = "nightly.yml"
+job = "kani-public-nightly (lanes.pr + lanes.nightly_only)"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 29003108285
+max_age_hours = 48
+
+[gates.formal-qualification]
+workflow = "nightly.yml"
+job = "formal-qualification (proof report + portable + SDK parity)"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 29003108285
+max_age_hours = 48
+strict_mode_required = true
+strict_artifact_prefix = "formal-proof-report-strict-"
+
+[gates.apalache-safety]
+workflow = "apalache-safety.yml"
+job = "apalache-subset"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 29012047382
+max_age_hours = 48
+
+[gates.apalache-negative]
+workflow = "apalache-safety.yml"
+job = "apalache-negative"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 29086573702
+max_age_hours = 48
+
+[gates.apalache-temporal]
+workflow = "apalache-temporal.yml"
+job = "formal-tla-liveness"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 29012076489
+max_age_hours = 48
+frozen = true
+frozen_reason = "The temporal property must be fixed and reliably green before promotion."
+
+[gates.lean-build]
+workflow = "formal-pr-smoke.yml"
+job = "lean-build (lake + sorry scan + manifest cross-ref)"
+event = "pull_request"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 168
+base_branch = "chio/autonomous-commerce-brainstorm"
+execution_artifact_prefix = "lane-executed-lean-build-"
+frozen = true
+frozen_reason = "The path-scoped workflow has no run-always aggregator or real-execution marker uploader."
+
+[gates.kani-public-pr]
+workflow = "formal-pr-smoke.yml"
+job = "kani-public-pr (lanes.pr sweep)"
+event = "pull_request"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 168
+base_branch = "chio/autonomous-commerce-brainstorm"
+execution_artifact_prefix = "lane-executed-kani-public-pr-"
+frozen = true
+frozen_reason = "The path-scoped workflow has no run-always aggregator or real-execution marker uploader."
+
+[gates.kani-manifest-pr]
+workflow = "formal-pr-smoke.yml"
+job = "kani-manifest-pr (non-core lanes.pr sweep)"
+event = "pull_request"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 168
+base_branch = "chio/autonomous-commerce-brainstorm"
+execution_artifact_prefix = "lane-executed-kani-manifest-pr-"
+frozen = true
+frozen_reason = "The path-scoped workflow has no run-always aggregator or real-execution marker uploader."
+
+[gates.rust-verification-metadata]
+workflow = "formal-pr-smoke.yml"
+job = "rust-verification-metadata (schema only, no proofs)"
+event = "pull_request"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 168
+base_branch = "chio/autonomous-commerce-brainstorm"
+execution_artifact_prefix = "lane-executed-rust-verification-metadata-"
+frozen = true
+frozen_reason = "The path-scoped workflow has no run-always aggregator or real-execution marker uploader."
+
+[gates.fuzz-corpus-smoke-pr]
+workflow = "formal-pr-smoke.yml"
+job = "fuzz-corpus-smoke-pr (locked replay)"
+event = "pull_request"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 168
+base_branch = "chio/autonomous-commerce-brainstorm"
+execution_artifact_prefix = "lane-executed-fuzz-corpus-smoke-pr-"
+frozen = true
+frozen_reason = "The path-scoped workflow has no run-always aggregator or real-execution marker uploader."
+
+[gates.fuzz-corpus-smoke-nightly]
+workflow = "nightly.yml"
+job = "fuzz corpus smoke"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 29003108285
+max_age_hours = 48
 
 [mutants]
 initial_merge_tag = "v0.0.0-mutation-gate"

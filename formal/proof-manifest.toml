@@ -36,6 +36,7 @@ root_modules = [
 ]
 
 gate_commands = [
+  "cargo xtask gen proof-coverage --check",
   "./scripts/check-formal-proofs.sh",
   "./scripts/check-aeneas-pilot.sh",
   "./scripts/check-aeneas-production.sh",
@@ -47,7 +48,6 @@ gate_commands = [
   "cargo test -p chio-formal-diff-tests",
   "./scripts/check-portable-kernel.sh",
   "./scripts/check-proof-report.sh",
-  "cargo xtask gen proof-coverage --check",
 ]
 
 covered_rust_modules = [

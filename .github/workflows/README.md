@@ -50,12 +50,49 @@ The core Kani job reads all 20 PR harnesses from
 the 12 matching entries for chio-attest-verify, chio-anchor, and chio-weights
 from `.kani/harnesses.toml`. The metadata job validates registry structure only;
 strict Creusot checks remain in `nightly.yml` and release qualification. These
-checks must not be added to a ruleset until their required-check promotion
-procedure also makes unrelated PRs report a successful no-op result.
+checks are frozen in `releases.toml` and must not enter a ruleset until a
+run-always aggregator exists. Real proof work must upload the configured
+per-attempt execution marker; a successful no-op must not upload that marker.
 
 The separate [`mutants.yml`](./mutants.yml) workflow also has a path-scoped PR
 lane for six trust-boundary crates. It remains advisory until the evidence
 ratchet in `releases.toml` activates blocking posture.
+
+## Evidence-gated lane postures
+
+`releases.toml` is the authoritative posture registry for pass/fail proof and
+corpus lanes. Each entry records the workflow filename, exact job display name,
+triggering event, evidence reset, freshness limit, required streak, and current
+advisory or required posture. `scripts/lane-gate.sh` counts matching job results
+from bounded GitHub Actions history. Whole-workflow conclusions and manual
+dispatch runs do not count. Pull-request evidence must target the configured
+base branch and include the exact per-attempt real-execution marker.
+
+Strict proof artifacts are named with both `github.run_id` and
+`github.run_attempt`. Streak evaluation reads the latest job attempt and rejects
+a strict artifact left by any earlier attempt of the same run.
+
+Strict report generation requires a clean worktree and executes the manifest
+gate set. The report checker validates schema, hashes, source bindings, commit
+identity, and the recorded evidence boundary. It does not replay proof commands;
+the protected generator process attests those gate statuses.
+
+The registry covers five scheduled formal lanes, all four formal PR checks
+listed above, and both locked-corpus smoke checks. The fifth scheduled formal
+lane is `apalache-negative`; its terminal posture step lands with B2 integration.
+
+- "fuzz-corpus-smoke-pr (locked replay)"
+- "fuzz corpus smoke"
+
+All eleven entries are advisory, and no hosted qualifying streak is claimed by
+the registry. Required promotion follows the runbook in
+`docs/formal/ROADMAP.md` and adds structured `promotion_evidence` to the same
+protected registry edit. Pull-request checks remain frozen until they use a
+run-always aggregator and real-execution marker. Scheduled-only required lanes
+gate release qualification via
+`scripts/lane-gate.sh --fleet`; they are never added as pull-request contexts.
+The separately judged cargo-mutants catch-ratio gate remains under
+`scripts/mutants-gate.sh`.
 
 ### Why the build step MUST stay `--workspace`, not per-crate (`-p`)
 

@@ -17,12 +17,10 @@ python3 scripts/check-architecture-docs.py
 bash scripts/tests/check-creusot-contract-sync.test.sh
 ./scripts/check-adapter-no-bypass.sh
 ./scripts/check-portable-kernel.sh
-if [[ "${CHIO_RUST_VERIFICATION_METADATA_ONLY:-0}" == "1" ]]; then
-  echo "Skipping proof report generation because Rust verification is in metadata-only mode"
-else
-  ./scripts/generate-proof-report.sh
-  ./scripts/check-proof-report.sh
-fi
+./scripts/generate-proof-report.sh
+./scripts/check-proof-report.sh --require-strict
+bash scripts/tests/check-proof-report.test.sh
+bash scripts/tests/lane-gate.test.sh
 cargo fmt --all -- --check
 python3 scripts/check-rust-file-hygiene.py
 bash scripts/tests/check-rust-file-hygiene.test.sh

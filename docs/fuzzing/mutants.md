@@ -12,6 +12,11 @@ actually exercised by tests.
 This lane is owned by `agent-role: fuzz-rust` and lives alongside the
 fuzz infrastructure in `docs/fuzzing/`.
 
+The judged catch-ratio lifecycle remains separate from pass/fail workflow
+postures. `scripts/mutants-gate.sh` owns mutation evidence and its reviewed
+counter in `releases.toml`; `scripts/lane-gate.sh` owns stateless GitHub job
+history for proof and corpus lanes. Neither script substitutes for the other.
+
 ## Pinned version
 
 `cargo-mutants` is pinned to the **25.x** series for compatibility with

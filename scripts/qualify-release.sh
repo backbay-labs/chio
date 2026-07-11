@@ -13,8 +13,34 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
+output_root="target/release-qualification"
+conformance_root="${output_root}/conformance"
+log_root="${output_root}/logs"
+coverage_root="${output_root}/coverage"
+formal_root="${output_root}/formal"
+peer_root="${output_root}/peers"
+checksum_path="${output_root}/SHA256SUMS"
+manifest_path="${output_root}/artifact-manifest.json"
+certify_seed="${output_root}/certify-release.seed"
+
 # ci-workspace is the fast regression gate.
 ./scripts/ci-workspace.sh
+rm -rf \
+  "${conformance_root}" \
+  "${log_root}" \
+  "${coverage_root}" \
+  "${formal_root}" \
+  "${peer_root}"
+mkdir -p \
+  "${conformance_root}" \
+  "${log_root}" \
+  "${coverage_root}" \
+  "${formal_root}" \
+  "${peer_root}"
+install -m 0644 target/formal/proof-report.json "${formal_root}/proof-report.json"
+install -m 0644 target/formal/coverage.json "${formal_root}/coverage.json"
+
+./scripts/lane-gate.sh --fleet
 cargo test -p chio-provider-conformance \
   --features fixtures-gemini,fixtures-mistral,fixtures-groq,fixtures-ollama,fixtures-cohere \
   --test replay_gemini \
@@ -29,17 +55,6 @@ cargo test -p chio-provider-conformance \
 ./scripts/check-chio-ts-release.sh
 ./scripts/check-chio-py-release.sh
 ./scripts/check-chio-go-release.sh
-
-output_root="target/release-qualification"
-conformance_root="${output_root}/conformance"
-log_root="${output_root}/logs"
-coverage_root="${output_root}/coverage"
-peer_root="${output_root}/peers"
-checksum_path="${output_root}/SHA256SUMS"
-manifest_path="${output_root}/artifact-manifest.json"
-certify_seed="${output_root}/certify-release.seed"
-rm -rf "${conformance_root}" "${log_root}" "${coverage_root}" "${peer_root}"
-mkdir -p "${conformance_root}" "${log_root}" "${coverage_root}" "${peer_root}"
 
 read_release_python_peer() {
   python3 - <<'PY'

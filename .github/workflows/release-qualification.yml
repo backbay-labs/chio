@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -160,7 +161,20 @@ jobs:
         run: ./scripts/check-sdk-parity.sh
 
       - name: Release qualification
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: ./scripts/qualify-release.sh
+
+      - name: Retain formal proof evidence
+        if: always()
+        run: |
+          mkdir -p target/release-qualification/formal
+          install -m 0644 \
+            target/formal/proof-report.json \
+            target/release-qualification/formal/proof-report.json
+          install -m 0644 \
+            target/formal/coverage.json \
+            target/release-qualification/formal/coverage.json
 
       - name: Hosted web3 runtime qualification
         run: ./scripts/qualify-web3-runtime.sh
@@ -181,4 +195,5 @@ jobs:
         with:
           name: release-qualification
           path: target/release-qualification
+          if-no-files-found: error
           retention-days: 21
